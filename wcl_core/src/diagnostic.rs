@@ -113,6 +113,10 @@ impl DiagnosticBag {
         self.add(Diagnostic::error(message, span).with_code(code));
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.diagnostics.is_empty()
+    }
+
     pub fn has_errors(&self) -> bool {
         self.diagnostics.iter().any(|d| d.is_error())
     }

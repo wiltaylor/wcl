@@ -65,6 +65,34 @@ pub use ast::{
 
 pub use parser::Parser;
 
+/// Parse a query pipeline from a standalone string, e.g. `"service | .port > 80"`.
+///
+/// Returns the parsed `QueryPipeline` or diagnostics on failure.
+pub fn parse_query(source: &str, file_id: FileId) -> Result<ast::QueryPipeline, DiagnosticBag> {
+    let tokens = match lexer::lex(source, file_id) {
+        Ok(tokens) => tokens,
+        Err(lex_errors) => {
+            let mut diags = DiagnosticBag::new();
+            for d in lex_errors {
+                diags.add(d);
+            }
+            return Err(diags);
+        }
+    };
+    let parser = parser::Parser::new(tokens);
+    let (pipeline_opt, diags) = parser.parse_query_standalone();
+    match pipeline_opt {
+        Some(pipeline) => Ok(pipeline),
+        None => {
+            let mut diags = diags;
+            if diags.is_empty() {
+                diags.error("failed to parse query pipeline", Span::new(file_id, 0, source.len()));
+            }
+            Err(diags)
+        }
+    }
+}
+
 /// Lex and parse WCL source text, returning the AST and accumulated diagnostics.
 pub fn parse(source: &str, file_id: FileId) -> (ast::Document, DiagnosticBag) {
     let mut diags = DiagnosticBag::new();

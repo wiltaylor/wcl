@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use wcl_core::ast::*;
 use wcl_core::diagnostic::DiagnosticBag;
 use wcl_core::span::Span;
+use crate::value::Value;
 
 /// Registry of macro definitions collected from the document.
 ///
@@ -412,12 +413,225 @@ impl<'a> MacroExpander<'a> {
                     });
                 true
             }
-            TransformDirective::When(_when_block) => {
-                // Conditional transforms require expression evaluation.
-                // For now, this is a stub — the evaluator callback will be needed.
-                // We leave the `when` directive as a todo for when the evaluator is available.
-                todo!("when directive requires expression evaluation")
+            TransformDirective::When(when_block) => {
+                match self.eval_when_condition(&when_block.condition, block, param_bindings) {
+                    Some(Value::Bool(true)) => {
+                        let mut changed = false;
+                        for inner_directive in &when_block.directives {
+                            changed |= self.apply_directive(block, inner_directive, param_bindings);
+                        }
+                        changed
+                    }
+                    Some(Value::Bool(false)) => false,
+                    Some(_) => {
+                        self.diagnostics.warning(
+                            "when condition evaluated to a non-boolean value; skipping directives"
+                                .to_string(),
+                            when_block.span,
+                        );
+                        false
+                    }
+                    None => {
+                        self.diagnostics.warning(
+                            "when condition could not be evaluated at macro expansion time; skipping directives"
+                                .to_string(),
+                            when_block.span,
+                        );
+                        false
+                    }
+                }
             }
+        }
+    }
+
+    /// Evaluate a `when` directive condition at macro expansion time.
+    ///
+    /// Only a limited subset of expressions can be evaluated during Phase 4
+    /// (macro expansion). This helper handles:
+    /// - Boolean literals (`true`, `false`)
+    /// - `self.has("attr")` — checks if the block has an attribute with that name
+    /// - `!expr` — logical negation
+    /// - `expr && expr` — logical AND
+    /// - `expr || expr` — logical OR
+    /// - `expr == expr`, `expr != expr` — equality/inequality of evaluated values
+    /// - Identifier references that are bound in `param_bindings`
+    /// - String/Int/Float/Null literals
+    ///
+    /// Returns `None` if the expression cannot be evaluated at this phase.
+    fn eval_when_condition(
+        &self,
+        expr: &Expr,
+        block: &Block,
+        param_bindings: &HashMap<String, Expr>,
+    ) -> Option<Value> {
+        match expr {
+            Expr::BoolLit(b, _) => Some(Value::Bool(*b)),
+            Expr::IntLit(i, _) => Some(Value::Int(*i)),
+            Expr::FloatLit(f, _) => Some(Value::Float(*f)),
+            Expr::NullLit(_) => Some(Value::Null),
+            Expr::StringLit(s) => {
+                // Only handle non-interpolated strings
+                if s.parts.len() == 1 {
+                    if let StringPart::Literal(text) = &s.parts[0] {
+                        return Some(Value::String(text.clone()));
+                    }
+                }
+                None
+            }
+            Expr::Ident(ident) => {
+                // Look up in param_bindings, then try to evaluate the bound expression
+                if let Some(bound_expr) = param_bindings.get(&ident.name) {
+                    self.eval_when_condition(bound_expr, block, param_bindings)
+                } else {
+                    None
+                }
+            }
+            Expr::Paren(inner, _) => self.eval_when_condition(inner, block, param_bindings),
+            Expr::UnaryOp(UnaryOp::Not, inner, _) => {
+                let val = self.eval_when_condition(inner, block, param_bindings)?;
+                match val {
+                    Value::Bool(b) => Some(Value::Bool(!b)),
+                    _ => None,
+                }
+            }
+            Expr::UnaryOp(UnaryOp::Neg, inner, _) => {
+                let val = self.eval_when_condition(inner, block, param_bindings)?;
+                match val {
+                    Value::Int(i) => Some(Value::Int(-i)),
+                    Value::Float(f) => Some(Value::Float(-f)),
+                    _ => None,
+                }
+            }
+            Expr::BinaryOp(lhs, BinOp::And, rhs, _) => {
+                let l = self.eval_when_condition(lhs, block, param_bindings)?;
+                match l {
+                    Value::Bool(false) => Some(Value::Bool(false)),
+                    Value::Bool(true) => {
+                        let r = self.eval_when_condition(rhs, block, param_bindings)?;
+                        match r {
+                            Value::Bool(b) => Some(Value::Bool(b)),
+                            _ => None,
+                        }
+                    }
+                    _ => None,
+                }
+            }
+            Expr::BinaryOp(lhs, BinOp::Or, rhs, _) => {
+                let l = self.eval_when_condition(lhs, block, param_bindings)?;
+                match l {
+                    Value::Bool(true) => Some(Value::Bool(true)),
+                    Value::Bool(false) => {
+                        let r = self.eval_when_condition(rhs, block, param_bindings)?;
+                        match r {
+                            Value::Bool(b) => Some(Value::Bool(b)),
+                            _ => None,
+                        }
+                    }
+                    _ => None,
+                }
+            }
+            Expr::BinaryOp(lhs, BinOp::Eq, rhs, _) => {
+                let l = self.eval_when_condition(lhs, block, param_bindings)?;
+                let r = self.eval_when_condition(rhs, block, param_bindings)?;
+                Some(Value::Bool(l == r))
+            }
+            Expr::BinaryOp(lhs, BinOp::Neq, rhs, _) => {
+                let l = self.eval_when_condition(lhs, block, param_bindings)?;
+                let r = self.eval_when_condition(rhs, block, param_bindings)?;
+                Some(Value::Bool(l != r))
+            }
+            // self.has("attr_name") — check if the block has an attribute
+            Expr::FnCall(callee, args, _) => {
+                if let Expr::MemberAccess(obj, method, _) = callee.as_ref() {
+                    if let Expr::Ident(ident) = obj.as_ref() {
+                        if ident.name == "self" {
+                            return self.eval_self_method_call(
+                                &method.name, args, block, param_bindings,
+                            );
+                        }
+                    }
+                }
+                None
+            }
+            _ => None,
+        }
+    }
+
+    /// Evaluate a method call on `self` within a `when` condition.
+    ///
+    /// Supports:
+    /// - `self.has("attr_name")` — returns `Bool(true)` if the block body
+    ///   contains an attribute with that name.
+    /// - `self.attr("attr_name")` — returns the literal value of the attribute
+    ///   if it can be evaluated at macro expansion time.
+    fn eval_self_method_call(
+        &self,
+        method: &str,
+        args: &[CallArg],
+        block: &Block,
+        param_bindings: &HashMap<String, Expr>,
+    ) -> Option<Value> {
+        match method {
+            "has" => {
+                // Expect one positional string argument
+                if args.len() != 1 {
+                    return None;
+                }
+                let attr_name = match &args[0] {
+                    CallArg::Positional(expr) => self.extract_string_arg(expr, param_bindings)?,
+                    _ => return None,
+                };
+                let has_attr = block.body.iter().any(|item| {
+                    matches!(item, BodyItem::Attribute(attr) if attr.name.name == attr_name)
+                });
+                Some(Value::Bool(has_attr))
+            }
+            "attr" => {
+                // Expect one positional string argument
+                if args.len() != 1 {
+                    return None;
+                }
+                let attr_name = match &args[0] {
+                    CallArg::Positional(expr) => self.extract_string_arg(expr, param_bindings)?,
+                    _ => return None,
+                };
+                // Find the attribute and try to evaluate its value as a literal
+                for item in &block.body {
+                    if let BodyItem::Attribute(attr) = item {
+                        if attr.name.name == attr_name {
+                            return self.eval_when_condition(&attr.value, block, param_bindings);
+                        }
+                    }
+                }
+                None
+            }
+            _ => None,
+        }
+    }
+
+    /// Extract a string value from an expression (for use as argument to self.has/self.attr).
+    fn extract_string_arg(
+        &self,
+        expr: &Expr,
+        param_bindings: &HashMap<String, Expr>,
+    ) -> Option<String> {
+        match expr {
+            Expr::StringLit(s) => {
+                if s.parts.len() == 1 {
+                    if let StringPart::Literal(text) = &s.parts[0] {
+                        return Some(text.clone());
+                    }
+                }
+                None
+            }
+            Expr::Ident(ident) => {
+                if let Some(bound) = param_bindings.get(&ident.name) {
+                    self.extract_string_arg(bound, param_bindings)
+                } else {
+                    None
+                }
+            }
+            _ => None,
         }
     }
 
@@ -876,5 +1090,291 @@ mod tests {
         assert!(!diags.has_errors());
         assert_eq!(doc.items.len(), 1); // Only the attribute remains
         assert!(registry.has_function_macro("my_macro"));
+    }
+
+    // ── when directive ──────────────────────────────────────────────────────
+
+    fn make_block_with_attrs(attrs: Vec<(&str, Expr)>) -> Block {
+        Block {
+            decorators: vec![],
+            partial: false,
+            kind: make_ident("server"),
+            inline_id: None,
+            labels: vec![],
+            body: attrs
+                .into_iter()
+                .map(|(name, value)| {
+                    BodyItem::Attribute(Attribute {
+                        decorators: vec![],
+                        name: make_ident(name),
+                        value,
+                        trivia: Trivia::empty(),
+                        span: dummy_span(),
+                    })
+                })
+                .collect(),
+            trivia: Trivia::empty(),
+            span: dummy_span(),
+        }
+    }
+
+    fn make_when_attr_macro(name: &str, condition: Expr, inner_directives: Vec<TransformDirective>) -> MacroDef {
+        MacroDef {
+            decorators: vec![],
+            kind: MacroKind::Attribute,
+            name: make_ident(name),
+            params: vec![],
+            body: MacroBody::Attribute(vec![TransformDirective::When(WhenBlock {
+                condition,
+                directives: inner_directives,
+                span: dummy_span(),
+            })]),
+            trivia: Trivia::empty(),
+            span: dummy_span(),
+        }
+    }
+
+    #[test]
+    fn when_true_literal_applies_inner_directives() {
+        let mut registry = MacroRegistry::new();
+        let inner_set = TransformDirective::Set(SetBlock {
+            attrs: vec![Attribute {
+                decorators: vec![],
+                name: make_ident("added"),
+                value: Expr::BoolLit(true, dummy_span()),
+                trivia: Trivia::empty(),
+                span: dummy_span(),
+            }],
+            span: dummy_span(),
+        });
+        let macro_def = make_when_attr_macro("add_if_true", Expr::BoolLit(true, dummy_span()), vec![inner_set]);
+        registry.attribute_macros.insert("add_if_true".to_string(), macro_def);
+
+        let mut block = make_block_with_attrs(vec![("port", Expr::IntLit(8080, dummy_span()))]);
+        block.decorators.push(Decorator {
+            name: make_ident("add_if_true"),
+            args: vec![],
+            span: dummy_span(),
+        });
+
+        let mut expander = MacroExpander::new(&registry, 10);
+        let changed = expander.apply_attribute_macros(&mut block);
+
+        assert!(changed);
+        // Should have original "port" + new "added"
+        assert_eq!(block.body.len(), 2);
+        assert!(block.body.iter().any(|item| {
+            matches!(item, BodyItem::Attribute(attr) if attr.name.name == "added")
+        }));
+    }
+
+    #[test]
+    fn when_false_literal_skips_inner_directives() {
+        let mut registry = MacroRegistry::new();
+        let inner_set = TransformDirective::Set(SetBlock {
+            attrs: vec![Attribute {
+                decorators: vec![],
+                name: make_ident("added"),
+                value: Expr::BoolLit(true, dummy_span()),
+                trivia: Trivia::empty(),
+                span: dummy_span(),
+            }],
+            span: dummy_span(),
+        });
+        let macro_def = make_when_attr_macro("add_if_false", Expr::BoolLit(false, dummy_span()), vec![inner_set]);
+        registry.attribute_macros.insert("add_if_false".to_string(), macro_def);
+
+        let mut block = make_block_with_attrs(vec![("port", Expr::IntLit(8080, dummy_span()))]);
+        block.decorators.push(Decorator {
+            name: make_ident("add_if_false"),
+            args: vec![],
+            span: dummy_span(),
+        });
+
+        let mut expander = MacroExpander::new(&registry, 10);
+        let changed = expander.apply_attribute_macros(&mut block);
+
+        // when(false) returns false for changed, but the decorator was still consumed
+        // The block body should only have "port"
+        assert_eq!(block.body.len(), 1);
+        assert!(!block.body.iter().any(|item| {
+            matches!(item, BodyItem::Attribute(attr) if attr.name.name == "added")
+        }));
+        let _ = changed;
+    }
+
+    #[test]
+    fn when_self_has_present_attribute_applies_directives() {
+        let mut registry = MacroRegistry::new();
+        // Condition: self.has("port")
+        let condition = Expr::FnCall(
+            Box::new(Expr::MemberAccess(
+                Box::new(Expr::Ident(make_ident("self"))),
+                make_ident("has"),
+                dummy_span(),
+            )),
+            vec![CallArg::Positional(Expr::StringLit(StringLit {
+                parts: vec![StringPart::Literal("port".to_string())],
+                span: dummy_span(),
+            }))],
+            dummy_span(),
+        );
+        let inner_set = TransformDirective::Set(SetBlock {
+            attrs: vec![Attribute {
+                decorators: vec![],
+                name: make_ident("has_port"),
+                value: Expr::BoolLit(true, dummy_span()),
+                trivia: Trivia::empty(),
+                span: dummy_span(),
+            }],
+            span: dummy_span(),
+        });
+        let macro_def = make_when_attr_macro("check_port", condition, vec![inner_set]);
+        registry.attribute_macros.insert("check_port".to_string(), macro_def);
+
+        let mut block = make_block_with_attrs(vec![("port", Expr::IntLit(8080, dummy_span()))]);
+        block.decorators.push(Decorator {
+            name: make_ident("check_port"),
+            args: vec![],
+            span: dummy_span(),
+        });
+
+        let mut expander = MacroExpander::new(&registry, 10);
+        let changed = expander.apply_attribute_macros(&mut block);
+
+        assert!(changed);
+        assert_eq!(block.body.len(), 2);
+        assert!(block.body.iter().any(|item| {
+            matches!(item, BodyItem::Attribute(attr) if attr.name.name == "has_port")
+        }));
+    }
+
+    #[test]
+    fn when_self_has_absent_attribute_skips_directives() {
+        let mut registry = MacroRegistry::new();
+        // Condition: self.has("missing_attr")
+        let condition = Expr::FnCall(
+            Box::new(Expr::MemberAccess(
+                Box::new(Expr::Ident(make_ident("self"))),
+                make_ident("has"),
+                dummy_span(),
+            )),
+            vec![CallArg::Positional(Expr::StringLit(StringLit {
+                parts: vec![StringPart::Literal("missing_attr".to_string())],
+                span: dummy_span(),
+            }))],
+            dummy_span(),
+        );
+        let inner_set = TransformDirective::Set(SetBlock {
+            attrs: vec![Attribute {
+                decorators: vec![],
+                name: make_ident("should_not_exist"),
+                value: Expr::BoolLit(true, dummy_span()),
+                trivia: Trivia::empty(),
+                span: dummy_span(),
+            }],
+            span: dummy_span(),
+        });
+        let macro_def = make_when_attr_macro("check_missing", condition, vec![inner_set]);
+        registry.attribute_macros.insert("check_missing".to_string(), macro_def);
+
+        let mut block = make_block_with_attrs(vec![("port", Expr::IntLit(8080, dummy_span()))]);
+        block.decorators.push(Decorator {
+            name: make_ident("check_missing"),
+            args: vec![],
+            span: dummy_span(),
+        });
+
+        let mut expander = MacroExpander::new(&registry, 10);
+        expander.apply_attribute_macros(&mut block);
+
+        assert_eq!(block.body.len(), 1);
+        assert!(!block.body.iter().any(|item| {
+            matches!(item, BodyItem::Attribute(attr) if attr.name.name == "should_not_exist")
+        }));
+    }
+
+    #[test]
+    fn when_negated_condition_works() {
+        let mut registry = MacroRegistry::new();
+        // Condition: !self.has("port") — block has port, so !true = false
+        let condition = Expr::UnaryOp(
+            UnaryOp::Not,
+            Box::new(Expr::FnCall(
+                Box::new(Expr::MemberAccess(
+                    Box::new(Expr::Ident(make_ident("self"))),
+                    make_ident("has"),
+                    dummy_span(),
+                )),
+                vec![CallArg::Positional(Expr::StringLit(StringLit {
+                    parts: vec![StringPart::Literal("port".to_string())],
+                    span: dummy_span(),
+                }))],
+                dummy_span(),
+            )),
+            dummy_span(),
+        );
+        let inner_set = TransformDirective::Set(SetBlock {
+            attrs: vec![Attribute {
+                decorators: vec![],
+                name: make_ident("no_port"),
+                value: Expr::BoolLit(true, dummy_span()),
+                trivia: Trivia::empty(),
+                span: dummy_span(),
+            }],
+            span: dummy_span(),
+        });
+        let macro_def = make_when_attr_macro("check_no_port", condition, vec![inner_set]);
+        registry.attribute_macros.insert("check_no_port".to_string(), macro_def);
+
+        let mut block = make_block_with_attrs(vec![("port", Expr::IntLit(8080, dummy_span()))]);
+        block.decorators.push(Decorator {
+            name: make_ident("check_no_port"),
+            args: vec![],
+            span: dummy_span(),
+        });
+
+        let mut expander = MacroExpander::new(&registry, 10);
+        expander.apply_attribute_macros(&mut block);
+
+        // !self.has("port") is false because port exists, so inner directives skipped
+        assert_eq!(block.body.len(), 1);
+        assert!(!block.body.iter().any(|item| {
+            matches!(item, BodyItem::Attribute(attr) if attr.name.name == "no_port")
+        }));
+    }
+
+    #[test]
+    fn when_unevaluable_condition_emits_warning_and_skips() {
+        let mut registry = MacroRegistry::new();
+        // Condition that can't be evaluated: some_var (not in param_bindings, not a literal)
+        let condition = Expr::Ident(make_ident("unknown_variable"));
+        let inner_set = TransformDirective::Set(SetBlock {
+            attrs: vec![Attribute {
+                decorators: vec![],
+                name: make_ident("should_not_exist"),
+                value: Expr::BoolLit(true, dummy_span()),
+                trivia: Trivia::empty(),
+                span: dummy_span(),
+            }],
+            span: dummy_span(),
+        });
+        let macro_def = make_when_attr_macro("check_unknown", condition, vec![inner_set]);
+        registry.attribute_macros.insert("check_unknown".to_string(), macro_def);
+
+        let mut block = make_block_with_attrs(vec![("port", Expr::IntLit(8080, dummy_span()))]);
+        block.decorators.push(Decorator {
+            name: make_ident("check_unknown"),
+            args: vec![],
+            span: dummy_span(),
+        });
+
+        let mut expander = MacroExpander::new(&registry, 10);
+        expander.apply_attribute_macros(&mut block);
+
+        // Should skip and emit a warning
+        assert_eq!(block.body.len(), 1);
+        let diags = expander.into_diagnostics();
+        assert!(!diags.is_empty());
     }
 }

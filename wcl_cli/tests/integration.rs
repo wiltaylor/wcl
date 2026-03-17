@@ -169,22 +169,16 @@ fn convert_no_flags_fails() {
         .failure();
 }
 
-// ── wcl query → output (query parsing is not yet supported) ──────────────────
-//
-// The WCL query API currently returns an error for all string queries
-// (see wcl/src/lib.rs Document::query). The CLI therefore exits with a
-// non-zero code. These tests verify that:
-//  - the command is accepted by the CLI parser (no "unknown subcommand"),
-//  - and it exits with code 1 while printing an error message.
+// ── wcl query → output ───────────────────────────────────────────────────────
 
 #[test]
-fn query_not_yet_supported_exits_with_error() {
-    let f = wcl_file("port = 8080\n");
+fn query_returns_results_for_valid_query() {
+    let f = wcl_file("service { port = 8080 }\n");
     Command::cargo_bin("wcl")
         .unwrap()
-        .args(["query", f.path().to_str().unwrap(), "port"])
+        .args(["query", f.path().to_str().unwrap(), "service"])
         .assert()
-        .failure();
+        .success();
 }
 
 #[test]

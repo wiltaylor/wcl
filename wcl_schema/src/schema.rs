@@ -1,8 +1,12 @@
 use std::collections::HashMap;
+use indexmap::IndexMap;
+use regex::Regex;
 use wcl_core::ast::*;
 use wcl_core::diagnostic::DiagnosticBag;
 use wcl_core::span::Span;
 use wcl_eval::value::Value;
+
+use crate::types::{check_type, type_name};
 
 /// A resolved schema definition
 #[derive(Debug, Clone)]
@@ -100,24 +104,44 @@ impl SchemaRegistry {
         }
     }
 
-    /// Validate all blocks in the document against their schemas
+    /// Validate all blocks in the document against their schemas.
+    ///
+    /// Accepts the evaluated values map so that type checking and constraint
+    /// validation can operate on resolved values (not just AST literals).
     pub fn validate(
         &self,
         doc: &Document,
+        values: &IndexMap<String, Value>,
         diagnostics: &mut DiagnosticBag,
     ) {
-        self.validate_items(&doc.items, diagnostics);
+        // Collect all block IDs grouped by kind for @ref validation.
+        let block_ids = collect_block_ids(&doc.items);
+        self.validate_items(&doc.items, values, &block_ids, diagnostics);
     }
 
-    fn validate_items(&self, items: &[DocItem], diagnostics: &mut DiagnosticBag) {
+    fn validate_items(
+        &self,
+        items: &[DocItem],
+        values: &IndexMap<String, Value>,
+        block_ids: &HashMap<String, Vec<String>>,
+        diagnostics: &mut DiagnosticBag,
+    ) {
         for item in items {
             if let DocItem::Body(BodyItem::Block(block)) = item {
-                self.validate_block(block, diagnostics);
+                // Try to find the block's evaluated values in the values map.
+                let block_values = resolve_block_values(block, values);
+                self.validate_block(block, block_values.as_ref(), block_ids, diagnostics);
             }
         }
     }
 
-    fn validate_block(&self, block: &Block, diagnostics: &mut DiagnosticBag) {
+    fn validate_block(
+        &self,
+        block: &Block,
+        block_values: Option<&IndexMap<String, Value>>,
+        block_ids: &HashMap<String, Vec<String>>,
+        diagnostics: &mut DiagnosticBag,
+    ) {
         // Check if there's a schema for this block type
         if let Some(schema) = self.schemas.get(&block.kind.name) {
             // Check required fields
@@ -160,12 +184,83 @@ impl SchemaRegistry {
                     }
                 }
             }
+
+            // C2: Type checking — for each attribute with a schema field, check the value type
+            for item in &block.body {
+                if let BodyItem::Attribute(attr) = item {
+                    if let Some(field) = schema.fields.iter().find(|f| f.name == attr.name.name) {
+                        // Resolve value: prefer evaluated values, fall back to AST literal
+                        let value = block_values
+                            .and_then(|bv| bv.get(&attr.name.name))
+                            .cloned()
+                            .or_else(|| expr_to_value(&attr.value));
+
+                        if let Some(ref val) = value {
+                            // Type check
+                            if !check_type(val, &field.type_expr) {
+                                diagnostics.error_with_code(
+                                    format!(
+                                        "type mismatch for '{}': expected {}, got {}",
+                                        field.name,
+                                        type_name(&field.type_expr),
+                                        value_type_label(val),
+                                    ),
+                                    attr.span,
+                                    "E071",
+                                );
+                            }
+
+                            // C3: Enforce @validate constraints
+                            if let Some(ref constraints) = field.validate {
+                                validate_constraints(
+                                    val,
+                                    constraints,
+                                    &field.name,
+                                    attr.span,
+                                    diagnostics,
+                                );
+                            }
+
+                            // M4: @ref target validation
+                            if let Some(ref target) = field.ref_target {
+                                validate_ref(val, target, &field.name, attr.span, block_ids, diagnostics);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // M5: @id_pattern enforcement — check block's inline ID against pattern
+            if let Some(ref inline_id) = block.inline_id {
+                let id_str = inline_id_to_string(inline_id);
+                if let Some(id_str) = id_str {
+                    for field in &schema.fields {
+                        if let Some(ref pattern) = field.id_pattern {
+                            if let Ok(re) = Regex::new(pattern) {
+                                if !re.is_match(&id_str) {
+                                    diagnostics.error_with_code(
+                                        format!(
+                                            "block ID '{}' does not match pattern '{}' required by schema '{}'",
+                                            id_str, pattern, schema.name,
+                                        ),
+                                        block.span,
+                                        "E077",
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // Recursively validate nested blocks
         for item in &block.body {
             if let BodyItem::Block(child) = item {
-                self.validate_block(child, diagnostics);
+                // Try to find child block's evaluated values within the parent's values
+                let child_values = block_values
+                    .and_then(|bv| resolve_block_values(child, bv));
+                self.validate_block(child, child_values.as_ref(), block_ids, diagnostics);
             }
         }
     }
@@ -274,6 +369,233 @@ pub(crate) fn get_validate_constraints(decorators: &[Decorator]) -> Option<Valid
             }
             constraints
         })
+}
+
+// ── Validation helper functions ───────────────────────────────────────────────
+
+/// Return a human-readable label for a Value's runtime type.
+fn value_type_label(value: &Value) -> &'static str {
+    match value {
+        Value::String(_) => "string",
+        Value::Int(_) => "int",
+        Value::Float(_) => "float",
+        Value::Bool(_) => "bool",
+        Value::Null => "null",
+        Value::Identifier(_) => "identifier",
+        Value::List(_) => "list",
+        Value::Map(_) => "map",
+        Value::Set(_) => "set",
+        Value::BlockRef(_) => "block",
+        Value::Function(_) => "function",
+    }
+}
+
+/// Extract a numeric value (as f64) from a Value.
+fn value_as_f64(value: &Value) -> Option<f64> {
+    match value {
+        Value::Int(i) => Some(*i as f64),
+        Value::Float(f) => Some(*f),
+        _ => None,
+    }
+}
+
+/// C3: Validate a value against constraints.
+fn validate_constraints(
+    value: &Value,
+    constraints: &ValidateConstraints,
+    field_name: &str,
+    span: Span,
+    diagnostics: &mut DiagnosticBag,
+) {
+    // min/max
+    if let Some(n) = value_as_f64(value) {
+        if let Some(min) = constraints.min {
+            if n < min {
+                let msg = constraints.custom_msg.as_deref().unwrap_or("");
+                let base = format!(
+                    "validation failed for '{}': value {} is less than minimum {}",
+                    field_name, n, min,
+                );
+                let full = if msg.is_empty() { base } else { format!("{}: {}", base, msg) };
+                diagnostics.error_with_code(full, span, "E073");
+            }
+        }
+        if let Some(max) = constraints.max {
+            if n > max {
+                let msg = constraints.custom_msg.as_deref().unwrap_or("");
+                let base = format!(
+                    "validation failed for '{}': value {} exceeds maximum {}",
+                    field_name, n, max,
+                );
+                let full = if msg.is_empty() { base } else { format!("{}: {}", base, msg) };
+                diagnostics.error_with_code(full, span, "E073");
+            }
+        }
+    }
+
+    // pattern
+    if let Some(ref pattern) = constraints.pattern {
+        if let Value::String(s) = value {
+            if let Ok(re) = Regex::new(pattern) {
+                if !re.is_match(s) {
+                    let msg = constraints.custom_msg.as_deref().unwrap_or("");
+                    let base = format!(
+                        "validation failed for '{}': value '{}' does not match pattern '{}'",
+                        field_name, s, pattern,
+                    );
+                    let full = if msg.is_empty() { base } else { format!("{}: {}", base, msg) };
+                    diagnostics.error_with_code(full, span, "E074");
+                }
+            }
+        }
+    }
+
+    // one_of
+    if let Some(ref allowed) = constraints.one_of {
+        if !allowed.iter().any(|a| values_equal(a, value)) {
+            let msg = constraints.custom_msg.as_deref().unwrap_or("");
+            let base = format!(
+                "validation failed for '{}': value '{}' is not one of the allowed values",
+                field_name, value,
+            );
+            let full = if msg.is_empty() { base } else { format!("{}: {}", base, msg) };
+            diagnostics.error_with_code(full, span, "E075");
+        }
+    }
+}
+
+/// M4: Validate a @ref field — the value should reference an existing block ID.
+fn validate_ref(
+    value: &Value,
+    target_kind: &str,
+    field_name: &str,
+    span: Span,
+    block_ids: &HashMap<String, Vec<String>>,
+    diagnostics: &mut DiagnosticBag,
+) {
+    let ref_id = match value {
+        Value::String(s) => Some(s.clone()),
+        Value::Identifier(s) => Some(s.clone()),
+        _ => None,
+    };
+    if let Some(ref_id) = ref_id {
+        let ids = block_ids.get(target_kind);
+        let exists = ids.is_some_and(|ids| ids.contains(&ref_id));
+        if !exists {
+            diagnostics.error_with_code(
+                format!(
+                    "reference '{}' in field '{}' does not match any '{}' block ID",
+                    ref_id, field_name, target_kind,
+                ),
+                span,
+                "E076",
+            );
+        }
+    }
+}
+
+/// Simple structural equality for Value (used by one_of check).
+fn values_equal(a: &Value, b: &Value) -> bool {
+    match (a, b) {
+        (Value::String(a), Value::String(b)) => a == b,
+        (Value::Int(a), Value::Int(b)) => a == b,
+        (Value::Float(a), Value::Float(b)) => a == b,
+        (Value::Bool(a), Value::Bool(b)) => a == b,
+        (Value::Null, Value::Null) => true,
+        (Value::Identifier(a), Value::Identifier(b)) => a == b,
+        _ => false,
+    }
+}
+
+/// Collect all block IDs from the document, grouped by block kind.
+fn collect_block_ids(items: &[DocItem]) -> HashMap<String, Vec<String>> {
+    let mut result: HashMap<String, Vec<String>> = HashMap::new();
+    for item in items {
+        if let DocItem::Body(BodyItem::Block(block)) = item {
+            collect_block_ids_recursive(block, &mut result);
+        }
+    }
+    result
+}
+
+fn collect_block_ids_recursive(block: &Block, result: &mut HashMap<String, Vec<String>>) {
+    if let Some(ref inline_id) = block.inline_id {
+        if let Some(id_str) = inline_id_to_string(inline_id) {
+            result
+                .entry(block.kind.name.clone())
+                .or_default()
+                .push(id_str);
+        }
+    }
+    for item in &block.body {
+        if let BodyItem::Block(child) = item {
+            collect_block_ids_recursive(child, result);
+        }
+    }
+}
+
+/// Convert an InlineId to a string (if possible).
+fn inline_id_to_string(id: &InlineId) -> Option<String> {
+    match id {
+        InlineId::Literal(lit) => Some(lit.value.clone()),
+        InlineId::Interpolated(parts) => {
+            // Only handle pure-literal interpolations
+            let s: String = parts
+                .iter()
+                .map(|p| match p {
+                    StringPart::Literal(s) => Some(s.clone()),
+                    StringPart::Interpolation(_) => None,
+                })
+                .collect::<Option<String>>()?;
+            Some(s)
+        }
+    }
+}
+
+/// Try to resolve a block's evaluated attribute values from the parent values map.
+///
+/// The evaluator stores block values as `Value::BlockRef(...)` keyed by the block kind.
+/// For a block like `service#web`, look for values["service"] which may be a BlockRef
+/// or a list of BlockRefs.
+fn resolve_block_values(block: &Block, values: &IndexMap<String, Value>) -> Option<IndexMap<String, Value>> {
+    let kind = &block.kind.name;
+    let block_id = block.inline_id.as_ref().and_then(inline_id_to_string);
+
+    match values.get(kind) {
+        Some(Value::BlockRef(bref)) => {
+            // Single block of this kind — check if ID matches
+            if bref.id == block_id {
+                Some(bref.attributes.clone())
+            } else {
+                None
+            }
+        }
+        Some(Value::List(items)) => {
+            // Multiple blocks of same kind — find matching one
+            for item in items {
+                if let Value::BlockRef(bref) = item {
+                    if bref.id == block_id {
+                        return Some(bref.attributes.clone());
+                    }
+                }
+            }
+            None
+        }
+        Some(Value::Map(map)) => {
+            // Some evaluators store blocks as maps keyed by ID
+            if let Some(id) = &block_id {
+                match map.get(id) {
+                    Some(Value::Map(attrs)) => Some(attrs.clone()),
+                    Some(Value::BlockRef(bref)) => Some(bref.attributes.clone()),
+                    _ => None,
+                }
+            } else {
+                // No ID, try using the map directly as attributes
+                Some(map.clone())
+            }
+        }
+        _ => None,
+    }
 }
 
 #[cfg(test)]

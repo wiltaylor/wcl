@@ -204,6 +204,12 @@ impl Parser {
         (doc, self.diagnostics)
     }
 
+    /// Parse a standalone query pipeline (consuming the parser).
+    pub fn parse_query_standalone(mut self) -> (Option<QueryPipeline>, DiagnosticBag) {
+        let result = self.parse_query_pipeline();
+        (result, self.diagnostics)
+    }
+
     // ── Top-level items ───────────────────────────────────────────────────
 
     fn parse_doc_item(&mut self) -> Option<DocItem> {

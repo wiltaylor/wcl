@@ -219,7 +219,7 @@ fn schema_validation_missing_required_field_emits_error() {
     let mut reg = SchemaRegistry::new();
     let mut diags = DiagnosticBag::new();
     reg.collect(&doc, &mut diags);
-    reg.validate(&doc, &mut diags);
+    reg.validate(&doc, &indexmap::IndexMap::new(), &mut diags);
 
     assert!(diags.has_errors(), "expected a missing-field error");
 }
@@ -247,7 +247,7 @@ fn schema_validation_present_required_field_no_error() {
     let mut reg = SchemaRegistry::new();
     let mut diags = DiagnosticBag::new();
     reg.collect(&doc, &mut diags);
-    reg.validate(&doc, &mut diags);
+    reg.validate(&doc, &indexmap::IndexMap::new(), &mut diags);
 
     assert!(!diags.has_errors(), "unexpected errors: {:?}", diags.diagnostics());
 }
@@ -276,7 +276,7 @@ fn schema_validation_unknown_attribute_in_closed_schema_emits_error() {
     let mut reg = SchemaRegistry::new();
     let mut diags = DiagnosticBag::new();
     reg.collect(&doc, &mut diags);
-    reg.validate(&doc, &mut diags);
+    reg.validate(&doc, &indexmap::IndexMap::new(), &mut diags);
 
     assert!(diags.has_errors(), "expected an unknown-attribute error");
 }
@@ -307,7 +307,7 @@ fn schema_validation_open_schema_allows_unknown_attributes() {
     let mut reg = SchemaRegistry::new();
     let mut diags = DiagnosticBag::new();
     reg.collect(&doc, &mut diags);
-    reg.validate(&doc, &mut diags);
+    reg.validate(&doc, &indexmap::IndexMap::new(), &mut diags);
 
     assert!(!diags.has_errors(), "open schema should allow unknown attributes");
 }
@@ -446,4 +446,358 @@ fn id_registry_same_id_in_different_scopes_no_error() {
     reg.check_document(&doc, &mut diags);
 
     assert!(!diags.has_errors(), "same ID in different scopes should not conflict");
+}
+
+// ── C2: Type checking in validate ────────────────────────────────────────────
+
+#[test]
+fn type_mismatch_string_value_for_int_field_emits_e071() {
+    let schema = make_schema(
+        "service",
+        vec![make_schema_field("port", TypeExpr::Int(sp()))],
+    );
+    let block = make_block(
+        "service",
+        Some("web"),
+        false,
+        vec![BodyItem::Attribute(make_attribute(
+            "port",
+            Expr::StringLit(make_string_lit("not-a-number")),
+        ))],
+    );
+    let doc = make_doc(vec![
+        DocItem::Body(BodyItem::Schema(schema)),
+        DocItem::Body(BodyItem::Block(block)),
+    ]);
+
+    let mut reg = SchemaRegistry::new();
+    let mut diags = DiagnosticBag::new();
+    reg.collect(&doc, &mut diags);
+    reg.validate(&doc, &indexmap::IndexMap::new(), &mut diags);
+
+    assert!(diags.has_errors(), "expected a type mismatch error");
+    let has_e071 = diags
+        .diagnostics()
+        .iter()
+        .any(|d| d.code.as_deref() == Some("E071"));
+    assert!(has_e071, "expected E071 type mismatch diagnostic");
+}
+
+#[test]
+fn type_match_int_value_for_int_field_no_error() {
+    let schema = make_schema(
+        "service",
+        vec![make_schema_field("port", TypeExpr::Int(sp()))],
+    );
+    let block = make_block(
+        "service",
+        Some("web"),
+        false,
+        vec![BodyItem::Attribute(make_attribute(
+            "port",
+            Expr::IntLit(8080, sp()),
+        ))],
+    );
+    let doc = make_doc(vec![
+        DocItem::Body(BodyItem::Schema(schema)),
+        DocItem::Body(BodyItem::Block(block)),
+    ]);
+
+    let mut reg = SchemaRegistry::new();
+    let mut diags = DiagnosticBag::new();
+    reg.collect(&doc, &mut diags);
+    reg.validate(&doc, &indexmap::IndexMap::new(), &mut diags);
+
+    assert!(!diags.has_errors(), "int value for int field should pass: {:?}", diags.diagnostics());
+}
+
+// ── C3: @validate constraint enforcement ─────────────────────────────────────
+
+#[test]
+fn validate_min_below_minimum_emits_e073() {
+    // Build a schema field with @validate(min=10)
+    let validate_dec = Decorator {
+        name: make_ident("validate"),
+        args: vec![DecoratorArg::Named(
+            make_ident("min"),
+            Expr::IntLit(10, sp()),
+        )],
+        span: sp(),
+    };
+    let mut field = make_schema_field("port", TypeExpr::Int(sp()));
+    field.decorators_after.push(validate_dec);
+
+    let schema = make_schema("service", vec![field]);
+    let block = make_block(
+        "service",
+        Some("web"),
+        false,
+        vec![BodyItem::Attribute(make_attribute(
+            "port",
+            Expr::IntLit(5, sp()),
+        ))],
+    );
+    let doc = make_doc(vec![
+        DocItem::Body(BodyItem::Schema(schema)),
+        DocItem::Body(BodyItem::Block(block)),
+    ]);
+
+    let mut reg = SchemaRegistry::new();
+    let mut diags = DiagnosticBag::new();
+    reg.collect(&doc, &mut diags);
+    reg.validate(&doc, &indexmap::IndexMap::new(), &mut diags);
+
+    assert!(diags.has_errors(), "expected min constraint violation");
+    let has_e073 = diags
+        .diagnostics()
+        .iter()
+        .any(|d| d.code.as_deref() == Some("E073"));
+    assert!(has_e073, "expected E073 constraint diagnostic");
+}
+
+#[test]
+fn validate_pattern_mismatch_emits_e074() {
+    let validate_dec = Decorator {
+        name: make_ident("validate"),
+        args: vec![DecoratorArg::Named(
+            make_ident("pattern"),
+            Expr::StringLit(make_string_lit("^[a-z]+$")),
+        )],
+        span: sp(),
+    };
+    let mut field = make_schema_field("name", TypeExpr::String(sp()));
+    field.decorators_after.push(validate_dec);
+
+    let schema = make_schema("service", vec![field]);
+    let block = make_block(
+        "service",
+        Some("web"),
+        false,
+        vec![BodyItem::Attribute(make_attribute(
+            "name",
+            Expr::StringLit(make_string_lit("UPPERCASE")),
+        ))],
+    );
+    let doc = make_doc(vec![
+        DocItem::Body(BodyItem::Schema(schema)),
+        DocItem::Body(BodyItem::Block(block)),
+    ]);
+
+    let mut reg = SchemaRegistry::new();
+    let mut diags = DiagnosticBag::new();
+    reg.collect(&doc, &mut diags);
+    reg.validate(&doc, &indexmap::IndexMap::new(), &mut diags);
+
+    assert!(diags.has_errors(), "expected pattern constraint violation");
+    let has_e074 = diags
+        .diagnostics()
+        .iter()
+        .any(|d| d.code.as_deref() == Some("E074"));
+    assert!(has_e074, "expected E074 pattern mismatch diagnostic");
+}
+
+#[test]
+fn validate_one_of_not_in_set_emits_e075() {
+    let validate_dec = Decorator {
+        name: make_ident("validate"),
+        args: vec![DecoratorArg::Named(
+            make_ident("one_of"),
+            Expr::List(
+                vec![
+                    Expr::StringLit(make_string_lit("tcp")),
+                    Expr::StringLit(make_string_lit("udp")),
+                ],
+                sp(),
+            ),
+        )],
+        span: sp(),
+    };
+    let mut field = make_schema_field("protocol", TypeExpr::String(sp()));
+    field.decorators_after.push(validate_dec);
+
+    let schema = make_schema("service", vec![field]);
+    let block = make_block(
+        "service",
+        Some("web"),
+        false,
+        vec![BodyItem::Attribute(make_attribute(
+            "protocol",
+            Expr::StringLit(make_string_lit("http")),
+        ))],
+    );
+    let doc = make_doc(vec![
+        DocItem::Body(BodyItem::Schema(schema)),
+        DocItem::Body(BodyItem::Block(block)),
+    ]);
+
+    let mut reg = SchemaRegistry::new();
+    let mut diags = DiagnosticBag::new();
+    reg.collect(&doc, &mut diags);
+    reg.validate(&doc, &indexmap::IndexMap::new(), &mut diags);
+
+    assert!(diags.has_errors(), "expected one_of constraint violation");
+    let has_e075 = diags
+        .diagnostics()
+        .iter()
+        .any(|d| d.code.as_deref() == Some("E075"));
+    assert!(has_e075, "expected E075 one_of mismatch diagnostic");
+}
+
+// ── M4: @ref target validation ───────────────────────────────────────────────
+
+#[test]
+fn ref_to_nonexistent_block_emits_e076() {
+    // Schema: endpoint has a field "service_ref" with @ref("service")
+    let ref_dec = Decorator {
+        name: make_ident("ref"),
+        args: vec![DecoratorArg::Positional(Expr::StringLit(make_string_lit("service")))],
+        span: sp(),
+    };
+    let mut field = make_schema_field("service_ref", TypeExpr::String(sp()));
+    field.decorators_after.push(ref_dec);
+
+    let schema = make_schema("endpoint", vec![field]);
+
+    // An endpoint block referencing a nonexistent service
+    let block = make_block(
+        "endpoint",
+        Some("api"),
+        false,
+        vec![BodyItem::Attribute(make_attribute(
+            "service_ref",
+            Expr::StringLit(make_string_lit("nonexistent-svc")),
+        ))],
+    );
+    // No service blocks exist
+    let doc = make_doc(vec![
+        DocItem::Body(BodyItem::Schema(schema)),
+        DocItem::Body(BodyItem::Block(block)),
+    ]);
+
+    let mut reg = SchemaRegistry::new();
+    let mut diags = DiagnosticBag::new();
+    reg.collect(&doc, &mut diags);
+    reg.validate(&doc, &indexmap::IndexMap::new(), &mut diags);
+
+    assert!(diags.has_errors(), "expected ref validation error");
+    let has_e076 = diags
+        .diagnostics()
+        .iter()
+        .any(|d| d.code.as_deref() == Some("E076"));
+    assert!(has_e076, "expected E076 ref target not found diagnostic");
+}
+
+#[test]
+fn ref_to_existing_block_no_error() {
+    let ref_dec = Decorator {
+        name: make_ident("ref"),
+        args: vec![DecoratorArg::Positional(Expr::StringLit(make_string_lit("service")))],
+        span: sp(),
+    };
+    let mut field = make_schema_field("service_ref", TypeExpr::String(sp()));
+    field.decorators_after.push(ref_dec);
+
+    let schema = make_schema("endpoint", vec![field]);
+
+    // A service block exists with id "web"
+    let svc_block = make_block("service", Some("web"), false, vec![]);
+    // An endpoint references "web"
+    let ep_block = make_block(
+        "endpoint",
+        Some("api"),
+        false,
+        vec![BodyItem::Attribute(make_attribute(
+            "service_ref",
+            Expr::StringLit(make_string_lit("web")),
+        ))],
+    );
+    let doc = make_doc(vec![
+        DocItem::Body(BodyItem::Schema(schema)),
+        DocItem::Body(BodyItem::Block(svc_block)),
+        DocItem::Body(BodyItem::Block(ep_block)),
+    ]);
+
+    let mut reg = SchemaRegistry::new();
+    let mut diags = DiagnosticBag::new();
+    reg.collect(&doc, &mut diags);
+    reg.validate(&doc, &indexmap::IndexMap::new(), &mut diags);
+
+    assert!(!diags.has_errors(), "ref to existing block should not error: {:?}", diags.diagnostics());
+}
+
+// ── M5: @id_pattern enforcement ──────────────────────────────────────────────
+
+#[test]
+fn id_pattern_mismatch_emits_e077() {
+    // Schema: service has a field with @id_pattern("^[a-z][a-z0-9-]*$")
+    let id_pat_dec = Decorator {
+        name: make_ident("id_pattern"),
+        args: vec![DecoratorArg::Positional(Expr::StringLit(make_string_lit("^[a-z][a-z0-9-]*$")))],
+        span: sp(),
+    };
+    let mut field = make_schema_field("name", TypeExpr::String(sp()));
+    field.decorators_after.push(id_pat_dec);
+
+    let schema = make_schema("service", vec![field]);
+
+    // Block with an ID that does NOT match the pattern
+    let block = make_block(
+        "service",
+        Some("123-bad-id"),
+        false,
+        vec![BodyItem::Attribute(make_attribute(
+            "name",
+            Expr::StringLit(make_string_lit("test")),
+        ))],
+    );
+    let doc = make_doc(vec![
+        DocItem::Body(BodyItem::Schema(schema)),
+        DocItem::Body(BodyItem::Block(block)),
+    ]);
+
+    let mut reg = SchemaRegistry::new();
+    let mut diags = DiagnosticBag::new();
+    reg.collect(&doc, &mut diags);
+    reg.validate(&doc, &indexmap::IndexMap::new(), &mut diags);
+
+    assert!(diags.has_errors(), "expected id_pattern violation");
+    let has_e077 = diags
+        .diagnostics()
+        .iter()
+        .any(|d| d.code.as_deref() == Some("E077"));
+    assert!(has_e077, "expected E077 id_pattern mismatch diagnostic");
+}
+
+#[test]
+fn id_pattern_match_no_error() {
+    let id_pat_dec = Decorator {
+        name: make_ident("id_pattern"),
+        args: vec![DecoratorArg::Positional(Expr::StringLit(make_string_lit("^[a-z][a-z0-9-]*$")))],
+        span: sp(),
+    };
+    let mut field = make_schema_field("name", TypeExpr::String(sp()));
+    field.decorators_after.push(id_pat_dec);
+
+    let schema = make_schema("service", vec![field]);
+
+    let block = make_block(
+        "service",
+        Some("good-id"),
+        false,
+        vec![BodyItem::Attribute(make_attribute(
+            "name",
+            Expr::StringLit(make_string_lit("test")),
+        ))],
+    );
+    let doc = make_doc(vec![
+        DocItem::Body(BodyItem::Schema(schema)),
+        DocItem::Body(BodyItem::Block(block)),
+    ]);
+
+    let mut reg = SchemaRegistry::new();
+    let mut diags = DiagnosticBag::new();
+    reg.collect(&doc, &mut diags);
+    reg.validate(&doc, &indexmap::IndexMap::new(), &mut diags);
+
+    assert!(!diags.has_errors(), "valid ID should not trigger error: {:?}", diags.diagnostics());
 }

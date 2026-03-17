@@ -105,11 +105,134 @@ impl Document {
 
     /// Execute a query against this document.
     ///
-    /// Note: query parsing from strings is not yet supported. The parser's
-    /// query pipeline parsing is internal (`pub(crate)`). This method will
-    /// return an error until a public query-parsing API is available.
-    pub fn query(&self, _query_str: &str) -> Result<Value, String> {
-        Err("query parsing from strings is not yet supported".to_string())
+    /// Parses the query string into a pipeline, builds block references from
+    /// the AST and evaluated values, and runs the query engine over them.
+    pub fn query(&self, query_str: &str) -> Result<Value, String> {
+        // Parse the query string
+        let file_id = FileId(9999); // synthetic file ID for query strings
+        let pipeline = wcl_core::parse_query(query_str, file_id).map_err(|diags| {
+            let messages: Vec<String> = diags
+                .into_diagnostics()
+                .into_iter()
+                .map(|d| d.message)
+                .collect();
+            format!("query parse error: {}", messages.join("; "))
+        })?;
+
+        // Build BlockRefs from the AST, using evaluated values for attributes
+        let blocks = self.collect_block_refs();
+
+        // Execute the query
+        let engine = QueryEngine::new();
+        let mut evaluator = Evaluator::new();
+        let scope = evaluator
+            .scopes_mut()
+            .create_scope(ScopeKind::Module, None);
+        engine.execute(&pipeline, &blocks, &mut evaluator, scope)
+    }
+
+    /// Build BlockRef values from the AST blocks, resolving attribute values
+    /// from the evaluated `values` map where possible.
+    fn collect_block_refs(&self) -> Vec<BlockRef> {
+        let mut evaluator = Evaluator::new();
+        let scope = evaluator
+            .scopes_mut()
+            .create_scope(ScopeKind::Module, None);
+        self.ast
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                ast::DocItem::Body(ast::BodyItem::Block(block)) => {
+                    Some(Self::block_to_ref(block, &mut evaluator, scope))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn block_to_ref(
+        block: &ast::Block,
+        evaluator: &mut Evaluator,
+        scope: ScopeId,
+    ) -> BlockRef {
+        let kind = block.kind.name.clone();
+        let id = block.inline_id.as_ref().map(|iid| match iid {
+            ast::InlineId::Literal(lit) => lit.value.clone(),
+            ast::InlineId::Interpolated(parts) => {
+                parts
+                    .iter()
+                    .filter_map(|p| match p {
+                        ast::StringPart::Literal(s) => Some(s.clone()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+                    .join("")
+            }
+        });
+        let labels: Vec<String> = block
+            .labels
+            .iter()
+            .filter_map(|sl| match &sl.parts[..] {
+                [ast::StringPart::Literal(s)] => Some(s.clone()),
+                _ => None,
+            })
+            .collect();
+
+        let mut attributes = indexmap::IndexMap::new();
+        for body_item in &block.body {
+            if let ast::BodyItem::Attribute(attr) = body_item {
+                if let Ok(val) = evaluator.eval_expr(&attr.value, scope) {
+                    attributes.insert(attr.name.name.clone(), val);
+                }
+            }
+        }
+
+        let children: Vec<BlockRef> = block
+            .body
+            .iter()
+            .filter_map(|item| match item {
+                ast::BodyItem::Block(child) => {
+                    Some(Self::block_to_ref(child, evaluator, scope))
+                }
+                _ => None,
+            })
+            .collect();
+
+        let decorators: Vec<DecoratorValue> = block
+            .decorators
+            .iter()
+            .map(|d| {
+                let mut args = indexmap::IndexMap::new();
+                for arg in &d.args {
+                    match arg {
+                        ast::DecoratorArg::Named(name, expr) => {
+                            if let Ok(val) = evaluator.eval_expr(expr, scope) {
+                                args.insert(name.name.clone(), val);
+                            }
+                        }
+                        ast::DecoratorArg::Positional(expr) => {
+                            if let Ok(val) = evaluator.eval_expr(expr, scope) {
+                                args.insert(format!("_{}", args.len()), val);
+                            }
+                        }
+                    }
+                }
+                DecoratorValue {
+                    name: d.name.name.clone(),
+                    args,
+                }
+            })
+            .collect();
+
+        BlockRef {
+            kind,
+            id,
+            labels,
+            attributes,
+            children,
+            decorators,
+            span: block.span,
+        }
     }
 
     /// Check if any errors occurred
@@ -183,6 +306,28 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
     // `eval_expr` requires `&mut self` but the callback signature is `&dyn Fn`.
     let pre_eval = std::cell::RefCell::new(Evaluator::new());
     let pre_scope = pre_eval.borrow_mut().scopes_mut().create_scope(ScopeKind::Module, None);
+    // Pre-register let bindings with literal values so control flow can access them.
+    // This allows `for item in items { ... }` where `let items = [1, 2, 3]` at the top level.
+    {
+        let mut eval = pre_eval.borrow_mut();
+        for item in &doc.items {
+            if let ast::DocItem::Body(ast::BodyItem::LetBinding(lb)) = item {
+                if let Ok(val) = eval.eval_expr(&lb.value, pre_scope) {
+                    eval.scopes_mut().add_entry(
+                        pre_scope,
+                        ScopeEntry {
+                            name: lb.name.name.clone(),
+                            kind: ScopeEntryKind::LetBinding,
+                            value: Some(val),
+                            span: lb.span,
+                            dependencies: std::collections::HashSet::new(),
+                            evaluated: true,
+                        },
+                    );
+                }
+            }
+        }
+    }
     cf_expander.expand(&mut doc, &|expr| {
         pre_eval
             .borrow_mut()
@@ -212,13 +357,18 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
     let mut schemas = SchemaRegistry::new();
     let mut diag_bag = DiagnosticBag::new();
     schemas.collect(&doc, &mut diag_bag);
-    schemas.validate(&doc, &mut diag_bag);
+    schemas.validate(&doc, &values, &mut diag_bag);
     all_diagnostics.extend(diag_bag.into_diagnostics());
 
     // Phase 10: ID uniqueness check
     let mut id_registry = IdRegistry::new();
     let mut diag_bag = DiagnosticBag::new();
     id_registry.check_document(&doc, &mut diag_bag);
+    all_diagnostics.extend(diag_bag.into_diagnostics());
+
+    // Phase 11: Document validation
+    let mut diag_bag = DiagnosticBag::new();
+    wcl_schema::document::validate_document(&doc, &mut Evaluator::new(), &mut diag_bag);
     all_diagnostics.extend(diag_bag.into_diagnostics());
 
     Document {
@@ -296,9 +446,47 @@ mod tests {
     }
 
     #[test]
-    fn test_query_returns_error_for_now() {
+    fn test_query_string_selects_blocks() {
+        let doc = parse(
+            "service { port = 8080 }\nservice { port = 9090 }\ndatabase { port = 5432 }",
+            ParseOptions::default(),
+        );
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+        let result = doc.query("service").unwrap();
+        match result {
+            Value::List(items) => {
+                assert_eq!(items.len(), 2);
+                for item in &items {
+                    if let Value::BlockRef(br) = item {
+                        assert_eq!(br.kind, "service");
+                    } else {
+                        panic!("expected BlockRef");
+                    }
+                }
+            }
+            _ => panic!("expected list"),
+        }
+    }
+
+    #[test]
+    fn test_query_string_with_projection() {
+        let doc = parse(
+            "service { port = 8080 }\nservice { port = 9090 }",
+            ParseOptions::default(),
+        );
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+        let result = doc.query("service | .port").unwrap();
+        assert_eq!(
+            result,
+            Value::List(vec![Value::Int(8080), Value::Int(9090)])
+        );
+    }
+
+    #[test]
+    fn test_query_string_parse_error() {
         let doc = parse("config { port = 8080 }", ParseOptions::default());
-        assert!(doc.query("config | where port > 80").is_err());
+        // An empty query string should fail to parse
+        assert!(doc.query("").is_err());
     }
 
     #[test]
@@ -317,5 +505,90 @@ mod tests {
         assert_eq!(servers.len(), 2);
         let clients = doc.blocks_of_type("client");
         assert_eq!(clients.len(), 1);
+    }
+
+    // ── C4: Document validation (Phase 11) ──────────────────────────────
+
+    #[test]
+    fn test_validation_block_passing() {
+        // Validation with self-contained let bindings (sub-evaluator is fresh)
+        let source = r#"
+            validation "check passes" {
+                let x = 10
+                check = x > 0
+                message = "x is not positive"
+            }
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        // check = 10 > 0 = true, so no errors from validation
+        let validation_errors: Vec<_> = doc.diagnostics.iter()
+            .filter(|d| d.message.contains("validation"))
+            .collect();
+        assert!(validation_errors.is_empty(), "unexpected validation errors: {:?}", validation_errors);
+    }
+
+    #[test]
+    fn test_validation_block_failure_produces_error() {
+        let source = r#"
+            validation "x must be positive" {
+                let x = -5
+                check = x > 0
+                message = "x is not positive"
+            }
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        // check = -5 > 0 = false, so we expect a validation error
+        let validation_errors: Vec<_> = doc.diagnostics.iter()
+            .filter(|d| d.message.contains("validation") && d.message.contains("x is not positive"))
+            .collect();
+        assert!(!validation_errors.is_empty(), "expected validation error, got: {:?}", doc.diagnostics);
+    }
+
+    #[test]
+    fn test_validation_block_warning_on_failure() {
+        let source = r#"
+            @warning
+            validation "x should be positive" {
+                let x = -5
+                check = x > 0
+                message = "x is not positive"
+            }
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        let validation_warnings: Vec<_> = doc.diagnostics.iter()
+            .filter(|d| d.message.contains("validation") && d.message.contains("x is not positive"))
+            .collect();
+        assert!(!validation_warnings.is_empty(), "expected validation warning, got: {:?}", doc.diagnostics);
+        // Should be a warning, not an error
+        assert!(!validation_warnings[0].is_error(), "expected warning, got error");
+    }
+
+    // ── M1: Let bindings accessible in control flow ─────────────────────
+
+    #[test]
+    fn test_let_binding_accessible_in_for_loop() {
+        let source = r#"
+            let items = [1, 2, 3]
+            for item in items {
+                entry { value = item }
+            }
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        // The for loop should expand using the let binding
+        let entries = doc.blocks_of_type("entry");
+        assert_eq!(entries.len(), 3, "expected 3 entry blocks from for loop over let binding, got {}: errors: {:?}", entries.len(), doc.diagnostics);
+    }
+
+    #[test]
+    fn test_let_binding_list_strings_in_for_loop() {
+        let source = r#"
+            let regions = ["us", "eu", "ap"]
+            for region in regions {
+                server { name = region }
+            }
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        let servers = doc.blocks_of_type("server");
+        assert_eq!(servers.len(), 3, "expected 3 server blocks, got {}: errors: {:?}", servers.len(), doc.diagnostics);
     }
 }
