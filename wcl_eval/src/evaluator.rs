@@ -943,7 +943,7 @@ impl Evaluator {
                 let items = self.expect_list(list, "map", span)?;
                 let mut results = Vec::with_capacity(items.len());
                 for item in &items {
-                    results.push(self.call_user_fn(&func, &[item.clone()], span)?);
+                    results.push(self.call_user_fn(&func, std::slice::from_ref(item), span)?);
                 }
                 Ok(Value::List(results))
             }
@@ -955,7 +955,7 @@ impl Evaluator {
                 let items = self.expect_list(list, "filter", span)?;
                 let mut results = Vec::new();
                 for item in &items {
-                    let keep = self.call_user_fn(&func, &[item.clone()], span)?;
+                    let keep = self.call_user_fn(&func, std::slice::from_ref(item), span)?;
                     if keep == Value::Bool(true) {
                         results.push(item.clone());
                     }
@@ -969,7 +969,7 @@ impl Evaluator {
                     self.eval_call_arg_as_fn(&args[1], scope_id, "every", span)?;
                 let items = self.expect_list(list, "every", span)?;
                 for item in &items {
-                    let result = self.call_user_fn(&func, &[item.clone()], span)?;
+                    let result = self.call_user_fn(&func, std::slice::from_ref(item), span)?;
                     if result != Value::Bool(true) {
                         return Ok(Value::Bool(false));
                     }
@@ -983,7 +983,7 @@ impl Evaluator {
                     self.eval_call_arg_as_fn(&args[1], scope_id, "some", span)?;
                 let items = self.expect_list(list, "some", span)?;
                 for item in &items {
-                    let result = self.call_user_fn(&func, &[item.clone()], span)?;
+                    let result = self.call_user_fn(&func, std::slice::from_ref(item), span)?;
                     if result == Value::Bool(true) {
                         return Ok(Value::Bool(true));
                     }
@@ -1011,7 +1011,7 @@ impl Evaluator {
                 let items = self.expect_list(list, "count", span)?;
                 let mut n = 0i64;
                 for item in &items {
-                    let result = self.call_user_fn(&func, &[item.clone()], span)?;
+                    let result = self.call_user_fn(&func, std::slice::from_ref(item), span)?;
                     if result == Value::Bool(true) {
                         n += 1;
                     }

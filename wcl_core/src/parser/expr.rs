@@ -143,19 +143,16 @@ impl Parser {
         self.skip_newlines();
         match self.peek_kind().clone() {
             TokenKind::IntLit(n) => {
-                let n = n;
                 let span = self.current_span();
                 self.advance();
                 Some(Expr::IntLit(n, span))
             }
             TokenKind::FloatLit(n) => {
-                let n = n;
                 let span = self.current_span();
                 self.advance();
                 Some(Expr::FloatLit(n, span))
             }
             TokenKind::BoolLit(b) => {
-                let b = b;
                 let span = self.current_span();
                 self.advance();
                 Some(Expr::BoolLit(b, span))

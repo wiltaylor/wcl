@@ -6,8 +6,10 @@ pub fn run(file: &Path, to: Option<&str>, from: Option<&str>) -> Result<(), Stri
 
     match to {
         Some("json") => {
-            let mut options = wcl::ParseOptions::default();
-            options.root_dir = file.parent().unwrap_or(Path::new(".")).to_path_buf();
+            let options = wcl::ParseOptions {
+                root_dir: file.parent().unwrap_or(Path::new(".")).to_path_buf(),
+                ..Default::default()
+            };
             let doc = wcl::parse(&source, options);
             if doc.has_errors() {
                 for diag in doc.errors() {

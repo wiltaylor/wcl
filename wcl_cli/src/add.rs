@@ -4,8 +4,10 @@ pub fn run(file: &Path, block_spec: &str, _file_auto: bool) -> Result<(), String
     let source = std::fs::read_to_string(file)
         .map_err(|e| format!("cannot read {}: {}", file.display(), e))?;
 
-    let mut options = wcl::ParseOptions::default();
-    options.root_dir = file.parent().unwrap_or(Path::new(".")).to_path_buf();
+    let options = wcl::ParseOptions {
+        root_dir: file.parent().unwrap_or(Path::new(".")).to_path_buf(),
+        ..Default::default()
+    };
     let doc = wcl::parse(&source, options);
     if doc.has_errors() {
         for diag in doc.errors() {

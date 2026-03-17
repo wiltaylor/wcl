@@ -20,8 +20,10 @@ pub fn run(
     }
 
     if show_hir {
-        let mut options = wcl::ParseOptions::default();
-        options.root_dir = file.parent().unwrap_or(Path::new(".")).to_path_buf();
+        let options = wcl::ParseOptions {
+            root_dir: file.parent().unwrap_or(Path::new(".")).to_path_buf(),
+            ..Default::default()
+        };
         let doc = wcl::parse(&source, options);
         println!("=== Evaluated Values ===");
         for (key, val) in &doc.values {

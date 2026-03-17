@@ -307,7 +307,7 @@ fn substitute_value_in_body_item(
 
 /// Substitute iterator references in string parts (for identifier interpolation).
 fn substitute_in_string_parts(
-    parts: &mut Vec<StringPart>,
+    parts: &mut [StringPart],
     iterator_name: &str,
     value: &Value,
     index_name: Option<&String>,

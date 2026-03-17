@@ -53,11 +53,6 @@ impl Parser {
         std::mem::discriminant(self.peek_kind()) == std::mem::discriminant(kind)
     }
 
-    /// Check if the current token matches a keyword token kind.
-    fn at_keyword(&self, kw: &TokenKind) -> bool {
-        self.at(kw)
-    }
-
     /// Consume the current token if it matches `kind`; otherwise report an error.
     fn expect(&mut self, kind: &TokenKind) -> Result<Token, ()> {
         if self.at(kind) {
@@ -288,11 +283,6 @@ impl Parser {
             }
         }
         items
-    }
-
-    fn parse_body_item(&mut self) -> Option<BodyItem> {
-        let trivia = self.collect_trivia();
-        self.parse_body_item_with_trivia(trivia)
     }
 
     fn parse_body_item_with_trivia(&mut self, trivia: Trivia) -> Option<BodyItem> {
@@ -1110,12 +1100,10 @@ impl Parser {
             }
             if let Some(d) = self.parse_transform_directive() {
                 directives.push(d);
+            } else if !self.is_at_end() && !matches!(self.peek_kind(), TokenKind::RBrace) {
+                self.advance();
             } else {
-                if !self.is_at_end() && !matches!(self.peek_kind(), TokenKind::RBrace) {
-                    self.advance();
-                } else {
-                    break;
-                }
+                break;
             }
         }
         directives
@@ -1269,10 +1257,8 @@ impl Parser {
                             val,
                         ));
                     }
-                } else {
-                    if let Some(expr) = self.parse_expr() {
-                        args.push(MacroCallArg::Positional(expr));
-                    }
+                } else if let Some(expr) = self.parse_expr() {
+                    args.push(MacroCallArg::Positional(expr));
                 }
             } else if let Some(expr) = self.parse_expr() {
                 args.push(MacroCallArg::Positional(expr));
@@ -1515,7 +1501,6 @@ impl Parser {
                 raw,
             } => {
                 let content = content.clone();
-                let raw = raw;
                 let span = self.current_span();
                 self.advance();
                 let parts = if raw {
@@ -1554,7 +1539,7 @@ impl Parser {
                 // Collect expression text between ${ and matching }
                 let mut depth = 1;
                 let mut expr_text = String::new();
-                while let Some(ec) = chars.next() {
+                for ec in chars.by_ref() {
                     if ec == '{' {
                         depth += 1;
                         expr_text.push(ec);

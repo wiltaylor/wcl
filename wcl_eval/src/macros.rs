@@ -36,21 +36,25 @@ impl MacroRegistry {
 
                     match def.kind {
                         MacroKind::Function => {
-                            if self.function_macros.contains_key(&name) {
+                            if let std::collections::hash_map::Entry::Vacant(e) = self.function_macros.entry(name.clone()) {
+                                if let DocItem::Body(BodyItem::MacroDef(def)) = item {
+                                    e.insert(def);
+                                }
+                                continue;
+                            } else {
                                 diagnostics.error(
                                     format!("duplicate function macro definition: '{}'", name),
                                     span,
                                 );
-                            } else {
-                                // Extract from the DocItem wrapper
-                                if let DocItem::Body(BodyItem::MacroDef(def)) = item {
-                                    self.function_macros.insert(name, def);
-                                }
-                                continue;
                             }
                         }
                         MacroKind::Attribute => {
-                            if self.attribute_macros.contains_key(&name) {
+                            if let std::collections::hash_map::Entry::Vacant(e) = self.attribute_macros.entry(name.clone()) {
+                                if let DocItem::Body(BodyItem::MacroDef(def)) = item {
+                                    e.insert(def);
+                                }
+                                continue;
+                            } else {
                                 diagnostics.error(
                                     format!(
                                         "duplicate attribute macro definition: '@{}'",
@@ -58,11 +62,6 @@ impl MacroRegistry {
                                     ),
                                     span,
                                 );
-                            } else {
-                                if let DocItem::Body(BodyItem::MacroDef(def)) = item {
-                                    self.attribute_macros.insert(name, def);
-                                }
-                                continue;
                             }
                         }
                     }
@@ -483,7 +482,7 @@ impl<'a> MacroExpander<'a> {
         }
 
         // Check for unknown named args
-        for name in named_args.keys() {
+        if let Some(name) = named_args.keys().next() {
             self.diagnostics.error(
                 format!("unknown macro parameter: '{}'", name),
                 call_span,

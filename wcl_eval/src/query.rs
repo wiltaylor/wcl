@@ -135,7 +135,7 @@ impl QueryEngine {
     ) {
         for block in blocks {
             if block.kind == kind
-                && id.map_or(true, |i| block.id.as_deref() == Some(i))
+                && id.is_none_or(|i| block.id.as_deref() == Some(i))
             {
                 results.push(block.clone());
             }
@@ -164,19 +164,19 @@ impl QueryEngine {
                             BinOp::Eq => *attr_val == rhs_val,
                             BinOp::Neq => *attr_val != rhs_val,
                             BinOp::Lt => value_compare(attr_val, &rhs_val)
-                                .map_or(false, |o| {
+                                .is_some_and(|o| {
                                     o == std::cmp::Ordering::Less
                                 }),
                             BinOp::Gt => value_compare(attr_val, &rhs_val)
-                                .map_or(false, |o| {
+                                .is_some_and(|o| {
                                     o == std::cmp::Ordering::Greater
                                 }),
                             BinOp::Lte => value_compare(attr_val, &rhs_val)
-                                .map_or(false, |o| {
+                                .is_some_and(|o| {
                                     o != std::cmp::Ordering::Greater
                                 }),
                             BinOp::Gte => value_compare(attr_val, &rhs_val)
-                                .map_or(false, |o| {
+                                .is_some_and(|o| {
                                     o != std::cmp::Ordering::Less
                                 }),
                             BinOp::Match => {

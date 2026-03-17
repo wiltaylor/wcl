@@ -129,7 +129,7 @@ impl SchemaRegistry {
                     let is_id_field = field.name == "id";
                     let has_id = block.inline_id.is_some();
 
-                    if !has_attr && !(is_id_field && has_id) {
+                    if !has_attr && (!is_id_field || !has_id) {
                         diagnostics.error_with_code(
                             format!(
                                 "missing required field '{}' in block '{}'",
@@ -233,8 +233,7 @@ pub(crate) fn get_validate_constraints(decorators: &[Decorator]) -> Option<Valid
         .map(|d| {
             let mut constraints = ValidateConstraints::default();
             for arg in &d.args {
-                match arg {
-                    DecoratorArg::Named(name, expr) => {
+                if let DecoratorArg::Named(name, expr) = arg {
                         let val = expr_to_value(expr);
                         match name.name.as_str() {
                             "min" => {
@@ -271,8 +270,6 @@ pub(crate) fn get_validate_constraints(decorators: &[Decorator]) -> Option<Valid
                             }
                             _ => {}
                         }
-                    }
-                    _ => {}
                 }
             }
             constraints

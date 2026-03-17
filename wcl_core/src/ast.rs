@@ -22,6 +22,7 @@ pub struct Document {
 }
 
 /// A single top-level item: an import/export directive or a body item.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
 pub enum DocItem {
     Import(Import),
