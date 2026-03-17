@@ -342,7 +342,10 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
     all_diagnostics.extend(merger.into_diagnostics().into_diagnostics());
 
     // Phase 7: Scope construction + Expression evaluation
-    let mut evaluator = Evaluator::new();
+    let mut evaluator = Evaluator::with_fs(
+        Box::new(RealFileSystem),
+        options.root_dir.clone(),
+    );
     let values = evaluator.evaluate(&doc);
     all_diagnostics.extend(evaluator.into_diagnostics().into_diagnostics());
 

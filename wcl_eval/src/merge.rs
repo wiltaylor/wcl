@@ -64,6 +64,37 @@ impl PartialMerger {
             }
         }
 
+        // Collect @partial_requires from all fragments in each group
+        let mut group_requires: HashMap<(String, String), Vec<String>> = HashMap::new();
+        for key in &order {
+            let indices = &groups[key];
+            let mut required_fields: Vec<String> = Vec::new();
+            for &idx in indices {
+                if let DocItem::Body(BodyItem::Block(block)) = &doc.items[idx] {
+                    for decorator in &block.decorators {
+                        if decorator.name.name == "partial_requires" {
+                            if let Some(DecoratorArg::Positional(Expr::List(items, _))) =
+                                decorator.args.first()
+                            {
+                                for item in items {
+                                    if let Expr::StringLit(s) = item {
+                                        for part in &s.parts {
+                                            if let StringPart::Literal(field_name) = part {
+                                                required_fields.push(field_name.clone());
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if !required_fields.is_empty() {
+                group_requires.insert(key.clone(), required_fields);
+            }
+        }
+
         // Phase 2: For each group with more than one fragment, merge them
         // We must process groups and remove indices carefully.
         // Collect all indices to remove (all fragments except the first in each group).
@@ -132,6 +163,42 @@ impl PartialMerger {
         // Remove in reverse order
         for idx in indices_to_remove.into_iter().rev() {
             doc.items.remove(idx);
+        }
+
+        // Phase 4: Validate @partial_requires
+        for (key, required_fields) in &group_requires {
+            let merged_block = doc.items.iter().find_map(|item| {
+                if let DocItem::Body(BodyItem::Block(block)) = item {
+                    if block.kind.name == key.0 {
+                        if let Some(id_str) = inline_id_to_string(&block.inline_id) {
+                            if id_str == key.1 {
+                                return Some(block);
+                            }
+                        }
+                    }
+                }
+                None
+            });
+
+            if let Some(block) = merged_block {
+                for field in required_fields {
+                    let has_attr = block.body.iter().any(|item| {
+                        matches!(item, BodyItem::Attribute(attr) if attr.name.name == *field)
+                    });
+                    let has_child = block.body.iter().any(|item| {
+                        matches!(item, BodyItem::Block(b) if b.kind.name == *field)
+                    });
+                    if !has_attr && !has_child {
+                        self.diagnostics.error(
+                            format!(
+                                "@partial_requires: field '{}' is missing after merge of {}#{}",
+                                field, key.0, key.1
+                            ),
+                            block.span,
+                        );
+                    }
+                }
+            }
         }
     }
 
@@ -678,5 +745,120 @@ mod tests {
         } else {
             panic!("expected a Block");
         }
+    }
+
+    #[test]
+    fn partial_requires_satisfied() {
+        let mut block1 = make_partial_block(
+            "service",
+            "svc-api",
+            vec![("port", Expr::IntLit(8080, dummy_span()))],
+        );
+        block1.decorators.push(Decorator {
+            name: make_ident("partial_requires"),
+            args: vec![DecoratorArg::Positional(Expr::List(
+                vec![Expr::StringLit(StringLit {
+                    parts: vec![StringPart::Literal("tls".to_string())],
+                    span: dummy_span(),
+                })],
+                dummy_span(),
+            ))],
+            span: dummy_span(),
+        });
+
+        let block2 = make_partial_block(
+            "service",
+            "svc-api",
+            vec![("tls", Expr::BoolLit(true, dummy_span()))],
+        );
+
+        let mut doc = make_doc(vec![block1, block2]);
+        let mut merger = PartialMerger::new(ConflictMode::Strict);
+        merger.merge(&mut doc);
+
+        assert!(!merger.diagnostics.has_errors());
+    }
+
+    #[test]
+    fn partial_requires_missing_field() {
+        let mut block1 = make_partial_block(
+            "service",
+            "svc-api",
+            vec![("port", Expr::IntLit(8080, dummy_span()))],
+        );
+        block1.decorators.push(Decorator {
+            name: make_ident("partial_requires"),
+            args: vec![DecoratorArg::Positional(Expr::List(
+                vec![
+                    Expr::StringLit(StringLit {
+                        parts: vec![StringPart::Literal("tls".to_string())],
+                        span: dummy_span(),
+                    }),
+                    Expr::StringLit(StringLit {
+                        parts: vec![StringPart::Literal("monitoring".to_string())],
+                        span: dummy_span(),
+                    }),
+                ],
+                dummy_span(),
+            ))],
+            span: dummy_span(),
+        });
+
+        let block2 = make_partial_block(
+            "service",
+            "svc-api",
+            vec![("tls", Expr::BoolLit(true, dummy_span()))],
+        );
+
+        let mut doc = make_doc(vec![block1, block2]);
+        let mut merger = PartialMerger::new(ConflictMode::Strict);
+        merger.merge(&mut doc);
+
+        // "monitoring" is missing, so there should be an error
+        assert!(merger.diagnostics.has_errors());
+        assert_eq!(merger.diagnostics.error_count(), 1);
+    }
+
+    #[test]
+    fn partial_requires_child_block_satisfies() {
+        let mut block1 = make_partial_block(
+            "service",
+            "svc-api",
+            vec![("port", Expr::IntLit(8080, dummy_span()))],
+        );
+        block1.decorators.push(Decorator {
+            name: make_ident("partial_requires"),
+            args: vec![DecoratorArg::Positional(Expr::List(
+                vec![Expr::StringLit(StringLit {
+                    parts: vec![StringPart::Literal("monitoring".to_string())],
+                    span: dummy_span(),
+                })],
+                dummy_span(),
+            ))],
+            span: dummy_span(),
+        });
+
+        let mut block2 = make_partial_block(
+            "service",
+            "svc-api",
+            vec![],
+        );
+        // Add a child block of kind "monitoring"
+        block2.body.push(BodyItem::Block(Block {
+            decorators: vec![],
+            partial: false,
+            kind: make_ident("monitoring"),
+            inline_id: None,
+            labels: vec![],
+            body: vec![],
+            trivia: Trivia::empty(),
+            span: dummy_span(),
+        }));
+
+        let mut doc = make_doc(vec![block1, block2]);
+        let mut merger = PartialMerger::new(ConflictMode::Strict);
+        merger.merge(&mut doc);
+
+        assert!(!merger.diagnostics.has_errors());
     }
 }

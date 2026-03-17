@@ -71,7 +71,7 @@ impl FileSystem for InMemoryFs {
 }
 
 /// Normalize a path by resolving `.` and `..` components without touching the filesystem.
-fn normalize_path(path: &Path) -> PathBuf {
+pub fn normalize_path(path: &Path) -> PathBuf {
     let mut components = Vec::new();
     for component in path.components() {
         match component {

@@ -622,6 +622,70 @@ impl Parser {
                 self.advance();
                 Some(QuerySelector::Wildcard)
             }
+            TokenKind::Table => {
+                let span = self.current_span();
+                self.advance();
+                // table#id → TableId, table."label" → TableLabel
+                match self.peek_kind().clone() {
+                    TokenKind::Hash => {
+                        self.advance();
+                        if let TokenKind::IdentifierLit(ref val) = self.peek_kind().clone() {
+                            let val = val.clone();
+                            let span = self.current_span();
+                            self.advance();
+                            Some(QuerySelector::TableId(IdentifierLit { value: val, span }))
+                        } else if let TokenKind::Ident(ref val) = self.peek_kind().clone() {
+                            let val = val.clone();
+                            let span = self.current_span();
+                            self.advance();
+                            Some(QuerySelector::TableId(IdentifierLit { value: val, span }))
+                        } else {
+                            self.diagnostics
+                                .error("expected identifier after '#'", self.current_span());
+                            None
+                        }
+                    }
+                    TokenKind::Dot => {
+                        self.advance(); // consume .
+                        if let TokenKind::StringLit(_) = self.peek_kind() {
+                            let s = self.parse_string_lit()?;
+                            Some(QuerySelector::TableLabel(s))
+                        } else {
+                            // table.something — treat as path
+                            let table_ident = Ident { name: "table".into(), span };
+                            let mut segments = vec![PathSegment::Ident(table_ident)];
+                            if let TokenKind::Ident(ref name) = self.peek_kind().clone() {
+                                let name = name.clone();
+                                let span = self.current_span();
+                                self.advance();
+                                segments.push(PathSegment::Ident(Ident { name, span }));
+                            }
+                            while matches!(self.peek_kind(), TokenKind::Dot) {
+                                self.advance();
+                                match self.peek_kind().clone() {
+                                    TokenKind::Ident(ref name) => {
+                                        let name = name.clone();
+                                        let span = self.current_span();
+                                        self.advance();
+                                        segments.push(PathSegment::Ident(Ident { name, span }));
+                                    }
+                                    TokenKind::StringLit(_) => {
+                                        let s = self.parse_string_lit()?;
+                                        segments.push(PathSegment::StringLabel(s));
+                                    }
+                                    _ => break,
+                                }
+                            }
+                            Some(QuerySelector::Path(segments))
+                        }
+                    }
+                    _ => {
+                        // bare `table` — treat as Kind
+                        let ident = Ident { name: "table".into(), span };
+                        Some(QuerySelector::Kind(ident))
+                    }
+                }
+            }
             TokenKind::Ident(_) => {
                 let ident = self.expect_ident().ok()?;
                 // Check for #id, ."label", or .path

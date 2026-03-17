@@ -1776,4 +1776,43 @@ server {
             other => panic!("expected Block, got {:?}", other),
         }
     }
+
+    fn parse_query(input: &str) -> (Option<QueryPipeline>, DiagnosticBag) {
+        let file_id = FileId(0);
+        let tokens = lexer::lex(input, file_id).unwrap_or_else(|_diags| {
+            vec![Token {
+                kind: TokenKind::Eof,
+                span: Span::new(file_id, 0, 0),
+            }]
+        });
+        let parser = Parser::new(tokens);
+        parser.parse_query_standalone()
+    }
+
+    #[test]
+    fn parse_query_table_id_selector() {
+        let (pipeline, diags) = parse_query("table#my-table");
+        assert!(!diags.has_errors(), "diagnostics: {:?}", diags.diagnostics());
+        let pipeline = pipeline.expect("expected a query pipeline");
+        match &pipeline.selector {
+            QuerySelector::TableId(id_lit) => {
+                assert_eq!(id_lit.value, "my-table");
+            }
+            other => panic!("expected TableId, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_query_kind_id_selector_not_table() {
+        let (pipeline, diags) = parse_query("service#my-svc");
+        assert!(!diags.has_errors(), "diagnostics: {:?}", diags.diagnostics());
+        let pipeline = pipeline.expect("expected a query pipeline");
+        match &pipeline.selector {
+            QuerySelector::KindId(ident, id_lit) => {
+                assert_eq!(ident.name, "service");
+                assert_eq!(id_lit.value, "my-svc");
+            }
+            other => panic!("expected KindId, got {:?}", other),
+        }
+    }
 }
