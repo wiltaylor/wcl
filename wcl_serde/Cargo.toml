@@ -1,0 +1,12 @@
+[package]
+name = "wcl_serde"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+wcl_core = { workspace = true }
+wcl_eval = { workspace = true }
+wcl_schema = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+indexmap = { workspace = true }

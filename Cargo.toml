@@ -1,0 +1,35 @@
+[workspace]
+resolver = "2"
+members = [
+    "wcl_core",
+    "wcl_eval",
+    "wcl_schema",
+    "wcl_serde",
+    "wcl_derive",
+    "wcl_cli",
+    "wcl",
+]
+
+[workspace.dependencies]
+# Internal crates
+wcl_core = { path = "wcl_core" }
+wcl_eval = { path = "wcl_eval" }
+wcl_schema = { path = "wcl_schema" }
+wcl_serde = { path = "wcl_serde" }
+wcl_derive = { path = "wcl_derive" }
+
+# External deps
+nom = "8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+regex = "1"
+sha2 = "0.10"
+base64 = "0.22"
+clap = { version = "4", features = ["derive"] }
+miette = { version = "7", features = ["fancy"] }
+thiserror = "2"
+indexmap = { version = "2", features = ["serde"] }
+criterion = { version = "0.5", features = ["html_reports"] }
+syn = { version = "2", features = ["full"] }
+quote = "1"
+proc-macro2 = "1"

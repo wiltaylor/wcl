@@ -1,0 +1,23 @@
+[package]
+name = "wcl"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+wcl_core = { workspace = true }
+wcl_eval = { workspace = true }
+wcl_schema = { workspace = true }
+wcl_serde = { workspace = true }
+wcl_derive = { workspace = true }
+thiserror = { workspace = true }
+indexmap = { workspace = true }
+serde = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+serde_json = { workspace = true }
+tempfile = "3"
+
+[[bench]]
+name = "e2e"
+harness = false

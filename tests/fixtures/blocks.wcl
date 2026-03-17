@@ -1,0 +1,43 @@
+// Block structures for testing
+
+server "api-gateway" {
+  host = "0.0.0.0"
+  port = 443
+  tls = true
+
+  upstream "backend" {
+    host = "10.0.1.1"
+    port = 8080
+    weight = 100
+  }
+
+  upstream "fallback" {
+    host = "10.0.1.2"
+    port = 8080
+    weight = 50
+  }
+
+  logging {
+    level = "info"
+    format = "json"
+  }
+}
+
+server "static-assets" {
+  host = "0.0.0.0"
+  port = 80
+  root = "/var/www/html"
+}
+
+let default_timeout = 30
+
+service "user-api" {
+  port = 3000
+  timeout = default_timeout
+  dependencies = ["database", "cache"]
+}
+
+service "auth-api" {
+  port = 3001
+  timeout = default_timeout * 2
+}

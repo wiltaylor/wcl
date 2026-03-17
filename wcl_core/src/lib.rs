@@ -1,0 +1,90 @@
+//! WCL Core — AST, lexer, parser, spans, trivia, diagnostics
+
+pub mod ast;
+pub mod lexer;
+pub mod parser;
+pub mod span;
+pub mod trivia;
+pub mod diagnostic;
+
+pub use span::{FileId, Span, SourceFile, SourceMap};
+pub use trivia::{Trivia, Comment, CommentStyle, CommentPlacement};
+pub use diagnostic::{Diagnostic, DiagnosticBag, Severity, Label};
+
+// Re-export the most commonly used AST types.
+pub use ast::{
+    Attribute,
+    BinOp,
+    Block,
+    BodyItem,
+    CallArg,
+    ColumnDecl,
+    Conditional,
+    DecoratorArg,
+    DecoratorSchema,
+    DecoratorTarget,
+    DocItem,
+    Document,
+    ElseBranch,
+    Expr,
+    ExportLet,
+    ForLoop,
+    Ident,
+    IdentifierLit,
+    Import,
+    InjectBlock,
+    InlineId,
+    LetBinding,
+    MacroBody,
+    MacroCall,
+    MacroCallArg,
+    MacroDef,
+    MacroKind,
+    MacroParam,
+    MapKey,
+    PathSegment,
+    QueryFilter,
+    QueryPipeline,
+    QuerySelector,
+    ReExport,
+    RemoveBlock,
+    Schema,
+    SchemaField,
+    SetBlock,
+    StringLit,
+    StringPart,
+    Table,
+    TableRow,
+    TransformDirective,
+    TypeExpr,
+    UnaryOp,
+    Validation,
+    WhenBlock,
+    Decorator,
+};
+
+pub use parser::Parser;
+
+/// Lex and parse WCL source text, returning the AST and accumulated diagnostics.
+pub fn parse(source: &str, file_id: FileId) -> (ast::Document, DiagnosticBag) {
+    let mut diags = DiagnosticBag::new();
+    let tokens = match lexer::lex(source, file_id) {
+        Ok(tokens) => tokens,
+        Err(lex_errors) => {
+            for d in lex_errors {
+                diags.add(d);
+            }
+            // Return an empty document on lex failure
+            let doc = ast::Document {
+                items: Vec::new(),
+                trivia: Trivia::empty(),
+                span: Span::new(file_id, 0, source.len()),
+            };
+            return (doc, diags);
+        }
+    };
+    let parser = parser::Parser::new(tokens);
+    let (doc, parser_diags) = parser.parse_document();
+    diags.merge(parser_diags);
+    (doc, diags)
+}

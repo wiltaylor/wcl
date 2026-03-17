@@ -1,0 +1,35 @@
+// A simple WCL configuration for testing
+name = "test-app"
+version = "1.0.0"
+debug = true
+port = 8080
+pi = 3.14159
+
+// A list of tags
+tags = ["web", "api", "production"]
+
+// A settings map
+settings = {
+  timeout: 30,
+  retries: 3,
+  verbose: false,
+}
+
+server "web-1" {
+  host = "10.0.0.1"
+  port = 8080
+  healthy = true
+}
+
+server "web-2" {
+  host = "10.0.0.2"
+  port = 8081
+  healthy = false
+}
+
+database "primary" {
+  host = "db.example.com"
+  port = 5432
+  name = "myapp"
+  pool_size = 10
+}

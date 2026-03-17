@@ -1,0 +1,38 @@
+// Expression evaluation tests
+let base = 10
+let multiplier = 3
+
+// Arithmetic
+sum = 1 + 2
+diff = 10 - 3
+product = 4 * 5
+quotient = 10 / 3
+remainder = 10 % 3
+
+// Float arithmetic
+pi = 3.14
+area = pi * 100.0
+
+// String operations
+greeting = "hello"
+name = "world"
+message = greeting + " " + name
+
+// Comparisons
+is_big = base > 5
+is_small = base < 5
+is_equal = base == 10
+
+// Boolean logic
+both = true && false
+either = true || false
+negated = !true
+
+// Ternary
+status = is_big ? "big" : "small"
+
+// String interpolation
+summary = "base=${base}, multiplier=${multiplier}"
+
+// Computed
+computed = base * multiplier + 1

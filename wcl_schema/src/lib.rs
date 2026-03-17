@@ -1,0 +1,12 @@
+//! WCL Schema — type checking, schema validation, decorator validation,
+//! document validation, and ID uniqueness.
+
+pub mod decorator;
+pub mod document;
+pub mod id;
+pub mod schema;
+pub mod types;
+
+pub use decorator::{Constraint, DecoratorParam, DecoratorSchemaRegistry, ResolvedDecoratorSchema};
+pub use id::IdRegistry;
+pub use schema::{ResolvedField, ResolvedSchema, SchemaRegistry, ValidateConstraints};

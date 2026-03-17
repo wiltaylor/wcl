@@ -1,0 +1,881 @@
+use std::collections::HashMap;
+use wcl_core::ast::*;
+use wcl_core::diagnostic::DiagnosticBag;
+use wcl_core::span::Span;
+
+/// Registry of macro definitions collected from the document.
+///
+/// Function macros produce AST fragments spliced at the call site.
+/// Attribute macros transform the block they are attached to via decorators.
+#[derive(Debug, Default)]
+pub struct MacroRegistry {
+    /// Function macros keyed by name.
+    pub function_macros: HashMap<String, MacroDef>,
+    /// Attribute macros keyed by name (without the `@` prefix).
+    pub attribute_macros: HashMap<String, MacroDef>,
+}
+
+impl MacroRegistry {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Collect macro definitions from the document, removing them from the AST.
+    ///
+    /// Walks `doc.items`, finds `BodyItem::MacroDef` entries, registers each
+    /// macro in the appropriate map (function or attribute), checks for
+    /// duplicates, and removes the `MacroDef` items from the document.
+    pub fn collect(&mut self, doc: &mut Document, diagnostics: &mut DiagnosticBag) {
+        let mut retained_items: Vec<DocItem> = Vec::with_capacity(doc.items.len());
+
+        for item in doc.items.drain(..) {
+            match item {
+                DocItem::Body(BodyItem::MacroDef(ref def)) => {
+                    let name = def.name.name.clone();
+                    let span = def.span;
+
+                    match def.kind {
+                        MacroKind::Function => {
+                            if self.function_macros.contains_key(&name) {
+                                diagnostics.error(
+                                    format!("duplicate function macro definition: '{}'", name),
+                                    span,
+                                );
+                            } else {
+                                // Extract from the DocItem wrapper
+                                if let DocItem::Body(BodyItem::MacroDef(def)) = item {
+                                    self.function_macros.insert(name, def);
+                                }
+                                continue;
+                            }
+                        }
+                        MacroKind::Attribute => {
+                            if self.attribute_macros.contains_key(&name) {
+                                diagnostics.error(
+                                    format!(
+                                        "duplicate attribute macro definition: '@{}'",
+                                        name
+                                    ),
+                                    span,
+                                );
+                            } else {
+                                if let DocItem::Body(BodyItem::MacroDef(def)) = item {
+                                    self.attribute_macros.insert(name, def);
+                                }
+                                continue;
+                            }
+                        }
+                    }
+                    // If we got here, it was a duplicate — retain the item for error reporting
+                    // but the original is already registered so we just drop the duplicate
+                }
+                _ => {
+                    retained_items.push(item);
+                }
+            }
+        }
+
+        doc.items = retained_items;
+    }
+
+    /// Check whether a function macro with the given name is registered.
+    pub fn has_function_macro(&self, name: &str) -> bool {
+        self.function_macros.contains_key(name)
+    }
+
+    /// Check whether an attribute macro with the given name is registered.
+    pub fn has_attribute_macro(&self, name: &str) -> bool {
+        self.attribute_macros.contains_key(name)
+    }
+}
+
+/// Expands macro calls in a WCL document.
+///
+/// Iterates until no macro calls remain (fixed-point expansion), with a
+/// configurable depth limit to prevent infinite expansion from recursive macros.
+pub struct MacroExpander<'a> {
+    registry: &'a MacroRegistry,
+    expansion_stack: Vec<String>,
+    max_depth: u32,
+    diagnostics: DiagnosticBag,
+}
+
+impl<'a> MacroExpander<'a> {
+    pub fn new(registry: &'a MacroRegistry, max_depth: u32) -> Self {
+        MacroExpander {
+            registry,
+            expansion_stack: Vec::new(),
+            max_depth,
+            diagnostics: DiagnosticBag::new(),
+        }
+    }
+
+    /// Expand all macro calls in the document.
+    ///
+    /// Iterates until no macro calls remain or the iteration limit is reached.
+    pub fn expand(&mut self, doc: &mut Document) {
+        let mut changed = true;
+        let mut iterations: u32 = 0;
+        while changed && iterations < self.max_depth {
+            changed = false;
+            changed |= self.expand_doc_items(&mut doc.items);
+            iterations += 1;
+        }
+        if iterations >= self.max_depth && changed {
+            self.diagnostics.error(
+                format!(
+                    "macro expansion did not converge after {} iterations",
+                    self.max_depth
+                ),
+                Span::dummy(),
+            );
+        }
+    }
+
+    /// Walk document items, expanding function macro calls inline and
+    /// applying attribute macro decorators on blocks.
+    fn expand_doc_items(&mut self, items: &mut Vec<DocItem>) -> bool {
+        let mut changed = false;
+        let mut i = 0;
+        while i < items.len() {
+            match &mut items[i] {
+                DocItem::Body(BodyItem::MacroCall(call)) => {
+                    let call_clone = call.clone();
+                    if let Some(expanded) = self.expand_function_macro(&call_clone) {
+                        items.remove(i);
+                        for (offset, body_item) in expanded.into_iter().enumerate() {
+                            items.insert(i + offset, DocItem::Body(body_item));
+                        }
+                        changed = true;
+                        // Don't increment i — re-check the newly inserted items
+                        continue;
+                    }
+                    i += 1;
+                }
+                DocItem::Body(BodyItem::Block(block)) => {
+                    // Check for attribute macro decorators
+                    changed |= self.apply_attribute_macros(block);
+                    // Recurse into block body
+                    changed |= self.expand_body_items(&mut block.body);
+                    i += 1;
+                }
+                _ => {
+                    i += 1;
+                }
+            }
+        }
+        changed
+    }
+
+    /// Expand macro calls within a list of body items.
+    fn expand_body_items(&mut self, items: &mut Vec<BodyItem>) -> bool {
+        let mut changed = false;
+        let mut i = 0;
+        while i < items.len() {
+            match &mut items[i] {
+                BodyItem::MacroCall(call) => {
+                    let call_clone = call.clone();
+                    if let Some(expanded) = self.expand_function_macro(&call_clone) {
+                        items.remove(i);
+                        for (offset, body_item) in expanded.into_iter().enumerate() {
+                            items.insert(i + offset, body_item);
+                        }
+                        changed = true;
+                        continue;
+                    }
+                    i += 1;
+                }
+                BodyItem::Block(block) => {
+                    changed |= self.apply_attribute_macros(block);
+                    changed |= self.expand_body_items(&mut block.body);
+                    i += 1;
+                }
+                BodyItem::ForLoop(for_loop) => {
+                    changed |= self.expand_body_items(&mut for_loop.body);
+                    i += 1;
+                }
+                BodyItem::Conditional(cond) => {
+                    changed |= self.expand_body_items(&mut cond.then_body);
+                    if let Some(else_branch) = &mut cond.else_branch {
+                        changed |= self.expand_else_branch(else_branch);
+                    }
+                    i += 1;
+                }
+                _ => {
+                    i += 1;
+                }
+            }
+        }
+        changed
+    }
+
+    /// Expand macro calls within an else branch.
+    fn expand_else_branch(&mut self, branch: &mut ElseBranch) -> bool {
+        match branch {
+            ElseBranch::ElseIf(cond) => {
+                let mut changed = self.expand_body_items(&mut cond.then_body);
+                if let Some(else_branch) = &mut cond.else_branch {
+                    changed |= self.expand_else_branch(else_branch);
+                }
+                changed
+            }
+            ElseBranch::Else(body, _, _) => self.expand_body_items(body),
+        }
+    }
+
+    /// Expand a function macro call, returning the expanded body items.
+    ///
+    /// Returns `None` if the macro is not found or recursion is detected.
+    fn expand_function_macro(&mut self, call: &MacroCall) -> Option<Vec<BodyItem>> {
+        let name = &call.name.name;
+
+        let def = self.registry.function_macros.get(name)?;
+
+        // Check for recursion
+        if self.expansion_stack.contains(name) {
+            self.diagnostics.error(
+                format!(
+                    "recursive macro expansion detected: '{}' (stack: {})",
+                    name,
+                    self.expansion_stack.join(" -> ")
+                ),
+                call.span,
+            );
+            return None;
+        }
+
+        // Check expansion depth
+        if self.expansion_stack.len() as u32 >= self.max_depth {
+            self.diagnostics.error(
+                format!(
+                    "macro expansion depth limit exceeded (max {})",
+                    self.max_depth
+                ),
+                call.span,
+            );
+            return None;
+        }
+
+        // Bind parameters
+        let param_bindings = match self.bind_params(&def.params, &call.args, call.span) {
+            Ok(bindings) => bindings,
+            Err(()) => return None,
+        };
+
+        // Clone and substitute
+        let body = match &def.body {
+            MacroBody::Function(items) => items.clone(),
+            MacroBody::Attribute(_) => {
+                self.diagnostics.error(
+                    format!(
+                        "cannot call attribute macro '{}' as a function macro",
+                        name
+                    ),
+                    call.span,
+                );
+                return None;
+            }
+        };
+
+        let expanded = self.substitute_params(&body, &param_bindings);
+
+        self.expansion_stack.push(name.clone());
+        // The expanded items may contain further macro calls, which will be
+        // handled by the next iteration of the fixed-point loop.
+        self.expansion_stack.pop();
+
+        Some(expanded)
+    }
+
+    /// Apply any attribute macros found in a block's decorators.
+    ///
+    /// Returns true if any attribute macros were applied.
+    fn apply_attribute_macros(&mut self, block: &mut Block) -> bool {
+        let mut changed = false;
+        let mut i = 0;
+        while i < block.decorators.len() {
+            let decorator_name = block.decorators[i].name.name.clone();
+            if self.registry.attribute_macros.contains_key(&decorator_name) {
+                let decorator = block.decorators.remove(i);
+                changed |= self.apply_attribute_macro(block, &decorator_name, &decorator);
+                // Don't increment — decorators shifted
+            } else {
+                i += 1;
+            }
+        }
+        changed
+    }
+
+    /// Apply an attribute macro to a block using the given decorator invocation.
+    fn apply_attribute_macro(
+        &mut self,
+        block: &mut Block,
+        decorator_name: &str,
+        decorator: &Decorator,
+    ) -> bool {
+        let def = match self.registry.attribute_macros.get(decorator_name) {
+            Some(def) => def.clone(),
+            None => return false,
+        };
+
+        // Convert decorator args to MacroCallArgs for parameter binding
+        let call_args: Vec<MacroCallArg> = decorator
+            .args
+            .iter()
+            .map(|arg| match arg {
+                DecoratorArg::Positional(expr) => MacroCallArg::Positional(expr.clone()),
+                DecoratorArg::Named(ident, expr) => {
+                    MacroCallArg::Named(ident.clone(), expr.clone())
+                }
+            })
+            .collect();
+
+        let param_bindings = match self.bind_params(&def.params, &call_args, decorator.span) {
+            Ok(bindings) => bindings,
+            Err(()) => return false,
+        };
+
+        let directives = match &def.body {
+            MacroBody::Attribute(directives) => directives.clone(),
+            MacroBody::Function(_) => {
+                self.diagnostics.error(
+                    format!(
+                        "cannot apply function macro '{}' as an attribute macro",
+                        decorator_name
+                    ),
+                    decorator.span,
+                );
+                return false;
+            }
+        };
+
+        // Apply each transform directive
+        let mut changed = false;
+        for directive in &directives {
+            changed |=
+                self.apply_directive(block, directive, &param_bindings);
+        }
+
+        changed
+    }
+
+    /// Apply a single transform directive to a block.
+    fn apply_directive(
+        &mut self,
+        block: &mut Block,
+        directive: &TransformDirective,
+        param_bindings: &HashMap<String, Expr>,
+    ) -> bool {
+        match directive {
+            TransformDirective::Inject(inject) => {
+                let expanded = self.substitute_params(&inject.body, param_bindings);
+                block.body.extend(expanded);
+                true
+            }
+            TransformDirective::Set(set_block) => {
+                for attr in &set_block.attrs {
+                    let substituted_value =
+                        self.substitute_expr(&attr.value, param_bindings);
+                    // Find existing attribute and update, or append
+                    let attr_name = &attr.name.name;
+                    let mut found = false;
+                    for item in &mut block.body {
+                        if let BodyItem::Attribute(existing) = item {
+                            if existing.name.name == *attr_name {
+                                existing.value = substituted_value.clone();
+                                found = true;
+                                break;
+                            }
+                        }
+                    }
+                    if !found {
+                        let mut new_attr = attr.clone();
+                        new_attr.value = substituted_value;
+                        block.body.push(BodyItem::Attribute(new_attr));
+                    }
+                }
+                true
+            }
+            TransformDirective::Remove(remove_block) => {
+                let names_to_remove: Vec<String> = remove_block
+                    .names
+                    .iter()
+                    .map(|n| n.name.clone())
+                    .collect();
+                block
+                    .body
+                    .retain(|item| {
+                        if let BodyItem::Attribute(attr) = item {
+                            !names_to_remove.contains(&attr.name.name)
+                        } else {
+                            true
+                        }
+                    });
+                true
+            }
+            TransformDirective::When(_when_block) => {
+                // Conditional transforms require expression evaluation.
+                // For now, this is a stub — the evaluator callback will be needed.
+                // We leave the `when` directive as a todo for when the evaluator is available.
+                todo!("when directive requires expression evaluation")
+            }
+        }
+    }
+
+    /// Bind call arguments to macro parameters, producing a name->Expr map.
+    fn bind_params(
+        &mut self,
+        params: &[MacroParam],
+        args: &[MacroCallArg],
+        call_span: Span,
+    ) -> Result<HashMap<String, Expr>, ()> {
+        let mut bindings: HashMap<String, Expr> = HashMap::new();
+
+        // First pass: collect named args
+        let mut named_args: HashMap<String, Expr> = HashMap::new();
+        let mut positional_args: Vec<Expr> = Vec::new();
+        for arg in args {
+            match arg {
+                MacroCallArg::Positional(expr) => {
+                    positional_args.push(expr.clone());
+                }
+                MacroCallArg::Named(ident, expr) => {
+                    named_args.insert(ident.name.clone(), expr.clone());
+                }
+            }
+        }
+
+        // Bind parameters
+        let mut pos_idx = 0;
+        for param in params {
+            let param_name = &param.name.name;
+
+            if let Some(expr) = named_args.remove(param_name) {
+                bindings.insert(param_name.clone(), expr);
+            } else if pos_idx < positional_args.len() {
+                bindings.insert(param_name.clone(), positional_args[pos_idx].clone());
+                pos_idx += 1;
+            } else if let Some(default) = &param.default {
+                bindings.insert(param_name.clone(), default.clone());
+            } else {
+                self.diagnostics.error(
+                    format!(
+                        "missing required macro parameter '{}'",
+                        param_name
+                    ),
+                    call_span,
+                );
+                return Err(());
+            }
+        }
+
+        // Check for extra positional args
+        if pos_idx < positional_args.len() {
+            self.diagnostics.error(
+                format!(
+                    "too many positional arguments: expected {}, got {}",
+                    params.len(),
+                    positional_args.len()
+                ),
+                call_span,
+            );
+            return Err(());
+        }
+
+        // Check for unknown named args
+        for name in named_args.keys() {
+            self.diagnostics.error(
+                format!("unknown macro parameter: '{}'", name),
+                call_span,
+            );
+            return Err(());
+        }
+
+        Ok(bindings)
+    }
+
+    /// Substitute macro parameters in a list of body items.
+    ///
+    /// Deep clones the body items, replacing `Ident` references that match
+    /// parameter names with the corresponding expression.
+    fn substitute_params(
+        &self,
+        body: &[BodyItem],
+        params: &HashMap<String, Expr>,
+    ) -> Vec<BodyItem> {
+        body.iter()
+            .map(|item| self.substitute_body_item(item, params))
+            .collect()
+    }
+
+    fn substitute_body_item(
+        &self,
+        item: &BodyItem,
+        params: &HashMap<String, Expr>,
+    ) -> BodyItem {
+        match item {
+            BodyItem::Attribute(attr) => {
+                let mut new_attr = attr.clone();
+                new_attr.value = self.substitute_expr(&attr.value, params);
+                BodyItem::Attribute(new_attr)
+            }
+            BodyItem::Block(block) => {
+                let mut new_block = block.clone();
+                new_block.body = self.substitute_params(&block.body, params);
+                // Also substitute in labels
+                new_block.labels = block
+                    .labels
+                    .iter()
+                    .map(|l| self.substitute_string_lit(l, params))
+                    .collect();
+                BodyItem::Block(new_block)
+            }
+            BodyItem::LetBinding(lb) => {
+                let mut new_lb = lb.clone();
+                new_lb.value = self.substitute_expr(&lb.value, params);
+                BodyItem::LetBinding(new_lb)
+            }
+            BodyItem::MacroCall(call) => {
+                let mut new_call = call.clone();
+                new_call.args = call
+                    .args
+                    .iter()
+                    .map(|arg| match arg {
+                        MacroCallArg::Positional(expr) => {
+                            MacroCallArg::Positional(self.substitute_expr(expr, params))
+                        }
+                        MacroCallArg::Named(ident, expr) => {
+                            MacroCallArg::Named(ident.clone(), self.substitute_expr(expr, params))
+                        }
+                    })
+                    .collect();
+                BodyItem::MacroCall(new_call)
+            }
+            BodyItem::ForLoop(fl) => {
+                let mut new_fl = fl.clone();
+                new_fl.iterable = self.substitute_expr(&fl.iterable, params);
+                new_fl.body = self.substitute_params(&fl.body, params);
+                BodyItem::ForLoop(new_fl)
+            }
+            BodyItem::Conditional(cond) => {
+                let mut new_cond = cond.clone();
+                new_cond.condition = self.substitute_expr(&cond.condition, params);
+                new_cond.then_body = self.substitute_params(&cond.then_body, params);
+                if let Some(else_branch) = &cond.else_branch {
+                    new_cond.else_branch =
+                        Some(self.substitute_else_branch(else_branch, params));
+                }
+                BodyItem::Conditional(new_cond)
+            }
+            // Items that don't contain parameter references
+            other => other.clone(),
+        }
+    }
+
+    fn substitute_else_branch(
+        &self,
+        branch: &ElseBranch,
+        params: &HashMap<String, Expr>,
+    ) -> ElseBranch {
+        match branch {
+            ElseBranch::ElseIf(cond) => {
+                let mut new_cond = (**cond).clone();
+                new_cond.condition = self.substitute_expr(&cond.condition, params);
+                new_cond.then_body = self.substitute_params(&cond.then_body, params);
+                if let Some(else_branch) = &cond.else_branch {
+                    new_cond.else_branch =
+                        Some(self.substitute_else_branch(else_branch, params));
+                }
+                ElseBranch::ElseIf(Box::new(new_cond))
+            }
+            ElseBranch::Else(body, trivia, span) => {
+                ElseBranch::Else(
+                    self.substitute_params(body, params),
+                    trivia.clone(),
+                    *span,
+                )
+            }
+        }
+    }
+
+    /// Substitute parameter references within an expression.
+    fn substitute_expr(&self, expr: &Expr, params: &HashMap<String, Expr>) -> Expr {
+        match expr {
+            Expr::Ident(ident) => {
+                if let Some(replacement) = params.get(&ident.name) {
+                    replacement.clone()
+                } else {
+                    expr.clone()
+                }
+            }
+            Expr::BinaryOp(lhs, op, rhs, span) => Expr::BinaryOp(
+                Box::new(self.substitute_expr(lhs, params)),
+                *op,
+                Box::new(self.substitute_expr(rhs, params)),
+                *span,
+            ),
+            Expr::UnaryOp(op, operand, span) => Expr::UnaryOp(
+                *op,
+                Box::new(self.substitute_expr(operand, params)),
+                *span,
+            ),
+            Expr::Ternary(cond, then_expr, else_expr, span) => Expr::Ternary(
+                Box::new(self.substitute_expr(cond, params)),
+                Box::new(self.substitute_expr(then_expr, params)),
+                Box::new(self.substitute_expr(else_expr, params)),
+                *span,
+            ),
+            Expr::MemberAccess(obj, field, span) => Expr::MemberAccess(
+                Box::new(self.substitute_expr(obj, params)),
+                field.clone(),
+                *span,
+            ),
+            Expr::IndexAccess(obj, idx, span) => Expr::IndexAccess(
+                Box::new(self.substitute_expr(obj, params)),
+                Box::new(self.substitute_expr(idx, params)),
+                *span,
+            ),
+            Expr::FnCall(callee, args, span) => {
+                let new_args = args
+                    .iter()
+                    .map(|arg| match arg {
+                        CallArg::Positional(e) => {
+                            CallArg::Positional(self.substitute_expr(e, params))
+                        }
+                        CallArg::Named(ident, e) => {
+                            CallArg::Named(ident.clone(), self.substitute_expr(e, params))
+                        }
+                    })
+                    .collect();
+                Expr::FnCall(
+                    Box::new(self.substitute_expr(callee, params)),
+                    new_args,
+                    *span,
+                )
+            }
+            Expr::List(items, span) => {
+                let new_items = items
+                    .iter()
+                    .map(|e| self.substitute_expr(e, params))
+                    .collect();
+                Expr::List(new_items, *span)
+            }
+            Expr::Map(entries, span) => {
+                let new_entries = entries
+                    .iter()
+                    .map(|(k, v)| (k.clone(), self.substitute_expr(v, params)))
+                    .collect();
+                Expr::Map(new_entries, *span)
+            }
+            Expr::StringLit(string_lit) => {
+                Expr::StringLit(self.substitute_string_lit(string_lit, params))
+            }
+            Expr::Paren(inner, span) => {
+                Expr::Paren(Box::new(self.substitute_expr(inner, params)), *span)
+            }
+            Expr::Lambda(idents, body, span) => {
+                // Don't substitute params that are shadowed by lambda params
+                let lambda_param_names: Vec<&str> =
+                    idents.iter().map(|i| i.name.as_str()).collect();
+                let filtered_params: HashMap<String, Expr> = params
+                    .iter()
+                    .filter(|(k, _)| !lambda_param_names.contains(&k.as_str()))
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
+                Expr::Lambda(
+                    idents.clone(),
+                    Box::new(self.substitute_expr(body, &filtered_params)),
+                    *span,
+                )
+            }
+            // Literals and other expressions that don't contain ident references
+            _ => expr.clone(),
+        }
+    }
+
+    /// Substitute parameter references within a string literal's interpolations.
+    fn substitute_string_lit(
+        &self,
+        lit: &StringLit,
+        params: &HashMap<String, Expr>,
+    ) -> StringLit {
+        StringLit {
+            parts: lit
+                .parts
+                .iter()
+                .map(|part| match part {
+                    StringPart::Literal(s) => StringPart::Literal(s.clone()),
+                    StringPart::Interpolation(expr) => {
+                        StringPart::Interpolation(Box::new(
+                            self.substitute_expr(expr, params),
+                        ))
+                    }
+                })
+                .collect(),
+            span: lit.span,
+        }
+    }
+
+    /// Consume the expander and return accumulated diagnostics.
+    pub fn into_diagnostics(self) -> DiagnosticBag {
+        self.diagnostics
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wcl_core::span::{FileId, Span};
+    use wcl_core::trivia::Trivia;
+
+    fn dummy_span() -> Span {
+        Span::new(FileId(0), 0, 0)
+    }
+
+    fn make_ident(name: &str) -> Ident {
+        Ident {
+            name: name.to_string(),
+            span: dummy_span(),
+        }
+    }
+
+    fn make_simple_macro_def(name: &str, params: Vec<&str>) -> MacroDef {
+        MacroDef {
+            decorators: vec![],
+            kind: MacroKind::Function,
+            name: make_ident(name),
+            params: params
+                .into_iter()
+                .map(|p| MacroParam {
+                    name: make_ident(p),
+                    type_constraint: None,
+                    default: None,
+                    span: dummy_span(),
+                })
+                .collect(),
+            body: MacroBody::Function(vec![BodyItem::Attribute(Attribute {
+                decorators: vec![],
+                name: make_ident("generated"),
+                value: Expr::BoolLit(true, dummy_span()),
+                trivia: Trivia::empty(),
+                span: dummy_span(),
+            })]),
+            trivia: Trivia::empty(),
+            span: dummy_span(),
+        }
+    }
+
+    fn make_attr_macro_def(name: &str) -> MacroDef {
+        MacroDef {
+            decorators: vec![],
+            kind: MacroKind::Attribute,
+            name: make_ident(name),
+            params: vec![],
+            body: MacroBody::Attribute(vec![TransformDirective::Set(SetBlock {
+                attrs: vec![Attribute {
+                    decorators: vec![],
+                    name: make_ident("injected"),
+                    value: Expr::BoolLit(true, dummy_span()),
+                    trivia: Trivia::empty(),
+                    span: dummy_span(),
+                }],
+                span: dummy_span(),
+            })]),
+            trivia: Trivia::empty(),
+            span: dummy_span(),
+        }
+    }
+
+    #[test]
+    fn collect_registers_function_macros() {
+        let mut registry = MacroRegistry::new();
+        let mut diags = DiagnosticBag::new();
+
+        let macro_def = make_simple_macro_def("my_macro", vec!["arg1"]);
+        let mut doc = Document {
+            items: vec![DocItem::Body(BodyItem::MacroDef(macro_def))],
+            trivia: Trivia::empty(),
+            span: dummy_span(),
+        };
+
+        registry.collect(&mut doc, &mut diags);
+
+        assert!(!diags.has_errors());
+        assert!(registry.has_function_macro("my_macro"));
+        assert!(!registry.has_attribute_macro("my_macro"));
+        // MacroDef should be removed from the document
+        assert!(doc.items.is_empty());
+    }
+
+    #[test]
+    fn collect_registers_attribute_macros() {
+        let mut registry = MacroRegistry::new();
+        let mut diags = DiagnosticBag::new();
+
+        let macro_def = make_attr_macro_def("with_logging");
+        let mut doc = Document {
+            items: vec![DocItem::Body(BodyItem::MacroDef(macro_def))],
+            trivia: Trivia::empty(),
+            span: dummy_span(),
+        };
+
+        registry.collect(&mut doc, &mut diags);
+
+        assert!(!diags.has_errors());
+        assert!(registry.has_attribute_macro("with_logging"));
+        assert!(!registry.has_function_macro("with_logging"));
+        assert!(doc.items.is_empty());
+    }
+
+    #[test]
+    fn collect_detects_duplicate_function_macros() {
+        let mut registry = MacroRegistry::new();
+        let mut diags = DiagnosticBag::new();
+
+        let macro1 = make_simple_macro_def("dup", vec![]);
+        let macro2 = make_simple_macro_def("dup", vec![]);
+        let mut doc = Document {
+            items: vec![
+                DocItem::Body(BodyItem::MacroDef(macro1)),
+                DocItem::Body(BodyItem::MacroDef(macro2)),
+            ],
+            trivia: Trivia::empty(),
+            span: dummy_span(),
+        };
+
+        registry.collect(&mut doc, &mut diags);
+
+        assert!(diags.has_errors());
+        assert_eq!(diags.error_count(), 1);
+    }
+
+    #[test]
+    fn collect_preserves_non_macro_items() {
+        let mut registry = MacroRegistry::new();
+        let mut diags = DiagnosticBag::new();
+
+        let macro_def = make_simple_macro_def("my_macro", vec![]);
+        let attr = BodyItem::Attribute(Attribute {
+            decorators: vec![],
+            name: make_ident("port"),
+            value: Expr::IntLit(8080, dummy_span()),
+            trivia: Trivia::empty(),
+            span: dummy_span(),
+        });
+
+        let mut doc = Document {
+            items: vec![
+                DocItem::Body(BodyItem::MacroDef(macro_def)),
+                DocItem::Body(attr),
+            ],
+            trivia: Trivia::empty(),
+            span: dummy_span(),
+        };
+
+        registry.collect(&mut doc, &mut diags);
+
+        assert!(!diags.has_errors());
+        assert_eq!(doc.items.len(), 1); // Only the attribute remains
+        assert!(registry.has_function_macro("my_macro"));
+    }
+}

@@ -1,0 +1,11 @@
+[package]
+name = "wcl_schema"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+wcl_core = { workspace = true }
+wcl_eval = { workspace = true }
+regex = { workspace = true }
+thiserror = { workspace = true }
+indexmap = { workspace = true }

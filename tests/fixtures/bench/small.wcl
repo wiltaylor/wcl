@@ -1,0 +1,5 @@
+name = "my-service"
+port = 8080
+debug = true
+version = "1.0.0"
+timeout = 30
