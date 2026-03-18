@@ -112,12 +112,12 @@ namespace Wcl.Schema
                 if (item is BodyDocItem bdi && bdi.BodyItem is BlockItem bi)
                 {
                     // Check if block kind matches any schema
-                    ValidateBlock(bi.Block, values, diags);
+                    ValidateBlock(bi.Block, values, doc, diags);
                 }
             }
         }
 
-        private void ValidateBlock(Block block, OrderedMap<string, WclValue> values, DiagnosticBag diags)
+        private void ValidateBlock(Block block, OrderedMap<string, WclValue> values, Document doc, DiagnosticBag diags)
         {
             // Look for schema decorator or matching schema name
             var schemaName = block.Decorators.FirstOrDefault(d => d.Name.Name == "schema")
@@ -132,23 +132,48 @@ namespace Wcl.Schema
 
             if (!_schemas.TryGetValue(sName, out var schema)) return;
 
-            // Collect block's attribute names and values
+            // Resolve block values from the pre-evaluated values map
             var attrNames = new HashSet<string>();
             var attrValues = new Dictionary<string, (WclValue Value, Span Span)>();
+
+            // Try to find the evaluated block in the values map
+            WclValue? blockValue = null;
+            if (values.TryGetValue(block.Kind.Name, out var bv))
+                blockValue = bv;
+
             foreach (var bodyItem in block.Body)
             {
                 if (bodyItem is AttributeItem ai)
                 {
                     attrNames.Add(ai.Attribute.Name.Name);
-                    // Try to evaluate
-                    var evaluator = new Evaluator();
-                    var scope = evaluator.Scopes.CreateScope(ScopeKind.Module, null);
-                    try
+
+                    // Try to get value from evaluated BlockRef first
+                    WclValue? val = null;
+                    if (blockValue != null)
                     {
-                        var val = evaluator.EvalExpr(ai.Attribute.Value, scope);
-                        attrValues[ai.Attribute.Name.Name] = (val, ai.Attribute.Span);
+                        if (blockValue.Kind == WclValueKind.BlockRef)
+                            blockValue.AsBlockRef().Attributes.TryGetValue(ai.Attribute.Name.Name, out val);
+                        else if (blockValue.Kind == WclValueKind.List)
+                        {
+                            // Multiple blocks - try each
+                            foreach (var item in blockValue.AsList())
+                                if (item.Kind == WclValueKind.BlockRef &&
+                                    item.AsBlockRef().Attributes.TryGetValue(ai.Attribute.Name.Name, out val))
+                                    break;
+                        }
                     }
-                    catch { }
+
+                    // Fall back to fresh evaluation if not found
+                    if (val == null)
+                    {
+                        var evaluator = new Evaluator();
+                        var scope = evaluator.Scopes.CreateScope(ScopeKind.Module, null);
+                        try { val = evaluator.EvalExpr(ai.Attribute.Value, scope); }
+                        catch { }
+                    }
+
+                    if (val != null)
+                        attrValues[ai.Attribute.Name.Name] = (val, ai.Attribute.Span);
                 }
             }
 
@@ -219,13 +244,48 @@ namespace Wcl.Schema
                     if (!field.OneOf.Contains(val.AsString()))
                         diags.ErrorWithCode("E075", $"'{field.Name}' value must be one of: {string.Join(", ", field.OneOf)}", span);
                 }
+
+                // E076: @ref target validation
+                if (field.RefSchema != null && val.Kind == WclValueKind.Identifier)
+                {
+                    // Check that the referenced ID exists in blocks of the target schema type
+                    var refId = val.AsIdentifier();
+                    bool found = false;
+                    foreach (var docItem in doc.Items)
+                    {
+                        if (docItem is BodyDocItem bdi2 && bdi2.BodyItem is BlockItem refBlock)
+                        {
+                            if (refBlock.Block.Kind.Name == field.RefSchema)
+                            {
+                                var refBlockId = refBlock.Block.InlineId switch
+                                {
+                                    LiteralInlineId lit => lit.Lit.Value,
+                                    _ => null,
+                                };
+                                if (refBlockId == refId) { found = true; break; }
+                            }
+                        }
+                    }
+                    if (!found)
+                        diags.ErrorWithCode("E076",
+                            $"@ref target not found: no {field.RefSchema} with id '{refId}'", span);
+                }
+
+                // E077: @id_pattern validation
+                if (field.IdPattern != null && (val.Kind == WclValueKind.String || val.Kind == WclValueKind.Identifier))
+                {
+                    var valStr = val.Kind == WclValueKind.String ? val.AsString() : val.AsIdentifier();
+                    if (!Regex.IsMatch(valStr, field.IdPattern))
+                        diags.ErrorWithCode("E077",
+                            $"'{field.Name}' value '{valStr}' does not match @id_pattern '{field.IdPattern}'", span);
+                }
             }
 
             // Recurse into children
             foreach (var bodyItem in block.Body)
             {
                 if (bodyItem is BlockItem childBlock)
-                    ValidateBlock(childBlock.Block, values, diags);
+                    ValidateBlock(childBlock.Block, values, doc, diags);
             }
         }
 

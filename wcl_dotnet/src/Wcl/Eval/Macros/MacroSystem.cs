@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Wcl.Core;
 using Wcl.Core.Ast;
+using Wcl.Eval.ControlFlow;
 
 namespace Wcl.Eval.Macros
 {
@@ -19,6 +20,11 @@ namespace Wcl.Eval.Macros
                 {
                     var def = mdi.MacroDef;
                     var dict = def.Kind == MacroKind.Function ? _functionMacros : _attributeMacros;
+                    if (dict.ContainsKey(def.Name.Name))
+                    {
+                        diags.ErrorWithCode("E016",
+                            $"duplicate macro name: '{def.Name.Name}'", def.Span);
+                    }
                     dict[def.Name.Name] = def;
                 }
                 else
@@ -57,6 +63,12 @@ namespace Wcl.Eval.Macros
                 bool changed = false;
                 doc.Items = ExpandDocItems(doc.Items, ref changed);
                 if (!changed) break;
+                if (pass == _maxDepth - 1)
+                {
+                    _diagnostics.ErrorWithCode("E022",
+                        $"macro expansion did not converge after {_maxDepth} passes",
+                        Span.Dummy());
+                }
             }
         }
 
@@ -87,8 +99,50 @@ namespace Wcl.Eval.Macros
                 if (def != null && def.Body is FunctionMacroBody fb)
                 {
                     changed = true;
-                    // Simple substitution - clone body items
-                    return new List<BodyItem>(fb.Items);
+
+                    // Build parameter bindings: param name -> arg expression value
+                    var bindings = new Dictionary<string, Expr>();
+                    for (int i = 0; i < def.Params.Count; i++)
+                    {
+                        var paramName = def.Params[i].Name.Name;
+                        if (i < mc.MacroCall.Args.Count)
+                        {
+                            var arg = mc.MacroCall.Args[i];
+                            switch (arg)
+                            {
+                                case PositionalMacroArg pa:
+                                    bindings[paramName] = pa.Value;
+                                    break;
+                                case NamedMacroArg na:
+                                    bindings[na.Name.Name] = na.Value;
+                                    break;
+                            }
+                        }
+                        else if (def.Params[i].Default != null)
+                        {
+                            bindings[paramName] = def.Params[i].Default!;
+                        }
+                    }
+
+                    // Also handle named args that aren't positionally matched
+                    foreach (var arg in mc.MacroCall.Args)
+                    {
+                        if (arg is NamedMacroArg na && !bindings.ContainsKey(na.Name.Name))
+                            bindings[na.Name.Name] = na.Value;
+                    }
+
+                    // Substitute parameters in body items
+                    var result = new List<BodyItem>();
+                    foreach (var bodyItem in fb.Items)
+                    {
+                        result.Add(SubstituteParams(bodyItem, bindings));
+                    }
+                    return result;
+                }
+                else if (def == null)
+                {
+                    // Not a known macro - leave as-is (might be a regular function call parsed as macro call)
+                    return new List<BodyItem> { item };
                 }
             }
 
@@ -103,7 +157,7 @@ namespace Wcl.Eval.Macros
                 }
                 bi.Block.Body = newBody;
 
-                // Check for attribute macros
+                // Apply attribute macros
                 var remainingDecorators = new List<Decorator>();
                 foreach (var dec in bi.Block.Decorators)
                 {
@@ -124,6 +178,85 @@ namespace Wcl.Eval.Macros
             return new List<BodyItem> { item };
         }
 
+        private BodyItem SubstituteParams(BodyItem item, Dictionary<string, Expr> bindings)
+        {
+            switch (item)
+            {
+                case AttributeItem ai:
+                    return new AttributeItem(new Attribute(
+                        ai.Attribute.Decorators, ai.Attribute.Name,
+                        SubstituteExprParams(ai.Attribute.Value, bindings),
+                        ai.Attribute.Trivia, ai.Attribute.Span));
+                case LetBindingItem li:
+                    return new LetBindingItem(new LetBinding(
+                        li.LetBinding.Decorators, li.LetBinding.Name,
+                        SubstituteExprParams(li.LetBinding.Value, bindings),
+                        li.LetBinding.Trivia, li.LetBinding.Span));
+                case BlockItem bi:
+                {
+                    var newBody = bi.Block.Body.Select(b => SubstituteParams(b, bindings)).ToList();
+                    return new BlockItem(new Block(bi.Block.Decorators, bi.Block.Partial,
+                        bi.Block.Kind, bi.Block.InlineId, bi.Block.Labels, newBody,
+                        bi.Block.Trivia, bi.Block.Span));
+                }
+                default:
+                    return item;
+            }
+        }
+
+        private Expr SubstituteExprParams(Expr expr, Dictionary<string, Expr> bindings)
+        {
+            switch (expr)
+            {
+                case IdentExpr ie:
+                    if (bindings.TryGetValue(ie.Ident.Name, out var replacement))
+                        return replacement;
+                    return expr;
+                case BinaryOpExpr be:
+                    return new BinaryOpExpr(
+                        SubstituteExprParams(be.Left, bindings),
+                        be.Op,
+                        SubstituteExprParams(be.Right, bindings),
+                        be.Span);
+                case UnaryOpExpr ue:
+                    return new UnaryOpExpr(ue.Op,
+                        SubstituteExprParams(ue.Operand, bindings), ue.Span);
+                case FnCallExpr fc:
+                    return new FnCallExpr(
+                        SubstituteExprParams(fc.Callee, bindings),
+                        fc.Args.Select(a => a switch
+                        {
+                            PositionalCallArg pa => (CallArg)new PositionalCallArg(SubstituteExprParams(pa.Value, bindings)),
+                            NamedCallArg na => new NamedCallArg(na.Name, SubstituteExprParams(na.Value, bindings)),
+                            _ => a,
+                        }).ToList(),
+                        fc.Span);
+                case MemberAccessExpr ma:
+                    return new MemberAccessExpr(SubstituteExprParams(ma.Object, bindings), ma.Member, ma.Span);
+                case IndexAccessExpr ia:
+                    return new IndexAccessExpr(SubstituteExprParams(ia.Object, bindings),
+                        SubstituteExprParams(ia.Index, bindings), ia.Span);
+                case TernaryExpr te:
+                    return new TernaryExpr(
+                        SubstituteExprParams(te.Condition, bindings),
+                        SubstituteExprParams(te.ThenExpr, bindings),
+                        SubstituteExprParams(te.ElseExpr, bindings), te.Span);
+                case ListExpr le:
+                    return new ListExpr(le.Items.Select(i => SubstituteExprParams(i, bindings)).ToList(), le.Span);
+                case MapExpr me:
+                    return new MapExpr(me.Entries.Select(e => (e.Key, SubstituteExprParams(e.Value, bindings))).ToList(), me.Span);
+                case ParenExpr pe:
+                    return new ParenExpr(SubstituteExprParams(pe.Inner, bindings), pe.Span);
+                case LambdaExpr le:
+                    // Don't substitute params that are shadowed by lambda params
+                    var filtered = new Dictionary<string, Expr>(bindings);
+                    foreach (var p in le.Params) filtered.Remove(p.Name);
+                    return new LambdaExpr(le.Params, SubstituteExprParams(le.Body, filtered), le.Span);
+                default:
+                    return expr;
+            }
+        }
+
         private void ApplyTransformDirectives(Block block, List<TransformDirective> directives)
         {
             foreach (var directive in directives)
@@ -136,7 +269,6 @@ namespace Wcl.Eval.Macros
                     case SetDirective set:
                         foreach (var attr in set.Attrs)
                         {
-                            // Replace or add attribute
                             bool found = false;
                             for (int i = 0; i < block.Body.Count; i++)
                             {
@@ -154,6 +286,10 @@ namespace Wcl.Eval.Macros
                     case RemoveDirective rem:
                         var namesToRemove = new HashSet<string>(rem.Names.Select(n => n.Name));
                         block.Body.RemoveAll(b => b is AttributeItem ai && namesToRemove.Contains(ai.Attribute.Name.Name));
+                        break;
+                    case WhenDirective wd:
+                        // When directives are conditionally applied (simplified: always apply for now)
+                        ApplyTransformDirectives(block, wd.Directives);
                         break;
                 }
             }

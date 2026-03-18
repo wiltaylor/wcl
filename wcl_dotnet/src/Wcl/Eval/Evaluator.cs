@@ -25,10 +25,7 @@ namespace Wcl.Eval
             _customFunctions = customFunctions;
         }
 
-        public static Evaluator WithFunctions(FunctionRegistry? functions)
-        {
-            return new Evaluator(functions);
-        }
+        public static Evaluator WithFunctions(FunctionRegistry? functions) => new Evaluator(functions);
 
         public ScopeArena Scopes => _scopes;
         public ScopeArena ScopesMut() => _scopes;
@@ -43,27 +40,27 @@ namespace Wcl.Eval
             return (s, d);
         }
 
+        // ── Two-pass evaluation with dependency tracking ──
+
         public OrderedMap<string, WclValue> Evaluate(Document doc)
         {
             var moduleScope = _scopes.CreateScope(ScopeKind.Module, null);
-            var values = new OrderedMap<string, WclValue>();
 
+            // Pass 1: Register all entries (unevaluated) and collect dependencies
             foreach (var item in doc.Items)
             {
                 switch (item)
                 {
                     case BodyDocItem bodyDoc:
-                        EvalBodyItem(bodyDoc.BodyItem, moduleScope, values);
+                        RegisterBodyItem(bodyDoc.BodyItem, moduleScope);
                         break;
                     case ExportLetItem exportLet:
                     {
-                        var val = EvalExprSafe(exportLet.ExportLet.Value, moduleScope);
-                        if (val != null)
-                        {
-                            values[exportLet.ExportLet.Name.Name] = val;
-                            _scopes.AddEntry(moduleScope, new ScopeEntry(
-                                exportLet.ExportLet.Name.Name, ScopeEntryKind.LetBinding, val, exportLet.ExportLet.Span));
-                        }
+                        var deps = FindDependencies(exportLet.ExportLet.Value);
+                        var entry = new ScopeEntry(exportLet.ExportLet.Name.Name,
+                            ScopeEntryKind.ExportLet, null, exportLet.ExportLet.Span);
+                        entry.Dependencies = deps;
+                        _scopes.AddEntry(moduleScope, entry);
                         break;
                     }
                     case FunctionDeclItem funcDecl:
@@ -72,10 +69,121 @@ namespace Wcl.Eval
                 }
             }
 
+            // Topological sort for dependency ordering
+            var (order, cycle) = _scopes.TopoSort(moduleScope);
+            if (cycle != null)
+            {
+                _diagnostics.ErrorWithCode("E041",
+                    $"circular dependency detected: {string.Join(" -> ", cycle)}",
+                    Span.Dummy());
+                // Fall back to document order
+                order = _scopes.Get(moduleScope).Entries.Select(e => e.Name).ToList();
+            }
+
+            // Pass 2: Evaluate in dependency order
+            var values = new OrderedMap<string, WclValue>();
+            foreach (var name in order!)
+            {
+                var entry = _scopes.Get(moduleScope).FindLocal(name);
+                if (entry == null || entry.Evaluated) continue;
+
+                var bodyItem = FindDocBodyItem(doc, name);
+                if (bodyItem != null)
+                {
+                    EvalRegisteredItem(bodyItem, moduleScope, values, entry);
+                }
+                else
+                {
+                    // Export let
+                    var exportLet = FindExportLet(doc, name);
+                    if (exportLet != null)
+                    {
+                        var val = EvalExprSafe(exportLet.Value, moduleScope);
+                        if (val != null)
+                        {
+                            entry.Value = val;
+                            entry.Evaluated = true;
+                            values[name] = val;
+                        }
+                    }
+                }
+            }
+
+            // Check for unused variables (W002)
+            foreach (var scopeEntry in _scopes.Get(moduleScope).Entries)
+            {
+                if (scopeEntry.Kind == ScopeEntryKind.LetBinding && scopeEntry.ReadCount == 0)
+                {
+                    _diagnostics.WarningWithCode("W002",
+                        $"unused variable '{scopeEntry.Name}'", scopeEntry.Span);
+                }
+            }
+
             return values;
         }
 
-        private void EvalBodyItem(BodyItem item, ScopeId scope, OrderedMap<string, WclValue> values)
+        private void RegisterBodyItem(BodyItem item, ScopeId scope)
+        {
+            switch (item)
+            {
+                case AttributeItem attr:
+                {
+                    var deps = FindDependencies(attr.Attribute.Value);
+                    var entry = new ScopeEntry(attr.Attribute.Name.Name,
+                        ScopeEntryKind.Attribute, null, attr.Attribute.Span);
+                    entry.Dependencies = deps;
+                    _scopes.AddEntry(scope, entry);
+                    break;
+                }
+                case LetBindingItem let:
+                {
+                    // Check for shadowing (W001)
+                    var shadowedSpan = _scopes.CheckShadowing(scope, let.LetBinding.Name.Name);
+                    if (shadowedSpan.HasValue)
+                    {
+                        _diagnostics.WarningWithCode("W001",
+                            $"variable '{let.LetBinding.Name.Name}' shadows an outer binding",
+                            let.LetBinding.Name.Span);
+                    }
+
+                    var deps = FindDependencies(let.LetBinding.Value);
+                    var entry = new ScopeEntry(let.LetBinding.Name.Name,
+                        ScopeEntryKind.LetBinding, null, let.LetBinding.Span);
+                    entry.Dependencies = deps;
+                    _scopes.AddEntry(scope, entry);
+                    break;
+                }
+                case BlockItem block:
+                {
+                    var entry = new ScopeEntry(block.Block.Kind.Name,
+                        ScopeEntryKind.BlockChild, null, block.Block.Span);
+                    // Blocks depend on names used in their attributes
+                    var deps = new HashSet<string>();
+                    foreach (var bi in block.Block.Body)
+                    {
+                        if (bi is AttributeItem ai)
+                            foreach (var d in FindDependencies(ai.Attribute.Value))
+                                deps.Add(d);
+                        else if (bi is LetBindingItem li)
+                            foreach (var d in FindDependencies(li.LetBinding.Value))
+                                deps.Add(d);
+                    }
+                    entry.Dependencies = deps;
+                    _scopes.AddEntry(scope, entry);
+                    break;
+                }
+                case TableItem _:
+                {
+                    var entry = new ScopeEntry("table",
+                        ScopeEntryKind.BlockChild, null, Span.Dummy());
+                    _scopes.AddEntry(scope, entry);
+                    break;
+                }
+            }
+        }
+
+        private void EvalRegisteredItem(BodyItem item, ScopeId scope,
+            OrderedMap<string, WclValue> values, ScopeEntry entry)
         {
             switch (item)
             {
@@ -84,9 +192,9 @@ namespace Wcl.Eval
                     var val = EvalExprSafe(attr.Attribute.Value, scope);
                     if (val != null)
                     {
+                        entry.Value = val;
+                        entry.Evaluated = true;
                         values[attr.Attribute.Name.Name] = val;
-                        _scopes.AddEntry(scope, new ScopeEntry(
-                            attr.Attribute.Name.Name, ScopeEntryKind.Attribute, val, attr.Attribute.Span));
                     }
                     break;
                 }
@@ -95,8 +203,8 @@ namespace Wcl.Eval
                     var val = EvalExprSafe(let.LetBinding.Value, scope);
                     if (val != null)
                     {
-                        _scopes.AddEntry(scope, new ScopeEntry(
-                            let.LetBinding.Name.Name, ScopeEntryKind.LetBinding, val, let.LetBinding.Span));
+                        entry.Value = val;
+                        entry.Evaluated = true;
                     }
                     break;
                 }
@@ -104,16 +212,10 @@ namespace Wcl.Eval
                 {
                     var blockRef = EvalBlock(block.Block, scope);
                     var blockVal = WclValue.NewBlockRef(blockRef);
+                    entry.Value = blockVal;
+                    entry.Evaluated = true;
 
-                    // Store as kind or kind#id
-                    var key = block.Block.Kind.Name;
-                    if (block.Block.InlineId != null)
-                    {
-                        var id = ResolveInlineId(block.Block.InlineId, scope);
-                        key = $"{key}#{id}";
-                    }
-
-                    // Add to values - if multiple blocks of same kind, collect in a list
+                    // Add to values
                     if (values.TryGetValue(block.Block.Kind.Name, out var existing))
                     {
                         if (existing.Kind == WclValueKind.List)
@@ -130,15 +232,97 @@ namespace Wcl.Eval
                 }
                 case TableItem table:
                     EvalTable(table.Table, scope, values);
+                    entry.Evaluated = true;
                     break;
             }
         }
+
+        private static BodyItem? FindDocBodyItem(Document doc, string name)
+        {
+            foreach (var item in doc.Items)
+            {
+                if (item is BodyDocItem bdi)
+                {
+                    switch (bdi.BodyItem)
+                    {
+                        case AttributeItem ai when ai.Attribute.Name.Name == name:
+                            return ai;
+                        case LetBindingItem li when li.LetBinding.Name.Name == name:
+                            return li;
+                        case BlockItem bi when bi.Block.Kind.Name == name:
+                            return bi;
+                        case TableItem ti:
+                            if (name == "table") return ti;
+                            break;
+                    }
+                }
+            }
+            return null;
+        }
+
+        private static ExportLet? FindExportLet(Document doc, string name)
+        {
+            foreach (var item in doc.Items)
+            {
+                if (item is ExportLetItem eli && eli.ExportLet.Name.Name == name)
+                    return eli.ExportLet;
+            }
+            return null;
+        }
+
+        // ── Dependency analysis ──
+
+        public static HashSet<string> FindDependencies(Expr expr)
+        {
+            var deps = new HashSet<string>();
+            CollectDeps(expr, deps);
+            return deps;
+        }
+
+        private static void CollectDeps(Expr expr, HashSet<string> deps)
+        {
+            switch (expr)
+            {
+                case IdentExpr e: deps.Add(e.Ident.Name); break;
+                case BinaryOpExpr e: CollectDeps(e.Left, deps); CollectDeps(e.Right, deps); break;
+                case UnaryOpExpr e: CollectDeps(e.Operand, deps); break;
+                case TernaryExpr e: CollectDeps(e.Condition, deps); CollectDeps(e.ThenExpr, deps); CollectDeps(e.ElseExpr, deps); break;
+                case MemberAccessExpr e: CollectDeps(e.Object, deps); break;
+                case IndexAccessExpr e: CollectDeps(e.Object, deps); CollectDeps(e.Index, deps); break;
+                case FnCallExpr e:
+                    CollectDeps(e.Callee, deps);
+                    foreach (var a in e.Args)
+                    {
+                        if (a is PositionalCallArg pa) CollectDeps(pa.Value, deps);
+                        else if (a is NamedCallArg na) CollectDeps(na.Value, deps);
+                    }
+                    break;
+                case LambdaExpr e: CollectDeps(e.Body, deps); break;
+                case ListExpr e: foreach (var i in e.Items) CollectDeps(i, deps); break;
+                case MapExpr e: foreach (var (_, v) in e.Entries) CollectDeps(v, deps); break;
+                case SetExpr e: foreach (var i in e.Items) CollectDeps(i, deps); break;
+                case BlockExprNode e:
+                    foreach (var l in e.Lets) CollectDeps(l.Value, deps);
+                    CollectDeps(e.FinalExpr, deps);
+                    break;
+                case StringLitExpr e:
+                    foreach (var p in e.StringLit.Parts)
+                        if (p is InterpolationPart ip) CollectDeps(ip.Expr, deps);
+                    break;
+                case ParenExpr e: CollectDeps(e.Inner, deps); break;
+            }
+        }
+
+        // ── Block evaluation ──
 
         private BlockRef EvalBlock(Block block, ScopeId parentScope)
         {
             var blockScope = _scopes.CreateScope(ScopeKind.Block, parentScope);
             var attrs = new OrderedMap<string, WclValue>();
             var children = new List<BlockRef>();
+
+            // Add self reference
+            // (deferred - self will resolve to the final block)
 
             foreach (var bodyItem in block.Body)
             {
@@ -178,7 +362,6 @@ namespace Wcl.Eval
 
         private void EvalTable(Table table, ScopeId scope, OrderedMap<string, WclValue> values)
         {
-            // Tables become lists of maps
             var rows = new List<WclValue>();
             foreach (var row in table.Rows)
             {
@@ -220,7 +403,7 @@ namespace Wcl.Eval
             }
         }
 
-        private string ResolveStringLit(StringLit sl, ScopeId scope)
+        public string ResolveStringLit(StringLit sl, ScopeId scope)
         {
             var sb = new System.Text.StringBuilder();
             foreach (var part in sl.Parts)
@@ -269,6 +452,8 @@ namespace Wcl.Eval
             }
         }
 
+        // ── Expression evaluation ──
+
         public WclValue EvalExpr(Expr expr, ScopeId scope)
         {
             switch (expr)
@@ -282,23 +467,17 @@ namespace Wcl.Eval
                 {
                     var val = _scopes.Resolve(scope, e.Ident.Name);
                     if (val != null) return val;
-                    // Check if it's a builtin function name
                     if (_builtins.Functions.ContainsKey(e.Ident.Name))
                         return WclValue.NewFunction(new FunctionValue(
                             new List<string>(), new BuiltinFunctionBody(e.Ident.Name)));
                     if (_customFunctions?.Functions.ContainsKey(e.Ident.Name) == true)
                         return WclValue.NewFunction(new FunctionValue(
                             new List<string>(), new BuiltinFunctionBody(e.Ident.Name)));
-                    throw new Exception($"undefined variable: {e.Ident.Name}");
+                    throw new EvalException("E052", $"undefined variable: {e.Ident.Name}");
                 }
                 case IdentifierLitExpr e: return WclValue.NewIdentifier(e.Lit.Value);
                 case ListExpr e:
-                {
-                    var items = new List<WclValue>();
-                    foreach (var item in e.Items)
-                        items.Add(EvalExpr(item, scope));
-                    return WclValue.NewList(items);
-                }
+                    return WclValue.NewList(e.Items.Select(i => EvalExpr(i, scope)).ToList());
                 case MapExpr e:
                 {
                     var map = new OrderedMap<string, WclValue>();
@@ -308,7 +487,7 @@ namespace Wcl.Eval
                         {
                             IdentMapKey ik => ik.Ident.Name,
                             StringMapKey sk => ResolveStringLit(sk.StringLit, scope),
-                            _ => throw new Exception("invalid map key"),
+                            _ => throw new EvalException("E040", "invalid map key"),
                         };
                         map[keyStr] = EvalExpr(val, scope);
                     }
@@ -334,45 +513,9 @@ namespace Wcl.Eval
                     return EvalExpr(e.ElseExpr, scope);
                 }
                 case MemberAccessExpr e:
-                {
-                    var obj = EvalExpr(e.Object, scope);
-                    if (obj.Kind == WclValueKind.Map)
-                    {
-                        if (obj.AsMap().TryGetValue(e.Member.Name, out var val))
-                            return val;
-                        throw new Exception($"map does not have key '{e.Member.Name}'");
-                    }
-                    if (obj.Kind == WclValueKind.BlockRef)
-                    {
-                        var br = obj.AsBlockRef();
-                        if (br.Attributes.TryGetValue(e.Member.Name, out var val))
-                            return val;
-                        // Check for id, kind, labels, decorators
-                        if (e.Member.Name == "id") return br.Id != null ? WclValue.NewString(br.Id) : WclValue.Null;
-                        if (e.Member.Name == "kind") return WclValue.NewString(br.Kind);
-                        throw new Exception($"block does not have attribute '{e.Member.Name}'");
-                    }
-                    throw new Exception($"cannot access member on {obj.TypeName}");
-                }
+                    return EvalMemberAccess(e, scope);
                 case IndexAccessExpr e:
-                {
-                    var obj = EvalExpr(e.Object, scope);
-                    var idx = EvalExpr(e.Index, scope);
-                    if (obj.Kind == WclValueKind.List)
-                    {
-                        var list = obj.AsList();
-                        int i = (int)idx.AsInt();
-                        if (i < 0) i += list.Count;
-                        return list[i];
-                    }
-                    if (obj.Kind == WclValueKind.Map)
-                    {
-                        var key = idx.Kind == WclValueKind.String ? idx.AsString() : idx.ToInterpString();
-                        if (obj.AsMap().TryGetValue(key, out var val)) return val;
-                        throw new Exception($"map key not found: {key}");
-                    }
-                    throw new Exception($"cannot index {obj.TypeName}");
-                }
+                    return EvalIndexAccess(e, scope);
                 case FnCallExpr e: return EvalFnCall(e, scope);
                 case LambdaExpr e:
                 {
@@ -394,13 +537,75 @@ namespace Wcl.Eval
                 case RefExpr e: return WclValue.NewIdentifier(e.Id.Value);
                 case ParenExpr e: return EvalExpr(e.Inner, scope);
                 default:
-                    throw new Exception($"unsupported expression type: {expr.GetType().Name}");
+                    throw new EvalException("E040", $"unsupported expression type: {expr.GetType().Name}");
             }
+        }
+
+        private WclValue EvalMemberAccess(MemberAccessExpr e, ScopeId scope)
+        {
+            var obj = EvalExpr(e.Object, scope);
+            if (obj.Kind == WclValueKind.Map)
+            {
+                if (obj.AsMap().TryGetValue(e.Member.Name, out var val))
+                    return val;
+                throw new EvalException("E054", $"map does not have key '{e.Member.Name}'");
+            }
+            if (obj.Kind == WclValueKind.BlockRef)
+            {
+                var br = obj.AsBlockRef();
+                if (br.Attributes.TryGetValue(e.Member.Name, out var val))
+                    return val;
+                switch (e.Member.Name)
+                {
+                    case "id": return br.Id != null ? WclValue.NewString(br.Id) : WclValue.Null;
+                    case "kind": return WclValue.NewString(br.Kind);
+                    case "labels": return WclValue.NewList(br.Labels.Select(l => WclValue.NewString(l)).ToList());
+                    case "decorators":
+                        return WclValue.NewList(br.Decorators.Select(d =>
+                        {
+                            var m = new OrderedMap<string, WclValue>();
+                            m["name"] = WclValue.NewString(d.Name);
+                            foreach (var a in d.Args) m[a.Key] = a.Value;
+                            return WclValue.NewMap(m);
+                        }).ToList());
+                    case "children":
+                        return WclValue.NewList(br.Children.Select(c => WclValue.NewBlockRef(c)).ToList());
+                }
+                throw new EvalException("E054", $"block does not have attribute '{e.Member.Name}'");
+            }
+            // String/List .length access
+            if (e.Member.Name == "length")
+            {
+                if (obj.Kind == WclValueKind.String) return WclValue.NewInt(obj.AsString().Length);
+                if (obj.Kind == WclValueKind.List) return WclValue.NewInt(obj.AsList().Count);
+            }
+            throw new EvalException("E054", $"cannot access member '{e.Member.Name}' on {obj.TypeName}");
+        }
+
+        private WclValue EvalIndexAccess(IndexAccessExpr e, ScopeId scope)
+        {
+            var obj = EvalExpr(e.Object, scope);
+            var idx = EvalExpr(e.Index, scope);
+            if (obj.Kind == WclValueKind.List)
+            {
+                var list = obj.AsList();
+                int i = (int)idx.AsInt();
+                if (i < 0) i += list.Count;
+                if (i < 0 || i >= list.Count)
+                    throw new EvalException("E054", $"index {idx.AsInt()} out of bounds (list length {list.Count})");
+                return list[i];
+            }
+            if (obj.Kind == WclValueKind.Map)
+            {
+                var key = idx.Kind == WclValueKind.String ? idx.AsString() : idx.ToInterpString();
+                if (obj.AsMap().TryGetValue(key, out var val)) return val;
+                throw new EvalException("E054", $"map key not found: {key}");
+            }
+            throw new EvalException("E054", $"cannot index {obj.TypeName}");
         }
 
         private WclValue EvalBinaryOp(BinaryOpExpr e, ScopeId scope)
         {
-            // Short-circuit for && and ||
             if (e.Op == BinOp.And)
             {
                 var lhs = EvalExpr(e.Left, scope);
@@ -433,15 +638,12 @@ namespace Wcl.Eval
                 return WclValue.NewList(result);
             }
 
-            // Regex match
             if (e.Op == BinOp.Match)
                 return WclValue.NewBool(Regex.IsMatch(left.AsString(), right.AsString()));
 
-            // Equality
             if (e.Op == BinOp.Eq) return WclValue.NewBool(left.Equals(right));
             if (e.Op == BinOp.Neq) return WclValue.NewBool(!left.Equals(right));
 
-            // Arithmetic with Int/Float promotion
             if (IsNumeric(left) && IsNumeric(right))
             {
                 if (left.Kind == WclValueKind.Int && right.Kind == WclValueKind.Int)
@@ -452,13 +654,13 @@ namespace Wcl.Eval
                         BinOp.Add => WclValue.NewInt(a + b),
                         BinOp.Sub => WclValue.NewInt(a - b),
                         BinOp.Mul => WclValue.NewInt(a * b),
-                        BinOp.Div => b != 0 ? WclValue.NewInt(a / b) : throw new Exception("division by zero"),
-                        BinOp.Mod => WclValue.NewInt(a % b),
+                        BinOp.Div => b != 0 ? WclValue.NewInt(a / b) : throw new EvalException("E051", "division by zero"),
+                        BinOp.Mod => b != 0 ? WclValue.NewInt(a % b) : throw new EvalException("E051", "modulo by zero"),
                         BinOp.Lt => WclValue.NewBool(a < b),
                         BinOp.Gt => WclValue.NewBool(a > b),
                         BinOp.Lte => WclValue.NewBool(a <= b),
                         BinOp.Gte => WclValue.NewBool(a >= b),
-                        _ => throw new Exception($"unsupported op {e.Op} for int"),
+                        _ => throw new EvalException("E040", $"unsupported op {e.Op} for int"),
                     };
                 }
 
@@ -469,17 +671,16 @@ namespace Wcl.Eval
                     BinOp.Add => WclValue.NewFloat(fa + fb),
                     BinOp.Sub => WclValue.NewFloat(fa - fb),
                     BinOp.Mul => WclValue.NewFloat(fa * fb),
-                    BinOp.Div => fb != 0 ? WclValue.NewFloat(fa / fb) : throw new Exception("division by zero"),
-                    BinOp.Mod => WclValue.NewFloat(fa % fb),
+                    BinOp.Div => fb != 0 ? WclValue.NewFloat(fa / fb) : throw new EvalException("E051", "division by zero"),
+                    BinOp.Mod => fb != 0 ? WclValue.NewFloat(fa % fb) : throw new EvalException("E051", "modulo by zero"),
                     BinOp.Lt => WclValue.NewBool(fa < fb),
                     BinOp.Gt => WclValue.NewBool(fa > fb),
                     BinOp.Lte => WclValue.NewBool(fa <= fb),
                     BinOp.Gte => WclValue.NewBool(fa >= fb),
-                    _ => throw new Exception($"unsupported op {e.Op}"),
+                    _ => throw new EvalException("E040", $"unsupported op {e.Op}"),
                 };
             }
 
-            // String comparison
             if (left.Kind == WclValueKind.String && right.Kind == WclValueKind.String)
             {
                 int cmp = string.Compare(left.AsString(), right.AsString(), StringComparison.Ordinal);
@@ -489,11 +690,11 @@ namespace Wcl.Eval
                     BinOp.Gt => WclValue.NewBool(cmp > 0),
                     BinOp.Lte => WclValue.NewBool(cmp <= 0),
                     BinOp.Gte => WclValue.NewBool(cmp >= 0),
-                    _ => throw new Exception($"unsupported op {e.Op} for string"),
+                    _ => throw new EvalException("E040", $"unsupported op {e.Op} for string"),
                 };
             }
 
-            throw new Exception($"cannot apply {e.Op} to {left.TypeName} and {right.TypeName}");
+            throw new EvalException("E040", $"cannot apply {e.Op} to {left.TypeName} and {right.TypeName}");
         }
 
         private static bool IsNumeric(WclValue v) =>
@@ -508,18 +709,16 @@ namespace Wcl.Eval
                 UnaryOp.Neg => val.Kind == WclValueKind.Int
                     ? WclValue.NewInt(-val.AsInt())
                     : WclValue.NewFloat(-val.AsFloat()),
-                _ => throw new Exception($"unsupported unary op {e.Op}"),
+                _ => throw new EvalException("E040", $"unsupported unary op {e.Op}"),
             };
         }
 
         private WclValue EvalFnCall(FnCallExpr e, ScopeId scope)
         {
-            // Special higher-order functions
             if (e.Callee is IdentExpr callee)
             {
                 var name = callee.Ident.Name;
 
-                // Check for declared but unregistered functions
                 if (_declaredFunctions.Contains(name) &&
                     !_builtins.Functions.ContainsKey(name) &&
                     _customFunctions?.Functions.ContainsKey(name) != true)
@@ -530,7 +729,6 @@ namespace Wcl.Eval
                     return WclValue.Null;
                 }
 
-                // Higher-order functions with lazy lambda evaluation
                 switch (name)
                 {
                     case "map": return EvalHigherOrder("map", e.Args, scope);
@@ -542,7 +740,6 @@ namespace Wcl.Eval
                 }
             }
 
-            // Evaluate callee
             var calleeVal = EvalExpr(e.Callee, scope);
             var args = e.Args.Select(a => a switch
             {
@@ -556,12 +753,11 @@ namespace Wcl.Eval
                 var fn = calleeVal.AsFunction();
                 if (fn.Body is BuiltinFunctionBody builtin)
                 {
-                    // Try custom first, then builtins
                     if (_customFunctions?.Functions.TryGetValue(builtin.Name, out var customFn) == true)
                         return customFn(args);
                     if (_builtins.Functions.TryGetValue(builtin.Name, out var builtinFn))
                         return builtinFn(args);
-                    throw new Exception($"unknown builtin: {builtin.Name}");
+                    throw new EvalException("E052", $"unknown builtin: {builtin.Name}");
                 }
                 if (fn.Body is UserDefinedFunctionBody userDef)
                 {
@@ -574,7 +770,6 @@ namespace Wcl.Eval
                 }
             }
 
-            // Maybe it's a direct builtin call
             if (e.Callee is IdentExpr ident)
             {
                 var name = ident.Ident.Name;
@@ -584,74 +779,44 @@ namespace Wcl.Eval
                     return bfn(args);
             }
 
-            throw new Exception($"not callable: {calleeVal.TypeName}");
+            throw new EvalException("E040", $"not callable: {calleeVal.TypeName}");
         }
 
         private WclValue EvalHigherOrder(string name, List<CallArg> args, ScopeId scope)
         {
-            if (args.Count < 2) throw new Exception($"{name} requires at least 2 arguments");
+            if (args.Count < 2)
+                throw new EvalException("E040", $"{name} requires at least 2 arguments");
             var listVal = EvalExpr(((PositionalCallArg)args[0]).Value, scope);
+            if (listVal.Kind != WclValueKind.List)
+                throw new EvalException("E040", $"{name} first argument must be a list, got {listVal.TypeName}");
             var list = listVal.AsList();
             var lambdaExpr = ((PositionalCallArg)args[1]).Value;
 
             switch (name)
             {
                 case "map":
-                {
-                    var result = new List<WclValue>();
-                    foreach (var item in list)
-                        result.Add(ApplyLambda(lambdaExpr, scope, item));
-                    return WclValue.NewList(result);
-                }
+                    return WclValue.NewList(list.Select(item => ApplyLambda(lambdaExpr, scope, item)).ToList());
                 case "filter":
-                {
-                    var result = new List<WclValue>();
-                    foreach (var item in list)
-                    {
-                        var pred = ApplyLambda(lambdaExpr, scope, item);
-                        if (pred.IsTruthy() == true) result.Add(item);
-                    }
-                    return WclValue.NewList(result);
-                }
+                    return WclValue.NewList(list.Where(item => ApplyLambda(lambdaExpr, scope, item).IsTruthy() == true).ToList());
                 case "every":
-                {
-                    foreach (var item in list)
-                    {
-                        var pred = ApplyLambda(lambdaExpr, scope, item);
-                        if (pred.IsTruthy() != true) return WclValue.NewBool(false);
-                    }
-                    return WclValue.NewBool(true);
-                }
+                    return WclValue.NewBool(list.All(item => ApplyLambda(lambdaExpr, scope, item).IsTruthy() == true));
                 case "some":
-                {
-                    foreach (var item in list)
-                    {
-                        var pred = ApplyLambda(lambdaExpr, scope, item);
-                        if (pred.IsTruthy() == true) return WclValue.NewBool(true);
-                    }
-                    return WclValue.NewBool(false);
-                }
+                    return WclValue.NewBool(list.Any(item => ApplyLambda(lambdaExpr, scope, item).IsTruthy() == true));
                 case "count":
-                {
-                    int count = 0;
-                    foreach (var item in list)
-                    {
-                        var pred = ApplyLambda(lambdaExpr, scope, item);
-                        if (pred.IsTruthy() == true) count++;
-                    }
-                    return WclValue.NewInt(count);
-                }
-                default: throw new Exception($"unknown higher-order: {name}");
+                    return WclValue.NewInt(list.Count(item => ApplyLambda(lambdaExpr, scope, item).IsTruthy() == true));
+                default:
+                    throw new EvalException("E040", $"unknown higher-order: {name}");
             }
         }
 
         private WclValue EvalReduce(List<CallArg> args, ScopeId scope)
         {
+            if (args.Count < 3)
+                throw new EvalException("E040", "reduce requires 3 arguments");
             var list = EvalExpr(((PositionalCallArg)args[0]).Value, scope).AsList();
-            var init = EvalExpr(((PositionalCallArg)args[1]).Value, scope);
+            var acc = EvalExpr(((PositionalCallArg)args[1]).Value, scope);
             var lambdaExpr = ((PositionalCallArg)args[2]).Value;
 
-            var acc = init;
             foreach (var item in list)
                 acc = ApplyLambda2(lambdaExpr, scope, acc, item);
             return acc;
@@ -660,38 +825,39 @@ namespace Wcl.Eval
         private WclValue ApplyLambda(Expr lambdaExpr, ScopeId scope, WclValue arg)
         {
             var fn = EvalExpr(lambdaExpr, scope);
-            if (fn.Kind == WclValueKind.Function)
-            {
-                var fv = fn.AsFunction();
-                var lambdaScope = _scopes.CreateScope(ScopeKind.Lambda, fv.ClosureScope ?? scope);
-                if (fv.Params.Count > 0)
-                    _scopes.AddEntry(lambdaScope, new ScopeEntry(fv.Params[0], ScopeEntryKind.Parameter, arg, Span.Dummy()));
-                if (fv.Body is UserDefinedFunctionBody ud)
-                    return EvalExpr(ud.Expr, lambdaScope);
-                if (fv.Body is BuiltinFunctionBody bi)
-                {
-                    if (_builtins.Functions.TryGetValue(bi.Name, out var bfn))
-                        return bfn(new[] { arg });
-                }
-            }
-            throw new Exception("expected lambda");
+            if (fn.Kind != WclValueKind.Function)
+                throw new EvalException("E040", "expected function argument");
+            var fv = fn.AsFunction();
+            var lambdaScope = _scopes.CreateScope(ScopeKind.Lambda, fv.ClosureScope ?? scope);
+            if (fv.Params.Count > 0)
+                _scopes.AddEntry(lambdaScope, new ScopeEntry(fv.Params[0], ScopeEntryKind.Parameter, arg, Span.Dummy()));
+            if (fv.Body is UserDefinedFunctionBody ud)
+                return EvalExpr(ud.Expr, lambdaScope);
+            if (fv.Body is BuiltinFunctionBody bi && _builtins.Functions.TryGetValue(bi.Name, out var bfn))
+                return bfn(new[] { arg });
+            throw new EvalException("E040", "cannot apply function");
         }
 
         private WclValue ApplyLambda2(Expr lambdaExpr, ScopeId scope, WclValue arg1, WclValue arg2)
         {
             var fn = EvalExpr(lambdaExpr, scope);
-            if (fn.Kind == WclValueKind.Function)
-            {
-                var fv = fn.AsFunction();
-                var lambdaScope = _scopes.CreateScope(ScopeKind.Lambda, fv.ClosureScope ?? scope);
-                if (fv.Params.Count > 0)
-                    _scopes.AddEntry(lambdaScope, new ScopeEntry(fv.Params[0], ScopeEntryKind.Parameter, arg1, Span.Dummy()));
-                if (fv.Params.Count > 1)
-                    _scopes.AddEntry(lambdaScope, new ScopeEntry(fv.Params[1], ScopeEntryKind.Parameter, arg2, Span.Dummy()));
-                if (fv.Body is UserDefinedFunctionBody ud)
-                    return EvalExpr(ud.Expr, lambdaScope);
-            }
-            throw new Exception("expected lambda");
+            if (fn.Kind != WclValueKind.Function)
+                throw new EvalException("E040", "expected function argument");
+            var fv = fn.AsFunction();
+            var lambdaScope = _scopes.CreateScope(ScopeKind.Lambda, fv.ClosureScope ?? scope);
+            if (fv.Params.Count > 0)
+                _scopes.AddEntry(lambdaScope, new ScopeEntry(fv.Params[0], ScopeEntryKind.Parameter, arg1, Span.Dummy()));
+            if (fv.Params.Count > 1)
+                _scopes.AddEntry(lambdaScope, new ScopeEntry(fv.Params[1], ScopeEntryKind.Parameter, arg2, Span.Dummy()));
+            if (fv.Body is UserDefinedFunctionBody ud)
+                return EvalExpr(ud.Expr, lambdaScope);
+            throw new EvalException("E040", "cannot apply function");
         }
+    }
+
+    public class EvalException : Exception
+    {
+        public string Code { get; }
+        public EvalException(string code, string message) : base(message) { Code = code; }
     }
 }

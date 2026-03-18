@@ -74,7 +74,8 @@ namespace Wcl.Eval.ControlFlow
         {
             if (depth >= _maxLoopDepth)
             {
-                _diagnostics.Error($"for loop nesting depth exceeded (max {_maxLoopDepth})", loop.Span);
+                _diagnostics.ErrorWithCode("E029",
+                    $"for loop nesting depth exceeded (max {_maxLoopDepth})", loop.Span);
                 return new List<BodyItem>();
             }
 
@@ -82,13 +83,15 @@ namespace Wcl.Eval.ControlFlow
             try { iterableVal = evalExpr(loop.Iterable); }
             catch (Exception ex)
             {
-                _diagnostics.Error($"cannot evaluate for loop iterable: {ex.Message}", loop.Iterable.GetSpan());
+                _diagnostics.ErrorWithCode("E025",
+                    $"cannot evaluate for loop iterable: {ex.Message}", loop.Iterable.GetSpan());
                 return new List<BodyItem>();
             }
 
             if (iterableVal.Kind != WclValueKind.List)
             {
-                _diagnostics.Error($"for loop iterable must be a list, got {iterableVal.TypeName}", loop.Iterable.GetSpan());
+                _diagnostics.ErrorWithCode("E025",
+                    $"for loop iterable must be a list, got {iterableVal.TypeName}", loop.Iterable.GetSpan());
                 return new List<BodyItem>();
             }
 
@@ -99,7 +102,8 @@ namespace Wcl.Eval.ControlFlow
             {
                 if (_totalIterations >= _maxIterations)
                 {
-                    _diagnostics.Error($"total iterations exceeded (max {_maxIterations})", loop.Span);
+                    _diagnostics.ErrorWithCode("E028",
+                        $"total iterations exceeded (max {_maxIterations})", loop.Span);
                     break;
                 }
                 _totalIterations++;
@@ -116,8 +120,10 @@ namespace Wcl.Eval.ControlFlow
         {
             WclValue condVal;
             try { condVal = evalExpr(cond.Condition); }
-            catch
+            catch (Exception ex)
             {
+                _diagnostics.ErrorWithCode("E026",
+                    $"cannot evaluate condition: {ex.Message}", cond.Condition.GetSpan());
                 return new List<BodyItem>();
             }
 
@@ -135,19 +141,12 @@ namespace Wcl.Eval.ControlFlow
         private List<BodyItem> SubstituteBodyItems(List<BodyItem> items, string iterName,
             WclValue iterValue, string? indexName, int indexValue)
         {
-            // Deep clone with variable substitution
-            var result = new List<BodyItem>();
-            foreach (var item in items)
-            {
-                result.Add(SubstituteBodyItem(item, iterName, iterValue, indexName, indexValue));
-            }
-            return result;
+            return items.Select(item => SubstituteBodyItem(item, iterName, iterValue, indexName, indexValue)).ToList();
         }
 
         private BodyItem SubstituteBodyItem(BodyItem item, string iterName,
             WclValue iterValue, string? indexName, int indexValue)
         {
-            // Substitute expressions within body items
             switch (item)
             {
                 case AttributeItem ai:
@@ -158,19 +157,69 @@ namespace Wcl.Eval.ControlFlow
                 case BlockItem bi:
                 {
                     var newBody = SubstituteBodyItems(bi.Block.Body, iterName, iterValue, indexName, indexValue);
-                    // Substitute inline ID if interpolated
-                    var newId = bi.Block.InlineId;
+                    var newLabels = bi.Block.Labels.Select(l => SubstituteStringLit(l, iterName, iterValue, indexName, indexValue)).ToList();
+                    var newId = bi.Block.InlineId != null
+                        ? SubstituteInlineId(bi.Block.InlineId, iterName, iterValue, indexName, indexValue)
+                        : null;
                     return new BlockItem(new Block(bi.Block.Decorators, bi.Block.Partial, bi.Block.Kind,
-                        newId, bi.Block.Labels, newBody, bi.Block.Trivia, bi.Block.Span));
+                        newId, newLabels, newBody, bi.Block.Trivia, bi.Block.Span));
                 }
                 case LetBindingItem li:
                     return new LetBindingItem(new LetBinding(
                         li.LetBinding.Decorators, li.LetBinding.Name,
                         SubstituteExpr(li.LetBinding.Value, iterName, iterValue, indexName, indexValue),
                         li.LetBinding.Trivia, li.LetBinding.Span));
+                case ForLoopItem fl:
+                    return new ForLoopItem(new ForLoop(fl.ForLoop.Iterator, fl.ForLoop.Index,
+                        SubstituteExpr(fl.ForLoop.Iterable, iterName, iterValue, indexName, indexValue),
+                        SubstituteBodyItems(fl.ForLoop.Body, iterName, iterValue, indexName, indexValue),
+                        fl.ForLoop.Trivia, fl.ForLoop.Span));
+                case ConditionalItem ci:
+                    return new ConditionalItem(SubstituteConditional(ci.Conditional, iterName, iterValue, indexName, indexValue));
                 default:
                     return item;
             }
+        }
+
+        private Conditional SubstituteConditional(Conditional cond, string iterName,
+            WclValue iterValue, string? indexName, int indexValue)
+        {
+            ElseBranch? elseBranch = null;
+            if (cond.ElseBranch is ElseIfBranch eib)
+                elseBranch = new ElseIfBranch(SubstituteConditional(eib.Conditional, iterName, iterValue, indexName, indexValue));
+            else if (cond.ElseBranch is ElseBlock eb)
+                elseBranch = new ElseBlock(SubstituteBodyItems(eb.Body, iterName, iterValue, indexName, indexValue), eb.Trivia, eb.Span);
+
+            return new Conditional(
+                SubstituteExpr(cond.Condition, iterName, iterValue, indexName, indexValue),
+                SubstituteBodyItems(cond.ThenBody, iterName, iterValue, indexName, indexValue),
+                elseBranch, cond.Trivia, cond.Span);
+        }
+
+        private InlineId SubstituteInlineId(InlineId id, string iterName, WclValue iterValue, string? indexName, int indexValue)
+        {
+            if (id is InterpolatedInlineId interp)
+            {
+                var newParts = interp.Parts.Select(p =>
+                {
+                    if (p is InterpolationPart ip)
+                        return (StringPart)new InterpolationPart(SubstituteExpr(ip.Expr, iterName, iterValue, indexName, indexValue));
+                    return p;
+                }).ToList();
+                return new InterpolatedInlineId(newParts);
+            }
+            return id;
+        }
+
+        private StringLit SubstituteStringLit(StringLit sl, string iterName, WclValue iterValue, string? indexName, int indexValue)
+        {
+            var newParts = sl.Parts.Select(p =>
+            {
+                if (p is InterpolationPart ip)
+                    return (StringPart)new InterpolationPart(SubstituteExpr(ip.Expr, iterName, iterValue, indexName, indexValue));
+                return p;
+            }).ToList();
+            return new StringLit(newParts, sl.Span);
         }
 
         private Expr SubstituteExpr(Expr expr, string iterName, WclValue iterValue,
@@ -191,8 +240,7 @@ namespace Wcl.Eval.ControlFlow
                         be.Span);
                 case UnaryOpExpr ue:
                     return new UnaryOpExpr(ue.Op,
-                        SubstituteExpr(ue.Operand, iterName, iterValue, indexName, indexValue),
-                        ue.Span);
+                        SubstituteExpr(ue.Operand, iterName, iterValue, indexName, indexValue), ue.Span);
                 case FnCallExpr fc:
                     return new FnCallExpr(
                         SubstituteExpr(fc.Callee, iterName, iterValue, indexName, indexValue),
@@ -201,25 +249,53 @@ namespace Wcl.Eval.ControlFlow
                             PositionalCallArg pa => (CallArg)new PositionalCallArg(SubstituteExpr(pa.Value, iterName, iterValue, indexName, indexValue)),
                             NamedCallArg na => new NamedCallArg(na.Name, SubstituteExpr(na.Value, iterName, iterValue, indexName, indexValue)),
                             _ => a,
-                        }).ToList(),
-                        fc.Span);
+                        }).ToList(), fc.Span);
                 case MemberAccessExpr ma:
                     return new MemberAccessExpr(
                         SubstituteExpr(ma.Object, iterName, iterValue, indexName, indexValue),
                         ma.Member, ma.Span);
+                case IndexAccessExpr ia:
+                    return new IndexAccessExpr(
+                        SubstituteExpr(ia.Object, iterName, iterValue, indexName, indexValue),
+                        SubstituteExpr(ia.Index, iterName, iterValue, indexName, indexValue), ia.Span);
                 case TernaryExpr te:
                     return new TernaryExpr(
                         SubstituteExpr(te.Condition, iterName, iterValue, indexName, indexValue),
                         SubstituteExpr(te.ThenExpr, iterName, iterValue, indexName, indexValue),
-                        SubstituteExpr(te.ElseExpr, iterName, iterValue, indexName, indexValue),
-                        te.Span);
+                        SubstituteExpr(te.ElseExpr, iterName, iterValue, indexName, indexValue), te.Span);
                 case ListExpr le:
                     return new ListExpr(
-                        le.Items.Select(i => SubstituteExpr(i, iterName, iterValue, indexName, indexValue)).ToList(),
-                        le.Span);
+                        le.Items.Select(i => SubstituteExpr(i, iterName, iterValue, indexName, indexValue)).ToList(), le.Span);
+                case MapExpr me:
+                    return new MapExpr(
+                        me.Entries.Select(e => (e.Key, SubstituteExpr(e.Value, iterName, iterValue, indexName, indexValue))).ToList(), me.Span);
+                case SetExpr se:
+                    return new SetExpr(
+                        se.Items.Select(i => SubstituteExpr(i, iterName, iterValue, indexName, indexValue)).ToList(), se.Span);
                 case ParenExpr pe:
                     return new ParenExpr(
                         SubstituteExpr(pe.Inner, iterName, iterValue, indexName, indexValue), pe.Span);
+                case LambdaExpr le:
+                    // Don't substitute if lambda param shadows iterator
+                    if (le.Params.Any(p => p.Name == iterName)) return expr;
+                    return new LambdaExpr(le.Params,
+                        SubstituteExpr(le.Body, iterName, iterValue, indexName, indexValue), le.Span);
+                case BlockExprNode be:
+                    return new BlockExprNode(
+                        be.Lets.Select(l => new LetBinding(l.Decorators, l.Name,
+                            SubstituteExpr(l.Value, iterName, iterValue, indexName, indexValue),
+                            l.Trivia, l.Span)).ToList(),
+                        SubstituteExpr(be.FinalExpr, iterName, iterValue, indexName, indexValue), be.Span);
+                case StringLitExpr sle:
+                {
+                    var newParts = sle.StringLit.Parts.Select(p =>
+                    {
+                        if (p is InterpolationPart ip)
+                            return (StringPart)new InterpolationPart(SubstituteExpr(ip.Expr, iterName, iterValue, indexName, indexValue));
+                        return p;
+                    }).ToList();
+                    return new StringLitExpr(new StringLit(newParts, sle.StringLit.Span));
+                }
                 default:
                     return expr;
             }

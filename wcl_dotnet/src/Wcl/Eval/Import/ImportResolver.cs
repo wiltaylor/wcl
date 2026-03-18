@@ -45,6 +45,7 @@ namespace Wcl.Eval.Import
         private readonly bool _allowImports;
         private readonly HashSet<string> _resolved = new HashSet<string>();
         private readonly List<string> _librarySearchPaths = new List<string>();
+        private readonly HashSet<string> _exportedNames = new HashSet<string>();
 
         public ImportResolver(IFileSystem fs, SourceMap sourceMap, string rootDir,
                               uint maxDepth, bool allowImports)
@@ -59,6 +60,14 @@ namespace Wcl.Eval.Import
             var dataHome = Environment.GetEnvironmentVariable("XDG_DATA_HOME")
                 ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "share");
             _librarySearchPaths.Add(Path.Combine(dataHome, "wcl", "libraries"));
+
+            // System library paths
+            if (!System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(
+                    System.Runtime.InteropServices.OSPlatform.Windows))
+            {
+                _librarySearchPaths.Add("/usr/local/share/wcl/libraries");
+                _librarySearchPaths.Add("/usr/share/wcl/libraries");
+            }
         }
 
         public DiagnosticBag Resolve(Document doc, string currentFile, uint depth)
@@ -67,7 +76,7 @@ namespace Wcl.Eval.Import
             if (!_allowImports) return diags;
             if (depth > _maxDepth)
             {
-                diags.Error($"import depth exceeded (max {_maxDepth})", Span.Dummy());
+                diags.ErrorWithCode("E014", $"import depth exceeded (max {_maxDepth})", Span.Dummy());
                 return diags;
             }
 
@@ -77,7 +86,7 @@ namespace Wcl.Eval.Import
                 if (item is ImportItem imp)
                 {
                     var path = ResolveImportPath(imp.Import, currentFile, diags);
-                    if (path == null) { newItems.Add(item); continue; }
+                    if (path == null) continue;
 
                     if (_resolved.Contains(path)) continue; // dedup
                     _resolved.Add(path);
@@ -85,7 +94,7 @@ namespace Wcl.Eval.Import
                     var source = _fs.ReadFile(path);
                     if (source == null)
                     {
-                        diags.ErrorWithCode("E015", $"could not read import: {path}", imp.Import.Span);
+                        diags.ErrorWithCode("E010", $"could not read import: {path}", imp.Import.Span);
                         continue;
                     }
 
@@ -93,9 +102,23 @@ namespace Wcl.Eval.Import
                     var (importDoc, parseDiags) = Core.Parser.WclParser.Parse(source, fileId);
                     diags.Merge(parseDiags);
 
-                    // Recursively resolve
                     var subDiags = Resolve(importDoc, path, depth + 1);
                     diags.Merge(subDiags);
+
+                    // Check for duplicate exported names (E034)
+                    foreach (var importItem in importDoc.Items)
+                    {
+                        if (importItem is ExportLetItem eli)
+                        {
+                            if (_exportedNames.Contains(eli.ExportLet.Name.Name))
+                            {
+                                diags.ErrorWithCode("E034",
+                                    $"duplicate exported variable '{eli.ExportLet.Name.Name}' across imports",
+                                    eli.ExportLet.Span);
+                            }
+                            _exportedNames.Add(eli.ExportLet.Name.Name);
+                        }
+                    }
 
                     newItems.AddRange(importDoc.Items);
                 }
@@ -127,10 +150,34 @@ namespace Wcl.Eval.Import
                 return null;
             }
 
+            // Reject absolute paths
+            if (Path.IsPathRooted(pathStr) || pathStr.StartsWith("~"))
+            {
+                diags.ErrorWithCode("E013", $"absolute imports are not allowed: {pathStr}", import.Span);
+                return null;
+            }
+
+            // Reject remote URLs
+            if (pathStr.StartsWith("http://") || pathStr.StartsWith("https://"))
+            {
+                diags.ErrorWithCode("E013", $"remote imports are not allowed: {pathStr}", import.Span);
+                return null;
+            }
+
             // Relative import
             var dir = Path.GetDirectoryName(currentFile) ?? _rootDir;
-            var resolved = Path.Combine(dir, pathStr);
-            return _fs.Canonicalize(resolved);
+            var resolved = _fs.Canonicalize(Path.Combine(dir, pathStr));
+
+            // Jail check (E011)
+            var canonicalRoot = _fs.Canonicalize(_rootDir);
+            if (!resolved.StartsWith(canonicalRoot))
+            {
+                diags.ErrorWithCode("E011",
+                    $"import escapes root directory: {pathStr}", import.Span);
+                return null;
+            }
+
+            return resolved;
         }
     }
 }
