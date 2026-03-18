@@ -8,6 +8,7 @@
 - [Your First Config](./getting-started/first-config.md)
 - [CLI Quickstart](./getting-started/cli-quickstart.md)
 - [Editor Setup](./getting-started/editor-setup.md)
+- [Rust Library Usage](./getting-started/rust-library.md)
 
 # Language Guide
 
