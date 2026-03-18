@@ -39,7 +39,14 @@ pub fn run(
                     serde_json::to_string_pretty(&json).unwrap_or_default()
                 );
             }
+            "csv" => {
+                print_csv(&result);
+            }
+            "wcl" => {
+                print_wcl(&result, 0);
+            }
             _ => {
+                // "text" or any other format
                 println!("{}", result);
             }
         }
@@ -65,5 +72,121 @@ fn value_to_json(val: &wcl::Value) -> serde_json::Value {
             serde_json::Value::Object(obj)
         }
         _ => serde_json::Value::String(format!("{}", val)),
+    }
+}
+
+fn print_csv(val: &wcl::Value) {
+    match val {
+        wcl::Value::List(items) => {
+            // Collect all keys from map/block items for headers
+            let mut headers: Vec<String> = Vec::new();
+            let rows: Vec<_> = items
+                .iter()
+                .filter_map(|item| match item {
+                    wcl::Value::Map(m) => Some(m),
+                    wcl::Value::BlockRef(br) => Some(&br.attributes),
+                    _ => None,
+                })
+                .collect();
+
+            // Gather unique headers preserving order
+            for row in &rows {
+                for key in row.keys() {
+                    if !headers.contains(key) {
+                        headers.push(key.clone());
+                    }
+                }
+            }
+
+            if headers.is_empty() {
+                // Simple list of scalars, one per line
+                for item in items {
+                    println!("{}", item);
+                }
+            } else {
+                // Print header row
+                println!("{}", headers.join(","));
+                // Print data rows
+                for row in &rows {
+                    let cells: Vec<String> = headers
+                        .iter()
+                        .map(|h| {
+                            row.get(h)
+                                .map(|v| csv_escape(&format!("{}", v)))
+                                .unwrap_or_default()
+                        })
+                        .collect();
+                    println!("{}", cells.join(","));
+                }
+            }
+        }
+        _ => println!("{}", val),
+    }
+}
+
+fn csv_escape(s: &str) -> String {
+    if s.contains(',') || s.contains('"') || s.contains('\n') {
+        format!("\"{}\"", s.replace('"', "\"\""))
+    } else {
+        s.to_string()
+    }
+}
+
+fn print_wcl(val: &wcl::Value, indent: usize) {
+    let pad = "    ".repeat(indent);
+    match val {
+        wcl::Value::List(items) => {
+            for item in items {
+                print_wcl(item, indent);
+            }
+        }
+        wcl::Value::BlockRef(br) => {
+            print!("{}{}", pad, br.kind);
+            if let Some(id) = &br.id {
+                print!(" {}", id);
+            }
+            println!(" {{");
+            for (key, value) in &br.attributes {
+                print!("{}    {} = ", pad, key);
+                print_wcl_value(value);
+                println!();
+            }
+            for child in &br.children {
+                print_wcl(&wcl::Value::BlockRef(child.clone()), indent + 1);
+            }
+            println!("{}}}", pad);
+        }
+        wcl::Value::Map(m) => {
+            for (key, value) in m {
+                print!("{}{} = ", pad, key);
+                print_wcl_value(value);
+                println!();
+            }
+        }
+        other => {
+            print_wcl_value(other);
+            println!();
+        }
+    }
+}
+
+fn print_wcl_value(val: &wcl::Value) {
+    match val {
+        wcl::Value::String(s) => print!("\"{}\"", s),
+        wcl::Value::Int(n) => print!("{}", n),
+        wcl::Value::Float(f) => print!("{}", f),
+        wcl::Value::Bool(b) => print!("{}", b),
+        wcl::Value::Null => print!("null"),
+        wcl::Value::List(items) => {
+            print!("[");
+            for (i, item) in items.iter().enumerate() {
+                if i > 0 {
+                    print!(", ");
+                }
+                print_wcl_value(item);
+            }
+            print!("]");
+        }
+        other => print!("{}", other),
     }
 }

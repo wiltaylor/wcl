@@ -5,6 +5,7 @@ pub mod decorator;
 pub mod document;
 pub mod id;
 pub mod schema;
+pub mod table;
 pub mod types;
 
 pub use decorator::{Constraint, DecoratorParam, DecoratorSchemaRegistry, ResolvedDecoratorSchema};

@@ -374,7 +374,7 @@ pub(crate) fn get_validate_constraints(decorators: &[Decorator]) -> Option<Valid
 // ── Validation helper functions ───────────────────────────────────────────────
 
 /// Return a human-readable label for a Value's runtime type.
-fn value_type_label(value: &Value) -> &'static str {
+pub(crate) fn value_type_label(value: &Value) -> &'static str {
     match value {
         Value::String(_) => "string",
         Value::Int(_) => "int",
@@ -400,7 +400,7 @@ fn value_as_f64(value: &Value) -> Option<f64> {
 }
 
 /// C3: Validate a value against constraints.
-fn validate_constraints(
+pub(crate) fn validate_constraints(
     value: &Value,
     constraints: &ValidateConstraints,
     field_name: &str,

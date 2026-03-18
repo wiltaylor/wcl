@@ -478,6 +478,13 @@ impl<'a> MacroExpander<'a> {
                 }
                 None
             }
+            Expr::List(items, _) => {
+                let values: Option<Vec<Value>> = items
+                    .iter()
+                    .map(|item| self.eval_when_condition(item, block, param_bindings))
+                    .collect();
+                values.map(Value::List)
+            }
             Expr::Ident(ident) => {
                 // Look up in param_bindings, then try to evaluate the bound expression
                 if let Some(bound_expr) = param_bindings.get(&ident.name) {
@@ -539,6 +546,15 @@ impl<'a> MacroExpander<'a> {
                 let l = self.eval_when_condition(lhs, block, param_bindings)?;
                 let r = self.eval_when_condition(rhs, block, param_bindings)?;
                 Some(Value::Bool(l != r))
+            }
+            // self.field — field access on the target block
+            Expr::MemberAccess(obj, field, _) => {
+                if let Expr::Ident(ident) = obj.as_ref() {
+                    if ident.name == "self" {
+                        return self.eval_self_field_access(&field.name, block);
+                    }
+                }
+                None
             }
             // self.has("attr_name") — check if the block has an attribute
             Expr::FnCall(callee, args, _) => {
@@ -604,6 +620,61 @@ impl<'a> MacroExpander<'a> {
                     }
                 }
                 None
+            }
+            _ => None,
+        }
+    }
+
+    /// Evaluate a field access on `self` within a `when` condition.
+    ///
+    /// Supports:
+    /// - `self.kind` — returns the block kind as a `String`.
+    /// - `self.id` — returns the block inline ID as a `String`, or `Null` if absent.
+    /// - `self.name` — alias for `self.id`.
+    /// - `self.labels` — returns a `List(String)` of the block's labels.
+    /// - `self.decorators` — returns a `List(String)` of the block's decorator names.
+    fn eval_self_field_access(
+        &self,
+        field: &str,
+        block: &Block,
+    ) -> Option<Value> {
+        match field {
+            "kind" => Some(Value::String(block.kind.name.clone())),
+            "name" | "id" => {
+                match &block.inline_id {
+                    Some(InlineId::Literal(id_lit)) => Some(Value::String(id_lit.value.clone())),
+                    Some(InlineId::Interpolated(parts)) => {
+                        // Concatenate literal parts; interpolations can't be resolved here
+                        let s: String = parts.iter().filter_map(|p| {
+                            if let StringPart::Literal(text) = p {
+                                Some(text.as_str())
+                            } else {
+                                None
+                            }
+                        }).collect();
+                        Some(Value::String(s))
+                    }
+                    None => Some(Value::Null),
+                }
+            }
+            "labels" => {
+                let label_values: Vec<Value> = block.labels.iter().map(|label| {
+                    let s: String = label.parts.iter().filter_map(|p| {
+                        if let StringPart::Literal(text) = p {
+                            Some(text.as_str())
+                        } else {
+                            None
+                        }
+                    }).collect();
+                    Value::String(s)
+                }).collect();
+                Some(Value::List(label_values))
+            }
+            "decorators" => {
+                let decorator_names: Vec<Value> = block.decorators.iter()
+                    .map(|d| Value::String(d.name.name.clone()))
+                    .collect();
+                Some(Value::List(decorator_names))
             }
             _ => None,
         }
@@ -704,7 +775,120 @@ impl<'a> MacroExpander<'a> {
             return Err(());
         }
 
+        // Type-check bound arguments against declared type constraints (E024)
+        for param in params {
+            if let Some(type_expr) = &param.type_constraint {
+                let param_name = &param.name.name;
+                if let Some(bound_expr) = bindings.get(param_name) {
+                    if let Some(value) = Self::expr_to_literal_value(bound_expr) {
+                        if !Self::value_matches_type(&value, type_expr) {
+                            self.diagnostics.error(
+                                format!(
+                                    "E024: macro parameter '{}' expects type {}, got {}",
+                                    param_name,
+                                    Self::type_expr_display(type_expr),
+                                    Self::value_type_name(&value),
+                                ),
+                                call_span,
+                            );
+                            return Err(());
+                        }
+                    }
+                    // If we can't evaluate the expression to a literal, skip the check
+                }
+            }
+        }
+
         Ok(bindings)
+    }
+
+    /// Try to evaluate a literal expression to a Value at macro expansion time.
+    fn expr_to_literal_value(expr: &Expr) -> Option<Value> {
+        match expr {
+            Expr::BoolLit(b, _) => Some(Value::Bool(*b)),
+            Expr::IntLit(i, _) => Some(Value::Int(*i)),
+            Expr::FloatLit(f, _) => Some(Value::Float(*f)),
+            Expr::NullLit(_) => Some(Value::Null),
+            Expr::StringLit(s) => {
+                let text: String = s.parts.iter().filter_map(|p| {
+                    if let StringPart::Literal(t) = p {
+                        Some(t.as_str())
+                    } else {
+                        None
+                    }
+                }).collect();
+                Some(Value::String(text))
+            }
+            Expr::List(items, _) => {
+                let values: Option<Vec<Value>> = items.iter()
+                    .map(Self::expr_to_literal_value)
+                    .collect();
+                values.map(Value::List)
+            }
+            _ => None,
+        }
+    }
+
+    /// Check if a Value matches a TypeExpr.
+    fn value_matches_type(value: &Value, type_expr: &TypeExpr) -> bool {
+        match type_expr {
+            TypeExpr::String(_) => matches!(value, Value::String(_)),
+            TypeExpr::Int(_) => matches!(value, Value::Int(_)),
+            TypeExpr::Float(_) => matches!(value, Value::Float(_) | Value::Int(_)),
+            TypeExpr::Bool(_) => matches!(value, Value::Bool(_)),
+            TypeExpr::Null(_) => matches!(value, Value::Null),
+            TypeExpr::Any(_) => true,
+            TypeExpr::List(inner_type, _) => {
+                if let Value::List(items) = value {
+                    items.iter().all(|item| Self::value_matches_type(item, inner_type))
+                } else {
+                    false
+                }
+            }
+            TypeExpr::Union(types, _) => {
+                types.iter().any(|t| Self::value_matches_type(value, t))
+            }
+            // For types we can't check at macro expansion time, pass through
+            _ => true,
+        }
+    }
+
+    /// Human-readable name for a TypeExpr.
+    fn type_expr_display(type_expr: &TypeExpr) -> String {
+        match type_expr {
+            TypeExpr::String(_) => "string".to_string(),
+            TypeExpr::Int(_) => "int".to_string(),
+            TypeExpr::Float(_) => "float".to_string(),
+            TypeExpr::Bool(_) => "bool".to_string(),
+            TypeExpr::Null(_) => "null".to_string(),
+            TypeExpr::Any(_) => "any".to_string(),
+            TypeExpr::Identifier(_) => "identifier".to_string(),
+            TypeExpr::List(inner, _) => format!("list({})", Self::type_expr_display(inner)),
+            TypeExpr::Map(k, v, _) => format!("map({}, {})", Self::type_expr_display(k), Self::type_expr_display(v)),
+            TypeExpr::Set(inner, _) => format!("set({})", Self::type_expr_display(inner)),
+            TypeExpr::Ref(_, _) => "ref(...)".to_string(),
+            TypeExpr::Union(types, _) => {
+                let parts: Vec<String> = types.iter().map(Self::type_expr_display).collect();
+                format!("union({})", parts.join(", "))
+            }
+        }
+    }
+
+    /// Human-readable name for a Value's runtime type.
+    fn value_type_name(value: &Value) -> String {
+        match value {
+            Value::String(_) => "string".to_string(),
+            Value::Int(_) => "int".to_string(),
+            Value::Float(_) => "float".to_string(),
+            Value::Bool(_) => "bool".to_string(),
+            Value::Null => "null".to_string(),
+            Value::Identifier(_) => "identifier".to_string(),
+            Value::List(_) => "list".to_string(),
+            Value::Map(_) => "map".to_string(),
+            Value::Set(_) => "set".to_string(),
+            Value::BlockRef(_) => "block".to_string(),
+            Value::Function(_) => "function".to_string(),
+        }
     }
 
     /// Substitute macro parameters in a list of body items.
@@ -1376,5 +1560,371 @@ mod tests {
         assert_eq!(block.body.len(), 1);
         let diags = expander.into_diagnostics();
         assert!(!diags.is_empty());
+    }
+
+    // ── Gap 7: self.labels and self.decorators field access ──────────────
+
+    #[test]
+    fn self_labels_returns_list_of_label_strings() {
+        let registry = MacroRegistry::new();
+        let expander = MacroExpander::new(&registry, 10);
+
+        let block = Block {
+            decorators: vec![],
+            partial: false,
+            kind: make_ident("server"),
+            inline_id: None,
+            labels: vec![
+                StringLit {
+                    parts: vec![StringPart::Literal("web".to_string())],
+                    span: dummy_span(),
+                },
+                StringLit {
+                    parts: vec![StringPart::Literal("prod".to_string())],
+                    span: dummy_span(),
+                },
+            ],
+            body: vec![],
+            trivia: Trivia::empty(),
+            span: dummy_span(),
+        };
+
+        let result = expander.eval_self_field_access("labels", &block);
+        assert_eq!(
+            result,
+            Some(Value::List(vec![
+                Value::String("web".to_string()),
+                Value::String("prod".to_string()),
+            ]))
+        );
+    }
+
+    #[test]
+    fn self_labels_returns_empty_list_when_no_labels() {
+        let registry = MacroRegistry::new();
+        let expander = MacroExpander::new(&registry, 10);
+
+        let block = make_block_with_attrs(vec![]);
+        let result = expander.eval_self_field_access("labels", &block);
+        assert_eq!(result, Some(Value::List(vec![])));
+    }
+
+    #[test]
+    fn self_decorators_returns_list_of_decorator_names() {
+        let registry = MacroRegistry::new();
+        let expander = MacroExpander::new(&registry, 10);
+
+        let block = Block {
+            decorators: vec![
+                Decorator {
+                    name: make_ident("logging"),
+                    args: vec![],
+                    span: dummy_span(),
+                },
+                Decorator {
+                    name: make_ident("monitoring"),
+                    args: vec![],
+                    span: dummy_span(),
+                },
+            ],
+            partial: false,
+            kind: make_ident("server"),
+            inline_id: None,
+            labels: vec![],
+            body: vec![],
+            trivia: Trivia::empty(),
+            span: dummy_span(),
+        };
+
+        let result = expander.eval_self_field_access("decorators", &block);
+        assert_eq!(
+            result,
+            Some(Value::List(vec![
+                Value::String("logging".to_string()),
+                Value::String("monitoring".to_string()),
+            ]))
+        );
+    }
+
+    #[test]
+    fn self_decorators_returns_empty_list_when_no_decorators() {
+        let registry = MacroRegistry::new();
+        let expander = MacroExpander::new(&registry, 10);
+
+        let block = make_block_with_attrs(vec![]);
+        let result = expander.eval_self_field_access("decorators", &block);
+        assert_eq!(result, Some(Value::List(vec![])));
+    }
+
+    #[test]
+    fn self_kind_returns_block_kind() {
+        let registry = MacroRegistry::new();
+        let expander = MacroExpander::new(&registry, 10);
+
+        let block = make_block_with_attrs(vec![]);
+        let result = expander.eval_self_field_access("kind", &block);
+        assert_eq!(result, Some(Value::String("server".to_string())));
+    }
+
+    #[test]
+    fn self_id_returns_inline_id() {
+        let registry = MacroRegistry::new();
+        let expander = MacroExpander::new(&registry, 10);
+
+        let mut block = make_block_with_attrs(vec![]);
+        block.inline_id = Some(InlineId::Literal(IdentifierLit {
+            value: "my-server".to_string(),
+            span: dummy_span(),
+        }));
+
+        let result = expander.eval_self_field_access("id", &block);
+        assert_eq!(result, Some(Value::String("my-server".to_string())));
+    }
+
+    #[test]
+    fn self_id_returns_null_when_absent() {
+        let registry = MacroRegistry::new();
+        let expander = MacroExpander::new(&registry, 10);
+
+        let block = make_block_with_attrs(vec![]);
+        let result = expander.eval_self_field_access("id", &block);
+        assert_eq!(result, Some(Value::Null));
+    }
+
+    #[test]
+    fn self_labels_in_when_condition() {
+        let mut registry = MacroRegistry::new();
+        // Condition: self.labels == ["web"]
+        let condition = Expr::BinaryOp(
+            Box::new(Expr::MemberAccess(
+                Box::new(Expr::Ident(make_ident("self"))),
+                make_ident("labels"),
+                dummy_span(),
+            )),
+            BinOp::Eq,
+            Box::new(Expr::List(
+                vec![Expr::StringLit(StringLit {
+                    parts: vec![StringPart::Literal("web".to_string())],
+                    span: dummy_span(),
+                })],
+                dummy_span(),
+            )),
+            dummy_span(),
+        );
+        let inner_set = TransformDirective::Set(SetBlock {
+            attrs: vec![Attribute {
+                decorators: vec![],
+                name: make_ident("is_web"),
+                value: Expr::BoolLit(true, dummy_span()),
+                trivia: Trivia::empty(),
+                span: dummy_span(),
+            }],
+            span: dummy_span(),
+        });
+        let macro_def = make_when_attr_macro("check_labels", condition, vec![inner_set]);
+        registry.attribute_macros.insert("check_labels".to_string(), macro_def);
+
+        let mut block = Block {
+            decorators: vec![Decorator {
+                name: make_ident("check_labels"),
+                args: vec![],
+                span: dummy_span(),
+            }],
+            partial: false,
+            kind: make_ident("server"),
+            inline_id: None,
+            labels: vec![StringLit {
+                parts: vec![StringPart::Literal("web".to_string())],
+                span: dummy_span(),
+            }],
+            body: vec![BodyItem::Attribute(Attribute {
+                decorators: vec![],
+                name: make_ident("port"),
+                value: Expr::IntLit(8080, dummy_span()),
+                trivia: Trivia::empty(),
+                span: dummy_span(),
+            })],
+            trivia: Trivia::empty(),
+            span: dummy_span(),
+        };
+
+        let mut expander = MacroExpander::new(&registry, 10);
+        let changed = expander.apply_attribute_macros(&mut block);
+
+        assert!(changed);
+        assert!(block.body.iter().any(|item| {
+            matches!(item, BodyItem::Attribute(attr) if attr.name.name == "is_web")
+        }));
+    }
+
+    // ── Gap 8: Macro parameter type checking ─────────────────────────────
+
+    #[test]
+    fn bind_params_type_check_passes_for_matching_type() {
+        let registry = MacroRegistry::new();
+        let mut expander = MacroExpander::new(&registry, 10);
+
+        let params = vec![MacroParam {
+            name: make_ident("port"),
+            type_constraint: Some(TypeExpr::Int(dummy_span())),
+            default: None,
+            span: dummy_span(),
+        }];
+        let args = vec![MacroCallArg::Positional(Expr::IntLit(8080, dummy_span()))];
+
+        let result = expander.bind_params(&params, &args, dummy_span());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn bind_params_type_check_fails_for_wrong_type() {
+        let registry = MacroRegistry::new();
+        let mut expander = MacroExpander::new(&registry, 10);
+
+        let params = vec![MacroParam {
+            name: make_ident("port"),
+            type_constraint: Some(TypeExpr::Int(dummy_span())),
+            default: None,
+            span: dummy_span(),
+        }];
+        let args = vec![MacroCallArg::Positional(Expr::StringLit(StringLit {
+            parts: vec![StringPart::Literal("not_an_int".to_string())],
+            span: dummy_span(),
+        }))];
+
+        let result = expander.bind_params(&params, &args, dummy_span());
+        assert!(result.is_err());
+
+        let diags = expander.into_diagnostics();
+        assert!(diags.diagnostics().iter().any(|d| d.message.contains("E024")));
+    }
+
+    #[test]
+    fn bind_params_type_check_passes_for_bool() {
+        let registry = MacroRegistry::new();
+        let mut expander = MacroExpander::new(&registry, 10);
+
+        let params = vec![MacroParam {
+            name: make_ident("enabled"),
+            type_constraint: Some(TypeExpr::Bool(dummy_span())),
+            default: None,
+            span: dummy_span(),
+        }];
+        let args = vec![MacroCallArg::Positional(Expr::BoolLit(true, dummy_span()))];
+
+        let result = expander.bind_params(&params, &args, dummy_span());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn bind_params_type_check_string_rejects_int() {
+        let registry = MacroRegistry::new();
+        let mut expander = MacroExpander::new(&registry, 10);
+
+        let params = vec![MacroParam {
+            name: make_ident("name"),
+            type_constraint: Some(TypeExpr::String(dummy_span())),
+            default: None,
+            span: dummy_span(),
+        }];
+        let args = vec![MacroCallArg::Positional(Expr::IntLit(42, dummy_span()))];
+
+        let result = expander.bind_params(&params, &args, dummy_span());
+        assert!(result.is_err());
+
+        let diags = expander.into_diagnostics();
+        assert!(diags.diagnostics().iter().any(|d| d.message.contains("E024")));
+    }
+
+    #[test]
+    fn bind_params_no_type_constraint_skips_check() {
+        let registry = MacroRegistry::new();
+        let mut expander = MacroExpander::new(&registry, 10);
+
+        let params = vec![MacroParam {
+            name: make_ident("x"),
+            type_constraint: None,
+            default: None,
+            span: dummy_span(),
+        }];
+        let args = vec![MacroCallArg::Positional(Expr::IntLit(42, dummy_span()))];
+
+        let result = expander.bind_params(&params, &args, dummy_span());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn bind_params_type_check_list_of_string() {
+        let registry = MacroRegistry::new();
+        let mut expander = MacroExpander::new(&registry, 10);
+
+        let params = vec![MacroParam {
+            name: make_ident("tags"),
+            type_constraint: Some(TypeExpr::List(
+                Box::new(TypeExpr::String(dummy_span())),
+                dummy_span(),
+            )),
+            default: None,
+            span: dummy_span(),
+        }];
+        let args = vec![MacroCallArg::Positional(Expr::List(
+            vec![
+                Expr::StringLit(StringLit {
+                    parts: vec![StringPart::Literal("a".to_string())],
+                    span: dummy_span(),
+                }),
+                Expr::StringLit(StringLit {
+                    parts: vec![StringPart::Literal("b".to_string())],
+                    span: dummy_span(),
+                }),
+            ],
+            dummy_span(),
+        ))];
+
+        let result = expander.bind_params(&params, &args, dummy_span());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn bind_params_type_check_list_rejects_wrong_inner_type() {
+        let registry = MacroRegistry::new();
+        let mut expander = MacroExpander::new(&registry, 10);
+
+        let params = vec![MacroParam {
+            name: make_ident("tags"),
+            type_constraint: Some(TypeExpr::List(
+                Box::new(TypeExpr::String(dummy_span())),
+                dummy_span(),
+            )),
+            default: None,
+            span: dummy_span(),
+        }];
+        let args = vec![MacroCallArg::Positional(Expr::List(
+            vec![Expr::IntLit(42, dummy_span())],
+            dummy_span(),
+        ))];
+
+        let result = expander.bind_params(&params, &args, dummy_span());
+        assert!(result.is_err());
+
+        let diags = expander.into_diagnostics();
+        assert!(diags.diagnostics().iter().any(|d| d.message.contains("E024")));
+    }
+
+    #[test]
+    fn bind_params_any_type_accepts_anything() {
+        let registry = MacroRegistry::new();
+        let mut expander = MacroExpander::new(&registry, 10);
+
+        let params = vec![MacroParam {
+            name: make_ident("val"),
+            type_constraint: Some(TypeExpr::Any(dummy_span())),
+            default: None,
+            span: dummy_span(),
+        }];
+        let args = vec![MacroCallArg::Positional(Expr::IntLit(42, dummy_span()))];
+
+        let result = expander.bind_params(&params, &args, dummy_span());
+        assert!(result.is_ok());
     }
 }

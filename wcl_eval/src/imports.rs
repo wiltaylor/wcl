@@ -150,6 +150,9 @@ impl<'a, FS: FileSystem> ImportResolver<'a, FS> {
             return std::mem::take(&mut self.diagnostics);
         }
 
+        // Track exported names across imports for E034 duplicate detection
+        let mut exported_names: HashSet<String> = HashSet::new();
+
         // Collect indices of Import items (in reverse order for safe replacement)
         let import_indices: Vec<usize> = doc
             .items
@@ -232,6 +235,38 @@ impl<'a, FS: FileSystem> ImportResolver<'a, FS> {
             let child_diags = self.resolve(&mut imported_doc, &resolved, depth + 1);
             self.diagnostics.merge(child_diags);
 
+            // E035: Check re-exports reference defined names in the imported file
+            // Must check against the full imported doc items (before filtering)
+            for item in &imported_doc.items {
+                if let DocItem::ReExport(re_export) = item {
+                    let name_exists = imported_doc.items.iter().any(|mi| match mi {
+                        DocItem::ExportLet(el) => el.name.name == re_export.name.name,
+                        DocItem::Body(BodyItem::LetBinding(lb)) => {
+                            lb.name.name == re_export.name.name
+                        }
+                        DocItem::Body(BodyItem::Block(b)) => b
+                            .inline_id
+                            .as_ref()
+                            .map(|id| match id {
+                                InlineId::Literal(lit) => lit.value == re_export.name.name,
+                                _ => false,
+                            })
+                            .unwrap_or(false),
+                        _ => false,
+                    });
+                    if !name_exists {
+                        self.diagnostics.error_with_code(
+                            format!(
+                                "re-export of undefined name '{}'",
+                                re_export.name.name
+                            ),
+                            re_export.span,
+                            "E035",
+                        );
+                    }
+                }
+            }
+
             // Collect mergeable items from the imported document
             let mut merged_items: Vec<DocItem> = Vec::new();
             for item in imported_doc.items {
@@ -246,6 +281,22 @@ impl<'a, FS: FileSystem> ImportResolver<'a, FS> {
                     | DocItem::ReExport(_)
                     | DocItem::Body(_) => {
                         merged_items.push(item);
+                    }
+                }
+            }
+
+            // E034: Check for duplicate exported variable names across imports
+            for item in &merged_items {
+                if let DocItem::ExportLet(export) = item {
+                    if !exported_names.insert(export.name.name.clone()) {
+                        self.diagnostics.error_with_code(
+                            format!(
+                                "duplicate exported variable '{}' across imports",
+                                export.name.name
+                            ),
+                            export.span,
+                            "E034",
+                        );
                     }
                 }
             }
@@ -545,5 +596,152 @@ mod tests {
             "content"
         );
         assert!(fs.read_file(Path::new("/missing")).is_err());
+    }
+
+    #[test]
+    fn e034_duplicate_exported_variable_across_imports() {
+        let mut fs = InMemoryFs::new();
+        // Two imported files export the same variable name
+        fs.add_file(
+            PathBuf::from("/project/a.wcl"),
+            "export let port = 8080",
+        );
+        fs.add_file(
+            PathBuf::from("/project/b.wcl"),
+            "export let port = 9090",
+        );
+        fs.add_file(
+            PathBuf::from("/project/main.wcl"),
+            "import \"./a.wcl\"\nimport \"./b.wcl\"",
+        );
+
+        let mut sm = make_source_map();
+        let file_id = sm.add_file("main.wcl".to_string(), "import \"./a.wcl\"\nimport \"./b.wcl\"".to_string());
+        let (mut doc, _parse_diags) = wcl_core::parse("import \"./a.wcl\"\nimport \"./b.wcl\"", file_id);
+
+        let mut resolver = ImportResolver::new(
+            &fs,
+            &mut sm,
+            PathBuf::from("/project"),
+            32,
+            true,
+        );
+        let diags = resolver.resolve(&mut doc, Path::new("/project/main.wcl"), 0);
+
+        let e034_errors: Vec<_> = diags
+            .diagnostics()
+            .iter()
+            .filter(|d| d.code.as_deref() == Some("E034"))
+            .collect();
+        assert_eq!(e034_errors.len(), 1, "expected one E034 error, got: {:?}", e034_errors);
+        assert!(e034_errors[0].message.contains("duplicate exported variable"));
+        assert!(e034_errors[0].message.contains("port"));
+    }
+
+    #[test]
+    fn e034_no_error_for_different_names() {
+        let mut fs = InMemoryFs::new();
+        fs.add_file(
+            PathBuf::from("/project/a.wcl"),
+            "export let port = 8080",
+        );
+        fs.add_file(
+            PathBuf::from("/project/b.wcl"),
+            "export let host = \"localhost\"",
+        );
+        fs.add_file(
+            PathBuf::from("/project/main.wcl"),
+            "import \"./a.wcl\"\nimport \"./b.wcl\"",
+        );
+
+        let mut sm = make_source_map();
+        let file_id = sm.add_file("main.wcl".to_string(), "import \"./a.wcl\"\nimport \"./b.wcl\"".to_string());
+        let (mut doc, _parse_diags) = wcl_core::parse("import \"./a.wcl\"\nimport \"./b.wcl\"", file_id);
+
+        let mut resolver = ImportResolver::new(
+            &fs,
+            &mut sm,
+            PathBuf::from("/project"),
+            32,
+            true,
+        );
+        let diags = resolver.resolve(&mut doc, Path::new("/project/main.wcl"), 0);
+
+        let e034_errors: Vec<_> = diags
+            .diagnostics()
+            .iter()
+            .filter(|d| d.code.as_deref() == Some("E034"))
+            .collect();
+        assert_eq!(e034_errors.len(), 0);
+    }
+
+    #[test]
+    fn e035_re_export_of_undefined_name() {
+        let mut fs = InMemoryFs::new();
+        // The imported file re-exports a name that doesn't exist
+        fs.add_file(
+            PathBuf::from("/project/lib.wcl"),
+            "export nonexistent",
+        );
+        fs.add_file(
+            PathBuf::from("/project/main.wcl"),
+            "import \"./lib.wcl\"",
+        );
+
+        let mut sm = make_source_map();
+        let file_id = sm.add_file("main.wcl".to_string(), "import \"./lib.wcl\"".to_string());
+        let (mut doc, _parse_diags) = wcl_core::parse("import \"./lib.wcl\"", file_id);
+
+        let mut resolver = ImportResolver::new(
+            &fs,
+            &mut sm,
+            PathBuf::from("/project"),
+            32,
+            true,
+        );
+        let diags = resolver.resolve(&mut doc, Path::new("/project/main.wcl"), 0);
+
+        let e035_errors: Vec<_> = diags
+            .diagnostics()
+            .iter()
+            .filter(|d| d.code.as_deref() == Some("E035"))
+            .collect();
+        assert_eq!(e035_errors.len(), 1, "expected one E035 error, got: {:?}", e035_errors);
+        assert!(e035_errors[0].message.contains("re-export of undefined name"));
+        assert!(e035_errors[0].message.contains("nonexistent"));
+    }
+
+    #[test]
+    fn e035_no_error_when_name_is_defined() {
+        let mut fs = InMemoryFs::new();
+        // The imported file defines a let binding and re-exports it
+        fs.add_file(
+            PathBuf::from("/project/lib.wcl"),
+            "let port = 8080\nexport port",
+        );
+        fs.add_file(
+            PathBuf::from("/project/main.wcl"),
+            "import \"./lib.wcl\"",
+        );
+
+        let mut sm = make_source_map();
+        let file_id = sm.add_file("main.wcl".to_string(), "import \"./lib.wcl\"".to_string());
+        let (mut doc, _parse_diags) = wcl_core::parse("import \"./lib.wcl\"", file_id);
+
+        let mut resolver = ImportResolver::new(
+            &fs,
+            &mut sm,
+            PathBuf::from("/project"),
+            32,
+            true,
+        );
+        let diags = resolver.resolve(&mut doc, Path::new("/project/main.wcl"), 0);
+
+        let e035_errors: Vec<_> = diags
+            .diagnostics()
+            .iter()
+            .filter(|d| d.code.as_deref() == Some("E035"))
+            .collect();
+        assert_eq!(e035_errors.len(), 0);
     }
 }

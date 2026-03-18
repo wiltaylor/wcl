@@ -14,6 +14,8 @@ pub struct ScopeEntry {
     pub dependencies: HashSet<String>,
     /// Has been evaluated
     pub evaluated: bool,
+    /// Number of times this entry has been read/referenced
+    pub read_count: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -124,6 +126,35 @@ impl ScopeArena {
         }
     }
 
+    /// Record a read of a named entry in the given scope (or ancestor).
+    /// Increments the `read_count` on the entry that would be found by `resolve`.
+    pub fn record_read(&mut self, scope_id: ScopeId, name: &str) {
+        if let Some((found_scope, _)) = self.resolve(scope_id, name) {
+            let scope = self.get_mut(found_scope);
+            if let Some(entry) = scope.entries.get_mut(name) {
+                entry.read_count += 1;
+            }
+        }
+    }
+
+    /// Check whether adding `name` in `scope_id` would shadow a binding in
+    /// an ancestor scope. Returns the span of the shadowed entry if found.
+    pub fn check_shadowing(&self, scope_id: ScopeId, name: &str) -> Option<Span> {
+        let parent = self.get(scope_id).parent?;
+        if let Some((_, entry)) = self.resolve(parent, name) {
+            Some(entry.span)
+        } else {
+            None
+        }
+    }
+
+    /// Iterate over all scopes and their entries.
+    pub fn all_entries(&self) -> impl Iterator<Item = (ScopeId, &ScopeEntry)> {
+        self.scopes.iter().flat_map(|scope| {
+            scope.entries.values().map(move |entry| (scope.id, entry))
+        })
+    }
+
     /// Topological sort of entries in a scope based on dependencies.
     /// Returns ordered names, or `Err` containing the names involved in a cycle.
     pub fn topo_sort(&self, scope_id: ScopeId) -> Result<Vec<String>, Vec<String>> {
@@ -210,6 +241,7 @@ mod tests {
             span: dummy_span(),
             dependencies: deps.iter().map(|s| s.to_string()).collect(),
             evaluated: false,
+            read_count: 0,
         }
     }
 
@@ -445,5 +477,64 @@ mod tests {
         assert!(result.is_some());
         let (found_id, _) = result.unwrap();
         assert_eq!(found_id, parent);
+    }
+
+    // ── record_read ─────────────────────────────────────────────────
+
+    #[test]
+    fn record_read_increments_count() {
+        let mut arena = ScopeArena::new();
+        let s = arena.create_scope(ScopeKind::Module, None);
+        arena.add_entry(s, make_entry("x", ScopeEntryKind::LetBinding, &[]));
+        assert_eq!(arena.get(s).entries["x"].read_count, 0);
+
+        arena.record_read(s, "x");
+        assert_eq!(arena.get(s).entries["x"].read_count, 1);
+
+        arena.record_read(s, "x");
+        assert_eq!(arena.get(s).entries["x"].read_count, 2);
+    }
+
+    #[test]
+    fn record_read_walks_to_parent() {
+        let mut arena = ScopeArena::new();
+        let parent = arena.create_scope(ScopeKind::Module, None);
+        let child = arena.create_scope(ScopeKind::Block, Some(parent));
+        arena.add_entry(parent, make_entry("x", ScopeEntryKind::LetBinding, &[]));
+
+        arena.record_read(child, "x");
+        assert_eq!(arena.get(parent).entries["x"].read_count, 1);
+    }
+
+    // ── check_shadowing ─────────────────────────────────────────────
+
+    #[test]
+    fn check_shadowing_detects_parent_binding() {
+        let mut arena = ScopeArena::new();
+        let parent = arena.create_scope(ScopeKind::Module, None);
+        let child = arena.create_scope(ScopeKind::Block, Some(parent));
+        arena.add_entry(parent, make_entry("x", ScopeEntryKind::LetBinding, &[]));
+
+        let result = arena.check_shadowing(child, "x");
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn check_shadowing_returns_none_when_no_parent_binding() {
+        let mut arena = ScopeArena::new();
+        let parent = arena.create_scope(ScopeKind::Module, None);
+        let child = arena.create_scope(ScopeKind::Block, Some(parent));
+
+        let result = arena.check_shadowing(child, "x");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn check_shadowing_returns_none_for_root_scope() {
+        let mut arena = ScopeArena::new();
+        let root = arena.create_scope(ScopeKind::Module, None);
+
+        let result = arena.check_shadowing(root, "x");
+        assert!(result.is_none());
     }
 }

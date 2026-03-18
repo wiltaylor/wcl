@@ -70,6 +70,9 @@ impl Evaluator {
             }
         }
 
+        // Check for unused variables (W002)
+        self.check_unused_variables();
+
         // Collect evaluated values (skip let bindings for serde output)
         self.collect_output(module_scope)
     }
@@ -93,6 +96,7 @@ impl Evaluator {
                             span: el.span,
                             dependencies: deps,
                             evaluated: false,
+                            read_count: 0,
                         },
                     );
                 }
@@ -114,10 +118,24 @@ impl Evaluator {
                         span: attr.span,
                         dependencies: deps,
                         evaluated: false,
+                        read_count: 0,
                     },
                 );
             }
             BodyItem::LetBinding(lb) => {
+                // Check for shadowing (W001)
+                if let Some(shadowed_span) = self.scopes.check_shadowing(scope_id, &lb.name.name) {
+                    if !has_allow_decorator(&lb.decorators, "shadowing") {
+                        self.diagnostics.add(
+                            wcl_core::diagnostic::Diagnostic::warning(
+                                format!("variable '{}' shadows a binding in an outer scope", lb.name.name),
+                                lb.span,
+                            )
+                            .with_code("W001")
+                            .with_label(shadowed_span, "previously defined here"),
+                        );
+                    }
+                }
                 let deps = self.find_dependencies(&lb.value);
                 self.scopes.add_entry(
                     scope_id,
@@ -128,6 +146,7 @@ impl Evaluator {
                         span: lb.span,
                         dependencies: deps,
                         evaluated: false,
+                        read_count: 0,
                     },
                 );
             }
@@ -155,6 +174,7 @@ impl Evaluator {
                         span: block.span,
                         dependencies: external_deps,
                         evaluated: false,
+                        read_count: 0,
                     },
                 );
                 self.register_block_body(&block.body, child_scope);
@@ -454,6 +474,7 @@ impl Evaluator {
                             span: lb.span,
                             dependencies: Default::default(),
                             evaluated: true,
+                            read_count: 0,
                         },
                     );
                 }
@@ -601,22 +622,27 @@ impl Evaluator {
         ident: &Ident,
         scope_id: ScopeId,
     ) -> Result<Value, Diagnostic> {
-        if let Some((_, entry)) = self.scopes.resolve(scope_id, &ident.name) {
-            if let Some(ref val) = entry.value {
-                Ok(val.clone())
-            } else {
+        let resolved = self.scopes.resolve(scope_id, &ident.name)
+            .map(|(_, entry)| (entry.value.clone(), entry.evaluated));
+        match resolved {
+            Some((Some(val), _)) => {
+                self.scopes.record_read(scope_id, &ident.name);
+                Ok(val)
+            }
+            Some((None, _)) => {
                 Err(Diagnostic::error(
                     format!("variable '{}' has not been evaluated yet", ident.name),
                     ident.span,
                 )
                 .with_code("E040"))
             }
-        } else {
-            Err(Diagnostic::error(
-                format!("undefined reference '{}'", ident.name),
-                ident.span,
-            )
-            .with_code("E040"))
+            None => {
+                Err(Diagnostic::error(
+                    format!("undefined reference '{}'", ident.name),
+                    ident.span,
+                )
+                .with_code("E040"))
+            }
         }
     }
 
@@ -959,11 +985,17 @@ impl Evaluator {
                 }
 
                 // Check user-defined functions in scope
-                if let Some((_, entry)) = self.scopes.resolve(scope_id, name) {
-                    if let Some(Value::Function(func)) = &entry.value {
-                        let func = func.clone();
-                        return self.call_user_fn(&func, &eval_args, span);
-                    }
+                let maybe_func = self.scopes.resolve(scope_id, name)
+                    .and_then(|(_, entry)| {
+                        if let Some(Value::Function(func)) = &entry.value {
+                            Some(func.clone())
+                        } else {
+                            None
+                        }
+                    });
+                if let Some(func) = maybe_func {
+                    self.scopes.record_read(scope_id, name);
+                    return self.call_user_fn(&func, &eval_args, span);
                 }
 
                 Err(
@@ -1033,6 +1065,7 @@ impl Evaluator {
                     span,
                     dependencies: Default::default(),
                     evaluated: true,
+                    read_count: 0,
                 },
             );
         }
@@ -1051,6 +1084,7 @@ impl Evaluator {
                             span,
                             dependencies: Default::default(),
                             evaluated: true,
+                            read_count: 0,
                         },
                     );
                 }
@@ -1499,6 +1533,31 @@ impl Evaluator {
         &self.diagnostics
     }
 
+    /// Scan all scopes for `LetBinding` entries with zero reads and emit W002.
+    fn check_unused_variables(&mut self) {
+        let unused: Vec<(String, Span)> = self
+            .scopes
+            .all_entries()
+            .filter(|(_, entry)| {
+                entry.kind == ScopeEntryKind::LetBinding
+                    && entry.read_count == 0
+            })
+            .map(|(_, entry)| (entry.name.clone(), entry.span))
+            .collect();
+
+        for (name, span) in unused {
+            // Skip names starting with `_` (conventional unused marker)
+            if name.starts_with('_') {
+                continue;
+            }
+            self.diagnostics.warning_with_code(
+                format!("unused variable '{}'", name),
+                span,
+                "W002",
+            );
+        }
+    }
+
     /// Provide read access to the scope arena.
     pub fn scopes(&self) -> &ScopeArena {
         &self.scopes
@@ -1519,6 +1578,18 @@ impl Default for Evaluator {
 // =====================================================================
 // Free-standing helpers
 // =====================================================================
+
+/// Check whether a list of decorators contains `@allow(arg_name)`.
+fn has_allow_decorator(decorators: &[Decorator], arg_name: &str) -> bool {
+    decorators.iter().any(|d| {
+        d.name.name == "allow"
+            && d.args.iter().any(|a| match a {
+                DecoratorArg::Positional(Expr::Ident(id)) => id.name == arg_name,
+                DecoratorArg::Positional(Expr::IdentifierLit(id)) => id.value == arg_name,
+                _ => false,
+            })
+    })
+}
 
 fn compare_ord<T: Ord>(a: &T, b: &T, op: BinOp) -> bool {
     match op {
@@ -1707,6 +1778,7 @@ mod tests {
                 span: ds(),
                 dependencies: Default::default(),
                 evaluated: true,
+                read_count: 0,
             },
         );
 
@@ -1942,6 +2014,7 @@ mod tests {
                 span: ds(),
                 dependencies: Default::default(),
                 evaluated: true,
+                read_count: 0,
             },
         );
 
@@ -1970,6 +2043,7 @@ mod tests {
                 span: ds(),
                 dependencies: Default::default(),
                 evaluated: true,
+                read_count: 0,
             },
         );
 
@@ -2232,6 +2306,7 @@ mod tests {
         let scope = ev.scopes.create_scope(ScopeKind::Module, None);
         let expr = Expr::BlockExpr(
             vec![LetBinding {
+                decorators: vec![],
                 name: mk_ident("x"),
                 value: Expr::IntLit(10, ds()),
                 trivia: wcl_core::trivia::Trivia::empty(),
@@ -2294,6 +2369,7 @@ mod tests {
                 span: ds(),
                 dependencies: Default::default(),
                 evaluated: true,
+                read_count: 0,
             },
         );
 
@@ -2569,5 +2645,175 @@ mod tests {
         let expr = Expr::ImportTable(mk_string_lit("empty.csv"), None, ds());
         let result = ev.eval_expr(&expr, scope).unwrap();
         assert_eq!(result, Value::List(vec![]));
+    }
+
+    // ── Variable warning helpers ────────────────────────────────────
+
+    fn mk_let(name: &str, value: Expr) -> BodyItem {
+        BodyItem::LetBinding(LetBinding {
+            decorators: vec![],
+            name: mk_ident(name),
+            value,
+            trivia: wcl_core::trivia::Trivia::empty(),
+            span: ds(),
+        })
+    }
+
+    fn mk_let_with_decorators(name: &str, value: Expr, decorators: Vec<Decorator>) -> BodyItem {
+        BodyItem::LetBinding(LetBinding {
+            decorators,
+            name: mk_ident(name),
+            value,
+            trivia: wcl_core::trivia::Trivia::empty(),
+            span: ds(),
+        })
+    }
+
+    fn count_warnings_with_code(ev: &Evaluator, code: &str) -> usize {
+        ev.diagnostics()
+            .diagnostics()
+            .iter()
+            .filter(|d| {
+                d.severity == wcl_core::diagnostic::Severity::Warning
+                    && d.code.as_deref() == Some(code)
+            })
+            .count()
+    }
+
+    // ── W001: Shadowing warnings ────────────────────────────────────
+
+    #[test]
+    fn shadowing_let_produces_w001() {
+        // let x = 1
+        // service "s" { let x = 2; port = x }
+        let doc = mk_doc(vec![
+            mk_let("x", Expr::IntLit(1, ds())),
+            mk_block(
+                "service",
+                "s",
+                vec![
+                    mk_let("x", Expr::IntLit(2, ds())),
+                    mk_attr("port", Expr::Ident(mk_ident("x"))),
+                ],
+            ),
+        ]);
+
+        let mut ev = Evaluator::new();
+        let _result = ev.evaluate(&doc);
+        assert_eq!(count_warnings_with_code(&ev, "W001"), 1);
+    }
+
+    #[test]
+    fn no_shadowing_no_w001() {
+        // let x = 1
+        // let y = 2
+        let doc = mk_doc(vec![
+            mk_let("x", Expr::IntLit(1, ds())),
+            mk_let("y", Expr::IntLit(2, ds())),
+        ]);
+
+        let mut ev = Evaluator::new();
+        let _result = ev.evaluate(&doc);
+        assert_eq!(count_warnings_with_code(&ev, "W001"), 0);
+    }
+
+    // ── W002: Unused variable warnings ──────────────────────────────
+
+    #[test]
+    fn unused_let_produces_w002() {
+        // let x = 1
+        // port = 42
+        let doc = mk_doc(vec![
+            mk_let("x", Expr::IntLit(1, ds())),
+            mk_attr("port", Expr::IntLit(42, ds())),
+        ]);
+
+        let mut ev = Evaluator::new();
+        let _result = ev.evaluate(&doc);
+        assert_eq!(count_warnings_with_code(&ev, "W002"), 1);
+    }
+
+    #[test]
+    fn used_let_no_w002() {
+        // let x = 1
+        // port = x
+        let doc = mk_doc(vec![
+            mk_let("x", Expr::IntLit(1, ds())),
+            mk_attr("port", Expr::Ident(mk_ident("x"))),
+        ]);
+
+        let mut ev = Evaluator::new();
+        let _result = ev.evaluate(&doc);
+        assert_eq!(count_warnings_with_code(&ev, "W002"), 0);
+    }
+
+    #[test]
+    fn underscore_prefix_suppresses_w002() {
+        // let _x = 1
+        // port = 42
+        let doc = mk_doc(vec![
+            mk_let("_x", Expr::IntLit(1, ds())),
+            mk_attr("port", Expr::IntLit(42, ds())),
+        ]);
+
+        let mut ev = Evaluator::new();
+        let _result = ev.evaluate(&doc);
+        assert_eq!(count_warnings_with_code(&ev, "W002"), 0);
+    }
+
+    // ── @allow(shadowing) suppression ───────────────────────────────
+
+    #[test]
+    fn allow_shadowing_suppresses_w001() {
+        // let x = 1
+        // service "s" { @allow(shadowing) let x = 2; port = x }
+        let allow_decorator = Decorator {
+            name: mk_ident("allow"),
+            args: vec![DecoratorArg::Positional(Expr::Ident(mk_ident("shadowing")))],
+            span: ds(),
+        };
+
+        let doc = mk_doc(vec![
+            mk_let("x", Expr::IntLit(1, ds())),
+            mk_block(
+                "service",
+                "s",
+                vec![
+                    mk_let_with_decorators("x", Expr::IntLit(2, ds()), vec![allow_decorator]),
+                    mk_attr("port", Expr::Ident(mk_ident("x"))),
+                ],
+            ),
+        ]);
+
+        let mut ev = Evaluator::new();
+        let _result = ev.evaluate(&doc);
+        assert_eq!(count_warnings_with_code(&ev, "W001"), 0);
+    }
+
+    #[test]
+    fn allow_other_does_not_suppress_w001() {
+        // let x = 1
+        // service "s" { @allow(unused) let x = 2; port = x }
+        let allow_decorator = Decorator {
+            name: mk_ident("allow"),
+            args: vec![DecoratorArg::Positional(Expr::Ident(mk_ident("unused")))],
+            span: ds(),
+        };
+
+        let doc = mk_doc(vec![
+            mk_let("x", Expr::IntLit(1, ds())),
+            mk_block(
+                "service",
+                "s",
+                vec![
+                    mk_let_with_decorators("x", Expr::IntLit(2, ds()), vec![allow_decorator]),
+                    mk_attr("port", Expr::Ident(mk_ident("x"))),
+                ],
+            ),
+        ]);
+
+        let mut ev = Evaluator::new();
+        let _result = ev.evaluate(&doc);
+        assert_eq!(count_warnings_with_code(&ev, "W001"), 1);
     }
 }

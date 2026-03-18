@@ -113,6 +113,11 @@ impl DiagnosticBag {
         self.add(Diagnostic::error(message, span).with_code(code));
     }
 
+    /// Convenience: create and append a warning with a machine-readable code.
+    pub fn warning_with_code(&mut self, message: impl Into<String>, span: Span, code: &str) {
+        self.add(Diagnostic::warning(message, span).with_code(code));
+    }
+
     pub fn is_empty(&self) -> bool {
         self.diagnostics.is_empty()
     }
@@ -180,6 +185,16 @@ mod tests {
         let diag = &bag.diagnostics()[0];
         assert_eq!(diag.code.as_deref(), Some("E030"));
         assert!(diag.is_error());
+    }
+
+    #[test]
+    fn warning_with_code_sets_code() {
+        let mut bag = DiagnosticBag::new();
+        bag.warning_with_code("variable shadows", dummy_span(), "W001");
+        let diag = &bag.diagnostics()[0];
+        assert_eq!(diag.code.as_deref(), Some("W001"));
+        assert!(!diag.is_error());
+        assert_eq!(diag.severity, Severity::Warning);
     }
 
     #[test]

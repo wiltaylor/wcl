@@ -475,7 +475,7 @@ impl Parser {
                 break;
             }
             let trivia = crate::trivia::Trivia::empty();
-            if let Some(binding) = self.parse_let_binding(trivia) {
+            if let Some(binding) = self.parse_let_binding(vec![], trivia) {
                 lets.push(binding);
             } else {
                 break;

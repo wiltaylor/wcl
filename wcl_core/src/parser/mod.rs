@@ -277,6 +277,23 @@ impl Parser {
             if matches!(self.peek_kind(), TokenKind::RBrace | TokenKind::Eof) {
                 break;
             }
+            // E036: export/re-export only allowed at top level
+            if matches!(self.peek_kind(), TokenKind::Export) {
+                self.diagnostics.error_with_code(
+                    "export declarations must be at the top level, not inside blocks",
+                    self.current_span(),
+                    "E036",
+                );
+                self.advance(); // skip the export keyword
+                // Skip until newline or closing brace
+                while !matches!(
+                    self.peek_kind(),
+                    TokenKind::Newline | TokenKind::RBrace | TokenKind::Eof
+                ) {
+                    self.advance();
+                }
+                continue;
+            }
             if let Some(item) = self.parse_body_item_with_trivia(trivia) {
                 items.push(item);
             } else {
@@ -297,7 +314,7 @@ impl Parser {
 
         match self.peek_kind().clone() {
             TokenKind::Let => {
-                let binding = self.parse_let_binding(trivia)?;
+                let binding = self.parse_let_binding(decorators, trivia)?;
                 Some(BodyItem::LetBinding(binding))
             }
             TokenKind::Partial => {
@@ -367,7 +384,8 @@ impl Parser {
                         TokenKind::LBrace
                         | TokenKind::Ident(_)
                         | TokenKind::IdentifierLit(_)
-                        | TokenKind::StringLit(_) => {
+                        | TokenKind::StringLit(_)
+                        | TokenKind::InterpStart => {
                             let block = self.parse_block(decorators, trivia, false)?;
                             Some(BodyItem::Block(block))
                         }
@@ -565,6 +583,12 @@ impl Parser {
     }
 
     fn parse_inline_id(&mut self) -> Option<InlineId> {
+        // Check if the token sequence starting at current position forms an
+        // interpolated inline ID (contains `${...}` segments joined by hyphens).
+        if let Some(interp) = self.try_parse_interpolated_inline_id() {
+            return Some(interp);
+        }
+
         match self.peek_kind().clone() {
             TokenKind::IdentifierLit(ref val) => {
                 let val = val.clone();
@@ -606,6 +630,171 @@ impl Parser {
         }
     }
 
+    /// Try to parse an interpolated inline ID like `svc-${name}` or `${name}-api`.
+    ///
+    /// The lexer splits these into multiple tokens, e.g.:
+    ///   `svc-${name}` → Ident("svc"), Minus, InterpStart, Ident("name"), RBrace
+    ///   `svc-api-${name}` → IdentifierLit("svc-api"), Minus, InterpStart, Ident("name"), RBrace
+    ///
+    /// This method scans ahead to detect the pattern, and if the interpolated ID
+    /// is followed by `{` or a string literal (indicating it's truly an inline ID,
+    /// not an expression), it consumes the tokens and returns `InlineId::Interpolated`.
+    fn try_parse_interpolated_inline_id(&mut self) -> Option<InlineId> {
+        // Scan ahead (without consuming) to see if this forms an interpolated ID.
+        // An interpolated ID is a sequence of:
+        //   (Ident|IdentifierLit)? ( Minus? InterpStart ... RBrace (Minus (Ident|IdentifierLit))? )*
+        // that contains at least one InterpStart.
+
+        let start = self.pos;
+        let mut i = start;
+        let mut has_interp = false;
+
+        // Optionally start with an identifier
+        if i < self.tokens.len() {
+            match &self.tokens[i].kind {
+                TokenKind::Ident(name) => {
+                    if self.is_keyword_token(&TokenKind::Ident(name.clone())) {
+                        return None;
+                    }
+                    i += 1;
+                }
+                TokenKind::IdentifierLit(_) => {
+                    i += 1;
+                }
+                TokenKind::InterpStart => {
+                    // starts directly with interpolation, handled below
+                }
+                _ => return None,
+            }
+        }
+
+        // Now scan the rest: alternating Minus and (InterpStart..RBrace | Ident/IdentifierLit)
+        loop {
+            if i >= self.tokens.len() {
+                break;
+            }
+
+            // Check for Minus followed by InterpStart or ident
+            if matches!(self.tokens[i].kind, TokenKind::Minus) {
+                let after_minus = i + 1;
+                if after_minus < self.tokens.len() {
+                    match &self.tokens[after_minus].kind {
+                        TokenKind::InterpStart => {
+                            i = after_minus; // will be handled below
+                        }
+                        TokenKind::Ident(_) | TokenKind::IdentifierLit(_) => {
+                            // literal suffix after hyphen, e.g., `-suffix`
+                            i = after_minus + 1;
+                            continue;
+                        }
+                        _ => break,
+                    }
+                } else {
+                    break;
+                }
+            }
+
+            // Check for InterpStart
+            if i < self.tokens.len() && matches!(self.tokens[i].kind, TokenKind::InterpStart) {
+                has_interp = true;
+                i += 1; // past InterpStart
+                // Scan for matching RBrace (with nesting)
+                let mut depth = 1;
+                while i < self.tokens.len() && depth > 0 {
+                    match &self.tokens[i].kind {
+                        TokenKind::LBrace => depth += 1,
+                        TokenKind::RBrace => depth -= 1,
+                        TokenKind::Eof => break,
+                        _ => {}
+                    }
+                    i += 1;
+                }
+                if depth != 0 {
+                    return None; // unmatched braces
+                }
+                continue;
+            }
+
+            break;
+        }
+
+        if !has_interp {
+            return None;
+        }
+
+        // `i` now points past the last token of the interpolated ID.
+        // Check that what follows (skipping newlines) is LBrace or StringLit.
+        let mut check = i;
+        while check < self.tokens.len()
+            && matches!(self.tokens[check].kind, TokenKind::Newline)
+        {
+            check += 1;
+        }
+        if check >= self.tokens.len() {
+            return None;
+        }
+        match &self.tokens[check].kind {
+            TokenKind::LBrace | TokenKind::StringLit(_) => {}
+            _ => return None,
+        }
+
+        // Now actually consume and build the parts.
+        let end_pos = i;
+        let mut parts: Vec<StringPart> = Vec::new();
+
+        while self.pos < end_pos {
+            match self.peek_kind().clone() {
+                TokenKind::Ident(ref name) => {
+                    parts.push(StringPart::Literal(name.clone()));
+                    self.advance();
+                }
+                TokenKind::IdentifierLit(ref val) => {
+                    parts.push(StringPart::Literal(val.clone()));
+                    self.advance();
+                }
+                TokenKind::Minus => {
+                    // Hyphen between parts — append to last literal or create new one
+                    if let Some(StringPart::Literal(ref mut s)) = parts.last_mut() {
+                        s.push('-');
+                    } else {
+                        parts.push(StringPart::Literal("-".to_string()));
+                    }
+                    self.advance();
+                }
+                TokenKind::InterpStart => {
+                    self.advance(); // consume `${`
+                    // Parse expression inside the interpolation
+                    if let Some(expr) = self.parse_expr() {
+                        parts.push(StringPart::Interpolation(Box::new(expr)));
+                    }
+                    // Consume the closing `}`
+                    let _ = self.expect(&TokenKind::RBrace);
+                }
+                _ => {
+                    // Unexpected token — skip it to avoid infinite loop
+                    self.advance();
+                }
+            }
+        }
+
+        // Merge adjacent literals
+        let mut merged: Vec<StringPart> = Vec::new();
+        for part in parts {
+            match part {
+                StringPart::Literal(s) => {
+                    if let Some(StringPart::Literal(ref mut last)) = merged.last_mut() {
+                        last.push_str(&s);
+                    } else {
+                        merged.push(StringPart::Literal(s));
+                    }
+                }
+                other => merged.push(other),
+            }
+        }
+
+        Some(InlineId::Interpolated(merged))
+    }
+
     fn is_keyword_token(&self, _kind: &TokenKind) -> bool {
         // The lexer already distinguishes keywords from idents,
         // so any Ident token is NOT a keyword.
@@ -632,7 +821,7 @@ impl Parser {
 
     // ── Let bindings ──────────────────────────────────────────────────────
 
-    pub(crate) fn parse_let_binding(&mut self, trivia: Trivia) -> Option<LetBinding> {
+    pub(crate) fn parse_let_binding(&mut self, decorators: Vec<Decorator>, trivia: Trivia) -> Option<LetBinding> {
         let start_span = self.current_span();
         self.advance(); // consume `let`
         self.skip_newlines();
@@ -645,6 +834,7 @@ impl Parser {
         let value = self.parse_expr()?;
         let span = start_span.merge(value.span());
         Some(LetBinding {
+            decorators,
             name,
             value,
             trivia,
@@ -1408,7 +1598,7 @@ impl Parser {
                 break;
             }
             if matches!(self.peek_kind(), TokenKind::Let) {
-                if let Some(binding) = self.parse_let_binding(inner_trivia) {
+                if let Some(binding) = self.parse_let_binding(vec![], inner_trivia) {
                     lets.push(binding);
                 }
             } else if let TokenKind::Ident(ref n) = self.peek_kind().clone() {
@@ -1813,6 +2003,216 @@ server {
                 assert_eq!(id_lit.value, "my-svc");
             }
             other => panic!("expected KindId, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn e036_export_inside_block() {
+        let (doc, diags) = parse("config {\n  export let x = 1\n}");
+        assert!(diags.has_errors(), "expected E036 error");
+        let e036_errors: Vec<_> = diags
+            .diagnostics()
+            .iter()
+            .filter(|d| d.code.as_deref() == Some("E036"))
+            .collect();
+        assert_eq!(e036_errors.len(), 1);
+        assert!(e036_errors[0]
+            .message
+            .contains("export declarations must be at the top level"));
+        // The block itself should still parse
+        assert_eq!(doc.items.len(), 1);
+        match &doc.items[0] {
+            DocItem::Body(BodyItem::Block(block)) => {
+                assert_eq!(block.kind.name, "config");
+            }
+            other => panic!("expected Block, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn e036_re_export_inside_block() {
+        let (doc, diags) = parse("config {\n  export myvar\n}");
+        assert!(diags.has_errors(), "expected E036 error");
+        let e036_errors: Vec<_> = diags
+            .diagnostics()
+            .iter()
+            .filter(|d| d.code.as_deref() == Some("E036"))
+            .collect();
+        assert_eq!(e036_errors.len(), 1);
+        // The block should still parse
+        assert_eq!(doc.items.len(), 1);
+    }
+
+    #[test]
+    fn e036_no_error_for_top_level_export() {
+        let (_doc, diags) = parse("export let x = 42");
+        let e036_errors: Vec<_> = diags
+            .diagnostics()
+            .iter()
+            .filter(|d| d.code.as_deref() == Some("E036"))
+            .collect();
+        assert_eq!(e036_errors.len(), 0);
+    }
+
+    // ── Interpolated inline ID tests ─────────────────────────────────────
+
+    #[test]
+    fn interpolated_inline_id_basic() {
+        // svc-${name} should parse as InlineId::Interpolated
+        let (doc, diags) = parse("service svc-${name} { }");
+        assert!(!diags.has_errors(), "diagnostics: {:?}", diags.diagnostics());
+        assert_eq!(doc.items.len(), 1);
+        match &doc.items[0] {
+            DocItem::Body(BodyItem::Block(block)) => {
+                assert_eq!(block.kind.name, "service");
+                match &block.inline_id {
+                    Some(InlineId::Interpolated(parts)) => {
+                        assert_eq!(parts.len(), 2);
+                        match &parts[0] {
+                            StringPart::Literal(s) => assert_eq!(s, "svc-"),
+                            other => panic!("expected Literal, got {:?}", other),
+                        }
+                        match &parts[1] {
+                            StringPart::Interpolation(expr) => {
+                                match expr.as_ref() {
+                                    Expr::Ident(id) => assert_eq!(id.name, "name"),
+                                    other => panic!("expected Ident expr, got {:?}", other),
+                                }
+                            }
+                            other => panic!("expected Interpolation, got {:?}", other),
+                        }
+                    }
+                    other => panic!("expected InlineId::Interpolated, got {:?}", other),
+                }
+            }
+            other => panic!("expected Block, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn interpolated_inline_id_with_hyphenated_prefix() {
+        // svc-api-${name} should produce ["svc-api-", ${name}]
+        let (doc, diags) = parse("service svc-api-${name} { }");
+        assert!(!diags.has_errors(), "diagnostics: {:?}", diags.diagnostics());
+        match &doc.items[0] {
+            DocItem::Body(BodyItem::Block(block)) => {
+                match &block.inline_id {
+                    Some(InlineId::Interpolated(parts)) => {
+                        assert_eq!(parts.len(), 2);
+                        match &parts[0] {
+                            StringPart::Literal(s) => assert_eq!(s, "svc-api-"),
+                            other => panic!("expected Literal 'svc-api-', got {:?}", other),
+                        }
+                        assert!(matches!(&parts[1], StringPart::Interpolation(_)));
+                    }
+                    other => panic!("expected InlineId::Interpolated, got {:?}", other),
+                }
+            }
+            other => panic!("expected Block, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn interpolated_inline_id_prefix_and_suffix() {
+        // svc-${name}-api should produce ["svc-", ${name}, "-api"]
+        let (doc, diags) = parse("service svc-${name}-api { }");
+        assert!(!diags.has_errors(), "diagnostics: {:?}", diags.diagnostics());
+        match &doc.items[0] {
+            DocItem::Body(BodyItem::Block(block)) => {
+                match &block.inline_id {
+                    Some(InlineId::Interpolated(parts)) => {
+                        assert_eq!(parts.len(), 3);
+                        match &parts[0] {
+                            StringPart::Literal(s) => assert_eq!(s, "svc-"),
+                            other => panic!("expected Literal 'svc-', got {:?}", other),
+                        }
+                        assert!(matches!(&parts[1], StringPart::Interpolation(_)));
+                        match &parts[2] {
+                            StringPart::Literal(s) => assert_eq!(s, "-api"),
+                            other => panic!("expected Literal '-api', got {:?}", other),
+                        }
+                    }
+                    other => panic!("expected InlineId::Interpolated, got {:?}", other),
+                }
+            }
+            other => panic!("expected Block, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn interpolated_inline_id_only_interp() {
+        // ${name} as inline ID
+        let (doc, diags) = parse("service ${name} { }");
+        assert!(!diags.has_errors(), "diagnostics: {:?}", diags.diagnostics());
+        match &doc.items[0] {
+            DocItem::Body(BodyItem::Block(block)) => {
+                match &block.inline_id {
+                    Some(InlineId::Interpolated(parts)) => {
+                        assert_eq!(parts.len(), 1);
+                        assert!(matches!(&parts[0], StringPart::Interpolation(_)));
+                    }
+                    other => panic!("expected InlineId::Interpolated, got {:?}", other),
+                }
+            }
+            other => panic!("expected Block, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn interpolated_inline_id_in_for_loop() {
+        let src = r#"for name in ["a", "b"] {
+            service svc-${name} {
+                port = 8080
+            }
+        }"#;
+        let (doc, diags) = parse(src);
+        assert!(!diags.has_errors(), "diagnostics: {:?}", diags.diagnostics());
+        assert_eq!(doc.items.len(), 1);
+        // The for loop body should contain a block with interpolated inline ID
+        match &doc.items[0] {
+            DocItem::Body(BodyItem::ForLoop(for_loop)) => {
+                assert_eq!(for_loop.body.len(), 1);
+                match &for_loop.body[0] {
+                    BodyItem::Block(block) => {
+                        assert_eq!(block.kind.name, "service");
+                        assert!(matches!(&block.inline_id, Some(InlineId::Interpolated(_))));
+                    }
+                    other => panic!("expected Block in for body, got {:?}", other),
+                }
+            }
+            other => panic!("expected ForLoop, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn literal_inline_id_still_works() {
+        // Ensure non-interpolated IDs still parse as Literal
+        let (doc, diags) = parse("service my-svc { }");
+        assert!(!diags.has_errors(), "diagnostics: {:?}", diags.diagnostics());
+        match &doc.items[0] {
+            DocItem::Body(BodyItem::Block(block)) => {
+                match &block.inline_id {
+                    Some(InlineId::Literal(id)) => assert_eq!(id.value, "my-svc"),
+                    other => panic!("expected InlineId::Literal, got {:?}", other),
+                }
+            }
+            other => panic!("expected Block, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn plain_ident_inline_id_still_works() {
+        // Ensure plain ident (no hyphens) still works
+        let (doc, diags) = parse("service api { }");
+        assert!(!diags.has_errors(), "diagnostics: {:?}", diags.diagnostics());
+        match &doc.items[0] {
+            DocItem::Body(BodyItem::Block(block)) => {
+                match &block.inline_id {
+                    Some(InlineId::Literal(id)) => assert_eq!(id.value, "api"),
+                    other => panic!("expected InlineId::Literal, got {:?}", other),
+                }
+            }
+            other => panic!("expected Block, got {:?}", other),
         }
     }
 }
