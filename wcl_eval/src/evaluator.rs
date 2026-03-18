@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 
 use indexmap::IndexMap;
 use wcl_core::ast::*;
@@ -6,6 +7,7 @@ use wcl_core::diagnostic::{Diagnostic, DiagnosticBag};
 use wcl_core::span::Span;
 
 use crate::functions::{builtin_registry, BuiltinFn};
+use crate::imports::FileSystem;
 use crate::scope::*;
 use crate::value::*;
 
@@ -13,6 +15,10 @@ pub struct Evaluator {
     scopes: ScopeArena,
     builtins: HashMap<&'static str, BuiltinFn>,
     diagnostics: DiagnosticBag,
+    fs: Option<Box<dyn FileSystem>>,
+    base_dir: Option<PathBuf>,
+    /// Maps (parent_scope, block_name) -> child_scope_id for block evaluation
+    block_scope_map: HashMap<(ScopeId, String), ScopeId>,
 }
 
 impl Evaluator {
@@ -21,6 +27,20 @@ impl Evaluator {
             scopes: ScopeArena::new(),
             builtins: builtin_registry(),
             diagnostics: DiagnosticBag::new(),
+            fs: None,
+            base_dir: None,
+            block_scope_map: HashMap::new(),
+        }
+    }
+
+    pub fn with_fs(fs: Box<dyn FileSystem>, base_dir: PathBuf) -> Self {
+        Evaluator {
+            scopes: ScopeArena::new(),
+            builtins: builtin_registry(),
+            diagnostics: DiagnosticBag::new(),
+            fs: Some(fs),
+            base_dir: Some(base_dir),
+            block_scope_map: HashMap::new(),
         }
     }
 
@@ -121,6 +141,11 @@ impl Evaluator {
                         InlineId::Interpolated(_) => "?interpolated?".to_string(),
                     })
                     .unwrap_or_else(|| format!("__block_{}", block.kind.name));
+                self.block_scope_map
+                    .insert((scope_id, name.clone()), child_scope);
+                // Collect external dependencies: names referenced inside the
+                // block body that are not defined within the block itself.
+                let external_deps = self.collect_block_external_deps(&block.body);
                 self.scopes.add_entry(
                     scope_id,
                     ScopeEntry {
@@ -128,7 +153,7 @@ impl Evaluator {
                         kind: ScopeEntryKind::BlockChild,
                         value: None,
                         span: block.span,
-                        dependencies: Default::default(),
+                        dependencies: external_deps,
                         evaluated: false,
                     },
                 );
@@ -142,6 +167,48 @@ impl Evaluator {
         for item in body {
             self.register_body_item(item, scope_id);
         }
+    }
+
+    /// Collect names referenced inside a block body that are NOT defined within
+    /// the block itself. These become the block's external dependencies so the
+    /// topo sort in the parent scope evaluates them first.
+    fn collect_block_external_deps(&self, body: &[BodyItem]) -> HashSet<String> {
+        let mut all_deps = HashSet::new();
+        let mut local_names = HashSet::new();
+
+        for item in body {
+            match item {
+                BodyItem::Attribute(attr) => {
+                    local_names.insert(attr.name.name.clone());
+                    let deps = self.find_dependencies(&attr.value);
+                    all_deps.extend(deps);
+                }
+                BodyItem::LetBinding(lb) => {
+                    local_names.insert(lb.name.name.clone());
+                    let deps = self.find_dependencies(&lb.value);
+                    all_deps.extend(deps);
+                }
+                BodyItem::Block(block) => {
+                    let bname = block
+                        .inline_id
+                        .as_ref()
+                        .map(|id| match id {
+                            InlineId::Literal(lit) => lit.value.clone(),
+                            InlineId::Interpolated(_) => "?interpolated?".to_string(),
+                        })
+                        .unwrap_or_else(|| format!("__block_{}", block.kind.name));
+                    local_names.insert(bname);
+                    // Recurse into nested block bodies
+                    let nested = self.collect_block_external_deps(&block.body);
+                    all_deps.extend(nested);
+                }
+                _ => {}
+            }
+        }
+
+        // Remove locally defined names — only keep external references
+        all_deps.retain(|dep| !local_names.contains(dep));
+        all_deps
     }
 
     // ------------------------------------------------------------------
@@ -201,8 +268,10 @@ impl Evaluator {
                         })
                         .unwrap_or_else(|| format!("__block_{}", block.kind.name));
                     if block_name == name {
-                        // Mark as evaluated (block evaluation is handled separately)
+                        // Evaluate the block's child scope and build a BlockRef
+                        let block_ref = self.build_block_ref(block, scope_id);
                         if let Some((_, entry)) = self.scopes.resolve_mut(scope_id, name) {
+                            entry.value = Some(Value::BlockRef(block_ref));
                             entry.evaluated = true;
                         }
                         return;
@@ -293,6 +362,9 @@ impl Evaluator {
                         self.collect_deps(expr, deps);
                     }
                 }
+            }
+            Expr::Ref(id, _) => {
+                deps.insert(id.value.clone());
             }
             _ => {} // literals, etc.
         }
@@ -388,17 +460,41 @@ impl Evaluator {
                 self.eval_expr(final_expr, block_scope)
             }
             Expr::Query(pipeline, span) => self.eval_query(pipeline, *span, scope_id),
-            Expr::Ref(id, _span) => {
-                // Resolve block reference by identifier
-                Ok(Value::Identifier(id.value.clone()))
+            Expr::Ref(id, span) => {
+                // Resolve block reference by identifier — search for a BlockChild
+                // entry whose name matches and return its evaluated Value::BlockRef.
+                let id_str = &id.value;
+                if let Some((_, entry)) = self.scopes.resolve(scope_id, id_str) {
+                    if entry.kind == ScopeEntryKind::BlockChild {
+                        if let Some(ref val) = entry.value {
+                            return Ok(val.clone());
+                        }
+                    }
+                }
+                Err(
+                    Diagnostic::error(
+                        format!("ref: block with id '{}' not found", id_str),
+                        *span,
+                    )
+                    .with_code("E040"),
+                )
             }
-            Expr::ImportRaw(_path, span) => {
-                Err(Diagnostic::error("import_raw not available in this context", *span))
+            Expr::ImportRaw(path, span) => {
+                let path_str = self.eval_string_to_string(path, scope_id)?;
+                let content = self.read_file_checked(&path_str, *span)?;
+                Ok(Value::String(content))
             }
-            Expr::ImportTable(_path, _sep, span) => Err(Diagnostic::error(
-                "import_table not available in this context",
-                *span,
-            )),
+            Expr::ImportTable(path, sep, span) => {
+                let path_str = self.eval_string_to_string(path, scope_id)?;
+                let content = self.read_file_checked(&path_str, *span)?;
+                let separator = if let Some(sep_lit) = sep {
+                    let sep_str = self.eval_string_to_string(sep_lit, scope_id)?;
+                    sep_str.chars().next().unwrap_or(',')
+                } else {
+                    ','
+                };
+                Ok(Self::parse_table(&content, separator))
+            }
             Expr::Paren(e, _) => self.eval_expr(e, scope_id),
         }
     }
@@ -441,6 +537,59 @@ impl Evaluator {
             Value::String(s) => Ok(s),
             _ => unreachable!(),
         }
+    }
+
+    // ------------------------------------------------------------------
+    // File import helpers
+    // ------------------------------------------------------------------
+
+    fn read_file_checked(&self, path_str: &str, span: Span) -> Result<String, Diagnostic> {
+        let fs = self.fs.as_ref().ok_or_else(|| {
+            Diagnostic::error("import_raw not available in this context", span)
+        })?;
+        let base = self.base_dir.as_ref().unwrap();
+
+        // Resolve path relative to base_dir
+        let resolved = base.join(path_str);
+
+        // Normalize to handle .. etc
+        let normalized = crate::imports::normalize_path(&resolved);
+
+        // Jail check: normalized path must start with base_dir
+        let canonical_base = crate::imports::normalize_path(base);
+        if !normalized.starts_with(&canonical_base) {
+            return Err(Diagnostic::error(
+                format!("path '{}' escapes root directory", path_str),
+                span,
+            ));
+        }
+
+        fs.read_file(&normalized).map_err(|e| {
+            Diagnostic::error(format!("cannot read file '{}': {}", path_str, e), span)
+        })
+    }
+
+    fn parse_table(content: &str, separator: char) -> Value {
+        let mut lines = content.lines();
+        let headers: Vec<&str> = match lines.next() {
+            Some(line) => line.split(separator).map(|s| s.trim()).collect(),
+            None => return Value::List(vec![]),
+        };
+
+        let rows: Vec<Value> = lines
+            .filter(|line| !line.trim().is_empty())
+            .map(|line| {
+                let fields: Vec<&str> = line.split(separator).collect();
+                let mut map = IndexMap::new();
+                for (i, header) in headers.iter().enumerate() {
+                    let val = fields.get(i).map(|f| f.trim()).unwrap_or("");
+                    map.insert(header.to_string(), Value::String(val.to_string()));
+                }
+                Value::Map(map)
+            })
+            .collect();
+
+        Value::List(rows)
     }
 
     // ------------------------------------------------------------------
@@ -1088,6 +1237,201 @@ impl Evaluator {
                 ),
                 span,
             )),
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Block evaluation — build Value::BlockRef from AST Block nodes
+    // ------------------------------------------------------------------
+
+    /// Build a `BlockRef` for a block AST node.  Evaluates the block's child
+    /// scope (attributes, let-bindings, nested blocks) and collects the results
+    /// into a `BlockRef` value.
+    fn build_block_ref(&mut self, block: &Block, parent_scope: ScopeId) -> BlockRef {
+        let name = block
+            .inline_id
+            .as_ref()
+            .map(|id| match id {
+                InlineId::Literal(lit) => lit.value.clone(),
+                InlineId::Interpolated(_) => "?interpolated?".to_string(),
+            })
+            .unwrap_or_else(|| format!("__block_{}", block.kind.name));
+
+        let child_scope = self
+            .block_scope_map
+            .get(&(parent_scope, name))
+            .copied();
+
+        if let Some(child_scope) = child_scope {
+            // Evaluate entries inside the child scope (topo-sorted)
+            self.evaluate_block_scope(&block.body, child_scope);
+        }
+
+        // Collect attributes from the child scope
+        let mut attributes = IndexMap::new();
+        let mut children = Vec::new();
+
+        if let Some(child_scope) = child_scope {
+            let scope = self.scopes.get(child_scope);
+            let entry_names: Vec<(String, ScopeEntryKind)> = scope
+                .entries
+                .values()
+                .map(|e| (e.name.clone(), e.kind))
+                .collect();
+
+            for (ename, ekind) in &entry_names {
+                match ekind {
+                    ScopeEntryKind::Attribute | ScopeEntryKind::ExportLet => {
+                        if let Some((_, entry)) = self.scopes.resolve(child_scope, ename) {
+                            if let Some(ref val) = entry.value {
+                                attributes.insert(ename.clone(), val.clone());
+                            }
+                        }
+                    }
+                    ScopeEntryKind::BlockChild => {
+                        if let Some((_, entry)) = self.scopes.resolve(child_scope, ename) {
+                            if let Some(Value::BlockRef(br)) = &entry.value {
+                                children.push(br.clone());
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        // Build decorator values
+        let decorators = block
+            .decorators
+            .iter()
+            .map(|d| {
+                let mut args = IndexMap::new();
+                for (i, arg) in d.args.iter().enumerate() {
+                    match arg {
+                        DecoratorArg::Positional(expr) => {
+                            if let Ok(val) = self.eval_expr(
+                                expr,
+                                child_scope.unwrap_or(parent_scope),
+                            ) {
+                                args.insert(format!("_{}", i), val);
+                            }
+                        }
+                        DecoratorArg::Named(name, expr) => {
+                            if let Ok(val) = self.eval_expr(
+                                expr,
+                                child_scope.unwrap_or(parent_scope),
+                            ) {
+                                args.insert(name.name.clone(), val);
+                            }
+                        }
+                    }
+                }
+                DecoratorValue {
+                    name: d.name.name.clone(),
+                    args,
+                }
+            })
+            .collect();
+
+        let labels = block
+            .labels
+            .iter()
+            .filter_map(|l| {
+                // Labels are StringLit — evaluate them to get the string value
+                self.eval_string_to_string(
+                    l,
+                    child_scope.unwrap_or(parent_scope),
+                )
+                .ok()
+            })
+            .collect();
+
+        let inline_id = block.inline_id.as_ref().map(|id| match id {
+            InlineId::Literal(lit) => lit.value.clone(),
+            InlineId::Interpolated(_) => "?interpolated?".to_string(),
+        });
+
+        BlockRef {
+            kind: block.kind.name.clone(),
+            id: inline_id,
+            labels,
+            attributes,
+            children,
+            decorators,
+            span: block.span,
+        }
+    }
+
+    /// Evaluate all entries in a block scope (attributes, let-bindings, child blocks).
+    /// Uses topo sort within the scope, then evaluates each entry by walking the
+    /// block body items.
+    fn evaluate_block_scope(&mut self, body: &[BodyItem], scope_id: ScopeId) {
+        match self.scopes.topo_sort(scope_id) {
+            Ok(order) => {
+                for name in &order {
+                    self.evaluate_body_entry(body, scope_id, name);
+                }
+            }
+            Err(cycle) => {
+                self.diagnostics.error(
+                    format!("cyclic dependency in block: {}", cycle.join(" -> ")),
+                    Span::dummy(),
+                );
+            }
+        }
+    }
+
+    /// Evaluate a single named entry from a block body (analogous to
+    /// `evaluate_doc_entry` but for `BodyItem` slices).
+    fn evaluate_body_entry(&mut self, body: &[BodyItem], scope_id: ScopeId, name: &str) {
+        for item in body {
+            match item {
+                BodyItem::Attribute(attr) if attr.name.name == name => {
+                    let val = self.eval_expr(&attr.value, scope_id);
+                    match val {
+                        Ok(v) => {
+                            if let Some((_, entry)) = self.scopes.resolve_mut(scope_id, name) {
+                                entry.value = Some(v);
+                                entry.evaluated = true;
+                            }
+                        }
+                        Err(diag) => self.diagnostics.add(diag),
+                    }
+                    return;
+                }
+                BodyItem::LetBinding(lb) if lb.name.name == name => {
+                    let val = self.eval_expr(&lb.value, scope_id);
+                    match val {
+                        Ok(v) => {
+                            if let Some((_, entry)) = self.scopes.resolve_mut(scope_id, name) {
+                                entry.value = Some(v);
+                                entry.evaluated = true;
+                            }
+                        }
+                        Err(diag) => self.diagnostics.add(diag),
+                    }
+                    return;
+                }
+                BodyItem::Block(block) => {
+                    let block_name = block
+                        .inline_id
+                        .as_ref()
+                        .map(|id| match id {
+                            InlineId::Literal(lit) => lit.value.clone(),
+                            InlineId::Interpolated(_) => "?interpolated?".to_string(),
+                        })
+                        .unwrap_or_else(|| format!("__block_{}", block.kind.name));
+                    if block_name == name {
+                        let block_ref = self.build_block_ref(block, scope_id);
+                        if let Some((_, entry)) = self.scopes.resolve_mut(scope_id, name) {
+                            entry.value = Some(Value::BlockRef(block_ref));
+                            entry.evaluated = true;
+                        }
+                        return;
+                    }
+                }
+                _ => {}
+            }
         }
     }
 
@@ -1979,5 +2323,251 @@ mod tests {
         let scope = ev.scopes.create_scope(ScopeKind::Module, None);
         let expr = Expr::Paren(Box::new(Expr::IntLit(42, ds())), ds());
         assert_eq!(ev.eval_expr(&expr, scope).unwrap(), Value::Int(42));
+    }
+
+    // ── ref() resolution ────────────────────────────────────────────
+
+    fn mk_string_lit(s: &str) -> StringLit {
+        StringLit {
+            parts: vec![StringPart::Literal(s.to_string())],
+            span: ds(),
+        }
+    }
+
+    fn mk_attr(name: &str, value: Expr) -> BodyItem {
+        BodyItem::Attribute(Attribute {
+            decorators: vec![],
+            name: mk_ident(name),
+            value,
+            trivia: wcl_core::trivia::Trivia::empty(),
+            span: ds(),
+        })
+    }
+
+    fn mk_block(kind: &str, id: &str, body: Vec<BodyItem>) -> BodyItem {
+        BodyItem::Block(Block {
+            decorators: vec![],
+            partial: false,
+            kind: mk_ident(kind),
+            inline_id: Some(InlineId::Literal(IdentifierLit {
+                value: id.to_string(),
+                span: ds(),
+            })),
+            labels: vec![],
+            body,
+            trivia: wcl_core::trivia::Trivia::empty(),
+            span: ds(),
+        })
+    }
+
+    fn mk_doc(items: Vec<BodyItem>) -> Document {
+        Document {
+            items: items.into_iter().map(DocItem::Body).collect(),
+            trivia: wcl_core::trivia::Trivia::empty(),
+            span: ds(),
+        }
+    }
+
+    #[test]
+    fn test_ref_resolves_block() {
+        // service "svc-auth" { port = 8080 }
+        // target = ref(svc-auth)
+        let doc = mk_doc(vec![
+            mk_block(
+                "service",
+                "svc-auth",
+                vec![mk_attr("port", Expr::IntLit(8080, ds()))],
+            ),
+            mk_attr(
+                "target",
+                Expr::Ref(
+                    IdentifierLit {
+                        value: "svc-auth".to_string(),
+                        span: ds(),
+                    },
+                    ds(),
+                ),
+            ),
+        ]);
+
+        let mut ev = Evaluator::new();
+        let result = ev.evaluate(&doc);
+        assert!(!ev.diagnostics.has_errors(), "unexpected errors: {:?}", ev.diagnostics.diagnostics());
+
+        let target = result.get("target").expect("target should exist");
+        match target {
+            Value::BlockRef(br) => {
+                assert_eq!(br.kind, "service");
+                assert_eq!(br.id, Some("svc-auth".to_string()));
+                assert_eq!(br.attributes.get("port"), Some(&Value::Int(8080)));
+            }
+            other => panic!("expected BlockRef, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ref_member_access() {
+        // service "svc-auth" { port = 8080 }
+        // auth_port = ref(svc-auth).port
+        let doc = mk_doc(vec![
+            mk_block(
+                "service",
+                "svc-auth",
+                vec![mk_attr("port", Expr::IntLit(8080, ds()))],
+            ),
+            mk_attr(
+                "auth_port",
+                Expr::MemberAccess(
+                    Box::new(Expr::Ref(
+                        IdentifierLit {
+                            value: "svc-auth".to_string(),
+                            span: ds(),
+                        },
+                        ds(),
+                    )),
+                    mk_ident("port"),
+                    ds(),
+                ),
+            ),
+        ]);
+
+        let mut ev = Evaluator::new();
+        let result = ev.evaluate(&doc);
+        assert!(!ev.diagnostics.has_errors(), "unexpected errors: {:?}", ev.diagnostics.diagnostics());
+        assert_eq!(result.get("auth_port"), Some(&Value::Int(8080)));
+    }
+
+    #[test]
+    fn test_ref_undefined_id_errors() {
+        let mut ev = Evaluator::new();
+        let scope = ev.scopes.create_scope(ScopeKind::Module, None);
+        let expr = Expr::Ref(
+            IdentifierLit {
+                value: "nonexistent".to_string(),
+                span: ds(),
+            },
+            ds(),
+        );
+        let err = ev.eval_expr(&expr, scope).unwrap_err();
+        assert!(err.message.contains("not found"), "expected 'not found' error, got: {}", err.message);
+    }
+
+    // ── import_raw() ────────────────────────────────────────────────
+
+    #[test]
+    fn test_import_raw_reads_file() {
+        use crate::imports::InMemoryFs;
+        use std::path::PathBuf;
+
+        let mut fs = InMemoryFs::new();
+        fs.add_file(PathBuf::from("/project/data.txt"), "hello world");
+        let mut ev = Evaluator::with_fs(Box::new(fs), PathBuf::from("/project"));
+        let scope = ev.scopes.create_scope(ScopeKind::Module, None);
+
+        let expr = Expr::ImportRaw(mk_string_lit("data.txt"), ds());
+        let result = ev.eval_expr(&expr, scope).unwrap();
+        assert_eq!(result, Value::String("hello world".to_string()));
+    }
+
+    #[test]
+    fn test_import_raw_missing_file_errors() {
+        use crate::imports::InMemoryFs;
+        use std::path::PathBuf;
+
+        let fs = InMemoryFs::new();
+        let mut ev = Evaluator::with_fs(Box::new(fs), PathBuf::from("/project"));
+        let scope = ev.scopes.create_scope(ScopeKind::Module, None);
+
+        let expr = Expr::ImportRaw(mk_string_lit("missing.txt"), ds());
+        let err = ev.eval_expr(&expr, scope).unwrap_err();
+        assert!(err.message.contains("cannot read file"), "expected read error, got: {}", err.message);
+    }
+
+    #[test]
+    fn test_import_raw_jail_escape_rejected() {
+        use crate::imports::InMemoryFs;
+        use std::path::PathBuf;
+
+        let mut fs = InMemoryFs::new();
+        fs.add_file(PathBuf::from("/etc/passwd"), "root:x:0:0");
+        let mut ev = Evaluator::with_fs(Box::new(fs), PathBuf::from("/project"));
+        let scope = ev.scopes.create_scope(ScopeKind::Module, None);
+
+        let expr = Expr::ImportRaw(mk_string_lit("../../etc/passwd"), ds());
+        let err = ev.eval_expr(&expr, scope).unwrap_err();
+        assert!(err.message.contains("escapes root"), "expected jail escape error, got: {}", err.message);
+    }
+
+    // ── import_table() ──────────────────────────────────────────────
+
+    #[test]
+    fn test_import_table_csv() {
+        use crate::imports::InMemoryFs;
+        use std::path::PathBuf;
+
+        let mut fs = InMemoryFs::new();
+        fs.add_file(
+            PathBuf::from("/project/services.csv"),
+            "name,port\nauth,8080\napi,9090",
+        );
+        let mut ev = Evaluator::with_fs(Box::new(fs), PathBuf::from("/project"));
+        let scope = ev.scopes.create_scope(ScopeKind::Module, None);
+
+        let expr = Expr::ImportTable(mk_string_lit("services.csv"), None, ds());
+        let result = ev.eval_expr(&expr, scope).unwrap();
+
+        let mut row1 = IndexMap::new();
+        row1.insert("name".to_string(), Value::String("auth".to_string()));
+        row1.insert("port".to_string(), Value::String("8080".to_string()));
+        let mut row2 = IndexMap::new();
+        row2.insert("name".to_string(), Value::String("api".to_string()));
+        row2.insert("port".to_string(), Value::String("9090".to_string()));
+
+        assert_eq!(result, Value::List(vec![Value::Map(row1), Value::Map(row2)]));
+    }
+
+    #[test]
+    fn test_import_table_tsv_explicit_separator() {
+        use crate::imports::InMemoryFs;
+        use std::path::PathBuf;
+
+        let mut fs = InMemoryFs::new();
+        fs.add_file(
+            PathBuf::from("/project/services.tsv"),
+            "name\tport\nauth\t8080\napi\t9090",
+        );
+        let mut ev = Evaluator::with_fs(Box::new(fs), PathBuf::from("/project"));
+        let scope = ev.scopes.create_scope(ScopeKind::Module, None);
+
+        let expr = Expr::ImportTable(
+            mk_string_lit("services.tsv"),
+            Some(mk_string_lit("\t")),
+            ds(),
+        );
+        let result = ev.eval_expr(&expr, scope).unwrap();
+
+        let mut row1 = IndexMap::new();
+        row1.insert("name".to_string(), Value::String("auth".to_string()));
+        row1.insert("port".to_string(), Value::String("8080".to_string()));
+        let mut row2 = IndexMap::new();
+        row2.insert("name".to_string(), Value::String("api".to_string()));
+        row2.insert("port".to_string(), Value::String("9090".to_string()));
+
+        assert_eq!(result, Value::List(vec![Value::Map(row1), Value::Map(row2)]));
+    }
+
+    #[test]
+    fn test_import_table_empty_file() {
+        use crate::imports::InMemoryFs;
+        use std::path::PathBuf;
+
+        let mut fs = InMemoryFs::new();
+        fs.add_file(PathBuf::from("/project/empty.csv"), "");
+        let mut ev = Evaluator::with_fs(Box::new(fs), PathBuf::from("/project"));
+        let scope = ev.scopes.create_scope(ScopeKind::Module, None);
+
+        let expr = Expr::ImportTable(mk_string_lit("empty.csv"), None, ds());
+        let result = ev.eval_expr(&expr, scope).unwrap();
+        assert_eq!(result, Value::List(vec![]));
     }
 }

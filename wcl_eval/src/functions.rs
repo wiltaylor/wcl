@@ -76,6 +76,10 @@ pub fn builtin_registry() -> HashMap<&'static str, BuiltinFn> {
     m.insert("to_bool", to_bool as BuiltinFn);
     m.insert("type_of", type_of as BuiltinFn);
 
+    // Reference and Query Functions (Section 14.9)
+    m.insert("has", fn_has as BuiltinFn);
+    m.insert("has_decorator", fn_has_decorator as BuiltinFn);
+
     m
 }
 
@@ -826,6 +830,34 @@ fn type_of(args: &[Value]) -> Result<Value, String> {
 }
 
 // ---------------------------------------------------------------------------
+// Section 14.9 — Reference and Query Functions
+// ---------------------------------------------------------------------------
+
+fn fn_has(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 2, "has")?;
+    let block_ref = match &args[0] {
+        Value::BlockRef(br) => br,
+        other => return Err(format!("has: argument 1 must be block_ref, got {}", other.type_name())),
+    };
+    let attr_name = get_string(&args[1], 2, "has")?;
+    // Check attributes AND child blocks by kind
+    let has_attr = block_ref.attributes.contains_key(attr_name);
+    let has_child = block_ref.children.iter().any(|c| c.kind == attr_name);
+    Ok(Value::Bool(has_attr || has_child))
+}
+
+fn fn_has_decorator(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 2, "has_decorator")?;
+    let block_ref = match &args[0] {
+        Value::BlockRef(br) => br,
+        other => return Err(format!("has_decorator: argument 1 must be block_ref, got {}", other.type_name())),
+    };
+    let deco_name = get_string(&args[1], 2, "has_decorator")?;
+    let found = block_ref.decorators.iter().any(|d| d.name == deco_name);
+    Ok(Value::Bool(found))
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -1266,6 +1298,7 @@ mod tests {
             "sum", "avg", "min_of", "max_of",
             "sha256", "base64_encode", "base64_decode", "json_encode",
             "to_string", "to_int", "to_float", "to_bool", "type_of",
+            "has", "has_decorator",
         ];
         for name in &expected {
             assert!(registry.contains_key(name), "missing builtin: {}", name);
@@ -1276,5 +1309,86 @@ mod tests {
     fn test_higher_order_placeholder() {
         let err = higher_order_placeholder(&[]).unwrap_err();
         assert!(err.contains("higher-order functions require special evaluation"));
+    }
+
+    // --- Reference and Query Functions ---
+
+    #[test]
+    fn test_has_attribute_present() {
+        let mut attrs = IndexMap::new();
+        attrs.insert("port".to_string(), i(8080));
+        attrs.insert("tls".to_string(), Value::Bool(true));
+        let br = Value::BlockRef(crate::value::BlockRef {
+            kind: "service".to_string(),
+            id: Some("svc-api".to_string()),
+            labels: vec![],
+            attributes: attrs,
+            children: vec![],
+            decorators: vec![],
+            span: wcl_core::Span::dummy(),
+        });
+        assert_eq!(fn_has(&[br.clone(), s("port")]).unwrap(), Value::Bool(true));
+        assert_eq!(fn_has(&[br.clone(), s("tls")]).unwrap(), Value::Bool(true));
+        assert_eq!(fn_has(&[br, s("missing")]).unwrap(), Value::Bool(false));
+    }
+
+    #[test]
+    fn test_has_child_block() {
+        let child = crate::value::BlockRef {
+            kind: "monitoring".to_string(),
+            id: None,
+            labels: vec![],
+            attributes: IndexMap::new(),
+            children: vec![],
+            decorators: vec![],
+            span: wcl_core::Span::dummy(),
+        };
+        let br = Value::BlockRef(crate::value::BlockRef {
+            kind: "service".to_string(),
+            id: Some("svc-api".to_string()),
+            labels: vec![],
+            attributes: IndexMap::new(),
+            children: vec![child],
+            decorators: vec![],
+            span: wcl_core::Span::dummy(),
+        });
+        assert_eq!(fn_has(&[br.clone(), s("monitoring")]).unwrap(), Value::Bool(true));
+        assert_eq!(fn_has(&[br, s("logging")]).unwrap(), Value::Bool(false));
+    }
+
+    #[test]
+    fn test_has_wrong_arg_type() {
+        assert!(fn_has(&[s("not a block"), s("attr")]).is_err());
+        assert!(fn_has(&[i(42), s("attr")]).is_err());
+    }
+
+    #[test]
+    fn test_has_decorator_present() {
+        let br = Value::BlockRef(crate::value::BlockRef {
+            kind: "service".to_string(),
+            id: Some("svc-api".to_string()),
+            labels: vec![],
+            attributes: IndexMap::new(),
+            children: vec![],
+            decorators: vec![
+                crate::value::DecoratorValue {
+                    name: "deprecated".to_string(),
+                    args: IndexMap::new(),
+                },
+                crate::value::DecoratorValue {
+                    name: "sensitive".to_string(),
+                    args: IndexMap::new(),
+                },
+            ],
+            span: wcl_core::Span::dummy(),
+        });
+        assert_eq!(fn_has_decorator(&[br.clone(), s("deprecated")]).unwrap(), Value::Bool(true));
+        assert_eq!(fn_has_decorator(&[br.clone(), s("sensitive")]).unwrap(), Value::Bool(true));
+        assert_eq!(fn_has_decorator(&[br, s("optional")]).unwrap(), Value::Bool(false));
+    }
+
+    #[test]
+    fn test_has_decorator_wrong_arg_type() {
+        assert!(fn_has_decorator(&[s("not a block"), s("deco")]).is_err());
     }
 }
