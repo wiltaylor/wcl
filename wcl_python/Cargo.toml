@@ -1,0 +1,13 @@
+[package]
+name = "wcl_python"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "_wcl_native"
+crate-type = ["cdylib"]
+
+[dependencies]
+wcl = { path = "../wcl" }
+pyo3 = { workspace = true }
+indexmap = { workspace = true }

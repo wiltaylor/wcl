@@ -83,9 +83,13 @@ docs-serve:
 docs-build:
     mdbook build docs
 
+# Run Python binding tests
+test-python:
+    cd wcl_python && source .venv/bin/activate && maturin develop && pytest tests/ -v
+
 # Clean build artifacts
 clean:
     cargo clean
 
 # Full CI check: fmt, lint, test
-ci: fmt-check lint test
+ci: fmt-check lint test test-python
