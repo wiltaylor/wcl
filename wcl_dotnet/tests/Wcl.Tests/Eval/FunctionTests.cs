@@ -22,7 +22,7 @@ namespace Wcl.Tests.Eval
         [Fact]
         public void Split()
         {
-            var result = TestHelpers.Eval("split(\"a,b,c\", \",\")");
+            var result = TestHelpers.Eval("split(\",\", \"a,b,c\")");
             Assert.Equal(3, result.AsList().Count);
             Assert.Equal("a", result.AsList()[0].AsString());
         }

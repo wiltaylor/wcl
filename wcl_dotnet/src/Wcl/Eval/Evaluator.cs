@@ -172,13 +172,25 @@ namespace Wcl.Eval
                     _scopes.AddEntry(scope, entry);
                     break;
                 }
-                case TableItem _:
+                case TableItem ti:
                 {
-                    var entry = new ScopeEntry("table",
-                        ScopeEntryKind.BlockChild, null, Span.Dummy());
+                    var key = "table";
+                    if (ti.Table.InlineId is LiteralInlineId lid) key = lid.Lit.Value;
+                    var entry = new ScopeEntry(key,
+                        ScopeEntryKind.BlockChild, null, ti.Table.Span);
                     _scopes.AddEntry(scope, entry);
                     break;
                 }
+                // These body item types don't produce scope entries but must not be silently ignored.
+                // They are handled by other pipeline phases (macros, control flow, schema collection).
+                case MacroDefItem _:
+                case MacroCallItem _:
+                case ForLoopItem _:
+                case ConditionalItem _:
+                case ValidationItem _:
+                case SchemaItem _:
+                case DecoratorSchemaBodyItem _:
+                    break;
             }
         }
 
