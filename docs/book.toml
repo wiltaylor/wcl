@@ -1,0 +1,13 @@
+[book]
+authors = ["Wil"]
+language = "en"
+src = "src"
+title = "WCL -- Wil's Configuration Language"
+
+[build]
+build-dir = "book"
+
+[output.html]
+default-theme = "navy"
+preferred-dark-theme = "navy"
+git-repository-url = "https://github.com/wilfredinni/WCL"

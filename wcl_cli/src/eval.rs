@@ -19,8 +19,22 @@ pub fn run(file: &Path, format: &str) -> Result<(), String> {
     }
 
     let mut json_map = serde_json::Map::new();
+    // Group block refs by kind (e.g., all "server" blocks under "server" key)
     for (key, val) in &doc.values {
-        json_map.insert(key.clone(), value_to_json(val));
+        if let wcl::Value::BlockRef(br) = val {
+            let kind_entry = json_map
+                .entry(&br.kind)
+                .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
+            if let serde_json::Value::Object(kind_map) = kind_entry {
+                // Use inline ID, then first label, then the raw key
+                let block_key = br.id.as_deref()
+                    .or_else(|| br.labels.first().map(|s| s.as_str()))
+                    .unwrap_or(key);
+                kind_map.insert(block_key.to_string(), blockref_to_json(br));
+            }
+        } else {
+            json_map.insert(key.clone(), value_to_json(val));
+        }
     }
     let json = serde_json::Value::Object(json_map);
 
@@ -62,6 +76,19 @@ fn value_to_json(val: &wcl::Value) -> serde_json::Value {
                 m.iter().map(|(k, v)| (k.clone(), value_to_json(v))).collect();
             serde_json::Value::Object(obj)
         }
+        wcl::Value::BlockRef(br) => blockref_to_json(br),
         _ => serde_json::Value::String(format!("{}", val)),
     }
+}
+
+fn blockref_to_json(br: &wcl::BlockRef) -> serde_json::Value {
+    let mut obj = serde_json::Map::new();
+    for (k, v) in &br.attributes {
+        obj.insert(k.clone(), value_to_json(v));
+    }
+    for child in &br.children {
+        let key = child.id.as_deref().unwrap_or(&child.kind);
+        obj.insert(key.to_string(), blockref_to_json(child));
+    }
+    serde_json::Value::Object(obj)
 }

@@ -75,6 +75,14 @@ uninstall-vscode:
     rm -f "${HOME}/.vscode/extensions/wil.wcl-0.1.0"
     @echo "VS Code extension removed. Restart VS Code."
 
+# Serve the documentation book locally
+docs-serve:
+    mdbook serve docs
+
+# Build the documentation book
+docs-build:
+    mdbook build docs
+
 # Clean build artifacts
 clean:
     cargo clean

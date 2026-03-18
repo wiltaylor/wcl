@@ -163,8 +163,21 @@ fn value_to_json(val: &wcl::Value) -> serde_json::Value {
                 m.iter().map(|(k, v)| (k.clone(), value_to_json(v))).collect();
             serde_json::Value::Object(obj)
         }
+        wcl::Value::BlockRef(br) => blockref_to_json(br),
         _ => serde_json::Value::String(format!("{}", val)),
     }
+}
+
+fn blockref_to_json(br: &wcl::BlockRef) -> serde_json::Value {
+    let mut obj = serde_json::Map::new();
+    for (k, v) in &br.attributes {
+        obj.insert(k.clone(), value_to_json(v));
+    }
+    for child in &br.children {
+        let key = child.id.as_deref().unwrap_or(&child.kind);
+        obj.insert(key.to_string(), blockref_to_json(child));
+    }
+    serde_json::Value::Object(obj)
 }
 
 fn print_csv(val: &wcl::Value) {
