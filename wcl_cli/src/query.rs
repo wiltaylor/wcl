@@ -1,12 +1,82 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub fn run(
     file: &Path,
     query_str: &str,
     format: &str,
     count: bool,
-    _recursive: bool,
+    recursive: bool,
 ) -> Result<(), String> {
+    if recursive && file.is_dir() {
+        let files = collect_wcl_files(file)?;
+        if files.is_empty() {
+            return Err(format!("no .wcl files found in {}", file.display()));
+        }
+
+        let mut all_results: Vec<wcl::Value> = Vec::new();
+
+        for wcl_file in &files {
+            let source = std::fs::read_to_string(wcl_file)
+                .map_err(|e| format!("cannot read {}: {}", wcl_file.display(), e))?;
+
+            let options = wcl::ParseOptions {
+                root_dir: wcl_file.parent().unwrap_or(Path::new(".")).to_path_buf(),
+                ..Default::default()
+            };
+
+            let doc = wcl::parse(&source, options);
+            if doc.has_errors() {
+                for diag in doc.errors() {
+                    eprintln!("error [{}]: {}", wcl_file.display(), diag.message);
+                }
+                continue;
+            }
+
+            match doc.query(query_str) {
+                Ok(wcl::Value::List(items)) => {
+                    all_results.extend(items);
+                }
+                Ok(val) => {
+                    all_results.push(val);
+                }
+                Err(e) => {
+                    eprintln!("query error [{}]: {}", wcl_file.display(), e);
+                }
+            }
+        }
+
+        let aggregated = wcl::Value::List(all_results);
+
+        if count {
+            match &aggregated {
+                wcl::Value::List(items) => println!("{}", items.len()),
+                _ => println!("1"),
+            }
+        } else {
+            match format {
+                "json" => {
+                    let json = value_to_json(&aggregated);
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&json).unwrap_or_default()
+                    );
+                }
+                "csv" => {
+                    print_csv(&aggregated);
+                }
+                "wcl" => {
+                    print_wcl(&aggregated, 0);
+                }
+                _ => {
+                    // "text" or any other format
+                    println!("{}", aggregated);
+                }
+            }
+        }
+
+        return Ok(());
+    }
+
     let source = std::fs::read_to_string(file)
         .map_err(|e| format!("cannot read {}: {}", file.display(), e))?;
 
@@ -52,6 +122,28 @@ pub fn run(
         }
     }
 
+    Ok(())
+}
+
+fn collect_wcl_files(dir: &Path) -> Result<Vec<PathBuf>, String> {
+    let mut files = Vec::new();
+    collect_wcl_files_recursive(dir, &mut files)?;
+    files.sort();
+    Ok(files)
+}
+
+fn collect_wcl_files_recursive(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
+    let entries = std::fs::read_dir(dir)
+        .map_err(|e| format!("cannot read directory {}: {}", dir.display(), e))?;
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("directory entry error: {}", e))?;
+        let path = entry.path();
+        if path.is_dir() {
+            collect_wcl_files_recursive(&path, files)?;
+        } else if path.extension().is_some_and(|ext| ext == "wcl") {
+            files.push(path);
+        }
+    }
     Ok(())
 }
 

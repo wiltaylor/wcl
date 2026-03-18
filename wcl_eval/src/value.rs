@@ -35,6 +35,23 @@ pub struct BlockRef {
     pub span: Span,
 }
 
+impl BlockRef {
+    /// Check if this block has a decorator with the given name
+    pub fn has_decorator(&self, name: &str) -> bool {
+        self.decorators.iter().any(|d| d.name == name)
+    }
+
+    /// Get a decorator by name
+    pub fn decorator(&self, name: &str) -> Option<&DecoratorValue> {
+        self.decorators.iter().find(|d| d.name == name)
+    }
+
+    /// Get an attribute value by name
+    pub fn get(&self, key: &str) -> Option<&Value> {
+        self.attributes.get(key)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct DecoratorValue {
     pub name: String,
