@@ -66,7 +66,7 @@ impl WclFieldAttr {
 
 fn expand_wcl_deserialize(input: DeriveInput) -> TokenStream2 {
     let struct_name = &input.ident;
-    let (impl_generics, ty_generics, where_clause) =
+    let (_impl_generics, ty_generics, where_clause) =
         input.generics.split_for_impl();
 
     let named_fields = match &input.data {
@@ -142,8 +142,19 @@ fn expand_wcl_deserialize(input: DeriveInput) -> TokenStream2 {
         struct_name.span(),
     );
 
+    // Build a combined generics that includes 'de plus any user generics.
+    let mut de_generics = input.generics.clone();
+    de_generics.params.insert(
+        0,
+        syn::GenericParam::Lifetime(syn::LifetimeParam::new(syn::Lifetime::new(
+            "'de",
+            proc_macro2::Span::call_site(),
+        ))),
+    );
+    let (de_impl_generics, _, _) = de_generics.split_for_impl();
+
     quote! {
-        impl #impl_generics serde::Deserialize<'de> for #struct_name #ty_generics
+        impl #de_impl_generics serde::Deserialize<'de> for #struct_name #ty_generics
         #where_clause
         {
             fn deserialize<__D>(deserializer: __D) -> ::core::result::Result<Self, __D::Error>

@@ -9,11 +9,24 @@ pub fn run(file: &Path, strict: bool, schema: Option<&Path>) -> Result<(), Strin
         ..Default::default()
     };
 
-    let doc = wcl::parse(&source, options);
+    let mut doc = wcl::parse(&source, options);
 
-    // Log the schema path if provided (not yet implemented)
+    // If an external schema file was provided, parse it and validate against it
     if let Some(schema_path) = schema {
-        eprintln!("note: schema validation against {} is not yet implemented", schema_path.display());
+        let schema_source = std::fs::read_to_string(schema_path)
+            .map_err(|e| format!("cannot read schema {}: {}", schema_path.display(), e))?;
+        let schema_file_id = wcl_core::FileId(1000);
+        let (schema_doc, schema_parse_diags) = wcl_core::parse(&schema_source, schema_file_id);
+
+        // Add any parse errors from the schema file
+        doc.diagnostics.extend(schema_parse_diags.into_diagnostics());
+
+        // Collect schemas from the external file and validate the main document
+        let mut external_schemas = wcl::SchemaRegistry::new();
+        let mut diag_bag = wcl::DiagnosticBag::new();
+        external_schemas.collect(&schema_doc, &mut diag_bag);
+        external_schemas.validate(&doc.ast, &doc.values, &mut diag_bag);
+        doc.diagnostics.extend(diag_bag.into_diagnostics());
     }
 
     let errors: Vec<_> = doc.diagnostics.iter().filter(|d| {

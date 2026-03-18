@@ -235,6 +235,26 @@ impl Document {
         }
     }
 
+    /// Get all blocks as BlockRef values (convenience for iteration)
+    pub fn blocks(&self) -> Vec<BlockRef> {
+        self.collect_block_refs()
+    }
+
+    /// Get blocks of a given type as BlockRef values with full attribute resolution
+    pub fn blocks_of_type_resolved(&self, kind: &str) -> Vec<BlockRef> {
+        self.collect_block_refs()
+            .into_iter()
+            .filter(|br| br.kind == kind)
+            .collect()
+    }
+
+    /// Check if any block has the given decorator
+    pub fn has_decorator(&self, decorator_name: &str) -> bool {
+        self.collect_block_refs()
+            .iter()
+            .any(|br| br.has_decorator(decorator_name))
+    }
+
     /// Check if any errors occurred
     pub fn has_errors(&self) -> bool {
         self.diagnostics.iter().any(|d| d.is_error())
@@ -680,5 +700,134 @@ mod tests {
         let doc = parse(source, ParseOptions::default());
         let servers = doc.blocks_of_type("server");
         assert_eq!(servers.len(), 3, "expected 3 server blocks, got {}: errors: {:?}", servers.len(), doc.diagnostics);
+    }
+
+    // ── Rich Document API (Section 26.5) ─────────────────────────────────
+
+    #[test]
+    fn test_block_ref_has_decorator() {
+        let doc = parse(
+            "@deprecated(\"use v2\")\nservice main {\n    port = 8080\n}",
+            ParseOptions::default(),
+        );
+        let blocks = doc.blocks();
+        assert_eq!(blocks.len(), 1);
+        assert!(blocks[0].has_decorator("deprecated"));
+        assert!(!blocks[0].has_decorator("nonexistent"));
+    }
+
+    #[test]
+    fn test_block_ref_decorator() {
+        let doc = parse(
+            "@deprecated(\"use v2\")\nservice main {\n    port = 8080\n}",
+            ParseOptions::default(),
+        );
+        let blocks = doc.blocks();
+        let dec = blocks[0].decorator("deprecated");
+        assert!(dec.is_some());
+        assert_eq!(dec.unwrap().name, "deprecated");
+    }
+
+    #[test]
+    fn test_block_ref_get_attribute() {
+        let doc = parse(
+            "service {\n    port = 8080\n    host = \"localhost\"\n}",
+            ParseOptions::default(),
+        );
+        let blocks = doc.blocks();
+        assert_eq!(blocks[0].get("port"), Some(&Value::Int(8080)));
+        assert_eq!(blocks[0].get("host"), Some(&Value::String("localhost".to_string())));
+        assert_eq!(blocks[0].get("missing"), None);
+    }
+
+    #[test]
+    fn test_document_has_decorator() {
+        let doc = parse(
+            "@deprecated(\"old\")\nservice { port = 80 }\nserver { port = 443 }",
+            ParseOptions::default(),
+        );
+        assert!(doc.has_decorator("deprecated"));
+        assert!(!doc.has_decorator("nonexistent"));
+    }
+
+    #[test]
+    fn test_document_blocks_of_type_resolved() {
+        let doc = parse(
+            "service { port = 8080 }\nservice { port = 9090 }\ndatabase { port = 5432 }",
+            ParseOptions::default(),
+        );
+        let services = doc.blocks_of_type_resolved("service");
+        assert_eq!(services.len(), 2);
+        assert_eq!(services[0].get("port"), Some(&Value::Int(8080)));
+        assert_eq!(services[1].get("port"), Some(&Value::Int(9090)));
+    }
+
+    // ── wcl_derive tests ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_wcl_deserialize_basic_struct() {
+        #[derive(WclDeserialize, Debug, PartialEq)]
+        struct Config {
+            port: i64,
+            host: String,
+        }
+
+        let result: Result<Config, _> = from_str("port = 8080\nhost = \"localhost\"");
+        assert!(result.is_ok(), "error: {:?}", result.err());
+        let config = result.unwrap();
+        assert_eq!(config.port, 8080);
+        assert_eq!(config.host, "localhost");
+    }
+
+    #[test]
+    fn test_wcl_deserialize_with_id() {
+        #[derive(WclDeserialize, Debug, PartialEq)]
+        struct Service {
+            #[wcl(id)]
+            name: Option<String>,
+            port: i64,
+        }
+
+        let mut map = indexmap::IndexMap::new();
+        map.insert("id".to_string(), Value::String("my-svc".to_string()));
+        map.insert("port".to_string(), Value::Int(8080));
+        let result: Result<Service, _> = from_value(Value::Map(map));
+        assert!(result.is_ok(), "error: {:?}", result.err());
+        let svc = result.unwrap();
+        assert_eq!(svc.name, Some("my-svc".to_string()));
+        assert_eq!(svc.port, 8080);
+    }
+
+    #[test]
+    fn test_wcl_deserialize_with_labels() {
+        #[derive(WclDeserialize, Debug, PartialEq)]
+        struct Resource {
+            #[wcl(labels)]
+            tags: Vec<String>,
+            value: i64,
+        }
+
+        let mut map = indexmap::IndexMap::new();
+        map.insert("labels".to_string(), Value::List(vec![
+            Value::String("prod".to_string()),
+            Value::String("us-east".to_string()),
+        ]));
+        map.insert("value".to_string(), Value::Int(42));
+        let result: Result<Resource, _> = from_value(Value::Map(map));
+        assert!(result.is_ok(), "error: {:?}", result.err());
+        let res = result.unwrap();
+        assert_eq!(res.tags, vec!["prod".to_string(), "us-east".to_string()]);
+    }
+
+    #[test]
+    fn test_wcl_deserialize_missing_field_errors() {
+        #[derive(WclDeserialize, Debug)]
+        struct NeedsPort {
+            #[allow(dead_code)]
+            port: i64,
+        }
+
+        let result: Result<NeedsPort, _> = from_str("host = \"localhost\"");
+        assert!(result.is_err());
     }
 }

@@ -148,6 +148,11 @@ impl ScopeArena {
         }
     }
 
+    /// Get all scopes for iteration.
+    pub fn all_scopes(&self) -> &[Scope] {
+        &self.scopes
+    }
+
     /// Iterate over all scopes and their entries.
     pub fn all_entries(&self) -> impl Iterator<Item = (ScopeId, &ScopeEntry)> {
         self.scopes.iter().flat_map(|scope| {

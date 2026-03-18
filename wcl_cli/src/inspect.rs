@@ -31,8 +31,51 @@ pub fn run(
         }
     }
 
-    if show_scopes || show_deps {
-        println!("// scope/dep inspection not yet implemented");
+    if show_scopes {
+        let file_id = wcl_core::FileId(0);
+        let (doc, _diags) = wcl_core::parse(&source, file_id);
+        let mut evaluator = wcl::Evaluator::new();
+        let _ = evaluator.evaluate(&doc);
+
+        println!("=== Scope Tree ===");
+        let scopes = evaluator.scopes();
+        for scope in scopes.all_scopes() {
+            let parent_str = match scope.parent {
+                Some(p) => format!("parent=Scope({})", p.0),
+                None => "root".to_string(),
+            };
+            println!("Scope({}) [{:?}] {}", scope.id.0, scope.kind, parent_str);
+            for (name, entry) in &scope.entries {
+                let val_str = match &entry.value {
+                    Some(v) => format!("{}", v),
+                    None => "<unevaluated>".to_string(),
+                };
+                println!("  {} [{:?}] = {}", name, entry.kind, val_str);
+            }
+        }
+    }
+
+    if show_deps {
+        let file_id = wcl_core::FileId(0);
+        let (doc, _diags) = wcl_core::parse(&source, file_id);
+        let mut evaluator = wcl::Evaluator::new();
+        let _ = evaluator.evaluate(&doc);
+
+        println!("=== Dependency Graph ===");
+        let scopes = evaluator.scopes();
+        for scope in scopes.all_scopes() {
+            for (name, entry) in &scope.entries {
+                if !entry.dependencies.is_empty() {
+                    let mut deps: Vec<&String> = entry.dependencies.iter().collect();
+                    deps.sort();
+                    println!(
+                        "{} -> {}",
+                        name,
+                        deps.iter().map(|d| d.as_str()).collect::<Vec<_>>().join(", ")
+                    );
+                }
+            }
+        }
     }
 
     Ok(())
