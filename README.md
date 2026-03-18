@@ -4,21 +4,20 @@ A statically-typed, block-structured configuration language with first-class sup
 
 ```wcl
 /// Production web server configuration
-@schema("server_config")
 server web-prod {
     host = "0.0.0.0"
     port = 8080
-    workers = max(4, cpu_count / 2)
+    workers = max(4, 2)
 
     @sensitive
-    api_key = env("API_KEY")
+    api_key = "sk-secret-key"
 }
 
-schema "server_config" {
-    host = string @optional
-    port = int
-    workers = int
-    api_key = string
+schema "server" {
+    host: string @optional
+    port: int
+    workers: int
+    api_key: string
 }
 
 let regions = ["us-east", "eu-west", "ap-south"]
@@ -34,8 +33,8 @@ for region in regions {
 
 - **Block-structured syntax** -- Human-readable configuration with named, typed blocks and inline IDs
 - **Static type system** -- `string`, `int`, `float`, `bool`, `null`, `identifier`, `list`, `map`, `set`, `ref`, `union`
-- **Schemas and validation** -- Declare field types, constraints (`@min`, `@max`, `@pattern`, `@one_of`), and cross-references (`@ref`)
-- **Decorators** -- `@deprecated`, `@sensitive`, `@optional`, `@env`, `@schema`, and user-defined decorator schemas
+- **Schemas and validation** -- Declare field types, constraints (`@validate(min, max, pattern, one_of)`), and cross-references (`@ref`)
+- **Decorators** -- `@deprecated`, `@sensitive`, `@optional`, `@validate`, `@doc`, and user-defined decorator schemas
 - **Macros** -- Function macros for reusable block templates, attribute macros for block transformations
 - **Data tables** -- Typed tabular data with column declarations and row validation
 - **Query engine** -- `service | .port > 8000 | has(@deprecated)` pipeline syntax for filtering and projecting
@@ -48,7 +47,7 @@ for region in regions {
 
 ## Architecture
 
-WCL is implemented as a Rust workspace with 8 crates (~25,000 lines, 935 tests):
+WCL is implemented as a Rust workspace with 8 crates (~25,000 lines, 1,000+ tests):
 
 | Crate | Purpose |
 |-------|---------|
@@ -236,7 +235,7 @@ args = ["lsp"]
 ## Testing
 
 ```bash
-# Run all 935 tests
+# Run all tests
 cargo test --workspace
 
 # Run LSP tests only (84 tests)
@@ -263,7 +262,7 @@ server web-prod "us-east" {
 
 // Let bindings and expressions
 let base_port = 8000
-let debug = env("DEBUG") == "true"
+let debug = true
 let greeting = "Hello, ${upper(name)}!"
 
 // Control flow
@@ -279,17 +278,16 @@ if debug {
     log_level = "info"
 }
 
-// Schemas
-schema "service_config" {
-    port = int @min(1024) @max(65535)
-    host = string @pattern("^[a-z.-]+$")
-    env = string @one_of(["dev", "staging", "prod"])
-    db = ref("database_config")
+// Schemas (matched to blocks by name automatically)
+schema "service" {
+    port: int @validate(min = 1024, max = 65535)
+    host: string @validate(pattern = "^[a-z.-]+$")
+    env: string @validate(one_of = ["dev", "staging", "prod"])
+    db: ref("database")
 }
 
 // Decorators
 @deprecated("use server_v2 instead")
-@schema("service_config")
 service legacy {
     port = 8080
     host = "localhost"
@@ -297,9 +295,9 @@ service legacy {
 }
 
 // Macros
-macro with_monitoring(port_offset: int = 100) {
+macro with_monitoring(port_offset = 100) {
     monitoring {
-        port = self.port + port_offset
+        port = port_offset
         enabled = true
     }
 }
@@ -313,7 +311,7 @@ table users {
 }
 
 // Queries
-let admin_count = query(users | .role == "admin" | count)
+let admins = query(table."users" | .role == "admin")
 
 // Partial declarations (across files)
 partial server web-prod {
