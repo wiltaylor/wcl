@@ -72,7 +72,17 @@ impl<'a> Formatter<'a> {
             DocItem::Import(import) => {
                 self.write_indent();
                 self.output.push_str("import ");
-                self.format_string_lit(&import.path);
+                if import.kind == ImportKind::Library {
+                    self.output.push('<');
+                    for part in &import.path.parts {
+                        if let StringPart::Literal(s) = part {
+                            self.output.push_str(s);
+                        }
+                    }
+                    self.output.push('>');
+                } else {
+                    self.format_string_lit(&import.path);
+                }
                 self.output.push('\n');
             }
             DocItem::ExportLet(el) => {
@@ -87,6 +97,23 @@ impl<'a> Formatter<'a> {
             }
             DocItem::Body(body_item) => {
                 self.format_body_item(body_item);
+            }
+            DocItem::FunctionDecl(decl) => {
+                self.write_indent();
+                self.output.push_str(&format!("declare {}(", decl.name.name));
+                for (i, param) in decl.params.iter().enumerate() {
+                    if i > 0 {
+                        self.output.push_str(", ");
+                    }
+                    self.output.push_str(&format!("{}: ", param.name.name));
+                    self.format_type_expr(&param.type_expr);
+                }
+                self.output.push(')');
+                if let Some(ref rt) = decl.return_type {
+                    self.output.push_str(" -> ");
+                    self.format_type_expr(rt);
+                }
+                self.output.push('\n');
             }
         }
     }

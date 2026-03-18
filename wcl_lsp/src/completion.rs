@@ -6,7 +6,7 @@ use crate::state::AnalysisResult;
 const KEYWORDS: &[&str] = &[
     "let", "partial", "macro", "schema", "table", "import", "export", "query", "ref", "for",
     "in", "if", "else", "when", "inject", "set", "remove", "self", "validation",
-    "decorator_schema", "true", "false", "null",
+    "decorator_schema", "declare", "true", "false", "null",
 ];
 
 /// Built-in WCL type names
@@ -21,16 +21,10 @@ const BUILTIN_DECORATORS: &[&str] = &[
     "partial_requires",
 ];
 
-/// Built-in function names
-const BUILTIN_FUNCTIONS: &[&str] = &[
-    "upper", "lower", "trim", "trim_prefix", "trim_suffix", "replace", "split", "join",
-    "starts_with", "ends_with", "contains", "length", "substr", "format", "regex_match",
-    "regex_capture", "abs", "min", "max", "floor", "ceil", "round", "sqrt", "pow", "len",
-    "keys", "values", "flatten", "concat", "distinct", "sort", "reverse", "index_of", "range",
-    "zip", "map", "filter", "every", "some", "reduce", "sum", "avg", "min_of", "max_of",
-    "count", "sha256", "base64_encode", "base64_decode", "json_encode", "to_string", "to_int",
-    "to_float", "to_bool", "type_of", "has", "has_decorator",
-];
+/// Collect function names from analysis signatures (builtins + custom).
+fn function_names(analysis: &AnalysisResult) -> Vec<&str> {
+    analysis.function_signatures.iter().map(|s| s.name.as_str()).collect()
+}
 
 pub fn completions(
     analysis: &AnalysisResult,
@@ -101,7 +95,7 @@ pub fn completions(
                     ..Default::default()
                 });
             }
-            for name in BUILTIN_FUNCTIONS {
+            for name in function_names(analysis) {
                 items.push(CompletionItem {
                     label: name.to_string(),
                     kind: Some(CompletionItemKind::FUNCTION),
@@ -126,7 +120,7 @@ pub fn completions(
                 });
             }
             // Built-in functions
-            for name in BUILTIN_FUNCTIONS {
+            for name in function_names(analysis) {
                 items.push(CompletionItem {
                     label: name.to_string(),
                     kind: Some(CompletionItemKind::FUNCTION),

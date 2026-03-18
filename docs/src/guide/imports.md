@@ -40,9 +40,38 @@ service "api" {
 }
 ```
 
+## Library Imports
+
+In addition to relative path imports, WCL supports well-known library imports using angle-bracket syntax:
+
+```wcl
+import <myapp.wcl>
+```
+
+Library files are searched in these directories (in order):
+
+1. **User library**: `$XDG_DATA_HOME/wcl/lib/` (default: `~/.local/share/wcl/lib/`)
+2. **System library**: each dir in `$XDG_DATA_DIRS` + `/wcl/lib/` (default: `/usr/local/share/wcl/lib/`, `/usr/share/wcl/lib/`)
+
+Library imports **skip the jail check** since they are intentionally located outside the project root. All other rules (import-once, depth limit, recursive resolution) still apply.
+
+Library files can contain schemas, `declare` stubs for host-registered functions, and any other WCL content:
+
+```wcl
+// ~/.local/share/wcl/lib/myapp.wcl
+schema "server_config" {
+    port: int
+    host: string @optional
+}
+
+declare my_custom_fn(input: string) -> string
+```
+
+See [Rust Library Usage](../getting-started/rust-library.md) for how to generate and install library files programmatically.
+
 ## Path Rules
 
-- **Relative paths only.** Absolute paths and URLs are not accepted.
+- **Relative paths only** (for quoted imports). Absolute paths and URLs are not accepted.
 - Paths are resolved relative to the file containing the `import` statement.
 - All resolved paths must remain inside the project root directory. Attempts to escape via `../../../` are rejected.
 - Symlinks that point outside the root are not followed.

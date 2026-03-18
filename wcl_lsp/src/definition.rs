@@ -69,8 +69,7 @@ pub fn goto_definition(
 
 /// Resolve an import statement to a file Location.
 ///
-/// Handles both absolute and relative paths by resolving relative paths
-/// against the directory of the current document URI.
+/// Handles relative paths, absolute paths, and library imports (`import <name.wcl>`).
 fn resolve_import_path(import: &ast::Import, current_uri: &Url) -> Option<GotoDefinitionResponse> {
     let path_str: String = import
         .path
@@ -86,15 +85,18 @@ fn resolve_import_path(import: &ast::Import, current_uri: &Url) -> Option<GotoDe
         return None;
     }
 
-    let import_path = Path::new(&path_str);
-
-    let resolved = if import_path.is_absolute() {
-        import_path.to_path_buf()
+    let resolved = if import.kind == ast::ImportKind::Library {
+        // Search library paths
+        wcl_eval::resolve_library_import(&path_str, &wcl_eval::RealFileSystem)?
     } else {
-        // Resolve relative to the directory containing the current document
-        let current_file = current_uri.to_file_path().ok()?;
-        let current_dir = current_file.parent()?;
-        current_dir.join(import_path)
+        let import_path = Path::new(&path_str);
+        if import_path.is_absolute() {
+            import_path.to_path_buf()
+        } else {
+            let current_file = current_uri.to_file_path().ok()?;
+            let current_dir = current_file.parent()?;
+            current_dir.join(import_path)
+        }
     };
 
     let target_uri = Url::from_file_path(&resolved).ok()?;

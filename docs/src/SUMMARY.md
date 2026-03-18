@@ -41,6 +41,7 @@
   - [Attribute Macros](./guide/macros-attribute.md)
 - [Data Tables](./guide/tables.md)
 - [Imports](./guide/imports.md)
+- [Libraries](./guide/libraries.md)
 - [Partial Declarations](./guide/partials.md)
 - [Query Engine](./guide/query-engine.md)
 - [Validation Blocks](./guide/validation-blocks.md)

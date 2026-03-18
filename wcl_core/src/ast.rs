@@ -29,12 +29,23 @@ pub enum DocItem {
     ExportLet(ExportLet),
     ReExport(ReExport),
     Body(BodyItem),
+    FunctionDecl(FunctionDecl),
 }
 
-/// `import "./path/to/file.wcl"`
+/// Whether an import uses a relative path or a well-known library name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ImportKind {
+    /// `import "path/to/file.wcl"`
+    Relative,
+    /// `import <name.wcl>`
+    Library,
+}
+
+/// `import "./path/to/file.wcl"` or `import <name.wcl>`
 #[derive(Debug, Clone)]
 pub struct Import {
     pub path: StringLit,
+    pub kind: ImportKind,
     pub trivia: Trivia,
     pub span: Span,
 }
@@ -53,6 +64,25 @@ pub struct ExportLet {
 pub struct ReExport {
     pub name: Ident,
     pub trivia: Trivia,
+    pub span: Span,
+}
+
+/// `declare fn_name(param: type, ...) -> return_type`
+#[derive(Debug, Clone)]
+pub struct FunctionDecl {
+    pub name: Ident,
+    pub params: Vec<FunctionDeclParam>,
+    pub return_type: Option<TypeExpr>,
+    pub doc: Option<String>,
+    pub trivia: Trivia,
+    pub span: Span,
+}
+
+/// A single parameter in a function declaration.
+#[derive(Debug, Clone)]
+pub struct FunctionDeclParam {
+    pub name: Ident,
+    pub type_expr: TypeExpr,
     pub span: Span,
 }
 

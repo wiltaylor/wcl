@@ -77,6 +77,7 @@ fn find_in_doc_item<'a>(item: &'a DocItem, offset: usize) -> NodeAtOffset<'a> {
         DocItem::Body(body_item) => {
             return find_in_body_item(body_item, offset);
         }
+        DocItem::FunctionDecl(_) => {}
     }
     NodeAtOffset::None
 }
