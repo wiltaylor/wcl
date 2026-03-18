@@ -87,9 +87,18 @@ docs-build:
 test-python:
     cd wcl_python && source .venv/bin/activate && maturin develop && pytest tests/ -v
 
+# Run .NET binding tests
+test-dotnet:
+    dotnet test wcl_dotnet/Wcl.sln
+
+# Build the .NET library
+build-dotnet:
+    dotnet build wcl_dotnet/Wcl.sln
+
 # Clean build artifacts
 clean:
     cargo clean
+    dotnet clean wcl_dotnet/Wcl.sln -q 2>/dev/null || true
 
 # Full CI check: fmt, lint, test
-ci: fmt-check lint test test-python
+ci: fmt-check lint test test-python test-dotnet
