@@ -5,7 +5,7 @@ use wcl_core::ast;
 use wcl_core::diagnostic::Diagnostic;
 use wcl_core::lexer::Token;
 use wcl_core::span::{FileId, SourceMap};
-use wcl_eval::{MacroRegistry, ScopeArena};
+use wcl_eval::{FunctionSignature, MacroRegistry, ScopeArena};
 use wcl_schema::SchemaRegistry;
 
 pub struct DocumentState {
@@ -26,6 +26,7 @@ pub struct AnalysisResult {
     pub scopes: ScopeArena,
     pub schemas: SchemaRegistry,
     pub macro_registry: MacroRegistry,
+    pub function_signatures: Vec<FunctionSignature>,
 }
 
 pub struct WorldState {

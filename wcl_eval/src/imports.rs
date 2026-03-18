@@ -87,6 +87,60 @@ pub fn normalize_path(path: &Path) -> PathBuf {
     components.iter().collect()
 }
 
+/// Return the search paths for well-known WCL library files.
+///
+/// User library (searched first):
+///   Linux/macOS: `$XDG_DATA_HOME/wcl/lib/` (default: `~/.local/share/wcl/lib/`)
+///   Windows:     `%APPDATA%\wcl\lib\`
+///
+/// System library (searched second):
+///   Linux:   each dir in `$XDG_DATA_DIRS` + `/wcl/lib/` (default: `/usr/local/share/wcl/lib/`, `/usr/share/wcl/lib/`)
+///   macOS:   `/usr/local/share/wcl/lib/`
+///   Windows: `%PROGRAMDATA%\wcl\lib\`
+pub fn library_search_paths() -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+
+    // User library dir
+    if let Some(data_home) = std::env::var_os("XDG_DATA_HOME") {
+        paths.push(PathBuf::from(data_home).join("wcl/lib"));
+    } else if let Some(home) = std::env::var_os("HOME") {
+        paths.push(PathBuf::from(home).join(".local/share/wcl/lib"));
+    }
+    #[cfg(windows)]
+    if let Some(appdata) = std::env::var_os("APPDATA") {
+        paths.push(PathBuf::from(appdata).join("wcl\\lib"));
+    }
+
+    // System library dirs
+    if let Ok(data_dirs) = std::env::var("XDG_DATA_DIRS") {
+        for dir in data_dirs.split(':') {
+            if !dir.is_empty() {
+                paths.push(PathBuf::from(dir).join("wcl/lib"));
+            }
+        }
+    } else {
+        paths.push(PathBuf::from("/usr/local/share/wcl/lib"));
+        paths.push(PathBuf::from("/usr/share/wcl/lib"));
+    }
+    #[cfg(windows)]
+    if let Some(pd) = std::env::var_os("PROGRAMDATA") {
+        paths.push(PathBuf::from(pd).join("wcl\\lib"));
+    }
+
+    paths
+}
+
+/// Resolve a library import name to a file path by searching `library_search_paths()`.
+pub fn resolve_library_import(name: &str, fs: &impl FileSystem) -> Option<PathBuf> {
+    for dir in library_search_paths() {
+        let candidate = dir.join(name);
+        if fs.exists(&candidate) {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
 /// Resolves `import` directives in WCL documents.
 ///
 /// Handles path resolution, jail checking, import-once semantics, depth limits,
@@ -190,19 +244,38 @@ impl<'a, FS: FileSystem> ImportResolver<'a, FS> {
                 continue;
             }
 
-            // Resolve the path
-            let resolved = match self.resolve_path(&import_path_str, current_file) {
-                Ok(p) => p,
-                Err(diag) => {
-                    self.diagnostics.add(diag);
-                    continue;
+            // Resolve the path (library imports skip jail check)
+            let resolved = if import.kind == ImportKind::Library {
+                match resolve_library_import(&import_path_str, self.fs) {
+                    Some(p) => p,
+                    None => {
+                        self.diagnostics.error_with_code(
+                            format!(
+                                "library '{}' not found in search paths",
+                                import_path_str
+                            ),
+                            span,
+                            "E015",
+                        );
+                        continue;
+                    }
+                }
+            } else {
+                match self.resolve_path(&import_path_str, current_file) {
+                    Ok(p) => p,
+                    Err(diag) => {
+                        self.diagnostics.add(diag);
+                        continue;
+                    }
                 }
             };
 
-            // Jail check
-            if let Err(diag) = self.check_jail(&resolved, span) {
-                self.diagnostics.add(diag);
-                continue;
+            // Jail check (skip for library imports — they are intentionally outside project root)
+            if import.kind != ImportKind::Library {
+                if let Err(diag) = self.check_jail(&resolved, span) {
+                    self.diagnostics.add(diag);
+                    continue;
+                }
             }
 
             // Import-once: skip if already loaded
@@ -281,7 +354,8 @@ impl<'a, FS: FileSystem> ImportResolver<'a, FS> {
                     }
                     DocItem::ExportLet(_)
                     | DocItem::ReExport(_)
-                    | DocItem::Body(_) => {
+                    | DocItem::Body(_)
+                    | DocItem::FunctionDecl(_) => {
                         merged_items.push(item);
                     }
                 }

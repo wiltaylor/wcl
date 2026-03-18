@@ -301,7 +301,7 @@ fn collect_name_refs(
                     });
                 }
             }
-            DocItem::Import(_) => {}
+            DocItem::Import(_) | DocItem::FunctionDecl(_) => {}
         }
     }
 }

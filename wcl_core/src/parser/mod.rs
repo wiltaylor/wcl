@@ -223,6 +223,10 @@ impl Parser {
                 Some(DocItem::Import(imp))
             }
             TokenKind::Export => self.parse_export(trivia),
+            TokenKind::Declare => {
+                let decl = self.parse_function_decl(trivia)?;
+                Some(DocItem::FunctionDecl(decl))
+            }
             _ => {
                 let body_item = self.parse_body_item_with_trivia(trivia)?;
                 Some(DocItem::Body(body_item))
@@ -234,9 +238,46 @@ impl Parser {
         let start_span = self.current_span();
         self.advance(); // consume `import`
         self.skip_newlines();
+
+        // Check for library import syntax: import <name.wcl>
+        if self.at(&TokenKind::Lt) {
+            self.advance(); // consume `<`
+            let mut name_parts = Vec::new();
+            loop {
+                match self.peek_kind() {
+                    TokenKind::Ident(s) => {
+                        name_parts.push(s.clone());
+                        self.advance();
+                    }
+                    TokenKind::Dot => {
+                        name_parts.push(".".to_string());
+                        self.advance();
+                    }
+                    TokenKind::Gt => {
+                        let end_span = self.current_span();
+                        self.advance(); // consume `>`
+                        let full_name = name_parts.join("");
+                        let span = start_span.merge(end_span);
+                        let path = StringLit {
+                            parts: vec![StringPart::Literal(full_name)],
+                            span,
+                        };
+                        return Some(Import { path, kind: ImportKind::Library, trivia, span });
+                    }
+                    _ => {
+                        self.diagnostics.error(
+                            "expected identifier, `.`, or `>` in library import",
+                            self.current_span(),
+                        );
+                        return None;
+                    }
+                }
+            }
+        }
+
         let path = self.parse_string_lit()?;
         let span = start_span.merge(path.span);
-        Some(Import { path, trivia, span })
+        Some(Import { path, kind: ImportKind::Relative, trivia, span })
     }
 
     fn parse_export(&mut self, trivia: Trivia) -> Option<DocItem> {
@@ -268,6 +309,84 @@ impl Parser {
             let span = start_span.merge(name.span);
             Some(DocItem::ReExport(ReExport { name, trivia, span }))
         }
+    }
+
+    /// Parse `declare fn_name(param: type, ...) [-> return_type]`
+    fn parse_function_decl(&mut self, trivia: Trivia) -> Option<FunctionDecl> {
+        let start_span = self.current_span();
+        self.advance(); // consume `declare`
+        self.skip_newlines();
+
+        let name = self.expect_ident().ok()?;
+        self.skip_newlines();
+
+        if self.expect(&TokenKind::LParen).is_err() {
+            return None;
+        }
+        self.skip_newlines();
+
+        let mut params = Vec::new();
+        while !self.at(&TokenKind::RParen) && !self.at(&TokenKind::Eof) {
+            let param_start = self.current_span();
+            let param_name = self.expect_ident().ok()?;
+            self.skip_newlines();
+            if self.expect(&TokenKind::Colon).is_err() {
+                return None;
+            }
+            self.skip_newlines();
+            let type_expr = self.parse_type_expr()?;
+            let param_span = param_start.merge(type_expr.span());
+            params.push(FunctionDeclParam {
+                name: param_name,
+                type_expr,
+                span: param_span,
+            });
+            self.skip_newlines();
+            if self.at(&TokenKind::Comma) {
+                self.advance();
+                self.skip_newlines();
+            }
+        }
+
+        if self.expect(&TokenKind::RParen).is_err() {
+            return None;
+        }
+        self.skip_newlines();
+
+        // Optional return type: `-> type`
+        let return_type = if self.at(&TokenKind::Minus) {
+            // peek ahead for `>`
+            let save_pos = self.pos;
+            self.advance(); // consume `-`
+            if self.at(&TokenKind::Gt) {
+                self.advance(); // consume `>`
+                self.skip_newlines();
+                Some(self.parse_type_expr()?)
+            } else {
+                self.pos = save_pos;
+                None
+            }
+        } else {
+            None
+        };
+
+        let end_span = if let Some(ref rt) = return_type {
+            rt.span()
+        } else {
+            self.tokens.get(self.pos.saturating_sub(1))
+                .map(|t| t.span)
+                .unwrap_or(start_span)
+        };
+        let span = start_span.merge(end_span);
+
+        Some(FunctionDecl {
+            name,
+            params,
+            return_type,
+            doc: None,
+            trivia,
+            span,
+        })
     }
 
     // ── Body items ────────────────────────────────────────────────────────

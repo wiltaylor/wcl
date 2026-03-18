@@ -6,19 +6,21 @@ use wcl_core::ast::*;
 use wcl_core::diagnostic::{Diagnostic, DiagnosticBag};
 use wcl_core::span::Span;
 
-use crate::functions::{builtin_registry, BuiltinFn};
+use crate::functions::{builtin_registry, BuiltinFn, FunctionRegistry};
 use crate::imports::FileSystem;
 use crate::scope::*;
 use crate::value::*;
 
 pub struct Evaluator {
     scopes: ScopeArena,
-    builtins: HashMap<&'static str, BuiltinFn>,
+    builtins: HashMap<String, BuiltinFn>,
     diagnostics: DiagnosticBag,
     fs: Option<Box<dyn FileSystem>>,
     base_dir: Option<PathBuf>,
     /// Maps (parent_scope, block_name) -> child_scope_id for block evaluation
     block_scope_map: HashMap<(ScopeId, String), ScopeId>,
+    /// Set of function names declared via `declare` in library imports
+    declared_functions: HashSet<String>,
 }
 
 impl Evaluator {
@@ -30,6 +32,7 @@ impl Evaluator {
             fs: None,
             base_dir: None,
             block_scope_map: HashMap::new(),
+            declared_functions: HashSet::new(),
         }
     }
 
@@ -41,7 +44,39 @@ impl Evaluator {
             fs: Some(fs),
             base_dir: Some(base_dir),
             block_scope_map: HashMap::new(),
+            declared_functions: HashSet::new(),
         }
+    }
+
+    /// Create an evaluator with custom functions from a `FunctionRegistry`.
+    pub fn with_functions(
+        registry: &FunctionRegistry,
+        fs: Option<Box<dyn FileSystem>>,
+        base_dir: Option<PathBuf>,
+    ) -> Self {
+        let mut builtins = builtin_registry();
+        for (name, f) in &registry.functions {
+            builtins.insert(name.clone(), f.clone());
+        }
+        Evaluator {
+            scopes: ScopeArena::new(),
+            builtins,
+            diagnostics: DiagnosticBag::new(),
+            fs,
+            base_dir,
+            block_scope_map: HashMap::new(),
+            declared_functions: HashSet::new(),
+        }
+    }
+
+    /// Register a custom function at runtime.
+    pub fn register_function(&mut self, name: impl Into<String>, f: BuiltinFn) {
+        self.builtins.insert(name.into(), f);
+    }
+
+    /// Add a declared function name (from `declare` statements in library imports).
+    pub fn add_declared_function(&mut self, name: impl Into<String>) {
+        self.declared_functions.insert(name.into());
     }
 
     /// Evaluate a full document. Returns the evaluated document as a list of
@@ -100,6 +135,11 @@ impl Evaluator {
                             read_count: 0,
                         },
                     );
+                }
+                DocItem::FunctionDecl(decl) => {
+                    // Track declared function names so we can give a helpful error
+                    // if they are called but not registered by the host application.
+                    self.declared_functions.insert(decl.name.name.clone());
                 }
                 _ => {}
             }
@@ -978,7 +1018,7 @@ impl Evaluator {
                 let eval_args = self.eval_call_args(args, scope_id)?;
 
                 // Check builtin functions
-                if let Some(builtin) = self.builtins.get(name.as_str()) {
+                if let Some(builtin) = self.builtins.get(name.as_str()).cloned() {
                     return builtin(&eval_args).map_err(|e| {
                         Diagnostic::error(format!("in {}(): {}", name, e), span)
                             .with_code("E052")
@@ -997,6 +1037,17 @@ impl Evaluator {
                 if let Some(func) = maybe_func {
                     self.scopes.record_read(scope_id, name);
                     return self.call_user_fn(&func, &eval_args, span);
+                }
+
+                // Check if function is declared (from library import) but not registered
+                if self.declared_functions.contains(name.as_str()) {
+                    return Err(
+                        Diagnostic::error(
+                            format!("function '{}' is declared in library but not registered by host application", name),
+                            span,
+                        )
+                        .with_code("E053"),
+                    );
                 }
 
                 Err(

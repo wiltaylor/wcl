@@ -2,83 +2,194 @@ use crate::value::Value;
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+use std::sync::Arc;
 
-pub type BuiltinFn = fn(&[Value]) -> Result<Value, String>;
+/// A callable built-in function. Supports both plain `fn` pointers and closures.
+pub type BuiltinFn = Arc<dyn Fn(&[Value]) -> Result<Value, String> + Send + Sync>;
 
-pub fn builtin_registry() -> HashMap<&'static str, BuiltinFn> {
-    let mut m: HashMap<&'static str, BuiltinFn> = HashMap::new();
+/// Metadata for a function, used by the LSP for completions and signature help.
+#[derive(Debug, Clone)]
+pub struct FunctionSignature {
+    pub name: String,
+    pub params: Vec<String>,
+    pub return_type: String,
+    pub doc: String,
+}
+
+/// A shareable registry of functions and their signatures.
+#[derive(Clone, Default)]
+pub struct FunctionRegistry {
+    pub functions: HashMap<String, BuiltinFn>,
+    pub signatures: Vec<FunctionSignature>,
+}
+
+impl std::fmt::Debug for FunctionRegistry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FunctionRegistry")
+            .field("functions", &format!("<{} functions>", self.functions.len()))
+            .field("signatures", &self.signatures)
+            .finish()
+    }
+}
+
+impl FunctionRegistry {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Register a custom function with its signature metadata.
+    pub fn register(
+        &mut self,
+        name: impl Into<String>,
+        f: Arc<dyn Fn(&[Value]) -> Result<Value, String> + Send + Sync>,
+        signature: FunctionSignature,
+    ) {
+        let name = name.into();
+        self.functions.insert(name, f);
+        self.signatures.push(signature);
+    }
+}
+
+/// Return all builtin function signatures for LSP tooling.
+pub fn builtin_signatures() -> Vec<FunctionSignature> {
+    vec![
+        FunctionSignature { name: "upper".into(), params: vec!["s: string".into()], return_type: "string".into(), doc: "Convert string to uppercase".into() },
+        FunctionSignature { name: "lower".into(), params: vec!["s: string".into()], return_type: "string".into(), doc: "Convert string to lowercase".into() },
+        FunctionSignature { name: "trim".into(), params: vec!["s: string".into()], return_type: "string".into(), doc: "Trim whitespace".into() },
+        FunctionSignature { name: "trim_prefix".into(), params: vec!["s: string".into(), "prefix: string".into()], return_type: "string".into(), doc: "Remove prefix".into() },
+        FunctionSignature { name: "trim_suffix".into(), params: vec!["s: string".into(), "suffix: string".into()], return_type: "string".into(), doc: "Remove suffix".into() },
+        FunctionSignature { name: "replace".into(), params: vec!["s: string".into(), "from: string".into(), "to: string".into()], return_type: "string".into(), doc: "Replace occurrences".into() },
+        FunctionSignature { name: "split".into(), params: vec!["s: string".into(), "sep: string".into()], return_type: "list(string)".into(), doc: "Split string by separator".into() },
+        FunctionSignature { name: "join".into(), params: vec!["list: list".into(), "sep: string".into()], return_type: "string".into(), doc: "Join list elements".into() },
+        FunctionSignature { name: "starts_with".into(), params: vec!["s: string".into(), "prefix: string".into()], return_type: "bool".into(), doc: "Check prefix".into() },
+        FunctionSignature { name: "ends_with".into(), params: vec!["s: string".into(), "suffix: string".into()], return_type: "bool".into(), doc: "Check suffix".into() },
+        FunctionSignature { name: "contains".into(), params: vec!["s: string".into(), "sub: string".into()], return_type: "bool".into(), doc: "Check substring".into() },
+        FunctionSignature { name: "length".into(), params: vec!["s: string".into()], return_type: "int".into(), doc: "String length".into() },
+        FunctionSignature { name: "substr".into(), params: vec!["s: string".into(), "start: int".into(), "end: int".into()], return_type: "string".into(), doc: "Substring".into() },
+        FunctionSignature { name: "format".into(), params: vec!["fmt: string".into(), "...args".into()], return_type: "string".into(), doc: "Format string".into() },
+        FunctionSignature { name: "regex_match".into(), params: vec!["s: string".into(), "pattern: string".into()], return_type: "bool".into(), doc: "Regex match".into() },
+        FunctionSignature { name: "regex_capture".into(), params: vec!["s: string".into(), "pattern: string".into()], return_type: "list(string)".into(), doc: "Regex capture groups".into() },
+        FunctionSignature { name: "abs".into(), params: vec!["n: number".into()], return_type: "number".into(), doc: "Absolute value".into() },
+        FunctionSignature { name: "min".into(), params: vec!["a: number".into(), "b: number".into()], return_type: "number".into(), doc: "Minimum".into() },
+        FunctionSignature { name: "max".into(), params: vec!["a: number".into(), "b: number".into()], return_type: "number".into(), doc: "Maximum".into() },
+        FunctionSignature { name: "floor".into(), params: vec!["n: float".into()], return_type: "int".into(), doc: "Floor".into() },
+        FunctionSignature { name: "ceil".into(), params: vec!["n: float".into()], return_type: "int".into(), doc: "Ceiling".into() },
+        FunctionSignature { name: "round".into(), params: vec!["n: float".into()], return_type: "int".into(), doc: "Round".into() },
+        FunctionSignature { name: "sqrt".into(), params: vec!["n: float".into()], return_type: "float".into(), doc: "Square root".into() },
+        FunctionSignature { name: "pow".into(), params: vec!["base: float".into(), "exp: float".into()], return_type: "float".into(), doc: "Power".into() },
+        FunctionSignature { name: "len".into(), params: vec!["collection".into()], return_type: "int".into(), doc: "Collection length".into() },
+        FunctionSignature { name: "keys".into(), params: vec!["m: map".into()], return_type: "list(string)".into(), doc: "Map keys".into() },
+        FunctionSignature { name: "values".into(), params: vec!["m: map".into()], return_type: "list".into(), doc: "Map values".into() },
+        FunctionSignature { name: "flatten".into(), params: vec!["list: list".into()], return_type: "list".into(), doc: "Flatten nested lists".into() },
+        FunctionSignature { name: "concat".into(), params: vec!["a: list".into(), "b: list".into()], return_type: "list".into(), doc: "Concatenate lists".into() },
+        FunctionSignature { name: "distinct".into(), params: vec!["list: list".into()], return_type: "list".into(), doc: "Remove duplicates".into() },
+        FunctionSignature { name: "sort".into(), params: vec!["list: list".into()], return_type: "list".into(), doc: "Sort list".into() },
+        FunctionSignature { name: "reverse".into(), params: vec!["list: list".into()], return_type: "list".into(), doc: "Reverse list".into() },
+        FunctionSignature { name: "index_of".into(), params: vec!["list: list".into(), "elem".into()], return_type: "int".into(), doc: "Find element index".into() },
+        FunctionSignature { name: "range".into(), params: vec!["start: int".into(), "end: int".into()], return_type: "list(int)".into(), doc: "Integer range".into() },
+        FunctionSignature { name: "zip".into(), params: vec!["a: list".into(), "b: list".into()], return_type: "list".into(), doc: "Zip two lists".into() },
+        FunctionSignature { name: "map".into(), params: vec!["list: list".into(), "fn: lambda".into()], return_type: "list".into(), doc: "Map over list".into() },
+        FunctionSignature { name: "filter".into(), params: vec!["list: list".into(), "fn: lambda".into()], return_type: "list".into(), doc: "Filter list".into() },
+        FunctionSignature { name: "every".into(), params: vec!["list: list".into(), "fn: lambda".into()], return_type: "bool".into(), doc: "All match predicate".into() },
+        FunctionSignature { name: "some".into(), params: vec!["list: list".into(), "fn: lambda".into()], return_type: "bool".into(), doc: "Any matches predicate".into() },
+        FunctionSignature { name: "reduce".into(), params: vec!["list: list".into(), "init".into(), "fn: lambda".into()], return_type: "any".into(), doc: "Reduce list".into() },
+        FunctionSignature { name: "sum".into(), params: vec!["list: list(number)".into()], return_type: "number".into(), doc: "Sum numbers".into() },
+        FunctionSignature { name: "avg".into(), params: vec!["list: list(number)".into()], return_type: "float".into(), doc: "Average".into() },
+        FunctionSignature { name: "min_of".into(), params: vec!["list: list(number)".into()], return_type: "number".into(), doc: "Minimum of list".into() },
+        FunctionSignature { name: "max_of".into(), params: vec!["list: list(number)".into()], return_type: "number".into(), doc: "Maximum of list".into() },
+        FunctionSignature { name: "count".into(), params: vec!["list: list".into(), "fn: lambda".into()], return_type: "int".into(), doc: "Count matching elements".into() },
+        FunctionSignature { name: "sha256".into(), params: vec!["s: string".into()], return_type: "string".into(), doc: "SHA-256 hash".into() },
+        FunctionSignature { name: "base64_encode".into(), params: vec!["s: string".into()], return_type: "string".into(), doc: "Base64 encode".into() },
+        FunctionSignature { name: "base64_decode".into(), params: vec!["s: string".into()], return_type: "string".into(), doc: "Base64 decode".into() },
+        FunctionSignature { name: "json_encode".into(), params: vec!["value".into()], return_type: "string".into(), doc: "Encode as JSON string".into() },
+        FunctionSignature { name: "to_string".into(), params: vec!["value".into()], return_type: "string".into(), doc: "Convert to string".into() },
+        FunctionSignature { name: "to_int".into(), params: vec!["value".into()], return_type: "int".into(), doc: "Convert to int".into() },
+        FunctionSignature { name: "to_float".into(), params: vec!["value".into()], return_type: "float".into(), doc: "Convert to float".into() },
+        FunctionSignature { name: "to_bool".into(), params: vec!["value".into()], return_type: "bool".into(), doc: "Convert to bool".into() },
+        FunctionSignature { name: "type_of".into(), params: vec!["value".into()], return_type: "string".into(), doc: "Get type name".into() },
+        FunctionSignature { name: "has".into(), params: vec!["value".into(), "key: string".into()], return_type: "bool".into(), doc: "Check if key exists".into() },
+        FunctionSignature { name: "has_decorator".into(), params: vec!["block".into(), "name: string".into()], return_type: "bool".into(), doc: "Check decorator".into() },
+    ]
+}
+
+fn wrap_builtin(f: fn(&[Value]) -> Result<Value, String>) -> BuiltinFn {
+    Arc::new(f)
+}
+
+pub fn builtin_registry() -> HashMap<String, BuiltinFn> {
+    let mut m: HashMap<String, BuiltinFn> = HashMap::new();
 
     // String functions (Section 14.1)
-    m.insert("upper", upper as BuiltinFn);
-    m.insert("lower", lower as BuiltinFn);
-    m.insert("trim", trim as BuiltinFn);
-    m.insert("trim_prefix", trim_prefix as BuiltinFn);
-    m.insert("trim_suffix", trim_suffix as BuiltinFn);
-    m.insert("replace", fn_replace as BuiltinFn);
-    m.insert("split", split as BuiltinFn);
-    m.insert("join", join as BuiltinFn);
-    m.insert("starts_with", starts_with as BuiltinFn);
-    m.insert("ends_with", ends_with as BuiltinFn);
-    m.insert("contains", fn_contains as BuiltinFn);
-    m.insert("length", length as BuiltinFn);
-    m.insert("substr", substr as BuiltinFn);
-    m.insert("format", fn_format as BuiltinFn);
-    m.insert("regex_match", regex_match as BuiltinFn);
-    m.insert("regex_capture", regex_capture as BuiltinFn);
+    m.insert("upper".into(), wrap_builtin(upper));
+    m.insert("lower".into(), wrap_builtin(lower));
+    m.insert("trim".into(), wrap_builtin(trim));
+    m.insert("trim_prefix".into(), wrap_builtin(trim_prefix));
+    m.insert("trim_suffix".into(), wrap_builtin(trim_suffix));
+    m.insert("replace".into(), wrap_builtin(fn_replace));
+    m.insert("split".into(), wrap_builtin(split));
+    m.insert("join".into(), wrap_builtin(join));
+    m.insert("starts_with".into(), wrap_builtin(starts_with));
+    m.insert("ends_with".into(), wrap_builtin(ends_with));
+    m.insert("contains".into(), wrap_builtin(fn_contains));
+    m.insert("length".into(), wrap_builtin(length));
+    m.insert("substr".into(), wrap_builtin(substr));
+    m.insert("format".into(), wrap_builtin(fn_format));
+    m.insert("regex_match".into(), wrap_builtin(regex_match));
+    m.insert("regex_capture".into(), wrap_builtin(regex_capture));
 
     // Math functions (Section 14.2)
-    m.insert("abs", abs as BuiltinFn);
-    m.insert("min", fn_min as BuiltinFn);
-    m.insert("max", fn_max as BuiltinFn);
-    m.insert("floor", floor as BuiltinFn);
-    m.insert("ceil", ceil as BuiltinFn);
-    m.insert("round", fn_round as BuiltinFn);
-    m.insert("sqrt", sqrt as BuiltinFn);
-    m.insert("pow", pow as BuiltinFn);
+    m.insert("abs".into(), wrap_builtin(abs));
+    m.insert("min".into(), wrap_builtin(fn_min));
+    m.insert("max".into(), wrap_builtin(fn_max));
+    m.insert("floor".into(), wrap_builtin(floor));
+    m.insert("ceil".into(), wrap_builtin(ceil));
+    m.insert("round".into(), wrap_builtin(fn_round));
+    m.insert("sqrt".into(), wrap_builtin(sqrt));
+    m.insert("pow".into(), wrap_builtin(pow));
 
     // Collection functions (Section 14.3)
-    m.insert("len", len as BuiltinFn);
-    m.insert("keys", keys as BuiltinFn);
-    m.insert("values", fn_values as BuiltinFn);
-    m.insert("flatten", flatten as BuiltinFn);
-    m.insert("concat", fn_concat as BuiltinFn);
-    m.insert("distinct", distinct as BuiltinFn);
-    m.insert("sort", fn_sort as BuiltinFn);
-    m.insert("reverse", fn_reverse as BuiltinFn);
-    m.insert("index_of", index_of as BuiltinFn);
-    m.insert("range", range as BuiltinFn);
-    m.insert("zip", zip as BuiltinFn);
+    m.insert("len".into(), wrap_builtin(len));
+    m.insert("keys".into(), wrap_builtin(keys));
+    m.insert("values".into(), wrap_builtin(fn_values));
+    m.insert("flatten".into(), wrap_builtin(flatten));
+    m.insert("concat".into(), wrap_builtin(fn_concat));
+    m.insert("distinct".into(), wrap_builtin(distinct));
+    m.insert("sort".into(), wrap_builtin(fn_sort));
+    m.insert("reverse".into(), wrap_builtin(fn_reverse));
+    m.insert("index_of".into(), wrap_builtin(index_of));
+    m.insert("range".into(), wrap_builtin(range));
+    m.insert("zip".into(), wrap_builtin(zip));
 
     // Higher-order functions (Section 14.4) — require special evaluator support
-    m.insert("map", higher_order_placeholder as BuiltinFn);
-    m.insert("filter", higher_order_placeholder as BuiltinFn);
-    m.insert("every", higher_order_placeholder as BuiltinFn);
-    m.insert("some", higher_order_placeholder as BuiltinFn);
-    m.insert("reduce", higher_order_placeholder as BuiltinFn);
+    m.insert("map".into(), wrap_builtin(higher_order_placeholder));
+    m.insert("filter".into(), wrap_builtin(higher_order_placeholder));
+    m.insert("every".into(), wrap_builtin(higher_order_placeholder));
+    m.insert("some".into(), wrap_builtin(higher_order_placeholder));
+    m.insert("reduce".into(), wrap_builtin(higher_order_placeholder));
 
     // Aggregate functions (Section 14.5)
-    m.insert("sum", sum as BuiltinFn);
-    m.insert("avg", avg as BuiltinFn);
-    m.insert("min_of", min_of as BuiltinFn);
-    m.insert("max_of", max_of as BuiltinFn);
-    m.insert("count", higher_order_placeholder as BuiltinFn);
+    m.insert("sum".into(), wrap_builtin(sum));
+    m.insert("avg".into(), wrap_builtin(avg));
+    m.insert("min_of".into(), wrap_builtin(min_of));
+    m.insert("max_of".into(), wrap_builtin(max_of));
+    m.insert("count".into(), wrap_builtin(higher_order_placeholder));
 
     // Hash/encoding (Section 14.6)
-    m.insert("sha256", fn_sha256 as BuiltinFn);
-    m.insert("base64_encode", base64_encode as BuiltinFn);
-    m.insert("base64_decode", base64_decode as BuiltinFn);
-    m.insert("json_encode", json_encode as BuiltinFn);
+    m.insert("sha256".into(), wrap_builtin(fn_sha256));
+    m.insert("base64_encode".into(), wrap_builtin(base64_encode));
+    m.insert("base64_decode".into(), wrap_builtin(base64_decode));
+    m.insert("json_encode".into(), wrap_builtin(json_encode));
 
     // Type coercion (Section 14.7)
-    m.insert("to_string", to_string as BuiltinFn);
-    m.insert("to_int", to_int as BuiltinFn);
-    m.insert("to_float", to_float as BuiltinFn);
-    m.insert("to_bool", to_bool as BuiltinFn);
-    m.insert("type_of", type_of as BuiltinFn);
+    m.insert("to_string".into(), wrap_builtin(to_string));
+    m.insert("to_int".into(), wrap_builtin(to_int));
+    m.insert("to_float".into(), wrap_builtin(to_float));
+    m.insert("to_bool".into(), wrap_builtin(to_bool));
+    m.insert("type_of".into(), wrap_builtin(type_of));
 
     // Reference and Query Functions (Section 14.9)
-    m.insert("has", fn_has as BuiltinFn);
-    m.insert("has_decorator", fn_has_decorator as BuiltinFn);
+    m.insert("has".into(), wrap_builtin(fn_has));
+    m.insert("has_decorator".into(), wrap_builtin(fn_has_decorator));
 
     m
 }
@@ -1301,7 +1412,7 @@ mod tests {
             "has", "has_decorator",
         ];
         for name in &expected {
-            assert!(registry.contains_key(name), "missing builtin: {}", name);
+            assert!(registry.contains_key(*name), "missing builtin: {}", name);
         }
     }
 

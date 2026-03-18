@@ -60,6 +60,17 @@ fn doc_item_symbol(item: &DocItem, rope: &Rope) -> Option<DocumentSymbol> {
             children: None,
         }),
         DocItem::Body(body_item) => body_item_symbol(body_item, rope),
+        #[allow(deprecated)]
+        DocItem::FunctionDecl(decl) => Some(DocumentSymbol {
+            name: decl.name.name.clone(),
+            detail: Some("declare".to_string()),
+            kind: SymbolKind::FUNCTION,
+            tags: None,
+            deprecated: None,
+            range: span_to_lsp_range(decl.span, rope),
+            selection_range: span_to_lsp_range(decl.name.span, rope),
+            children: None,
+        }),
     }
 }
 

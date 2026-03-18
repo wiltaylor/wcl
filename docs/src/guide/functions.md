@@ -77,6 +77,24 @@ config display {
 }
 ```
 
+## Custom Functions (Rust Host)
+
+When using WCL as a Rust library, host programs can register custom `fn(&[Value]) -> Result<Value, String>` functions that are callable from WCL expressions. This allows domain-specific logic to be exposed to configuration files.
+
+Custom functions are registered via `ParseOptions.functions` (a `FunctionRegistry`). See the [Rust Library Usage](../getting-started/rust-library.md#custom-functions) guide for details and examples.
+
+### Function Declarations (`declare`)
+
+Library files can include `declare` statements that describe functions provided by the host application:
+
+```wcl
+declare my_fn(input: string, count: int) -> string
+```
+
+This serves two purposes:
+1. The LSP uses declarations for completions and signature help
+2. If a declared function is called but not registered by the host, a clear error is produced: *"function 'X' is declared in library but not registered by host application"*
+
 ## Purity Guarantee
 
 Because all functions (built-in and user-defined) are pure and the language has no I/O or mutation, a WCL document always evaluates to the same result given the same inputs. This makes configs safe to cache, diff, and analyze statically.

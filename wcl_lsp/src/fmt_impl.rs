@@ -42,7 +42,17 @@ impl<'a> Fmt<'a> {
             DocItem::Import(import) => {
                 self.indent();
                 self.out.push_str("import ");
-                self.string_lit(&import.path);
+                if import.kind == ImportKind::Library {
+                    self.out.push('<');
+                    for part in &import.path.parts {
+                        if let StringPart::Literal(s) = part {
+                            self.out.push_str(s);
+                        }
+                    }
+                    self.out.push('>');
+                } else {
+                    self.string_lit(&import.path);
+                }
                 self.out.push('\n');
             }
             DocItem::ExportLet(el) => {
@@ -57,6 +67,23 @@ impl<'a> Fmt<'a> {
                 self.out.push_str(&format!("export {}\n", re.name.name));
             }
             DocItem::Body(body_item) => self.body_item(body_item),
+            DocItem::FunctionDecl(decl) => {
+                self.indent();
+                self.out.push_str(&format!("declare {}(", decl.name.name));
+                for (i, param) in decl.params.iter().enumerate() {
+                    if i > 0 {
+                        self.out.push_str(", ");
+                    }
+                    self.out.push_str(&format!("{}: ", param.name.name));
+                    self.type_expr(&param.type_expr);
+                }
+                self.out.push(')');
+                if let Some(ref rt) = decl.return_type {
+                    self.out.push_str(" -> ");
+                    self.type_expr(rt);
+                }
+                self.out.push('\n');
+            }
         }
     }
 

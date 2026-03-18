@@ -3,6 +3,8 @@
 //! This is the facade crate that re-exports everything and provides
 //! the main parsing pipeline.
 
+pub mod library;
+
 // Re-exports
 pub use wcl_core::{
     FileId, Span, SourceMap, SourceFile,
@@ -19,6 +21,7 @@ pub use wcl_eval::{
     MacroRegistry, MacroExpander,
     ControlFlowExpander,
     PartialMerger, ConflictMode,
+    BuiltinFn, FunctionRegistry, FunctionSignature, builtin_signatures,
 };
 
 pub use wcl_schema::{
@@ -32,7 +35,7 @@ pub use wcl_serde::{
     Error as SerdeError,
 };
 
-pub use wcl_derive::WclDeserialize;
+pub use wcl_derive::{WclDeserialize, WclSchema};
 
 use std::path::PathBuf;
 
@@ -53,6 +56,8 @@ pub struct ParseOptions {
     pub max_loop_depth: u32,
     /// Maximum total iterations across all for loops
     pub max_iterations: u32,
+    /// Custom functions to register (builtins are always included)
+    pub functions: FunctionRegistry,
 }
 
 impl Default for ParseOptions {
@@ -65,6 +70,7 @@ impl Default for ParseOptions {
             max_macro_depth: 64,
             max_loop_depth: 32,
             max_iterations: 10_000,
+            functions: FunctionRegistry::default(),
         }
     }
 }
@@ -324,7 +330,9 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
     // This only handles literal expressions; variables defined via `let` are not
     // available until Phase 7. We wrap the evaluator in a RefCell because
     // `eval_expr` requires `&mut self` but the callback signature is `&dyn Fn`.
-    let pre_eval = std::cell::RefCell::new(Evaluator::new());
+    let pre_eval = std::cell::RefCell::new(Evaluator::with_functions(
+        &options.functions, None, None,
+    ));
     let pre_scope = pre_eval.borrow_mut().scopes_mut().create_scope(ScopeKind::Module, None);
     // Pre-register let bindings with literal values so control flow can access them.
     // This allows `for item in items { ... }` where `let items = [1, 2, 3]` at the top level.
@@ -363,9 +371,10 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
     all_diagnostics.extend(merger.into_diagnostics().into_diagnostics());
 
     // Phase 7: Scope construction + Expression evaluation
-    let mut evaluator = Evaluator::with_fs(
-        Box::new(RealFileSystem),
-        options.root_dir.clone(),
+    let mut evaluator = Evaluator::with_functions(
+        &options.functions,
+        Some(Box::new(RealFileSystem)),
+        Some(options.root_dir.clone()),
     );
     let values = evaluator.evaluate(&doc);
     all_diagnostics.extend(evaluator.into_diagnostics().into_diagnostics());
@@ -397,7 +406,11 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
 
     // Phase 11: Document validation
     let mut diag_bag = DiagnosticBag::new();
-    wcl_schema::document::validate_document(&doc, &mut Evaluator::new(), &mut diag_bag);
+    wcl_schema::document::validate_document(
+        &doc,
+        &mut Evaluator::with_functions(&options.functions, None, None),
+        &mut diag_bag,
+    );
     all_diagnostics.extend(diag_bag.into_diagnostics());
 
     Document {
@@ -829,5 +842,282 @@ mod tests {
 
         let result: Result<NeedsPort, _> = from_str("host = \"localhost\"");
         assert!(result.is_err());
+    }
+
+    // ── Phase 1: Custom Function Registration ────────────────────────────
+
+    #[test]
+    fn test_custom_function_registration() {
+        use std::sync::Arc;
+
+        let mut opts = ParseOptions::default();
+        opts.functions.functions.insert(
+            "double".into(),
+            Arc::new(|args: &[Value]| {
+                match args.first() {
+                    Some(Value::Int(n)) => Ok(Value::Int(n * 2)),
+                    _ => Err("expected int".into()),
+                }
+            }),
+        );
+
+        let doc = parse("result = double(21)", opts);
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+        assert_eq!(doc.values.get("result"), Some(&Value::Int(42)));
+    }
+
+    #[test]
+    fn test_custom_function_in_control_flow() {
+        use std::sync::Arc;
+
+        let mut opts = ParseOptions::default();
+        opts.functions.functions.insert(
+            "make_list".into(),
+            Arc::new(|_args: &[Value]| {
+                Ok(Value::List(vec![Value::Int(1), Value::Int(2)]))
+            }),
+        );
+
+        let doc = parse(
+            "for item in make_list() { entry { value = item } }",
+            opts,
+        );
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+        let entries = doc.blocks_of_type("entry");
+        assert_eq!(entries.len(), 2);
+    }
+
+    #[test]
+    fn test_function_registry_with_signature() {
+        use std::sync::Arc;
+
+        let mut registry = FunctionRegistry::new();
+        registry.register(
+            "greet",
+            Arc::new(|args: &[Value]| {
+                match args.first() {
+                    Some(Value::String(s)) => Ok(Value::String(format!("Hello, {}!", s))),
+                    _ => Err("expected string".into()),
+                }
+            }),
+            FunctionSignature {
+                name: "greet".into(),
+                params: vec!["name: string".into()],
+                return_type: "string".into(),
+                doc: "Greet someone".into(),
+            },
+        );
+
+        assert_eq!(registry.functions.len(), 1);
+        assert_eq!(registry.signatures.len(), 1);
+        assert_eq!(registry.signatures[0].name, "greet");
+    }
+
+    #[test]
+    fn test_builtin_signatures_complete() {
+        let sigs = builtin_signatures();
+        assert!(sigs.len() >= 50, "expected at least 50 builtin signatures, got {}", sigs.len());
+        // Check a few are present
+        assert!(sigs.iter().any(|s| s.name == "upper"));
+        assert!(sigs.iter().any(|s| s.name == "len"));
+        assert!(sigs.iter().any(|s| s.name == "sha256"));
+    }
+
+    // ── Phase 2: Well-Known Imports ──────────────────────────────────────
+
+    #[test]
+    fn test_parse_library_import_syntax() {
+        let (doc, diags) = wcl_core::parse("import <stdlib.wcl>", FileId(0));
+        // Should parse without errors (the file won't exist but the AST should be correct)
+        let parse_errors: Vec<_> = diags.into_diagnostics().into_iter()
+            .filter(|d| d.is_error())
+            .collect();
+        assert!(parse_errors.is_empty(), "parse errors: {:?}", parse_errors);
+        assert_eq!(doc.items.len(), 1);
+        if let ast::DocItem::Import(import) = &doc.items[0] {
+            assert_eq!(import.kind, ast::ImportKind::Library);
+            // Check the path is "stdlib.wcl"
+            if let ast::StringPart::Literal(s) = &import.path.parts[0] {
+                assert_eq!(s, "stdlib.wcl");
+            } else {
+                panic!("expected literal path");
+            }
+        } else {
+            panic!("expected Import");
+        }
+    }
+
+    #[test]
+    fn test_parse_relative_import_has_relative_kind() {
+        let (doc, _diags) = wcl_core::parse("import \"./other.wcl\"", FileId(0));
+        if let ast::DocItem::Import(import) = &doc.items[0] {
+            assert_eq!(import.kind, ast::ImportKind::Relative);
+        } else {
+            panic!("expected Import");
+        }
+    }
+
+    // ── Phase 3: Function Declarations ───────────────────────────────────
+
+    #[test]
+    fn test_parse_function_decl() {
+        let (doc, diags) = wcl_core::parse("declare my_fn(input: string, count: int) -> string", FileId(0));
+        let parse_errors: Vec<_> = diags.into_diagnostics().into_iter()
+            .filter(|d| d.is_error())
+            .collect();
+        assert!(parse_errors.is_empty(), "parse errors: {:?}", parse_errors);
+        assert_eq!(doc.items.len(), 1);
+        if let ast::DocItem::FunctionDecl(decl) = &doc.items[0] {
+            assert_eq!(decl.name.name, "my_fn");
+            assert_eq!(decl.params.len(), 2);
+            assert_eq!(decl.params[0].name.name, "input");
+            assert_eq!(decl.params[1].name.name, "count");
+            assert!(decl.return_type.is_some());
+        } else {
+            panic!("expected FunctionDecl");
+        }
+    }
+
+    #[test]
+    fn test_parse_function_decl_no_return_type() {
+        let (doc, diags) = wcl_core::parse("declare fire_event(name: string)", FileId(0));
+        let parse_errors: Vec<_> = diags.into_diagnostics().into_iter()
+            .filter(|d| d.is_error())
+            .collect();
+        assert!(parse_errors.is_empty(), "parse errors: {:?}", parse_errors);
+        if let ast::DocItem::FunctionDecl(decl) = &doc.items[0] {
+            assert_eq!(decl.name.name, "fire_event");
+            assert!(decl.return_type.is_none());
+        } else {
+            panic!("expected FunctionDecl");
+        }
+    }
+
+    #[test]
+    fn test_declared_but_unregistered_function_error() {
+        let source = r#"
+            declare my_fn(input: string) -> string
+            result = my_fn("hello")
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        let e053_errors: Vec<_> = doc.diagnostics.iter()
+            .filter(|d| d.code.as_deref() == Some("E053"))
+            .collect();
+        assert!(!e053_errors.is_empty(), "expected E053 error for declared-but-unregistered function, got: {:?}", doc.diagnostics);
+        assert!(e053_errors[0].message.contains("declared in library but not registered"));
+    }
+
+    #[test]
+    fn test_declared_and_registered_function_works() {
+        use std::sync::Arc;
+
+        let mut opts = ParseOptions::default();
+        opts.functions.functions.insert(
+            "my_fn".into(),
+            Arc::new(|args: &[Value]| {
+                match args.first() {
+                    Some(Value::String(s)) => Ok(Value::String(format!("processed: {}", s))),
+                    _ => Err("expected string".into()),
+                }
+            }),
+        );
+
+        let source = r#"
+            declare my_fn(input: string) -> string
+            result = my_fn("hello")
+        "#;
+        let doc = parse(source, opts);
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+        assert_eq!(
+            doc.values.get("result"),
+            Some(&Value::String("processed: hello".to_string()))
+        );
+    }
+
+    // ── Phase 4: WclSchema derive macro ──────────────────────────────────
+
+    #[test]
+    fn test_wcl_schema_basic() {
+        #[derive(WclSchema)]
+        struct ServerConfig {
+            #[allow(dead_code)]
+            port: i64,
+            #[allow(dead_code)]
+            host: String,
+        }
+
+        let schema = ServerConfig::wcl_schema();
+        assert!(schema.contains("schema \"server_config\""), "schema: {}", schema);
+        assert!(schema.contains("port: int"), "schema: {}", schema);
+        assert!(schema.contains("host: string"), "schema: {}", schema);
+    }
+
+    #[test]
+    fn test_wcl_schema_with_optional() {
+        #[derive(WclSchema)]
+        struct Config {
+            #[allow(dead_code)]
+            name: String,
+            #[allow(dead_code)]
+            #[wcl(optional)]
+            debug: bool,
+        }
+
+        let schema = Config::wcl_schema();
+        assert!(schema.contains("debug: bool @optional"), "schema: {}", schema);
+    }
+
+    #[test]
+    fn test_wcl_schema_custom_name() {
+        #[derive(WclSchema)]
+        #[wcl(schema_name = "my_custom_schema")]
+        struct Foo {
+            #[allow(dead_code)]
+            value: i64,
+        }
+
+        let schema = Foo::wcl_schema();
+        assert!(schema.contains("schema \"my_custom_schema\""), "schema: {}", schema);
+    }
+
+    #[test]
+    fn test_wcl_schema_option_type_is_optional() {
+        #[derive(WclSchema)]
+        struct Config {
+            #[allow(dead_code)]
+            timeout: Option<i64>,
+        }
+
+        let schema = Config::wcl_schema();
+        assert!(schema.contains("@optional"), "Option<T> should generate @optional: {}", schema);
+    }
+
+    // ── Library module ───────────────────────────────────────────────────
+
+    #[test]
+    fn test_function_stub_to_wcl() {
+        let stub = library::FunctionStub {
+            name: "my_fn".into(),
+            params: vec![("input".into(), "string".into()), ("count".into(), "int".into())],
+            return_type: Some("string".into()),
+            doc: Some("Transform input".into()),
+        };
+        let wcl = stub.to_wcl();
+        assert_eq!(wcl, "declare my_fn(input: string, count: int) -> string\n");
+    }
+
+    #[test]
+    fn test_library_builder_build() {
+        let mut builder = library::LibraryBuilder::new("myapp");
+        builder.add_schema_text("schema \"config\" {\n    port: int\n}\n");
+        builder.add_function_stub(library::FunctionStub {
+            name: "greet".into(),
+            params: vec![("name".into(), "string".into())],
+            return_type: Some("string".into()),
+            doc: None,
+        });
+        let content = builder.build();
+        assert!(content.contains("schema \"config\""));
+        assert!(content.contains("declare greet(name: string) -> string"));
     }
 }

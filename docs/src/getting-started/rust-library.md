@@ -256,6 +256,111 @@ let config: ServerConfig = from_value(Value::Map(map)).unwrap();
 println!("{:?}", config);
 ```
 
+## Custom Functions
+
+You can register custom Rust functions that are callable from WCL expressions. This lets host applications extend WCL with domain-specific logic:
+
+```rust
+use wcl::{parse, ParseOptions, FunctionRegistry, FunctionSignature, Value};
+use std::sync::Arc;
+
+let mut opts = ParseOptions::default();
+
+// Register a custom function
+opts.functions.functions.insert(
+    "double".into(),
+    Arc::new(|args: &[Value]| {
+        match args.first() {
+            Some(Value::Int(n)) => Ok(Value::Int(n * 2)),
+            _ => Err("expected int".into()),
+        }
+    }),
+);
+
+// Optionally add a signature for LSP support (completions, signature help)
+opts.functions.signatures.push(FunctionSignature {
+    name: "double".into(),
+    params: vec!["n: int".into()],
+    return_type: "int".into(),
+    doc: "Double a number".into(),
+});
+
+let doc = parse("result = double(21)", opts);
+assert_eq!(doc.values.get("result"), Some(&Value::Int(42)));
+```
+
+You can also use `FunctionRegistry::register()` to add both the function and its signature at once:
+
+```rust
+use wcl::{FunctionRegistry, FunctionSignature, Value};
+use std::sync::Arc;
+
+let mut registry = FunctionRegistry::new();
+registry.register(
+    "greet",
+    Arc::new(|args: &[Value]| {
+        match args.first() {
+            Some(Value::String(s)) => Ok(Value::String(format!("Hello, {}!", s))),
+            _ => Err("expected string".into()),
+        }
+    }),
+    FunctionSignature {
+        name: "greet".into(),
+        params: vec!["name: string".into()],
+        return_type: "string".into(),
+        doc: "Greet someone".into(),
+    },
+);
+```
+
+## Schema Generation from Rust Types
+
+The `WclSchema` derive macro generates WCL schema text from Rust structs:
+
+```rust
+use wcl::WclSchema;
+
+#[derive(WclSchema)]
+struct ServerConfig {
+    port: i64,
+    host: String,
+    #[wcl(optional)]
+    debug: bool,
+}
+
+// Generates: schema "server_config" { port: int\n host: string\n debug: bool @optional }
+let schema_text = ServerConfig::wcl_schema();
+```
+
+Supported `#[wcl(...)]` attributes:
+- `#[wcl(schema_name = "name")]` — override the schema name (default: snake_case of struct name)
+- `#[wcl(open)]` — allow extra fields in the schema
+- `#[wcl(optional)]` — mark field as optional
+- `#[wcl(default = "value")]` — set a default value
+- `#[wcl(validate(min = N, max = N))]` — add validation constraints
+
+Rust type mapping: `String` → `string`, `i32/i64/u32/u64` → `int`, `f32/f64` → `float`, `bool` → `bool`, `Option<T>` → T + `@optional`, `Vec<T>` → `list(T)`, `HashMap<K,V>` → `map(K, V)`.
+
+## Library Builder
+
+Use `LibraryBuilder` to create installable WCL library files from Rust:
+
+```rust
+use wcl::library::{LibraryBuilder, FunctionStub};
+
+let mut builder = LibraryBuilder::new("myapp");
+builder.add_schema_text(ServerConfig::wcl_schema());
+builder.add_function_stub(FunctionStub {
+    name: "my_custom_fn".into(),
+    params: vec![("input".into(), "string".into())],
+    return_type: Some("string".into()),
+    doc: Some("Transform input".into()),
+});
+builder.install().expect("install library");
+```
+
+After installation, WCL files can use `import <myapp.wcl>` to access the schemas and function declarations. The LSP will provide completions and signature help for declared functions.
+
 ## Parse Options
 
 `ParseOptions` controls the pipeline behavior:
@@ -286,6 +391,9 @@ let options = ParseOptions {
 
     // Maximum total iterations across all for loops (default: 10,000)
     max_iterations: 10_000,
+
+    // Custom functions (builtins are always included)
+    functions: FunctionRegistry::default(),
 };
 ```
 

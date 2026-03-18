@@ -53,6 +53,7 @@ pub enum TokenKind {
     SelfKw,
     Validation,
     DecoratorSchema,
+    Declare,
 
     // Delimiters
     LBrace,
@@ -919,6 +920,7 @@ impl<'a> Lexer<'a> {
             "self" => TokenKind::SelfKw,
             "validation" => TokenKind::Validation,
             "decorator_schema" => TokenKind::DecoratorSchema,
+            "declare" => TokenKind::Declare,
             other => {
                 if other.contains('-') {
                     TokenKind::IdentifierLit(other.to_string())

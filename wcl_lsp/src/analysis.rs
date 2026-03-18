@@ -3,6 +3,7 @@ use wcl_core::span::SourceMap;
 use wcl_eval::{
     ControlFlowExpander, Evaluator, ImportResolver, MacroExpander, MacroRegistry,
     PartialMerger, RealFileSystem, ScopeEntry, ScopeEntryKind, ScopeKind,
+    builtin_signatures,
 };
 use wcl_schema::{DecoratorSchemaRegistry, IdRegistry, SchemaRegistry};
 
@@ -34,6 +35,7 @@ pub fn analyze(source: &str, options: &wcl::ParseOptions) -> AnalysisResult {
                 scopes: wcl_eval::ScopeArena::new(),
                 schemas: SchemaRegistry::new(),
                 macro_registry: MacroRegistry::new(),
+                function_signatures: builtin_signatures(),
             };
         }
     };
@@ -75,7 +77,9 @@ pub fn analyze(source: &str, options: &wcl::ParseOptions) -> AnalysisResult {
     // Control flow expansion
     let mut cf_expander =
         ControlFlowExpander::new(options.max_loop_depth, options.max_iterations);
-    let pre_eval = std::cell::RefCell::new(Evaluator::new());
+    let pre_eval = std::cell::RefCell::new(Evaluator::with_functions(
+        &options.functions, None, None,
+    ));
     let pre_scope = pre_eval
         .borrow_mut()
         .scopes_mut()
@@ -115,9 +119,10 @@ pub fn analyze(source: &str, options: &wcl::ParseOptions) -> AnalysisResult {
     all_diagnostics.extend(merger.into_diagnostics().into_diagnostics());
 
     // Scope construction + evaluation (retain scopes)
-    let mut evaluator = Evaluator::with_fs(
-        Box::new(RealFileSystem),
-        options.root_dir.clone(),
+    let mut evaluator = Evaluator::with_functions(
+        &options.functions,
+        Some(Box::new(RealFileSystem)),
+        Some(options.root_dir.clone()),
     );
     let values = evaluator.evaluate(&doc);
     let (scopes, eval_diags) = evaluator.into_parts();
@@ -150,8 +155,31 @@ pub fn analyze(source: &str, options: &wcl::ParseOptions) -> AnalysisResult {
 
     // Document validation
     let mut diag_bag = DiagnosticBag::new();
-    wcl_schema::document::validate_document(&doc, &mut Evaluator::new(), &mut diag_bag);
+    wcl_schema::document::validate_document(
+        &doc,
+        &mut Evaluator::with_functions(&options.functions, None, None),
+        &mut diag_bag,
+    );
     all_diagnostics.extend(diag_bag.into_diagnostics());
+
+    // Build function signatures: builtins + custom from options + declared in AST
+    let mut function_signatures = builtin_signatures();
+    function_signatures.extend(options.functions.signatures.clone());
+    // Extract signatures from `declare` statements in the document
+    for item in &doc.items {
+        if let wcl_core::ast::DocItem::FunctionDecl(decl) = item {
+            function_signatures.push(wcl_eval::FunctionSignature {
+                name: decl.name.name.clone(),
+                params: decl.params.iter().map(|p| {
+                    format!("{}: {}", p.name.name, type_expr_to_string(&p.type_expr))
+                }).collect(),
+                return_type: decl.return_type.as_ref()
+                    .map(type_expr_to_string)
+                    .unwrap_or_else(|| "any".into()),
+                doc: decl.doc.clone().unwrap_or_default(),
+            });
+        }
+    }
 
     AnalysisResult {
         ast: doc,
@@ -163,6 +191,27 @@ pub fn analyze(source: &str, options: &wcl::ParseOptions) -> AnalysisResult {
         scopes,
         schemas,
         macro_registry,
+        function_signatures,
+    }
+}
+
+fn type_expr_to_string(te: &wcl_core::ast::TypeExpr) -> String {
+    match te {
+        wcl_core::ast::TypeExpr::String(_) => "string".into(),
+        wcl_core::ast::TypeExpr::Int(_) => "int".into(),
+        wcl_core::ast::TypeExpr::Float(_) => "float".into(),
+        wcl_core::ast::TypeExpr::Bool(_) => "bool".into(),
+        wcl_core::ast::TypeExpr::Null(_) => "null".into(),
+        wcl_core::ast::TypeExpr::Identifier(_) => "identifier".into(),
+        wcl_core::ast::TypeExpr::Any(_) => "any".into(),
+        wcl_core::ast::TypeExpr::List(inner, _) => format!("list({})", type_expr_to_string(inner)),
+        wcl_core::ast::TypeExpr::Map(k, v, _) => format!("map({}, {})", type_expr_to_string(k), type_expr_to_string(v)),
+        wcl_core::ast::TypeExpr::Set(inner, _) => format!("set({})", type_expr_to_string(inner)),
+        wcl_core::ast::TypeExpr::Ref(_, _) => "ref".into(),
+        wcl_core::ast::TypeExpr::Union(types, _) => {
+            let parts: Vec<String> = types.iter().map(type_expr_to_string).collect();
+            format!("union({})", parts.join(", "))
+        }
     }
 }
 
