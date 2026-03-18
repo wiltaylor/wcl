@@ -65,12 +65,13 @@ impl ControlFlowExpander {
         depth: u32,
     ) -> Vec<BodyItem> {
         if depth > self.max_depth {
-            self.diagnostics.error(
+            self.diagnostics.error_with_code(
                 format!(
                     "control flow nesting depth limit exceeded (max {})",
                     self.max_depth
                 ),
                 Span::dummy(),
+                "E029",
             );
             return vec![];
         }
@@ -119,12 +120,13 @@ impl ControlFlowExpander {
         let items = match &iterable_value {
             Value::List(items) => items.clone(),
             other => {
-                self.diagnostics.error(
+                self.diagnostics.error_with_code(
                     format!(
                         "for loop iterable must be a list, got {}",
                         other.type_name()
                     ),
                     for_loop.span,
+                    "E025",
                 );
                 return vec![];
             }
@@ -133,24 +135,26 @@ impl ControlFlowExpander {
         // Check iteration limits
         let iteration_count = items.len() as u32;
         if iteration_count > 1000 {
-            self.diagnostics.error(
+            self.diagnostics.error_with_code(
                 format!(
                     "for loop iteration limit exceeded: {} iterations (max 1000)",
                     iteration_count
                 ),
                 for_loop.span,
+                "E028",
             );
             return vec![];
         }
 
         self.total_iterations += iteration_count;
         if self.total_iterations > self.max_iterations {
-            self.diagnostics.error(
+            self.diagnostics.error_with_code(
                 format!(
                     "total iteration limit exceeded: {} (max {})",
                     self.total_iterations, self.max_iterations
                 ),
                 for_loop.span,
+                "E028",
             );
             return vec![];
         }
@@ -211,12 +215,13 @@ impl ControlFlowExpander {
         let is_true = match condition_value.is_truthy() {
             Some(b) => b,
             None => {
-                self.diagnostics.error(
+                self.diagnostics.error_with_code(
                     format!(
                         "if condition must be bool, got {}",
                         condition_value.type_name()
                     ),
                     cond.span,
+                    "E026",
                 );
                 return vec![];
             }

@@ -402,7 +402,7 @@ impl<'a> Lexer<'a> {
                     self.errors.push(Diagnostic::error(
                         "unterminated string literal",
                         Span::new(self.file, start, self.pos),
-                    ));
+                    ).with_code("E003"));
                     break;
                 }
                 Some('"') => {
@@ -565,7 +565,7 @@ impl<'a> Lexer<'a> {
                 self.errors.push(Diagnostic::error(
                     format!("unterminated heredoc (expected closing {})", tag),
                     Span::new(self.file, start, self.pos),
-                ));
+                ).with_code("E003"));
                 break;
             }
 
@@ -939,6 +939,8 @@ impl<'a> Lexer<'a> {
 /// separately. If there are errors, the token stream may still be partially
 /// valid and callers can choose to continue parsing for further error recovery.
 pub fn lex(input: &str, file_id: FileId) -> Result<Vec<Token>, Vec<Diagnostic>> {
+    // Strip UTF-8 BOM if present (§3.1)
+    let input = input.strip_prefix('\u{FEFF}').unwrap_or(input);
     let mut lexer = Lexer::new(input, file_id);
     let mut tokens = Vec::new();
 

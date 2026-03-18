@@ -1,0 +1,66 @@
+{
+  "name": "wcl",
+  "displayName": "WCL - Wil's Configuration Language",
+  "description": "Language support for WCL (.wcl) files",
+  "version": "0.1.0",
+  "publisher": "wil",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:wcl"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "wcl",
+        "aliases": [
+          "WCL",
+          "wcl"
+        ],
+        "extensions": [
+          ".wcl"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "wcl",
+        "scopeName": "source.wcl",
+        "path": "./syntaxes/wcl.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "WCL",
+      "properties": {
+        "wcl.server.path": {
+          "type": "string",
+          "default": "wcl",
+          "description": "Path to the wcl binary"
+        },
+        "wcl.server.args": {
+          "type": "array",
+          "default": [
+            "lsp"
+          ],
+          "description": "Arguments passed to the wcl binary to start the LSP server"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  }
+}

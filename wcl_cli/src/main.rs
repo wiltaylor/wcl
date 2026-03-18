@@ -8,6 +8,7 @@ mod query;
 mod inspect;
 mod convert;
 mod eval;
+mod path;
 mod set;
 mod add;
 mod remove;
@@ -85,7 +86,11 @@ enum Commands {
         format: String,
     },
     /// Start the WCL language server
-    Lsp,
+    Lsp {
+        /// Listen on a TCP address instead of stdio (e.g. 127.0.0.1:9257)
+        #[arg(long)]
+        tcp: Option<String>,
+    },
     /// Convert between WCL and other formats
     Convert {
         /// Input file
@@ -140,9 +145,22 @@ fn main() {
             inspect::run(&file, ast, hir, scopes, deps)
         }
         Commands::Eval { file, format } => eval::run(&file, &format),
-        Commands::Lsp => {
-            eprintln!("wcl lsp is not yet implemented");
-            process::exit(1);
+        Commands::Lsp { tcp } => {
+            let rt = tokio::runtime::Runtime::new()
+                .map_err(|e| format!("failed to create tokio runtime: {}", e));
+            match rt {
+                Ok(rt) => {
+                    if let Some(addr) = tcp {
+                        rt.block_on(async {
+                            wcl_lsp::start_tcp(&addr).await.map_err(|e| e.to_string())
+                        })
+                    } else {
+                        rt.block_on(wcl_lsp::start_stdio());
+                        Ok(())
+                    }
+                }
+                Err(e) => Err(e),
+            }
         }
         Commands::Convert { file, to, from } => {
             convert::run(&file, to.as_deref(), from.as_deref())

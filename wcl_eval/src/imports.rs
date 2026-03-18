@@ -179,12 +179,13 @@ impl<'a, FS: FileSystem> ImportResolver<'a, FS> {
 
             // Check depth limit
             if depth >= self.max_depth {
-                self.diagnostics.error(
+                self.diagnostics.error_with_code(
                     format!(
                         "import depth limit exceeded (max {})",
                         self.max_depth
                     ),
                     span,
+                    "E014",
                 );
                 continue;
             }
@@ -215,9 +216,10 @@ impl<'a, FS: FileSystem> ImportResolver<'a, FS> {
             let source = match self.fs.read_file(&resolved) {
                 Ok(s) => s,
                 Err(e) => {
-                    self.diagnostics.error(
+                    self.diagnostics.error_with_code(
                         format!("cannot read imported file '{}': {}", resolved.display(), e),
                         span,
+                        "E010",
                     );
                     continue;
                 }
@@ -340,7 +342,7 @@ impl<'a, FS: FileSystem> ImportResolver<'a, FS> {
             return Err(Diagnostic::error(
                 format!("remote imports are forbidden: '{}'", import_path),
                 dummy_span,
-            ));
+            ).with_code("E013"));
         }
 
         // Resolve relative to importing file's directory
@@ -375,7 +377,7 @@ impl<'a, FS: FileSystem> ImportResolver<'a, FS> {
                     canonical_root.display()
                 ),
                 span,
-            ));
+            ).with_code("E011"));
         }
         Ok(())
     }

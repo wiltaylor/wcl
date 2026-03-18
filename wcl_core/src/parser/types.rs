@@ -117,6 +117,14 @@ impl Parser {
                         let end_span = self.prev_span();
                         Some(TypeExpr::Union(types, start_span.merge(end_span)))
                     }
+                    "function" => {
+                        self.diagnostics.error(
+                            "the `function` type cannot be used in schema field declarations",
+                            start_span,
+                        );
+                        self.advance();
+                        None
+                    }
                     _ => {
                         // Unknown type name — treat as error
                         self.diagnostics.error(

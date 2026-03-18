@@ -1,0 +1,19 @@
+[package]
+name = "wcl_lsp"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+wcl = { path = "../wcl" }
+wcl_core = { workspace = true }
+wcl_eval = { workspace = true }
+wcl_schema = { workspace = true }
+tower-lsp = { workspace = true }
+tokio = { workspace = true }
+dashmap = { workspace = true }
+ropey = { workspace = true }
+serde_json = { workspace = true }
+indexmap = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }

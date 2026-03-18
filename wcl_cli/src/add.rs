@@ -4,19 +4,19 @@ pub fn run(file: &Path, block_spec: &str, _file_auto: bool) -> Result<(), String
     let source = std::fs::read_to_string(file)
         .map_err(|e| format!("cannot read {}: {}", file.display(), e))?;
 
-    let options = wcl::ParseOptions {
-        root_dir: file.parent().unwrap_or(Path::new(".")).to_path_buf(),
-        ..Default::default()
-    };
-    let doc = wcl::parse(&source, options);
-    if doc.has_errors() {
-        for diag in doc.errors() {
-            eprintln!("error: {}", diag.message);
+    // Validate the existing document parses cleanly
+    let file_id = wcl_core::FileId(0);
+    let (_, diags) = wcl_core::parse(&source, file_id);
+    if diags.has_errors() {
+        for d in diags.diagnostics() {
+            if d.is_error() {
+                eprintln!("error: {}", d.message);
+            }
         }
-        return Err("document has errors".to_string());
+        return Err(format!("parse errors in {}", file.display()));
     }
 
-    // Parse block_spec: "block_type block_id" e.g. "service svc-new"
+    // Parse block_spec: "block_type block_id" or "block_type" e.g. "service svc-new"
     let parts: Vec<&str> = block_spec.splitn(2, ' ').collect();
     let (block_kind, block_id) = match parts.as_slice() {
         [kind, id] => (*kind, Some(*id)),
@@ -24,16 +24,37 @@ pub fn run(file: &Path, block_spec: &str, _file_auto: bool) -> Result<(), String
         _ => return Err(format!("invalid block spec: {}", block_spec)),
     };
 
-    // TODO: Implement AST-level insertion of a new block.
-    // This requires appending a new block node to the document AST
-    // and re-serializing to source text preserving existing formatting.
-    let _ = (&doc, &source);
+    // Build the new block text
+    let block_text = match block_id {
+        Some(id) => format!("{} {} {{\n}}\n", block_kind, id),
+        None => format!("{} {{\n}}\n", block_kind),
+    };
+
+    // Append to the file, ensuring a blank line separator
+    let mut result = source.clone();
+    if !result.ends_with('\n') {
+        result.push('\n');
+    }
+    if !result.ends_with("\n\n") {
+        result.push('\n');
+    }
+    result.push_str(&block_text);
+
+    // Validate the result still parses
+    let (_, new_diags) = wcl_core::parse(&result, file_id);
+    if new_diags.has_errors() {
+        return Err(format!(
+            "generated block does not parse cleanly; check block spec: {}",
+            block_spec
+        ));
+    }
+
+    std::fs::write(file, &result)
+        .map_err(|e| format!("cannot write {}: {}", file.display(), e))?;
 
     let id_display = block_id
         .map(|id| format!(" {}", id))
         .unwrap_or_default();
-    Err(format!(
-        "add command is not yet implemented (would add {}{} {{}} to {})",
-        block_kind, id_display, file.display()
-    ))
+    println!("added {}{} to {}", block_kind, id_display, file.display());
+    Ok(())
 }

@@ -122,12 +122,13 @@ impl<'a> MacroExpander<'a> {
             iterations += 1;
         }
         if iterations >= self.max_depth && changed {
-            self.diagnostics.error(
+            self.diagnostics.error_with_code(
                 format!(
                     "macro expansion did not converge after {} iterations",
                     self.max_depth
                 ),
                 Span::dummy(),
+                "E022",
             );
         }
     }
@@ -229,29 +230,41 @@ impl<'a> MacroExpander<'a> {
     fn expand_function_macro(&mut self, call: &MacroCall) -> Option<Vec<BodyItem>> {
         let name = &call.name.name;
 
-        let def = self.registry.function_macros.get(name)?;
+        let def = match self.registry.function_macros.get(name) {
+            Some(def) => def,
+            None => {
+                self.diagnostics.error_with_code(
+                    format!("undefined macro: '{}'", name),
+                    call.span,
+                    "E020",
+                );
+                return None;
+            }
+        };
 
         // Check for recursion
         if self.expansion_stack.contains(name) {
-            self.diagnostics.error(
+            self.diagnostics.error_with_code(
                 format!(
                     "recursive macro expansion detected: '{}' (stack: {})",
                     name,
                     self.expansion_stack.join(" -> ")
                 ),
                 call.span,
+                "E021",
             );
             return None;
         }
 
         // Check expansion depth
         if self.expansion_stack.len() as u32 >= self.max_depth {
-            self.diagnostics.error(
+            self.diagnostics.error_with_code(
                 format!(
                     "macro expansion depth limit exceeded (max {})",
                     self.max_depth
                 ),
                 call.span,
+                "E022",
             );
             return None;
         }
@@ -266,12 +279,13 @@ impl<'a> MacroExpander<'a> {
         let body = match &def.body {
             MacroBody::Function(items) => items.clone(),
             MacroBody::Attribute(_) => {
-                self.diagnostics.error(
+                self.diagnostics.error_with_code(
                     format!(
                         "cannot call attribute macro '{}' as a function macro",
                         name
                     ),
                     call.span,
+                    "E023",
                 );
                 return None;
             }
@@ -338,12 +352,13 @@ impl<'a> MacroExpander<'a> {
         let directives = match &def.body {
             MacroBody::Attribute(directives) => directives.clone(),
             MacroBody::Function(_) => {
-                self.diagnostics.error(
+                self.diagnostics.error_with_code(
                     format!(
                         "cannot apply function macro '{}' as an attribute macro",
                         decorator_name
                     ),
                     decorator.span,
+                    "E023",
                 );
                 return false;
             }

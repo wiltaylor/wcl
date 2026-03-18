@@ -63,9 +63,10 @@ impl Evaluator {
                 }
             }
             Err(cycle) => {
-                self.diagnostics.error(
+                self.diagnostics.error_with_code(
                     format!("cyclic dependency detected: {}", cycle.join(" -> ")),
                     Span::dummy(),
+                    "E041",
                 );
             }
         }
@@ -497,7 +498,7 @@ impl Evaluator {
                         format!("ref: block with id '{}' not found", id_str),
                         *span,
                     )
-                    .with_code("E040"),
+                    .with_code("E053"),
                 )
             }
             Expr::ImportRaw(path, span) => {
@@ -1407,9 +1408,10 @@ impl Evaluator {
                 }
             }
             Err(cycle) => {
-                self.diagnostics.error(
+                self.diagnostics.error_with_code(
                     format!("cyclic dependency in block: {}", cycle.join(" -> ")),
                     Span::dummy(),
+                    "E041",
                 );
             }
         }
@@ -1566,6 +1568,12 @@ impl Evaluator {
     /// Provide mutable access to the scope arena (used by the facade crate and query engine).
     pub fn scopes_mut(&mut self) -> &mut ScopeArena {
         &mut self.scopes
+    }
+
+    /// Consume the evaluator, returning the scope arena and diagnostics separately.
+    /// Used by the LSP to retain scope information for hover/go-to-definition.
+    pub fn into_parts(self) -> (ScopeArena, DiagnosticBag) {
+        (self.scopes, self.diagnostics)
     }
 }
 

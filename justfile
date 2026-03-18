@@ -48,6 +48,10 @@ bench-crate crate:
 install:
     cargo install --path wcl_cli
 
+# Uninstall the CLI
+uninstall:
+    cargo uninstall wcl_cli
+
 # Run the CLI
 run *args:
     cargo run --bin wcl -- {{args}}
@@ -59,6 +63,17 @@ validate file:
 # Convert a WCL file to JSON
 to-json file:
     cargo run --bin wcl -- convert {{file}} --to json
+
+# Install the VS Code extension via symlink (requires wcl to be installed)
+install-vscode:
+    cd editors/vscode && npm install
+    ln -sfn "$(pwd)/editors/vscode" "${HOME}/.vscode/extensions/wil.wcl-0.1.0"
+    @echo "VS Code extension installed. Restart VS Code to activate."
+
+# Uninstall the VS Code extension
+uninstall-vscode:
+    rm -f "${HOME}/.vscode/extensions/wil.wcl-0.1.0"
+    @echo "VS Code extension removed. Restart VS Code."
 
 # Clean build artifacts
 clean:
