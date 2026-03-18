@@ -1,0 +1,34 @@
+/// Production web server configuration
+@schema("server_config")
+server web-prod {
+    host = "0.0.0.0"
+    port = 8080
+    workers = max(4, cpu_count / 2)
+
+    @sensitive
+    api_key = env("API_KEY")
+}
+
+schema "server_config" {
+    host = string @optional
+    port = int
+    workers = int
+    api_key = string
+}
+
+let regions = ["us-east", "eu-west", "ap-south"]
+for region in regions {
+    server worker-${region} {
+        host = "${region}.internal"
+        port = 9000
+    }
+}
+
+@schema("server_config")
+server web-test {
+    host = "0.0.0.0"
+    port = 80801
+    workers = 1
+
+    api_key = env("API_KEY")
+}

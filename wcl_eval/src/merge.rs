@@ -251,12 +251,13 @@ impl PartialMerger {
                 if seen_decorators.contains_key(name) {
                     match self.conflict_mode {
                         ConflictMode::Strict => {
-                            self.diagnostics.error(
+                            self.diagnostics.error_with_code(
                                 format!(
                                     "duplicate decorator '@{}' in partial merge",
                                     name
                                 ),
                                 decorator.span,
+                                "E031",
                             );
                         }
                         ConflictMode::LastWins => {
@@ -286,7 +287,7 @@ impl PartialMerger {
                     wcl_core::Diagnostic::warning(
                         "mismatched labels in partial block fragments",
                         block.span,
-                    ),
+                    ).with_code("W003"),
                 );
             }
 
@@ -297,12 +298,13 @@ impl PartialMerger {
                         if let Some(&existing_idx) = seen_attrs.get(name) {
                             match self.conflict_mode {
                                 ConflictMode::Strict => {
-                                    self.diagnostics.error(
+                                    self.diagnostics.error_with_code(
                                         format!(
                                             "duplicate attribute '{}' in partial merge",
                                             name
                                         ),
                                         attr.span,
+                                        "E031",
                                     );
                                 }
                                 ConflictMode::LastWins => {

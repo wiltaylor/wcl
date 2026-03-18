@@ -1,69 +1,36 @@
 use std::path::Path;
 
-pub fn run(file: &Path, path: &str) -> Result<(), String> {
+use crate::path::{self, Resolved};
+
+pub fn run(file: &Path, path_str: &str) -> Result<(), String> {
     let source = std::fs::read_to_string(file)
         .map_err(|e| format!("cannot read {}: {}", file.display(), e))?;
 
-    let options = wcl::ParseOptions {
-        root_dir: file.parent().unwrap_or(Path::new(".")).to_path_buf(),
-        ..Default::default()
-    };
-    let doc = wcl::parse(&source, options);
-    if doc.has_errors() {
-        for diag in doc.errors() {
-            eprintln!("error: {}", diag.message);
-        }
-        return Err("document has errors".to_string());
-    }
-
-    // Parse the path: "block_type#id" or "block_type#id.attribute"
-    let _segments = parse_path(path)?;
-
-    // TODO: Implement AST-level removal of blocks/attributes.
-    // This requires:
-    //   1. Locating the target node in the AST by path
-    //   2. Removing the node (and cleaning up surrounding whitespace)
-    //   3. Re-serializing the AST back to source text preserving formatting
-    let _ = (&doc, &source);
-    Err(format!(
-        "remove command is not yet implemented (would remove {} from {})",
-        path,
-        file.display()
-    ))
-}
-
-/// Parse a WCL path like "service#svc-api.port" into segments.
-fn parse_path(path: &str) -> Result<Vec<PathSegment>, String> {
-    let mut segments = Vec::new();
-
-    for part in path.split('.') {
-        if part.is_empty() {
-            return Err("empty segment in path".to_string());
-        }
-        if let Some(hash_pos) = part.find('#') {
-            let block_type = &part[..hash_pos];
-            let block_id = &part[hash_pos + 1..];
-            if block_type.is_empty() || block_id.is_empty() {
-                return Err(format!("invalid block reference: {}", part));
+    let file_id = wcl_core::FileId(0);
+    let (doc, diags) = wcl_core::parse(&source, file_id);
+    if diags.has_errors() {
+        for d in diags.diagnostics() {
+            if d.is_error() {
+                eprintln!("error: {}", d.message);
             }
-            segments.push(PathSegment::Block {
-                kind: block_type.to_string(),
-                id: block_id.to_string(),
-            });
-        } else {
-            segments.push(PathSegment::Attribute(part.to_string()));
         }
+        return Err(format!("parse errors in {}", file.display()));
     }
 
-    if segments.is_empty() {
-        return Err("empty path".to_string());
-    }
-    Ok(segments)
-}
+    let segments = path::parse_path(path_str)?;
+    let resolved = path::resolve(&doc, &segments)?;
 
-#[derive(Debug)]
-#[allow(dead_code)]
-enum PathSegment {
-    Block { kind: String, id: String },
-    Attribute(String),
+    let (remove_start, remove_end) = match resolved {
+        Resolved::Block { block } => path::block_full_span(&source, block),
+        Resolved::Attribute { attr } => path::attr_full_span(&source, attr),
+    };
+
+    let mut result = String::with_capacity(source.len());
+    result.push_str(&source[..remove_start]);
+    result.push_str(&source[remove_end..]);
+
+    std::fs::write(file, &result)
+        .map_err(|e| format!("cannot write {}: {}", file.display(), e))?;
+    println!("removed {} from {}", path_str, file.display());
+    Ok(())
 }

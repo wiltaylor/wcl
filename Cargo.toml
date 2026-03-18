@@ -6,6 +6,7 @@ members = [
     "wcl_schema",
     "wcl_serde",
     "wcl_derive",
+    "wcl_lsp",
     "wcl_cli",
     "wcl",
 ]
@@ -18,8 +19,15 @@ wcl_schema = { path = "wcl_schema" }
 wcl_serde = { path = "wcl_serde" }
 wcl_derive = { path = "wcl_derive" }
 
+# LSP crate
+wcl_lsp = { path = "wcl_lsp" }
+
 # External deps
 nom = "8"
+tower-lsp = "0.20"
+tokio = { version = "1", features = ["full"] }
+dashmap = "6"
+ropey = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 regex = "1"

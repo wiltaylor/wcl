@@ -58,9 +58,10 @@ impl Parser {
         if self.at(kind) {
             Ok(self.advance())
         } else {
-            self.diagnostics.error(
+            self.diagnostics.error_with_code(
                 format!("expected {:?}, found {:?}", kind, self.peek_kind()),
                 self.current_span(),
+                "E002",
             );
             Err(())
         }
@@ -74,9 +75,10 @@ impl Parser {
             self.advance();
             Ok(Ident { name, span })
         } else {
-            self.diagnostics.error(
+            self.diagnostics.error_with_code(
                 format!("expected identifier, found {:?}", self.peek_kind()),
                 self.current_span(),
+                "E002",
             );
             Err(())
         }
@@ -272,6 +274,7 @@ impl Parser {
 
     fn parse_body_items(&mut self) -> Vec<BodyItem> {
         let mut items = Vec::new();
+        let mut seen_attrs: std::collections::HashSet<String> = std::collections::HashSet::new();
         loop {
             let trivia = self.collect_trivia();
             if matches!(self.peek_kind(), TokenKind::RBrace | TokenKind::Eof) {
@@ -295,6 +298,16 @@ impl Parser {
                 continue;
             }
             if let Some(item) = self.parse_body_item_with_trivia(trivia) {
+                // Duplicate attribute detection (§7.4)
+                if let BodyItem::Attribute(ref attr) = item {
+                    if !seen_attrs.insert(attr.name.name.clone()) {
+                        self.diagnostics.error_with_code(
+                            format!("duplicate attribute '{}' in block", attr.name.name),
+                            attr.span,
+                            "E002",
+                        );
+                    }
+                }
                 items.push(item);
             } else {
                 // Skip one token to recover
