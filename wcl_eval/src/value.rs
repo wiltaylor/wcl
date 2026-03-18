@@ -235,12 +235,23 @@ impl fmt::Display for Value {
                 }
                 write!(f, ")")
             }
-            Value::BlockRef(br) => write!(
-                f,
-                "<block_ref {}#{}>",
-                br.kind,
-                br.id.as_deref().unwrap_or("?")
-            ),
+            Value::BlockRef(br) => {
+                write!(f, "{}", br.kind)?;
+                if let Some(id) = &br.id {
+                    write!(f, " {}", id)?;
+                }
+                write!(f, " {{")?;
+                for (i, (k, v)) in br.attributes.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ",")?;
+                    }
+                    write!(f, " {} = {}", k, v)?;
+                }
+                for child in &br.children {
+                    write!(f, " {}", Value::BlockRef(child.clone()))?;
+                }
+                write!(f, " }}")
+            }
             Value::Function(_) => write!(f, "<function>"),
         }
     }
