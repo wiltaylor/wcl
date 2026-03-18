@@ -146,9 +146,10 @@ pub enum InlineId {
 
 // ===== Let Bindings =====
 
-/// `let name = <expr>`
+/// `[@decorator...] let name = <expr>`
 #[derive(Debug, Clone)]
 pub struct LetBinding {
+    pub decorators: Vec<Decorator>,
     pub name: Ident,
     pub value: Expr,
     pub trivia: Trivia,

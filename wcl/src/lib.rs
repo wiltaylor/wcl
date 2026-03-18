@@ -322,6 +322,7 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
                             span: lb.span,
                             dependencies: std::collections::HashSet::new(),
                             evaluated: true,
+                            read_count: 0,
                         },
                     );
                 }
@@ -361,6 +362,11 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
     let mut diag_bag = DiagnosticBag::new();
     schemas.collect(&doc, &mut diag_bag);
     schemas.validate(&doc, &values, &mut diag_bag);
+    all_diagnostics.extend(diag_bag.into_diagnostics());
+
+    // Phase 9b: Table column validation
+    let mut diag_bag = DiagnosticBag::new();
+    wcl_schema::table::validate_tables(&doc, &mut diag_bag);
     all_diagnostics.extend(diag_bag.into_diagnostics());
 
     // Phase 10: ID uniqueness check
@@ -580,6 +586,87 @@ mod tests {
         // The for loop should expand using the let binding
         let entries = doc.blocks_of_type("entry");
         assert_eq!(entries.len(), 3, "expected 3 entry blocks from for loop over let binding, got {}: errors: {:?}", entries.len(), doc.diagnostics);
+    }
+
+    // ── Gap 3: Unknown decorator validation (E060) ────────────────────
+
+    #[test]
+    fn test_unknown_decorator_produces_e060() {
+        let source = r#"
+            @nonexistent
+            server main {
+                port = 8080
+            }
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        let e060_errors: Vec<_> = doc.diagnostics.iter()
+            .filter(|d| d.code.as_deref() == Some("E060"))
+            .collect();
+        assert_eq!(e060_errors.len(), 1, "expected one E060 error, got: {:?}", e060_errors);
+        assert!(e060_errors[0].message.contains("unknown decorator @nonexistent"));
+    }
+
+    #[test]
+    fn test_known_decorator_no_e060() {
+        let source = r#"
+            @deprecated("use new_server instead")
+            server main {
+                port = 8080
+            }
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        let e060_errors: Vec<_> = doc.diagnostics.iter()
+            .filter(|d| d.code.as_deref() == Some("E060"))
+            .collect();
+        assert!(e060_errors.is_empty(), "known decorator @deprecated should not produce E060, got: {:?}", e060_errors);
+    }
+
+    // ── Gap 6: Table column type validation ────────────────────────────
+
+    #[test]
+    fn test_table_column_type_validation() {
+        let source = r#"
+            table users {
+                name: string
+                port: int
+                | "web" | 8080 |
+                | "api" | "bad" |
+            }
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        let type_errors: Vec<_> = doc
+            .diagnostics
+            .iter()
+            .filter(|d| d.code.as_deref() == Some("E071"))
+            .collect();
+        assert!(
+            !type_errors.is_empty(),
+            "expected E071 type error for string in int column, got: {:?}",
+            doc.diagnostics
+        );
+    }
+
+    #[test]
+    fn test_table_valid_types_no_errors() {
+        let source = r#"
+            table users {
+                name: string
+                age: int
+                | "Alice" | 30 |
+                | "Bob"   | 25 |
+            }
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        let type_errors: Vec<_> = doc
+            .diagnostics
+            .iter()
+            .filter(|d| d.code.as_deref() == Some("E071"))
+            .collect();
+        assert!(
+            type_errors.is_empty(),
+            "expected no E071 errors for valid table, got: {:?}",
+            type_errors
+        );
     }
 
     #[test]

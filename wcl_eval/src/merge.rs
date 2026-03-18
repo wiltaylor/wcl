@@ -64,6 +64,27 @@ impl PartialMerger {
             }
         }
 
+        // E033: Check for mixed partial/non-partial with same ID
+        for item in doc.items.iter() {
+            if let DocItem::Body(BodyItem::Block(block)) = item {
+                if !block.partial {
+                    if let Some(id_str) = inline_id_to_string(&block.inline_id) {
+                        let key = (block.kind.name.clone(), id_str);
+                        if groups.contains_key(&key) {
+                            self.diagnostics.error_with_code(
+                                format!(
+                                    "block {}#{} is declared both as partial and non-partial",
+                                    key.0, key.1
+                                ),
+                                block.span,
+                                "E033",
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
         // Collect @partial_requires from all fragments in each group
         let mut group_requires: HashMap<(String, String), Vec<String>> = HashMap::new();
         for key in &order {
@@ -860,5 +881,77 @@ mod tests {
         merger.merge(&mut doc);
 
         assert!(!merger.diagnostics.has_errors());
+    }
+
+    #[test]
+    fn e033_mixed_partial_and_non_partial_same_id() {
+        let partial_block = make_partial_block(
+            "service",
+            "svc-api",
+            vec![("port", Expr::IntLit(8080, dummy_span()))],
+        );
+        let non_partial_block = Block {
+            decorators: vec![],
+            partial: false,
+            kind: make_ident("service"),
+            inline_id: Some(InlineId::Literal(make_id_lit("svc-api"))),
+            labels: vec![],
+            body: vec![BodyItem::Attribute(Attribute {
+                decorators: vec![],
+                name: make_ident("replicas"),
+                value: Expr::IntLit(3, dummy_span()),
+                trivia: Trivia::empty(),
+                span: dummy_span(),
+            })],
+            trivia: Trivia::empty(),
+            span: dummy_span(),
+        };
+
+        let mut doc = make_doc(vec![partial_block, non_partial_block]);
+        let mut merger = PartialMerger::new(ConflictMode::Strict);
+        merger.merge(&mut doc);
+
+        assert!(merger.diagnostics.has_errors());
+        let errors: Vec<_> = merger
+            .diagnostics
+            .diagnostics()
+            .iter()
+            .filter(|d| d.code.as_deref() == Some("E033"))
+            .collect();
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0]
+            .message
+            .contains("declared both as partial and non-partial"));
+    }
+
+    #[test]
+    fn e033_no_error_when_ids_differ() {
+        let partial_block = make_partial_block(
+            "service",
+            "svc-api",
+            vec![("port", Expr::IntLit(8080, dummy_span()))],
+        );
+        let non_partial_block = Block {
+            decorators: vec![],
+            partial: false,
+            kind: make_ident("service"),
+            inline_id: Some(InlineId::Literal(make_id_lit("svc-db"))),
+            labels: vec![],
+            body: vec![],
+            trivia: Trivia::empty(),
+            span: dummy_span(),
+        };
+
+        let mut doc = make_doc(vec![partial_block, non_partial_block]);
+        let mut merger = PartialMerger::new(ConflictMode::Strict);
+        merger.merge(&mut doc);
+
+        let e033_errors: Vec<_> = merger
+            .diagnostics
+            .diagnostics()
+            .iter()
+            .filter(|d| d.code.as_deref() == Some("E033"))
+            .collect();
+        assert_eq!(e033_errors.len(), 0);
     }
 }

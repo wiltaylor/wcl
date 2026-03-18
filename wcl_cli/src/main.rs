@@ -7,6 +7,7 @@ mod fmt;
 mod query;
 mod inspect;
 mod convert;
+mod eval;
 mod set;
 mod add;
 mod remove;
@@ -75,6 +76,16 @@ enum Commands {
         #[arg(long)]
         deps: bool,
     },
+    /// Evaluate a WCL document and print resolved output
+    Eval {
+        /// Input file
+        file: PathBuf,
+        /// Output format (json, yaml, toml)
+        #[arg(long, default_value = "json")]
+        format: String,
+    },
+    /// Start the WCL language server
+    Lsp,
     /// Convert between WCL and other formats
     Convert {
         /// Input file
@@ -127,6 +138,11 @@ fn main() {
         }
         Commands::Inspect { file, ast, hir, scopes, deps } => {
             inspect::run(&file, ast, hir, scopes, deps)
+        }
+        Commands::Eval { file, format } => eval::run(&file, &format),
+        Commands::Lsp => {
+            eprintln!("wcl lsp is not yet implemented");
+            process::exit(1);
         }
         Commands::Convert { file, to, from } => {
             convert::run(&file, to.as_deref(), from.as_deref())

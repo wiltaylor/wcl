@@ -308,6 +308,10 @@ impl QueryEngine {
                                 let matches = match op {
                                     BinOp::Eq => *arg_val == rhs_val,
                                     BinOp::Neq => *arg_val != rhs_val,
+                                    BinOp::Lt => value_compare(arg_val, &rhs_val) == Some(std::cmp::Ordering::Less),
+                                    BinOp::Gt => value_compare(arg_val, &rhs_val) == Some(std::cmp::Ordering::Greater),
+                                    BinOp::Lte => matches!(value_compare(arg_val, &rhs_val), Some(std::cmp::Ordering::Less | std::cmp::Ordering::Equal)),
+                                    BinOp::Gte => matches!(value_compare(arg_val, &rhs_val), Some(std::cmp::Ordering::Greater | std::cmp::Ordering::Equal)),
                                     _ => false,
                                 };
                                 if matches {
@@ -737,6 +741,208 @@ mod tests {
         match result {
             Value::List(items) => {
                 assert_eq!(items.len(), 2);
+            }
+            _ => panic!("expected list"),
+        }
+    }
+
+    fn mk_block_with_decorators(
+        kind: &str,
+        id: Option<&str>,
+        attrs: Vec<(&str, Value)>,
+        decorators: Vec<DecoratorValue>,
+    ) -> BlockRef {
+        let mut b = mk_block(kind, id, attrs);
+        b.decorators = decorators;
+        b
+    }
+
+    fn mk_decorator(name: &str, args: Vec<(&str, Value)>) -> DecoratorValue {
+        let mut arg_map = IndexMap::new();
+        for (k, v) in args {
+            arg_map.insert(k.to_string(), v);
+        }
+        DecoratorValue {
+            name: name.to_string(),
+            args: arg_map,
+        }
+    }
+
+    #[test]
+    fn decorator_arg_filter_gt() {
+        let mut ev = Evaluator::new();
+        let scope = ev.scopes_mut().create_scope(ScopeKind::Module, None);
+
+        let blocks = vec![
+            mk_block_with_decorators(
+                "field", Some("age"), vec![],
+                vec![mk_decorator("validate", vec![("min", Value::Int(5))])],
+            ),
+            mk_block_with_decorators(
+                "field", Some("score"), vec![],
+                vec![mk_decorator("validate", vec![("min", Value::Int(0))])],
+            ),
+        ];
+
+        let engine = QueryEngine::new();
+        // @validate.min > 0
+        let pipeline = QueryPipeline {
+            selector: QuerySelector::Kind(mk_ident("field")),
+            filters: vec![QueryFilter::DecoratorArgFilter(
+                mk_ident("validate"),
+                mk_ident("min"),
+                BinOp::Gt,
+                Expr::IntLit(0, ds()),
+            )],
+            span: ds(),
+        };
+
+        let result = engine.execute(&pipeline, &blocks, &mut ev, scope).unwrap();
+        match result {
+            Value::List(items) => {
+                assert_eq!(items.len(), 1);
+                if let Value::BlockRef(br) = &items[0] {
+                    assert_eq!(br.id.as_deref(), Some("age"));
+                } else {
+                    panic!("expected BlockRef");
+                }
+            }
+            _ => panic!("expected list"),
+        }
+    }
+
+    #[test]
+    fn decorator_arg_filter_lt() {
+        let mut ev = Evaluator::new();
+        let scope = ev.scopes_mut().create_scope(ScopeKind::Module, None);
+
+        let blocks = vec![
+            mk_block_with_decorators(
+                "field", Some("name"), vec![],
+                vec![mk_decorator("validate", vec![("max", Value::Int(50))])],
+            ),
+            mk_block_with_decorators(
+                "field", Some("bio"), vec![],
+                vec![mk_decorator("validate", vec![("max", Value::Int(200))])],
+            ),
+        ];
+
+        let engine = QueryEngine::new();
+        // @validate.max < 100
+        let pipeline = QueryPipeline {
+            selector: QuerySelector::Kind(mk_ident("field")),
+            filters: vec![QueryFilter::DecoratorArgFilter(
+                mk_ident("validate"),
+                mk_ident("max"),
+                BinOp::Lt,
+                Expr::IntLit(100, ds()),
+            )],
+            span: ds(),
+        };
+
+        let result = engine.execute(&pipeline, &blocks, &mut ev, scope).unwrap();
+        match result {
+            Value::List(items) => {
+                assert_eq!(items.len(), 1);
+                if let Value::BlockRef(br) = &items[0] {
+                    assert_eq!(br.id.as_deref(), Some("name"));
+                } else {
+                    panic!("expected BlockRef");
+                }
+            }
+            _ => panic!("expected list"),
+        }
+    }
+
+    #[test]
+    fn decorator_arg_filter_gte() {
+        let mut ev = Evaluator::new();
+        let scope = ev.scopes_mut().create_scope(ScopeKind::Module, None);
+
+        let blocks = vec![
+            mk_block_with_decorators(
+                "field", Some("a"), vec![],
+                vec![mk_decorator("validate", vec![("min", Value::Int(10))])],
+            ),
+            mk_block_with_decorators(
+                "field", Some("b"), vec![],
+                vec![mk_decorator("validate", vec![("min", Value::Int(5))])],
+            ),
+            mk_block_with_decorators(
+                "field", Some("c"), vec![],
+                vec![mk_decorator("validate", vec![("min", Value::Int(3))])],
+            ),
+        ];
+
+        let engine = QueryEngine::new();
+        // @validate.min >= 5
+        let pipeline = QueryPipeline {
+            selector: QuerySelector::Kind(mk_ident("field")),
+            filters: vec![QueryFilter::DecoratorArgFilter(
+                mk_ident("validate"),
+                mk_ident("min"),
+                BinOp::Gte,
+                Expr::IntLit(5, ds()),
+            )],
+            span: ds(),
+        };
+
+        let result = engine.execute(&pipeline, &blocks, &mut ev, scope).unwrap();
+        match result {
+            Value::List(items) => {
+                assert_eq!(items.len(), 2);
+                let ids: Vec<_> = items.iter().filter_map(|i| {
+                    if let Value::BlockRef(br) = i { br.id.clone() } else { None }
+                }).collect();
+                assert!(ids.contains(&"a".to_string()));
+                assert!(ids.contains(&"b".to_string()));
+            }
+            _ => panic!("expected list"),
+        }
+    }
+
+    #[test]
+    fn decorator_arg_filter_lte() {
+        let mut ev = Evaluator::new();
+        let scope = ev.scopes_mut().create_scope(ScopeKind::Module, None);
+
+        let blocks = vec![
+            mk_block_with_decorators(
+                "field", Some("x"), vec![],
+                vec![mk_decorator("validate", vec![("max", Value::Int(100))])],
+            ),
+            mk_block_with_decorators(
+                "field", Some("y"), vec![],
+                vec![mk_decorator("validate", vec![("max", Value::Int(50))])],
+            ),
+            mk_block_with_decorators(
+                "field", Some("z"), vec![],
+                vec![mk_decorator("validate", vec![("max", Value::Int(200))])],
+            ),
+        ];
+
+        let engine = QueryEngine::new();
+        // @validate.max <= 100
+        let pipeline = QueryPipeline {
+            selector: QuerySelector::Kind(mk_ident("field")),
+            filters: vec![QueryFilter::DecoratorArgFilter(
+                mk_ident("validate"),
+                mk_ident("max"),
+                BinOp::Lte,
+                Expr::IntLit(100, ds()),
+            )],
+            span: ds(),
+        };
+
+        let result = engine.execute(&pipeline, &blocks, &mut ev, scope).unwrap();
+        match result {
+            Value::List(items) => {
+                assert_eq!(items.len(), 2);
+                let ids: Vec<_> = items.iter().filter_map(|i| {
+                    if let Value::BlockRef(br) = i { br.id.clone() } else { None }
+                }).collect();
+                assert!(ids.contains(&"x".to_string()));
+                assert!(ids.contains(&"y".to_string()));
             }
             _ => panic!("expected list"),
         }

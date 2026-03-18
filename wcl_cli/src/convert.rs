@@ -25,11 +25,70 @@ pub fn run(file: &Path, to: Option<&str>, from: Option<&str>) -> Result<(), Stri
             println!("{}", serde_json::to_string_pretty(&json).unwrap());
             Ok(())
         }
+        Some("yaml") | Some("yml") => {
+            let options = wcl::ParseOptions {
+                root_dir: file.parent().unwrap_or(Path::new(".")).to_path_buf(),
+                ..Default::default()
+            };
+            let doc = wcl::parse(&source, options);
+            if doc.has_errors() {
+                for diag in doc.errors() {
+                    eprintln!("error: {}", diag.message);
+                }
+                return Err("document has errors".to_string());
+            }
+            let mut json_map = serde_json::Map::new();
+            for (key, val) in &doc.values {
+                json_map.insert(key.clone(), value_to_json(val));
+            }
+            let json = serde_json::Value::Object(json_map);
+            let yaml = serde_yaml::to_string(&json).map_err(|e| format!("YAML error: {}", e))?;
+            print!("{}", yaml);
+            Ok(())
+        }
+        Some("toml") => {
+            let options = wcl::ParseOptions {
+                root_dir: file.parent().unwrap_or(Path::new(".")).to_path_buf(),
+                ..Default::default()
+            };
+            let doc = wcl::parse(&source, options);
+            if doc.has_errors() {
+                for diag in doc.errors() {
+                    eprintln!("error: {}", diag.message);
+                }
+                return Err("document has errors".to_string());
+            }
+            let mut json_map = serde_json::Map::new();
+            for (key, val) in &doc.values {
+                json_map.insert(key.clone(), value_to_json(val));
+            }
+            let json = serde_json::Value::Object(json_map);
+            let toml_val: toml::Value = serde_json::from_value(json.clone())
+                .map_err(|e| format!("TOML conversion error: {}", e))?;
+            let toml_str = toml::to_string_pretty(&toml_val)
+                .map_err(|e| format!("TOML error: {}", e))?;
+            print!("{}", toml_str);
+            Ok(())
+        }
         Some(fmt) => Err(format!("output format '{}' not yet supported", fmt)),
         None => match from {
             Some("json") => {
                 let json: serde_json::Value = serde_json::from_str(&source)
                     .map_err(|e| format!("invalid JSON: {}", e))?;
+                print_json_as_wcl(&json, 0);
+                Ok(())
+            }
+            Some("yaml") | Some("yml") => {
+                let yaml: serde_json::Value = serde_yaml::from_str(&source)
+                    .map_err(|e| format!("invalid YAML: {}", e))?;
+                print_json_as_wcl(&yaml, 0);
+                Ok(())
+            }
+            Some("toml") => {
+                let toml_val: toml::Value = source.parse::<toml::Value>()
+                    .map_err(|e| format!("invalid TOML: {}", e))?;
+                let json: serde_json::Value = serde_json::to_value(&toml_val)
+                    .map_err(|e| format!("conversion error: {}", e))?;
                 print_json_as_wcl(&json, 0);
                 Ok(())
             }
