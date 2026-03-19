@@ -9,6 +9,27 @@ namespace Wcl.Core.Parser
         internal TypeExpr? ParseTypeExpr()
         {
             SkipNewlines();
+
+            // Handle ref keyword (not an ident)
+            if (PeekKind() == TokenKind.Ref)
+            {
+                var s = CurrentSpan();
+                Advance();
+                Expect(TokenKind.LParen);
+                var schemaName = ParseStringLit();
+                if (schemaName == null) return null;
+                Expect(TokenKind.RParen);
+                return new RefTypeExpr(schemaName, s.Merge(PrevSpan()));
+            }
+
+            // Handle null literal as type
+            if (PeekKind() == TokenKind.NullLit)
+            {
+                var s = CurrentSpan();
+                Advance();
+                return new NullTypeExpr(s);
+            }
+
             if (PeekKind() != TokenKind.Ident)
             {
                 _diagnostics.Error($"expected type expression, found {PeekKind()}", CurrentSpan());
