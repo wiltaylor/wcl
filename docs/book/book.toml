@@ -5,7 +5,7 @@ src = "src"
 title = "WCL -- Wil's Configuration Language"
 
 [build]
-build-dir = "book"
+build-dir = "build"
 
 [output.html]
 default-theme = "navy"

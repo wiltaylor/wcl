@@ -8,7 +8,7 @@ name = "wcl"
 path = "src/main.rs"
 
 [dependencies]
-wcl = { path = "../wcl" }
+wcl = { workspace = true }
 wcl_core = { workspace = true }
 wcl_eval = { workspace = true }
 wcl_schema = { workspace = true }

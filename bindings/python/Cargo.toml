@@ -8,6 +8,6 @@ name = "_wcl_native"
 crate-type = ["cdylib"]
 
 [dependencies]
-wcl = { path = "../wcl" }
+wcl = { workspace = true }
 pyo3 = { workspace = true }
 indexmap = { workspace = true }

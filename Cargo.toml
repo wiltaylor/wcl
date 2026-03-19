@@ -1,29 +1,30 @@
 [workspace]
 resolver = "2"
 members = [
-    "wcl_core",
-    "wcl_eval",
-    "wcl_schema",
-    "wcl_serde",
-    "wcl_derive",
-    "wcl_lsp",
-    "wcl_cli",
-    "wcl",
-    "wcl_python",
-    "wcl_wasm",
-    "wcl_ffi",
+    "crates/wcl_core",
+    "crates/wcl_eval",
+    "crates/wcl_schema",
+    "crates/wcl_serde",
+    "crates/wcl_derive",
+    "crates/wcl_lsp",
+    "crates/wcl_cli",
+    "crates/wcl",
+    "crates/wcl_ffi",
+    "bindings/python",
+    "bindings/wasm",
 ]
 
 [workspace.dependencies]
 # Internal crates
-wcl_core = { path = "wcl_core" }
-wcl_eval = { path = "wcl_eval" }
-wcl_schema = { path = "wcl_schema" }
-wcl_serde = { path = "wcl_serde" }
-wcl_derive = { path = "wcl_derive" }
+wcl = { path = "crates/wcl" }
+wcl_core = { path = "crates/wcl_core" }
+wcl_eval = { path = "crates/wcl_eval" }
+wcl_schema = { path = "crates/wcl_schema" }
+wcl_serde = { path = "crates/wcl_serde" }
+wcl_derive = { path = "crates/wcl_derive" }
 
 # LSP crate
-wcl_lsp = { path = "wcl_lsp" }
+wcl_lsp = { path = "crates/wcl_lsp" }
 
 # External deps
 nom = "8"

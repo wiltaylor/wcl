@@ -1,2 +1,2 @@
-wcl_go/lib/**/*.a filter=lfs diff=lfs merge=lfs -text
-wcl_go/lib/**/*.lib filter=lfs diff=lfs merge=lfs -text
+bindings/go/lib/**/*.a filter=lfs diff=lfs merge=lfs -text
+bindings/go/lib/**/*.lib filter=lfs diff=lfs merge=lfs -text
