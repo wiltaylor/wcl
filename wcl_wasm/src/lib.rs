@@ -54,12 +54,13 @@ fn build_result(doc: &wcl::Document) -> JsValue {
 }
 
 /// Extract ParseOptions from a JS options object.
-fn build_parse_options(options: &JsValue) -> Result<wcl::ParseOptions, JsValue> {
+fn build_parse_options(options: Option<JsValue>) -> Result<wcl::ParseOptions, JsValue> {
     let mut opts = wcl::ParseOptions::default();
 
-    if options.is_null() || options.is_undefined() {
-        return Ok(opts);
-    }
+    let options = match options {
+        Some(ref v) if !v.is_null() && !v.is_undefined() => v,
+        _ => return Ok(opts),
+    };
 
     // rootDir
     if let Ok(v) = js_sys::Reflect::get(options, &JsValue::from_str("rootDir")) {
@@ -167,8 +168,8 @@ fn build_parse_options(options: &JsValue) -> Result<wcl::ParseOptions, JsValue> 
 ///
 /// Returns `{ values, hasErrors, diagnostics }`.
 #[wasm_bindgen]
-pub fn parse(source: &str, options: JsValue) -> Result<JsValue, JsValue> {
-    let opts = build_parse_options(&options)?;
+pub fn parse(source: &str, options: Option<JsValue>) -> Result<JsValue, JsValue> {
+    let opts = build_parse_options(options)?;
     let doc = wcl::parse(source, opts);
     Ok(build_result(&doc))
 }
@@ -178,8 +179,8 @@ pub fn parse(source: &str, options: JsValue) -> Result<JsValue, JsValue> {
 /// Returns a plain object with the evaluated values.
 /// Throws if there are parse errors.
 #[wasm_bindgen(js_name = "parseValues")]
-pub fn parse_values(source: &str, options: JsValue) -> Result<JsValue, JsValue> {
-    let opts = build_parse_options(&options)?;
+pub fn parse_values(source: &str, options: Option<JsValue>) -> Result<JsValue, JsValue> {
+    let opts = build_parse_options(options)?;
     let doc = wcl::parse(source, opts);
     if doc.has_errors() {
         let messages: Vec<String> = doc.errors().iter().map(|d| d.message.clone()).collect();
@@ -192,8 +193,8 @@ pub fn parse_values(source: &str, options: JsValue) -> Result<JsValue, JsValue> 
 ///
 /// Returns the query result as a JS value.
 #[wasm_bindgen]
-pub fn query(source: &str, query_str: &str, options: JsValue) -> Result<JsValue, JsValue> {
-    let opts = build_parse_options(&options)?;
+pub fn query(source: &str, query_str: &str, options: Option<JsValue>) -> Result<JsValue, JsValue> {
+    let opts = build_parse_options(options)?;
     let doc = wcl::parse(source, opts);
     if doc.has_errors() {
         let messages: Vec<String> = doc.errors().iter().map(|d| d.message.clone()).collect();

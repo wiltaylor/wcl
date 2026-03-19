@@ -89,7 +89,7 @@ test-python:
 
 # Build the WASM package
 build-wasm:
-    cd wcl_wasm && wasm-pack build --target bundler
+    cd wcl_wasm && wasm-pack build --target web
 
 # Run WASM binding tests
 test-wasm:
