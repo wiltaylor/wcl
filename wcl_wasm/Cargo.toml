@@ -16,3 +16,8 @@ indexmap = { workspace = true }
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3"
+
+# Disabled: bundled wasm-opt is incompatible with LTO output from newer Rust.
+# Install a recent system wasm-opt and remove this to re-enable.
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false

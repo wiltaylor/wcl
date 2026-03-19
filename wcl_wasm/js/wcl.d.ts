@@ -20,11 +20,11 @@ export interface ParseOptions {
   /**
    * In-memory files for import resolution.
    * Keys are file paths, values are file contents.
-   * Mutually exclusive with importResolver (files takes precedence if both set).
+   * If both `importResolver` and `files` are set, `files` takes precedence.
    */
   files?: Record<string, string>;
   /**
-   * Custom functions available in WCL expressions.
+   * Custom synchronous functions available in WCL expressions.
    * Keys are function names, values are synchronous functions.
    */
   functions?: Record<string, (...args: any[]) => any>;
@@ -44,6 +44,25 @@ export interface WclDocument {
   /** All diagnostics (errors and warnings) */
   diagnostics: WclDiagnostic[];
 }
+
+/**
+ * Initialise the WASM module. Must be called and awaited once before
+ * calling any other function.
+ *
+ * @param wasmInput - Optional source for the `.wasm` binary: a URL, Request,
+ *   Response, ArrayBuffer, or WebAssembly.Module. If omitted the default
+ *   fetch-based loader is used (works in browsers and Deno). For Node.js
+ *   pass the bytes via `fs.readFileSync(...)`.
+ */
+export function init(
+  wasmInput?:
+    | URL
+    | string
+    | Request
+    | Response
+    | ArrayBuffer
+    | WebAssembly.Module
+): Promise<void>;
 
 /**
  * Parse a WCL source string through the full pipeline.

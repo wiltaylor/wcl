@@ -44,3 +44,9 @@ pyo3 = { version = "0.25", features = ["extension-module"] }
 syn = { version = "2", features = ["full"] }
 quote = "1"
 proc-macro2 = "1"
+
+# Optimise release builds (benefits WASM size via wasm-pack)
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

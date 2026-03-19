@@ -3,7 +3,7 @@ use wasm_bindgen_test::*;
 
 #[wasm_bindgen_test]
 fn test_parse_simple() {
-    let result = wcl_wasm::parse("x = 42", JsValue::UNDEFINED).unwrap();
+    let result = wcl_wasm::parse("x = 42", None).unwrap();
     let values = js_sys::Reflect::get(&result, &JsValue::from_str("values")).unwrap();
     let x = js_sys::Reflect::get(&values, &JsValue::from_str("x")).unwrap();
     assert_eq!(x.as_f64().unwrap(), 42.0);
@@ -14,20 +14,20 @@ fn test_parse_simple() {
 
 #[wasm_bindgen_test]
 fn test_parse_values_simple() {
-    let result = wcl_wasm::parse_values("name = \"hello\"", JsValue::UNDEFINED).unwrap();
+    let result = wcl_wasm::parse_values("name = \"hello\"", None).unwrap();
     let name = js_sys::Reflect::get(&result, &JsValue::from_str("name")).unwrap();
     assert_eq!(name.as_string().unwrap(), "hello");
 }
 
 #[wasm_bindgen_test]
 fn test_parse_values_error() {
-    let result = wcl_wasm::parse_values("x = @@@", JsValue::UNDEFINED);
+    let result = wcl_wasm::parse_values("x = @@@", None);
     assert!(result.is_err());
 }
 
 #[wasm_bindgen_test]
 fn test_parse_with_block() {
-    let result = wcl_wasm::parse("server { port = 8080 }", JsValue::UNDEFINED).unwrap();
+    let result = wcl_wasm::parse("server { port = 8080 }", None).unwrap();
     let has_errors = js_sys::Reflect::get(&result, &JsValue::from_str("hasErrors")).unwrap();
     assert_eq!(has_errors.as_bool().unwrap(), false);
     let values = js_sys::Reflect::get(&result, &JsValue::from_str("values")).unwrap();
@@ -43,7 +43,7 @@ fn test_parse_multiple_types() {
         enabled = true
         items = [1, 2, 3]
     "#;
-    let result = wcl_wasm::parse_values(source, JsValue::UNDEFINED).unwrap();
+    let result = wcl_wasm::parse_values(source, None).unwrap();
 
     let name = js_sys::Reflect::get(&result, &JsValue::from_str("name")).unwrap();
     assert_eq!(name.as_string().unwrap(), "test");
@@ -66,7 +66,7 @@ fn test_parse_multiple_types() {
 #[wasm_bindgen_test]
 fn test_query_simple() {
     let source = "service { port = 8080 }\nservice { port = 9090 }";
-    let result = wcl_wasm::query(source, "service | .port", JsValue::UNDEFINED).unwrap();
+    let result = wcl_wasm::query(source, "service | .port", None).unwrap();
     assert!(js_sys::Array::is_array(&result));
     let arr = js_sys::Array::from(&result);
     assert_eq!(arr.length(), 2);
