@@ -163,6 +163,23 @@ namespace Wcl.Tests.Core
         }
 
         [Fact]
+        public void ParseSchemaWithRefType()
+        {
+            var (doc, diags) = Parse("schema \"link\" { target: ref(\"service\") }");
+            Assert.False(diags.HasErrors, $"errors: {string.Join(", ", diags.IntoDiagnostics().ConvertAll(d => d.Message))}");
+            var schema = ((BodyDocItem)doc.Items[0]).BodyItem as SchemaItem;
+            Assert.NotNull(schema);
+            Assert.IsType<RefTypeExpr>(schema!.Schema.Fields[0].TypeExpr);
+        }
+
+        [Fact]
+        public void ParseSchemaWithNullType()
+        {
+            var (doc, diags) = Parse("schema \"config\" { value: union(string, null) }");
+            Assert.False(diags.HasErrors, $"errors: {string.Join(", ", diags.IntoDiagnostics().ConvertAll(d => d.Message))}");
+        }
+
+        [Fact]
         public void ParseValidation()
         {
             var (doc, diags) = Parse("validation \"check\" { let x = 10\n check = x > 0\n message = \"failed\" }");
