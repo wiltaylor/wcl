@@ -11,6 +11,7 @@ members = [
     "wcl",
     "wcl_python",
     "wcl_wasm",
+    "wcl_ffi",
 ]
 
 [workspace.dependencies]

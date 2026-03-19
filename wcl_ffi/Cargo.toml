@@ -1,0 +1,16 @@
+[package]
+name = "wcl_ffi"
+version = "0.1.0"
+edition = "2021"
+description = "C FFI bindings for WCL (Wil's Configuration Language)"
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+wcl = { path = "../wcl" }
+serde_json = { workspace = true }
+indexmap = { workspace = true }
+
+[build-dependencies]
+cbindgen = "0.27"

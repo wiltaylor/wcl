@@ -103,10 +103,41 @@ test-dotnet:
 build-dotnet:
     dotnet build wcl_dotnet/Wcl.sln
 
+# Build the FFI static library (native)
+build-ffi:
+    cargo build -p wcl_ffi --release
+
+# Build FFI static libraries for all platforms (requires cargo-zigbuild + zig)
+build-ffi-all: build-ffi
+    cargo zigbuild -p wcl_ffi --release --target aarch64-unknown-linux-gnu
+    cargo zigbuild -p wcl_ffi --release --target aarch64-apple-darwin
+    cargo zigbuild -p wcl_ffi --release --target x86_64-apple-darwin
+    cargo zigbuild -p wcl_ffi --release --target x86_64-pc-windows-gnu
+
+# Build the Go bindings (native platform only)
+build-go: build-ffi
+    mkdir -p wcl_go/lib/linux_amd64
+    cp target/release/libwcl_ffi.a wcl_go/lib/linux_amd64/ 2>/dev/null || true
+    cp wcl_ffi/wcl.h wcl_go/
+
+# Build Go bindings for all platforms
+build-go-all: build-ffi-all
+    mkdir -p wcl_go/lib/linux_amd64 wcl_go/lib/linux_arm64 wcl_go/lib/darwin_amd64 wcl_go/lib/darwin_arm64 wcl_go/lib/windows_amd64
+    cp target/release/libwcl_ffi.a wcl_go/lib/linux_amd64/
+    cp target/aarch64-unknown-linux-gnu/release/libwcl_ffi.a wcl_go/lib/linux_arm64/
+    cp target/x86_64-apple-darwin/release/libwcl_ffi.a wcl_go/lib/darwin_amd64/
+    cp target/aarch64-apple-darwin/release/libwcl_ffi.a wcl_go/lib/darwin_arm64/
+    cp target/x86_64-pc-windows-gnu/release/libwcl_ffi.a wcl_go/lib/windows_amd64/wcl_ffi.lib
+    cp wcl_ffi/wcl.h wcl_go/
+
+# Run Go binding tests
+test-go: build-go
+    cd wcl_go && CGO_ENABLED=1 go test -v ./...
+
 # Clean build artifacts
 clean:
     cargo clean
     dotnet clean wcl_dotnet/Wcl.sln -q 2>/dev/null || true
 
 # Full CI check: fmt, lint, test
-ci: fmt-check lint test test-python test-dotnet test-wasm
+ci: fmt-check lint test test-python test-dotnet test-wasm test-go
