@@ -29,7 +29,9 @@ namespace Wcl.Eval.Functions
             });
             reg.Register("replace", args => WclValue.NewString(args[0].AsString().Replace(args[1].AsString(), args[2].AsString())));
             reg.Register("split", args => {
-                var parts = args[0].AsString().Split(new[] { args[1].AsString() }, StringSplitOptions.None);
+                var sep = args[0].AsString();   // arg 0 = separator
+                var s = args[1].AsString();     // arg 1 = string to split
+                var parts = s.Split(new[] { sep }, StringSplitOptions.None);
                 return WclValue.NewList(parts.Select(p => WclValue.NewString(p)).ToList());
             });
             reg.Register("join", args => {
@@ -39,7 +41,11 @@ namespace Wcl.Eval.Functions
             });
             reg.Register("starts_with", args => WclValue.NewBool(args[0].AsString().StartsWith(args[1].AsString())));
             reg.Register("ends_with", args => WclValue.NewBool(args[0].AsString().EndsWith(args[1].AsString())));
-            reg.Register("contains", args => WclValue.NewBool(args[0].AsString().Contains(args[1].AsString())));
+            reg.Register("contains", args => {
+                if (args[0].Kind == WclValueKind.List)
+                    return WclValue.NewBool(args[0].AsList().Any(item => item.Equals(args[1])));
+                return WclValue.NewBool(args[0].AsString().Contains(args[1].AsString()));
+            });
             reg.Register("length", args => WclValue.NewInt(args[0].AsString().Length));
             reg.Register("substr", args => {
                 var s = args[0].AsString();
@@ -349,7 +355,7 @@ namespace Wcl.Eval.Functions
                 new FunctionSignature("trim_prefix", new List<string>{"s: string", "prefix: string"}, "string", "Trim prefix"),
                 new FunctionSignature("trim_suffix", new List<string>{"s: string", "suffix: string"}, "string", "Trim suffix"),
                 new FunctionSignature("replace", new List<string>{"s: string", "old: string", "new: string"}, "string", "Replace occurrences"),
-                new FunctionSignature("split", new List<string>{"s: string", "sep: string"}, "list(string)", "Split string"),
+                new FunctionSignature("split", new List<string>{"sep: string", "s: string"}, "list(string)", "Split string"),
                 new FunctionSignature("join", new List<string>{"items: list", "sep: string"}, "string", "Join list to string"),
                 new FunctionSignature("starts_with", new List<string>{"s: string", "prefix: string"}, "bool", "Check prefix"),
                 new FunctionSignature("ends_with", new List<string>{"s: string", "suffix: string"}, "bool", "Check suffix"),

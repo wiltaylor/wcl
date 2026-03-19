@@ -63,8 +63,10 @@ namespace Wcl
                     try
                     {
                         var val = preEval.EvalExpr(lbi.LetBinding.Value, preScope);
-                        preEval.Scopes.AddEntry(preScope, new ScopeEntry(
-                            lbi.LetBinding.Name.Name, ScopeEntryKind.LetBinding, val, lbi.LetBinding.Span));
+                        var entry = new ScopeEntry(
+                            lbi.LetBinding.Name.Name, ScopeEntryKind.LetBinding, val, lbi.LetBinding.Span);
+                        entry.Evaluated = true;
+                        preEval.Scopes.AddEntry(preScope, entry);
                     }
                     catch { }
                 }
@@ -111,9 +113,10 @@ namespace Wcl
             idRegistry.CheckDocument(doc, diagBag);
             allDiagnostics.AddRange(diagBag.IntoDiagnostics());
 
-            // Phase 11: Document validation
+            // Phase 11: Document validation (uses fresh evaluator with custom functions,
+            // matching Rust which passes a fresh Evaluator::with_functions)
             diagBag = new DiagnosticBag();
-            var valEval = new Evaluator(options.Functions);
+            var valEval = Evaluator.WithFunctions(options.Functions);
             DocumentValidator.ValidateDocument(doc, valEval, diagBag);
             allDiagnostics.AddRange(diagBag.IntoDiagnostics());
 
