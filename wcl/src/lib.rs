@@ -38,9 +38,10 @@ pub use wcl_serde::{
 pub use wcl_derive::{WclDeserialize, WclSchema};
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 /// Options for parsing a WCL document
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ParseOptions {
     /// Root directory for import jail checking
     pub root_dir: PathBuf,
@@ -58,6 +59,23 @@ pub struct ParseOptions {
     pub max_iterations: u32,
     /// Custom functions to register (builtins are always included)
     pub functions: FunctionRegistry,
+    /// Custom filesystem for import resolution (defaults to real FS)
+    pub fs: Option<Arc<dyn FileSystem>>,
+}
+
+impl std::fmt::Debug for ParseOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ParseOptions")
+            .field("root_dir", &self.root_dir)
+            .field("max_import_depth", &self.max_import_depth)
+            .field("allow_imports", &self.allow_imports)
+            .field("merge_conflict_mode", &self.merge_conflict_mode)
+            .field("max_macro_depth", &self.max_macro_depth)
+            .field("max_loop_depth", &self.max_loop_depth)
+            .field("max_iterations", &self.max_iterations)
+            .field("fs", &self.fs.as_ref().map(|_| ".."))
+            .finish()
+    }
 }
 
 impl Default for ParseOptions {
@@ -71,6 +89,7 @@ impl Default for ParseOptions {
             max_loop_depth: 32,
             max_iterations: 10_000,
             functions: FunctionRegistry::default(),
+            fs: None,
         }
     }
 }
@@ -301,10 +320,13 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
     all_diagnostics.extend(diag_bag.into_diagnostics());
 
     // Phase 3: Import resolution
+    let fs: Arc<dyn FileSystem> = options
+        .fs
+        .clone()
+        .unwrap_or_else(|| Arc::new(RealFileSystem));
     if options.allow_imports {
-        let fs = RealFileSystem;
         let mut resolver = ImportResolver::new(
-            &fs,
+            fs.as_ref(),
             &mut source_map,
             options.root_dir.clone(),
             options.max_import_depth,
@@ -371,9 +393,22 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
     all_diagnostics.extend(merger.into_diagnostics().into_diagnostics());
 
     // Phase 7: Scope construction + Expression evaluation
+    // Wrap the Arc in a newtype so we can pass it as Box<dyn FileSystem>
+    struct ArcFs(Arc<dyn FileSystem>);
+    impl FileSystem for ArcFs {
+        fn read_file(&self, path: &std::path::Path) -> Result<String, String> {
+            self.0.read_file(path)
+        }
+        fn canonicalize(&self, path: &std::path::Path) -> Result<PathBuf, String> {
+            self.0.canonicalize(path)
+        }
+        fn exists(&self, path: &std::path::Path) -> bool {
+            self.0.exists(path)
+        }
+    }
     let mut evaluator = Evaluator::with_functions(
         &options.functions,
-        Some(Box::new(RealFileSystem)),
+        Some(Box::new(ArcFs(fs))),
         Some(options.root_dir.clone()),
     );
     let values = evaluator.evaluate(&doc);

@@ -87,6 +87,14 @@ docs-build:
 test-python:
     cd wcl_python && source .venv/bin/activate && maturin develop && pytest tests/ -v
 
+# Build the WASM package
+build-wasm:
+    cd wcl_wasm && wasm-pack build --target bundler
+
+# Run WASM binding tests
+test-wasm:
+    cd wcl_wasm && wasm-pack test --node
+
 # Run .NET binding tests
 test-dotnet:
     dotnet test wcl_dotnet/Wcl.sln
@@ -101,4 +109,4 @@ clean:
     dotnet clean wcl_dotnet/Wcl.sln -q 2>/dev/null || true
 
 # Full CI check: fmt, lint, test
-ci: fmt-check lint test test-python test-dotnet
+ci: fmt-check lint test test-python test-dotnet test-wasm

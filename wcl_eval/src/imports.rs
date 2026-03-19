@@ -5,7 +5,7 @@ use wcl_core::diagnostic::{Diagnostic, DiagnosticBag};
 use wcl_core::span::{SourceMap, Span};
 
 /// Trait for file system access (enables testing with in-memory FS).
-pub trait FileSystem {
+pub trait FileSystem: Send + Sync {
     fn read_file(&self, path: &Path) -> Result<String, String>;
     fn canonicalize(&self, path: &Path) -> Result<PathBuf, String>;
     fn exists(&self, path: &Path) -> bool;
@@ -131,7 +131,7 @@ pub fn library_search_paths() -> Vec<PathBuf> {
 }
 
 /// Resolve a library import name to a file path by searching `library_search_paths()`.
-pub fn resolve_library_import(name: &str, fs: &impl FileSystem) -> Option<PathBuf> {
+pub fn resolve_library_import(name: &str, fs: &(impl FileSystem + ?Sized)) -> Option<PathBuf> {
     for dir in library_search_paths() {
         let candidate = dir.join(name);
         if fs.exists(&candidate) {
@@ -145,7 +145,7 @@ pub fn resolve_library_import(name: &str, fs: &impl FileSystem) -> Option<PathBu
 ///
 /// Handles path resolution, jail checking, import-once semantics, depth limits,
 /// and recursive resolution of imports within imported files.
-pub struct ImportResolver<'a, FS: FileSystem> {
+pub struct ImportResolver<'a, FS: FileSystem + ?Sized> {
     fs: &'a FS,
     source_map: &'a mut SourceMap,
     root_dir: PathBuf,
@@ -155,7 +155,7 @@ pub struct ImportResolver<'a, FS: FileSystem> {
     diagnostics: DiagnosticBag,
 }
 
-impl<'a, FS: FileSystem> ImportResolver<'a, FS> {
+impl<'a, FS: FileSystem + ?Sized> ImportResolver<'a, FS> {
     pub fn new(
         fs: &'a FS,
         source_map: &'a mut SourceMap,
