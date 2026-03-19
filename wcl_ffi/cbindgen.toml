@@ -1,0 +1,10 @@
+language = "C"
+include_guard = "WCL_FFI_H"
+tab_width = 4
+style = "both"
+
+[export]
+exclude = ["libc_free"]
+
+[fn]
+sort_by = "None"
