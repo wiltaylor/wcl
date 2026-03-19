@@ -49,19 +49,35 @@ namespace Wcl.Eval.Functions
             reg.Register("length", args => WclValue.NewInt(args[0].AsString().Length));
             reg.Register("substr", args => {
                 var s = args[0].AsString();
-                var start = (int)args[1].AsInt();
-                if (args.Length > 2) {
-                    var len = (int)args[2].AsInt();
-                    return WclValue.NewString(s.Substring(start, Math.Min(len, s.Length - start)));
-                }
-                return WclValue.NewString(s.Substring(start));
+                int len = s.Length;
+                int start = (int)Math.Max(0, Math.Min(args[1].AsInt(), len));
+                int end = args.Length > 2
+                    ? (int)Math.Max(0, Math.Min(args[2].AsInt(), len))
+                    : len;
+                end = Math.Max(end, start);
+                return WclValue.NewString(s.Substring(start, end - start));
             });
             reg.Register("format", args => {
                 var fmt = args[0].AsString();
-                var fmtArgs = new object[args.Length - 1];
-                for (int i = 1; i < args.Length; i++)
-                    fmtArgs[i - 1] = args[i].ToInterpString();
-                return WclValue.NewString(string.Format(fmt, fmtArgs));
+                var sb = new StringBuilder();
+                int argIdx = 0;
+                for (int i = 0; i < fmt.Length; i++)
+                {
+                    if (fmt[i] == '{' && i + 1 < fmt.Length && fmt[i + 1] == '}')
+                    {
+                        if (argIdx + 1 < args.Length)
+                            sb.Append(args[argIdx + 1].ToInterpString());
+                        else
+                            throw new Exception($"format: not enough arguments (placeholder {argIdx} but only {args.Length - 1} args)");
+                        argIdx++;
+                        i++; // skip }
+                    }
+                    else
+                    {
+                        sb.Append(fmt[i]);
+                    }
+                }
+                return WclValue.NewString(sb.ToString());
             });
             reg.Register("regex_match", args => {
                 var input = args[0].AsString();
@@ -176,11 +192,21 @@ namespace Wcl.Eval.Functions
                 return WclValue.NewInt(-1);
             });
             reg.Register("range", args => {
-                var start = (int)args[0].AsInt();
-                var end = (int)args[1].AsInt();
+                var start = args[0].AsInt();
+                var end = args[1].AsInt();
+                long step = args.Length > 2 ? args[2].AsInt() : 1;
+                if (step == 0) throw new Exception("range: step must not be zero");
                 var list = new List<WclValue>();
-                for (int i = start; i < end; i++)
-                    list.Add(WclValue.NewInt(i));
+                if (step > 0)
+                {
+                    for (long i = start; i < end; i += step)
+                        list.Add(WclValue.NewInt(i));
+                }
+                else
+                {
+                    for (long i = start; i > end; i += step)
+                        list.Add(WclValue.NewInt(i));
+                }
                 return WclValue.NewList(list);
             });
             reg.Register("zip", args => {

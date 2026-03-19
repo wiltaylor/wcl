@@ -82,19 +82,24 @@ namespace Wcl.Eval
 
             // Pass 2: Evaluate in dependency order
             var values = new OrderedMap<string, WclValue>();
+            var evaluatedNames = new HashSet<string>();
             foreach (var name in order!)
             {
+                if (evaluatedNames.Contains(name)) continue;
+                evaluatedNames.Add(name);
+
                 var entry = _scopes.Get(moduleScope).FindLocal(name);
                 if (entry == null || entry.Evaluated) continue;
 
-                var bodyItem = FindDocBodyItem(doc, name);
-                if (bodyItem != null)
+                // Find ALL matching body items for this name (handles multiple blocks of same kind)
+                var bodyItems = FindAllDocBodyItems(doc, name);
+                if (bodyItems.Count > 0)
                 {
-                    EvalRegisteredItem(bodyItem, moduleScope, values, entry);
+                    foreach (var bodyItem in bodyItems)
+                        EvalRegisteredItem(bodyItem, moduleScope, values, entry);
                 }
                 else
                 {
-                    // Export let
                     var exportLet = FindExportLet(doc, name);
                     if (exportLet != null)
                     {
@@ -249,8 +254,9 @@ namespace Wcl.Eval
             }
         }
 
-        private static BodyItem? FindDocBodyItem(Document doc, string name)
+        private static List<BodyItem> FindAllDocBodyItems(Document doc, string name)
         {
+            var results = new List<BodyItem>();
             foreach (var item in doc.Items)
             {
                 if (item is BodyDocItem bdi)
@@ -258,18 +264,17 @@ namespace Wcl.Eval
                     switch (bdi.BodyItem)
                     {
                         case AttributeItem ai when ai.Attribute.Name.Name == name:
-                            return ai;
+                            results.Add(ai); break;
                         case LetBindingItem li when li.LetBinding.Name.Name == name:
-                            return li;
+                            results.Add(li); break;
                         case BlockItem bi when bi.Block.Kind.Name == name:
-                            return bi;
-                        case TableItem ti:
-                            if (name == "table") return ti;
-                            break;
+                            results.Add(bi); break;
+                        case TableItem ti when name == "table" || (ti.Table.InlineId is LiteralInlineId lid && lid.Lit.Value == name):
+                            results.Add(ti); break;
                     }
                 }
             }
-            return null;
+            return results;
         }
 
         private static ExportLet? FindExportLet(Document doc, string name)
