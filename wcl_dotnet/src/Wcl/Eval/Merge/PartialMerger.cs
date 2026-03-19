@@ -23,17 +23,41 @@ namespace Wcl.Eval.Merge
         public void Merge(Document doc)
         {
             var groups = new Dictionary<string, List<(int Index, Block Block)>>();
+            var nonPartialKeys = new HashSet<string>();
             var nonPartials = new List<DocItem>();
 
             for (int i = 0; i < doc.Items.Count; i++)
             {
                 var item = doc.Items[i];
-                if (item is BodyDocItem bdi && bdi.BodyItem is BlockItem bi && bi.Block.Partial)
+                if (item is BodyDocItem bdi && bdi.BodyItem is BlockItem bi)
                 {
                     var key = BlockKey(bi.Block);
-                    if (!groups.ContainsKey(key))
-                        groups[key] = new List<(int, Block)>();
-                    groups[key].Add((i, bi.Block));
+                    if (bi.Block.Partial)
+                    {
+                        // E033: Check for mixed partial/non-partial
+                        if (nonPartialKeys.Contains(key))
+                        {
+                            _diagnostics.ErrorWithCode("E033",
+                                $"block '{key}' is declared as both partial and non-partial",
+                                bi.Block.Span);
+                        }
+
+                        if (!groups.ContainsKey(key))
+                            groups[key] = new List<(int, Block)>();
+                        groups[key].Add((i, bi.Block));
+                    }
+                    else
+                    {
+                        nonPartialKeys.Add(key);
+                        // E033: Check if already seen as partial
+                        if (groups.ContainsKey(key))
+                        {
+                            _diagnostics.ErrorWithCode("E033",
+                                $"block '{key}' is declared as both partial and non-partial",
+                                bi.Block.Span);
+                        }
+                        nonPartials.Add(item);
+                    }
                 }
                 else
                 {
@@ -46,19 +70,31 @@ namespace Wcl.Eval.Merge
             {
                 if (kvp.Value.Count == 1)
                 {
-                    // Single partial - just remove partial flag
                     kvp.Value[0].Block.Partial = false;
                     nonPartials.Add(new BodyDocItem(new BlockItem(kvp.Value[0].Block)));
                     continue;
                 }
 
-                var merged = kvp.Value[0].Block;
+                // Sort by @merge_order decorator if present
+                var sorted = kvp.Value.OrderBy(v =>
+                {
+                    var mergeOrder = v.Block.Decorators
+                        .FirstOrDefault(d => d.Name.Name == "merge_order");
+                    if (mergeOrder?.Args.Count > 0 &&
+                        mergeOrder.Args[0] is PositionalDecoratorArg pa &&
+                        pa.Value is IntLitExpr ile)
+                        return ile.Value;
+                    return (long)v.Index; // Default: document order
+                }).ToList();
+
+                var merged = sorted[0].Block;
                 merged.Partial = false;
 
-                for (int i = 1; i < kvp.Value.Count; i++)
-                {
-                    MergeInto(merged, kvp.Value[i].Block);
-                }
+                for (int i = 1; i < sorted.Count; i++)
+                    MergeInto(merged, sorted[i].Block);
+
+                // Validate @partial_requires
+                ValidatePartialRequires(merged);
 
                 nonPartials.Add(new BodyDocItem(new BlockItem(merged)));
             }
@@ -89,7 +125,7 @@ namespace Wcl.Eval.Merge
                     {
                         if (_mode == ConflictMode.Strict)
                         {
-                            _diagnostics.Error(
+                            _diagnostics.ErrorWithCode("E031",
                                 $"conflicting attribute '{ai.Attribute.Name.Name}' in partial merge",
                                 ai.Attribute.Span);
                             continue;
@@ -117,8 +153,43 @@ namespace Wcl.Eval.Merge
                 }
             }
 
-            // Merge decorators
-            target.Decorators.AddRange(source.Decorators);
+            // Merge decorators (deduplicate by name)
+            var existingDecNames = new HashSet<string>(target.Decorators.Select(d => d.Name.Name));
+            foreach (var dec in source.Decorators)
+            {
+                if (!existingDecNames.Contains(dec.Name.Name))
+                {
+                    target.Decorators.Add(dec);
+                    existingDecNames.Add(dec.Name.Name);
+                }
+            }
+        }
+
+        private void ValidatePartialRequires(Block merged)
+        {
+            foreach (var dec in merged.Decorators)
+            {
+                if (dec.Name.Name == "partial_requires")
+                {
+                    var existingAttrs = new HashSet<string>(
+                        merged.Body.OfType<AttributeItem>().Select(a => a.Attribute.Name.Name));
+
+                    foreach (var arg in dec.Args)
+                    {
+                        if (arg is PositionalDecoratorArg pa && pa.Value is StringLitExpr sle)
+                        {
+                            var required = sle.StringLit.Parts.Count == 1 && sle.StringLit.Parts[0] is LiteralPart lp
+                                ? lp.Value : "";
+                            if (!existingAttrs.Contains(required))
+                            {
+                                _diagnostics.Error(
+                                    $"@partial_requires: merged block is missing required field '{required}'",
+                                    merged.Span);
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

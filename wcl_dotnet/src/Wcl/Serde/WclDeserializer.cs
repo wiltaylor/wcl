@@ -64,10 +64,33 @@ namespace Wcl.Serde
                 return list;
             }
 
+            // BlockRef → Map with id/labels auto-populated (before Dict/POCO checks)
+            if (value.Kind == WclValueKind.BlockRef)
+            {
+                var br = value.AsBlockRef();
+                var map = new OrderedMap<string, WclValue>();
+                if (br.Id != null)
+                    map["id"] = WclValue.NewString(br.Id);
+                if (br.Labels.Count > 0)
+                    map["labels"] = WclValue.NewList(br.Labels.Select(l => WclValue.NewString(l)).ToList());
+                foreach (var kvp in br.Attributes)
+                    map[kvp.Key] = kvp.Value;
+                return ConvertValue(WclValue.NewMap(map), targetType);
+            }
+
+            // Set → List coercion
+            if (value.Kind == WclValueKind.Set && targetType.IsGenericType &&
+                targetType.GetGenericTypeDefinition() == typeof(List<>))
+            {
+                return ConvertValue(WclValue.NewList(value.AsSet()), targetType);
+            }
+
+            // WclValue passthrough
+            if (targetType == typeof(WclValue)) return value;
+
             // Dictionary<string, T>
             if (targetType.IsGenericType && targetType.GetGenericTypeDefinition() == typeof(Dictionary<,>))
             {
-                var keyType = targetType.GetGenericArguments()[0];
                 var valType = targetType.GetGenericArguments()[1];
                 var dict = (IDictionary)Activator.CreateInstance(targetType)!;
                 if (value.Kind == WclValueKind.Map)
@@ -77,9 +100,6 @@ namespace Wcl.Serde
                 }
                 return dict;
             }
-
-            // WclValue passthrough
-            if (targetType == typeof(WclValue)) return value;
 
             // POCO via reflection
             if (value.Kind == WclValueKind.Map)

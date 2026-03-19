@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using Wcl.Core;
 using Wcl.Core.Ast;
 
@@ -11,16 +12,11 @@ namespace Wcl.Eval.Query
         public WclValue Execute(QueryPipeline pipeline, List<BlockRef> blocks,
                                 Evaluator evaluator, ScopeId scope)
         {
-            // Step 1: Select
             var selected = ApplySelector(pipeline.Selector, blocks);
-
-            // Step 2: Apply filters
             WclValue result = WclValue.NewList(selected.Select(b => WclValue.NewBlockRef(b)).ToList());
 
             foreach (var filter in pipeline.Filters)
-            {
                 result = ApplyFilter(filter, result, evaluator, scope);
-            }
 
             return result;
         }
@@ -33,6 +29,11 @@ namespace Wcl.Eval.Query
                     return blocks.Where(b => b.Kind == ks.Kind.Name).ToList();
                 case KindIdSelector kis:
                     return blocks.Where(b => b.Kind == kis.Kind.Name && b.Id == kis.Id.Value).ToList();
+                case KindLabelSelector kls:
+                {
+                    var label = GetStringLitValue(kls.Label);
+                    return blocks.Where(b => b.Kind == kls.Kind.Name && b.Labels.Contains(label)).ToList();
+                }
                 case RecursiveSelector rs:
                     return CollectRecursive(blocks, b => b.Kind == rs.Kind.Name);
                 case RecursiveIdSelector ris:
@@ -43,6 +44,14 @@ namespace Wcl.Eval.Query
                     return new List<BlockRef>(blocks);
                 case PathSelector ps:
                     return ResolvePath(ps.Segments, blocks);
+                case TableLabelSelector tls:
+                {
+                    var label = GetStringLitValue(tls.Label);
+                    // Tables don't have a "kind" per se; find blocks with matching labels
+                    return blocks.Where(b => b.Labels.Contains(label)).ToList();
+                }
+                case TableIdSelector tis:
+                    return blocks.Where(b => b.Id == tis.Id.Value).ToList();
                 default:
                     return new List<BlockRef>();
             }
@@ -65,22 +74,61 @@ namespace Wcl.Eval.Query
 
         private List<BlockRef> ResolvePath(List<PathSegment> segments, List<BlockRef> blocks)
         {
-            var current = blocks;
-            foreach (var seg in segments)
+            var current = new List<BlockRef>(blocks);
+
+            for (int si = 0; si < segments.Count; si++)
             {
+                var seg = segments[si];
                 switch (seg)
                 {
                     case IdentPathSegment ips:
-                        current = current.Where(b => b.Kind == ips.Ident.Name).ToList();
-                        if (current.Count == 0)
+                    {
+                        if (si == 0)
                         {
-                            // Try as child navigation
+                            // First segment: filter top-level blocks by kind
+                            var matching = current.Where(b => b.Kind == ips.Ident.Name).ToList();
+                            if (matching.Count > 0)
+                            {
+                                current = matching;
+                            }
+                            else
+                            {
+                                current = new List<BlockRef>();
+                            }
+                        }
+                        else
+                        {
+                            // Subsequent segments: navigate into children
                             var children = new List<BlockRef>();
-                            foreach (var b in blocks)
+                            foreach (var b in current)
+                            {
+                                // Check children by kind
                                 children.AddRange(b.Children.Where(c => c.Kind == ips.Ident.Name));
+                                // Also check attributes that are block refs
+                                if (b.Attributes.TryGetValue(ips.Ident.Name, out var attrVal))
+                                {
+                                    if (attrVal.Kind == WclValueKind.BlockRef)
+                                        children.Add(attrVal.AsBlockRef());
+                                }
+                            }
                             current = children;
                         }
                         break;
+                    }
+                    case StringLabelPathSegment slps:
+                    {
+                        var label = GetStringLitValue(slps.Label);
+                        // Filter by label within children
+                        var labeled = new List<BlockRef>();
+                        foreach (var b in current)
+                        {
+                            if (b.Labels.Contains(label))
+                                labeled.Add(b);
+                            labeled.AddRange(b.Children.Where(c => c.Labels.Contains(label)));
+                        }
+                        current = labeled;
+                        break;
+                    }
                 }
             }
             return current;
@@ -104,64 +152,46 @@ namespace Wcl.Eval.Query
                             if (br.Attributes.TryGetValue(pf.Attr.Name, out var val))
                                 result.Add(val);
                         }
+                        else if (item.Kind == WclValueKind.Map)
+                        {
+                            if (item.AsMap().TryGetValue(pf.Attr.Name, out var val))
+                                result.Add(val);
+                        }
                     }
                     return WclValue.NewList(result);
                 }
                 case AttrComparisonFilter acf:
                 {
+                    var filterVal = evaluator.EvalExpr(acf.Value, scope);
                     var result = new List<WclValue>();
                     foreach (var item in list)
                     {
                         if (item.Kind == WclValueKind.BlockRef)
                         {
                             var br = item.AsBlockRef();
-                            if (br.Attributes.TryGetValue(acf.Attr.Name, out var attrVal))
-                            {
-                                var filterVal = evaluator.EvalExpr(acf.Value, scope);
-                                if (CompareValues(attrVal, acf.Op, filterVal))
-                                    result.Add(item);
-                            }
+                            if (br.Attributes.TryGetValue(acf.Attr.Name, out var attrVal) &&
+                                CompareValues(attrVal, acf.Op, filterVal))
+                                result.Add(item);
                         }
                     }
                     return WclValue.NewList(result);
                 }
                 case HasAttrFilter haf:
-                {
-                    var result = new List<WclValue>();
-                    foreach (var item in list)
-                    {
-                        if (item.Kind == WclValueKind.BlockRef && item.AsBlockRef().Attributes.ContainsKey(haf.Attr.Name))
-                            result.Add(item);
-                    }
-                    return WclValue.NewList(result);
-                }
+                    return WclValue.NewList(list.Where(item =>
+                        item.Kind == WclValueKind.BlockRef && item.AsBlockRef().Attributes.ContainsKey(haf.Attr.Name)).ToList());
                 case HasDecoratorFilter hdf:
-                {
-                    var result = new List<WclValue>();
-                    foreach (var item in list)
-                    {
-                        if (item.Kind == WclValueKind.BlockRef && item.AsBlockRef().HasDecorator(hdf.Name.Name))
-                            result.Add(item);
-                    }
-                    return WclValue.NewList(result);
-                }
+                    return WclValue.NewList(list.Where(item =>
+                        item.Kind == WclValueKind.BlockRef && item.AsBlockRef().HasDecorator(hdf.Name.Name)).ToList());
                 case DecoratorArgFilterNode daf:
                 {
-                    var result = new List<WclValue>();
-                    foreach (var item in list)
+                    var filterVal = evaluator.EvalExpr(daf.Value, scope);
+                    return WclValue.NewList(list.Where(item =>
                     {
-                        if (item.Kind == WclValueKind.BlockRef)
-                        {
-                            var dec = item.AsBlockRef().GetDecorator(daf.DecoratorName.Name);
-                            if (dec != null && dec.Args.TryGetValue(daf.ParamName.Name, out var argVal))
-                            {
-                                var filterVal = evaluator.EvalExpr(daf.Value, scope);
-                                if (CompareValues(argVal, daf.Op, filterVal))
-                                    result.Add(item);
-                            }
-                        }
-                    }
-                    return WclValue.NewList(result);
+                        if (item.Kind != WclValueKind.BlockRef) return false;
+                        var dec = item.AsBlockRef().GetDecorator(daf.DecoratorName.Name);
+                        return dec != null && dec.Args.TryGetValue(daf.ParamName.Name, out var argVal) &&
+                               CompareValues(argVal, daf.Op, filterVal);
+                    }).ToList());
                 }
                 default:
                     return input;
@@ -174,24 +204,52 @@ namespace Wcl.Eval.Query
             {
                 case BinOp.Eq: return left.Equals(right);
                 case BinOp.Neq: return !left.Equals(right);
-                case BinOp.Lt:
-                    if (left.Kind == WclValueKind.Int && right.Kind == WclValueKind.Int)
-                        return left.AsInt() < right.AsInt();
+                case BinOp.Match:
+                    return left.Kind == WclValueKind.String && right.Kind == WclValueKind.String &&
+                           Regex.IsMatch(left.AsString(), right.AsString());
+                default:
+                {
+                    // Numeric comparison with int/float promotion
+                    double? a = left.Kind == WclValueKind.Int ? left.AsInt() :
+                                left.Kind == WclValueKind.Float ? left.AsFloat() : (double?)null;
+                    double? b = right.Kind == WclValueKind.Int ? right.AsInt() :
+                                right.Kind == WclValueKind.Float ? right.AsFloat() : (double?)null;
+                    if (a.HasValue && b.HasValue)
+                    {
+                        return op switch
+                        {
+                            BinOp.Lt => a.Value < b.Value,
+                            BinOp.Gt => a.Value > b.Value,
+                            BinOp.Lte => a.Value <= b.Value,
+                            BinOp.Gte => a.Value >= b.Value,
+                            _ => false,
+                        };
+                    }
+                    // String comparison
+                    if (left.Kind == WclValueKind.String && right.Kind == WclValueKind.String)
+                    {
+                        int cmp = string.Compare(left.AsString(), right.AsString(), StringComparison.Ordinal);
+                        return op switch
+                        {
+                            BinOp.Lt => cmp < 0,
+                            BinOp.Gt => cmp > 0,
+                            BinOp.Lte => cmp <= 0,
+                            BinOp.Gte => cmp >= 0,
+                            _ => false,
+                        };
+                    }
                     return false;
-                case BinOp.Gt:
-                    if (left.Kind == WclValueKind.Int && right.Kind == WclValueKind.Int)
-                        return left.AsInt() > right.AsInt();
-                    return false;
-                case BinOp.Lte:
-                    if (left.Kind == WclValueKind.Int && right.Kind == WclValueKind.Int)
-                        return left.AsInt() <= right.AsInt();
-                    return false;
-                case BinOp.Gte:
-                    if (left.Kind == WclValueKind.Int && right.Kind == WclValueKind.Int)
-                        return left.AsInt() >= right.AsInt();
-                    return false;
-                default: return false;
+                }
             }
+        }
+
+        private static string GetStringLitValue(StringLit sl)
+        {
+            if (sl.Parts.Count == 1 && sl.Parts[0] is LiteralPart lp) return lp.Value;
+            var sb = new System.Text.StringBuilder();
+            foreach (var p in sl.Parts)
+                if (p is LiteralPart lp2) sb.Append(lp2.Value);
+            return sb.ToString();
         }
     }
 }
