@@ -10,6 +10,8 @@
 - [Editor Setup](./getting-started/editor-setup.md)
 - [Rust Library Usage](./getting-started/rust-library.md)
 - [Go Library Usage](./getting-started/go-library.md)
+- [JavaScript / TypeScript Usage](./getting-started/js-library.md)
+- [.NET / C# Usage](./getting-started/dotnet-library.md)
 
 # Language Guide
 
