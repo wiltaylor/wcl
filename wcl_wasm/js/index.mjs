@@ -32,7 +32,11 @@ let _initialized = false;
  */
 export async function init(wasmInput) {
   if (_initialized) return;
-  await __wbg_init(wasmInput);
+  if (wasmInput !== undefined) {
+    await __wbg_init({ module_or_path: wasmInput });
+  } else {
+    await __wbg_init();
+  }
   _initialized = true;
 }
 

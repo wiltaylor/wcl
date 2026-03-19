@@ -3,21 +3,28 @@
   "version": "0.1.0",
   "description": "WebAssembly bindings for WCL (Wil's Configuration Language)",
   "type": "module",
-  "main": "./js/index.mjs",
+  "main": "./js/index.cjs",
+  "module": "./js/index.mjs",
   "types": "./js/wcl.d.ts",
   "exports": {
     ".": {
       "types": "./js/wcl.d.ts",
-      "import": "./js/index.mjs"
+      "import": "./js/index.mjs",
+      "require": "./js/index.cjs"
     },
     "./pkg/*": "./pkg/*"
   },
   "files": [
     "js/",
     "pkg/wcl_wasm_bg.wasm",
+    "pkg/wcl_wasm_bg.wasm.d.ts",
     "pkg/wcl_wasm.js",
+    "pkg/wcl_wasm.d.ts",
     "pkg/wcl_wasm_bg.js"
   ],
+  "scripts": {
+    "prepublishOnly": "wasm-pack build --target web"
+  },
   "keywords": [
     "wcl",
     "configuration",
