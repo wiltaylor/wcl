@@ -46,7 +46,7 @@ bench-crate crate:
 
 # Build and install the CLI locally
 install:
-    cargo install --path wcl_cli
+    cargo install --path crates/wcl_cli
 
 # Uninstall the CLI
 uninstall:
@@ -77,31 +77,31 @@ uninstall-vscode:
 
 # Serve the documentation book locally
 docs-serve:
-    mdbook serve docs
+    mdbook serve docs/book
 
 # Build the documentation book
 docs-build:
-    mdbook build docs
+    mdbook build docs/book
 
 # Run Python binding tests
 test-python:
-    cd wcl_python && source .venv/bin/activate && maturin develop && pytest tests/ -v
+    cd bindings/python && source .venv/bin/activate && maturin develop && pytest tests/ -v
 
 # Build the WASM package
 build-wasm:
-    cd wcl_wasm && wasm-pack build --target web
+    cd bindings/wasm && wasm-pack build --target web
 
 # Run WASM binding tests
 test-wasm:
-    cd wcl_wasm && wasm-pack test --node
+    cd bindings/wasm && wasm-pack test --node
 
 # Run .NET binding tests
 test-dotnet:
-    dotnet test wcl_dotnet/Wcl.sln
+    dotnet test bindings/dotnet/Wcl.sln
 
 # Build the .NET library
 build-dotnet:
-    dotnet build wcl_dotnet/Wcl.sln
+    dotnet build bindings/dotnet/Wcl.sln
 
 # Build the FFI static library (native)
 build-ffi:
@@ -116,28 +116,28 @@ build-ffi-all: build-ffi
 
 # Build the Go bindings (native platform only)
 build-go: build-ffi
-    mkdir -p wcl_go/lib/linux_amd64
-    cp target/release/libwcl_ffi.a wcl_go/lib/linux_amd64/ 2>/dev/null || true
-    cp wcl_ffi/wcl.h wcl_go/
+    mkdir -p bindings/go/lib/linux_amd64
+    cp target/release/libwcl_ffi.a bindings/go/lib/linux_amd64/ 2>/dev/null || true
+    cp crates/wcl_ffi/wcl.h bindings/go/
 
 # Build Go bindings for all platforms
 build-go-all: build-ffi-all
-    mkdir -p wcl_go/lib/linux_amd64 wcl_go/lib/linux_arm64 wcl_go/lib/darwin_amd64 wcl_go/lib/darwin_arm64 wcl_go/lib/windows_amd64
-    cp target/release/libwcl_ffi.a wcl_go/lib/linux_amd64/
-    cp target/aarch64-unknown-linux-gnu/release/libwcl_ffi.a wcl_go/lib/linux_arm64/
-    cp target/x86_64-apple-darwin/release/libwcl_ffi.a wcl_go/lib/darwin_amd64/
-    cp target/aarch64-apple-darwin/release/libwcl_ffi.a wcl_go/lib/darwin_arm64/
-    cp target/x86_64-pc-windows-gnu/release/libwcl_ffi.a wcl_go/lib/windows_amd64/wcl_ffi.lib
-    cp wcl_ffi/wcl.h wcl_go/
+    mkdir -p bindings/go/lib/linux_amd64 bindings/go/lib/linux_arm64 bindings/go/lib/darwin_amd64 bindings/go/lib/darwin_arm64 bindings/go/lib/windows_amd64
+    cp target/release/libwcl_ffi.a bindings/go/lib/linux_amd64/
+    cp target/aarch64-unknown-linux-gnu/release/libwcl_ffi.a bindings/go/lib/linux_arm64/
+    cp target/x86_64-apple-darwin/release/libwcl_ffi.a bindings/go/lib/darwin_amd64/
+    cp target/aarch64-apple-darwin/release/libwcl_ffi.a bindings/go/lib/darwin_arm64/
+    cp target/x86_64-pc-windows-gnu/release/libwcl_ffi.a bindings/go/lib/windows_amd64/wcl_ffi.lib
+    cp crates/wcl_ffi/wcl.h bindings/go/
 
 # Run Go binding tests
 test-go: build-go
-    cd wcl_go && CGO_ENABLED=1 go test -v ./...
+    cd bindings/go && CGO_ENABLED=1 go test -v ./...
 
 # Clean build artifacts
 clean:
     cargo clean
-    dotnet clean wcl_dotnet/Wcl.sln -q 2>/dev/null || true
+    dotnet clean bindings/dotnet/Wcl.sln -q 2>/dev/null || true
 
 # Full CI check: fmt, lint, test
 ci: fmt-check lint test test-python test-dotnet test-wasm test-go

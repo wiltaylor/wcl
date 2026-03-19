@@ -7,13 +7,13 @@ WCL can be embedded into Go programs via the `wcl_go` package. It uses a prebuil
 Add the module to your project:
 
 ```bash
-go get github.com/wiltaylor/wcl/wcl_go
+go get github.com/wiltaylor/wcl/bindings/go
 ```
 
 Then import it:
 
 ```go
-import wcl "github.com/wiltaylor/wcl/wcl_go"
+import wcl "github.com/wiltaylor/wcl/bindings/go"
 ```
 
 > **Note:** This package uses CGo with a statically linked Rust library. You need a C compiler (gcc/clang) and `CGO_ENABLED=1` (the default on most systems).
@@ -29,7 +29,7 @@ import (
     "fmt"
     "log"
 
-    wcl "github.com/wiltaylor/wcl/wcl_go"
+    wcl "github.com/wiltaylor/wcl/bindings/go"
 )
 
 func main() {
@@ -378,7 +378,7 @@ import (
     "fmt"
     "log"
 
-    wcl "github.com/wiltaylor/wcl/wcl_go"
+    wcl "github.com/wiltaylor/wcl/bindings/go"
 )
 
 func main() {
@@ -438,5 +438,5 @@ just build-go        # native platform only
 just build-go-all    # all platforms (requires cargo-zigbuild + zig)
 
 # Or via go generate (requires Rust toolchain)
-cd wcl_go && go generate ./...
+cd bindings/go && go generate ./...
 ```

@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-wcl = { path = "../wcl" }
+wcl = { workspace = true }
 wcl_core = { workspace = true }
 wcl_eval = { workspace = true }
 wcl_schema = { workspace = true }
