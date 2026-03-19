@@ -182,5 +182,68 @@ namespace Wcl.Tests.Integration
             var doc = TestHelpers.ParseDoc("result = [1, 2, 3].length");
             Assert.Equal(WclValue.NewInt(3), doc.Values["result"]);
         }
+
+        [Fact]
+        public void SubstrStartEnd()
+        {
+            // Rust semantics: substr(s, start, end) where end is exclusive index
+            Assert.Equal(WclValue.NewString("ell"), TestHelpers.Eval("substr(\"hello\", 1, 4)"));
+            Assert.Equal(WclValue.NewString("hel"), TestHelpers.Eval("substr(\"hello\", 0, 3)"));
+        }
+
+        [Fact]
+        public void SubstrNoEnd()
+        {
+            Assert.Equal(WclValue.NewString("llo"), TestHelpers.Eval("substr(\"hello\", 2)"));
+        }
+
+        [Fact]
+        public void FormatPlaceholders()
+        {
+            // Rust semantics: {} placeholders, not {0}
+            Assert.Equal(WclValue.NewString("hello world"),
+                TestHelpers.Eval("format(\"hello {}\", \"world\")"));
+            Assert.Equal(WclValue.NewString("1 + 2 = 3"),
+                TestHelpers.Eval("format(\"{} + {} = {}\", 1, 2, 3)"));
+        }
+
+        [Fact]
+        public void RangeWithStep()
+        {
+            var result = TestHelpers.Eval("range(0, 10, 3)");
+            var list = result.AsList();
+            Assert.Equal(4, list.Count); // 0, 3, 6, 9
+            Assert.Equal(WclValue.NewInt(0), list[0]);
+            Assert.Equal(WclValue.NewInt(9), list[3]);
+        }
+
+        [Fact]
+        public void RangeReverse()
+        {
+            var result = TestHelpers.Eval("range(5, 0, -1)");
+            var list = result.AsList();
+            Assert.Equal(5, list.Count); // 5, 4, 3, 2, 1
+            Assert.Equal(WclValue.NewInt(5), list[0]);
+            Assert.Equal(WclValue.NewInt(1), list[4]);
+        }
+
+        [Fact]
+        public void MultipleBlocksSameKind()
+        {
+            var doc = TestHelpers.ParseDoc("server { port = 80 }\nserver { port = 443 }");
+            Assert.False(doc.HasErrors());
+            // Both blocks should be present as a list
+            Assert.True(doc.Values.ContainsKey("server"));
+            var val = doc.Values["server"];
+            Assert.Equal(WclValueKind.List, val.Kind);
+            Assert.Equal(2, val.AsList().Count);
+        }
+
+        [Fact]
+        public void ContainsListWithStrings()
+        {
+            Assert.Equal(WclValue.NewBool(true),
+                TestHelpers.Eval("contains([\"a\", \"b\", \"c\"], \"b\")"));
+        }
     }
 }
