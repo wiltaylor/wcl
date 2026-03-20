@@ -12,17 +12,36 @@
   var lastTransition = 0;
 
   function checkShortContent() {
-    sections.forEach(function (s) {
-      var wasHidden = s.style.display === "none";
-      if (wasHidden) s.style.display = "";
-      s.classList.toggle("short-content", s.scrollHeight <= s.clientHeight);
-      if (wasHidden) s.style.display = "none";
-    });
+    // No longer needed with block layout
   }
+
+  var upSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>';
+  var downSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
 
   function init() {
     sections.forEach(function (s, i) {
       s.style.position = "relative";
+
+      // Add up arrow (except first section)
+      if (i > 0) {
+        var up = document.createElement("button");
+        up.className = "section-arrow section-arrow-up";
+        up.setAttribute("aria-label", "Previous section");
+        up.innerHTML = upSvg;
+        up.addEventListener("click", function () { goTo(i - 1); });
+        s.insertBefore(up, s.firstChild);
+      }
+
+      // Add down arrow (except last section)
+      if (i < sections.length - 1) {
+        var down = document.createElement("button");
+        down.className = "section-arrow section-arrow-down";
+        down.setAttribute("aria-label", "Next section");
+        down.innerHTML = downSvg;
+        down.addEventListener("click", function () { goTo(i + 1); });
+        s.appendChild(down);
+      }
+
       if (i !== 0) {
         s.style.display = "none";
         s.style.opacity = "0";
@@ -154,6 +173,7 @@
       goTo(current - 1);
     }
   }, { passive: true });
+
 
   // Nav clicks
   navLinks.forEach(function (link) {

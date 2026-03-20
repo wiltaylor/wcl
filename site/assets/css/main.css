@@ -41,18 +41,10 @@ main {
 main > section[id] {
   min-height: calc(100vh - 6.5rem);
   max-height: calc(100vh - 6.5rem);
-  display: flex;
-  align-items: flex-start;
-  padding-top: 2rem;
-  padding-bottom: 2rem;
+  display: block;
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
-}
-
-/* Center content vertically only when it fits */
-main > section[id].short-content {
-  align-items: center;
 }
 
 main > section[id] > .container,
@@ -121,6 +113,30 @@ a:hover {
 
 .nav-links a:hover {
   color: var(--text);
+}
+
+/* Section Arrows */
+.section-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 1rem auto;
+  background: none;
+  border: none;
+  width: 300px;
+  height: 32px;
+  cursor: pointer;
+  color: var(--accent);
+  transition: color 0.15s;
+}
+
+.section-arrow:hover {
+  color: var(--accent-hover);
+}
+
+.section-arrow svg {
+  width: 48px;
+  height: 48px;
 }
 
 /* Badges */
