@@ -1,6 +1,6 @@
 [package]
 name = "wcl_python"
-version.workspace = true
+version = "0.0.0-dev.0"
 edition = "2021"
 license.workspace = true
 
