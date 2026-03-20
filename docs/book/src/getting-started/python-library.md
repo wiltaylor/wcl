@@ -1,22 +1,20 @@
 # Using WCL as a Python Library
 
-WCL has native Python bindings via PyO3. The `wcl` package provides the full 11-phase parsing pipeline with Pythonic types — values come back as native `dict`, `list`, `int`, `str`, etc.
+WCL has native Python bindings via PyO3. The `pywcl` package provides the full 11-phase parsing pipeline with Pythonic types — values come back as native `dict`, `list`, `int`, `str`, etc.
 
 ## Installation
 
-Install from source using `pip` (requires a Rust toolchain and `maturin`):
+Install from PyPI:
 
 ```bash
-cd wcl_python
-pip install -e .
+pip install pywcl
 ```
 
-Or build a wheel:
+Or install from source (requires a Rust toolchain and `maturin`):
 
 ```bash
-cd wcl_python
-maturin build --release
-pip install target/wheels/wcl-*.whl
+cd bindings/python
+pip install -e .
 ```
 
 ## Parsing a WCL String
