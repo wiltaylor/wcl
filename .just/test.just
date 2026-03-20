@@ -26,5 +26,9 @@ go:
     just build go
     cd bindings/go && CGO_ENABLED=1 go test -v ./...
 
+# Run tree-sitter grammar tests
+tree-sitter-wcl:
+    cd extras/tree-sitter-wcl && tree-sitter generate && tree-sitter test
+
 # Run all tests
-all: rust python wasm dotnet go
+all: rust python wasm dotnet go tree-sitter-wcl

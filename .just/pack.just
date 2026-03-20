@@ -65,8 +65,18 @@ vscode:
     cp *.vsix "{{pkg}}/vscode/"
     echo "VS Code extension packaged to {{pkg}}/vscode/"
 
+# Package tree-sitter-wcl npm tarball into .packages/tree-sitter-wcl/
+tree-sitter-wcl:
+    #!/bin/bash
+    set -euo pipefail
+    mkdir -p "{{pkg}}/tree-sitter-wcl"
+    cd extras/tree-sitter-wcl
+    tree-sitter generate
+    npm pack --pack-destination "{{pkg}}/tree-sitter-wcl"
+    echo "tree-sitter-wcl packaged to {{pkg}}/tree-sitter-wcl/"
+
 # Package everything. Pass a version to stamp all packages (default: 0.0.0-local)
-all ver="0.0.0-local": (set-version ver) rust python wasm go dotnet vscode
+all ver="0.0.0-local": (set-version ver) rust python wasm go dotnet vscode tree-sitter-wcl
     @echo "All packages created in {{pkg}}/"
 
 # Remove all packaged artifacts
@@ -105,9 +115,10 @@ set-version ver:
     sed -i "s/^version = .*/version = \"$PY_SEMVER\"/" bindings/python/Cargo.toml
     sed -i "s/^version = .*/version = \"$PY_SEMVER\"/" bindings/python/pyproject.toml
 
-    # npm (WASM + VS Code): semver with - prerelease
+    # npm (WASM + VS Code + tree-sitter-wcl): semver with - prerelease
     sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$V\"/" bindings/wasm/package.json
     sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$V\"/" editors/vscode/package.json
+    sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$V\"/" extras/tree-sitter-wcl/package.json
 
     # .NET: supports semver with - prerelease
     sed -i "s|<Version>[^<]*</Version>|<Version>$V</Version>|" bindings/dotnet/src/Wcl/Wcl.csproj
