@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
     <RootNamespace>Wcl</RootNamespace>
     <AssemblyName>Wcl</AssemblyName>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
 
   <ItemGroup>
