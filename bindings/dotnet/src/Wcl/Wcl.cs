@@ -83,7 +83,7 @@ namespace Wcl
             var count = functions.Count;
             var namePointers = new IntPtr[count];
             var callbackPointers = new IntPtr[count];
-            var contextValues = new IntPtr[count];
+            var contextValues = new UIntPtr[count];
             var callbackIds = new List<ulong>(count);
 
             int i = 0;
@@ -93,7 +93,7 @@ namespace Wcl
                 var cbId = CallbackRegistry.Register(kvp.Value);
                 callbackIds.Add(cbId);
                 callbackPointers[i] = Marshal.GetFunctionPointerForDelegate(CallbackRegistry.TrampolineDelegate);
-                contextValues[i] = new IntPtr((long)cbId);
+                contextValues[i] = new UIntPtr(cbId);
                 i++;
             }
 

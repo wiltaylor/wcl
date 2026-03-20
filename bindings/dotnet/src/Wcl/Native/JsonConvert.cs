@@ -191,6 +191,27 @@ namespace Wcl.Native
                     attrParts.Add(JsonSerializer.Serialize(kvp.Key) + ":" + WclValueToJson(kvp.Value));
                 parts.Add("\"attributes\":{" + string.Join(",", attrParts) + "}");
             }
+            if (br.Children.Count > 0)
+            {
+                var childParts = new string[br.Children.Count];
+                for (int i = 0; i < br.Children.Count; i++)
+                    childParts[i] = BlockRefToJson(br.Children[i]);
+                parts.Add("\"children\":[" + string.Join(",", childParts) + "]");
+            }
+            if (br.Decorators.Count > 0)
+            {
+                var decParts = new string[br.Decorators.Count];
+                for (int i = 0; i < br.Decorators.Count; i++)
+                {
+                    var d = br.Decorators[i];
+                    var argParts = new List<string>(d.Args.Count);
+                    foreach (var kvp in d.Args)
+                        argParts.Add(JsonSerializer.Serialize(kvp.Key) + ":" + WclValueToJson(kvp.Value));
+                    decParts[i] = "{\"name\":" + JsonSerializer.Serialize(d.Name) +
+                                  ",\"args\":{" + string.Join(",", argParts) + "}}";
+                }
+                parts.Add("\"decorators\":[" + string.Join(",", decParts) + "]");
+            }
             return "{" + string.Join(",", parts) + "}";
         }
     }

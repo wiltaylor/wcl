@@ -166,5 +166,126 @@ namespace Wcl.Tests
             Assert.Equal(10L, result["x"]);
             Assert.Equal(20L, result["y"]);
         }
+
+        [Fact]
+        public void BlocksWithDecorators()
+        {
+            using var doc = WclParser.Parse(@"
+                @deprecated(""use new-svc"")
+                server old-svc {
+                    port = 80
+                }
+            ");
+            Assert.False(doc.HasErrors());
+
+            var blocks = doc.Blocks();
+            Assert.Single(blocks);
+            Assert.Equal("server", blocks[0].Kind);
+            Assert.Equal("old-svc", blocks[0].Id);
+            Assert.True(blocks[0].HasDecorator("deprecated"));
+            Assert.NotNull(blocks[0].GetDecorator("deprecated"));
+        }
+
+        [Fact]
+        public void NestedBlocks()
+        {
+            using var doc = WclParser.Parse(@"
+                server main {
+                    port = 8080
+                    logging {
+                        level = ""info""
+                    }
+                }
+            ");
+            Assert.False(doc.HasErrors());
+
+            var blocks = doc.Blocks();
+            Assert.Single(blocks);
+            Assert.Equal("server", blocks[0].Kind);
+            Assert.NotEmpty(blocks[0].Children);
+            Assert.Equal("logging", blocks[0].Children[0].Kind);
+        }
+
+        [Fact]
+        public void ListValues()
+        {
+            using var doc = WclParser.Parse("tags = [\"a\", \"b\", \"c\"]");
+            Assert.False(doc.HasErrors());
+
+            var tags = doc.Values["tags"];
+            Assert.Equal(WclValueKind.List, tags.Kind);
+            Assert.Equal(3, tags.AsList().Count);
+            Assert.Equal("a", tags.AsList()[0].AsString());
+        }
+
+        [Fact]
+        public void BlockAttributes()
+        {
+            using var doc = WclParser.Parse(@"
+                server web {
+                    port = 8080
+                    host = ""localhost""
+                    debug = false
+                }
+            ");
+            Assert.False(doc.HasErrors());
+
+            var servers = doc.BlocksOfType("server");
+            Assert.Single(servers);
+            var s = servers[0];
+            Assert.Equal("web", s.Id);
+            Assert.Equal(WclValue.NewInt(8080), s.Get("port"));
+            Assert.Equal(WclValue.NewString("localhost"), s.Get("host"));
+            Assert.Equal(WclValue.NewBool(false), s.Get("debug"));
+            Assert.Null(s.Get("nonexistent"));
+        }
+
+        [Fact]
+        public void MapValues()
+        {
+            using var doc = WclParser.Parse("config = { a = 1, b = 2 }");
+            Assert.False(doc.HasErrors());
+
+            var config = doc.Values["config"];
+            Assert.Equal(WclValueKind.Map, config.Kind);
+            var map = config.AsMap();
+            Assert.Equal(2, map.Count);
+            Assert.Equal(1L, map["a"].AsInt());
+            Assert.Equal(2L, map["b"].AsInt());
+        }
+
+        [Fact]
+        public void NullValues()
+        {
+            using var doc = WclParser.Parse("x = null");
+            Assert.False(doc.HasErrors());
+            Assert.True(doc.Values["x"].IsNull);
+        }
+
+        [Fact]
+        public void BoolAndFloatValues()
+        {
+            using var doc = WclParser.Parse("flag = true\npi = 3.14");
+            Assert.False(doc.HasErrors());
+            Assert.True(doc.Values["flag"].AsBool());
+            Assert.Equal(3.14, doc.Values["pi"].AsFloat());
+        }
+
+        [Fact]
+        public void QueryById()
+        {
+            using var doc = WclParser.Parse(@"
+                server api { port = 8080 }
+                server web { port = 9090 }
+            ");
+            Assert.False(doc.HasErrors());
+
+            var result = doc.Query("server#api");
+            // Query returns a list of matching blocks
+            var list = result.AsList();
+            Assert.Single(list);
+            var br = list[0].AsBlockRef();
+            Assert.Equal("api", br.Id);
+        }
     }
 }
