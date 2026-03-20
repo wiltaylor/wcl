@@ -8,6 +8,8 @@
   var current = 0;
   var animating = false;
   var DURATION = 400;
+  var COOLDOWN = 900;
+  var lastTransition = 0;
 
   function checkShortContent() {
     sections.forEach(function (s) {
@@ -43,6 +45,7 @@
 
   function goTo(index) {
     if (index < 0 || index >= sections.length || index === current || animating) return;
+    if (Date.now() - lastTransition < COOLDOWN) return;
     animating = true;
 
     var goingDown = index > current;
@@ -79,6 +82,7 @@
       current = index;
       updateNav();
       animating = false;
+      lastTransition = Date.now();
     }, DURATION);
   }
 
@@ -91,38 +95,19 @@
     return el.scrollTop > 2;
   }
 
-  // Wheel — scroll internally first, then switch sections at edges
-  var edgeAccum = 0;
-  var edgeTimer = null;
-  var EDGE_THRESHOLD = 80;
-
+  // Wheel — scroll internally first, then switch at edge
   document.addEventListener("wheel", function (e) {
     if (animating) { e.preventDefault(); return; }
 
     var sec = sections[current];
     var down = e.deltaY > 0;
 
-    // If section has internal scroll room in this direction, let it scroll
-    if (down && canScrollDown(sec)) {
-      edgeAccum = 0;
-      return;
-    }
-    if (!down && canScrollUp(sec)) {
-      edgeAccum = 0;
-      return;
-    }
+    if (down && canScrollDown(sec)) return;
+    if (!down && canScrollUp(sec)) return;
 
-    // At the edge — accumulate and switch
     e.preventDefault();
-    edgeAccum += e.deltaY;
-    clearTimeout(edgeTimer);
-    edgeTimer = setTimeout(function () { edgeAccum = 0; }, 300);
-
-    if (Math.abs(edgeAccum) >= EDGE_THRESHOLD) {
-      if (edgeAccum > 0) goTo(current + 1);
-      else goTo(current - 1);
-      edgeAccum = 0;
-    }
+    if (down) goTo(current + 1);
+    else goTo(current - 1);
   }, { passive: false });
 
   // Keyboard
