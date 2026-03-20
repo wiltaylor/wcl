@@ -44,7 +44,7 @@ impl FunctionRegistry {
     pub fn register(
         &mut self,
         name: impl Into<String>,
-        f: Arc<dyn Fn(&[Value]) -> Result<Value, String> + Send + Sync>,
+        f: BuiltinFn,
         signature: FunctionSignature,
     ) {
         let name = name.into();
