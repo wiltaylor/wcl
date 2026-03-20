@@ -3,6 +3,10 @@ name = "wcl"
 version = "0.1.0"
 edition = "2021"
 license.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+repository.workspace = true
+description = "WCL (Wil's Configuration Language) — a typed, block-structured configuration language"
 
 [dependencies]
 wcl_core = { workspace = true }

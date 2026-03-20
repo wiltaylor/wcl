@@ -3,6 +3,10 @@ name = "wcl_derive"
 version = "0.1.0"
 edition = "2021"
 license.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+repository.workspace = true
+description = "Derive macros (WclDeserialize, WclSchema) for WCL (Wil's Configuration Language)"
 
 [lib]
 proc-macro = true

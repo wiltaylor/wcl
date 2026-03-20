@@ -16,6 +16,9 @@ members = [
 
 [workspace.package]
 license = "MIT"
+homepage = "https://wcl.dev"
+documentation = "https://wcl.dev/docs"
+repository = "https://github.com/wiltaylor/wcl"
 
 [workspace.dependencies]
 # Internal crates
