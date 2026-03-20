@@ -123,4 +123,9 @@ set-version ver:
     # .NET: supports semver with - prerelease
     sed -i "s|<Version>[^<]*</Version>|<Version>$V</Version>|" bindings/dotnet/src/Wcl/Wcl.csproj
 
+    # tree-sitter-wcl: Cargo.toml (Rust crate), pyproject.toml (Python), tree-sitter.json
+    sed -i "0,/^version = .*/s/^version = .*/version = \"$V\"/" extras/tree-sitter-wcl/Cargo.toml
+    sed -i "s/^version = .*/version = \"$V\"/" extras/tree-sitter-wcl/pyproject.toml
+    sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$V\"/" extras/tree-sitter-wcl/tree-sitter.json
+
     echo "All packages set to $V"
