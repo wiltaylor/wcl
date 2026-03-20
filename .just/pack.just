@@ -65,7 +65,7 @@ vscode:
     cp *.vsix "{{pkg}}/vscode/"
     echo "VS Code extension packaged to {{pkg}}/vscode/"
 
-# Package tree-sitter-wcl npm tarball into .packages/tree-sitter-wcl/
+# Package tree-sitter-wcl into .packages/tree-sitter-wcl/ (npm + Rust crate)
 tree-sitter-wcl:
     #!/bin/bash
     set -euo pipefail
@@ -73,6 +73,8 @@ tree-sitter-wcl:
     cd extras/tree-sitter-wcl
     tree-sitter generate
     npm pack --pack-destination "{{pkg}}/tree-sitter-wcl"
+    cargo package --allow-dirty --no-verify
+    cp target/package/*.crate "{{pkg}}/tree-sitter-wcl/"
     echo "tree-sitter-wcl packaged to {{pkg}}/tree-sitter-wcl/"
 
 # Package everything. Pass a version to stamp all packages (default: 0.0.0-local)
