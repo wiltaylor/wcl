@@ -44,7 +44,7 @@ namespace Wcl.Native
         [MonoPInvokeCallback(typeof(WclCallbackFn))]
         private static IntPtr Trampoline(IntPtr ctx, IntPtr argsJsonPtr)
         {
-            var id = (ulong)ctx.ToInt64();
+            var id = unchecked((ulong)(long)ctx);
             if (!_callbacks.TryGetValue(id, out var fn))
             {
                 return AllocCString("ERR:callback not found");
