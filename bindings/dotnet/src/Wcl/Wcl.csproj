@@ -7,6 +7,7 @@
     <RootNamespace>Wcl</RootNamespace>
     <AssemblyName>Wcl</AssemblyName>
     <PackageId>WclLang</PackageId>
+    <Version>0.0.0-local</Version>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
 

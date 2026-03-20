@@ -2110,7 +2110,7 @@ dependencies = [
 
 [[package]]
 name = "wcl"
-version = "0.1.0"
+version = "0.0.0-local"
 dependencies = [
  "criterion",
  "indexmap",
@@ -2127,7 +2127,7 @@ dependencies = [
 
 [[package]]
 name = "wcl_cli"
-version = "0.1.0"
+version = "0.0.0-local"
 dependencies = [
  "assert_cmd",
  "clap",
@@ -2149,7 +2149,7 @@ dependencies = [
 
 [[package]]
 name = "wcl_core"
-version = "0.1.0"
+version = "0.0.0-local"
 dependencies = [
  "criterion",
  "miette",
@@ -2159,7 +2159,7 @@ dependencies = [
 
 [[package]]
 name = "wcl_derive"
-version = "0.1.0"
+version = "0.0.0-local"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2168,7 +2168,7 @@ dependencies = [
 
 [[package]]
 name = "wcl_eval"
-version = "0.1.0"
+version = "0.0.0-local"
 dependencies = [
  "base64",
  "criterion",
@@ -2182,7 +2182,7 @@ dependencies = [
 
 [[package]]
 name = "wcl_ffi"
-version = "0.1.0"
+version = "0.0.0-local"
 dependencies = [
  "cbindgen",
  "indexmap",
@@ -2192,7 +2192,7 @@ dependencies = [
 
 [[package]]
 name = "wcl_lsp"
-version = "0.1.0"
+version = "0.0.0-local"
 dependencies = [
  "dashmap 6.1.0",
  "indexmap",
@@ -2208,7 +2208,7 @@ dependencies = [
 
 [[package]]
 name = "wcl_python"
-version = "0.1.0"
+version = "0.0.0-local"
 dependencies = [
  "indexmap",
  "pyo3",
@@ -2217,7 +2217,7 @@ dependencies = [
 
 [[package]]
 name = "wcl_schema"
-version = "0.1.0"
+version = "0.0.0-local"
 dependencies = [
  "indexmap",
  "regex",
@@ -2228,7 +2228,7 @@ dependencies = [
 
 [[package]]
 name = "wcl_serde"
-version = "0.1.0"
+version = "0.0.0-local"
 dependencies = [
  "indexmap",
  "serde",
@@ -2240,7 +2240,7 @@ dependencies = [
 
 [[package]]
 name = "wcl_wasm"
-version = "0.1.0"
+version = "0.0.0-local"
 dependencies = [
  "indexmap",
  "js-sys",

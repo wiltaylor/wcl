@@ -65,11 +65,19 @@ vscode:
     cp *.vsix "{{pkg}}/vscode/"
     echo "VS Code extension packaged to {{pkg}}/vscode/"
 
-# Package everything into .packages/
-all: rust python wasm go dotnet vscode
+# Package everything (set version first, then package all)
+all ver="": (version ver) rust python wasm go dotnet vscode
     @echo "All packages created in {{pkg}}/"
 
 # Remove all packaged artifacts
 clean:
     rm -rf "{{pkg}}"
     @echo "Cleaned {{pkg}}/"
+
+[private]
+version ver:
+    #!/bin/bash
+    set -euo pipefail
+    if [[ -n "{{ver}}" ]]; then
+        just set-version "{{ver}}"
+    fi
