@@ -7,9 +7,8 @@ rust:
     #!/bin/bash
     set -euo pipefail
     mkdir -p "{{pkg}}/rust"
-    for crate in wcl_core wcl_derive wcl_serde wcl_eval wcl_schema wcl wcl_ffi wcl_lsp wcl_cli; do
-        cargo package -p "$crate" --allow-dirty --no-verify 2>&1 || true
-    done
+    cargo package --workspace --allow-dirty --no-verify \
+        --exclude wcl_python --exclude wcl_wasm
     cp target/package/*.crate "{{pkg}}/rust/"
     echo "Rust crates packaged to {{pkg}}/rust/"
 
