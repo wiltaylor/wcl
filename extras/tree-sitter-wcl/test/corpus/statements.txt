@@ -1,0 +1,93 @@
+================
+Let binding
+================
+
+let x = 42
+
+---
+
+(document
+  (let_binding (identifier) (expression (integer_literal))))
+
+================
+Import
+================
+
+import "utils.wcl"
+
+---
+
+(document
+  (import_declaration (string_literal (string_content))))
+
+================
+Export let
+================
+
+export let helper = 42
+
+---
+
+(document
+  (export_declaration (identifier) (expression (integer_literal))))
+
+================
+For loop
+================
+
+for item in items {
+  x = item
+}
+
+---
+
+(document
+  (for_loop (identifier) (expression (identifier))
+    (attribute (identifier) (expression (identifier)))))
+
+================
+If else
+================
+
+if enabled {
+  x = 1
+} else {
+  x = 2
+}
+
+---
+
+(document
+  (conditional (expression (identifier))
+    (attribute (identifier) (expression (integer_literal)))
+    (else_branch
+      (attribute (identifier) (expression (integer_literal))))))
+
+================
+Schema
+================
+
+schema "server" {
+  port: int
+  host: string @optional
+}
+
+---
+
+(document
+  (schema (string_literal (string_content))
+    (schema_field (identifier) (type_expression (builtin_type)))
+    (schema_field (identifier) (type_expression (builtin_type)) (decorator (identifier)))))
+
+================
+Declare statement
+================
+
+declare my_fn(input: string) -> string
+
+---
+
+(document
+  (declare_statement (identifier)
+    (parameter_list (parameter (identifier) (type_expression (builtin_type))))
+    (type_expression (builtin_type))))

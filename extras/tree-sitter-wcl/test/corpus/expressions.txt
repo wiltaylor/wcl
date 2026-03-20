@@ -1,0 +1,85 @@
+================
+Arithmetic
+================
+
+x = 1 + 2 * 3
+
+---
+
+(document
+  (attribute (identifier) (expression
+    (additive_expression
+      (integer_literal)
+      (multiplicative_expression
+        (integer_literal)
+        (integer_literal))))))
+
+================
+Comparison
+================
+
+big = x > 5
+
+---
+
+(document
+  (attribute (identifier) (expression
+    (comparison_expression
+      (identifier)
+      (integer_literal)))))
+
+================
+Ternary
+================
+
+val = x > 0 ? "pos" : "neg"
+
+---
+
+(document
+  (attribute (identifier) (expression
+    (ternary_expression
+      (comparison_expression (identifier) (integer_literal))
+      (expression (string_literal (string_content)))
+      (expression (string_literal (string_content)))))))
+
+================
+Function call
+================
+
+x = upper("hello")
+
+---
+
+(document
+  (attribute (identifier) (expression
+    (call_expression
+      (identifier)
+      (argument_list (expression (string_literal (string_content))))))))
+
+================
+Member access
+================
+
+x = config.port
+
+---
+
+(document
+  (attribute (identifier) (expression
+    (member_expression (identifier) (identifier)))))
+
+================
+Lambda
+================
+
+let double = x => x * 2
+
+---
+
+(document
+  (let_binding (identifier) (expression
+    (lambda_expression
+      (lambda_parameters (identifier))
+      (expression
+        (multiplicative_expression (identifier) (integer_literal)))))))
