@@ -1,3 +1,5 @@
+[![CI](https://github.com/wiltaylor/wcl/actions/workflows/ci.yml/badge.svg)](https://github.com/wiltaylor/wcl/actions/workflows/ci.yml)
+
 # WCL -- Wil's Configuration Language
 
 A statically-typed, block-structured configuration language with first-class support for composition, validation, and tooling. WCL draws syntactic inspiration from HCL and extends it with schemas, decorators, macros, data tables, a query engine, partial declarations, and a full Language Server Protocol implementation.
