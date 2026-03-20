@@ -1,0 +1,56 @@
+{
+  "name": "tree-sitter-wcl",
+  "version": "0.0.0-local",
+  "description": "Tree-sitter grammar for WCL (Wil's Configuration Language)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wiltaylor/wcl.git",
+    "directory": "extras/tree-sitter-wcl"
+  },
+  "homepage": "https://wcl.dev",
+  "main": "bindings/node",
+  "types": "bindings/node",
+  "keywords": [
+    "tree-sitter",
+    "parser",
+    "wcl",
+    "configuration"
+  ],
+  "files": [
+    "grammar.js",
+    "binding.gyp",
+    "prebuilds/**",
+    "bindings/node/*",
+    "queries/*",
+    "src/**"
+  ],
+  "dependencies": {
+    "node-addon-api": "^8.3.1",
+    "node-gyp-build": "^4.8.4"
+  },
+  "devDependencies": {
+    "tree-sitter-cli": "^0.26.0"
+  },
+  "peerDependencies": {
+    "tree-sitter": "^0.22.0"
+  },
+  "peerDependenciesMeta": {
+    "tree-sitter": {
+      "optional": true
+    }
+  },
+  "scripts": {
+    "generate": "tree-sitter generate",
+    "build": "tree-sitter generate && node-gyp build",
+    "test": "tree-sitter test",
+    "parse": "tree-sitter parse"
+  },
+  "tree-sitter": [
+    {
+      "scope": "source.wcl",
+      "file-types": ["wcl"],
+      "highlights": "queries/highlights.scm"
+    }
+  ]
+}

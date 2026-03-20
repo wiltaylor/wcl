@@ -1,0 +1,19 @@
+{
+  "grammars": [
+    {
+      "name": "wcl",
+      "camelCase": false,
+      "scope": "source.wcl",
+      "file-types": ["wcl"],
+      "highlights": "queries/highlights.scm",
+      "path": "."
+    }
+  ],
+  "metadata": {
+    "version": "0.0.0-local",
+    "license": "MIT",
+    "links": {
+      "repository": "https://github.com/wiltaylor/wcl"
+    }
+  }
+}

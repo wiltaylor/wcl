@@ -1,0 +1,77 @@
+================
+Simple block
+================
+
+server {
+  port = 8080
+}
+
+---
+
+(document
+  (block (identifier) (block_body
+    (attribute (identifier) (expression (integer_literal))))))
+
+================
+Block with ID
+================
+
+server web-prod {
+  port = 80
+}
+
+---
+
+(document
+  (block (identifier) (identifier_literal) (block_body
+    (attribute (identifier) (expression (integer_literal))))))
+
+================
+Block with labels
+================
+
+server "us-east" {
+  port = 80
+}
+
+---
+
+(document
+  (block (identifier) (string_literal (string_content)) (block_body
+    (attribute (identifier) (expression (integer_literal))))))
+
+================
+Nested blocks
+================
+
+server {
+  logging {
+    level = "info"
+  }
+}
+
+---
+
+(document
+  (block (identifier) (block_body
+    (block (identifier) (block_body
+      (attribute (identifier) (expression (string_literal (string_content)))))))))
+
+================
+Block with decorator
+================
+
+@deprecated("use new")
+server old-svc {
+  port = 80
+}
+
+---
+
+(document
+  (block
+    (decorator (identifier) (decorator_arguments (expression (string_literal (string_content)))))
+    (identifier)
+    (identifier_literal)
+    (block_body
+      (attribute (identifier) (expression (integer_literal))))))

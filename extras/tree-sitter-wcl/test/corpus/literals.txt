@@ -1,0 +1,86 @@
+================
+Integer literals
+================
+
+x = 42
+hex = 0xFF
+oct = 0o77
+bin = 0b1010
+
+---
+
+(document
+  (attribute (identifier) (expression (integer_literal)))
+  (attribute (identifier) (expression (integer_literal)))
+  (attribute (identifier) (expression (integer_literal)))
+  (attribute (identifier) (expression (integer_literal))))
+
+================
+Float literals
+================
+
+pi = 3.14
+sci = 1.5e10
+
+---
+
+(document
+  (attribute (identifier) (expression (float_literal)))
+  (attribute (identifier) (expression (float_literal))))
+
+================
+String literals
+================
+
+name = "hello"
+empty = ""
+
+---
+
+(document
+  (attribute (identifier) (expression (string_literal (string_content))))
+  (attribute (identifier) (expression (string_literal))))
+
+================
+Boolean and null
+================
+
+flag = true
+off = false
+nothing = null
+
+---
+
+(document
+  (attribute (identifier) (expression (boolean_literal)))
+  (attribute (identifier) (expression (boolean_literal)))
+  (attribute (identifier) (expression (null_literal))))
+
+================
+String interpolation
+================
+
+msg = "hello ${name}"
+
+---
+
+(document
+  (attribute (identifier) (expression
+    (string_literal
+      (string_content)
+      (interpolation (expression (identifier)))))))
+
+================
+List literal
+================
+
+tags = ["a", "b", "c"]
+
+---
+
+(document
+  (attribute (identifier) (expression
+    (list_literal
+      (expression (string_literal (string_content)))
+      (expression (string_literal (string_content)))
+      (expression (string_literal (string_content)))))))
