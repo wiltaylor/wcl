@@ -58,6 +58,8 @@ main > section[id].short-content {
 main > section[id] > .container,
 main > section[id] > .container.section-card {
   width: 100%;
+  margin-top: 100px;
+  margin-bottom: 100px;
 }
 
 a {
@@ -119,6 +121,31 @@ a:hover {
 
 .nav-links a:hover {
   color: var(--text);
+}
+
+/* Badges */
+.badge-coming-soon {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  background: #d4880f;
+  color: #000;
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 0.15rem 0.45rem;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+/* Alpha Banner */
+.alpha-banner {
+  background: #d4880f;
+  color: #000;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-align: center;
+  padding: 0.5rem 0;
 }
 
 /* Section Nav */
@@ -338,6 +365,7 @@ a:hover {
 }
 
 .language-card {
+  position: relative;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -388,6 +416,7 @@ a:hover {
 }
 
 .editor-card {
+  position: relative;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 8px;
