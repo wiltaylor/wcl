@@ -115,7 +115,7 @@ jobs:
           cache: false
       - uses: Swatinem/rust-cache@v2
       - run: just pack all
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: packages
           path: .packages/
