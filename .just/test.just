@@ -10,7 +10,7 @@ crate name:
 
 # Run Python binding tests
 python:
-    cd bindings/python && source .venv/bin/activate && maturin develop && pytest tests/ -v
+    cd bindings/python && uv run maturin develop && uv run pytest tests/ -v
 
 # Run WASM binding tests
 wasm:
