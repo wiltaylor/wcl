@@ -80,6 +80,7 @@
 (interpolation
   "${" @punctuation.special
   "}" @punctuation.special)
+(heredoc_literal) @string
 (boolean_literal) @boolean
 (null_literal) @constant.builtin
 
@@ -153,6 +154,19 @@
 
 ; Named arguments
 (named_argument
+  (identifier) @property)
+
+; Query expressions
+[
+  "query"
+  "has"
+  "import_table"
+  "import_raw"
+] @function.builtin
+
+(selector
+  (identifier) @type)
+(filter
   (identifier) @property)
 
 ; Target types

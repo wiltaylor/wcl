@@ -1,0 +1,334 @@
+================
+Map literal
+================
+
+config = { host = "localhost", port = 8080 }
+
+---
+
+(document
+  (attribute (identifier) (expression
+    (map_literal
+      (map_entry (identifier) (expression (string_literal (string_content))))
+      (map_entry (identifier) (expression (integer_literal)))))))
+
+================
+Validation block
+================
+
+validation "port_range" {
+  let p = port
+  check = p > 0 && p < 65536
+  message = "port out of range"
+}
+
+---
+
+(document
+  (validation (string_literal (string_content))
+    (let_binding (identifier) (expression (identifier)))
+    (expression
+      (and_expression
+        (comparison_expression (identifier) (integer_literal))
+        (comparison_expression (identifier) (integer_literal))))
+    (expression (string_literal (string_content)))))
+
+================
+Table
+================
+
+table "endpoints" {
+  name: string
+  port: int
+  | "api"  | 8080 |
+  | "web"  | 80   |
+}
+
+---
+
+(document
+  (table (string_literal (string_content))
+    (column_declaration (identifier) (type_expression (builtin_type)))
+    (column_declaration (identifier) (type_expression (builtin_type)))
+    (table_row (expression (string_literal (string_content))) (expression (integer_literal)))
+    (table_row (expression (string_literal (string_content))) (expression (integer_literal)))))
+
+================
+Function macro
+================
+
+macro server_block(name, port) {
+  server web-prod {
+    port = port
+  }
+}
+
+---
+
+(document
+  (macro_definition
+    (function_macro
+      (identifier)
+      (parameter_list
+        (parameter (identifier))
+        (parameter (identifier)))
+      (block (identifier) (identifier_literal) (block_body
+        (attribute (identifier) (expression (identifier))))))))
+
+================
+For loop with index
+================
+
+for item, idx in items {
+  x = idx
+}
+
+---
+
+(document
+  (for_loop (identifier) (identifier) (expression (identifier))
+    (attribute (identifier) (expression (identifier)))))
+
+================
+Decorator schema
+================
+
+decorator_schema "monitor" {
+  target = [block, attribute]
+  interval: int
+}
+
+---
+
+(document
+  (decorator_schema (string_literal (string_content))
+    (decorator_schema_body
+      (target_type)
+      (target_type)
+      (schema_field (identifier) (type_expression (builtin_type))))))
+
+================
+Ref expression
+================
+
+db = ref(main-db)
+
+---
+
+(document
+  (attribute (identifier) (expression
+    (ref_expression (identifier_literal)))))
+
+================
+Import table expression
+================
+
+data = import_table("data.csv", ",")
+
+---
+
+(document
+  (attribute (identifier) (expression
+    (import_table_expression
+      (string_literal (string_content))
+      (string_literal (string_content))))))
+
+================
+Import raw expression
+================
+
+template = import_raw("template.txt")
+
+---
+
+(document
+  (attribute (identifier) (expression
+    (import_raw_expression
+      (string_literal (string_content))))))
+
+================
+Lambda with block expression
+================
+
+let compute = x => {
+  let doubled = x * 2
+  doubled + 1
+}
+
+---
+
+(document
+  (let_binding (identifier) (expression
+    (lambda_expression
+      (lambda_parameters (identifier))
+      (block_expression
+        (let_binding (identifier) (expression
+          (multiplicative_expression (identifier) (integer_literal))))
+        (expression
+          (additive_expression (identifier) (integer_literal))))))))
+
+================
+Index expression
+================
+
+x = items[0]
+
+---
+
+(document
+  (attribute (identifier) (expression
+    (index_expression (identifier) (expression (integer_literal))))))
+
+================
+Chained member access
+================
+
+x = config.server.port
+
+---
+
+(document
+  (attribute (identifier) (expression
+    (member_expression
+      (member_expression (identifier) (identifier))
+      (identifier)))))
+
+================
+Union type
+================
+
+schema "config" {
+  value: union(string, int)
+}
+
+---
+
+(document
+  (schema (string_literal (string_content))
+    (schema_field (identifier)
+      (type_expression (union_type
+        (type_expression (builtin_type))
+        (type_expression (builtin_type)))))))
+
+================
+List type
+================
+
+schema "config" {
+  tags: list(string)
+}
+
+---
+
+(document
+  (schema (string_literal (string_content))
+    (schema_field (identifier)
+      (type_expression (list_type
+        (type_expression (builtin_type)))))))
+
+================
+Library import
+================
+
+import <mylib.wcl>
+
+---
+
+(document
+  (import_declaration (library_import)))
+
+================
+Unary negation
+================
+
+x = -1
+y = !true
+
+---
+
+(document
+  (attribute (identifier) (expression
+    (unary_expression (integer_literal))))
+  (attribute (identifier) (expression
+    (unary_expression (boolean_literal)))))
+
+================
+Boolean operators
+================
+
+x = a && b || c
+
+---
+
+(document
+  (attribute (identifier) (expression
+    (or_expression
+      (and_expression (identifier) (identifier))
+      (identifier)))))
+
+================
+Macro call
+================
+
+make_server("web", 8080)
+
+---
+
+(document
+  (macro_call (identifier)
+    (argument_list
+      (expression (string_literal (string_content)))
+      (expression (integer_literal)))))
+
+================
+Partial block
+================
+
+partial server web-prod {
+  port = 80
+}
+
+---
+
+(document
+  (block (identifier) (identifier_literal) (block_body
+    (attribute (identifier) (expression (integer_literal))))))
+
+================
+Multiple decorators
+================
+
+@deprecated("old")
+@doc("A server block")
+server old-svc {
+  port = 80
+}
+
+---
+
+(document
+  (block
+    (decorator (identifier) (decorator_arguments (expression (string_literal (string_content)))))
+    (decorator (identifier) (decorator_arguments (expression (string_literal (string_content)))))
+    (identifier)
+    (identifier_literal)
+    (block_body
+      (attribute (identifier) (expression (integer_literal))))))
+
+================
+Decorator with named args
+================
+
+@validate(min = 1, max = 100)
+port = 8080
+
+---
+
+(document
+  (attribute
+    (decorator (identifier)
+      (decorator_arguments
+        (named_argument (identifier) (expression (integer_literal)))
+        (named_argument (identifier) (expression (integer_literal)))))
+    (identifier)
+    (expression (integer_literal))))
