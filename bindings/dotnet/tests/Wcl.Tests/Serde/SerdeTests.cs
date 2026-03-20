@@ -78,7 +78,7 @@ namespace Wcl.Tests.Serde
         [Fact]
         public void SerializeNull()
         {
-            Assert.Equal("null", WclSerializer.Serialize(null));
+            Assert.Equal("null", WclSerializer.Serialize(null!));
         }
     }
 }
