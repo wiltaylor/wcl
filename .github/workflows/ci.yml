@@ -8,6 +8,7 @@ on:
 
 env:
   RUST_TOOLCHAIN: "1.92.0"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   check:
@@ -90,6 +91,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: 'stable'
+          cache-dependency-path: bindings/go/go.sum
       - uses: Swatinem/rust-cache@v2
       - run: just test go
 
