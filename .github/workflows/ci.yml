@@ -95,16 +95,28 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: just test go
 
-  build:
-    name: Build
+  pack:
+    name: Package
     runs-on: ubuntu-latest
-    needs: [check, test-rust]
+    needs: [check, test-rust, test-python, test-wasm, test-dotnet, test-go]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
       - uses: extractions/setup-just@v2
+      - uses: astral-sh/setup-uv@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+          cache-dependency-path: bindings/go/go.sum
       - uses: Swatinem/rust-cache@v2
-      - run: just build rust-release
-      - run: just build ffi-native
+      - run: cargo install wasm-pack
+      - run: just pack all
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages
+          path: .packages/
