@@ -87,8 +87,21 @@ set-version ver:
         sed -i "s|$crate = { path = \"crates/$crate\", version = \"[^\"]*\" }|$crate = { path = \"crates/$crate\", version = \"$V\" }|" Cargo.toml
     done
 
-    # Python: PEP 440 version (replace - with . for pre-release)
-    PY_V=$(echo "$V" | sed 's/-\(.*\)/.\1/')
+    # Python: convert semver prerelease to PEP 440
+    # 0.0.0-local → 0.0.0.dev0, 0.0.0-ci+sha → 0.0.0.dev0+sha, 1.0.0-rc.1 → 1.0.0rc1, 1.0.0 → 1.0.0
+    PY_V="$V"
+    if [[ "$V" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-(.+)$ ]]; then
+        BASE="${BASH_REMATCH[1]}"
+        PRE="${BASH_REMATCH[2]}"
+        case "$PRE" in
+            local)      PY_V="${BASE}.dev0" ;;
+            ci+*)       PY_V="${BASE}.dev0+${PRE#ci+}" ;;
+            alpha*|a*)  PY_V="${BASE}a${PRE//[^0-9]/}" ;;
+            beta*|b*)   PY_V="${BASE}b${PRE//[^0-9]/}" ;;
+            rc*)        PY_V="${BASE}rc${PRE//[^0-9]/}" ;;
+            *)          PY_V="${BASE}.dev0" ;;
+        esac
+    fi
     sed -i "s/^version = .*/version = \"$PY_V\"/" bindings/python/pyproject.toml
 
     # npm (WASM + VS Code): semver with - prerelease
