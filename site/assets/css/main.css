@@ -143,12 +143,12 @@ a:hover {
 .badge-coming-soon {
   position: absolute;
   top: 12px;
-  right: -32px;
+  right: -40px;
   background: #d4880f;
   color: #000;
   font-size: 0.6rem;
   font-weight: 700;
-  padding: 0.2rem 2.5rem;
+  padding: 0.2rem 2.5rem 0.2rem 4.5rem;
   text-transform: uppercase;
   letter-spacing: 0.03em;
   transform: rotate(45deg);
