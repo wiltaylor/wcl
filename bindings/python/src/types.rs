@@ -232,13 +232,12 @@ impl PyLibraryBuilder {
         return_type: Option<String>,
         doc: Option<String>,
     ) {
-        self.inner
-            .add_function_stub(wcl::library::FunctionStub {
-                name: name.to_string(),
-                params,
-                return_type,
-                doc,
-            });
+        self.inner.add_function_stub(wcl::library::FunctionStub {
+            name: name.to_string(),
+            params,
+            return_type,
+            doc,
+        });
     }
 
     /// Build the library content as a WCL string.

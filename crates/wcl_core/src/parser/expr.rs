@@ -108,10 +108,8 @@ impl Parser {
                         let span = lhs.span().merge(ident.span);
                         lhs = Expr::MemberAccess(Box::new(lhs), ident, span);
                     } else {
-                        self.diagnostics.error(
-                            "expected identifier after '.'",
-                            self.current_span(),
-                        );
+                        self.diagnostics
+                            .error("expected identifier after '.'", self.current_span());
                         break;
                     }
                 }
@@ -181,12 +179,8 @@ impl Parser {
                     _ => self.parse_ident_or_lambda(),
                 }
             }
-            TokenKind::Query => {
-                self.parse_query_expr()
-            }
-            TokenKind::Ref => {
-                self.parse_ref_expr()
-            }
+            TokenKind::Query => self.parse_query_expr(),
+            TokenKind::Ref => self.parse_ref_expr(),
             TokenKind::SelfKw => {
                 let span = self.current_span();
                 self.advance();
@@ -195,9 +189,7 @@ impl Parser {
                     span,
                 }))
             }
-            TokenKind::LBracket => {
-                self.parse_list_literal()
-            }
+            TokenKind::LBracket => self.parse_list_literal(),
             TokenKind::LBrace => {
                 // Could be map literal or block expression.
                 // Heuristic: if we see `{ ident =` or `{ string =`, it's a map.
@@ -272,8 +264,7 @@ impl Parser {
                 TokenKind::Ident(_) => {
                     i += 1;
                     // Skip newlines
-                    while i < self.tokens.len()
-                        && matches!(self.tokens[i].kind, TokenKind::Newline)
+                    while i < self.tokens.len() && matches!(self.tokens[i].kind, TokenKind::Newline)
                     {
                         i += 1;
                     }
@@ -302,8 +293,7 @@ impl Parser {
                 TokenKind::RParen => {
                     i += 1;
                     // Skip newlines after )
-                    while i < self.tokens.len()
-                        && matches!(self.tokens[i].kind, TokenKind::Newline)
+                    while i < self.tokens.len() && matches!(self.tokens[i].kind, TokenKind::Newline)
                     {
                         i += 1;
                     }
@@ -396,9 +386,7 @@ impl Parser {
                 TokenKind::Ident(_) | TokenKind::StringLit(_)
             ) {
                 let mut j = i + 1;
-                while j < self.tokens.len()
-                    && matches!(self.tokens[j].kind, TokenKind::Newline)
-                {
+                while j < self.tokens.len() && matches!(self.tokens[j].kind, TokenKind::Newline) {
                     j += 1;
                 }
                 if j < self.tokens.len() && matches!(self.tokens[j].kind, TokenKind::Equals) {
@@ -652,7 +640,10 @@ impl Parser {
                             Some(QuerySelector::TableLabel(s))
                         } else {
                             // table.something — treat as path
-                            let table_ident = Ident { name: "table".into(), span };
+                            let table_ident = Ident {
+                                name: "table".into(),
+                                span,
+                            };
                             let mut segments = vec![PathSegment::Ident(table_ident)];
                             if let TokenKind::Ident(ref name) = self.peek_kind().clone() {
                                 let name = name.clone();
@@ -681,7 +672,10 @@ impl Parser {
                     }
                     _ => {
                         // bare `table` — treat as Kind
-                        let ident = Ident { name: "table".into(), span };
+                        let ident = Ident {
+                            name: "table".into(),
+                            span,
+                        };
                         Some(QuerySelector::Kind(ident))
                     }
                 }
@@ -918,9 +912,7 @@ impl Parser {
                 let name = name.clone();
                 // Look ahead for `=`
                 let mut j = self.pos + 1;
-                while j < self.tokens.len()
-                    && matches!(self.tokens[j].kind, TokenKind::Newline)
-                {
+                while j < self.tokens.len() && matches!(self.tokens[j].kind, TokenKind::Newline) {
                     j += 1;
                 }
                 if j < self.tokens.len() && matches!(self.tokens[j].kind, TokenKind::Equals) {

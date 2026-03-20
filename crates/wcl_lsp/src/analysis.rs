@@ -1,9 +1,8 @@
 use wcl_core::diagnostic::DiagnosticBag;
 use wcl_core::span::SourceMap;
 use wcl_eval::{
-    ControlFlowExpander, Evaluator, ImportResolver, MacroExpander, MacroRegistry,
-    PartialMerger, RealFileSystem, ScopeEntry, ScopeEntryKind, ScopeKind,
-    builtin_signatures,
+    builtin_signatures, ControlFlowExpander, Evaluator, ImportResolver, MacroExpander,
+    MacroRegistry, PartialMerger, RealFileSystem, ScopeEntry, ScopeEntryKind, ScopeKind,
 };
 use wcl_schema::{DecoratorSchemaRegistry, IdRegistry, SchemaRegistry};
 
@@ -61,11 +60,7 @@ pub fn analyze(source: &str, options: &wcl::ParseOptions) -> AnalysisResult {
             options.max_import_depth,
             options.allow_imports,
         );
-        let import_diags = resolver.resolve(
-            &mut doc,
-            &options.root_dir.join("<input>"),
-            0,
-        );
+        let import_diags = resolver.resolve(&mut doc, &options.root_dir.join("<input>"), 0);
         all_diagnostics.extend(import_diags.into_diagnostics());
     }
 
@@ -75,11 +70,9 @@ pub fn analyze(source: &str, options: &wcl::ParseOptions) -> AnalysisResult {
     all_diagnostics.extend(expander.into_diagnostics().into_diagnostics());
 
     // Control flow expansion
-    let mut cf_expander =
-        ControlFlowExpander::new(options.max_loop_depth, options.max_iterations);
-    let pre_eval = std::cell::RefCell::new(Evaluator::with_functions(
-        &options.functions, None, None,
-    ));
+    let mut cf_expander = ControlFlowExpander::new(options.max_loop_depth, options.max_iterations);
+    let pre_eval =
+        std::cell::RefCell::new(Evaluator::with_functions(&options.functions, None, None));
     let pre_scope = pre_eval
         .borrow_mut()
         .scopes_mut()
@@ -170,10 +163,14 @@ pub fn analyze(source: &str, options: &wcl::ParseOptions) -> AnalysisResult {
         if let wcl_core::ast::DocItem::FunctionDecl(decl) = item {
             function_signatures.push(wcl_eval::FunctionSignature {
                 name: decl.name.name.clone(),
-                params: decl.params.iter().map(|p| {
-                    format!("{}: {}", p.name.name, type_expr_to_string(&p.type_expr))
-                }).collect(),
-                return_type: decl.return_type.as_ref()
+                params: decl
+                    .params
+                    .iter()
+                    .map(|p| format!("{}: {}", p.name.name, type_expr_to_string(&p.type_expr)))
+                    .collect(),
+                return_type: decl
+                    .return_type
+                    .as_ref()
                     .map(type_expr_to_string)
                     .unwrap_or_else(|| "any".into()),
                 doc: decl.doc.clone().unwrap_or_default(),
@@ -205,7 +202,11 @@ fn type_expr_to_string(te: &wcl_core::ast::TypeExpr) -> String {
         wcl_core::ast::TypeExpr::Identifier(_) => "identifier".into(),
         wcl_core::ast::TypeExpr::Any(_) => "any".into(),
         wcl_core::ast::TypeExpr::List(inner, _) => format!("list({})", type_expr_to_string(inner)),
-        wcl_core::ast::TypeExpr::Map(k, v, _) => format!("map({}, {})", type_expr_to_string(k), type_expr_to_string(v)),
+        wcl_core::ast::TypeExpr::Map(k, v, _) => format!(
+            "map({}, {})",
+            type_expr_to_string(k),
+            type_expr_to_string(v)
+        ),
         wcl_core::ast::TypeExpr::Set(inner, _) => format!("set({})", type_expr_to_string(inner)),
         wcl_core::ast::TypeExpr::Ref(_, _) => "ref".into(),
         wcl_core::ast::TypeExpr::Union(types, _) => {
@@ -224,8 +225,11 @@ mod tests {
         let result = analyze("config { port = 8080 }", &wcl::ParseOptions::default());
         assert!(!result.ast.items.is_empty());
         assert!(!result.tokens.is_empty());
-        assert!(result.diagnostics.iter().all(|d| !d.is_error()),
-            "unexpected errors: {:?}", result.diagnostics);
+        assert!(
+            result.diagnostics.iter().all(|d| !d.is_error()),
+            "unexpected errors: {:?}",
+            result.diagnostics
+        );
     }
 
     #[test]
@@ -236,7 +240,10 @@ mod tests {
 
     #[test]
     fn test_analyze_retains_scopes() {
-        let result = analyze("let x = 42\nconfig { port = x }", &wcl::ParseOptions::default());
+        let result = analyze(
+            "let x = 42\nconfig { port = x }",
+            &wcl::ParseOptions::default(),
+        );
         // Scopes should have at least one entry
         assert!(result.scopes.all_entries().count() > 0);
     }

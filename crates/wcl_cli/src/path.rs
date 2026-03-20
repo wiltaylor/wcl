@@ -23,13 +23,9 @@ pub enum Segment {
 #[derive(Debug)]
 pub enum Resolved<'a> {
     /// Found an attribute — includes the whole attribute span and just the value span
-    Attribute {
-        attr: &'a Attribute,
-    },
+    Attribute { attr: &'a Attribute },
     /// Found a block
-    Block {
-        block: &'a Block,
-    },
+    Block { block: &'a Block },
 }
 
 /// Parse a CLI path string like `service#svc-api.port` into segments.

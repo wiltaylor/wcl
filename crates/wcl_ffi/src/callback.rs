@@ -32,8 +32,7 @@ impl CallbackWrapper {
         let json_args: Vec<serde_json::Value> = args.iter().map(value_to_json).collect();
         let args_str =
             serde_json::to_string(&json_args).map_err(|e| format!("serialize args: {}", e))?;
-        let c_args =
-            CString::new(args_str).map_err(|e| format!("CString error: {}", e))?;
+        let c_args = CString::new(args_str).map_err(|e| format!("CString error: {}", e))?;
 
         let result_ptr = unsafe { (self.callback)(self.ctx, c_args.as_ptr()) };
         if result_ptr.is_null() {

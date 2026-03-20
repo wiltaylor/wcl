@@ -705,11 +705,17 @@ mod tests {
     }
 
     fn make_ident(name: &str) -> Ident {
-        Ident { name: name.to_string(), span: dummy_span() }
+        Ident {
+            name: name.to_string(),
+            span: dummy_span(),
+        }
     }
 
     fn make_string_lit(s: &str) -> StringLit {
-        StringLit { parts: vec![StringPart::Literal(s.to_string())], span: dummy_span() }
+        StringLit {
+            parts: vec![StringPart::Literal(s.to_string())],
+            span: dummy_span(),
+        }
     }
 
     #[test]
@@ -732,15 +738,13 @@ mod tests {
                     span: dummy_span(),
                 },
             ],
-            body: MacroBody::Function(vec![
-                BodyItem::Attribute(Attribute {
-                    decorators: vec![],
-                    name: make_ident("value"),
-                    value: Expr::Ident(make_ident("x")),
-                    trivia: dummy_trivia(),
-                    span: dummy_span(),
-                }),
-            ]),
+            body: MacroBody::Function(vec![BodyItem::Attribute(Attribute {
+                decorators: vec![],
+                name: make_ident("value"),
+                value: Expr::Ident(make_ident("x")),
+                trivia: dummy_trivia(),
+                span: dummy_span(),
+            })]),
             trivia: dummy_trivia(),
             span: dummy_span(),
         };
@@ -750,7 +754,10 @@ mod tests {
             span: dummy_span(),
         };
         let result = format_document(&doc);
-        assert_eq!(result, "macro my_macro(x: int, y = 42) {\n    value = x\n}\n\n");
+        assert_eq!(
+            result,
+            "macro my_macro(x: int, y = 42) {\n    value = x\n}\n\n"
+        );
     }
 
     #[test]
@@ -779,16 +786,14 @@ mod tests {
             decorators: vec![],
             name: make_string_lit("my_decorator"),
             target: vec![DecoratorTarget::Block, DecoratorTarget::Attribute],
-            fields: vec![
-                SchemaField {
-                    decorators_before: vec![],
-                    name: make_ident("level"),
-                    type_expr: TypeExpr::String(dummy_span()),
-                    decorators_after: vec![],
-                    trivia: dummy_trivia(),
-                    span: dummy_span(),
-                },
-            ],
+            fields: vec![SchemaField {
+                decorators_before: vec![],
+                name: make_ident("level"),
+                type_expr: TypeExpr::String(dummy_span()),
+                decorators_after: vec![],
+                trivia: dummy_trivia(),
+                span: dummy_span(),
+            }],
             trivia: dummy_trivia(),
             span: dummy_span(),
         };

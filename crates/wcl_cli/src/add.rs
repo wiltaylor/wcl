@@ -49,12 +49,9 @@ pub fn run(file: &Path, block_spec: &str, _file_auto: bool) -> Result<(), String
         ));
     }
 
-    std::fs::write(file, &result)
-        .map_err(|e| format!("cannot write {}: {}", file.display(), e))?;
+    std::fs::write(file, &result).map_err(|e| format!("cannot write {}: {}", file.display(), e))?;
 
-    let id_display = block_id
-        .map(|id| format!(" {}", id))
-        .unwrap_or_default();
+    let id_display = block_id.map(|id| format!(" {}", id)).unwrap_or_default();
     println!("added {}{} to {}", block_kind, id_display, file.display());
     Ok(())
 }

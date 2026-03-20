@@ -7,9 +7,13 @@ fn normalize_path(path: &Path) -> PathBuf {
     let mut components = Vec::new();
     for component in path.components() {
         match component {
-            Component::ParentDir => { components.pop(); }
+            Component::ParentDir => {
+                components.pop();
+            }
             Component::CurDir => {}
-            other => { components.push(other); }
+            other => {
+                components.push(other);
+            }
         }
     }
     components.iter().collect()

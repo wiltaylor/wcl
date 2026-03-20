@@ -1,7 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use crate::value::{ScopeId, Value};
 use indexmap::IndexMap;
+use std::collections::{HashMap, HashSet};
 use wcl_core::Span;
-use crate::value::{Value, ScopeId};
 
 /// Entry in a scope
 #[derive(Debug, Clone)]
@@ -155,9 +155,9 @@ impl ScopeArena {
 
     /// Iterate over all scopes and their entries.
     pub fn all_entries(&self) -> impl Iterator<Item = (ScopeId, &ScopeEntry)> {
-        self.scopes.iter().flat_map(|scope| {
-            scope.entries.values().map(move |entry| (scope.id, entry))
-        })
+        self.scopes
+            .iter()
+            .flat_map(|scope| scope.entries.values().map(move |entry| (scope.id, entry)))
     }
 
     /// Topological sort of entries in a scope based on dependencies.
@@ -212,10 +212,7 @@ impl ScopeArena {
 
         if result.len() != names.len() {
             // Cycle detected — collect the culprits
-            let in_cycle: Vec<String> = names
-                .into_iter()
-                .filter(|n| in_degree[n] > 0)
-                .collect();
+            let in_cycle: Vec<String> = names.into_iter().filter(|n| in_degree[n] > 0).collect();
             Err(in_cycle)
         } else {
             Ok(result)
@@ -297,10 +294,7 @@ mod tests {
         let s = arena.create_scope(ScopeKind::Module, None);
         arena.add_entry(s, make_entry("x", ScopeEntryKind::LetBinding, &[]));
         arena.add_entry(s, make_entry("x", ScopeEntryKind::Attribute, &[]));
-        assert_eq!(
-            arena.get(s).entries["x"].kind,
-            ScopeEntryKind::Attribute
-        );
+        assert_eq!(arena.get(s).entries["x"].kind, ScopeEntryKind::Attribute);
     }
 
     // ── resolve ───────────────────────────────────────────────────────────────
@@ -324,7 +318,10 @@ mod tests {
         let parent = arena.create_scope(ScopeKind::Module, None);
         let child = arena.create_scope(ScopeKind::Block, Some(parent));
 
-        arena.add_entry(parent, make_entry("base_port", ScopeEntryKind::LetBinding, &[]));
+        arena.add_entry(
+            parent,
+            make_entry("base_port", ScopeEntryKind::LetBinding, &[]),
+        );
 
         let result = arena.resolve(child, "base_port");
         assert!(result.is_some());
@@ -447,7 +444,9 @@ mod tests {
         arena.add_entry(s, make_entry("a", ScopeEntryKind::Attribute, &["external"]));
         arena.add_entry(s, make_entry("b", ScopeEntryKind::Attribute, &["a"]));
 
-        let order = arena.topo_sort(s).expect("out-of-scope dep should be ignored");
+        let order = arena
+            .topo_sort(s)
+            .expect("out-of-scope dep should be ignored");
         assert_eq!(order.len(), 2);
         let pos = |name: &str| order.iter().position(|n| n == name).unwrap();
         assert!(pos("a") < pos("b"));

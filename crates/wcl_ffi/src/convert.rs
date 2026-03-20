@@ -11,9 +11,7 @@ pub fn value_to_json(value: &Value) -> serde_json::Value {
         Value::Bool(b) => json!(b),
         Value::Null => serde_json::Value::Null,
         Value::Identifier(s) => json!(s),
-        Value::List(items) => {
-            serde_json::Value::Array(items.iter().map(value_to_json).collect())
-        }
+        Value::List(items) => serde_json::Value::Array(items.iter().map(value_to_json).collect()),
         Value::Map(map) => {
             let obj: serde_json::Map<String, serde_json::Value> = map
                 .iter()
@@ -51,8 +49,7 @@ pub fn block_ref_to_json(br: &wcl::BlockRef) -> serde_json::Value {
         obj.insert("attributes".to_string(), serde_json::Value::Object(attrs));
     }
     if !br.children.is_empty() {
-        let children: Vec<serde_json::Value> =
-            br.children.iter().map(block_ref_to_json).collect();
+        let children: Vec<serde_json::Value> = br.children.iter().map(block_ref_to_json).collect();
         obj.insert("children".to_string(), serde_json::Value::Array(children));
     }
     if !br.decorators.is_empty() {
@@ -92,8 +89,7 @@ pub fn json_to_value(json: &serde_json::Value) -> Result<Value, String> {
         }
         serde_json::Value::String(s) => Ok(Value::String(s.clone())),
         serde_json::Value::Array(items) => {
-            let values: Result<Vec<Value>, String> =
-                items.iter().map(json_to_value).collect();
+            let values: Result<Vec<Value>, String> = items.iter().map(json_to_value).collect();
             Ok(Value::List(values?))
         }
         serde_json::Value::Object(map) => {

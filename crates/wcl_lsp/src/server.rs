@@ -157,9 +157,7 @@ impl LanguageServer for WclLanguageServer {
             .log_message(MessageType::INFO, format!("Document closed: {}", uri))
             .await;
         self.state.documents.remove(&uri);
-        self.client
-            .publish_diagnostics(uri, Vec::new(), None)
-            .await;
+        self.client.publish_diagnostics(uri, Vec::new(), None).await;
     }
 
     async fn did_save(&self, params: DidSaveTextDocumentParams) {
@@ -285,11 +283,8 @@ impl LanguageServer for WclLanguageServer {
         };
 
         let result = doc.analysis.as_ref().map(|a| {
-            let tokens = crate::semantic_tokens::compute_semantic_tokens(
-                &a.tokens,
-                &doc.rope,
-                Some(&a.ast),
-            );
+            let tokens =
+                crate::semantic_tokens::compute_semantic_tokens(&a.tokens, &doc.rope, Some(&a.ast));
             SemanticTokensResult::Tokens(SemanticTokens {
                 result_id: None,
                 data: tokens,

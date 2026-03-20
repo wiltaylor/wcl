@@ -65,27 +65,28 @@ pub fn run(file: &Path, to: Option<&str>, from: Option<&str>) -> Result<(), Stri
             let json = serde_json::Value::Object(json_map);
             let toml_val: toml::Value = serde_json::from_value(json.clone())
                 .map_err(|e| format!("TOML conversion error: {}", e))?;
-            let toml_str = toml::to_string_pretty(&toml_val)
-                .map_err(|e| format!("TOML error: {}", e))?;
+            let toml_str =
+                toml::to_string_pretty(&toml_val).map_err(|e| format!("TOML error: {}", e))?;
             print!("{}", toml_str);
             Ok(())
         }
         Some(fmt) => Err(format!("output format '{}' not yet supported", fmt)),
         None => match from {
             Some("json") => {
-                let json: serde_json::Value = serde_json::from_str(&source)
-                    .map_err(|e| format!("invalid JSON: {}", e))?;
+                let json: serde_json::Value =
+                    serde_json::from_str(&source).map_err(|e| format!("invalid JSON: {}", e))?;
                 print_json_as_wcl(&json, 0);
                 Ok(())
             }
             Some("yaml") | Some("yml") => {
-                let yaml: serde_json::Value = serde_yaml::from_str(&source)
-                    .map_err(|e| format!("invalid YAML: {}", e))?;
+                let yaml: serde_json::Value =
+                    serde_yaml::from_str(&source).map_err(|e| format!("invalid YAML: {}", e))?;
                 print_json_as_wcl(&yaml, 0);
                 Ok(())
             }
             Some("toml") => {
-                let toml_val: toml::Value = source.parse::<toml::Value>()
+                let toml_val: toml::Value = source
+                    .parse::<toml::Value>()
                     .map_err(|e| format!("invalid TOML: {}", e))?;
                 let json: serde_json::Value = serde_json::to_value(&toml_val)
                     .map_err(|e| format!("conversion error: {}", e))?;
@@ -110,8 +111,10 @@ fn value_to_json(val: &wcl::Value) -> serde_json::Value {
             serde_json::Value::Array(items.iter().map(value_to_json).collect())
         }
         wcl::Value::Map(m) => {
-            let obj: serde_json::Map<String, serde_json::Value> =
-                m.iter().map(|(k, v)| (k.clone(), value_to_json(v))).collect();
+            let obj: serde_json::Map<String, serde_json::Value> = m
+                .iter()
+                .map(|(k, v)| (k.clone(), value_to_json(v)))
+                .collect();
             serde_json::Value::Object(obj)
         }
         _ => serde_json::Value::String(format!("{}", val)),

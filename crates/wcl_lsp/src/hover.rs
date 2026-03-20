@@ -1,5 +1,5 @@
-use tower_lsp::lsp_types::{Hover, HoverContents, MarkupContent, MarkupKind};
 use ropey::Rope;
+use tower_lsp::lsp_types::{Hover, HoverContents, MarkupContent, MarkupKind};
 use wcl_core::ast::*;
 use wcl_core::trivia::CommentStyle;
 
@@ -64,11 +64,7 @@ fn hover_ident_ref(analysis: &AnalysisResult, ident: &Ident, rope: &Rope) -> Opt
     })
 }
 
-fn hover_attribute(
-    analysis: &AnalysisResult,
-    attr: &Attribute,
-    rope: &Rope,
-) -> Option<Hover> {
+fn hover_attribute(analysis: &AnalysisResult, attr: &Attribute, rope: &Rope) -> Option<Hover> {
     // Look up evaluated value
     let value_str = analysis
         .values
@@ -114,11 +110,7 @@ fn hover_block(block: &Block, rope: &Rope) -> Option<Hover> {
     })
 }
 
-fn hover_let_binding(
-    analysis: &AnalysisResult,
-    lb: &LetBinding,
-    rope: &Rope,
-) -> Option<Hover> {
+fn hover_let_binding(analysis: &AnalysisResult, lb: &LetBinding, rope: &Rope) -> Option<Hover> {
     let value_str = analysis
         .scopes
         .all_entries()
@@ -201,7 +193,12 @@ fn hover_macro_def(md: &MacroDef, rope: &Rope) -> Option<Hover> {
         MacroKind::Function => "macro",
         MacroKind::Attribute => "macro @",
     };
-    let content = format!("```wcl\n{}{}({})\n```", kind, md.name.name, params.join(", "));
+    let content = format!(
+        "```wcl\n{}{}({})\n```",
+        kind,
+        md.name.name,
+        params.join(", ")
+    );
     Some(Hover {
         contents: HoverContents::Markup(MarkupContent {
             kind: MarkupKind::Markdown,
@@ -283,11 +280,7 @@ fn type_expr_str(te: &TypeExpr) -> String {
     }
 }
 
-fn hover_macro_call(
-    analysis: &AnalysisResult,
-    mc: &MacroCall,
-    rope: &Rope,
-) -> Option<Hover> {
+fn hover_macro_call(analysis: &AnalysisResult, mc: &MacroCall, rope: &Rope) -> Option<Hover> {
     // Find the macro definition to show its signature
     for item in &analysis.ast.items {
         if let DocItem::Body(BodyItem::MacroDef(md)) = item {
@@ -437,9 +430,18 @@ mod tests {
 
     #[test]
     fn test_type_expr_str() {
-        assert_eq!(type_expr_str(&TypeExpr::String(wcl_core::Span::dummy())), "string");
-        assert_eq!(type_expr_str(&TypeExpr::Int(wcl_core::Span::dummy())), "int");
-        assert_eq!(type_expr_str(&TypeExpr::Any(wcl_core::Span::dummy())), "any");
+        assert_eq!(
+            type_expr_str(&TypeExpr::String(wcl_core::Span::dummy())),
+            "string"
+        );
+        assert_eq!(
+            type_expr_str(&TypeExpr::Int(wcl_core::Span::dummy())),
+            "int"
+        );
+        assert_eq!(
+            type_expr_str(&TypeExpr::Any(wcl_core::Span::dummy())),
+            "any"
+        );
     }
 
     #[test]

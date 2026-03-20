@@ -35,7 +35,11 @@ fn eval_json(content: &str) -> serde_json::Value {
         .args(["eval", f.path().to_str().unwrap()])
         .output()
         .expect("run wcl eval");
-    assert!(output.status.success(), "eval failed: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "eval failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let stdout = String::from_utf8_lossy(&output.stdout);
     serde_json::from_str(stdout.trim()).expect("stdout should be valid JSON")
 }
@@ -45,10 +49,20 @@ fn query_json(content: &str, query_str: &str) -> serde_json::Value {
     let f = wcl_file(content);
     let output = Command::cargo_bin("wcl")
         .unwrap()
-        .args(["query", "--format", "json", f.path().to_str().unwrap(), query_str])
+        .args([
+            "query",
+            "--format",
+            "json",
+            f.path().to_str().unwrap(),
+            query_str,
+        ])
         .output()
         .expect("run wcl query");
-    assert!(output.status.success(), "query failed: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "query failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let stdout = String::from_utf8_lossy(&output.stdout);
     serde_json::from_str(stdout.trim()).expect("stdout should be valid JSON")
 }
@@ -526,8 +540,7 @@ fn set_attribute_in_block_by_kind() {
     );
     let path = f.path().to_str().unwrap().to_string();
 
-    wcl(&["set", &path, "config.debug", "true"])
-        .success();
+    wcl(&["set", &path, "config.debug", "true"]).success();
 
     let updated = std::fs::read_to_string(&path).unwrap();
     assert!(updated.contains("true"), "debug should be set to true");
@@ -543,8 +556,7 @@ fn set_string_value() {
     );
     let path = f.path().to_str().unwrap().to_string();
 
-    wcl(&["set", &path, "server#svc-api.host", "\"new.example.com\""])
-        .success();
+    wcl(&["set", &path, "server#svc-api.host", "\"new.example.com\""]).success();
 
     let updated = std::fs::read_to_string(&path).unwrap();
     assert!(updated.contains("new.example.com"));
@@ -564,17 +576,27 @@ fn set_top_level_attribute() {
 #[test]
 fn set_nonexistent_attribute_fails() {
     let f = wcl_file("server web { port = 8080 }\n");
-    wcl(&["set", f.path().to_str().unwrap(), "server#web.missing", "42"])
-        .failure()
-        .stderr(predicate::str::contains("not found"));
+    wcl(&[
+        "set",
+        f.path().to_str().unwrap(),
+        "server#web.missing",
+        "42",
+    ])
+    .failure()
+    .stderr(predicate::str::contains("not found"));
 }
 
 #[test]
 fn set_nonexistent_block_fails() {
     let f = wcl_file("server web { port = 8080 }\n");
-    wcl(&["set", f.path().to_str().unwrap(), "database#db.port", "5432"])
-        .failure()
-        .stderr(predicate::str::contains("not found"));
+    wcl(&[
+        "set",
+        f.path().to_str().unwrap(),
+        "database#db.port",
+        "5432",
+    ])
+    .failure()
+    .stderr(predicate::str::contains("not found"));
 }
 
 #[test]
@@ -669,7 +691,10 @@ server svc-api {
     wcl(&["add", &path, "database db-main"]).success();
 
     let updated = std::fs::read_to_string(&path).unwrap();
-    assert!(updated.contains("let x = 42"), "let binding should be preserved");
+    assert!(
+        updated.contains("let x = 42"),
+        "let binding should be preserved"
+    );
     assert!(updated.contains("svc-api"), "existing block should remain");
     assert!(updated.contains("db-main"), "new block should be added");
 }
@@ -707,7 +732,10 @@ server svc-old {
     let updated = std::fs::read_to_string(&path).unwrap();
     assert!(!updated.contains("svc-old"), "removed block should be gone");
     assert!(updated.contains("svc-api"), "other block should remain");
-    assert!(updated.contains("8080"), "other block content should remain");
+    assert!(
+        updated.contains("8080"),
+        "other block content should remain"
+    );
 }
 
 #[test]
@@ -727,7 +755,10 @@ fn remove_attribute_from_block() {
         .stdout(predicate::str::contains("removed"));
 
     let updated = std::fs::read_to_string(&path).unwrap();
-    assert!(!updated.contains("debug"), "debug attribute should be removed");
+    assert!(
+        !updated.contains("debug"),
+        "debug attribute should be removed"
+    );
     assert!(updated.contains("port"), "other attributes should remain");
     assert!(updated.contains("host"), "other attributes should remain");
 }
@@ -788,7 +819,10 @@ config {
     wcl(&["remove", &path, "config"]).success();
 
     let updated = std::fs::read_to_string(&path).unwrap();
-    assert!(!updated.contains("config"), "config block should be removed");
+    assert!(
+        !updated.contains("config"),
+        "config block should be removed"
+    );
     assert!(updated.contains("name"), "name attribute should remain");
 }
 
@@ -844,8 +878,14 @@ fn add_then_eval_shows_new_block() {
     assert!(output.status.success());
     let json: serde_json::Value =
         serde_json::from_str(&String::from_utf8_lossy(&output.stdout)).unwrap();
-    assert!(json["server"]["svc-api"].is_object(), "original block should exist");
-    assert!(json["server"]["svc-new"].is_object(), "new block should exist");
+    assert!(
+        json["server"]["svc-api"].is_object(),
+        "original block should exist"
+    );
+    assert!(
+        json["server"]["svc-new"].is_object(),
+        "new block should exist"
+    );
 }
 
 // ===========================================================================
@@ -875,8 +915,14 @@ server svc-old {
     assert!(output.status.success());
     let json: serde_json::Value =
         serde_json::from_str(&String::from_utf8_lossy(&output.stdout)).unwrap();
-    assert!(json["server"]["svc-api"].is_object(), "kept block should exist");
-    assert!(json["server"]["svc-old"].is_null(), "removed block should be gone");
+    assert!(
+        json["server"]["svc-api"].is_object(),
+        "kept block should exist"
+    );
+    assert!(
+        json["server"]["svc-old"].is_null(),
+        "removed block should be gone"
+    );
 }
 
 #[test]
@@ -901,7 +947,10 @@ fn remove_attr_then_eval_attr_gone() {
     let json: serde_json::Value =
         serde_json::from_str(&String::from_utf8_lossy(&output.stdout)).unwrap();
     assert_eq!(json["server"]["svc-api"]["port"], 8080);
-    assert!(json["server"]["svc-api"]["debug"].is_null(), "debug should be gone");
+    assert!(
+        json["server"]["svc-api"]["debug"].is_null(),
+        "debug should be gone"
+    );
 }
 
 // ===========================================================================
@@ -923,8 +972,7 @@ server web {
 }
 "#,
     );
-    wcl(&["validate", f.path().to_str().unwrap()])
-        .success();
+    wcl(&["validate", f.path().to_str().unwrap()]).success();
 }
 
 #[test]
@@ -978,8 +1026,7 @@ server web {
 }
 "#,
     );
-    wcl(&["validate", f.path().to_str().unwrap()])
-        .success();
+    wcl(&["validate", f.path().to_str().unwrap()]).success();
 }
 
 // ===========================================================================
@@ -1037,7 +1084,8 @@ fn convert_wcl_to_json() {
 #[test]
 fn convert_json_to_wcl() {
     let mut f = NamedTempFile::with_suffix(".json").expect("tempfile");
-    f.write_all(b"{\"name\": \"test\", \"port\": 8080}").unwrap();
+    f.write_all(b"{\"name\": \"test\", \"port\": 8080}")
+        .unwrap();
     f.flush().unwrap();
 
     wcl(&["convert", "--from", "json", f.path().to_str().unwrap()])
@@ -1085,7 +1133,10 @@ fn workflow_add_set_eval() {
     // Read the file to put the port inside svc-worker manually
     // Since add creates an empty block, we need to add content to it
     let mut content = std::fs::read_to_string(&path).unwrap();
-    content = content.replace("server svc-worker {\n}", "server svc-worker {\n    port = 3000\n}");
+    content = content.replace(
+        "server svc-worker {\n}",
+        "server svc-worker {\n    port = 3000\n}",
+    );
     std::fs::write(&path, &content).unwrap();
 
     // Validate the file

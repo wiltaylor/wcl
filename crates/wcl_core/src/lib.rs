@@ -1,66 +1,24 @@
 //! WCL Core — AST, lexer, parser, spans, trivia, diagnostics
 
 pub mod ast;
+pub mod diagnostic;
 pub mod lexer;
 pub mod parser;
 pub mod span;
 pub mod trivia;
-pub mod diagnostic;
 
-pub use span::{FileId, Span, SourceFile, SourceMap};
-pub use trivia::{Trivia, Comment, CommentStyle, CommentPlacement};
-pub use diagnostic::{Diagnostic, DiagnosticBag, Severity, Label};
+pub use diagnostic::{Diagnostic, DiagnosticBag, Label, Severity};
+pub use span::{FileId, SourceFile, SourceMap, Span};
+pub use trivia::{Comment, CommentPlacement, CommentStyle, Trivia};
 
 // Re-export the most commonly used AST types.
 pub use ast::{
-    Attribute,
-    BinOp,
-    Block,
-    BodyItem,
-    CallArg,
-    ColumnDecl,
-    Conditional,
-    DecoratorArg,
-    DecoratorSchema,
-    DecoratorTarget,
-    DocItem,
-    Document,
-    ElseBranch,
-    Expr,
-    ExportLet,
-    ForLoop,
-    Ident,
-    IdentifierLit,
-    Import,
-    InjectBlock,
-    InlineId,
-    LetBinding,
-    MacroBody,
-    MacroCall,
-    MacroCallArg,
-    MacroDef,
-    MacroKind,
-    MacroParam,
-    MapKey,
-    PathSegment,
-    QueryFilter,
-    QueryPipeline,
-    QuerySelector,
-    ReExport,
-    RemoveBlock,
-    Schema,
-    SchemaField,
-    SetBlock,
-    StringLit,
-    StringPart,
-    Table,
-    TableRow,
-    TransformDirective,
-    TypeExpr,
-    UnaryOp,
-    Validation,
-    WhenBlock,
-    Decorator,
+    Attribute, BinOp, Block, BodyItem, CallArg, ColumnDecl, Conditional, Decorator, DecoratorArg,
+    DecoratorSchema, DecoratorTarget, DocItem, Document, ElseBranch, ExportLet, Expr, ForLoop,
+    Ident, IdentifierLit, Import, InjectBlock, InlineId, LetBinding, MacroBody, MacroCall,
+    MacroCallArg, MacroDef, MacroKind, MacroParam, MapKey, PathSegment, QueryFilter, QueryPipeline,
+    QuerySelector, ReExport, RemoveBlock, Schema, SchemaField, SetBlock, StringLit, StringPart,
+    Table, TableRow, TransformDirective, TypeExpr, UnaryOp, Validation, WhenBlock,
 };
 
 pub use parser::Parser;
@@ -86,7 +44,10 @@ pub fn parse_query(source: &str, file_id: FileId) -> Result<ast::QueryPipeline, 
         None => {
             let mut diags = diags;
             if diags.is_empty() {
-                diags.error("failed to parse query pipeline", Span::new(file_id, 0, source.len()));
+                diags.error(
+                    "failed to parse query pipeline",
+                    Span::new(file_id, 0, source.len()),
+                );
             }
             Err(diags)
         }

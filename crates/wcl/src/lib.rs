@@ -7,27 +7,20 @@ pub mod library;
 
 // Re-exports
 pub use wcl_core::{
-    FileId, Span, SourceMap, SourceFile,
-    Trivia, Comment, CommentStyle, CommentPlacement,
-    Diagnostic, DiagnosticBag, Severity, Label,
-    ast, lexer, parser,
+    ast, lexer, parser, Comment, CommentPlacement, CommentStyle, Diagnostic, DiagnosticBag, FileId,
+    Label, Severity, SourceFile, SourceMap, Span, Trivia,
 };
 
 pub use wcl_eval::{
-    Value, BlockRef, DecoratorValue, FunctionValue, ScopeId,
-    ScopeArena, Scope, ScopeEntry, ScopeEntryKind, ScopeKind,
-    Evaluator, QueryEngine,
-    ImportResolver, FileSystem, RealFileSystem, InMemoryFs,
-    MacroRegistry, MacroExpander,
-    ControlFlowExpander,
-    PartialMerger, ConflictMode,
-    BuiltinFn, FunctionRegistry, FunctionSignature, builtin_signatures,
+    builtin_signatures, BlockRef, BuiltinFn, ConflictMode, ControlFlowExpander, DecoratorValue,
+    Evaluator, FileSystem, FunctionRegistry, FunctionSignature, FunctionValue, ImportResolver,
+    InMemoryFs, MacroExpander, MacroRegistry, PartialMerger, QueryEngine, RealFileSystem, Scope,
+    ScopeArena, ScopeEntry, ScopeEntryKind, ScopeId, ScopeKind, Value,
 };
 
 pub use wcl_schema::{
-    SchemaRegistry, ResolvedSchema, ResolvedField,
-    DecoratorSchemaRegistry, ResolvedDecoratorSchema,
-    IdRegistry,
+    DecoratorSchemaRegistry, IdRegistry, ResolvedDecoratorSchema, ResolvedField, ResolvedSchema,
+    SchemaRegistry,
 };
 
 pub use wcl_serde::{
@@ -118,9 +111,7 @@ impl Document {
             .items
             .iter()
             .filter_map(|item| match item {
-                ast::DocItem::Body(ast::BodyItem::Block(block))
-                    if block.kind.name == kind =>
-                {
+                ast::DocItem::Body(ast::BodyItem::Block(block)) if block.kind.name == kind => {
                     Some(block)
                 }
                 _ => None,
@@ -150,9 +141,7 @@ impl Document {
         // Execute the query
         let engine = QueryEngine::new();
         let mut evaluator = Evaluator::new();
-        let scope = evaluator
-            .scopes_mut()
-            .create_scope(ScopeKind::Module, None);
+        let scope = evaluator.scopes_mut().create_scope(ScopeKind::Module, None);
         engine.execute(&pipeline, &blocks, &mut evaluator, scope)
     }
 
@@ -160,9 +149,7 @@ impl Document {
     /// from the evaluated `values` map where possible.
     fn collect_block_refs(&self) -> Vec<BlockRef> {
         let mut evaluator = Evaluator::new();
-        let scope = evaluator
-            .scopes_mut()
-            .create_scope(ScopeKind::Module, None);
+        let scope = evaluator.scopes_mut().create_scope(ScopeKind::Module, None);
         self.ast
             .items
             .iter()
@@ -175,24 +162,18 @@ impl Document {
             .collect()
     }
 
-    fn block_to_ref(
-        block: &ast::Block,
-        evaluator: &mut Evaluator,
-        scope: ScopeId,
-    ) -> BlockRef {
+    fn block_to_ref(block: &ast::Block, evaluator: &mut Evaluator, scope: ScopeId) -> BlockRef {
         let kind = block.kind.name.clone();
         let id = block.inline_id.as_ref().map(|iid| match iid {
             ast::InlineId::Literal(lit) => lit.value.clone(),
-            ast::InlineId::Interpolated(parts) => {
-                parts
-                    .iter()
-                    .filter_map(|p| match p {
-                        ast::StringPart::Literal(s) => Some(s.clone()),
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>()
-                    .join("")
-            }
+            ast::InlineId::Interpolated(parts) => parts
+                .iter()
+                .filter_map(|p| match p {
+                    ast::StringPart::Literal(s) => Some(s.clone()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join(""),
         });
         let labels: Vec<String> = block
             .labels
@@ -216,9 +197,7 @@ impl Document {
             .body
             .iter()
             .filter_map(|item| match item {
-                ast::BodyItem::Block(child) => {
-                    Some(Self::block_to_ref(child, evaluator, scope))
-                }
+                ast::BodyItem::Block(child) => Some(Self::block_to_ref(child, evaluator, scope)),
                 _ => None,
             })
             .collect();
@@ -332,11 +311,7 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
             options.max_import_depth,
             options.allow_imports,
         );
-        let import_diags = resolver.resolve(
-            &mut doc,
-            &options.root_dir.join("<input>"),
-            0,
-        );
+        let import_diags = resolver.resolve(&mut doc, &options.root_dir.join("<input>"), 0);
         all_diagnostics.extend(import_diags.into_diagnostics());
     }
 
@@ -346,16 +321,17 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
     all_diagnostics.extend(expander.into_diagnostics().into_diagnostics());
 
     // Phase 5: Control flow expansion
-    let mut cf_expander =
-        ControlFlowExpander::new(options.max_loop_depth, options.max_iterations);
+    let mut cf_expander = ControlFlowExpander::new(options.max_loop_depth, options.max_iterations);
     // Use a lightweight pre-evaluator for control flow condition/iterable expressions.
     // This only handles literal expressions; variables defined via `let` are not
     // available until Phase 7. We wrap the evaluator in a RefCell because
     // `eval_expr` requires `&mut self` but the callback signature is `&dyn Fn`.
-    let pre_eval = std::cell::RefCell::new(Evaluator::with_functions(
-        &options.functions, None, None,
-    ));
-    let pre_scope = pre_eval.borrow_mut().scopes_mut().create_scope(ScopeKind::Module, None);
+    let pre_eval =
+        std::cell::RefCell::new(Evaluator::with_functions(&options.functions, None, None));
+    let pre_scope = pre_eval
+        .borrow_mut()
+        .scopes_mut()
+        .create_scope(ScopeKind::Module, None);
     // Pre-register let bindings with literal values so control flow can access them.
     // This allows `for item in items { ... }` where `let items = [1, 2, 3]` at the top level.
     {
@@ -459,9 +435,7 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
 }
 
 /// Parse a WCL string and deserialize into a Rust type
-pub fn from_str<'de, T: serde::Deserialize<'de>>(
-    source: &str,
-) -> Result<T, Vec<Diagnostic>> {
+pub fn from_str<'de, T: serde::Deserialize<'de>>(source: &str) -> Result<T, Vec<Diagnostic>> {
     from_str_with_options(source, ParseOptions::default())
 }
 
@@ -488,9 +462,7 @@ pub fn to_string<T: serde::Serialize>(value: &T) -> Result<String, SerdeError> {
 }
 
 /// Serialize a Rust value to pretty-printed WCL text
-pub fn to_string_pretty<T: serde::Serialize>(
-    value: &T,
-) -> Result<String, SerdeError> {
+pub fn to_string_pretty<T: serde::Serialize>(value: &T) -> Result<String, SerdeError> {
     value_to_string_pretty(value)
 }
 
@@ -506,10 +478,7 @@ mod tests {
 
     #[test]
     fn test_parse_with_let() {
-        let doc = parse(
-            "let x = 42\nconfig { port = x }",
-            ParseOptions::default(),
-        );
+        let doc = parse("let x = 42\nconfig { port = x }", ParseOptions::default());
         assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
     }
 
@@ -598,10 +567,16 @@ mod tests {
         "#;
         let doc = parse(source, ParseOptions::default());
         // check = 10 > 0 = true, so no errors from validation
-        let validation_errors: Vec<_> = doc.diagnostics.iter()
+        let validation_errors: Vec<_> = doc
+            .diagnostics
+            .iter()
             .filter(|d| d.message.contains("validation"))
             .collect();
-        assert!(validation_errors.is_empty(), "unexpected validation errors: {:?}", validation_errors);
+        assert!(
+            validation_errors.is_empty(),
+            "unexpected validation errors: {:?}",
+            validation_errors
+        );
     }
 
     #[test]
@@ -615,10 +590,16 @@ mod tests {
         "#;
         let doc = parse(source, ParseOptions::default());
         // check = -5 > 0 = false, so we expect a validation error
-        let validation_errors: Vec<_> = doc.diagnostics.iter()
+        let validation_errors: Vec<_> = doc
+            .diagnostics
+            .iter()
             .filter(|d| d.message.contains("validation") && d.message.contains("x is not positive"))
             .collect();
-        assert!(!validation_errors.is_empty(), "expected validation error, got: {:?}", doc.diagnostics);
+        assert!(
+            !validation_errors.is_empty(),
+            "expected validation error, got: {:?}",
+            doc.diagnostics
+        );
     }
 
     #[test]
@@ -632,12 +613,21 @@ mod tests {
             }
         "#;
         let doc = parse(source, ParseOptions::default());
-        let validation_warnings: Vec<_> = doc.diagnostics.iter()
+        let validation_warnings: Vec<_> = doc
+            .diagnostics
+            .iter()
             .filter(|d| d.message.contains("validation") && d.message.contains("x is not positive"))
             .collect();
-        assert!(!validation_warnings.is_empty(), "expected validation warning, got: {:?}", doc.diagnostics);
+        assert!(
+            !validation_warnings.is_empty(),
+            "expected validation warning, got: {:?}",
+            doc.diagnostics
+        );
         // Should be a warning, not an error
-        assert!(!validation_warnings[0].is_error(), "expected warning, got error");
+        assert!(
+            !validation_warnings[0].is_error(),
+            "expected warning, got error"
+        );
     }
 
     // ── M1: Let bindings accessible in control flow ─────────────────────
@@ -653,7 +643,13 @@ mod tests {
         let doc = parse(source, ParseOptions::default());
         // The for loop should expand using the let binding
         let entries = doc.blocks_of_type("entry");
-        assert_eq!(entries.len(), 3, "expected 3 entry blocks from for loop over let binding, got {}: errors: {:?}", entries.len(), doc.diagnostics);
+        assert_eq!(
+            entries.len(),
+            3,
+            "expected 3 entry blocks from for loop over let binding, got {}: errors: {:?}",
+            entries.len(),
+            doc.diagnostics
+        );
     }
 
     // ── Gap 3: Unknown decorator validation (E060) ────────────────────
@@ -667,11 +663,20 @@ mod tests {
             }
         "#;
         let doc = parse(source, ParseOptions::default());
-        let e060_errors: Vec<_> = doc.diagnostics.iter()
+        let e060_errors: Vec<_> = doc
+            .diagnostics
+            .iter()
             .filter(|d| d.code.as_deref() == Some("E060"))
             .collect();
-        assert_eq!(e060_errors.len(), 1, "expected one E060 error, got: {:?}", e060_errors);
-        assert!(e060_errors[0].message.contains("unknown decorator @nonexistent"));
+        assert_eq!(
+            e060_errors.len(),
+            1,
+            "expected one E060 error, got: {:?}",
+            e060_errors
+        );
+        assert!(e060_errors[0]
+            .message
+            .contains("unknown decorator @nonexistent"));
     }
 
     #[test]
@@ -683,10 +688,16 @@ mod tests {
             }
         "#;
         let doc = parse(source, ParseOptions::default());
-        let e060_errors: Vec<_> = doc.diagnostics.iter()
+        let e060_errors: Vec<_> = doc
+            .diagnostics
+            .iter()
             .filter(|d| d.code.as_deref() == Some("E060"))
             .collect();
-        assert!(e060_errors.is_empty(), "known decorator @deprecated should not produce E060, got: {:?}", e060_errors);
+        assert!(
+            e060_errors.is_empty(),
+            "known decorator @deprecated should not produce E060, got: {:?}",
+            e060_errors
+        );
     }
 
     // ── Gap 6: Table column type validation ────────────────────────────
@@ -747,7 +758,13 @@ mod tests {
         "#;
         let doc = parse(source, ParseOptions::default());
         let servers = doc.blocks_of_type("server");
-        assert_eq!(servers.len(), 3, "expected 3 server blocks, got {}: errors: {:?}", servers.len(), doc.diagnostics);
+        assert_eq!(
+            servers.len(),
+            3,
+            "expected 3 server blocks, got {}: errors: {:?}",
+            servers.len(),
+            doc.diagnostics
+        );
     }
 
     // ── Rich Document API (Section 26.5) ─────────────────────────────────
@@ -784,7 +801,10 @@ mod tests {
         );
         let blocks = doc.blocks();
         assert_eq!(blocks[0].get("port"), Some(&Value::Int(8080)));
-        assert_eq!(blocks[0].get("host"), Some(&Value::String("localhost".to_string())));
+        assert_eq!(
+            blocks[0].get("host"),
+            Some(&Value::String("localhost".to_string()))
+        );
         assert_eq!(blocks[0].get("missing"), None);
     }
 
@@ -856,10 +876,13 @@ mod tests {
         }
 
         let mut map = indexmap::IndexMap::new();
-        map.insert("labels".to_string(), Value::List(vec![
-            Value::String("prod".to_string()),
-            Value::String("us-east".to_string()),
-        ]));
+        map.insert(
+            "labels".to_string(),
+            Value::List(vec![
+                Value::String("prod".to_string()),
+                Value::String("us-east".to_string()),
+            ]),
+        );
         map.insert("value".to_string(), Value::Int(42));
         let result: Result<Resource, _> = from_value(Value::Map(map));
         assert!(result.is_ok(), "error: {:?}", result.err());
@@ -888,11 +911,9 @@ mod tests {
         let mut opts = ParseOptions::default();
         opts.functions.functions.insert(
             "double".into(),
-            Arc::new(|args: &[Value]| {
-                match args.first() {
-                    Some(Value::Int(n)) => Ok(Value::Int(n * 2)),
-                    _ => Err("expected int".into()),
-                }
+            Arc::new(|args: &[Value]| match args.first() {
+                Some(Value::Int(n)) => Ok(Value::Int(n * 2)),
+                _ => Err("expected int".into()),
             }),
         );
 
@@ -908,15 +929,10 @@ mod tests {
         let mut opts = ParseOptions::default();
         opts.functions.functions.insert(
             "make_list".into(),
-            Arc::new(|_args: &[Value]| {
-                Ok(Value::List(vec![Value::Int(1), Value::Int(2)]))
-            }),
+            Arc::new(|_args: &[Value]| Ok(Value::List(vec![Value::Int(1), Value::Int(2)]))),
         );
 
-        let doc = parse(
-            "for item in make_list() { entry { value = item } }",
-            opts,
-        );
+        let doc = parse("for item in make_list() { entry { value = item } }", opts);
         assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
         let entries = doc.blocks_of_type("entry");
         assert_eq!(entries.len(), 2);
@@ -929,11 +945,9 @@ mod tests {
         let mut registry = FunctionRegistry::new();
         registry.register(
             "greet",
-            Arc::new(|args: &[Value]| {
-                match args.first() {
-                    Some(Value::String(s)) => Ok(Value::String(format!("Hello, {}!", s))),
-                    _ => Err("expected string".into()),
-                }
+            Arc::new(|args: &[Value]| match args.first() {
+                Some(Value::String(s)) => Ok(Value::String(format!("Hello, {}!", s))),
+                _ => Err("expected string".into()),
             }),
             FunctionSignature {
                 name: "greet".into(),
@@ -951,7 +965,11 @@ mod tests {
     #[test]
     fn test_builtin_signatures_complete() {
         let sigs = builtin_signatures();
-        assert!(sigs.len() >= 50, "expected at least 50 builtin signatures, got {}", sigs.len());
+        assert!(
+            sigs.len() >= 50,
+            "expected at least 50 builtin signatures, got {}",
+            sigs.len()
+        );
         // Check a few are present
         assert!(sigs.iter().any(|s| s.name == "upper"));
         assert!(sigs.iter().any(|s| s.name == "len"));
@@ -964,7 +982,9 @@ mod tests {
     fn test_parse_library_import_syntax() {
         let (doc, diags) = wcl_core::parse("import <stdlib.wcl>", FileId(0));
         // Should parse without errors (the file won't exist but the AST should be correct)
-        let parse_errors: Vec<_> = diags.into_diagnostics().into_iter()
+        let parse_errors: Vec<_> = diags
+            .into_diagnostics()
+            .into_iter()
             .filter(|d| d.is_error())
             .collect();
         assert!(parse_errors.is_empty(), "parse errors: {:?}", parse_errors);
@@ -996,8 +1016,13 @@ mod tests {
 
     #[test]
     fn test_parse_function_decl() {
-        let (doc, diags) = wcl_core::parse("declare my_fn(input: string, count: int) -> string", FileId(0));
-        let parse_errors: Vec<_> = diags.into_diagnostics().into_iter()
+        let (doc, diags) = wcl_core::parse(
+            "declare my_fn(input: string, count: int) -> string",
+            FileId(0),
+        );
+        let parse_errors: Vec<_> = diags
+            .into_diagnostics()
+            .into_iter()
             .filter(|d| d.is_error())
             .collect();
         assert!(parse_errors.is_empty(), "parse errors: {:?}", parse_errors);
@@ -1016,7 +1041,9 @@ mod tests {
     #[test]
     fn test_parse_function_decl_no_return_type() {
         let (doc, diags) = wcl_core::parse("declare fire_event(name: string)", FileId(0));
-        let parse_errors: Vec<_> = diags.into_diagnostics().into_iter()
+        let parse_errors: Vec<_> = diags
+            .into_diagnostics()
+            .into_iter()
             .filter(|d| d.is_error())
             .collect();
         assert!(parse_errors.is_empty(), "parse errors: {:?}", parse_errors);
@@ -1035,11 +1062,19 @@ mod tests {
             result = my_fn("hello")
         "#;
         let doc = parse(source, ParseOptions::default());
-        let e053_errors: Vec<_> = doc.diagnostics.iter()
+        let e053_errors: Vec<_> = doc
+            .diagnostics
+            .iter()
             .filter(|d| d.code.as_deref() == Some("E053"))
             .collect();
-        assert!(!e053_errors.is_empty(), "expected E053 error for declared-but-unregistered function, got: {:?}", doc.diagnostics);
-        assert!(e053_errors[0].message.contains("declared in library but not registered"));
+        assert!(
+            !e053_errors.is_empty(),
+            "expected E053 error for declared-but-unregistered function, got: {:?}",
+            doc.diagnostics
+        );
+        assert!(e053_errors[0]
+            .message
+            .contains("declared in library but not registered"));
     }
 
     #[test]
@@ -1049,11 +1084,9 @@ mod tests {
         let mut opts = ParseOptions::default();
         opts.functions.functions.insert(
             "my_fn".into(),
-            Arc::new(|args: &[Value]| {
-                match args.first() {
-                    Some(Value::String(s)) => Ok(Value::String(format!("processed: {}", s))),
-                    _ => Err("expected string".into()),
-                }
+            Arc::new(|args: &[Value]| match args.first() {
+                Some(Value::String(s)) => Ok(Value::String(format!("processed: {}", s))),
+                _ => Err("expected string".into()),
             }),
         );
 
@@ -1082,7 +1115,11 @@ mod tests {
         }
 
         let schema = ServerConfig::wcl_schema();
-        assert!(schema.contains("schema \"server_config\""), "schema: {}", schema);
+        assert!(
+            schema.contains("schema \"server_config\""),
+            "schema: {}",
+            schema
+        );
         assert!(schema.contains("port: int"), "schema: {}", schema);
         assert!(schema.contains("host: string"), "schema: {}", schema);
     }
@@ -1099,7 +1136,11 @@ mod tests {
         }
 
         let schema = Config::wcl_schema();
-        assert!(schema.contains("debug: bool @optional"), "schema: {}", schema);
+        assert!(
+            schema.contains("debug: bool @optional"),
+            "schema: {}",
+            schema
+        );
     }
 
     #[test]
@@ -1112,7 +1153,11 @@ mod tests {
         }
 
         let schema = Foo::wcl_schema();
-        assert!(schema.contains("schema \"my_custom_schema\""), "schema: {}", schema);
+        assert!(
+            schema.contains("schema \"my_custom_schema\""),
+            "schema: {}",
+            schema
+        );
     }
 
     #[test]
@@ -1124,7 +1169,11 @@ mod tests {
         }
 
         let schema = Config::wcl_schema();
-        assert!(schema.contains("@optional"), "Option<T> should generate @optional: {}", schema);
+        assert!(
+            schema.contains("@optional"),
+            "Option<T> should generate @optional: {}",
+            schema
+        );
     }
 
     // ── Library module ───────────────────────────────────────────────────
@@ -1133,7 +1182,10 @@ mod tests {
     fn test_function_stub_to_wcl() {
         let stub = library::FunctionStub {
             name: "my_fn".into(),
-            params: vec![("input".into(), "string".into()), ("count".into(), "int".into())],
+            params: vec![
+                ("input".into(), "string".into()),
+                ("count".into(), "int".into()),
+            ],
             return_type: Some("string".into()),
             doc: Some("Transform input".into()),
         };

@@ -29,8 +29,7 @@ pub fn run(file: &Path, path_str: &str) -> Result<(), String> {
     result.push_str(&source[..remove_start]);
     result.push_str(&source[remove_end..]);
 
-    std::fs::write(file, &result)
-        .map_err(|e| format!("cannot write {}: {}", file.display(), e))?;
+    std::fs::write(file, &result).map_err(|e| format!("cannot write {}: {}", file.display(), e))?;
     println!("removed {} from {}", path_str, file.display());
     Ok(())
 }

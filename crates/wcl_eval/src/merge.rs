@@ -53,12 +53,10 @@ impl PartialMerger {
                         entry.push(idx);
                     } else {
                         // Partial blocks without inline IDs: warn but don't merge
-                        self.diagnostics.add(
-                            wcl_core::Diagnostic::warning(
-                                "partial block without inline ID cannot be merged",
-                                block.span,
-                            ),
-                        );
+                        self.diagnostics.add(wcl_core::Diagnostic::warning(
+                            "partial block without inline ID cannot be merged",
+                            block.span,
+                        ));
                     }
                 }
             }
@@ -206,9 +204,10 @@ impl PartialMerger {
                     let has_attr = block.body.iter().any(|item| {
                         matches!(item, BodyItem::Attribute(attr) if attr.name.name == *field)
                     });
-                    let has_child = block.body.iter().any(|item| {
-                        matches!(item, BodyItem::Block(b) if b.kind.name == *field)
-                    });
+                    let has_child = block
+                        .body
+                        .iter()
+                        .any(|item| matches!(item, BodyItem::Block(b) if b.kind.name == *field));
                     if !has_attr && !has_child {
                         self.diagnostics.error(
                             format!(
@@ -252,10 +251,7 @@ impl PartialMerger {
                     match self.conflict_mode {
                         ConflictMode::Strict => {
                             self.diagnostics.error_with_code(
-                                format!(
-                                    "duplicate decorator '@{}' in partial merge",
-                                    name
-                                ),
+                                format!("duplicate decorator '@{}' in partial merge", name),
                                 decorator.span,
                                 "E031",
                             );
@@ -287,7 +283,8 @@ impl PartialMerger {
                     wcl_core::Diagnostic::warning(
                         "mismatched labels in partial block fragments",
                         block.span,
-                    ).with_code("W003"),
+                    )
+                    .with_code("W003"),
                 );
             }
 
@@ -299,10 +296,7 @@ impl PartialMerger {
                             match self.conflict_mode {
                                 ConflictMode::Strict => {
                                     self.diagnostics.error_with_code(
-                                        format!(
-                                            "duplicate attribute '{}' in partial merge",
-                                            name
-                                        ),
+                                        format!("duplicate attribute '{}' in partial merge", name),
                                         attr.span,
                                         "E031",
                                     );
@@ -317,8 +311,7 @@ impl PartialMerger {
                         }
                     }
                     BodyItem::Block(child_block) => {
-                        if let Some(child_id) = inline_id_to_string(&child_block.inline_id)
-                        {
+                        if let Some(child_id) = inline_id_to_string(&child_block.inline_id) {
                             let key = (child_block.kind.name.clone(), child_id);
                             let entry =
                                 child_block_groups.entry(key.clone()).or_insert_with(|| {
@@ -617,10 +610,13 @@ mod tests {
         let block3 = make_partial_block(
             "service",
             "svc-api",
-            vec![("env", Expr::StringLit(StringLit {
-                parts: vec![StringPart::Literal("prod".to_string())],
-                span: dummy_span(),
-            }))],
+            vec![(
+                "env",
+                Expr::StringLit(StringLit {
+                    parts: vec![StringPart::Literal("prod".to_string())],
+                    span: dummy_span(),
+                }),
+            )],
         );
 
         let mut doc = make_doc(vec![block1, block2, block3]);
@@ -758,10 +754,8 @@ mod tests {
             assert_eq!(block_count, 1); // merged monitoring
 
             // Check the merged child has both attributes
-            if let Some(BodyItem::Block(child)) = block
-                .body
-                .iter()
-                .find(|i| matches!(i, BodyItem::Block(_)))
+            if let Some(BodyItem::Block(child)) =
+                block.body.iter().find(|i| matches!(i, BodyItem::Block(_)))
             {
                 assert_eq!(child.body.len(), 2); // interval + threshold
             }
@@ -861,11 +855,7 @@ mod tests {
             span: dummy_span(),
         });
 
-        let mut block2 = make_partial_block(
-            "service",
-            "svc-api",
-            vec![],
-        );
+        let mut block2 = make_partial_block("service", "svc-api", vec![]);
         // Add a child block of kind "monitoring"
         block2.body.push(BodyItem::Block(Block {
             decorators: vec![],

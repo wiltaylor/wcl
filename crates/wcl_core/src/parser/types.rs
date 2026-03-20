@@ -127,10 +127,8 @@ impl Parser {
                     }
                     _ => {
                         // Unknown type name — treat as error
-                        self.diagnostics.error(
-                            format!("unknown type: {}", name),
-                            start_span,
-                        );
+                        self.diagnostics
+                            .error(format!("unknown type: {}", name), start_span);
                         self.advance();
                         None
                     }

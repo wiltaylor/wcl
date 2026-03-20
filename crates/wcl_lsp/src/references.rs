@@ -1,7 +1,7 @@
-use tower_lsp::lsp_types::Location;
 use ropey::Rope;
+use tower_lsp::lsp_types::Location;
 use wcl_core::ast::*;
-use wcl_eval::{ScopeKind, ScopeId};
+use wcl_eval::{ScopeId, ScopeKind};
 
 use crate::ast_utils::{find_node_at_offset, NodeAtOffset};
 use crate::convert::span_to_lsp_range;
@@ -127,10 +127,7 @@ fn find_def_scope_for_offset(
 
 /// Walk the AST to find the smallest enclosing Block span that contains
 /// the given byte offset.
-fn find_enclosing_block_span(
-    doc: &Document,
-    offset: usize,
-) -> Option<wcl_core::span::Span> {
+fn find_enclosing_block_span(doc: &Document, offset: usize) -> Option<wcl_core::span::Span> {
     let mut result = None;
     for item in &doc.items {
         if let DocItem::Body(body_item) = item {

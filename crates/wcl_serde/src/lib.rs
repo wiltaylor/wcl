@@ -1,7 +1,7 @@
 //! WCL Serde — Serializer and Deserializer for WCL
 
-pub mod error;
 pub mod de;
+pub mod error;
 pub mod ser;
 
 pub use error::Error;
@@ -32,8 +32,8 @@ pub fn to_string_pretty<T: Serialize>(value: &T) -> Result<String, Error> {
 mod tests {
     use super::*;
     use indexmap::IndexMap;
-    use std::collections::HashMap;
     use serde::{Deserialize, Serialize};
+    use std::collections::HashMap;
     use wcl_eval::value::Value;
 
     // ── Deserializer tests ────────────────────────────────────────────────────
@@ -54,11 +54,7 @@ mod tests {
 
     #[test]
     fn deser_list_to_vec_i32() {
-        let val = Value::List(vec![
-            Value::Int(1),
-            Value::Int(2),
-            Value::Int(3),
-        ]);
+        let val = Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)]);
         let result: Vec<i32> = from_value(val).unwrap();
         assert_eq!(result, vec![1i32, 2, 3]);
     }
@@ -193,7 +189,10 @@ mod tests {
             inner: Inner { value: 42 },
         };
         let result = to_string_pretty(&o).unwrap();
-        assert_eq!(result, "{\n    name = \"test\"\n    inner = {\n        value = 42\n    }\n}");
+        assert_eq!(
+            result,
+            "{\n    name = \"test\"\n    inner = {\n        value = 42\n    }\n}"
+        );
     }
 
     // ── Round-trip tests ──────────────────────────────────────────────────────
@@ -238,7 +237,10 @@ mod tests {
             enabled: bool,
         }
 
-        let original = Config { port: 8080, enabled: true };
+        let original = Config {
+            port: 8080,
+            enabled: true,
+        };
 
         // Serialize to WCL text
         let serialized = to_string_pretty(&original).unwrap();

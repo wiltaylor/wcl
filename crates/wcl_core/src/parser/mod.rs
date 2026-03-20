@@ -32,7 +32,9 @@ impl Parser {
     // ── Token navigation ──────────────────────────────────────────────────
 
     fn peek(&self) -> &Token {
-        self.tokens.get(self.pos).unwrap_or(&self.tokens[self.tokens.len() - 1])
+        self.tokens
+            .get(self.pos)
+            .unwrap_or(&self.tokens[self.tokens.len() - 1])
     }
 
     fn peek_kind(&self) -> &TokenKind {
@@ -262,7 +264,12 @@ impl Parser {
                             parts: vec![StringPart::Literal(full_name)],
                             span,
                         };
-                        return Some(Import { path, kind: ImportKind::Library, trivia, span });
+                        return Some(Import {
+                            path,
+                            kind: ImportKind::Library,
+                            trivia,
+                            span,
+                        });
                     }
                     _ => {
                         self.diagnostics.error(
@@ -277,7 +284,12 @@ impl Parser {
 
         let path = self.parse_string_lit()?;
         let span = start_span.merge(path.span);
-        Some(Import { path, kind: ImportKind::Relative, trivia, span })
+        Some(Import {
+            path,
+            kind: ImportKind::Relative,
+            trivia,
+            span,
+        })
     }
 
     fn parse_export(&mut self, trivia: Trivia) -> Option<DocItem> {
@@ -373,7 +385,8 @@ impl Parser {
         let end_span = if let Some(ref rt) = return_type {
             rt.span()
         } else {
-            self.tokens.get(self.pos.saturating_sub(1))
+            self.tokens
+                .get(self.pos.saturating_sub(1))
                 .map(|t| t.span)
                 .unwrap_or(start_span)
         };
@@ -407,7 +420,7 @@ impl Parser {
                     "E036",
                 );
                 self.advance(); // skip the export keyword
-                // Skip until newline or closing brace
+                                // Skip until newline or closing brace
                 while !matches!(
                     self.peek_kind(),
                     TokenKind::Newline | TokenKind::RBrace | TokenKind::Eof
@@ -452,9 +465,7 @@ impl Parser {
             TokenKind::Partial => {
                 // Peek next: table or block
                 let mut i = self.pos + 1;
-                while i < self.tokens.len()
-                    && matches!(self.tokens[i].kind, TokenKind::Newline)
-                {
+                while i < self.tokens.len() && matches!(self.tokens[i].kind, TokenKind::Newline) {
                     i += 1;
                 }
                 if i < self.tokens.len() && matches!(self.tokens[i].kind, TokenKind::Table) {
@@ -498,9 +509,7 @@ impl Parser {
                 // Disambiguate: attribute (ident =), macro call (ident (), or block (ident ident/string/{)
                 let mut i = self.pos + 1;
                 // Skip newlines for lookahead
-                while i < self.tokens.len()
-                    && matches!(self.tokens[i].kind, TokenKind::Newline)
-                {
+                while i < self.tokens.len() && matches!(self.tokens[i].kind, TokenKind::Newline) {
                     i += 1;
                 }
                 if i < self.tokens.len() {
@@ -543,10 +552,7 @@ impl Parser {
                     );
                 }
                 self.diagnostics.error(
-                    format!(
-                        "expected body item, found {:?}",
-                        self.peek_kind()
-                    ),
+                    format!("expected body item, found {:?}", self.peek_kind()),
                     self.current_span(),
                 );
                 None
@@ -606,9 +612,7 @@ impl Parser {
             if let TokenKind::Ident(ref name) = self.peek_kind().clone() {
                 let name = name.clone();
                 let mut j = self.pos + 1;
-                while j < self.tokens.len()
-                    && matches!(self.tokens[j].kind, TokenKind::Newline)
-                {
+                while j < self.tokens.len() && matches!(self.tokens[j].kind, TokenKind::Newline) {
                     j += 1;
                 }
                 if j < self.tokens.len() && matches!(self.tokens[j].kind, TokenKind::Equals) {
@@ -645,11 +649,7 @@ impl Parser {
 
     // ── Attributes ────────────────────────────────────────────────────────
 
-    fn parse_attribute(
-        &mut self,
-        decorators: Vec<Decorator>,
-        trivia: Trivia,
-    ) -> Option<Attribute> {
+    fn parse_attribute(&mut self, decorators: Vec<Decorator>, trivia: Trivia) -> Option<Attribute> {
         let start_span = self.current_span();
         let name = self.expect_ident().ok()?;
         self.skip_newlines();
@@ -737,9 +737,7 @@ impl Parser {
                 }
                 // Look ahead: if followed by `{`, `"string"`, or another ident, this is an inline ID
                 let mut i = self.pos + 1;
-                while i < self.tokens.len()
-                    && matches!(self.tokens[i].kind, TokenKind::Newline)
-                {
+                while i < self.tokens.len() && matches!(self.tokens[i].kind, TokenKind::Newline) {
                     i += 1;
                 }
                 if i < self.tokens.len() {
@@ -830,7 +828,7 @@ impl Parser {
             if i < self.tokens.len() && matches!(self.tokens[i].kind, TokenKind::InterpStart) {
                 has_interp = true;
                 i += 1; // past InterpStart
-                // Scan for matching RBrace (with nesting)
+                        // Scan for matching RBrace (with nesting)
                 let mut depth = 1;
                 while i < self.tokens.len() && depth > 0 {
                     match &self.tokens[i].kind {
@@ -857,9 +855,7 @@ impl Parser {
         // `i` now points past the last token of the interpolated ID.
         // Check that what follows (skipping newlines) is LBrace or StringLit.
         let mut check = i;
-        while check < self.tokens.len()
-            && matches!(self.tokens[check].kind, TokenKind::Newline)
-        {
+        while check < self.tokens.len() && matches!(self.tokens[check].kind, TokenKind::Newline) {
             check += 1;
         }
         if check >= self.tokens.len() {
@@ -895,7 +891,7 @@ impl Parser {
                 }
                 TokenKind::InterpStart => {
                     self.advance(); // consume `${`
-                    // Parse expression inside the interpolation
+                                    // Parse expression inside the interpolation
                     if let Some(expr) = self.parse_expr() {
                         parts.push(StringPart::Interpolation(Box::new(expr)));
                     }
@@ -953,7 +949,11 @@ impl Parser {
 
     // ── Let bindings ──────────────────────────────────────────────────────
 
-    pub(crate) fn parse_let_binding(&mut self, decorators: Vec<Decorator>, trivia: Trivia) -> Option<LetBinding> {
+    pub(crate) fn parse_let_binding(
+        &mut self,
+        decorators: Vec<Decorator>,
+        trivia: Trivia,
+    ) -> Option<LetBinding> {
         let start_span = self.current_span();
         self.advance(); // consume `let`
         self.skip_newlines();
@@ -1080,8 +1080,7 @@ impl Parser {
                 if matches!(self.peek_kind(), TokenKind::Pipe) {
                     // Look ahead: if next after pipe is newline/rbrace/eof, it's trailing
                     let mut j = self.pos + 1;
-                    while j < self.tokens.len()
-                        && matches!(self.tokens[j].kind, TokenKind::Newline)
+                    while j < self.tokens.len() && matches!(self.tokens[j].kind, TokenKind::Newline)
                     {
                         j += 1;
                     }
@@ -1109,11 +1108,9 @@ impl Parser {
             self.skip_newlines();
             if matches!(self.peek_kind(), TokenKind::Pipe) {
                 self.advance(); // consume cell separator |
-                // Check if this pipe is followed by newline/rbrace/eof — then it's the trailing pipe
+                                // Check if this pipe is followed by newline/rbrace/eof — then it's the trailing pipe
                 let mut j = self.pos;
-                while j < self.tokens.len()
-                    && matches!(self.tokens[j].kind, TokenKind::Newline)
-                {
+                while j < self.tokens.len() && matches!(self.tokens[j].kind, TokenKind::Newline) {
                     j += 1;
                 }
                 if j >= self.tokens.len()
@@ -1134,11 +1131,7 @@ impl Parser {
 
     // ── Schemas ───────────────────────────────────────────────────────────
 
-    fn parse_schema(
-        &mut self,
-        decorators: Vec<Decorator>,
-        trivia: Trivia,
-    ) -> Option<Schema> {
+    fn parse_schema(&mut self, decorators: Vec<Decorator>, trivia: Trivia) -> Option<Schema> {
         let start_span = self.current_span();
         self.advance(); // consume `schema`
         self.skip_newlines();
@@ -1227,14 +1220,11 @@ impl Parser {
                 if n == "target" {
                     // Lookahead for =
                     let mut j = self.pos + 1;
-                    while j < self.tokens.len()
-                        && matches!(self.tokens[j].kind, TokenKind::Newline)
+                    while j < self.tokens.len() && matches!(self.tokens[j].kind, TokenKind::Newline)
                     {
                         j += 1;
                     }
-                    if j < self.tokens.len()
-                        && matches!(self.tokens[j].kind, TokenKind::Equals)
-                    {
+                    if j < self.tokens.len() && matches!(self.tokens[j].kind, TokenKind::Equals) {
                         self.advance(); // consume `target`
                         self.skip_newlines();
                         self.advance(); // consume `=`
@@ -1244,10 +1234,7 @@ impl Parser {
                         }
                         loop {
                             self.skip_newlines();
-                            if matches!(
-                                self.peek_kind(),
-                                TokenKind::RBracket | TokenKind::Eof
-                            ) {
+                            if matches!(self.peek_kind(), TokenKind::RBracket | TokenKind::Eof) {
                                 break;
                             }
                             if let Some(t) = self.parse_decorator_target() {
@@ -1317,11 +1304,7 @@ impl Parser {
 
     // ── Macros ────────────────────────────────────────────────────────────
 
-    fn parse_macro_def(
-        &mut self,
-        decorators: Vec<Decorator>,
-        trivia: Trivia,
-    ) -> Option<MacroDef> {
+    fn parse_macro_def(&mut self, decorators: Vec<Decorator>, trivia: Trivia) -> Option<MacroDef> {
         let start_span = self.current_span();
         self.advance(); // consume `macro`
         self.skip_newlines();
@@ -1490,8 +1473,7 @@ impl Parser {
                 let mut names = Vec::new();
                 loop {
                     self.skip_newlines();
-                    if matches!(self.peek_kind(), TokenKind::RBracket | TokenKind::Eof)
-                    {
+                    if matches!(self.peek_kind(), TokenKind::RBracket | TokenKind::Eof) {
                         break;
                     }
                     if let Ok(ident) = self.expect_ident() {
@@ -1565,9 +1547,7 @@ impl Parser {
             if let TokenKind::Ident(ref arg_name) = self.peek_kind().clone() {
                 let arg_name = arg_name.clone();
                 let mut j = self.pos + 1;
-                while j < self.tokens.len()
-                    && matches!(self.tokens[j].kind, TokenKind::Newline)
-                {
+                while j < self.tokens.len() && matches!(self.tokens[j].kind, TokenKind::Newline) {
                     j += 1;
                 }
                 if j < self.tokens.len() && matches!(self.tokens[j].kind, TokenKind::Equals) {
@@ -1756,10 +1736,7 @@ impl Parser {
                     }
                     _ => {
                         self.diagnostics.error(
-                            format!(
-                                "unexpected identifier '{}' in validation block",
-                                n
-                            ),
+                            format!("unexpected identifier '{}' in validation block", n),
                             self.current_span(),
                         );
                         self.advance();
@@ -1781,20 +1758,16 @@ impl Parser {
         let check = match check {
             Some(c) => c,
             None => {
-                self.diagnostics.error(
-                    "validation block missing 'check' field",
-                    start_span,
-                );
+                self.diagnostics
+                    .error("validation block missing 'check' field", start_span);
                 return None;
             }
         };
         let message = match message {
             Some(m) => m,
             None => {
-                self.diagnostics.error(
-                    "validation block missing 'message' field",
-                    start_span,
-                );
+                self.diagnostics
+                    .error("validation block missing 'message' field", start_span);
                 return None;
             }
         };
@@ -1840,10 +1813,7 @@ impl Parser {
             }
             _ => {
                 self.diagnostics.error(
-                    format!(
-                        "expected string literal, found {:?}",
-                        self.peek_kind()
-                    ),
+                    format!("expected string literal, found {:?}", self.peek_kind()),
                     self.current_span(),
                 );
                 None
@@ -1860,7 +1830,7 @@ impl Parser {
         while let Some(c) = chars.next() {
             if c == '$' && chars.peek() == Some(&'{') {
                 chars.next(); // consume {
-                // Save any accumulated literal text
+                              // Save any accumulated literal text
                 if !current.is_empty() {
                     parts.push(StringPart::Literal(std::mem::take(&mut current)));
                 }
@@ -1946,7 +1916,11 @@ mod tests {
     #[test]
     fn test_simple_attribute() {
         let (doc, diags) = parse("port = 8080");
-        assert!(!diags.has_errors(), "diagnostics: {:?}", diags.diagnostics());
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
         assert_eq!(doc.items.len(), 1);
         match &doc.items[0] {
             DocItem::Body(BodyItem::Attribute(attr)) => {
@@ -1963,7 +1937,11 @@ mod tests {
     #[test]
     fn test_simple_block() {
         let (doc, diags) = parse("config {\n  port = 8080\n}");
-        assert!(!diags.has_errors(), "diagnostics: {:?}", diags.diagnostics());
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
         assert_eq!(doc.items.len(), 1);
         match &doc.items[0] {
             DocItem::Body(BodyItem::Block(block)) => {
@@ -1978,7 +1956,11 @@ mod tests {
     #[test]
     fn test_block_with_id() {
         let (doc, diags) = parse("service svc-api {\n  port = 8080\n}");
-        assert!(!diags.has_errors(), "diagnostics: {:?}", diags.diagnostics());
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
         assert_eq!(doc.items.len(), 1);
         match &doc.items[0] {
             DocItem::Body(BodyItem::Block(block)) => {
@@ -1996,7 +1978,11 @@ mod tests {
     #[test]
     fn test_let_binding() {
         let (doc, diags) = parse("let x = 42");
-        assert!(!diags.has_errors(), "diagnostics: {:?}", diags.diagnostics());
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
         assert_eq!(doc.items.len(), 1);
         match &doc.items[0] {
             DocItem::Body(BodyItem::LetBinding(binding)) => {
@@ -2014,7 +2000,11 @@ mod tests {
     fn test_arithmetic_expr() {
         // a + b * c should parse as a + (b * c) due to precedence
         let (doc, diags) = parse("result = a + b * c");
-        assert!(!diags.has_errors(), "diagnostics: {:?}", diags.diagnostics());
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
         assert_eq!(doc.items.len(), 1);
         match &doc.items[0] {
             DocItem::Body(BodyItem::Attribute(attr)) => {
@@ -2051,7 +2041,11 @@ mod tests {
     #[test]
     fn test_list_literal() {
         let (doc, diags) = parse("items = [1, 2, 3]");
-        assert!(!diags.has_errors(), "diagnostics: {:?}", diags.diagnostics());
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
         assert_eq!(doc.items.len(), 1);
         match &doc.items[0] {
             DocItem::Body(BodyItem::Attribute(attr)) => {
@@ -2080,7 +2074,11 @@ server {
 }
 "#;
         let (doc, diags) = parse(src);
-        assert!(!diags.has_errors(), "diagnostics: {:?}", diags.diagnostics());
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
         assert_eq!(doc.items.len(), 1);
         match &doc.items[0] {
             DocItem::Body(BodyItem::Block(block)) => {
@@ -2114,7 +2112,11 @@ server {
     #[test]
     fn parse_query_table_id_selector() {
         let (pipeline, diags) = parse_query("table#my-table");
-        assert!(!diags.has_errors(), "diagnostics: {:?}", diags.diagnostics());
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
         let pipeline = pipeline.expect("expected a query pipeline");
         match &pipeline.selector {
             QuerySelector::TableId(id_lit) => {
@@ -2127,7 +2129,11 @@ server {
     #[test]
     fn parse_query_kind_id_selector_not_table() {
         let (pipeline, diags) = parse_query("service#my-svc");
-        assert!(!diags.has_errors(), "diagnostics: {:?}", diags.diagnostics());
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
         let pipeline = pipeline.expect("expected a query pipeline");
         match &pipeline.selector {
             QuerySelector::KindId(ident, id_lit) => {
@@ -2192,7 +2198,11 @@ server {
     fn interpolated_inline_id_basic() {
         // svc-${name} should parse as InlineId::Interpolated
         let (doc, diags) = parse("service svc-${name} { }");
-        assert!(!diags.has_errors(), "diagnostics: {:?}", diags.diagnostics());
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
         assert_eq!(doc.items.len(), 1);
         match &doc.items[0] {
             DocItem::Body(BodyItem::Block(block)) => {
@@ -2205,12 +2215,10 @@ server {
                             other => panic!("expected Literal, got {:?}", other),
                         }
                         match &parts[1] {
-                            StringPart::Interpolation(expr) => {
-                                match expr.as_ref() {
-                                    Expr::Ident(id) => assert_eq!(id.name, "name"),
-                                    other => panic!("expected Ident expr, got {:?}", other),
-                                }
-                            }
+                            StringPart::Interpolation(expr) => match expr.as_ref() {
+                                Expr::Ident(id) => assert_eq!(id.name, "name"),
+                                other => panic!("expected Ident expr, got {:?}", other),
+                            },
                             other => panic!("expected Interpolation, got {:?}", other),
                         }
                     }
@@ -2225,21 +2233,23 @@ server {
     fn interpolated_inline_id_with_hyphenated_prefix() {
         // svc-api-${name} should produce ["svc-api-", ${name}]
         let (doc, diags) = parse("service svc-api-${name} { }");
-        assert!(!diags.has_errors(), "diagnostics: {:?}", diags.diagnostics());
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
         match &doc.items[0] {
-            DocItem::Body(BodyItem::Block(block)) => {
-                match &block.inline_id {
-                    Some(InlineId::Interpolated(parts)) => {
-                        assert_eq!(parts.len(), 2);
-                        match &parts[0] {
-                            StringPart::Literal(s) => assert_eq!(s, "svc-api-"),
-                            other => panic!("expected Literal 'svc-api-', got {:?}", other),
-                        }
-                        assert!(matches!(&parts[1], StringPart::Interpolation(_)));
+            DocItem::Body(BodyItem::Block(block)) => match &block.inline_id {
+                Some(InlineId::Interpolated(parts)) => {
+                    assert_eq!(parts.len(), 2);
+                    match &parts[0] {
+                        StringPart::Literal(s) => assert_eq!(s, "svc-api-"),
+                        other => panic!("expected Literal 'svc-api-', got {:?}", other),
                     }
-                    other => panic!("expected InlineId::Interpolated, got {:?}", other),
+                    assert!(matches!(&parts[1], StringPart::Interpolation(_)));
                 }
-            }
+                other => panic!("expected InlineId::Interpolated, got {:?}", other),
+            },
             other => panic!("expected Block, got {:?}", other),
         }
     }
@@ -2248,25 +2258,27 @@ server {
     fn interpolated_inline_id_prefix_and_suffix() {
         // svc-${name}-api should produce ["svc-", ${name}, "-api"]
         let (doc, diags) = parse("service svc-${name}-api { }");
-        assert!(!diags.has_errors(), "diagnostics: {:?}", diags.diagnostics());
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
         match &doc.items[0] {
-            DocItem::Body(BodyItem::Block(block)) => {
-                match &block.inline_id {
-                    Some(InlineId::Interpolated(parts)) => {
-                        assert_eq!(parts.len(), 3);
-                        match &parts[0] {
-                            StringPart::Literal(s) => assert_eq!(s, "svc-"),
-                            other => panic!("expected Literal 'svc-', got {:?}", other),
-                        }
-                        assert!(matches!(&parts[1], StringPart::Interpolation(_)));
-                        match &parts[2] {
-                            StringPart::Literal(s) => assert_eq!(s, "-api"),
-                            other => panic!("expected Literal '-api', got {:?}", other),
-                        }
+            DocItem::Body(BodyItem::Block(block)) => match &block.inline_id {
+                Some(InlineId::Interpolated(parts)) => {
+                    assert_eq!(parts.len(), 3);
+                    match &parts[0] {
+                        StringPart::Literal(s) => assert_eq!(s, "svc-"),
+                        other => panic!("expected Literal 'svc-', got {:?}", other),
                     }
-                    other => panic!("expected InlineId::Interpolated, got {:?}", other),
+                    assert!(matches!(&parts[1], StringPart::Interpolation(_)));
+                    match &parts[2] {
+                        StringPart::Literal(s) => assert_eq!(s, "-api"),
+                        other => panic!("expected Literal '-api', got {:?}", other),
+                    }
                 }
-            }
+                other => panic!("expected InlineId::Interpolated, got {:?}", other),
+            },
             other => panic!("expected Block, got {:?}", other),
         }
     }
@@ -2275,17 +2287,19 @@ server {
     fn interpolated_inline_id_only_interp() {
         // ${name} as inline ID
         let (doc, diags) = parse("service ${name} { }");
-        assert!(!diags.has_errors(), "diagnostics: {:?}", diags.diagnostics());
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
         match &doc.items[0] {
-            DocItem::Body(BodyItem::Block(block)) => {
-                match &block.inline_id {
-                    Some(InlineId::Interpolated(parts)) => {
-                        assert_eq!(parts.len(), 1);
-                        assert!(matches!(&parts[0], StringPart::Interpolation(_)));
-                    }
-                    other => panic!("expected InlineId::Interpolated, got {:?}", other),
+            DocItem::Body(BodyItem::Block(block)) => match &block.inline_id {
+                Some(InlineId::Interpolated(parts)) => {
+                    assert_eq!(parts.len(), 1);
+                    assert!(matches!(&parts[0], StringPart::Interpolation(_)));
                 }
-            }
+                other => panic!("expected InlineId::Interpolated, got {:?}", other),
+            },
             other => panic!("expected Block, got {:?}", other),
         }
     }
@@ -2298,7 +2312,11 @@ server {
             }
         }"#;
         let (doc, diags) = parse(src);
-        assert!(!diags.has_errors(), "diagnostics: {:?}", diags.diagnostics());
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
         assert_eq!(doc.items.len(), 1);
         // The for loop body should contain a block with interpolated inline ID
         match &doc.items[0] {
@@ -2320,14 +2338,16 @@ server {
     fn literal_inline_id_still_works() {
         // Ensure non-interpolated IDs still parse as Literal
         let (doc, diags) = parse("service my-svc { }");
-        assert!(!diags.has_errors(), "diagnostics: {:?}", diags.diagnostics());
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
         match &doc.items[0] {
-            DocItem::Body(BodyItem::Block(block)) => {
-                match &block.inline_id {
-                    Some(InlineId::Literal(id)) => assert_eq!(id.value, "my-svc"),
-                    other => panic!("expected InlineId::Literal, got {:?}", other),
-                }
-            }
+            DocItem::Body(BodyItem::Block(block)) => match &block.inline_id {
+                Some(InlineId::Literal(id)) => assert_eq!(id.value, "my-svc"),
+                other => panic!("expected InlineId::Literal, got {:?}", other),
+            },
             other => panic!("expected Block, got {:?}", other),
         }
     }
@@ -2336,14 +2356,16 @@ server {
     fn plain_ident_inline_id_still_works() {
         // Ensure plain ident (no hyphens) still works
         let (doc, diags) = parse("service api { }");
-        assert!(!diags.has_errors(), "diagnostics: {:?}", diags.diagnostics());
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
         match &doc.items[0] {
-            DocItem::Body(BodyItem::Block(block)) => {
-                match &block.inline_id {
-                    Some(InlineId::Literal(id)) => assert_eq!(id.value, "api"),
-                    other => panic!("expected InlineId::Literal, got {:?}", other),
-                }
-            }
+            DocItem::Body(BodyItem::Block(block)) => match &block.inline_id {
+                Some(InlineId::Literal(id)) => assert_eq!(id.value, "api"),
+                other => panic!("expected InlineId::Literal, got {:?}", other),
+            },
             other => panic!("expected Block, got {:?}", other),
         }
     }

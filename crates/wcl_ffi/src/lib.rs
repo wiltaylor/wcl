@@ -151,11 +151,9 @@ pub extern "C" fn wcl_ffi_parse_file(
 /// Returns null if no error. Caller must free with `wcl_ffi_string_free`.
 #[no_mangle]
 pub extern "C" fn wcl_ffi_last_error() -> *mut c_char {
-    LAST_ERROR.with(|e| {
-        match e.borrow().as_deref() {
-            Some(msg) => to_c_string(msg),
-            None => std::ptr::null_mut(),
-        }
+    LAST_ERROR.with(|e| match e.borrow().as_deref() {
+        Some(msg) => to_c_string(msg),
+        None => std::ptr::null_mut(),
     })
 }
 
@@ -210,8 +208,7 @@ pub extern "C" fn wcl_ffi_document_errors(doc: *const WclDocument) -> *mut c_cha
 #[no_mangle]
 pub extern "C" fn wcl_ffi_document_diagnostics(doc: *const WclDocument) -> *mut c_char {
     let doc = as_doc(doc);
-    let diags: Vec<serde_json::Value> =
-        doc.diagnostics.iter().map(diagnostic_to_json).collect();
+    let diags: Vec<serde_json::Value> = doc.diagnostics.iter().map(diagnostic_to_json).collect();
     to_c_string(&serde_json::Value::Array(diags).to_string())
 }
 
@@ -238,8 +235,7 @@ pub extern "C" fn wcl_ffi_document_query(
 #[no_mangle]
 pub extern "C" fn wcl_ffi_document_blocks(doc: *const WclDocument) -> *mut c_char {
     let doc = as_doc(doc);
-    let blocks: Vec<serde_json::Value> =
-        doc.blocks().iter().map(block_ref_to_json).collect();
+    let blocks: Vec<serde_json::Value> = doc.blocks().iter().map(block_ref_to_json).collect();
     to_c_string(&serde_json::Value::Array(blocks).to_string())
 }
 
@@ -332,8 +328,10 @@ pub extern "C" fn wcl_ffi_uninstall_library(name: *const c_char) -> *mut c_char 
 pub extern "C" fn wcl_ffi_list_libraries() -> *mut c_char {
     match wcl::library::list_libraries() {
         Ok(paths) => {
-            let names: Vec<String> =
-                paths.iter().map(|p| p.to_string_lossy().to_string()).collect();
+            let names: Vec<String> = paths
+                .iter()
+                .map(|p| p.to_string_lossy().to_string())
+                .collect();
             ok_json(serde_json::json!(names))
         }
         Err(e) => err_json(&e.to_string()),
@@ -440,8 +438,7 @@ mod tests {
         let server_str = unsafe { CStr::from_ptr(server_blocks_ptr) }
             .to_str()
             .unwrap();
-        let server_blocks: Vec<serde_json::Value> =
-            serde_json::from_str(server_str).unwrap();
+        let server_blocks: Vec<serde_json::Value> = serde_json::from_str(server_str).unwrap();
         assert_eq!(server_blocks.len(), 1);
         assert_eq!(server_blocks[0]["kind"], "server");
 

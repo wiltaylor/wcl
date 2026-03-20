@@ -1,7 +1,7 @@
 use std::path::Path;
 
-use tower_lsp::lsp_types::{GotoDefinitionResponse, Location, Url};
 use ropey::Rope;
+use tower_lsp::lsp_types::{GotoDefinitionResponse, Location, Url};
 use wcl_core::ast;
 
 use crate::ast_utils::{find_node_at_offset, NodeAtOffset};
@@ -39,13 +39,12 @@ pub fn goto_definition(
         }
         NodeAtOffset::MacroCallName(mc) => {
             // Walk entire AST (including nested blocks) to find MacroDef with matching name
-            find_macro_def(&analysis.ast.items, &mc.name.name)
-                .map(|span| {
-                    GotoDefinitionResponse::Scalar(Location {
-                        uri: uri.clone(),
-                        range: span_to_lsp_range(span, rope),
-                    })
+            find_macro_def(&analysis.ast.items, &mc.name.name).map(|span| {
+                GotoDefinitionResponse::Scalar(Location {
+                    uri: uri.clone(),
+                    range: span_to_lsp_range(span, rope),
                 })
+            })
         }
         NodeAtOffset::AttributeName(attr) => {
             // Jump to the attribute's own span (the whole attribute)
@@ -54,15 +53,11 @@ pub fn goto_definition(
                 range: span_to_lsp_range(attr.span, rope),
             }))
         }
-        NodeAtOffset::LetBindingName(lb) => {
-            Some(GotoDefinitionResponse::Scalar(Location {
-                uri: uri.clone(),
-                range: span_to_lsp_range(lb.span, rope),
-            }))
-        }
-        NodeAtOffset::ImportPath(import) => {
-            resolve_import_path(import, uri)
-        }
+        NodeAtOffset::LetBindingName(lb) => Some(GotoDefinitionResponse::Scalar(Location {
+            uri: uri.clone(),
+            range: span_to_lsp_range(lb.span, rope),
+        })),
+        NodeAtOffset::ImportPath(import) => resolve_import_path(import, uri),
         _ => None,
     }
 }

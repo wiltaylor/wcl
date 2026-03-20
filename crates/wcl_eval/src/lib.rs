@@ -11,12 +11,15 @@ pub mod query;
 pub mod scope;
 pub mod value;
 
-pub use value::{Value, BlockRef, DecoratorValue, FunctionValue, FunctionBody, ScopeId};
-pub use scope::{ScopeArena, Scope, ScopeEntry, ScopeEntryKind, ScopeKind};
-pub use imports::{ImportResolver, FileSystem, RealFileSystem, InMemoryFs, library_search_paths, resolve_library_import};
-pub use macros::{MacroRegistry, MacroExpander};
 pub use control_flow::ControlFlowExpander;
-pub use merge::{PartialMerger, ConflictMode};
 pub use evaluator::Evaluator;
-pub use functions::{BuiltinFn, FunctionRegistry, FunctionSignature, builtin_signatures};
+pub use functions::{builtin_signatures, BuiltinFn, FunctionRegistry, FunctionSignature};
+pub use imports::{
+    library_search_paths, resolve_library_import, FileSystem, ImportResolver, InMemoryFs,
+    RealFileSystem,
+};
+pub use macros::{MacroExpander, MacroRegistry};
+pub use merge::{ConflictMode, PartialMerger};
 pub use query::QueryEngine;
+pub use scope::{Scope, ScopeArena, ScopeEntry, ScopeEntryKind, ScopeKind};
+pub use value::{BlockRef, DecoratorValue, FunctionBody, FunctionValue, ScopeId, Value};

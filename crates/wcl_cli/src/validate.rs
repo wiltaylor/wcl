@@ -19,7 +19,8 @@ pub fn run(file: &Path, strict: bool, schema: Option<&Path>) -> Result<(), Strin
         let (schema_doc, schema_parse_diags) = wcl_core::parse(&schema_source, schema_file_id);
 
         // Add any parse errors from the schema file
-        doc.diagnostics.extend(schema_parse_diags.into_diagnostics());
+        doc.diagnostics
+            .extend(schema_parse_diags.into_diagnostics());
 
         // Collect schemas from the external file and validate the main document
         let mut external_schemas = wcl::SchemaRegistry::new();
@@ -29,9 +30,11 @@ pub fn run(file: &Path, strict: bool, schema: Option<&Path>) -> Result<(), Strin
         doc.diagnostics.extend(diag_bag.into_diagnostics());
     }
 
-    let errors: Vec<_> = doc.diagnostics.iter().filter(|d| {
-        d.is_error() || (strict && matches!(d.severity, wcl::Severity::Warning))
-    }).collect();
+    let errors: Vec<_> = doc
+        .diagnostics
+        .iter()
+        .filter(|d| d.is_error() || (strict && matches!(d.severity, wcl::Severity::Warning)))
+        .collect();
 
     if errors.is_empty() {
         println!("{} is valid", file.display());

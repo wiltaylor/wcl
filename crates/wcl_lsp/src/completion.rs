@@ -4,33 +4,70 @@ use crate::state::AnalysisResult;
 
 /// Built-in WCL keywords
 const KEYWORDS: &[&str] = &[
-    "let", "partial", "macro", "schema", "table", "import", "export", "query", "ref", "for",
-    "in", "if", "else", "when", "inject", "set", "remove", "self", "validation",
-    "decorator_schema", "declare", "true", "false", "null",
+    "let",
+    "partial",
+    "macro",
+    "schema",
+    "table",
+    "import",
+    "export",
+    "query",
+    "ref",
+    "for",
+    "in",
+    "if",
+    "else",
+    "when",
+    "inject",
+    "set",
+    "remove",
+    "self",
+    "validation",
+    "decorator_schema",
+    "declare",
+    "true",
+    "false",
+    "null",
 ];
 
 /// Built-in WCL type names
 const TYPE_NAMES: &[&str] = &[
-    "string", "int", "float", "bool", "null", "identifier", "any", "list", "map", "set", "ref",
+    "string",
+    "int",
+    "float",
+    "bool",
+    "null",
+    "identifier",
+    "any",
+    "list",
+    "map",
+    "set",
+    "ref",
     "union",
 ];
 
 /// Built-in decorator names
 const BUILTIN_DECORATORS: &[&str] = &[
-    "deprecated", "warning", "schema", "optional", "sensitive", "env", "readonly",
+    "deprecated",
+    "warning",
+    "schema",
+    "optional",
+    "sensitive",
+    "env",
+    "readonly",
     "partial_requires",
 ];
 
 /// Collect function names from analysis signatures (builtins + custom).
 fn function_names(analysis: &AnalysisResult) -> Vec<&str> {
-    analysis.function_signatures.iter().map(|s| s.name.as_str()).collect()
+    analysis
+        .function_signatures
+        .iter()
+        .map(|s| s.name.as_str())
+        .collect()
 }
 
-pub fn completions(
-    analysis: &AnalysisResult,
-    source: &str,
-    offset: usize,
-) -> Vec<CompletionItem> {
+pub fn completions(analysis: &AnalysisResult, source: &str, offset: usize) -> Vec<CompletionItem> {
     let context = detect_context(source, offset);
     let mut items = Vec::new();
 
@@ -330,7 +367,10 @@ fn is_in_string_or_comment(before: &str) -> bool {
     in_string || in_line_comment || in_block_comment
 }
 
-fn collect_block_kinds(doc: &wcl_core::ast::Document, seen: &mut std::collections::HashSet<String>) {
+fn collect_block_kinds(
+    doc: &wcl_core::ast::Document,
+    seen: &mut std::collections::HashSet<String>,
+) {
     for item in &doc.items {
         if let wcl_core::ast::DocItem::Body(wcl_core::ast::BodyItem::Block(block)) = item {
             seen.insert(block.kind.name.clone());
@@ -419,7 +459,10 @@ mod tests {
         let items = get_completions(source, source.len());
         // Should offer attribute names (from values), not keywords
         let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
-        assert!(!labels.contains(&"let"), "should not contain keywords in member access context");
+        assert!(
+            !labels.contains(&"let"),
+            "should not contain keywords in member access context"
+        );
         // All items should be property kind
         for item in &items {
             assert_eq!(item.kind, Some(CompletionItemKind::PROPERTY));
@@ -441,7 +484,10 @@ mod tests {
     }
 }
 
-fn collect_block_kinds_in_body(body: &[wcl_core::ast::BodyItem], seen: &mut std::collections::HashSet<String>) {
+fn collect_block_kinds_in_body(
+    body: &[wcl_core::ast::BodyItem],
+    seen: &mut std::collections::HashSet<String>,
+) {
     for item in body {
         if let wcl_core::ast::BodyItem::Block(block) = item {
             seen.insert(block.kind.name.clone());

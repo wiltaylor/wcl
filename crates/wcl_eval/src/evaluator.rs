@@ -169,7 +169,10 @@ impl Evaluator {
                     if !has_allow_decorator(&lb.decorators, "shadowing") {
                         self.diagnostics.add(
                             wcl_core::diagnostic::Diagnostic::warning(
-                                format!("variable '{}' shadows a binding in an outer scope", lb.name.name),
+                                format!(
+                                    "variable '{}' shadows a binding in an outer scope",
+                                    lb.name.name
+                                ),
                                 lb.span,
                             )
                             .with_code("W001")
@@ -464,9 +467,7 @@ impl Evaluator {
                 }
                 Ok(Value::Map(map))
             }
-            Expr::BinaryOp(lhs, op, rhs, span) => {
-                self.eval_binary(lhs, *op, rhs, *span, scope_id)
-            }
+            Expr::BinaryOp(lhs, op, rhs, span) => self.eval_binary(lhs, *op, rhs, *span, scope_id),
             Expr::UnaryOp(op, inner, span) => self.eval_unary(*op, inner, *span, scope_id),
             Expr::Ternary(cond, then_expr, else_expr, span) => {
                 let cond_val = self.eval_expr(cond, scope_id)?;
@@ -492,18 +493,14 @@ impl Evaluator {
                 let idx = self.eval_expr(index, scope_id)?;
                 self.access_index(&val, &idx, *span)
             }
-            Expr::FnCall(callee, args, span) => {
-                self.eval_fn_call(callee, args, *span, scope_id)
-            }
+            Expr::FnCall(callee, args, span) => self.eval_fn_call(callee, args, *span, scope_id),
             Expr::Lambda(params, body, _span) => Ok(Value::Function(FunctionValue {
                 params: params.iter().map(|p| p.name.clone()).collect(),
                 body: FunctionBody::UserDefined(body.clone()),
                 closure_scope: Some(scope_id),
             })),
             Expr::BlockExpr(lets, final_expr, _) => {
-                let block_scope =
-                    self.scopes
-                        .create_scope(ScopeKind::Lambda, Some(scope_id));
+                let block_scope = self.scopes.create_scope(ScopeKind::Lambda, Some(scope_id));
                 for lb in lets {
                     let val = self.eval_expr(&lb.value, block_scope)?;
                     self.scopes.add_entry(
@@ -534,11 +531,8 @@ impl Evaluator {
                     }
                 }
                 Err(
-                    Diagnostic::error(
-                        format!("ref: block with id '{}' not found", id_str),
-                        *span,
-                    )
-                    .with_code("E053"),
+                    Diagnostic::error(format!("ref: block with id '{}' not found", id_str), *span)
+                        .with_code("E053"),
                 )
             }
             Expr::ImportRaw(path, span) => {
@@ -565,11 +559,7 @@ impl Evaluator {
     // String evaluation
     // ------------------------------------------------------------------
 
-    fn eval_string_lit(
-        &mut self,
-        s: &StringLit,
-        scope_id: ScopeId,
-    ) -> Result<Value, Diagnostic> {
+    fn eval_string_lit(&mut self, s: &StringLit, scope_id: ScopeId) -> Result<Value, Diagnostic> {
         let mut result = String::new();
         for part in &s.parts {
             match part {
@@ -578,11 +568,7 @@ impl Evaluator {
                     let val = self.eval_expr(expr, scope_id)?;
                     match val.to_interp_string() {
                         Ok(s) => result.push_str(&s),
-                        Err(e) => {
-                            return Err(
-                                Diagnostic::error(e, s.span).with_code("E050")
-                            )
-                        }
+                        Err(e) => return Err(Diagnostic::error(e, s.span).with_code("E050")),
                     }
                 }
             }
@@ -606,9 +592,10 @@ impl Evaluator {
     // ------------------------------------------------------------------
 
     fn read_file_checked(&self, path_str: &str, span: Span) -> Result<String, Diagnostic> {
-        let fs = self.fs.as_ref().ok_or_else(|| {
-            Diagnostic::error("import_raw not available in this context", span)
-        })?;
+        let fs = self
+            .fs
+            .as_ref()
+            .ok_or_else(|| Diagnostic::error("import_raw not available in this context", span))?;
         let base = self.base_dir.as_ref().unwrap();
 
         // Resolve path relative to base_dir
@@ -626,9 +613,8 @@ impl Evaluator {
             ));
         }
 
-        fs.read_file(&normalized).map_err(|e| {
-            Diagnostic::error(format!("cannot read file '{}': {}", path_str, e), span)
-        })
+        fs.read_file(&normalized)
+            .map_err(|e| Diagnostic::error(format!("cannot read file '{}': {}", path_str, e), span))
     }
 
     fn parse_table(content: &str, separator: char) -> Value {
@@ -658,32 +644,26 @@ impl Evaluator {
     // Identifier resolution
     // ------------------------------------------------------------------
 
-    fn eval_ident(
-        &mut self,
-        ident: &Ident,
-        scope_id: ScopeId,
-    ) -> Result<Value, Diagnostic> {
-        let resolved = self.scopes.resolve(scope_id, &ident.name)
+    fn eval_ident(&mut self, ident: &Ident, scope_id: ScopeId) -> Result<Value, Diagnostic> {
+        let resolved = self
+            .scopes
+            .resolve(scope_id, &ident.name)
             .map(|(_, entry)| (entry.value.clone(), entry.evaluated));
         match resolved {
             Some((Some(val), _)) => {
                 self.scopes.record_read(scope_id, &ident.name);
                 Ok(val)
             }
-            Some((None, _)) => {
-                Err(Diagnostic::error(
-                    format!("variable '{}' has not been evaluated yet", ident.name),
-                    ident.span,
-                )
-                .with_code("E040"))
-            }
-            None => {
-                Err(Diagnostic::error(
-                    format!("undefined reference '{}'", ident.name),
-                    ident.span,
-                )
-                .with_code("E040"))
-            }
+            Some((None, _)) => Err(Diagnostic::error(
+                format!("variable '{}' has not been evaluated yet", ident.name),
+                ident.span,
+            )
+            .with_code("E040")),
+            None => Err(Diagnostic::error(
+                format!("undefined reference '{}'", ident.name),
+                ident.span,
+            )
+            .with_code("E040")),
         }
     }
 
@@ -708,9 +688,7 @@ impl Evaluator {
             let r = self.eval_expr(rhs, scope_id)?;
             return match (&l, &r) {
                 (Value::Bool(_), Value::Bool(b)) => Ok(Value::Bool(*b)),
-                _ => Err(
-                    Diagnostic::error("&& requires bool operands", span).with_code("E050")
-                ),
+                _ => Err(Diagnostic::error("&& requires bool operands", span).with_code("E050")),
             };
         }
         if op == BinOp::Or {
@@ -721,9 +699,7 @@ impl Evaluator {
             let r = self.eval_expr(rhs, scope_id)?;
             return match (&l, &r) {
                 (Value::Bool(_), Value::Bool(b)) => Ok(Value::Bool(*b)),
-                _ => Err(
-                    Diagnostic::error("|| requires bool operands", span).with_code("E050")
-                ),
+                _ => Err(Diagnostic::error("|| requires bool operands", span).with_code("E050")),
             };
         }
 
@@ -732,12 +708,8 @@ impl Evaluator {
 
         match op {
             BinOp::Add => self.eval_add(&l, &r, span),
-            BinOp::Sub => {
-                self.eval_arithmetic(&l, &r, span, |a, b| a - b, |a, b| a - b)
-            }
-            BinOp::Mul => {
-                self.eval_arithmetic(&l, &r, span, |a, b| a * b, |a, b| a * b)
-            }
+            BinOp::Sub => self.eval_arithmetic(&l, &r, span, |a, b| a - b, |a, b| a - b),
+            BinOp::Mul => self.eval_arithmetic(&l, &r, span, |a, b| a * b, |a, b| a * b),
             BinOp::Div => self.eval_div(&l, &r, span),
             BinOp::Mod => self.eval_mod(&l, &r, span),
             BinOp::Eq => Ok(Value::Bool(l == r)),
@@ -756,9 +728,7 @@ impl Evaluator {
             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a + b)),
             (Value::Int(a), Value::Float(b)) => Ok(Value::Float(*a as f64 + b)),
             (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a + *b as f64)),
-            (Value::String(a), Value::String(b)) => {
-                Ok(Value::String(format!("{}{}", a, b)))
-            }
+            (Value::String(a), Value::String(b)) => Ok(Value::String(format!("{}{}", a, b))),
             _ => Err(Diagnostic::error(
                 format!("cannot add {} and {}", l.type_name(), r.type_name()),
                 span,
@@ -778,12 +748,8 @@ impl Evaluator {
         match (l, r) {
             (Value::Int(a), Value::Int(b)) => Ok(Value::Int(int_op(*a, *b))),
             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(float_op(*a, *b))),
-            (Value::Int(a), Value::Float(b)) => {
-                Ok(Value::Float(float_op(*a as f64, *b)))
-            }
-            (Value::Float(a), Value::Int(b)) => {
-                Ok(Value::Float(float_op(*a, *b as f64)))
-            }
+            (Value::Int(a), Value::Float(b)) => Ok(Value::Float(float_op(*a as f64, *b))),
+            (Value::Float(a), Value::Int(b)) => Ok(Value::Float(float_op(*a, *b as f64))),
             _ => Err(Diagnostic::error(
                 format!(
                     "arithmetic requires numeric operands, got {} and {}",
@@ -804,25 +770,20 @@ impl Evaluator {
             (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a / b)),
             (Value::Float(a), Value::Float(b)) => {
                 if *b == 0.0 {
-                    return Err(
-                        Diagnostic::error("division by zero", span).with_code("E051")
-                    );
+                    return Err(Diagnostic::error("division by zero", span).with_code("E051"));
                 }
                 Ok(Value::Float(a / b))
             }
             (Value::Int(a), Value::Float(b)) => {
                 if *b == 0.0 {
-                    return Err(
-                        Diagnostic::error("division by zero", span).with_code("E051")
-                    );
+                    return Err(Diagnostic::error("division by zero", span).with_code("E051"));
                 }
                 Ok(Value::Float(*a as f64 / b))
             }
             (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a / *b as f64)),
-            _ => Err(
-                Diagnostic::error("division requires numeric operands", span)
-                    .with_code("E050"),
-            ),
+            _ => {
+                Err(Diagnostic::error("division requires numeric operands", span).with_code("E050"))
+            }
         }
     }
 
@@ -830,15 +791,11 @@ impl Evaluator {
         match (l, r) {
             (Value::Int(a), Value::Int(b)) => {
                 if *b == 0 {
-                    return Err(
-                        Diagnostic::error("modulo by zero", span).with_code("E051")
-                    );
+                    return Err(Diagnostic::error("modulo by zero", span).with_code("E051"));
                 }
                 Ok(Value::Int(a % b))
             }
-            _ => Err(
-                Diagnostic::error("modulo requires int operands", span).with_code("E050")
-            ),
+            _ => Err(Diagnostic::error("modulo requires int operands", span).with_code("E050")),
         }
     }
 
@@ -852,12 +809,8 @@ impl Evaluator {
         let result = match (l, r) {
             (Value::Int(a), Value::Int(b)) => compare_ord(a, b, op),
             (Value::Float(a), Value::Float(b)) => compare_partial_ord(a, b, op),
-            (Value::Int(a), Value::Float(b)) => {
-                compare_partial_ord(&(*a as f64), b, op)
-            }
-            (Value::Float(a), Value::Int(b)) => {
-                compare_partial_ord(a, &(*b as f64), op)
-            }
+            (Value::Int(a), Value::Float(b)) => compare_partial_ord(&(*a as f64), b, op),
+            (Value::Float(a), Value::Int(b)) => compare_partial_ord(a, &(*b as f64), op),
             (Value::String(a), Value::String(b)) => compare_ord(a, b, op),
             _ => {
                 return Err(Diagnostic::error(
@@ -870,25 +823,15 @@ impl Evaluator {
         Ok(Value::Bool(result))
     }
 
-    fn eval_regex_match(
-        &self,
-        l: &Value,
-        r: &Value,
-        span: Span,
-    ) -> Result<Value, Diagnostic> {
+    fn eval_regex_match(&self, l: &Value, r: &Value, span: Span) -> Result<Value, Diagnostic> {
         match (l, r) {
-            (Value::String(s), Value::String(pattern)) => {
-                match regex::Regex::new(pattern) {
-                    Ok(re) => Ok(Value::Bool(re.is_match(s))),
-                    Err(e) => Err(
-                        Diagnostic::error(format!("invalid regex: {}", e), span)
-                            .with_code("E050"),
-                    ),
+            (Value::String(s), Value::String(pattern)) => match regex::Regex::new(pattern) {
+                Ok(re) => Ok(Value::Bool(re.is_match(s))),
+                Err(e) => {
+                    Err(Diagnostic::error(format!("invalid regex: {}", e), span).with_code("E050"))
                 }
-            }
-            _ => Err(
-                Diagnostic::error("=~ requires string operands", span).with_code("E050")
-            ),
+            },
+            _ => Err(Diagnostic::error("=~ requires string operands", span).with_code("E050")),
         }
     }
 
@@ -907,18 +850,16 @@ impl Evaluator {
         match op {
             UnaryOp::Not => match val {
                 Value::Bool(b) => Ok(Value::Bool(!b)),
-                _ => Err(
-                    Diagnostic::error("! requires bool operand", span).with_code("E050")
-                ),
+                _ => Err(Diagnostic::error("! requires bool operand", span).with_code("E050")),
             },
-            UnaryOp::Neg => match val {
-                Value::Int(i) => Ok(Value::Int(-i)),
-                Value::Float(f) => Ok(Value::Float(-f)),
-                _ => Err(
-                    Diagnostic::error("unary - requires numeric operand", span)
-                        .with_code("E050"),
-                ),
-            },
+            UnaryOp::Neg => {
+                match val {
+                    Value::Int(i) => Ok(Value::Int(-i)),
+                    Value::Float(f) => Ok(Value::Float(-f)),
+                    _ => Err(Diagnostic::error("unary - requires numeric operand", span)
+                        .with_code("E050")),
+                }
+            }
         }
     }
 
@@ -926,23 +867,15 @@ impl Evaluator {
     // Member / index access
     // ------------------------------------------------------------------
 
-    fn access_member(
-        &self,
-        val: &Value,
-        field: &str,
-        span: Span,
-    ) -> Result<Value, Diagnostic> {
+    fn access_member(&self, val: &Value, field: &str, span: Span) -> Result<Value, Diagnostic> {
         match val {
             Value::Map(m) => m.get(field).cloned().ok_or_else(|| {
                 Diagnostic::error(format!("key '{}' not found in map", field), span)
                     .with_code("E054")
             }),
             Value::BlockRef(br) => br.attributes.get(field).cloned().ok_or_else(|| {
-                Diagnostic::error(
-                    format!("attribute '{}' not found in block", field),
-                    span,
-                )
-                .with_code("E054")
+                Diagnostic::error(format!("attribute '{}' not found in block", field), span)
+                    .with_code("E054")
             }),
             _ => Err(Diagnostic::error(
                 format!("cannot access member on {}", val.type_name()),
@@ -952,12 +885,7 @@ impl Evaluator {
         }
     }
 
-    fn access_index(
-        &self,
-        val: &Value,
-        idx: &Value,
-        span: Span,
-    ) -> Result<Value, Diagnostic> {
+    fn access_index(&self, val: &Value, idx: &Value, span: Span) -> Result<Value, Diagnostic> {
         match (val, idx) {
             (Value::List(items), Value::Int(i)) => {
                 let i = *i as usize;
@@ -969,21 +897,11 @@ impl Evaluator {
                     .with_code("E054")
                 })
             }
-            (Value::Map(m), Value::String(key)) => {
-                m.get(key).cloned().ok_or_else(|| {
-                    Diagnostic::error(
-                        format!("key '{}' not found in map", key),
-                        span,
-                    )
-                    .with_code("E054")
-                })
-            }
+            (Value::Map(m), Value::String(key)) => m.get(key).cloned().ok_or_else(|| {
+                Diagnostic::error(format!("key '{}' not found in map", key), span).with_code("E054")
+            }),
             _ => Err(Diagnostic::error(
-                format!(
-                    "cannot index {} with {}",
-                    val.type_name(),
-                    idx.type_name()
-                ),
+                format!("cannot index {} with {}", val.type_name(), idx.type_name()),
                 span,
             )
             .with_code("E050")),
@@ -1020,20 +938,18 @@ impl Evaluator {
                 // Check builtin functions
                 if let Some(builtin) = self.builtins.get(name.as_str()).cloned() {
                     return builtin(&eval_args).map_err(|e| {
-                        Diagnostic::error(format!("in {}(): {}", name, e), span)
-                            .with_code("E052")
+                        Diagnostic::error(format!("in {}(): {}", name, e), span).with_code("E052")
                     });
                 }
 
                 // Check user-defined functions in scope
-                let maybe_func = self.scopes.resolve(scope_id, name)
-                    .and_then(|(_, entry)| {
-                        if let Some(Value::Function(func)) = &entry.value {
-                            Some(func.clone())
-                        } else {
-                            None
-                        }
-                    });
+                let maybe_func = self.scopes.resolve(scope_id, name).and_then(|(_, entry)| {
+                    if let Some(Value::Function(func)) = &entry.value {
+                        Some(func.clone())
+                    } else {
+                        None
+                    }
+                });
                 if let Some(func) = maybe_func {
                     self.scopes.record_read(scope_id, name);
                     return self.call_user_fn(&func, &eval_args, span);
@@ -1060,9 +976,7 @@ impl Evaluator {
                 let eval_args = self.eval_call_args(args, scope_id)?;
                 match callee_val {
                     Value::Function(func) => self.call_user_fn(&func, &eval_args, span),
-                    _ => Err(
-                        Diagnostic::error("not a callable value", span).with_code("E050")
-                    ),
+                    _ => Err(Diagnostic::error("not a callable value", span).with_code("E050")),
                 }
             }
         }
@@ -1103,9 +1017,9 @@ impl Evaluator {
         }
 
         let parent_scope = func.closure_scope.unwrap_or(ScopeId(0));
-        let call_scope =
-            self.scopes
-                .create_scope(ScopeKind::Lambda, Some(parent_scope));
+        let call_scope = self
+            .scopes
+            .create_scope(ScopeKind::Lambda, Some(parent_scope));
 
         for (param, arg) in func.params.iter().zip(args.iter()) {
             self.scopes.add_entry(
@@ -1146,8 +1060,7 @@ impl Evaluator {
                 // Builtins are handled in eval_fn_call, not here
                 if let Some(builtin) = self.builtins.get(name.as_str()) {
                     builtin(args).map_err(|e| {
-                        Diagnostic::error(format!("in {}(): {}", name, e), span)
-                            .with_code("E052")
+                        Diagnostic::error(format!("in {}(): {}", name, e), span).with_code("E052")
                     })
                 } else {
                     Err(Diagnostic::error(
@@ -1185,8 +1098,7 @@ impl Evaluator {
             "filter" => {
                 self.expect_ho_args(2, args.len(), "filter", span)?;
                 let list = self.eval_call_arg(&args[0], scope_id)?;
-                let func =
-                    self.eval_call_arg_as_fn(&args[1], scope_id, "filter", span)?;
+                let func = self.eval_call_arg_as_fn(&args[1], scope_id, "filter", span)?;
                 let items = self.expect_list(list, "filter", span)?;
                 let mut results = Vec::new();
                 for item in &items {
@@ -1200,8 +1112,7 @@ impl Evaluator {
             "every" => {
                 self.expect_ho_args(2, args.len(), "every", span)?;
                 let list = self.eval_call_arg(&args[0], scope_id)?;
-                let func =
-                    self.eval_call_arg_as_fn(&args[1], scope_id, "every", span)?;
+                let func = self.eval_call_arg_as_fn(&args[1], scope_id, "every", span)?;
                 let items = self.expect_list(list, "every", span)?;
                 for item in &items {
                     let result = self.call_user_fn(&func, std::slice::from_ref(item), span)?;
@@ -1214,8 +1125,7 @@ impl Evaluator {
             "some" => {
                 self.expect_ho_args(2, args.len(), "some", span)?;
                 let list = self.eval_call_arg(&args[0], scope_id)?;
-                let func =
-                    self.eval_call_arg_as_fn(&args[1], scope_id, "some", span)?;
+                let func = self.eval_call_arg_as_fn(&args[1], scope_id, "some", span)?;
                 let items = self.expect_list(list, "some", span)?;
                 for item in &items {
                     let result = self.call_user_fn(&func, std::slice::from_ref(item), span)?;
@@ -1229,8 +1139,7 @@ impl Evaluator {
                 self.expect_ho_args(3, args.len(), "reduce", span)?;
                 let list = self.eval_call_arg(&args[0], scope_id)?;
                 let init = self.eval_call_arg(&args[1], scope_id)?;
-                let func =
-                    self.eval_call_arg_as_fn(&args[2], scope_id, "reduce", span)?;
+                let func = self.eval_call_arg_as_fn(&args[2], scope_id, "reduce", span)?;
                 let items = self.expect_list(list, "reduce", span)?;
                 let mut acc = init;
                 for item in &items {
@@ -1241,8 +1150,7 @@ impl Evaluator {
             "count" => {
                 self.expect_ho_args(2, args.len(), "count", span)?;
                 let list = self.eval_call_arg(&args[0], scope_id)?;
-                let func =
-                    self.eval_call_arg_as_fn(&args[1], scope_id, "count", span)?;
+                let func = self.eval_call_arg_as_fn(&args[1], scope_id, "count", span)?;
                 let items = self.expect_list(list, "count", span)?;
                 let mut n = 0i64;
                 for item in &items {
@@ -1274,15 +1182,9 @@ impl Evaluator {
         }
     }
 
-    fn eval_call_arg(
-        &mut self,
-        arg: &CallArg,
-        scope_id: ScopeId,
-    ) -> Result<Value, Diagnostic> {
+    fn eval_call_arg(&mut self, arg: &CallArg, scope_id: ScopeId) -> Result<Value, Diagnostic> {
         match arg {
-            CallArg::Positional(e) | CallArg::Named(_, e) => {
-                self.eval_expr(e, scope_id)
-            }
+            CallArg::Positional(e) | CallArg::Named(_, e) => self.eval_expr(e, scope_id),
         }
     }
 
@@ -1307,12 +1209,7 @@ impl Evaluator {
         }
     }
 
-    fn expect_list(
-        &self,
-        val: Value,
-        fn_name: &str,
-        span: Span,
-    ) -> Result<Vec<Value>, Diagnostic> {
+    fn expect_list(&self, val: Value, fn_name: &str, span: Span) -> Result<Vec<Value>, Diagnostic> {
         match val {
             Value::List(l) => Ok(l),
             _ => Err(Diagnostic::error(
@@ -1343,10 +1240,7 @@ impl Evaluator {
             })
             .unwrap_or_else(|| format!("__block_{}", block.kind.name));
 
-        let child_scope = self
-            .block_scope_map
-            .get(&(parent_scope, name))
-            .copied();
+        let child_scope = self.block_scope_map.get(&(parent_scope, name)).copied();
 
         if let Some(child_scope) = child_scope {
             // Evaluate entries inside the child scope (topo-sorted)
@@ -1395,18 +1289,16 @@ impl Evaluator {
                 for (i, arg) in d.args.iter().enumerate() {
                     match arg {
                         DecoratorArg::Positional(expr) => {
-                            if let Ok(val) = self.eval_expr(
-                                expr,
-                                child_scope.unwrap_or(parent_scope),
-                            ) {
+                            if let Ok(val) =
+                                self.eval_expr(expr, child_scope.unwrap_or(parent_scope))
+                            {
                                 args.insert(format!("_{}", i), val);
                             }
                         }
                         DecoratorArg::Named(name, expr) => {
-                            if let Ok(val) = self.eval_expr(
-                                expr,
-                                child_scope.unwrap_or(parent_scope),
-                            ) {
+                            if let Ok(val) =
+                                self.eval_expr(expr, child_scope.unwrap_or(parent_scope))
+                            {
                                 args.insert(name.name.clone(), val);
                             }
                         }
@@ -1424,11 +1316,8 @@ impl Evaluator {
             .iter()
             .filter_map(|l| {
                 // Labels are StringLit — evaluate them to get the string value
-                self.eval_string_to_string(
-                    l,
-                    child_scope.unwrap_or(parent_scope),
-                )
-                .ok()
+                self.eval_string_to_string(l, child_scope.unwrap_or(parent_scope))
+                    .ok()
             })
             .collect();
 
@@ -1534,9 +1423,9 @@ impl Evaluator {
     ) -> Result<Value, Diagnostic> {
         let blocks = self.collect_blocks(scope_id);
         let engine = super::query::QueryEngine::new();
-        engine.execute(pipeline, &blocks, self, scope_id).map_err(|e| {
-            Diagnostic::error(e, span).with_code("E050")
-        })
+        engine
+            .execute(pipeline, &blocks, self, scope_id)
+            .map_err(|e| Diagnostic::error(e, span).with_code("E050"))
     }
 
     fn collect_blocks(&self, scope_id: ScopeId) -> Vec<BlockRef> {
@@ -1591,10 +1480,7 @@ impl Evaluator {
         let unused: Vec<(String, Span)> = self
             .scopes
             .all_entries()
-            .filter(|(_, entry)| {
-                entry.kind == ScopeEntryKind::LetBinding
-                    && entry.read_count == 0
-            })
+            .filter(|(_, entry)| entry.kind == ScopeEntryKind::LetBinding && entry.read_count == 0)
             .map(|(_, entry)| (entry.name.clone(), entry.span))
             .collect();
 
@@ -1603,11 +1489,8 @@ impl Evaluator {
             if name.starts_with('_') {
                 continue;
             }
-            self.diagnostics.warning_with_code(
-                format!("unused variable '{}'", name),
-                span,
-                "W002",
-            );
+            self.diagnostics
+                .warning_with_code(format!("unused variable '{}'", name), span, "W002");
         }
     }
 
@@ -2169,11 +2052,7 @@ mod tests {
     fn eval_unknown_function() {
         let mut ev = Evaluator::new();
         let scope = ev.scopes.create_scope(ScopeKind::Module, None);
-        let expr = Expr::FnCall(
-            Box::new(Expr::Ident(mk_ident("nonexistent"))),
-            vec![],
-            ds(),
-        );
+        let expr = Expr::FnCall(Box::new(Expr::Ident(mk_ident("nonexistent"))), vec![], ds());
         let err = ev.eval_expr(&expr, scope).unwrap_err();
         assert!(err.message.contains("unknown function"));
     }
@@ -2527,7 +2406,11 @@ mod tests {
 
         let mut ev = Evaluator::new();
         let result = ev.evaluate(&doc);
-        assert!(!ev.diagnostics.has_errors(), "unexpected errors: {:?}", ev.diagnostics.diagnostics());
+        assert!(
+            !ev.diagnostics.has_errors(),
+            "unexpected errors: {:?}",
+            ev.diagnostics.diagnostics()
+        );
 
         let target = result.get("target").expect("target should exist");
         match target {
@@ -2568,7 +2451,11 @@ mod tests {
 
         let mut ev = Evaluator::new();
         let result = ev.evaluate(&doc);
-        assert!(!ev.diagnostics.has_errors(), "unexpected errors: {:?}", ev.diagnostics.diagnostics());
+        assert!(
+            !ev.diagnostics.has_errors(),
+            "unexpected errors: {:?}",
+            ev.diagnostics.diagnostics()
+        );
         assert_eq!(result.get("auth_port"), Some(&Value::Int(8080)));
     }
 
@@ -2584,7 +2471,11 @@ mod tests {
             ds(),
         );
         let err = ev.eval_expr(&expr, scope).unwrap_err();
-        assert!(err.message.contains("not found"), "expected 'not found' error, got: {}", err.message);
+        assert!(
+            err.message.contains("not found"),
+            "expected 'not found' error, got: {}",
+            err.message
+        );
     }
 
     // ── import_raw() ────────────────────────────────────────────────
@@ -2615,7 +2506,11 @@ mod tests {
 
         let expr = Expr::ImportRaw(mk_string_lit("missing.txt"), ds());
         let err = ev.eval_expr(&expr, scope).unwrap_err();
-        assert!(err.message.contains("cannot read file"), "expected read error, got: {}", err.message);
+        assert!(
+            err.message.contains("cannot read file"),
+            "expected read error, got: {}",
+            err.message
+        );
     }
 
     #[test]
@@ -2630,7 +2525,11 @@ mod tests {
 
         let expr = Expr::ImportRaw(mk_string_lit("../../etc/passwd"), ds());
         let err = ev.eval_expr(&expr, scope).unwrap_err();
-        assert!(err.message.contains("escapes root"), "expected jail escape error, got: {}", err.message);
+        assert!(
+            err.message.contains("escapes root"),
+            "expected jail escape error, got: {}",
+            err.message
+        );
     }
 
     // ── import_table() ──────────────────────────────────────────────
@@ -2658,7 +2557,10 @@ mod tests {
         row2.insert("name".to_string(), Value::String("api".to_string()));
         row2.insert("port".to_string(), Value::String("9090".to_string()));
 
-        assert_eq!(result, Value::List(vec![Value::Map(row1), Value::Map(row2)]));
+        assert_eq!(
+            result,
+            Value::List(vec![Value::Map(row1), Value::Map(row2)])
+        );
     }
 
     #[test]
@@ -2688,7 +2590,10 @@ mod tests {
         row2.insert("name".to_string(), Value::String("api".to_string()));
         row2.insert("port".to_string(), Value::String("9090".to_string()));
 
-        assert_eq!(result, Value::List(vec![Value::Map(row1), Value::Map(row2)]));
+        assert_eq!(
+            result,
+            Value::List(vec![Value::Map(row1), Value::Map(row2)])
+        );
     }
 
     #[test]

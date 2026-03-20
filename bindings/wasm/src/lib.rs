@@ -200,8 +200,6 @@ pub fn query(source: &str, query_str: &str, options: Option<JsValue>) -> Result<
         let messages: Vec<String> = doc.errors().iter().map(|d| d.message.clone()).collect();
         return Err(JsValue::from_str(&messages.join("; ")));
     }
-    let result = doc
-        .query(query_str)
-        .map_err(|e| JsValue::from_str(&e))?;
+    let result = doc.query(query_str).map_err(|e| JsValue::from_str(&e))?;
     Ok(value_to_js(&result))
 }
