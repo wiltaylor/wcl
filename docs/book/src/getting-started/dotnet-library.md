@@ -1,10 +1,16 @@
 # Using WCL as a .NET Library
 
-WCL can be embedded into .NET programs via the `Wcl` package. It uses a native shared library (P/Invoke) under the hood, so you get the full 11-phase WCL pipeline without needing a Rust toolchain.
+WCL can be embedded into .NET programs via the `WclLang` NuGet package. It uses a native shared library (P/Invoke) under the hood, so you get the full 11-phase WCL pipeline without needing a Rust toolchain.
 
 ## Adding the Dependency
 
-Add a project reference to the WCL library:
+Install from NuGet:
+
+```bash
+dotnet add package WclLang
+```
+
+Or add a project reference for development from source:
 
 ```xml
 <ProjectReference Include="../wcl_dotnet/src/Wcl/Wcl.csproj" />

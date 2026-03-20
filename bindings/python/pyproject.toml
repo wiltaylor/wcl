@@ -3,7 +3,7 @@ requires = ["maturin>=1.7"]
 build-backend = "maturin"
 
 [project]
-name = "wcl"
+name = "pywcl"
 version = "0.1.0"
 requires-python = ">=3.9"
 
