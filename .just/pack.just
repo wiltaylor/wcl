@@ -1,6 +1,6 @@
 set working-directory := '..'
 
-pkg := '.packages'
+pkg := absolute_path('.packages')
 
 # Package all Rust crates into .packages/rust/
 rust:
@@ -18,7 +18,7 @@ python:
     set -euo pipefail
     mkdir -p "{{pkg}}/python"
     cd bindings/python
-    uv run --group dev maturin build --release --out "../../{{pkg}}/python"
+    uv run --group dev maturin build --release --out "{{pkg}}/python"
     echo "Python wheel packaged to {{pkg}}/python/"
 
 # Package WASM npm tarball into .packages/wasm/
@@ -29,7 +29,7 @@ wasm:
     cd bindings/wasm
     wasm-pack build --target web
     cd pkg
-    npm pack --pack-destination "../../../{{pkg}}/wasm"
+    npm pack --pack-destination "{{pkg}}/wasm"
     echo "WASM package packaged to {{pkg}}/wasm/"
 
 # Package Go module source into .packages/go/
@@ -62,7 +62,7 @@ vscode:
     cd editors/vscode
     npm install
     npx --yes @vscode/vsce package --allow-missing-repository
-    cp *.vsix "../../{{pkg}}/vscode/"
+    cp *.vsix "{{pkg}}/vscode/"
     echo "VS Code extension packaged to {{pkg}}/vscode/"
 
 # Package everything into .packages/
