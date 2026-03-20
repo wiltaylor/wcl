@@ -59,8 +59,8 @@ jobs:
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
       - uses: taiki-e/install-action@just
+      - uses: taiki-e/install-action@wasm-pack
       - uses: Swatinem/rust-cache@v2
-      - run: cargo install wasm-pack
       - run: just test wasm
 
   test-dotnet:
@@ -104,6 +104,7 @@ jobs:
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
       - uses: taiki-e/install-action@just
+      - uses: taiki-e/install-action@wasm-pack
       - uses: astral-sh/setup-uv@v7
       - uses: actions/setup-dotnet@v5
         with:
@@ -113,7 +114,6 @@ jobs:
           go-version: 'stable'
           cache: false
       - uses: Swatinem/rust-cache@v2
-      - run: cargo install wasm-pack
       - run: just pack all
       - uses: actions/upload-artifact@v4
         with:
