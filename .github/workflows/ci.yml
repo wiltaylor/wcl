@@ -34,8 +34,14 @@ jobs:
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
       - uses: taiki-e/install-action@just
+      - uses: taiki-e/install-action@cargo-nextest
       - uses: Swatinem/rust-cache@v2
-      - run: just test rust
+      - run: cargo nextest run --workspace --profile ci
+      - uses: mikepenz/action-junit-report@v6
+        if: always()
+        with:
+          report_paths: target/nextest/ci/junit.xml
+          check_name: Rust Tests
 
   test-python:
     name: Test Python
@@ -48,7 +54,15 @@ jobs:
       - uses: taiki-e/install-action@just
       - uses: astral-sh/setup-uv@v7
       - uses: Swatinem/rust-cache@v2
-      - run: just test python
+      - run: |
+          cd bindings/python
+          uv run --group dev maturin develop
+          uv run --group dev python -m pytest tests/ -v --junitxml=../../test-results/python.xml
+      - uses: mikepenz/action-junit-report@v6
+        if: always()
+        with:
+          report_paths: test-results/python.xml
+          check_name: Python Tests
 
   test-wasm:
     name: Test WASM
@@ -76,7 +90,14 @@ jobs:
         with:
           dotnet-version: '9.0.x'
       - uses: Swatinem/rust-cache@v2
-      - run: just test dotnet
+      - run: |
+          just build dotnet-native
+          dotnet test bindings/dotnet/Wcl.sln --logger "junit;LogFilePath=${{ github.workspace }}/test-results/dotnet.xml"
+      - uses: mikepenz/action-junit-report@v6
+        if: always()
+        with:
+          report_paths: test-results/dotnet.xml
+          check_name: .NET Tests
 
   test-go:
     name: Test Go
@@ -92,7 +113,15 @@ jobs:
           go-version: 'stable'
           cache: false
       - uses: Swatinem/rust-cache@v2
-      - run: just test go
+      - run: go install gotest.tools/gotestsum@latest
+      - run: |
+          just build go
+          cd bindings/go && CGO_ENABLED=1 gotestsum --junitfile ../../test-results/go.xml -- -v ./...
+      - uses: mikepenz/action-junit-report@v6
+        if: always()
+        with:
+          report_paths: test-results/go.xml
+          check_name: Go Tests
 
   pack:
     name: Package
