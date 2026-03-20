@@ -7,15 +7,14 @@ namespace Wcl.Eval
 {
     public enum WclValueKind
     {
-        String, Int, Float, Bool, Null, Identifier,
-        List, Map, Set, BlockRef, Function
+        String, Int, Float, Bool, Null,
+        List, Map, Set, BlockRef
     }
 
     public class WclValue : IEquatable<WclValue>
     {
         public WclValueKind Kind { get; }
 
-        // Payload
         private readonly string? _stringValue;
         private readonly long _intValue;
         private readonly double _floatValue;
@@ -23,12 +22,11 @@ namespace Wcl.Eval
         private readonly List<WclValue>? _listValue;
         private readonly OrderedMap<string, WclValue>? _mapValue;
         private readonly BlockRef? _blockRef;
-        private readonly FunctionValue? _functionValue;
 
         private WclValue(WclValueKind kind, string? s = null, long i = 0, double d = 0,
                          bool b = false, List<WclValue>? list = null,
                          OrderedMap<string, WclValue>? map = null,
-                         BlockRef? br = null, FunctionValue? fn = null)
+                         BlockRef? br = null)
         {
             Kind = kind;
             _stringValue = s;
@@ -38,7 +36,6 @@ namespace Wcl.Eval
             _listValue = list;
             _mapValue = map;
             _blockRef = br;
-            _functionValue = fn;
         }
 
         // Factory methods
@@ -47,35 +44,29 @@ namespace Wcl.Eval
         public static WclValue NewFloat(double value) => new WclValue(WclValueKind.Float, d: value);
         public static WclValue NewBool(bool value) => new WclValue(WclValueKind.Bool, b: value);
         public static readonly WclValue Null = new WclValue(WclValueKind.Null);
-        public static WclValue NewIdentifier(string value) => new WclValue(WclValueKind.Identifier, s: value);
         public static WclValue NewList(List<WclValue> items) => new WclValue(WclValueKind.List, list: items);
         public static WclValue NewMap(OrderedMap<string, WclValue> map) => new WclValue(WclValueKind.Map, map: map);
         public static WclValue NewSet(List<WclValue> items) => new WclValue(WclValueKind.Set, list: items);
         public static WclValue NewBlockRef(BlockRef blockRef) => new WclValue(WclValueKind.BlockRef, br: blockRef);
-        public static WclValue NewFunction(FunctionValue func) => new WclValue(WclValueKind.Function, fn: func);
 
         // Accessors
         public string AsString() => Kind == WclValueKind.String ? _stringValue! : throw new InvalidOperationException($"expected string, got {TypeName}");
         public long AsInt() => Kind == WclValueKind.Int ? _intValue : throw new InvalidOperationException($"expected int, got {TypeName}");
         public double AsFloat() => Kind == WclValueKind.Float ? _floatValue : throw new InvalidOperationException($"expected float, got {TypeName}");
         public bool AsBool() => Kind == WclValueKind.Bool ? _boolValue : throw new InvalidOperationException($"expected bool, got {TypeName}");
-        public string AsIdentifier() => Kind == WclValueKind.Identifier ? _stringValue! : throw new InvalidOperationException($"expected identifier, got {TypeName}");
         public List<WclValue> AsList() => Kind == WclValueKind.List ? _listValue! : throw new InvalidOperationException($"expected list, got {TypeName}");
         public OrderedMap<string, WclValue> AsMap() => Kind == WclValueKind.Map ? _mapValue! : throw new InvalidOperationException($"expected map, got {TypeName}");
         public List<WclValue> AsSet() => Kind == WclValueKind.Set ? _listValue! : throw new InvalidOperationException($"expected set, got {TypeName}");
         public BlockRef AsBlockRef() => Kind == WclValueKind.BlockRef ? _blockRef! : throw new InvalidOperationException($"expected block_ref, got {TypeName}");
-        public FunctionValue AsFunction() => Kind == WclValueKind.Function ? _functionValue! : throw new InvalidOperationException($"expected function, got {TypeName}");
 
         // Try accessors
         public string? TryAsString() => Kind == WclValueKind.String ? _stringValue : null;
         public long? TryAsInt() => Kind == WclValueKind.Int ? _intValue : (long?)null;
         public double? TryAsFloat() => Kind == WclValueKind.Float ? _floatValue : (double?)null;
         public bool? TryAsBool() => Kind == WclValueKind.Bool ? _boolValue : (bool?)null;
-        public string? TryAsIdentifier() => Kind == WclValueKind.Identifier ? _stringValue : null;
         public List<WclValue>? TryAsList() => Kind == WclValueKind.List ? _listValue : null;
         public OrderedMap<string, WclValue>? TryAsMap() => Kind == WclValueKind.Map ? _mapValue : null;
         public BlockRef? TryAsBlockRef() => Kind == WclValueKind.BlockRef ? _blockRef : null;
-        public FunctionValue? TryAsFunction() => Kind == WclValueKind.Function ? _functionValue : null;
 
         public bool IsNull => Kind == WclValueKind.Null;
 
@@ -88,12 +79,10 @@ namespace Wcl.Eval
             WclValueKind.Float => "float",
             WclValueKind.Bool => "bool",
             WclValueKind.Null => "null",
-            WclValueKind.Identifier => "identifier",
             WclValueKind.List => "list",
             WclValueKind.Map => "map",
             WclValueKind.Set => "set",
             WclValueKind.BlockRef => "block_ref",
-            WclValueKind.Function => "function",
             _ => "unknown",
         };
 
@@ -106,12 +95,10 @@ namespace Wcl.Eval
                 case WclValueKind.Float: return _floatValue.ToString(System.Globalization.CultureInfo.InvariantCulture);
                 case WclValueKind.Bool: return _boolValue ? "true" : "false";
                 case WclValueKind.Null: return "null";
-                case WclValueKind.Identifier: return _stringValue!;
                 default: throw new InvalidOperationException($"cannot interpolate {TypeName} into string");
             }
         }
 
-        // Equality - variant-strict
         public bool Equals(WclValue? other)
         {
             if (other is null) return false;
@@ -123,7 +110,6 @@ namespace Wcl.Eval
                 case WclValueKind.Float: return _floatValue == other._floatValue;
                 case WclValueKind.Bool: return _boolValue == other._boolValue;
                 case WclValueKind.Null: return true;
-                case WclValueKind.Identifier: return _stringValue == other._stringValue;
                 case WclValueKind.List:
                 case WclValueKind.Set:
                 {
@@ -143,7 +129,7 @@ namespace Wcl.Eval
                     }
                     return true;
                 }
-                default: return false; // Functions/BlockRefs are never equal
+                default: return false;
             }
         }
 
@@ -166,7 +152,6 @@ namespace Wcl.Eval
                 case WclValueKind.Float: return _floatValue.ToString(System.Globalization.CultureInfo.InvariantCulture);
                 case WclValueKind.Bool: return _boolValue ? "true" : "false";
                 case WclValueKind.Null: return "null";
-                case WclValueKind.Identifier: return _stringValue!;
                 case WclValueKind.List:
                 {
                     var sb = new StringBuilder("[");
@@ -216,7 +201,6 @@ namespace Wcl.Eval
                     sb.Append(" }");
                     return sb.ToString();
                 }
-                case WclValueKind.Function: return "<function>";
                 default: return Kind.ToString();
             }
         }

@@ -39,12 +39,6 @@ namespace Wcl.Tests.Serde
         }
 
         [Fact]
-        public void DeserializeIdentifierAsString()
-        {
-            Assert.Equal("svc-api", WclDeserializer.FromValue<string>(WclValue.NewIdentifier("svc-api")));
-        }
-
-        [Fact]
         public void DeserializeIntToFloat()
         {
             Assert.Equal(42.0, WclDeserializer.FromValue<double>(WclValue.NewInt(42)));
