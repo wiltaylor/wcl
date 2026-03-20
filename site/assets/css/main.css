@@ -524,22 +524,90 @@ code {
 }
 
 /* Responsive */
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   .hero-title {
     font-size: 2.5rem;
   }
 
-  .hero-tagline {
-    font-size: 1.1rem;
+  .hero-subtitle {
+    font-size: 1.2rem;
   }
 
+  .hero-tagline {
+    font-size: 1rem;
+  }
+
+  .hero {
+    padding: 3rem 0 2rem;
+  }
+
+  .section-card {
+    padding: 1.5rem;
+  }
+
+  .section-nav-link {
+    font-size: 0.7rem;
+    padding: 0.3rem 0.5rem;
+  }
 
   .feature-row {
     grid-template-columns: 1fr;
+    gap: 1rem;
   }
 
   .feature-row:nth-child(even) {
     direction: ltr;
+  }
+
+  .feature-text h3 {
+    font-size: 1.1rem;
+  }
+
+  .feature-code pre {
+    font-size: 0.7rem;
+    padding: 1rem;
+  }
+
+  pre,
+  pre code.hljs {
+    font-size: 0.75rem;
+    padding: 1rem;
+  }
+
+  .languages-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.75rem;
+  }
+
+  .editors-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.75rem;
+  }
+
+  main > section[id] > .container,
+  main > section[id] > .container.section-card {
+    margin-top: 40px;
+    margin-bottom: 40px;
+  }
+
+  .footer-inner {
+    flex-direction: column;
+    gap: 0.5rem;
+    text-align: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .hero-title {
+    font-size: 2rem;
+  }
+
+  .section-card {
+    padding: 1rem;
+  }
+
+  .container {
+    padding: 0 1rem;
   }
 
   .languages-grid {
@@ -550,10 +618,19 @@ code {
     grid-template-columns: 1fr;
   }
 
+  .btn {
+    padding: 0.6rem 1.2rem;
+    font-size: 0.85rem;
+  }
 
-  .footer-inner {
-    flex-direction: column;
-    gap: 0.5rem;
-    text-align: center;
+  .btn-secondary {
+    margin-left: 0;
+    margin-top: 0.5rem;
+  }
+
+  pre,
+  pre code.hljs {
+    font-size: 0.65rem;
+    padding: 0.75rem;
   }
 }
