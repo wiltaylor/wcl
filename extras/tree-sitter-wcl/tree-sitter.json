@@ -1,12 +1,14 @@
 {
+  "$schema": "https://tree-sitter.github.io/tree-sitter/assets/schemas/config.schema.json",
   "grammars": [
     {
       "name": "wcl",
-      "camelCase": false,
       "scope": "source.wcl",
-      "file-types": ["wcl"],
-      "highlights": "queries/highlights.scm",
-      "path": "."
+      "path": ".",
+      "file-types": [
+        "wcl"
+      ],
+      "highlights": "queries/highlights.scm"
     }
   ],
   "metadata": {
@@ -15,5 +17,15 @@
     "links": {
       "repository": "https://github.com/wiltaylor/wcl"
     }
+  },
+  "bindings": {
+    "c": true,
+    "go": true,
+    "java": false,
+    "node": true,
+    "python": true,
+    "rust": true,
+    "swift": false,
+    "zig": false
   }
 }

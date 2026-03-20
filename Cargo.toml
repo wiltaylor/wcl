@@ -1,5 +1,6 @@
 [workspace]
 resolver = "2"
+exclude = ["extras/tree-sitter-wcl"]
 members = [
     "crates/wcl_core",
     "crates/wcl_eval",

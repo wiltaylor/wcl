@@ -14,7 +14,7 @@ const PREC = {
   CALL: 10,
 };
 
-module.exports = grammar({
+export default grammar({
   name: "wcl",
 
   extras: ($) => [/\s/, $.line_comment, $.block_comment, $.doc_comment],
