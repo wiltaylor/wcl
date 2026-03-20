@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  checks: write
+  contents: read
+
 env:
   RUST_TOOLCHAIN: "1.92.0"
 
