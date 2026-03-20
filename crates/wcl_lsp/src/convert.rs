@@ -1,5 +1,5 @@
-use tower_lsp::lsp_types::{Position, Range};
 use ropey::Rope;
+use tower_lsp::lsp_types::{Position, Range};
 use wcl_core::span::Span;
 
 /// Convert a WCL byte-offset Span to an LSP Range using a rope for line/column lookup.
@@ -136,7 +136,13 @@ mod tests {
         assert_eq!(pos.character, 0);
 
         // Roundtrip from LSP position back to byte offset
-        let back = lsp_position_to_offset(Position { line: 1, character: 0 }, &rope);
+        let back = lsp_position_to_offset(
+            Position {
+                line: 1,
+                character: 0,
+            },
+            &rope,
+        );
         assert_eq!(back, 7);
 
         // Middle of second line: 'o' in "world" at byte 11 -> line 1, col 4

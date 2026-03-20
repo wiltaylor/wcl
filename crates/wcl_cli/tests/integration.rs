@@ -146,8 +146,7 @@ fn convert_to_json_block_produces_object_fields() {
     assert!(output.status.success(), "expected success exit");
     let stdout = String::from_utf8_lossy(&output.stdout);
     // Output must be parseable JSON
-    serde_json::from_str::<serde_json::Value>(stdout.trim())
-        .expect("output should be valid JSON");
+    serde_json::from_str::<serde_json::Value>(stdout.trim()).expect("output should be valid JSON");
 }
 
 #[test]
@@ -345,10 +344,7 @@ fn inspect_scopes_shows_scope_entries() {
         .args(["inspect", "--scopes", f.path().to_str().unwrap()])
         .assert()
         .success()
-        .stdout(
-            predicate::str::contains("Scope Tree")
-                .and(predicate::str::contains("Scope("))
-        );
+        .stdout(predicate::str::contains("Scope Tree").and(predicate::str::contains("Scope(")));
 }
 
 // ── wcl inspect --deps ───────────────────────────────────────────────────────
@@ -393,16 +389,10 @@ fn query_recursive_finds_files_in_directory() {
 fn query_recursive_aggregates_results() {
     let dir = TempDir::new().expect("tempdir");
 
-    std::fs::write(
-        dir.path().join("a.wcl"),
-        "service {\n    port = 8080\n}\n",
-    )
-    .expect("write a.wcl");
-    std::fs::write(
-        dir.path().join("b.wcl"),
-        "service {\n    port = 9090\n}\n",
-    )
-    .expect("write b.wcl");
+    std::fs::write(dir.path().join("a.wcl"), "service {\n    port = 8080\n}\n")
+        .expect("write a.wcl");
+    std::fs::write(dir.path().join("b.wcl"), "service {\n    port = 9090\n}\n")
+        .expect("write b.wcl");
 
     Command::cargo_bin("wcl")
         .unwrap()
@@ -424,13 +414,9 @@ fn query_recursive_walks_subdirectories() {
     let sub = dir.path().join("subdir");
     std::fs::create_dir(&sub).expect("mkdir subdir");
 
-    std::fs::write(
-        dir.path().join("a.wcl"),
-        "service {\n    port = 1000\n}\n",
-    )
-    .expect("write a.wcl");
-    std::fs::write(sub.join("b.wcl"), "service {\n    port = 2000\n}\n")
-        .expect("write b.wcl");
+    std::fs::write(dir.path().join("a.wcl"), "service {\n    port = 1000\n}\n")
+        .expect("write a.wcl");
+    std::fs::write(sub.join("b.wcl"), "service {\n    port = 2000\n}\n").expect("write b.wcl");
 
     Command::cargo_bin("wcl")
         .unwrap()

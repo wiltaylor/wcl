@@ -33,7 +33,12 @@ pub fn value_to_js(value: &Value) -> JsValue {
         }
         Value::BlockRef(br) => {
             let obj = Object::new();
-            Reflect::set(&obj, &JsValue::from_str("kind"), &JsValue::from_str(&br.kind)).unwrap();
+            Reflect::set(
+                &obj,
+                &JsValue::from_str("kind"),
+                &JsValue::from_str(&br.kind),
+            )
+            .unwrap();
             if let Some(id) = &br.id {
                 Reflect::set(&obj, &JsValue::from_str("id"), &JsValue::from_str(id)).unwrap();
             }

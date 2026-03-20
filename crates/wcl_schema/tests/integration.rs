@@ -13,7 +13,10 @@ fn sp() -> Span {
 }
 
 fn make_ident(name: &str) -> Ident {
-    Ident { name: name.to_string(), span: sp() }
+    Ident {
+        name: name.to_string(),
+        span: sp(),
+    }
 }
 
 fn make_string_lit(s: &str) -> StringLit {
@@ -59,7 +62,12 @@ fn make_block(kind: &str, id: Option<&str>, partial: bool, body: Vec<BodyItem>) 
         decorators: vec![],
         partial,
         kind: make_ident(kind),
-        inline_id: id.map(|v| InlineId::Literal(IdentifierLit { value: v.to_string(), span: sp() })),
+        inline_id: id.map(|v| {
+            InlineId::Literal(IdentifierLit {
+                value: v.to_string(),
+                span: sp(),
+            })
+        }),
         labels: vec![],
         body,
         trivia: Trivia::default(),
@@ -79,7 +87,10 @@ fn make_doc(items: Vec<DocItem>) -> Document {
 
 #[test]
 fn type_check_string_value_against_string_type() {
-    assert!(check_type(&Value::String("hello".into()), &TypeExpr::String(sp())));
+    assert!(check_type(
+        &Value::String("hello".into()),
+        &TypeExpr::String(sp())
+    ));
 }
 
 #[test]
@@ -132,7 +143,10 @@ fn type_check_union_string_or_null() {
 
 #[test]
 fn type_mismatch_string_vs_int() {
-    assert!(!check_type(&Value::String("x".into()), &TypeExpr::Int(sp())));
+    assert!(!check_type(
+        &Value::String("x".into()),
+        &TypeExpr::Int(sp())
+    ));
 }
 
 #[test]
@@ -249,7 +263,11 @@ fn schema_validation_present_required_field_no_error() {
     reg.collect(&doc, &mut diags);
     reg.validate(&doc, &indexmap::IndexMap::new(), &mut diags);
 
-    assert!(!diags.has_errors(), "unexpected errors: {:?}", diags.diagnostics());
+    assert!(
+        !diags.has_errors(),
+        "unexpected errors: {:?}",
+        diags.diagnostics()
+    );
 }
 
 #[test]
@@ -264,7 +282,10 @@ fn schema_validation_unknown_attribute_in_closed_schema_emits_error() {
         Some("alpha"),
         false,
         vec![
-            BodyItem::Attribute(make_attribute("name", Expr::StringLit(make_string_lit("x")))),
+            BodyItem::Attribute(make_attribute(
+                "name",
+                Expr::StringLit(make_string_lit("x")),
+            )),
             BodyItem::Attribute(make_attribute("extra", Expr::IntLit(1, sp()))),
         ],
     );
@@ -283,7 +304,11 @@ fn schema_validation_unknown_attribute_in_closed_schema_emits_error() {
 
 #[test]
 fn schema_validation_open_schema_allows_unknown_attributes() {
-    let open_dec = Decorator { name: make_ident("open"), args: vec![], span: sp() };
+    let open_dec = Decorator {
+        name: make_ident("open"),
+        args: vec![],
+        span: sp(),
+    };
     let mut schema = make_schema(
         "service",
         vec![make_schema_field("name", TypeExpr::String(sp()))],
@@ -295,7 +320,10 @@ fn schema_validation_open_schema_allows_unknown_attributes() {
         Some("alpha"),
         false,
         vec![
-            BodyItem::Attribute(make_attribute("name", Expr::StringLit(make_string_lit("x")))),
+            BodyItem::Attribute(make_attribute(
+                "name",
+                Expr::StringLit(make_string_lit("x")),
+            )),
             BodyItem::Attribute(make_attribute("anything", Expr::BoolLit(true, sp()))),
         ],
     );
@@ -309,7 +337,10 @@ fn schema_validation_open_schema_allows_unknown_attributes() {
     reg.collect(&doc, &mut diags);
     reg.validate(&doc, &indexmap::IndexMap::new(), &mut diags);
 
-    assert!(!diags.has_errors(), "open schema should allow unknown attributes");
+    assert!(
+        !diags.has_errors(),
+        "open schema should allow unknown attributes"
+    );
 }
 
 // ── SchemaRegistry: duplicate schema name detection ──────────────────────────
@@ -327,7 +358,10 @@ fn schema_registry_duplicate_schema_name_emits_error() {
     let mut diags = DiagnosticBag::new();
     reg.collect(&doc, &mut diags);
 
-    assert!(diags.has_errors(), "duplicate schema name should produce an error");
+    assert!(
+        diags.has_errors(),
+        "duplicate schema name should produce an error"
+    );
     assert_eq!(diags.error_count(), 1);
 }
 
@@ -352,8 +386,18 @@ fn schema_registry_unique_schema_names_no_error() {
 #[test]
 fn id_registry_unique_ids_no_error() {
     let doc = make_doc(vec![
-        DocItem::Body(BodyItem::Block(make_block("service", Some("alpha"), false, vec![]))),
-        DocItem::Body(BodyItem::Block(make_block("service", Some("beta"), false, vec![]))),
+        DocItem::Body(BodyItem::Block(make_block(
+            "service",
+            Some("alpha"),
+            false,
+            vec![],
+        ))),
+        DocItem::Body(BodyItem::Block(make_block(
+            "service",
+            Some("beta"),
+            false,
+            vec![],
+        ))),
     ]);
 
     let mut reg = IdRegistry::new();
@@ -366,8 +410,18 @@ fn id_registry_unique_ids_no_error() {
 #[test]
 fn id_registry_duplicate_non_partial_blocks_emit_error() {
     let doc = make_doc(vec![
-        DocItem::Body(BodyItem::Block(make_block("service", Some("alpha"), false, vec![]))),
-        DocItem::Body(BodyItem::Block(make_block("service", Some("alpha"), false, vec![]))),
+        DocItem::Body(BodyItem::Block(make_block(
+            "service",
+            Some("alpha"),
+            false,
+            vec![],
+        ))),
+        DocItem::Body(BodyItem::Block(make_block(
+            "service",
+            Some("alpha"),
+            false,
+            vec![],
+        ))),
     ]);
 
     let mut reg = IdRegistry::new();
@@ -387,29 +441,55 @@ fn id_registry_duplicate_non_partial_blocks_emit_error() {
 #[test]
 fn id_registry_two_partial_blocks_same_id_allowed() {
     let doc = make_doc(vec![
-        DocItem::Body(BodyItem::Block(make_block("service", Some("alpha"), true, vec![]))),
-        DocItem::Body(BodyItem::Block(make_block("service", Some("alpha"), true, vec![]))),
+        DocItem::Body(BodyItem::Block(make_block(
+            "service",
+            Some("alpha"),
+            true,
+            vec![],
+        ))),
+        DocItem::Body(BodyItem::Block(make_block(
+            "service",
+            Some("alpha"),
+            true,
+            vec![],
+        ))),
     ]);
 
     let mut reg = IdRegistry::new();
     let mut diags = DiagnosticBag::new();
     reg.check_document(&doc, &mut diags);
 
-    assert!(!diags.has_errors(), "two partial blocks with the same ID should be allowed (they merge)");
+    assert!(
+        !diags.has_errors(),
+        "two partial blocks with the same ID should be allowed (they merge)"
+    );
 }
 
 #[test]
 fn id_registry_partial_and_non_partial_same_id_is_error() {
     let doc = make_doc(vec![
-        DocItem::Body(BodyItem::Block(make_block("service", Some("alpha"), false, vec![]))),
-        DocItem::Body(BodyItem::Block(make_block("service", Some("alpha"), true, vec![]))),
+        DocItem::Body(BodyItem::Block(make_block(
+            "service",
+            Some("alpha"),
+            false,
+            vec![],
+        ))),
+        DocItem::Body(BodyItem::Block(make_block(
+            "service",
+            Some("alpha"),
+            true,
+            vec![],
+        ))),
     ]);
 
     let mut reg = IdRegistry::new();
     let mut diags = DiagnosticBag::new();
     reg.check_document(&doc, &mut diags);
 
-    assert!(diags.has_errors(), "mixing partial and non-partial with same ID should error");
+    assert!(
+        diags.has_errors(),
+        "mixing partial and non-partial with same ID should error"
+    );
 }
 
 #[test]
@@ -424,7 +504,10 @@ fn id_registry_blocks_without_ids_never_conflict() {
     let mut diags = DiagnosticBag::new();
     reg.check_document(&doc, &mut diags);
 
-    assert!(!diags.has_errors(), "blocks without IDs should never conflict");
+    assert!(
+        !diags.has_errors(),
+        "blocks without IDs should never conflict"
+    );
 }
 
 #[test]
@@ -433,8 +516,18 @@ fn id_registry_same_id_in_different_scopes_no_error() {
     let nested_alpha = make_block("port", Some("http"), false, vec![]);
     let nested_beta = make_block("port", Some("http"), false, vec![]);
 
-    let svc_a = make_block("service", Some("alpha"), false, vec![BodyItem::Block(nested_alpha)]);
-    let svc_b = make_block("service", Some("beta"), false, vec![BodyItem::Block(nested_beta)]);
+    let svc_a = make_block(
+        "service",
+        Some("alpha"),
+        false,
+        vec![BodyItem::Block(nested_alpha)],
+    );
+    let svc_b = make_block(
+        "service",
+        Some("beta"),
+        false,
+        vec![BodyItem::Block(nested_beta)],
+    );
 
     let doc = make_doc(vec![
         DocItem::Body(BodyItem::Block(svc_a)),
@@ -445,7 +538,10 @@ fn id_registry_same_id_in_different_scopes_no_error() {
     let mut diags = DiagnosticBag::new();
     reg.check_document(&doc, &mut diags);
 
-    assert!(!diags.has_errors(), "same ID in different scopes should not conflict");
+    assert!(
+        !diags.has_errors(),
+        "same ID in different scopes should not conflict"
+    );
 }
 
 // ── C2: Type checking in validate ────────────────────────────────────────────
@@ -508,7 +604,11 @@ fn type_match_int_value_for_int_field_no_error() {
     reg.collect(&doc, &mut diags);
     reg.validate(&doc, &indexmap::IndexMap::new(), &mut diags);
 
-    assert!(!diags.has_errors(), "int value for int field should pass: {:?}", diags.diagnostics());
+    assert!(
+        !diags.has_errors(),
+        "int value for int field should pass: {:?}",
+        diags.diagnostics()
+    );
 }
 
 // ── C3: @validate constraint enforcement ─────────────────────────────────────
@@ -650,7 +750,9 @@ fn ref_to_nonexistent_block_emits_e076() {
     // Schema: endpoint has a field "service_ref" with @ref("service")
     let ref_dec = Decorator {
         name: make_ident("ref"),
-        args: vec![DecoratorArg::Positional(Expr::StringLit(make_string_lit("service")))],
+        args: vec![DecoratorArg::Positional(Expr::StringLit(make_string_lit(
+            "service",
+        )))],
         span: sp(),
     };
     let mut field = make_schema_field("service_ref", TypeExpr::String(sp()));
@@ -691,7 +793,9 @@ fn ref_to_nonexistent_block_emits_e076() {
 fn ref_to_existing_block_no_error() {
     let ref_dec = Decorator {
         name: make_ident("ref"),
-        args: vec![DecoratorArg::Positional(Expr::StringLit(make_string_lit("service")))],
+        args: vec![DecoratorArg::Positional(Expr::StringLit(make_string_lit(
+            "service",
+        )))],
         span: sp(),
     };
     let mut field = make_schema_field("service_ref", TypeExpr::String(sp()));
@@ -722,7 +826,11 @@ fn ref_to_existing_block_no_error() {
     reg.collect(&doc, &mut diags);
     reg.validate(&doc, &indexmap::IndexMap::new(), &mut diags);
 
-    assert!(!diags.has_errors(), "ref to existing block should not error: {:?}", diags.diagnostics());
+    assert!(
+        !diags.has_errors(),
+        "ref to existing block should not error: {:?}",
+        diags.diagnostics()
+    );
 }
 
 // ── M5: @id_pattern enforcement ──────────────────────────────────────────────
@@ -732,7 +840,9 @@ fn id_pattern_mismatch_emits_e077() {
     // Schema: service has a field with @id_pattern("^[a-z][a-z0-9-]*$")
     let id_pat_dec = Decorator {
         name: make_ident("id_pattern"),
-        args: vec![DecoratorArg::Positional(Expr::StringLit(make_string_lit("^[a-z][a-z0-9-]*$")))],
+        args: vec![DecoratorArg::Positional(Expr::StringLit(make_string_lit(
+            "^[a-z][a-z0-9-]*$",
+        )))],
         span: sp(),
     };
     let mut field = make_schema_field("name", TypeExpr::String(sp()));
@@ -772,7 +882,9 @@ fn id_pattern_mismatch_emits_e077() {
 fn id_pattern_match_no_error() {
     let id_pat_dec = Decorator {
         name: make_ident("id_pattern"),
-        args: vec![DecoratorArg::Positional(Expr::StringLit(make_string_lit("^[a-z][a-z0-9-]*$")))],
+        args: vec![DecoratorArg::Positional(Expr::StringLit(make_string_lit(
+            "^[a-z][a-z0-9-]*$",
+        )))],
         span: sp(),
     };
     let mut field = make_schema_field("name", TypeExpr::String(sp()));
@@ -799,5 +911,9 @@ fn id_pattern_match_no_error() {
     reg.collect(&doc, &mut diags);
     reg.validate(&doc, &indexmap::IndexMap::new(), &mut diags);
 
-    assert!(!diags.has_errors(), "valid ID should not trigger error: {:?}", diags.diagnostics());
+    assert!(
+        !diags.has_errors(),
+        "valid ID should not trigger error: {:?}",
+        diags.diagnostics()
+    );
 }

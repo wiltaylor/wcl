@@ -1,29 +1,29 @@
+use ropey::Rope;
+use std::collections::HashSet;
 use tower_lsp::lsp_types::{
     SemanticToken, SemanticTokenModifier, SemanticTokenType, SemanticTokensLegend,
 };
-use ropey::Rope;
-use std::collections::HashSet;
 use wcl_core::ast;
 use wcl_core::lexer::{Token, TokenKind};
 
 pub const TOKEN_TYPES: &[SemanticTokenType] = &[
-    SemanticTokenType::KEYWORD,    // 0
-    SemanticTokenType::VARIABLE,   // 1
-    SemanticTokenType::PROPERTY,   // 2
-    SemanticTokenType::FUNCTION,   // 3
-    SemanticTokenType::TYPE,       // 4
-    SemanticTokenType::STRING,     // 5
-    SemanticTokenType::NUMBER,     // 6
-    SemanticTokenType::COMMENT,    // 7
-    SemanticTokenType::OPERATOR,   // 8
-    SemanticTokenType::DECORATOR,  // 9
-    SemanticTokenType::NAMESPACE,  // 10
-    SemanticTokenType::PARAMETER,  // 11
+    SemanticTokenType::KEYWORD,   // 0
+    SemanticTokenType::VARIABLE,  // 1
+    SemanticTokenType::PROPERTY,  // 2
+    SemanticTokenType::FUNCTION,  // 3
+    SemanticTokenType::TYPE,      // 4
+    SemanticTokenType::STRING,    // 5
+    SemanticTokenType::NUMBER,    // 6
+    SemanticTokenType::COMMENT,   // 7
+    SemanticTokenType::OPERATOR,  // 8
+    SemanticTokenType::DECORATOR, // 9
+    SemanticTokenType::NAMESPACE, // 10
+    SemanticTokenType::PARAMETER, // 11
 ];
 
 pub const TOKEN_MODIFIERS: &[SemanticTokenModifier] = &[
-    SemanticTokenModifier::DECLARATION,    // 0
-    SemanticTokenModifier::DOCUMENTATION,  // 1
+    SemanticTokenModifier::DECLARATION,   // 0
+    SemanticTokenModifier::DOCUMENTATION, // 1
 ];
 
 pub fn legend() -> SemanticTokensLegend {
@@ -401,7 +401,9 @@ mod tests {
         let (doc, _) = wcl_core::parse(source, file_id);
         let rope = Rope::from_str(source);
         let sem = compute_semantic_tokens(&tokens, &rope, Some(&doc));
-        sem.iter().map(|t| (t.token_type, t.token_modifiers_bitset)).collect()
+        sem.iter()
+            .map(|t| (t.token_type, t.token_modifiers_bitset))
+            .collect()
     }
 
     #[test]

@@ -10,7 +10,12 @@ pub fn value_to_py(py: Python<'_>, value: &Value) -> PyResult<PyObject> {
         Value::String(s) => Ok(s.into_pyobject(py)?.into_any().unbind()),
         Value::Int(i) => Ok(i.into_pyobject(py)?.into_any().unbind()),
         Value::Float(f) => Ok(f.into_pyobject(py)?.into_any().unbind()),
-        Value::Bool(b) => Ok((*b).into_pyobject(py).unwrap().to_owned().into_any().unbind()),
+        Value::Bool(b) => Ok((*b)
+            .into_pyobject(py)
+            .unwrap()
+            .to_owned()
+            .into_any()
+            .unbind()),
         Value::Null => Ok(py.None()),
         Value::Identifier(s) => Ok(s.into_pyobject(py)?.into_any().unbind()),
         Value::List(items) => {
@@ -110,10 +115,7 @@ pub fn values_to_py_dict(
 }
 
 /// Convert a DecoratorValue to a PyDecorator.
-pub fn decorator_to_py(
-    py: Python<'_>,
-    dec: &wcl::DecoratorValue,
-) -> PyResult<PyDecorator> {
+pub fn decorator_to_py(py: Python<'_>, dec: &wcl::DecoratorValue) -> PyResult<PyDecorator> {
     let args_dict = PyDict::new(py);
     for (k, v) in &dec.args {
         args_dict.set_item(k, value_to_py(py, v)?)?;

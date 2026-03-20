@@ -26,7 +26,10 @@ pub struct FunctionRegistry {
 impl std::fmt::Debug for FunctionRegistry {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("FunctionRegistry")
-            .field("functions", &format!("<{} functions>", self.functions.len()))
+            .field(
+                "functions",
+                &format!("<{} functions>", self.functions.len()),
+            )
             .field("signatures", &self.signatures)
             .finish()
     }
@@ -53,62 +56,346 @@ impl FunctionRegistry {
 /// Return all builtin function signatures for LSP tooling.
 pub fn builtin_signatures() -> Vec<FunctionSignature> {
     vec![
-        FunctionSignature { name: "upper".into(), params: vec!["s: string".into()], return_type: "string".into(), doc: "Convert string to uppercase".into() },
-        FunctionSignature { name: "lower".into(), params: vec!["s: string".into()], return_type: "string".into(), doc: "Convert string to lowercase".into() },
-        FunctionSignature { name: "trim".into(), params: vec!["s: string".into()], return_type: "string".into(), doc: "Trim whitespace".into() },
-        FunctionSignature { name: "trim_prefix".into(), params: vec!["s: string".into(), "prefix: string".into()], return_type: "string".into(), doc: "Remove prefix".into() },
-        FunctionSignature { name: "trim_suffix".into(), params: vec!["s: string".into(), "suffix: string".into()], return_type: "string".into(), doc: "Remove suffix".into() },
-        FunctionSignature { name: "replace".into(), params: vec!["s: string".into(), "from: string".into(), "to: string".into()], return_type: "string".into(), doc: "Replace occurrences".into() },
-        FunctionSignature { name: "split".into(), params: vec!["s: string".into(), "sep: string".into()], return_type: "list(string)".into(), doc: "Split string by separator".into() },
-        FunctionSignature { name: "join".into(), params: vec!["list: list".into(), "sep: string".into()], return_type: "string".into(), doc: "Join list elements".into() },
-        FunctionSignature { name: "starts_with".into(), params: vec!["s: string".into(), "prefix: string".into()], return_type: "bool".into(), doc: "Check prefix".into() },
-        FunctionSignature { name: "ends_with".into(), params: vec!["s: string".into(), "suffix: string".into()], return_type: "bool".into(), doc: "Check suffix".into() },
-        FunctionSignature { name: "contains".into(), params: vec!["s: string".into(), "sub: string".into()], return_type: "bool".into(), doc: "Check substring".into() },
-        FunctionSignature { name: "length".into(), params: vec!["s: string".into()], return_type: "int".into(), doc: "String length".into() },
-        FunctionSignature { name: "substr".into(), params: vec!["s: string".into(), "start: int".into(), "end: int".into()], return_type: "string".into(), doc: "Substring".into() },
-        FunctionSignature { name: "format".into(), params: vec!["fmt: string".into(), "...args".into()], return_type: "string".into(), doc: "Format string".into() },
-        FunctionSignature { name: "regex_match".into(), params: vec!["s: string".into(), "pattern: string".into()], return_type: "bool".into(), doc: "Regex match".into() },
-        FunctionSignature { name: "regex_capture".into(), params: vec!["s: string".into(), "pattern: string".into()], return_type: "list(string)".into(), doc: "Regex capture groups".into() },
-        FunctionSignature { name: "abs".into(), params: vec!["n: number".into()], return_type: "number".into(), doc: "Absolute value".into() },
-        FunctionSignature { name: "min".into(), params: vec!["a: number".into(), "b: number".into()], return_type: "number".into(), doc: "Minimum".into() },
-        FunctionSignature { name: "max".into(), params: vec!["a: number".into(), "b: number".into()], return_type: "number".into(), doc: "Maximum".into() },
-        FunctionSignature { name: "floor".into(), params: vec!["n: float".into()], return_type: "int".into(), doc: "Floor".into() },
-        FunctionSignature { name: "ceil".into(), params: vec!["n: float".into()], return_type: "int".into(), doc: "Ceiling".into() },
-        FunctionSignature { name: "round".into(), params: vec!["n: float".into()], return_type: "int".into(), doc: "Round".into() },
-        FunctionSignature { name: "sqrt".into(), params: vec!["n: float".into()], return_type: "float".into(), doc: "Square root".into() },
-        FunctionSignature { name: "pow".into(), params: vec!["base: float".into(), "exp: float".into()], return_type: "float".into(), doc: "Power".into() },
-        FunctionSignature { name: "len".into(), params: vec!["collection".into()], return_type: "int".into(), doc: "Collection length".into() },
-        FunctionSignature { name: "keys".into(), params: vec!["m: map".into()], return_type: "list(string)".into(), doc: "Map keys".into() },
-        FunctionSignature { name: "values".into(), params: vec!["m: map".into()], return_type: "list".into(), doc: "Map values".into() },
-        FunctionSignature { name: "flatten".into(), params: vec!["list: list".into()], return_type: "list".into(), doc: "Flatten nested lists".into() },
-        FunctionSignature { name: "concat".into(), params: vec!["a: list".into(), "b: list".into()], return_type: "list".into(), doc: "Concatenate lists".into() },
-        FunctionSignature { name: "distinct".into(), params: vec!["list: list".into()], return_type: "list".into(), doc: "Remove duplicates".into() },
-        FunctionSignature { name: "sort".into(), params: vec!["list: list".into()], return_type: "list".into(), doc: "Sort list".into() },
-        FunctionSignature { name: "reverse".into(), params: vec!["list: list".into()], return_type: "list".into(), doc: "Reverse list".into() },
-        FunctionSignature { name: "index_of".into(), params: vec!["list: list".into(), "elem".into()], return_type: "int".into(), doc: "Find element index".into() },
-        FunctionSignature { name: "range".into(), params: vec!["start: int".into(), "end: int".into()], return_type: "list(int)".into(), doc: "Integer range".into() },
-        FunctionSignature { name: "zip".into(), params: vec!["a: list".into(), "b: list".into()], return_type: "list".into(), doc: "Zip two lists".into() },
-        FunctionSignature { name: "map".into(), params: vec!["list: list".into(), "fn: lambda".into()], return_type: "list".into(), doc: "Map over list".into() },
-        FunctionSignature { name: "filter".into(), params: vec!["list: list".into(), "fn: lambda".into()], return_type: "list".into(), doc: "Filter list".into() },
-        FunctionSignature { name: "every".into(), params: vec!["list: list".into(), "fn: lambda".into()], return_type: "bool".into(), doc: "All match predicate".into() },
-        FunctionSignature { name: "some".into(), params: vec!["list: list".into(), "fn: lambda".into()], return_type: "bool".into(), doc: "Any matches predicate".into() },
-        FunctionSignature { name: "reduce".into(), params: vec!["list: list".into(), "init".into(), "fn: lambda".into()], return_type: "any".into(), doc: "Reduce list".into() },
-        FunctionSignature { name: "sum".into(), params: vec!["list: list(number)".into()], return_type: "number".into(), doc: "Sum numbers".into() },
-        FunctionSignature { name: "avg".into(), params: vec!["list: list(number)".into()], return_type: "float".into(), doc: "Average".into() },
-        FunctionSignature { name: "min_of".into(), params: vec!["list: list(number)".into()], return_type: "number".into(), doc: "Minimum of list".into() },
-        FunctionSignature { name: "max_of".into(), params: vec!["list: list(number)".into()], return_type: "number".into(), doc: "Maximum of list".into() },
-        FunctionSignature { name: "count".into(), params: vec!["list: list".into(), "fn: lambda".into()], return_type: "int".into(), doc: "Count matching elements".into() },
-        FunctionSignature { name: "sha256".into(), params: vec!["s: string".into()], return_type: "string".into(), doc: "SHA-256 hash".into() },
-        FunctionSignature { name: "base64_encode".into(), params: vec!["s: string".into()], return_type: "string".into(), doc: "Base64 encode".into() },
-        FunctionSignature { name: "base64_decode".into(), params: vec!["s: string".into()], return_type: "string".into(), doc: "Base64 decode".into() },
-        FunctionSignature { name: "json_encode".into(), params: vec!["value".into()], return_type: "string".into(), doc: "Encode as JSON string".into() },
-        FunctionSignature { name: "to_string".into(), params: vec!["value".into()], return_type: "string".into(), doc: "Convert to string".into() },
-        FunctionSignature { name: "to_int".into(), params: vec!["value".into()], return_type: "int".into(), doc: "Convert to int".into() },
-        FunctionSignature { name: "to_float".into(), params: vec!["value".into()], return_type: "float".into(), doc: "Convert to float".into() },
-        FunctionSignature { name: "to_bool".into(), params: vec!["value".into()], return_type: "bool".into(), doc: "Convert to bool".into() },
-        FunctionSignature { name: "type_of".into(), params: vec!["value".into()], return_type: "string".into(), doc: "Get type name".into() },
-        FunctionSignature { name: "has".into(), params: vec!["value".into(), "key: string".into()], return_type: "bool".into(), doc: "Check if key exists".into() },
-        FunctionSignature { name: "has_decorator".into(), params: vec!["block".into(), "name: string".into()], return_type: "bool".into(), doc: "Check decorator".into() },
+        FunctionSignature {
+            name: "upper".into(),
+            params: vec!["s: string".into()],
+            return_type: "string".into(),
+            doc: "Convert string to uppercase".into(),
+        },
+        FunctionSignature {
+            name: "lower".into(),
+            params: vec!["s: string".into()],
+            return_type: "string".into(),
+            doc: "Convert string to lowercase".into(),
+        },
+        FunctionSignature {
+            name: "trim".into(),
+            params: vec!["s: string".into()],
+            return_type: "string".into(),
+            doc: "Trim whitespace".into(),
+        },
+        FunctionSignature {
+            name: "trim_prefix".into(),
+            params: vec!["s: string".into(), "prefix: string".into()],
+            return_type: "string".into(),
+            doc: "Remove prefix".into(),
+        },
+        FunctionSignature {
+            name: "trim_suffix".into(),
+            params: vec!["s: string".into(), "suffix: string".into()],
+            return_type: "string".into(),
+            doc: "Remove suffix".into(),
+        },
+        FunctionSignature {
+            name: "replace".into(),
+            params: vec![
+                "s: string".into(),
+                "from: string".into(),
+                "to: string".into(),
+            ],
+            return_type: "string".into(),
+            doc: "Replace occurrences".into(),
+        },
+        FunctionSignature {
+            name: "split".into(),
+            params: vec!["s: string".into(), "sep: string".into()],
+            return_type: "list(string)".into(),
+            doc: "Split string by separator".into(),
+        },
+        FunctionSignature {
+            name: "join".into(),
+            params: vec!["list: list".into(), "sep: string".into()],
+            return_type: "string".into(),
+            doc: "Join list elements".into(),
+        },
+        FunctionSignature {
+            name: "starts_with".into(),
+            params: vec!["s: string".into(), "prefix: string".into()],
+            return_type: "bool".into(),
+            doc: "Check prefix".into(),
+        },
+        FunctionSignature {
+            name: "ends_with".into(),
+            params: vec!["s: string".into(), "suffix: string".into()],
+            return_type: "bool".into(),
+            doc: "Check suffix".into(),
+        },
+        FunctionSignature {
+            name: "contains".into(),
+            params: vec!["s: string".into(), "sub: string".into()],
+            return_type: "bool".into(),
+            doc: "Check substring".into(),
+        },
+        FunctionSignature {
+            name: "length".into(),
+            params: vec!["s: string".into()],
+            return_type: "int".into(),
+            doc: "String length".into(),
+        },
+        FunctionSignature {
+            name: "substr".into(),
+            params: vec!["s: string".into(), "start: int".into(), "end: int".into()],
+            return_type: "string".into(),
+            doc: "Substring".into(),
+        },
+        FunctionSignature {
+            name: "format".into(),
+            params: vec!["fmt: string".into(), "...args".into()],
+            return_type: "string".into(),
+            doc: "Format string".into(),
+        },
+        FunctionSignature {
+            name: "regex_match".into(),
+            params: vec!["s: string".into(), "pattern: string".into()],
+            return_type: "bool".into(),
+            doc: "Regex match".into(),
+        },
+        FunctionSignature {
+            name: "regex_capture".into(),
+            params: vec!["s: string".into(), "pattern: string".into()],
+            return_type: "list(string)".into(),
+            doc: "Regex capture groups".into(),
+        },
+        FunctionSignature {
+            name: "abs".into(),
+            params: vec!["n: number".into()],
+            return_type: "number".into(),
+            doc: "Absolute value".into(),
+        },
+        FunctionSignature {
+            name: "min".into(),
+            params: vec!["a: number".into(), "b: number".into()],
+            return_type: "number".into(),
+            doc: "Minimum".into(),
+        },
+        FunctionSignature {
+            name: "max".into(),
+            params: vec!["a: number".into(), "b: number".into()],
+            return_type: "number".into(),
+            doc: "Maximum".into(),
+        },
+        FunctionSignature {
+            name: "floor".into(),
+            params: vec!["n: float".into()],
+            return_type: "int".into(),
+            doc: "Floor".into(),
+        },
+        FunctionSignature {
+            name: "ceil".into(),
+            params: vec!["n: float".into()],
+            return_type: "int".into(),
+            doc: "Ceiling".into(),
+        },
+        FunctionSignature {
+            name: "round".into(),
+            params: vec!["n: float".into()],
+            return_type: "int".into(),
+            doc: "Round".into(),
+        },
+        FunctionSignature {
+            name: "sqrt".into(),
+            params: vec!["n: float".into()],
+            return_type: "float".into(),
+            doc: "Square root".into(),
+        },
+        FunctionSignature {
+            name: "pow".into(),
+            params: vec!["base: float".into(), "exp: float".into()],
+            return_type: "float".into(),
+            doc: "Power".into(),
+        },
+        FunctionSignature {
+            name: "len".into(),
+            params: vec!["collection".into()],
+            return_type: "int".into(),
+            doc: "Collection length".into(),
+        },
+        FunctionSignature {
+            name: "keys".into(),
+            params: vec!["m: map".into()],
+            return_type: "list(string)".into(),
+            doc: "Map keys".into(),
+        },
+        FunctionSignature {
+            name: "values".into(),
+            params: vec!["m: map".into()],
+            return_type: "list".into(),
+            doc: "Map values".into(),
+        },
+        FunctionSignature {
+            name: "flatten".into(),
+            params: vec!["list: list".into()],
+            return_type: "list".into(),
+            doc: "Flatten nested lists".into(),
+        },
+        FunctionSignature {
+            name: "concat".into(),
+            params: vec!["a: list".into(), "b: list".into()],
+            return_type: "list".into(),
+            doc: "Concatenate lists".into(),
+        },
+        FunctionSignature {
+            name: "distinct".into(),
+            params: vec!["list: list".into()],
+            return_type: "list".into(),
+            doc: "Remove duplicates".into(),
+        },
+        FunctionSignature {
+            name: "sort".into(),
+            params: vec!["list: list".into()],
+            return_type: "list".into(),
+            doc: "Sort list".into(),
+        },
+        FunctionSignature {
+            name: "reverse".into(),
+            params: vec!["list: list".into()],
+            return_type: "list".into(),
+            doc: "Reverse list".into(),
+        },
+        FunctionSignature {
+            name: "index_of".into(),
+            params: vec!["list: list".into(), "elem".into()],
+            return_type: "int".into(),
+            doc: "Find element index".into(),
+        },
+        FunctionSignature {
+            name: "range".into(),
+            params: vec!["start: int".into(), "end: int".into()],
+            return_type: "list(int)".into(),
+            doc: "Integer range".into(),
+        },
+        FunctionSignature {
+            name: "zip".into(),
+            params: vec!["a: list".into(), "b: list".into()],
+            return_type: "list".into(),
+            doc: "Zip two lists".into(),
+        },
+        FunctionSignature {
+            name: "map".into(),
+            params: vec!["list: list".into(), "fn: lambda".into()],
+            return_type: "list".into(),
+            doc: "Map over list".into(),
+        },
+        FunctionSignature {
+            name: "filter".into(),
+            params: vec!["list: list".into(), "fn: lambda".into()],
+            return_type: "list".into(),
+            doc: "Filter list".into(),
+        },
+        FunctionSignature {
+            name: "every".into(),
+            params: vec!["list: list".into(), "fn: lambda".into()],
+            return_type: "bool".into(),
+            doc: "All match predicate".into(),
+        },
+        FunctionSignature {
+            name: "some".into(),
+            params: vec!["list: list".into(), "fn: lambda".into()],
+            return_type: "bool".into(),
+            doc: "Any matches predicate".into(),
+        },
+        FunctionSignature {
+            name: "reduce".into(),
+            params: vec!["list: list".into(), "init".into(), "fn: lambda".into()],
+            return_type: "any".into(),
+            doc: "Reduce list".into(),
+        },
+        FunctionSignature {
+            name: "sum".into(),
+            params: vec!["list: list(number)".into()],
+            return_type: "number".into(),
+            doc: "Sum numbers".into(),
+        },
+        FunctionSignature {
+            name: "avg".into(),
+            params: vec!["list: list(number)".into()],
+            return_type: "float".into(),
+            doc: "Average".into(),
+        },
+        FunctionSignature {
+            name: "min_of".into(),
+            params: vec!["list: list(number)".into()],
+            return_type: "number".into(),
+            doc: "Minimum of list".into(),
+        },
+        FunctionSignature {
+            name: "max_of".into(),
+            params: vec!["list: list(number)".into()],
+            return_type: "number".into(),
+            doc: "Maximum of list".into(),
+        },
+        FunctionSignature {
+            name: "count".into(),
+            params: vec!["list: list".into(), "fn: lambda".into()],
+            return_type: "int".into(),
+            doc: "Count matching elements".into(),
+        },
+        FunctionSignature {
+            name: "sha256".into(),
+            params: vec!["s: string".into()],
+            return_type: "string".into(),
+            doc: "SHA-256 hash".into(),
+        },
+        FunctionSignature {
+            name: "base64_encode".into(),
+            params: vec!["s: string".into()],
+            return_type: "string".into(),
+            doc: "Base64 encode".into(),
+        },
+        FunctionSignature {
+            name: "base64_decode".into(),
+            params: vec!["s: string".into()],
+            return_type: "string".into(),
+            doc: "Base64 decode".into(),
+        },
+        FunctionSignature {
+            name: "json_encode".into(),
+            params: vec!["value".into()],
+            return_type: "string".into(),
+            doc: "Encode as JSON string".into(),
+        },
+        FunctionSignature {
+            name: "to_string".into(),
+            params: vec!["value".into()],
+            return_type: "string".into(),
+            doc: "Convert to string".into(),
+        },
+        FunctionSignature {
+            name: "to_int".into(),
+            params: vec!["value".into()],
+            return_type: "int".into(),
+            doc: "Convert to int".into(),
+        },
+        FunctionSignature {
+            name: "to_float".into(),
+            params: vec!["value".into()],
+            return_type: "float".into(),
+            doc: "Convert to float".into(),
+        },
+        FunctionSignature {
+            name: "to_bool".into(),
+            params: vec!["value".into()],
+            return_type: "bool".into(),
+            doc: "Convert to bool".into(),
+        },
+        FunctionSignature {
+            name: "type_of".into(),
+            params: vec!["value".into()],
+            return_type: "string".into(),
+            doc: "Get type name".into(),
+        },
+        FunctionSignature {
+            name: "has".into(),
+            params: vec!["value".into(), "key: string".into()],
+            return_type: "bool".into(),
+            doc: "Check if key exists".into(),
+        },
+        FunctionSignature {
+            name: "has_decorator".into(),
+            params: vec!["block".into(), "name: string".into()],
+            return_type: "bool".into(),
+            doc: "Check decorator".into(),
+        },
     ]
 }
 
@@ -453,8 +740,8 @@ fn regex_match(args: &[Value]) -> Result<Value, String> {
     expect_args(args, 2, "regex_match")?;
     let s = get_string(&args[0], 1, "regex_match")?;
     let pattern = get_string(&args[1], 2, "regex_match")?;
-    let re = regex::Regex::new(pattern)
-        .map_err(|e| format!("regex_match: invalid pattern: {}", e))?;
+    let re =
+        regex::Regex::new(pattern).map_err(|e| format!("regex_match: invalid pattern: {}", e))?;
     Ok(Value::Bool(re.is_match(s)))
 }
 
@@ -462,8 +749,8 @@ fn regex_capture(args: &[Value]) -> Result<Value, String> {
     expect_args(args, 2, "regex_capture")?;
     let s = get_string(&args[0], 1, "regex_capture")?;
     let pattern = get_string(&args[1], 2, "regex_capture")?;
-    let re = regex::Regex::new(pattern)
-        .map_err(|e| format!("regex_capture: invalid pattern: {}", e))?;
+    let re =
+        regex::Regex::new(pattern).map_err(|e| format!("regex_capture: invalid pattern: {}", e))?;
 
     let captures: Vec<Value> = match re.captures(s) {
         None => vec![],
@@ -844,9 +1131,7 @@ fn value_to_json(v: &Value) -> serde_json::Value {
         Value::Bool(b) => serde_json::Value::Bool(*b),
         Value::Null => serde_json::Value::Null,
         Value::Identifier(s) => serde_json::Value::String(s.clone()),
-        Value::List(items) => {
-            serde_json::Value::Array(items.iter().map(value_to_json).collect())
-        }
+        Value::List(items) => serde_json::Value::Array(items.iter().map(value_to_json).collect()),
         Value::Map(m) => {
             let obj: serde_json::Map<String, serde_json::Value> = m
                 .iter()
@@ -948,7 +1233,12 @@ fn fn_has(args: &[Value]) -> Result<Value, String> {
     expect_args(args, 2, "has")?;
     let block_ref = match &args[0] {
         Value::BlockRef(br) => br,
-        other => return Err(format!("has: argument 1 must be block_ref, got {}", other.type_name())),
+        other => {
+            return Err(format!(
+                "has: argument 1 must be block_ref, got {}",
+                other.type_name()
+            ))
+        }
     };
     let attr_name = get_string(&args[1], 2, "has")?;
     // Check attributes AND child blocks by kind
@@ -961,7 +1251,12 @@ fn fn_has_decorator(args: &[Value]) -> Result<Value, String> {
     expect_args(args, 2, "has_decorator")?;
     let block_ref = match &args[0] {
         Value::BlockRef(br) => br,
-        other => return Err(format!("has_decorator: argument 1 must be block_ref, got {}", other.type_name())),
+        other => {
+            return Err(format!(
+                "has_decorator: argument 1 must be block_ref, got {}",
+                other.type_name()
+            ))
+        }
     };
     let deco_name = get_string(&args[1], 2, "has_decorator")?;
     let found = block_ref.decorators.iter().any(|d| d.name == deco_name);
@@ -1058,20 +1353,38 @@ mod tests {
 
     #[test]
     fn test_starts_with() {
-        assert_eq!(starts_with(&[s("hello"), s("he")]).unwrap(), Value::Bool(true));
-        assert_eq!(starts_with(&[s("hello"), s("lo")]).unwrap(), Value::Bool(false));
+        assert_eq!(
+            starts_with(&[s("hello"), s("he")]).unwrap(),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            starts_with(&[s("hello"), s("lo")]).unwrap(),
+            Value::Bool(false)
+        );
     }
 
     #[test]
     fn test_ends_with() {
-        assert_eq!(ends_with(&[s("hello"), s("lo")]).unwrap(), Value::Bool(true));
-        assert_eq!(ends_with(&[s("hello"), s("he")]).unwrap(), Value::Bool(false));
+        assert_eq!(
+            ends_with(&[s("hello"), s("lo")]).unwrap(),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            ends_with(&[s("hello"), s("he")]).unwrap(),
+            Value::Bool(false)
+        );
     }
 
     #[test]
     fn test_contains_string() {
-        assert_eq!(fn_contains(&[s("foobar"), s("oba")]).unwrap(), Value::Bool(true));
-        assert_eq!(fn_contains(&[s("foobar"), s("xyz")]).unwrap(), Value::Bool(false));
+        assert_eq!(
+            fn_contains(&[s("foobar"), s("oba")]).unwrap(),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            fn_contains(&[s("foobar"), s("xyz")]).unwrap(),
+            Value::Bool(false)
+        );
     }
 
     #[test]
@@ -1227,8 +1540,7 @@ mod tests {
 
     #[test]
     fn test_distinct() {
-        let result =
-            distinct(&[list(vec![i(1), i(2), i(1), i(3), i(2)])]).unwrap();
+        let result = distinct(&[list(vec![i(1), i(2), i(1), i(3), i(2)])]).unwrap();
         assert_eq!(result, list(vec![i(1), i(2), i(3)]));
     }
 
@@ -1261,9 +1573,18 @@ mod tests {
 
     #[test]
     fn test_range() {
-        assert_eq!(range(&[i(0), i(5)]).unwrap(), list(vec![i(0), i(1), i(2), i(3), i(4)]));
-        assert_eq!(range(&[i(0), i(10), i(2)]).unwrap(), list(vec![i(0), i(2), i(4), i(6), i(8)]));
-        assert_eq!(range(&[i(5), i(0), i(-1)]).unwrap(), list(vec![i(5), i(4), i(3), i(2), i(1)]));
+        assert_eq!(
+            range(&[i(0), i(5)]).unwrap(),
+            list(vec![i(0), i(1), i(2), i(3), i(4)])
+        );
+        assert_eq!(
+            range(&[i(0), i(10), i(2)]).unwrap(),
+            list(vec![i(0), i(2), i(4), i(6), i(8)])
+        );
+        assert_eq!(
+            range(&[i(5), i(0), i(-1)]).unwrap(),
+            list(vec![i(5), i(4), i(3), i(2), i(1)])
+        );
         assert!(range(&[i(0), i(5), i(0)]).is_err());
     }
 
@@ -1293,8 +1614,14 @@ mod tests {
 
     #[test]
     fn test_min_of_max_of() {
-        assert_eq!(min_of(&[list(vec![i(3), i(1), i(4), i(1), i(5)])]).unwrap(), i(1));
-        assert_eq!(max_of(&[list(vec![i(3), i(1), i(4), i(1), i(5)])]).unwrap(), i(5));
+        assert_eq!(
+            min_of(&[list(vec![i(3), i(1), i(4), i(1), i(5)])]).unwrap(),
+            i(1)
+        );
+        assert_eq!(
+            max_of(&[list(vec![i(3), i(1), i(4), i(1), i(5)])]).unwrap(),
+            i(5)
+        );
         assert!(min_of(&[list(vec![])]).is_err());
         assert!(max_of(&[list(vec![])]).is_err());
     }
@@ -1399,17 +1726,62 @@ mod tests {
     fn test_registry_completeness() {
         let registry = builtin_registry();
         let expected = [
-            "upper", "lower", "trim", "trim_prefix", "trim_suffix", "replace",
-            "split", "join", "starts_with", "ends_with", "contains", "length",
-            "substr", "format", "regex_match", "regex_capture",
-            "abs", "min", "max", "floor", "ceil", "round", "sqrt", "pow",
-            "len", "keys", "values", "flatten", "concat", "distinct", "sort",
-            "reverse", "index_of", "range", "zip",
-            "map", "filter", "every", "some", "reduce", "count",
-            "sum", "avg", "min_of", "max_of",
-            "sha256", "base64_encode", "base64_decode", "json_encode",
-            "to_string", "to_int", "to_float", "to_bool", "type_of",
-            "has", "has_decorator",
+            "upper",
+            "lower",
+            "trim",
+            "trim_prefix",
+            "trim_suffix",
+            "replace",
+            "split",
+            "join",
+            "starts_with",
+            "ends_with",
+            "contains",
+            "length",
+            "substr",
+            "format",
+            "regex_match",
+            "regex_capture",
+            "abs",
+            "min",
+            "max",
+            "floor",
+            "ceil",
+            "round",
+            "sqrt",
+            "pow",
+            "len",
+            "keys",
+            "values",
+            "flatten",
+            "concat",
+            "distinct",
+            "sort",
+            "reverse",
+            "index_of",
+            "range",
+            "zip",
+            "map",
+            "filter",
+            "every",
+            "some",
+            "reduce",
+            "count",
+            "sum",
+            "avg",
+            "min_of",
+            "max_of",
+            "sha256",
+            "base64_encode",
+            "base64_decode",
+            "json_encode",
+            "to_string",
+            "to_int",
+            "to_float",
+            "to_bool",
+            "type_of",
+            "has",
+            "has_decorator",
         ];
         for name in &expected {
             assert!(registry.contains_key(*name), "missing builtin: {}", name);
@@ -1463,7 +1835,10 @@ mod tests {
             decorators: vec![],
             span: wcl_core::Span::dummy(),
         });
-        assert_eq!(fn_has(&[br.clone(), s("monitoring")]).unwrap(), Value::Bool(true));
+        assert_eq!(
+            fn_has(&[br.clone(), s("monitoring")]).unwrap(),
+            Value::Bool(true)
+        );
         assert_eq!(fn_has(&[br, s("logging")]).unwrap(), Value::Bool(false));
     }
 
@@ -1493,9 +1868,18 @@ mod tests {
             ],
             span: wcl_core::Span::dummy(),
         });
-        assert_eq!(fn_has_decorator(&[br.clone(), s("deprecated")]).unwrap(), Value::Bool(true));
-        assert_eq!(fn_has_decorator(&[br.clone(), s("sensitive")]).unwrap(), Value::Bool(true));
-        assert_eq!(fn_has_decorator(&[br, s("optional")]).unwrap(), Value::Bool(false));
+        assert_eq!(
+            fn_has_decorator(&[br.clone(), s("deprecated")]).unwrap(),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            fn_has_decorator(&[br.clone(), s("sensitive")]).unwrap(),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            fn_has_decorator(&[br, s("optional")]).unwrap(),
+            Value::Bool(false)
+        );
     }
 
     #[test]

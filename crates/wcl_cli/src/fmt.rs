@@ -38,7 +38,10 @@ pub fn run(file: &Path, write: bool, check: bool) -> Result<(), String> {
 
 fn format_document(doc: &Document) -> String {
     let mut output = String::new();
-    let mut formatter = Formatter { output: &mut output, indent: 0 };
+    let mut formatter = Formatter {
+        output: &mut output,
+        indent: 0,
+    };
     formatter.format_doc(doc);
     output
 }
@@ -87,7 +90,8 @@ impl<'a> Formatter<'a> {
             }
             DocItem::ExportLet(el) => {
                 self.write_indent();
-                self.output.push_str(&format!("export let {} = ", el.name.name));
+                self.output
+                    .push_str(&format!("export let {} = ", el.name.name));
                 self.format_expr(&el.value);
                 self.output.push('\n');
             }
@@ -100,7 +104,8 @@ impl<'a> Formatter<'a> {
             }
             DocItem::FunctionDecl(decl) => {
                 self.write_indent();
-                self.output.push_str(&format!("declare {}(", decl.name.name));
+                self.output
+                    .push_str(&format!("declare {}(", decl.name.name));
                 for (i, param) in decl.params.iter().enumerate() {
                     if i > 0 {
                         self.output.push_str(", ");
@@ -393,15 +398,15 @@ impl<'a> Formatter<'a> {
                     BinOp::Mul => " * ",
                     BinOp::Div => " / ",
                     BinOp::Mod => " % ",
-                    BinOp::Eq  => " == ",
+                    BinOp::Eq => " == ",
                     BinOp::Neq => " != ",
-                    BinOp::Lt  => " < ",
-                    BinOp::Gt  => " > ",
+                    BinOp::Lt => " < ",
+                    BinOp::Gt => " > ",
                     BinOp::Lte => " <= ",
                     BinOp::Gte => " >= ",
                     BinOp::Match => " =~ ",
                     BinOp::And => " && ",
-                    BinOp::Or  => " || ",
+                    BinOp::Or => " || ",
                 };
                 self.output.push_str(op_str);
                 self.format_expr(rhs);
@@ -488,12 +493,12 @@ impl<'a> Formatter<'a> {
                 StringPart::Literal(text) => {
                     for c in text.chars() {
                         match c {
-                            '"'  => self.output.push_str("\\\""),
+                            '"' => self.output.push_str("\\\""),
                             '\\' => self.output.push_str("\\\\"),
                             '\n' => self.output.push_str("\\n"),
                             '\r' => self.output.push_str("\\r"),
                             '\t' => self.output.push_str("\\t"),
-                            c    => self.output.push(c),
+                            c => self.output.push(c),
                         }
                     }
                 }
@@ -509,13 +514,13 @@ impl<'a> Formatter<'a> {
 
     fn format_type_expr(&mut self, te: &TypeExpr) {
         match te {
-            TypeExpr::String(_)     => self.output.push_str("string"),
-            TypeExpr::Int(_)        => self.output.push_str("int"),
-            TypeExpr::Float(_)      => self.output.push_str("float"),
-            TypeExpr::Bool(_)       => self.output.push_str("bool"),
-            TypeExpr::Null(_)       => self.output.push_str("null"),
+            TypeExpr::String(_) => self.output.push_str("string"),
+            TypeExpr::Int(_) => self.output.push_str("int"),
+            TypeExpr::Float(_) => self.output.push_str("float"),
+            TypeExpr::Bool(_) => self.output.push_str("bool"),
+            TypeExpr::Null(_) => self.output.push_str("null"),
             TypeExpr::Identifier(_) => self.output.push_str("identifier"),
-            TypeExpr::Any(_)        => self.output.push_str("any"),
+            TypeExpr::Any(_) => self.output.push_str("any"),
             TypeExpr::List(inner, _) => {
                 self.output.push_str("list(");
                 self.format_type_expr(inner);

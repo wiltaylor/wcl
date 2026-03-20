@@ -24,7 +24,12 @@ impl IdRegistry {
         self.check_items(&doc.items, "", diagnostics);
     }
 
-    fn check_items(&mut self, items: &[DocItem], scope_path: &str, diagnostics: &mut DiagnosticBag) {
+    fn check_items(
+        &mut self,
+        items: &[DocItem],
+        scope_path: &str,
+        diagnostics: &mut DiagnosticBag,
+    ) {
         for item in items {
             if let DocItem::Body(body_item) = item {
                 self.check_body_item(body_item, scope_path, diagnostics);
@@ -101,11 +106,17 @@ mod tests {
     }
 
     fn make_ident(name: &str) -> Ident {
-        Ident { name: name.to_string(), span: sp() }
+        Ident {
+            name: name.to_string(),
+            span: sp(),
+        }
     }
 
     fn make_inline_id(value: &str) -> InlineId {
-        InlineId::Literal(IdentifierLit { value: value.to_string(), span: sp() })
+        InlineId::Literal(IdentifierLit {
+            value: value.to_string(),
+            span: sp(),
+        })
     }
 
     fn make_block(kind: &str, id: Option<&str>, partial: bool) -> Block {
@@ -158,10 +169,12 @@ mod tests {
         assert!(diags.error_count() >= 1);
         // The primary error carries code E030
         let primary = diags.diagnostics().iter().find(|d| {
-            d.code.as_deref() == Some("E030")
-                && d.message.contains("duplicate id 'alpha'")
+            d.code.as_deref() == Some("E030") && d.message.contains("duplicate id 'alpha'")
         });
-        assert!(primary.is_some(), "expected an E030 'duplicate id' diagnostic");
+        assert!(
+            primary.is_some(),
+            "expected an E030 'duplicate id' diagnostic"
+        );
     }
 
     #[test]

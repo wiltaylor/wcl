@@ -64,7 +64,10 @@ mod tests {
 
     #[test]
     fn check_string() {
-        assert!(check_type(&Value::String("hello".into()), &TypeExpr::String(sp())));
+        assert!(check_type(
+            &Value::String("hello".into()),
+            &TypeExpr::String(sp())
+        ));
         assert!(!check_type(&Value::Int(1), &TypeExpr::String(sp())));
     }
 
@@ -114,7 +117,10 @@ mod tests {
     #[test]
     fn check_list_homogeneous() {
         let t = TypeExpr::List(Box::new(TypeExpr::Int(sp())), sp());
-        assert!(check_type(&Value::List(vec![Value::Int(1), Value::Int(2)]), &t));
+        assert!(check_type(
+            &Value::List(vec![Value::Int(1), Value::Int(2)]),
+            &t
+        ));
         assert!(!check_type(
             &Value::List(vec![Value::Int(1), Value::String("x".into())]),
             &t
@@ -123,10 +129,7 @@ mod tests {
 
     #[test]
     fn check_union() {
-        let t = TypeExpr::Union(
-            vec![TypeExpr::String(sp()), TypeExpr::Null(sp())],
-            sp(),
-        );
+        let t = TypeExpr::Union(vec![TypeExpr::String(sp()), TypeExpr::Null(sp())], sp());
         assert!(check_type(&Value::String("hi".into()), &t));
         assert!(check_type(&Value::Null, &t));
         assert!(!check_type(&Value::Int(1), &t));

@@ -72,7 +72,10 @@ pub enum FunctionBody {
     /// User-defined lambda (index into AST expressions, we'll store the Expr here)
     UserDefined(Box<wcl_core::ast::Expr>),
     /// Block expression body (lets + final expr)
-    BlockExpr(Vec<(String, Box<wcl_core::ast::Expr>)>, Box<wcl_core::ast::Expr>),
+    BlockExpr(
+        Vec<(String, Box<wcl_core::ast::Expr>)>,
+        Box<wcl_core::ast::Expr>,
+    ),
 }
 
 /// Scope identifier
@@ -270,7 +273,10 @@ mod tests {
         assert_eq!(Value::Float(1.0).type_name(), "float");
         assert_eq!(Value::Bool(true).type_name(), "bool");
         assert_eq!(Value::Null.type_name(), "null");
-        assert_eq!(Value::Identifier("svc-auth".into()).type_name(), "identifier");
+        assert_eq!(
+            Value::Identifier("svc-auth".into()).type_name(),
+            "identifier"
+        );
         assert_eq!(Value::List(vec![]).type_name(), "list");
         assert_eq!(Value::Map(IndexMap::new()).type_name(), "map");
         assert_eq!(Value::Set(vec![]).type_name(), "set");

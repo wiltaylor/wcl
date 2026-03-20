@@ -159,8 +159,10 @@ fn value_to_json(val: &wcl::Value) -> serde_json::Value {
             serde_json::Value::Array(items.iter().map(value_to_json).collect())
         }
         wcl::Value::Map(m) => {
-            let obj: serde_json::Map<String, serde_json::Value> =
-                m.iter().map(|(k, v)| (k.clone(), value_to_json(v))).collect();
+            let obj: serde_json::Map<String, serde_json::Value> = m
+                .iter()
+                .map(|(k, v)| (k.clone(), value_to_json(v)))
+                .collect();
             serde_json::Value::Object(obj)
         }
         wcl::Value::BlockRef(br) => blockref_to_json(br),

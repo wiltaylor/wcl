@@ -1,5 +1,5 @@
-use tower_lsp::lsp_types::{DocumentSymbol, SymbolKind};
 use ropey::Rope;
+use tower_lsp::lsp_types::{DocumentSymbol, SymbolKind};
 use wcl_core::ast::*;
 
 use crate::convert::span_to_lsp_range;

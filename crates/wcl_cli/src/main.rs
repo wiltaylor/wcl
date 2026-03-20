@@ -2,19 +2,23 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use std::process;
 
-mod validate;
-mod fmt;
-mod query;
-mod inspect;
+mod add;
 mod convert;
 mod eval;
+mod fmt;
+mod inspect;
 mod path;
-mod set;
-mod add;
+mod query;
 mod remove;
+mod set;
+mod validate;
 
 #[derive(Parser)]
-#[command(name = "wcl", version, about = "WCL \u{2014} Wil's Configuration Language CLI")]
+#[command(
+    name = "wcl",
+    version,
+    about = "WCL \u{2014} Wil's Configuration Language CLI"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -134,16 +138,26 @@ fn main() {
     let cli = Cli::parse();
 
     let result = match cli.command {
-        Commands::Validate { file, strict, schema } => {
-            validate::run(&file, strict, schema.as_deref())
-        }
+        Commands::Validate {
+            file,
+            strict,
+            schema,
+        } => validate::run(&file, strict, schema.as_deref()),
         Commands::Fmt { file, write, check } => fmt::run(&file, write, check),
-        Commands::Query { file, query, format, count, recursive } => {
-            query::run(&file, &query, &format, count, recursive)
-        }
-        Commands::Inspect { file, ast, hir, scopes, deps } => {
-            inspect::run(&file, ast, hir, scopes, deps)
-        }
+        Commands::Query {
+            file,
+            query,
+            format,
+            count,
+            recursive,
+        } => query::run(&file, &query, &format, count, recursive),
+        Commands::Inspect {
+            file,
+            ast,
+            hir,
+            scopes,
+            deps,
+        } => inspect::run(&file, ast, hir, scopes, deps),
         Commands::Eval { file, format } => eval::run(&file, &format),
         Commands::Lsp { tcp } => {
             let rt = tokio::runtime::Runtime::new()
@@ -162,13 +176,13 @@ fn main() {
                 Err(e) => Err(e),
             }
         }
-        Commands::Convert { file, to, from } => {
-            convert::run(&file, to.as_deref(), from.as_deref())
-        }
+        Commands::Convert { file, to, from } => convert::run(&file, to.as_deref(), from.as_deref()),
         Commands::Set { file, path, value } => set::run(&file, &path, &value),
-        Commands::Add { file, block_spec, file_auto } => {
-            add::run(&file, &block_spec, file_auto)
-        }
+        Commands::Add {
+            file,
+            block_spec,
+            file_auto,
+        } => add::run(&file, &block_spec, file_auto),
         Commands::Remove { file, path } => remove::run(&file, &path),
     };
 

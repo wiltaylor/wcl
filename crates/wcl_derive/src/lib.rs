@@ -23,9 +23,7 @@
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
-use syn::{
-    parse_macro_input, Attribute, Data, DeriveInput, Fields, Ident, Lit, Meta, Type,
-};
+use syn::{parse_macro_input, Attribute, Data, DeriveInput, Fields, Ident, Lit, Meta, Type};
 
 // ---------------------------------------------------------------------------
 // Public entry point
@@ -77,8 +75,7 @@ impl WclFieldAttr {
 
 fn expand_wcl_deserialize(input: DeriveInput) -> TokenStream2 {
     let struct_name = &input.ident;
-    let (_impl_generics, ty_generics, where_clause) =
-        input.generics.split_for_impl();
+    let (_impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
     let named_fields = match &input.data {
         Data::Struct(data) => match &data.fields {
@@ -304,7 +301,11 @@ fn rust_type_to_wcl(ty: &Type) -> String {
                 if let Some(comma_pos) = find_top_level_comma(&inner) {
                     let k = inner[..comma_pos].trim();
                     let v = inner[comma_pos + 1..].trim();
-                    format!("map({}, {})", rust_type_str_to_wcl(k), rust_type_str_to_wcl(v))
+                    format!(
+                        "map({}, {})",
+                        rust_type_str_to_wcl(k),
+                        rust_type_str_to_wcl(v)
+                    )
                 } else {
                     "any".into()
                 }
@@ -332,7 +333,11 @@ fn rust_type_str_to_wcl(s: &str) -> String {
                 if let Some(comma_pos) = find_top_level_comma(&inner) {
                     let k = inner[..comma_pos].trim();
                     let v = inner[comma_pos + 1..].trim();
-                    format!("map({}, {})", rust_type_str_to_wcl(k), rust_type_str_to_wcl(v))
+                    format!(
+                        "map({}, {})",
+                        rust_type_str_to_wcl(k),
+                        rust_type_str_to_wcl(v)
+                    )
                 } else {
                     "any".into()
                 }
@@ -408,7 +413,10 @@ fn expand_wcl_schema(input: DeriveInput) -> TokenStream2 {
         let attrs = parse_schema_field_attrs(&field.attrs);
 
         let wcl_type = rust_type_to_wcl(field_ty);
-        let is_option = quote!(#field_ty).to_string().replace(' ', "").starts_with("Option<");
+        let is_option = quote!(#field_ty)
+            .to_string()
+            .replace(' ', "")
+            .starts_with("Option<");
 
         let mut decorators = Vec::new();
         if attrs.optional || is_option {
@@ -451,4 +459,3 @@ fn expand_wcl_schema(input: DeriveInput) -> TokenStream2 {
         }
     }
 }
-

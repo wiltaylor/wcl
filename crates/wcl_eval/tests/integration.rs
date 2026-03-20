@@ -26,7 +26,13 @@ fn eval(source: &str) -> IndexMap<String, wcl_eval::Value> {
 fn eval_attr(source: &str, name: &str) -> wcl_eval::Value {
     let out = eval(source);
     out.get(name)
-        .unwrap_or_else(|| panic!("attribute '{}' not found in output; got: {:?}", name, out.keys().collect::<Vec<_>>()))
+        .unwrap_or_else(|| {
+            panic!(
+                "attribute '{}' not found in output; got: {:?}",
+                name,
+                out.keys().collect::<Vec<_>>()
+            )
+        })
         .clone()
 }
 
@@ -71,10 +77,7 @@ fn expr_int_div_exact() {
 
 #[test]
 fn expr_float_add() {
-    assert_eq!(
-        eval_attr("x = 1.5 + 2.5", "x"),
-        wcl_eval::Value::Float(4.0)
-    );
+    assert_eq!(eval_attr("x = 1.5 + 2.5", "x"), wcl_eval::Value::Float(4.0));
 }
 
 #[test]
@@ -92,26 +95,17 @@ fn expr_float_mul() {
 #[test]
 fn expr_int_float_promotion_add() {
     // 1 + 2.0 should promote to float
-    assert_eq!(
-        eval_attr("x = 1 + 2.0", "x"),
-        wcl_eval::Value::Float(3.0)
-    );
+    assert_eq!(eval_attr("x = 1 + 2.0", "x"), wcl_eval::Value::Float(3.0));
 }
 
 #[test]
 fn expr_float_int_promotion_add() {
-    assert_eq!(
-        eval_attr("x = 2.0 + 1", "x"),
-        wcl_eval::Value::Float(3.0)
-    );
+    assert_eq!(eval_attr("x = 2.0 + 1", "x"), wcl_eval::Value::Float(3.0));
 }
 
 #[test]
 fn expr_int_float_promotion_mul() {
-    assert_eq!(
-        eval_attr("x = 3 * 2.0", "x"),
-        wcl_eval::Value::Float(6.0)
-    );
+    assert_eq!(eval_attr("x = 3 * 2.0", "x"), wcl_eval::Value::Float(6.0));
 }
 
 // ---------------------------------------------------------------------------
@@ -286,10 +280,7 @@ fn expr_ternary_true_branch() {
 
 #[test]
 fn expr_ternary_false_branch() {
-    assert_eq!(
-        eval_attr("x = false ? 1 : 2", "x"),
-        wcl_eval::Value::Int(2)
-    );
+    assert_eq!(eval_attr("x = false ? 1 : 2", "x"), wcl_eval::Value::Int(2));
 }
 
 #[test]
@@ -311,18 +302,12 @@ fn expr_unary_neg_int() {
 
 #[test]
 fn expr_unary_neg_expr() {
-    assert_eq!(
-        eval_attr("x = -(3 + 2)", "x"),
-        wcl_eval::Value::Int(-5)
-    );
+    assert_eq!(eval_attr("x = -(3 + 2)", "x"), wcl_eval::Value::Int(-5));
 }
 
 #[test]
 fn expr_unary_neg_float() {
-    assert_eq!(
-        eval_attr("x = -3.14", "x"),
-        wcl_eval::Value::Float(-3.14)
-    );
+    assert_eq!(eval_attr("x = -3.14", "x"), wcl_eval::Value::Float(-3.14));
 }
 
 // ---------------------------------------------------------------------------
@@ -446,10 +431,7 @@ fn expr_precedence_mul_over_add() {
 #[test]
 fn expr_parens_override_precedence() {
     // (2 + 3) * 4 = 20
-    assert_eq!(
-        eval_attr("x = (2 + 3) * 4", "x"),
-        wcl_eval::Value::Int(20)
-    );
+    assert_eq!(eval_attr("x = (2 + 3) * 4", "x"), wcl_eval::Value::Int(20));
 }
 
 #[test]
@@ -621,7 +603,10 @@ server "web-2" {
 }
 "#;
     let out = eval(src);
-    assert_eq!(out["region"], wcl_eval::Value::String("us-east".to_string()));
+    assert_eq!(
+        out["region"],
+        wcl_eval::Value::String("us-east".to_string())
+    );
 }
 
 #[test]
@@ -683,10 +668,7 @@ fn builtin_length() {
 
 #[test]
 fn builtin_length_empty() {
-    assert_eq!(
-        eval_attr(r#"x = length("")"#, "x"),
-        wcl_eval::Value::Int(0)
-    );
+    assert_eq!(eval_attr(r#"x = length("")"#, "x"), wcl_eval::Value::Int(0));
 }
 
 #[test]
@@ -936,10 +918,7 @@ fn builtin_flatten() {
 #[test]
 fn builtin_flatten_empty_inner() {
     let v = eval_attr("x = flatten([[], [1]])", "x");
-    assert_eq!(
-        v,
-        wcl_eval::Value::List(vec![wcl_eval::Value::Int(1)])
-    );
+    assert_eq!(v, wcl_eval::Value::List(vec![wcl_eval::Value::Int(1)]));
 }
 
 #[test]
@@ -1034,10 +1013,7 @@ fn builtin_reverse() {
 #[test]
 fn builtin_reverse_single() {
     let v = eval_attr("x = reverse([42])", "x");
-    assert_eq!(
-        v,
-        wcl_eval::Value::List(vec![wcl_eval::Value::Int(42)])
-    );
+    assert_eq!(v, wcl_eval::Value::List(vec![wcl_eval::Value::Int(42)]));
 }
 
 #[test]
@@ -1127,26 +1103,17 @@ fn builtin_to_int_string() {
 #[test]
 fn builtin_to_int_float() {
     // Float truncates toward zero
-    assert_eq!(
-        eval_attr("x = to_int(3.9)", "x"),
-        wcl_eval::Value::Int(3)
-    );
+    assert_eq!(eval_attr("x = to_int(3.9)", "x"), wcl_eval::Value::Int(3));
 }
 
 #[test]
 fn builtin_to_int_bool_true() {
-    assert_eq!(
-        eval_attr("x = to_int(true)", "x"),
-        wcl_eval::Value::Int(1)
-    );
+    assert_eq!(eval_attr("x = to_int(true)", "x"), wcl_eval::Value::Int(1));
 }
 
 #[test]
 fn builtin_to_int_bool_false() {
-    assert_eq!(
-        eval_attr("x = to_int(false)", "x"),
-        wcl_eval::Value::Int(0)
-    );
+    assert_eq!(eval_attr("x = to_int(false)", "x"), wcl_eval::Value::Int(0));
 }
 
 #[test]
@@ -1414,10 +1381,7 @@ computed = base * multiplier + 1
     assert_eq!(out["either"], wcl_eval::Value::Bool(true));
     assert_eq!(out["negated"], wcl_eval::Value::Bool(false));
 
-    assert_eq!(
-        out["status"],
-        wcl_eval::Value::String("big".to_string())
-    );
+    assert_eq!(out["status"], wcl_eval::Value::String("big".to_string()));
 
     assert_eq!(
         out["summary"],
@@ -1446,14 +1410,8 @@ settings = {
 "#;
     let out = eval(src);
 
-    assert_eq!(
-        out["name"],
-        wcl_eval::Value::String("test-app".to_string())
-    );
-    assert_eq!(
-        out["version"],
-        wcl_eval::Value::String("1.0.0".to_string())
-    );
+    assert_eq!(out["name"], wcl_eval::Value::String("test-app".to_string()));
+    assert_eq!(out["version"], wcl_eval::Value::String("1.0.0".to_string()));
     assert_eq!(out["debug"], wcl_eval::Value::Bool(true));
     assert_eq!(out["port"], wcl_eval::Value::Int(8080));
     assert_eq!(out["pi"], wcl_eval::Value::Float(3.14159));
@@ -1567,16 +1525,10 @@ type_map = type_of({})
 
     assert_eq!(out["int_val"], wcl_eval::Value::Int(100));
     assert_eq!(out["float_val"], wcl_eval::Value::Float(2.71));
-    assert_eq!(
-        out["str_val"],
-        wcl_eval::Value::String("42".to_string())
-    );
+    assert_eq!(out["str_val"], wcl_eval::Value::String("42".to_string()));
     assert_eq!(out["bool_true"], wcl_eval::Value::Bool(true));
     assert_eq!(out["bool_false"], wcl_eval::Value::Bool(false));
-    assert_eq!(
-        out["type_int"],
-        wcl_eval::Value::String("int".to_string())
-    );
+    assert_eq!(out["type_int"], wcl_eval::Value::String("int".to_string()));
     assert_eq!(
         out["type_str"],
         wcl_eval::Value::String("string".to_string())
@@ -1597,10 +1549,7 @@ type_map = type_of({})
         out["type_list"],
         wcl_eval::Value::String("list".to_string())
     );
-    assert_eq!(
-        out["type_map"],
-        wcl_eval::Value::String("map".to_string())
-    );
+    assert_eq!(out["type_map"], wcl_eval::Value::String("map".to_string()));
 }
 
 #[test]

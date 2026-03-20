@@ -135,26 +135,20 @@ fn build_large(n: usize) -> String {
 
 fn bench_lex_small(c: &mut Criterion) {
     c.bench_function("lex/small (5 attributes)", |b| {
-        b.iter(|| {
-            lex(black_box(SMALL), FileId(0)).unwrap()
-        })
+        b.iter(|| lex(black_box(SMALL), FileId(0)).unwrap())
     });
 }
 
 fn bench_lex_medium(c: &mut Criterion) {
     c.bench_function("lex/medium (50 attributes + 10 blocks)", |b| {
-        b.iter(|| {
-            lex(black_box(MEDIUM), FileId(0)).unwrap()
-        })
+        b.iter(|| lex(black_box(MEDIUM), FileId(0)).unwrap())
     });
 }
 
 fn bench_lex_large(c: &mut Criterion) {
     let large = build_large(500);
     c.bench_function("lex/large (500 blocks × 5 attributes)", |b| {
-        b.iter(|| {
-            lex(black_box(large.as_str()), FileId(0)).unwrap()
-        })
+        b.iter(|| lex(black_box(large.as_str()), FileId(0)).unwrap())
     });
 }
 

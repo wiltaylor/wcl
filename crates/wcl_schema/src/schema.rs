@@ -1,6 +1,6 @@
-use std::collections::HashMap;
 use indexmap::IndexMap;
 use regex::Regex;
+use std::collections::HashMap;
 use wcl_core::ast::*;
 use wcl_core::diagnostic::DiagnosticBag;
 use wcl_core::span::Span;
@@ -223,7 +223,14 @@ impl SchemaRegistry {
 
                             // M4: @ref target validation
                             if let Some(ref target) = field.ref_target {
-                                validate_ref(val, target, &field.name, attr.span, block_ids, diagnostics);
+                                validate_ref(
+                                    val,
+                                    target,
+                                    &field.name,
+                                    attr.span,
+                                    block_ids,
+                                    diagnostics,
+                                );
                             }
                         }
                     }
@@ -258,8 +265,7 @@ impl SchemaRegistry {
         for item in &block.body {
             if let BodyItem::Block(child) = item {
                 // Try to find child block's evaluated values within the parent's values
-                let child_values = block_values
-                    .and_then(|bv| resolve_block_values(child, bv));
+                let child_values = block_values.and_then(|bv| resolve_block_values(child, bv));
                 self.validate_block(child, child_values.as_ref(), block_ids, diagnostics);
             }
         }
@@ -329,42 +335,42 @@ pub(crate) fn get_validate_constraints(decorators: &[Decorator]) -> Option<Valid
             let mut constraints = ValidateConstraints::default();
             for arg in &d.args {
                 if let DecoratorArg::Named(name, expr) = arg {
-                        let val = expr_to_value(expr);
-                        match name.name.as_str() {
-                            "min" => {
-                                constraints.min = val.and_then(|v| match v {
-                                    Value::Int(i) => Some(i as f64),
-                                    Value::Float(f) => Some(f),
-                                    _ => None,
-                                })
-                            }
-                            "max" => {
-                                constraints.max = val.and_then(|v| match v {
-                                    Value::Int(i) => Some(i as f64),
-                                    Value::Float(f) => Some(f),
-                                    _ => None,
-                                })
-                            }
-                            "pattern" => {
-                                constraints.pattern = val.and_then(|v| match v {
-                                    Value::String(s) => Some(s),
-                                    _ => None,
-                                })
-                            }
-                            "one_of" => {
-                                constraints.one_of = val.and_then(|v| match v {
-                                    Value::List(items) => Some(items),
-                                    _ => None,
-                                })
-                            }
-                            "custom_msg" => {
-                                constraints.custom_msg = val.and_then(|v| match v {
-                                    Value::String(s) => Some(s),
-                                    _ => None,
-                                })
-                            }
-                            _ => {}
+                    let val = expr_to_value(expr);
+                    match name.name.as_str() {
+                        "min" => {
+                            constraints.min = val.and_then(|v| match v {
+                                Value::Int(i) => Some(i as f64),
+                                Value::Float(f) => Some(f),
+                                _ => None,
+                            })
                         }
+                        "max" => {
+                            constraints.max = val.and_then(|v| match v {
+                                Value::Int(i) => Some(i as f64),
+                                Value::Float(f) => Some(f),
+                                _ => None,
+                            })
+                        }
+                        "pattern" => {
+                            constraints.pattern = val.and_then(|v| match v {
+                                Value::String(s) => Some(s),
+                                _ => None,
+                            })
+                        }
+                        "one_of" => {
+                            constraints.one_of = val.and_then(|v| match v {
+                                Value::List(items) => Some(items),
+                                _ => None,
+                            })
+                        }
+                        "custom_msg" => {
+                            constraints.custom_msg = val.and_then(|v| match v {
+                                Value::String(s) => Some(s),
+                                _ => None,
+                            })
+                        }
+                        _ => {}
+                    }
                 }
             }
             constraints
@@ -416,7 +422,11 @@ pub(crate) fn validate_constraints(
                     "validation failed for '{}': value {} is less than minimum {}",
                     field_name, n, min,
                 );
-                let full = if msg.is_empty() { base } else { format!("{}: {}", base, msg) };
+                let full = if msg.is_empty() {
+                    base
+                } else {
+                    format!("{}: {}", base, msg)
+                };
                 diagnostics.error_with_code(full, span, "E073");
             }
         }
@@ -427,7 +437,11 @@ pub(crate) fn validate_constraints(
                     "validation failed for '{}': value {} exceeds maximum {}",
                     field_name, n, max,
                 );
-                let full = if msg.is_empty() { base } else { format!("{}: {}", base, msg) };
+                let full = if msg.is_empty() {
+                    base
+                } else {
+                    format!("{}: {}", base, msg)
+                };
                 diagnostics.error_with_code(full, span, "E073");
             }
         }
@@ -443,7 +457,11 @@ pub(crate) fn validate_constraints(
                         "validation failed for '{}': value '{}' does not match pattern '{}'",
                         field_name, s, pattern,
                     );
-                    let full = if msg.is_empty() { base } else { format!("{}: {}", base, msg) };
+                    let full = if msg.is_empty() {
+                        base
+                    } else {
+                        format!("{}: {}", base, msg)
+                    };
                     diagnostics.error_with_code(full, span, "E074");
                 }
             }
@@ -458,7 +476,11 @@ pub(crate) fn validate_constraints(
                 "validation failed for '{}': value '{}' is not one of the allowed values",
                 field_name, value,
             );
-            let full = if msg.is_empty() { base } else { format!("{}: {}", base, msg) };
+            let full = if msg.is_empty() {
+                base
+            } else {
+                format!("{}: {}", base, msg)
+            };
             diagnostics.error_with_code(full, span, "E075");
         }
     }
@@ -557,7 +579,10 @@ fn inline_id_to_string(id: &InlineId) -> Option<String> {
 /// The evaluator stores block values as `Value::BlockRef(...)` keyed by the block kind.
 /// For a block like `service#web`, look for values["service"] which may be a BlockRef
 /// or a list of BlockRefs.
-fn resolve_block_values(block: &Block, values: &IndexMap<String, Value>) -> Option<IndexMap<String, Value>> {
+fn resolve_block_values(
+    block: &Block,
+    values: &IndexMap<String, Value>,
+) -> Option<IndexMap<String, Value>> {
     let kind = &block.kind.name;
     let block_id = block.inline_id.as_ref().and_then(inline_id_to_string);
 

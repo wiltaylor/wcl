@@ -137,7 +137,10 @@ impl DecoratorSchemaRegistry {
                 },
                 DecoratorParam {
                     name: "one_of".to_string(),
-                    type_expr: TypeExpr::List(Box::new(TypeExpr::Any(Span::dummy())), Span::dummy()),
+                    type_expr: TypeExpr::List(
+                        Box::new(TypeExpr::Any(Span::dummy())),
+                        Span::dummy(),
+                    ),
                     required: false,
                     default: None,
                     span: Span::dummy(),
@@ -234,10 +237,7 @@ impl DecoratorSchemaRegistry {
             targets: vec![DecoratorTarget::Block],
             params: vec![DecoratorParam {
                 name: "fields".to_string(),
-                type_expr: TypeExpr::List(
-                    Box::new(TypeExpr::String(Span::dummy())),
-                    Span::dummy(),
-                ),
+                type_expr: TypeExpr::List(Box::new(TypeExpr::String(Span::dummy())), Span::dummy()),
                 required: true,
                 default: None,
                 span: Span::dummy(),
@@ -321,9 +321,7 @@ impl DecoratorSchemaRegistry {
             let required = !crate::schema::has_decorator(&field.decorators_before, "optional")
                 && !crate::schema::has_decorator(&field.decorators_after, "optional");
             let default = crate::schema::get_decorator_value(&field.decorators_before, "default")
-                .or_else(|| {
-                    crate::schema::get_decorator_value(&field.decorators_after, "default")
-                });
+                .or_else(|| crate::schema::get_decorator_value(&field.decorators_after, "default"));
             params.push(DecoratorParam {
                 name: field.name.name.clone(),
                 type_expr: field.type_expr.clone(),
@@ -391,10 +389,7 @@ impl DecoratorSchemaRegistry {
             // Check target validity
             if !schema.targets.contains(&target) {
                 diagnostics.error_with_code(
-                    format!(
-                        "decorator @{} cannot be applied to {:?}",
-                        name, target
-                    ),
+                    format!("decorator @{} cannot be applied to {:?}", name, target),
                     decorator.span,
                     "E061",
                 );
@@ -615,8 +610,8 @@ mod tests {
         // @deprecated has two params: message (required) and since (optional)
         let dep = &reg.schemas["deprecated"];
         assert_eq!(dep.params.len(), 2);
-        assert!(dep.params[0].required);    // message
-        assert!(!dep.params[1].required);   // since
+        assert!(dep.params[0].required); // message
+        assert!(!dep.params[1].required); // since
 
         // @sensitive has default value true
         let sens = &reg.schemas["sensitive"];
@@ -658,7 +653,10 @@ mod tests {
             .into_iter()
             .filter(|d| d.code.as_deref() == Some("E060"))
             .collect();
-        assert!(errors.is_empty(), "builtin @deprecated should not produce E060");
+        assert!(
+            errors.is_empty(),
+            "builtin @deprecated should not produce E060"
+        );
     }
 
     fn make_decorator_with_args(name: &str, args: Vec<DecoratorArg>) -> Decorator {
@@ -696,7 +694,11 @@ mod tests {
             .into_iter()
             .filter(|d| d.code.as_deref() == Some("E064"))
             .collect();
-        assert_eq!(errors.len(), 1, "should emit E064 when AnyOf constraint violated");
+        assert_eq!(
+            errors.len(),
+            1,
+            "should emit E064 when AnyOf constraint violated"
+        );
         assert!(errors[0].message.contains("at least one of"));
     }
 
@@ -746,7 +748,13 @@ mod tests {
         // Provide only "a" — should fail
         let dec = make_decorator_with_args(
             "test_allof",
-            vec![named_arg("a", Expr::StringLit(StringLit { parts: vec![StringPart::Literal("x".to_string())], span: Span::dummy() }))],
+            vec![named_arg(
+                "a",
+                Expr::StringLit(StringLit {
+                    parts: vec![StringPart::Literal("x".to_string())],
+                    span: Span::dummy(),
+                }),
+            )],
         );
         let mut diags = DiagnosticBag::new();
         reg.validate_decorator(&dec, DecoratorTarget::Block, &mut diags);
@@ -785,7 +793,12 @@ mod tests {
             span: Span::dummy(),
         });
 
-        let str_expr = || Expr::StringLit(StringLit { parts: vec![StringPart::Literal("x".to_string())], span: Span::dummy() });
+        let str_expr = || {
+            Expr::StringLit(StringLit {
+                parts: vec![StringPart::Literal("x".to_string())],
+                span: Span::dummy(),
+            })
+        };
         let dec = make_decorator_with_args(
             "test_allof",
             vec![named_arg("a", str_expr()), named_arg("b", str_expr())],
@@ -834,7 +847,10 @@ mod tests {
             .into_iter()
             .filter(|d| d.code.as_deref() == Some("E064"))
             .collect();
-        assert!(errors.is_empty(), "AllOf with no params should pass (all-or-none)");
+        assert!(
+            errors.is_empty(),
+            "AllOf with no params should pass (all-or-none)"
+        );
     }
 
     #[test]
@@ -901,7 +917,12 @@ mod tests {
             span: Span::dummy(),
         });
 
-        let str_expr = || Expr::StringLit(StringLit { parts: vec![StringPart::Literal("v".to_string())], span: Span::dummy() });
+        let str_expr = || {
+            Expr::StringLit(StringLit {
+                parts: vec![StringPart::Literal("v".to_string())],
+                span: Span::dummy(),
+            })
+        };
         let dec = make_decorator_with_args(
             "test_oneof",
             vec![named_arg("x", str_expr()), named_arg("y", str_expr())],
@@ -944,7 +965,13 @@ mod tests {
 
         let dec = make_decorator_with_args(
             "test_oneof",
-            vec![named_arg("x", Expr::StringLit(StringLit { parts: vec![StringPart::Literal("v".to_string())], span: Span::dummy() }))],
+            vec![named_arg(
+                "x",
+                Expr::StringLit(StringLit {
+                    parts: vec![StringPart::Literal("v".to_string())],
+                    span: Span::dummy(),
+                }),
+            )],
         );
         let mut diags = DiagnosticBag::new();
         reg.validate_decorator(&dec, DecoratorTarget::Block, &mut diags);
@@ -987,7 +1014,13 @@ mod tests {
         // Provide x without y
         let dec = make_decorator_with_args(
             "test_requires",
-            vec![named_arg("x", Expr::StringLit(StringLit { parts: vec![StringPart::Literal("v".to_string())], span: Span::dummy() }))],
+            vec![named_arg(
+                "x",
+                Expr::StringLit(StringLit {
+                    parts: vec![StringPart::Literal("v".to_string())],
+                    span: Span::dummy(),
+                }),
+            )],
         );
         let mut diags = DiagnosticBag::new();
         reg.validate_decorator(&dec, DecoratorTarget::Block, &mut diags);
@@ -996,7 +1029,11 @@ mod tests {
             .into_iter()
             .filter(|d| d.code.as_deref() == Some("E064"))
             .collect();
-        assert_eq!(errors.len(), 1, "Requires with missing dep should emit E064");
+        assert_eq!(
+            errors.len(),
+            1,
+            "Requires with missing dep should emit E064"
+        );
         assert!(errors[0].message.contains("requires"));
     }
 
@@ -1028,7 +1065,12 @@ mod tests {
             span: Span::dummy(),
         });
 
-        let str_expr = || Expr::StringLit(StringLit { parts: vec![StringPart::Literal("v".to_string())], span: Span::dummy() });
+        let str_expr = || {
+            Expr::StringLit(StringLit {
+                parts: vec![StringPart::Literal("v".to_string())],
+                span: Span::dummy(),
+            })
+        };
         let dec = make_decorator_with_args(
             "test_requires",
             vec![named_arg("x", str_expr()), named_arg("y", str_expr())],
@@ -1073,7 +1115,10 @@ mod tests {
             "deprecated",
             vec![named_arg(
                 "message",
-                Expr::StringLit(StringLit { parts: vec![StringPart::Literal("old".to_string())], span: Span::dummy() }),
+                Expr::StringLit(StringLit {
+                    parts: vec![StringPart::Literal("old".to_string())],
+                    span: Span::dummy(),
+                }),
             )],
         );
         let mut diags = DiagnosticBag::new();
@@ -1101,7 +1146,11 @@ mod tests {
             .into_iter()
             .filter(|d| d.code.as_deref() == Some("E063"))
             .collect();
-        assert_eq!(errors.len(), 1, "positional arg type mismatch should emit E063");
+        assert_eq!(
+            errors.len(),
+            1,
+            "positional arg type mismatch should emit E063"
+        );
     }
 
     #[test]
@@ -1110,7 +1159,10 @@ mod tests {
         // @sensitive(redact_in_logs=false) — bool param with bool value
         let dec = make_decorator_with_args(
             "sensitive",
-            vec![named_arg("redact_in_logs", Expr::BoolLit(false, Span::dummy()))],
+            vec![named_arg(
+                "redact_in_logs",
+                Expr::BoolLit(false, Span::dummy()),
+            )],
         );
         let mut diags = DiagnosticBag::new();
         reg.validate_decorator(&dec, DecoratorTarget::Attribute, &mut diags);

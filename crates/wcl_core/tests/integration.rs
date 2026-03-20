@@ -871,7 +871,10 @@ mod parser_tests {
         let DocItem::Body(BodyItem::LetBinding(binding)) = &doc.items[0] else {
             panic!("expected let binding");
         };
-        assert!(matches!(&binding.value, Expr::BinaryOp(_, BinOp::Add, _, _)));
+        assert!(matches!(
+            &binding.value,
+            Expr::BinaryOp(_, BinOp::Add, _, _)
+        ));
     }
 
     // ── Export let ────────────────────────────────────────────────────────────
@@ -926,7 +929,10 @@ mod parser_tests {
         let Expr::StringLit(s) = &attr.value else {
             panic!("expected string lit");
         };
-        assert!(s.parts.iter().any(|p| matches!(p, StringPart::Interpolation(_))));
+        assert!(s
+            .parts
+            .iter()
+            .any(|p| matches!(p, StringPart::Interpolation(_))));
     }
 
     // ── Ternary expressions ───────────────────────────────────────────────────
@@ -1327,14 +1333,19 @@ mod parser_tests {
         assert!(matches!(&schema.name.parts[0], StringPart::Literal(s) if s == "Server"));
         assert_eq!(schema.fields.len(), 1);
         assert_eq!(schema.fields[0].name.name, "port");
-        assert!(matches!(&schema.fields[0].type_expr, wcl_core::ast::TypeExpr::Int(_)));
+        assert!(matches!(
+            &schema.fields[0].type_expr,
+            wcl_core::ast::TypeExpr::Int(_)
+        ));
     }
 
     #[test]
     fn schema_multiple_fields() {
-        let doc = parse_clean(r#"schema "Config" { host: string\nport: int\nenabled: bool }"#
-            .replace("\\n", "\n")
-            .as_str());
+        let doc = parse_clean(
+            r#"schema "Config" { host: string\nport: int\nenabled: bool }"#
+                .replace("\\n", "\n")
+                .as_str(),
+        );
         let DocItem::Body(BodyItem::Schema(schema)) = &doc.items[0] else {
             panic!("expected schema");
         };
@@ -1357,9 +1368,8 @@ mod parser_tests {
 
     #[test]
     fn decorator_schema_basic() {
-        let doc = parse_clean(
-            r#"decorator_schema "deprecated" { target = [block] reason: string }"#,
-        );
+        let doc =
+            parse_clean(r#"decorator_schema "deprecated" { target = [block] reason: string }"#);
         let DocItem::Body(BodyItem::DecoratorSchema(ds)) = &doc.items[0] else {
             panic!("expected decorator_schema");
         };
@@ -1533,7 +1543,10 @@ server { port = 80 }
 "#;
         let doc = parse_clean(src);
         assert_eq!(doc.items.len(), 4);
-        assert!(matches!(&doc.items[0], DocItem::Body(BodyItem::LetBinding(_))));
+        assert!(matches!(
+            &doc.items[0],
+            DocItem::Body(BodyItem::LetBinding(_))
+        ));
         assert!(matches!(&doc.items[1], DocItem::ExportLet(_)));
         assert!(matches!(&doc.items[2], DocItem::Import(_)));
         assert!(matches!(&doc.items[3], DocItem::Body(BodyItem::Block(_))));
@@ -1667,7 +1680,10 @@ server { port = 80 }
         };
         assert_eq!(lets.len(), 1);
         assert_eq!(lets[0].name.name, "a");
-        assert!(matches!(final_expr.as_ref(), Expr::BinaryOp(_, BinOp::Add, _, _)));
+        assert!(matches!(
+            final_expr.as_ref(),
+            Expr::BinaryOp(_, BinOp::Add, _, _)
+        ));
     }
 
     // ── Re-export ─────────────────────────────────────────────────────────────
@@ -1701,7 +1717,10 @@ server { port = 80 }
         let DocItem::Body(BodyItem::Schema(s)) = &doc.items[0] else {
             panic!();
         };
-        assert!(matches!(s.fields[0].type_expr, wcl_core::ast::TypeExpr::String(_)));
+        assert!(matches!(
+            s.fields[0].type_expr,
+            wcl_core::ast::TypeExpr::String(_)
+        ));
     }
 
     #[test]
@@ -1710,7 +1729,10 @@ server { port = 80 }
         let DocItem::Body(BodyItem::Schema(s)) = &doc.items[0] else {
             panic!();
         };
-        assert!(matches!(s.fields[0].type_expr, wcl_core::ast::TypeExpr::Int(_)));
+        assert!(matches!(
+            s.fields[0].type_expr,
+            wcl_core::ast::TypeExpr::Int(_)
+        ));
     }
 
     #[test]
@@ -1719,7 +1741,10 @@ server { port = 80 }
         let DocItem::Body(BodyItem::Schema(s)) = &doc.items[0] else {
             panic!();
         };
-        assert!(matches!(s.fields[0].type_expr, wcl_core::ast::TypeExpr::Float(_)));
+        assert!(matches!(
+            s.fields[0].type_expr,
+            wcl_core::ast::TypeExpr::Float(_)
+        ));
     }
 
     #[test]
@@ -1728,7 +1753,10 @@ server { port = 80 }
         let DocItem::Body(BodyItem::Schema(s)) = &doc.items[0] else {
             panic!();
         };
-        assert!(matches!(s.fields[0].type_expr, wcl_core::ast::TypeExpr::Bool(_)));
+        assert!(matches!(
+            s.fields[0].type_expr,
+            wcl_core::ast::TypeExpr::Bool(_)
+        ));
     }
 
     #[test]
@@ -1737,7 +1765,10 @@ server { port = 80 }
         let DocItem::Body(BodyItem::Schema(s)) = &doc.items[0] else {
             panic!();
         };
-        assert!(matches!(s.fields[0].type_expr, wcl_core::ast::TypeExpr::Any(_)));
+        assert!(matches!(
+            s.fields[0].type_expr,
+            wcl_core::ast::TypeExpr::Any(_)
+        ));
     }
 
     #[test]
@@ -1783,7 +1814,10 @@ server { port = 80 }
     fn type_expr_set_keyword_conflict_produces_errors() {
         let (_doc, diags) = parse(r#"schema "S" { items: set(string) }"#, file());
         // The parser emits errors because `set` is lexed as a keyword, not Ident("set").
-        assert!(diags.has_errors(), "expected errors due to keyword conflict");
+        assert!(
+            diags.has_errors(),
+            "expected errors due to keyword conflict"
+        );
     }
 
     #[test]

@@ -37,7 +37,10 @@ fn validate_rule(
     _evaluator: &mut Evaluator,
     diagnostics: &mut DiagnosticBag,
 ) {
-    let is_warning = validation.decorators.iter().any(|d| d.name.name == "warning");
+    let is_warning = validation
+        .decorators
+        .iter()
+        .any(|d| d.name.name == "warning");
 
     // Build a tiny synthetic document that contains only the let-bindings from
     // this validation block so we can evaluate them in isolation.
@@ -129,7 +132,10 @@ fn validate_rule(
         }
         None => {
             diagnostics.error_with_code(
-                format!("validation '{}' check expression did not produce a value", name),
+                format!(
+                    "validation '{}' check expression did not produce a value",
+                    name
+                ),
                 validation.span,
                 "E050",
             );

@@ -42,16 +42,9 @@ impl QueryEngine {
             let projected: Result<Vec<Value>, String> = results
                 .iter()
                 .map(|block| {
-                    block
-                        .attributes
-                        .get(&field)
-                        .cloned()
-                        .ok_or_else(|| {
-                            format!(
-                                "attribute '{}' not found in block {}",
-                                field, block.kind
-                            )
-                        })
+                    block.attributes.get(&field).cloned().ok_or_else(|| {
+                        format!("attribute '{}' not found in block {}", field, block.kind)
+                    })
                 })
                 .collect();
             Ok(Value::List(projected?))
@@ -75,25 +68,17 @@ impl QueryEngine {
                 .collect()),
             QuerySelector::KindId(kind, id) => Ok(blocks
                 .iter()
-                .filter(|b| {
-                    b.kind == kind.name && b.id.as_deref() == Some(&id.value)
-                })
+                .filter(|b| b.kind == kind.name && b.id.as_deref() == Some(&id.value))
                 .cloned()
                 .collect()),
             QuerySelector::KindLabel(kind, label) => {
                 let label_str = match &label.parts[..] {
                     [StringPart::Literal(s)] => s.clone(),
-                    _ => {
-                        return Err(
-                            "query label must be a simple string".to_string()
-                        )
-                    }
+                    _ => return Err("query label must be a simple string".to_string()),
                 };
                 Ok(blocks
                     .iter()
-                    .filter(|b| {
-                        b.kind == kind.name && b.labels.contains(&label_str)
-                    })
+                    .filter(|b| b.kind == kind.name && b.labels.contains(&label_str))
                     .cloned()
                     .collect())
             }
@@ -104,12 +89,7 @@ impl QueryEngine {
             }
             QuerySelector::RecursiveId(kind, id) => {
                 let mut results = Vec::new();
-                self.find_recursive(
-                    blocks,
-                    &kind.name,
-                    Some(&id.value),
-                    &mut results,
-                );
+                self.find_recursive(blocks, &kind.name, Some(&id.value), &mut results);
                 Ok(results)
             }
             QuerySelector::Wildcard => Ok(blocks.to_vec()),
@@ -138,12 +118,7 @@ impl QueryEngine {
                         PathSegment::StringLabel(label) => {
                             let label_str = match &label.parts[..] {
                                 [StringPart::Literal(s)] => s.clone(),
-                                _ => {
-                                    return Err(
-                                        "path label must be a simple string"
-                                            .to_string(),
-                                    )
-                                }
+                                _ => return Err("path label must be a simple string".to_string()),
                             };
                             // Filter by label or inline ID
                             current = current
@@ -162,11 +137,7 @@ impl QueryEngine {
             QuerySelector::TableLabel(label) => {
                 let label_str = match &label.parts[..] {
                     [StringPart::Literal(s)] => s.clone(),
-                    _ => {
-                        return Err(
-                            "table label must be a simple string".to_string()
-                        )
-                    }
+                    _ => return Err("table label must be a simple string".to_string()),
                 };
                 let mut results = Vec::new();
                 self.find_table_by_label(blocks, &label_str, &mut results);
@@ -188,37 +159,23 @@ impl QueryEngine {
         results: &mut Vec<BlockRef>,
     ) {
         for block in blocks {
-            if block.kind == kind
-                && id.is_none_or(|i| block.id.as_deref() == Some(i))
-            {
+            if block.kind == kind && id.is_none_or(|i| block.id.as_deref() == Some(i)) {
                 results.push(block.clone());
             }
             self.find_recursive(&block.children, kind, id, results);
         }
     }
 
-    fn find_table_by_label(
-        &self,
-        blocks: &[BlockRef],
-        label: &str,
-        results: &mut Vec<BlockRef>,
-    ) {
+    fn find_table_by_label(&self, blocks: &[BlockRef], label: &str, results: &mut Vec<BlockRef>) {
         for block in blocks {
-            if block.kind == "table"
-                && block.labels.contains(&label.to_string())
-            {
+            if block.kind == "table" && block.labels.contains(&label.to_string()) {
                 results.extend(block.children.clone());
             }
             self.find_table_by_label(&block.children, label, results);
         }
     }
 
-    fn find_table_by_id(
-        &self,
-        blocks: &[BlockRef],
-        id: &str,
-        results: &mut Vec<BlockRef>,
-    ) {
+    fn find_table_by_id(&self, blocks: &[BlockRef], id: &str, results: &mut Vec<BlockRef>) {
         for block in blocks {
             if block.kind == "table" && block.id.as_deref() == Some(id) {
                 results.extend(block.children.clone());
@@ -248,26 +205,16 @@ impl QueryEngine {
                             BinOp::Eq => *attr_val == rhs_val,
                             BinOp::Neq => *attr_val != rhs_val,
                             BinOp::Lt => value_compare(attr_val, &rhs_val)
-                                .is_some_and(|o| {
-                                    o == std::cmp::Ordering::Less
-                                }),
+                                .is_some_and(|o| o == std::cmp::Ordering::Less),
                             BinOp::Gt => value_compare(attr_val, &rhs_val)
-                                .is_some_and(|o| {
-                                    o == std::cmp::Ordering::Greater
-                                }),
+                                .is_some_and(|o| o == std::cmp::Ordering::Greater),
                             BinOp::Lte => value_compare(attr_val, &rhs_val)
-                                .is_some_and(|o| {
-                                    o != std::cmp::Ordering::Greater
-                                }),
+                                .is_some_and(|o| o != std::cmp::Ordering::Greater),
                             BinOp::Gte => value_compare(attr_val, &rhs_val)
-                                .is_some_and(|o| {
-                                    o != std::cmp::Ordering::Less
-                                }),
+                                .is_some_and(|o| o != std::cmp::Ordering::Less),
                             BinOp::Match => {
-                                if let (
-                                    Value::String(s),
-                                    Value::String(pattern),
-                                ) = (attr_val, &rhs_val)
+                                if let (Value::String(s), Value::String(pattern)) =
+                                    (attr_val, &rhs_val)
                                 {
                                     regex::Regex::new(pattern)
                                         .map(|re| re.is_match(s))
@@ -308,10 +255,24 @@ impl QueryEngine {
                                 let matches = match op {
                                     BinOp::Eq => *arg_val == rhs_val,
                                     BinOp::Neq => *arg_val != rhs_val,
-                                    BinOp::Lt => value_compare(arg_val, &rhs_val) == Some(std::cmp::Ordering::Less),
-                                    BinOp::Gt => value_compare(arg_val, &rhs_val) == Some(std::cmp::Ordering::Greater),
-                                    BinOp::Lte => matches!(value_compare(arg_val, &rhs_val), Some(std::cmp::Ordering::Less | std::cmp::Ordering::Equal)),
-                                    BinOp::Gte => matches!(value_compare(arg_val, &rhs_val), Some(std::cmp::Ordering::Greater | std::cmp::Ordering::Equal)),
+                                    BinOp::Lt => {
+                                        value_compare(arg_val, &rhs_val)
+                                            == Some(std::cmp::Ordering::Less)
+                                    }
+                                    BinOp::Gt => {
+                                        value_compare(arg_val, &rhs_val)
+                                            == Some(std::cmp::Ordering::Greater)
+                                    }
+                                    BinOp::Lte => matches!(
+                                        value_compare(arg_val, &rhs_val),
+                                        Some(std::cmp::Ordering::Less | std::cmp::Ordering::Equal)
+                                    ),
+                                    BinOp::Gte => matches!(
+                                        value_compare(arg_val, &rhs_val),
+                                        Some(
+                                            std::cmp::Ordering::Greater | std::cmp::Ordering::Equal
+                                        )
+                                    ),
                                     _ => false,
                                 };
                                 if matches {
@@ -579,8 +540,7 @@ mod tests {
             Some("health"),
             vec![("path", Value::String("/health".to_string()))],
         );
-        let mut outer =
-            mk_block("service", Some("web"), vec![("port", Value::Int(8080))]);
+        let mut outer = mk_block("service", Some("web"), vec![("port", Value::Int(8080))]);
         outer.children.push(inner);
 
         let blocks = vec![
@@ -629,14 +589,10 @@ mod tests {
             Some("fw1"),
             vec![("enabled", Value::Bool(true))],
         );
-        let mut network =
-            mk_block("network", None, vec![]);
+        let mut network = mk_block("network", None, vec![]);
         network.children.push(firewall);
 
-        let blocks = vec![
-            network,
-            mk_block("service", Some("web"), vec![]),
-        ];
+        let blocks = vec![network, mk_block("service", Some("web"), vec![])];
 
         let engine = QueryEngine::new();
         let pipeline = QueryPipeline {
@@ -719,8 +675,16 @@ mod tests {
         let mut ev = Evaluator::new();
         let scope = ev.scopes_mut().create_scope(ScopeKind::Module, None);
 
-        let row1 = mk_block("row", None, vec![("name", Value::String("alice".to_string()))]);
-        let row2 = mk_block("row", None, vec![("name", Value::String("bob".to_string()))]);
+        let row1 = mk_block(
+            "row",
+            None,
+            vec![("name", Value::String("alice".to_string()))],
+        );
+        let row2 = mk_block(
+            "row",
+            None,
+            vec![("name", Value::String("bob".to_string()))],
+        );
         let mut table = mk_block_with_labels("table", None, vec!["users"], vec![]);
         table.children.push(row1);
         table.children.push(row2);
@@ -775,11 +739,15 @@ mod tests {
 
         let blocks = vec![
             mk_block_with_decorators(
-                "field", Some("age"), vec![],
+                "field",
+                Some("age"),
+                vec![],
                 vec![mk_decorator("validate", vec![("min", Value::Int(5))])],
             ),
             mk_block_with_decorators(
-                "field", Some("score"), vec![],
+                "field",
+                Some("score"),
+                vec![],
                 vec![mk_decorator("validate", vec![("min", Value::Int(0))])],
             ),
         ];
@@ -818,11 +786,15 @@ mod tests {
 
         let blocks = vec![
             mk_block_with_decorators(
-                "field", Some("name"), vec![],
+                "field",
+                Some("name"),
+                vec![],
                 vec![mk_decorator("validate", vec![("max", Value::Int(50))])],
             ),
             mk_block_with_decorators(
-                "field", Some("bio"), vec![],
+                "field",
+                Some("bio"),
+                vec![],
                 vec![mk_decorator("validate", vec![("max", Value::Int(200))])],
             ),
         ];
@@ -861,15 +833,21 @@ mod tests {
 
         let blocks = vec![
             mk_block_with_decorators(
-                "field", Some("a"), vec![],
+                "field",
+                Some("a"),
+                vec![],
                 vec![mk_decorator("validate", vec![("min", Value::Int(10))])],
             ),
             mk_block_with_decorators(
-                "field", Some("b"), vec![],
+                "field",
+                Some("b"),
+                vec![],
                 vec![mk_decorator("validate", vec![("min", Value::Int(5))])],
             ),
             mk_block_with_decorators(
-                "field", Some("c"), vec![],
+                "field",
+                Some("c"),
+                vec![],
                 vec![mk_decorator("validate", vec![("min", Value::Int(3))])],
             ),
         ];
@@ -891,9 +869,16 @@ mod tests {
         match result {
             Value::List(items) => {
                 assert_eq!(items.len(), 2);
-                let ids: Vec<_> = items.iter().filter_map(|i| {
-                    if let Value::BlockRef(br) = i { br.id.clone() } else { None }
-                }).collect();
+                let ids: Vec<_> = items
+                    .iter()
+                    .filter_map(|i| {
+                        if let Value::BlockRef(br) = i {
+                            br.id.clone()
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
                 assert!(ids.contains(&"a".to_string()));
                 assert!(ids.contains(&"b".to_string()));
             }
@@ -908,15 +893,21 @@ mod tests {
 
         let blocks = vec![
             mk_block_with_decorators(
-                "field", Some("x"), vec![],
+                "field",
+                Some("x"),
+                vec![],
                 vec![mk_decorator("validate", vec![("max", Value::Int(100))])],
             ),
             mk_block_with_decorators(
-                "field", Some("y"), vec![],
+                "field",
+                Some("y"),
+                vec![],
                 vec![mk_decorator("validate", vec![("max", Value::Int(50))])],
             ),
             mk_block_with_decorators(
-                "field", Some("z"), vec![],
+                "field",
+                Some("z"),
+                vec![],
                 vec![mk_decorator("validate", vec![("max", Value::Int(200))])],
             ),
         ];
@@ -938,9 +929,16 @@ mod tests {
         match result {
             Value::List(items) => {
                 assert_eq!(items.len(), 2);
-                let ids: Vec<_> = items.iter().filter_map(|i| {
-                    if let Value::BlockRef(br) = i { br.id.clone() } else { None }
-                }).collect();
+                let ids: Vec<_> = items
+                    .iter()
+                    .filter_map(|i| {
+                        if let Value::BlockRef(br) = i {
+                            br.id.clone()
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
                 assert!(ids.contains(&"x".to_string()));
                 assert!(ids.contains(&"y".to_string()));
             }
@@ -974,10 +972,7 @@ mod tests {
             Value::List(items) => {
                 assert_eq!(items.len(), 1);
                 if let Value::BlockRef(br) = &items[0] {
-                    assert_eq!(
-                        br.attributes.get("port"),
-                        Some(&Value::Int(80))
-                    );
+                    assert_eq!(br.attributes.get("port"), Some(&Value::Int(80)));
                 } else {
                     panic!("expected BlockRef");
                 }

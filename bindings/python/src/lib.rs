@@ -10,7 +10,10 @@ use convert::{py_to_value, value_to_py, values_to_py_dict};
 use types::{PyBlockRef, PyDecorator, PyDiagnostic, PyDocument, PyLibraryBuilder};
 
 /// Build ParseOptions from Python keyword arguments.
-fn build_parse_options(_py: Python<'_>, kwargs: Option<&Bound<'_, PyDict>>) -> PyResult<wcl::ParseOptions> {
+fn build_parse_options(
+    _py: Python<'_>,
+    kwargs: Option<&Bound<'_, PyDict>>,
+) -> PyResult<wcl::ParseOptions> {
     let mut opts = wcl::ParseOptions::default();
 
     let Some(kwargs) = kwargs else {
@@ -47,11 +50,9 @@ fn build_parse_options(_py: Python<'_>, kwargs: Option<&Bound<'_, PyDict>>) -> P
                         .map(|a| value_to_py(py, a))
                         .collect::<PyResult<_>>()
                         .map_err(|e| e.to_string())?;
-                    let py_list = pyo3::types::PyList::new(py, &py_args)
-                        .map_err(|e| e.to_string())?;
-                    let result = callable
-                        .call1(py, (py_list,))
-                        .map_err(|e| e.to_string())?;
+                    let py_list =
+                        pyo3::types::PyList::new(py, &py_args).map_err(|e| e.to_string())?;
+                    let result = callable.call1(py, (py_list,)).map_err(|e| e.to_string())?;
                     py_to_value(py, result.bind(py)).map_err(|e| e.to_string())
                 })
             });
@@ -69,23 +70,27 @@ fn parse(py: Python<'_>, source: &str, kwargs: Option<&Bound<'_, PyDict>>) -> Py
     let opts = build_parse_options(py, kwargs)?;
     let doc = wcl::parse(source, opts);
     let values_cache = values_to_py_dict(py, &doc.values)?;
-    Ok(PyDocument {
-        doc,
-        values_cache,
-    })
+    Ok(PyDocument { doc, values_cache })
 }
 
 /// Parse a WCL file and return a Document.
 #[pyfunction]
 #[pyo3(signature = (path, /, **kwargs))]
-fn parse_file(py: Python<'_>, path: &str, kwargs: Option<&Bound<'_, PyDict>>) -> PyResult<PyDocument> {
+fn parse_file(
+    py: Python<'_>,
+    path: &str,
+    kwargs: Option<&Bound<'_, PyDict>>,
+) -> PyResult<PyDocument> {
     let file_path = PathBuf::from(path);
     let source = std::fs::read_to_string(&file_path)
         .map_err(|e| pyo3::exceptions::PyIOError::new_err(format!("{}: {}", path, e)))?;
 
     // Set root_dir to the parent directory if not explicitly provided
     let mut opts = build_parse_options(py, kwargs)?;
-    if kwargs.and_then(|kw| kw.get_item("root_dir").ok().flatten()).is_none() {
+    if kwargs
+        .and_then(|kw| kw.get_item("root_dir").ok().flatten())
+        .is_none()
+    {
         if let Some(parent) = file_path.parent() {
             opts.root_dir = parent.to_path_buf();
         }
@@ -93,10 +98,7 @@ fn parse_file(py: Python<'_>, path: &str, kwargs: Option<&Bound<'_, PyDict>>) ->
 
     let doc = wcl::parse(&source, opts);
     let values_cache = values_to_py_dict(py, &doc.values)?;
-    Ok(PyDocument {
-        doc,
-        values_cache,
-    })
+    Ok(PyDocument { doc, values_cache })
 }
 
 /// Install a library file into the user library directory.
@@ -119,7 +121,10 @@ fn uninstall_library(name: &str) -> PyResult<()> {
 #[pyfunction]
 fn list_libraries() -> PyResult<Vec<String>> {
     match wcl::library::list_libraries() {
-        Ok(paths) => Ok(paths.iter().map(|p| p.to_string_lossy().to_string()).collect()),
+        Ok(paths) => Ok(paths
+            .iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect()),
         Err(e) => Err(pyo3::exceptions::PyIOError::new_err(e.to_string())),
     }
 }

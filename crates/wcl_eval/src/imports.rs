@@ -195,10 +195,8 @@ impl<'a, FS: FileSystem + ?Sized> ImportResolver<'a, FS> {
             // If imports are disabled, report errors for any import directives
             for item in &doc.items {
                 if let DocItem::Import(import) = item {
-                    self.diagnostics.error(
-                        "imports are disabled in this context",
-                        import.span,
-                    );
+                    self.diagnostics
+                        .error("imports are disabled in this context", import.span);
                 }
             }
             return std::mem::take(&mut self.diagnostics);
@@ -234,10 +232,7 @@ impl<'a, FS: FileSystem + ?Sized> ImportResolver<'a, FS> {
             // Check depth limit
             if depth >= self.max_depth {
                 self.diagnostics.error_with_code(
-                    format!(
-                        "import depth limit exceeded (max {})",
-                        self.max_depth
-                    ),
+                    format!("import depth limit exceeded (max {})", self.max_depth),
                     span,
                     "E014",
                 );
@@ -250,10 +245,7 @@ impl<'a, FS: FileSystem + ?Sized> ImportResolver<'a, FS> {
                     Some(p) => p,
                     None => {
                         self.diagnostics.error_with_code(
-                            format!(
-                                "library '{}' not found in search paths",
-                                import_path_str
-                            ),
+                            format!("library '{}' not found in search paths", import_path_str),
                             span,
                             "E015",
                         );
@@ -299,10 +291,9 @@ impl<'a, FS: FileSystem + ?Sized> ImportResolver<'a, FS> {
             };
 
             // Add to source map and parse
-            let file_id = self.source_map.add_file(
-                resolved.to_string_lossy().into_owned(),
-                source.clone(),
-            );
+            let file_id = self
+                .source_map
+                .add_file(resolved.to_string_lossy().into_owned(), source.clone());
             let (mut imported_doc, parse_diags) = wcl_core::parse(&source, file_id);
             self.diagnostics.merge(parse_diags);
 
@@ -331,10 +322,7 @@ impl<'a, FS: FileSystem + ?Sized> ImportResolver<'a, FS> {
                     });
                     if !name_exists {
                         self.diagnostics.error_with_code(
-                            format!(
-                                "re-export of undefined name '{}'",
-                                re_export.name.name
-                            ),
+                            format!("re-export of undefined name '{}'", re_export.name.name),
                             re_export.span,
                             "E035",
                         );
@@ -406,7 +394,10 @@ impl<'a, FS: FileSystem + ?Sized> ImportResolver<'a, FS> {
         // Reject home-relative paths
         if import_path.starts_with('~') {
             return Err(Diagnostic::error(
-                format!("home-relative import paths are forbidden: '{}'", import_path),
+                format!(
+                    "home-relative import paths are forbidden: '{}'",
+                    import_path
+                ),
                 dummy_span,
             ));
         }
@@ -416,24 +407,21 @@ impl<'a, FS: FileSystem + ?Sized> ImportResolver<'a, FS> {
             return Err(Diagnostic::error(
                 format!("remote imports are forbidden: '{}'", import_path),
                 dummy_span,
-            ).with_code("E013"));
+            )
+            .with_code("E013"));
         }
 
         // Resolve relative to importing file's directory
-        let base_dir = current_file
-            .parent()
-            .unwrap_or_else(|| Path::new("."));
+        let base_dir = current_file.parent().unwrap_or_else(|| Path::new("."));
         let resolved = base_dir.join(import_path);
 
         // Canonicalize
-        self.fs
-            .canonicalize(&resolved)
-            .map_err(|e| {
-                Diagnostic::error(
-                    format!("cannot resolve import path '{}': {}", import_path, e),
-                    dummy_span,
-                )
-            })
+        self.fs.canonicalize(&resolved).map_err(|e| {
+            Diagnostic::error(
+                format!("cannot resolve import path '{}': {}", import_path, e),
+                dummy_span,
+            )
+        })
     }
 
     /// Check that a resolved path is within the root directory (jail check).
@@ -451,7 +439,8 @@ impl<'a, FS: FileSystem + ?Sized> ImportResolver<'a, FS> {
                     canonical_root.display()
                 ),
                 span,
-            ).with_code("E011"));
+            )
+            .with_code("E011"));
         }
         Ok(())
     }
@@ -489,13 +478,7 @@ mod tests {
     fn resolve_path_relative_to_current_file() {
         let fs = InMemoryFs::new();
         let mut sm = make_source_map();
-        let resolver = ImportResolver::new(
-            &fs,
-            &mut sm,
-            PathBuf::from("/project"),
-            32,
-            true,
-        );
+        let resolver = ImportResolver::new(&fs, &mut sm, PathBuf::from("/project"), 32, true);
 
         let result = resolver
             .resolve_path("./schemas.wcl", Path::new("/project/main.wcl"))
@@ -507,13 +490,7 @@ mod tests {
     fn resolve_path_nested_relative() {
         let fs = InMemoryFs::new();
         let mut sm = make_source_map();
-        let resolver = ImportResolver::new(
-            &fs,
-            &mut sm,
-            PathBuf::from("/project"),
-            32,
-            true,
-        );
+        let resolver = ImportResolver::new(&fs, &mut sm, PathBuf::from("/project"), 32, true);
 
         let result = resolver
             .resolve_path("./sub/file.wcl", Path::new("/project/dir/main.wcl"))
@@ -525,13 +502,7 @@ mod tests {
     fn resolve_path_rejects_absolute() {
         let fs = InMemoryFs::new();
         let mut sm = make_source_map();
-        let resolver = ImportResolver::new(
-            &fs,
-            &mut sm,
-            PathBuf::from("/project"),
-            32,
-            true,
-        );
+        let resolver = ImportResolver::new(&fs, &mut sm, PathBuf::from("/project"), 32, true);
 
         let result = resolver.resolve_path("/etc/passwd", Path::new("/project/main.wcl"));
         assert!(result.is_err());
@@ -545,33 +516,18 @@ mod tests {
     fn resolve_path_rejects_home_relative() {
         let fs = InMemoryFs::new();
         let mut sm = make_source_map();
-        let resolver = ImportResolver::new(
-            &fs,
-            &mut sm,
-            PathBuf::from("/project"),
-            32,
-            true,
-        );
+        let resolver = ImportResolver::new(&fs, &mut sm, PathBuf::from("/project"), 32, true);
 
         let result = resolver.resolve_path("~/file.wcl", Path::new("/project/main.wcl"));
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .message
-            .contains("home-relative"));
+        assert!(result.unwrap_err().message.contains("home-relative"));
     }
 
     #[test]
     fn resolve_path_rejects_remote() {
         let fs = InMemoryFs::new();
         let mut sm = make_source_map();
-        let resolver = ImportResolver::new(
-            &fs,
-            &mut sm,
-            PathBuf::from("/project"),
-            32,
-            true,
-        );
+        let resolver = ImportResolver::new(&fs, &mut sm, PathBuf::from("/project"), 32, true);
 
         let result = resolver.resolve_path(
             "https://example.com/file.wcl",
@@ -588,18 +544,9 @@ mod tests {
     fn jail_check_allows_within_root() {
         let fs = InMemoryFs::new();
         let mut sm = make_source_map();
-        let resolver = ImportResolver::new(
-            &fs,
-            &mut sm,
-            PathBuf::from("/project"),
-            32,
-            true,
-        );
+        let resolver = ImportResolver::new(&fs, &mut sm, PathBuf::from("/project"), 32, true);
 
-        let result = resolver.check_jail(
-            Path::new("/project/sub/file.wcl"),
-            Span::dummy(),
-        );
+        let result = resolver.check_jail(Path::new("/project/sub/file.wcl"), Span::dummy());
         assert!(result.is_ok());
     }
 
@@ -607,18 +554,9 @@ mod tests {
     fn jail_check_rejects_outside_root() {
         let fs = InMemoryFs::new();
         let mut sm = make_source_map();
-        let resolver = ImportResolver::new(
-            &fs,
-            &mut sm,
-            PathBuf::from("/project"),
-            32,
-            true,
-        );
+        let resolver = ImportResolver::new(&fs, &mut sm, PathBuf::from("/project"), 32, true);
 
-        let result = resolver.check_jail(
-            Path::new("/other/file.wcl"),
-            Span::dummy(),
-        );
+        let result = resolver.check_jail(Path::new("/other/file.wcl"), Span::dummy());
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
@@ -629,18 +567,9 @@ mod tests {
     #[test]
     fn jail_check_rejects_parent_traversal() {
         let mut fs = InMemoryFs::new();
-        fs.add_file(
-            PathBuf::from("/project/sub/../../../etc/passwd"),
-            "bad",
-        );
+        fs.add_file(PathBuf::from("/project/sub/../../../etc/passwd"), "bad");
         let mut sm = make_source_map();
-        let resolver = ImportResolver::new(
-            &fs,
-            &mut sm,
-            PathBuf::from("/project"),
-            32,
-            true,
-        );
+        let resolver = ImportResolver::new(&fs, &mut sm, PathBuf::from("/project"), 32, true);
 
         // After normalization, /project/sub/../../../etc/passwd becomes /etc/passwd
         let normalized = normalize_path(Path::new("/project/sub/../../../etc/passwd"));
@@ -678,30 +607,22 @@ mod tests {
     fn e034_duplicate_exported_variable_across_imports() {
         let mut fs = InMemoryFs::new();
         // Two imported files export the same variable name
-        fs.add_file(
-            PathBuf::from("/project/a.wcl"),
-            "export let port = 8080",
-        );
-        fs.add_file(
-            PathBuf::from("/project/b.wcl"),
-            "export let port = 9090",
-        );
+        fs.add_file(PathBuf::from("/project/a.wcl"), "export let port = 8080");
+        fs.add_file(PathBuf::from("/project/b.wcl"), "export let port = 9090");
         fs.add_file(
             PathBuf::from("/project/main.wcl"),
             "import \"./a.wcl\"\nimport \"./b.wcl\"",
         );
 
         let mut sm = make_source_map();
-        let file_id = sm.add_file("main.wcl".to_string(), "import \"./a.wcl\"\nimport \"./b.wcl\"".to_string());
-        let (mut doc, _parse_diags) = wcl_core::parse("import \"./a.wcl\"\nimport \"./b.wcl\"", file_id);
-
-        let mut resolver = ImportResolver::new(
-            &fs,
-            &mut sm,
-            PathBuf::from("/project"),
-            32,
-            true,
+        let file_id = sm.add_file(
+            "main.wcl".to_string(),
+            "import \"./a.wcl\"\nimport \"./b.wcl\"".to_string(),
         );
+        let (mut doc, _parse_diags) =
+            wcl_core::parse("import \"./a.wcl\"\nimport \"./b.wcl\"", file_id);
+
+        let mut resolver = ImportResolver::new(&fs, &mut sm, PathBuf::from("/project"), 32, true);
         let diags = resolver.resolve(&mut doc, Path::new("/project/main.wcl"), 0);
 
         let e034_errors: Vec<_> = diags
@@ -709,18 +630,22 @@ mod tests {
             .iter()
             .filter(|d| d.code.as_deref() == Some("E034"))
             .collect();
-        assert_eq!(e034_errors.len(), 1, "expected one E034 error, got: {:?}", e034_errors);
-        assert!(e034_errors[0].message.contains("duplicate exported variable"));
+        assert_eq!(
+            e034_errors.len(),
+            1,
+            "expected one E034 error, got: {:?}",
+            e034_errors
+        );
+        assert!(e034_errors[0]
+            .message
+            .contains("duplicate exported variable"));
         assert!(e034_errors[0].message.contains("port"));
     }
 
     #[test]
     fn e034_no_error_for_different_names() {
         let mut fs = InMemoryFs::new();
-        fs.add_file(
-            PathBuf::from("/project/a.wcl"),
-            "export let port = 8080",
-        );
+        fs.add_file(PathBuf::from("/project/a.wcl"), "export let port = 8080");
         fs.add_file(
             PathBuf::from("/project/b.wcl"),
             "export let host = \"localhost\"",
@@ -731,16 +656,14 @@ mod tests {
         );
 
         let mut sm = make_source_map();
-        let file_id = sm.add_file("main.wcl".to_string(), "import \"./a.wcl\"\nimport \"./b.wcl\"".to_string());
-        let (mut doc, _parse_diags) = wcl_core::parse("import \"./a.wcl\"\nimport \"./b.wcl\"", file_id);
-
-        let mut resolver = ImportResolver::new(
-            &fs,
-            &mut sm,
-            PathBuf::from("/project"),
-            32,
-            true,
+        let file_id = sm.add_file(
+            "main.wcl".to_string(),
+            "import \"./a.wcl\"\nimport \"./b.wcl\"".to_string(),
         );
+        let (mut doc, _parse_diags) =
+            wcl_core::parse("import \"./a.wcl\"\nimport \"./b.wcl\"", file_id);
+
+        let mut resolver = ImportResolver::new(&fs, &mut sm, PathBuf::from("/project"), 32, true);
         let diags = resolver.resolve(&mut doc, Path::new("/project/main.wcl"), 0);
 
         let e034_errors: Vec<_> = diags
@@ -755,26 +678,14 @@ mod tests {
     fn e035_re_export_of_undefined_name() {
         let mut fs = InMemoryFs::new();
         // The imported file re-exports a name that doesn't exist
-        fs.add_file(
-            PathBuf::from("/project/lib.wcl"),
-            "export nonexistent",
-        );
-        fs.add_file(
-            PathBuf::from("/project/main.wcl"),
-            "import \"./lib.wcl\"",
-        );
+        fs.add_file(PathBuf::from("/project/lib.wcl"), "export nonexistent");
+        fs.add_file(PathBuf::from("/project/main.wcl"), "import \"./lib.wcl\"");
 
         let mut sm = make_source_map();
         let file_id = sm.add_file("main.wcl".to_string(), "import \"./lib.wcl\"".to_string());
         let (mut doc, _parse_diags) = wcl_core::parse("import \"./lib.wcl\"", file_id);
 
-        let mut resolver = ImportResolver::new(
-            &fs,
-            &mut sm,
-            PathBuf::from("/project"),
-            32,
-            true,
-        );
+        let mut resolver = ImportResolver::new(&fs, &mut sm, PathBuf::from("/project"), 32, true);
         let diags = resolver.resolve(&mut doc, Path::new("/project/main.wcl"), 0);
 
         let e035_errors: Vec<_> = diags
@@ -782,8 +693,15 @@ mod tests {
             .iter()
             .filter(|d| d.code.as_deref() == Some("E035"))
             .collect();
-        assert_eq!(e035_errors.len(), 1, "expected one E035 error, got: {:?}", e035_errors);
-        assert!(e035_errors[0].message.contains("re-export of undefined name"));
+        assert_eq!(
+            e035_errors.len(),
+            1,
+            "expected one E035 error, got: {:?}",
+            e035_errors
+        );
+        assert!(e035_errors[0]
+            .message
+            .contains("re-export of undefined name"));
         assert!(e035_errors[0].message.contains("nonexistent"));
     }
 
@@ -795,22 +713,13 @@ mod tests {
             PathBuf::from("/project/lib.wcl"),
             "let port = 8080\nexport port",
         );
-        fs.add_file(
-            PathBuf::from("/project/main.wcl"),
-            "import \"./lib.wcl\"",
-        );
+        fs.add_file(PathBuf::from("/project/main.wcl"), "import \"./lib.wcl\"");
 
         let mut sm = make_source_map();
         let file_id = sm.add_file("main.wcl".to_string(), "import \"./lib.wcl\"".to_string());
         let (mut doc, _parse_diags) = wcl_core::parse("import \"./lib.wcl\"", file_id);
 
-        let mut resolver = ImportResolver::new(
-            &fs,
-            &mut sm,
-            PathBuf::from("/project"),
-            32,
-            true,
-        );
+        let mut resolver = ImportResolver::new(&fs, &mut sm, PathBuf::from("/project"), 32, true);
         let diags = resolver.resolve(&mut doc, Path::new("/project/main.wcl"), 0);
 
         let e035_errors: Vec<_> = diags

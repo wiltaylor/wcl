@@ -71,7 +71,10 @@ pub fn run(
                     println!(
                         "{} -> {}",
                         name,
-                        deps.iter().map(|d| d.as_str()).collect::<Vec<_>>().join(", ")
+                        deps.iter()
+                            .map(|d| d.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
                     );
                 }
             }

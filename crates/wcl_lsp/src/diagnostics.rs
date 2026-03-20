@@ -1,7 +1,7 @@
+use ropey::Rope;
 use tower_lsp::lsp_types::{
     self as lsp, DiagnosticRelatedInformation, DiagnosticSeverity, Location, NumberOrString,
 };
-use ropey::Rope;
 use wcl_core::diagnostic::{Diagnostic, Severity};
 use wcl_core::span::Span;
 
@@ -124,7 +124,10 @@ mod tests {
         // A real diagnostic at the very start of the file (0..5) must not be skipped.
         let diag = Diagnostic::error("start", Span::new(FileId(0), 0, 5));
         let lsp = to_lsp_diagnostic(&diag, &rope, &uri);
-        assert!(lsp.is_some(), "diagnostic at file start should not be skipped");
+        assert!(
+            lsp.is_some(),
+            "diagnostic at file start should not be skipped"
+        );
         assert_eq!(lsp.unwrap().message, "start");
     }
 

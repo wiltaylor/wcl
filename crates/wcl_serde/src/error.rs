@@ -1,5 +1,5 @@
-use std::fmt;
 use serde::{de, ser};
+use std::fmt;
 use thiserror::Error;
 
 #[derive(Debug, Error)]

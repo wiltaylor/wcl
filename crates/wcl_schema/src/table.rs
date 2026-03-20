@@ -6,7 +6,10 @@
 use wcl_core::ast::*;
 use wcl_core::diagnostic::DiagnosticBag;
 
-use crate::schema::{expr_to_value, get_validate_constraints, string_lit_to_string, validate_constraints, value_type_label};
+use crate::schema::{
+    expr_to_value, get_validate_constraints, string_lit_to_string, validate_constraints,
+    value_type_label,
+};
 use crate::types::{check_type, type_name};
 
 /// Validate all tables in the document: check cell types and column decorator constraints.
@@ -128,16 +131,20 @@ fn validate_table_index(table: &Table, diagnostics: &mut DiagnosticBag) {
         }
 
         // Extract `columns` parameter
-        let columns_arg = decorator.args.iter().find_map(|arg| match arg {
-            DecoratorArg::Named(ident, expr) if ident.name == "columns" => Some(expr),
-            _ => None,
-        }).or_else(|| {
-            // Fall back to positional arg at index 0
-            decorator.args.first().and_then(|arg| match arg {
-                DecoratorArg::Positional(expr) => Some(expr),
+        let columns_arg = decorator
+            .args
+            .iter()
+            .find_map(|arg| match arg {
+                DecoratorArg::Named(ident, expr) if ident.name == "columns" => Some(expr),
                 _ => None,
             })
-        });
+            .or_else(|| {
+                // Fall back to positional arg at index 0
+                decorator.args.first().and_then(|arg| match arg {
+                    DecoratorArg::Positional(expr) => Some(expr),
+                    _ => None,
+                })
+            });
 
         let column_names = match columns_arg.and_then(extract_string_list) {
             Some(names) => names,
@@ -145,13 +152,18 @@ fn validate_table_index(table: &Table, diagnostics: &mut DiagnosticBag) {
         };
 
         // Extract `unique` parameter (default false)
-        let unique = decorator.args.iter().find_map(|arg| match arg {
-            DecoratorArg::Named(ident, expr) if ident.name == "unique" => extract_bool(expr),
-            _ => None,
-        }).unwrap_or(false);
+        let unique = decorator
+            .args
+            .iter()
+            .find_map(|arg| match arg {
+                DecoratorArg::Named(ident, expr) if ident.name == "unique" => extract_bool(expr),
+                _ => None,
+            })
+            .unwrap_or(false);
 
         // 1. Verify each column name exists in the table
-        let table_col_names: Vec<&str> = table.columns.iter().map(|c| c.name.name.as_str()).collect();
+        let table_col_names: Vec<&str> =
+            table.columns.iter().map(|c| c.name.name.as_str()).collect();
         let mut valid_col_indices: Vec<usize> = Vec::new();
         let mut all_valid = true;
 
@@ -247,10 +259,7 @@ mod tests {
     }
 
     fn mk_row(cells: Vec<Expr>) -> TableRow {
-        TableRow {
-            cells,
-            span: ds(),
-        }
+        TableRow { cells, span: ds() }
     }
 
     fn mk_doc_with_table(table: Table) -> Document {
@@ -275,7 +284,10 @@ mod tests {
                 mk_column("name", TypeExpr::String(ds())),
                 mk_column("port", TypeExpr::Int(ds())),
             ],
-            vec![mk_row(vec![mk_string_expr("web"), Expr::IntLit(8080, ds())])],
+            vec![mk_row(vec![
+                mk_string_expr("web"),
+                Expr::IntLit(8080, ds()),
+            ])],
         );
         let doc = mk_doc_with_table(table);
         let mut diags = DiagnosticBag::new();
@@ -326,8 +338,8 @@ mod tests {
             vec![col],
             vec![
                 mk_row(vec![Expr::IntLit(0, ds())]),     // below min
-                mk_row(vec![Expr::IntLit(8080, ds())]),   // valid
-                mk_row(vec![Expr::IntLit(70000, ds())]),  // above max
+                mk_row(vec![Expr::IntLit(8080, ds())]),  // valid
+                mk_row(vec![Expr::IntLit(70000, ds())]), // above max
             ],
         );
         let doc = mk_doc_with_table(table);
@@ -392,13 +404,7 @@ mod tests {
     fn mk_table_index_decorator(columns: Vec<&str>, unique: bool) -> Decorator {
         let mut args = vec![DecoratorArg::Named(
             mk_ident("columns"),
-            Expr::List(
-                columns
-                    .into_iter()
-                    .map(mk_string_expr)
-                    .collect(),
-                ds(),
-            ),
+            Expr::List(columns.into_iter().map(mk_string_expr).collect(), ds()),
         )];
         if unique {
             args.push(DecoratorArg::Named(
@@ -421,7 +427,10 @@ mod tests {
                 mk_column("name", TypeExpr::String(ds())),
                 mk_column("port", TypeExpr::Int(ds())),
             ],
-            vec![mk_row(vec![mk_string_expr("web"), Expr::IntLit(8080, ds())])],
+            vec![mk_row(vec![
+                mk_string_expr("web"),
+                Expr::IntLit(8080, ds()),
+            ])],
         );
         let doc = mk_doc_with_table(table);
         let mut diags = DiagnosticBag::new();
@@ -488,9 +497,9 @@ mod tests {
             ],
             vec![
                 mk_row(vec![mk_string_expr("web"), Expr::IntLit(80, ds())]),
-                mk_row(vec![mk_string_expr("web"), Expr::IntLit(443, ds())]),  // same host, different port — OK
-                mk_row(vec![mk_string_expr("api"), Expr::IntLit(80, ds())]),   // different host, same port — OK
-                mk_row(vec![mk_string_expr("web"), Expr::IntLit(80, ds())]),   // duplicate tuple
+                mk_row(vec![mk_string_expr("web"), Expr::IntLit(443, ds())]), // same host, different port — OK
+                mk_row(vec![mk_string_expr("api"), Expr::IntLit(80, ds())]), // different host, same port — OK
+                mk_row(vec![mk_string_expr("web"), Expr::IntLit(80, ds())]), // duplicate tuple
             ],
         );
         let doc = mk_doc_with_table(table);

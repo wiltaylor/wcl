@@ -77,12 +77,8 @@ impl ControlFlowExpander {
         }
 
         match item {
-            BodyItem::ForLoop(for_loop) => {
-                self.expand_for_loop(&for_loop, eval_expr, depth)
-            }
-            BodyItem::Conditional(cond) => {
-                self.expand_conditional(&cond, eval_expr, depth)
-            }
+            BodyItem::ForLoop(for_loop) => self.expand_for_loop(&for_loop, eval_expr, depth),
+            BodyItem::Conditional(cond) => self.expand_conditional(&cond, eval_expr, depth),
             BodyItem::Block(mut block) => {
                 // Recurse into block body
                 let original_body = std::mem::take(&mut block.body);
@@ -182,8 +178,7 @@ impl ControlFlowExpander {
                     idx,
                 );
                 // Recursively expand any nested control flow
-                let expanded =
-                    self.expand_single_item(cloned, eval_expr, depth + 1);
+                let expanded = self.expand_single_item(cloned, eval_expr, depth + 1);
                 result.extend(expanded);
             }
         }
@@ -203,10 +198,8 @@ impl ControlFlowExpander {
         let condition_value = match eval_expr(&cond.condition) {
             Ok(v) => v,
             Err(e) => {
-                self.diagnostics.error(
-                    format!("error evaluating if condition: {}", e),
-                    cond.span,
-                );
+                self.diagnostics
+                    .error(format!("error evaluating if condition: {}", e), cond.span);
                 return vec![];
             }
         };
@@ -231,11 +224,7 @@ impl ControlFlowExpander {
             // Expand the then branch
             let mut result = Vec::new();
             for item in &cond.then_body {
-                result.extend(self.expand_single_item(
-                    item.clone(),
-                    eval_expr,
-                    depth + 1,
-                ));
+                result.extend(self.expand_single_item(item.clone(), eval_expr, depth + 1));
             }
             result
         } else {
@@ -247,11 +236,7 @@ impl ControlFlowExpander {
                 Some(ElseBranch::Else(body, _, _)) => {
                     let mut result = Vec::new();
                     for item in body {
-                        result.extend(self.expand_single_item(
-                            item.clone(),
-                            eval_expr,
-                            depth + 1,
-                        ));
+                        result.extend(self.expand_single_item(item.clone(), eval_expr, depth + 1));
                     }
                     result
                 }

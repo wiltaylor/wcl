@@ -140,34 +140,26 @@ fn build_large(n: usize) -> String {
 
 fn bench_parse_small(c: &mut Criterion) {
     c.bench_function("parse/small (5 attributes)", |b| {
-        b.iter(|| {
-            wcl_core::parse(black_box(SMALL), FileId(0))
-        })
+        b.iter(|| wcl_core::parse(black_box(SMALL), FileId(0)))
     });
 }
 
 fn bench_parse_medium(c: &mut Criterion) {
     c.bench_function("parse/medium (50 attributes + 10 blocks)", |b| {
-        b.iter(|| {
-            wcl_core::parse(black_box(MEDIUM), FileId(0))
-        })
+        b.iter(|| wcl_core::parse(black_box(MEDIUM), FileId(0)))
     });
 }
 
 fn bench_parse_large(c: &mut Criterion) {
     let large = build_large(500);
     c.bench_function("parse/large (500 blocks × 5 attributes)", |b| {
-        b.iter(|| {
-            wcl_core::parse(black_box(large.as_str()), FileId(0))
-        })
+        b.iter(|| wcl_core::parse(black_box(large.as_str()), FileId(0)))
     });
 }
 
 fn bench_parse_deep_expr(c: &mut Criterion) {
     c.bench_function("parse/deep nested expression", |b| {
-        b.iter(|| {
-            wcl_core::parse(black_box(DEEP_EXPR), FileId(0))
-        })
+        b.iter(|| wcl_core::parse(black_box(DEEP_EXPR), FileId(0)))
     });
 }
 

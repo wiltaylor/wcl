@@ -400,10 +400,13 @@ impl<'a> Lexer<'a> {
         loop {
             match self.peek() {
                 None => {
-                    self.errors.push(Diagnostic::error(
-                        "unterminated string literal",
-                        Span::new(self.file, start, self.pos),
-                    ).with_code("E003"));
+                    self.errors.push(
+                        Diagnostic::error(
+                            "unterminated string literal",
+                            Span::new(self.file, start, self.pos),
+                        )
+                        .with_code("E003"),
+                    );
                     break;
                 }
                 Some('"') => {
@@ -563,10 +566,13 @@ impl<'a> Lexer<'a> {
 
         loop {
             if self.remaining().is_empty() {
-                self.errors.push(Diagnostic::error(
-                    format!("unterminated heredoc (expected closing {})", tag),
-                    Span::new(self.file, start, self.pos),
-                ).with_code("E003"));
+                self.errors.push(
+                    Diagnostic::error(
+                        format!("unterminated heredoc (expected closing {})", tag),
+                        Span::new(self.file, start, self.pos),
+                    )
+                    .with_code("E003"),
+                );
                 break;
             }
 
@@ -884,7 +890,10 @@ impl<'a> Lexer<'a> {
                 // Only consume hyphen if followed by alphanumeric or _
                 // (to avoid consuming "ident-" where `-` is a minus operator)
                 let next = self.remaining().chars().nth(1);
-                if next.map(|nc| nc.is_ascii_alphanumeric() || nc == '_').unwrap_or(false) {
+                if next
+                    .map(|nc| nc.is_ascii_alphanumeric() || nc == '_')
+                    .unwrap_or(false)
+                {
                     self.advance_char();
                 } else {
                     break;
@@ -1175,10 +1184,7 @@ mod tests {
         // "\\n\\t\\r\\\\\\\""  →  \n\t\r\"
         let src = r#""\n\t\r\\\"" "#;
         let ks = token_kinds_ok(src);
-        assert_eq!(
-            ks[0],
-            TokenKind::StringLit("\n\t\r\\\"".into()),
-        );
+        assert_eq!(ks[0], TokenKind::StringLit("\n\t\r\\\"".into()),);
     }
 
     #[test]
@@ -1268,10 +1274,7 @@ mod tests {
     #[test]
     fn line_comment() {
         let ks = token_kinds_ok("// this is a comment\n");
-        assert_eq!(
-            ks[0],
-            TokenKind::LineComment("// this is a comment".into())
-        );
+        assert_eq!(ks[0], TokenKind::LineComment("// this is a comment".into()));
     }
 
     #[test]
@@ -1371,19 +1374,13 @@ mod tests {
     #[test]
     fn equals_vs_eqeq() {
         let ks = token_kinds_ok("= ==");
-        assert_eq!(
-            ks,
-            vec![TokenKind::Equals, TokenKind::EqEq, TokenKind::Eof]
-        );
+        assert_eq!(ks, vec![TokenKind::Equals, TokenKind::EqEq, TokenKind::Eof]);
     }
 
     #[test]
     fn dot_vs_dotdot() {
         let ks = token_kinds_ok(". ..");
-        assert_eq!(
-            ks,
-            vec![TokenKind::Dot, TokenKind::DotDot, TokenKind::Eof]
-        );
+        assert_eq!(ks, vec![TokenKind::Dot, TokenKind::DotDot, TokenKind::Eof]);
     }
 
     // ── Newlines ─────────────────────────────────────────────────────────

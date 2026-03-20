@@ -101,18 +101,14 @@ fn bench_options() -> ParseOptions {
 fn bench_e2e_small(c: &mut Criterion) {
     let opts = bench_options();
     c.bench_function("e2e/small (5 attributes)", |b| {
-        b.iter(|| {
-            parse(black_box(SMALL), opts.clone())
-        })
+        b.iter(|| parse(black_box(SMALL), opts.clone()))
     });
 }
 
 fn bench_e2e_realistic(c: &mut Criterion) {
     let opts = bench_options();
     c.bench_function("e2e/realistic config (let bindings + blocks)", |b| {
-        b.iter(|| {
-            parse(black_box(REALISTIC), opts.clone())
-        })
+        b.iter(|| parse(black_box(REALISTIC), opts.clone()))
     });
 }
 
@@ -120,9 +116,7 @@ fn bench_e2e_many_blocks_50(c: &mut Criterion) {
     let source = build_many_blocks(50);
     let opts = bench_options();
     c.bench_function("e2e/50 blocks full pipeline", |b| {
-        b.iter(|| {
-            parse(black_box(source.as_str()), opts.clone())
-        })
+        b.iter(|| parse(black_box(source.as_str()), opts.clone()))
     });
 }
 
@@ -130,9 +124,7 @@ fn bench_e2e_many_blocks_200(c: &mut Criterion) {
     let source = build_many_blocks(200);
     let opts = bench_options();
     c.bench_function("e2e/200 blocks full pipeline", |b| {
-        b.iter(|| {
-            parse(black_box(source.as_str()), opts.clone())
-        })
+        b.iter(|| parse(black_box(source.as_str()), opts.clone()))
     });
 }
 

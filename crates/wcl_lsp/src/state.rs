@@ -1,6 +1,6 @@
 use dashmap::DashMap;
-use tower_lsp::lsp_types::Url;
 use ropey::Rope;
+use tower_lsp::lsp_types::Url;
 use wcl_core::ast;
 use wcl_core::diagnostic::Diagnostic;
 use wcl_core::lexer::Token;

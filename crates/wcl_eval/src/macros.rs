@@ -1,8 +1,8 @@
+use crate::value::Value;
 use std::collections::HashMap;
 use wcl_core::ast::*;
 use wcl_core::diagnostic::DiagnosticBag;
 use wcl_core::span::Span;
-use crate::value::Value;
 
 /// Registry of macro definitions collected from the document.
 ///
@@ -37,7 +37,9 @@ impl MacroRegistry {
 
                     match def.kind {
                         MacroKind::Function => {
-                            if let std::collections::hash_map::Entry::Vacant(e) = self.function_macros.entry(name.clone()) {
+                            if let std::collections::hash_map::Entry::Vacant(e) =
+                                self.function_macros.entry(name.clone())
+                            {
                                 if let DocItem::Body(BodyItem::MacroDef(def)) = item {
                                     e.insert(def);
                                 }
@@ -50,17 +52,16 @@ impl MacroRegistry {
                             }
                         }
                         MacroKind::Attribute => {
-                            if let std::collections::hash_map::Entry::Vacant(e) = self.attribute_macros.entry(name.clone()) {
+                            if let std::collections::hash_map::Entry::Vacant(e) =
+                                self.attribute_macros.entry(name.clone())
+                            {
                                 if let DocItem::Body(BodyItem::MacroDef(def)) = item {
                                     e.insert(def);
                                 }
                                 continue;
                             } else {
                                 diagnostics.error(
-                                    format!(
-                                        "duplicate attribute macro definition: '@{}'",
-                                        name
-                                    ),
+                                    format!("duplicate attribute macro definition: '@{}'", name),
                                     span,
                                 );
                             }
@@ -280,10 +281,7 @@ impl<'a> MacroExpander<'a> {
             MacroBody::Function(items) => items.clone(),
             MacroBody::Attribute(_) => {
                 self.diagnostics.error_with_code(
-                    format!(
-                        "cannot call attribute macro '{}' as a function macro",
-                        name
-                    ),
+                    format!("cannot call attribute macro '{}' as a function macro", name),
                     call.span,
                     "E023",
                 );
@@ -367,8 +365,7 @@ impl<'a> MacroExpander<'a> {
         // Apply each transform directive
         let mut changed = false;
         for directive in &directives {
-            changed |=
-                self.apply_directive(block, directive, &param_bindings);
+            changed |= self.apply_directive(block, directive, &param_bindings);
         }
 
         changed
@@ -389,8 +386,7 @@ impl<'a> MacroExpander<'a> {
             }
             TransformDirective::Set(set_block) => {
                 for attr in &set_block.attrs {
-                    let substituted_value =
-                        self.substitute_expr(&attr.value, param_bindings);
+                    let substituted_value = self.substitute_expr(&attr.value, param_bindings);
                     // Find existing attribute and update, or append
                     let attr_name = &attr.name.name;
                     let mut found = false;
@@ -412,20 +408,15 @@ impl<'a> MacroExpander<'a> {
                 true
             }
             TransformDirective::Remove(remove_block) => {
-                let names_to_remove: Vec<String> = remove_block
-                    .names
-                    .iter()
-                    .map(|n| n.name.clone())
-                    .collect();
-                block
-                    .body
-                    .retain(|item| {
-                        if let BodyItem::Attribute(attr) = item {
-                            !names_to_remove.contains(&attr.name.name)
-                        } else {
-                            true
-                        }
-                    });
+                let names_to_remove: Vec<String> =
+                    remove_block.names.iter().map(|n| n.name.clone()).collect();
+                block.body.retain(|item| {
+                    if let BodyItem::Attribute(attr) = item {
+                        !names_to_remove.contains(&attr.name.name)
+                    } else {
+                        true
+                    }
+                });
                 true
             }
             TransformDirective::When(when_block) => {
@@ -577,7 +568,10 @@ impl<'a> MacroExpander<'a> {
                     if let Expr::Ident(ident) = obj.as_ref() {
                         if ident.name == "self" {
                             return self.eval_self_method_call(
-                                &method.name, args, block, param_bindings,
+                                &method.name,
+                                args,
+                                block,
+                                param_bindings,
                             );
                         }
                     }
@@ -612,9 +606,9 @@ impl<'a> MacroExpander<'a> {
                     CallArg::Positional(expr) => self.extract_string_arg(expr, param_bindings)?,
                     _ => return None,
                 };
-                let has_attr = block.body.iter().any(|item| {
-                    matches!(item, BodyItem::Attribute(attr) if attr.name.name == attr_name)
-                });
+                let has_attr = block.body.iter().any(
+                    |item| matches!(item, BodyItem::Attribute(attr) if attr.name.name == attr_name),
+                );
                 Some(Value::Bool(has_attr))
             }
             "attr" => {
@@ -648,11 +642,7 @@ impl<'a> MacroExpander<'a> {
     /// - `self.name` — alias for `self.id`.
     /// - `self.labels` — returns a `List(String)` of the block's labels.
     /// - `self.decorators` — returns a `List(String)` of the block's decorator names.
-    fn eval_self_field_access(
-        &self,
-        field: &str,
-        block: &Block,
-    ) -> Option<Value> {
+    fn eval_self_field_access(&self, field: &str, block: &Block) -> Option<Value> {
         match field {
             "kind" => Some(Value::String(block.kind.name.clone())),
             "name" | "id" => {
@@ -660,33 +650,46 @@ impl<'a> MacroExpander<'a> {
                     Some(InlineId::Literal(id_lit)) => Some(Value::String(id_lit.value.clone())),
                     Some(InlineId::Interpolated(parts)) => {
                         // Concatenate literal parts; interpolations can't be resolved here
-                        let s: String = parts.iter().filter_map(|p| {
-                            if let StringPart::Literal(text) = p {
-                                Some(text.as_str())
-                            } else {
-                                None
-                            }
-                        }).collect();
+                        let s: String = parts
+                            .iter()
+                            .filter_map(|p| {
+                                if let StringPart::Literal(text) = p {
+                                    Some(text.as_str())
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
                         Some(Value::String(s))
                     }
                     None => Some(Value::Null),
                 }
             }
             "labels" => {
-                let label_values: Vec<Value> = block.labels.iter().map(|label| {
-                    let s: String = label.parts.iter().filter_map(|p| {
-                        if let StringPart::Literal(text) = p {
-                            Some(text.as_str())
-                        } else {
-                            None
-                        }
-                    }).collect();
-                    Value::String(s)
-                }).collect();
+                let label_values: Vec<Value> = block
+                    .labels
+                    .iter()
+                    .map(|label| {
+                        let s: String = label
+                            .parts
+                            .iter()
+                            .filter_map(|p| {
+                                if let StringPart::Literal(text) = p {
+                                    Some(text.as_str())
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+                        Value::String(s)
+                    })
+                    .collect();
                 Some(Value::List(label_values))
             }
             "decorators" => {
-                let decorator_names: Vec<Value> = block.decorators.iter()
+                let decorator_names: Vec<Value> = block
+                    .decorators
+                    .iter()
                     .map(|d| Value::String(d.name.name.clone()))
                     .collect();
                 Some(Value::List(decorator_names))
@@ -758,10 +761,7 @@ impl<'a> MacroExpander<'a> {
                 bindings.insert(param_name.clone(), default.clone());
             } else {
                 self.diagnostics.error(
-                    format!(
-                        "missing required macro parameter '{}'",
-                        param_name
-                    ),
+                    format!("missing required macro parameter '{}'", param_name),
                     call_span,
                 );
                 return Err(());
@@ -783,10 +783,8 @@ impl<'a> MacroExpander<'a> {
 
         // Check for unknown named args
         if let Some(name) = named_args.keys().next() {
-            self.diagnostics.error(
-                format!("unknown macro parameter: '{}'", name),
-                call_span,
-            );
+            self.diagnostics
+                .error(format!("unknown macro parameter: '{}'", name), call_span);
             return Err(());
         }
 
@@ -825,19 +823,22 @@ impl<'a> MacroExpander<'a> {
             Expr::FloatLit(f, _) => Some(Value::Float(*f)),
             Expr::NullLit(_) => Some(Value::Null),
             Expr::StringLit(s) => {
-                let text: String = s.parts.iter().filter_map(|p| {
-                    if let StringPart::Literal(t) = p {
-                        Some(t.as_str())
-                    } else {
-                        None
-                    }
-                }).collect();
+                let text: String = s
+                    .parts
+                    .iter()
+                    .filter_map(|p| {
+                        if let StringPart::Literal(t) = p {
+                            Some(t.as_str())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
                 Some(Value::String(text))
             }
             Expr::List(items, _) => {
-                let values: Option<Vec<Value>> = items.iter()
-                    .map(Self::expr_to_literal_value)
-                    .collect();
+                let values: Option<Vec<Value>> =
+                    items.iter().map(Self::expr_to_literal_value).collect();
                 values.map(Value::List)
             }
             _ => None,
@@ -855,14 +856,14 @@ impl<'a> MacroExpander<'a> {
             TypeExpr::Any(_) => true,
             TypeExpr::List(inner_type, _) => {
                 if let Value::List(items) = value {
-                    items.iter().all(|item| Self::value_matches_type(item, inner_type))
+                    items
+                        .iter()
+                        .all(|item| Self::value_matches_type(item, inner_type))
                 } else {
                     false
                 }
             }
-            TypeExpr::Union(types, _) => {
-                types.iter().any(|t| Self::value_matches_type(value, t))
-            }
+            TypeExpr::Union(types, _) => types.iter().any(|t| Self::value_matches_type(value, t)),
             // For types we can't check at macro expansion time, pass through
             _ => true,
         }
@@ -879,7 +880,11 @@ impl<'a> MacroExpander<'a> {
             TypeExpr::Any(_) => "any".to_string(),
             TypeExpr::Identifier(_) => "identifier".to_string(),
             TypeExpr::List(inner, _) => format!("list({})", Self::type_expr_display(inner)),
-            TypeExpr::Map(k, v, _) => format!("map({}, {})", Self::type_expr_display(k), Self::type_expr_display(v)),
+            TypeExpr::Map(k, v, _) => format!(
+                "map({}, {})",
+                Self::type_expr_display(k),
+                Self::type_expr_display(v)
+            ),
             TypeExpr::Set(inner, _) => format!("set({})", Self::type_expr_display(inner)),
             TypeExpr::Ref(_, _) => "ref(...)".to_string(),
             TypeExpr::Union(types, _) => {
@@ -920,11 +925,7 @@ impl<'a> MacroExpander<'a> {
             .collect()
     }
 
-    fn substitute_body_item(
-        &self,
-        item: &BodyItem,
-        params: &HashMap<String, Expr>,
-    ) -> BodyItem {
+    fn substitute_body_item(&self, item: &BodyItem, params: &HashMap<String, Expr>) -> BodyItem {
         match item {
             BodyItem::Attribute(attr) => {
                 let mut new_attr = attr.clone();
@@ -974,8 +975,7 @@ impl<'a> MacroExpander<'a> {
                 new_cond.condition = self.substitute_expr(&cond.condition, params);
                 new_cond.then_body = self.substitute_params(&cond.then_body, params);
                 if let Some(else_branch) = &cond.else_branch {
-                    new_cond.else_branch =
-                        Some(self.substitute_else_branch(else_branch, params));
+                    new_cond.else_branch = Some(self.substitute_else_branch(else_branch, params));
                 }
                 BodyItem::Conditional(new_cond)
             }
@@ -995,17 +995,12 @@ impl<'a> MacroExpander<'a> {
                 new_cond.condition = self.substitute_expr(&cond.condition, params);
                 new_cond.then_body = self.substitute_params(&cond.then_body, params);
                 if let Some(else_branch) = &cond.else_branch {
-                    new_cond.else_branch =
-                        Some(self.substitute_else_branch(else_branch, params));
+                    new_cond.else_branch = Some(self.substitute_else_branch(else_branch, params));
                 }
                 ElseBranch::ElseIf(Box::new(new_cond))
             }
             ElseBranch::Else(body, trivia, span) => {
-                ElseBranch::Else(
-                    self.substitute_params(body, params),
-                    trivia.clone(),
-                    *span,
-                )
+                ElseBranch::Else(self.substitute_params(body, params), trivia.clone(), *span)
             }
         }
     }
@@ -1026,11 +1021,9 @@ impl<'a> MacroExpander<'a> {
                 Box::new(self.substitute_expr(rhs, params)),
                 *span,
             ),
-            Expr::UnaryOp(op, operand, span) => Expr::UnaryOp(
-                *op,
-                Box::new(self.substitute_expr(operand, params)),
-                *span,
-            ),
+            Expr::UnaryOp(op, operand, span) => {
+                Expr::UnaryOp(*op, Box::new(self.substitute_expr(operand, params)), *span)
+            }
             Expr::Ternary(cond, then_expr, else_expr, span) => Expr::Ternary(
                 Box::new(self.substitute_expr(cond, params)),
                 Box::new(self.substitute_expr(then_expr, params)),
@@ -1106,11 +1099,7 @@ impl<'a> MacroExpander<'a> {
     }
 
     /// Substitute parameter references within a string literal's interpolations.
-    fn substitute_string_lit(
-        &self,
-        lit: &StringLit,
-        params: &HashMap<String, Expr>,
-    ) -> StringLit {
+    fn substitute_string_lit(&self, lit: &StringLit, params: &HashMap<String, Expr>) -> StringLit {
         StringLit {
             parts: lit
                 .parts
@@ -1118,9 +1107,7 @@ impl<'a> MacroExpander<'a> {
                 .map(|part| match part {
                     StringPart::Literal(s) => StringPart::Literal(s.clone()),
                     StringPart::Interpolation(expr) => {
-                        StringPart::Interpolation(Box::new(
-                            self.substitute_expr(expr, params),
-                        ))
+                        StringPart::Interpolation(Box::new(self.substitute_expr(expr, params)))
                     }
                 })
                 .collect(),
@@ -1317,7 +1304,11 @@ mod tests {
         }
     }
 
-    fn make_when_attr_macro(name: &str, condition: Expr, inner_directives: Vec<TransformDirective>) -> MacroDef {
+    fn make_when_attr_macro(
+        name: &str,
+        condition: Expr,
+        inner_directives: Vec<TransformDirective>,
+    ) -> MacroDef {
         MacroDef {
             decorators: vec![],
             kind: MacroKind::Attribute,
@@ -1346,8 +1337,14 @@ mod tests {
             }],
             span: dummy_span(),
         });
-        let macro_def = make_when_attr_macro("add_if_true", Expr::BoolLit(true, dummy_span()), vec![inner_set]);
-        registry.attribute_macros.insert("add_if_true".to_string(), macro_def);
+        let macro_def = make_when_attr_macro(
+            "add_if_true",
+            Expr::BoolLit(true, dummy_span()),
+            vec![inner_set],
+        );
+        registry
+            .attribute_macros
+            .insert("add_if_true".to_string(), macro_def);
 
         let mut block = make_block_with_attrs(vec![("port", Expr::IntLit(8080, dummy_span()))]);
         block.decorators.push(Decorator {
@@ -1380,8 +1377,14 @@ mod tests {
             }],
             span: dummy_span(),
         });
-        let macro_def = make_when_attr_macro("add_if_false", Expr::BoolLit(false, dummy_span()), vec![inner_set]);
-        registry.attribute_macros.insert("add_if_false".to_string(), macro_def);
+        let macro_def = make_when_attr_macro(
+            "add_if_false",
+            Expr::BoolLit(false, dummy_span()),
+            vec![inner_set],
+        );
+        registry
+            .attribute_macros
+            .insert("add_if_false".to_string(), macro_def);
 
         let mut block = make_block_with_attrs(vec![("port", Expr::IntLit(8080, dummy_span()))]);
         block.decorators.push(Decorator {
@@ -1429,7 +1432,9 @@ mod tests {
             span: dummy_span(),
         });
         let macro_def = make_when_attr_macro("check_port", condition, vec![inner_set]);
-        registry.attribute_macros.insert("check_port".to_string(), macro_def);
+        registry
+            .attribute_macros
+            .insert("check_port".to_string(), macro_def);
 
         let mut block = make_block_with_attrs(vec![("port", Expr::IntLit(8080, dummy_span()))]);
         block.decorators.push(Decorator {
@@ -1475,7 +1480,9 @@ mod tests {
             span: dummy_span(),
         });
         let macro_def = make_when_attr_macro("check_missing", condition, vec![inner_set]);
-        registry.attribute_macros.insert("check_missing".to_string(), macro_def);
+        registry
+            .attribute_macros
+            .insert("check_missing".to_string(), macro_def);
 
         let mut block = make_block_with_attrs(vec![("port", Expr::IntLit(8080, dummy_span()))]);
         block.decorators.push(Decorator {
@@ -1524,7 +1531,9 @@ mod tests {
             span: dummy_span(),
         });
         let macro_def = make_when_attr_macro("check_no_port", condition, vec![inner_set]);
-        registry.attribute_macros.insert("check_no_port".to_string(), macro_def);
+        registry
+            .attribute_macros
+            .insert("check_no_port".to_string(), macro_def);
 
         let mut block = make_block_with_attrs(vec![("port", Expr::IntLit(8080, dummy_span()))]);
         block.decorators.push(Decorator {
@@ -1559,7 +1568,9 @@ mod tests {
             span: dummy_span(),
         });
         let macro_def = make_when_attr_macro("check_unknown", condition, vec![inner_set]);
-        registry.attribute_macros.insert("check_unknown".to_string(), macro_def);
+        registry
+            .attribute_macros
+            .insert("check_unknown".to_string(), macro_def);
 
         let mut block = make_block_with_attrs(vec![("port", Expr::IntLit(8080, dummy_span()))]);
         block.decorators.push(Decorator {
@@ -1737,7 +1748,9 @@ mod tests {
             span: dummy_span(),
         });
         let macro_def = make_when_attr_macro("check_labels", condition, vec![inner_set]);
-        registry.attribute_macros.insert("check_labels".to_string(), macro_def);
+        registry
+            .attribute_macros
+            .insert("check_labels".to_string(), macro_def);
 
         let mut block = Block {
             decorators: vec![Decorator {
@@ -1811,7 +1824,10 @@ mod tests {
         assert!(result.is_err());
 
         let diags = expander.into_diagnostics();
-        assert!(diags.diagnostics().iter().any(|d| d.message.contains("E024")));
+        assert!(diags
+            .diagnostics()
+            .iter()
+            .any(|d| d.message.contains("E024")));
     }
 
     #[test]
@@ -1848,7 +1864,10 @@ mod tests {
         assert!(result.is_err());
 
         let diags = expander.into_diagnostics();
-        assert!(diags.diagnostics().iter().any(|d| d.message.contains("E024")));
+        assert!(diags
+            .diagnostics()
+            .iter()
+            .any(|d| d.message.contains("E024")));
     }
 
     #[test]
@@ -1923,7 +1942,10 @@ mod tests {
         assert!(result.is_err());
 
         let diags = expander.into_diagnostics();
-        assert!(diags.diagnostics().iter().any(|d| d.message.contains("E024")));
+        assert!(diags
+            .diagnostics()
+            .iter()
+            .any(|d| d.message.contains("E024")));
     }
 
     #[test]
