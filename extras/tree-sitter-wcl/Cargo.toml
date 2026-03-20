@@ -3,7 +3,6 @@ name = "tree-sitter-wcl"
 description = "Tree-sitter grammar for WCL (Wil's Configuration Language)"
 version = "0.0.0-local"
 license = "MIT"
-readme = "README.md"
 keywords = ["incremental", "parsing", "tree-sitter", "wcl"]
 categories = ["parser-implementations", "parsing", "text-editors"]
 repository = "https://github.com/wiltaylor/wcl"
