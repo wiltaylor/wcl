@@ -45,7 +45,6 @@ namespace Wcl.Serde
             // Primitives
             if (targetType == typeof(string))
             {
-                if (value.Kind == WclValueKind.Identifier) return value.AsIdentifier();
                 return value.AsString();
             }
             if (targetType == typeof(long) || targetType == typeof(Int64)) return value.AsInt();
@@ -64,7 +63,7 @@ namespace Wcl.Serde
                 return list;
             }
 
-            // BlockRef → Map with id/labels auto-populated (before Dict/POCO checks)
+            // BlockRef -> Map with id/labels auto-populated
             if (value.Kind == WclValueKind.BlockRef)
             {
                 var br = value.AsBlockRef();
@@ -78,7 +77,7 @@ namespace Wcl.Serde
                 return ConvertValue(WclValue.NewMap(map), targetType);
             }
 
-            // Set → List coercion
+            // Set -> List coercion
             if (value.Kind == WclValueKind.Set && targetType.IsGenericType &&
                 targetType.GetGenericTypeDefinition() == typeof(List<>))
             {
@@ -110,7 +109,6 @@ namespace Wcl.Serde
                 {
                     if (!prop.CanWrite) continue;
                     var name = prop.Name;
-                    // Try snake_case
                     var snakeName = ToSnakeCase(name);
                     if (map.TryGetValue(snakeName, out var val) || map.TryGetValue(name, out val))
                     {
@@ -121,7 +119,6 @@ namespace Wcl.Serde
                         throw SerdeError.MissingField(snakeName);
                     }
                 }
-                // Also try fields
                 foreach (var field in targetType.GetFields(BindingFlags.Public | BindingFlags.Instance))
                 {
                     var name = field.Name;

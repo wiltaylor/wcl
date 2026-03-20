@@ -1,125 +1,168 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using Wcl.Core;
-using Wcl.Core.Ast;
 using Wcl.Eval;
-using Wcl.Eval.Query;
-using Wcl.Schema;
+using Wcl.Native;
 
 namespace Wcl
 {
-    public class WclDocument
+    public class WclDocument : IDisposable
     {
-        public Document Ast { get; }
-        public OrderedMap<string, WclValue> Values { get; }
-        public List<Diagnostic> Diagnostics { get; }
-        public SourceMap SourceMap { get; }
-        public SchemaRegistry Schemas { get; }
-        public DecoratorSchemaRegistry DecoratorSchemas { get; }
+        private IntPtr _handle;
+        private readonly List<ulong> _callbackIds;
+        private bool _disposed;
+        private readonly object _lock = new object();
 
-        public WclDocument(Document ast, OrderedMap<string, WclValue> values,
-                           List<Diagnostic> diagnostics, SourceMap sourceMap,
-                           SchemaRegistry schemas, DecoratorSchemaRegistry decoratorSchemas)
+        private OrderedMap<string, WclValue>? _cachedValues;
+        private List<Diagnostic>? _cachedDiagnostics;
+
+        internal WclDocument(IntPtr handle, List<ulong>? callbackIds = null)
         {
-            Ast = ast; Values = values; Diagnostics = diagnostics;
-            SourceMap = sourceMap; Schemas = schemas; DecoratorSchemas = decoratorSchemas;
+            _handle = handle;
+            _callbackIds = callbackIds ?? new List<ulong>();
         }
 
-        public List<Block> BlocksOfType(string kind) =>
-            Ast.Items
-                .OfType<BodyDocItem>()
-                .Select(b => b.BodyItem)
-                .OfType<BlockItem>()
-                .Where(bi => bi.Block.Kind.Name == kind)
-                .Select(bi => bi.Block)
-                .ToList();
-
-        public List<BlockRef> Blocks()
+        public OrderedMap<string, WclValue> Values
         {
-            var evaluator = new Evaluator();
-            var scope = evaluator.Scopes.CreateScope(ScopeKind.Module, null);
-            return Ast.Items
-                .OfType<BodyDocItem>()
-                .Select(b => b.BodyItem)
-                .OfType<BlockItem>()
-                .Select(bi => BlockToRef(bi.Block, evaluator, scope))
-                .ToList();
+            get
+            {
+                lock (_lock)
+                {
+                    CheckDisposed();
+                    if (_cachedValues == null)
+                    {
+                        var ptr = NativeMethods.wcl_ffi_document_values(_handle);
+                        var json = FfiHelper.ConsumeString(ptr);
+                        using var doc = JsonDocument.Parse(json);
+                        _cachedValues = JsonConvert.ToValues(doc.RootElement);
+                    }
+                    return _cachedValues;
+                }
+            }
         }
 
-        public List<BlockRef> BlocksOfTypeResolved(string kind) =>
-            Blocks().Where(b => b.Kind == kind).ToList();
-
-        public WclValue Query(string queryStr)
+        public List<Diagnostic> Diagnostics
         {
-            var fileId = new FileId(9999);
-            var pipeline = Core.Parser.WclParser.ParseQuery(queryStr, fileId);
-            if (pipeline == null)
-                throw new System.Exception("query parse error");
-
-            var blocks = Blocks();
-            var evaluator = new Evaluator();
-            var scope = evaluator.Scopes.CreateScope(ScopeKind.Module, null);
-            var engine = new QueryEngine();
-            return engine.Execute(pipeline, blocks, evaluator, scope);
+            get
+            {
+                lock (_lock)
+                {
+                    CheckDisposed();
+                    if (_cachedDiagnostics == null)
+                    {
+                        var ptr = NativeMethods.wcl_ffi_document_diagnostics(_handle);
+                        var json = FfiHelper.ConsumeString(ptr);
+                        using var doc = JsonDocument.Parse(json);
+                        _cachedDiagnostics = new List<Diagnostic>();
+                        foreach (var el in doc.RootElement.EnumerateArray())
+                            _cachedDiagnostics.Add(JsonConvert.ToDiagnostic(el));
+                    }
+                    return _cachedDiagnostics;
+                }
+            }
         }
 
-        public bool HasDecorator(string decoratorName) =>
-            Blocks().Any(b => b.HasDecorator(decoratorName));
-
-        public bool HasErrors() => Diagnostics.Any(d => d.IsError);
+        public bool HasErrors()
+        {
+            lock (_lock)
+            {
+                CheckDisposed();
+                return NativeMethods.wcl_ffi_document_has_errors(_handle);
+            }
+        }
 
         public List<Diagnostic> Errors() => Diagnostics.Where(d => d.IsError).ToList();
 
-        private static BlockRef BlockToRef(Block block, Evaluator evaluator, ScopeId scope)
+        public WclValue Query(string query)
         {
-            var kind = block.Kind.Name;
-            string? id = null;
-            if (block.InlineId is LiteralInlineId lit) id = lit.Lit.Value;
-
-            var labels = block.Labels
-                .Where(sl => sl.Parts.Count == 1 && sl.Parts[0] is LiteralPart)
-                .Select(sl => ((LiteralPart)sl.Parts[0]).Value)
-                .ToList();
-
-            var attrs = new OrderedMap<string, WclValue>();
-            foreach (var bodyItem in block.Body)
+            lock (_lock)
             {
-                if (bodyItem is AttributeItem ai)
+                CheckDisposed();
+                var queryPtr = FfiHelper.ToUtf8(query);
+                try
                 {
-                    try
-                    {
-                        var val = evaluator.EvalExpr(ai.Attribute.Value, scope);
-                        attrs[ai.Attribute.Name.Name] = val;
-                    }
-                    catch { }
+                    var resultPtr = NativeMethods.wcl_ffi_document_query(_handle, queryPtr);
+                    var (isOk, value, error) = FfiHelper.ConsumeJsonResult(resultPtr);
+                    if (!isOk)
+                        throw new Exception($"query error: {error}");
+                    return JsonConvert.ToWclValue(value);
+                }
+                finally
+                {
+                    FfiHelper.FreeUtf8(queryPtr);
                 }
             }
+        }
 
-            var children = block.Body
-                .OfType<BlockItem>()
-                .Select(bi => BlockToRef(bi.Block, evaluator, scope))
-                .ToList();
-
-            var decorators = block.Decorators.Select(d =>
+        public List<BlockRef> Blocks()
+        {
+            lock (_lock)
             {
-                var args = new OrderedMap<string, WclValue>();
-                foreach (var arg in d.Args)
-                {
-                    if (arg is NamedDecoratorArg na)
-                    {
-                        try { args[na.Name.Name] = evaluator.EvalExpr(na.Value, scope); }
-                        catch { }
-                    }
-                    else if (arg is PositionalDecoratorArg pa)
-                    {
-                        try { args[$"_{args.Count}"] = evaluator.EvalExpr(pa.Value, scope); }
-                        catch { }
-                    }
-                }
-                return new DecoratorValue(d.Name.Name, args);
-            }).ToList();
+                CheckDisposed();
+                var ptr = NativeMethods.wcl_ffi_document_blocks(_handle);
+                var json = FfiHelper.ConsumeString(ptr);
+                using var doc = JsonDocument.Parse(json);
+                var result = new List<BlockRef>();
+                foreach (var el in doc.RootElement.EnumerateArray())
+                    result.Add(JsonConvert.ToBlockRef(el));
+                return result;
+            }
+        }
 
-            return new BlockRef(kind, id, labels, attrs, children, decorators, block.Span);
+        public List<BlockRef> BlocksOfType(string kind)
+        {
+            lock (_lock)
+            {
+                CheckDisposed();
+                var kindPtr = FfiHelper.ToUtf8(kind);
+                try
+                {
+                    var ptr = NativeMethods.wcl_ffi_document_blocks_of_type(_handle, kindPtr);
+                    var json = FfiHelper.ConsumeString(ptr);
+                    using var doc = JsonDocument.Parse(json);
+                    var result = new List<BlockRef>();
+                    foreach (var el in doc.RootElement.EnumerateArray())
+                        result.Add(JsonConvert.ToBlockRef(el));
+                    return result;
+                }
+                finally
+                {
+                    FfiHelper.FreeUtf8(kindPtr);
+                }
+            }
+        }
+
+        private void CheckDisposed()
+        {
+            if (_disposed)
+                throw new ObjectDisposedException(nameof(WclDocument));
+        }
+
+        public void Dispose()
+        {
+            lock (_lock)
+            {
+                if (_disposed) return;
+                _disposed = true;
+
+                if (_handle != IntPtr.Zero)
+                {
+                    NativeMethods.wcl_ffi_document_free(_handle);
+                    _handle = IntPtr.Zero;
+                }
+
+                foreach (var id in _callbackIds)
+                    CallbackRegistry.Unregister(id);
+                _callbackIds.Clear();
+            }
+            GC.SuppressFinalize(this);
+        }
+
+        ~WclDocument()
+        {
+            Dispose();
         }
     }
 }

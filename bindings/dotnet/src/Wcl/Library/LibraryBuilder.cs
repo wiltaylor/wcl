@@ -1,9 +1,8 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Text;
-using Wcl.Eval.Functions;
+using Wcl.Native;
 
 namespace Wcl.Library
 {
@@ -24,15 +23,6 @@ namespace Wcl.Library
             var paramStr = string.Join(", ", Params.Select(p => $"{p.Name}: {p.Type}"));
             var ret = ReturnType != null ? $" -> {ReturnType}" : "";
             return $"declare {Name}({paramStr}){ret}\n";
-        }
-
-        public FunctionSignature ToSignature()
-        {
-            return new FunctionSignature(
-                Name,
-                Params.Select(p => $"{p.Name}: {p.Type}").ToList(),
-                ReturnType ?? "any",
-                Doc ?? "");
         }
     }
 
@@ -62,45 +52,59 @@ namespace Wcl.Library
             return sb.ToString();
         }
 
-        public void Install(string? targetDir = null)
+        public string Install()
         {
-            var dir = targetDir ?? LibraryManager.UserLibraryDir();
-            Directory.CreateDirectory(dir);
-            var path = Path.Combine(dir, $"{_name}.wcl");
-            File.WriteAllText(path, Build());
+            return LibraryManager.Install(_name, Build());
         }
     }
 
     public static class LibraryManager
     {
-        public static string UserLibraryDir()
+        public static string Install(string name, string content)
         {
-            var dataHome = Environment.GetEnvironmentVariable("XDG_DATA_HOME")
-                ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "share");
-            return Path.Combine(dataHome, "wcl", "libraries");
+            var namePtr = FfiHelper.ToUtf8(name);
+            var contentPtr = FfiHelper.ToUtf8(content);
+            try
+            {
+                var resultPtr = NativeMethods.wcl_ffi_install_library(namePtr, contentPtr);
+                var (isOk, value, error) = FfiHelper.ConsumeJsonResult(resultPtr);
+                if (!isOk)
+                    throw new Exception($"wcl: {error}");
+                return value.GetString() ?? "";
+            }
+            finally
+            {
+                FfiHelper.FreeUtf8(namePtr);
+                FfiHelper.FreeUtf8(contentPtr);
+            }
         }
 
-        public static void Install(string name, string content)
+        public static void Uninstall(string name)
         {
-            var dir = UserLibraryDir();
-            Directory.CreateDirectory(dir);
-            File.WriteAllText(Path.Combine(dir, $"{name}.wcl"), content);
-        }
-
-        public static bool Uninstall(string name)
-        {
-            var path = Path.Combine(UserLibraryDir(), $"{name}.wcl");
-            if (File.Exists(path)) { File.Delete(path); return true; }
-            return false;
+            var namePtr = FfiHelper.ToUtf8(name);
+            try
+            {
+                var resultPtr = NativeMethods.wcl_ffi_uninstall_library(namePtr);
+                var (isOk, _, error) = FfiHelper.ConsumeJsonResult(resultPtr);
+                if (!isOk)
+                    throw new Exception($"wcl: {error}");
+            }
+            finally
+            {
+                FfiHelper.FreeUtf8(namePtr);
+            }
         }
 
         public static List<string> List()
         {
-            var dir = UserLibraryDir();
-            if (!Directory.Exists(dir)) return new List<string>();
-            return new List<string>(
-                Directory.GetFiles(dir, "*.wcl")
-                    .Select(f => Path.GetFileNameWithoutExtension(f)));
+            var resultPtr = NativeMethods.wcl_ffi_list_libraries();
+            var (isOk, value, error) = FfiHelper.ConsumeJsonResult(resultPtr);
+            if (!isOk)
+                throw new Exception($"wcl: {error}");
+            var result = new List<string>();
+            foreach (var el in value.EnumerateArray())
+                result.Add(el.GetString() ?? "");
+            return result;
         }
     }
 }
