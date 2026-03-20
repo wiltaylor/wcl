@@ -19,15 +19,15 @@ license = "MIT"
 
 [workspace.dependencies]
 # Internal crates
-wcl = { path = "crates/wcl" }
-wcl_core = { path = "crates/wcl_core" }
-wcl_eval = { path = "crates/wcl_eval" }
-wcl_schema = { path = "crates/wcl_schema" }
-wcl_serde = { path = "crates/wcl_serde" }
-wcl_derive = { path = "crates/wcl_derive" }
+wcl = { path = "crates/wcl", version = "0.1.0" }
+wcl_core = { path = "crates/wcl_core", version = "0.1.0" }
+wcl_eval = { path = "crates/wcl_eval", version = "0.1.0" }
+wcl_schema = { path = "crates/wcl_schema", version = "0.1.0" }
+wcl_serde = { path = "crates/wcl_serde", version = "0.1.0" }
+wcl_derive = { path = "crates/wcl_derive", version = "0.1.0" }
 
 # LSP crate
-wcl_lsp = { path = "crates/wcl_lsp" }
+wcl_lsp = { path = "crates/wcl_lsp", version = "0.1.0" }
 
 # External deps
 nom = "8"
