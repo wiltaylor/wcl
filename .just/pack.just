@@ -65,8 +65,8 @@ vscode:
     cp *.vsix "{{pkg}}/vscode/"
     echo "VS Code extension packaged to {{pkg}}/vscode/"
 
-# Package everything (set version first, then package all)
-all ver="": (version ver) rust python wasm go dotnet vscode
+# Package everything. Pass a version to stamp all packages (default: 0.0.0-local)
+all ver="0.0.0-local": (set-version ver) rust python wasm go dotnet vscode
     @echo "All packages created in {{pkg}}/"
 
 # Remove all packaged artifacts
@@ -75,9 +75,27 @@ clean:
     @echo "Cleaned {{pkg}}/"
 
 [private]
-version ver:
+set-version ver:
     #!/bin/bash
     set -euo pipefail
-    if [[ -n "{{ver}}" ]]; then
-        just set-version "{{ver}}"
-    fi
+    V="{{ver}}"
+    echo "Setting version to: $V"
+
+    # Rust: workspace version + workspace dependency versions
+    sed -i "0,/^version = .*/s/^version = .*/version = \"$V\"/" Cargo.toml
+    for crate in wcl wcl_core wcl_eval wcl_schema wcl_serde wcl_derive wcl_lsp; do
+        sed -i "s|$crate = { path = \"crates/$crate\", version = \"[^\"]*\" }|$crate = { path = \"crates/$crate\", version = \"$V\" }|" Cargo.toml
+    done
+
+    # Python: PEP 440 version (replace - with . for pre-release)
+    PY_V=$(echo "$V" | sed 's/-\(.*\)/.\1/')
+    sed -i "s/^version = .*/version = \"$PY_V\"/" bindings/python/pyproject.toml
+
+    # npm (WASM + VS Code): semver with - prerelease
+    sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$V\"/" bindings/wasm/package.json
+    sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$V\"/" editors/vscode/package.json
+
+    # .NET: supports semver with - prerelease
+    sed -i "s|<Version>[^<]*</Version>|<Version>$V</Version>|" bindings/dotnet/src/Wcl/Wcl.csproj
+
+    echo "All packages set to $V"
