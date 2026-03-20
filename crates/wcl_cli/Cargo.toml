@@ -3,6 +3,10 @@ name = "wcl_cli"
 version = "0.1.0"
 edition = "2021"
 license.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+repository.workspace = true
+description = "Command-line interface for WCL (Wil's Configuration Language)"
 
 [[bin]]
 name = "wcl"

@@ -3,6 +3,10 @@ name = "wcl_serde"
 version = "0.1.0"
 edition = "2021"
 license.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+repository.workspace = true
+description = "Serde integration for WCL (Wil's Configuration Language)"
 
 [dependencies]
 wcl_core = { workspace = true }
