@@ -1,6 +1,6 @@
 # Using WCL as a .NET Library
 
-WCL has a native C# implementation that can be embedded into any .NET application. The `Wcl` library provides the full 11-phase parsing pipeline, evaluated values, queries, schema validation, and serialization.
+WCL can be embedded into .NET programs via the `Wcl` package. It uses a native shared library (P/Invoke) under the hood, so you get the full 11-phase WCL pipeline without needing a Rust toolchain.
 
 ## Adding the Dependency
 
@@ -10,7 +10,9 @@ Add a project reference to the WCL library:
 <ProjectReference Include="../wcl_dotnet/src/Wcl/Wcl.csproj" />
 ```
 
-The library targets `netstandard2.1` and works with .NET Core 3.0+, .NET 5+, and .NET Framework 4.8+ (with the netstandard shim).
+The library targets `netstandard2.1` and works with .NET Core 3.0+ and .NET 5+.
+
+> **Note:** This package uses P/Invoke with a native shared library (`libwcl_ffi.so` / `.dylib` / `.dll`). The native library must be present in the `runtimes/{rid}/native/` directory or alongside your application binary.
 
 ## Parsing a WCL String
 
@@ -19,7 +21,7 @@ Use `WclParser.Parse()` to run the full pipeline and get a `WclDocument`:
 ```csharp
 using Wcl;
 
-var doc = WclParser.Parse(@"
+using var doc = WclParser.Parse(@"
     server web-prod {
         host = ""0.0.0.0""
         port = 8080
@@ -40,22 +42,27 @@ else
 }
 ```
 
+`WclDocument` implements `IDisposable` and should be disposed when no longer needed. A finalizer is set as a safety net, but explicit disposal (via `using` or `Dispose()`) is preferred.
+
 ## Parsing a WCL File
 
-Read the file and pass its contents to `Parse()`. Set `RootDir` so imports resolve correctly:
+`ParseFile` reads and parses a file. It automatically sets `RootDir` to the file's parent directory so imports resolve correctly:
 
 ```csharp
 using Wcl;
 
-var path = "config/main.wcl";
-var source = File.ReadAllText(path);
+using var doc = WclParser.ParseFile("config/main.wcl");
+```
 
+To override parse options:
+
+```csharp
 var options = new ParseOptions
 {
-    RootDir = Path.GetDirectoryName(Path.GetFullPath(path))!
+    RootDir = "./config"
 };
 
-var doc = WclParser.Parse(source, options);
+using var doc = WclParser.ParseFile("config/main.wcl", options);
 ```
 
 ## Accessing Evaluated Values
@@ -66,7 +73,7 @@ After parsing, `doc.Values` is an `OrderedMap<string, WclValue>` containing all 
 using Wcl;
 using Wcl.Eval;
 
-var doc = WclParser.Parse(@"
+using var doc = WclParser.Parse(@"
     name = ""my-app""
     port = 8080
     tags = [""web"", ""prod""]
@@ -105,10 +112,10 @@ Safe accessors like `.TryAsString()` return `null` instead of throwing on type m
 
 ## Working with Blocks
 
-Use `Blocks()` and `BlocksOfTypeResolved()` to access blocks with their resolved attribute values:
+Use `Blocks()` and `BlocksOfType()` to access blocks with their resolved attribute values:
 
 ```csharp
-var doc = WclParser.Parse(@"
+using var doc = WclParser.Parse(@"
     server web-prod {
         host = ""0.0.0.0""
         port = 8080
@@ -130,7 +137,7 @@ var blocks = doc.Blocks();
 Console.WriteLine($"Total blocks: {blocks.Count}"); // 3
 
 // Get blocks of a specific type
-var servers = doc.BlocksOfTypeResolved("server");
+var servers = doc.BlocksOfType("server");
 foreach (var s in servers)
 {
     Console.WriteLine($"server id={s.Id} host={s.Get("host")} port={s.Get("port")}");
@@ -160,7 +167,7 @@ public class BlockRef
 `Query()` accepts the same query syntax as the `wcl query` CLI command:
 
 ```csharp
-var doc = WclParser.Parse(@"
+using var doc = WclParser.Parse(@"
     server svc-api {
         port = 8080
         env = ""prod""
@@ -197,27 +204,22 @@ var api = doc.Query("server#svc-api");
 
 ## Custom Functions
 
-Register C# functions callable from WCL expressions:
+You can register C# functions that are callable from WCL expressions. This lets your application extend WCL with domain-specific logic:
 
 ```csharp
 using Wcl;
 using Wcl.Eval;
 
-var opts = new ParseOptions();
+var opts = new ParseOptions
+{
+    Functions = new Dictionary<string, Func<WclValue[], WclValue>>
+    {
+        ["double"] = args => WclValue.NewInt(args[0].AsInt() * 2),
+        ["greet"] = args => WclValue.NewString($"Hello, {args[0].AsString()}!"),
+    }
+};
 
-// Register a simple function
-opts.Functions.Register("double", args =>
-    WclValue.NewInt(args[0].AsInt() * 2));
-
-// Register with a signature (for LSP support)
-opts.Functions.Register("greet", args =>
-    WclValue.NewString($"Hello, {args[0].AsString()}!"),
-    new FunctionSignature("greet",
-        new List<string> { "name: string" },
-        "string",
-        "Greet someone"));
-
-var doc = WclParser.Parse(@"
+using var doc = WclParser.Parse(@"
     result = double(21)
     message = greet(""World"")
 ", opts);
@@ -226,7 +228,19 @@ Console.WriteLine(doc.Values["result"].AsInt());     // 42
 Console.WriteLine(doc.Values["message"].AsString());  // "Hello, World!"
 ```
 
-Functions receive `WclValue[]` arguments and must return a `WclValue`. Use the factory methods to create return values.
+Arguments and return values are serialized as JSON across the FFI boundary. Functions receive `WclValue[]` arguments and must return a `WclValue`. Use the factory methods to create return values.
+
+To signal a function failure, throw an exception:
+
+```csharp
+["safe_div"] = args =>
+{
+    var a = args[0].AsFloat();
+    var b = args[1].AsFloat();
+    if (b == 0) throw new Exception("division by zero");
+    return WclValue.NewFloat(a / b);
+}
+```
 
 ## Deserializing into C# Types
 
@@ -273,12 +287,12 @@ var pretty = WclParser.ToStringPretty(config);
 
 ## Parse Options
 
-`ParseOptions` controls the pipeline behavior:
+`ParseOptions` controls the pipeline behavior. All fields are nullable — only set values are sent to the engine:
 
 ```csharp
 var options = new ParseOptions
 {
-    // Root directory for import path resolution (default: ".")
+    // Root directory for import path resolution
     RootDir = "./config",
 
     // Whether imports are allowed (default: true)
@@ -296,9 +310,8 @@ var options = new ParseOptions
     // Maximum total iterations across all for loops (default: 10,000)
     MaxIterations = 10000,
 
-    // How to handle duplicate attributes in partial merges
-    // Strict = error on duplicates, LastWins = later value wins
-    MergeConflictMode = ConflictMode.Strict,
+    // Custom functions callable from WCL expressions
+    Functions = new Dictionary<string, Func<WclValue[], WclValue>> { ... },
 };
 ```
 
@@ -306,15 +319,50 @@ When processing untrusted input, disable imports to prevent file system access:
 
 ```csharp
 var options = new ParseOptions { AllowImports = false };
-var doc = WclParser.Parse(untrustedInput, options);
+using var doc = WclParser.Parse(untrustedInput, options);
 ```
+
+Pass `null` for default options:
+
+```csharp
+using var doc = WclParser.Parse(source, null);
+```
+
+## Library Management
+
+Install, list, and uninstall WCL library files programmatically:
+
+```csharp
+using Wcl.Library;
+
+// Install a library file
+var path = LibraryManager.Install("myapp.wcl", @"
+    schema ""config"" {
+        port: int
+        host: string @optional
+    }
+
+    declare my_fn(input: string) -> string
+");
+Console.WriteLine($"Installed to: {path}");
+
+// List installed libraries
+var libs = LibraryManager.List();
+foreach (var lib in libs)
+    Console.WriteLine(lib);
+
+// Uninstall
+LibraryManager.Uninstall("myapp.wcl");
+```
+
+After installation, WCL files can use `import <myapp.wcl>` to access the schemas and function declarations.
 
 ## Error Handling
 
-The `WclDocument` collects all diagnostics from every pipeline phase. Each `Diagnostic` includes a severity, message, source span, and optional error code:
+The `WclDocument` collects all diagnostics from every pipeline phase. Each `Diagnostic` includes a severity, message, and optional error code:
 
 ```csharp
-var doc = WclParser.Parse(@"
+using var doc = WclParser.Parse(@"
     server web {
         port = ""not_a_number""
     }
@@ -332,14 +380,32 @@ foreach (var diag in doc.Diagnostics)
 }
 ```
 
-Diagnostics support builder-style annotations:
+The `Diagnostic` type:
 
 ```csharp
-// Creating diagnostics (for library authors)
-var diag = Diagnostic.Error("type mismatch", span)
-    .WithCode("E071")
-    .WithLabel("expected int", span)
-    .WithNote("check the schema definition");
+public class Diagnostic
+{
+    public string Severity { get; }   // "error", "warning", "info", "hint"
+    public string Message { get; }
+    public string? Code { get; }      // e.g. "E071" for type mismatch
+    public bool IsError { get; }
+}
+```
+
+## Thread Safety
+
+Documents are safe to use from multiple threads. All methods acquire a lock internally, and values are cached after first access:
+
+```csharp
+using var doc = WclParser.Parse("x = 42");
+
+var tasks = Enumerable.Range(0, 10).Select(_ => Task.Run(() =>
+{
+    var values = doc.Values;
+    Console.WriteLine(values["x"].AsInt()); // 42
+}));
+
+await Task.WhenAll(tasks);
 ```
 
 ## Complete Example
@@ -350,7 +416,7 @@ Putting it all together — parse a configuration, validate it, query it, and ex
 using Wcl;
 using Wcl.Eval;
 
-var doc = WclParser.Parse(@"
+using var doc = WclParser.Parse(@"
     schema ""server"" {
         port: int
         host: string @optional
@@ -380,7 +446,7 @@ var ports = doc.Query("server | .port");
 Console.WriteLine($"All ports: {ports}");
 
 // 3. Iterate resolved blocks
-foreach (var server in doc.BlocksOfTypeResolved("server"))
+foreach (var server in doc.BlocksOfType("server"))
 {
     var id = server.Id ?? "(no id)";
     var host = server.Get("host");
@@ -389,22 +455,26 @@ foreach (var server in doc.BlocksOfTypeResolved("server"))
 }
 
 // 4. Custom functions
-var opts = new ParseOptions();
-opts.Functions.Register("double", args =>
-    WclValue.NewInt(args[0].AsInt() * 2));
+var opts = new ParseOptions
+{
+    Functions = new Dictionary<string, Func<WclValue[], WclValue>>
+    {
+        ["double"] = args => WclValue.NewInt(args[0].AsInt() * 2)
+    }
+};
 
-var doc2 = WclParser.Parse("result = double(21)", opts);
+using var doc2 = WclParser.Parse("result = double(21)", opts);
 Console.WriteLine($"result = {doc2.Values["result"].AsInt()}"); // 42
 ```
 
 ## Building from Source
 
 ```bash
-# Build the .NET library
-just build-dotnet
+# Build the native library and .NET project
+just build dotnet
 
 # Run .NET tests
-just test-dotnet
+just test dotnet
 ```
 
-This requires the .NET SDK (6.0+).
+This requires the .NET SDK (6.0+) and a Rust toolchain (for building the native library).
