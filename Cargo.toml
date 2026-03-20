@@ -15,6 +15,7 @@ members = [
 ]
 
 [workspace.package]
+version = "0.0.0-local"
 license = "MIT"
 homepage = "https://wcl.dev"
 documentation = "https://wcl.dev/docs"
@@ -22,15 +23,15 @@ repository = "https://github.com/wiltaylor/wcl"
 
 [workspace.dependencies]
 # Internal crates
-wcl = { path = "crates/wcl", version = "0.1.0" }
-wcl_core = { path = "crates/wcl_core", version = "0.1.0" }
-wcl_eval = { path = "crates/wcl_eval", version = "0.1.0" }
-wcl_schema = { path = "crates/wcl_schema", version = "0.1.0" }
-wcl_serde = { path = "crates/wcl_serde", version = "0.1.0" }
-wcl_derive = { path = "crates/wcl_derive", version = "0.1.0" }
+wcl = { path = "crates/wcl", version = "0.0.0-local" }
+wcl_core = { path = "crates/wcl_core", version = "0.0.0-local" }
+wcl_eval = { path = "crates/wcl_eval", version = "0.0.0-local" }
+wcl_schema = { path = "crates/wcl_schema", version = "0.0.0-local" }
+wcl_serde = { path = "crates/wcl_serde", version = "0.0.0-local" }
+wcl_derive = { path = "crates/wcl_derive", version = "0.0.0-local" }
 
 # LSP crate
-wcl_lsp = { path = "crates/wcl_lsp", version = "0.1.0" }
+wcl_lsp = { path = "crates/wcl_lsp", version = "0.0.0-local" }
 
 # External deps
 nom = "8"

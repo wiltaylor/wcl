@@ -2,7 +2,7 @@
   "name": "wcl",
   "displayName": "WCL - Wil's Configuration Language",
   "description": "Language support for WCL (.wcl) files",
-  "version": "0.1.0",
+  "version": "0.0.0-local",
   "publisher": "wil",
   "engines": {
     "vscode": "^1.75.0"

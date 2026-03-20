@@ -147,7 +147,7 @@ jobs:
           go-version: 'stable'
           cache: false
       - uses: Swatinem/rust-cache@v2
-      - run: just pack all
+      - run: just pack all "0.0.0-ci+${{ github.sha }}"
       - uses: actions/upload-artifact@v7
         with:
           name: packages

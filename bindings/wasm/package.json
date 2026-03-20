@@ -1,6 +1,6 @@
 {
   "name": "wcl-wasm",
-  "version": "0.1.0",
+  "version": "0.0.0-local",
   "description": "WebAssembly bindings for WCL (Wil's Configuration Language)",
   "type": "module",
   "main": "./js/index.cjs",
