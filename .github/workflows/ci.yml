@@ -6,13 +6,19 @@ on:
   pull_request:
     branches: [main]
 
+env:
+  RUST_TOOLCHAIN: "1.92.0"
+
 jobs:
   check:
     name: Check & Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          components: rustfmt, clippy
       - uses: extractions/setup-just@v2
       - uses: Swatinem/rust-cache@v2
       - run: just dev check
@@ -24,7 +30,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
       - uses: extractions/setup-just@v2
       - uses: Swatinem/rust-cache@v2
       - run: just test rust
@@ -34,7 +42,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
       - uses: extractions/setup-just@v2
       - uses: astral-sh/setup-uv@v4
       - uses: Swatinem/rust-cache@v2
@@ -45,7 +55,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
       - uses: extractions/setup-just@v2
       - uses: Swatinem/rust-cache@v2
       - run: cargo install wasm-pack
@@ -56,7 +68,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
       - uses: extractions/setup-just@v2
       - uses: actions/setup-dotnet@v4
         with:
@@ -69,7 +83,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
       - uses: extractions/setup-just@v2
       - uses: actions/setup-go@v5
         with:
@@ -83,7 +99,9 @@ jobs:
     needs: [check, test-rust]
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
       - uses: extractions/setup-just@v2
       - uses: Swatinem/rust-cache@v2
       - run: just build rust-release
