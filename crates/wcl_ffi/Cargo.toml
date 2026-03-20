@@ -2,6 +2,7 @@
 name = "wcl_ffi"
 version = "0.1.0"
 edition = "2021"
+license.workspace = true
 description = "C FFI bindings for WCL (Wil's Configuration Language)"
 
 [lib]
