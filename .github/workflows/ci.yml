@@ -19,7 +19,7 @@ jobs:
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
           components: rustfmt, clippy
-      - uses: extractions/setup-just@v3
+      - uses: taiki-e/install-action@just
       - uses: Swatinem/rust-cache@v2
       - run: just dev check
       - run: just dev fmt-check
@@ -33,7 +33,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
-      - uses: extractions/setup-just@v3
+      - uses: taiki-e/install-action@just
       - uses: Swatinem/rust-cache@v2
       - run: just test rust
 
@@ -45,8 +45,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
-      - uses: extractions/setup-just@v3
-      - uses: astral-sh/setup-uv@v6
+      - uses: taiki-e/install-action@just
+      - uses: astral-sh/setup-uv@v7
       - uses: Swatinem/rust-cache@v2
       - run: just test python
 
@@ -58,7 +58,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
-      - uses: extractions/setup-just@v3
+      - uses: taiki-e/install-action@just
       - uses: Swatinem/rust-cache@v2
       - run: cargo install wasm-pack
       - run: just test wasm
@@ -71,7 +71,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
-      - uses: extractions/setup-just@v3
+      - uses: taiki-e/install-action@just
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '9.0.x'
@@ -86,7 +86,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
-      - uses: extractions/setup-just@v3
+      - uses: taiki-e/install-action@just
       - uses: actions/setup-go@v6
         with:
           go-version: 'stable'
@@ -103,8 +103,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
-      - uses: extractions/setup-just@v3
-      - uses: astral-sh/setup-uv@v6
+      - uses: taiki-e/install-action@just
+      - uses: astral-sh/setup-uv@v7
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '9.0.x'
