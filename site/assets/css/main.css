@@ -142,16 +142,17 @@ a:hover {
 /* Badges */
 .badge-coming-soon {
   position: absolute;
-  top: 0.5rem;
-  right: 0.5rem;
+  top: 12px;
+  right: -32px;
   background: #d4880f;
   color: #000;
-  font-size: 0.65rem;
+  font-size: 0.6rem;
   font-weight: 700;
-  padding: 0.15rem 0.45rem;
-  border-radius: 3px;
+  padding: 0.2rem 2.5rem;
   text-transform: uppercase;
   letter-spacing: 0.03em;
+  transform: rotate(45deg);
+  z-index: 1;
 }
 
 /* Alpha Banner */
@@ -382,6 +383,7 @@ a:hover {
 
 .language-card {
   position: relative;
+  overflow: hidden;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -433,6 +435,7 @@ a:hover {
 
 .editor-card {
   position: relative;
+  overflow: hidden;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 8px;
