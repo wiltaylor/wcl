@@ -1,0 +1,10 @@
+<nav class="nav">
+  <div class="container nav-inner">
+    <a href="/" class="nav-brand">WCL</a>
+    <ul class="nav-links">
+      {{ range .Site.Menus.main }}
+      <li><a href="{{ .URL }}"{{ if strings.HasPrefix .URL "https" }} target="_blank" rel="noopener"{{ end }}>{{ .Name }}</a></li>
+      {{ end }}
+    </ul>
+  </div>
+</nav>

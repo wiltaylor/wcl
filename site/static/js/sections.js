@@ -1,0 +1,188 @@
+(function () {
+  var sections = Array.from(document.querySelectorAll("section[id]"));
+  var navLinks = document.querySelectorAll(".section-nav-link");
+  var nav = document.getElementById("section-nav");
+
+  if (!sections.length || !navLinks.length) return;
+
+  var current = 0;
+  var animating = false;
+  var DURATION = 400;
+
+  function checkShortContent() {
+    sections.forEach(function (s) {
+      var wasHidden = s.style.display === "none";
+      if (wasHidden) s.style.display = "";
+      s.classList.toggle("short-content", s.scrollHeight <= s.clientHeight);
+      if (wasHidden) s.style.display = "none";
+    });
+  }
+
+  function init() {
+    sections.forEach(function (s, i) {
+      s.style.position = "relative";
+      if (i !== 0) {
+        s.style.display = "none";
+        s.style.opacity = "0";
+      } else {
+        s.style.display = "";
+        s.style.opacity = "1";
+      }
+    });
+    checkShortContent();
+    updateNav();
+    window.addEventListener("resize", checkShortContent);
+  }
+
+  function updateNav() {
+    var id = sections[current].id;
+    navLinks.forEach(function (link) {
+      link.classList.toggle("active", link.dataset.section === id);
+    });
+  }
+
+  function goTo(index) {
+    if (index < 0 || index >= sections.length || index === current || animating) return;
+    animating = true;
+
+    var goingDown = index > current;
+    var from = sections[current];
+    var to = sections[index];
+
+    // Prep target
+    to.style.display = "";
+    to.style.transition = "none";
+    to.style.transform = "translateY(" + (goingDown ? 60 : -60) + "px)";
+    to.style.opacity = "0";
+    to.scrollTop = 0;
+    void to.offsetHeight;
+
+    // Animate out
+    from.style.transition = "transform " + DURATION + "ms ease, opacity " + DURATION + "ms ease";
+    from.style.transform = "translateY(" + (goingDown ? -60 : 60) + "px)";
+    from.style.opacity = "0";
+
+    // Animate in
+    to.style.transition = "transform " + DURATION + "ms ease, opacity " + DURATION + "ms ease";
+    to.style.transform = "translateY(0)";
+    to.style.opacity = "1";
+
+    setTimeout(function () {
+      from.style.display = "none";
+      from.style.transition = "";
+      from.style.transform = "";
+      from.style.opacity = "";
+
+      to.style.transition = "";
+      to.style.transform = "";
+
+      current = index;
+      updateNav();
+      animating = false;
+    }, DURATION);
+  }
+
+  // Check if a section can scroll internally
+  function canScrollDown(el) {
+    return el.scrollTop + el.clientHeight < el.scrollHeight - 2;
+  }
+
+  function canScrollUp(el) {
+    return el.scrollTop > 2;
+  }
+
+  // Wheel — scroll internally first, then switch sections at edges
+  var edgeAccum = 0;
+  var edgeTimer = null;
+  var EDGE_THRESHOLD = 80;
+
+  document.addEventListener("wheel", function (e) {
+    if (animating) { e.preventDefault(); return; }
+
+    var sec = sections[current];
+    var down = e.deltaY > 0;
+
+    // If section has internal scroll room in this direction, let it scroll
+    if (down && canScrollDown(sec)) {
+      edgeAccum = 0;
+      return;
+    }
+    if (!down && canScrollUp(sec)) {
+      edgeAccum = 0;
+      return;
+    }
+
+    // At the edge — accumulate and switch
+    e.preventDefault();
+    edgeAccum += e.deltaY;
+    clearTimeout(edgeTimer);
+    edgeTimer = setTimeout(function () { edgeAccum = 0; }, 300);
+
+    if (Math.abs(edgeAccum) >= EDGE_THRESHOLD) {
+      if (edgeAccum > 0) goTo(current + 1);
+      else goTo(current - 1);
+      edgeAccum = 0;
+    }
+  }, { passive: false });
+
+  // Keyboard
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "ArrowDown" || e.key === "PageDown") {
+      var sec = sections[current];
+      if (canScrollDown(sec)) return;
+      e.preventDefault();
+      goTo(current + 1);
+    } else if (e.key === "ArrowUp" || e.key === "PageUp") {
+      var sec2 = sections[current];
+      if (canScrollUp(sec2)) return;
+      e.preventDefault();
+      goTo(current - 1);
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      goTo(0);
+    } else if (e.key === "End") {
+      e.preventDefault();
+      goTo(sections.length - 1);
+    }
+  });
+
+  // Touch
+  var touchStartY = 0;
+  var touchMoved = false;
+  document.addEventListener("touchstart", function (e) {
+    touchStartY = e.touches[0].clientY;
+    touchMoved = false;
+  }, { passive: true });
+
+  document.addEventListener("touchmove", function () {
+    touchMoved = true;
+  }, { passive: true });
+
+  document.addEventListener("touchend", function (e) {
+    if (!touchMoved) return;
+    var delta = touchStartY - e.changedTouches[0].clientY;
+    var sec = sections[current];
+
+    if (delta > 50 && !canScrollDown(sec)) {
+      goTo(current + 1);
+    } else if (delta < -50 && !canScrollUp(sec)) {
+      goTo(current - 1);
+    }
+  }, { passive: true });
+
+  // Nav clicks
+  navLinks.forEach(function (link) {
+    link.addEventListener("click", function (e) {
+      e.preventDefault();
+      var targetId = this.dataset.section;
+      for (var i = 0; i < sections.length; i++) {
+        if (sections[i].id === targetId) {
+          goTo(i);
+          break;
+        }
+      }
+    });
+  });
+
+  init();
+})();

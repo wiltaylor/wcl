@@ -1,0 +1,16 @@
+baseURL = "https://wcl.dev"
+title = "WCL — Wil's Configuration Language"
+languageCode = "en-us"
+
+[markup.highlight]
+  codeFences = false
+
+[menu]
+  [[menu.main]]
+    name = "Docs"
+    url = "/docs/"
+    weight = 1
+  [[menu.main]]
+    name = "GitHub"
+    url = "https://github.com/wiltaylor/wcl"
+    weight = 2

@@ -10,5 +10,6 @@ build-dir = "build"
 [output.html]
 default-theme = "navy"
 preferred-dark-theme = "navy"
-git-repository-url = "https://github.com/wilfredinni/WCL"
+git-repository-url = "https://github.com/wiltaylor/wcl"
 additional-js = ["wcl-highlight.js"]
+site-url = "/docs/"
