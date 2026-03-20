@@ -80,7 +80,7 @@ go-all: ffi-all
 
 # Build Python bindings
 python:
-    cd bindings/python && uv run maturin build --release
+    cd bindings/python && uv run --group dev maturin build --release
 
 # Build WASM package
 wasm:
@@ -114,7 +114,7 @@ rust-publish:
 
 # Publish Python package
 python-publish:
-    cd bindings/python && uv run maturin publish
+    cd bindings/python && uv run --group dev maturin publish
 
 # Publish WASM package to npm
 wasm-publish:
