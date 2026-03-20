@@ -134,6 +134,22 @@ build-go-all: build-ffi-all
 test-go: build-go
     cd bindings/go && CGO_ENABLED=1 go test -v ./...
 
+# Start Hugo dev server for the website (with mdBook at /docs/)
+dev-web: docs-build
+    mkdir -p site/static/docs
+    cp -r docs/book/build/* site/static/docs/
+    cd site && hugo server --buildDrafts --navigateToChanged
+
+# Build full website (Hugo + mdBook merged)
+build-web: docs-build
+    cd site && hugo --minify
+    mkdir -p site/public/docs
+    cp -r docs/book/build/* site/public/docs/
+
+# Clean website build output
+clean-web:
+    rm -rf site/public site/resources
+
 # Clean build artifacts
 clean:
     cargo clean
