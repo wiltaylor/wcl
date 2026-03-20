@@ -92,7 +92,7 @@ dotnet:
 
 # Package VS Code extension
 vscode:
-    cd editors/vscode && npm install && npx --yes @vscode/vsce package
+    cd editors/vscode && npm install && npx --yes @vscode/vsce package --allow-missing-repository
 
 # Build everything (native FFI)
 all: rust-release ffi-native go python wasm dotnet vscode
