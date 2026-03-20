@@ -24,11 +24,23 @@
           "named": true
         },
         {
+          "type": "heredoc_literal",
+          "named": true
+        },
+        {
           "type": "identifier",
           "named": true
         },
         {
           "type": "identifier_literal",
+          "named": true
+        },
+        {
+          "type": "import_raw_expression",
+          "named": true
+        },
+        {
+          "type": "import_table_expression",
           "named": true
         },
         {
@@ -65,6 +77,14 @@
         },
         {
           "type": "parenthesized_expression",
+          "named": true
+        },
+        {
+          "type": "query_expression",
+          "named": true
+        },
+        {
+          "type": "ref_expression",
           "named": true
         },
         {
@@ -115,11 +135,23 @@
           "named": true
         },
         {
+          "type": "heredoc_literal",
+          "named": true
+        },
+        {
           "type": "identifier",
           "named": true
         },
         {
           "type": "identifier_literal",
+          "named": true
+        },
+        {
+          "type": "import_raw_expression",
+          "named": true
+        },
+        {
+          "type": "import_table_expression",
           "named": true
         },
         {
@@ -156,6 +188,14 @@
         },
         {
           "type": "parenthesized_expression",
+          "named": true
+        },
+        {
+          "type": "query_expression",
+          "named": true
+        },
+        {
+          "type": "ref_expression",
           "named": true
         },
         {
@@ -325,6 +365,25 @@
     }
   },
   {
+    "type": "block_expression",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "expression",
+          "named": true
+        },
+        {
+          "type": "let_binding",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "boolean_literal",
     "named": true,
     "fields": {}
@@ -359,11 +418,23 @@
           "named": true
         },
         {
+          "type": "heredoc_literal",
+          "named": true
+        },
+        {
           "type": "identifier",
           "named": true
         },
         {
           "type": "identifier_literal",
+          "named": true
+        },
+        {
+          "type": "import_raw_expression",
+          "named": true
+        },
+        {
+          "type": "import_table_expression",
           "named": true
         },
         {
@@ -396,6 +467,14 @@
         },
         {
           "type": "parenthesized_expression",
+          "named": true
+        },
+        {
+          "type": "query_expression",
+          "named": true
+        },
+        {
+          "type": "ref_expression",
           "named": true
         },
         {
@@ -457,11 +536,23 @@
           "named": true
         },
         {
+          "type": "heredoc_literal",
+          "named": true
+        },
+        {
           "type": "identifier",
           "named": true
         },
         {
           "type": "identifier_literal",
+          "named": true
+        },
+        {
+          "type": "import_raw_expression",
+          "named": true
+        },
+        {
+          "type": "import_table_expression",
           "named": true
         },
         {
@@ -498,6 +589,14 @@
         },
         {
           "type": "parenthesized_expression",
+          "named": true
+        },
+        {
+          "type": "query_expression",
+          "named": true
+        },
+        {
+          "type": "ref_expression",
           "named": true
         },
         {
@@ -841,11 +940,23 @@
           "named": true
         },
         {
+          "type": "heredoc_literal",
+          "named": true
+        },
+        {
           "type": "identifier",
           "named": true
         },
         {
           "type": "identifier_literal",
+          "named": true
+        },
+        {
+          "type": "import_raw_expression",
+          "named": true
+        },
+        {
+          "type": "import_table_expression",
           "named": true
         },
         {
@@ -882,6 +993,14 @@
         },
         {
           "type": "parenthesized_expression",
+          "named": true
+        },
+        {
+          "type": "query_expression",
+          "named": true
+        },
+        {
+          "type": "ref_expression",
           "named": true
         },
         {
@@ -951,11 +1070,23 @@
           "named": true
         },
         {
+          "type": "heredoc_literal",
+          "named": true
+        },
+        {
           "type": "identifier",
           "named": true
         },
         {
           "type": "identifier_literal",
+          "named": true
+        },
+        {
+          "type": "import_raw_expression",
+          "named": true
+        },
+        {
+          "type": "import_table_expression",
           "named": true
         },
         {
@@ -999,6 +1130,14 @@
           "named": true
         },
         {
+          "type": "query_expression",
+          "named": true
+        },
+        {
+          "type": "ref_expression",
+          "named": true
+        },
+        {
           "type": "string_literal",
           "named": true
         },
@@ -1008,6 +1147,25 @@
         },
         {
           "type": "unary_expression",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "filter",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "expression",
+          "named": true
+        },
+        {
+          "type": "identifier",
           "named": true
         }
       ]
@@ -1167,6 +1325,36 @@
     }
   },
   {
+    "type": "import_raw_expression",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "string_literal",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "import_table_expression",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "string_literal",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "index_expression",
     "named": true,
     "fields": {},
@@ -1191,11 +1379,23 @@
           "named": true
         },
         {
+          "type": "heredoc_literal",
+          "named": true
+        },
+        {
           "type": "identifier",
           "named": true
         },
         {
           "type": "identifier_literal",
+          "named": true
+        },
+        {
+          "type": "import_raw_expression",
+          "named": true
+        },
+        {
+          "type": "import_table_expression",
           "named": true
         },
         {
@@ -1228,6 +1428,14 @@
         },
         {
           "type": "parenthesized_expression",
+          "named": true
+        },
+        {
+          "type": "query_expression",
+          "named": true
+        },
+        {
+          "type": "ref_expression",
           "named": true
         },
         {
@@ -1319,6 +1527,10 @@
       "multiple": true,
       "required": true,
       "types": [
+        {
+          "type": "block_expression",
+          "named": true
+        },
         {
           "type": "expression",
           "named": true
@@ -1515,11 +1727,23 @@
           "named": true
         },
         {
+          "type": "heredoc_literal",
+          "named": true
+        },
+        {
           "type": "identifier",
           "named": true
         },
         {
           "type": "identifier_literal",
+          "named": true
+        },
+        {
+          "type": "import_raw_expression",
+          "named": true
+        },
+        {
+          "type": "import_table_expression",
           "named": true
         },
         {
@@ -1555,6 +1779,14 @@
           "named": true
         },
         {
+          "type": "query_expression",
+          "named": true
+        },
+        {
+          "type": "ref_expression",
+          "named": true
+        },
+        {
           "type": "string_literal",
           "named": true
         }
@@ -1582,11 +1814,23 @@
           "named": true
         },
         {
+          "type": "heredoc_literal",
+          "named": true
+        },
+        {
           "type": "identifier",
           "named": true
         },
         {
           "type": "identifier_literal",
+          "named": true
+        },
+        {
+          "type": "import_raw_expression",
+          "named": true
+        },
+        {
+          "type": "import_table_expression",
           "named": true
         },
         {
@@ -1623,6 +1867,14 @@
         },
         {
           "type": "parenthesized_expression",
+          "named": true
+        },
+        {
+          "type": "query_expression",
+          "named": true
+        },
+        {
+          "type": "ref_expression",
           "named": true
         },
         {
@@ -1697,11 +1949,23 @@
           "named": true
         },
         {
+          "type": "heredoc_literal",
+          "named": true
+        },
+        {
           "type": "identifier",
           "named": true
         },
         {
           "type": "identifier_literal",
+          "named": true
+        },
+        {
+          "type": "import_raw_expression",
+          "named": true
+        },
+        {
+          "type": "import_table_expression",
           "named": true
         },
         {
@@ -1742,6 +2006,14 @@
         },
         {
           "type": "parenthesized_expression",
+          "named": true
+        },
+        {
+          "type": "query_expression",
+          "named": true
+        },
+        {
+          "type": "ref_expression",
           "named": true
         },
         {
@@ -1803,6 +2075,55 @@
       "types": [
         {
           "type": "expression",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "pipeline",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "filter",
+          "named": true
+        },
+        {
+          "type": "selector",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "query_expression",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "pipeline",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "ref_expression",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "identifier_literal",
           "named": true
         }
       ]
@@ -1879,6 +2200,29 @@
         },
         {
           "type": "type_expression",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "selector",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "identifier",
+          "named": true
+        },
+        {
+          "type": "identifier_literal",
+          "named": true
+        },
+        {
+          "type": "string_literal",
           "named": true
         }
       ]
@@ -2029,11 +2373,23 @@
           "named": true
         },
         {
+          "type": "heredoc_literal",
+          "named": true
+        },
+        {
           "type": "identifier",
           "named": true
         },
         {
           "type": "identifier_literal",
+          "named": true
+        },
+        {
+          "type": "import_raw_expression",
+          "named": true
+        },
+        {
+          "type": "import_table_expression",
           "named": true
         },
         {
@@ -2074,6 +2430,14 @@
         },
         {
           "type": "parenthesized_expression",
+          "named": true
+        },
+        {
+          "type": "query_expression",
+          "named": true
+        },
+        {
+          "type": "ref_expression",
           "named": true
         },
         {
@@ -2170,11 +2534,23 @@
           "named": true
         },
         {
+          "type": "heredoc_literal",
+          "named": true
+        },
+        {
           "type": "identifier",
           "named": true
         },
         {
           "type": "identifier_literal",
+          "named": true
+        },
+        {
+          "type": "import_raw_expression",
+          "named": true
+        },
+        {
+          "type": "import_table_expression",
           "named": true
         },
         {
@@ -2207,6 +2583,14 @@
         },
         {
           "type": "parenthesized_expression",
+          "named": true
+        },
+        {
+          "type": "query_expression",
+          "named": true
+        },
+        {
+          "type": "ref_expression",
           "named": true
         },
         {
@@ -2294,6 +2678,10 @@
     "named": false
   },
   {
+    "type": "#",
+    "named": false
+  },
+  {
     "type": "${",
     "named": false
   },
@@ -2335,6 +2723,10 @@
   },
   {
     "type": ".",
+    "named": false
+  },
+  {
+    "type": "..",
     "named": false
   },
   {
@@ -2460,6 +2852,14 @@
     "named": false
   },
   {
+    "type": "has",
+    "named": false
+  },
+  {
+    "type": "heredoc_literal",
+    "named": true
+  },
+  {
     "type": "identifier",
     "named": false
   },
@@ -2477,6 +2877,14 @@
   },
   {
     "type": "import",
+    "named": false
+  },
+  {
+    "type": "import_raw",
+    "named": false
+  },
+  {
+    "type": "import_table",
     "named": false
   },
   {
@@ -2526,6 +2934,10 @@
   },
   {
     "type": "partial",
+    "named": false
+  },
+  {
+    "type": "query",
     "named": false
   },
   {

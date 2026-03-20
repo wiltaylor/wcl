@@ -413,6 +413,7 @@ module.exports = grammar({
         $.integer_literal,
         $.float_literal,
         $.string_literal,
+        $.heredoc_literal,
         $.boolean_literal,
         $.null_literal,
         $.identifier_literal,
@@ -420,8 +421,71 @@ module.exports = grammar({
         $.list_literal,
         $.map_literal,
         $.parenthesized_expression,
+        $.query_expression,
+        $.import_table_expression,
+        $.import_raw_expression,
+        $.ref_expression,
         $.lambda_expression,
       ),
+
+    // Query expressions
+    query_expression: ($) =>
+      seq("query", "(", $.pipeline, ")"),
+
+    pipeline: ($) =>
+      seq($.selector, repeat(seq("|", $.filter))),
+
+    selector: ($) =>
+      choice(
+        seq(
+          optional(".."),
+          $.identifier,
+          optional(seq("#", $.identifier_literal)),
+          repeat(seq(".", choice($.identifier, $.string_literal))),
+        ),
+        ".",
+        "*",
+      ),
+
+    filter: ($) =>
+      choice(
+        seq(
+          ".",
+          $.identifier,
+          optional(
+            seq(
+              choice("==", "!=", "<", ">", "<=", ">=", "=~"),
+              $.expression,
+            ),
+          ),
+        ),
+        seq("has", "(", choice(seq(".", $.identifier), seq("@", $.identifier)), ")"),
+        seq(
+          "@",
+          $.identifier,
+          ".",
+          $.identifier,
+          choice("==", "!=", "<", ">", "<=", ">="),
+          $.expression,
+        ),
+      ),
+
+    // Import utility expressions
+    import_table_expression: ($) =>
+      seq(
+        "import_table",
+        "(",
+        $.string_literal,
+        optional(seq(",", $.string_literal)),
+        ")",
+      ),
+
+    import_raw_expression: ($) =>
+      seq("import_raw", "(", $.string_literal, ")"),
+
+    // Ref expression
+    ref_expression: ($) =>
+      seq("ref", "(", $.identifier_literal, ")"),
 
     // Literals
     integer_literal: ($) =>
@@ -450,6 +514,20 @@ module.exports = grammar({
         /\\["\\/nrt]|\\u[0-9a-fA-F]{4}|\\U[0-9a-fA-F]{8}/,
       ),
 
+    // Heredoc: matched as a single token. Tree-sitter can't do matched
+    // delimiters without an external scanner, so we match the common form.
+    heredoc_literal: ($) =>
+      token(
+        seq(
+          "<<",
+          optional(choice("-", "'")),
+          /[a-zA-Z_][a-zA-Z0-9_]*/,
+          optional("'"),
+          /\n[\s\S]*\n/,
+          /[a-zA-Z_][a-zA-Z0-9_]*/,
+        ),
+      ),
+
     boolean_literal: ($) => choice("true", "false"),
 
     null_literal: ($) => "null",
@@ -472,7 +550,12 @@ module.exports = grammar({
 
     // Lambda
     lambda_expression: ($) =>
-      prec.right(seq($.lambda_parameters, "=>", $.expression)),
+      prec.right(
+        seq($.lambda_parameters, "=>", choice($.block_expression, $.expression)),
+      ),
+
+    block_expression: ($) =>
+      seq("{", repeat($.let_binding), $.expression, "}"),
 
     lambda_parameters: ($) =>
       choice($.identifier, seq("(", optional(commaSep1($.identifier)), ")")),
