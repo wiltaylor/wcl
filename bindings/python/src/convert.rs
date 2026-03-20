@@ -54,6 +54,7 @@ pub fn value_to_py(py: Python<'_>, value: &Value) -> PyResult<PyObject> {
 }
 
 /// Convert a Python object to a WCL Value.
+#[allow(clippy::only_used_in_recursion)]
 pub fn py_to_value(py: Python<'_>, obj: &Bound<'_, pyo3::PyAny>) -> PyResult<Value> {
     if obj.is_none() {
         return Ok(Value::Null);
