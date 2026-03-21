@@ -3,7 +3,9 @@ title = "WCL — Wil's Configuration Language"
 languageCode = "en-us"
 
 [markup.highlight]
-  codeFences = false
+  codeFences = true
+  noClasses = true
+  style = "monokai"
 
 [menu]
   [[menu.main]]

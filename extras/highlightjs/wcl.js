@@ -1,15 +1,16 @@
 /**
  * WCL (Wil's Configuration Language) grammar definition for highlight.js
  *
- * Usage with mdbook (highlight.js):
- *   Copy this file to your mdbook theme directory and register it.
+ * This is the canonical WCL highlight.js grammar. Use it as:
+ *   - ES module:   import wcl from './wcl.js'; hljs.registerLanguage('wcl', wcl);
+ *   - Script tag:  <script src="wcl.js"></script> -- exposes hljsDefineWcl globally
+ *   - CommonJS:    const wcl = require('./wcl'); hljs.registerLanguage('wcl', wcl);
  *
- * Usage standalone:
- *   hljs.registerLanguage('wcl', require('./wcl'));
+ * The mdbook and Hugo sites source their copies from this file via build recipes.
  *
  * @see https://highlightjs.readthedocs.io/en/latest/language-guide.html
  */
-export default function(hljs) {
+function hljsDefineWcl(hljs) {
   const IDENT = /[a-zA-Z_][a-zA-Z0-9_]*/;
   const IDENT_LIT = /[a-zA-Z_][a-zA-Z0-9_]*-[a-zA-Z0-9_-]*/;
 
@@ -34,7 +35,6 @@ export default function(hljs) {
     ],
     built_in: [
       'query', 'has', 'import_table', 'import_raw',
-      // Common built-in functions
       'len', 'keys', 'values', 'contains', 'split', 'join',
       'upper', 'lower', 'trim', 'replace', 'starts_with', 'ends_with',
       'to_string', 'to_int', 'to_float', 'to_bool',
@@ -58,12 +58,11 @@ export default function(hljs) {
         begin: /\$\{/,
         end: /\}/,
         keywords: KEYWORDS,
-        contains: [], // defined later via self-reference
+        contains: [],
       },
     ],
   };
 
-  // Self-reference for interpolation
   STRING.contains[1].contains = [
     STRING,
     hljs.C_NUMBER_MODE,
@@ -136,7 +135,6 @@ export default function(hljs) {
       DECORATOR,
       BLOCK_TYPE,
       {
-        // Schema / validation string names
         begin: [
           /\b(?:schema|validation|decorator_schema)\b/,
           /\s+/,
@@ -147,7 +145,6 @@ export default function(hljs) {
         },
       },
       {
-        // Function calls
         begin: [
           IDENT,
           /\s*\(/,
@@ -158,7 +155,6 @@ export default function(hljs) {
         relevance: 0,
       },
       {
-        // Declare statement
         begin: [
           /\bdeclare\b/,
           /\s+/,
@@ -170,7 +166,6 @@ export default function(hljs) {
         },
       },
       {
-        // Macro definition
         begin: [
           /\bmacro\b/,
           /\s+/,
@@ -182,7 +177,6 @@ export default function(hljs) {
         },
       },
       {
-        // Let binding
         begin: [
           /\blet\b/,
           /\s+/,
@@ -194,7 +188,6 @@ export default function(hljs) {
         },
       },
       {
-        // For loop variable
         begin: [
           /\bfor\b/,
           /\s+/,
@@ -206,10 +199,17 @@ export default function(hljs) {
         },
       },
       {
-        // Arrow operators
         scope: 'operator',
         match: /=>|->|==|!=|<=|>=|=~|&&|\|\||[+\-*/%=!<>|?:]/,
       },
     ],
   };
 }
+
+// Export for various module systems
+if (typeof exports === 'object' && typeof module === 'object') {
+  module.exports = hljsDefineWcl;
+} else if (typeof define === 'function' && define.amd) {
+  define([], function () { return hljsDefineWcl; });
+}
+// In browser: hljsDefineWcl is available as a global
