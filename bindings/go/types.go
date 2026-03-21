@@ -1,17 +1,13 @@
 package wcl
 
-import (
-	"sync"
-	"unsafe"
-)
+import "sync"
 
 // Document represents a parsed and evaluated WCL document.
-// Call Close() when done to release the underlying Rust resources.
+// Call Close() when done to release the underlying WASM resources.
 type Document struct {
-	ptr         unsafe.Pointer
-	callbackIDs []uintptr // registered callback IDs to clean up
-	closed      bool
-	mu          sync.RWMutex
+	handle uint32
+	closed bool
+	mu     sync.RWMutex
 }
 
 // ParseOptions configures the WCL parser.

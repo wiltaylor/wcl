@@ -1,6 +1,6 @@
 # Using WCL as a Go Library
 
-WCL can be embedded into Go programs via the `wcl_go` package. It uses a prebuilt static library under the hood, so you get the full 11-phase WCL pipeline without needing a Rust toolchain.
+WCL can be embedded into Go programs via the `wcl_go` package. It uses an embedded WASM module with [wazero](https://wazero.io/) (a pure Go, zero-dependency WebAssembly runtime), so you get the full 11-phase WCL pipeline without needing a Rust toolchain or C compiler.
 
 ## Adding the Dependency
 
@@ -16,7 +16,7 @@ Then import it:
 import wcl "github.com/wiltaylor/wcl/bindings/go"
 ```
 
-> **Note:** This package uses CGo with a statically linked Rust library. You need a C compiler (gcc/clang) and `CGO_ENABLED=1` (the default on most systems).
+No CGo or C compiler required — the WASM module is embedded directly in the Go binary.
 
 ## Parsing a WCL String
 
@@ -70,6 +70,8 @@ if err != nil {
 defer doc.Close()
 ```
 
+> **Note:** File reading happens on the Go side; the WASM module does not have direct filesystem access. Imports within parsed files that reference other files on disk will not resolve in the WASM environment.
+
 ## Accessing Evaluated Values
 
 After parsing, `Values()` returns an ordered map of all evaluated top-level attributes and blocks:
@@ -92,7 +94,7 @@ fmt.Println(values["port"])  // 8080 (float64 — JSON numbers)
 fmt.Println(values["tags"])  // ["web", "prod"]
 ```
 
-> **Type note:** Values cross the FFI boundary as JSON, so numbers arrive as `float64`, strings as `string`, booleans as `bool`, lists as `[]any`, and maps as `map[string]any`.
+> **Type note:** Values cross the WASM boundary as JSON, so numbers arrive as `float64`, strings as `string`, booleans as `bool`, lists as `[]any`, and maps as `map[string]any`.
 
 ## Working with Blocks
 
@@ -221,7 +223,7 @@ fmt.Println(values["result"])  // 42
 fmt.Println(values["message"]) // "Hello, World!"
 ```
 
-Arguments and return values are serialized as JSON across the FFI boundary. Numbers are `float64`, strings are `string`, lists are `[]any`, maps are `map[string]any`, booleans are `bool`, and `nil` maps to null.
+Arguments and return values are serialized as JSON across the WASM boundary. Numbers are `float64`, strings are `string`, lists are `[]any`, maps are `map[string]any`, booleans are `bool`, and `nil` maps to null.
 
 Return an error to signal a function failure:
 
@@ -282,10 +284,6 @@ Pass `nil` for default options:
 ```go
 doc, err := wcl.Parse(source, nil)
 ```
-
-## Library Files
-
-Create `.wcl` library files manually and place them in `~/.local/share/wcl/lib/`. Use `wcl.ListLibraries()` to list installed libraries. See the [Libraries guide](../guide/libraries.md) for details.
 
 ## Error Handling
 
@@ -406,12 +404,11 @@ func main() {
 
 ## Building from Source
 
-If you want to rebuild the static library from the Rust source (e.g., after modifying the WCL codebase), run:
+If you want to rebuild the WASM module from the Rust source (e.g., after modifying the WCL codebase), run:
 
 ```bash
 # Using just (recommended)
-just build-go        # native platform only
-just build-go-all    # all platforms (requires cargo-zigbuild + zig)
+just build go
 
 # Or via go generate (requires Rust toolchain)
 cd bindings/go && go generate ./...

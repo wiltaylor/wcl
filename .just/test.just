@@ -21,10 +21,10 @@ dotnet:
     just build dotnet-wasm
     dotnet test bindings/dotnet/Wcl.sln
 
-# Run Go binding tests (builds FFI first)
+# Run Go binding tests (builds WASM first)
 go:
     just build go
-    cd bindings/go && CGO_ENABLED=1 go test -v ./...
+    cd bindings/go && go test -v ./...
 
 # Run Zig binding tests (builds FFI first)
 zig:
