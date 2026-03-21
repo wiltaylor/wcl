@@ -134,6 +134,56 @@ jvm:
     cp bindings/jvm/build/libs/*.jar "{{pkg}}/jvm/"
     echo "JVM JAR packaged to {{pkg}}/jvm/"
 
+# Package C/C++ archive (header + libs + CMake) into .packages/ffi/
+ffi:
+    #!/bin/bash
+    set -euo pipefail
+    just build ffi-native
+    stage="{{pkg}}/ffi/wcl-ffi"
+    rm -rf "$stage"
+    mkdir -p "$stage/include" "$stage/lib"
+
+    # Header
+    cp crates/wcl_ffi/wcl.h "$stage/include/"
+
+    # CMakeLists.txt
+    cp crates/wcl_ffi/CMakeLists.txt "$stage/"
+
+    # Copy prebuilt libraries per platform (skip missing cross targets)
+    copy_lib() {
+        local platform="$1" src="$2" name="$3"
+        if [[ -f "$src" ]]; then
+            mkdir -p "$stage/lib/$platform"
+            cp "$src" "$stage/lib/$platform/$name"
+            echo "  $platform"
+        fi
+    }
+
+    echo "Included platforms:"
+    # Native build always available
+    copy_lib linux_amd64   target/release/libwcl_ffi.a                              libwcl_ffi.a
+    # Cross-compiled targets (from ffi-all)
+    copy_lib linux_amd64   target/x86_64-unknown-linux-gnu/release/libwcl_ffi.a     libwcl_ffi.a
+    copy_lib linux_arm64   target/aarch64-unknown-linux-gnu/release/libwcl_ffi.a    libwcl_ffi.a
+    copy_lib darwin_amd64  target/x86_64-apple-darwin/release/libwcl_ffi.a          libwcl_ffi.a
+    copy_lib darwin_arm64  target/aarch64-apple-darwin/release/libwcl_ffi.a         libwcl_ffi.a
+    copy_lib windows_amd64 target/x86_64-pc-windows-gnu/release/libwcl_ffi.a       wcl_ffi.lib
+
+    # Also check Zig binding layout (may have been built there)
+    for plat in linux_amd64 linux_arm64 darwin_amd64 darwin_arm64; do
+        src="bindings/zig/lib/$plat/libwcl_ffi.a"
+        if [[ -f "$src" && ! -d "$stage/lib/$plat" ]]; then
+            copy_lib "$plat" "$src" libwcl_ffi.a
+        fi
+    done
+    if [[ -f "bindings/zig/lib/windows_amd64/wcl_ffi.lib" && ! -d "$stage/lib/windows_amd64" ]]; then
+        copy_lib windows_amd64 "bindings/zig/lib/windows_amd64/wcl_ffi.lib" wcl_ffi.lib
+    fi
+
+    tar czf "{{pkg}}/ffi/wcl-ffi.tar.gz" -C "{{pkg}}/ffi" wcl-ffi
+    rm -rf "$stage"
+    echo "C/C++ archive packaged to {{pkg}}/ffi/wcl-ffi.tar.gz"
+
 # Package Ruby gem into .packages/ruby/
 ruby:
     #!/bin/bash
@@ -144,7 +194,7 @@ ruby:
     echo "Ruby gem packaged to {{pkg}}/ruby/"
 
 # Package everything. Pass a version to stamp all packages (default: 0.0.0-local)
-all ver="0.0.0-local": (set-version ver) rust python wasm go dotnet jvm ruby vscode tree-sitter-wcl highlight-queries sublime-syntax highlightjs chroma pygments
+all ver="0.0.0-local": (set-version ver) rust python wasm go dotnet jvm ruby ffi vscode tree-sitter-wcl highlight-queries sublime-syntax highlightjs chroma pygments
     @echo "All packages created in {{pkg}}/"
 
 # Remove all packaged artifacts
@@ -194,6 +244,9 @@ set-version ver:
 
     # Ruby: gemspec version
     sed -i "s/VERSION = \"[^\"]*\"/VERSION = \"$V\"/" bindings/ruby/lib/wcl/version.rb
+
+    # C/C++ CMake: project version
+    sed -i "s/project(wcl VERSION [^ ]*/project(wcl VERSION $V/" crates/wcl_ffi/CMakeLists.txt
 
     # tree-sitter-wcl: Cargo.toml (Rust crate), pyproject.toml (Python), tree-sitter.json
     sed -i "0,/^version = .*/s/^version = .*/version = \"$V\"/" extras/tree-sitter-wcl/Cargo.toml
