@@ -24,7 +24,7 @@ jobs:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
           components: rustfmt, clippy
       - uses: taiki-e/install-action@just
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@f51f967e158417aafa338a1e46ab22095f07aa01  # master, pending v2.10 (actions/cache v5)
       - run: just dev check
       - run: just dev fmt-check
       - run: just dev lint
@@ -39,7 +39,7 @@ jobs:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
       - uses: taiki-e/install-action@just
       - uses: taiki-e/install-action@cargo-nextest
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@f51f967e158417aafa338a1e46ab22095f07aa01  # master, pending v2.10 (actions/cache v5)
       - run: cargo nextest run --workspace --profile ci
       - uses: mikepenz/action-junit-report@v6
         if: always()
@@ -58,7 +58,7 @@ jobs:
           targets: wasm32-wasip1
       - uses: taiki-e/install-action@just
       - uses: astral-sh/setup-uv@v7
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@f51f967e158417aafa338a1e46ab22095f07aa01  # master, pending v2.10 (actions/cache v5)
       - run: just build python-wasm
       - run: |
           cd bindings/python
@@ -79,7 +79,7 @@ jobs:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
       - uses: taiki-e/install-action@just
       - uses: taiki-e/install-action@wasm-pack
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@f51f967e158417aafa338a1e46ab22095f07aa01  # master, pending v2.10 (actions/cache v5)
       - run: just test wasm
 
   test-dotnet:
@@ -95,7 +95,7 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '10.0.x'
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@f51f967e158417aafa338a1e46ab22095f07aa01  # master, pending v2.10 (actions/cache v5)
       - run: |
           just build dotnet-wasm
           dotnet test bindings/dotnet/Wcl.sln --logger "junit;LogFilePath=${{ github.workspace }}/test-results/dotnet.xml"
@@ -118,7 +118,7 @@ jobs:
         with:
           go-version: 'stable'
           cache: false
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@f51f967e158417aafa338a1e46ab22095f07aa01  # master, pending v2.10 (actions/cache v5)
       - run: go install gotest.tools/gotestsum@latest
       - run: |
           just build go
@@ -143,7 +143,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@f51f967e158417aafa338a1e46ab22095f07aa01  # master, pending v2.10 (actions/cache v5)
       - run: |
           just build jvm-wasm
           cd bindings/jvm && ./gradlew test
@@ -173,7 +173,7 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: tree-sitter/setup-action@v2
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@f51f967e158417aafa338a1e46ab22095f07aa01  # master, pending v2.10 (actions/cache v5)
       - run: just pack all "0.0.0-ci+${{ github.sha }}"
       - uses: actions/upload-artifact@v7
         with:
