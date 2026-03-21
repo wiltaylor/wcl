@@ -123,8 +123,18 @@ pygments:
         -C extras/pygments wcl_lexer.py
     echo "Pygments lexer packaged to {{pkg}}/pygments/"
 
+# Package JVM JAR into .packages/jvm/
+jvm:
+    #!/bin/bash
+    set -euo pipefail
+    just build jvm-wasm
+    mkdir -p "{{pkg}}/jvm"
+    cd bindings/jvm && ./gradlew jar
+    cp bindings/jvm/build/libs/*.jar "{{pkg}}/jvm/"
+    echo "JVM JAR packaged to {{pkg}}/jvm/"
+
 # Package everything. Pass a version to stamp all packages (default: 0.0.0-local)
-all ver="0.0.0-local": (set-version ver) rust python wasm go dotnet vscode tree-sitter-wcl highlight-queries sublime-syntax highlightjs chroma pygments
+all ver="0.0.0-local": (set-version ver) rust python wasm go dotnet jvm vscode tree-sitter-wcl highlight-queries sublime-syntax highlightjs chroma pygments
     @echo "All packages created in {{pkg}}/"
 
 # Remove all packaged artifacts
@@ -170,6 +180,9 @@ set-version ver:
 
     # .NET: supports semver with - prerelease
     sed -i "s|<Version>[^<]*</Version>|<Version>$V</Version>|" bindings/dotnet/src/Wcl/Wcl.csproj
+
+    # JVM: Gradle version
+    sed -i "s/^version = .*/version = '$V'/" bindings/jvm/build.gradle
 
     # tree-sitter-wcl: Cargo.toml (Rust crate), pyproject.toml (Python), tree-sitter.json
     sed -i "0,/^version = .*/s/^version = .*/version = \"$V\"/" extras/tree-sitter-wcl/Cargo.toml
