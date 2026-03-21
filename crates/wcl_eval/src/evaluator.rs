@@ -555,7 +555,12 @@ impl Evaluator {
                         .filter_map(|s| self.eval_string_to_string(s, scope_id).ok())
                         .collect()
                 });
-                Ok(Self::parse_table(&content, separator, headers, columns.as_deref()))
+                Ok(Self::parse_table(
+                    &content,
+                    separator,
+                    headers,
+                    columns.as_deref(),
+                ))
             }
             Expr::Paren(e, _) => self.eval_expr(e, scope_id),
         }
@@ -2671,10 +2676,7 @@ mod tests {
         use std::path::PathBuf;
 
         let mut fs = InMemoryFs::new();
-        fs.add_file(
-            PathBuf::from("/project/data.csv"),
-            "auth,8080\napi,9090",
-        );
+        fs.add_file(PathBuf::from("/project/data.csv"), "auth,8080\napi,9090");
         let mut ev = Evaluator::with_fs(Box::new(fs), PathBuf::from("/project"));
         let scope = ev.scopes.create_scope(ScopeKind::Module, None);
 
@@ -2709,10 +2711,7 @@ mod tests {
         use std::path::PathBuf;
 
         let mut fs = InMemoryFs::new();
-        fs.add_file(
-            PathBuf::from("/project/data.csv"),
-            "auth,8080\napi,9090",
-        );
+        fs.add_file(PathBuf::from("/project/data.csv"), "auth,8080\napi,9090");
         let mut ev = Evaluator::with_fs(Box::new(fs), PathBuf::from("/project"));
         let scope = ev.scopes.create_scope(ScopeKind::Module, None);
 
