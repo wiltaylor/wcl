@@ -1,0 +1,91 @@
+// ═══════════════════════════════════════════════════════════════════════════════
+// Component & common children
+// ═══════════════════════════════════════════════════════════════════════════════
+
+@doc("A logical component within a system or module.")
+@children([
+    "behaviour", "constraint", "test_hint", "test_exclusion",
+    "config_ref", "implementation", "cli", "security",
+    "configuration", "interface", "database", "api", "protocol",
+    "ui", "sdf_type", "file_format", "actions", "external_spec"
+])
+@parent(["system", "module"])
+schema "component" {
+    description: string @optional @doc("What this component is responsible for.")
+}
+
+@doc("An observable behaviour or capability.")
+@children(["test_hint", "test_exclusion", "config_ref"])
+@parent(["component", "system", "module", "sdf_type",
+         "database", "sdf_table", "column", "sdf_index", "foreign_key",
+         "routine", "collection", "node_label", "edge_type",
+         "vector_collection", "reference_data",
+         "api", "resource", "operation", "request_body", "response",
+         "gql_type", "gql_field", "gql_query", "gql_mutation", "gql_subscription",
+         "rpc_service", "rpc_method", "soap_service", "soap_operation",
+         "rpc_namespace", "rpc_call", "odata_entity",
+         "api_field", "api_auth", "api_middleware",
+         "protocol", "message", "message_field", "sdf_enum", "enum_value",
+         "endpoint", "error_code", "protocol_flow", "flow_step", "header",
+         "ui", "screen", "ui_component",
+         "interface", "method",
+         "security", "external_system",
+         "cli", "sub_command", "switch",
+         "infrastructure", "task_runner", "recipe", "pipeline", "job",
+         "implementation", "check",
+         "ai_skill", "ai_agent", "ai_plugin", "ai_hook",
+         "ai_output_style", "ai_mcp_server", "ai_shared_folder",
+         "ai_marketplace", "tool", "parameter", "output", "data_store", "agent",
+         "handler", "procedure"])
+schema "behaviour" {
+    description: string @optional
+}
+
+@doc("A business rule or invariant that must hold.")
+@children(["test_hint", "test_exclusion", "config_ref"])
+@parent(["component", "system", "module", "sdf_type",
+         "database", "sdf_table", "column", "sdf_index", "foreign_key",
+         "routine", "collection", "node_label", "edge_type",
+         "vector_collection", "reference_data",
+         "api", "resource", "operation", "request_body", "response",
+         "gql_type", "gql_field", "gql_query", "gql_mutation", "gql_subscription",
+         "rpc_service", "rpc_method", "soap_service", "soap_operation",
+         "rpc_namespace", "rpc_call", "odata_entity",
+         "api_field", "api_auth", "api_middleware",
+         "protocol", "message", "message_field", "sdf_enum", "enum_value",
+         "endpoint", "error_code", "protocol_flow", "flow_step", "header",
+         "ui", "screen", "ui_component",
+         "interface", "method",
+         "security", "external_system",
+         "cli", "sub_command", "switch",
+         "infrastructure", "task_runner", "recipe", "pipeline", "job",
+         "implementation", "check",
+         "ai_skill", "ai_agent", "ai_plugin", "ai_hook",
+         "ai_output_style", "ai_mcp_server", "ai_shared_folder",
+         "ai_marketplace", "tool", "parameter", "output", "data_store", "agent",
+         "handler", "procedure"])
+schema "constraint" {
+    description: string @optional
+}
+
+@doc("A hint for a scenario that should be tested.")
+@children([])
+@parent(["behaviour", "constraint", "component"])
+schema "test_hint" {
+    description: string @optional
+}
+
+@doc("Marks something as explicitly excluded from testing.")
+@children([])
+@parent(["behaviour", "constraint", "component"])
+schema "test_exclusion" {
+    reason:      string @doc("Why this is excluded from testing.")
+    description: string @optional
+}
+
+@doc("A reference to a configuration item that influences behaviour.")
+@children([])
+@parent(["behaviour", "constraint", "component", "action", "step"])
+schema "config_ref" {
+    description: string @optional
+}

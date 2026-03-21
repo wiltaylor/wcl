@@ -1,0 +1,46 @@
+// ═══════════════════════════════════════════════════════════════════════════════
+// System & Module
+// ═══════════════════════════════════════════════════════════════════════════════
+
+@doc("A deployable system or application.")
+@children([
+    "component", "sdf_type", "database", "api", "protocol", "ui",
+    "file_format", "security", "security_policy", "interface",
+    "external_spec", "configuration", "test", "change",
+    "behaviour", "constraint"
+])
+@parent(["_root"])
+@open
+schema "system" {
+    version:     string @optional @doc("Semantic version of the system.")
+    system_type: string @optional @doc("Architecture style (service, library, cli, monolith).")
+    description: string @optional @doc("Brief description of what this system does.")
+}
+
+@doc("A shared library or reusable module.")
+@children(["component", "actions", "behaviour", "constraint"])
+@parent(["_root"])
+@open
+schema "module" {
+    description: string @optional
+}
+
+@doc("An external system or third-party dependency.")
+@children(["external_spec", "behaviour", "constraint"])
+@parent(["_root"])
+schema "external_system" {
+    description:  string @optional @doc("What this external system provides.")
+    endpoints:    string @optional @doc("Connection details or endpoint URLs.")
+    auth:         string @optional @doc("Authentication method.")
+    data_formats: string @optional @doc("Data formats (JSON, XML, Protobuf, etc.).")
+    rate_limits:  string @optional @doc("Rate limits imposed by the external system.")
+    implements:   string @optional @doc("Name of an Interface this system implements.")
+}
+
+@doc("A human or AI actor that interacts with the system.")
+@children([])
+@parent(["_root"])
+schema "user" {
+    description: string @optional @doc("What this user persona represents.")
+    role:        string @optional @doc("Access level.")
+}

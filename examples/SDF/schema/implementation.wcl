@@ -1,0 +1,42 @@
+// ═══════════════════════════════════════════════════════════════════════════════
+// Implementation & State Machines
+// ═══════════════════════════════════════════════════════════════════════════════
+
+@doc("Technical implementation details including algorithms, data structures, and state machines.")
+@children(["behaviour", "constraint", "implementation_hint", "state_machine"])
+@parent(["component"])
+schema "implementation" {
+    algorithm:      string @optional @doc("Algorithm description.")
+    data_structure: string @optional @doc("Data structure description.")
+    pseudo_code:    string @optional @doc("Pseudo code.")
+    description:    string @optional
+}
+
+@doc("Guidance for an LLM about implementation approaches.")
+@children([])
+@parent(["implementation"])
+schema "implementation_hint" {
+    description: string @optional
+}
+
+@doc("A formal finite state machine model.")
+@children(["state", "transition", "state_machine"])
+@parent(["implementation"])
+schema "state_machine" {}
+
+@doc("A state within a state machine.")
+@children([])
+@parent(["state_machine"])
+schema "state" {
+    is_initial: bool @optional @default(false)
+}
+
+@doc("A transition between states in a state machine.")
+@children([])
+@parent(["state_machine"])
+schema "transition" {
+    trigger: string @doc("The event that triggers this transition.")
+    source:  string @doc("Source state name.")
+    target:  string @doc("Target state name.")
+    guard:   string @optional @doc("Guard condition.")
+}

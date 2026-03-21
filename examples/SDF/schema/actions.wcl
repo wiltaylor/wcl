@@ -1,0 +1,50 @@
+// ═══════════════════════════════════════════════════════════════════════════════
+// Actions & Procedures
+// ═══════════════════════════════════════════════════════════════════════════════
+
+@doc("A container holding an ordered sequence of steps or actions.")
+@children(["action", "conditional", "actions", "actions_ref"])
+@parent(["module", "system", "sub_command", "ai_skill", "ai_agent", "change", "branch"])
+schema "actions" {
+    description: string @optional
+}
+
+@doc("A discrete step or operation within an action sequence.")
+@children(["behaviour", "constraint", "config_ref"])
+@parent(["actions", "branch"])
+schema "action" {
+    description: string @optional
+}
+
+@doc("A conditional block with branches.")
+@children(["branch"])
+@parent(["actions", "procedure"])
+schema "conditional" {
+    description: string @optional
+}
+
+@doc("A branch within a conditional block.")
+@children(["action", "conditional", "actions", "actions_ref", "step"])
+@parent(["conditional"])
+schema "branch" {
+    description: string @optional
+}
+
+@doc("A reference to a named Actions block defined elsewhere.")
+@children([])
+@parent(["actions", "branch"])
+schema "actions_ref" {}
+
+@doc("A reusable, named sequence of ordered steps within an AI skill.")
+@children(["step", "conditional", "behaviour", "constraint"])
+@parent(["ai_skill"])
+schema "procedure" {
+    description: string @optional
+}
+
+@doc("A single step within a procedure.")
+@children(["config_ref"])
+@parent(["procedure"])
+schema "step" {
+    description: string @optional
+}

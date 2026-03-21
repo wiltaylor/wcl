@@ -1,0 +1,19 @@
+// ═══════════════════════════════════════════════════════════════════════════════
+// Types & Fields
+// ═══════════════════════════════════════════════════════════════════════════════
+
+@doc("A domain type definition.")
+@children(["field", "constraint", "behaviour"])
+@parent(["system", "component"])
+schema "sdf_type" {
+    description: string @optional
+}
+
+@doc("A field within a domain type.")
+@children([])
+@parent(["sdf_type"])
+schema "field" {
+    field_type:  string @doc("Data type of this field.")
+    nullable:    bool   @optional @default(false) @doc("Whether the field accepts null.")
+    description: string @optional
+}

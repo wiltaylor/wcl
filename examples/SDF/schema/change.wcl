@@ -1,0 +1,38 @@
+// ═══════════════════════════════════════════════════════════════════════════════
+// Change / Spec tracking
+// ═══════════════════════════════════════════════════════════════════════════════
+
+@doc("A change request — either a feature or a bug fix.")
+@children(["constraint", "affected_item", "actions"])
+@parent(["system"])
+schema "change" {
+    change_type: string @optional @doc("Change type (feature, bug).")
+    status:      string @optional @doc("Change status (pending, in_progress, done).")
+    description: string @optional
+    rationale:   string @optional
+    integration: string @optional
+    expected:    string @optional
+    actual:      string @optional
+}
+
+@doc("A spec item impacted by a bug.")
+@children([])
+@parent(["change"])
+schema "affected_item" {
+    description: string @optional
+}
+
+@doc("Validation rules enforced at various spec lifecycle phases.")
+@children(["check"])
+@parent(["_root"])
+schema "spec_update_checks" {
+    description: string @optional
+}
+
+@doc("A validation rule enforced at one or more lifecycle phases.")
+@children(["behaviour", "constraint"])
+@parent(["spec_update_checks"])
+schema "check" {
+    phase:       list(string) @doc("Lifecycle phases when this check runs.")
+    description: string @optional
+}

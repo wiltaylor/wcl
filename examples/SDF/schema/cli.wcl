@@ -1,0 +1,27 @@
+// ═══════════════════════════════════════════════════════════════════════════════
+// CLI
+// ═══════════════════════════════════════════════════════════════════════════════
+
+@doc("A command-line interface within a component.")
+@children(["sub_command", "switch", "behaviour", "constraint"])
+@parent(["component"])
+schema "cli" {
+    description: string @optional
+}
+
+@doc("A sub-command within a CLI tool.")
+@children(["behaviour", "constraint", "switch", "actions"])
+@parent(["cli"])
+schema "sub_command" {
+    description: string @optional
+}
+
+@doc("A CLI flag or option.")
+@children(["behaviour", "constraint"])
+@parent(["cli", "sub_command"])
+schema "switch" {
+    long_flag:   string @optional @doc("Long flag name (e.g. --output).")
+    short_flag:  string @optional @doc("Short flag (e.g. -o).")
+    default:     string @optional @doc("Default value.")
+    description: string @optional
+}

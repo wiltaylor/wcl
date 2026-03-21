@@ -1,0 +1,159 @@
+// ═══════════════════════════════════════════════════════════════════════════════
+// Database
+// ═══════════════════════════════════════════════════════════════════════════════
+
+@doc("A database engine backing the system.")
+@children([
+    "sdf_table", "collection", "node_label", "edge_type",
+    "vector_collection", "reference_data", "routine",
+    "behaviour", "constraint"
+])
+@parent(["system", "component"])
+schema "database" {
+    kind:        string @optional @doc("Storage paradigm (relational, document, graph, key_value, vector).")
+    engine:      string @optional @doc("Database engine name (e.g. postgresql, mongodb).")
+    version:     string @optional @doc("Engine version.")
+    description: string @optional
+}
+
+@doc("A relational database table.")
+@children(["column", "sdf_index", "foreign_key", "row", "behaviour", "constraint"])
+@parent(["database"])
+schema "sdf_table" {
+    description: string @optional
+}
+
+@doc("A column in a database table.")
+@children(["behaviour", "constraint"])
+@parent(["sdf_table"])
+schema "column" {
+    col_type:      string @doc("SQL or storage type.")
+    nullable:      bool   @optional @default(false)
+    default_value: string @optional @doc("Default expression.")
+    description:   string @optional
+}
+
+@doc("A database index for query performance.")
+@children(["behaviour", "constraint"])
+@parent(["sdf_table", "collection"])
+schema "sdf_index" {
+    columns:    list(string) @doc("Columns included in this index.")
+    index_type: string @optional @doc("Index type (btree, hash, gin, etc.).")
+    unique:     bool @optional @default(false) @doc("Whether the index enforces uniqueness.")
+    description: string @optional
+}
+
+@doc("A foreign key constraint referencing another table.")
+@children(["behaviour", "constraint"])
+@parent(["sdf_table"])
+schema "foreign_key" {
+    columns:            list(string) @doc("Source columns in this table.")
+    referenced_table:   string @doc("Referenced table name.")
+    referenced_columns: list(string) @doc("Referenced column names.")
+    on_delete:          string @optional @doc("ON DELETE action.")
+    on_update:          string @optional @doc("ON UPDATE action.")
+    description:        string @optional
+}
+
+@doc("A server-side programmable object (stored procedure, function, or trigger).")
+@children(["routine_param", "behaviour", "constraint"])
+@parent(["database"])
+schema "routine" {
+    language:     string @optional @doc("Implementation language (plpgsql, sql, etc.).")
+    return_type:  string @optional @doc("Return type.")
+    timing:       string @optional @doc("Trigger timing (BEFORE, AFTER, INSTEAD OF).")
+    event:        string @optional @doc("Trigger event (INSERT, UPDATE, DELETE).")
+    target_table: string @optional @doc("Table the trigger is attached to.")
+    description:  string @optional
+}
+
+@doc("A parameter on a database routine.")
+@children([])
+@parent(["routine"])
+schema "routine_param" {
+    param_type:  string @doc("Parameter type.")
+    description: string @optional
+}
+
+@doc("A row of seed or reference data.")
+@children(["column_value"])
+@parent(["table", "reference_data"])
+schema "row" {
+    description: string @optional
+}
+
+@doc("A cell value within a seed data row.")
+@children([])
+@parent(["row"])
+schema "column_value" {
+    value: string @doc("The cell value.")
+}
+
+@doc("A named set of reference/seed data for a table.")
+@children(["row", "behaviour", "constraint"])
+@parent(["database"])
+schema "reference_data" {
+    table_ref:   string @doc("Name of the target table.")
+    description: string @optional
+}
+
+@doc("A document database collection.")
+@children(["document_field", "sdf_index", "behaviour", "constraint"])
+@parent(["database"])
+schema "collection" {
+    description: string @optional
+}
+
+@doc("A field within a document collection.")
+@children(["document_field"])
+@parent(["collection", "document_field"])
+schema "document_field" {
+    field_type:  string @doc("Field type.")
+    required:    bool @optional
+    description: string @optional
+}
+
+@doc("A node type or label in a graph database.")
+@children(["property", "behaviour", "constraint"])
+@parent(["database"])
+schema "node_label" {
+    description: string @optional
+}
+
+@doc("A relationship or edge type in a graph database.")
+@children(["property", "behaviour", "constraint"])
+@parent(["database"])
+schema "edge_type" {
+    source:      string @doc("Source node label.")
+    target:      string @doc("Target node label.")
+    directed:    bool @optional @default(true)
+    description: string @optional
+}
+
+@doc("A property on a graph node or edge.")
+@children([])
+@parent(["node_label", "edge_type"])
+schema "property" {
+    prop_type:   string @doc("Property type.")
+    indexed:     bool @optional @default(false)
+    unique:      bool @optional @default(false)
+    description: string @optional
+}
+
+@doc("A vector collection or index for similarity search.")
+@children(["vector_field", "behaviour", "constraint"])
+@parent(["database"])
+schema "vector_collection" {
+    dimensions:      int    @doc("Vector dimensionality.")
+    distance_metric: string @doc("Distance metric (cosine, euclidean, dot_product).")
+    description:     string @optional
+}
+
+@doc("A metadata field stored alongside vectors.")
+@children([])
+@parent(["vector_collection"])
+schema "vector_field" {
+    field_type:  string @doc("Metadata field type.")
+    filterable:  bool @optional @default(false)
+    description: string @optional
+}
