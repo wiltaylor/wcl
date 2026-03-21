@@ -132,6 +132,44 @@ const doc = parse(`
 // Use queries for structured access (see below)
 ```
 
+## Working with Tables
+
+Tables evaluate to an array of row objects. Each row is an object mapping column names to cell values:
+
+```typescript
+const doc = parse(`
+  table users {
+    name : string
+    age  : int
+    | "alice" | 25 |
+    | "bob"   | 30 |
+  }
+`);
+
+console.log(doc.values.users);
+// [{ name: "alice", age: 25 }, { name: "bob", age: 30 }]
+
+console.log(doc.values.users[0].name); // "alice"
+```
+
+Tables inside blocks appear in the block's attributes:
+
+```typescript
+const doc = parse(`
+  service main {
+    table config {
+      key   : string
+      value : int
+      | "port" | 8080 |
+    }
+  }
+`);
+
+// Access via the block's values
+console.log(doc.values.main.attributes.config);
+// [{ key: "port", value: 8080 }]
+```
+
 ## Running Queries
 
 `query()` parses a WCL string and executes a query in one call:

@@ -343,6 +343,48 @@ pub enum TransformDirective {
     Set(SetBlock),
     Remove(RemoveBlock),
     When(WhenBlock),
+    Update(UpdateBlock),
+}
+
+/// Selector for update directive.
+#[derive(Debug, Clone)]
+pub enum TargetSelector {
+    /// All children of kind
+    BlockKind(Ident),
+    /// `kind#id`
+    BlockKindId(Ident, IdentifierLit),
+    /// `kind[n]`
+    BlockIndex(Ident, usize, Span),
+    /// `table#id`
+    TableId(IdentifierLit),
+    /// `table[n]`
+    TableIndex(usize, Span),
+}
+
+/// Row-level operation inside `update table#... { }`.
+#[derive(Debug, Clone)]
+pub enum TableDirective {
+    /// `inject_rows { rows }`
+    InjectRows(Vec<TableRow>, Span),
+    /// `remove_rows where <expr>`
+    RemoveRows { condition: Expr, span: Span },
+    /// `update_rows where <expr> { set { k = v, ... } }`
+    UpdateRows {
+        condition: Expr,
+        attrs: Vec<(Ident, Expr)>,
+        span: Span,
+    },
+    /// `clear_rows`
+    ClearRows(Span),
+}
+
+/// `update <selector> { directives... }`
+#[derive(Debug, Clone)]
+pub struct UpdateBlock {
+    pub selector: TargetSelector,
+    pub block_directives: Vec<TransformDirective>,
+    pub table_directives: Vec<TableDirective>,
+    pub span: Span,
 }
 
 /// `inject { body_items... }`
@@ -359,11 +401,30 @@ pub struct SetBlock {
     pub span: Span,
 }
 
-/// `remove [ ident, ... ]`
+/// `remove [ target, ... ]`
 #[derive(Debug, Clone)]
 pub struct RemoveBlock {
-    pub names: Vec<Ident>,
+    pub targets: Vec<RemoveTarget>,
     pub span: Span,
+}
+
+/// Target in a remove list.
+#[derive(Debug, Clone)]
+pub enum RemoveTarget {
+    /// Bare ident → attribute
+    Attr(Ident),
+    /// `kind#id` → child block by kind and ID
+    Block(Ident, IdentifierLit),
+    /// `kind#*` → all child blocks of kind
+    BlockAll(Ident),
+    /// `kind[n]` → child block by kind and index (0-based)
+    BlockIndex(Ident, usize, Span),
+    /// `table#id` → table by ID
+    Table(IdentifierLit),
+    /// `table#*` → all tables
+    AllTables(Span),
+    /// `table[n]` → table by index (0-based)
+    TableIndex(usize, Span),
 }
 
 /// `when <expr> { transform_directives... }`

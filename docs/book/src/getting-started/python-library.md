@@ -134,6 +134,46 @@ block.get("port")              # attribute value, or None if missing
 block.has_decorator("deprecated")  # True/False
 ```
 
+## Working with Tables
+
+Tables evaluate to a list of row dicts. Each row is a dict mapping column names to cell values:
+
+```python
+doc = wcl.parse("""
+    table users {
+        name : string
+        age  : int
+        | "alice" | 25 |
+        | "bob"   | 30 |
+    }
+""")
+
+users = doc.values["users"]
+print(users)
+# [{"name": "alice", "age": 25}, {"name": "bob", "age": 30}]
+
+# Access individual rows
+print(users[0]["name"])  # "alice"
+print(users[1]["age"])   # 30
+```
+
+Tables inside blocks appear in the block's attributes:
+
+```python
+doc = wcl.parse("""
+    service main {
+        table config {
+            key   : string
+            value : int
+            | "port" | 8080 |
+        }
+    }
+""")
+
+block = doc.blocks_of_type("service")[0]
+print(block.get("config"))  # [{"key": "port", "value": 8080}]
+```
+
 ## Running Queries
 
 `doc.query()` accepts the same query syntax as the `wcl query` CLI command:

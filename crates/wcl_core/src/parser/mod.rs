@@ -1570,14 +1570,14 @@ impl Parser {
                 if self.expect(&TokenKind::LBracket).is_err() {
                     return None;
                 }
-                let mut names = Vec::new();
+                let mut targets = Vec::new();
                 loop {
                     self.skip_newlines();
                     if matches!(self.peek_kind(), TokenKind::RBracket | TokenKind::Eof) {
                         break;
                     }
-                    if let Ok(ident) = self.expect_ident() {
-                        names.push(ident);
+                    if let Some(target) = self.parse_remove_target() {
+                        targets.push(target);
                     } else {
                         break;
                     }
@@ -1591,7 +1591,28 @@ impl Parser {
                 self.skip_newlines();
                 let _ = self.expect(&TokenKind::RBracket);
                 let span = start_span.merge(self.prev_span());
-                Some(TransformDirective::Remove(RemoveBlock { names, span }))
+                Some(TransformDirective::Remove(RemoveBlock { targets, span }))
+            }
+            TokenKind::Update => {
+                let start_span = self.current_span();
+                self.advance(); // consume `update`
+                self.skip_newlines();
+                let selector = self.parse_target_selector()?;
+                self.skip_newlines();
+                if self.expect(&TokenKind::LBrace).is_err() {
+                    return None;
+                }
+                let (block_directives, table_directives) = self.parse_update_body(&selector);
+                if self.expect(&TokenKind::RBrace).is_err() {
+                    return None;
+                }
+                let span = start_span.merge(self.prev_span());
+                Some(TransformDirective::Update(UpdateBlock {
+                    selector,
+                    block_directives,
+                    table_directives,
+                    span,
+                }))
             }
             TokenKind::When => {
                 let start_span = self.current_span();
@@ -1616,7 +1637,7 @@ impl Parser {
             _ => {
                 self.diagnostics.error(
                     format!(
-                        "expected transform directive (inject/set/remove/when), found {:?}",
+                        "expected transform directive (inject/set/remove/when/update), found {:?}",
                         self.peek_kind()
                     ),
                     self.current_span(),
@@ -1624,6 +1645,336 @@ impl Parser {
                 None
             }
         }
+    }
+
+    // ── Remove / Update helpers ──────────────────────────────────────────
+
+    /// Parse a single target inside `remove [ ... ]`.
+    fn parse_remove_target(&mut self) -> Option<RemoveTarget> {
+        self.skip_newlines();
+        // Check for `table` keyword first
+        if matches!(self.peek_kind(), TokenKind::Table) {
+            let table_span = self.current_span();
+            self.advance(); // consume `table`
+            self.skip_newlines();
+            if matches!(self.peek_kind(), TokenKind::Hash) {
+                self.advance(); // consume `#`
+                self.skip_newlines();
+                if matches!(self.peek_kind(), TokenKind::Star) {
+                    self.advance(); // consume `*`
+                    return Some(RemoveTarget::AllTables(table_span));
+                }
+                // table#id
+                let id = self.parse_remove_id_lit()?;
+                return Some(RemoveTarget::Table(id));
+            }
+            if matches!(self.peek_kind(), TokenKind::LBracket) {
+                self.advance(); // consume `[`
+                let n = self.parse_usize_lit()?;
+                let _ = self.expect(&TokenKind::RBracket);
+                return Some(RemoveTarget::TableIndex(n, table_span));
+            }
+            // Just `table` with no `#` or `[` — treat as attribute named "table"
+            // This shouldn't normally happen, but fallback
+            return Some(RemoveTarget::Attr(Ident {
+                name: "table".to_string(),
+                span: table_span,
+            }));
+        }
+
+        // ident (possibly followed by `#` or `[`)
+        let ident = self.expect_ident().ok()?;
+        self.skip_newlines();
+        if matches!(self.peek_kind(), TokenKind::Hash) {
+            self.advance(); // consume `#`
+            self.skip_newlines();
+            if matches!(self.peek_kind(), TokenKind::Star) {
+                self.advance();
+                return Some(RemoveTarget::BlockAll(ident));
+            }
+            let id = self.parse_remove_id_lit()?;
+            return Some(RemoveTarget::Block(ident, id));
+        }
+        if matches!(self.peek_kind(), TokenKind::LBracket) {
+            self.advance(); // consume `[`
+            let n = self.parse_usize_lit()?;
+            let span = ident.span;
+            let _ = self.expect(&TokenKind::RBracket);
+            return Some(RemoveTarget::BlockIndex(ident, n, span));
+        }
+        // Bare ident — attribute
+        Some(RemoveTarget::Attr(ident))
+    }
+
+    /// Parse an identifier literal for use in `kind#id` or `table#id` patterns.
+    /// Accepts both `Ident` and `IdentifierLit` tokens.
+    fn parse_remove_id_lit(&mut self) -> Option<IdentifierLit> {
+        match self.peek_kind().clone() {
+            TokenKind::Ident(ref name) => {
+                let val = name.clone();
+                let span = self.current_span();
+                self.advance();
+                Some(IdentifierLit { value: val, span })
+            }
+            TokenKind::IdentifierLit(ref val) => {
+                let val = val.clone();
+                let span = self.current_span();
+                self.advance();
+                Some(IdentifierLit { value: val, span })
+            }
+            _ => {
+                self.diagnostics.error(
+                    format!(
+                        "expected identifier after '#', found {:?}",
+                        self.peek_kind()
+                    ),
+                    self.current_span(),
+                );
+                None
+            }
+        }
+    }
+
+    /// Parse a usize literal (integer >= 0) for index-based selectors.
+    fn parse_usize_lit(&mut self) -> Option<usize> {
+        if let TokenKind::IntLit(n) = self.peek_kind() {
+            let n = *n;
+            self.advance();
+            if n < 0 {
+                self.diagnostics
+                    .error("index must be non-negative".to_string(), self.prev_span());
+                return None;
+            }
+            Some(n as usize)
+        } else {
+            self.diagnostics.error(
+                format!("expected integer index, found {:?}", self.peek_kind()),
+                self.current_span(),
+            );
+            None
+        }
+    }
+
+    /// Parse the selector after `update`.
+    fn parse_target_selector(&mut self) -> Option<TargetSelector> {
+        // Check for `table` keyword
+        if matches!(self.peek_kind(), TokenKind::Table) {
+            let table_span = self.current_span();
+            self.advance(); // consume `table`
+            self.skip_newlines();
+            if matches!(self.peek_kind(), TokenKind::Hash) {
+                self.advance(); // consume `#`
+                self.skip_newlines();
+                let id = self.parse_remove_id_lit()?;
+                return Some(TargetSelector::TableId(id));
+            }
+            if matches!(self.peek_kind(), TokenKind::LBracket) {
+                self.advance(); // consume `[`
+                let n = self.parse_usize_lit()?;
+                let _ = self.expect(&TokenKind::RBracket);
+                return Some(TargetSelector::TableIndex(n, table_span));
+            }
+            self.diagnostics.error(
+                "expected '#' or '[' after 'table' in update selector".to_string(),
+                self.current_span(),
+            );
+            return None;
+        }
+
+        // ident (block kind)
+        let ident = self.expect_ident().ok()?;
+        self.skip_newlines();
+        if matches!(self.peek_kind(), TokenKind::Hash) {
+            self.advance(); // consume `#`
+            self.skip_newlines();
+            let id = self.parse_remove_id_lit()?;
+            return Some(TargetSelector::BlockKindId(ident, id));
+        }
+        if matches!(self.peek_kind(), TokenKind::LBracket) {
+            self.advance(); // consume `[`
+            let n = self.parse_usize_lit()?;
+            let span = ident.span;
+            let _ = self.expect(&TokenKind::RBracket);
+            return Some(TargetSelector::BlockIndex(ident, n, span));
+        }
+        // Just kind — all blocks of that kind
+        Some(TargetSelector::BlockKind(ident))
+    }
+
+    /// Parse the body of an `update` block.
+    /// For table selectors, parse table directives; for block selectors, parse transform directives.
+    fn parse_update_body(
+        &mut self,
+        selector: &TargetSelector,
+    ) -> (Vec<TransformDirective>, Vec<TableDirective>) {
+        match selector {
+            TargetSelector::TableId(_) | TargetSelector::TableIndex(_, _) => {
+                let table_dirs = self.parse_table_directives();
+                (Vec::new(), table_dirs)
+            }
+            _ => {
+                let block_dirs = self.parse_transform_body();
+                (block_dirs, Vec::new())
+            }
+        }
+    }
+
+    /// Parse table directives inside `update table#... { ... }`.
+    fn parse_table_directives(&mut self) -> Vec<TableDirective> {
+        let mut directives = Vec::new();
+        loop {
+            self.skip_newlines();
+            let _trivia = self.collect_trivia();
+            if matches!(self.peek_kind(), TokenKind::RBrace | TokenKind::Eof) {
+                break;
+            }
+            if let Some(d) = self.parse_table_directive() {
+                directives.push(d);
+            } else if !self.is_at_end() && !matches!(self.peek_kind(), TokenKind::RBrace) {
+                self.advance();
+            }
+        }
+        directives
+    }
+
+    /// Parse a single table directive: inject_rows, remove_rows, update_rows, clear_rows.
+    fn parse_table_directive(&mut self) -> Option<TableDirective> {
+        self.skip_newlines();
+        let start_span = self.current_span();
+        match self.peek_kind().clone() {
+            TokenKind::Ident(ref name) => {
+                let name = name.clone();
+                match name.as_str() {
+                    "inject_rows" => {
+                        self.advance(); // consume `inject_rows`
+                        self.skip_newlines();
+                        if self.expect(&TokenKind::LBrace).is_err() {
+                            return None;
+                        }
+                        let mut rows = Vec::new();
+                        loop {
+                            self.skip_newlines();
+                            if matches!(self.peek_kind(), TokenKind::RBrace | TokenKind::Eof) {
+                                break;
+                            }
+                            if matches!(self.peek_kind(), TokenKind::Pipe) {
+                                if let Some(row) = self.parse_table_row() {
+                                    rows.push(row);
+                                } else {
+                                    break;
+                                }
+                            } else {
+                                break;
+                            }
+                        }
+                        if self.expect(&TokenKind::RBrace).is_err() {
+                            return None;
+                        }
+                        let span = start_span.merge(self.prev_span());
+                        Some(TableDirective::InjectRows(rows, span))
+                    }
+                    "remove_rows" => {
+                        self.advance(); // consume `remove_rows`
+                        self.skip_newlines();
+                        // expect `where` as an ident
+                        self.expect_contextual_keyword("where")?;
+                        self.skip_newlines();
+                        let condition = self.parse_expr()?;
+                        let span = start_span.merge(self.prev_span());
+                        Some(TableDirective::RemoveRows { condition, span })
+                    }
+                    "update_rows" => {
+                        self.advance(); // consume `update_rows`
+                        self.skip_newlines();
+                        self.expect_contextual_keyword("where")?;
+                        self.skip_newlines();
+                        let condition = self.parse_expr()?;
+                        self.skip_newlines();
+                        if self.expect(&TokenKind::LBrace).is_err() {
+                            return None;
+                        }
+                        self.skip_newlines();
+                        // Expect `set { k = v, ... }`
+                        if self.expect(&TokenKind::Set).is_err() {
+                            return None;
+                        }
+                        self.skip_newlines();
+                        if self.expect(&TokenKind::LBrace).is_err() {
+                            return None;
+                        }
+                        let mut attrs = Vec::new();
+                        loop {
+                            self.skip_newlines();
+                            if matches!(self.peek_kind(), TokenKind::RBrace | TokenKind::Eof) {
+                                break;
+                            }
+                            let attr_name = self.expect_ident().ok()?;
+                            self.skip_newlines();
+                            if self.expect(&TokenKind::Equals).is_err() {
+                                return None;
+                            }
+                            self.skip_newlines();
+                            let val = self.parse_expr()?;
+                            attrs.push((attr_name, val));
+                            self.skip_newlines();
+                            if matches!(self.peek_kind(), TokenKind::Comma) {
+                                self.advance();
+                            }
+                        }
+                        if self.expect(&TokenKind::RBrace).is_err() {
+                            return None;
+                        }
+                        self.skip_newlines();
+                        if self.expect(&TokenKind::RBrace).is_err() {
+                            return None;
+                        }
+                        let span = start_span.merge(self.prev_span());
+                        Some(TableDirective::UpdateRows {
+                            condition,
+                            attrs,
+                            span,
+                        })
+                    }
+                    "clear_rows" => {
+                        self.advance(); // consume `clear_rows`
+                        let span = start_span.merge(self.prev_span());
+                        Some(TableDirective::ClearRows(span))
+                    }
+                    _ => {
+                        self.diagnostics.error(
+                            format!(
+                                "expected table directive (inject_rows/remove_rows/update_rows/clear_rows), found '{}'",
+                                name
+                            ),
+                            self.current_span(),
+                        );
+                        None
+                    }
+                }
+            }
+            _ => {
+                self.diagnostics.error(
+                    format!("expected table directive, found {:?}", self.peek_kind()),
+                    self.current_span(),
+                );
+                None
+            }
+        }
+    }
+
+    /// Expect a contextual keyword (parsed as an Ident token).
+    fn expect_contextual_keyword(&mut self, keyword: &str) -> Option<()> {
+        if let TokenKind::Ident(ref name) = self.peek_kind().clone() {
+            if name == keyword {
+                self.advance();
+                return Some(());
+            }
+        }
+        self.diagnostics.error(
+            format!("expected '{}', found {:?}", keyword, self.peek_kind()),
+            self.current_span(),
+        );
+        None
     }
 
     // ── Macro calls ───────────────────────────────────────────────────────
@@ -2764,6 +3115,276 @@ server {
                 assert_eq!(block.body.len(), 1);
             }
             other => panic!("expected Block, got {:?}", other),
+        }
+    }
+
+    // ── Remove / Update directive parser tests ──────────────────────────
+
+    #[test]
+    fn parse_remove_block_selector() {
+        let src = r#"
+macro @secure() {
+    remove [endpoint#health]
+}
+"#;
+        let (doc, diags) = parse(src);
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
+        match &doc.items[0] {
+            DocItem::Body(BodyItem::MacroDef(md)) => {
+                if let MacroBody::Attribute(ref dirs) = md.body {
+                    assert_eq!(dirs.len(), 1);
+                    if let TransformDirective::Remove(ref rb) = dirs[0] {
+                        assert_eq!(rb.targets.len(), 1);
+                        match &rb.targets[0] {
+                            RemoveTarget::Block(kind, id) => {
+                                assert_eq!(kind.name, "endpoint");
+                                assert_eq!(id.value, "health");
+                            }
+                            other => panic!("expected RemoveTarget::Block, got {:?}", other),
+                        }
+                    } else {
+                        panic!("expected Remove directive");
+                    }
+                } else {
+                    panic!("expected attribute macro body");
+                }
+            }
+            other => panic!("expected MacroDef, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_remove_wildcard() {
+        let src = r#"
+macro @clean() {
+    remove [endpoint#*]
+}
+"#;
+        let (doc, diags) = parse(src);
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
+        match &doc.items[0] {
+            DocItem::Body(BodyItem::MacroDef(md)) => {
+                if let MacroBody::Attribute(ref dirs) = md.body {
+                    if let TransformDirective::Remove(ref rb) = dirs[0] {
+                        match &rb.targets[0] {
+                            RemoveTarget::BlockAll(kind) => {
+                                assert_eq!(kind.name, "endpoint");
+                            }
+                            other => panic!("expected RemoveTarget::BlockAll, got {:?}", other),
+                        }
+                    } else {
+                        panic!("expected Remove directive");
+                    }
+                } else {
+                    panic!("expected attribute macro body");
+                }
+            }
+            other => panic!("expected MacroDef, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_update_directive() {
+        let src = r#"
+macro @secure() {
+    update endpoint#health {
+        set {
+            port = 1
+        }
+    }
+}
+"#;
+        let (doc, diags) = parse(src);
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
+        match &doc.items[0] {
+            DocItem::Body(BodyItem::MacroDef(md)) => {
+                if let MacroBody::Attribute(ref dirs) = md.body {
+                    assert_eq!(dirs.len(), 1);
+                    if let TransformDirective::Update(ref ub) = dirs[0] {
+                        match &ub.selector {
+                            TargetSelector::BlockKindId(kind, id) => {
+                                assert_eq!(kind.name, "endpoint");
+                                assert_eq!(id.value, "health");
+                            }
+                            other => panic!("expected BlockKindId, got {:?}", other),
+                        }
+                        assert_eq!(ub.block_directives.len(), 1);
+                        assert!(ub.table_directives.is_empty());
+                    } else {
+                        panic!("expected Update directive");
+                    }
+                } else {
+                    panic!("expected attribute macro body");
+                }
+            }
+            other => panic!("expected MacroDef, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_update_table_directives() {
+        let src = r#"
+macro @add_rows() {
+    update table#users {
+        inject_rows {
+            | "charlie" | 30 |
+        }
+        clear_rows
+    }
+}
+"#;
+        let (doc, diags) = parse(src);
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
+        match &doc.items[0] {
+            DocItem::Body(BodyItem::MacroDef(md)) => {
+                if let MacroBody::Attribute(ref dirs) = md.body {
+                    if let TransformDirective::Update(ref ub) = dirs[0] {
+                        match &ub.selector {
+                            TargetSelector::TableId(id) => {
+                                assert_eq!(id.value, "users");
+                            }
+                            other => panic!("expected TableId, got {:?}", other),
+                        }
+                        assert!(ub.block_directives.is_empty());
+                        assert_eq!(ub.table_directives.len(), 2);
+                        assert!(matches!(
+                            ub.table_directives[0],
+                            TableDirective::InjectRows(..)
+                        ));
+                        assert!(matches!(
+                            ub.table_directives[1],
+                            TableDirective::ClearRows(..)
+                        ));
+                    } else {
+                        panic!("expected Update directive");
+                    }
+                } else {
+                    panic!("expected attribute macro body");
+                }
+            }
+            other => panic!("expected MacroDef, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_remove_mixed_targets() {
+        let src = r#"
+macro @strip() {
+    remove [debug_port, endpoint#debug, table#metrics]
+}
+"#;
+        let (doc, diags) = parse(src);
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
+        match &doc.items[0] {
+            DocItem::Body(BodyItem::MacroDef(md)) => {
+                if let MacroBody::Attribute(ref dirs) = md.body {
+                    if let TransformDirective::Remove(ref rb) = dirs[0] {
+                        assert_eq!(rb.targets.len(), 3);
+                        assert!(
+                            matches!(&rb.targets[0], RemoveTarget::Attr(i) if i.name == "debug_port")
+                        );
+                        assert!(
+                            matches!(&rb.targets[1], RemoveTarget::Block(k, id) if k.name == "endpoint" && id.value == "debug")
+                        );
+                        assert!(
+                            matches!(&rb.targets[2], RemoveTarget::Table(id) if id.value == "metrics")
+                        );
+                    } else {
+                        panic!("expected Remove directive");
+                    }
+                } else {
+                    panic!("expected attribute macro body");
+                }
+            }
+            other => panic!("expected MacroDef, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_remove_by_index() {
+        let src = r#"
+macro @trim() {
+    remove [endpoint[0], table[1]]
+}
+"#;
+        let (doc, diags) = parse(src);
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
+        match &doc.items[0] {
+            DocItem::Body(BodyItem::MacroDef(md)) => {
+                if let MacroBody::Attribute(ref dirs) = md.body {
+                    if let TransformDirective::Remove(ref rb) = dirs[0] {
+                        assert_eq!(rb.targets.len(), 2);
+                        assert!(
+                            matches!(&rb.targets[0], RemoveTarget::BlockIndex(k, 0, _) if k.name == "endpoint")
+                        );
+                        assert!(matches!(&rb.targets[1], RemoveTarget::TableIndex(1, _)));
+                    } else {
+                        panic!("expected Remove directive");
+                    }
+                } else {
+                    panic!("expected attribute macro body");
+                }
+            }
+            other => panic!("expected MacroDef, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_update_table_remove_rows() {
+        let src = r#"
+macro @filter() {
+    update table#users {
+        remove_rows where name == "alice"
+    }
+}
+"#;
+        let (doc, diags) = parse(src);
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
+        match &doc.items[0] {
+            DocItem::Body(BodyItem::MacroDef(md)) => {
+                if let MacroBody::Attribute(ref dirs) = md.body {
+                    if let TransformDirective::Update(ref ub) = dirs[0] {
+                        assert_eq!(ub.table_directives.len(), 1);
+                        assert!(matches!(
+                            ub.table_directives[0],
+                            TableDirective::RemoveRows { .. }
+                        ));
+                    } else {
+                        panic!("expected Update directive");
+                    }
+                } else {
+                    panic!("expected attribute macro body");
+                }
+            }
+            other => panic!("expected MacroDef, got {:?}", other),
         }
     }
 }

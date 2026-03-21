@@ -641,13 +641,29 @@ impl<'a> Fmt<'a> {
             TransformDirective::Remove(remove) => {
                 self.indent();
                 self.out.push_str("remove [");
-                for (i, name) in remove.names.iter().enumerate() {
+                for (i, target) in remove.targets.iter().enumerate() {
                     if i > 0 {
                         self.out.push_str(", ");
                     }
-                    self.out.push_str(&name.name);
+                    self.format_remove_target(target);
                 }
                 self.out.push_str("]\n");
+            }
+            TransformDirective::Update(update) => {
+                self.indent();
+                self.out.push_str("update ");
+                self.format_target_selector(&update.selector);
+                self.out.push_str(" {\n");
+                self.indent += 1;
+                for d in &update.block_directives {
+                    self.transform_directive(d);
+                }
+                for d in &update.table_directives {
+                    self.format_table_directive(d);
+                }
+                self.indent -= 1;
+                self.indent();
+                self.out.push_str("}\n");
             }
             TransformDirective::When(when) => {
                 self.indent();
@@ -661,6 +677,111 @@ impl<'a> Fmt<'a> {
                 self.indent -= 1;
                 self.indent();
                 self.out.push_str("}\n");
+            }
+        }
+    }
+
+    fn format_remove_target(&mut self, target: &RemoveTarget) {
+        match target {
+            RemoveTarget::Attr(ident) => self.out.push_str(&ident.name),
+            RemoveTarget::Block(kind, id) => {
+                self.out.push_str(&kind.name);
+                self.out.push('#');
+                self.out.push_str(&id.value);
+            }
+            RemoveTarget::BlockAll(kind) => {
+                self.out.push_str(&kind.name);
+                self.out.push_str("#*");
+            }
+            RemoveTarget::BlockIndex(kind, n, _) => {
+                self.out.push_str(&format!("{}[{}]", kind.name, n));
+            }
+            RemoveTarget::Table(id) => {
+                self.out.push_str("table#");
+                self.out.push_str(&id.value);
+            }
+            RemoveTarget::AllTables(_) => {
+                self.out.push_str("table#*");
+            }
+            RemoveTarget::TableIndex(n, _) => {
+                self.out.push_str(&format!("table[{}]", n));
+            }
+        }
+    }
+
+    fn format_target_selector(&mut self, selector: &TargetSelector) {
+        match selector {
+            TargetSelector::BlockKind(kind) => self.out.push_str(&kind.name),
+            TargetSelector::BlockKindId(kind, id) => {
+                self.out.push_str(&kind.name);
+                self.out.push('#');
+                self.out.push_str(&id.value);
+            }
+            TargetSelector::BlockIndex(kind, n, _) => {
+                self.out.push_str(&format!("{}[{}]", kind.name, n));
+            }
+            TargetSelector::TableId(id) => {
+                self.out.push_str("table#");
+                self.out.push_str(&id.value);
+            }
+            TargetSelector::TableIndex(n, _) => {
+                self.out.push_str(&format!("table[{}]", n));
+            }
+        }
+    }
+
+    fn format_table_directive(&mut self, directive: &TableDirective) {
+        match directive {
+            TableDirective::InjectRows(rows, _) => {
+                self.indent();
+                self.out.push_str("inject_rows {\n");
+                self.indent += 1;
+                for row in rows {
+                    self.indent();
+                    for cell in &row.cells {
+                        self.out.push_str("| ");
+                        self.expr(cell);
+                        self.out.push(' ');
+                    }
+                    self.out.push_str("|\n");
+                }
+                self.indent -= 1;
+                self.indent();
+                self.out.push_str("}\n");
+            }
+            TableDirective::RemoveRows { condition, .. } => {
+                self.indent();
+                self.out.push_str("remove_rows where ");
+                self.expr(condition);
+                self.out.push('\n');
+            }
+            TableDirective::UpdateRows {
+                condition, attrs, ..
+            } => {
+                self.indent();
+                self.out.push_str("update_rows where ");
+                self.expr(condition);
+                self.out.push_str(" {\n");
+                self.indent += 1;
+                self.indent();
+                self.out.push_str("set {\n");
+                self.indent += 1;
+                for (name, val) in attrs {
+                    self.indent();
+                    self.out.push_str(&format!("{} = ", name.name));
+                    self.expr(val);
+                    self.out.push('\n');
+                }
+                self.indent -= 1;
+                self.indent();
+                self.out.push_str("}\n");
+                self.indent -= 1;
+                self.indent();
+                self.out.push_str("}\n");
+            }
+            TableDirective::ClearRows(_) => {
+                self.indent();
+                self.out.push_str("clear_rows\n");
             }
         }
     }

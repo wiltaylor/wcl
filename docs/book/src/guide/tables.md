@@ -167,6 +167,44 @@ The first row of the CSV is treated as the column header by default. All cell va
 
 `import_table` follows the same path rules as `import`: relative paths only, resolved from the importing file, jailed to the project root.
 
+## Evaluation
+
+Tables are evaluated into a list of row maps. Each row becomes a map from column name to cell value. For example:
+
+```wcl
+table users {
+    name : string
+    age  : int
+    | "alice" | 25 |
+    | "bob"   | 30 |
+}
+```
+
+evaluates to a value equivalent to:
+
+```json
+[
+    {"name": "alice", "age": 25},
+    {"name": "bob", "age": 30}
+]
+```
+
+Cell expressions are fully evaluated, so references, function calls, and arithmetic all work:
+
+```wcl
+let base = 100
+
+table config {
+    key   : string
+    value : int
+    | "port"  | base + 80 |
+    | "debug" | 0          |
+}
+// config evaluates to [{"key": "port", "value": 180}, {"key": "debug", "value": 0}]
+```
+
+Tables inside blocks appear in the block's attributes map, keyed by the table's inline ID. Tables at the top level appear as top-level values.
+
 ## Deserialization
 
 When deserializing a document into Rust types, a table maps to `Vec<T>` where `T` is a struct whose fields correspond to the column names:
