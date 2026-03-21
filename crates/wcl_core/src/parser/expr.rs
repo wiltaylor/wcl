@@ -917,21 +917,19 @@ impl Parser {
                         "separator" => {
                             separator = Some(self.parse_string_lit()?);
                         }
-                        "headers" => {
-                            match self.peek_kind().clone() {
-                                TokenKind::BoolLit(b) => {
-                                    headers = Some(b);
-                                    self.advance();
-                                }
-                                _ => {
-                                    self.diagnostics.error(
-                                        "expected bool for 'headers' parameter",
-                                        self.current_span(),
-                                    );
-                                    return None;
-                                }
+                        "headers" => match self.peek_kind().clone() {
+                            TokenKind::BoolLit(b) => {
+                                headers = Some(b);
+                                self.advance();
                             }
-                        }
+                            _ => {
+                                self.diagnostics.error(
+                                    "expected bool for 'headers' parameter",
+                                    self.current_span(),
+                                );
+                                return None;
+                            }
+                        },
                         "columns" => {
                             // Parse list of string literals: ["a", "b"]
                             if self.expect(&TokenKind::LBracket).is_err() {
@@ -940,10 +938,8 @@ impl Parser {
                             let mut col_names = Vec::new();
                             loop {
                                 self.skip_newlines();
-                                if matches!(
-                                    self.peek_kind(),
-                                    TokenKind::RBracket | TokenKind::Eof
-                                ) {
+                                if matches!(self.peek_kind(), TokenKind::RBracket | TokenKind::Eof)
+                                {
                                     break;
                                 }
                                 col_names.push(self.parse_string_lit()?);

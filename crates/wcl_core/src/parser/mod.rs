@@ -580,17 +580,23 @@ impl Parser {
     fn parse_decorator(&mut self) -> Option<Decorator> {
         let start_span = self.current_span();
         self.advance(); // consume @
-        // Accept keyword tokens as decorator names (e.g. @schema, @table)
+                        // Accept keyword tokens as decorator names (e.g. @schema, @table)
         let name = match self.peek_kind().clone() {
             TokenKind::Schema => {
                 let span = self.current_span();
                 self.advance();
-                Ident { name: "schema".to_string(), span }
+                Ident {
+                    name: "schema".to_string(),
+                    span,
+                }
             }
             TokenKind::Table => {
                 let span = self.current_span();
                 self.advance();
-                Ident { name: "table".to_string(), span }
+                Ident {
+                    name: "table".to_string(),
+                    span,
+                }
             }
             _ => self.expect_ident().ok()?,
         };
@@ -755,7 +761,10 @@ impl Parser {
                 }
                 if i < self.tokens.len() {
                     match &self.tokens[i].kind {
-                        TokenKind::LBrace | TokenKind::StringLit(_) | TokenKind::Colon | TokenKind::Equals => {
+                        TokenKind::LBrace
+                        | TokenKind::StringLit(_)
+                        | TokenKind::Colon
+                        | TokenKind::Equals => {
                             let span = self.current_span();
                             self.advance();
                             Some(InlineId::Literal(IdentifierLit {
