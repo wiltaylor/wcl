@@ -1178,35 +1178,4 @@ mod tests {
         );
     }
 
-    // ── Library module ───────────────────────────────────────────────────
-
-    #[test]
-    fn test_function_stub_to_wcl() {
-        let stub = library::FunctionStub {
-            name: "my_fn".into(),
-            params: vec![
-                ("input".into(), "string".into()),
-                ("count".into(), "int".into()),
-            ],
-            return_type: Some("string".into()),
-            doc: Some("Transform input".into()),
-        };
-        let wcl = stub.to_wcl();
-        assert_eq!(wcl, "declare my_fn(input: string, count: int) -> string\n");
-    }
-
-    #[test]
-    fn test_library_builder_build() {
-        let mut builder = library::LibraryBuilder::new("myapp");
-        builder.add_schema_text("schema \"config\" {\n    port: int\n}\n");
-        builder.add_function_stub(library::FunctionStub {
-            name: "greet".into(),
-            params: vec![("name".into(), "string".into())],
-            return_type: Some("string".into()),
-            doc: None,
-        });
-        let content = builder.build();
-        assert!(content.contains("schema \"config\""));
-        assert!(content.contains("declare greet(name: string) -> string"));
-    }
 }

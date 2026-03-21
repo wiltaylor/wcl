@@ -133,26 +133,6 @@ func cDocumentBlocksOfType(ptr unsafe.Pointer, kind string) string {
 	return C.GoString(result)
 }
 
-// cInstallLibrary calls wcl_ffi_install_library.
-func cInstallLibrary(name, content string) string {
-	cName := C.CString(name)
-	defer C.free(unsafe.Pointer(cName))
-	cContent := C.CString(content)
-	defer C.free(unsafe.Pointer(cContent))
-	result := C.wcl_ffi_install_library(cName, cContent)
-	defer C.wcl_ffi_string_free(result)
-	return C.GoString(result)
-}
-
-// cUninstallLibrary calls wcl_ffi_uninstall_library.
-func cUninstallLibrary(name string) string {
-	cName := C.CString(name)
-	defer C.free(unsafe.Pointer(cName))
-	result := C.wcl_ffi_uninstall_library(cName)
-	defer C.wcl_ffi_string_free(result)
-	return C.GoString(result)
-}
-
 // cListLibraries calls wcl_ffi_list_libraries.
 func cListLibraries() string {
 	result := C.wcl_ffi_list_libraries()

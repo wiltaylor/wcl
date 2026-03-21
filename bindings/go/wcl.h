@@ -113,20 +113,6 @@ WclDocument *wcl_ffi_parse_with_functions(const char *source,
                                           uintptr_t func_count);
 
 /**
- * Install a library file. Returns JSON: `{"ok": "<path>"}` or `{"error": "..."}`.
- *
- * Caller must free with `wcl_ffi_string_free`.
- */
-char *wcl_ffi_install_library(const char *name, const char *content);
-
-/**
- * Uninstall a library file. Returns JSON: `{"ok": null}` or `{"error": "..."}`.
- *
- * Caller must free with `wcl_ffi_string_free`.
- */
-char *wcl_ffi_uninstall_library(const char *name);
-
-/**
  * List installed libraries. Returns JSON: `{"ok": ["path1", ...]}` or `{"error": "..."}`.
  *
  * Caller must free with `wcl_ffi_string_free`.

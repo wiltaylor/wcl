@@ -256,60 +256,9 @@ When processing untrusted input, disable imports to prevent file system access:
 doc = wcl.parse(untrusted_input, allow_imports=False)
 ```
 
-## Library Management
+## Library Files
 
-Install, list, and uninstall WCL library files programmatically:
-
-```python
-import wcl
-
-# Install a library file
-path = wcl.install_library("myapp.wcl", """
-    schema "config" {
-        port: int
-        host: string @optional
-    }
-
-    declare my_fn(input: string) -> string
-""")
-print(f"Installed to: {path}")
-
-# List installed libraries
-for lib in wcl.list_libraries():
-    print(lib)
-
-# Uninstall
-wcl.uninstall_library("myapp.wcl")
-```
-
-### LibraryBuilder
-
-Build library files programmatically with `LibraryBuilder`:
-
-```python
-builder = wcl.LibraryBuilder("myapp")
-
-# Add schema text
-builder.add_schema_text("""
-    schema "config" {
-        port: int
-        host: string @optional
-    }
-""")
-
-# Add function stubs (for LSP completions and validation)
-builder.add_function_stub("greet", [("name", "string")], "string")
-builder.add_function_stub("fire", [("event", "string")])  # no return type
-builder.add_function_stub("process", [("input", "string")], "string", "Process input")  # with doc
-
-# Get the library content as a string
-content = builder.build()
-
-# Or install directly
-path = builder.install()
-```
-
-After installation, WCL files can use `import <myapp.wcl>` to access the schemas and function declarations.
+Create `.wcl` library files manually and place them in `~/.local/share/wcl/lib/`. Use `wcl.list_libraries()` to list installed libraries. See the [Libraries guide](../guide/libraries.md) for details.
 
 ## Error Handling
 

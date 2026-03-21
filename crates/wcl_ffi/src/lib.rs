@@ -293,34 +293,6 @@ pub extern "C" fn wcl_ffi_parse_with_functions(
 
 // ── Library management ───────────────────────────────────────────────────
 
-/// Install a library file. Returns JSON: `{"ok": "<path>"}` or `{"error": "..."}`.
-///
-/// Caller must free with `wcl_ffi_string_free`.
-#[no_mangle]
-pub extern "C" fn wcl_ffi_install_library(
-    name: *const c_char,
-    content: *const c_char,
-) -> *mut c_char {
-    let name = unsafe { c_str_to_str(name) };
-    let content = unsafe { c_str_to_str(content) };
-    match wcl::library::install_library(name, content) {
-        Ok(path) => ok_json(serde_json::json!(path.to_string_lossy())),
-        Err(e) => err_json(&e.to_string()),
-    }
-}
-
-/// Uninstall a library file. Returns JSON: `{"ok": null}` or `{"error": "..."}`.
-///
-/// Caller must free with `wcl_ffi_string_free`.
-#[no_mangle]
-pub extern "C" fn wcl_ffi_uninstall_library(name: *const c_char) -> *mut c_char {
-    let name = unsafe { c_str_to_str(name) };
-    match wcl::library::uninstall_library(name) {
-        Ok(()) => ok_json(serde_json::Value::Null),
-        Err(e) => err_json(&e.to_string()),
-    }
-}
-
 /// List installed libraries. Returns JSON: `{"ok": ["path1", ...]}` or `{"error": "..."}`.
 ///
 /// Caller must free with `wcl_ffi_string_free`.

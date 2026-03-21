@@ -341,25 +341,9 @@ Supported `#[wcl(...)]` attributes:
 
 Rust type mapping: `String` → `string`, `i32/i64/u32/u64` → `int`, `f32/f64` → `float`, `bool` → `bool`, `Option<T>` → T + `@optional`, `Vec<T>` → `list(T)`, `HashMap<K,V>` → `map(K, V)`.
 
-## Library Builder
+## Library Files
 
-Use `LibraryBuilder` to create installable WCL library files from Rust:
-
-```rust
-use wcl::library::{LibraryBuilder, FunctionStub};
-
-let mut builder = LibraryBuilder::new("myapp");
-builder.add_schema_text(ServerConfig::wcl_schema());
-builder.add_function_stub(FunctionStub {
-    name: "my_custom_fn".into(),
-    params: vec![("input".into(), "string".into())],
-    return_type: Some("string".into()),
-    doc: Some("Transform input".into()),
-});
-builder.install().expect("install library");
-```
-
-After installation, WCL files can use `import <myapp.wcl>` to access the schemas and function declarations. The LSP will provide completions and signature help for declared functions.
+Create `.wcl` library files manually and place them in `~/.local/share/wcl/lib/`. Use `wcl::library::list_libraries()` to list installed libraries. See the [Libraries guide](../guide/libraries.md) for details.
 
 ## Parse Options
 

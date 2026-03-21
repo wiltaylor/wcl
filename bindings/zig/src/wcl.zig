@@ -14,8 +14,6 @@ pub const WclError = error{
     ParseFileFailed,
     JsonParseFailed,
     QueryFailed,
-    LibraryInstallFailed,
-    LibraryUninstallFailed,
     LibraryListFailed,
     DocumentClosed,
 };
@@ -168,51 +166,6 @@ pub fn parseFile(allocator: Allocator, path: []const u8, opts: ?ParseOptions) !D
     const ptr = c.wcl_ffi_parse_file(c_path.ptr, c_opts_ptr);
     if (ptr == null) return WclError.ParseFileFailed;
     return Document{ .handle = ptr.? };
-}
-
-/// Install a WCL library file. Returns the install path.
-pub fn installLibrary(allocator: Allocator, name: []const u8, content: []const u8) ![]const u8 {
-    const c_name = try toNullTerminated(allocator, name);
-    defer allocator.free(c_name);
-    const c_content = try toNullTerminated(allocator, content);
-    defer allocator.free(c_content);
-
-    const raw = c.wcl_ffi_install_library(c_name.ptr, c_content.ptr);
-    defer c.wcl_ffi_string_free(raw);
-    const slice = std.mem.span(@as([*:0]const u8, @ptrCast(raw)));
-
-    var parsed = try json.parseFromSlice(json.Value, allocator, slice, .{ .allocate = .alloc_always });
-    defer parsed.deinit();
-
-    if (parsed.value.object.get("error")) |_| {
-        return WclError.LibraryInstallFailed;
-    }
-
-    if (parsed.value.object.get("ok")) |ok_val| {
-        switch (ok_val) {
-            .string => |s| return allocator.dupe(u8, s),
-            else => return WclError.LibraryInstallFailed,
-        }
-    }
-
-    return WclError.LibraryInstallFailed;
-}
-
-/// Uninstall a WCL library file.
-pub fn uninstallLibrary(allocator: Allocator, name: []const u8) !void {
-    const c_name = try toNullTerminated(allocator, name);
-    defer allocator.free(c_name);
-
-    const raw = c.wcl_ffi_uninstall_library(c_name.ptr);
-    defer c.wcl_ffi_string_free(raw);
-    const slice = std.mem.span(@as([*:0]const u8, @ptrCast(raw)));
-
-    var parsed = try json.parseFromSlice(json.Value, allocator, slice, .{ .allocate = .alloc_always });
-    defer parsed.deinit();
-
-    if (parsed.value.object.get("error")) |_| {
-        return WclError.LibraryUninstallFailed;
-    }
 }
 
 /// List installed WCL libraries as parsed JSON.

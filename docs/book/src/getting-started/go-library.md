@@ -283,33 +283,9 @@ Pass `nil` for default options:
 doc, err := wcl.Parse(source, nil)
 ```
 
-## Library Management
+## Library Files
 
-Install, list, and uninstall WCL library files programmatically:
-
-```go
-// Install a library file
-path, err := wcl.InstallLibrary("myapp.wcl", `
-    schema "config" {
-        port: int
-        host: string @optional
-    }
-
-    declare my_fn(input: string) -> string
-`)
-fmt.Println("Installed to:", path)
-
-// List installed libraries
-libs, err := wcl.ListLibraries()
-for _, lib := range libs {
-    fmt.Println(lib)
-}
-
-// Uninstall
-err = wcl.UninstallLibrary("myapp.wcl")
-```
-
-After installation, WCL files can use `import <myapp.wcl>` to access the schemas and function declarations.
+Create `.wcl` library files manually and place them in `~/.local/share/wcl/lib/`. Use `wcl.ListLibraries()` to list installed libraries. See the [Libraries guide](../guide/libraries.md) for details.
 
 ## Error Handling
 
