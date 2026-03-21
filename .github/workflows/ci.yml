@@ -36,6 +36,14 @@ jobs:
           if [[ "$IS_RELEASE" != "true" && "$IS_PRERELEASE" != "true" ]]; then
             echo "version=0.0.0-alpha" >> "$GITHUB_OUTPUT"
             echo "do_release=false" >> "$GITHUB_OUTPUT"
+            cat >> "$GITHUB_STEP_SUMMARY" <<'SUMMARY'
+          ## Version
+
+          | | |
+          |---|---|
+          | **Version** | `0.0.0-alpha` |
+          | **Release** | No |
+          SUMMARY
             exit 0
           fi
 
@@ -86,6 +94,23 @@ jobs:
           echo "Calculated version: $VERSION (bump=$BUMP)"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "do_release=true" >> "$GITHUB_OUTPUT"
+
+          if [[ "$IS_PRERELEASE" == "true" ]]; then
+            RELEASE_TYPE="Pre-release"
+          else
+            RELEASE_TYPE="Stable"
+          fi
+
+          cat >> "$GITHUB_STEP_SUMMARY" <<SUMMARY
+          ## Version
+
+          | | |
+          |---|---|
+          | **Version** | \`$VERSION\` |
+          | **Release** | $RELEASE_TYPE |
+          | **Bump** | $BUMP |
+          | **Previous tag** | \`${LAST_TAG:-none}\` |
+          SUMMARY
 
   # ── Lint ────────────────────────────────────────────────────────────────
 
