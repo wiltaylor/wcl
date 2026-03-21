@@ -3,6 +3,8 @@
 //! This is the facade crate that re-exports everything and provides
 //! the main parsing pipeline.
 
+#[cfg(feature = "json")]
+pub mod json;
 pub mod library;
 
 // Re-exports

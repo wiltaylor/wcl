@@ -8,6 +8,9 @@ documentation.workspace = true
 repository.workspace = true
 description = "WCL (Wil's Configuration Language) — a typed, block-structured configuration language"
 
+[features]
+json = ["serde_json"]
+
 [dependencies]
 wcl_core = { workspace = true }
 wcl_eval = { workspace = true }
@@ -17,6 +20,7 @@ wcl_derive = { workspace = true }
 thiserror = { workspace = true }
 indexmap = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true, optional = true }
 
 [dev-dependencies]
 criterion = { workspace = true }

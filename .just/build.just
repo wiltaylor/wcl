@@ -86,38 +86,14 @@ python:
 wasm:
     cd bindings/wasm && wasm-pack build --target web
 
-# Build .NET native library (cdylib for P/Invoke)
-dotnet-native: ffi-native
-    #!/usr/bin/env bash
-    os="$(uname -s)"
-    arch="$(uname -m)"
-    case "$os" in
-        Linux)
-            rid="linux"
-            ext="so"
-            lib="libwcl_ffi.so"
-            ;;
-        Darwin)
-            rid="osx"
-            ext="dylib"
-            lib="libwcl_ffi.dylib"
-            ;;
-        *)
-            rid="win"
-            ext="dll"
-            lib="wcl_ffi.dll"
-            ;;
-    esac
-    case "$arch" in
-        x86_64|amd64) rid="${rid}-x64" ;;
-        aarch64|arm64) rid="${rid}-arm64" ;;
-    esac
-    dir="bindings/dotnet/src/Wcl/runtimes/${rid}/native"
-    mkdir -p "$dir"
-    cp "target/release/$lib" "$dir/"
+# Build WASM module for .NET (WASI target)
+dotnet-wasm:
+    cargo build --target wasm32-wasip1 -p wcl_wasm --no-default-features --features wasi --release
+    mkdir -p bindings/dotnet/src/Wcl/Wasm
+    cp target/wasm32-wasip1/release/wcl_wasm.wasm bindings/dotnet/src/Wcl/Wasm/
 
 # Build .NET library
-dotnet: dotnet-native
+dotnet: dotnet-wasm
     dotnet build bindings/dotnet/Wcl.sln -c Release
 
 # Build Zig bindings (native platform)
@@ -178,7 +154,7 @@ wasm-publish:
     cd bindings/wasm && wasm-pack build --target web && npm publish
 
 # Pack .NET NuGet package
-dotnet-pack: dotnet-native
+dotnet-pack: dotnet-wasm
     dotnet pack bindings/dotnet/Wcl.sln -c Release
 
 # Publish .NET NuGet package

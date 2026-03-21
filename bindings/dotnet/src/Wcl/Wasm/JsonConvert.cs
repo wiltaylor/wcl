@@ -5,7 +5,7 @@ using System.Text.Json;
 using Wcl.Core;
 using Wcl.Eval;
 
-namespace Wcl.Native
+namespace Wcl.Wasm
 {
     internal static class JsonConvert
     {

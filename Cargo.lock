@@ -2208,7 +2208,7 @@ dependencies = [
 
 [[package]]
 name = "wcl_python"
-version = "0.0.0-local"
+version = "0.0.0-dev.0"
 dependencies = [
  "indexmap",
  "pyo3",
@@ -2245,6 +2245,7 @@ dependencies = [
  "indexmap",
  "js-sys",
  "serde-wasm-bindgen",
+ "serde_json",
  "wasm-bindgen",
  "wasm-bindgen-test",
  "wcl",

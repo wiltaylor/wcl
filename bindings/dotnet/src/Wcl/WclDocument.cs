@@ -4,24 +4,22 @@ using System.Linq;
 using System.Text.Json;
 using Wcl.Core;
 using Wcl.Eval;
-using Wcl.Native;
+using Wcl.Wasm;
 
 namespace Wcl
 {
     public class WclDocument : IDisposable
     {
-        private IntPtr _handle;
-        private readonly List<ulong> _callbackIds;
+        private int _handle;
         private bool _disposed;
         private readonly object _lock = new object();
 
         private OrderedMap<string, WclValue>? _cachedValues;
         private List<Diagnostic>? _cachedDiagnostics;
 
-        internal WclDocument(IntPtr handle, List<ulong>? callbackIds = null)
+        internal WclDocument(int handle)
         {
             _handle = handle;
-            _callbackIds = callbackIds ?? new List<ulong>();
         }
 
         public OrderedMap<string, WclValue> Values
@@ -33,8 +31,7 @@ namespace Wcl
                     CheckDisposed();
                     if (_cachedValues == null)
                     {
-                        var ptr = NativeMethods.wcl_ffi_document_values(_handle);
-                        var json = FfiHelper.ConsumeString(ptr);
+                        var json = WasmRuntime.Instance.DocumentValues(_handle);
                         using var doc = JsonDocument.Parse(json);
                         _cachedValues = JsonConvert.ToValues(doc.RootElement);
                     }
@@ -52,8 +49,7 @@ namespace Wcl
                     CheckDisposed();
                     if (_cachedDiagnostics == null)
                     {
-                        var ptr = NativeMethods.wcl_ffi_document_diagnostics(_handle);
-                        var json = FfiHelper.ConsumeString(ptr);
+                        var json = WasmRuntime.Instance.DocumentDiagnostics(_handle);
                         using var doc = JsonDocument.Parse(json);
                         _cachedDiagnostics = new List<Diagnostic>();
                         foreach (var el in doc.RootElement.EnumerateArray())
@@ -69,7 +65,7 @@ namespace Wcl
             lock (_lock)
             {
                 CheckDisposed();
-                return NativeMethods.wcl_ffi_document_has_errors(_handle);
+                return WasmRuntime.Instance.DocumentHasErrors(_handle);
             }
         }
 
@@ -80,19 +76,13 @@ namespace Wcl
             lock (_lock)
             {
                 CheckDisposed();
-                var queryPtr = FfiHelper.ToUtf8(query);
-                try
-                {
-                    var resultPtr = NativeMethods.wcl_ffi_document_query(_handle, queryPtr);
-                    var (isOk, value, error) = FfiHelper.ConsumeJsonResult(resultPtr);
-                    if (!isOk)
-                        throw new Exception($"query error: {error}");
-                    return JsonConvert.ToWclValue(value);
-                }
-                finally
-                {
-                    FfiHelper.FreeUtf8(queryPtr);
-                }
+                var resultJson = WasmRuntime.Instance.DocumentQuery(_handle, query);
+                using var doc = JsonDocument.Parse(resultJson);
+                if (doc.RootElement.TryGetProperty("error", out var errEl))
+                    throw new Exception($"query error: {errEl.GetString()}");
+                if (doc.RootElement.TryGetProperty("ok", out var okEl))
+                    return JsonConvert.ToWclValue(okEl);
+                throw new Exception("unexpected query result format");
             }
         }
 
@@ -101,8 +91,7 @@ namespace Wcl
             lock (_lock)
             {
                 CheckDisposed();
-                var ptr = NativeMethods.wcl_ffi_document_blocks(_handle);
-                var json = FfiHelper.ConsumeString(ptr);
+                var json = WasmRuntime.Instance.DocumentBlocks(_handle);
                 using var doc = JsonDocument.Parse(json);
                 var result = new List<BlockRef>();
                 foreach (var el in doc.RootElement.EnumerateArray())
@@ -116,21 +105,12 @@ namespace Wcl
             lock (_lock)
             {
                 CheckDisposed();
-                var kindPtr = FfiHelper.ToUtf8(kind);
-                try
-                {
-                    var ptr = NativeMethods.wcl_ffi_document_blocks_of_type(_handle, kindPtr);
-                    var json = FfiHelper.ConsumeString(ptr);
-                    using var doc = JsonDocument.Parse(json);
-                    var result = new List<BlockRef>();
-                    foreach (var el in doc.RootElement.EnumerateArray())
-                        result.Add(JsonConvert.ToBlockRef(el));
-                    return result;
-                }
-                finally
-                {
-                    FfiHelper.FreeUtf8(kindPtr);
-                }
+                var json = WasmRuntime.Instance.DocumentBlocksOfType(_handle, kind);
+                using var doc = JsonDocument.Parse(json);
+                var result = new List<BlockRef>();
+                foreach (var el in doc.RootElement.EnumerateArray())
+                    result.Add(JsonConvert.ToBlockRef(el));
+                return result;
             }
         }
 
@@ -147,15 +127,11 @@ namespace Wcl
                 if (_disposed) return;
                 _disposed = true;
 
-                if (_handle != IntPtr.Zero)
+                if (_handle != 0)
                 {
-                    NativeMethods.wcl_ffi_document_free(_handle);
-                    _handle = IntPtr.Zero;
+                    WasmRuntime.Instance.DocumentFree(_handle);
+                    _handle = 0;
                 }
-
-                foreach (var id in _callbackIds)
-                    CallbackRegistry.Unregister(id);
-                _callbackIds.Clear();
             }
             GC.SuppressFinalize(this);
         }

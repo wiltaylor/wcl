@@ -1,8 +1,9 @@
 using System;
 using System.Collections.Generic;
-using System.Runtime.InteropServices;
+using System.IO;
+using System.Text.Json;
 using Wcl.Eval;
-using Wcl.Native;
+using Wcl.Wasm;
 using Wcl.Serde;
 
 namespace Wcl
@@ -12,50 +13,32 @@ namespace Wcl
         public static WclDocument Parse(string source, ParseOptions? options = null)
         {
             var optsJson = options?.ToJson();
-            var sourcePtr = FfiHelper.ToUtf8(source);
-            var optsPtr = FfiHelper.ToUtf8(optsJson);
 
-            try
+            if (options?.Functions != null && options.Functions.Count > 0)
             {
-                if (options?.Functions != null && options.Functions.Count > 0)
-                {
-                    return ParseWithFunctions(source, optsJson, options.Functions);
-                }
+                return ParseWithFunctions(source, optsJson, options.Functions);
+            }
 
-                var handle = NativeMethods.wcl_ffi_parse(sourcePtr, optsPtr);
-                if (handle == IntPtr.Zero)
-                    throw new Exception("wcl: parse returned null");
-                return new WclDocument(handle);
-            }
-            finally
-            {
-                FfiHelper.FreeUtf8(sourcePtr);
-                FfiHelper.FreeUtf8(optsPtr);
-            }
+            var handle = WasmRuntime.Instance.Parse(source, optsJson);
+            if (handle == 0)
+                throw new Exception("wcl: parse returned invalid handle");
+            return new WclDocument(handle);
         }
 
         public static WclDocument ParseFile(string path, ParseOptions? options = null)
         {
-            var optsJson = options?.ToJson();
-            var pathPtr = FfiHelper.ToUtf8(path);
-            var optsPtr = FfiHelper.ToUtf8(optsJson);
+            var source = File.ReadAllText(path);
 
-            try
+            // Set rootDir from file path if not specified
+            var opts = options ?? new ParseOptions();
+            if (opts.RootDir == null)
             {
-                var handle = NativeMethods.wcl_ffi_parse_file(pathPtr, optsPtr);
-                if (handle == IntPtr.Zero)
-                {
-                    var errPtr = NativeMethods.wcl_ffi_last_error();
-                    var errMsg = FfiHelper.ConsumeString(errPtr);
-                    throw new Exception($"wcl: {(string.IsNullOrEmpty(errMsg) ? $"failed to parse file {path}" : errMsg)}");
-                }
-                return new WclDocument(handle);
+                var dir = Path.GetDirectoryName(Path.GetFullPath(path));
+                if (dir != null)
+                    opts.RootDir = dir;
             }
-            finally
-            {
-                FfiHelper.FreeUtf8(pathPtr);
-                FfiHelper.FreeUtf8(optsPtr);
-            }
+
+            return Parse(source, opts);
         }
 
         public static T FromString<T>(string source, ParseOptions? options = null)
@@ -80,60 +63,20 @@ namespace Wcl
         private static WclDocument ParseWithFunctions(string source, string? optsJson,
             Dictionary<string, Func<WclValue[], WclValue>> functions)
         {
-            var count = functions.Count;
-            var namePointers = new IntPtr[count];
-            var callbackPointers = new IntPtr[count];
-            var contextValues = new UIntPtr[count];
-            var callbackIds = new List<ulong>(count);
+            var funcNames = new List<string>(functions.Keys);
+            var funcNamesJson = JsonSerializer.Serialize(funcNames);
 
-            int i = 0;
-            foreach (var kvp in functions)
-            {
-                namePointers[i] = FfiHelper.ToUtf8(kvp.Key);
-                var cbId = CallbackRegistry.Register(kvp.Value);
-                callbackIds.Add(cbId);
-                callbackPointers[i] = Marshal.GetFunctionPointerForDelegate(CallbackRegistry.TrampolineDelegate);
-                contextValues[i] = new UIntPtr(cbId);
-                i++;
-            }
-
-            var sourcePtr = FfiHelper.ToUtf8(source);
-            var optsPtr = FfiHelper.ToUtf8(optsJson);
-
-            var namesHandle = GCHandle.Alloc(namePointers, GCHandleType.Pinned);
-            var callbacksHandle = GCHandle.Alloc(callbackPointers, GCHandleType.Pinned);
-            var contextsHandle = GCHandle.Alloc(contextValues, GCHandleType.Pinned);
-
+            WasmCallbackBridge.SetFunctions(functions);
             try
             {
-                var handle = NativeMethods.wcl_ffi_parse_with_functions(
-                    sourcePtr,
-                    optsPtr,
-                    namesHandle.AddrOfPinnedObject(),
-                    callbacksHandle.AddrOfPinnedObject(),
-                    contextsHandle.AddrOfPinnedObject(),
-                    (UIntPtr)count);
-
-                if (handle == IntPtr.Zero)
-                {
-                    foreach (var id in callbackIds)
-                        CallbackRegistry.Unregister(id);
-                    throw new Exception("wcl: parse returned null");
-                }
-
-                return new WclDocument(handle, callbackIds);
+                var handle = WasmRuntime.Instance.ParseWithFunctions(source, optsJson, funcNamesJson);
+                if (handle == 0)
+                    throw new Exception("wcl: parse returned invalid handle");
+                return new WclDocument(handle);
             }
             finally
             {
-                namesHandle.Free();
-                callbacksHandle.Free();
-                contextsHandle.Free();
-
-                for (int j = 0; j < count; j++)
-                    FfiHelper.FreeUtf8(namePointers[j]);
-
-                FfiHelper.FreeUtf8(sourcePtr);
-                FfiHelper.FreeUtf8(optsPtr);
+                WasmCallbackBridge.ClearFunctions();
             }
         }
     }
