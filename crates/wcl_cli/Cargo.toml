@@ -13,13 +13,14 @@ name = "wcl"
 path = "src/main.rs"
 
 [dependencies]
-wcl = { workspace = true }
+wcl = { workspace = true, features = ["json"] }
 wcl_core = { workspace = true }
 wcl_eval = { workspace = true }
 wcl_schema = { workspace = true }
 wcl_serde = { workspace = true }
 wcl_lsp = { workspace = true }
 clap = { workspace = true }
+indexmap = { workspace = true }
 miette = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml = "0.9"

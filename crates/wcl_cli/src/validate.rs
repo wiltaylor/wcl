@@ -1,11 +1,21 @@
 use std::path::Path;
 
-pub fn run(file: &Path, strict: bool, schema: Option<&Path>) -> Result<(), String> {
+use crate::vars::parse_var_args;
+
+pub fn run(
+    file: &Path,
+    strict: bool,
+    schema: Option<&Path>,
+    vars: &[String],
+) -> Result<(), String> {
     let source = std::fs::read_to_string(file)
         .map_err(|e| format!("cannot read {}: {}", file.display(), e))?;
 
+    let variables = parse_var_args(vars)?;
+
     let options = wcl::ParseOptions {
         root_dir: file.parent().unwrap_or(Path::new(".")).to_path_buf(),
+        variables,
         ..Default::default()
     };
 

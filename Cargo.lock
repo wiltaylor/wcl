@@ -2033,6 +2033,7 @@ version = "0.0.0-local"
 dependencies = [
  "assert_cmd",
  "clap",
+ "indexmap",
  "miette",
  "predicates",
  "serde_json",

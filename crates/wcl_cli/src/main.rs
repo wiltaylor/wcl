@@ -12,6 +12,7 @@ mod query;
 mod remove;
 mod set;
 mod validate;
+mod vars;
 
 #[derive(Parser)]
 #[command(
@@ -36,6 +37,9 @@ enum Commands {
         /// External schema file
         #[arg(long)]
         schema: Option<PathBuf>,
+        /// Set a variable (KEY=VALUE, may repeat)
+        #[arg(long = "var", value_name = "KEY=VALUE")]
+        vars: Vec<String>,
     },
     /// Format a WCL document
     Fmt {
@@ -88,6 +92,9 @@ enum Commands {
         /// Output format (json, yaml, toml)
         #[arg(long, default_value = "json")]
         format: String,
+        /// Set a variable (KEY=VALUE, may repeat)
+        #[arg(long = "var", value_name = "KEY=VALUE")]
+        vars: Vec<String>,
     },
     /// Start the WCL language server
     Lsp {
@@ -142,7 +149,8 @@ fn main() {
             file,
             strict,
             schema,
-        } => validate::run(&file, strict, schema.as_deref()),
+            vars,
+        } => validate::run(&file, strict, schema.as_deref(), &vars),
         Commands::Fmt { file, write, check } => fmt::run(&file, write, check),
         Commands::Query {
             file,
@@ -158,7 +166,7 @@ fn main() {
             scopes,
             deps,
         } => inspect::run(&file, ast, hir, scopes, deps),
-        Commands::Eval { file, format } => eval::run(&file, &format),
+        Commands::Eval { file, format, vars } => eval::run(&file, &format, &vars),
         Commands::Lsp { tcp } => {
             let rt = tokio::runtime::Runtime::new()
                 .map_err(|e| format!("failed to create tokio runtime: {}", e));

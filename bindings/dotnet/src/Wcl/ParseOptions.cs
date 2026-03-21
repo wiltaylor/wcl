@@ -14,6 +14,7 @@ namespace Wcl
         public uint? MaxLoopDepth { get; set; }
         public uint? MaxIterations { get; set; }
         public Dictionary<string, Func<WclValue[], WclValue>>? Functions { get; set; }
+        public Dictionary<string, object>? Variables { get; set; }
 
         internal string? ToJson()
         {
@@ -30,6 +31,8 @@ namespace Wcl
                 parts.Add($"\"maxLoopDepth\":{MaxLoopDepth.Value}");
             if (MaxIterations.HasValue)
                 parts.Add($"\"maxIterations\":{MaxIterations.Value}");
+            if (Variables != null && Variables.Count > 0)
+                parts.Add($"\"variables\":{JsonSerializer.Serialize(Variables)}");
             if (parts.Count == 0)
                 return null;
             return "{" + string.Join(",", parts) + "}";

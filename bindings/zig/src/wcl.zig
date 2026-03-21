@@ -33,6 +33,7 @@ pub const ParseOptions = struct {
     max_macro_depth: ?u32 = null,
     max_loop_depth: ?u32 = null,
     max_iterations: ?u32 = null,
+    variables_json: ?[]const u8 = null,
 };
 
 // ── Document ─────────────────────────────────────────────────────────────
@@ -349,6 +350,12 @@ fn marshalOptions(allocator: Allocator, opts: ParseOptions) ![:0]const u8 {
     }
     if (opts.max_iterations) |v| {
         try appendJsonIntField(&buf, &first, "maxIterations", v);
+    }
+    if (opts.variables_json) |v| {
+        if (!first) try buf.appendSlice(",");
+        first = false;
+        try buf.appendSlice("\"variables\":");
+        try buf.appendSlice(v);
     }
 
     try buf.appendSlice("}");

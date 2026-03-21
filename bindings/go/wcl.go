@@ -242,6 +242,9 @@ func marshalOptions(opts *ParseOptions) string {
 	if opts.MaxIterations != 0 {
 		m["maxIterations"] = opts.MaxIterations
 	}
+	if len(opts.Variables) > 0 {
+		m["variables"] = opts.Variables
+	}
 	if len(m) == 0 {
 		return ""
 	}

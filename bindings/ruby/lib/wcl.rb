@@ -12,7 +12,7 @@ module Wcl
   # Parse a WCL source string and return a Document.
   def parse(source, root_dir: nil, allow_imports: nil, max_import_depth: nil,
             max_macro_depth: nil, max_loop_depth: nil, max_iterations: nil,
-            functions: nil)
+            functions: nil, variables: nil)
     options = {}
     options["rootDir"] = root_dir.to_s if root_dir
     options["allowImports"] = allow_imports unless allow_imports.nil?
@@ -20,6 +20,7 @@ module Wcl
     options["maxMacroDepth"] = max_macro_depth if max_macro_depth
     options["maxLoopDepth"] = max_loop_depth if max_loop_depth
     options["maxIterations"] = max_iterations if max_iterations
+    options["variables"] = variables if variables
 
     options_json = options.empty? ? nil : JSON.generate(options)
     runtime = WasmRuntime.get
