@@ -1,45 +1,51 @@
 cmake_minimum_required(VERSION 3.14)
-project(wcl VERSION 0.0.0 LANGUAGES C CXX)
+project(wcl VERSION 0.0.0 LANGUAGES C)
 
-# ── Find the prebuilt static library ────────────────────────────────────
-# Users set WCL_LIB_DIR to the directory containing the prebuilt library,
-# or WCL_ROOT to the wcl_ffi crate root (this directory) for auto-detection.
+# ── Locate header ───────────────────────────────────────────────────────
+# Packaged archive: include/wcl.h    Source tree: wcl.h in current dir
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/include/wcl.h")
+    set(_include_dir "${CMAKE_CURRENT_SOURCE_DIR}/include")
+elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/wcl.h")
+    set(_include_dir "${CMAKE_CURRENT_SOURCE_DIR}")
+else()
+    message(FATAL_ERROR "Cannot find wcl.h in include/ or current directory")
+endif()
+
+# ── Locate prebuilt static library ──────────────────────────────────────
+# Users may set WCL_LIB_DIR explicitly. Otherwise we auto-detect by
+# platform from lib/<platform>/ (packaged archive or source tree) or
+# from the cargo output in target/release/.
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
+        set(_platform "linux_amd64")
+    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|ARM64")
+        set(_platform "linux_arm64")
+    endif()
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
+        set(_platform "darwin_amd64")
+    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|ARM64")
+        set(_platform "darwin_arm64")
+    endif()
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
+        set(_platform "windows_amd64")
+    endif()
+endif()
+
+if(NOT _platform)
+    message(FATAL_ERROR "Unsupported platform: ${CMAKE_SYSTEM_NAME} ${CMAKE_SYSTEM_PROCESSOR}")
+endif()
 
 if(NOT WCL_LIB_DIR)
-    if(WCL_ROOT)
-        set(_root "${WCL_ROOT}")
-    else()
-        set(_root "${CMAKE_CURRENT_SOURCE_DIR}")
-    endif()
-
-    # When built with `cargo build -p wcl_ffi --release`, the library lands
-    # in target/release/. When cross-compiled or used from the Zig bindings,
-    # it may be in a platform subdirectory.
-    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-        if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
-            set(_platform "linux_amd64")
-        elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|ARM64")
-            set(_platform "linux_arm64")
-        endif()
-    elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-        if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
-            set(_platform "darwin_amd64")
-        elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|ARM64")
-            set(_platform "darwin_arm64")
-        endif()
-    elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
-        if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
-            set(_platform "windows_amd64")
-        endif()
-    endif()
-
-    # Search order: explicit lib/ subdirectory, Zig binding layout, cargo target/release/
     find_library(WCL_LIBRARY
         NAMES wcl_ffi libwcl_ffi
         PATHS
-            "${_root}/lib/${_platform}"
-            "${_root}/../../bindings/zig/lib/${_platform}"
-            "${_root}/../../target/release"
+            "${CMAKE_CURRENT_SOURCE_DIR}/lib/${_platform}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../../bindings/zig/lib/${_platform}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../../target/release"
         NO_DEFAULT_PATH
     )
 
@@ -47,9 +53,9 @@ if(NOT WCL_LIB_DIR)
         get_filename_component(WCL_LIB_DIR "${WCL_LIBRARY}" DIRECTORY)
     else()
         message(FATAL_ERROR
-            "Could not find the wcl_ffi static library.\n"
+            "Could not find the wcl_ffi static library for ${_platform}.\n"
             "Build it first with: cargo build -p wcl_ffi --release\n"
-            "Or set -DWCL_LIB_DIR=<path> to the directory containing libwcl_ffi.a / wcl_ffi.lib")
+            "Or set -DWCL_LIB_DIR=<path> to the directory containing the library.")
     endif()
 endif()
 
@@ -65,30 +71,17 @@ endif()
 
 set_target_properties(wcl::wcl PROPERTIES
     IMPORTED_LOCATION "${WCL_LIB_DIR}/${_lib_name}"
-    INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}"
+    INTERFACE_INCLUDE_DIRECTORIES "${_include_dir}"
 )
 
 # ── Link platform dependencies ──────────────────────────────────────────
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     find_package(Threads REQUIRED)
-    target_link_libraries(wcl::wcl INTERFACE
-        Threads::Threads
-        m
-        dl
-    )
+    target_link_libraries(wcl::wcl INTERFACE Threads::Threads m dl)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     find_package(Threads REQUIRED)
-    target_link_libraries(wcl::wcl INTERFACE
-        Threads::Threads
-        m
-        dl
-        "-framework Security"
-    )
+    target_link_libraries(wcl::wcl INTERFACE Threads::Threads m dl "-framework Security")
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
-    target_link_libraries(wcl::wcl INTERFACE
-        ws2_32
-        bcrypt
-        userenv
-    )
+    target_link_libraries(wcl::wcl INTERFACE ws2_32 bcrypt userenv)
 endif()

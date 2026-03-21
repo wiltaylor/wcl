@@ -1,105 +1,115 @@
 # Using WCL from C and C++
 
-WCL provides a C FFI static library (`libwcl_ffi.a` / `wcl_ffi.lib`) and a generated header (`wcl.h`) that expose the full 11-phase WCL pipeline. All complex values cross the boundary as JSON strings — you parse them with your preferred JSON library (e.g. cJSON, nlohmann/json, jansson).
+WCL provides a C static library (`libwcl_ffi.a` / `wcl_ffi.lib`) and a header (`wcl.h`) that expose the full 11-phase WCL pipeline. All complex values cross the boundary as JSON strings — parse them with your preferred JSON library (e.g. cJSON, nlohmann/json, jansson).
 
-## Building the Library
+Prebuilt libraries are available for:
 
-Build the static library from the WCL source tree (requires a Rust toolchain):
+| Platform | Architecture | Library |
+|----------|-------------|---------|
+| Linux | x86_64 | `lib/linux_amd64/libwcl_ffi.a` |
+| Linux | aarch64 | `lib/linux_arm64/libwcl_ffi.a` |
+| macOS | x86_64 | `lib/darwin_amd64/libwcl_ffi.a` |
+| macOS | arm64 | `lib/darwin_arm64/libwcl_ffi.a` |
+| Windows | x86_64 | `lib/windows_amd64/wcl_ffi.lib` |
 
-```bash
-# Native platform
-cargo build -p wcl_ffi --release
+## Using the Prebuilt Package
 
-# Or via just
-just build ffi-native
+Download and extract the `wcl-ffi.tar.gz` archive. It contains everything you need:
+
+```
+wcl-ffi/
+  CMakeLists.txt          # CMake config (creates wcl::wcl target)
+  include/wcl.h           # C header
+  lib/
+    linux_amd64/libwcl_ffi.a
+    linux_arm64/libwcl_ffi.a
+    darwin_amd64/libwcl_ffi.a
+    darwin_arm64/libwcl_ffi.a
+    windows_amd64/wcl_ffi.lib
 ```
 
-The output lands in `target/release/libwcl_ffi.a` (Linux/macOS) or `target/release/wcl_ffi.lib` (Windows). The header is at `crates/wcl_ffi/wcl.h`.
+### CMake
 
-Cross-compilation for all platforms:
-
-```bash
-just build ffi-all
-```
-
-## Integration with CMake
-
-A `CMakeLists.txt` is provided in `crates/wcl_ffi/`. It creates an imported `wcl::wcl` target that handles the include path and platform link dependencies automatically.
-
-### As a subdirectory
+Add the extracted directory as a subdirectory in your project:
 
 ```cmake
-# CMakeLists.txt
 cmake_minimum_required(VERSION 3.14)
 project(myapp LANGUAGES C)
 
-# Point to the wcl_ffi crate directory
-add_subdirectory(path/to/wcl/crates/wcl_ffi)
+add_subdirectory(path/to/wcl-ffi)
 
 add_executable(myapp main.c)
 target_link_libraries(myapp PRIVATE wcl::wcl)
 ```
 
-By default, the CMake file searches for the prebuilt library in these locations (in order):
+The `wcl::wcl` target automatically handles the include path, selects the correct library for your platform, and links the required system dependencies.
 
-1. `crates/wcl_ffi/lib/<platform>/` (if you copy it there)
-2. `bindings/zig/lib/<platform>/` (shared with the Zig binding)
-3. `target/release/` (default `cargo build` output)
-
-### Overriding the library path
-
-If you've placed the library elsewhere, pass `-DWCL_LIB_DIR`:
+Build:
 
 ```bash
-cmake -B build -DWCL_LIB_DIR=/path/to/dir/containing/libwcl_ffi.a
+cmake -B build
 cmake --build build
 ```
 
-### With FetchContent
+### Without CMake (Linux)
 
-```cmake
-include(FetchContent)
-FetchContent_Declare(wcl
-    GIT_REPOSITORY https://github.com/wiltaylor/wcl.git
-    GIT_TAG        main
-    SOURCE_SUBDIR  crates/wcl_ffi
-)
-FetchContent_MakeAvailable(wcl)
-
-target_link_libraries(myapp PRIVATE wcl::wcl)
-```
-
-> **Note:** You must build the static library first (`cargo build -p wcl_ffi --release`) before running CMake, since CMake only consumes the prebuilt artifact.
-
-## Manual Integration (without CMake)
-
-### Compiler flags
-
-**GCC / Clang (Linux):**
 ```bash
-gcc -o myapp main.c -I/path/to/wcl/crates/wcl_ffi -L/path/to/target/release \
+gcc -o myapp main.c \
+    -Ipath/to/wcl-ffi/include \
+    -Lpath/to/wcl-ffi/lib/linux_amd64 \
     -lwcl_ffi -lm -ldl -lpthread
 ```
 
-**GCC / Clang (macOS):**
+### Without CMake (macOS)
+
 ```bash
-gcc -o myapp main.c -I/path/to/wcl/crates/wcl_ffi -L/path/to/target/release \
+gcc -o myapp main.c \
+    -Ipath/to/wcl-ffi/include \
+    -Lpath/to/wcl-ffi/lib/darwin_arm64 \
     -lwcl_ffi -lm -ldl -lpthread -framework Security
 ```
 
-**MSVC (Windows):**
+### Without CMake (Windows / MSVC)
+
 ```bash
-cl /Fe:myapp.exe main.c /I path\to\wcl\crates\wcl_ffi \
-    path\to\target\release\wcl_ffi.lib ws2_32.lib bcrypt.lib userenv.lib
+cl /Fe:myapp.exe main.c \
+    /I path\to\wcl-ffi\include \
+    path\to\wcl-ffi\lib\windows_amd64\wcl_ffi.lib \
+    ws2_32.lib bcrypt.lib userenv.lib
 ```
 
-### Header
+## Building from Source
 
-Copy `crates/wcl_ffi/wcl.h` into your project's include path, or pass `-I` to the compiler as shown above.
+If you need to build the library yourself (requires a Rust toolchain):
+
+```bash
+# Native platform only
+cargo build -p wcl_ffi --release
+# Output: target/release/libwcl_ffi.a (or .lib on Windows)
+
+# All platforms (requires cargo-zigbuild + zig)
+just build ffi-all
+
+# Package into an archive
+just pack ffi
+```
+
+When building from the source tree, the CMake file also searches `target/release/` for the library, so you can use `add_subdirectory` directly on `crates/wcl_ffi/`:
+
+```cmake
+add_subdirectory(path/to/wcl/crates/wcl_ffi)
+target_link_libraries(myapp PRIVATE wcl::wcl)
+```
+
+You can override the library location with `-DWCL_LIB_DIR`:
+
+```bash
+cmake -B build -DWCL_LIB_DIR=/custom/path
+```
 
 ## C API Reference
 
-All functions use null-terminated C strings. Strings returned by `wcl_ffi_*` functions are heap-allocated and must be freed with `wcl_ffi_string_free()`. Documents must be freed with `wcl_ffi_document_free()`.
+All functions use null-terminated C strings. Strings returned by `wcl_ffi_*` functions are heap-allocated and **must** be freed with `wcl_ffi_string_free()`. Documents **must** be freed with `wcl_ffi_document_free()`.
 
 ```c
 #include "wcl.h"
@@ -178,11 +188,10 @@ char *wcl_ffi_last_error(void);
 char *wcl_ffi_list_libraries(void);
 ```
 
-## Parsing a WCL String (C)
+## Parsing a WCL String
 
 ```c
 #include <stdio.h>
-#include <stdlib.h>
 #include "wcl.h"
 
 int main(void) {
@@ -209,7 +218,7 @@ int main(void) {
 }
 ```
 
-## Parsing a WCL File (C)
+## Parsing a WCL File
 
 ```c
 #include <stdio.h>
@@ -233,7 +242,7 @@ int main(void) {
 }
 ```
 
-## Running Queries (C)
+## Running Queries
 
 ```c
 WclDocument *doc = wcl_ffi_parse(
@@ -249,7 +258,7 @@ wcl_ffi_string_free(result);
 wcl_ffi_document_free(doc);
 ```
 
-## Working with Blocks (C)
+## Working with Blocks
 
 ```c
 WclDocument *doc = wcl_ffi_parse(
@@ -271,7 +280,7 @@ wcl_ffi_string_free(servers);
 wcl_ffi_document_free(doc);
 ```
 
-## Custom Functions (C)
+## Custom Functions
 
 ```c
 #include <stdio.h>
@@ -357,7 +366,7 @@ wcl_ffi_document_free(doc);
 
 ## C++ Usage
 
-The header is C-compatible and works directly from C++. Wrap it with `extern "C"` if your build system doesn't handle this automatically:
+The header is plain C and works directly from C++:
 
 ```cpp
 extern "C" {
@@ -365,61 +374,9 @@ extern "C" {
 }
 ```
 
-For convenience, use RAII wrappers:
+All the examples above work identically in C++. The CMake target and compiler flags are the same — just compile your `.cpp` files instead of `.c`.
 
-```cpp
-#include <memory>
-#include <string>
-#include <stdexcept>
-
-extern "C" {
-#include "wcl.h"
-}
-
-// RAII wrapper for WCL strings
-struct WclStringDeleter {
-    void operator()(char *s) const { wcl_ffi_string_free(s); }
-};
-using WclString = std::unique_ptr<char, WclStringDeleter>;
-
-// RAII wrapper for WCL documents
-struct WclDocDeleter {
-    void operator()(WclDocument *d) const { wcl_ffi_document_free(d); }
-};
-using WclDoc = std::unique_ptr<WclDocument, WclDocDeleter>;
-
-int main() {
-    WclDoc doc(wcl_ffi_parse(
-        "server web-prod {\n"
-        "    host = \"0.0.0.0\"\n"
-        "    port = 8080\n"
-        "}\n",
-        nullptr
-    ));
-
-    if (wcl_ffi_document_has_errors(doc.get())) {
-        WclString errors(wcl_ffi_document_errors(doc.get()));
-        fprintf(stderr, "Errors: %s\n", errors.get());
-        return 1;
-    }
-
-    // Values as JSON string — parse with your preferred JSON library
-    WclString values(wcl_ffi_document_values(doc.get()));
-    printf("Values: %s\n", values.get());
-
-    // Query
-    WclString ports(wcl_ffi_document_query(doc.get(), "server | .port"));
-    printf("Ports: %s\n", ports.get());
-
-    // Blocks
-    WclString servers(wcl_ffi_document_blocks_of_type(doc.get(), "server"));
-    printf("Servers: %s\n", servers.get());
-
-    return 0;
-}
-```
-
-## Complete C Example
+## Complete Example
 
 ```c
 #include <stdio.h>
@@ -477,21 +434,3 @@ int main(void) {
     return 0;
 }
 ```
-
-## Building from Source
-
-```bash
-# Build the static library (native platform)
-cargo build -p wcl_ffi --release
-
-# The library is at target/release/libwcl_ffi.a (or .lib on Windows)
-# The header is at crates/wcl_ffi/wcl.h
-
-# Build for all platforms (requires cargo-zigbuild)
-just build ffi-all
-
-# Or via just for native only
-just build ffi-native
-```
-
-Prebuilt libraries are provided for Linux (x86_64, aarch64), macOS (x86_64, aarch64), and Windows (x86_64).
