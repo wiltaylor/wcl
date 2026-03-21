@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "pywcl"
-version = "0.0.0.local"
+version = "0.0.0-dev.0"
 requires-python = ">=3.9"
 
 [tool.maturin]

@@ -89,13 +89,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: wasm32-wasip1
       - uses: taiki-e/install-action@just
       - uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: '9.0.x'
+          dotnet-version: '10.0.x'
+          dotnet-quality: 'preview'
       - uses: Swatinem/rust-cache@v2
       - run: |
-          just build dotnet-native
+          just build dotnet-wasm
           dotnet test bindings/dotnet/Wcl.sln --logger "junit;LogFilePath=${{ github.workspace }}/test-results/dotnet.xml"
       - uses: mikepenz/action-junit-report@v6
         if: always()
@@ -136,12 +138,14 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: wasm32-wasip1
       - uses: taiki-e/install-action@just
       - uses: taiki-e/install-action@wasm-pack
       - uses: astral-sh/setup-uv@v7
       - uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: '9.0.x'
+          dotnet-version: '10.0.x'
+          dotnet-quality: 'preview'
       - uses: actions/setup-go@v6
         with:
           go-version: 'stable'

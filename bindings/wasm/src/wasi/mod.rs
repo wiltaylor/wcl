@@ -76,10 +76,7 @@ fn build_parse_options(options_json: *const c_char) -> wcl::ParseOptions {
 // ── Document lifecycle ───────────────────────────────────────────────────
 
 #[no_mangle]
-pub extern "C" fn wcl_wasm_parse(
-    source: *const c_char,
-    options_json: *const c_char,
-) -> u32 {
+pub extern "C" fn wcl_wasm_parse(source: *const c_char, options_json: *const c_char) -> u32 {
     let source = unsafe { read_c_str(source) };
     let opts = build_parse_options(options_json);
     let doc = wcl::parse(source, opts);

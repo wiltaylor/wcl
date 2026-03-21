@@ -34,8 +34,7 @@ pub fn make_builtin_fn(name: String) -> wcl::BuiltinFn {
 
         if rc != 0 {
             let error = if !result_ptr.is_null() && result_len > 0 {
-                let bytes =
-                    unsafe { std::slice::from_raw_parts(result_ptr, result_len as usize) };
+                let bytes = unsafe { std::slice::from_raw_parts(result_ptr, result_len as usize) };
                 let msg = String::from_utf8_lossy(bytes).to_string();
                 unsafe {
                     super::wcl_wasm_dealloc(result_ptr, result_len);
