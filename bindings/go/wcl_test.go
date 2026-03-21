@@ -217,6 +217,81 @@ func TestDocumentClose(t *testing.T) {
 	}
 }
 
+func TestVariablesBasic(t *testing.T) {
+	doc, err := Parse("port = PORT", &ParseOptions{
+		Variables: map[string]any{"PORT": 8080},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer doc.Close()
+
+	if doc.HasErrors() {
+		errs, _ := doc.Errors()
+		t.Fatalf("unexpected errors: %v", errs)
+	}
+
+	values, err := doc.Values()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if values["port"].(float64) != 8080 {
+		t.Errorf("port = %v, want 8080", values["port"])
+	}
+}
+
+func TestVariablesOverrideLet(t *testing.T) {
+	doc, err := Parse("let x = 2\nresult = x", &ParseOptions{
+		Variables: map[string]any{"x": 99},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer doc.Close()
+
+	if doc.HasErrors() {
+		errs, _ := doc.Errors()
+		t.Fatalf("unexpected errors: %v", errs)
+	}
+
+	values, err := doc.Values()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if values["result"].(float64) != 99 {
+		t.Errorf("result = %v, want 99", values["result"])
+	}
+}
+
+func TestVariablesTypes(t *testing.T) {
+	doc, err := Parse("vs = s\nvi = i\nvb = b", &ParseOptions{
+		Variables: map[string]any{"s": "hello", "i": 42, "b": true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer doc.Close()
+
+	if doc.HasErrors() {
+		errs, _ := doc.Errors()
+		t.Fatalf("unexpected errors: %v", errs)
+	}
+
+	values, err := doc.Values()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if values["vs"].(string) != "hello" {
+		t.Errorf("vs = %v, want hello", values["vs"])
+	}
+	if values["vi"].(float64) != 42 {
+		t.Errorf("vi = %v, want 42", values["vi"])
+	}
+	if values["vb"].(bool) != true {
+		t.Errorf("vb = %v, want true", values["vb"])
+	}
+}
+
 func TestConcurrentAccess(t *testing.T) {
 	doc, err := Parse("x = 42\ny = \"hello\"", nil)
 	if err != nil {

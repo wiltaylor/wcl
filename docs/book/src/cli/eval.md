@@ -13,6 +13,7 @@ wcl eval <file> [options]
 | Flag | Description |
 |------|-------------|
 | `--format <fmt>` | Output format: `json`, `yaml`, or `toml` (default: `json`) |
+| `--var KEY=VALUE` | Set an external variable (may be repeated) |
 
 ## Description
 
@@ -38,6 +39,12 @@ Evaluate and print as TOML:
 
 ```bash
 wcl eval config.wcl --format toml
+```
+
+Override variables:
+
+```bash
+wcl eval --var PORT=8080 --var DEBUG=true config.wcl
 ```
 
 Pipe output to another tool:

@@ -14,6 +14,7 @@ wcl validate <file> [options]
 |------|-------------|
 | `--strict` | Treat warnings as errors |
 | `--schema <file>` | Load an additional external schema file |
+| `--var KEY=VALUE` | Set an external variable (may be repeated) |
 
 ## Description
 
@@ -59,6 +60,12 @@ Validate against an external schema:
 
 ```bash
 wcl validate --schema schemas/service.wcl config.wcl
+```
+
+Validate with external variables:
+
+```bash
+wcl validate --var PORT=8080 config.wcl
 ```
 
 ## Diagnostic Output
