@@ -1,0 +1,38 @@
+// ═══════════════════════════════════════════════════════════════════════════════
+// Project overview & constitution
+// ═══════════════════════════════════════════════════════════════════════════════
+
+@doc("High-level project overview with goals and non-goals.")
+@children(["goal", "non_goal"])
+@parent(["_root"])
+schema "project_overview" {
+    overview: string @optional @doc("High-level project description.")
+}
+
+@doc("A project goal to achieve.")
+@children([])
+@parent(["project_overview"])
+schema "goal" {
+    description: string @optional
+}
+
+@doc("An explicit non-goal the project will not pursue.")
+@children([])
+@parent(["project_overview"])
+schema "non_goal" {
+    description: string @optional
+}
+
+@doc("Inviolable rules and principles for the project.")
+@children(["rule"])
+@parent(["_root"])
+schema "constitution" {
+    description: string @optional
+}
+
+@doc("An inviolable rule or principle.")
+@children([])
+@parent(["constitution", "commit_convention"])
+schema "rule" {
+    description: string @optional
+}

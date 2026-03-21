@@ -1,0 +1,77 @@
+// ── gRPC ────────────────────────────────────────────────────────────────────
+
+@doc("A gRPC service definition.")
+@children(["rpc_method", "behaviour", "constraint"])
+@parent(["api"])
+schema "rpc_service" {
+    description: string @optional
+}
+
+@doc("A gRPC method within a service.")
+@children(["behaviour", "constraint"])
+@parent(["rpc_service"])
+schema "rpc_method" {
+    request_type:     string @doc("Request message type.")
+    response_type:    string @doc("Response message type.")
+    client_streaming: bool   @optional @default(false)
+    server_streaming: bool   @optional @default(false)
+    description:      string @optional
+}
+
+// ── SOAP ────────────────────────────────────────────────────────────────────
+
+@doc("A SOAP web service.")
+@children(["soap_operation", "behaviour", "constraint"])
+@parent(["api"])
+schema "soap_service" {
+    namespace:   string @optional @doc("SOAP namespace URI.")
+    wsdl_path:   string @optional @doc("Path to WSDL file.")
+    description: string @optional
+}
+
+@doc("A SOAP operation.")
+@children(["behaviour", "constraint"])
+@parent(["soap_service"])
+schema "soap_operation" {
+    soap_action:    string @optional
+    input_message:  string @optional
+    output_message: string @optional
+    style:          string @optional @doc("SOAP style (document, rpc).")
+    description:    string @optional
+}
+
+// ── JSON-RPC ────────────────────────────────────────────────────────────────
+
+@doc("A JSON-RPC namespace grouping.")
+@children(["rpc_call", "behaviour", "constraint"])
+@parent(["api"])
+schema "rpc_namespace" {
+    description: string @optional
+}
+
+@doc("A JSON-RPC method.")
+@children(["api_field", "behaviour", "constraint"])
+@parent(["rpc_namespace"])
+schema "rpc_call" {
+    description: string @optional
+}
+
+// ── OData ───────────────────────────────────────────────────────────────────
+
+@doc("An OData entity set.")
+@children(["api_field", "navigation_property", "behaviour", "constraint"])
+@parent(["api"])
+schema "odata_entity" {
+    entity_type: string @optional @doc("OData entity type.")
+    path:        string @optional @doc("Entity set path.")
+    description: string @optional
+}
+
+@doc("An OData navigation property.")
+@children([])
+@parent(["odata_entity"])
+schema "navigation_property" {
+    target:       string @doc("Target entity set.")
+    multiplicity: string @optional @doc("Multiplicity (0..1, 1, *).")
+    description:  string @optional
+}

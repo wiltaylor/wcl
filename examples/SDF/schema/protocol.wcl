@@ -1,0 +1,96 @@
+// ═══════════════════════════════════════════════════════════════════════════════
+// Protocol
+// ═══════════════════════════════════════════════════════════════════════════════
+
+@doc("A network protocol definition.")
+@children([
+    "message", "sdf_enum", "endpoint", "error_code",
+    "protocol_flow", "header", "behaviour", "constraint"
+])
+@parent(["system", "component"])
+schema "protocol" {
+    format:      string @doc("Encoding format (binary, json, xml, protobuf, msgpack, text).")
+    transport:   string @doc("Transport layer (tcp, udp, websocket, http, unix-socket).")
+    version:     string @optional
+    description: string @optional
+}
+
+@doc("A named message, packet, or frame in a protocol.")
+@children(["message_field", "behaviour", "constraint", "test_hint", "test_exclusion", "config_ref"])
+@parent(["protocol"])
+schema "message" {
+    direction:   string @doc("Message direction (request, response, notification, bidirectional).")
+    description: string @optional
+}
+
+@doc("A field within a protocol message.")
+@children(["message_field", "behaviour", "constraint"])
+@parent(["message", "header", "message_field"])
+schema "message_field" {
+    field_type:  string @doc("Logical type of the field.")
+    position:    string @optional @doc("Byte offset or field order.")
+    size:        string @optional @doc("Bit or byte width.")
+    encoding:    string @optional @doc("Encoding (base64, hex, utf-8).")
+    required:    bool   @optional
+    default:     string @optional
+    description: string @optional
+}
+
+@doc("A named enumeration in a protocol.")
+@children(["enum_value", "behaviour", "constraint"])
+@parent(["protocol"])
+schema "sdf_enum" {
+    underlying_type: string @doc("Underlying numeric type.")
+    description:     string @optional
+}
+
+@doc("A named value within a protocol enumeration.")
+@children(["behaviour", "constraint"])
+@parent(["sdf_enum"])
+schema "enum_value" {
+    value:       string @doc("Numeric value.")
+    description: string @optional
+}
+
+@doc("A named endpoint or operation in a protocol.")
+@children(["behaviour", "constraint"])
+@parent(["protocol"])
+schema "endpoint" {
+    method:       string @optional
+    path:         string @optional
+    request_ref:  string @optional @doc("Reference to request message.")
+    response_ref: string @optional @doc("Reference to response message.")
+    description:  string @optional
+}
+
+@doc("A protocol-level error code.")
+@children(["behaviour", "constraint"])
+@parent(["protocol"])
+schema "error_code" {
+    code:        string @doc("Numeric or symbolic error code.")
+    description: string @optional
+}
+
+@doc("A sequence of message exchanges in a protocol flow.")
+@children(["flow_step", "behaviour", "constraint"])
+@parent(["protocol"])
+schema "protocol_flow" {
+    description: string @optional
+}
+
+@doc("A single step in a protocol flow.")
+@children(["behaviour", "constraint"])
+@parent(["protocol_flow"])
+schema "flow_step" {
+    message_ref: string @doc("Reference to a Message.")
+    direction:   string @doc("Direction of this step.")
+    condition:   string @optional @doc("Guard condition.")
+    description: string @optional
+}
+
+@doc("A protocol-level header or framing structure.")
+@children(["message_field", "behaviour", "constraint"])
+@parent(["protocol"])
+schema "header" {
+    description: string @optional
+}

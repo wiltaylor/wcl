@@ -1,0 +1,193 @@
+// ═══════════════════════════════════════════════════════════════════════════════
+// Repository & Infrastructure
+// ═══════════════════════════════════════════════════════════════════════════════
+
+@doc("A source code repository.")
+@children([
+    "branching_strategy", "commit_convention", "pr_workflow",
+    "system_ref", "submodule", "remote", "issue_labels",
+    "infrastructure", "ignore", "documentation"
+])
+@parent(["_root"])
+schema "repository" {
+    type:        string @optional @doc("VCS type (git, svn, mercurial).")
+    visibility:  string @optional @doc("Repository visibility (public, private, internal).")
+    description: string @optional
+}
+
+@doc("Git branching strategy configuration.")
+@children([])
+@parent(["repository"])
+schema "branching_strategy" {
+    main_branch:            string @optional @default("main")
+    develop_branch:         string @optional
+    release_branch_pattern: string @optional
+    feature_branch_pattern: string @optional
+    hotfix_branch_pattern:  string @optional
+    description:            string @optional
+}
+
+@doc("Commit message convention.")
+@children(["rule", "example"])
+@parent(["repository"])
+schema "commit_convention" {
+    format:      string @optional @doc("Commit message format string.")
+    description: string @optional
+}
+
+@doc("An example within a convention.")
+@children([])
+@parent(["commit_convention"])
+schema "example" {
+    commit_message: string @optional
+    body:           string @optional
+    footer:         string @optional
+}
+
+@doc("Pull request conventions for a repository.")
+@children([])
+@parent(["repository"])
+schema "pr_workflow" {
+    title_format:   string @optional
+    merge_strategy: string @optional @doc("Merge strategy (merge, squash, rebase).")
+    description:    string @optional
+}
+
+@doc("Maps GitHub issue labels to SDF change types.")
+@children(["issue_label"])
+@parent(["repository"])
+schema "issue_labels" {}
+
+@doc("A single issue label mapping.")
+@children([])
+@parent(["issue_labels"])
+schema "issue_label" {
+    change_type: string @doc("SDF change type this label maps to.")
+}
+
+@doc("A reference to a system or module's location within a repository.")
+@children([])
+@parent(["repository"])
+schema "system_ref" {
+    path: string @optional @doc("Path within the repository.")
+}
+
+@doc("A git submodule reference.")
+@children([])
+@parent(["repository"])
+schema "submodule" {
+    repository: string @optional @doc("Submodule repository name.")
+    url:        string @optional @doc("Submodule URL.")
+    path:       string @doc("Path in the parent repo.")
+    branch:     string @optional
+}
+
+@doc("A remote hosting location for a repository.")
+@children([])
+@parent(["repository"])
+schema "remote" {
+    url:         string @doc("Remote URL.")
+    description: string @optional
+}
+
+@doc("Declares files and directories to exclude from version control.")
+@children(["ignore_category", "ignore_path"])
+@parent(["repository"])
+schema "ignore" {}
+
+@doc("A high-level category of files to ignore.")
+@children([])
+@parent(["ignore"])
+schema "ignore_category" {
+    description: string @optional
+}
+
+@doc("An explicit file path or glob pattern to exclude.")
+@children([])
+@parent(["ignore"])
+schema "ignore_path" {
+    description: string @optional
+}
+
+@doc("Groups infrastructure-as-code concerns for a repository.")
+@children(["task_runner", "pipeline", "behaviour", "constraint"])
+@parent(["repository"])
+schema "infrastructure" {}
+
+@doc("A task runner file and its public recipes.")
+@children(["recipe", "behaviour", "constraint"])
+@parent(["infrastructure"])
+schema "task_runner" {
+    runner_tool: string @doc("Task runner tool (just, make, npm, etc.).")
+    path:        string @optional @doc("Path to the task runner file.")
+    description: string @optional
+}
+
+@doc("A public recipe or task exposed by a task runner.")
+@children(["behaviour", "constraint"])
+@parent(["task_runner"])
+schema "recipe" {
+    parameters:  string @optional @doc("Recipe parameters.")
+    description: string @optional
+}
+
+@doc("A CI/CD pipeline workflow.")
+@children(["job", "behaviour", "constraint"])
+@parent(["infrastructure"])
+schema "pipeline" {
+    platform:    string @doc("CI platform (github-actions, gitlab-ci, jenkins, etc.).")
+    path:        string @optional @doc("Path to the pipeline file.")
+    triggers:    string @optional @doc("Events that trigger the pipeline.")
+    description: string @optional
+}
+
+@doc("A job within a CI/CD pipeline.")
+@children(["behaviour", "constraint"])
+@parent(["pipeline"])
+schema "job" {
+    runs_on:     string @optional @doc("Runner environment.")
+    description: string @optional
+}
+
+// ── Documentation ───────────────────────────────────────────────────────────
+
+@doc("A documentation set within a repository.")
+@children(["doc_file", "doc_folder"])
+@parent(["repository"])
+schema "documentation" {
+    path:        string @optional @doc("Root path of the documentation.")
+    format:      string @optional @doc("Documentation format (mdbook, docusaurus, sphinx, etc.).")
+    description: string @optional
+}
+
+@doc("A documentation file.")
+@children(["doc_section", "doc_asset"])
+@parent(["documentation", "doc_folder"])
+schema "doc_file" {
+    description: string @optional
+}
+
+@doc("A named section within a documentation file.")
+@children([])
+@parent(["doc_file"])
+schema "doc_section" {
+    content:     string @optional @doc("Section content or summary.")
+    description: string @optional
+}
+
+@doc("A binary asset referenced by a documentation file.")
+@children([])
+@parent(["doc_file"])
+schema "doc_asset" {
+    source:      string @doc("Source file path.")
+    path:        string @doc("Destination path in the doc output.")
+    description: string @optional
+}
+
+@doc("A directory within a documentation set.")
+@children(["doc_file", "doc_folder"])
+@parent(["documentation", "doc_folder"])
+schema "doc_folder" {
+    path:        string @optional @doc("Directory path.")
+    description: string @optional
+}

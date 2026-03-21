@@ -1,0 +1,12 @@
+// ═══════════════════════════════════════════════════════════════════════════════
+// Testing
+// ═══════════════════════════════════════════════════════════════════════════════
+
+@doc("Testing strategy and framework configuration for a system or component.")
+@children(["behaviour", "constraint"])
+@parent(["system", "component"])
+schema "test" {
+    framework:   string @optional @doc("Test framework (jest, pytest, cargo-test, etc.).")
+    strategy:    string @optional @doc("Testing strategy (unit, integration, e2e, property).")
+    description: string @optional
+}
