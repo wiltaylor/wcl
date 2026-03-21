@@ -24,6 +24,7 @@ pub enum ScopeEntryKind {
     ExportLet,
     Attribute,
     BlockChild,
+    TableEntry,
     IteratorVar,
 }
 

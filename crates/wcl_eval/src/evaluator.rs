@@ -253,6 +253,59 @@ impl Evaluator {
                 );
                 self.register_block_body(&block.body, child_scope);
             }
+            BodyItem::Table(table) => {
+                let name = table
+                    .inline_id
+                    .as_ref()
+                    .map(|id| match id {
+                        InlineId::Literal(lit) => lit.value.clone(),
+                        InlineId::Interpolated(_) => "?interpolated?".to_string(),
+                    })
+                    .unwrap_or_else(|| "__table".to_string());
+                // Check for name collision with existing non-table entries
+                if self.scopes.get(scope_id).entries.contains_key(&name) {
+                    let existing = &self.scopes.get(scope_id).entries[&name];
+                    if existing.kind != ScopeEntryKind::TableEntry {
+                        self.diagnostics.error_with_code(
+                            format!(
+                                "table '{}' conflicts with an existing {} of the same name",
+                                name,
+                                match existing.kind {
+                                    ScopeEntryKind::Attribute => "attribute",
+                                    ScopeEntryKind::LetBinding => "let binding",
+                                    ScopeEntryKind::BlockChild => "block",
+                                    _ => "entry",
+                                }
+                            ),
+                            table.span,
+                            "E030",
+                        );
+                    }
+                }
+                let mut deps = HashSet::new();
+                // Collect deps from cell expressions
+                for row in &table.rows {
+                    for cell in &row.cells {
+                        deps.extend(self.find_dependencies(cell));
+                    }
+                }
+                // Collect deps from import_expr
+                if let Some(ref expr) = table.import_expr {
+                    deps.extend(self.find_dependencies(expr));
+                }
+                self.scopes.add_entry(
+                    scope_id,
+                    ScopeEntry {
+                        name,
+                        kind: ScopeEntryKind::TableEntry,
+                        value: None,
+                        span: table.span,
+                        dependencies: deps,
+                        evaluated: false,
+                        read_count: 0,
+                    },
+                );
+            }
             _ => {}
         }
     }
@@ -295,6 +348,25 @@ impl Evaluator {
                     // Recurse into nested block bodies
                     let nested = self.collect_block_external_deps(&block.body);
                     all_deps.extend(nested);
+                }
+                BodyItem::Table(table) => {
+                    let tname = table
+                        .inline_id
+                        .as_ref()
+                        .map(|id| match id {
+                            InlineId::Literal(lit) => lit.value.clone(),
+                            InlineId::Interpolated(_) => "?interpolated?".to_string(),
+                        })
+                        .unwrap_or_else(|| "__table".to_string());
+                    local_names.insert(tname);
+                    for row in &table.rows {
+                        for cell in &row.cells {
+                            all_deps.extend(self.find_dependencies(cell));
+                        }
+                    }
+                    if let Some(ref expr) = table.import_expr {
+                        all_deps.extend(self.find_dependencies(expr));
+                    }
                 }
                 _ => {}
             }
@@ -374,6 +446,28 @@ impl Evaluator {
                         if let Some((_, entry)) = self.scopes.resolve_mut(scope_id, name) {
                             entry.value = Some(Value::BlockRef(block_ref));
                             entry.evaluated = true;
+                        }
+                        return;
+                    }
+                }
+                DocItem::Body(BodyItem::Table(table)) => {
+                    let table_name = table
+                        .inline_id
+                        .as_ref()
+                        .map(|id| match id {
+                            InlineId::Literal(lit) => lit.value.clone(),
+                            InlineId::Interpolated(_) => "?interpolated?".to_string(),
+                        })
+                        .unwrap_or_else(|| "__table".to_string());
+                    if table_name == name {
+                        match self.eval_inline_table(table, scope_id) {
+                            Ok(v) => {
+                                if let Some((_, entry)) = self.scopes.resolve_mut(scope_id, name) {
+                                    entry.value = Some(v);
+                                    entry.evaluated = true;
+                                }
+                            }
+                            Err(diag) => self.diagnostics.add(diag),
                         }
                         return;
                     }
@@ -1345,7 +1439,9 @@ impl Evaluator {
 
             for (ename, ekind) in &entry_names {
                 match ekind {
-                    ScopeEntryKind::Attribute | ScopeEntryKind::ExportLet => {
+                    ScopeEntryKind::Attribute
+                    | ScopeEntryKind::ExportLet
+                    | ScopeEntryKind::TableEntry => {
                         if let Some((_, entry)) = self.scopes.resolve(child_scope, ename) {
                             if let Some(ref val) = entry.value {
                                 attributes.insert(ename.clone(), val.clone());
@@ -1431,6 +1527,36 @@ impl Evaluator {
     /// Evaluate all entries in a block scope (attributes, let-bindings, child blocks).
     /// Uses topo sort within the scope, then evaluates each entry by walking the
     /// block body items.
+    /// Evaluate an inline table into a `Value::List(Vec<Value::Map>)`.
+    ///
+    /// If the table has an `import_expr`, evaluate that expression directly.
+    /// Otherwise, build rows from the column declarations and row cells.
+    fn eval_inline_table(&mut self, table: &Table, scope_id: ScopeId) -> Result<Value, Diagnostic> {
+        // If the table uses import_table(...), evaluate the import expression
+        if let Some(ref expr) = table.import_expr {
+            return self.eval_expr(expr, scope_id);
+        }
+
+        // Build from inline columns + rows
+        let col_names: Vec<String> = table.columns.iter().map(|c| c.name.name.clone()).collect();
+
+        let mut rows = Vec::with_capacity(table.rows.len());
+        for row in &table.rows {
+            let mut map = IndexMap::new();
+            for (i, col_name) in col_names.iter().enumerate() {
+                if i < row.cells.len() {
+                    let val = self.eval_expr(&row.cells[i], scope_id)?;
+                    map.insert(col_name.clone(), val);
+                } else {
+                    map.insert(col_name.clone(), Value::Null);
+                }
+            }
+            rows.push(Value::Map(map));
+        }
+
+        Ok(Value::List(rows))
+    }
+
     fn evaluate_block_scope(&mut self, body: &[BodyItem], scope_id: ScopeId) {
         match self.scopes.topo_sort(scope_id) {
             Ok(order) => {
@@ -1497,6 +1623,28 @@ impl Evaluator {
                         return;
                     }
                 }
+                BodyItem::Table(table) => {
+                    let table_name = table
+                        .inline_id
+                        .as_ref()
+                        .map(|id| match id {
+                            InlineId::Literal(lit) => lit.value.clone(),
+                            InlineId::Interpolated(_) => "?interpolated?".to_string(),
+                        })
+                        .unwrap_or_else(|| "__table".to_string());
+                    if table_name == name {
+                        match self.eval_inline_table(table, scope_id) {
+                            Ok(v) => {
+                                if let Some((_, entry)) = self.scopes.resolve_mut(scope_id, name) {
+                                    entry.value = Some(v);
+                                    entry.evaluated = true;
+                                }
+                            }
+                            Err(diag) => self.diagnostics.add(diag),
+                        }
+                        return;
+                    }
+                }
                 _ => {}
             }
         }
@@ -1545,6 +1693,7 @@ impl Evaluator {
             if entry.kind == ScopeEntryKind::Attribute
                 || entry.kind == ScopeEntryKind::BlockChild
                 || entry.kind == ScopeEntryKind::ExportLet
+                || entry.kind == ScopeEntryKind::TableEntry
             {
                 if let Some(ref val) = entry.value {
                     result.insert(name.clone(), val.clone());

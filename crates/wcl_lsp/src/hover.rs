@@ -41,6 +41,7 @@ fn hover_ident_ref(analysis: &AnalysisResult, ident: &Ident, rope: &Rope) -> Opt
                 wcl_eval::ScopeEntryKind::ExportLet => "export let",
                 wcl_eval::ScopeEntryKind::Attribute => "attribute",
                 wcl_eval::ScopeEntryKind::BlockChild => "block",
+                wcl_eval::ScopeEntryKind::TableEntry => "table",
                 wcl_eval::ScopeEntryKind::IteratorVar => "iterator",
             };
             let content = format!("```wcl\n{} {} = {}\n```", kind, ident.name, value_str);

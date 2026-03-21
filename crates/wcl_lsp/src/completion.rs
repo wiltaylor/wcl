@@ -126,7 +126,8 @@ pub fn completions(analysis: &AnalysisResult, source: &str, offset: usize) -> Ve
                         wcl_eval::ScopeEntryKind::LetBinding
                         | wcl_eval::ScopeEntryKind::ExportLet
                         | wcl_eval::ScopeEntryKind::IteratorVar => CompletionItemKind::VARIABLE,
-                        wcl_eval::ScopeEntryKind::Attribute => CompletionItemKind::PROPERTY,
+                        wcl_eval::ScopeEntryKind::Attribute
+                        | wcl_eval::ScopeEntryKind::TableEntry => CompletionItemKind::PROPERTY,
                         wcl_eval::ScopeEntryKind::BlockChild => CompletionItemKind::CLASS,
                     }),
                     ..Default::default()
@@ -150,7 +151,8 @@ pub fn completions(analysis: &AnalysisResult, source: &str, offset: usize) -> Ve
                         wcl_eval::ScopeEntryKind::LetBinding
                         | wcl_eval::ScopeEntryKind::ExportLet
                         | wcl_eval::ScopeEntryKind::IteratorVar => CompletionItemKind::VARIABLE,
-                        wcl_eval::ScopeEntryKind::Attribute => CompletionItemKind::PROPERTY,
+                        wcl_eval::ScopeEntryKind::Attribute
+                        | wcl_eval::ScopeEntryKind::TableEntry => CompletionItemKind::PROPERTY,
                         wcl_eval::ScopeEntryKind::BlockChild => CompletionItemKind::CLASS,
                     }),
                     ..Default::default()

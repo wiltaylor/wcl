@@ -144,6 +144,28 @@ type BlockRef struct {
 }
 ```
 
+## Working with Tables
+
+Tables evaluate to a slice of row maps (`[]map[string]interface{}`). Each row is a map from column name to cell value:
+
+```go
+doc, _ := wcl.Parse(`
+    table users {
+        name : string
+        age  : int
+        | "alice" | 25 |
+        | "bob"   | 30 |
+    }
+`)
+
+users := doc.Values["users"].([]interface{})
+row0 := users[0].(map[string]interface{})
+fmt.Println(row0["name"]) // "alice"
+fmt.Println(row0["age"])  // 25
+```
+
+Tables inside blocks appear in the block's attributes map.
+
 ## Running Queries
 
 `Query()` accepts the same query syntax as the `wcl query` CLI command:

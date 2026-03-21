@@ -168,6 +168,28 @@ public class BlockRef
 }
 ```
 
+## Working with Tables
+
+Tables evaluate to a list of row dictionaries. Each row is a `Dictionary<string, object>` mapping column names to cell values:
+
+```csharp
+var doc = Wcl.Parse(@"
+    table users {
+        name : string
+        age  : int
+        | ""alice"" | 25 |
+        | ""bob""   | 30 |
+    }
+");
+
+var users = (List<object>)doc.Values["users"];
+var row0 = (Dictionary<string, object>)users[0];
+Console.WriteLine(row0["name"]); // "alice"
+Console.WriteLine(row0["age"]);  // 25
+```
+
+Tables inside blocks appear in the block's `Attributes` dictionary.
+
 ## Running Queries
 
 `Query()` accepts the same query syntax as the `wcl query` CLI command:

@@ -1672,4 +1672,577 @@ readme my-doc {
             .collect();
         assert_eq!(e094.len(), 1, "expected E094, got: {:?}", doc.diagnostics);
     }
+
+    #[test]
+    fn test_attr_macro_remove_child_block() {
+        let source = r#"
+macro @secure() {
+    remove [endpoint#debug]
+}
+
+@secure()
+service main {
+    port = 8080
+    endpoint health {
+        path = "/health"
+    }
+    endpoint debug {
+        path = "/debug"
+    }
+}
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        assert!(
+            doc.diagnostics.is_empty(),
+            "diagnostics: {:?}",
+            doc.diagnostics
+        );
+        let block_val = doc.values.get("main").expect("main block should exist");
+        if let Value::BlockRef(br) = block_val {
+            // health child should exist, debug should not
+            let child_ids: Vec<Option<&str>> =
+                br.children.iter().map(|c| c.id.as_deref()).collect();
+            assert!(
+                child_ids.contains(&Some("health")),
+                "health endpoint should exist"
+            );
+            assert!(
+                !child_ids.contains(&Some("debug")),
+                "debug endpoint should be removed"
+            );
+        } else {
+            panic!("expected BlockRef, got {:?}", block_val);
+        }
+    }
+
+    #[test]
+    fn test_attr_macro_update_child_block() {
+        let source = r#"
+macro @secure() {
+    update endpoint#health {
+        set {
+            tls = true
+        }
+    }
+}
+
+@secure()
+service main {
+    port = 8080
+    endpoint health {
+        path = "/health"
+    }
+}
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        assert!(
+            doc.diagnostics.is_empty(),
+            "diagnostics: {:?}",
+            doc.diagnostics
+        );
+        let block_val = doc.values.get("main").expect("main block should exist");
+        if let Value::BlockRef(br) = block_val {
+            let health = br
+                .children
+                .iter()
+                .find(|c| c.id.as_deref() == Some("health"))
+                .expect("health child should exist");
+            assert_eq!(
+                health.attributes.get("tls"),
+                Some(&Value::Bool(true)),
+                "tls should be set to true"
+            );
+            assert_eq!(
+                health.attributes.get("path"),
+                Some(&Value::String("/health".to_string())),
+                "path should be preserved"
+            );
+        } else {
+            panic!("expected BlockRef, got {:?}", block_val);
+        }
+    }
+
+    #[test]
+    fn test_attr_macro_table_row_ops() {
+        let source = r#"
+macro @filter() {
+    update table#users {
+        remove_rows where role == "guest"
+        inject_rows {
+            | "admin" | "admin" |
+        }
+    }
+}
+
+@filter()
+service main {
+    table users {
+        name : string
+        role : string
+        | "alice" | "admin" |
+        | "bob"   | "guest" |
+    }
+}
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        assert!(
+            doc.diagnostics.is_empty(),
+            "diagnostics: {:?}",
+            doc.diagnostics
+        );
+        let block_val = doc.values.get("main").expect("main block");
+        if let Value::BlockRef(br) = block_val {
+            let users = br
+                .attributes
+                .get("users")
+                .expect("users table should exist in attributes");
+            if let Value::List(rows) = users {
+                // bob/guest removed, admin/admin added → alice/admin + admin/admin
+                assert_eq!(rows.len(), 2, "expected 2 rows, got: {:?}", rows);
+                // First row: alice/admin
+                if let Value::Map(r) = &rows[0] {
+                    assert_eq!(r.get("name"), Some(&Value::String("alice".to_string())));
+                    assert_eq!(r.get("role"), Some(&Value::String("admin".to_string())));
+                }
+                // Second row: admin/admin
+                if let Value::Map(r) = &rows[1] {
+                    assert_eq!(r.get("name"), Some(&Value::String("admin".to_string())));
+                    assert_eq!(r.get("role"), Some(&Value::String("admin".to_string())));
+                }
+            } else {
+                panic!("expected List, got: {:?}", users);
+            }
+        } else {
+            panic!("expected BlockRef");
+        }
+    }
+
+    // ── Table evaluation tests ──────────────────────────────────────────
+
+    #[test]
+    fn test_inline_table_evaluates_to_list_of_maps() {
+        let source = r#"
+table users {
+    name : string
+    age : int
+    | "alice" | 25 |
+    | "bob"   | 30 |
+}
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        assert!(
+            doc.diagnostics.is_empty(),
+            "diagnostics: {:?}",
+            doc.diagnostics
+        );
+        let users = doc.values.get("users").expect("users table should exist");
+        if let Value::List(rows) = users {
+            assert_eq!(rows.len(), 2);
+            if let Value::Map(row0) = &rows[0] {
+                assert_eq!(row0.get("name"), Some(&Value::String("alice".to_string())));
+                assert_eq!(row0.get("age"), Some(&Value::Int(25)));
+            } else {
+                panic!("expected row as Map, got: {:?}", rows[0]);
+            }
+            if let Value::Map(row1) = &rows[1] {
+                assert_eq!(row1.get("name"), Some(&Value::String("bob".to_string())));
+                assert_eq!(row1.get("age"), Some(&Value::Int(30)));
+            } else {
+                panic!("expected row as Map, got: {:?}", rows[1]);
+            }
+        } else {
+            panic!("expected List, got: {:?}", users);
+        }
+    }
+
+    #[test]
+    fn test_inline_table_in_block_evaluates() {
+        let source = r#"
+service main {
+    port = 8080
+    table users {
+        name : string
+        role : string
+        | "alice" | "admin" |
+    }
+}
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        assert!(
+            doc.diagnostics.is_empty(),
+            "diagnostics: {:?}",
+            doc.diagnostics
+        );
+        let block_val = doc.values.get("main").expect("main block");
+        if let Value::BlockRef(br) = block_val {
+            let users = br
+                .attributes
+                .get("users")
+                .expect("users should be in attributes");
+            if let Value::List(rows) = users {
+                assert_eq!(rows.len(), 1);
+                if let Value::Map(row) = &rows[0] {
+                    assert_eq!(row.get("name"), Some(&Value::String("alice".to_string())));
+                    assert_eq!(row.get("role"), Some(&Value::String("admin".to_string())));
+                } else {
+                    panic!("expected Map");
+                }
+            } else {
+                panic!("expected List, got: {:?}", users);
+            }
+        } else {
+            panic!("expected BlockRef");
+        }
+    }
+
+    #[test]
+    fn test_inline_table_empty_rows() {
+        let source = r#"
+table empty {
+    name : string
+}
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        assert!(
+            doc.diagnostics.is_empty(),
+            "diagnostics: {:?}",
+            doc.diagnostics
+        );
+        let val = doc.values.get("empty").expect("empty table");
+        assert_eq!(val, &Value::List(vec![]));
+    }
+
+    #[test]
+    fn test_inline_table_with_expressions() {
+        let source = r#"
+let base = 100
+table config {
+    key : string
+    value : int
+    | "port" | base + 80 |
+    | "debug" | 0 |
+}
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        assert!(
+            doc.diagnostics.is_empty(),
+            "diagnostics: {:?}",
+            doc.diagnostics
+        );
+        let val = doc.values.get("config").expect("config table");
+        if let Value::List(rows) = val {
+            assert_eq!(rows.len(), 2);
+            if let Value::Map(row0) = &rows[0] {
+                assert_eq!(row0.get("value"), Some(&Value::Int(180)));
+            } else {
+                panic!("expected Map");
+            }
+        } else {
+            panic!("expected List");
+        }
+    }
+
+    #[test]
+    fn test_inline_table_bool_cells() {
+        let source = r#"
+table flags {
+    key    : string
+    active : bool
+    count  : int
+    | "a" | true  | 10 |
+    | "b" | false | 20 |
+}
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        assert!(
+            doc.diagnostics.is_empty(),
+            "diagnostics: {:?}",
+            doc.diagnostics
+        );
+        let val = doc.values.get("flags").expect("flags table");
+        if let Value::List(rows) = val {
+            assert_eq!(rows.len(), 2);
+            if let Value::Map(r0) = &rows[0] {
+                assert_eq!(r0.get("active"), Some(&Value::Bool(true)));
+                assert_eq!(r0.get("count"), Some(&Value::Int(10)));
+            }
+            if let Value::Map(r1) = &rows[1] {
+                assert_eq!(r1.get("active"), Some(&Value::Bool(false)));
+                assert_eq!(r1.get("count"), Some(&Value::Int(20)));
+            }
+        } else {
+            panic!("expected List");
+        }
+    }
+
+    #[test]
+    fn test_inline_table_multiple_tables_in_block() {
+        let source = r#"
+service main {
+    port = 8080
+    table users {
+        name : string
+        | "alice" |
+    }
+    table roles {
+        role : string
+        | "admin" |
+    }
+}
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        assert!(
+            doc.diagnostics.is_empty(),
+            "diagnostics: {:?}",
+            doc.diagnostics
+        );
+        let block_val = doc.values.get("main").expect("main block");
+        if let Value::BlockRef(br) = block_val {
+            assert!(br.attributes.contains_key("users"));
+            assert!(br.attributes.contains_key("roles"));
+            if let Value::List(users) = &br.attributes["users"] {
+                assert_eq!(users.len(), 1);
+            }
+            if let Value::List(roles) = &br.attributes["roles"] {
+                assert_eq!(roles.len(), 1);
+            }
+        } else {
+            panic!("expected BlockRef");
+        }
+    }
+
+    #[test]
+    fn test_inline_table_at_top_level() {
+        let source = r#"
+table config {
+    key   : string
+    value : string
+    | "host" | "localhost" |
+    | "port" | "8080"      |
+}
+name = "my-app"
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        assert!(
+            doc.diagnostics.is_empty(),
+            "diagnostics: {:?}",
+            doc.diagnostics
+        );
+        assert!(doc.values.contains_key("config"));
+        assert_eq!(
+            doc.values.get("name"),
+            Some(&Value::String("my-app".to_string()))
+        );
+        if let Value::List(rows) = doc.values.get("config").unwrap() {
+            assert_eq!(rows.len(), 2);
+        }
+    }
+
+    #[test]
+    fn test_inline_table_float_cells() {
+        let source = r#"
+table prices {
+    item  : string
+    price : float
+    | "apple"  | 1.50 |
+    | "banana" | 0.75 |
+}
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        assert!(
+            doc.diagnostics.is_empty(),
+            "diagnostics: {:?}",
+            doc.diagnostics
+        );
+        if let Value::List(rows) = doc.values.get("prices").unwrap() {
+            if let Value::Map(r0) = &rows[0] {
+                assert_eq!(r0.get("price"), Some(&Value::Float(1.50)));
+            }
+        }
+    }
+
+    #[test]
+    fn test_attr_macro_remove_all_tables() {
+        let source = r#"
+macro @no_tables() {
+    remove [table#*]
+}
+
+@no_tables()
+service main {
+    port = 8080
+    table users {
+        name : string
+        | "alice" |
+    }
+    table roles {
+        role : string
+        | "admin" |
+    }
+}
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        assert!(
+            doc.diagnostics.is_empty(),
+            "diagnostics: {:?}",
+            doc.diagnostics
+        );
+        let block_val = doc.values.get("main").expect("main block");
+        if let Value::BlockRef(br) = block_val {
+            assert!(!br.attributes.contains_key("users"));
+            assert!(!br.attributes.contains_key("roles"));
+            assert_eq!(br.attributes.get("port"), Some(&Value::Int(8080)));
+        } else {
+            panic!("expected BlockRef");
+        }
+    }
+
+    #[test]
+    fn test_attr_macro_update_table_clear_rows() {
+        let source = r#"
+macro @clear_data() {
+    update table#users {
+        clear_rows
+    }
+}
+
+@clear_data()
+service main {
+    table users {
+        name : string
+        | "alice" |
+        | "bob"   |
+    }
+}
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        assert!(
+            doc.diagnostics.is_empty(),
+            "diagnostics: {:?}",
+            doc.diagnostics
+        );
+        let block_val = doc.values.get("main").expect("main block");
+        if let Value::BlockRef(br) = block_val {
+            let users = br.attributes.get("users").expect("users table");
+            assert_eq!(users, &Value::List(vec![]));
+        } else {
+            panic!("expected BlockRef");
+        }
+    }
+
+    #[test]
+    fn test_attr_macro_combined_block_and_table_ops() {
+        let source = r#"
+macro @secure() {
+    remove [endpoint#debug]
+    update endpoint#health {
+        set { tls = true }
+    }
+    update table#users {
+        remove_rows where role == "guest"
+        inject_rows {
+            | "admin" | "admin" |
+        }
+    }
+}
+
+@secure()
+service main {
+    port = 8080
+    endpoint health { path = "/health" }
+    endpoint debug { path = "/debug" }
+    table users {
+        name : string
+        role : string
+        | "alice" | "admin" |
+        | "bob"   | "guest" |
+    }
+}
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        assert!(
+            doc.diagnostics.is_empty(),
+            "diagnostics: {:?}",
+            doc.diagnostics
+        );
+        let block_val = doc.values.get("main").expect("main block");
+        if let Value::BlockRef(br) = block_val {
+            // debug endpoint should be removed
+            assert!(
+                !br.children.iter().any(|c| c.id.as_deref() == Some("debug")),
+                "debug should be removed"
+            );
+            // health endpoint should have tls = true
+            let health = br
+                .children
+                .iter()
+                .find(|c| c.id.as_deref() == Some("health"))
+                .expect("health child");
+            assert_eq!(health.attributes.get("tls"), Some(&Value::Bool(true)));
+            // users table: bob removed, admin added
+            let users = br.attributes.get("users").expect("users table");
+            if let Value::List(rows) = users {
+                assert_eq!(rows.len(), 2);
+                // Should be alice/admin and admin/admin
+                if let Value::Map(r0) = &rows[0] {
+                    assert_eq!(r0.get("name"), Some(&Value::String("alice".to_string())));
+                }
+                if let Value::Map(r1) = &rows[1] {
+                    assert_eq!(r1.get("name"), Some(&Value::String("admin".to_string())));
+                }
+            }
+        } else {
+            panic!("expected BlockRef");
+        }
+    }
+
+    #[test]
+    fn test_table_name_collision_with_attribute() {
+        let source = r#"
+service main {
+    users = "something"
+    table users {
+        name : string
+        | "alice" |
+    }
+}
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        let e030: Vec<_> = doc
+            .diagnostics
+            .iter()
+            .filter(|d| d.code.as_deref() == Some("E030"))
+            .collect();
+        assert!(
+            !e030.is_empty(),
+            "expected E030 for table/attribute name collision, got: {:?}",
+            doc.diagnostics
+        );
+    }
+
+    #[test]
+    fn test_table_with_let_dependency() {
+        let source = r#"
+let prefix = "svc"
+
+table services {
+    name : string
+    port : int
+    | prefix + "-api"    | 8080 |
+    | prefix + "-admin"  | 9090 |
+}
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        assert!(
+            doc.diagnostics.is_empty(),
+            "diagnostics: {:?}",
+            doc.diagnostics
+        );
+        if let Value::List(rows) = doc.values.get("services").unwrap() {
+            assert_eq!(rows.len(), 2);
+            if let Value::Map(r0) = &rows[0] {
+                assert_eq!(r0.get("name"), Some(&Value::String("svc-api".to_string())));
+            }
+        }
+    }
 }

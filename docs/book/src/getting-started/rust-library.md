@@ -138,6 +138,45 @@ for block in &all_blocks {
 }
 ```
 
+## Working with Tables
+
+Tables evaluate to `Value::List(Vec<Value::Map>)` — a list of row maps where each row maps column names to cell values:
+
+```rust
+use wcl::{parse, ParseOptions};
+use wcl_eval::value::Value;
+
+let doc = parse(r#"
+    table users {
+        name : string
+        age  : int
+        | "alice" | 25 |
+        | "bob"   | 30 |
+    }
+"#, ParseOptions::default());
+
+if let Some(Value::List(rows)) = doc.values.get("users") {
+    for row in rows {
+        if let Value::Map(cols) = row {
+            println!("{}: {}", cols["name"], cols["age"]);
+        }
+    }
+}
+// Output:
+// alice: 25
+// bob: 30
+```
+
+Tables inside blocks appear in the `BlockRef.attributes` map:
+
+```rust
+if let Some(Value::BlockRef(br)) = doc.values.get("main") {
+    if let Some(Value::List(rows)) = br.attributes.get("users") {
+        println!("Table has {} rows", rows.len());
+    }
+}
+```
+
 ## Running Queries
 
 The `Document::query()` method accepts the same query syntax as the CLI:

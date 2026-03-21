@@ -408,16 +408,14 @@ impl<'a> MacroExpander<'a> {
                 true
             }
             TransformDirective::Remove(remove_block) => {
-                let names_to_remove: Vec<String> =
-                    remove_block.names.iter().map(|n| n.name.clone()).collect();
-                block.body.retain(|item| {
-                    if let BodyItem::Attribute(attr) = item {
-                        !names_to_remove.contains(&attr.name.name)
-                    } else {
-                        true
-                    }
-                });
-                true
+                let mut changed = false;
+                for target in &remove_block.targets {
+                    changed |= self.apply_remove_target(block, target);
+                }
+                changed
+            }
+            TransformDirective::Update(update_block) => {
+                self.apply_update(block, update_block, param_bindings)
             }
             TransformDirective::When(when_block) => {
                 match self.eval_when_condition(&when_block.condition, block, param_bindings) {
@@ -447,6 +445,296 @@ impl<'a> MacroExpander<'a> {
                     }
                 }
             }
+        }
+    }
+
+    /// Check if an InlineId matches a target string.
+    fn matches_inline_id(inline_id: &Option<InlineId>, target: &str) -> bool {
+        match inline_id {
+            Some(InlineId::Literal(lit)) => lit.value == target,
+            _ => false,
+        }
+    }
+
+    /// Apply a single remove target to a block's body.
+    fn apply_remove_target(&mut self, block: &mut Block, target: &RemoveTarget) -> bool {
+        match target {
+            RemoveTarget::Attr(ident) => {
+                let name = &ident.name;
+                let before = block.body.len();
+                block
+                    .body
+                    .retain(|item| !matches!(item, BodyItem::Attribute(a) if a.name.name == *name));
+                block.body.len() != before
+            }
+            RemoveTarget::Block(kind, id) => {
+                let kind_name = &kind.name;
+                let id_value = &id.value;
+                let before = block.body.len();
+                block.body.retain(|item| {
+                    if let BodyItem::Block(b) = item {
+                        !(b.kind.name == *kind_name
+                            && Self::matches_inline_id(&b.inline_id, id_value))
+                    } else {
+                        true
+                    }
+                });
+                block.body.len() != before
+            }
+            RemoveTarget::BlockAll(kind) => {
+                let kind_name = &kind.name;
+                let before = block.body.len();
+                block.body.retain(
+                    |item| !matches!(item, BodyItem::Block(b) if b.kind.name == *kind_name),
+                );
+                block.body.len() != before
+            }
+            RemoveTarget::BlockIndex(kind, n, _) => {
+                let kind_name = &kind.name;
+                let mut count = 0usize;
+                let mut idx_to_remove = None;
+                for (i, item) in block.body.iter().enumerate() {
+                    if let BodyItem::Block(b) = item {
+                        if b.kind.name == *kind_name {
+                            if count == *n {
+                                idx_to_remove = Some(i);
+                                break;
+                            }
+                            count += 1;
+                        }
+                    }
+                }
+                if let Some(idx) = idx_to_remove {
+                    block.body.remove(idx);
+                    true
+                } else {
+                    false
+                }
+            }
+            RemoveTarget::Table(id) => {
+                let id_value = &id.value;
+                let before = block.body.len();
+                block.body.retain(|item| {
+                    if let BodyItem::Table(t) = item {
+                        !Self::matches_inline_id(&t.inline_id, id_value)
+                    } else {
+                        true
+                    }
+                });
+                block.body.len() != before
+            }
+            RemoveTarget::AllTables(_) => {
+                let before = block.body.len();
+                block
+                    .body
+                    .retain(|item| !matches!(item, BodyItem::Table(_)));
+                block.body.len() != before
+            }
+            RemoveTarget::TableIndex(n, _) => {
+                let mut count = 0usize;
+                let mut idx_to_remove = None;
+                for (i, item) in block.body.iter().enumerate() {
+                    if matches!(item, BodyItem::Table(_)) {
+                        if count == *n {
+                            idx_to_remove = Some(i);
+                            break;
+                        }
+                        count += 1;
+                    }
+                }
+                if let Some(idx) = idx_to_remove {
+                    block.body.remove(idx);
+                    true
+                } else {
+                    false
+                }
+            }
+        }
+    }
+
+    /// Apply an update directive to a block.
+    fn apply_update(
+        &mut self,
+        block: &mut Block,
+        update: &UpdateBlock,
+        param_bindings: &HashMap<String, Expr>,
+    ) -> bool {
+        match &update.selector {
+            TargetSelector::BlockKind(kind) => {
+                let kind_name = kind.name.clone();
+                let mut changed = false;
+                for item in &mut block.body {
+                    if let BodyItem::Block(child) = item {
+                        if child.kind.name == kind_name {
+                            for d in &update.block_directives {
+                                changed |= self.apply_directive(child, d, param_bindings);
+                            }
+                        }
+                    }
+                }
+                changed
+            }
+            TargetSelector::BlockKindId(kind, id) => {
+                let kind_name = kind.name.clone();
+                let id_value = id.value.clone();
+                let mut changed = false;
+                for item in &mut block.body {
+                    if let BodyItem::Block(child) = item {
+                        if child.kind.name == kind_name
+                            && Self::matches_inline_id(&child.inline_id, &id_value)
+                        {
+                            for d in &update.block_directives {
+                                changed |= self.apply_directive(child, d, param_bindings);
+                            }
+                        }
+                    }
+                }
+                changed
+            }
+            TargetSelector::BlockIndex(kind, n, _) => {
+                let kind_name = kind.name.clone();
+                let mut count = 0usize;
+                let mut changed = false;
+                for item in &mut block.body {
+                    if let BodyItem::Block(child) = item {
+                        if child.kind.name == kind_name {
+                            if count == *n {
+                                for d in &update.block_directives {
+                                    changed |= self.apply_directive(child, d, param_bindings);
+                                }
+                                break;
+                            }
+                            count += 1;
+                        }
+                    }
+                }
+                changed
+            }
+            TargetSelector::TableId(id) => {
+                let id_value = id.value.clone();
+                let mut changed = false;
+                for item in &mut block.body {
+                    if let BodyItem::Table(table) = item {
+                        if Self::matches_inline_id(&table.inline_id, &id_value) {
+                            changed |= self.apply_table_directives(
+                                table,
+                                &update.table_directives,
+                                param_bindings,
+                            );
+                        }
+                    }
+                }
+                changed
+            }
+            TargetSelector::TableIndex(n, _) => {
+                let mut count = 0usize;
+                let mut changed = false;
+                for item in &mut block.body {
+                    if let BodyItem::Table(table) = item {
+                        if count == *n {
+                            changed |= self.apply_table_directives(
+                                table,
+                                &update.table_directives,
+                                param_bindings,
+                            );
+                            break;
+                        }
+                        count += 1;
+                    }
+                }
+                changed
+            }
+        }
+    }
+
+    /// Apply table directives to a table.
+    fn apply_table_directives(
+        &self,
+        table: &mut Table,
+        directives: &[TableDirective],
+        param_bindings: &HashMap<String, Expr>,
+    ) -> bool {
+        let mut changed = false;
+        for directive in directives {
+            match directive {
+                TableDirective::InjectRows(rows, _) => {
+                    table.rows.extend(rows.iter().cloned());
+                    changed = true;
+                }
+                TableDirective::ClearRows(_) => {
+                    if !table.rows.is_empty() {
+                        table.rows.clear();
+                        changed = true;
+                    }
+                }
+                TableDirective::RemoveRows { condition, .. } => {
+                    let before = table.rows.len();
+                    let columns = &table.columns;
+                    table.rows.retain(|row| {
+                        !self.eval_row_condition(condition, row, columns, param_bindings)
+                    });
+                    if table.rows.len() != before {
+                        changed = true;
+                    }
+                }
+                TableDirective::UpdateRows {
+                    condition, attrs, ..
+                } => {
+                    let columns = &table.columns;
+                    for row in &mut table.rows {
+                        if self.eval_row_condition(condition, row, columns, param_bindings) {
+                            // Apply set attrs by column index
+                            for (attr_name, attr_val) in attrs {
+                                if let Some(col_idx) =
+                                    columns.iter().position(|c| c.name.name == attr_name.name)
+                                {
+                                    if col_idx < row.cells.len() {
+                                        row.cells[col_idx] = attr_val.clone();
+                                        changed = true;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        changed
+    }
+
+    /// Evaluate a row condition by binding column names to cell values.
+    fn eval_row_condition(
+        &self,
+        condition: &Expr,
+        row: &TableRow,
+        columns: &[ColumnDecl],
+        param_bindings: &HashMap<String, Expr>,
+    ) -> bool {
+        // Build a temporary bindings map: column_name -> cell_expr
+        let mut row_bindings = param_bindings.clone();
+        for (i, col) in columns.iter().enumerate() {
+            if i < row.cells.len() {
+                row_bindings.insert(col.name.name.clone(), row.cells[i].clone());
+            }
+        }
+        // Create a dummy block for eval_when_condition
+        let dummy_block = Block {
+            decorators: vec![],
+            partial: false,
+            kind: Ident {
+                name: "_".to_string(),
+                span: Span::dummy(),
+            },
+            inline_id: None,
+            labels: vec![],
+            body: vec![],
+            text_content: None,
+            trivia: wcl_core::trivia::Trivia::empty(),
+            span: Span::dummy(),
+        };
+        match self.eval_when_condition(condition, &dummy_block, &row_bindings) {
+            Some(Value::Bool(b)) => b,
+            _ => false,
         }
     }
 
@@ -1971,5 +2259,646 @@ mod tests {
 
         let result = expander.bind_params(&params, &args, dummy_span());
         assert!(result.is_ok());
+    }
+
+    // ── Block/Table remove & update tests ────────────────────────────────
+
+    fn make_child_block(kind: &str, id: Option<&str>) -> BodyItem {
+        BodyItem::Block(Block {
+            decorators: vec![],
+            partial: false,
+            kind: make_ident(kind),
+            inline_id: id.map(|v| {
+                InlineId::Literal(IdentifierLit {
+                    value: v.to_string(),
+                    span: dummy_span(),
+                })
+            }),
+            labels: vec![],
+            body: vec![],
+            text_content: None,
+            trivia: Trivia::empty(),
+            span: dummy_span(),
+        })
+    }
+
+    fn make_table(id: Option<&str>, col_names: &[&str], rows: Vec<Vec<Expr>>) -> BodyItem {
+        BodyItem::Table(Table {
+            decorators: vec![],
+            partial: false,
+            inline_id: id.map(|v| {
+                InlineId::Literal(IdentifierLit {
+                    value: v.to_string(),
+                    span: dummy_span(),
+                })
+            }),
+            schema_ref: None,
+            columns: col_names
+                .iter()
+                .map(|n| ColumnDecl {
+                    decorators: vec![],
+                    name: make_ident(n),
+                    type_expr: TypeExpr::String(dummy_span()),
+                    trivia: Trivia::empty(),
+                    span: dummy_span(),
+                })
+                .collect(),
+            rows: rows
+                .into_iter()
+                .map(|cells| TableRow {
+                    cells,
+                    span: dummy_span(),
+                })
+                .collect(),
+            import_expr: None,
+            trivia: Trivia::empty(),
+            span: dummy_span(),
+        })
+    }
+
+    fn make_str_expr(s: &str) -> Expr {
+        Expr::StringLit(StringLit {
+            parts: vec![StringPart::Literal(s.to_string())],
+            span: dummy_span(),
+        })
+    }
+
+    fn make_block_with_children(children: Vec<BodyItem>) -> Block {
+        Block {
+            decorators: vec![],
+            partial: false,
+            kind: make_ident("service"),
+            inline_id: Some(InlineId::Literal(IdentifierLit {
+                value: "main".to_string(),
+                span: dummy_span(),
+            })),
+            labels: vec![],
+            body: children,
+            text_content: None,
+            trivia: Trivia::empty(),
+            span: dummy_span(),
+        }
+    }
+
+    #[test]
+    fn remove_block_by_kind_and_id() {
+        let registry = MacroRegistry::new();
+        let mut expander = MacroExpander::new(&registry, 10);
+        let param_bindings = HashMap::new();
+
+        let mut block = make_block_with_children(vec![
+            make_child_block("endpoint", Some("health")),
+            make_child_block("endpoint", Some("debug")),
+        ]);
+
+        let directive = TransformDirective::Remove(RemoveBlock {
+            targets: vec![RemoveTarget::Block(
+                make_ident("endpoint"),
+                IdentifierLit {
+                    value: "debug".to_string(),
+                    span: dummy_span(),
+                },
+            )],
+            span: dummy_span(),
+        });
+
+        expander.apply_directive(&mut block, &directive, &param_bindings);
+        assert_eq!(block.body.len(), 1);
+        if let BodyItem::Block(b) = &block.body[0] {
+            assert!(MacroExpander::matches_inline_id(&b.inline_id, "health"));
+        } else {
+            panic!("expected Block");
+        }
+    }
+
+    #[test]
+    fn remove_block_all_of_kind() {
+        let registry = MacroRegistry::new();
+        let mut expander = MacroExpander::new(&registry, 10);
+        let param_bindings = HashMap::new();
+
+        let mut block = make_block_with_children(vec![
+            make_child_block("endpoint", Some("health")),
+            make_child_block("endpoint", Some("debug")),
+            BodyItem::Attribute(Attribute {
+                decorators: vec![],
+                name: make_ident("port"),
+                value: Expr::IntLit(8080, dummy_span()),
+                trivia: Trivia::empty(),
+                span: dummy_span(),
+            }),
+        ]);
+
+        let directive = TransformDirective::Remove(RemoveBlock {
+            targets: vec![RemoveTarget::BlockAll(make_ident("endpoint"))],
+            span: dummy_span(),
+        });
+
+        expander.apply_directive(&mut block, &directive, &param_bindings);
+        assert_eq!(block.body.len(), 1);
+        assert!(matches!(&block.body[0], BodyItem::Attribute(a) if a.name.name == "port"));
+    }
+
+    #[test]
+    fn remove_table_by_id() {
+        let registry = MacroRegistry::new();
+        let mut expander = MacroExpander::new(&registry, 10);
+        let param_bindings = HashMap::new();
+
+        let mut block = make_block_with_children(vec![
+            make_table(Some("users"), &["name"], vec![]),
+            make_table(Some("metrics"), &["key"], vec![]),
+        ]);
+
+        let directive = TransformDirective::Remove(RemoveBlock {
+            targets: vec![RemoveTarget::Table(IdentifierLit {
+                value: "metrics".to_string(),
+                span: dummy_span(),
+            })],
+            span: dummy_span(),
+        });
+
+        expander.apply_directive(&mut block, &directive, &param_bindings);
+        assert_eq!(block.body.len(), 1);
+    }
+
+    #[test]
+    fn remove_all_tables() {
+        let registry = MacroRegistry::new();
+        let mut expander = MacroExpander::new(&registry, 10);
+        let param_bindings = HashMap::new();
+
+        let mut block = make_block_with_children(vec![
+            make_table(Some("users"), &["name"], vec![]),
+            make_table(Some("metrics"), &["key"], vec![]),
+            BodyItem::Attribute(Attribute {
+                decorators: vec![],
+                name: make_ident("port"),
+                value: Expr::IntLit(8080, dummy_span()),
+                trivia: Trivia::empty(),
+                span: dummy_span(),
+            }),
+        ]);
+
+        let directive = TransformDirective::Remove(RemoveBlock {
+            targets: vec![RemoveTarget::AllTables(dummy_span())],
+            span: dummy_span(),
+        });
+
+        expander.apply_directive(&mut block, &directive, &param_bindings);
+        assert_eq!(block.body.len(), 1);
+        assert!(matches!(&block.body[0], BodyItem::Attribute(_)));
+    }
+
+    #[test]
+    fn remove_mixed_targets() {
+        let registry = MacroRegistry::new();
+        let mut expander = MacroExpander::new(&registry, 10);
+        let param_bindings = HashMap::new();
+
+        let mut block = make_block_with_children(vec![
+            BodyItem::Attribute(Attribute {
+                decorators: vec![],
+                name: make_ident("debug_port"),
+                value: Expr::IntLit(9090, dummy_span()),
+                trivia: Trivia::empty(),
+                span: dummy_span(),
+            }),
+            make_child_block("endpoint", Some("debug")),
+            make_table(Some("metrics"), &["key"], vec![]),
+        ]);
+
+        let directive = TransformDirective::Remove(RemoveBlock {
+            targets: vec![
+                RemoveTarget::Attr(make_ident("debug_port")),
+                RemoveTarget::Block(
+                    make_ident("endpoint"),
+                    IdentifierLit {
+                        value: "debug".to_string(),
+                        span: dummy_span(),
+                    },
+                ),
+                RemoveTarget::Table(IdentifierLit {
+                    value: "metrics".to_string(),
+                    span: dummy_span(),
+                }),
+            ],
+            span: dummy_span(),
+        });
+
+        expander.apply_directive(&mut block, &directive, &param_bindings);
+        assert_eq!(block.body.len(), 0);
+    }
+
+    #[test]
+    fn remove_block_by_index() {
+        let registry = MacroRegistry::new();
+        let mut expander = MacroExpander::new(&registry, 10);
+        let param_bindings = HashMap::new();
+
+        let mut block = make_block_with_children(vec![
+            make_child_block("endpoint", Some("first")),
+            make_child_block("endpoint", Some("second")),
+            make_child_block("endpoint", Some("third")),
+        ]);
+
+        let directive = TransformDirective::Remove(RemoveBlock {
+            targets: vec![RemoveTarget::BlockIndex(
+                make_ident("endpoint"),
+                0,
+                dummy_span(),
+            )],
+            span: dummy_span(),
+        });
+
+        expander.apply_directive(&mut block, &directive, &param_bindings);
+        assert_eq!(block.body.len(), 2);
+        if let BodyItem::Block(b) = &block.body[0] {
+            assert!(MacroExpander::matches_inline_id(&b.inline_id, "second"));
+        }
+    }
+
+    #[test]
+    fn remove_table_by_index() {
+        let registry = MacroRegistry::new();
+        let mut expander = MacroExpander::new(&registry, 10);
+        let param_bindings = HashMap::new();
+
+        let mut block = make_block_with_children(vec![
+            make_table(Some("first"), &["a"], vec![]),
+            make_table(Some("second"), &["b"], vec![]),
+        ]);
+
+        let directive = TransformDirective::Remove(RemoveBlock {
+            targets: vec![RemoveTarget::TableIndex(1, dummy_span())],
+            span: dummy_span(),
+        });
+
+        expander.apply_directive(&mut block, &directive, &param_bindings);
+        assert_eq!(block.body.len(), 1);
+        if let BodyItem::Table(t) = &block.body[0] {
+            assert!(MacroExpander::matches_inline_id(&t.inline_id, "first"));
+        }
+    }
+
+    #[test]
+    fn update_block_set_attrs() {
+        let registry = MacroRegistry::new();
+        let mut expander = MacroExpander::new(&registry, 10);
+        let param_bindings = HashMap::new();
+
+        let mut block =
+            make_block_with_children(vec![make_child_block("endpoint", Some("health"))]);
+
+        let directive = TransformDirective::Update(UpdateBlock {
+            selector: TargetSelector::BlockKindId(
+                make_ident("endpoint"),
+                IdentifierLit {
+                    value: "health".to_string(),
+                    span: dummy_span(),
+                },
+            ),
+            block_directives: vec![TransformDirective::Set(SetBlock {
+                attrs: vec![Attribute {
+                    decorators: vec![],
+                    name: make_ident("tls"),
+                    value: Expr::BoolLit(true, dummy_span()),
+                    trivia: Trivia::empty(),
+                    span: dummy_span(),
+                }],
+                span: dummy_span(),
+            })],
+            table_directives: vec![],
+            span: dummy_span(),
+        });
+
+        let changed = expander.apply_directive(&mut block, &directive, &param_bindings);
+        assert!(changed);
+        if let BodyItem::Block(child) = &block.body[0] {
+            assert_eq!(child.body.len(), 1);
+            if let BodyItem::Attribute(a) = &child.body[0] {
+                assert_eq!(a.name.name, "tls");
+            } else {
+                panic!("expected attribute");
+            }
+        }
+    }
+
+    #[test]
+    fn update_all_blocks_of_kind() {
+        let registry = MacroRegistry::new();
+        let mut expander = MacroExpander::new(&registry, 10);
+        let param_bindings = HashMap::new();
+
+        let mut block = make_block_with_children(vec![
+            make_child_block("endpoint", Some("health")),
+            make_child_block("endpoint", Some("api")),
+        ]);
+
+        let directive = TransformDirective::Update(UpdateBlock {
+            selector: TargetSelector::BlockKind(make_ident("endpoint")),
+            block_directives: vec![TransformDirective::Inject(InjectBlock {
+                body: vec![BodyItem::Attribute(Attribute {
+                    decorators: vec![],
+                    name: make_ident("auth"),
+                    value: Expr::BoolLit(true, dummy_span()),
+                    trivia: Trivia::empty(),
+                    span: dummy_span(),
+                })],
+                span: dummy_span(),
+            })],
+            table_directives: vec![],
+            span: dummy_span(),
+        });
+
+        expander.apply_directive(&mut block, &directive, &param_bindings);
+        // Both endpoints should have auth injected
+        for item in &block.body {
+            if let BodyItem::Block(child) = item {
+                assert_eq!(child.body.len(), 1);
+                assert!(matches!(&child.body[0], BodyItem::Attribute(a) if a.name.name == "auth"));
+            }
+        }
+    }
+
+    #[test]
+    fn update_block_by_index() {
+        let registry = MacroRegistry::new();
+        let mut expander = MacroExpander::new(&registry, 10);
+        let param_bindings = HashMap::new();
+
+        let mut block = make_block_with_children(vec![
+            make_child_block("endpoint", Some("first")),
+            make_child_block("endpoint", Some("second")),
+        ]);
+
+        let directive = TransformDirective::Update(UpdateBlock {
+            selector: TargetSelector::BlockIndex(make_ident("endpoint"), 0, dummy_span()),
+            block_directives: vec![TransformDirective::Set(SetBlock {
+                attrs: vec![Attribute {
+                    decorators: vec![],
+                    name: make_ident("primary"),
+                    value: Expr::BoolLit(true, dummy_span()),
+                    trivia: Trivia::empty(),
+                    span: dummy_span(),
+                }],
+                span: dummy_span(),
+            })],
+            table_directives: vec![],
+            span: dummy_span(),
+        });
+
+        expander.apply_directive(&mut block, &directive, &param_bindings);
+        if let BodyItem::Block(child) = &block.body[0] {
+            assert_eq!(child.body.len(), 1);
+            assert!(matches!(&child.body[0], BodyItem::Attribute(a) if a.name.name == "primary"));
+        }
+        // Second endpoint should be unchanged
+        if let BodyItem::Block(child) = &block.body[1] {
+            assert!(child.body.is_empty());
+        }
+    }
+
+    #[test]
+    fn update_nested_in_when() {
+        let mut registry = MacroRegistry::new();
+        let macro_def = MacroDef {
+            decorators: vec![],
+            kind: MacroKind::Attribute,
+            name: make_ident("secure"),
+            params: vec![],
+            body: MacroBody::Attribute(vec![TransformDirective::When(WhenBlock {
+                condition: Expr::BoolLit(true, dummy_span()),
+                directives: vec![TransformDirective::Update(UpdateBlock {
+                    selector: TargetSelector::BlockKindId(
+                        make_ident("endpoint"),
+                        IdentifierLit {
+                            value: "health".to_string(),
+                            span: dummy_span(),
+                        },
+                    ),
+                    block_directives: vec![TransformDirective::Set(SetBlock {
+                        attrs: vec![Attribute {
+                            decorators: vec![],
+                            name: make_ident("tls"),
+                            value: Expr::BoolLit(true, dummy_span()),
+                            trivia: Trivia::empty(),
+                            span: dummy_span(),
+                        }],
+                        span: dummy_span(),
+                    })],
+                    table_directives: vec![],
+                    span: dummy_span(),
+                })],
+                span: dummy_span(),
+            })]),
+            trivia: Trivia::empty(),
+            span: dummy_span(),
+        };
+        registry
+            .attribute_macros
+            .insert("secure".to_string(), macro_def);
+
+        let mut block =
+            make_block_with_children(vec![make_child_block("endpoint", Some("health"))]);
+        block.decorators.push(Decorator {
+            name: make_ident("secure"),
+            args: vec![],
+            span: dummy_span(),
+        });
+
+        let mut expander = MacroExpander::new(&registry, 10);
+        expander.apply_attribute_macros(&mut block);
+
+        if let BodyItem::Block(child) = &block.body[0] {
+            assert_eq!(child.body.len(), 1);
+            assert!(matches!(&child.body[0], BodyItem::Attribute(a) if a.name.name == "tls"));
+        }
+    }
+
+    #[test]
+    fn update_table_inject_rows() {
+        let registry = MacroRegistry::new();
+        let mut expander = MacroExpander::new(&registry, 10);
+        let param_bindings = HashMap::new();
+
+        let mut block = make_block_with_children(vec![make_table(
+            Some("users"),
+            &["name", "age"],
+            vec![vec![make_str_expr("alice"), Expr::IntLit(25, dummy_span())]],
+        )]);
+
+        let directive = TransformDirective::Update(UpdateBlock {
+            selector: TargetSelector::TableId(IdentifierLit {
+                value: "users".to_string(),
+                span: dummy_span(),
+            }),
+            block_directives: vec![],
+            table_directives: vec![TableDirective::InjectRows(
+                vec![TableRow {
+                    cells: vec![make_str_expr("bob"), Expr::IntLit(30, dummy_span())],
+                    span: dummy_span(),
+                }],
+                dummy_span(),
+            )],
+            span: dummy_span(),
+        });
+
+        expander.apply_directive(&mut block, &directive, &param_bindings);
+        if let BodyItem::Table(t) = &block.body[0] {
+            assert_eq!(t.rows.len(), 2);
+        }
+    }
+
+    #[test]
+    fn update_table_remove_rows() {
+        let registry = MacroRegistry::new();
+        let mut expander = MacroExpander::new(&registry, 10);
+        let param_bindings = HashMap::new();
+
+        let mut block = make_block_with_children(vec![make_table(
+            Some("users"),
+            &["name", "role"],
+            vec![
+                vec![make_str_expr("alice"), make_str_expr("admin")],
+                vec![make_str_expr("bob"), make_str_expr("guest")],
+            ],
+        )]);
+
+        // remove_rows where role == "guest"
+        let condition = Expr::BinaryOp(
+            Box::new(Expr::Ident(make_ident("role"))),
+            BinOp::Eq,
+            Box::new(make_str_expr("guest")),
+            dummy_span(),
+        );
+
+        let directive = TransformDirective::Update(UpdateBlock {
+            selector: TargetSelector::TableId(IdentifierLit {
+                value: "users".to_string(),
+                span: dummy_span(),
+            }),
+            block_directives: vec![],
+            table_directives: vec![TableDirective::RemoveRows {
+                condition,
+                span: dummy_span(),
+            }],
+            span: dummy_span(),
+        });
+
+        expander.apply_directive(&mut block, &directive, &param_bindings);
+        if let BodyItem::Table(t) = &block.body[0] {
+            assert_eq!(t.rows.len(), 1);
+            // Remaining row should be alice/admin
+            if let Expr::StringLit(s) = &t.rows[0].cells[0] {
+                if let StringPart::Literal(val) = &s.parts[0] {
+                    assert_eq!(val, "alice");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn update_table_update_rows() {
+        let registry = MacroRegistry::new();
+        let mut expander = MacroExpander::new(&registry, 10);
+        let param_bindings = HashMap::new();
+
+        let mut block = make_block_with_children(vec![make_table(
+            Some("users"),
+            &["name", "status"],
+            vec![
+                vec![make_str_expr("alice"), make_str_expr("active")],
+                vec![make_str_expr("bob"), make_str_expr("active")],
+            ],
+        )]);
+
+        // update_rows where name == "bob" { set { status = "inactive" } }
+        let condition = Expr::BinaryOp(
+            Box::new(Expr::Ident(make_ident("name"))),
+            BinOp::Eq,
+            Box::new(make_str_expr("bob")),
+            dummy_span(),
+        );
+
+        let directive = TransformDirective::Update(UpdateBlock {
+            selector: TargetSelector::TableId(IdentifierLit {
+                value: "users".to_string(),
+                span: dummy_span(),
+            }),
+            block_directives: vec![],
+            table_directives: vec![TableDirective::UpdateRows {
+                condition,
+                attrs: vec![(make_ident("status"), make_str_expr("inactive"))],
+                span: dummy_span(),
+            }],
+            span: dummy_span(),
+        });
+
+        expander.apply_directive(&mut block, &directive, &param_bindings);
+        if let BodyItem::Table(t) = &block.body[0] {
+            // bob's status should be "inactive"
+            if let Expr::StringLit(s) = &t.rows[1].cells[1] {
+                if let StringPart::Literal(val) = &s.parts[0] {
+                    assert_eq!(val, "inactive");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn update_table_clear_rows() {
+        let registry = MacroRegistry::new();
+        let mut expander = MacroExpander::new(&registry, 10);
+        let param_bindings = HashMap::new();
+
+        let mut block = make_block_with_children(vec![make_table(
+            Some("users"),
+            &["name"],
+            vec![vec![make_str_expr("alice")], vec![make_str_expr("bob")]],
+        )]);
+
+        let directive = TransformDirective::Update(UpdateBlock {
+            selector: TargetSelector::TableId(IdentifierLit {
+                value: "users".to_string(),
+                span: dummy_span(),
+            }),
+            block_directives: vec![],
+            table_directives: vec![TableDirective::ClearRows(dummy_span())],
+            span: dummy_span(),
+        });
+
+        expander.apply_directive(&mut block, &directive, &param_bindings);
+        if let BodyItem::Table(t) = &block.body[0] {
+            assert_eq!(t.rows.len(), 0);
+            assert_eq!(t.columns.len(), 1); // columns preserved
+        }
+    }
+
+    #[test]
+    fn update_table_by_index() {
+        let registry = MacroRegistry::new();
+        let mut expander = MacroExpander::new(&registry, 10);
+        let param_bindings = HashMap::new();
+
+        let mut block = make_block_with_children(vec![
+            make_table(Some("first"), &["a"], vec![vec![make_str_expr("x")]]),
+            make_table(Some("second"), &["b"], vec![vec![make_str_expr("y")]]),
+        ]);
+
+        let directive = TransformDirective::Update(UpdateBlock {
+            selector: TargetSelector::TableIndex(0, dummy_span()),
+            block_directives: vec![],
+            table_directives: vec![TableDirective::ClearRows(dummy_span())],
+            span: dummy_span(),
+        });
+
+        expander.apply_directive(&mut block, &directive, &param_bindings);
+        if let BodyItem::Table(t) = &block.body[0] {
+            assert_eq!(t.rows.len(), 0); // first table cleared
+        }
+        if let BodyItem::Table(t) = &block.body[1] {
+            assert_eq!(t.rows.len(), 1); // second table untouched
+        }
     }
 }

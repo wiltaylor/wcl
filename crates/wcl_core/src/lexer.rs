@@ -54,6 +54,7 @@ pub enum TokenKind {
     Validation,
     DecoratorSchema,
     Declare,
+    Update,
 
     // Delimiters
     LBrace,
@@ -930,6 +931,7 @@ impl<'a> Lexer<'a> {
             "validation" => TokenKind::Validation,
             "decorator_schema" => TokenKind::DecoratorSchema,
             "declare" => TokenKind::Declare,
+            "update" => TokenKind::Update,
             other => {
                 if other.contains('-') {
                     TokenKind::IdentifierLit(other.to_string())
@@ -993,7 +995,7 @@ mod tests {
 
     #[test]
     fn keywords() {
-        let src = "let partial macro schema table import export query ref for in if else when inject set remove self validation decorator_schema";
+        let src = "let partial macro schema table import export query ref for in if else when inject set remove self validation decorator_schema update";
         let ks = token_kinds_ok(src);
         assert_eq!(
             ks,
@@ -1018,6 +1020,7 @@ mod tests {
                 TokenKind::SelfKw,
                 TokenKind::Validation,
                 TokenKind::DecoratorSchema,
+                TokenKind::Update,
                 TokenKind::Eof,
             ]
         );
