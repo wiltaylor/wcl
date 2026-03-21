@@ -130,7 +130,7 @@ jvm:
     set -euo pipefail
     just build jvm-wasm
     mkdir -p "{{pkg}}/jvm"
-    cd bindings/jvm && ./gradlew jar
+    bindings/jvm/gradlew -p bindings/jvm jar
     cp bindings/jvm/build/libs/*.jar "{{pkg}}/jvm/"
     echo "JVM JAR packaged to {{pkg}}/jvm/"
 
