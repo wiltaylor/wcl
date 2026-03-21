@@ -1177,4 +1177,138 @@ mod tests {
             schema
         );
     }
+
+    // ── Table refactoring tests ──────────────────────────────────────
+
+    #[test]
+    fn test_table_with_schema_ref_parses() {
+        let source = r#"
+            table users : user_row {
+                | "Alice" | 30 |
+            }
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        // Should parse without errors (schema validation may warn about missing schema)
+        let parse_errors: Vec<_> = doc
+            .diagnostics
+            .iter()
+            .filter(|d| d.code.as_deref() == Some("E002"))
+            .collect();
+        assert!(
+            parse_errors.is_empty(),
+            "unexpected parse errors: {:?}",
+            parse_errors
+        );
+    }
+
+    #[test]
+    fn test_table_with_schema_decorator_parses() {
+        let source = r#"
+            @schema("user_row")
+            table users {
+                | "Alice" | 30 |
+            }
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        let parse_errors: Vec<_> = doc
+            .diagnostics
+            .iter()
+            .filter(|d| d.code.as_deref() == Some("E002"))
+            .collect();
+        assert!(
+            parse_errors.is_empty(),
+            "unexpected parse errors: {:?}",
+            parse_errors
+        );
+    }
+
+    #[test]
+    fn test_table_import_table_assignment() {
+        use std::sync::Arc;
+
+        let mut opts = ParseOptions::default();
+        let mut fs = InMemoryFs::new();
+        fs.add_file(
+            std::path::PathBuf::from("./data.csv"),
+            "name,age\nAlice,30\nBob,25",
+        );
+        opts.fs = Some(Arc::new(fs));
+
+        let source = r#"table users = import_table("data.csv")"#;
+        let doc = parse(source, opts);
+        let parse_errors: Vec<_> = doc
+            .diagnostics
+            .iter()
+            .filter(|d| d.code.as_deref() == Some("E002"))
+            .collect();
+        assert!(
+            parse_errors.is_empty(),
+            "unexpected parse errors: {:?}",
+            parse_errors
+        );
+    }
+
+    #[test]
+    fn test_import_table_headers_false_named_arg() {
+        let source = r#"val = import_table("data.csv", headers=false)"#;
+        let (doc, diags) = wcl_core::parse(source, FileId(0));
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.into_diagnostics()
+        );
+        match &doc.items[0] {
+            ast::DocItem::Body(ast::BodyItem::Attribute(attr)) => match &attr.value {
+                ast::Expr::ImportTable(args, _) => {
+                    assert_eq!(args.headers, Some(false));
+                }
+                other => panic!("expected ImportTable, got {:?}", other),
+            },
+            other => panic!("expected Attribute, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_import_table_columns_named_arg() {
+        let source = r#"val = import_table("data.csv", headers=false, columns=["x", "y"])"#;
+        let (doc, diags) = wcl_core::parse(source, FileId(0));
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.into_diagnostics()
+        );
+        match &doc.items[0] {
+            ast::DocItem::Body(ast::BodyItem::Attribute(attr)) => match &attr.value {
+                ast::Expr::ImportTable(args, _) => {
+                    assert_eq!(args.headers, Some(false));
+                    assert!(args.columns.is_some());
+                    assert_eq!(args.columns.as_ref().unwrap().len(), 2);
+                }
+                other => panic!("expected ImportTable, got {:?}", other),
+            },
+            other => panic!("expected Attribute, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_table_schema_ref_plus_inline_columns_e092() {
+        let source = r#"
+            table users : user_row {
+                name : string
+                | "Alice" |
+            }
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        let e092_errors: Vec<_> = doc
+            .diagnostics
+            .iter()
+            .filter(|d| d.code.as_deref() == Some("E092"))
+            .collect();
+        assert_eq!(
+            e092_errors.len(),
+            1,
+            "expected E092 error, got: {:?}",
+            doc.diagnostics
+        );
+    }
 }

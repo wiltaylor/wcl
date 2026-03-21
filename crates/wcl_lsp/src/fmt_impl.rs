@@ -157,33 +157,38 @@ impl<'a> Fmt<'a> {
                         InlineId::Interpolated(_) => self.out.push_str("<interpolated>"),
                     }
                 }
-                for label in &table.labels {
-                    self.out.push(' ');
-                    self.string_lit(label);
+                if let Some(ref sr) = table.schema_ref {
+                    self.out.push_str(&format!(" : {}", sr.name));
                 }
-                self.out.push_str(" {\n");
-                self.indent += 1;
-                for col in &table.columns {
-                    self.indent();
-                    self.out.push_str(&format!("{} : ", col.name.name));
-                    self.type_expr(&col.type_expr);
+                if let Some(ref import) = table.import_expr {
+                    self.out.push_str(" = ");
+                    self.expr(import);
                     self.out.push('\n');
-                }
-                if !table.columns.is_empty() && !table.rows.is_empty() {
-                    self.out.push('\n');
-                }
-                for row in &table.rows {
-                    self.indent();
-                    for cell in &row.cells {
-                        self.out.push_str("| ");
-                        self.expr(cell);
-                        self.out.push(' ');
+                } else {
+                    self.out.push_str(" {\n");
+                    self.indent += 1;
+                    for col in &table.columns {
+                        self.indent();
+                        self.out.push_str(&format!("{} : ", col.name.name));
+                        self.type_expr(&col.type_expr);
+                        self.out.push('\n');
                     }
-                    self.out.push_str("|\n");
+                    if !table.columns.is_empty() && !table.rows.is_empty() {
+                        self.out.push('\n');
+                    }
+                    for row in &table.rows {
+                        self.indent();
+                        for cell in &row.cells {
+                            self.out.push_str("| ");
+                            self.expr(cell);
+                            self.out.push(' ');
+                        }
+                        self.out.push_str("|\n");
+                    }
+                    self.indent -= 1;
+                    self.indent();
+                    self.out.push_str("}\n");
                 }
-                self.indent -= 1;
-                self.indent();
-                self.out.push_str("}\n");
             }
             BodyItem::ForLoop(fl) => {
                 self.indent();

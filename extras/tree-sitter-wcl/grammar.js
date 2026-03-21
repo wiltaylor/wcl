@@ -116,12 +116,12 @@ export default grammar({
         repeat($.decorator),
         optional("partial"),
         "table",
-        optional($.identifier_literal),
-        repeat($.string_literal),
-        "{",
-        repeat($.column_declaration),
-        repeat($.table_row),
-        "}",
+        optional(choice($.identifier_literal, $.identifier)),
+        optional(seq(":", $.identifier)),
+        choice(
+          seq("{", repeat($.column_declaration), repeat($.table_row), "}"),
+          seq("=", $.expression),
+        ),
       ),
 
     column_declaration: ($) =>
@@ -471,12 +471,18 @@ export default grammar({
       ),
 
     // Import utility expressions
+    import_table_arg: ($) =>
+      choice(
+        $.string_literal,
+        seq($.identifier, "=", $.expression),
+      ),
+
     import_table_expression: ($) =>
       seq(
         "import_table",
         "(",
         $.string_literal,
-        optional(seq(",", $.string_literal)),
+        repeat(seq(",", $.import_table_arg)),
         ")",
       ),
 

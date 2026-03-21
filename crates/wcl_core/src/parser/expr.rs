@@ -874,7 +874,12 @@ impl Parser {
         Some(Expr::ImportRaw(path, span))
     }
 
-    /// Parse `import_table("path" [, "separator"])` expression.
+    /// Parse `import_table("path" [, ...])` expression.
+    ///
+    /// Supports:
+    /// - `import_table("path")` — defaults
+    /// - `import_table("path", "\t")` — legacy positional separator
+    /// - `import_table("path", headers=false, columns=["a", "b"], separator="\t")`
     fn parse_import_table_expr(&mut self) -> Option<Expr> {
         let start_span = self.current_span();
         self.advance(); // consume `import_table`
@@ -882,17 +887,117 @@ impl Parser {
             return None;
         }
         let path = self.parse_string_lit()?;
-        let separator = if matches!(self.peek_kind(), TokenKind::Comma) {
-            self.advance();
-            Some(self.parse_string_lit()?)
-        } else {
-            None
-        };
+
+        let mut separator = None;
+        let mut headers = None;
+        let mut columns = None;
+
+        while matches!(self.peek_kind(), TokenKind::Comma) {
+            self.advance(); // consume `,`
+            self.skip_newlines();
+
+            if matches!(self.peek_kind(), TokenKind::RParen | TokenKind::Eof) {
+                break; // trailing comma
+            }
+
+            // Check for named arg: ident = expr
+            if let TokenKind::Ident(ref name) = self.peek_kind().clone() {
+                let name_clone = name.clone();
+                let mut j = self.pos + 1;
+                while j < self.tokens.len() && matches!(self.tokens[j].kind, TokenKind::Newline) {
+                    j += 1;
+                }
+                if j < self.tokens.len() && matches!(self.tokens[j].kind, TokenKind::Equals) {
+                    // Named argument
+                    self.advance(); // consume ident
+                    self.skip_newlines();
+                    self.advance(); // consume =
+                    self.skip_newlines();
+                    match name_clone.as_str() {
+                        "separator" => {
+                            separator = Some(self.parse_string_lit()?);
+                        }
+                        "headers" => {
+                            match self.peek_kind().clone() {
+                                TokenKind::BoolLit(b) => {
+                                    headers = Some(b);
+                                    self.advance();
+                                }
+                                _ => {
+                                    self.diagnostics.error(
+                                        "expected bool for 'headers' parameter",
+                                        self.current_span(),
+                                    );
+                                    return None;
+                                }
+                            }
+                        }
+                        "columns" => {
+                            // Parse list of string literals: ["a", "b"]
+                            if self.expect(&TokenKind::LBracket).is_err() {
+                                return None;
+                            }
+                            let mut col_names = Vec::new();
+                            loop {
+                                self.skip_newlines();
+                                if matches!(
+                                    self.peek_kind(),
+                                    TokenKind::RBracket | TokenKind::Eof
+                                ) {
+                                    break;
+                                }
+                                col_names.push(self.parse_string_lit()?);
+                                self.skip_newlines();
+                                if matches!(self.peek_kind(), TokenKind::Comma) {
+                                    self.advance();
+                                } else {
+                                    break;
+                                }
+                            }
+                            self.skip_newlines();
+                            let _ = self.expect(&TokenKind::RBracket);
+                            columns = Some(col_names);
+                        }
+                        other => {
+                            self.diagnostics.error(
+                                format!("unknown import_table parameter '{}'", other),
+                                self.current_span(),
+                            );
+                            return None;
+                        }
+                    }
+                    continue;
+                }
+            }
+
+            // Legacy positional: second arg is a string separator
+            if matches!(
+                self.peek_kind(),
+                TokenKind::StringLit(_) | TokenKind::Heredoc { .. }
+            ) {
+                separator = Some(self.parse_string_lit()?);
+            } else {
+                self.diagnostics.error(
+                    "expected string literal or named argument in import_table()",
+                    self.current_span(),
+                );
+                return None;
+            }
+        }
+
         if self.expect(&TokenKind::RParen).is_err() {
             return None;
         }
         let span = start_span.merge(self.prev_span());
-        Some(Expr::ImportTable(path, separator, span))
+        Some(Expr::ImportTable(
+            ImportTableArgs {
+                path,
+                separator,
+                headers,
+                columns,
+            },
+            span,
+        ))
     }
 
     /// Parse call arguments: `(arg1, arg2, name = val, ...)`

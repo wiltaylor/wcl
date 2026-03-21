@@ -52,8 +52,8 @@ conditional     = "if" expression "{" body "}" [ else_branch ] ;
 else_branch     = "else" ( conditional | "{" body "}" ) ;
 
 (* ===== Tables ===== *)
-table           = { decorator } [ "partial" ] "table" [ IDENTIFIER_LIT ]
-                  { STRING_LIT } "{" table_body "}" ;
+table           = { decorator } [ "partial" ] "table" IDENTIFIER_LIT
+                  [ ":" IDENT ] ( "{" table_body "}" | "=" expression ) ;
 table_body      = { column_decl } { table_row } ;
 column_decl     = { decorator } IDENT ":" type_expr ;
 table_row       = "|" expression { "|" expression } "|" ;
@@ -143,8 +143,9 @@ filter          = "." IDENT [ ( "==" | "!=" | "<" | ">" | "<=" | ">="
                 | "@" IDENT "." IDENT ( "==" | "!=" | "<" | ">" | "<="
                   | ">=" ) expression ;
 
-import_util_expr = "import_table" "(" STRING_LIT [ "," STRING_LIT ] ")"
+import_util_expr = "import_table" "(" STRING_LIT { "," import_table_arg } ")"
                  | "import_raw" "(" STRING_LIT ")" ;
+import_table_arg = STRING_LIT | IDENT "=" expression ;
 
 ref_expr        = "ref" "(" IDENTIFIER_LIT ")" ;
 

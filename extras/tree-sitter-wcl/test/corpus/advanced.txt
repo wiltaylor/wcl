@@ -37,7 +37,7 @@ validation "port_range" {
 Table
 ================
 
-table "endpoints" {
+table endpoints {
   name: string
   port: int
   | "api"  | 8080 |
@@ -47,7 +47,7 @@ table "endpoints" {
 ---
 
 (document
-  (table (string_literal (string_content))
+  (table (identifier)
     (column_declaration (identifier) (type_expression (builtin_type)))
     (column_declaration (identifier) (type_expression (builtin_type)))
     (table_row (expression (string_literal (string_content))) (expression (integer_literal)))
@@ -131,7 +131,8 @@ data = import_table("data.csv", ",")
   (attribute (identifier) (expression
     (import_table_expression
       (string_literal (string_content))
-      (string_literal (string_content))))))
+      (import_table_arg
+        (string_literal (string_content)))))))
 
 ================
 Import raw expression

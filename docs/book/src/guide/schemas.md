@@ -237,3 +237,31 @@ The `svc-worker` block inherits `env = "production"` and `replicas = 1` from the
 | E076 | @ref target not found                         |
 | E077 | @id_pattern mismatch                          |
 | E080 | Validation block failure                      |
+| E092 | Inline columns defined when schema is applied |
+
+## Applying Schemas to Tables
+
+You can apply a schema to a table using the colon syntax or the `@schema` decorator:
+
+```wcl
+schema "user_row" {
+    name : string
+    age  : int
+}
+
+# Colon syntax
+table users : user_row {
+    | "Alice" | 30 |
+}
+
+# Decorator syntax
+@schema("user_row")
+table contacts {
+    | "Bob" | 25 |
+}
+
+# With CSV import
+table imported : user_row = import_table("users.csv")
+```
+
+When a schema is applied, inline column declarations are not allowed (E092).

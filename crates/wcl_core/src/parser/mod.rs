@@ -580,7 +580,20 @@ impl Parser {
     fn parse_decorator(&mut self) -> Option<Decorator> {
         let start_span = self.current_span();
         self.advance(); // consume @
-        let name = self.expect_ident().ok()?;
+        // Accept keyword tokens as decorator names (e.g. @schema, @table)
+        let name = match self.peek_kind().clone() {
+            TokenKind::Schema => {
+                let span = self.current_span();
+                self.advance();
+                Ident { name: "schema".to_string(), span }
+            }
+            TokenKind::Table => {
+                let span = self.current_span();
+                self.advance();
+                Ident { name: "table".to_string(), span }
+            }
+            _ => self.expect_ident().ok()?,
+        };
         let args = if matches!(self.peek_kind(), TokenKind::LParen) {
             self.parse_decorator_args()
         } else {
@@ -735,14 +748,14 @@ impl Parser {
                 if self.is_keyword_token(&TokenKind::Ident(name_clone.clone())) {
                     return None;
                 }
-                // Look ahead: if followed by `{`, `"string"`, or another ident, this is an inline ID
+                // Look ahead: if followed by `{`, `"string"`, `:` (schema ref), or `=` after table keyword, this is an inline ID
                 let mut i = self.pos + 1;
                 while i < self.tokens.len() && matches!(self.tokens[i].kind, TokenKind::Newline) {
                     i += 1;
                 }
                 if i < self.tokens.len() {
                     match &self.tokens[i].kind {
-                        TokenKind::LBrace | TokenKind::StringLit(_) => {
+                        TokenKind::LBrace | TokenKind::StringLit(_) | TokenKind::Colon | TokenKind::Equals => {
                             let span = self.current_span();
                             self.advance();
                             Some(InlineId::Literal(IdentifierLit {
@@ -862,7 +875,7 @@ impl Parser {
             return None;
         }
         match &self.tokens[check].kind {
-            TokenKind::LBrace | TokenKind::StringLit(_) => {}
+            TokenKind::LBrace | TokenKind::StringLit(_) | TokenKind::Colon | TokenKind::Equals => {}
             _ => return None,
         }
 
@@ -994,8 +1007,35 @@ impl Parser {
 
         let inline_id = self.parse_inline_id();
         self.skip_newlines();
-        let labels = self.parse_labels();
+
+        // Optional schema reference: `: schema_name`
+        let schema_ref = if self.at(&TokenKind::Colon) {
+            self.advance(); // consume `:`
+            self.skip_newlines();
+            Some(self.expect_ident().ok()?)
+        } else {
+            None
+        };
         self.skip_newlines();
+
+        // Two forms: `= import_table(...)` or `{ columns rows }`
+        if self.at(&TokenKind::Equals) {
+            self.advance(); // consume `=`
+            self.skip_newlines();
+            let import_expr = self.parse_expr()?;
+            let span = start_span.merge(import_expr.span());
+            return Some(Table {
+                decorators,
+                partial,
+                inline_id,
+                schema_ref,
+                columns: vec![],
+                rows: vec![],
+                import_expr: Some(Box::new(import_expr)),
+                trivia,
+                span,
+            });
+        }
 
         if self.expect(&TokenKind::LBrace).is_err() {
             return None;
@@ -1028,6 +1068,15 @@ impl Parser {
             }
         }
 
+        // Error if both schema_ref and inline columns are present
+        if schema_ref.is_some() && !columns.is_empty() {
+            self.diagnostics.error_with_code(
+                "cannot define inline columns when a schema is applied to the table",
+                start_span,
+                "E092",
+            );
+        }
+
         if self.expect(&TokenKind::RBrace).is_err() {
             return None;
         }
@@ -1037,9 +1086,10 @@ impl Parser {
             decorators,
             partial,
             inline_id,
-            labels,
+            schema_ref,
             columns,
             rows,
+            import_expr: None,
             trivia,
             span,
         })
@@ -2367,6 +2417,146 @@ server {
                 other => panic!("expected InlineId::Literal, got {:?}", other),
             },
             other => panic!("expected Block, got {:?}", other),
+        }
+    }
+
+    // ── Table schema reference tests ─────────────────────────────────
+
+    #[test]
+    fn table_with_schema_ref() {
+        let (doc, diags) = parse("table users : user_row {\n  | \"Alice\" | 30 |\n}");
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
+        match &doc.items[0] {
+            DocItem::Body(BodyItem::Table(table)) => {
+                match &table.inline_id {
+                    Some(InlineId::Literal(id)) => assert_eq!(id.value, "users"),
+                    other => panic!("expected InlineId::Literal, got {:?}", other),
+                }
+                assert_eq!(table.schema_ref.as_ref().unwrap().name, "user_row");
+                assert!(table.columns.is_empty());
+                assert_eq!(table.rows.len(), 1);
+                assert!(table.import_expr.is_none());
+            }
+            other => panic!("expected Table, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn table_with_import_expr() {
+        let (doc, diags) = parse(r#"table users = import_table("data.csv")"#);
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
+        match &doc.items[0] {
+            DocItem::Body(BodyItem::Table(table)) => {
+                match &table.inline_id {
+                    Some(InlineId::Literal(id)) => assert_eq!(id.value, "users"),
+                    other => panic!("expected InlineId::Literal, got {:?}", other),
+                }
+                assert!(table.schema_ref.is_none());
+                assert!(table.import_expr.is_some());
+                assert!(table.columns.is_empty());
+                assert!(table.rows.is_empty());
+            }
+            other => panic!("expected Table, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn table_with_schema_ref_and_import() {
+        let (doc, diags) = parse(r#"table users : user_row = import_table("data.csv")"#);
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
+        match &doc.items[0] {
+            DocItem::Body(BodyItem::Table(table)) => {
+                assert_eq!(table.schema_ref.as_ref().unwrap().name, "user_row");
+                assert!(table.import_expr.is_some());
+            }
+            other => panic!("expected Table, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn table_schema_ref_plus_inline_columns_errors() {
+        let src = "table users : user_row {\n  name : string\n  | \"Alice\" |\n}";
+        let (_doc, diags) = parse(src);
+        let e092: Vec<_> = diags
+            .diagnostics()
+            .iter()
+            .filter(|d| d.code.as_deref() == Some("E092"))
+            .collect();
+        assert_eq!(e092.len(), 1);
+    }
+
+    #[test]
+    fn import_table_with_named_args() {
+        let (doc, diags) =
+            parse(r#"val = import_table("data.csv", headers=false, columns=["a", "b"])"#);
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
+        match &doc.items[0] {
+            DocItem::Body(BodyItem::Attribute(attr)) => match &attr.value {
+                Expr::ImportTable(args, _) => {
+                    assert_eq!(args.headers, Some(false));
+                    assert!(args.columns.is_some());
+                    let cols = args.columns.as_ref().unwrap();
+                    assert_eq!(cols.len(), 2);
+                }
+                other => panic!("expected ImportTable, got {:?}", other),
+            },
+            other => panic!("expected Attribute, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn import_table_legacy_separator() {
+        let (doc, diags) = parse(r#"val = import_table("data.tsv", "\t")"#);
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
+        match &doc.items[0] {
+            DocItem::Body(BodyItem::Attribute(attr)) => match &attr.value {
+                Expr::ImportTable(args, _) => {
+                    assert!(args.separator.is_some());
+                    assert!(args.headers.is_none());
+                    assert!(args.columns.is_none());
+                }
+                other => panic!("expected ImportTable, got {:?}", other),
+            },
+            other => panic!("expected Attribute, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn import_table_named_separator() {
+        let (doc, diags) = parse(r#"val = import_table("data.csv", separator="\t")"#);
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
+        match &doc.items[0] {
+            DocItem::Body(BodyItem::Attribute(attr)) => match &attr.value {
+                Expr::ImportTable(args, _) => {
+                    assert!(args.separator.is_some());
+                }
+                other => panic!("expected ImportTable, got {:?}", other),
+            },
+            other => panic!("expected Attribute, got {:?}", other),
         }
     }
 }

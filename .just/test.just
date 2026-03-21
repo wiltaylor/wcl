@@ -8,12 +8,14 @@ rust:
 crate name:
     cargo test -p {{name}}
 
-# Run Python binding tests
+# Run Python binding tests (rebuilds WASM first)
 python:
+    just build python-wasm
     cd bindings/python && uv run pytest tests/ -v
 
-# Run WASM binding tests
+# Run WASM binding tests (rebuilds WASM first)
 wasm:
+    just build wasm
     cd bindings/wasm && wasm-pack test --node
 
 # Run .NET binding tests

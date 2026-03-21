@@ -205,17 +205,28 @@ pub enum DecoratorArg {
 
 // ===== Tables =====
 
-/// `[@decorator...] [partial] table [IDENTIFIER_LIT] ["label"...] { columns rows }`
+/// `[@decorator...] [partial] table IDENTIFIER_LIT [: schema_ref] { columns rows }`
+/// or `[@decorator...] table IDENTIFIER_LIT [: schema_ref] = import_table(...)`
 #[derive(Debug, Clone)]
 pub struct Table {
     pub decorators: Vec<Decorator>,
     pub partial: bool,
     pub inline_id: Option<InlineId>,
-    pub labels: Vec<StringLit>,
+    pub schema_ref: Option<Ident>,
     pub columns: Vec<ColumnDecl>,
     pub rows: Vec<TableRow>,
+    pub import_expr: Option<Box<Expr>>,
     pub trivia: Trivia,
     pub span: Span,
+}
+
+/// Arguments to the `import_table(...)` expression.
+#[derive(Debug, Clone)]
+pub struct ImportTableArgs {
+    pub path: StringLit,
+    pub separator: Option<StringLit>,
+    pub headers: Option<bool>,
+    pub columns: Option<Vec<StringLit>>,
 }
 
 /// A single column declaration inside a table: `[@decorator...] name : type_expr`
@@ -526,8 +537,8 @@ pub enum Expr {
     Ref(IdentifierLit, Span),
     /// `import_raw("path")` — import file contents as a raw string
     ImportRaw(StringLit, Span),
-    /// `import_table("path" [, "separator"])` — import a CSV/TSV file as a table
-    ImportTable(StringLit, Option<StringLit>, Span),
+    /// `import_table("path", ...)` — import a CSV/TSV file as a table
+    ImportTable(ImportTableArgs, Span),
     /// Parenthesized expression — preserved for formatting fidelity
     Paren(Box<Expr>, Span),
 }
@@ -553,7 +564,7 @@ impl Expr {
             | Expr::Query(_, s)
             | Expr::Ref(_, s)
             | Expr::ImportRaw(_, s)
-            | Expr::ImportTable(_, _, s)
+            | Expr::ImportTable(_, s)
             | Expr::Paren(_, s) => *s,
             Expr::StringLit(s) => s.span,
             Expr::Ident(i) => i.span,

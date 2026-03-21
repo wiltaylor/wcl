@@ -250,9 +250,10 @@ mod tests {
             decorators: vec![],
             partial: false,
             inline_id: None,
-            labels: vec![],
+            schema_ref: None,
             columns,
             rows,
+            import_expr: None,
             trivia: Trivia::empty(),
             span: ds(),
         }
@@ -393,9 +394,10 @@ mod tests {
             decorators,
             partial: false,
             inline_id: None,
-            labels: vec![],
+            schema_ref: None,
             columns,
             rows,
+            import_expr: None,
             trivia: Trivia::empty(),
             span: ds(),
         }

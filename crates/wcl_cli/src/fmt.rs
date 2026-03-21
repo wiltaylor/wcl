@@ -193,33 +193,38 @@ impl<'a> Formatter<'a> {
                         InlineId::Interpolated(_) => self.output.push_str("<interpolated-id>"),
                     }
                 }
-                for label in &table.labels {
-                    self.output.push(' ');
-                    self.format_string_lit(label);
+                if let Some(ref sr) = table.schema_ref {
+                    self.output.push_str(&format!(" : {}", sr.name));
                 }
-                self.output.push_str(" {\n");
-                self.indent += 1;
-                for col in &table.columns {
-                    self.write_indent();
-                    self.output.push_str(&format!("{} : ", col.name.name));
-                    self.format_type_expr(&col.type_expr);
+                if let Some(ref expr) = table.import_expr {
+                    self.output.push_str(" = ");
+                    self.format_expr(expr);
                     self.output.push('\n');
-                }
-                if !table.columns.is_empty() && !table.rows.is_empty() {
-                    self.output.push('\n');
-                }
-                for row in &table.rows {
-                    self.write_indent();
-                    for cell in &row.cells {
-                        self.output.push_str("| ");
-                        self.format_expr(cell);
-                        self.output.push(' ');
+                } else {
+                    self.output.push_str(" {\n");
+                    self.indent += 1;
+                    for col in &table.columns {
+                        self.write_indent();
+                        self.output.push_str(&format!("{} : ", col.name.name));
+                        self.format_type_expr(&col.type_expr);
+                        self.output.push('\n');
                     }
-                    self.output.push_str("|\n");
+                    if !table.columns.is_empty() && !table.rows.is_empty() {
+                        self.output.push('\n');
+                    }
+                    for row in &table.rows {
+                        self.write_indent();
+                        for cell in &row.cells {
+                            self.output.push_str("| ");
+                            self.format_expr(cell);
+                            self.output.push(' ');
+                        }
+                        self.output.push_str("|\n");
+                    }
+                    self.indent -= 1;
+                    self.write_indent();
+                    self.output.push_str("}\n");
                 }
-                self.indent -= 1;
-                self.write_indent();
-                self.output.push_str("}\n");
             }
             BodyItem::ForLoop(fl) => {
                 self.write_indent();
@@ -479,6 +484,34 @@ impl<'a> Formatter<'a> {
             }
             Expr::Ref(id, _) => {
                 self.output.push_str(&format!("ref({})", id.value));
+            }
+            Expr::ImportRaw(path, _) => {
+                self.output.push_str("import_raw(");
+                self.format_string_lit(path);
+                self.output.push(')');
+            }
+            Expr::ImportTable(args, _) => {
+                self.output.push_str("import_table(");
+                self.format_string_lit(&args.path);
+                if let Some(ref sep) = args.separator {
+                    self.output.push_str(", separator = ");
+                    self.format_string_lit(sep);
+                }
+                if let Some(h) = args.headers {
+                    self.output
+                        .push_str(&format!(", headers = {}", if h { "true" } else { "false" }));
+                }
+                if let Some(ref cols) = args.columns {
+                    self.output.push_str(", columns = [");
+                    for (i, c) in cols.iter().enumerate() {
+                        if i > 0 {
+                            self.output.push_str(", ");
+                        }
+                        self.format_string_lit(c);
+                    }
+                    self.output.push(']');
+                }
+                self.output.push(')');
             }
             _ => {
                 self.output.push_str("/* expr */");

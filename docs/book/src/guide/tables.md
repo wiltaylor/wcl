@@ -5,7 +5,7 @@ WCL's `table` construct provides structured, typed tabular data inside your conf
 ## Basic Syntax
 
 ```wcl
-table [id] "name" {
+table id {
     column_name : type
     another_col : type
 
@@ -30,7 +30,7 @@ Columns accept the following decorators:
 | `@default(value)` | Fallback value when a row omits this column |
 
 ```wcl
-table "user-roles" {
+table user_roles {
     username  : string  @doc("Login name")
     role      : string  @validate(one_of(["admin", "viewer", "editor"]))
     max_items : int     @default(100)
@@ -54,7 +54,7 @@ Each cell is a full WCL expression, so you can reference variables, call built-i
 ```wcl
 let base_port = 8000
 
-table "services" {
+table services {
     name : string
     port : int
 
@@ -70,10 +70,10 @@ Each cell value is type-checked against its column's declared type. A type misma
 
 ## Inline IDs
 
-Tables support inline block IDs using the same `kind id "label"` syntax as ordinary blocks:
+Tables require an inline ID:
 
 ```wcl
-table perms-main "permissions" {
+table perms_main {
     role     : string
     resource : string
     action   : string
@@ -85,18 +85,85 @@ table perms-main "permissions" {
 }
 ```
 
-The ID `perms-main` can then be used in `@ref` decorators and query selectors such as `table#perms-main`.
+The ID `perms_main` can then be used in `@ref` decorators and query selectors such as `table#perms_main`.
+
+## Schema Reference
+
+You can apply an existing schema to a table instead of declaring columns inline. This is useful when multiple tables share the same structure.
+
+### Colon syntax
+
+```wcl
+schema "user_row" {
+    name : string
+    age  : int
+}
+
+table users : user_row {
+    | "Alice" | 30 |
+    | "Bob"   | 25 |
+}
+```
+
+### Decorator syntax
+
+```wcl
+@schema("user_row")
+table users {
+    | "Alice" | 30 |
+    | "Bob"   | 25 |
+}
+```
+
+When a schema is applied, you cannot also declare inline columns. Doing so produces error E092.
 
 ## Loading Tables from CSV
 
-Use `import_table("path.csv")` to load a CSV file as a table value. An optional second argument sets the separator character:
+Use `import_table("path.csv")` to load a CSV file as a table value.
 
 ```wcl
 let acl = import_table("./acl.csv")
-let tsv = import_table("./data.tsv", "\t")
 ```
 
-The first row of the CSV is treated as the column header. All cell values are imported as strings; apply a schema if you need typed validation.
+### Options
+
+`import_table` accepts named arguments for fine-grained control:
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `separator` | string | `","` | Field separator character |
+| `headers` | bool | `true` | Whether the first row contains column headers |
+| `columns` | list | — | Explicit column names (overrides headers) |
+
+```wcl
+# Tab-separated (legacy positional syntax still works)
+let tsv = import_table("./data.tsv", "\t")
+
+# Named separator argument
+let tsv = import_table("./data.tsv", separator="\t")
+
+# No header row — columns are named "0", "1", ...
+let raw = import_table("./data.csv", headers=false)
+
+# No header row with explicit column names
+let data = import_table("./data.csv", headers=false, columns=["name", "age"])
+```
+
+### Table assignment syntax
+
+You can populate a table directly from a CSV file using assignment syntax:
+
+```wcl
+table users = import_table("data.csv")
+```
+
+Combine with a schema reference to validate imported data:
+
+```wcl
+table users : user_row = import_table("data.csv")
+```
+
+The first row of the CSV is treated as the column header by default. All cell values are imported as strings; apply a schema if you need typed validation.
 
 `import_table` follows the same path rules as `import`: relative paths only, resolved from the importing file, jailed to the project root.
 
@@ -118,11 +185,11 @@ let rows: Vec<PermRow> = doc.get_table("permissions")?;
 
 ## Querying Tables
 
-Use `query()` to filter rows. The selector `table."name"` or `table#id` targets a specific table; filters then match on column values:
+Use `query()` to filter rows. The selector `table#id` targets a specific table; filters then match on column values:
 
 ```wcl
 validation "no-admin-deletes-on-prod" {
-    let dangerous = query(table."permissions" | .role == "viewer" | .allow == true | .action == "delete")
+    let dangerous = query(table#permissions | .role == "viewer" | .allow == true | .action == "delete")
     check   = len(dangerous) == 0
     message = "viewers must not have delete permission"
 }
@@ -139,7 +206,7 @@ The full query pipeline syntax is described in the [Query Engine](./query-engine
 ### Example: Permissions Table
 
 ```wcl
-table perms-main "permissions" {
+table perms_main {
     role     : string  @doc("Subject role")
     resource : string  @doc("Target resource type")
     action   : string  @validate(one_of(["read", "write", "delete"]))
@@ -160,11 +227,11 @@ table perms-main "permissions" {
 Fetch all actions allowed for `editor`:
 
 ```wcl
-let editor_allowed = query(table."permissions" | .role == "editor" | .allow == true | .action)
+let editor_allowed = query(table#perms_main | .role == "editor" | .allow == true | .action)
 ```
 
 Count total denied rules:
 
 ```wcl
-let denied_count = len(query(table."permissions" | .allow == false))
+let denied_count = len(query(table#perms_main | .allow == false))
 ```
