@@ -265,33 +265,9 @@ var options = new ParseOptions().allowImports(false);
 try (var doc = Wcl.parse(untrustedInput, options)) { ... }
 ```
 
-## Library Management
+## Library Files
 
-Install, list, and uninstall WCL library files programmatically:
-
-```java
-import io.github.wiltaylor.wcl.library.LibraryManager;
-
-// Install a library file
-var path = LibraryManager.install("myapp.wcl", """
-    schema "config" {
-        port: int
-        host: string @optional
-    }
-    declare my_fn(input: string) -> string
-""");
-System.out.println("Installed to: " + path);
-
-// List installed libraries
-for (var lib : LibraryManager.list()) {
-    System.out.println(lib);
-}
-
-// Uninstall
-LibraryManager.uninstall("myapp.wcl");
-```
-
-After installation, WCL files can use `import <myapp.wcl>` to access the schemas and function declarations.
+Create `.wcl` library files manually and place them in `~/.local/share/wcl/lib/`. Use `LibraryManager.list()` to list installed libraries. See the [Libraries guide](../guide/libraries.md) for details.
 
 ## Error Handling
 

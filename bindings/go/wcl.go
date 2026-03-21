@@ -221,40 +221,6 @@ func (d *Document) Close() {
 	d.callbackIDs = nil
 }
 
-// InstallLibrary installs a WCL library file and returns the install path.
-func InstallLibrary(name, content string) (string, error) {
-	jsonStr := cInstallLibrary(name, content)
-	var result struct {
-		Ok    *string `json:"ok"`
-		Error *string `json:"error"`
-	}
-	if err := json.Unmarshal([]byte(jsonStr), &result); err != nil {
-		return "", fmt.Errorf("wcl: install_library: %w", err)
-	}
-	if result.Error != nil {
-		return "", fmt.Errorf("wcl: %s", *result.Error)
-	}
-	if result.Ok != nil {
-		return *result.Ok, nil
-	}
-	return "", nil
-}
-
-// UninstallLibrary removes a WCL library file.
-func UninstallLibrary(name string) error {
-	jsonStr := cUninstallLibrary(name)
-	var result struct {
-		Error *string `json:"error"`
-	}
-	if err := json.Unmarshal([]byte(jsonStr), &result); err != nil {
-		return fmt.Errorf("wcl: uninstall_library: %w", err)
-	}
-	if result.Error != nil {
-		return fmt.Errorf("wcl: %s", *result.Error)
-	}
-	return nil
-}
-
 // ListLibraries returns the paths of installed WCL libraries.
 func ListLibraries() ([]string, error) {
 	jsonStr := cListLibraries()

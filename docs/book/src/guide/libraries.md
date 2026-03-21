@@ -50,26 +50,26 @@ declare fn_name(param1: type1, param2: type2) -> return_type
 
 Declarations tell the LSP about functions that will be provided by the host application at runtime. If a declared function is called but not registered, a helpful error is produced.
 
-## Managing Libraries (Rust API)
+## Creating Library Files
 
-From Rust, use the `wcl::library` module:
+Create `.wcl` files manually and place them in the user library directory (`~/.local/share/wcl/lib/` on Linux/macOS). For example:
+
+```sh
+mkdir -p ~/.local/share/wcl/lib
+cat > ~/.local/share/wcl/lib/myapp.wcl << 'EOF'
+schema "config" {
+    port: int
+    host: string @optional
+}
+
+declare transform(input: string) -> string
+EOF
+```
+
+To list installed libraries from Rust:
 
 ```rust
-use wcl::library::{LibraryBuilder, FunctionStub, install_library, list_libraries};
-
-// Build and install a library
-let mut builder = LibraryBuilder::new("myapp");
-builder.add_schema_text(r#"schema "config" { port: int }"#);
-builder.add_function_stub(FunctionStub {
-    name: "transform".into(),
-    params: vec![("input".into(), "string".into())],
-    return_type: Some("string".into()),
-    doc: Some("Transform input".into()),
-});
-builder.install().expect("install");
-
-// List installed libraries
-for lib in list_libraries().unwrap() {
+for lib in wcl::library::list_libraries().unwrap() {
     println!("{}", lib.display());
 }
 ```

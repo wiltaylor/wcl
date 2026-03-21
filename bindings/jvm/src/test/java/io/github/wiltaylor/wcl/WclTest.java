@@ -2,7 +2,6 @@ package io.github.wiltaylor.wcl;
 
 import io.github.wiltaylor.wcl.eval.WclValue;
 import io.github.wiltaylor.wcl.eval.WclValueKind;
-import io.github.wiltaylor.wcl.library.LibraryManager;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -102,20 +101,6 @@ class WclTest {
             var diags = doc.getDiagnostics();
             assertTrue(diags.stream().noneMatch(d -> d.isError()));
         }
-    }
-
-    @Test
-    void libraryManagement() {
-        var name = "test_jvm_lib.wcl";
-        var content = "schema \"test_config\" {\n    port: int\n}\n";
-
-        var path = LibraryManager.install(name, content);
-        assertFalse(path.isEmpty());
-
-        var libs = LibraryManager.list();
-        assertTrue(libs.stream().anyMatch(lib -> lib.endsWith(name)));
-
-        LibraryManager.uninstall(name);
     }
 
     @Test

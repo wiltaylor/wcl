@@ -67,7 +67,7 @@ schema "server_config" {
 declare my_custom_fn(input: string) -> string
 ```
 
-See [Rust Library Usage](../getting-started/rust-library.md) for how to generate and install library files programmatically.
+See the [Libraries guide](../guide/libraries.md) for how to create and manage library files.
 
 ## Path Rules
 

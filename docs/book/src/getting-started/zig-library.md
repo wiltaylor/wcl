@@ -254,32 +254,9 @@ Pass `null` for default options:
 var doc = try wcl.parse(allocator, source, null);
 ```
 
-## Library Management
+## Library Files
 
-Install, list, and uninstall WCL library files programmatically:
-
-```zig
-// Install a library file
-const path = try wcl.installLibrary(allocator, "myapp.wcl",
-    \\schema "config" {
-    \\    port: int
-    \\    host: string @optional
-    \\}
-    \\
-    \\declare my_fn(input: string) -> string
-);
-defer allocator.free(path);
-std.debug.print("Installed to: {s}\n", .{path});
-
-// List installed libraries
-var libs = try wcl.listLibraries(allocator);
-defer libs.deinit();
-
-// Uninstall
-try wcl.uninstallLibrary(allocator, "myapp.wcl");
-```
-
-After installation, WCL files can use `import <myapp.wcl>` to access the schemas and function declarations.
+Create `.wcl` library files manually and place them in `~/.local/share/wcl/lib/`. Use `wcl.listLibraries()` to list installed libraries. See the [Libraries guide](../guide/libraries.md) for details.
 
 ## Error Handling
 
@@ -318,8 +295,6 @@ WCL API functions return Zig error unions. The `WclError` error set includes:
 | `ParseFailed` | Source string parsing returned null |
 | `ParseFileFailed` | File parsing returned null (I/O error or invalid path) |
 | `QueryFailed` | Query execution returned an error |
-| `LibraryInstallFailed` | Library installation failed |
-| `LibraryUninstallFailed` | Library uninstallation failed |
 | `LibraryListFailed` | Library listing failed |
 | `DocumentClosed` | Operation on a closed document |
 

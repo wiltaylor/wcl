@@ -1,7 +1,5 @@
 package io.github.wiltaylor.wcl.library;
 
-import io.github.wiltaylor.wcl.WclException;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -23,27 +21,6 @@ public final class LibraryManager {
             return Path.of(home, ".local", "share", "wcl", "lib");
         }
         return Path.of(".wcl", "lib");
-    }
-
-    public static String install(String name, String content) {
-        var dir = getLibraryDir();
-        try {
-            Files.createDirectories(dir);
-            var path = dir.resolve(name);
-            Files.writeString(path, content);
-            return path.toString();
-        } catch (IOException e) {
-            throw new WclException("failed to install library: " + name, e);
-        }
-    }
-
-    public static void uninstall(String name) {
-        var dir = getLibraryDir();
-        try {
-            Files.deleteIfExists(dir.resolve(name));
-        } catch (IOException e) {
-            throw new WclException("failed to uninstall library: " + name, e);
-        }
     }
 
     public static List<String> list() {

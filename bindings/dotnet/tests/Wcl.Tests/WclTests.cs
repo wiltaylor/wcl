@@ -117,21 +117,6 @@ namespace Wcl.Tests
         }
 
         [Fact]
-        public void LibraryManagement()
-        {
-            var name = "test_dotnet_lib.wcl";
-            var content = "schema \"test_config\" {\n    port: int\n}\n";
-
-            var path = LibraryManager.Install(name, content);
-            Assert.NotEmpty(path);
-
-            var libs = LibraryManager.List();
-            Assert.Contains(libs, lib => Path.GetFileName(lib) == name);
-
-            LibraryManager.Uninstall(name);
-        }
-
-        [Fact]
         public void DocumentDispose()
         {
             var doc = WclParser.Parse("x = 1");

@@ -201,38 +201,6 @@ func TestDiagnostics(t *testing.T) {
 	}
 }
 
-func TestLibraryManagement(t *testing.T) {
-	name := "test_go_lib.wcl"
-	content := "schema \"test_config\" {\n    port: int\n}\n"
-
-	path, err := InstallLibrary(name, content)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if path == "" {
-		t.Error("expected non-empty path")
-	}
-
-	libs, err := ListLibraries()
-	if err != nil {
-		t.Fatal(err)
-	}
-	found := false
-	for _, lib := range libs {
-		if filepath.Base(lib) == name {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Errorf("installed library not found in list: %v", libs)
-	}
-
-	if err := UninstallLibrary(name); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestDocumentClose(t *testing.T) {
 	doc, err := Parse("x = 1", nil)
 	if err != nil {
