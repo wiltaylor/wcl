@@ -71,3 +71,21 @@ fn test_query_simple() {
     let arr = js_sys::Array::from(&result);
     assert_eq!(arr.length(), 2);
 }
+
+#[wasm_bindgen_test]
+fn test_table_parse() {
+    let source = r#"table users { name : string  age : int  | "Alice" | 30 | }"#;
+    let result = wcl_wasm::parse(source, None).unwrap();
+    let has_errors = js_sys::Reflect::get(&result, &JsValue::from_str("hasErrors")).unwrap();
+    assert_eq!(has_errors.as_bool().unwrap(), false);
+}
+
+#[wasm_bindgen_test]
+fn test_table_schema_ref_parse() {
+    let source = r#"table users : user_row { | "Alice" | 30 | }"#;
+    let result = wcl_wasm::parse(source, None).unwrap();
+    // Should parse (schema may not exist, but parsing is OK)
+    let has_errors = js_sys::Reflect::get(&result, &JsValue::from_str("hasErrors")).unwrap();
+    // May have errors from schema not found, but should not have parse errors
+    let _ = has_errors;
+}

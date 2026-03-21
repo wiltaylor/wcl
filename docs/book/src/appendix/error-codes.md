@@ -48,6 +48,9 @@ This page lists all diagnostic codes produced by the WCL pipeline, grouped by ph
 | E073 | Schema | Validate constraint violation |
 | E074 | Schema | Ref target not found |
 | E080 | Validation | Document validation failed |
+| E090 | Table | @table_index references nonexistent column |
+| E091 | Table | Duplicate value in unique table index |
+| E092 | Table | Inline columns defined when schema is applied |
 
 ## Warnings
 

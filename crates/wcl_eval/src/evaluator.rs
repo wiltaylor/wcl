@@ -540,16 +540,22 @@ impl Evaluator {
                 let content = self.read_file_checked(&path_str, *span)?;
                 Ok(Value::String(content))
             }
-            Expr::ImportTable(path, sep, span) => {
-                let path_str = self.eval_string_to_string(path, scope_id)?;
+            Expr::ImportTable(args, span) => {
+                let path_str = self.eval_string_to_string(&args.path, scope_id)?;
                 let content = self.read_file_checked(&path_str, *span)?;
-                let separator = if let Some(sep_lit) = sep {
+                let separator = if let Some(ref sep_lit) = args.separator {
                     let sep_str = self.eval_string_to_string(sep_lit, scope_id)?;
                     sep_str.chars().next().unwrap_or(',')
                 } else {
                     ','
                 };
-                Ok(Self::parse_table(&content, separator))
+                let headers = args.headers.unwrap_or(true);
+                let columns: Option<Vec<String>> = args.columns.as_ref().map(|cols| {
+                    cols.iter()
+                        .filter_map(|s| self.eval_string_to_string(s, scope_id).ok())
+                        .collect()
+                });
+                Ok(Self::parse_table(&content, separator, headers, columns.as_deref()))
             }
             Expr::Paren(e, _) => self.eval_expr(e, scope_id),
         }
@@ -617,11 +623,39 @@ impl Evaluator {
             .map_err(|e| Diagnostic::error(format!("cannot read file '{}': {}", path_str, e), span))
     }
 
-    fn parse_table(content: &str, separator: char) -> Value {
-        let mut lines = content.lines();
-        let headers: Vec<&str> = match lines.next() {
-            Some(line) => line.split(separator).map(|s| s.trim()).collect(),
-            None => return Value::List(vec![]),
+    fn parse_table(
+        content: &str,
+        separator: char,
+        has_headers: bool,
+        explicit_columns: Option<&[String]>,
+    ) -> Value {
+        let mut lines = content.lines().peekable();
+
+        // Determine column names
+        let col_names: Vec<String> = if let Some(cols) = explicit_columns {
+            // Explicit columns provided — skip header line if headers=true
+            if has_headers {
+                lines.next();
+            }
+            cols.to_vec()
+        } else if has_headers {
+            // First line is headers
+            match lines.next() {
+                Some(line) => line
+                    .split(separator)
+                    .map(|s| s.trim().to_string())
+                    .collect(),
+                None => return Value::List(vec![]),
+            }
+        } else {
+            // No headers, no explicit columns — use numeric indices.
+            // Peek at first data line to determine column count.
+            match lines.peek() {
+                Some(line) => (0..line.split(separator).count())
+                    .map(|i| i.to_string())
+                    .collect(),
+                None => return Value::List(vec![]),
+            }
         };
 
         let rows: Vec<Value> = lines
@@ -629,9 +663,9 @@ impl Evaluator {
             .map(|line| {
                 let fields: Vec<&str> = line.split(separator).collect();
                 let mut map = IndexMap::new();
-                for (i, header) in headers.iter().enumerate() {
+                for (i, header) in col_names.iter().enumerate() {
                     let val = fields.get(i).map(|f| f.trim()).unwrap_or("");
-                    map.insert(header.to_string(), Value::String(val.to_string()));
+                    map.insert(header.clone(), Value::String(val.to_string()));
                 }
                 Value::Map(map)
             })
@@ -2547,7 +2581,15 @@ mod tests {
         let mut ev = Evaluator::with_fs(Box::new(fs), PathBuf::from("/project"));
         let scope = ev.scopes.create_scope(ScopeKind::Module, None);
 
-        let expr = Expr::ImportTable(mk_string_lit("services.csv"), None, ds());
+        let expr = Expr::ImportTable(
+            ImportTableArgs {
+                path: mk_string_lit("services.csv"),
+                separator: None,
+                headers: None,
+                columns: None,
+            },
+            ds(),
+        );
         let result = ev.eval_expr(&expr, scope).unwrap();
 
         let mut row1 = IndexMap::new();
@@ -2577,8 +2619,12 @@ mod tests {
         let scope = ev.scopes.create_scope(ScopeKind::Module, None);
 
         let expr = Expr::ImportTable(
-            mk_string_lit("services.tsv"),
-            Some(mk_string_lit("\t")),
+            ImportTableArgs {
+                path: mk_string_lit("services.tsv"),
+                separator: Some(mk_string_lit("\t")),
+                headers: None,
+                columns: None,
+            },
             ds(),
         );
         let result = ev.eval_expr(&expr, scope).unwrap();
@@ -2606,9 +2652,130 @@ mod tests {
         let mut ev = Evaluator::with_fs(Box::new(fs), PathBuf::from("/project"));
         let scope = ev.scopes.create_scope(ScopeKind::Module, None);
 
-        let expr = Expr::ImportTable(mk_string_lit("empty.csv"), None, ds());
+        let expr = Expr::ImportTable(
+            ImportTableArgs {
+                path: mk_string_lit("empty.csv"),
+                separator: None,
+                headers: None,
+                columns: None,
+            },
+            ds(),
+        );
         let result = ev.eval_expr(&expr, scope).unwrap();
         assert_eq!(result, Value::List(vec![]));
+    }
+
+    #[test]
+    fn test_import_table_headers_false() {
+        use crate::imports::InMemoryFs;
+        use std::path::PathBuf;
+
+        let mut fs = InMemoryFs::new();
+        fs.add_file(
+            PathBuf::from("/project/data.csv"),
+            "auth,8080\napi,9090",
+        );
+        let mut ev = Evaluator::with_fs(Box::new(fs), PathBuf::from("/project"));
+        let scope = ev.scopes.create_scope(ScopeKind::Module, None);
+
+        let expr = Expr::ImportTable(
+            ImportTableArgs {
+                path: mk_string_lit("data.csv"),
+                separator: None,
+                headers: Some(false),
+                columns: None,
+            },
+            ds(),
+        );
+        let result = ev.eval_expr(&expr, scope).unwrap();
+
+        // With headers=false and no columns, keys should be "0", "1"
+        let mut row1 = IndexMap::new();
+        row1.insert("0".to_string(), Value::String("auth".to_string()));
+        row1.insert("1".to_string(), Value::String("8080".to_string()));
+        let mut row2 = IndexMap::new();
+        row2.insert("0".to_string(), Value::String("api".to_string()));
+        row2.insert("1".to_string(), Value::String("9090".to_string()));
+
+        assert_eq!(
+            result,
+            Value::List(vec![Value::Map(row1), Value::Map(row2)])
+        );
+    }
+
+    #[test]
+    fn test_import_table_explicit_columns() {
+        use crate::imports::InMemoryFs;
+        use std::path::PathBuf;
+
+        let mut fs = InMemoryFs::new();
+        fs.add_file(
+            PathBuf::from("/project/data.csv"),
+            "auth,8080\napi,9090",
+        );
+        let mut ev = Evaluator::with_fs(Box::new(fs), PathBuf::from("/project"));
+        let scope = ev.scopes.create_scope(ScopeKind::Module, None);
+
+        let expr = Expr::ImportTable(
+            ImportTableArgs {
+                path: mk_string_lit("data.csv"),
+                separator: None,
+                headers: Some(false),
+                columns: Some(vec![mk_string_lit("name"), mk_string_lit("port")]),
+            },
+            ds(),
+        );
+        let result = ev.eval_expr(&expr, scope).unwrap();
+
+        let mut row1 = IndexMap::new();
+        row1.insert("name".to_string(), Value::String("auth".to_string()));
+        row1.insert("port".to_string(), Value::String("8080".to_string()));
+        let mut row2 = IndexMap::new();
+        row2.insert("name".to_string(), Value::String("api".to_string()));
+        row2.insert("port".to_string(), Value::String("9090".to_string()));
+
+        assert_eq!(
+            result,
+            Value::List(vec![Value::Map(row1), Value::Map(row2)])
+        );
+    }
+
+    #[test]
+    fn test_import_table_explicit_columns_skip_header() {
+        use crate::imports::InMemoryFs;
+        use std::path::PathBuf;
+
+        let mut fs = InMemoryFs::new();
+        fs.add_file(
+            PathBuf::from("/project/data.csv"),
+            "old_name,old_port\nauth,8080\napi,9090",
+        );
+        let mut ev = Evaluator::with_fs(Box::new(fs), PathBuf::from("/project"));
+        let scope = ev.scopes.create_scope(ScopeKind::Module, None);
+
+        // headers=true (default) + explicit columns: skip header, use explicit names
+        let expr = Expr::ImportTable(
+            ImportTableArgs {
+                path: mk_string_lit("data.csv"),
+                separator: None,
+                headers: None, // defaults to true
+                columns: Some(vec![mk_string_lit("name"), mk_string_lit("port")]),
+            },
+            ds(),
+        );
+        let result = ev.eval_expr(&expr, scope).unwrap();
+
+        let mut row1 = IndexMap::new();
+        row1.insert("name".to_string(), Value::String("auth".to_string()));
+        row1.insert("port".to_string(), Value::String("8080".to_string()));
+        let mut row2 = IndexMap::new();
+        row2.insert("name".to_string(), Value::String("api".to_string()));
+        row2.insert("port".to_string(), Value::String("9090".to_string()));
+
+        assert_eq!(
+            result,
+            Value::List(vec![Value::Map(row1), Value::Map(row2)])
+        );
     }
 
     // ── Variable warning helpers ────────────────────────────────────

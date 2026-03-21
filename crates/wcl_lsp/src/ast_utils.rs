@@ -206,7 +206,6 @@ fn find_in_body_item<'a>(item: &'a BodyItem, offset: usize) -> NodeAtOffset<'a> 
                         InlineId::Literal(lit) => lit.span.start,
                         InlineId::Interpolated(_) => table.span.end, // fallback
                     })
-                    .or_else(|| table.labels.first().map(|l| l.span.start))
                     .or_else(|| table.columns.first().map(|c| c.span.start))
                     .unwrap_or(table.span.end);
                 if offset < first_child_start {

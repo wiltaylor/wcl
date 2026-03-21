@@ -1340,6 +1340,29 @@
     }
   },
   {
+    "type": "import_table_arg",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "expression",
+          "named": true
+        },
+        {
+          "type": "identifier",
+          "named": true
+        },
+        {
+          "type": "string_literal",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "import_table_expression",
     "named": true,
     "fields": {},
@@ -1347,6 +1370,10 @@
       "multiple": true,
       "required": true,
       "types": [
+        {
+          "type": "import_table_arg",
+          "named": true
+        },
         {
           "type": "string_literal",
           "named": true
@@ -2298,11 +2325,15 @@
           "named": true
         },
         {
-          "type": "identifier_literal",
+          "type": "expression",
           "named": true
         },
         {
-          "type": "string_literal",
+          "type": "identifier",
+          "named": true
+        },
+        {
+          "type": "identifier_literal",
           "named": true
         },
         {

@@ -121,14 +121,39 @@ The same path rules apply: relative only, jailed to the root.
 
 ### CSV Data: `import_table`
 
-`import_table("path.csv")` loads a CSV file as a table value. An optional second argument overrides the separator:
+`import_table("path.csv")` loads a CSV file as a table value:
 
 ```wcl
 let acl_rows = import_table("./acl.csv")
 let tsv_rows = import_table("./data.tsv", "\t")
 ```
 
-The first CSV row is used as column headers. See the [Data Tables](./tables.md) chapter for details on working with table values.
+Named arguments provide fine-grained control:
+
+```wcl
+# Custom separator
+let tsv = import_table("./data.tsv", separator="\t")
+
+# Skip the header row
+let raw = import_table("./data.csv", headers=false)
+
+# Explicit column names
+let data = import_table("./data.csv", headers=false, columns=["name", "age"])
+```
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `separator` | string | `","` | Field separator character |
+| `headers` | bool | `true` | Whether the first row contains column headers |
+| `columns` | list | — | Explicit column names (overrides headers) |
+
+Tables can be populated directly from CSV using assignment syntax:
+
+```wcl
+table users : user_row = import_table("data.csv")
+```
+
+See the [Data Tables](./tables.md) chapter for full details.
 
 ## Security: `allow_imports`
 
