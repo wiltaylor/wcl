@@ -1,0 +1,71 @@
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+    id 'signing'
+}
+
+group = 'io.github.wiltaylor'
+version = '0.0.0-local'
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+    withSourcesJar()
+    withJavadocJar()
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'com.dylibso.chicory:runtime:1.1.0'
+    implementation 'com.dylibso.chicory:wasi:1.1.0'
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.18.2'
+
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 17
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+            pom {
+                name = 'WCL'
+                description = 'JVM binding for WCL (Wil\'s Configuration Language)'
+                url = 'https://github.com/wiltaylor/wcl'
+                licenses {
+                    license {
+                        name = 'MIT'
+                        url = 'https://opensource.org/licenses/MIT'
+                    }
+                }
+                developers {
+                    developer {
+                        id = 'wiltaylor'
+                        name = 'Wil Taylor'
+                    }
+                }
+                scm {
+                    connection = 'scm:git:git://github.com/wiltaylor/wcl.git'
+                    developerConnection = 'scm:git:ssh://github.com/wiltaylor/wcl.git'
+                    url = 'https://github.com/wiltaylor/wcl'
+                }
+            }
+        }
+    }
+}
+
+signing {
+    required = false
+    sign publishing.publications.mavenJava
+}

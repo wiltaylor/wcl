@@ -42,5 +42,10 @@ tree-sitter-wcl:
     go test ./bindings/go/
     cd bindings/zig && zig build test
 
+# Run JVM binding tests
+jvm:
+    just build jvm-wasm
+    cd bindings/jvm && ./gradlew test
+
 # Run all tests
-all: rust python wasm dotnet go zig tree-sitter-wcl
+all: rust python wasm dotnet go zig jvm tree-sitter-wcl

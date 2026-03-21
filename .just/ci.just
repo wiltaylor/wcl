@@ -10,6 +10,8 @@ all:
     dotnet test bindings/dotnet/Wcl.sln
     just build go
     cd bindings/go && CGO_ENABLED=1 go test -v ./...
+    just build jvm-wasm
+    cd bindings/jvm && ./gradlew test
 
 # Quick CI: Rust only (fmt, lint, test)
 quick:

@@ -127,11 +127,20 @@ vscode-syntax:
 vscode: vscode-syntax
     cd editors/vscode && npm install && npx --yes @vscode/vsce package --allow-missing-repository
 
+# Build WASM module for JVM (reuses WASI target)
+jvm-wasm: dotnet-wasm
+    mkdir -p bindings/jvm/src/main/resources/io/github/wiltaylor/wcl/wasm
+    cp target/wasm32-wasip1/release/wcl_wasm.wasm bindings/jvm/src/main/resources/io/github/wiltaylor/wcl/wasm/
+
+# Build JVM library
+jvm: jvm-wasm
+    cd bindings/jvm && ./gradlew build -x test
+
 # Build everything (native FFI)
-all: rust-release ffi-native go zig python wasm dotnet vscode
+all: rust-release ffi-native go zig python wasm dotnet jvm vscode
 
 # Build everything with all FFI platforms
-all-platforms: rust-release ffi-all go-all zig-all python wasm dotnet vscode
+all-platforms: rust-release ffi-all go-all zig-all python wasm dotnet jvm vscode
 
 # Publish Rust crates in dependency order
 rust-publish:
@@ -160,6 +169,10 @@ dotnet-pack: dotnet-wasm
 # Publish .NET NuGet package
 dotnet-publish: dotnet-pack
     dotnet nuget push bindings/dotnet/src/Wcl/bin/Release/*.nupkg --source nuget.org
+
+# Publish JVM package to Maven Central
+jvm-publish: jvm
+    cd bindings/jvm && ./gradlew publishToMavenCentral
 
 # Publish VS Code extension
 vscode-publish:

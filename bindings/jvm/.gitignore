@@ -1,0 +1,3 @@
+.gradle/
+build/
+src/main/resources/io/github/wiltaylor/wcl/wasm/wcl_wasm.wasm
