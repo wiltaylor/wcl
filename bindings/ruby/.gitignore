@@ -1,0 +1,5 @@
+vendor/
+.bundle/
+*.gem
+Gemfile.lock
+lib/wcl/wcl_wasm.wasm

@@ -47,5 +47,10 @@ jvm:
     just build jvm-wasm
     cd bindings/jvm && ./gradlew test
 
+# Run Ruby binding tests
+ruby:
+    just build ruby-wasm
+    cd bindings/ruby && bundle install --quiet && bundle exec rake test
+
 # Run all tests
-all: rust python wasm dotnet go zig jvm tree-sitter-wcl
+all: rust python wasm dotnet go zig jvm ruby tree-sitter-wcl
