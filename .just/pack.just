@@ -202,7 +202,7 @@ clean:
     rm -rf "{{pkg}}"
     @echo "Cleaned {{pkg}}/"
 
-[private]
+# Stamp version across all packages
 set-version ver:
     #!/bin/bash
     set -euo pipefail
