@@ -149,10 +149,30 @@ jobs:
           just build jvm-wasm
           cd bindings/jvm && ./gradlew test
 
+  test-ruby:
+    name: Test Ruby
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: wasm32-wasip1
+      - uses: taiki-e/install-action@just
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+          working-directory: bindings/ruby
+      - uses: Swatinem/rust-cache@f51f967e158417aafa338a1e46ab22095f07aa01  # master, pending v2.10 (actions/cache v5)
+      - run: |
+          just build ruby-wasm
+          cd bindings/ruby && bundle exec rake test
+
   pack:
     name: Package
     runs-on: ubuntu-latest
-    needs: [check, test-rust, test-python, test-wasm, test-dotnet, test-go, test-jvm]
+    needs: [check, test-rust, test-python, test-wasm, test-dotnet, test-go, test-jvm, test-ruby]
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@master
@@ -173,6 +193,11 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+          working-directory: bindings/ruby
       - uses: tree-sitter/setup-action@v2
       - uses: Swatinem/rust-cache@f51f967e158417aafa338a1e46ab22095f07aa01  # master, pending v2.10 (actions/cache v5)
       - run: just pack all "0.0.0-ci+${{ github.sha }}"

@@ -126,11 +126,20 @@ jvm-wasm: dotnet-wasm
 jvm: jvm-wasm
     cd bindings/jvm && ./gradlew build -x test
 
+# Build WASM module for Ruby (reuses WASI target)
+ruby-wasm: dotnet-wasm
+    mkdir -p bindings/ruby/lib/wcl
+    cp target/wasm32-wasip1/release/wcl_wasm.wasm bindings/ruby/lib/wcl/
+
+# Build Ruby gem
+ruby: ruby-wasm
+    cd bindings/ruby && gem build wcl.gemspec
+
 # Build everything (native FFI)
-all: rust-release ffi-native go zig python wasm dotnet jvm vscode
+all: rust-release ffi-native go zig python wasm dotnet jvm ruby vscode
 
 # Build everything with all FFI platforms
-all-platforms: rust-release ffi-all go zig-all python wasm dotnet jvm vscode
+all-platforms: rust-release ffi-all go zig-all python wasm dotnet jvm ruby vscode
 
 # Publish Rust crates in dependency order
 rust-publish:

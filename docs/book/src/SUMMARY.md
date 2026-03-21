@@ -16,6 +16,7 @@
 - [.NET / C# Usage](./getting-started/dotnet-library.md)
 - [JVM (Java/Kotlin) Usage](./getting-started/jvm-library.md)
 - [Zig Library Usage](./getting-started/zig-library.md)
+- [Ruby Library Usage](./getting-started/ruby-library.md)
 
 # Language Guide
 

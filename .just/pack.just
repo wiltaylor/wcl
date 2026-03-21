@@ -134,8 +134,17 @@ jvm:
     cp bindings/jvm/build/libs/*.jar "{{pkg}}/jvm/"
     echo "JVM JAR packaged to {{pkg}}/jvm/"
 
+# Package Ruby gem into .packages/ruby/
+ruby:
+    #!/bin/bash
+    set -euo pipefail
+    just build ruby-wasm
+    mkdir -p "{{pkg}}/ruby"
+    cd bindings/ruby && gem build wcl.gemspec -o "{{pkg}}/ruby/wcl.gem"
+    echo "Ruby gem packaged to {{pkg}}/ruby/"
+
 # Package everything. Pass a version to stamp all packages (default: 0.0.0-local)
-all ver="0.0.0-local": (set-version ver) rust python wasm go dotnet jvm vscode tree-sitter-wcl highlight-queries sublime-syntax highlightjs chroma pygments
+all ver="0.0.0-local": (set-version ver) rust python wasm go dotnet jvm ruby vscode tree-sitter-wcl highlight-queries sublime-syntax highlightjs chroma pygments
     @echo "All packages created in {{pkg}}/"
 
 # Remove all packaged artifacts
@@ -182,6 +191,9 @@ set-version ver:
 
     # JVM: Gradle version
     sed -i "s/^version = .*/version = '$V'/" bindings/jvm/build.gradle
+
+    # Ruby: gemspec version
+    sed -i "s/VERSION = \"[^\"]*\"/VERSION = \"$V\"/" bindings/ruby/lib/wcl/version.rb
 
     # tree-sitter-wcl: Cargo.toml (Rust crate), pyproject.toml (Python), tree-sitter.json
     sed -i "0,/^version = .*/s/^version = .*/version = \"$V\"/" extras/tree-sitter-wcl/Cargo.toml
