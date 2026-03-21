@@ -6,3 +6,5 @@ site/resources/
 site/.hugo_build.lock
 .packages/
 .zig-cache/
+docs/book/wcl-grammar.js
+site/static/js/wcl.js

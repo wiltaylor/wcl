@@ -105,6 +105,15 @@ highlightjs:
         -C extras/highlightjs wcl.js
     echo "highlight.js grammar packaged to {{pkg}}/highlightjs/"
 
+# Package Chroma XML lexer into .packages/chroma/
+chroma:
+    #!/bin/bash
+    set -euo pipefail
+    mkdir -p "{{pkg}}/chroma"
+    tar czf "{{pkg}}/chroma/wcl-chroma.tar.gz" \
+        -C extras/chroma wcl.xml
+    echo "Chroma lexer packaged to {{pkg}}/chroma/"
+
 # Package Pygments lexer into .packages/pygments/
 pygments:
     #!/bin/bash
@@ -115,7 +124,7 @@ pygments:
     echo "Pygments lexer packaged to {{pkg}}/pygments/"
 
 # Package everything. Pass a version to stamp all packages (default: 0.0.0-local)
-all ver="0.0.0-local": (set-version ver) rust python wasm go dotnet vscode tree-sitter-wcl highlight-queries sublime-syntax highlightjs pygments
+all ver="0.0.0-local": (set-version ver) rust python wasm go dotnet vscode tree-sitter-wcl highlight-queries sublime-syntax highlightjs chroma pygments
     @echo "All packages created in {{pkg}}/"
 
 # Remove all packaged artifacts

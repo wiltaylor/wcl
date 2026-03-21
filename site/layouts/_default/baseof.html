@@ -11,9 +11,10 @@
   {{ partial "footer.html" . }}
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/monokai.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-  <script src="/js/wcl-highlight.js"></script>
+  <script src="/js/wcl.js"></script>
   <script src="/js/sections.js"></script>
   <script>
+    hljs.registerLanguage('wcl', hljsDefineWcl);
     document.querySelectorAll("pre code").forEach(function (block) {
       hljs.highlightElement(block);
     });
