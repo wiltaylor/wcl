@@ -38,16 +38,10 @@ impl<'de> de::Deserializer<'de> for Deserializer {
                 visitor.visit_map(map_de)
             }
             Value::BlockRef(br) => {
-                // Deserialize block as a map with id, labels, and attributes
+                // Deserialize block as a map with id and attributes
                 let mut map = IndexMap::new();
                 if let Some(id) = br.id {
                     map.insert("id".to_string(), Value::String(id));
-                }
-                if !br.labels.is_empty() {
-                    map.insert(
-                        "labels".to_string(),
-                        Value::List(br.labels.into_iter().map(Value::String).collect()),
-                    );
                 }
                 for (k, v) in br.attributes {
                     map.insert(k, v);
@@ -299,12 +293,6 @@ impl<'de> de::Deserializer<'de> for Deserializer {
                 let mut map = IndexMap::new();
                 if let Some(id) = br.id {
                     map.insert("id".to_string(), Value::String(id));
-                }
-                if !br.labels.is_empty() {
-                    map.insert(
-                        "labels".to_string(),
-                        Value::List(br.labels.into_iter().map(Value::String).collect()),
-                    );
                 }
                 for (k, v) in br.attributes {
                     map.insert(k, v);

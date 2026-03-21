@@ -50,12 +50,6 @@ class TestBlocks < Minitest::Test
     assert_nil block.id
   end
 
-  def test_blockref_labels
-    doc = Wcl.parse('server "production" "us-east" { port = 8080 }')
-    block = doc.blocks[0]
-    assert_equal ["production", "us-east"], block.labels
-  end
-
   def test_blockref_children
     doc = Wcl.parse("outer { inner { value = 1 } }")
     block = doc.blocks[0]

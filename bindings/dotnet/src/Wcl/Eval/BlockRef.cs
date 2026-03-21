@@ -8,16 +8,15 @@ namespace Wcl.Eval
     {
         public string Kind { get; set; }
         public string? Id { get; set; }
-        public List<string> Labels { get; set; }
         public OrderedMap<string, WclValue> Attributes { get; set; }
         public List<BlockRef> Children { get; set; }
         public List<DecoratorValue> Decorators { get; set; }
 
-        public BlockRef(string kind, string? id, List<string> labels,
+        public BlockRef(string kind, string? id,
                         OrderedMap<string, WclValue> attributes, List<BlockRef> children,
                         List<DecoratorValue> decorators)
         {
-            Kind = kind; Id = id; Labels = labels;
+            Kind = kind; Id = id;
             Attributes = attributes; Children = children;
             Decorators = decorators;
         }

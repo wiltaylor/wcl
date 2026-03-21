@@ -97,7 +97,7 @@ server web-prod {
 fn eval_block_with_label() {
     let json = eval_json(
         r#"
-server "primary" {
+server primary {
     port = 443
 }
 "#,

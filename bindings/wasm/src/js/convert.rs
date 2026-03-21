@@ -42,13 +42,6 @@ pub fn value_to_js(value: &Value) -> JsValue {
             if let Some(id) = &br.id {
                 Reflect::set(&obj, &JsValue::from_str("id"), &JsValue::from_str(id)).unwrap();
             }
-            if !br.labels.is_empty() {
-                let labels = Array::new();
-                for label in &br.labels {
-                    labels.push(&JsValue::from_str(label));
-                }
-                Reflect::set(&obj, &JsValue::from_str("labels"), &labels.into()).unwrap();
-            }
             if !br.attributes.is_empty() {
                 let attrs = Object::new();
                 for (k, v) in &br.attributes {

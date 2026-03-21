@@ -268,15 +268,9 @@ fn substitute_value_in_body_item(
             if let Some(InlineId::Interpolated(parts)) = &mut block.inline_id {
                 substitute_in_string_parts(parts, iterator_name, value, index_name, index);
             }
-            // Substitute in labels
-            for label in &mut block.labels {
-                substitute_in_string_parts(
-                    &mut label.parts,
-                    iterator_name,
-                    value,
-                    index_name,
-                    index,
-                );
+            // Substitute in inline args
+            for arg in &mut block.inline_args {
+                substitute_in_expr(arg, iterator_name, value, index_name, index);
             }
             // Substitute in text content
             if let Some(ref mut tc) = block.text_content {

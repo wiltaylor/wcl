@@ -30,6 +30,7 @@ pub struct ResolvedField {
     pub ref_target: Option<String>,
     pub id_pattern: Option<String>,
     pub text: bool,
+    pub inline_index: Option<usize>,
     pub span: Span,
 }
 
@@ -90,6 +91,9 @@ impl SchemaRegistry {
                 .or_else(|| get_decorator_string_arg(&field.decorators_after, "ref"));
             let id_pattern = get_decorator_string_arg(&field.decorators_before, "id_pattern")
                 .or_else(|| get_decorator_string_arg(&field.decorators_after, "id_pattern"));
+            let inline_index = get_decorator_int_arg(&field.decorators_before, "inline")
+                .or_else(|| get_decorator_int_arg(&field.decorators_after, "inline"))
+                .map(|n| n as usize);
             let is_text = has_decorator(&field.decorators_before, "text")
                 || has_decorator(&field.decorators_after, "text");
 
@@ -131,6 +135,7 @@ impl SchemaRegistry {
                 ref_target,
                 id_pattern,
                 text: is_text,
+                inline_index,
                 span: field.span,
             });
         }
@@ -316,8 +321,16 @@ impl SchemaRegistry {
                     let has_id = block.inline_id.is_some();
                     // @text field is satisfied by text_content
                     let is_text_field = field.text && block.text_content.is_some();
+                    // @inline(N) field is satisfied by inline_args
+                    let is_inline_satisfied = field
+                        .inline_index
+                        .is_some_and(|idx| idx < block.inline_args.len());
 
-                    if !has_attr && (!is_id_field || !has_id) && !is_text_field {
+                    if !has_attr
+                        && (!is_id_field || !has_id)
+                        && !is_text_field
+                        && !is_inline_satisfied
+                    {
                         diagnostics.error_with_code(
                             format!(
                                 "missing required field '{}' in block '{}'",
@@ -461,6 +474,18 @@ pub(crate) fn string_lit_to_string(s: &StringLit) -> String {
 
 pub(crate) fn has_decorator(decorators: &[Decorator], name: &str) -> bool {
     decorators.iter().any(|d| d.name.name == name)
+}
+
+pub(crate) fn get_decorator_int_arg(decorators: &[Decorator], name: &str) -> Option<i64> {
+    decorators
+        .iter()
+        .find(|d| d.name.name == name)
+        .and_then(|d| {
+            d.args.first().and_then(|arg| match arg {
+                DecoratorArg::Positional(Expr::IntLit(n, _)) => Some(*n),
+                _ => None,
+            })
+        })
 }
 
 pub(crate) fn get_decorator_string_arg(decorators: &[Decorator], name: &str) -> Option<String> {
@@ -972,7 +997,7 @@ mod tests {
                     span: dummy_span(),
                 })
             }),
-            labels: vec![],
+            inline_args: vec![],
             body: vec![],
             text_content: text_content.map(|s| make_string_lit(s)),
             trivia: Trivia::default(),

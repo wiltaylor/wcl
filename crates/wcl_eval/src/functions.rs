@@ -1804,7 +1804,6 @@ mod tests {
         let br = Value::BlockRef(crate::value::BlockRef {
             kind: "service".to_string(),
             id: Some("svc-api".to_string()),
-            labels: vec![],
             attributes: attrs,
             children: vec![],
             decorators: vec![],
@@ -1820,7 +1819,6 @@ mod tests {
         let child = crate::value::BlockRef {
             kind: "monitoring".to_string(),
             id: None,
-            labels: vec![],
             attributes: IndexMap::new(),
             children: vec![],
             decorators: vec![],
@@ -1829,7 +1827,6 @@ mod tests {
         let br = Value::BlockRef(crate::value::BlockRef {
             kind: "service".to_string(),
             id: Some("svc-api".to_string()),
-            labels: vec![],
             attributes: IndexMap::new(),
             children: vec![child],
             decorators: vec![],
@@ -1853,7 +1850,6 @@ mod tests {
         let br = Value::BlockRef(crate::value::BlockRef {
             kind: "service".to_string(),
             id: Some("svc-api".to_string()),
-            labels: vec![],
             attributes: IndexMap::new(),
             children: vec![],
             decorators: vec![

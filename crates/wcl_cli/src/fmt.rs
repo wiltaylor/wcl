@@ -161,9 +161,9 @@ impl<'a> Formatter<'a> {
                         }
                     }
                 }
-                for label in &block.labels {
+                for arg in &block.inline_args {
                     self.output.push(' ');
-                    self.format_string_lit(label);
+                    self.format_expr(arg);
                 }
                 if let Some(ref tc) = block.text_content {
                     self.output.push(' ');

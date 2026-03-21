@@ -47,7 +47,6 @@ mod tests {
         let br = wcl::BlockRef {
             kind: "server".to_string(),
             id: Some("main".to_string()),
-            labels: vec!["prod".to_string()],
             attributes: IndexMap::new(),
             children: vec![],
             decorators: vec![],

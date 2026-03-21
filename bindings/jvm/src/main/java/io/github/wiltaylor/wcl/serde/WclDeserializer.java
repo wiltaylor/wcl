@@ -83,16 +83,11 @@ public final class WclDeserializer {
             return list;
         }
 
-        // BlockRef -> Map with id/labels auto-populated
+        // BlockRef -> Map with id auto-populated
         if (value.getKind() == WclValueKind.BLOCK_REF) {
             var br = value.asBlockRef();
             var map = new LinkedHashMap<String, WclValue>();
             if (br.getId() != null) map.put("id", WclValue.ofString(br.getId()));
-            if (!br.getLabels().isEmpty()) {
-                var labelValues = new ArrayList<WclValue>();
-                for (var l : br.getLabels()) labelValues.add(WclValue.ofString(l));
-                map.put("labels", WclValue.ofList(labelValues));
-            }
             map.putAll(br.getAttributes());
             return convertValue(WclValue.ofMap(map), rawType, genericType);
         }

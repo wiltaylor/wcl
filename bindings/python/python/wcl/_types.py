@@ -62,10 +62,9 @@ class Document:
 class BlockRef:
     """A reference to a WCL block with its attributes."""
 
-    def __init__(self, kind, id=None, labels=None, attributes=None, children=None, decorators=None):
+    def __init__(self, kind, id=None, attributes=None, children=None, decorators=None):
         self.kind = kind
         self.id = id
-        self.labels = labels or []
         self.attributes = attributes or {}
         self.children = children or []
         self.decorators = decorators or []

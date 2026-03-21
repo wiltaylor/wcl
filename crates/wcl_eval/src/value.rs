@@ -28,7 +28,6 @@ pub enum Value {
 pub struct BlockRef {
     pub kind: String,
     pub id: Option<String>,
-    pub labels: Vec<String>,
     pub attributes: IndexMap<String, Value>,
     pub children: Vec<BlockRef>,
     pub decorators: Vec<DecoratorValue>,

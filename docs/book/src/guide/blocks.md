@@ -5,7 +5,7 @@ A block is the primary structural unit of a WCL file. Blocks group attributes an
 ## Full Syntax
 
 ```
-[decorators] [partial] type [#inline-id] [labels...] { body }
+[decorators] [partial] type [inline-id] [inline-args...] { body }
 ```
 
 Every component except `type` and `{ body }` is optional.
@@ -25,25 +25,51 @@ my_custom_type { }
 
 ### Inline ID
 
-An inline ID uniquely identifies a block within its scope. It is written as a `#`-prefixed token that may contain letters, digits, and **hyphens** (unlike attribute names, which forbid hyphens):
+An inline ID uniquely identifies a block within its scope. It may contain letters, digits, and **hyphens** (unlike attribute names, which forbid hyphens):
 
 ```wcl
-server #web-1 { }
-database #primary-db { }
-endpoint #get-users { }
+server web-1 { }
+database primary-db { }
+endpoint get-users { }
 ```
 
 Inline IDs must be unique per block type within their scope. The only exception is `partial` blocks, which share an ID with the block they extend (see [Partial Declarations](./partials.md)).
 
-### String Labels
+### Inline Arguments
 
-Labels are arbitrary string metadata. Multiple labels may follow the inline ID (or the type, when no ID is given). They are useful for tagging or grouping blocks:
+Inline arguments are positional values placed between the inline ID (or block type) and the opening `{`. They accept any primary expression: integers, floats, strings, booleans, `null`, and lists.
 
 ```wcl
-server "production" "us-east" { }
-server #web-1 "production" { }
-endpoint "GET" "/users" { }
+server web 8080 "prod" { }
+endpoint api true 3 { }
+service worker [1, 2, 3] { }
 ```
+
+Without a schema, inline args are collected into a synthetic `_args` list attribute:
+
+```wcl
+server web 8080 "prod" {
+  host = "localhost"
+}
+// Evaluates to: { _args: [8080, "prod"], host: "localhost" }
+```
+
+With a schema, fields decorated with `@inline(N)` map positional args to named attributes:
+
+```wcl
+schema "server" {
+    port: int @inline(0)
+    env: string @inline(1)
+    host: string
+}
+
+server web 8080 "prod" {
+    host = "localhost"
+}
+// Evaluates to: { port: 8080, env: "prod", host: "localhost" }
+```
+
+Any args not mapped by `@inline` remain in `_args`.
 
 ### Decorators
 
@@ -52,10 +78,10 @@ Decorators are annotations that modify or validate a block. They are placed befo
 ```wcl
 @deprecated
 @env("production")
-server #legacy { }
+server legacy { }
 
 @required
-server #primary { }
+server primary { }
 ```
 
 See [Decorators](./decorators.md) for the full decorator system.
@@ -65,11 +91,11 @@ See [Decorators](./decorators.md) for the full decorator system.
 The `partial` keyword marks a block as a partial declaration, meaning it will be merged into another block with the same type and ID. This allows spreading a block's definition across multiple files:
 
 ```wcl
-partial server #web-1 {
+partial server web-1 {
   host = "0.0.0.0"
 }
 
-partial server #web-1 {
+partial server web-1 {
   port = 8080
 }
 ```
@@ -112,27 +138,25 @@ server {
 ### Block with Inline ID
 
 ```wcl
-server #web-1 {
+server web-1 {
   host = "0.0.0.0"
   port = 8080
 }
 ```
 
-### Block with String Labels
+### Block with Inline Arguments
 
 ```wcl
-server "production" "us-east-1" {
+server 8080 "production" {
   host = "prod.example.com"
-  port = 443
 }
 ```
 
-### Block with Inline ID and Labels
+### Block with Inline ID and Arguments
 
 ```wcl
-server #web-1 "production" "us-east-1" {
+server web-1 8080 "production" {
   host = "prod.example.com"
-  port = 443
 }
 ```
 
@@ -140,7 +164,7 @@ server #web-1 "production" "us-east-1" {
 
 ```wcl
 @env("production")
-server #primary "us-east-1" {
+server primary {
   host = "prod.example.com"
   port = 443
 }
@@ -149,7 +173,7 @@ server #primary "us-east-1" {
 ### Nested Blocks
 
 ```wcl
-application #my-app {
+application my-app {
   name    = "my-app"
   version = "1.0.0"
 
@@ -163,7 +187,7 @@ application #my-app {
     }
   }
 
-  database #primary {
+  database primary {
     host = "db.internal"
     port = 5432
   }
@@ -173,17 +197,17 @@ application #my-app {
 ### Multiple Sibling Blocks of the Same Type
 
 ```wcl
-server #web-1 {
+server web-1 {
   host = "10.0.0.1"
   port = 8080
 }
 
-server #web-2 {
+server web-2 {
   host = "10.0.0.2"
   port = 8080
 }
 
-server #web-3 {
+server web-3 {
   host = "10.0.0.3"
   port = 8080
 }

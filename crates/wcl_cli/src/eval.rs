@@ -32,11 +32,7 @@ pub fn run(file: &Path, format: &str, vars: &[String]) -> Result<(), String> {
                 .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
             if let serde_json::Value::Object(kind_map) = kind_entry {
                 // Use inline ID, then first label, then the raw key
-                let block_key = br
-                    .id
-                    .as_deref()
-                    .or_else(|| br.labels.first().map(|s| s.as_str()))
-                    .unwrap_or(key);
+                let block_key = br.id.as_deref().unwrap_or(key);
                 kind_map.insert(block_key.to_string(), blockref_to_json(br));
             }
         } else {

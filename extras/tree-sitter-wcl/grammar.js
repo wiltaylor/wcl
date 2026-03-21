@@ -72,8 +72,19 @@ export default grammar({
         optional("partial"),
         $.identifier,
         optional($.identifier_literal),
-        repeat($.string_literal),
+        repeat($.inline_arg),
         $.block_body,
+      ),
+
+    inline_arg: ($) =>
+      choice(
+        $.integer_literal,
+        $.float_literal,
+        $.string_literal,
+        $.boolean_literal,
+        $.null_literal,
+        $.identifier,
+        $.list_literal,
       ),
 
     block_body: ($) => seq("{", repeat($._body_item), "}"),
@@ -441,7 +452,7 @@ export default grammar({
           optional(".."),
           $.identifier,
           optional(seq("#", $.identifier_literal)),
-          repeat(seq(".", choice($.identifier, $.string_literal))),
+          repeat(seq(".", $.identifier)),
         ),
         ".",
         "*",

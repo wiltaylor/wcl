@@ -65,13 +65,6 @@ namespace Wcl.Wasm
             if (el.TryGetProperty("id", out var idEl) && idEl.ValueKind == JsonValueKind.String)
                 id = idEl.GetString();
 
-            var labels = new List<string>();
-            if (el.TryGetProperty("labels", out var labelsEl))
-            {
-                foreach (var l in labelsEl.EnumerateArray())
-                    labels.Add(l.GetString()!);
-            }
-
             var attributes = new OrderedMap<string, WclValue>();
             if (el.TryGetProperty("attributes", out var attrsEl))
             {
@@ -102,7 +95,7 @@ namespace Wcl.Wasm
                 }
             }
 
-            return new BlockRef(kind, id, labels, attributes, children, decorators);
+            return new BlockRef(kind, id, attributes, children, decorators);
         }
 
         internal static Diagnostic ToDiagnostic(JsonElement el)
@@ -177,13 +170,6 @@ namespace Wcl.Wasm
             parts.Add("\"kind\":" + JsonSerializer.Serialize(br.Kind));
             if (br.Id != null)
                 parts.Add("\"id\":" + JsonSerializer.Serialize(br.Id));
-            if (br.Labels.Count > 0)
-            {
-                var labelParts = new string[br.Labels.Count];
-                for (int i = 0; i < br.Labels.Count; i++)
-                    labelParts[i] = JsonSerializer.Serialize(br.Labels[i]);
-                parts.Add("\"labels\":[" + string.Join(",", labelParts) + "]");
-            }
             if (br.Attributes.Count > 0)
             {
                 var attrParts = new List<string>(br.Attributes.Count);

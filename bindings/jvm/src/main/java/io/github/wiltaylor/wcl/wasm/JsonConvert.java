@@ -67,12 +67,6 @@ public final class JsonConvert {
         var idNode = node.get("id");
         if (idNode != null && idNode.isTextual()) id = idNode.textValue();
 
-        var labels = new ArrayList<String>();
-        var labelsNode = node.get("labels");
-        if (labelsNode != null && labelsNode.isArray()) {
-            for (var l : labelsNode) labels.add(l.textValue());
-        }
-
         var attributes = new LinkedHashMap<String, WclValue>();
         var attrsNode = node.get("attributes");
         if (attrsNode != null && attrsNode.isObject()) {
@@ -107,7 +101,7 @@ public final class JsonConvert {
             }
         }
 
-        return new BlockRef(kind, id, labels, attributes, children, decorators);
+        return new BlockRef(kind, id, attributes, children, decorators);
     }
 
     public static Diagnostic toDiagnostic(JsonNode node) {
@@ -176,12 +170,6 @@ public final class JsonConvert {
             parts.add("\"kind\":" + MAPPER.writeValueAsString(br.getKind()));
             if (br.getId() != null)
                 parts.add("\"id\":" + MAPPER.writeValueAsString(br.getId()));
-            if (!br.getLabels().isEmpty()) {
-                var labelParts = new String[br.getLabels().size()];
-                for (int i = 0; i < br.getLabels().size(); i++)
-                    labelParts[i] = MAPPER.writeValueAsString(br.getLabels().get(i));
-                parts.add("\"labels\":[" + String.join(",", labelParts) + "]");
-            }
             if (!br.getAttributes().isEmpty()) {
                 var attrParts = new ArrayList<String>(br.getAttributes().size());
                 for (var entry : br.getAttributes().entrySet())

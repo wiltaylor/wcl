@@ -6,17 +6,15 @@ import java.util.List;
 public final class BlockRef {
     private final String kind;
     private final String id;
-    private final List<String> labels;
     private final LinkedHashMap<String, WclValue> attributes;
     private final List<BlockRef> children;
     private final List<DecoratorValue> decorators;
 
-    public BlockRef(String kind, String id, List<String> labels,
+    public BlockRef(String kind, String id,
                     LinkedHashMap<String, WclValue> attributes,
                     List<BlockRef> children, List<DecoratorValue> decorators) {
         this.kind = kind;
         this.id = id;
-        this.labels = labels;
         this.attributes = attributes;
         this.children = children;
         this.decorators = decorators;
@@ -24,7 +22,6 @@ public final class BlockRef {
 
     public String getKind() { return kind; }
     public String getId() { return id; }
-    public List<String> getLabels() { return labels; }
     public LinkedHashMap<String, WclValue> getAttributes() { return attributes; }
     public List<BlockRef> getChildren() { return children; }
     public List<DecoratorValue> getDecorators() { return decorators; }

@@ -161,14 +161,107 @@ impl Document {
             .iter()
             .filter_map(|item| match item {
                 ast::DocItem::Body(ast::BodyItem::Block(block)) => {
-                    Some(Self::block_to_ref(block, &mut evaluator, scope))
+                    Some(self.block_to_ref(block, &mut evaluator, scope))
                 }
+                ast::DocItem::Body(ast::BodyItem::Table(table)) => Some(self.table_to_ref(table)),
                 _ => None,
             })
             .collect()
     }
 
-    fn block_to_ref(block: &ast::Block, evaluator: &mut Evaluator, scope: ScopeId) -> BlockRef {
+    /// Convert an evaluated table into a pseudo-BlockRef.
+    /// Each row becomes a `__row` child BlockRef with column values as attributes.
+    fn table_to_ref(&self, table: &ast::Table) -> BlockRef {
+        let name = table.inline_id.as_ref().map(|id| match id {
+            ast::InlineId::Literal(lit) => lit.value.clone(),
+            ast::InlineId::Interpolated(parts) => parts
+                .iter()
+                .filter_map(|p| match p {
+                    ast::StringPart::Literal(s) => Some(s.clone()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join(""),
+        });
+
+        let children = self.table_rows_to_refs(name.as_deref());
+        BlockRef {
+            kind: "table".to_string(),
+            id: name,
+            attributes: indexmap::IndexMap::new(),
+            children,
+            decorators: Vec::new(),
+            span: table.span,
+        }
+    }
+
+    /// Build row BlockRefs for a table nested inside a block.
+    /// Looks up `self.values[block_id] -> BlockRef.attributes[table_name]`.
+    fn nested_table_rows_to_refs(
+        &self,
+        block_id: Option<&str>,
+        table_name: Option<&str>,
+    ) -> Vec<BlockRef> {
+        let Some(block_id) = block_id else {
+            return Vec::new();
+        };
+        let Some(table_name) = table_name else {
+            return Vec::new();
+        };
+        let Some(Value::BlockRef(br)) = self.values.get(block_id) else {
+            return Vec::new();
+        };
+        let Some(Value::List(rows)) = br.attributes.get(table_name) else {
+            return Vec::new();
+        };
+        rows.iter()
+            .filter_map(|row| {
+                if let Value::Map(m) = row {
+                    Some(BlockRef {
+                        kind: "__row".to_string(),
+                        id: None,
+                        attributes: m.clone(),
+                        children: Vec::new(),
+                        decorators: Vec::new(),
+                        span: Span::dummy(),
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    /// Build row BlockRefs from evaluated table values looked up by name.
+    fn table_rows_to_refs(&self, name: Option<&str>) -> Vec<BlockRef> {
+        let Some(name) = name else { return Vec::new() };
+        let Some(Value::List(rows)) = self.values.get(name) else {
+            return Vec::new();
+        };
+        rows.iter()
+            .filter_map(|row| {
+                if let Value::Map(m) = row {
+                    Some(BlockRef {
+                        kind: "__row".to_string(),
+                        id: None,
+                        attributes: m.clone(),
+                        children: Vec::new(),
+                        decorators: Vec::new(),
+                        span: Span::dummy(),
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    fn block_to_ref(
+        &self,
+        block: &ast::Block,
+        evaluator: &mut Evaluator,
+        scope: ScopeId,
+    ) -> BlockRef {
         let kind = block.kind.name.clone();
         let id = block.inline_id.as_ref().map(|iid| match iid {
             ast::InlineId::Literal(lit) => lit.value.clone(),
@@ -181,16 +274,19 @@ impl Document {
                 .collect::<Vec<_>>()
                 .join(""),
         });
-        let labels: Vec<String> = block
-            .labels
-            .iter()
-            .filter_map(|sl| match &sl.parts[..] {
-                [ast::StringPart::Literal(s)] => Some(s.clone()),
-                _ => None,
-            })
-            .collect();
-
         let mut attributes = indexmap::IndexMap::new();
+
+        // Evaluate inline_args into _args attribute
+        if !block.inline_args.is_empty() {
+            let evaluated_args: Vec<Value> = block
+                .inline_args
+                .iter()
+                .filter_map(|e| evaluator.eval_expr(e, scope).ok())
+                .collect();
+            if !evaluated_args.is_empty() {
+                attributes.insert("_args".to_string(), Value::List(evaluated_args));
+            }
+        }
         for body_item in &block.body {
             if let ast::BodyItem::Attribute(attr) = body_item {
                 if let Ok(val) = evaluator.eval_expr(&attr.value, scope) {
@@ -199,14 +295,43 @@ impl Document {
             }
         }
 
-        let children: Vec<BlockRef> = block
+        let mut children: Vec<BlockRef> = block
             .body
             .iter()
             .filter_map(|item| match item {
-                ast::BodyItem::Block(child) => Some(Self::block_to_ref(child, evaluator, scope)),
+                ast::BodyItem::Block(child) => Some(self.block_to_ref(child, evaluator, scope)),
                 _ => None,
             })
             .collect();
+
+        // Include tables inside blocks as pseudo-BlockRef children.
+        // Look up table values from the block's evaluated value.
+        let block_id_str = id.clone();
+        for body_item in &block.body {
+            if let ast::BodyItem::Table(table) = body_item {
+                let table_name = table.inline_id.as_ref().map(|tid| match tid {
+                    ast::InlineId::Literal(lit) => lit.value.clone(),
+                    ast::InlineId::Interpolated(parts) => parts
+                        .iter()
+                        .filter_map(|p| match p {
+                            ast::StringPart::Literal(s) => Some(s.clone()),
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>()
+                        .join(""),
+                });
+                let row_children =
+                    self.nested_table_rows_to_refs(block_id_str.as_deref(), table_name.as_deref());
+                children.push(BlockRef {
+                    kind: "table".to_string(),
+                    id: table_name,
+                    attributes: indexmap::IndexMap::new(),
+                    children: row_children,
+                    decorators: Vec::new(),
+                    span: table.span,
+                });
+            }
+        }
 
         let decorators: Vec<DecoratorValue> = block
             .decorators
@@ -237,7 +362,6 @@ impl Document {
         BlockRef {
             kind,
             id,
-            labels,
             attributes,
             children,
             decorators,
@@ -426,6 +550,11 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
     let mut schemas = SchemaRegistry::new();
     let mut diag_bag = DiagnosticBag::new();
     schemas.collect(&doc, &mut diag_bag);
+
+    // Phase 9a: @inline(N) mapping — remap _args entries to named attributes
+    let mut values = values;
+    apply_inline_mappings(&schemas, &mut values);
+
     schemas.validate(&doc, &values, &mut diag_bag);
     all_diagnostics.extend(diag_bag.into_diagnostics());
 
@@ -456,6 +585,67 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
         source_map,
         schemas,
         decorator_schemas,
+    }
+}
+
+/// Walk all evaluated values and remap `_args` entries to named attributes
+/// based on `@inline(N)` schema field decorators.
+fn apply_inline_mappings(schemas: &SchemaRegistry, values: &mut indexmap::IndexMap<String, Value>) {
+    for value in values.values_mut() {
+        apply_inline_to_value(schemas, value);
+    }
+}
+
+fn apply_inline_to_value(schemas: &SchemaRegistry, value: &mut Value) {
+    match value {
+        Value::BlockRef(br) => apply_inline_to_blockref(schemas, br),
+        Value::List(items) => {
+            for item in items {
+                apply_inline_to_value(schemas, item);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn apply_inline_to_blockref(schemas: &SchemaRegistry, br: &mut BlockRef) {
+    // Recurse into children
+    for child in &mut br.children {
+        apply_inline_to_blockref(schemas, child);
+    }
+
+    // Look up schema for this block kind
+    if let Some(schema) = schemas.schemas.get(&br.kind) {
+        // Find fields with @inline(N)
+        let inline_fields: Vec<(String, usize)> = schema
+            .fields
+            .iter()
+            .filter_map(|f| f.inline_index.map(|idx| (f.name.clone(), idx)))
+            .collect();
+
+        if !inline_fields.is_empty() {
+            // Extract _args list
+            if let Some(Value::List(args)) = br.attributes.shift_remove("_args") {
+                for (field_name, idx) in &inline_fields {
+                    if let Some(val) = args.get(*idx) {
+                        br.attributes.insert(field_name.clone(), val.clone());
+                    }
+                }
+                // Remaining unmapped args go back as _args
+                let mapped_indices: std::collections::HashSet<usize> =
+                    inline_fields.iter().map(|(_, idx)| *idx).collect();
+                let remaining: Vec<Value> = args
+                    .into_iter()
+                    .enumerate()
+                    .filter(|(i, _)| !mapped_indices.contains(i))
+                    .map(|(_, v)| v)
+                    .collect();
+                if !remaining.is_empty() {
+                    br.attributes
+                        .insert("_args".to_string(), Value::List(remaining));
+                }
+            }
+        }
     }
 }
 
@@ -895,14 +1085,14 @@ mod tests {
     fn test_wcl_deserialize_with_labels() {
         #[derive(WclDeserialize, Debug, PartialEq)]
         struct Resource {
-            #[wcl(labels)]
+            #[wcl(args)]
             tags: Vec<String>,
             value: i64,
         }
 
         let mut map = indexmap::IndexMap::new();
         map.insert(
-            "labels".to_string(),
+            "_args".to_string(),
             Value::List(vec![
                 Value::String("prod".to_string()),
                 Value::String("us-east".to_string()),
@@ -2220,6 +2410,192 @@ service main {
         );
     }
 
+    // ── Table query tests ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_query_table_by_id() {
+        let source = r#"
+table users {
+    name : string
+    age  : int
+    | "alice" | 25 |
+    | "bob"   | 30 |
+}
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+
+        let result = doc.query("table#users | .name == \"alice\"").unwrap();
+        match result {
+            Value::List(items) => {
+                assert_eq!(items.len(), 1);
+                if let Value::BlockRef(br) = &items[0] {
+                    assert_eq!(br.kind, "__row");
+                    assert_eq!(
+                        br.attributes.get("name"),
+                        Some(&Value::String("alice".to_string()))
+                    );
+                    assert_eq!(br.attributes.get("age"), Some(&Value::Int(25)));
+                } else {
+                    panic!("expected BlockRef, got {:?}", items[0]);
+                }
+            }
+            _ => panic!("expected list, got {:?}", result),
+        }
+    }
+
+    #[test]
+    fn test_query_table_projection() {
+        let source = r#"
+table users {
+    name : string
+    age  : int
+    | "alice" | 25 |
+    | "bob"   | 30 |
+}
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+
+        let result = doc.query("table#users | .name").unwrap();
+        assert_eq!(
+            result,
+            Value::List(vec![
+                Value::String("alice".to_string()),
+                Value::String("bob".to_string()),
+            ])
+        );
+    }
+
+    #[test]
+    fn test_query_table_empty_result() {
+        let source = r#"
+table users {
+    name : string
+    age  : int
+    | "alice" | 25 |
+    | "bob"   | 30 |
+}
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        let result = doc.query("table#users | .name == \"charlie\"").unwrap();
+        assert_eq!(result, Value::List(vec![]));
+    }
+
+    #[test]
+    fn test_query_table_in_block() {
+        let source = r#"
+service main {
+    port = 8080
+    table users {
+        name : string
+        role : string
+        | "alice" | "admin"  |
+        | "bob"   | "viewer" |
+    }
+}
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+
+        let result = doc.query("table#users | .role == \"admin\"").unwrap();
+        match result {
+            Value::List(items) => {
+                assert_eq!(items.len(), 1);
+                if let Value::BlockRef(br) = &items[0] {
+                    assert_eq!(
+                        br.attributes.get("name"),
+                        Some(&Value::String("alice".to_string()))
+                    );
+                } else {
+                    panic!("expected BlockRef");
+                }
+            }
+            _ => panic!("expected list"),
+        }
+    }
+
+    #[test]
+    fn test_query_table_comparison_operators() {
+        let source = r#"
+table users {
+    name : string
+    age  : int
+    | "alice" | 25 |
+    | "bob"   | 30 |
+    | "carol" | 20 |
+}
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+
+        // Greater than
+        let result = doc.query("table#users | .age > 24").unwrap();
+        match &result {
+            Value::List(items) => assert_eq!(items.len(), 2),
+            _ => panic!("expected list"),
+        }
+
+        // Less than
+        let result = doc.query("table#users | .age < 26").unwrap();
+        match &result {
+            Value::List(items) => assert_eq!(items.len(), 2),
+            _ => panic!("expected list"),
+        }
+
+        // Not equal
+        let result = doc.query("table#users | .name != \"bob\"").unwrap();
+        match &result {
+            Value::List(items) => assert_eq!(items.len(), 2),
+            _ => panic!("expected list"),
+        }
+    }
+
+    #[test]
+    fn test_query_table_in_expression() {
+        let source = r#"
+table users {
+    name : string
+    role : string
+    | "alice" | "admin"  |
+    | "bob"   | "viewer" |
+}
+admins = query(table#users | .role == "admin" | .name)
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+        assert_eq!(
+            doc.values.get("admins"),
+            Some(&Value::List(vec![Value::String("alice".to_string())]))
+        );
+    }
+
+    #[test]
+    fn test_doc_query_table() {
+        let source = r#"
+table users {
+    name : string
+    role : string
+    | "alice" | "admin"  |
+    | "bob"   | "viewer" |
+    | "carol" | "admin"  |
+}
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+
+        let result = doc
+            .query("table#users | .role == \"admin\" | .name")
+            .unwrap();
+        assert_eq!(
+            result,
+            Value::List(vec![
+                Value::String("alice".to_string()),
+                Value::String("carol".to_string()),
+            ])
+        );
+    }
+
     #[test]
     fn test_table_with_let_dependency() {
         let source = r#"
@@ -2243,6 +2619,100 @@ table services {
             if let Value::Map(r0) = &rows[0] {
                 assert_eq!(r0.get("name"), Some(&Value::String("svc-api".to_string())));
             }
+        }
+    }
+
+    // ── Inline args tests ───────────────────────────────────────────────
+
+    #[test]
+    fn inline_args_without_schema_produce_args_attr() {
+        let doc = parse(
+            r#"server web 8080 "prod" { host = "localhost" }"#,
+            ParseOptions::default(),
+        );
+        assert!(!doc.has_errors(), "errors: {:?}", doc.errors());
+        // Find the server block in values
+        let val = doc
+            .values
+            .values()
+            .find(|v| matches!(v, Value::BlockRef(br) if br.kind == "server"))
+            .unwrap();
+        if let Value::BlockRef(br) = val {
+            assert_eq!(
+                br.get("_args"),
+                Some(&Value::List(vec![
+                    Value::Int(8080),
+                    Value::String("prod".to_string()),
+                ]))
+            );
+            assert_eq!(
+                br.get("host"),
+                Some(&Value::String("localhost".to_string()))
+            );
+        } else {
+            panic!("expected BlockRef, got {:?}", val);
+        }
+    }
+
+    #[test]
+    fn inline_schema_maps_args_to_named_attributes() {
+        let src = r#"
+schema "server" {
+    port: int @inline(0)
+    env: string @inline(1)
+    host: string
+}
+server web 8080 "prod" {
+    host = "localhost"
+}
+"#;
+        let doc = parse(src, ParseOptions::default());
+        assert!(!doc.has_errors(), "errors: {:?}", doc.errors());
+        let val = doc
+            .values
+            .values()
+            .find(|v| matches!(v, Value::BlockRef(br) if br.kind == "server"))
+            .unwrap();
+        if let Value::BlockRef(br) = val {
+            assert_eq!(br.get("port"), Some(&Value::Int(8080)));
+            assert_eq!(br.get("env"), Some(&Value::String("prod".to_string())));
+            assert_eq!(
+                br.get("host"),
+                Some(&Value::String("localhost".to_string()))
+            );
+            // _args should be removed since all args are mapped
+            assert!(br.get("_args").is_none());
+        } else {
+            panic!("expected BlockRef, got {:?}", val);
+        }
+    }
+
+    #[test]
+    fn inline_schema_partial_mapping_keeps_remaining_args() {
+        let src = r#"
+schema "server" {
+    port: int @inline(0)
+    host: string
+}
+server web 8080 "extra" {
+    host = "localhost"
+}
+"#;
+        let doc = parse(src, ParseOptions::default());
+        assert!(!doc.has_errors(), "errors: {:?}", doc.errors());
+        let val = doc
+            .values
+            .values()
+            .find(|v| matches!(v, Value::BlockRef(br) if br.kind == "server"))
+            .unwrap();
+        if let Value::BlockRef(br) = val {
+            assert_eq!(br.get("port"), Some(&Value::Int(8080)));
+            assert_eq!(
+                br.get("_args"),
+                Some(&Value::List(vec![Value::String("extra".to_string())]))
+            );
+        } else {
+            panic!("expected BlockRef, got {:?}", val);
         }
     }
 }
