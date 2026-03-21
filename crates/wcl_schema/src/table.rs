@@ -362,6 +362,7 @@ mod tests {
             inline_id: None,
             labels: vec![],
             body: vec![BodyItem::Table(table)],
+            text_content: None,
             trivia: Trivia::empty(),
             span: ds(),
         };

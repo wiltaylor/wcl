@@ -526,7 +526,8 @@ impl Parser {
                         | TokenKind::Ident(_)
                         | TokenKind::IdentifierLit(_)
                         | TokenKind::StringLit(_)
-                        | TokenKind::InterpStart => {
+                        | TokenKind::InterpStart
+                        | TokenKind::Heredoc { .. } => {
                             let block = self.parse_block(decorators, trivia, false)?;
                             Some(BodyItem::Block(block))
                         }
@@ -707,18 +708,52 @@ impl Parser {
 
         let inline_id = self.parse_inline_id();
         self.skip_newlines();
-        let labels = self.parse_labels();
-        self.skip_newlines();
 
-        if self.expect(&TokenKind::LBrace).is_err() {
-            return None;
-        }
-
-        let body = self.parse_body_items();
-
-        if self.expect(&TokenKind::RBrace).is_err() {
-            return None;
-        }
+        // Check for text block syntax: heredoc or string literal (not followed by { or another string)
+        let (body, text_content, labels) = if matches!(self.peek_kind(), TokenKind::Heredoc { .. })
+        {
+            let s = self.parse_string_lit()?;
+            (vec![], Some(s), vec![])
+        } else if matches!(self.peek_kind(), TokenKind::StringLit(_)) {
+            // Lookahead: if string is followed by { or another string, it's a label
+            let mut j = self.pos + 1;
+            while j < self.tokens.len() && matches!(self.tokens[j].kind, TokenKind::Newline) {
+                j += 1;
+            }
+            let next_is_label_context = j < self.tokens.len()
+                && matches!(
+                    self.tokens[j].kind,
+                    TokenKind::LBrace | TokenKind::StringLit(_)
+                );
+            if next_is_label_context {
+                // It's a label — parse labels then body
+                let labels = self.parse_labels();
+                self.skip_newlines();
+                if self.expect(&TokenKind::LBrace).is_err() {
+                    return None;
+                }
+                let body = self.parse_body_items();
+                if self.expect(&TokenKind::RBrace).is_err() {
+                    return None;
+                }
+                (body, None, labels)
+            } else {
+                // It's text content
+                let s = self.parse_string_lit()?;
+                (vec![], Some(s), vec![])
+            }
+        } else {
+            let labels = self.parse_labels();
+            self.skip_newlines();
+            if self.expect(&TokenKind::LBrace).is_err() {
+                return None;
+            }
+            let body = self.parse_body_items();
+            if self.expect(&TokenKind::RBrace).is_err() {
+                return None;
+            }
+            (body, None, labels)
+        };
 
         let span = start_span.merge(self.prev_span());
         Some(Block {
@@ -728,6 +763,7 @@ impl Parser {
             inline_id,
             labels,
             body,
+            text_content,
             trivia,
             span,
         })
@@ -764,7 +800,8 @@ impl Parser {
                         TokenKind::LBrace
                         | TokenKind::StringLit(_)
                         | TokenKind::Colon
-                        | TokenKind::Equals => {
+                        | TokenKind::Equals
+                        | TokenKind::Heredoc { .. } => {
                             let span = self.current_span();
                             self.advance();
                             Some(InlineId::Literal(IdentifierLit {
@@ -884,7 +921,11 @@ impl Parser {
             return None;
         }
         match &self.tokens[check].kind {
-            TokenKind::LBrace | TokenKind::StringLit(_) | TokenKind::Colon | TokenKind::Equals => {}
+            TokenKind::LBrace
+            | TokenKind::StringLit(_)
+            | TokenKind::Colon
+            | TokenKind::Equals
+            | TokenKind::Heredoc { .. } => {}
             _ => return None,
         }
 
@@ -2566,6 +2607,163 @@ server {
                 other => panic!("expected ImportTable, got {:?}", other),
             },
             other => panic!("expected Attribute, got {:?}", other),
+        }
+    }
+
+    // ── Text block tests ──────────────────────────────────────────────────
+
+    #[test]
+    fn text_block_with_heredoc() {
+        let src = "readme doc <<EOF\n# My Project\nContent here.\nEOF";
+        let (doc, diags) = parse(src);
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
+        assert_eq!(doc.items.len(), 1);
+        match &doc.items[0] {
+            DocItem::Body(BodyItem::Block(block)) => {
+                assert_eq!(block.kind.name, "readme");
+                match &block.inline_id {
+                    Some(InlineId::Literal(id)) => assert_eq!(id.value, "doc"),
+                    other => panic!("expected InlineId::Literal, got {:?}", other),
+                }
+                assert!(block.body.is_empty());
+                assert!(block.text_content.is_some());
+                let tc = block.text_content.as_ref().unwrap();
+                // Should contain the heredoc content
+                match &tc.parts[0] {
+                    StringPart::Literal(s) => assert!(s.contains("My Project")),
+                    other => panic!("expected Literal, got {:?}", other),
+                }
+            }
+            other => panic!("expected Block, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn text_block_with_raw_heredoc() {
+        let src = "readme doc <<'EOF'\n${literal}\nEOF";
+        let (doc, diags) = parse(src);
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
+        match &doc.items[0] {
+            DocItem::Body(BodyItem::Block(block)) => {
+                assert!(block.text_content.is_some());
+                let tc = block.text_content.as_ref().unwrap();
+                // Raw heredoc: ${literal} should be literal text, not interpolation
+                assert_eq!(tc.parts.len(), 1);
+                match &tc.parts[0] {
+                    StringPart::Literal(s) => assert!(s.contains("${literal}")),
+                    other => panic!("expected Literal, got {:?}", other),
+                }
+            }
+            other => panic!("expected Block, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn text_block_with_string() {
+        let src = r#"readme doc "Simple one-line content""#;
+        let (doc, diags) = parse(src);
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
+        match &doc.items[0] {
+            DocItem::Body(BodyItem::Block(block)) => {
+                assert_eq!(block.kind.name, "readme");
+                assert!(block.body.is_empty());
+                assert!(block.text_content.is_some());
+                let tc = block.text_content.as_ref().unwrap();
+                match &tc.parts[0] {
+                    StringPart::Literal(s) => assert_eq!(s, "Simple one-line content"),
+                    other => panic!("expected Literal, got {:?}", other),
+                }
+            }
+            other => panic!("expected Block, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn text_block_with_interpolated_string() {
+        let src = r#"readme doc "Hello ${name}!""#;
+        let (doc, diags) = parse(src);
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
+        match &doc.items[0] {
+            DocItem::Body(BodyItem::Block(block)) => {
+                assert!(block.text_content.is_some());
+                let tc = block.text_content.as_ref().unwrap();
+                assert!(tc.parts.len() >= 2); // "Hello ", ${name}, "!"
+            }
+            other => panic!("expected Block, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn text_block_without_inline_id() {
+        let src = "readme <<EOF\ncontent\nEOF";
+        let (doc, diags) = parse(src);
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
+        match &doc.items[0] {
+            DocItem::Body(BodyItem::Block(block)) => {
+                assert_eq!(block.kind.name, "readme");
+                assert!(block.inline_id.is_none());
+                assert!(block.text_content.is_some());
+            }
+            other => panic!("expected Block, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn regular_block_still_works_alongside_text_blocks() {
+        let src = r#"readme doc { content = "text" }"#;
+        let (doc, diags) = parse(src);
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
+        match &doc.items[0] {
+            DocItem::Body(BodyItem::Block(block)) => {
+                assert_eq!(block.kind.name, "readme");
+                assert!(block.text_content.is_none());
+                assert_eq!(block.body.len(), 1);
+            }
+            other => panic!("expected Block, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn label_followed_by_brace_is_not_text_content() {
+        let src = r#"readme "my-label" { content = "text" }"#;
+        let (doc, diags) = parse(src);
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
+        match &doc.items[0] {
+            DocItem::Body(BodyItem::Block(block)) => {
+                assert_eq!(block.kind.name, "readme");
+                assert!(block.text_content.is_none());
+                assert_eq!(block.labels.len(), 1);
+                assert_eq!(block.body.len(), 1);
+            }
+            other => panic!("expected Block, got {:?}", other),
         }
     }
 }

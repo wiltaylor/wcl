@@ -278,6 +278,10 @@ fn substitute_value_in_body_item(
                     index,
                 );
             }
+            // Substitute in text content
+            if let Some(ref mut tc) = block.text_content {
+                substitute_in_string_parts(&mut tc.parts, iterator_name, value, index_name, index);
+            }
             // Recurse into block body
             for child in &mut block.body {
                 substitute_value_in_body_item(child, iterator_name, value, index_name, index);

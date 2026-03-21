@@ -127,6 +127,7 @@ mod tests {
             inline_id: id.map(make_inline_id),
             labels: vec![],
             body: vec![],
+            text_content: None,
             trivia: Trivia::default(),
             span: Span::new(FileId(0), 0, 10),
         }
