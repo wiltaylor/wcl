@@ -5,3 +5,4 @@ __pycache__/
 .venv/
 .pytest_cache/
 target/
+python/wcl/wcl_wasm.wasm

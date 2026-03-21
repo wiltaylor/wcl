@@ -4,3 +4,4 @@ obj/
 *.suo
 .vs/
 src/Wcl/runtimes/
+src/Wcl/Wasm/wcl_wasm.wasm
