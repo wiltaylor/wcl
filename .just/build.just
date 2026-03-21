@@ -120,15 +120,38 @@ dotnet-native: ffi-native
 dotnet: dotnet-native
     dotnet build bindings/dotnet/Wcl.sln -c Release
 
+# Build Zig bindings (native platform)
+zig: ffi-native
+    #!/usr/bin/env bash
+    os="$(uname -s | tr '[:upper:]' '[:lower:]')"
+    arch="$(uname -m)"
+    [[ "$arch" == "x86_64" ]] && arch="amd64"
+    [[ "$arch" == "aarch64" ]] && arch="arm64"
+    dir="bindings/zig/lib/${os}_${arch}"
+    mkdir -p "$dir"
+    cp target/release/libwcl_ffi.a "$dir/"
+    cp crates/wcl_ffi/wcl.h bindings/zig/
+
+# Build Zig bindings for all platforms
+zig-all: ffi-all
+    mkdir -p bindings/zig/lib/linux_amd64 bindings/zig/lib/linux_arm64 bindings/zig/lib/darwin_amd64 bindings/zig/lib/darwin_arm64 bindings/zig/lib/windows_amd64
+    cp target/release/libwcl_ffi.a bindings/zig/lib/linux_amd64/ 2>/dev/null || true
+    cp target/x86_64-unknown-linux-gnu/release/libwcl_ffi.a bindings/zig/lib/linux_amd64/ 2>/dev/null || true
+    cp target/aarch64-unknown-linux-gnu/release/libwcl_ffi.a bindings/zig/lib/linux_arm64/
+    cp target/x86_64-apple-darwin/release/libwcl_ffi.a bindings/zig/lib/darwin_amd64/
+    cp target/aarch64-apple-darwin/release/libwcl_ffi.a bindings/zig/lib/darwin_arm64/
+    cp target/x86_64-pc-windows-gnu/release/libwcl_ffi.a bindings/zig/lib/windows_amd64/wcl_ffi.lib
+    cp crates/wcl_ffi/wcl.h bindings/zig/
+
 # Package VS Code extension
 vscode:
     cd editors/vscode && npm install && npx --yes @vscode/vsce package --allow-missing-repository
 
 # Build everything (native FFI)
-all: rust-release ffi-native go python wasm dotnet vscode
+all: rust-release ffi-native go zig python wasm dotnet vscode
 
 # Build everything with all FFI platforms
-all-platforms: rust-release ffi-all go-all python wasm dotnet vscode
+all-platforms: rust-release ffi-all go-all zig-all python wasm dotnet vscode
 
 # Publish Rust crates in dependency order
 rust-publish:

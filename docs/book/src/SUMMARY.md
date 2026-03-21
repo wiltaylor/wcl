@@ -13,6 +13,7 @@
 - [Go Library Usage](./getting-started/go-library.md)
 - [JavaScript / TypeScript Usage](./getting-started/js-library.md)
 - [.NET / C# Usage](./getting-started/dotnet-library.md)
+- [Zig Library Usage](./getting-started/zig-library.md)
 
 # Language Guide
 
