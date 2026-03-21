@@ -78,9 +78,14 @@ go-all: ffi-all
     cp target/x86_64-pc-windows-gnu/release/libwcl_ffi.a bindings/go/lib/windows_amd64/wcl_ffi.lib
     cp crates/wcl_ffi/wcl.h bindings/go/
 
+# Build WASM module for Python (reuses WASI target)
+python-wasm: dotnet-wasm
+    mkdir -p bindings/python/python/wcl
+    cp target/wasm32-wasip1/release/wcl_wasm.wasm bindings/python/python/wcl/
+
 # Build Python bindings
-python:
-    cd bindings/python && uv run --group dev maturin build --release
+python: python-wasm
+    cd bindings/python && uv build
 
 # Build WASM package
 wasm:
@@ -155,8 +160,8 @@ rust-publish:
     cargo publish -p wcl_cli
 
 # Publish Python package
-python-publish:
-    cd bindings/python && uv run --group dev maturin publish
+python-publish: python-wasm
+    cd bindings/python && uv publish
 
 # Publish WASM package to npm
 wasm-publish:
