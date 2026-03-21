@@ -242,11 +242,26 @@ set-version ver:
     # JVM: Gradle version
     sed -i "s/^version = .*/version = '$V'/" bindings/jvm/build.gradle
 
-    # Ruby: gemspec version
-    sed -i "s/VERSION = \"[^\"]*\"/VERSION = \"$V\"/" bindings/ruby/lib/wcl/version.rb
+    # Ruby: map prerelease tags to RubyGems-compatible versions.
+    # RubyGems doesn't allow hyphens or + in versions.
+    # 0.0.0-local → 0.0.0.dev0, 0.0.0-ci+sha → 0.0.0.dev0, 1.0.0-rc1 → 1.0.0.rc1
+    RB_VER="$V"
+    if [[ "$V" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-(.+)$ ]]; then
+        BASE="${BASH_REMATCH[1]}"
+        PRE="${BASH_REMATCH[2]}"
+        case "$PRE" in
+            local|ci+*) RB_VER="${BASE}.dev0" ;;
+            rc*)        NUM="${PRE//[^0-9]/}"; RB_VER="${BASE}.rc${NUM:-1}" ;;
+            alpha*)     NUM="${PRE//[^0-9]/}"; RB_VER="${BASE}.alpha${NUM:-1}" ;;
+            beta*)      NUM="${PRE//[^0-9]/}"; RB_VER="${BASE}.beta${NUM:-1}" ;;
+            *)          RB_VER="${BASE}.dev0" ;;
+        esac
+    fi
+    sed -i "s/VERSION = \"[^\"]*\"/VERSION = \"$RB_VER\"/" bindings/ruby/lib/wcl/version.rb
 
-    # C/C++ CMake: project version
-    sed -i "s/project(wcl VERSION [^ ]*/project(wcl VERSION $V/" crates/wcl_ffi/CMakeLists.txt
+    # C/C++ CMake: project version (CMake only allows digits and dots)
+    CMAKE_VER=$(echo "$V" | sed 's/-.*//')
+    sed -i "s/project(wcl VERSION [^ ]*/project(wcl VERSION $CMAKE_VER/" crates/wcl_ffi/CMakeLists.txt
 
     # tree-sitter-wcl: Cargo.toml (Rust crate), pyproject.toml (Python), tree-sitter.json
     sed -i "0,/^version = .*/s/^version = .*/version = \"$V\"/" extras/tree-sitter-wcl/Cargo.toml
