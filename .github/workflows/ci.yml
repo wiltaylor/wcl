@@ -55,13 +55,14 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: wasm32-wasip1
       - uses: taiki-e/install-action@just
       - uses: astral-sh/setup-uv@v7
       - uses: Swatinem/rust-cache@v2
+      - run: just build python-wasm
       - run: |
           cd bindings/python
-          uv run --group dev maturin develop
-          uv run --group dev python -m pytest tests/ -v --junitxml=../../test-results/python.xml
+          uv run pytest tests/ -v --junitxml=../../test-results/python.xml
       - uses: mikepenz/action-junit-report@v6
         if: always()
         with:
@@ -128,10 +129,29 @@ jobs:
           report_paths: test-results/go.xml
           check_name: Go Tests
 
+  test-jvm:
+    name: Test JVM
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: wasm32-wasip1
+      - uses: taiki-e/install-action@just
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: Swatinem/rust-cache@v2
+      - run: |
+          just build jvm-wasm
+          cd bindings/jvm && ./gradlew test
+
   pack:
     name: Package
     runs-on: ubuntu-latest
-    needs: [check, test-rust, test-python, test-wasm, test-dotnet, test-go]
+    needs: [check, test-rust, test-python, test-wasm, test-dotnet, test-go, test-jvm]
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@master
@@ -148,6 +168,10 @@ jobs:
         with:
           go-version: 'stable'
           cache: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
       - uses: Swatinem/rust-cache@v2
       - run: just pack all "0.0.0-ci+${{ github.sha }}"
       - uses: actions/upload-artifact@v7
