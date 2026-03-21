@@ -20,6 +20,8 @@ WCL provides a set of built-in decorators for schema validation, documentation, 
 | `@partial_requires`    | partial blocks             | `fields`: list of strings        | Declares expected merge dependencies                      |
 | `@merge_order(n)`      | partial blocks             | `n`: int                         | Explicit ordering for partial merges                      |
 | `@open`                | schemas                    | none                             | Allows extra attributes not declared in the schema        |
+| `@children(kinds)`     | schemas                    | `kinds`: list of strings         | Restricts which child blocks/tables may appear inside     |
+| `@parent(kinds)`       | schemas                    | `kinds`: list of strings         | Restricts which parent blocks may contain this block/table|
 
 ---
 
@@ -219,3 +221,84 @@ partial service @merge_order(2) {
     env = "staging"    // this wins because it merges later
 }
 ```
+
+## @children(kinds)
+
+Restricts which child blocks and tables may appear inside blocks of a given schema. The argument is a list of allowed block kind names and table identifiers.
+
+```wcl
+@children(["endpoint", "middleware", "table:user_row"])
+schema "service" {
+    name: string
+}
+
+service "api" {
+    endpoint health { path = "/health" }     // allowed
+    middleware auth { priority = 1 }          // allowed
+    table users : user_row { | "Alice" | }   // allowed (table:user_row)
+    // logger { level = "info" }             // ERROR E095: not in children list
+}
+```
+
+Special names in the children list:
+
+| Entry | Meaning |
+|-------|---------|
+| `"table"` | Allows anonymous tables (no schema ref) |
+| `"table:X"` | Allows tables with `schema_ref = X` |
+
+An empty list `@children([])` forbids all child blocks and tables, making the schema a leaf:
+
+```wcl
+@children([])
+schema "leaf_node" {
+    value: string
+}
+```
+
+You can also constrain what appears at the document root by defining a schema named `"_root"`:
+
+```wcl
+@children(["service", "config"])
+schema "_root" {}
+
+service main { port = 8080 }     // allowed
+database primary { host = "db" } // ERROR E095: not in _root children list
+```
+
+## @parent(kinds)
+
+Restricts where a block may appear. The argument is a list of allowed parent block kinds. Use `"_root"` to allow the block at the document root.
+
+```wcl
+@parent(["service", "_root"])
+schema "endpoint" {
+    path: string
+}
+
+service "api" {
+    endpoint health { path = "/health" }   // allowed: parent is "service"
+}
+
+endpoint standalone { path = "/ping" }     // allowed: parent is _root
+```
+
+If a block appears inside a parent not in its `@parent` list, error E096 is emitted.
+
+### Constraining table placement
+
+To constrain where tables may appear, define a virtual schema with the `"table"` or `"table:X"` name:
+
+```wcl
+# Tables with schema_ref "user_row" may only appear inside "data" blocks
+@parent(["data"])
+schema "table:user_row" {}
+
+# Anonymous tables may only appear at the root
+@parent(["_root"])
+schema "table" {}
+```
+
+### Combined constraints
+
+Both `@children` and `@parent` are checked independently. If both are violated on the same item, both E095 and E096 are emitted. If neither decorator is present on a schema, nesting is unrestricted (backwards compatible).

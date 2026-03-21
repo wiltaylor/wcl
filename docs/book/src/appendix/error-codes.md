@@ -51,6 +51,8 @@ This page lists all diagnostic codes produced by the WCL pipeline, grouped by ph
 | E090 | Table | @table_index references nonexistent column |
 | E091 | Table | Duplicate value in unique table index |
 | E092 | Table | Inline columns defined when schema is applied |
+| E095 | Schema | Child not allowed by parent's `@children` constraint |
+| E096 | Schema | Item not allowed by its own `@parent` constraint |
 
 ## Warnings
 

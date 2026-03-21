@@ -1311,4 +1311,273 @@ mod tests {
             doc.diagnostics
         );
     }
+
+    // ── Text block integration tests ──────────────────────────────────────
+
+    #[test]
+    fn text_block_end_to_end() {
+        let source = r#"
+schema "readme" {
+    content: string @text
+}
+
+readme my-doc <<EOF
+# Hello World
+This is content.
+EOF
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        assert!(
+            doc.diagnostics.is_empty(),
+            "unexpected diagnostics: {:?}",
+            doc.diagnostics
+        );
+
+        let block_val = doc.values.get("my-doc").expect("block should exist");
+        match block_val {
+            wcl_eval::value::Value::BlockRef(br) => {
+                assert_eq!(br.kind, "readme");
+                assert_eq!(br.id, Some("my-doc".to_string()));
+                let content = br.attributes.get("content").expect("content should exist");
+                match content {
+                    wcl_eval::value::Value::String(s) => {
+                        assert!(s.contains("Hello World"));
+                        assert!(s.contains("This is content."));
+                    }
+                    other => panic!("expected String, got {:?}", other),
+                }
+            }
+            other => panic!("expected BlockRef, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn text_block_string_end_to_end() {
+        let source = r#"
+schema "readme" {
+    content: string @text
+}
+
+readme my-doc "Simple content"
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        assert!(
+            doc.diagnostics.is_empty(),
+            "unexpected diagnostics: {:?}",
+            doc.diagnostics
+        );
+
+        let block_val = doc.values.get("my-doc").expect("block should exist");
+        match block_val {
+            wcl_eval::value::Value::BlockRef(br) => {
+                assert_eq!(
+                    br.attributes.get("content"),
+                    Some(&wcl_eval::value::Value::String(
+                        "Simple content".to_string()
+                    ))
+                );
+            }
+            other => panic!("expected BlockRef, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn text_block_with_interpolation_end_to_end() {
+        let source = r#"
+schema "readme" {
+    content: string @text
+}
+
+let name = "World"
+readme my-doc "Hello ${name}!"
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        assert!(
+            doc.diagnostics.is_empty(),
+            "unexpected diagnostics: {:?}",
+            doc.diagnostics
+        );
+
+        let block_val = doc.values.get("my-doc").expect("block should exist");
+        match block_val {
+            wcl_eval::value::Value::BlockRef(br) => {
+                assert_eq!(
+                    br.attributes.get("content"),
+                    Some(&wcl_eval::value::Value::String("Hello World!".to_string()))
+                );
+            }
+            other => panic!("expected BlockRef, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn text_block_e093_no_text_schema() {
+        let source = r#"
+schema "readme" {
+    name: string
+}
+
+readme my-doc "content here"
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        let e093: Vec<_> = doc
+            .diagnostics
+            .iter()
+            .filter(|d| d.code.as_deref() == Some("E093"))
+            .collect();
+        assert_eq!(e093.len(), 1, "expected E093, got: {:?}", doc.diagnostics);
+    }
+
+    // ── Containment integration tests ────────────────────────────────────
+
+    #[test]
+    fn containment_end_to_end() {
+        let source = r#"
+@children(["endpoint"])
+schema "service" {
+    name: string
+}
+
+service main {
+    name = "api"
+    endpoint health {
+        path = "/health"
+    }
+}
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        let containment_errors: Vec<_> = doc
+            .diagnostics
+            .iter()
+            .filter(|d| d.code.as_deref() == Some("E095") || d.code.as_deref() == Some("E096"))
+            .collect();
+        assert!(
+            containment_errors.is_empty(),
+            "unexpected containment errors: {:?}",
+            containment_errors
+        );
+    }
+
+    #[test]
+    fn containment_e095_end_to_end() {
+        let source = r#"
+@children(["endpoint"])
+schema "service" {}
+
+service main {
+    middleware auth {}
+}
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        let e095: Vec<_> = doc
+            .diagnostics
+            .iter()
+            .filter(|d| d.code.as_deref() == Some("E095"))
+            .collect();
+        assert_eq!(e095.len(), 1, "expected E095, got: {:?}", doc.diagnostics);
+    }
+
+    #[test]
+    fn containment_e096_end_to_end() {
+        let source = r#"
+@parent(["service"])
+schema "endpoint" {}
+
+endpoint orphan {}
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        let e096: Vec<_> = doc
+            .diagnostics
+            .iter()
+            .filter(|d| d.code.as_deref() == Some("E096"))
+            .collect();
+        assert_eq!(e096.len(), 1, "expected E096, got: {:?}", doc.diagnostics);
+    }
+
+    #[test]
+    fn containment_root_end_to_end() {
+        let source = r#"
+@children(["service"])
+schema "_root" {}
+
+config main {}
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        let e095: Vec<_> = doc
+            .diagnostics
+            .iter()
+            .filter(|d| d.code.as_deref() == Some("E095"))
+            .collect();
+        assert_eq!(e095.len(), 1, "expected E095, got: {:?}", doc.diagnostics);
+    }
+
+    #[test]
+    fn containment_table_e095() {
+        let source = r#"
+@children(["endpoint"])
+schema "service" {}
+
+service main {
+    table users {
+        | "Alice" |
+    }
+}
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        let e095: Vec<_> = doc
+            .diagnostics
+            .iter()
+            .filter(|d| d.code.as_deref() == Some("E095"))
+            .collect();
+        assert_eq!(
+            e095.len(),
+            1,
+            "expected E095 for table, got: {:?}",
+            doc.diagnostics
+        );
+    }
+
+    #[test]
+    fn containment_table_e096() {
+        let source = r#"
+@parent(["data"])
+schema "table" {}
+
+table users {
+    | "Alice" |
+}
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        let e096: Vec<_> = doc
+            .diagnostics
+            .iter()
+            .filter(|d| d.code.as_deref() == Some("E096"))
+            .collect();
+        assert_eq!(
+            e096.len(),
+            1,
+            "expected E096 for table, got: {:?}",
+            doc.diagnostics
+        );
+    }
+
+    #[test]
+    fn text_block_e094_schema_expects_text() {
+        let source = r#"
+schema "readme" {
+    content: string @text
+}
+
+readme my-doc {
+    content = "using brace body"
+}
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        let e094: Vec<_> = doc
+            .diagnostics
+            .iter()
+            .filter(|d| d.code.as_deref() == Some("E094"))
+            .collect();
+        assert_eq!(e094.len(), 1, "expected E094, got: {:?}", doc.diagnostics);
+    }
 }

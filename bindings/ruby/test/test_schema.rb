@@ -80,4 +80,58 @@ class TestSchema < Minitest::Test
     error_codes = doc.errors.map(&:code)
     assert_includes error_codes, "E073", "expected E073 in #{error_codes}"
   end
+
+  def test_children_constraint_allows_valid
+    source = <<~WCL
+      @children(["endpoint"])
+      schema "service" {}
+
+      service main {
+          endpoint health {}
+      }
+    WCL
+    doc = Wcl.parse(source)
+    containment_errors = doc.errors.select { |d| %w[E095 E096].include?(d.code) }
+    assert_equal 0, containment_errors.size, "unexpected containment errors: #{containment_errors.inspect}"
+  end
+
+  def test_children_constraint_rejects_invalid
+    source = <<~WCL
+      @children(["endpoint"])
+      schema "service" {}
+
+      service main {
+          middleware auth {}
+      }
+    WCL
+    doc = Wcl.parse(source)
+    error_codes = doc.errors.map(&:code)
+    assert_includes error_codes, "E095", "expected E095 in #{error_codes}"
+  end
+
+  def test_parent_constraint_rejects_at_root
+    source = <<~WCL
+      @parent(["service"])
+      schema "endpoint" {}
+
+      endpoint orphan {}
+    WCL
+    doc = Wcl.parse(source)
+    error_codes = doc.errors.map(&:code)
+    assert_includes error_codes, "E096", "expected E096 in #{error_codes}"
+  end
+
+  def test_parent_constraint_allows_valid
+    source = <<~WCL
+      @parent(["service"])
+      schema "endpoint" {}
+
+      service main {
+          endpoint health {}
+      }
+    WCL
+    doc = Wcl.parse(source)
+    containment_errors = doc.errors.select { |d| %w[E095 E096].include?(d.code) }
+    assert_equal 0, containment_errors.size, "unexpected containment errors: #{containment_errors.inspect}"
+  end
 end

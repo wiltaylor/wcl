@@ -266,6 +266,39 @@ impl DecoratorSchemaRegistry {
             span: Span::dummy(),
         });
         self.insert(ResolvedDecoratorSchema {
+            name: "text".to_string(),
+            targets: vec![DecoratorTarget::Schema],
+            params: vec![],
+            constraints: vec![],
+            span: Span::dummy(),
+        });
+        self.insert(ResolvedDecoratorSchema {
+            name: "children".to_string(),
+            targets: vec![DecoratorTarget::Schema],
+            params: vec![DecoratorParam {
+                name: "kinds".to_string(),
+                type_expr: TypeExpr::List(Box::new(TypeExpr::String(Span::dummy())), Span::dummy()),
+                required: true,
+                default: None,
+                span: Span::dummy(),
+            }],
+            constraints: vec![],
+            span: Span::dummy(),
+        });
+        self.insert(ResolvedDecoratorSchema {
+            name: "parent".to_string(),
+            targets: vec![DecoratorTarget::Schema],
+            params: vec![DecoratorParam {
+                name: "kinds".to_string(),
+                type_expr: TypeExpr::List(Box::new(TypeExpr::String(Span::dummy())), Span::dummy()),
+                required: true,
+                default: None,
+                span: Span::dummy(),
+            }],
+            constraints: vec![],
+            span: Span::dummy(),
+        });
+        self.insert(ResolvedDecoratorSchema {
             name: "table_index".to_string(),
             targets: vec![DecoratorTarget::Table],
             params: vec![
@@ -572,6 +605,9 @@ mod tests {
             "merge_order",
             "example",
             "table_index",
+            "text",
+            "children",
+            "parent",
         ] {
             assert!(
                 reg.schemas.contains_key(*name),

@@ -238,6 +238,60 @@ The `svc-worker` block inherits `env = "production"` and `replicas = 1` from the
 | E077 | @id_pattern mismatch                          |
 | E080 | Validation block failure                      |
 | E092 | Inline columns defined when schema is applied |
+| E095 | Child not allowed by parent's `@children` list |
+| E096 | Item not allowed by its own `@parent` list     |
+
+## Block & Table Containment
+
+Use `@children` and `@parent` decorators on schemas to constrain which blocks and tables can nest inside which others.
+
+### @children — restrict what a block may contain
+
+```wcl
+@children(["endpoint", "table:user_row"])
+schema "service" {
+    name: string
+}
+
+service "api" {
+    name = "my api"
+    endpoint health { path = "/health" }     // allowed
+    table users : user_row { | "Alice" | }   // allowed
+    // logger { level = "info" }             // ERROR E095
+}
+```
+
+Use `@children([])` to create a leaf block that cannot contain any children.
+
+### @parent — restrict where a block may appear
+
+```wcl
+@parent(["service", "_root"])
+schema "endpoint" {
+    path: string
+}
+```
+
+The special name `"_root"` refers to the document's top level. Use a schema named `"_root"` with `@children` to constrain what appears at the top level:
+
+```wcl
+@children(["service", "config"])
+schema "_root" {}
+```
+
+### Table containment
+
+Define virtual schemas named `"table"` or `"table:X"` to constrain table placement:
+
+```wcl
+@parent(["data"])
+schema "table:user_row" {}
+
+@parent(["_root"])
+schema "table" {}
+```
+
+See [Built-in Decorators](decorators-builtin.md#childrenkinds) for full details.
 
 ## Applying Schemas to Tables
 
