@@ -70,6 +70,7 @@ fn make_block(kind: &str, id: Option<&str>, partial: bool, body: Vec<BodyItem>) 
         }),
         labels: vec![],
         body,
+        text_content: None,
         trivia: Trivia::default(),
         span: Span::new(FileId(0), 0, 10),
     }

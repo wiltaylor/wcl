@@ -234,6 +234,7 @@ impl PartialMerger {
             inline_id: first.inline_id.clone(),
             labels: first.labels.clone(),
             body: Vec::new(),
+            text_content: first.text_content.clone(),
             trivia: first.trivia.clone(),
             span: first.span,
         };
@@ -459,6 +460,7 @@ mod tests {
                     })
                 })
                 .collect(),
+            text_content: None,
             trivia: Trivia::empty(),
             span: dummy_span(),
         }
@@ -678,6 +680,7 @@ mod tests {
                 trivia: Trivia::empty(),
                 span: dummy_span(),
             })],
+            text_content: None,
             trivia: Trivia::empty(),
             span: dummy_span(),
         };
@@ -695,6 +698,7 @@ mod tests {
                 trivia: Trivia::empty(),
                 span: dummy_span(),
             })],
+            text_content: None,
             trivia: Trivia::empty(),
             span: dummy_span(),
         };
@@ -715,6 +719,7 @@ mod tests {
                 }),
                 BodyItem::Block(child1),
             ],
+            text_content: None,
             trivia: Trivia::empty(),
             span: dummy_span(),
         };
@@ -726,6 +731,7 @@ mod tests {
             inline_id: Some(InlineId::Literal(make_id_lit("svc-api"))),
             labels: vec![],
             body: vec![BodyItem::Block(child2)],
+            text_content: None,
             trivia: Trivia::empty(),
             span: dummy_span(),
         };
@@ -864,6 +870,7 @@ mod tests {
             inline_id: None,
             labels: vec![],
             body: vec![],
+            text_content: None,
             trivia: Trivia::empty(),
             span: dummy_span(),
         }));
@@ -895,6 +902,7 @@ mod tests {
                 trivia: Trivia::empty(),
                 span: dummy_span(),
             })],
+            text_content: None,
             trivia: Trivia::empty(),
             span: dummy_span(),
         };
@@ -930,6 +938,7 @@ mod tests {
             inline_id: Some(InlineId::Literal(make_id_lit("svc-db"))),
             labels: vec![],
             body: vec![],
+            text_content: None,
             trivia: Trivia::empty(),
             span: dummy_span(),
         };

@@ -151,7 +151,7 @@ pub struct Attribute {
 
 // ===== Blocks =====
 
-/// `[@decorator...] [partial] kind [IDENTIFIER_LIT] ["label"...] { body }`
+/// `[@decorator...] [partial] kind [IDENTIFIER_LIT] ["label"...] ( { body } | HEREDOC | STRING )`
 #[derive(Debug, Clone)]
 pub struct Block {
     pub decorators: Vec<Decorator>,
@@ -160,6 +160,7 @@ pub struct Block {
     pub inline_id: Option<InlineId>,
     pub labels: Vec<StringLit>,
     pub body: Vec<BodyItem>,
+    pub text_content: Option<StringLit>,
     pub trivia: Trivia,
     pub span: Span,
 }

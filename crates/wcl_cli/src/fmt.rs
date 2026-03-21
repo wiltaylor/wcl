@@ -165,14 +165,20 @@ impl<'a> Formatter<'a> {
                     self.output.push(' ');
                     self.format_string_lit(label);
                 }
-                self.output.push_str(" {\n");
-                self.indent += 1;
-                for child in &block.body {
-                    self.format_body_item(child);
+                if let Some(ref tc) = block.text_content {
+                    self.output.push(' ');
+                    self.format_string_lit(tc);
+                    self.output.push('\n');
+                } else {
+                    self.output.push_str(" {\n");
+                    self.indent += 1;
+                    for child in &block.body {
+                        self.format_body_item(child);
+                    }
+                    self.indent -= 1;
+                    self.write_indent();
+                    self.output.push_str("}\n");
                 }
-                self.indent -= 1;
-                self.write_indent();
-                self.output.push_str("}\n");
             }
             BodyItem::LetBinding(lb) => {
                 self.write_indent();

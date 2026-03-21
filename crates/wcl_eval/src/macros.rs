@@ -941,6 +941,10 @@ impl<'a> MacroExpander<'a> {
                     .iter()
                     .map(|l| self.substitute_string_lit(l, params))
                     .collect();
+                // Substitute in text content
+                if let Some(ref tc) = block.text_content {
+                    new_block.text_content = Some(self.substitute_string_lit(tc, params));
+                }
                 BodyItem::Block(new_block)
             }
             BodyItem::LetBinding(lb) => {
@@ -1299,6 +1303,7 @@ mod tests {
                     })
                 })
                 .collect(),
+            text_content: None,
             trivia: Trivia::empty(),
             span: dummy_span(),
         }
@@ -1611,6 +1616,7 @@ mod tests {
                 },
             ],
             body: vec![],
+            text_content: None,
             trivia: Trivia::empty(),
             span: dummy_span(),
         };
@@ -1658,6 +1664,7 @@ mod tests {
             inline_id: None,
             labels: vec![],
             body: vec![],
+            text_content: None,
             trivia: Trivia::empty(),
             span: dummy_span(),
         };
@@ -1772,6 +1779,7 @@ mod tests {
                 trivia: Trivia::empty(),
                 span: dummy_span(),
             })],
+            text_content: None,
             trivia: Trivia::empty(),
             span: dummy_span(),
         };

@@ -208,7 +208,11 @@ impl Evaluator {
                     .insert((scope_id, name.clone()), child_scope);
                 // Collect external dependencies: names referenced inside the
                 // block body that are not defined within the block itself.
-                let external_deps = self.collect_block_external_deps(&block.body);
+                let mut external_deps = self.collect_block_external_deps(&block.body);
+                // Also collect deps from text_content interpolations
+                if let Some(ref tc) = block.text_content {
+                    self.collect_string_lit_deps(tc, &mut external_deps);
+                }
                 self.scopes.add_entry(
                     scope_id,
                     ScopeEntry {
@@ -355,6 +359,14 @@ impl Evaluator {
         let mut deps = HashSet::new();
         self.collect_deps(expr, &mut deps);
         deps
+    }
+
+    fn collect_string_lit_deps(&self, s: &StringLit, deps: &mut HashSet<String>) {
+        for part in &s.parts {
+            if let StringPart::Interpolation(expr) = part {
+                self.collect_deps(expr, deps);
+            }
+        }
     }
 
     fn collect_deps(&self, expr: &Expr, deps: &mut HashSet<String>) {
@@ -1316,6 +1328,13 @@ impl Evaluator {
                     }
                     _ => {}
                 }
+            }
+        }
+
+        // Inject text content as "content" attribute
+        if let Some(ref tc) = block.text_content {
+            if let Ok(val) = self.eval_string_lit(tc, child_scope.unwrap_or(parent_scope)) {
+                attributes.insert("content".to_string(), val);
             }
         }
 
@@ -2408,6 +2427,7 @@ mod tests {
             })),
             labels: vec![],
             body,
+            text_content: None,
             trivia: wcl_core::trivia::Trivia::empty(),
             span: ds(),
         })
@@ -2945,5 +2965,107 @@ mod tests {
         let mut ev = Evaluator::new();
         let _result = ev.evaluate(&doc);
         assert_eq!(count_warnings_with_code(&ev, "W001"), 1);
+    }
+
+    // ── Text block evaluator tests ──────────────────────────────────────
+
+    #[test]
+    fn text_block_evaluates_to_blockref_with_content() {
+        let doc = mk_doc(vec![BodyItem::Block(Block {
+            decorators: vec![],
+            partial: false,
+            kind: mk_ident("readme"),
+            inline_id: Some(InlineId::Literal(IdentifierLit {
+                value: "my-doc".to_string(),
+                span: ds(),
+            })),
+            labels: vec![],
+            body: vec![],
+            text_content: Some(StringLit {
+                parts: vec![StringPart::Literal("Hello world".to_string())],
+                span: ds(),
+            }),
+            trivia: wcl_core::trivia::Trivia::empty(),
+            span: ds(),
+        })]);
+
+        let mut ev = Evaluator::new();
+        let result = ev.evaluate(&doc);
+        assert!(
+            !ev.diagnostics.has_errors(),
+            "unexpected errors: {:?}",
+            ev.diagnostics.diagnostics()
+        );
+
+        let block_val = result.get("my-doc").expect("block should exist");
+        match block_val {
+            Value::BlockRef(br) => {
+                assert_eq!(br.kind, "readme");
+                assert_eq!(br.id, Some("my-doc".to_string()));
+                assert_eq!(
+                    br.attributes.get("content"),
+                    Some(&Value::String("Hello world".to_string()))
+                );
+            }
+            other => panic!("expected BlockRef, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn text_block_with_interpolation() {
+        // let name = "World"
+        // readme my-doc "Hello ${name}!"
+        let doc = mk_doc(vec![
+            BodyItem::LetBinding(LetBinding {
+                decorators: vec![],
+                name: mk_ident("name"),
+                value: Expr::StringLit(StringLit {
+                    parts: vec![StringPart::Literal("World".to_string())],
+                    span: ds(),
+                }),
+                trivia: wcl_core::trivia::Trivia::empty(),
+                span: ds(),
+            }),
+            BodyItem::Block(Block {
+                decorators: vec![],
+                partial: false,
+                kind: mk_ident("readme"),
+                inline_id: Some(InlineId::Literal(IdentifierLit {
+                    value: "my-doc".to_string(),
+                    span: ds(),
+                })),
+                labels: vec![],
+                body: vec![],
+                text_content: Some(StringLit {
+                    parts: vec![
+                        StringPart::Literal("Hello ".to_string()),
+                        StringPart::Interpolation(Box::new(Expr::Ident(mk_ident("name")))),
+                        StringPart::Literal("!".to_string()),
+                    ],
+                    span: ds(),
+                }),
+                trivia: wcl_core::trivia::Trivia::empty(),
+                span: ds(),
+            }),
+        ]);
+
+        let mut ev = Evaluator::new();
+        let result = ev.evaluate(&doc);
+        assert!(
+            !ev.diagnostics.has_errors(),
+            "unexpected errors: {:?}",
+            ev.diagnostics.diagnostics()
+        );
+
+        let block_val = result.get("my-doc").expect("block should exist");
+        match block_val {
+            Value::BlockRef(br) => {
+                assert_eq!(
+                    br.attributes.get("content"),
+                    Some(&Value::String("Hello World!".to_string()))
+                );
+            }
+            other => panic!("expected BlockRef, got {:?}", other),
+        }
     }
 }

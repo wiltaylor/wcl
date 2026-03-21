@@ -129,14 +129,20 @@ impl<'a> Fmt<'a> {
                     self.out.push(' ');
                     self.string_lit(label);
                 }
-                self.out.push_str(" {\n");
-                self.indent += 1;
-                for child in &block.body {
-                    self.body_item(child);
+                if let Some(ref tc) = block.text_content {
+                    self.out.push(' ');
+                    self.string_lit(tc);
+                    self.out.push('\n');
+                } else {
+                    self.out.push_str(" {\n");
+                    self.indent += 1;
+                    for child in &block.body {
+                        self.body_item(child);
+                    }
+                    self.indent -= 1;
+                    self.indent();
+                    self.out.push_str("}\n");
                 }
-                self.indent -= 1;
-                self.indent();
-                self.out.push_str("}\n");
             }
             BodyItem::LetBinding(lb) => {
                 self.indent();
