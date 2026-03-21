@@ -58,7 +58,7 @@ namespace Wcl.Tests
         [Fact]
         public void ParseFileNotFound()
         {
-            Assert.Throws<Exception>(() => WclParser.ParseFile("/nonexistent/path.wcl"));
+            Assert.ThrowsAny<Exception>(() => WclParser.ParseFile("/nonexistent/path.wcl"));
         }
 
         [Fact]

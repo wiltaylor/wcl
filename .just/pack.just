@@ -48,7 +48,7 @@ go:
 dotnet:
     #!/bin/bash
     set -euo pipefail
-    just build dotnet-native
+    just build dotnet-wasm
     mkdir -p "{{pkg}}/dotnet"
     dotnet pack bindings/dotnet/src/Wcl/Wcl.csproj -c Release
     cp bindings/dotnet/src/Wcl/bin/Release/*.nupkg "{{pkg}}/dotnet/"

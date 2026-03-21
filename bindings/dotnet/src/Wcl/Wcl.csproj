@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>netstandard2.1</TargetFramework>
+    <TargetFrameworks>net8.0;netstandard2.1</TargetFrameworks>
     <LangVersion>12.0</LangVersion>
     <Nullable>enable</Nullable>
     <RootNamespace>Wcl</RootNamespace>
@@ -13,29 +13,11 @@
 
   <ItemGroup>
     <PackageReference Include="System.Text.Json" Version="9.0.3" />
+    <PackageReference Include="Wasmtime" Version="34.0.2" />
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="runtimes\**\*" PackagePath="runtimes" CopyToOutputDirectory="PreserveNewest" Link="runtimes\%(RecursiveDir)%(FileName)%(Extension)" />
-  </ItemGroup>
-
-  <ItemGroup Condition="Exists('runtimes\linux-x64\native\libwcl_ffi.so')">
-    <None Include="runtimes\linux-x64\native\libwcl_ffi.so" CopyToOutputDirectory="PreserveNewest" Link="libwcl_ffi.so" />
-  </ItemGroup>
-  <ItemGroup Condition="Exists('runtimes\linux-arm64\native\libwcl_ffi.so')">
-    <None Include="runtimes\linux-arm64\native\libwcl_ffi.so" CopyToOutputDirectory="PreserveNewest" Link="libwcl_ffi.so" />
-  </ItemGroup>
-  <ItemGroup Condition="Exists('runtimes\osx-x64\native\libwcl_ffi.dylib')">
-    <None Include="runtimes\osx-x64\native\libwcl_ffi.dylib" CopyToOutputDirectory="PreserveNewest" Link="libwcl_ffi.dylib" />
-  </ItemGroup>
-  <ItemGroup Condition="Exists('runtimes\osx-arm64\native\libwcl_ffi.dylib')">
-    <None Include="runtimes\osx-arm64\native\libwcl_ffi.dylib" CopyToOutputDirectory="PreserveNewest" Link="libwcl_ffi.dylib" />
-  </ItemGroup>
-  <ItemGroup Condition="Exists('runtimes\win-x64\native\wcl_ffi.dll')">
-    <None Include="runtimes\win-x64\native\wcl_ffi.dll" CopyToOutputDirectory="PreserveNewest" Link="wcl_ffi.dll" />
-  </ItemGroup>
-  <ItemGroup Condition="Exists('runtimes\win-arm64\native\wcl_ffi.dll')">
-    <None Include="runtimes\win-arm64\native\wcl_ffi.dll" CopyToOutputDirectory="PreserveNewest" Link="wcl_ffi.dll" />
+    <EmbeddedResource Include="Wasm\wcl_wasm.wasm" />
   </ItemGroup>
 
 </Project>
