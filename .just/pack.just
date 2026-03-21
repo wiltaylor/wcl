@@ -77,8 +77,45 @@ tree-sitter-wcl:
     cp target/package/*.crate "{{pkg}}/tree-sitter-wcl/"
     echo "tree-sitter-wcl packaged to {{pkg}}/tree-sitter-wcl/"
 
+# Package tree-sitter highlight queries into .packages/highlight-queries/
+highlight-queries:
+    #!/bin/bash
+    set -euo pipefail
+    mkdir -p "{{pkg}}/highlight-queries"
+    tar czf "{{pkg}}/highlight-queries/wcl-highlight-queries.tar.gz" \
+        -C extras/tree-sitter-wcl/queries highlights.scm \
+        -C ../../highlight-queries injections.scm locals.scm textobjects.scm
+    echo "Highlight queries packaged to {{pkg}}/highlight-queries/"
+
+# Package Sublime Text syntax into .packages/sublime-syntax/
+sublime-syntax:
+    #!/bin/bash
+    set -euo pipefail
+    mkdir -p "{{pkg}}/sublime-syntax"
+    tar czf "{{pkg}}/sublime-syntax/wcl-sublime-syntax.tar.gz" \
+        -C extras/sublime-syntax WCL.sublime-syntax
+    echo "Sublime syntax packaged to {{pkg}}/sublime-syntax/"
+
+# Package highlight.js grammar into .packages/highlightjs/
+highlightjs:
+    #!/bin/bash
+    set -euo pipefail
+    mkdir -p "{{pkg}}/highlightjs"
+    tar czf "{{pkg}}/highlightjs/wcl-highlightjs.tar.gz" \
+        -C extras/highlightjs wcl.js
+    echo "highlight.js grammar packaged to {{pkg}}/highlightjs/"
+
+# Package Pygments lexer into .packages/pygments/
+pygments:
+    #!/bin/bash
+    set -euo pipefail
+    mkdir -p "{{pkg}}/pygments"
+    tar czf "{{pkg}}/pygments/wcl-pygments.tar.gz" \
+        -C extras/pygments wcl_lexer.py
+    echo "Pygments lexer packaged to {{pkg}}/pygments/"
+
 # Package everything. Pass a version to stamp all packages (default: 0.0.0-local)
-all ver="0.0.0-local": (set-version ver) rust python wasm go dotnet vscode tree-sitter-wcl
+all ver="0.0.0-local": (set-version ver) rust python wasm go dotnet vscode tree-sitter-wcl highlight-queries sublime-syntax highlightjs pygments
     @echo "All packages created in {{pkg}}/"
 
 # Remove all packaged artifacts

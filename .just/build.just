@@ -143,8 +143,12 @@ zig-all: ffi-all
     cp target/x86_64-pc-windows-gnu/release/libwcl_ffi.a bindings/zig/lib/windows_amd64/wcl_ffi.lib
     cp crates/wcl_ffi/wcl.h bindings/zig/
 
+# Regenerate VS Code tmLanguage.json from canonical sublime-syntax
+vscode-syntax:
+    uv run extras/sublime-syntax/generate-tmlanguage.py > editors/vscode/syntaxes/wcl.tmLanguage.json
+
 # Package VS Code extension
-vscode:
+vscode: vscode-syntax
     cd editors/vscode && npm install && npx --yes @vscode/vsce package --allow-missing-repository
 
 # Build everything (native FFI)
