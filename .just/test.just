@@ -18,7 +18,7 @@ wasm:
 
 # Run .NET binding tests
 dotnet:
-    just build dotnet-native
+    just build dotnet-wasm
     dotnet test bindings/dotnet/Wcl.sln
 
 # Run Go binding tests (builds FFI first)
