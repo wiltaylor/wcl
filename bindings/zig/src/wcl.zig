@@ -499,6 +499,38 @@ test "parse with options" {
     try std.testing.expect(!doc.hasErrors());
 }
 
+test "parse with variables" {
+    const allocator = std.testing.allocator;
+    var doc = try parse(allocator, "port = PORT", ParseOptions{
+        .variables_json = "{\"PORT\":8080}",
+    });
+    defer doc.deinit();
+
+    try std.testing.expect(!doc.hasErrors());
+
+    var vals = try doc.values(allocator);
+    defer vals.deinit();
+
+    const obj = vals.value.object;
+    try std.testing.expectEqual(@as(i64, 8080), obj.get("port").?.integer);
+}
+
+test "variables override let" {
+    const allocator = std.testing.allocator;
+    var doc = try parse(allocator, "let x = 2\nresult = x", ParseOptions{
+        .variables_json = "{\"x\":99}",
+    });
+    defer doc.deinit();
+
+    try std.testing.expect(!doc.hasErrors());
+
+    var vals = try doc.values(allocator);
+    defer vals.deinit();
+
+    const obj = vals.value.object;
+    try std.testing.expectEqual(@as(i64, 99), obj.get("result").?.integer);
+}
+
 test "diagnostics" {
     const allocator = std.testing.allocator;
     var doc = try parse(allocator, "x = 1", null);

@@ -20,6 +20,107 @@ server #web-2 {
 
 `let` bindings are **not** included in the evaluated output or in serialized JSON/TOML/YAML. They exist purely to reduce repetition.
 
+## External Variable Overrides
+
+WCL documents can be parameterized with external variables injected at parse time. External variables **override** any `let` binding of the same name, allowing a document to define defaults that the caller can replace.
+
+### CLI
+
+Use the `--var` flag (repeatable) on `eval` or `validate`:
+
+```bash
+wcl eval --var PORT=8080 --var DEBUG=true config.wcl
+wcl validate --var PORT=8080 config.wcl
+```
+
+Values are auto-parsed: bare numbers become `int`/`float`, `true`/`false` become `bool`, `null` becomes `null`, quoted strings become `string`, and JSON arrays/objects are supported. An unquoted string that doesn't match any of the above is treated as a string.
+
+### Rust API
+
+```rust
+let mut opts = ParseOptions::default();
+opts.variables.insert("PORT".into(), Value::Int(8080));
+let doc = wcl::parse(source, opts);
+```
+
+### Python
+
+```python
+doc = wcl.parse(source, variables={"PORT": 8080, "DEBUG": True})
+```
+
+### JavaScript (WASM)
+
+```javascript
+const doc = parse(source, { variables: { PORT: 8080, DEBUG: true } });
+```
+
+### Go
+
+```go
+doc, err := wcl.Parse(source, &wcl.ParseOptions{
+    Variables: map[string]any{"PORT": 8080, "DEBUG": true},
+})
+```
+
+### Ruby
+
+```ruby
+doc = Wcl.parse(source, variables: { "PORT" => 8080, "DEBUG" => true })
+```
+
+### .NET
+
+```csharp
+var doc = WclParser.Parse(source, new ParseOptions {
+    Variables = new Dictionary<string, object> { ["PORT"] = 8080 }
+});
+```
+
+### Zig
+
+Pass variables as a JSON object string:
+
+```zig
+var doc = try wcl.parse(allocator, source, .{
+    .variables_json = "{\"PORT\":8080}",
+});
+```
+
+### Override Semantics
+
+External variables override document `let` bindings of the same name. This lets a document define sensible defaults while still being fully parameterizable:
+
+```wcl
+let port = 8080       // default, overridden if --var port=... is set
+let host = "localhost" // default
+
+server {
+    port = port
+    host = host
+}
+```
+
+```bash
+wcl eval --var port=9090 config.wcl
+# → { "server": { ... "port": 9090, "host": "localhost" } }
+```
+
+External variables are also available in control flow expressions:
+
+```wcl
+let regions = ["us"]  // default
+
+for region in regions {
+    server { name = region }
+}
+```
+
+```bash
+wcl eval --var 'regions=["us","eu","ap"]' config.wcl
+# → produces 3 server blocks
+```
+
 ## `export let` Bindings
 
 An `export let` binding works like `let` but makes the name available to files that import this module:

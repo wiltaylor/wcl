@@ -440,6 +440,40 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_with_variables() {
+        let source = c("port = PORT");
+        let opts = c(r#"{"variables":{"PORT":8080}}"#);
+        let doc = wcl_ffi_parse(source.as_ptr(), opts.as_ptr());
+        assert!(!doc.is_null());
+        assert!(!wcl_ffi_document_has_errors(doc));
+
+        let values_ptr = wcl_ffi_document_values(doc);
+        let values_str = unsafe { CStr::from_ptr(values_ptr) }.to_str().unwrap();
+        let values: serde_json::Value = serde_json::from_str(values_str).unwrap();
+        assert_eq!(values["port"], 8080);
+
+        wcl_ffi_string_free(values_ptr);
+        wcl_ffi_document_free(doc);
+    }
+
+    #[test]
+    fn test_variables_override_let() {
+        let source = c("let x = 2\nresult = x");
+        let opts = c(r#"{"variables":{"x":99}}"#);
+        let doc = wcl_ffi_parse(source.as_ptr(), opts.as_ptr());
+        assert!(!doc.is_null());
+        assert!(!wcl_ffi_document_has_errors(doc));
+
+        let values_ptr = wcl_ffi_document_values(doc);
+        let values_str = unsafe { CStr::from_ptr(values_ptr) }.to_str().unwrap();
+        let values: serde_json::Value = serde_json::from_str(values_str).unwrap();
+        assert_eq!(values["result"], 99);
+
+        wcl_ffi_string_free(values_ptr);
+        wcl_ffi_document_free(doc);
+    }
+
+    #[test]
     fn test_document_free_null() {
         wcl_ffi_document_free(std::ptr::null_mut());
     }

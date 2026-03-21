@@ -257,6 +257,52 @@ namespace Wcl.Tests
         }
 
         [Fact]
+        public void VariablesBasic()
+        {
+            var options = new ParseOptions
+            {
+                Variables = new Dictionary<string, object> { ["PORT"] = 8080 }
+            };
+
+            using var doc = WclParser.Parse("port = PORT", options);
+            Assert.False(doc.HasErrors());
+            Assert.Equal(8080L, doc.Values["port"].AsInt());
+        }
+
+        [Fact]
+        public void VariablesOverrideLet()
+        {
+            var options = new ParseOptions
+            {
+                Variables = new Dictionary<string, object> { ["x"] = 99 }
+            };
+
+            using var doc = WclParser.Parse("let x = 2\nresult = x", options);
+            Assert.False(doc.HasErrors());
+            Assert.Equal(99L, doc.Values["result"].AsInt());
+        }
+
+        [Fact]
+        public void VariablesTypes()
+        {
+            var options = new ParseOptions
+            {
+                Variables = new Dictionary<string, object>
+                {
+                    ["s"] = "hello",
+                    ["i"] = 42,
+                    ["b"] = true
+                }
+            };
+
+            using var doc = WclParser.Parse("vs = s\nvi = i\nvb = b", options);
+            Assert.False(doc.HasErrors());
+            Assert.Equal("hello", doc.Values["vs"].AsString());
+            Assert.Equal(42L, doc.Values["vi"].AsInt());
+            Assert.True(doc.Values["vb"].AsBool());
+        }
+
+        [Fact]
         public void QueryById()
         {
             using var doc = WclParser.Parse(@"
