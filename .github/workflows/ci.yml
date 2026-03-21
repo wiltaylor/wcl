@@ -14,6 +14,19 @@ env:
   RUST_TOOLCHAIN: "1.92.0"
 
 jobs:
+  # ── Version ─────────────────────────────────────────────────────────────
+
+  version:
+    name: Calculate Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.calc.outputs.version }}
+    steps:
+      - id: calc
+        run: echo "version=0.0.0-alpha" >> "$GITHUB_OUTPUT"
+
+  # ── Lint ────────────────────────────────────────────────────────────────
+
   check:
     name: Check & Lint
     runs-on: ubuntu-latest
@@ -24,10 +37,12 @@ jobs:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
           components: rustfmt, clippy
       - uses: taiki-e/install-action@just
-      - uses: Swatinem/rust-cache@f51f967e158417aafa338a1e46ab22095f07aa01  # master, pending v2.10 (actions/cache v5)
+      - uses: Swatinem/rust-cache@f51f967e158417aafa338a1e46ab22095f07aa01
       - run: just dev check
       - run: just dev fmt-check
       - run: just dev lint
+
+  # ── Test ────────────────────────────────────────────────────────────────
 
   test-rust:
     name: Test Rust
@@ -39,7 +54,7 @@ jobs:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
       - uses: taiki-e/install-action@just
       - uses: taiki-e/install-action@cargo-nextest
-      - uses: Swatinem/rust-cache@f51f967e158417aafa338a1e46ab22095f07aa01  # master, pending v2.10 (actions/cache v5)
+      - uses: Swatinem/rust-cache@f51f967e158417aafa338a1e46ab22095f07aa01
       - run: cargo nextest run --workspace --profile ci
       - uses: mikepenz/action-junit-report@v6
         if: always()
@@ -58,7 +73,7 @@ jobs:
           targets: wasm32-wasip1
       - uses: taiki-e/install-action@just
       - uses: astral-sh/setup-uv@v7
-      - uses: Swatinem/rust-cache@f51f967e158417aafa338a1e46ab22095f07aa01  # master, pending v2.10 (actions/cache v5)
+      - uses: Swatinem/rust-cache@f51f967e158417aafa338a1e46ab22095f07aa01
       - run: just build python-wasm
       - run: |
           cd bindings/python
@@ -79,7 +94,7 @@ jobs:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
       - uses: taiki-e/install-action@just
       - uses: taiki-e/install-action@wasm-pack
-      - uses: Swatinem/rust-cache@f51f967e158417aafa338a1e46ab22095f07aa01  # master, pending v2.10 (actions/cache v5)
+      - uses: Swatinem/rust-cache@f51f967e158417aafa338a1e46ab22095f07aa01
       - run: just test wasm
 
   test-dotnet:
@@ -95,7 +110,7 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '10.0.x'
-      - uses: Swatinem/rust-cache@f51f967e158417aafa338a1e46ab22095f07aa01  # master, pending v2.10 (actions/cache v5)
+      - uses: Swatinem/rust-cache@f51f967e158417aafa338a1e46ab22095f07aa01
       - run: |
           just build dotnet-wasm
           dotnet test bindings/dotnet/Wcl.sln --logger "junit;LogFilePath=${{ github.workspace }}/test-results/dotnet.xml"
@@ -119,7 +134,7 @@ jobs:
         with:
           go-version: 'stable'
           cache: false
-      - uses: Swatinem/rust-cache@f51f967e158417aafa338a1e46ab22095f07aa01  # master, pending v2.10 (actions/cache v5)
+      - uses: Swatinem/rust-cache@f51f967e158417aafa338a1e46ab22095f07aa01
       - run: go install gotest.tools/gotestsum@latest
       - run: |
           just build go
@@ -144,7 +159,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - uses: Swatinem/rust-cache@f51f967e158417aafa338a1e46ab22095f07aa01  # master, pending v2.10 (actions/cache v5)
+      - uses: Swatinem/rust-cache@f51f967e158417aafa338a1e46ab22095f07aa01
       - run: |
           just build jvm-wasm
           cd bindings/jvm && ./gradlew test
@@ -164,15 +179,53 @@ jobs:
           ruby-version: '3.3'
           bundler-cache: true
           working-directory: bindings/ruby
-      - uses: Swatinem/rust-cache@f51f967e158417aafa338a1e46ab22095f07aa01  # master, pending v2.10 (actions/cache v5)
+      - uses: Swatinem/rust-cache@f51f967e158417aafa338a1e46ab22095f07aa01
       - run: |
           just build ruby-wasm
           cd bindings/ruby && bundle exec rake test
 
-  pack:
-    name: Package
+  test-zig:
+    name: Test Zig
     runs-on: ubuntu-latest
-    needs: [check, test-rust, test-python, test-wasm, test-dotnet, test-go, test-jvm, test-ruby]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - uses: taiki-e/install-action@just
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.14.1
+      - uses: Swatinem/rust-cache@f51f967e158417aafa338a1e46ab22095f07aa01
+      - run: just test zig
+
+  # ── Package ─────────────────────────────────────────────────────────────
+  # Each package job checks out, stamps the version from the version job,
+  # builds its artifact, and uploads it separately.
+
+  pack-rust:
+    name: Package Rust
+    runs-on: ubuntu-latest
+    needs: [version, check, test-rust]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - uses: taiki-e/install-action@just
+      - uses: Swatinem/rust-cache@f51f967e158417aafa338a1e46ab22095f07aa01
+      - run: just pack set-version "${{ needs.version.outputs.version }}"
+      - run: just pack rust
+      - uses: actions/upload-artifact@v7
+        with:
+          name: package-rust
+          path: .packages/rust/
+          retention-days: 1
+
+  pack-python:
+    name: Package Python
+    runs-on: ubuntu-latest
+    needs: [version, check, test-python]
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@master
@@ -180,30 +233,222 @@ jobs:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
           targets: wasm32-wasip1
       - uses: taiki-e/install-action@just
-      - uses: taiki-e/install-action@wasm-pack
       - uses: astral-sh/setup-uv@v7
-      - uses: actions/setup-dotnet@v5
+      - uses: Swatinem/rust-cache@f51f967e158417aafa338a1e46ab22095f07aa01
+      - run: just pack set-version "${{ needs.version.outputs.version }}"
+      - run: just pack python
+      - uses: actions/upload-artifact@v7
         with:
-          dotnet-version: '10.0.x'
+          name: package-python
+          path: .packages/python/
+          retention-days: 1
+
+  pack-wasm:
+    name: Package WASM
+    runs-on: ubuntu-latest
+    needs: [version, check, test-wasm]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - uses: taiki-e/install-action@just
+      - uses: taiki-e/install-action@wasm-pack
+      - uses: Swatinem/rust-cache@f51f967e158417aafa338a1e46ab22095f07aa01
+      - run: just pack set-version "${{ needs.version.outputs.version }}"
+      - run: just pack wasm
+      - uses: actions/upload-artifact@v7
+        with:
+          name: package-wasm
+          path: .packages/wasm/
+          retention-days: 1
+
+  pack-go:
+    name: Package Go
+    runs-on: ubuntu-latest
+    needs: [version, check, test-go]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: wasm32-wasip1
+      - uses: taiki-e/install-action@just
       - uses: actions/setup-go@v6
         with:
           go-version: 'stable'
           cache: false
+      - uses: Swatinem/rust-cache@f51f967e158417aafa338a1e46ab22095f07aa01
+      - run: just pack set-version "${{ needs.version.outputs.version }}"
+      - run: just pack go
+      - uses: actions/upload-artifact@v7
+        with:
+          name: package-go
+          path: .packages/go/
+          retention-days: 1
+
+  pack-dotnet:
+    name: Package .NET
+    runs-on: ubuntu-latest
+    needs: [version, check, test-dotnet]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: wasm32-wasip1
+      - uses: taiki-e/install-action@just
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+      - uses: Swatinem/rust-cache@f51f967e158417aafa338a1e46ab22095f07aa01
+      - run: just pack set-version "${{ needs.version.outputs.version }}"
+      - run: just pack dotnet
+      - uses: actions/upload-artifact@v7
+        with:
+          name: package-dotnet
+          path: .packages/dotnet/
+          retention-days: 1
+
+  pack-jvm:
+    name: Package JVM
+    runs-on: ubuntu-latest
+    needs: [version, check, test-jvm]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: wasm32-wasip1
+      - uses: taiki-e/install-action@just
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
+      - uses: Swatinem/rust-cache@f51f967e158417aafa338a1e46ab22095f07aa01
+      - run: just pack set-version "${{ needs.version.outputs.version }}"
+      - run: just pack jvm
+      - uses: actions/upload-artifact@v7
+        with:
+          name: package-jvm
+          path: .packages/jvm/
+          retention-days: 1
+
+  pack-ruby:
+    name: Package Ruby
+    runs-on: ubuntu-latest
+    needs: [version, check, test-ruby]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: wasm32-wasip1
+      - uses: taiki-e/install-action@just
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.3'
           bundler-cache: true
           working-directory: bindings/ruby
-      - uses: tree-sitter/setup-action@v2
-      - uses: Swatinem/rust-cache@f51f967e158417aafa338a1e46ab22095f07aa01  # master, pending v2.10 (actions/cache v5)
-      - run: just pack all "0.0.0-ci+${{ github.sha }}"
+      - uses: Swatinem/rust-cache@f51f967e158417aafa338a1e46ab22095f07aa01
+      - run: just pack set-version "${{ needs.version.outputs.version }}"
+      - run: just pack ruby
       - uses: actions/upload-artifact@v7
         with:
-          name: packages
-          path: ${{ github.workspace }}/.packages/
+          name: package-ruby
+          path: .packages/ruby/
           retention-days: 1
-          include-hidden-files: true
+
+  pack-ffi:
+    name: Package C/C++
+    runs-on: ubuntu-latest
+    needs: [version, check, test-rust, test-zig]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - uses: taiki-e/install-action@just
+      - uses: Swatinem/rust-cache@f51f967e158417aafa338a1e46ab22095f07aa01
+      - run: just pack set-version "${{ needs.version.outputs.version }}"
+      - run: just pack ffi
+      - uses: actions/upload-artifact@v7
+        with:
+          name: package-ffi
+          path: .packages/ffi/
+          retention-days: 1
+
+  pack-vscode:
+    name: Package VS Code
+    runs-on: ubuntu-latest
+    needs: [version, check]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: taiki-e/install-action@just
+      - run: just pack set-version "${{ needs.version.outputs.version }}"
+      - run: just pack vscode
+      - uses: actions/upload-artifact@v7
+        with:
+          name: package-vscode
+          path: .packages/vscode/
+          retention-days: 1
+
+  pack-tree-sitter:
+    name: Package tree-sitter-wcl
+    runs-on: ubuntu-latest
+    needs: [version, check, test-rust]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - uses: taiki-e/install-action@just
+      - uses: tree-sitter/setup-action@v2
+      - uses: Swatinem/rust-cache@f51f967e158417aafa338a1e46ab22095f07aa01
+      - run: just pack set-version "${{ needs.version.outputs.version }}"
+      - run: just pack tree-sitter-wcl
+      - uses: actions/upload-artifact@v7
+        with:
+          name: package-tree-sitter-wcl
+          path: .packages/tree-sitter-wcl/
+          retention-days: 1
+
+  pack-extras:
+    name: Package Extras
+    runs-on: ubuntu-latest
+    needs: [version, check]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: taiki-e/install-action@just
+      - run: just pack set-version "${{ needs.version.outputs.version }}"
+      - run: |
+          just pack highlight-queries
+          just pack sublime-syntax
+          just pack highlightjs
+          just pack chroma
+          just pack pygments
+      - uses: actions/upload-artifact@v7
+        with:
+          name: package-highlight-queries
+          path: .packages/highlight-queries/
+          retention-days: 1
+      - uses: actions/upload-artifact@v7
+        with:
+          name: package-sublime-syntax
+          path: .packages/sublime-syntax/
+          retention-days: 1
+      - uses: actions/upload-artifact@v7
+        with:
+          name: package-highlightjs
+          path: .packages/highlightjs/
+          retention-days: 1
+      - uses: actions/upload-artifact@v7
+        with:
+          name: package-chroma
+          path: .packages/chroma/
+          retention-days: 1
+      - uses: actions/upload-artifact@v7
+        with:
+          name: package-pygments
+          path: .packages/pygments/
+          retention-days: 1
