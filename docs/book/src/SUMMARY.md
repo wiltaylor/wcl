@@ -9,6 +9,7 @@
 - [CLI Quickstart](./getting-started/cli-quickstart.md)
 - [Editor Setup](./getting-started/editor-setup.md)
 - [Syntax Highlighting](./getting-started/syntax-highlighting.md)
+- [C / C++ Usage](./getting-started/c-library.md)
 - [Rust Library Usage](./getting-started/rust-library.md)
 - [Python Library Usage](./getting-started/python-library.md)
 - [Go Library Usage](./getting-started/go-library.md)
