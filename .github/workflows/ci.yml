@@ -139,7 +139,7 @@ jobs:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
           targets: wasm32-wasip1
       - uses: taiki-e/install-action@just
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
@@ -168,10 +168,11 @@ jobs:
         with:
           go-version: 'stable'
           cache: false
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
+      - uses: tree-sitter/setup-action@v2
       - uses: Swatinem/rust-cache@v2
       - run: just pack all "0.0.0-ci+${{ github.sha }}"
       - uses: actions/upload-artifact@v7
