@@ -5,7 +5,7 @@ all:
     cargo fmt --all -- --check
     cargo clippy --workspace -- -D warnings
     cargo test --workspace
-    cd bindings/python && uv run --group dev maturin develop && uv run --group dev python -m pytest tests/ -v
+    cd bindings/python && uv run pytest tests/ -v
     cd bindings/wasm && wasm-pack test --node
     dotnet test bindings/dotnet/Wcl.sln
     just build go

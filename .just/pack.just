@@ -8,7 +8,7 @@ rust:
     set -euo pipefail
     mkdir -p "{{pkg}}/rust"
     cargo package --workspace --allow-dirty --no-verify \
-        --exclude wcl_python --exclude wcl_wasm
+        --exclude wcl_wasm
     cp target/package/*.crate "{{pkg}}/rust/"
     echo "Rust crates packaged to {{pkg}}/rust/"
 
@@ -16,9 +16,10 @@ rust:
 python:
     #!/bin/bash
     set -euo pipefail
+    just build python-wasm
     mkdir -p "{{pkg}}/python"
     cd bindings/python
-    uv run --group dev maturin build --release --out "{{pkg}}/python"
+    uv build --out-dir "{{pkg}}/python"
     echo "Python wheel packaged to {{pkg}}/python/"
 
 # Package WASM npm tarball into .packages/wasm/
@@ -155,23 +156,21 @@ set-version ver:
         sed -i "s|$crate = { path = \"crates/$crate\", version = \"[^\"]*\" }|$crate = { path = \"crates/$crate\", version = \"$V\" }|" Cargo.toml
     done
 
-    # Python: maturin reads version from Cargo.toml (must be semver that maturin
-    # can convert to PEP 440). Map our prerelease tags to maturin-compatible semver.
-    # 0.0.0-local → 0.0.0-dev.0, 0.0.0-ci+sha → 0.0.0-dev.0, 1.0.0-rc1 → 1.0.0-rc.1
-    PY_SEMVER="$V"
+    # Python: map prerelease tags to PEP 440-compatible versions.
+    # 0.0.0-local → 0.0.0.dev0, 0.0.0-ci+sha → 0.0.0.dev0, 1.0.0-rc1 → 1.0.0rc1
+    PY_VER="$V"
     if [[ "$V" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-(.+)$ ]]; then
         BASE="${BASH_REMATCH[1]}"
         PRE="${BASH_REMATCH[2]}"
         case "$PRE" in
-            local|ci+*) PY_SEMVER="${BASE}-dev.0" ;;
-            rc*)        NUM="${PRE//[^0-9]/}"; PY_SEMVER="${BASE}-rc.${NUM:-1}" ;;
-            alpha*)     NUM="${PRE//[^0-9]/}"; PY_SEMVER="${BASE}-alpha.${NUM:-1}" ;;
-            beta*)      NUM="${PRE//[^0-9]/}"; PY_SEMVER="${BASE}-beta.${NUM:-1}" ;;
-            *)          PY_SEMVER="${BASE}-dev.0" ;;
+            local|ci+*) PY_VER="${BASE}.dev0" ;;
+            rc*)        NUM="${PRE//[^0-9]/}"; PY_VER="${BASE}rc${NUM:-1}" ;;
+            alpha*)     NUM="${PRE//[^0-9]/}"; PY_VER="${BASE}a${NUM:-1}" ;;
+            beta*)      NUM="${PRE//[^0-9]/}"; PY_VER="${BASE}b${NUM:-1}" ;;
+            *)          PY_VER="${BASE}.dev0" ;;
         esac
     fi
-    sed -i "s/^version = .*/version = \"$PY_SEMVER\"/" bindings/python/Cargo.toml
-    sed -i "s/^version = .*/version = \"$PY_SEMVER\"/" bindings/python/pyproject.toml
+    sed -i "s/^version = .*/version = \"$PY_VER\"/" bindings/python/pyproject.toml
 
     # npm (WASM + VS Code + tree-sitter-wcl): semver with - prerelease
     sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$V\"/" bindings/wasm/package.json

@@ -1,16 +1,18 @@
 [build-system]
-requires = ["maturin>=1.7"]
-build-backend = "maturin"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "pywcl"
-version = "0.0.0-dev.0"
+version = "0.0.0.dev0"
 requires-python = ">=3.9"
+dependencies = ["wasmtime>=29"]
 
-[tool.maturin]
-python-source = "python"
-module-name = "wcl._wcl_native"
-features = ["pyo3/extension-module"]
+[tool.hatch.build.targets.wheel]
+packages = ["python/wcl"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"python/wcl/wcl_wasm.wasm" = "wcl/wcl_wasm.wasm"
 
 [dependency-groups]
-dev = ["pytest>=8", "maturin>=1.7"]
+dev = ["pytest>=8"]

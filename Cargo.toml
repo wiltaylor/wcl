@@ -11,7 +11,6 @@ members = [
     "crates/wcl_cli",
     "crates/wcl",
     "crates/wcl_ffi",
-    "bindings/python",
     "bindings/wasm",
 ]
 
@@ -50,7 +49,6 @@ miette = { version = "7", features = ["fancy"] }
 thiserror = "2"
 indexmap = { version = "2", features = ["serde"] }
 criterion = { version = "0.5", features = ["html_reports"] }
-pyo3 = { version = "0.25", features = ["extension-module"] }
 syn = { version = "2", features = ["full"] }
 quote = "1"
 proc-macro2 = "1"
