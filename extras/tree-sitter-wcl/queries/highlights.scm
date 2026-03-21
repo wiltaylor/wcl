@@ -1,4 +1,11 @@
-; Keywords
+; WCL highlight queries for tree-sitter
+; Compatible with Neovim, Helix, Zed, GitHub, and any tree-sitter-highlight consumer.
+;
+; This is the canonical copy. Editor-specific query files (locals.scm,
+; textobjects.scm, injections.scm) live in extras/highlight-queries/.
+
+; ── Keywords ──────────────────────────────────────────────────────────────
+
 [
   "if"
   "else"
@@ -21,15 +28,19 @@
 [
   "import"
   "export"
+] @keyword.import
+
+[
   "inject"
   "set"
   "remove"
   "check"
   "message"
   "target"
-] @keyword.import
+] @keyword
 
-; Operators
+; ── Operators ─────────────────────────────────────────────────────────────
+
 [
   "="
   "+"
@@ -54,7 +65,8 @@
   "|"
 ] @operator
 
-; Punctuation
+; ── Punctuation ───────────────────────────────────────────────────────────
+
 [
   "("
   ")"
@@ -71,9 +83,11 @@
 
 "@" @punctuation.special
 
-; Literals
+; ── Literals ──────────────────────────────────────────────────────────────
+
 (integer_literal) @number
 (float_literal) @number.float
+
 (string_literal) @string
 (string_content) @string
 (escape_sequence) @string.escape
@@ -81,11 +95,14 @@
   "${" @punctuation.special
   "}" @punctuation.special)
 (heredoc_literal) @string
-(boolean_literal) @boolean
+
+(boolean_literal) @constant.builtin
 (null_literal) @constant.builtin
 
-; Types
+; ── Types ─────────────────────────────────────────────────────────────────
+
 (builtin_type) @type.builtin
+
 [
   "list"
   "map"
@@ -94,15 +111,18 @@
   "ref"
 ] @type.builtin
 
-; Identifiers
+; ── Identifiers ───────────────────────────────────────────────────────────
+
 (identifier_literal) @string.special
 
-; Decorators
+; ── Decorators ────────────────────────────────────────────────────────────
+
 (decorator
   "@" @attribute
   (identifier) @attribute)
 
-; Functions
+; ── Functions ─────────────────────────────────────────────────────────────
+
 (call_expression
   (identifier) @function.call)
 (macro_call
@@ -114,49 +134,58 @@
 (declare_statement
   (identifier) @function)
 
-; Blocks
+; ── Blocks ────────────────────────────────────────────────────────────────
+
 (block
   (identifier) @type)
 
-; Schema names
+; ── Schema names ──────────────────────────────────────────────────────────
+
 (schema
   (string_literal) @type)
 (decorator_schema
   (string_literal) @type)
 
-; Let bindings
+; ── Variables ─────────────────────────────────────────────────────────────
+
 (let_binding
   (identifier) @variable)
 
-; Attributes
+; ── Attributes (fields) ──────────────────────────────────────────────────
+
 (attribute
   (identifier) @property)
 
-; Parameters
+; ── Parameters ────────────────────────────────────────────────────────────
+
 (parameter
   (identifier) @variable.parameter)
 
-; Lambda
 (lambda_parameters
   (identifier) @variable.parameter)
 
-; For loop variable
+; ── For loop variable ─────────────────────────────────────────────────────
+
 (for_loop
   (identifier) @variable)
 
-; Column declarations
+; ── Column declarations ──────────────────────────────────────────────────
+
 (column_declaration
   (identifier) @property)
 
-; Schema fields
+; ── Schema fields ────────────────────────────────────────────────────────
+
 (schema_field
   (identifier) @property)
 
-; Named arguments
+; ── Named arguments ──────────────────────────────────────────────────────
+
 (named_argument
   (identifier) @property)
 
-; Query expressions
+; ── Query expressions ────────────────────────────────────────────────────
+
 [
   "query"
   "has"
@@ -169,10 +198,12 @@
 (filter
   (identifier) @property)
 
-; Target types
+; ── Target types ─────────────────────────────────────────────────────────
+
 (target_type) @type.builtin
 
-; Comments
+; ── Comments ─────────────────────────────────────────────────────────────
+
 (doc_comment) @comment.documentation
 (line_comment) @comment
 (block_comment) @comment
