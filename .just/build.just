@@ -55,28 +55,13 @@ ffi-windows-amd64:
 # Build FFI for all platforms
 ffi-all: ffi-linux-amd64 ffi-linux-arm64 ffi-darwin-amd64 ffi-darwin-arm64 ffi-windows-amd64
 
-# Build Go bindings (native platform)
-go: ffi-native
-    #!/usr/bin/env bash
-    os="$(uname -s | tr '[:upper:]' '[:lower:]')"
-    arch="$(uname -m)"
-    [[ "$arch" == "x86_64" ]] && arch="amd64"
-    [[ "$arch" == "aarch64" ]] && arch="arm64"
-    dir="bindings/go/lib/${os}_${arch}"
-    mkdir -p "$dir"
-    cp target/release/libwcl_ffi.a "$dir/"
-    cp crates/wcl_ffi/wcl.h bindings/go/
+# Build WASM module for Go (reuses WASI target)
+go-wasm: dotnet-wasm
+    mkdir -p bindings/go/wasm
+    cp target/wasm32-wasip1/release/wcl_wasm.wasm bindings/go/wasm/
 
-# Build Go bindings for all platforms
-go-all: ffi-all
-    mkdir -p bindings/go/lib/linux_amd64 bindings/go/lib/linux_arm64 bindings/go/lib/darwin_amd64 bindings/go/lib/darwin_arm64 bindings/go/lib/windows_amd64
-    cp target/release/libwcl_ffi.a bindings/go/lib/linux_amd64/ 2>/dev/null || true
-    cp target/x86_64-unknown-linux-gnu/release/libwcl_ffi.a bindings/go/lib/linux_amd64/ 2>/dev/null || true
-    cp target/aarch64-unknown-linux-gnu/release/libwcl_ffi.a bindings/go/lib/linux_arm64/
-    cp target/x86_64-apple-darwin/release/libwcl_ffi.a bindings/go/lib/darwin_amd64/
-    cp target/aarch64-apple-darwin/release/libwcl_ffi.a bindings/go/lib/darwin_arm64/
-    cp target/x86_64-pc-windows-gnu/release/libwcl_ffi.a bindings/go/lib/windows_amd64/wcl_ffi.lib
-    cp crates/wcl_ffi/wcl.h bindings/go/
+# Build Go bindings
+go: go-wasm
 
 # Build WASM module for Python (reuses WASI target)
 python-wasm: dotnet-wasm
@@ -145,7 +130,7 @@ jvm: jvm-wasm
 all: rust-release ffi-native go zig python wasm dotnet jvm vscode
 
 # Build everything with all FFI platforms
-all-platforms: rust-release ffi-all go-all zig-all python wasm dotnet jvm vscode
+all-platforms: rust-release ffi-all go zig-all python wasm dotnet jvm vscode
 
 # Publish Rust crates in dependency order
 rust-publish:

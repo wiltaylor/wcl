@@ -1,22 +1,17 @@
 // Package wcl provides Go bindings for WCL (Wil's Configuration Language).
 //
-// It uses a prebuilt static library (libwcl_ffi) via CGo. Documents are parsed
-// and evaluated through the full WCL pipeline. Complex types cross the FFI
-// boundary as JSON strings.
+// It embeds a WASM module and uses wazero (a pure Go WebAssembly runtime) to
+// execute the full WCL pipeline. Complex types cross the boundary as JSON strings.
 package wcl
 
-/*
-#include "wcl.h"
-#include <stdlib.h>
-
-extern char* goCallbackTrampoline(void* ctx, char* args_json);
-*/
-import "C"
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"runtime"
-	"unsafe"
+
+	"github.com/wiltaylor/wcl/bindings/go/wasm"
 )
 
 // Parse parses a WCL source string and returns a Document.
@@ -28,61 +23,61 @@ func Parse(source string, opts *ParseOptions) (*Document, error) {
 		return parseWithFunctions(source, optsJSON, opts.Functions)
 	}
 
-	ptr := cParse(source, optsJSON)
-	if ptr == nil {
+	rt := wasm.GetRuntime()
+	handle := rt.Parse(source, optsJSON)
+	if handle == 0 {
 		return nil, fmt.Errorf("wcl: parse returned nil")
 	}
 
-	return newDocument(ptr, nil), nil
+	return newDocument(handle), nil
 }
 
 // ParseFile reads a file and parses it as WCL.
+// Since the WASM module cannot access the host filesystem, the file is read
+// in Go and the contents are passed to Parse. RootDir is set to the file's
+// parent directory if not specified in options.
 func ParseFile(path string, opts *ParseOptions) (*Document, error) {
-	optsJSON := marshalOptions(opts)
-	ptr := cParseFile(path, optsJSON)
-	if ptr == nil {
-		errMsg := cLastError()
-		if errMsg != "" {
-			return nil, fmt.Errorf("wcl: %s", errMsg)
-		}
-		return nil, fmt.Errorf("wcl: failed to parse file %s", path)
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("wcl: %w", err)
 	}
 
-	return newDocument(ptr, nil), nil
+	if opts == nil {
+		opts = &ParseOptions{}
+	}
+	if opts.RootDir == "" {
+		opts.RootDir = filepath.Dir(path)
+	}
+
+	return Parse(string(content), opts)
 }
 
 func parseWithFunctions(source, optsJSON string, fns map[string]func([]any) (any, error)) (*Document, error) {
-	count := len(fns)
-	names := make([]*C.char, 0, count)
-	callbacks := make([]C.WclCallbackFn, 0, count)
-	contexts := make([]C.uintptr_t, 0, count)
-	cbIDs := make([]uintptr, 0, count)
-
-	for name, fn := range fns {
-		cName := C.CString(name)
-		defer C.free(unsafe.Pointer(cName))
-
-		id := registerCallback(fn)
-		cbIDs = append(cbIDs, id)
-
-		names = append(names, cName)
-		callbacks = append(callbacks, C.WclCallbackFn(C.goCallbackTrampoline))
-		contexts = append(contexts, C.uintptr_t(id))
+	names := make([]string, 0, len(fns))
+	for name := range fns {
+		names = append(names, name)
 	}
 
-	ptr := cParseWithFunctions(source, optsJSON, names, callbacks, contexts)
-	if ptr == nil {
-		for _, id := range cbIDs {
-			unregisterCallback(id)
-		}
+	namesJSON, err := json.Marshal(names)
+	if err != nil {
+		return nil, fmt.Errorf("wcl: failed to marshal function names: %w", err)
+	}
+
+	bridge := wasm.CallbackBridge
+	bridge.SetFunctions(fns)
+	defer bridge.ClearFunctions()
+
+	rt := wasm.GetRuntime()
+	handle := rt.ParseWithFunctions(source, optsJSON, string(namesJSON))
+	if handle == 0 {
 		return nil, fmt.Errorf("wcl: parse returned nil")
 	}
 
-	return newDocument(ptr, cbIDs), nil
+	return newDocument(handle), nil
 }
 
-func newDocument(ptr unsafe.Pointer, cbIDs []uintptr) *Document {
-	doc := &Document{ptr: ptr, callbackIDs: cbIDs}
+func newDocument(handle uint32) *Document {
+	doc := &Document{handle: handle}
 	runtime.SetFinalizer(doc, (*Document).Close)
 	return doc
 }
@@ -95,7 +90,7 @@ func (d *Document) Values() (map[string]any, error) {
 		return nil, fmt.Errorf("wcl: document is closed")
 	}
 
-	jsonStr := cDocumentValues(d.ptr)
+	jsonStr := wasm.GetRuntime().DocumentValues(d.handle)
 	var result map[string]any
 	if err := json.Unmarshal([]byte(jsonStr), &result); err != nil {
 		return nil, fmt.Errorf("wcl: values: %w", err)
@@ -110,7 +105,7 @@ func (d *Document) HasErrors() bool {
 	if d.closed {
 		return false
 	}
-	return cDocumentHasErrors(d.ptr)
+	return wasm.GetRuntime().DocumentHasErrors(d.handle)
 }
 
 // Errors returns only the error diagnostics.
@@ -121,12 +116,18 @@ func (d *Document) Errors() ([]Diagnostic, error) {
 		return nil, fmt.Errorf("wcl: document is closed")
 	}
 
-	jsonStr := cDocumentErrors(d.ptr)
-	var diags []Diagnostic
-	if err := json.Unmarshal([]byte(jsonStr), &diags); err != nil {
+	jsonStr := wasm.GetRuntime().DocumentDiagnostics(d.handle)
+	var allDiags []Diagnostic
+	if err := json.Unmarshal([]byte(jsonStr), &allDiags); err != nil {
 		return nil, fmt.Errorf("wcl: errors: %w", err)
 	}
-	return diags, nil
+	var errors []Diagnostic
+	for _, d := range allDiags {
+		if d.Severity == "error" {
+			errors = append(errors, d)
+		}
+	}
+	return errors, nil
 }
 
 // Diagnostics returns all diagnostics (errors, warnings, etc.).
@@ -137,7 +138,7 @@ func (d *Document) Diagnostics() ([]Diagnostic, error) {
 		return nil, fmt.Errorf("wcl: document is closed")
 	}
 
-	jsonStr := cDocumentDiagnostics(d.ptr)
+	jsonStr := wasm.GetRuntime().DocumentDiagnostics(d.handle)
 	var diags []Diagnostic
 	if err := json.Unmarshal([]byte(jsonStr), &diags); err != nil {
 		return nil, fmt.Errorf("wcl: diagnostics: %w", err)
@@ -153,7 +154,7 @@ func (d *Document) Query(query string) (any, error) {
 		return nil, fmt.Errorf("wcl: document is closed")
 	}
 
-	jsonStr := cDocumentQuery(d.ptr, query)
+	jsonStr := wasm.GetRuntime().DocumentQuery(d.handle, query)
 	var result struct {
 		Ok    any     `json:"ok"`
 		Error *string `json:"error"`
@@ -175,7 +176,7 @@ func (d *Document) Blocks() ([]BlockRef, error) {
 		return nil, fmt.Errorf("wcl: document is closed")
 	}
 
-	jsonStr := cDocumentBlocks(d.ptr)
+	jsonStr := wasm.GetRuntime().DocumentBlocks(d.handle)
 	var blocks []BlockRef
 	if err := json.Unmarshal([]byte(jsonStr), &blocks); err != nil {
 		return nil, fmt.Errorf("wcl: blocks: %w", err)
@@ -191,7 +192,7 @@ func (d *Document) BlocksOfType(kind string) ([]BlockRef, error) {
 		return nil, fmt.Errorf("wcl: document is closed")
 	}
 
-	jsonStr := cDocumentBlocksOfType(d.ptr, kind)
+	jsonStr := wasm.GetRuntime().DocumentBlocksOfType(d.handle, kind)
 	var blocks []BlockRef
 	if err := json.Unmarshal([]byte(jsonStr), &blocks); err != nil {
 		return nil, fmt.Errorf("wcl: blocks_of_type: %w", err)
@@ -199,7 +200,7 @@ func (d *Document) BlocksOfType(kind string) ([]BlockRef, error) {
 	return blocks, nil
 }
 
-// Close releases the underlying Rust resources.
+// Close releases the underlying WASM resources.
 // Safe to call multiple times.
 func (d *Document) Close() {
 	d.mu.Lock()
@@ -210,31 +211,10 @@ func (d *Document) Close() {
 	d.closed = true
 	runtime.SetFinalizer(d, nil)
 
-	if d.ptr != nil {
-		cDocumentFree(d.ptr)
-		d.ptr = nil
+	if d.handle != 0 {
+		wasm.GetRuntime().DocumentFree(d.handle)
+		d.handle = 0
 	}
-
-	for _, id := range d.callbackIDs {
-		unregisterCallback(id)
-	}
-	d.callbackIDs = nil
-}
-
-// ListLibraries returns the paths of installed WCL libraries.
-func ListLibraries() ([]string, error) {
-	jsonStr := cListLibraries()
-	var result struct {
-		Ok    []string `json:"ok"`
-		Error *string  `json:"error"`
-	}
-	if err := json.Unmarshal([]byte(jsonStr), &result); err != nil {
-		return nil, fmt.Errorf("wcl: list_libraries: %w", err)
-	}
-	if result.Error != nil {
-		return nil, fmt.Errorf("wcl: %s", *result.Error)
-	}
-	return result.Ok, nil
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────
