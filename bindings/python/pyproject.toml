@@ -8,6 +8,9 @@ version = "0.0.0.dev0"
 requires-python = ">=3.9"
 dependencies = ["wasmtime>=29"]
 
+[tool.hatch.build.targets.sdist.force-include]
+"python/wcl/wcl_wasm.wasm" = "python/wcl/wcl_wasm.wasm"
+
 [tool.hatch.build.targets.wheel]
 packages = ["python/wcl"]
 
