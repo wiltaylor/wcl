@@ -80,7 +80,6 @@ def _json_to_block_ref(obj):
     return BlockRef(
         kind=obj["kind"],
         id=obj.get("id"),
-        labels=obj.get("labels", []),
         attributes=attributes,
         children=children,
         decorators=decorators,

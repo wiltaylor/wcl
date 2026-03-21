@@ -33,7 +33,6 @@ type Diagnostic struct {
 type BlockRef struct {
 	Kind       string         `json:"kind"`
 	ID         *string        `json:"id,omitempty"`
-	Labels     []string       `json:"labels,omitempty"`
 	Attributes map[string]any `json:"attributes,omitempty"`
 	Children   []BlockRef     `json:"children,omitempty"`
 	Decorators []Decorator    `json:"decorators,omitempty"`

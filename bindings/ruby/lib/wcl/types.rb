@@ -1,12 +1,11 @@
 module Wcl
   # A reference to a WCL block with its attributes.
   class BlockRef
-    attr_reader :kind, :id, :labels, :attributes, :children, :decorators
+    attr_reader :kind, :id, :attributes, :children, :decorators
 
-    def initialize(kind:, id: nil, labels: [], attributes: {}, children: [], decorators: [])
+    def initialize(kind:, id: nil, attributes: {}, children: [], decorators: [])
       @kind = kind
       @id = id
-      @labels = labels
       @attributes = attributes
       @children = children
       @decorators = decorators
@@ -28,7 +27,6 @@ module Wcl
       {
         kind: @kind,
         id: @id,
-        labels: @labels,
         attributes: @attributes,
         children: @children.map(&:to_h),
         decorators: @decorators.map(&:to_h)

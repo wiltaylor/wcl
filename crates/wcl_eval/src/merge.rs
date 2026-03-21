@@ -232,7 +232,7 @@ impl PartialMerger {
             partial: false,
             kind: first.kind.clone(),
             inline_id: first.inline_id.clone(),
-            labels: first.labels.clone(),
+            inline_args: first.inline_args.clone(),
             body: Vec::new(),
             text_content: first.text_content.clone(),
             trivia: first.trivia.clone(),
@@ -275,14 +275,14 @@ impl PartialMerger {
         let mut child_block_order: Vec<(String, String)> = Vec::new();
 
         for block in blocks {
-            // Warn about label mismatches
-            if !block.labels.is_empty()
-                && !first.labels.is_empty()
-                && !labels_match(&first.labels, &block.labels)
+            // Warn about inline_args mismatches
+            if !block.inline_args.is_empty()
+                && !first.inline_args.is_empty()
+                && block.inline_args.len() != first.inline_args.len()
             {
                 self.diagnostics.add(
                     wcl_core::Diagnostic::warning(
-                        "mismatched labels in partial block fragments",
+                        "mismatched inline args in partial block fragments",
                         block.span,
                     )
                     .with_code("W003"),
@@ -390,33 +390,6 @@ fn get_merge_order(block: &Block) -> i64 {
     i64::MAX
 }
 
-/// Check whether two label lists match (by comparing their literal content).
-fn labels_match(a: &[StringLit], b: &[StringLit]) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    for (la, lb) in a.iter().zip(b.iter()) {
-        let sa = string_lit_to_plain(la);
-        let sb = string_lit_to_plain(lb);
-        if sa != sb {
-            return false;
-        }
-    }
-    true
-}
-
-/// Extract plain text from a StringLit (ignoring interpolations).
-fn string_lit_to_plain(lit: &StringLit) -> String {
-    let mut result = String::new();
-    for part in &lit.parts {
-        match part {
-            StringPart::Literal(s) => result.push_str(s),
-            StringPart::Interpolation(_) => result.push_str("<interp>"),
-        }
-    }
-    result
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -447,7 +420,7 @@ mod tests {
             partial: true,
             kind: make_ident(kind),
             inline_id: Some(InlineId::Literal(make_id_lit(id))),
-            labels: vec![],
+            inline_args: vec![],
             body: attrs
                 .into_iter()
                 .map(|(name, value)| {
@@ -672,7 +645,7 @@ mod tests {
             partial: false,
             kind: make_ident("monitoring"),
             inline_id: Some(InlineId::Literal(make_id_lit("mon-1"))),
-            labels: vec![],
+            inline_args: vec![],
             body: vec![BodyItem::Attribute(Attribute {
                 decorators: vec![],
                 name: make_ident("interval"),
@@ -690,7 +663,7 @@ mod tests {
             partial: false,
             kind: make_ident("monitoring"),
             inline_id: Some(InlineId::Literal(make_id_lit("mon-1"))),
-            labels: vec![],
+            inline_args: vec![],
             body: vec![BodyItem::Attribute(Attribute {
                 decorators: vec![],
                 name: make_ident("threshold"),
@@ -708,7 +681,7 @@ mod tests {
             partial: true,
             kind: make_ident("service"),
             inline_id: Some(InlineId::Literal(make_id_lit("svc-api"))),
-            labels: vec![],
+            inline_args: vec![],
             body: vec![
                 BodyItem::Attribute(Attribute {
                     decorators: vec![],
@@ -729,7 +702,7 @@ mod tests {
             partial: true,
             kind: make_ident("service"),
             inline_id: Some(InlineId::Literal(make_id_lit("svc-api"))),
-            labels: vec![],
+            inline_args: vec![],
             body: vec![BodyItem::Block(child2)],
             text_content: None,
             trivia: Trivia::empty(),
@@ -868,7 +841,7 @@ mod tests {
             partial: false,
             kind: make_ident("monitoring"),
             inline_id: None,
-            labels: vec![],
+            inline_args: vec![],
             body: vec![],
             text_content: None,
             trivia: Trivia::empty(),
@@ -894,7 +867,7 @@ mod tests {
             partial: false,
             kind: make_ident("service"),
             inline_id: Some(InlineId::Literal(make_id_lit("svc-api"))),
-            labels: vec![],
+            inline_args: vec![],
             body: vec![BodyItem::Attribute(Attribute {
                 decorators: vec![],
                 name: make_ident("replicas"),
@@ -936,7 +909,7 @@ mod tests {
             partial: false,
             kind: make_ident("service"),
             inline_id: Some(InlineId::Literal(make_id_lit("svc-db"))),
-            labels: vec![],
+            inline_args: vec![],
             body: vec![],
             text_content: None,
             trivia: Trivia::empty(),

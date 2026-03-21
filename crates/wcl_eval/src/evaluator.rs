@@ -560,6 +560,16 @@ impl Evaluator {
                 self.collect_deps(e, deps);
             }
             Expr::Query(pipeline, _) => {
+                // Track selector dependencies (table/block names)
+                match &pipeline.selector {
+                    QuerySelector::TableId(id) => {
+                        deps.insert(id.value.clone());
+                    }
+                    QuerySelector::KindId(_, id) => {
+                        deps.insert(id.value.clone());
+                    }
+                    _ => {}
+                }
                 for filter in &pipeline.filters {
                     if let QueryFilter::AttrComparison(_, _, expr) = filter {
                         self.collect_deps(expr, deps);
@@ -1498,14 +1508,10 @@ impl Evaluator {
             })
             .collect();
 
-        let labels = block
-            .labels
+        let evaluated_args: Vec<Value> = block
+            .inline_args
             .iter()
-            .filter_map(|l| {
-                // Labels are StringLit — evaluate them to get the string value
-                self.eval_string_to_string(l, child_scope.unwrap_or(parent_scope))
-                    .ok()
-            })
+            .filter_map(|e| self.eval_expr(e, child_scope.unwrap_or(parent_scope)).ok())
             .collect();
 
         let inline_id = block.inline_id.as_ref().map(|id| match id {
@@ -1513,10 +1519,13 @@ impl Evaluator {
             InlineId::Interpolated(_) => "?interpolated?".to_string(),
         });
 
+        if !evaluated_args.is_empty() {
+            attributes.insert("_args".to_string(), Value::List(evaluated_args));
+        }
+
         BlockRef {
             kind: block.kind.name.clone(),
             id: inline_id,
-            labels,
             attributes,
             children,
             decorators,
@@ -1671,8 +1680,39 @@ impl Evaluator {
         let scope = self.scopes.get(scope_id);
         let mut blocks = Vec::new();
         for entry in scope.entries.values() {
-            if let Some(Value::BlockRef(br)) = &entry.value {
-                blocks.push(br.clone());
+            match &entry.value {
+                Some(Value::BlockRef(br)) => {
+                    blocks.push(br.clone());
+                }
+                Some(Value::List(rows)) if entry.kind == ScopeEntryKind::TableEntry => {
+                    // Convert table entries into pseudo-BlockRefs so queries work
+                    let children: Vec<BlockRef> = rows
+                        .iter()
+                        .filter_map(|row| {
+                            if let Value::Map(m) = row {
+                                Some(BlockRef {
+                                    kind: "__row".to_string(),
+                                    id: None,
+                                    attributes: m.clone(),
+                                    children: Vec::new(),
+                                    decorators: Vec::new(),
+                                    span: Span::dummy(),
+                                })
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+                    blocks.push(BlockRef {
+                        kind: "table".to_string(),
+                        id: Some(entry.name.clone()),
+                        attributes: indexmap::IndexMap::new(),
+                        children,
+                        decorators: Vec::new(),
+                        span: entry.span,
+                    });
+                }
+                _ => {}
             }
         }
         // Walk to parent scope to collect blocks there too
@@ -2607,7 +2647,7 @@ mod tests {
                 value: id.to_string(),
                 span: ds(),
             })),
-            labels: vec![],
+            inline_args: vec![],
             body,
             text_content: None,
             trivia: wcl_core::trivia::Trivia::empty(),
@@ -3161,7 +3201,7 @@ mod tests {
                 value: "my-doc".to_string(),
                 span: ds(),
             })),
-            labels: vec![],
+            inline_args: vec![],
             body: vec![],
             text_content: Some(StringLit {
                 parts: vec![StringPart::Literal("Hello world".to_string())],
@@ -3216,7 +3256,7 @@ mod tests {
                     value: "my-doc".to_string(),
                     span: ds(),
                 })),
-                labels: vec![],
+                inline_args: vec![],
                 body: vec![],
                 text_content: Some(StringLit {
                     parts: vec![

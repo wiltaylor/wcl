@@ -726,7 +726,7 @@ impl<'a> MacroExpander<'a> {
                 span: Span::dummy(),
             },
             inline_id: None,
-            labels: vec![],
+            inline_args: vec![],
             body: vec![],
             text_content: None,
             trivia: wcl_core::trivia::Trivia::empty(),
@@ -928,7 +928,7 @@ impl<'a> MacroExpander<'a> {
     /// - `self.kind` — returns the block kind as a `String`.
     /// - `self.id` — returns the block inline ID as a `String`, or `Null` if absent.
     /// - `self.name` — alias for `self.id`.
-    /// - `self.labels` — returns a `List(String)` of the block's labels.
+    /// - `self._args` — returns a `List` of the block's inline args.
     /// - `self.decorators` — returns a `List(String)` of the block's decorator names.
     fn eval_self_field_access(&self, field: &str, block: &Block) -> Option<Value> {
         match field {
@@ -953,26 +953,33 @@ impl<'a> MacroExpander<'a> {
                     None => Some(Value::Null),
                 }
             }
-            "labels" => {
-                let label_values: Vec<Value> = block
-                    .labels
+            "_args" => {
+                let arg_values: Vec<Value> = block
+                    .inline_args
                     .iter()
-                    .map(|label| {
-                        let s: String = label
-                            .parts
-                            .iter()
-                            .filter_map(|p| {
-                                if let StringPart::Literal(text) = p {
-                                    Some(text.as_str())
-                                } else {
-                                    None
-                                }
-                            })
-                            .collect();
-                        Value::String(s)
+                    .filter_map(|expr| match expr {
+                        Expr::IntLit(n, _) => Some(Value::Int(*n)),
+                        Expr::FloatLit(f, _) => Some(Value::Float(*f)),
+                        Expr::BoolLit(b, _) => Some(Value::Bool(*b)),
+                        Expr::NullLit(_) => Some(Value::Null),
+                        Expr::StringLit(s) => {
+                            let text: String = s
+                                .parts
+                                .iter()
+                                .filter_map(|p| {
+                                    if let StringPart::Literal(t) = p {
+                                        Some(t.as_str())
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .collect();
+                            Some(Value::String(text))
+                        }
+                        _ => None,
                     })
                     .collect();
-                Some(Value::List(label_values))
+                Some(Value::List(arg_values))
             }
             "decorators" => {
                 let decorator_names: Vec<Value> = block
@@ -1223,11 +1230,11 @@ impl<'a> MacroExpander<'a> {
             BodyItem::Block(block) => {
                 let mut new_block = block.clone();
                 new_block.body = self.substitute_params(&block.body, params);
-                // Also substitute in labels
-                new_block.labels = block
-                    .labels
+                // Also substitute in inline_args
+                new_block.inline_args = block
+                    .inline_args
                     .iter()
-                    .map(|l| self.substitute_string_lit(l, params))
+                    .map(|e| self.substitute_expr(e, params))
                     .collect();
                 // Substitute in text content
                 if let Some(ref tc) = block.text_content {
@@ -1578,7 +1585,7 @@ mod tests {
             partial: false,
             kind: make_ident("server"),
             inline_id: None,
-            labels: vec![],
+            inline_args: vec![],
             body: attrs
                 .into_iter()
                 .map(|(name, value)| {
@@ -1881,10 +1888,10 @@ mod tests {
         assert!(!diags.is_empty());
     }
 
-    // ── Gap 7: self.labels and self.decorators field access ──────────────
+    // ── Gap 7: self._args and self.decorators field access ──────────────
 
     #[test]
-    fn self_labels_returns_list_of_label_strings() {
+    fn self_args_returns_list_of_arg_values() {
         let registry = MacroRegistry::new();
         let expander = MacroExpander::new(&registry, 10);
 
@@ -1893,15 +1900,15 @@ mod tests {
             partial: false,
             kind: make_ident("server"),
             inline_id: None,
-            labels: vec![
-                StringLit {
+            inline_args: vec![
+                Expr::StringLit(StringLit {
                     parts: vec![StringPart::Literal("web".to_string())],
                     span: dummy_span(),
-                },
-                StringLit {
+                }),
+                Expr::StringLit(StringLit {
                     parts: vec![StringPart::Literal("prod".to_string())],
                     span: dummy_span(),
-                },
+                }),
             ],
             body: vec![],
             text_content: None,
@@ -1909,7 +1916,7 @@ mod tests {
             span: dummy_span(),
         };
 
-        let result = expander.eval_self_field_access("labels", &block);
+        let result = expander.eval_self_field_access("_args", &block);
         assert_eq!(
             result,
             Some(Value::List(vec![
@@ -1920,12 +1927,12 @@ mod tests {
     }
 
     #[test]
-    fn self_labels_returns_empty_list_when_no_labels() {
+    fn self_args_returns_empty_list_when_no_args() {
         let registry = MacroRegistry::new();
         let expander = MacroExpander::new(&registry, 10);
 
         let block = make_block_with_attrs(vec![]);
-        let result = expander.eval_self_field_access("labels", &block);
+        let result = expander.eval_self_field_access("_args", &block);
         assert_eq!(result, Some(Value::List(vec![])));
     }
 
@@ -1950,7 +1957,7 @@ mod tests {
             partial: false,
             kind: make_ident("server"),
             inline_id: None,
-            labels: vec![],
+            inline_args: vec![],
             body: vec![],
             text_content: None,
             trivia: Trivia::empty(),
@@ -2013,13 +2020,13 @@ mod tests {
     }
 
     #[test]
-    fn self_labels_in_when_condition() {
+    fn self_args_in_when_condition() {
         let mut registry = MacroRegistry::new();
-        // Condition: self.labels == ["web"]
+        // Condition: self._args == ["web"]
         let condition = Expr::BinaryOp(
             Box::new(Expr::MemberAccess(
                 Box::new(Expr::Ident(make_ident("self"))),
-                make_ident("labels"),
+                make_ident("_args"),
                 dummy_span(),
             )),
             BinOp::Eq,
@@ -2042,24 +2049,24 @@ mod tests {
             }],
             span: dummy_span(),
         });
-        let macro_def = make_when_attr_macro("check_labels", condition, vec![inner_set]);
+        let macro_def = make_when_attr_macro("check_args", condition, vec![inner_set]);
         registry
             .attribute_macros
-            .insert("check_labels".to_string(), macro_def);
+            .insert("check_args".to_string(), macro_def);
 
         let mut block = Block {
             decorators: vec![Decorator {
-                name: make_ident("check_labels"),
+                name: make_ident("check_args"),
                 args: vec![],
                 span: dummy_span(),
             }],
             partial: false,
             kind: make_ident("server"),
             inline_id: None,
-            labels: vec![StringLit {
+            inline_args: vec![Expr::StringLit(StringLit {
                 parts: vec![StringPart::Literal("web".to_string())],
                 span: dummy_span(),
-            }],
+            })],
             body: vec![BodyItem::Attribute(Attribute {
                 decorators: vec![],
                 name: make_ident("port"),
@@ -2274,7 +2281,7 @@ mod tests {
                     span: dummy_span(),
                 })
             }),
-            labels: vec![],
+            inline_args: vec![],
             body: vec![],
             text_content: None,
             trivia: Trivia::empty(),
@@ -2332,7 +2339,7 @@ mod tests {
                 value: "main".to_string(),
                 span: dummy_span(),
             })),
-            labels: vec![],
+            inline_args: vec![],
             body: children,
             text_content: None,
             trivia: Trivia::empty(),

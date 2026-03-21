@@ -69,7 +69,6 @@ module Wcl
       BlockRef.new(
         kind: obj["kind"],
         id: obj["id"],
-        labels: obj["labels"] || [],
         attributes: attrs,
         children: children,
         decorators: decorators

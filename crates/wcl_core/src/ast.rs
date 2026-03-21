@@ -151,14 +151,14 @@ pub struct Attribute {
 
 // ===== Blocks =====
 
-/// `[@decorator...] [partial] kind [IDENTIFIER_LIT] ["label"...] ( { body } | HEREDOC | STRING )`
+/// `[@decorator...] [partial] kind [IDENTIFIER_LIT] [inline_args...] ( { body } | HEREDOC | STRING )`
 #[derive(Debug, Clone)]
 pub struct Block {
     pub decorators: Vec<Decorator>,
     pub partial: bool,
     pub kind: Ident,
     pub inline_id: Option<InlineId>,
-    pub labels: Vec<StringLit>,
+    pub inline_args: Vec<Expr>,
     pub body: Vec<BodyItem>,
     pub text_content: Option<StringLit>,
     pub trivia: Trivia,
@@ -713,8 +713,6 @@ pub enum QuerySelector {
     Kind(Ident),
     /// `kind#id`  — match a specific block by kind and inline ID
     KindId(Ident, IdentifierLit),
-    /// `kind."label"`  — match a block by kind and string label
-    KindLabel(Ident, StringLit),
     /// `seg1.seg2.seg3`  — dot-separated path through nested blocks/attributes
     Path(Vec<PathSegment>),
     /// `..kind`  — recursive descent matching all blocks of kind
@@ -725,8 +723,6 @@ pub enum QuerySelector {
     Root,
     /// `*`  — all direct children
     Wildcard,
-    /// `table."label"`  — select a table by string label
-    TableLabel(StringLit),
     /// `table#id`  — select a table by inline ID
     TableId(IdentifierLit),
 }
@@ -735,7 +731,6 @@ pub enum QuerySelector {
 #[derive(Debug, Clone)]
 pub enum PathSegment {
     Ident(Ident),
-    StringLabel(StringLit),
 }
 
 /// A filter step in a query pipeline (after `|`).

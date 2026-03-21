@@ -125,7 +125,7 @@ mod tests {
             partial,
             kind: make_ident(kind),
             inline_id: id.map(make_inline_id),
-            labels: vec![],
+            inline_args: vec![],
             body: vec![],
             text_content: None,
             trivia: Trivia::default(),

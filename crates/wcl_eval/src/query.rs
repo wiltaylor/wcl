@@ -71,17 +71,6 @@ impl QueryEngine {
                 .filter(|b| b.kind == kind.name && b.id.as_deref() == Some(&id.value))
                 .cloned()
                 .collect()),
-            QuerySelector::KindLabel(kind, label) => {
-                let label_str = match &label.parts[..] {
-                    [StringPart::Literal(s)] => s.clone(),
-                    _ => return Err("query label must be a simple string".to_string()),
-                };
-                Ok(blocks
-                    .iter()
-                    .filter(|b| b.kind == kind.name && b.labels.contains(&label_str))
-                    .cloned()
-                    .collect())
-            }
             QuerySelector::Recursive(kind) => {
                 let mut results = Vec::new();
                 self.find_recursive(blocks, &kind.name, None, &mut results);
@@ -115,33 +104,9 @@ impl QueryEngine {
                                     .collect();
                             }
                         }
-                        PathSegment::StringLabel(label) => {
-                            let label_str = match &label.parts[..] {
-                                [StringPart::Literal(s)] => s.clone(),
-                                _ => return Err("path label must be a simple string".to_string()),
-                            };
-                            // Filter by label or inline ID
-                            current = current
-                                .iter()
-                                .filter(|b| {
-                                    b.id.as_deref() == Some(&*label_str)
-                                        || b.labels.contains(&label_str)
-                                })
-                                .cloned()
-                                .collect();
-                        }
                     }
                 }
                 Ok(current)
-            }
-            QuerySelector::TableLabel(label) => {
-                let label_str = match &label.parts[..] {
-                    [StringPart::Literal(s)] => s.clone(),
-                    _ => return Err("table label must be a simple string".to_string()),
-                };
-                let mut results = Vec::new();
-                self.find_table_by_label(blocks, &label_str, &mut results);
-                Ok(results)
             }
             QuerySelector::TableId(id) => {
                 let mut results = Vec::new();
@@ -163,15 +128,6 @@ impl QueryEngine {
                 results.push(block.clone());
             }
             self.find_recursive(&block.children, kind, id, results);
-        }
-    }
-
-    fn find_table_by_label(&self, blocks: &[BlockRef], label: &str, results: &mut Vec<BlockRef>) {
-        for block in blocks {
-            if block.kind == "table" && block.labels.contains(&label.to_string()) {
-                results.extend(block.children.clone());
-            }
-            self.find_table_by_label(&block.children, label, results);
         }
     }
 
@@ -342,7 +298,6 @@ mod tests {
         BlockRef {
             kind: kind.to_string(),
             id: id.map(|s| s.to_string()),
-            labels: Vec::new(),
             attributes,
             children: Vec::new(),
             decorators: Vec::new(),
@@ -568,17 +523,6 @@ mod tests {
         }
     }
 
-    fn mk_block_with_labels(
-        kind: &str,
-        id: Option<&str>,
-        labels: Vec<&str>,
-        attrs: Vec<(&str, Value)>,
-    ) -> BlockRef {
-        let mut b = mk_block(kind, id, attrs);
-        b.labels = labels.into_iter().map(|s| s.to_string()).collect();
-        b
-    }
-
     #[test]
     fn query_path_selector_navigates_nested() {
         let mut ev = Evaluator::new();
@@ -614,97 +558,6 @@ mod tests {
                 } else {
                     panic!("expected BlockRef");
                 }
-            }
-            _ => panic!("expected list"),
-        }
-    }
-
-    #[test]
-    fn query_path_selector_with_string_label() {
-        let mut ev = Evaluator::new();
-        let scope = ev.scopes_mut().create_scope(ScopeKind::Module, None);
-
-        let prod = mk_block_with_labels(
-            "env",
-            None,
-            vec!["production"],
-            vec![("replicas", Value::Int(3))],
-        );
-        let staging = mk_block_with_labels(
-            "env",
-            None,
-            vec!["staging"],
-            vec![("replicas", Value::Int(1))],
-        );
-        let mut service = mk_block("service", Some("web"), vec![]);
-        service.children.push(prod);
-        service.children.push(staging);
-
-        let blocks = vec![service];
-
-        let engine = QueryEngine::new();
-        let pipeline = QueryPipeline {
-            selector: QuerySelector::Path(vec![
-                PathSegment::Ident(mk_ident("service")),
-                PathSegment::Ident(mk_ident("env")),
-                PathSegment::StringLabel(StringLit {
-                    parts: vec![StringPart::Literal("production".to_string())],
-                    span: ds(),
-                }),
-            ]),
-            filters: vec![],
-            span: ds(),
-        };
-
-        let result = engine.execute(&pipeline, &blocks, &mut ev, scope).unwrap();
-        match result {
-            Value::List(items) => {
-                assert_eq!(items.len(), 1);
-                if let Value::BlockRef(br) = &items[0] {
-                    assert!(br.labels.contains(&"production".to_string()));
-                } else {
-                    panic!("expected BlockRef");
-                }
-            }
-            _ => panic!("expected list"),
-        }
-    }
-
-    #[test]
-    fn query_table_label_selector() {
-        let mut ev = Evaluator::new();
-        let scope = ev.scopes_mut().create_scope(ScopeKind::Module, None);
-
-        let row1 = mk_block(
-            "row",
-            None,
-            vec![("name", Value::String("alice".to_string()))],
-        );
-        let row2 = mk_block(
-            "row",
-            None,
-            vec![("name", Value::String("bob".to_string()))],
-        );
-        let mut table = mk_block_with_labels("table", None, vec!["users"], vec![]);
-        table.children.push(row1);
-        table.children.push(row2);
-
-        let blocks = vec![table];
-
-        let engine = QueryEngine::new();
-        let pipeline = QueryPipeline {
-            selector: QuerySelector::TableLabel(StringLit {
-                parts: vec![StringPart::Literal("users".to_string())],
-                span: ds(),
-            }),
-            filters: vec![],
-            span: ds(),
-        };
-
-        let result = engine.execute(&pipeline, &blocks, &mut ev, scope).unwrap();
-        match result {
-            Value::List(items) => {
-                assert_eq!(items.len(), 2);
             }
             _ => panic!("expected list"),
         }

@@ -9,7 +9,7 @@
 //! # Supported field attributes (WclDeserialize)
 //!
 //! - `#[wcl(id)]`      — map the block's inline ID to this field
-//! - `#[wcl(labels)]`  — map the block's labels to this field (`Vec<String>`)
+//! - `#[wcl(args)]`    — map the block's `_args` to this field (`Vec<Value>`)
 //! - `#[wcl(flatten)]` — flatten a nested block into this struct
 //!
 //! # Supported attributes (WclSchema)
@@ -43,7 +43,7 @@ pub fn derive_wcl_deserialize(input: TokenStream) -> TokenStream {
 #[derive(Default)]
 struct WclFieldAttr {
     id: bool,
-    labels: bool,
+    args: bool,
     flatten: bool,
 }
 
@@ -60,8 +60,8 @@ impl WclFieldAttr {
                 let _ = list.parse_nested_meta(|meta| {
                     if meta.path.is_ident("id") {
                         out.id = true;
-                    } else if meta.path.is_ident("labels") {
-                        out.labels = true;
+                    } else if meta.path.is_ident("args") {
+                        out.args = true;
                     } else if meta.path.is_ident("flatten") {
                         out.flatten = true;
                     }
@@ -103,7 +103,7 @@ fn expand_wcl_deserialize(input: DeriveInput) -> TokenStream2 {
     // see the data, so all we need here is the correct serde field name):
     //
     //   #[wcl(id)]      → serde field name "id"
-    //   #[wcl(labels)]  → serde field name "labels"
+    //   #[wcl(args)]    → serde field name "_args"
     //   #[wcl(flatten)] → #[serde(flatten)] on the helper field
     //   (none)          → field name as-is (snake_case)
     // ------------------------------------------------------------------
@@ -122,10 +122,10 @@ fn expand_wcl_deserialize(input: DeriveInput) -> TokenStream2 {
                 #[serde(rename = "id")]
                 #field_name: #field_ty,
             });
-        } else if attr.labels {
-            // Rename to "labels" so the deserializer maps block labels here.
+        } else if attr.args {
+            // Rename to "_args" so the deserializer maps block inline args here.
             helper_field_defs.push(quote! {
-                #[serde(rename = "labels")]
+                #[serde(rename = "_args")]
                 #field_name: #field_ty,
             });
         } else if attr.flatten {

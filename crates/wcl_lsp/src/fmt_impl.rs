@@ -125,9 +125,9 @@ impl<'a> Fmt<'a> {
                         }
                     }
                 }
-                for label in &block.labels {
+                for arg in &block.inline_args {
                     self.out.push(' ');
-                    self.string_lit(label);
+                    self.expr(arg);
                 }
                 if let Some(ref tc) = block.text_content {
                     self.out.push(' ');

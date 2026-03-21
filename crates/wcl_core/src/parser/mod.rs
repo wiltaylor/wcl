@@ -709,25 +709,39 @@ impl Parser {
         let inline_id = self.parse_inline_id();
         self.skip_newlines();
 
-        // Check for text block syntax: heredoc or string literal (not followed by { or another string)
-        let (body, text_content, labels) = if matches!(self.peek_kind(), TokenKind::Heredoc { .. })
-        {
-            let s = self.parse_string_lit()?;
-            (vec![], Some(s), vec![])
-        } else if matches!(self.peek_kind(), TokenKind::StringLit(_)) {
-            // Lookahead: if string is followed by { or another string, it's a label
-            let mut j = self.pos + 1;
-            while j < self.tokens.len() && matches!(self.tokens[j].kind, TokenKind::Newline) {
-                j += 1;
-            }
-            let next_is_label_context = j < self.tokens.len()
-                && matches!(
-                    self.tokens[j].kind,
-                    TokenKind::LBrace | TokenKind::StringLit(_)
-                );
-            if next_is_label_context {
-                // It's a label — parse labels then body
-                let labels = self.parse_labels();
+        // Check for text block syntax: heredoc or string literal (not followed by { or inline-arg-start)
+        let (body, text_content, inline_args) =
+            if matches!(self.peek_kind(), TokenKind::Heredoc { .. }) {
+                let s = self.parse_string_lit()?;
+                (vec![], Some(s), vec![])
+            } else if matches!(self.peek_kind(), TokenKind::StringLit(_)) {
+                // Lookahead: if string is followed by { or another primary-expr-start token, it's an inline arg
+                let mut j = self.pos + 1;
+                while j < self.tokens.len() && matches!(self.tokens[j].kind, TokenKind::Newline) {
+                    j += 1;
+                }
+                let next_is_inline_arg_context =
+                    j < self.tokens.len() && Self::is_inline_arg_start(&self.tokens[j].kind);
+                if next_is_inline_arg_context {
+                    // It's an inline arg — parse inline args then body
+                    let args = self.parse_inline_args();
+                    self.skip_newlines();
+                    if self.expect(&TokenKind::LBrace).is_err() {
+                        return None;
+                    }
+                    let body = self.parse_body_items();
+                    if self.expect(&TokenKind::RBrace).is_err() {
+                        return None;
+                    }
+                    (body, None, args)
+                } else {
+                    // It's text content
+                    let s = self.parse_string_lit()?;
+                    (vec![], Some(s), vec![])
+                }
+            } else if Self::is_primary_expr_start_not_brace(self.peek_kind()) {
+                // Non-string primary expression start (int, float, bool, null, list, paren, ident)
+                let args = self.parse_inline_args();
                 self.skip_newlines();
                 if self.expect(&TokenKind::LBrace).is_err() {
                     return None;
@@ -736,24 +750,18 @@ impl Parser {
                 if self.expect(&TokenKind::RBrace).is_err() {
                     return None;
                 }
-                (body, None, labels)
+                (body, None, args)
             } else {
-                // It's text content
-                let s = self.parse_string_lit()?;
-                (vec![], Some(s), vec![])
-            }
-        } else {
-            let labels = self.parse_labels();
-            self.skip_newlines();
-            if self.expect(&TokenKind::LBrace).is_err() {
-                return None;
-            }
-            let body = self.parse_body_items();
-            if self.expect(&TokenKind::RBrace).is_err() {
-                return None;
-            }
-            (body, None, labels)
-        };
+                self.skip_newlines();
+                if self.expect(&TokenKind::LBrace).is_err() {
+                    return None;
+                }
+                let body = self.parse_body_items();
+                if self.expect(&TokenKind::RBrace).is_err() {
+                    return None;
+                }
+                (body, None, vec![])
+            };
 
         let span = start_span.merge(self.prev_span());
         Some(Block {
@@ -761,7 +769,7 @@ impl Parser {
             partial,
             kind,
             inline_id,
-            labels,
+            inline_args,
             body,
             text_content,
             trivia,
@@ -796,20 +804,24 @@ impl Parser {
                     i += 1;
                 }
                 if i < self.tokens.len() {
-                    match &self.tokens[i].kind {
-                        TokenKind::LBrace
-                        | TokenKind::StringLit(_)
-                        | TokenKind::Colon
-                        | TokenKind::Equals
-                        | TokenKind::Heredoc { .. } => {
-                            let span = self.current_span();
-                            self.advance();
-                            Some(InlineId::Literal(IdentifierLit {
-                                value: name_clone,
-                                span,
-                            }))
-                        }
-                        _ => None,
+                    let is_id_context =
+                        matches!(
+                            &self.tokens[i].kind,
+                            TokenKind::LBrace
+                                | TokenKind::StringLit(_)
+                                | TokenKind::Colon
+                                | TokenKind::Equals
+                                | TokenKind::Heredoc { .. }
+                        ) || Self::is_primary_expr_start_not_brace(&self.tokens[i].kind);
+                    if is_id_context {
+                        let span = self.current_span();
+                        self.advance();
+                        Some(InlineId::Literal(IdentifierLit {
+                            value: name_clone,
+                            span,
+                        }))
+                    } else {
+                        None
                     }
                 } else {
                     None
@@ -992,14 +1004,13 @@ impl Parser {
         false
     }
 
-    fn parse_labels(&mut self) -> Vec<StringLit> {
-        let mut labels = Vec::new();
+    fn parse_inline_args(&mut self) -> Vec<Expr> {
+        let mut args = Vec::new();
         loop {
             self.skip_newlines();
-            if matches!(self.peek_kind(), TokenKind::StringLit(_)) {
-                // Check that this is followed by another string or `{` (i.e., it's a label, not a value)
-                if let Some(s) = self.parse_string_lit() {
-                    labels.push(s);
+            if Self::is_primary_expr_start_not_brace(self.peek_kind()) {
+                if let Some(expr) = self.parse_primary() {
+                    args.push(expr);
                 } else {
                     break;
                 }
@@ -1007,7 +1018,26 @@ impl Parser {
                 break;
             }
         }
-        labels
+        args
+    }
+
+    /// Check if a token kind can start a primary expression (excluding LBrace which is the block body).
+    fn is_primary_expr_start_not_brace(kind: &TokenKind) -> bool {
+        matches!(
+            kind,
+            TokenKind::StringLit(_)
+                | TokenKind::IntLit(_)
+                | TokenKind::FloatLit(_)
+                | TokenKind::BoolLit(_)
+                | TokenKind::NullLit
+                | TokenKind::LBracket
+                | TokenKind::LParen
+        )
+    }
+
+    /// Check if a token kind can start an inline arg or is a block body opener.
+    fn is_inline_arg_start(kind: &TokenKind) -> bool {
+        matches!(kind, TokenKind::LBrace) || Self::is_primary_expr_start_not_brace(kind)
     }
 
     // ── Let bindings ──────────────────────────────────────────────────────
@@ -3111,7 +3141,67 @@ server {
             DocItem::Body(BodyItem::Block(block)) => {
                 assert_eq!(block.kind.name, "readme");
                 assert!(block.text_content.is_none());
-                assert_eq!(block.labels.len(), 1);
+                assert_eq!(block.inline_args.len(), 1);
+                assert_eq!(block.body.len(), 1);
+            }
+            other => panic!("expected Block, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn inline_args_int_bool_string() {
+        let src = r#"server web 8080 true "prod" { }"#;
+        let (doc, diags) = parse(src);
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
+        match &doc.items[0] {
+            DocItem::Body(BodyItem::Block(block)) => {
+                assert_eq!(block.kind.name, "server");
+                assert_eq!(block.inline_args.len(), 3);
+                assert!(matches!(block.inline_args[0], Expr::IntLit(8080, _)));
+                assert!(matches!(block.inline_args[1], Expr::BoolLit(true, _)));
+                assert!(matches!(block.inline_args[2], Expr::StringLit(_)));
+            }
+            other => panic!("expected Block, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn text_content_still_works_no_brace_after() {
+        let src = r#"readme doc "text content""#;
+        let (doc, diags) = parse(src);
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
+        match &doc.items[0] {
+            DocItem::Body(BodyItem::Block(block)) => {
+                assert_eq!(block.kind.name, "readme");
+                assert!(block.text_content.is_some());
+                assert!(block.inline_args.is_empty());
+            }
+            other => panic!("expected Block, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn string_followed_by_brace_is_inline_arg() {
+        let src = r#"server "prod" { port = 80 }"#;
+        let (doc, diags) = parse(src);
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
+        match &doc.items[0] {
+            DocItem::Body(BodyItem::Block(block)) => {
+                assert_eq!(block.kind.name, "server");
+                assert_eq!(block.inline_args.len(), 1);
+                assert!(block.text_content.is_none());
                 assert_eq!(block.body.len(), 1);
             }
             other => panic!("expected Block, got {:?}", other),

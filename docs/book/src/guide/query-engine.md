@@ -18,12 +18,10 @@ Selectors determine the initial set of blocks the pipeline operates on.
 |---|---|
 | `service` | All blocks of kind `service` |
 | `service#svc-auth` | The block of kind `service` with ID `svc-auth` |
-| `service."auth-service"` | The block of kind `service` with label `"auth-service"` |
 | `config.server.listener` | A nested attribute path — the `listener` attribute inside `server` inside `config` |
 | `..health_check` | Recursive descent — all blocks named `health_check` at any depth |
 | `.` | The document root |
 | `*` | All top-level blocks |
-| `table."name"` | The table with label `"name"` |
 | `table#id` | The table with the given ID |
 
 ### Examples

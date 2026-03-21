@@ -51,11 +51,6 @@ def test_blockref_no_id():
     assert block.id is None
 
 
-def test_blockref_labels():
-    doc = wcl.parse('server "production" "us-east" { port = 8080 }')
-    block = doc.blocks()[0]
-    assert block.labels == ["production", "us-east"]
-
 
 def test_blockref_children():
     doc = wcl.parse("outer { inner { value = 1 } }")

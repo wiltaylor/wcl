@@ -788,7 +788,7 @@ mod parser_tests {
             panic!("expected block");
         };
         assert_eq!(block.kind.name, "resource");
-        assert_eq!(block.labels.len(), 2);
+        assert_eq!(block.inline_args.len(), 2);
     }
 
     #[test]
@@ -797,7 +797,7 @@ mod parser_tests {
         let DocItem::Body(BodyItem::Block(block)) = &doc.items[0] else {
             panic!("expected block");
         };
-        assert_eq!(block.labels.len(), 1);
+        assert_eq!(block.inline_args.len(), 1);
     }
 
     #[test]

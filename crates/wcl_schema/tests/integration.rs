@@ -68,7 +68,7 @@ fn make_block(kind: &str, id: Option<&str>, partial: bool, body: Vec<BodyItem>) 
                 span: sp(),
             })
         }),
-        labels: vec![],
+        inline_args: vec![],
         body,
         text_content: None,
         trivia: Trivia::default(),

@@ -360,7 +360,7 @@ mod tests {
             partial: false,
             kind: mk_ident("outer"),
             inline_id: None,
-            labels: vec![],
+            inline_args: vec![],
             body: vec![BodyItem::Table(table)],
             text_content: None,
             trivia: Trivia::empty(),

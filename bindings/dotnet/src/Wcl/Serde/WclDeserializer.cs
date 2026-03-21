@@ -63,15 +63,13 @@ namespace Wcl.Serde
                 return list;
             }
 
-            // BlockRef -> Map with id/labels auto-populated
+            // BlockRef -> Map with id auto-populated
             if (value.Kind == WclValueKind.BlockRef)
             {
                 var br = value.AsBlockRef();
                 var map = new OrderedMap<string, WclValue>();
                 if (br.Id != null)
                     map["id"] = WclValue.NewString(br.Id);
-                if (br.Labels.Count > 0)
-                    map["labels"] = WclValue.NewList(br.Labels.Select(l => WclValue.NewString(l)).ToList());
                 foreach (var kvp in br.Attributes)
                     map[kvp.Key] = kvp.Value;
                 return ConvertValue(WclValue.NewMap(map), targetType);

@@ -137,7 +137,7 @@ impl Parser {
     }
 
     /// Parse a primary (atom) expression.
-    fn parse_primary(&mut self) -> Option<Expr> {
+    pub(super) fn parse_primary(&mut self) -> Option<Expr> {
         self.skip_newlines();
         match self.peek_kind().clone() {
             TokenKind::IntLit(n) => {
@@ -635,40 +635,30 @@ impl Parser {
                     }
                     TokenKind::Dot => {
                         self.advance(); // consume .
-                        if let TokenKind::StringLit(_) = self.peek_kind() {
-                            let s = self.parse_string_lit()?;
-                            Some(QuerySelector::TableLabel(s))
-                        } else {
-                            // table.something — treat as path
-                            let table_ident = Ident {
-                                name: "table".into(),
-                                span,
-                            };
-                            let mut segments = vec![PathSegment::Ident(table_ident)];
+                                        // table.something — treat as path
+                        let table_ident = Ident {
+                            name: "table".into(),
+                            span,
+                        };
+                        let mut segments = vec![PathSegment::Ident(table_ident)];
+                        if let TokenKind::Ident(ref name) = self.peek_kind().clone() {
+                            let name = name.clone();
+                            let span = self.current_span();
+                            self.advance();
+                            segments.push(PathSegment::Ident(Ident { name, span }));
+                        }
+                        while matches!(self.peek_kind(), TokenKind::Dot) {
+                            self.advance();
                             if let TokenKind::Ident(ref name) = self.peek_kind().clone() {
                                 let name = name.clone();
                                 let span = self.current_span();
                                 self.advance();
                                 segments.push(PathSegment::Ident(Ident { name, span }));
+                            } else {
+                                break;
                             }
-                            while matches!(self.peek_kind(), TokenKind::Dot) {
-                                self.advance();
-                                match self.peek_kind().clone() {
-                                    TokenKind::Ident(ref name) => {
-                                        let name = name.clone();
-                                        let span = self.current_span();
-                                        self.advance();
-                                        segments.push(PathSegment::Ident(Ident { name, span }));
-                                    }
-                                    TokenKind::StringLit(_) => {
-                                        let s = self.parse_string_lit()?;
-                                        segments.push(PathSegment::StringLabel(s));
-                                    }
-                                    _ => break,
-                                }
-                            }
-                            Some(QuerySelector::Path(segments))
                         }
+                        Some(QuerySelector::Path(segments))
                     }
                     _ => {
                         // bare `table` — treat as Kind
@@ -709,32 +699,23 @@ impl Parser {
                         }
                     }
                     TokenKind::Dot => {
-                        // Path or kind.label
+                        // Path selector
                         let mut segments = vec![PathSegment::Ident(ident)];
                         while matches!(self.peek_kind(), TokenKind::Dot) {
                             self.advance(); // consume .
-                            match self.peek_kind().clone() {
-                                TokenKind::Ident(ref name) => {
-                                    let name = name.clone();
-                                    let span = self.current_span();
-                                    self.advance();
-                                    segments.push(PathSegment::Ident(Ident { name, span }));
-                                }
-                                TokenKind::StringLit(_) => {
-                                    let s = self.parse_string_lit()?;
-                                    segments.push(PathSegment::StringLabel(s));
-                                }
-                                _ => break,
+                            if let TokenKind::Ident(ref name) = self.peek_kind().clone() {
+                                let name = name.clone();
+                                let span = self.current_span();
+                                self.advance();
+                                segments.push(PathSegment::Ident(Ident { name, span }));
+                            } else {
+                                break;
                             }
                         }
                         Some(QuerySelector::Path(segments))
                     }
                     _ => Some(QuerySelector::Kind(ident)),
                 }
-            }
-            TokenKind::StringLit(_) => {
-                let s = self.parse_string_lit()?;
-                Some(QuerySelector::TableLabel(s))
             }
             _ => {
                 self.diagnostics.error(
