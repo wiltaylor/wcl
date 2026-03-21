@@ -132,6 +132,24 @@ fn build_parse_options(options: Option<JsValue>) -> Result<wcl::ParseOptions, Js
         }
     }
 
+    // variables: Record<string, any>
+    if let Ok(v) = js_sys::Reflect::get(options, &JsValue::from_str("variables")) {
+        if v.is_object() && !v.is_null() && !v.is_undefined() {
+            let obj = js_sys::Object::from(v);
+            let keys = js_sys::Object::keys(&obj);
+            for i in 0..keys.length() {
+                let key = keys.get(i);
+                if let Some(name) = key.as_string() {
+                    if let Ok(val) = js_sys::Reflect::get(&obj, &key) {
+                        if let Ok(wcl_val) = js_to_value(&val) {
+                            opts.variables.insert(name, wcl_val);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // functions: Record<string, Function>
     if let Ok(v) = js_sys::Reflect::get(options, &JsValue::from_str("functions")) {
         if v.is_object() && !v.is_null() && !v.is_undefined() {

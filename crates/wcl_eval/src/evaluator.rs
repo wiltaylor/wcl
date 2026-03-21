@@ -21,6 +21,8 @@ pub struct Evaluator {
     block_scope_map: HashMap<(ScopeId, String), ScopeId>,
     /// Set of function names declared via `declare` in library imports
     declared_functions: HashSet<String>,
+    /// External variables to inject before evaluation
+    variables: IndexMap<String, Value>,
 }
 
 impl Evaluator {
@@ -33,6 +35,7 @@ impl Evaluator {
             base_dir: None,
             block_scope_map: HashMap::new(),
             declared_functions: HashSet::new(),
+            variables: IndexMap::new(),
         }
     }
 
@@ -45,6 +48,7 @@ impl Evaluator {
             base_dir: Some(base_dir),
             block_scope_map: HashMap::new(),
             declared_functions: HashSet::new(),
+            variables: IndexMap::new(),
         }
     }
 
@@ -66,12 +70,18 @@ impl Evaluator {
             base_dir,
             block_scope_map: HashMap::new(),
             declared_functions: HashSet::new(),
+            variables: IndexMap::new(),
         }
     }
 
     /// Register a custom function at runtime.
     pub fn register_function(&mut self, name: impl Into<String>, f: BuiltinFn) {
         self.builtins.insert(name.into(), f);
+    }
+
+    /// Set external variables to inject before evaluation.
+    pub fn set_variables(&mut self, vars: IndexMap<String, Value>) {
+        self.variables = vars;
     }
 
     /// Add a declared function name (from `declare` statements in library imports).
@@ -86,6 +96,22 @@ impl Evaluator {
 
         // Phase 1: Register all names in scope (let bindings, attributes, blocks)
         self.register_doc_items(&doc.items, module_scope);
+
+        // Inject external variables (after doc items so they override defaults)
+        for (name, value) in &self.variables {
+            self.scopes.add_entry(
+                module_scope,
+                ScopeEntry {
+                    name: name.clone(),
+                    kind: ScopeEntryKind::LetBinding,
+                    value: Some(value.clone()),
+                    span: Span::dummy(),
+                    dependencies: HashSet::new(),
+                    evaluated: true,
+                    read_count: 0,
+                },
+            );
+        }
 
         // Phase 2: Topological sort within scope
         match self.scopes.topo_sort(module_scope) {
@@ -284,6 +310,13 @@ impl Evaluator {
     // ------------------------------------------------------------------
 
     fn evaluate_doc_entry(&mut self, items: &[DocItem], scope_id: ScopeId, name: &str) {
+        // Skip entries already evaluated (e.g., injected external variables)
+        if let Some((_, entry)) = self.scopes.resolve(scope_id, name) {
+            if entry.evaluated {
+                return;
+            }
+        }
+
         // Find the AST node that corresponds to this name
         for item in items {
             match item {

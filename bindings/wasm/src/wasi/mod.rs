@@ -70,6 +70,13 @@ fn build_parse_options(options_json: *const c_char) -> wcl::ParseOptions {
     if let Some(n) = json.get("maxIterations").and_then(|v| v.as_u64()) {
         opts.max_iterations = n as u32;
     }
+    if let Some(vars) = json.get("variables").and_then(|v| v.as_object()) {
+        for (key, val) in vars {
+            if let Ok(wcl_val) = wcl::json::json_to_value(val) {
+                opts.variables.insert(key.clone(), wcl_val);
+            }
+        }
+    }
     opts
 }
 

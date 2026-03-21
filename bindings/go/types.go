@@ -19,6 +19,7 @@ type ParseOptions struct {
 	MaxLoopDepth   uint32
 	MaxIterations  uint32
 	Functions      map[string]func(args []any) (any, error)
+	Variables      map[string]any
 }
 
 // Diagnostic represents a parser/evaluator diagnostic.

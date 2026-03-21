@@ -56,6 +56,8 @@ pub struct ParseOptions {
     pub functions: FunctionRegistry,
     /// Custom filesystem for import resolution (defaults to real FS)
     pub fs: Option<Arc<dyn FileSystem>>,
+    /// External variables injected before evaluation
+    pub variables: indexmap::IndexMap<String, Value>,
 }
 
 impl std::fmt::Debug for ParseOptions {
@@ -69,6 +71,7 @@ impl std::fmt::Debug for ParseOptions {
             .field("max_loop_depth", &self.max_loop_depth)
             .field("max_iterations", &self.max_iterations)
             .field("fs", &self.fs.as_ref().map(|_| ".."))
+            .field("variables", &self.variables)
             .finish()
     }
 }
@@ -85,6 +88,7 @@ impl Default for ParseOptions {
             max_iterations: 10_000,
             functions: FunctionRegistry::default(),
             fs: None,
+            variables: indexmap::IndexMap::new(),
         }
     }
 }
@@ -357,6 +361,24 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
             }
         }
     }
+    // Inject external variables after let bindings so they override defaults.
+    {
+        let mut eval = pre_eval.borrow_mut();
+        for (name, value) in &options.variables {
+            eval.scopes_mut().add_entry(
+                pre_scope,
+                ScopeEntry {
+                    name: name.clone(),
+                    kind: ScopeEntryKind::LetBinding,
+                    value: Some(value.clone()),
+                    span: Span::dummy(),
+                    dependencies: std::collections::HashSet::new(),
+                    evaluated: true,
+                    read_count: 0,
+                },
+            );
+        }
+    }
     cf_expander.expand(&mut doc, &|expr| {
         pre_eval
             .borrow_mut()
@@ -389,6 +411,7 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
         Some(Box::new(ArcFs(fs))),
         Some(options.root_dir.clone()),
     );
+    evaluator.set_variables(options.variables.clone());
     let values = evaluator.evaluate(&doc);
     all_diagnostics.extend(evaluator.into_diagnostics().into_diagnostics());
 
@@ -1559,6 +1582,75 @@ table users {
             "expected E096 for table, got: {:?}",
             doc.diagnostics
         );
+    }
+
+    // ── External variable overrides ─────────────────────────────────────
+
+    #[test]
+    fn test_variable_override_basic() {
+        let mut opts = ParseOptions::default();
+        opts.variables.insert("PORT".to_string(), Value::Int(8080));
+        let doc = parse("port = PORT", opts);
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+        assert_eq!(doc.values.get("port"), Some(&Value::Int(8080)));
+    }
+
+    #[test]
+    fn test_variable_override_overrides_let() {
+        let mut opts = ParseOptions::default();
+        opts.variables.insert("x".to_string(), Value::Int(99));
+        let doc = parse("let x = 2\nresult = x", opts);
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+        assert_eq!(doc.values.get("result"), Some(&Value::Int(99)));
+    }
+
+    #[test]
+    fn test_variable_in_control_flow() {
+        let mut opts = ParseOptions::default();
+        opts.variables.insert(
+            "items".to_string(),
+            Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)]),
+        );
+        let doc = parse("for item in items { entry { value = item } }", opts);
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+        let entries = doc.blocks_of_type("entry");
+        assert_eq!(entries.len(), 3);
+    }
+
+    #[test]
+    fn test_variable_types() {
+        let mut opts = ParseOptions::default();
+        opts.variables
+            .insert("s".to_string(), Value::String("hello".to_string()));
+        opts.variables.insert("i".to_string(), Value::Int(42));
+        opts.variables.insert("f".to_string(), Value::Float(3.14));
+        opts.variables.insert("b".to_string(), Value::Bool(true));
+        opts.variables.insert("n".to_string(), Value::Null);
+        opts.variables.insert(
+            "l".to_string(),
+            Value::List(vec![Value::Int(1), Value::Int(2)]),
+        );
+        let doc = parse("vs = s\nvi = i\nvf = f\nvb = b\nvn = n\nvl = l", opts);
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+        assert_eq!(
+            doc.values.get("vs"),
+            Some(&Value::String("hello".to_string()))
+        );
+        assert_eq!(doc.values.get("vi"), Some(&Value::Int(42)));
+        assert_eq!(doc.values.get("vf"), Some(&Value::Float(3.14)));
+        assert_eq!(doc.values.get("vb"), Some(&Value::Bool(true)));
+        assert_eq!(doc.values.get("vn"), Some(&Value::Null));
+        assert_eq!(
+            doc.values.get("vl"),
+            Some(&Value::List(vec![Value::Int(1), Value::Int(2)]))
+        );
+    }
+
+    #[test]
+    fn test_no_variables_backwards_compat() {
+        let doc = parse("x = 42", ParseOptions::default());
+        assert!(!doc.has_errors());
+        assert_eq!(doc.values.get("x"), Some(&Value::Int(42)));
     }
 
     #[test]
