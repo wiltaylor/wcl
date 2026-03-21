@@ -1,0 +1,11 @@
+.{
+    .name = .tree_sitter_wcl,
+    .version = "0.0.0",
+    .fingerprint = 0xd635ab31c86bbc3c,
+    .minimum_zig_version = "0.14.0",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}

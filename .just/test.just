@@ -26,6 +26,11 @@ go:
     just build go
     cd bindings/go && CGO_ENABLED=1 go test -v ./...
 
+# Run Zig binding tests (builds FFI first)
+zig:
+    just build zig
+    cd bindings/zig && zig build test
+
 # Run tree-sitter grammar and binding tests
 tree-sitter-wcl:
     #!/bin/bash
@@ -35,6 +40,7 @@ tree-sitter-wcl:
     tree-sitter test
     cargo test
     go test ./bindings/go/
+    cd bindings/zig && zig build test
 
 # Run all tests
-all: rust python wasm dotnet go tree-sitter-wcl
+all: rust python wasm dotnet go zig tree-sitter-wcl
