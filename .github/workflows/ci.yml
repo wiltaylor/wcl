@@ -12,6 +12,7 @@ permissions:
 
 env:
   RUST_TOOLCHAIN: "1.92.0"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   # ── Version ─────────────────────────────────────────────────────────────
@@ -163,6 +164,11 @@ jobs:
       - run: |
           just build jvm-wasm
           cd bindings/jvm && ./gradlew test
+      - uses: mikepenz/action-junit-report@v6
+        if: always()
+        with:
+          report_paths: bindings/jvm/build/test-results/test/*.xml
+          check_name: JVM Tests
 
   test-ruby:
     name: Test Ruby
@@ -182,7 +188,12 @@ jobs:
       - uses: Swatinem/rust-cache@f51f967e158417aafa338a1e46ab22095f07aa01
       - run: |
           just build ruby-wasm
-          cd bindings/ruby && bundle exec rake test
+          cd bindings/ruby && CI_REPORTS="$GITHUB_WORKSPACE/test-results/ruby" bundle exec rake test
+      - uses: mikepenz/action-junit-report@v6
+        if: always()
+        with:
+          report_paths: test-results/ruby/*.xml
+          check_name: Ruby Tests
 
   test-zig:
     name: Test Zig
@@ -193,7 +204,7 @@ jobs:
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
       - uses: taiki-e/install-action@just
-      - uses: mlugg/setup-zig@v2
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29  # v2, latest commit
         with:
           version: 0.15.2
       - uses: Swatinem/rust-cache@f51f967e158417aafa338a1e46ab22095f07aa01
