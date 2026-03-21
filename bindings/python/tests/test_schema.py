@@ -79,3 +79,57 @@ config {
     doc = wcl.parse(source)
     error_codes = [d.code for d in doc.errors]
     assert "E073" in error_codes, f"expected E073 in {error_codes}"
+
+
+def test_children_constraint_allows_valid():
+    source = """
+@children(["endpoint"])
+schema "service" {}
+
+service main {
+    endpoint health {}
+}
+"""
+    doc = wcl.parse(source)
+    containment_errors = [d for d in doc.errors if d.code in ("E095", "E096")]
+    assert len(containment_errors) == 0, f"unexpected containment errors: {containment_errors}"
+
+
+def test_children_constraint_rejects_invalid():
+    source = """
+@children(["endpoint"])
+schema "service" {}
+
+service main {
+    middleware auth {}
+}
+"""
+    doc = wcl.parse(source)
+    error_codes = [d.code for d in doc.errors]
+    assert "E095" in error_codes, f"expected E095 in {error_codes}"
+
+
+def test_parent_constraint_rejects_at_root():
+    source = """
+@parent(["service"])
+schema "endpoint" {}
+
+endpoint orphan {}
+"""
+    doc = wcl.parse(source)
+    error_codes = [d.code for d in doc.errors]
+    assert "E096" in error_codes, f"expected E096 in {error_codes}"
+
+
+def test_parent_constraint_allows_valid():
+    source = """
+@parent(["service"])
+schema "endpoint" {}
+
+service main {
+    endpoint health {}
+}
+"""
+    doc = wcl.parse(source)
+    containment_errors = [d for d in doc.errors if d.code in ("E095", "E096")]
+    assert len(containment_errors) == 0, f"unexpected containment errors: {containment_errors}"
