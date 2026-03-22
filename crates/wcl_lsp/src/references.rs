@@ -396,7 +396,10 @@ fn collect_in_body(
             collect_in_expr(&val.check, name, uri, rope, out);
             collect_in_expr(&val.message, name, uri, rope, out);
         }
-        BodyItem::Table(_) | BodyItem::Schema(_) | BodyItem::DecoratorSchema(_) => {}
+        BodyItem::Table(_)
+        | BodyItem::Schema(_)
+        | BodyItem::DecoratorSchema(_)
+        | BodyItem::SymbolSetDecl(_) => {}
     }
 }
 

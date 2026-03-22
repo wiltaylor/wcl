@@ -194,7 +194,8 @@ fn body_item_symbol(item: &BodyItem, rope: &Rope) -> Option<DocumentSymbol> {
         BodyItem::MacroCall(_)
         | BodyItem::ForLoop(_)
         | BodyItem::Conditional(_)
-        | BodyItem::DecoratorSchema(_) => None,
+        | BodyItem::DecoratorSchema(_)
+        | BodyItem::SymbolSetDecl(_) => None,
     }
 }
 

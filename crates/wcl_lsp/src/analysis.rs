@@ -132,7 +132,9 @@ pub fn analyze(source: &str, options: &wcl::ParseOptions) -> AnalysisResult {
     let mut schemas = SchemaRegistry::new();
     let mut diag_bag = DiagnosticBag::new();
     schemas.collect(&doc, &mut diag_bag);
-    schemas.validate(&doc, &values, &mut diag_bag);
+    let mut symbol_sets = wcl_schema::SymbolSetRegistry::new();
+    symbol_sets.collect(&doc, &mut diag_bag);
+    schemas.validate(&doc, &values, &symbol_sets, &mut diag_bag);
     all_diagnostics.extend(diag_bag.into_diagnostics());
 
     // Table validation
@@ -213,6 +215,7 @@ fn type_expr_to_string(te: &wcl_core::ast::TypeExpr) -> String {
             let parts: Vec<String> = types.iter().map(type_expr_to_string).collect();
             format!("union({})", parts.join(", "))
         }
+        wcl_core::ast::TypeExpr::Symbol(_) => "symbol".into(),
     }
 }
 

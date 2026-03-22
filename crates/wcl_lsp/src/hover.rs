@@ -278,6 +278,7 @@ fn type_expr_str(te: &TypeExpr) -> String {
             let parts: Vec<String> = types.iter().map(type_expr_str).collect();
             format!("union({})", parts.join(", "))
         }
+        TypeExpr::Symbol(_) => "symbol".to_string(),
     }
 }
 

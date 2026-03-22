@@ -194,6 +194,20 @@ fn find_in_body_item<'a>(item: &'a BodyItem, offset: usize) -> NodeAtOffset<'a> 
                         }
                     }
                 }
+                for variant in &schema.variants {
+                    if contains(variant.span, offset) {
+                        for field in &variant.fields {
+                            if contains(field.span, offset) {
+                                if contains(field.name.span, offset) {
+                                    return NodeAtOffset::IdentRef(&field.name);
+                                }
+                                if contains(field.type_expr.span(), offset) {
+                                    return NodeAtOffset::TypeExpr(&field.type_expr);
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
         BodyItem::Table(table) => {
@@ -297,6 +311,7 @@ fn find_in_body_item<'a>(item: &'a BodyItem, offset: usize) -> NodeAtOffset<'a> 
             }
         }
         BodyItem::DecoratorSchema(_) => {}
+        BodyItem::SymbolSetDecl(_) => {}
     }
     NodeAtOffset::None
 }
