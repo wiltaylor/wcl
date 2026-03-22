@@ -20,8 +20,11 @@ WCL provides a set of built-in decorators for schema validation, documentation, 
 | `@partial_requires`    | partial blocks             | `fields`: list of strings        | Declares expected merge dependencies                      |
 | `@merge_order(n)`      | partial blocks             | `n`: int                         | Explicit ordering for partial merges                      |
 | `@open`                | schemas                    | none                             | Allows extra attributes not declared in the schema        |
+| `@child(kind, ...)`    | schemas                    | `kind`: string, `min`/`max`/`max_depth`: int (optional)  | Per-child cardinality and depth constraints                |
+| `@tagged(field)`       | schemas                    | `field`: string                  | Names the discriminator field for tagged variant schemas   |
 | `@children(kinds)`     | schemas                    | `kinds`: list of strings         | Restricts which child blocks/tables may appear inside     |
 | `@parent(kinds)`       | schemas                    | `kinds`: list of strings         | Restricts which parent blocks may contain this block/table|
+| `@symbol_set(name)`   | schema fields              | `name`: string                   | Constrains a symbol-typed field to members of the named symbol set |
 
 ---
 
@@ -222,6 +225,57 @@ partial service @merge_order(2) {
 }
 ```
 
+## @child(kind, min=N, max=N, max_depth=N)
+
+Constrains how many children of a specific kind a block may have. The `kind` argument is the first positional string; `min`, `max`, and `max_depth` are optional named integer arguments.
+
+```wcl
+@child("endpoint", min=1, max=10)
+@child("config", max=1)
+schema "server" {
+    host: string
+}
+```
+
+Each `@child` entry automatically adds its kind to the schema's allowed children set (as if it were also listed in `@children`). This means `@child("endpoint")` with no bounds is equivalent to including `"endpoint"` in a `@children` list.
+
+Use `max_depth` for self-nesting blocks:
+
+```wcl
+@child("menu", max_depth=3)
+schema "menu" {
+    label: string
+}
+```
+
+| Error | Condition |
+|-------|-----------|
+| E097  | Child count below minimum |
+| E098  | Child count above maximum |
+| E099  | Self-nesting exceeds max_depth |
+
+## @tagged(field)
+
+Names the discriminator field for tagged variant schemas. Used together with `variant` blocks inside the schema body.
+
+```wcl
+@tagged("style")
+schema "api" {
+    style: string
+    version: string @optional
+
+    variant "rest" {
+        base_path: string
+    }
+
+    variant "graphql" {
+        schema_path: string @optional
+    }
+}
+```
+
+When a block's tag field matches a variant's value, that variant's fields and containment constraints are also validated. When no variant matches, only the common fields are checked. See [Schemas — Tagged Variant Schemas](schemas.md#tagged-variant-schemas) for full details.
+
 ## @children(kinds)
 
 Restricts which child blocks and tables may appear inside blocks of a given schema. The argument is a list of allowed block kind names and table identifiers.
@@ -284,6 +338,47 @@ endpoint standalone { path = "/ping" }     // allowed: parent is _root
 ```
 
 If a block appears inside a parent not in its `@parent` list, error E096 is emitted.
+
+## @symbol_set(name)
+
+Constrains a `symbol`-typed schema field so that only members of the named symbol set are accepted. The argument is the name of a `symbol_set` declaration.
+
+```wcl
+symbol_set http_method {
+    :GET
+    :POST
+    :PUT
+    :DELETE
+}
+
+schema "endpoint" {
+    method: symbol @symbol_set("http_method")
+    path:   string
+}
+
+endpoint list_users {
+    method = :GET          // valid: :GET is in http_method
+    path   = "/users"
+}
+
+endpoint bad {
+    method = :PATCH        // error E100: :PATCH is not in symbol_set "http_method"
+    path   = "/items"
+}
+```
+
+Use the special set name `"all"` to accept any symbol value without restricting to a specific set:
+
+```wcl
+schema "tag" {
+    kind: symbol @symbol_set("all")
+}
+```
+
+| Error | Condition |
+|-------|-----------|
+| E100  | Symbol value not in the declared symbol set |
+| E101  | Referenced symbol set does not exist |
 
 ### Constraining table placement
 
