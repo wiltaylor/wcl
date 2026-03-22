@@ -13,3 +13,8 @@ extras/pygments/__pycache__/
 examples/SDF/docs/book/
 .env
 .claude/worktrees/
+examples/rust/Cargo.lock
+examples/dotnet/obj/
+examples/dotnet/bin/
+examples/jvm/.gradle/
+examples/jvm/build/

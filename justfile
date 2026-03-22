@@ -8,6 +8,7 @@ mod pack '.just/pack.just'
 mod dev '.just/dev.just'
 mod ci '.just/ci.just'
 mod docs '.just/docs.just'
+mod examples '.just/examples.just'
 
 [private]
 default:
