@@ -8,6 +8,7 @@ pub mod fmt_impl;
 pub mod formatting;
 pub mod hover;
 pub mod references;
+pub mod rename;
 pub mod semantic_tokens;
 pub mod server;
 pub mod signature_help;

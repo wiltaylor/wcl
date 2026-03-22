@@ -62,6 +62,43 @@ pub fn goto_definition(
     }
 }
 
+pub fn goto_type_definition(
+    analysis: &AnalysisResult,
+    offset: usize,
+    rope: &Rope,
+    uri: &Url,
+) -> Option<GotoDefinitionResponse> {
+    let node = find_node_at_offset(&analysis.ast, offset);
+    match node {
+        NodeAtOffset::BlockKind(block) => {
+            let schema_name = &block.kind.name;
+            find_schema_in_ast(&analysis.ast, schema_name).map(|span| {
+                GotoDefinitionResponse::Scalar(Location {
+                    uri: uri.clone(),
+                    range: span_to_lsp_range(span, rope),
+                })
+            })
+        }
+        _ => None,
+    }
+}
+
+/// Walk AST to find a Schema whose name matches `target_name`, returning its name span.
+fn find_schema_in_ast(
+    doc: &ast::Document,
+    target_name: &str,
+) -> Option<crate::lang::span::Span> {
+    for item in &doc.items {
+        if let ast::DocItem::Body(ast::BodyItem::Schema(schema)) = item {
+            let name = crate::schema::schema::string_lit_to_string(&schema.name);
+            if name == target_name {
+                return Some(schema.span);
+            }
+        }
+    }
+    None
+}
+
 /// Resolve an import statement to a file Location.
 ///
 /// Handles relative paths, absolute paths, and library imports (`import <name.wcl>`).
@@ -211,6 +248,32 @@ mod tests {
         // Click on the block kind "server" — should return None (it's not a reference)
         let offset = source.find("server").unwrap();
         let result = goto_definition(&analysis, offset, &rope, &uri);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_goto_type_definition_block_to_schema() {
+        let source = "schema \"server\" {\n    port: int\n}\nserver web { port = 8080 }";
+        let analysis = analyze(source, &crate::ParseOptions::default());
+        let rope = Rope::from_str(source);
+        let uri = Url::parse("file:///test.wcl").unwrap();
+        // Click on "server" block kind → should navigate to the schema
+        let offset = source.rfind("server").unwrap();
+        let result = goto_type_definition(&analysis, offset, &rope, &uri);
+        assert!(
+            result.is_some(),
+            "expected goto_type_definition to find schema"
+        );
+    }
+
+    #[test]
+    fn test_goto_type_definition_no_schema() {
+        let source = "server web { port = 8080 }";
+        let analysis = analyze(source, &crate::ParseOptions::default());
+        let rope = Rope::from_str(source);
+        let uri = Url::parse("file:///test.wcl").unwrap();
+        let offset = source.find("server").unwrap();
+        let result = goto_type_definition(&analysis, offset, &rope, &uri);
         assert!(result.is_none());
     }
 }

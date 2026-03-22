@@ -24,6 +24,20 @@ pub fn find_references(
         return locations;
     }
 
+    // Handle SchemaName: find all blocks whose kind matches this schema name
+    if let NodeAtOffset::SchemaName(schema) = &node {
+        let schema_name = crate::schema::schema::string_lit_to_string(&schema.name);
+        let mut locations = Vec::new();
+        if include_declaration {
+            locations.push(Location {
+                uri: uri.clone(),
+                range: span_to_lsp_range(schema.name.span, rope),
+            });
+        }
+        collect_block_kinds(&analysis.ast, &schema_name, uri, rope, &mut locations);
+        return locations;
+    }
+
     let target_name = match &node {
         NodeAtOffset::IdentRef(ident) => &ident.name,
         NodeAtOffset::AttributeName(attr) => &attr.name.name,
@@ -557,6 +571,37 @@ mod tests {
         assert!(
             refs.len() >= 3,
             "expected >= 3 refs for module-level 'base', got {}",
+            refs.len()
+        );
+    }
+
+    #[test]
+    fn test_find_refs_schema_name() {
+        let source =
+            "schema \"server\" {\n    port: int\n}\nserver web { port = 8080 }\nserver api { port = 9090 }";
+        // offset at the schema name "server" (inside the string literal)
+        let offset = source.find("\"server\"").unwrap() + 1;
+        let refs = get_refs(source, offset, true);
+        // Should find: schema declaration + 2 block kinds = 3
+        assert_eq!(
+            refs.len(),
+            3,
+            "expected 3 refs for schema 'server', got {}",
+            refs.len()
+        );
+    }
+
+    #[test]
+    fn test_find_refs_schema_excludes_declaration() {
+        let source =
+            "schema \"server\" {\n    port: int\n}\nserver web { port = 8080 }";
+        let offset = source.find("\"server\"").unwrap() + 1;
+        let refs = get_refs(source, offset, false);
+        // Should find only the block kind, not the schema declaration
+        assert_eq!(
+            refs.len(),
+            1,
+            "expected 1 ref (excluding declaration), got {}",
             refs.len()
         );
     }

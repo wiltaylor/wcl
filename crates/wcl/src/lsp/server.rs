@@ -107,6 +107,11 @@ impl LanguageServer for WclLanguageServer {
                     work_done_progress_options: Default::default(),
                 }),
                 references_provider: Some(OneOf::Left(true)),
+                rename_provider: Some(OneOf::Right(RenameOptions {
+                    prepare_provider: Some(true),
+                    work_done_progress_options: Default::default(),
+                })),
+                type_definition_provider: Some(TypeDefinitionProviderCapability::Simple(true)),
                 document_formatting_provider: Some(OneOf::Left(true)),
                 ..Default::default()
             },
@@ -349,6 +354,65 @@ impl LanguageServer for WclLanguageServer {
             .unwrap_or_default();
 
         Ok(Some(result))
+    }
+
+    async fn prepare_rename(
+        &self,
+        params: TextDocumentPositionParams,
+    ) -> Result<Option<PrepareRenameResponse>> {
+        let uri = &params.text_document.uri;
+        let pos = params.position;
+
+        let Some(doc) = self.state.documents.get(uri) else {
+            return Ok(None);
+        };
+
+        let offset = lsp_position_to_offset(pos, &doc.rope);
+        let result = doc
+            .analysis
+            .as_ref()
+            .and_then(|a| crate::lsp::rename::prepare_rename(a, offset, &doc.rope))
+            .map(PrepareRenameResponse::Range);
+
+        Ok(result)
+    }
+
+    async fn rename(&self, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
+        let uri = &params.text_document_position.text_document.uri;
+        let pos = params.text_document_position.position;
+        let new_name = &params.new_name;
+
+        let Some(doc) = self.state.documents.get(uri) else {
+            return Ok(None);
+        };
+
+        let offset = lsp_position_to_offset(pos, &doc.rope);
+        let result = doc
+            .analysis
+            .as_ref()
+            .and_then(|a| crate::lsp::rename::rename(a, offset, new_name, &doc.rope, uri));
+
+        Ok(result)
+    }
+
+    async fn goto_type_definition(
+        &self,
+        params: GotoDefinitionParams,
+    ) -> Result<Option<GotoDefinitionResponse>> {
+        let uri = &params.text_document_position_params.text_document.uri;
+        let pos = params.text_document_position_params.position;
+
+        let Some(doc) = self.state.documents.get(uri) else {
+            return Ok(None);
+        };
+
+        let offset = lsp_position_to_offset(pos, &doc.rope);
+        let result = doc
+            .analysis
+            .as_ref()
+            .and_then(|a| crate::lsp::definition::goto_type_definition(a, offset, &doc.rope, uri));
+
+        Ok(result)
     }
 
     async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
