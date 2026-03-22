@@ -462,6 +462,13 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
         all_diagnostics.extend(import_diags.into_diagnostics());
     }
 
+    // Phase 3a: Resolve import_table() expressions into inline tables
+    {
+        let mut diag_bag = wcl_core::diagnostic::DiagnosticBag::new();
+        wcl_eval::resolve_import_tables(&mut doc, fs.as_ref(), &options.root_dir, &mut diag_bag);
+        all_diagnostics.extend(diag_bag.into_diagnostics());
+    }
+
     // Phase 4: Macro expansion
     let mut expander = MacroExpander::new(&macro_registry, options.max_macro_depth);
     expander.expand(&mut doc);
@@ -498,6 +505,51 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
                             read_count: 0,
                         },
                     );
+                }
+            }
+        }
+    }
+    // Pre-register inline tables so control flow can iterate over them.
+    // import_table() tables were already resolved to inline in Phase 3a.
+    {
+        let mut eval = pre_eval.borrow_mut();
+        for item in &doc.items {
+            if let ast::DocItem::Body(ast::BodyItem::Table(table)) = item {
+                let name = table.inline_id.as_ref().and_then(|id| match id {
+                    ast::InlineId::Literal(lit) => Some(lit.value.clone()),
+                    _ => None,
+                });
+                if let Some(name) = name {
+                    if table.import_expr.is_none() {
+                        let col_names: Vec<String> =
+                            table.columns.iter().map(|c| c.name.name.clone()).collect();
+                        let mut rows = Vec::new();
+                        for row in &table.rows {
+                            let mut map = indexmap::IndexMap::new();
+                            for (i, col_name) in col_names.iter().enumerate() {
+                                if i < row.cells.len() {
+                                    if let Ok(val) = eval.eval_expr(&row.cells[i], pre_scope) {
+                                        map.insert(col_name.clone(), val);
+                                    } else {
+                                        map.insert(col_name.clone(), Value::Null);
+                                    }
+                                }
+                            }
+                            rows.push(Value::Map(map));
+                        }
+                        eval.scopes_mut().add_entry(
+                            pre_scope,
+                            ScopeEntry {
+                                name,
+                                kind: ScopeEntryKind::TableEntry,
+                                value: Some(Value::List(rows)),
+                                span: table.span,
+                                dependencies: std::collections::HashSet::new(),
+                                evaluated: true,
+                                read_count: 0,
+                            },
+                        );
+                    }
                 }
             }
         }
@@ -3147,5 +3199,140 @@ symbol_set multi {
             .filter(|d| d.code.as_deref() == Some("E039"))
             .collect();
         assert_eq!(e039.len(), 1);
+    }
+
+    // ── For loops on tables ─────────────────────────────────────────────
+
+    #[test]
+    fn test_for_loop_over_inline_table() {
+        let source = r#"
+            table users {
+                name : string
+                role : string
+                | "alice" | "admin" |
+                | "bob"   | "user"  |
+            }
+
+            for user in users {
+                service ${user.name}-svc {
+                    owner = user.name
+                    role  = user.role
+                }
+            }
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        assert!(
+            doc.diagnostics.is_empty(),
+            "expected no errors, got: {:?}",
+            doc.diagnostics
+        );
+
+        // Should have two service blocks (values are BlockRef at top level)
+        let alice_svc = doc.values.get("alice-svc");
+        let bob_svc = doc.values.get("bob-svc");
+        assert!(alice_svc.is_some(), "expected alice-svc block");
+        assert!(bob_svc.is_some(), "expected bob-svc block");
+
+        // BlockRef attributes are accessible via the block ref
+        let alice = alice_svc
+            .unwrap()
+            .as_block_ref()
+            .expect("expected block ref");
+        assert_eq!(
+            alice.attributes.get("owner"),
+            Some(&Value::String("alice".to_string()))
+        );
+        assert_eq!(
+            alice.attributes.get("role"),
+            Some(&Value::String("admin".to_string()))
+        );
+
+        let bob = bob_svc.unwrap().as_block_ref().expect("expected block ref");
+        assert_eq!(
+            bob.attributes.get("owner"),
+            Some(&Value::String("bob".to_string()))
+        );
+        assert_eq!(
+            bob.attributes.get("role"),
+            Some(&Value::String("user".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_for_loop_over_import_table() {
+        use std::sync::Arc;
+
+        let mut fs = InMemoryFs::new();
+        fs.add_file(
+            std::path::PathBuf::from("/project/users.csv"),
+            "name,role\nalice,admin\nbob,user",
+        );
+
+        let mut opts = ParseOptions::default();
+        opts.root_dir = std::path::PathBuf::from("/project");
+        opts.fs = Some(Arc::new(fs));
+
+        let source = r#"
+            table users = import_table("users.csv")
+
+            for user in users {
+                service ${user.name}-svc {
+                    role = user.role
+                }
+            }
+        "#;
+        let doc = parse(source, opts);
+        assert!(
+            doc.diagnostics.is_empty(),
+            "expected no errors, got: {:?}",
+            doc.diagnostics
+        );
+
+        let alice_svc = doc.values.get("alice-svc");
+        assert!(
+            alice_svc.is_some(),
+            "expected alice-svc block, got keys: {:?}",
+            doc.values.keys().collect::<Vec<_>>()
+        );
+        let alice = alice_svc
+            .unwrap()
+            .as_block_ref()
+            .expect("expected block ref");
+        assert_eq!(
+            alice.attributes.get("role"),
+            Some(&Value::String("admin".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_for_loop_over_inline_table_with_index() {
+        let source = r#"
+            table items {
+                label : string
+                | "a" |
+                | "b" |
+                | "c" |
+            }
+
+            for item, idx in items {
+                entry ${item.label}-${idx} {
+                    pos = idx
+                }
+            }
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        assert!(
+            doc.diagnostics.is_empty(),
+            "expected no errors, got: {:?}",
+            doc.diagnostics
+        );
+
+        assert!(
+            doc.values.get("a-0").is_some(),
+            "expected a-0 block, got: {:?}",
+            doc.values.keys().collect::<Vec<_>>()
+        );
+        assert!(doc.values.get("b-1").is_some(), "expected b-1 block");
+        assert!(doc.values.get("c-2").is_some(), "expected c-2 block");
     }
 }

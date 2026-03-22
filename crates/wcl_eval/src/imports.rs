@@ -197,6 +197,182 @@ pub fn resolve_library_import(
     None
 }
 
+/// Resolve `import_table(...)` expressions into inline tables (Phase 3a).
+///
+/// Walks the document, finds tables with `import_expr`, reads the CSV/TSV file,
+/// and rewrites them to inline tables with columns and rows. This allows the
+/// Phase 5 pre-evaluator to handle all tables uniformly for for-loop iteration.
+pub fn resolve_import_tables<FS: FileSystem + ?Sized>(
+    doc: &mut Document,
+    fs: &FS,
+    base_dir: &Path,
+    diagnostics: &mut DiagnosticBag,
+) {
+    resolve_import_tables_in_items(&mut doc.items, fs, base_dir, diagnostics);
+}
+
+fn resolve_import_tables_in_items<FS: FileSystem + ?Sized>(
+    items: &mut [DocItem],
+    fs: &FS,
+    base_dir: &Path,
+    diagnostics: &mut DiagnosticBag,
+) {
+    for item in items.iter_mut() {
+        match item {
+            DocItem::Body(BodyItem::Table(table)) => {
+                resolve_single_import_table(table, fs, base_dir, diagnostics);
+            }
+            DocItem::Body(BodyItem::Block(block)) => {
+                resolve_import_tables_in_body(&mut block.body, fs, base_dir, diagnostics);
+            }
+            _ => {}
+        }
+    }
+}
+
+fn resolve_import_tables_in_body<FS: FileSystem + ?Sized>(
+    body: &mut [BodyItem],
+    fs: &FS,
+    base_dir: &Path,
+    diagnostics: &mut DiagnosticBag,
+) {
+    for item in body.iter_mut() {
+        match item {
+            BodyItem::Table(table) => {
+                resolve_single_import_table(table, fs, base_dir, diagnostics);
+            }
+            BodyItem::Block(block) => {
+                resolve_import_tables_in_body(&mut block.body, fs, base_dir, diagnostics);
+            }
+            _ => {}
+        }
+    }
+}
+
+fn resolve_single_import_table<FS: FileSystem + ?Sized>(
+    table: &mut Table,
+    fs: &FS,
+    base_dir: &Path,
+    diagnostics: &mut DiagnosticBag,
+) {
+    use crate::evaluator::parse_table;
+    use crate::value::Value;
+    use wcl_core::trivia::Trivia;
+
+    let import_expr = match table.import_expr.take() {
+        Some(expr) => expr,
+        None => return,
+    };
+
+    let (args, span) = match *import_expr {
+        Expr::ImportTable(args, span) => (args, span),
+        other => {
+            // Not an import_table expression — put it back
+            table.import_expr = Some(Box::new(other));
+            return;
+        }
+    };
+
+    // Extract plain string path (no interpolations supported at this phase)
+    let path_str = string_lit_to_plain(&args.path);
+    if path_str.contains("<interpolation>") {
+        // Path contains interpolations — can't resolve at this phase, put it back
+        table.import_expr = Some(Box::new(Expr::ImportTable(args, span)));
+        return;
+    }
+
+    // Resolve relative to base_dir
+    let resolved = base_dir.join(&path_str);
+    let content = match fs.read_file(&resolved) {
+        Ok(c) => c,
+        Err(e) => {
+            diagnostics.error(
+                format!("cannot read import_table file '{}': {}", path_str, e),
+                span,
+            );
+            // Put import_expr back so it can fail at Phase 7 as before
+            table.import_expr = Some(Box::new(Expr::ImportTable(args, span)));
+            return;
+        }
+    };
+
+    // Determine separator
+    let separator = args
+        .separator
+        .as_ref()
+        .and_then(|s| {
+            let plain = string_lit_to_plain(s);
+            plain.chars().next()
+        })
+        .unwrap_or(',');
+
+    let has_headers = args.headers.unwrap_or(true);
+    let explicit_columns: Option<Vec<String>> = args
+        .columns
+        .as_ref()
+        .map(|cols| cols.iter().map(string_lit_to_plain).collect());
+
+    // Parse the CSV content
+    let parsed = parse_table(
+        &content,
+        separator,
+        has_headers,
+        explicit_columns.as_deref(),
+    );
+
+    // Convert Value back to AST columns + rows
+    if let Value::List(rows) = parsed {
+        // Determine column names from the first row (all rows have the same keys)
+        let col_names: Vec<String> = if let Some(Value::Map(first)) = rows.first() {
+            first.keys().cloned().collect()
+        } else {
+            vec![]
+        };
+
+        // Build ColumnDecl entries
+        table.columns = col_names
+            .iter()
+            .map(|name| ColumnDecl {
+                decorators: vec![],
+                name: Ident {
+                    name: name.clone(),
+                    span,
+                },
+                type_expr: TypeExpr::String(span),
+                trivia: Trivia::empty(),
+                span,
+            })
+            .collect();
+
+        // Build TableRow entries
+        table.rows = rows
+            .iter()
+            .map(|row| {
+                let cells = if let Value::Map(map) = row {
+                    col_names
+                        .iter()
+                        .map(|col| {
+                            let val = map.get(col).cloned().unwrap_or(Value::Null);
+                            match val {
+                                Value::String(s) => Expr::StringLit(StringLit {
+                                    parts: vec![StringPart::Literal(s)],
+                                    span,
+                                }),
+                                _ => Expr::NullLit(span),
+                            }
+                        })
+                        .collect()
+                } else {
+                    vec![]
+                };
+                TableRow { cells, span }
+            })
+            .collect();
+
+        // import_expr is already None (we took it above)
+    }
+}
+
 /// Resolves `import` directives in WCL documents.
 ///
 /// Handles path resolution, jail checking, import-once semantics, depth limits,
@@ -1122,5 +1298,204 @@ mod tests {
             "expected no errors, got: {:?}",
             diags.diagnostics()
         );
+    }
+
+    // ── resolve_import_tables tests ─────────────────────────────────
+
+    fn make_import_table_doc(path: &str) -> Document {
+        use wcl_core::span::{FileId, Span};
+        use wcl_core::trivia::Trivia;
+
+        let span = Span::new(FileId(0), 0, 0);
+        let table = Table {
+            decorators: vec![],
+            partial: false,
+            inline_id: Some(InlineId::Literal(IdentifierLit {
+                value: "my_table".to_string(),
+                span,
+            })),
+            schema_ref: None,
+            columns: vec![],
+            rows: vec![],
+            import_expr: Some(Box::new(Expr::ImportTable(
+                ImportTableArgs {
+                    path: StringLit {
+                        parts: vec![StringPart::Literal(path.to_string())],
+                        span,
+                    },
+                    separator: None,
+                    headers: None,
+                    columns: None,
+                },
+                span,
+            ))),
+            trivia: Trivia::empty(),
+            span,
+        };
+
+        Document {
+            items: vec![DocItem::Body(BodyItem::Table(table))],
+            trivia: Trivia::empty(),
+            span,
+        }
+    }
+
+    #[test]
+    fn resolve_import_tables_converts_csv_to_inline() {
+        let mut fs = InMemoryFs::new();
+        fs.add_file(
+            PathBuf::from("/project/data.csv"),
+            "name,value\nalice,42\nbob,99",
+        );
+
+        let mut doc = make_import_table_doc("data.csv");
+        let mut diags = DiagnosticBag::new();
+        resolve_import_tables(&mut doc, &fs, Path::new("/project"), &mut diags);
+
+        assert!(
+            !diags.has_errors(),
+            "unexpected errors: {:?}",
+            diags.diagnostics()
+        );
+
+        // Table should now have columns and rows, no import_expr
+        if let DocItem::Body(BodyItem::Table(table)) = &doc.items[0] {
+            assert!(table.import_expr.is_none(), "import_expr should be cleared");
+            assert_eq!(table.columns.len(), 2);
+            assert_eq!(table.columns[0].name.name, "name");
+            assert_eq!(table.columns[1].name.name, "value");
+            assert_eq!(table.rows.len(), 2);
+        } else {
+            panic!("expected table");
+        }
+    }
+
+    #[test]
+    fn resolve_import_tables_missing_file_emits_diagnostic() {
+        let fs = InMemoryFs::new();
+        let mut doc = make_import_table_doc("missing.csv");
+        let mut diags = DiagnosticBag::new();
+        resolve_import_tables(&mut doc, &fs, Path::new("/project"), &mut diags);
+
+        assert!(diags.has_errors());
+        // import_expr should be preserved
+        if let DocItem::Body(BodyItem::Table(table)) = &doc.items[0] {
+            assert!(
+                table.import_expr.is_some(),
+                "import_expr should be preserved on error"
+            );
+        }
+    }
+
+    #[test]
+    fn resolve_import_tables_skips_non_import_tables() {
+        use wcl_core::span::{FileId, Span};
+        use wcl_core::trivia::Trivia;
+
+        let span = Span::new(FileId(0), 0, 0);
+        let table = Table {
+            decorators: vec![],
+            partial: false,
+            inline_id: Some(InlineId::Literal(IdentifierLit {
+                value: "inline_table".to_string(),
+                span,
+            })),
+            schema_ref: None,
+            columns: vec![ColumnDecl {
+                decorators: vec![],
+                name: Ident {
+                    name: "col".to_string(),
+                    span,
+                },
+                type_expr: TypeExpr::String(span),
+                trivia: Trivia::empty(),
+                span,
+            }],
+            rows: vec![TableRow {
+                cells: vec![Expr::StringLit(StringLit {
+                    parts: vec![StringPart::Literal("val".to_string())],
+                    span,
+                })],
+                span,
+            }],
+            import_expr: None,
+            trivia: Trivia::empty(),
+            span,
+        };
+
+        let mut doc = Document {
+            items: vec![DocItem::Body(BodyItem::Table(table))],
+            trivia: Trivia::empty(),
+            span,
+        };
+
+        let fs = InMemoryFs::new();
+        let mut diags = DiagnosticBag::new();
+        resolve_import_tables(&mut doc, &fs, Path::new("/project"), &mut diags);
+
+        assert!(!diags.has_errors());
+        if let DocItem::Body(BodyItem::Table(table)) = &doc.items[0] {
+            assert_eq!(table.columns.len(), 1);
+            assert_eq!(table.rows.len(), 1);
+        }
+    }
+
+    #[test]
+    fn resolve_import_tables_custom_separator() {
+        use wcl_core::span::{FileId, Span};
+        use wcl_core::trivia::Trivia;
+
+        let mut fs = InMemoryFs::new();
+        fs.add_file(
+            PathBuf::from("/project/data.tsv"),
+            "name\trole\nalice\tadmin",
+        );
+
+        let span = Span::new(FileId(0), 0, 0);
+        let table = Table {
+            decorators: vec![],
+            partial: false,
+            inline_id: Some(InlineId::Literal(IdentifierLit {
+                value: "my_table".to_string(),
+                span,
+            })),
+            schema_ref: None,
+            columns: vec![],
+            rows: vec![],
+            import_expr: Some(Box::new(Expr::ImportTable(
+                ImportTableArgs {
+                    path: StringLit {
+                        parts: vec![StringPart::Literal("data.tsv".to_string())],
+                        span,
+                    },
+                    separator: Some(StringLit {
+                        parts: vec![StringPart::Literal("\t".to_string())],
+                        span,
+                    }),
+                    headers: None,
+                    columns: None,
+                },
+                span,
+            ))),
+            trivia: Trivia::empty(),
+            span,
+        };
+
+        let mut doc = Document {
+            items: vec![DocItem::Body(BodyItem::Table(table))],
+            trivia: Trivia::empty(),
+            span,
+        };
+
+        let mut diags = DiagnosticBag::new();
+        resolve_import_tables(&mut doc, &fs, Path::new("/project"), &mut diags);
+
+        assert!(!diags.has_errors());
+        if let DocItem::Body(BodyItem::Table(table)) = &doc.items[0] {
+            assert_eq!(table.columns.len(), 2);
+            assert_eq!(table.columns[0].name.name, "name");
+            assert_eq!(table.columns[1].name.name, "role");
+            assert_eq!(table.rows.len(), 1);
+        }
     }
 }
