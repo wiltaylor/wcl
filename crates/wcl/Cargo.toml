@@ -13,12 +13,12 @@ name = "wcl"
 path = "src/bin/wcl.rs"
 
 [dependencies]
-# Core deps (from wcl_core)
+# Core deps
 nom = { workspace = true }
 miette = { workspace = true }
 thiserror = { workspace = true }
 
-# Eval deps (from wcl_eval)
+# Eval deps
 regex = { workspace = true }
 sha2 = { workspace = true }
 base64 = { workspace = true }
@@ -29,6 +29,7 @@ indexmap = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 # LSP deps
 tower-lsp = { workspace = true }
 tokio = { workspace = true }

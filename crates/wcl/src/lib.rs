@@ -9,9 +9,11 @@ pub mod lang;
 pub mod schema;
 pub mod serde_impl;
 
+#[cfg(not(target_arch = "wasm32"))]
 pub mod cli;
 pub mod json;
 pub mod library;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod lsp;
 
 // Re-exports
