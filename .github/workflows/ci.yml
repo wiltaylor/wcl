@@ -553,6 +553,22 @@ jobs:
           path: .packages/jetbrains/
           retention-days: 1
 
+  pack-zed:
+    name: Package Zed
+    runs-on: ubuntu-latest
+    needs: [version, check]
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: taiki-e/install-action@just
+      - run: just pack set-version "${{ needs.version.outputs.version }}"
+      - run: just pack zed
+      - uses: actions/upload-artifact@v7
+        with:
+          name: package-zed
+          path: .packages/zed/
+          retention-days: 1
+
   pack-tree-sitter:
     name: Package tree-sitter-wcl
     runs-on: ubuntu-latest
@@ -622,7 +638,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [version, pack-rust, pack-python, pack-wasm, pack-go, pack-dotnet,
             pack-jvm, pack-ruby, pack-ffi, pack-vscode, pack-jetbrains,
-            pack-tree-sitter, pack-extras]
+            pack-zed, pack-tree-sitter, pack-extras]
     if: needs.version.outputs.do_release == 'true'
     steps:
       - uses: actions/checkout@v6

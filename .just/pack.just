@@ -242,8 +242,17 @@ jetbrains-platform target platform_name:
 # Package JetBrains plugin for all platforms (requires cli-all to be run first)
 jetbrains: (jetbrains-platform "x86_64-unknown-linux-gnu" "linux-x64") (jetbrains-platform "aarch64-unknown-linux-gnu" "linux-arm64") (jetbrains-platform "x86_64-apple-darwin" "darwin-x64") (jetbrains-platform "aarch64-apple-darwin" "darwin-arm64") (jetbrains-platform "x86_64-pc-windows-gnu" "windows-x64")
 
+# Package Zed extension into .packages/zed/
+zed:
+    #!/bin/bash
+    set -euo pipefail
+    mkdir -p "{{pkg}}/zed"
+    tar czf "{{pkg}}/zed/wcl-zed.tar.gz" \
+        -C editors zed
+    echo "Zed extension packaged to {{pkg}}/zed/"
+
 # Package everything. Pass a version to stamp all packages (default: 0.0.0-local)
-all ver="0.0.0-local": (set-version ver) rust python wasm go dotnet jvm ruby ffi vscode jetbrains tree-sitter-wcl highlight-queries sublime-syntax highlightjs chroma pygments
+all ver="0.0.0-local": (set-version ver) rust python wasm go dotnet jvm ruby ffi vscode jetbrains zed tree-sitter-wcl highlight-queries sublime-syntax highlightjs chroma pygments
     @echo "All packages created in {{pkg}}/"
 
 # Remove all packaged artifacts
@@ -314,6 +323,9 @@ set-version ver:
 
     # JetBrains plugin: gradle.properties
     sed -i "s/pluginVersion=.*/pluginVersion=$V/" editors/jetbrains/gradle.properties
+
+    # Zed extension: extension.toml
+    sed -i "s/^version = .*/version = \"$V\"/" editors/zed/extension.toml
 
     # tree-sitter-wcl: Cargo.toml (Rust crate), pyproject.toml (Python), tree-sitter.json
     sed -i "0,/^version = .*/s/^version = .*/version = \"$V\"/" extras/tree-sitter-wcl/Cargo.toml

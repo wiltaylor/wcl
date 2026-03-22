@@ -97,6 +97,18 @@ The plugin automatically starts `wcl lsp` when a `.wcl` file is opened. It looks
 2. `~/.cargo/bin/wcl` (if installed via `cargo install`)
 3. System `PATH`
 
+## Zed
+
+A Zed extension is located in `editors/zed/` in the repository. It provides tree-sitter-based syntax highlighting and LSP integration.
+
+**Install from source:**
+
+```bash
+ln -sfn "$(pwd)/editors/zed" ~/.local/share/zed/extensions/installed/wcl
+```
+
+Restart Zed after linking. The extension automatically starts `wcl lsp` when a `.wcl` file is opened. Make sure `wcl` is on your `PATH`.
+
 ## Other Editors
 
 Any editor with LSP support can use the WCL language server. The server communicates over stdio and is started with:
