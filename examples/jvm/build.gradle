@@ -1,0 +1,27 @@
+plugins {
+    id 'application'
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation files('../../bindings/jvm/build/libs/wcl-0.0.0-local.jar')
+    implementation 'com.dylibso.chicory:runtime:1.1.0'
+    implementation 'com.dylibso.chicory:wasi:1.1.0'
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.18.2'
+}
+
+application {
+    mainClass = 'Example'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 17
+}

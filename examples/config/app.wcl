@@ -1,0 +1,106 @@
+// ── Let bindings and expressions ──
+let environment = "production"
+let base_port = 8000
+let is_prod = environment == "production"
+let regions = ["us-east", "eu-west", "ap-south"]
+
+// ── Schemas with validation constraints ──
+schema "server" {
+    host: string
+    port: int @validate(min = 1, max = 65535)
+    workers: int @validate(min = 1, max = 32)
+    tls: bool @optional
+    region: string @optional
+}
+
+schema "database" {
+    host: string
+    port: int
+    name: string
+    max_connections: int @validate(min = 1, max = 1000)
+    ssl: bool @optional
+}
+
+// ── Blocks ──
+server api {
+    host = "0.0.0.0"
+    port = base_port + 80
+    workers = is_prod ? 8 : 2
+    tls = is_prod
+}
+
+server admin {
+    host = "127.0.0.1"
+    port = base_port + 1090
+    workers = 2
+}
+
+// ── Control flow: for loop generating blocks ──
+for region in regions {
+    server worker-${region} {
+        host = "${region}.internal"
+        port = base_port + 2000
+        workers = 4
+        region = region
+    }
+}
+
+// ── Conditional blocks ──
+if is_prod {
+    database primary {
+        host = "db.internal"
+        port = 5432
+        name = "myapp"
+        max_connections = 100
+        ssl = true
+    }
+} else {
+    database primary {
+        host = "localhost"
+        port = 5432
+        name = "myapp_dev"
+        max_connections = 5
+    }
+}
+
+// ── Decorators ──
+@deprecated("use redis cache instead")
+cache memcached {
+    host = "memcached.internal"
+    port = 11211
+}
+
+cache redis {
+    host = "redis.internal"
+    port = 6379
+    ttl = 300
+}
+
+// ── Data table ──
+table users {
+    name:  string
+    role:  string
+    admin: bool
+    | "alice" | "engineering" | true  |
+    | "bob"   | "marketing"  | false |
+    | "carol" | "engineering" | true  |
+}
+
+// ── Nested blocks with maps and lists ──
+feature_flags {
+    dark_mode = true
+    beta_api = false
+    max_upload_mb = 50
+    allowed_origins = ["https://app.example.com", "https://admin.example.com"]
+    rate_limits = {
+        api = 1000
+        admin = 100
+    }
+}
+
+// ── Validation block ──
+validation "port uniqueness" {
+    let ports = query(server | .port)
+    check = len(distinct(ports)) == len(ports)
+    message = "All server ports must be unique"
+}

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-exclude = ["extras/tree-sitter-wcl"]
+exclude = ["extras/tree-sitter-wcl", "examples/rust"]
 members = [
     "crates/wcl",
     "crates/wcl_ffi",
