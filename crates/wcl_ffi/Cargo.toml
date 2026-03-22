@@ -12,7 +12,7 @@ description = "C FFI bindings for WCL (Wil's Configuration Language)"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [dependencies]
-wcl = { workspace = true, features = ["json"] }
+wcl = { workspace = true }
 serde_json = { workspace = true }
 indexmap = { workspace = true }
 
