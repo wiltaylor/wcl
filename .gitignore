@@ -12,3 +12,4 @@ editors/vscode/*.vsix
 extras/pygments/__pycache__/
 examples/SDF/docs/book/
 .env
+.claude/worktrees/
