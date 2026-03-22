@@ -2,13 +2,7 @@
 resolver = "2"
 exclude = ["extras/tree-sitter-wcl"]
 members = [
-    "crates/wcl_core",
-    "crates/wcl_eval",
-    "crates/wcl_schema",
-    "crates/wcl_serde",
     "crates/wcl_derive",
-    "crates/wcl_lsp",
-    "crates/wcl_cli",
     "crates/wcl",
     "crates/wcl_ffi",
     "bindings/wasm",
@@ -24,14 +18,7 @@ repository = "https://github.com/wiltaylor/wcl"
 [workspace.dependencies]
 # Internal crates
 wcl = { path = "crates/wcl", version = "0.0.0-local" }
-wcl_core = { path = "crates/wcl_core", version = "0.0.0-local" }
-wcl_eval = { path = "crates/wcl_eval", version = "0.0.0-local" }
-wcl_schema = { path = "crates/wcl_schema", version = "0.0.0-local" }
-wcl_serde = { path = "crates/wcl_serde", version = "0.0.0-local" }
 wcl_derive = { path = "crates/wcl_derive", version = "0.0.0-local" }
-
-# LSP crate
-wcl_lsp = { path = "crates/wcl_lsp", version = "0.0.0-local" }
 
 # External deps
 nom = "8"

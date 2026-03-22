@@ -2020,50 +2020,28 @@ dependencies = [
 name = "wcl"
 version = "0.0.0-local"
 dependencies = [
- "criterion",
- "indexmap",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror",
- "wcl_core",
- "wcl_derive",
- "wcl_eval",
- "wcl_schema",
- "wcl_serde",
-]
-
-[[package]]
-name = "wcl_cli"
-version = "0.0.0-local"
-dependencies = [
  "assert_cmd",
+ "base64",
  "clap",
+ "criterion",
+ "dashmap 6.1.0",
+ "glob",
  "indexmap",
  "miette",
+ "nom",
  "predicates",
+ "regex",
+ "ropey",
+ "serde",
  "serde_json",
  "serde_yaml",
+ "sha2",
  "tempfile",
  "thiserror",
  "tokio",
  "toml",
- "wcl",
- "wcl_core",
- "wcl_eval",
- "wcl_lsp",
- "wcl_schema",
- "wcl_serde",
-]
-
-[[package]]
-name = "wcl_core"
-version = "0.0.0-local"
-dependencies = [
- "criterion",
- "miette",
- "nom",
- "thiserror",
+ "tower-lsp",
+ "wcl_derive",
 ]
 
 [[package]]
@@ -2076,21 +2054,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "wcl_eval"
-version = "0.0.0-local"
-dependencies = [
- "base64",
- "criterion",
- "glob",
- "indexmap",
- "regex",
- "serde_json",
- "sha2",
- "thiserror",
- "wcl_core",
-]
-
-[[package]]
 name = "wcl_ffi"
 version = "0.0.0-local"
 dependencies = [
@@ -2098,45 +2061,6 @@ dependencies = [
  "indexmap",
  "serde_json",
  "wcl",
-]
-
-[[package]]
-name = "wcl_lsp"
-version = "0.0.0-local"
-dependencies = [
- "dashmap 6.1.0",
- "indexmap",
- "ropey",
- "serde_json",
- "tokio",
- "tower-lsp",
- "wcl",
- "wcl_core",
- "wcl_eval",
- "wcl_schema",
-]
-
-[[package]]
-name = "wcl_schema"
-version = "0.0.0-local"
-dependencies = [
- "indexmap",
- "regex",
- "thiserror",
- "wcl_core",
- "wcl_eval",
-]
-
-[[package]]
-name = "wcl_serde"
-version = "0.0.0-local"
-dependencies = [
- "indexmap",
- "serde",
- "thiserror",
- "wcl_core",
- "wcl_eval",
- "wcl_schema",
 ]
 
 [[package]]

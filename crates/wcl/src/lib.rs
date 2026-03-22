@@ -2,32 +2,44 @@
 //!
 //! This is the facade crate that re-exports everything and provides
 //! the main parsing pipeline.
+#![allow(clippy::result_large_err)]
+
+pub mod eval;
+pub mod lang;
+pub mod schema;
+pub mod serde_impl;
+
+#[cfg(feature = "lsp")]
+pub mod lsp;
+
+#[cfg(feature = "cli")]
+pub mod cli;
 
 #[cfg(feature = "json")]
 pub mod json;
 pub mod library;
 
 // Re-exports
-pub use wcl_core::{
+pub use crate::lang::{
     ast, lexer, parser, Comment, CommentPlacement, CommentStyle, Diagnostic, DiagnosticBag, FileId,
     Label, Severity, SourceFile, SourceMap, Span, Trivia,
 };
 
-pub use wcl_eval::{
+pub use crate::eval::{
     builtin_signatures, BlockRef, BuiltinFn, ConflictMode, ControlFlowExpander, DecoratorValue,
     Evaluator, FileSystem, FunctionRegistry, FunctionSignature, FunctionValue, ImportResolver,
     InMemoryFs, LibraryConfig, MacroExpander, MacroRegistry, PartialMerger, QueryEngine,
     RealFileSystem, Scope, ScopeArena, ScopeEntry, ScopeEntryKind, ScopeId, ScopeKind, Value,
 };
 
-pub use wcl_schema::type_name;
-pub use wcl_schema::{
+pub use crate::schema::type_name;
+pub use crate::schema::{
     ChildConstraint, DecoratorSchemaRegistry, IdRegistry, ResolvedDecoratorSchema, ResolvedField,
     ResolvedSchema, ResolvedVariant, SchemaRegistry, SymbolSetInfo, SymbolSetRegistry,
     ValidateConstraints,
 };
 
-pub use wcl_serde::{
+pub use crate::serde_impl::{
     from_value, to_string as value_to_string, to_string_pretty as value_to_string_pretty,
     Error as SerdeError,
 };
@@ -142,7 +154,7 @@ impl Document {
     pub fn query(&self, query_str: &str) -> Result<Value, String> {
         // Parse the query string
         let file_id = FileId(9999); // synthetic file ID for query strings
-        let pipeline = wcl_core::parse_query(query_str, file_id).map_err(|diags| {
+        let pipeline = crate::lang::parse_query(query_str, file_id).map_err(|diags| {
             let messages: Vec<String> = diags
                 .into_diagnostics()
                 .into_iter()
@@ -429,7 +441,7 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
     let mut all_diagnostics = Vec::new();
 
     // Phase 1: Parse
-    let (mut doc, parse_diags) = wcl_core::parse(source, file_id);
+    let (mut doc, parse_diags) = crate::lang::parse(source, file_id);
     all_diagnostics.extend(parse_diags.into_diagnostics());
 
     // Phase 2: Macro collection
@@ -464,8 +476,8 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
 
     // Phase 3a: Resolve import_table() expressions into inline tables
     {
-        let mut diag_bag = wcl_core::diagnostic::DiagnosticBag::new();
-        wcl_eval::resolve_import_tables(&mut doc, fs.as_ref(), &options.root_dir, &mut diag_bag);
+        let mut diag_bag = crate::lang::diagnostic::DiagnosticBag::new();
+        crate::eval::resolve_import_tables(&mut doc, fs.as_ref(), &options.root_dir, &mut diag_bag);
         all_diagnostics.extend(diag_bag.into_diagnostics());
     }
 
@@ -663,7 +675,7 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
 
     // Phase 9b: Table column validation
     let mut diag_bag = DiagnosticBag::new();
-    wcl_schema::table::validate_tables(&doc, &mut diag_bag);
+    crate::schema::table::validate_tables(&doc, &mut diag_bag);
     all_diagnostics.extend(diag_bag.into_diagnostics());
 
     // Phase 10: ID uniqueness check
@@ -674,7 +686,7 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
 
     // Phase 11: Document validation
     let mut diag_bag = DiagnosticBag::new();
-    wcl_schema::document::validate_document(
+    crate::schema::document::validate_document(
         &doc,
         &mut Evaluator::with_functions(&options.functions, None, None),
         &mut diag_bag,
@@ -1299,7 +1311,7 @@ mod tests {
 
     #[test]
     fn test_parse_library_import_syntax() {
-        let (doc, diags) = wcl_core::parse("import <stdlib.wcl>", FileId(0));
+        let (doc, diags) = crate::lang::parse("import <stdlib.wcl>", FileId(0));
         // Should parse without errors (the file won't exist but the AST should be correct)
         let parse_errors: Vec<_> = diags
             .into_diagnostics()
@@ -1323,7 +1335,7 @@ mod tests {
 
     #[test]
     fn test_parse_relative_import_has_relative_kind() {
-        let (doc, _diags) = wcl_core::parse("import \"./other.wcl\"", FileId(0));
+        let (doc, _diags) = crate::lang::parse("import \"./other.wcl\"", FileId(0));
         if let ast::DocItem::Import(import) = &doc.items[0] {
             assert_eq!(import.kind, ast::ImportKind::Relative);
         } else {
@@ -1335,7 +1347,7 @@ mod tests {
 
     #[test]
     fn test_parse_function_decl() {
-        let (doc, diags) = wcl_core::parse(
+        let (doc, diags) = crate::lang::parse(
             "declare my_fn(input: string, count: int) -> string",
             FileId(0),
         );
@@ -1359,7 +1371,7 @@ mod tests {
 
     #[test]
     fn test_parse_function_decl_no_return_type() {
-        let (doc, diags) = wcl_core::parse("declare fire_event(name: string)", FileId(0));
+        let (doc, diags) = crate::lang::parse("declare fire_event(name: string)", FileId(0));
         let parse_errors: Vec<_> = diags
             .into_diagnostics()
             .into_iter()
@@ -1568,7 +1580,7 @@ mod tests {
     #[test]
     fn test_import_table_headers_false_named_arg() {
         let source = r#"val = import_table("data.csv", headers=false)"#;
-        let (doc, diags) = wcl_core::parse(source, FileId(0));
+        let (doc, diags) = crate::lang::parse(source, FileId(0));
         assert!(
             !diags.has_errors(),
             "diagnostics: {:?}",
@@ -1588,7 +1600,7 @@ mod tests {
     #[test]
     fn test_import_table_columns_named_arg() {
         let source = r#"val = import_table("data.csv", headers=false, columns=["x", "y"])"#;
-        let (doc, diags) = wcl_core::parse(source, FileId(0));
+        let (doc, diags) = crate::lang::parse(source, FileId(0));
         assert!(
             !diags.has_errors(),
             "diagnostics: {:?}",
@@ -1652,12 +1664,12 @@ EOF
 
         let block_val = doc.values.get("my-doc").expect("block should exist");
         match block_val {
-            wcl_eval::value::Value::BlockRef(br) => {
+            crate::eval::value::Value::BlockRef(br) => {
                 assert_eq!(br.kind, "readme");
                 assert_eq!(br.id, Some("my-doc".to_string()));
                 let content = br.attributes.get("content").expect("content should exist");
                 match content {
-                    wcl_eval::value::Value::String(s) => {
+                    crate::eval::value::Value::String(s) => {
                         assert!(s.contains("Hello World"));
                         assert!(s.contains("This is content."));
                     }
@@ -1686,10 +1698,10 @@ readme my-doc "Simple content"
 
         let block_val = doc.values.get("my-doc").expect("block should exist");
         match block_val {
-            wcl_eval::value::Value::BlockRef(br) => {
+            crate::eval::value::Value::BlockRef(br) => {
                 assert_eq!(
                     br.attributes.get("content"),
-                    Some(&wcl_eval::value::Value::String(
+                    Some(&crate::eval::value::Value::String(
                         "Simple content".to_string()
                     ))
                 );
@@ -1717,10 +1729,12 @@ readme my-doc "Hello ${name}!"
 
         let block_val = doc.values.get("my-doc").expect("block should exist");
         match block_val {
-            wcl_eval::value::Value::BlockRef(br) => {
+            crate::eval::value::Value::BlockRef(br) => {
                 assert_eq!(
                     br.attributes.get("content"),
-                    Some(&wcl_eval::value::Value::String("Hello World!".to_string()))
+                    Some(&crate::eval::value::Value::String(
+                        "Hello World!".to_string()
+                    ))
                 );
             }
             other => panic!("expected BlockRef, got {:?}", other),
@@ -3341,13 +3355,13 @@ symbol_set multi {
     fn has_errors(diags: &[crate::Diagnostic]) -> bool {
         diags
             .iter()
-            .any(|d| d.severity == wcl_core::diagnostic::Severity::Error)
+            .any(|d| d.severity == crate::lang::diagnostic::Severity::Error)
     }
 
     fn error_diags(diags: &[crate::Diagnostic]) -> Vec<&crate::Diagnostic> {
         diags
             .iter()
-            .filter(|d| d.severity == wcl_core::diagnostic::Severity::Error)
+            .filter(|d| d.severity == crate::lang::diagnostic::Severity::Error)
             .collect()
     }
 
