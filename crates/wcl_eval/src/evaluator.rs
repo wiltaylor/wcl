@@ -725,7 +725,7 @@ impl Evaluator {
                         .filter_map(|s| self.eval_string_to_string(s, scope_id).ok())
                         .collect()
                 });
-                Ok(Self::parse_table(
+                Ok(parse_table(
                     &content,
                     separator,
                     headers,
@@ -796,57 +796,6 @@ impl Evaluator {
 
         fs.read_file(&normalized)
             .map_err(|e| Diagnostic::error(format!("cannot read file '{}': {}", path_str, e), span))
-    }
-
-    fn parse_table(
-        content: &str,
-        separator: char,
-        has_headers: bool,
-        explicit_columns: Option<&[String]>,
-    ) -> Value {
-        let mut lines = content.lines().peekable();
-
-        // Determine column names
-        let col_names: Vec<String> = if let Some(cols) = explicit_columns {
-            // Explicit columns provided — skip header line if headers=true
-            if has_headers {
-                lines.next();
-            }
-            cols.to_vec()
-        } else if has_headers {
-            // First line is headers
-            match lines.next() {
-                Some(line) => line
-                    .split(separator)
-                    .map(|s| s.trim().to_string())
-                    .collect(),
-                None => return Value::List(vec![]),
-            }
-        } else {
-            // No headers, no explicit columns — use numeric indices.
-            // Peek at first data line to determine column count.
-            match lines.peek() {
-                Some(line) => (0..line.split(separator).count())
-                    .map(|i| i.to_string())
-                    .collect(),
-                None => return Value::List(vec![]),
-            }
-        };
-
-        let rows: Vec<Value> = lines
-            .filter(|line| !line.trim().is_empty())
-            .map(|line| {
-                let fields: Vec<&str> = line.split(separator).collect();
-                let mut map = IndexMap::new();
-                for (i, header) in col_names.iter().enumerate() {
-                    let val = fields.get(i).map(|f| f.trim()).unwrap_or("");
-                    map.insert(header.clone(), Value::String(val.to_string()));
-                }
-                Value::Map(map)
-            })
-            .collect();
-
-        Value::List(rows)
     }
 
     // ------------------------------------------------------------------
@@ -1904,6 +1853,61 @@ fn compare_partial_ord<T: PartialOrd>(a: &T, b: &T, op: BinOp) -> bool {
         BinOp::Gte => a >= b,
         _ => unreachable!(),
     }
+}
+
+/// Parse CSV/TSV content into a `Value::List(Vec<Value::Map>)`.
+///
+/// This is a pure function extracted from `Evaluator` so it can be reused
+/// during early import-table resolution (Phase 3a) without a full evaluator.
+pub fn parse_table(
+    content: &str,
+    separator: char,
+    has_headers: bool,
+    explicit_columns: Option<&[String]>,
+) -> Value {
+    let mut lines = content.lines().peekable();
+
+    // Determine column names
+    let col_names: Vec<String> = if let Some(cols) = explicit_columns {
+        // Explicit columns provided — skip header line if headers=true
+        if has_headers {
+            lines.next();
+        }
+        cols.to_vec()
+    } else if has_headers {
+        // First line is headers
+        match lines.next() {
+            Some(line) => line
+                .split(separator)
+                .map(|s| s.trim().to_string())
+                .collect(),
+            None => return Value::List(vec![]),
+        }
+    } else {
+        // No headers, no explicit columns — use numeric indices.
+        // Peek at first data line to determine column count.
+        match lines.peek() {
+            Some(line) => (0..line.split(separator).count())
+                .map(|i| i.to_string())
+                .collect(),
+            None => return Value::List(vec![]),
+        }
+    };
+
+    let rows: Vec<Value> = lines
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| {
+            let fields: Vec<&str> = line.split(separator).collect();
+            let mut map = IndexMap::new();
+            for (i, header) in col_names.iter().enumerate() {
+                let val = fields.get(i).map(|f| f.trim()).unwrap_or("");
+                map.insert(header.clone(), Value::String(val.to_string()));
+            }
+            Value::Map(map)
+        })
+        .collect();
+
+    Value::List(rows)
 }
 
 // =====================================================================

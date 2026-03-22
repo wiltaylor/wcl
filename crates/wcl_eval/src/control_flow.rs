@@ -268,6 +268,7 @@ fn substitute_value_in_body_item(
             if let Some(InlineId::Interpolated(parts)) = &mut block.inline_id {
                 substitute_in_string_parts(parts, iterator_name, value, index_name, index);
             }
+            try_resolve_interpolated_id(&mut block.inline_id);
             // Substitute in inline args
             for arg in &mut block.inline_args {
                 substitute_in_expr(arg, iterator_name, value, index_name, index);
@@ -286,6 +287,20 @@ fn substitute_value_in_body_item(
         }
         BodyItem::LetBinding(lb) => {
             substitute_in_expr(&mut lb.value, iterator_name, value, index_name, index);
+        }
+        BodyItem::Table(table) => {
+            if let Some(InlineId::Interpolated(parts)) = &mut table.inline_id {
+                substitute_in_string_parts(parts, iterator_name, value, index_name, index);
+            }
+            try_resolve_interpolated_id(&mut table.inline_id);
+            for row in &mut table.rows {
+                for cell in &mut row.cells {
+                    substitute_in_expr(cell, iterator_name, value, index_name, index);
+                }
+            }
+            if let Some(ref mut expr) = table.import_expr {
+                substitute_in_expr(expr, iterator_name, value, index_name, index);
+            }
         }
         _ => {
             // Other body items: no substitution needed at this level
@@ -343,7 +358,22 @@ fn substitute_in_expr(
             substitute_in_expr(then_e, iterator_name, value, index_name, index);
             substitute_in_expr(else_e, iterator_name, value, index_name, index);
         }
-        Expr::MemberAccess(obj, _, _) => {
+        Expr::MemberAccess(obj, field, span) => {
+            // Check if this is `iterator_name.field` — if so, and the iterator
+            // value is a map, resolve the field directly to avoid leaving an
+            // unevaluatable MemberAccess(Map(...), field) in the AST.
+            if let Expr::Ident(ident) = obj.as_ref() {
+                if ident.name == iterator_name {
+                    if let Value::Map(map) = value {
+                        if let Some(field_val) = map.get(&field.name) {
+                            if let Some(replacement) = value_to_expr(field_val, *span) {
+                                *expr = replacement;
+                                return;
+                            }
+                        }
+                    }
+                }
+            }
             substitute_in_expr(obj, iterator_name, value, index_name, index);
         }
         Expr::IndexAccess(obj, idx_expr, _) => {
@@ -392,6 +422,61 @@ fn substitute_in_expr(
     }
 }
 
+/// Try to collapse an `InlineId::Interpolated` into `InlineId::Literal`
+/// by statically evaluating the string parts after substitution.
+///
+/// If all interpolation expressions have been replaced with string literals
+/// (or other simple literals), the result is concatenated into a single
+/// `IdentifierLit`. Otherwise the ID is left as `Interpolated`.
+fn try_resolve_interpolated_id(id: &mut Option<InlineId>) {
+    let parts = match id {
+        Some(InlineId::Interpolated(parts)) => parts,
+        _ => return,
+    };
+
+    let mut result = String::new();
+    let mut span = Span::dummy();
+
+    for part in parts.iter() {
+        match part {
+            StringPart::Literal(s) => result.push_str(s),
+            StringPart::Interpolation(expr) => match expr.as_ref() {
+                Expr::StringLit(s) => {
+                    for p in &s.parts {
+                        match p {
+                            StringPart::Literal(t) => result.push_str(t),
+                            StringPart::Interpolation(_) => return, // can't resolve
+                        }
+                    }
+                    span = s.span;
+                }
+                Expr::IntLit(i, s) => {
+                    result.push_str(&i.to_string());
+                    span = *s;
+                }
+                Expr::FloatLit(f, s) => {
+                    result.push_str(&f.to_string());
+                    span = *s;
+                }
+                Expr::BoolLit(b, s) => {
+                    result.push_str(&b.to_string());
+                    span = *s;
+                }
+                Expr::IdentifierLit(lit) => {
+                    result.push_str(&lit.value);
+                    span = lit.span;
+                }
+                _ => return, // Can't resolve statically
+            },
+        }
+    }
+
+    *id = Some(InlineId::Literal(IdentifierLit {
+        value: result,
+        span,
+    }));
+}
+
 /// Convert a `Value` to an `Expr` for substitution purposes.
 fn value_to_expr(value: &Value, span: Span) -> Option<Expr> {
     match value {
@@ -407,8 +492,38 @@ fn value_to_expr(value: &Value, span: Span) -> Option<Expr> {
             value: s.clone(),
             span,
         })),
-        // Complex values (list, map, etc.) cannot be directly represented as
-        // a single expression literal. These require the evaluator to handle.
+        Value::List(items) => {
+            let exprs: Vec<Expr> = items
+                .iter()
+                .filter_map(|v| value_to_expr(v, span))
+                .collect();
+            if exprs.len() == items.len() {
+                Some(Expr::List(exprs, span))
+            } else {
+                None
+            }
+        }
+        Value::Map(entries) => {
+            let pairs: Vec<(MapKey, Expr)> = entries
+                .iter()
+                .filter_map(|(k, v)| {
+                    value_to_expr(v, span).map(|e| {
+                        (
+                            MapKey::Ident(Ident {
+                                name: k.clone(),
+                                span,
+                            }),
+                            e,
+                        )
+                    })
+                })
+                .collect();
+            if pairs.len() == entries.len() {
+                Some(Expr::Map(pairs, span))
+            } else {
+                None
+            }
+        }
         _ => None,
     }
 }
@@ -686,7 +801,22 @@ mod tests {
             value_to_expr(&Value::Null, span),
             Some(Expr::NullLit(_))
         ));
-        // Complex values return None
-        assert!(value_to_expr(&Value::List(vec![]), span).is_none());
+        // Empty list converts to Expr::List
+        assert!(matches!(
+            value_to_expr(&Value::List(vec![]), span),
+            Some(Expr::List(items, _)) if items.is_empty()
+        ));
+        // List with convertible elements
+        assert!(matches!(
+            value_to_expr(&Value::List(vec![Value::Int(1), Value::Int(2)]), span),
+            Some(Expr::List(items, _)) if items.len() == 2
+        ));
+        // Map converts to Expr::Map
+        let mut map = indexmap::IndexMap::new();
+        map.insert("key".to_string(), Value::String("val".to_string()));
+        assert!(matches!(
+            value_to_expr(&Value::Map(map), span),
+            Some(Expr::Map(pairs, _)) if pairs.len() == 1
+        ));
     }
 }

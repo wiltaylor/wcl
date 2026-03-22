@@ -69,6 +69,18 @@ pub fn analyze(source: &str, options: &wcl::ParseOptions) -> AnalysisResult {
         all_diagnostics.extend(import_diags.into_diagnostics());
     }
 
+    // Phase 3a: Resolve import_table() expressions into inline tables
+    {
+        let mut diag_bag = DiagnosticBag::new();
+        wcl_eval::resolve_import_tables(
+            &mut doc,
+            &RealFileSystem,
+            &options.root_dir,
+            &mut diag_bag,
+        );
+        all_diagnostics.extend(diag_bag.into_diagnostics());
+    }
+
     // Macro expansion
     let mut expander = MacroExpander::new(&macro_registry, options.max_macro_depth);
     expander.expand(&mut doc);
@@ -99,6 +111,50 @@ pub fn analyze(source: &str, options: &wcl::ParseOptions) -> AnalysisResult {
                             read_count: 0,
                         },
                     );
+                }
+            }
+        }
+    }
+    // Pre-register inline tables for control flow
+    {
+        let mut eval = pre_eval.borrow_mut();
+        for item in &doc.items {
+            if let wcl_core::ast::DocItem::Body(wcl_core::ast::BodyItem::Table(table)) = item {
+                let name = table.inline_id.as_ref().and_then(|id| match id {
+                    wcl_core::ast::InlineId::Literal(lit) => Some(lit.value.clone()),
+                    _ => None,
+                });
+                if let Some(name) = name {
+                    if table.import_expr.is_none() {
+                        let col_names: Vec<String> =
+                            table.columns.iter().map(|c| c.name.name.clone()).collect();
+                        let mut rows = Vec::new();
+                        for row in &table.rows {
+                            let mut map = indexmap::IndexMap::new();
+                            for (i, col_name) in col_names.iter().enumerate() {
+                                if i < row.cells.len() {
+                                    if let Ok(val) = eval.eval_expr(&row.cells[i], pre_scope) {
+                                        map.insert(col_name.clone(), val);
+                                    } else {
+                                        map.insert(col_name.clone(), wcl_eval::Value::Null);
+                                    }
+                                }
+                            }
+                            rows.push(wcl_eval::Value::Map(map));
+                        }
+                        eval.scopes_mut().add_entry(
+                            pre_scope,
+                            ScopeEntry {
+                                name,
+                                kind: ScopeEntryKind::TableEntry,
+                                value: Some(wcl_eval::Value::List(rows)),
+                                span: table.span,
+                                dependencies: std::collections::HashSet::new(),
+                                evaluated: true,
+                                read_count: 0,
+                            },
+                        );
+                    }
                 }
             }
         }

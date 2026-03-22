@@ -12,11 +12,11 @@ pub mod scope;
 pub mod value;
 
 pub use control_flow::ControlFlowExpander;
-pub use evaluator::Evaluator;
+pub use evaluator::{parse_table, Evaluator};
 pub use functions::{builtin_signatures, BuiltinFn, FunctionRegistry, FunctionSignature};
 pub use imports::{
-    library_search_paths, resolve_library_import, FileSystem, ImportResolver, InMemoryFs,
-    LibraryConfig, RealFileSystem,
+    library_search_paths, resolve_import_tables, resolve_library_import, FileSystem,
+    ImportResolver, InMemoryFs, LibraryConfig, RealFileSystem,
 };
 pub use macros::{MacroExpander, MacroRegistry};
 pub use merge::{ConflictMode, PartialMerger};
