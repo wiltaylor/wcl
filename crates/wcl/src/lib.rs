@@ -44,7 +44,6 @@ pub use crate::serde_impl::{
     Error as SerdeError,
 };
 
-
 use std::path::PathBuf;
 use std::sync::Arc;
 

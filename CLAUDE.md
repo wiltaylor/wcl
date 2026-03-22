@@ -19,17 +19,17 @@ cargo fmt --check
 
 When making changes to WCL (especially AST, parser, schema, or language features), update ALL of these:
 
-### Core Rust crates
-- `crates/wcl_core/src/ast.rs` — AST types
-- `crates/wcl_core/src/parser/mod.rs` — parser
-- `crates/wcl_schema/src/schema.rs` — schema resolution + validation
-- `crates/wcl_schema/src/decorator.rs` — built-in decorator registry (register new decorators here)
-- `crates/wcl_schema/tests/integration.rs` — integration tests
-- `crates/wcl_cli/src/fmt.rs` — CLI formatter
-- `crates/wcl_lsp/src/fmt_impl.rs` — LSP formatter
-- `crates/wcl_lsp/src/semantic_tokens.rs` — semantic token collection
-- `crates/wcl_lsp/src/ast_utils.rs` — AST navigation for LSP
-- `crates/wcl_lsp/src/symbols.rs` — document symbol provider
+### Core `wcl` crate (`crates/wcl/src/`)
+- `lang/ast.rs` — AST types
+- `lang/parser/mod.rs` — parser
+- `schema/schema.rs` — schema resolution + validation
+- `schema/decorator.rs` — built-in decorator registry (register new decorators here)
+- `schema/tests/integration.rs` — integration tests
+- `cli/fmt.rs` — CLI formatter
+- `lsp/fmt_impl.rs` — LSP formatter
+- `lsp/semantic_tokens.rs` — semantic token collection
+- `lsp/ast_utils.rs` — AST navigation for LSP
+- `lsp/symbols.rs` — document symbol provider
 - All `Schema { ... }` construction sites need new fields (grep `Schema {`)
 
 ### Tree-sitter grammar (`extras/tree-sitter-wcl/`)
