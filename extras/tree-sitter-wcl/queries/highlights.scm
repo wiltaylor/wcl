@@ -23,6 +23,8 @@
   "validation"
   "decorator_schema"
   "declare"
+  "variant"
+  "symbol_set"
 ] @keyword
 
 [
@@ -95,6 +97,8 @@
   "${" @punctuation.special
   "}" @punctuation.special)
 (heredoc_literal) @string
+
+(symbol_literal) @constant
 
 (boolean_literal) @constant.builtin
 (null_literal) @constant.builtin
