@@ -2,7 +2,6 @@
 resolver = "2"
 exclude = ["extras/tree-sitter-wcl"]
 members = [
-    "crates/wcl_derive",
     "crates/wcl",
     "crates/wcl_ffi",
     "bindings/wasm",
@@ -18,7 +17,6 @@ repository = "https://github.com/wiltaylor/wcl"
 [workspace.dependencies]
 # Internal crates
 wcl = { path = "crates/wcl", version = "0.0.0-local" }
-wcl_derive = { path = "crates/wcl_derive", version = "0.0.0-local" }
 
 # External deps
 nom = "8"
@@ -37,9 +35,6 @@ thiserror = "2"
 glob = "0.3"
 indexmap = { version = "2", features = ["serde"] }
 criterion = { version = "0.5", features = ["html_reports"] }
-syn = { version = "2", features = ["full"] }
-quote = "1"
-proc-macro2 = "1"
 
 # Optimise release builds (benefits WASM size via wasm-pack)
 [profile.release]

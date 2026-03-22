@@ -2041,16 +2041,6 @@ dependencies = [
  "tokio",
  "toml",
  "tower-lsp",
- "wcl_derive",
-]
-
-[[package]]
-name = "wcl_derive"
-version = "0.0.0-local"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
 ]
 
 [[package]]
