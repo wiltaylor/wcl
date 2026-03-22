@@ -178,11 +178,15 @@ ruby-wasm: dotnet-wasm
 ruby: ruby-wasm
     cd bindings/ruby && gem build wcl.gemspec
 
+# Build JetBrains plugin
+jetbrains:
+    cd editors/jetbrains && ./gradlew buildPlugin
+
 # Build everything (native FFI)
-all: rust-release ffi-native go zig python wasm dotnet jvm ruby vscode
+all: rust-release ffi-native go zig python wasm dotnet jvm ruby vscode jetbrains
 
 # Build everything with all FFI platforms
-all-platforms: rust-release ffi-all go zig-all python wasm dotnet jvm ruby vscode
+all-platforms: rust-release ffi-all go zig-all python wasm dotnet jvm ruby vscode jetbrains
 
 # Publish Rust crates in dependency order
 rust-publish:

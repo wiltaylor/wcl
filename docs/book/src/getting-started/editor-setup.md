@@ -77,6 +77,26 @@ args = ["lsp"]
 
 Helix will start `wcl lsp` automatically when a `.wcl` file is opened. Run `hx --health wcl` to verify the language server is detected correctly.
 
+## JetBrains (IntelliJ IDEA, WebStorm, etc.)
+
+A JetBrains plugin is located in `editors/jetbrains/` in the repository. It provides syntax highlighting via a TextMate grammar and full LSP integration via [LSP4IJ](https://github.com/redhat-developer/lsp4ij). Works with all JetBrains IDEs including Community Edition.
+
+**Prerequisites:** The plugin requires the [LSP4IJ](https://plugins.jetbrains.com/plugin/23257-lsp4ij) plugin to be installed in your IDE.
+
+**Install from source:**
+
+```bash
+cd editors/jetbrains && ./gradlew buildPlugin
+```
+
+Then install the resulting ZIP from `editors/jetbrains/build/distributions/` via **Settings > Plugins > Install Plugin from Disk**.
+
+The plugin automatically starts `wcl lsp` when a `.wcl` file is opened. It looks for the `wcl` binary in this order:
+
+1. Bundled binary (if installed from a platform-specific distribution)
+2. `~/.cargo/bin/wcl` (if installed via `cargo install`)
+3. System `PATH`
+
 ## Other Editors
 
 Any editor with LSP support can use the WCL language server. The server communicates over stdio and is started with:

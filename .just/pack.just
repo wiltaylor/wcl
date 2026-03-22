@@ -208,8 +208,42 @@ ruby:
     cd bindings/ruby && gem build wcl.gemspec -o "{{pkg}}/ruby/wcl.gem"
     echo "Ruby gem packaged to {{pkg}}/ruby/"
 
+# Package JetBrains plugin for a single platform (skips if binary not found)
+jetbrains-platform target platform_name:
+    #!/bin/bash
+    set -euo pipefail
+    bin_src=""
+    if [[ "{{platform_name}}" == windows-* ]]; then
+        bin_src="target/{{target}}/release/wcl.exe"
+    elif [[ -f "target/{{target}}/release/wcl" ]]; then
+        bin_src="target/{{target}}/release/wcl"
+    elif [[ -f "target/release/wcl" ]]; then
+        bin_src="target/release/wcl"
+    fi
+    if [[ -z "$bin_src" || ! -f "$bin_src" ]]; then
+        echo "Skipping JetBrains plugin ({{platform_name}}): no CLI binary at target/{{target}}/release/"
+        exit 0
+    fi
+    mkdir -p "{{pkg}}/jetbrains"
+    mkdir -p editors/jetbrains/bin
+    cp "$bin_src" editors/jetbrains/bin/
+    if [[ "{{platform_name}}" != windows-* ]]; then
+        chmod +x editors/jetbrains/bin/wcl
+    fi
+    cd editors/jetbrains
+    ./gradlew buildPlugin
+    for f in build/distributions/*.zip; do
+        base="$(basename "$f" .zip)"
+        cp "$f" "{{pkg}}/jetbrains/${base}-{{platform_name}}.zip"
+    done
+    rm -rf bin build/distributions/*.zip
+    echo "JetBrains plugin ({{platform_name}}) packaged to {{pkg}}/jetbrains/"
+
+# Package JetBrains plugin for all platforms (requires cli-all to be run first)
+jetbrains: (jetbrains-platform "x86_64-unknown-linux-gnu" "linux-x64") (jetbrains-platform "aarch64-unknown-linux-gnu" "linux-arm64") (jetbrains-platform "x86_64-apple-darwin" "darwin-x64") (jetbrains-platform "aarch64-apple-darwin" "darwin-arm64") (jetbrains-platform "x86_64-pc-windows-gnu" "windows-x64")
+
 # Package everything. Pass a version to stamp all packages (default: 0.0.0-local)
-all ver="0.0.0-local": (set-version ver) rust python wasm go dotnet jvm ruby ffi vscode tree-sitter-wcl highlight-queries sublime-syntax highlightjs chroma pygments
+all ver="0.0.0-local": (set-version ver) rust python wasm go dotnet jvm ruby ffi vscode jetbrains tree-sitter-wcl highlight-queries sublime-syntax highlightjs chroma pygments
     @echo "All packages created in {{pkg}}/"
 
 # Remove all packaged artifacts
@@ -277,6 +311,9 @@ set-version ver:
     # C/C++ CMake: project version (CMake only allows digits and dots)
     CMAKE_VER=$(echo "$V" | sed 's/-.*//')
     sed -i "s/project(wcl VERSION [^ ]*/project(wcl VERSION $CMAKE_VER/" crates/wcl_ffi/CMakeLists.txt
+
+    # JetBrains plugin: gradle.properties
+    sed -i "s/pluginVersion=.*/pluginVersion=$V/" editors/jetbrains/gradle.properties
 
     # tree-sitter-wcl: Cargo.toml (Rust crate), pyproject.toml (Python), tree-sitter.json
     sed -i "0,/^version = .*/s/^version = .*/version = \"$V\"/" extras/tree-sitter-wcl/Cargo.toml
