@@ -840,7 +840,7 @@ impl<'a> Fmt<'a> {
             self.decorator(dec);
         }
         self.indent();
-        self.out.push_str(&format!("{} = ", field.name.name));
+        self.out.push_str(&format!("{}: ", field.name.name));
         self.type_expr(&field.type_expr);
         for dec in &field.decorators_after {
             self.out.push(' ');
@@ -986,7 +986,7 @@ mod tests {
         let result = format_document(&doc);
         assert_eq!(
             result,
-            "decorator_schema \"my_decorator\" {\n    target = [block, attribute]\n    level = string\n}\n\n"
+            "decorator_schema \"my_decorator\" {\n    target = [block, attribute]\n    level: string\n}\n\n"
         );
     }
 }
