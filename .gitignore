@@ -11,3 +11,4 @@ site/static/js/wcl.js
 editors/vscode/*.vsix
 extras/pygments/__pycache__/
 examples/SDF/docs/book/
+.env
