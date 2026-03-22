@@ -608,8 +608,20 @@ jobs:
           just pack set-version "${{ needs.version.outputs.version }}"
           for crate in wcl_derive wcl_core wcl_eval wcl_schema wcl_serde wcl wcl_lsp wcl_cli wcl_ffi; do
             echo "Publishing $crate..."
-            cargo publish -p $crate --no-verify --allow-dirty
-            sleep 30
+            for attempt in 1 2 3; do
+              if cargo publish -p $crate --no-verify --allow-dirty 2>&1; then
+                break
+              else
+                if [ $attempt -lt 3 ]; then
+                  echo "Attempt $attempt failed, waiting 120s before retry..."
+                  sleep 120
+                else
+                  echo "Failed to publish $crate after 3 attempts"
+                  exit 1
+                fi
+              fi
+            done
+            sleep 60
           done
 
   publish-python:
