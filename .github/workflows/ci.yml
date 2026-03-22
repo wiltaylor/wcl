@@ -646,8 +646,8 @@ jobs:
         run: |
           echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
           NPM_TAG=$([[ "${{ needs.version.outputs.version }}" == *-* ]] && echo "next" || echo "latest")
-          TARBALL=$(ls dist/*.tgz)
-          npm publish "$TARBALL" --access public --tag "$NPM_TAG"
+          cd dist
+          npm publish *.tgz --access public --tag "$NPM_TAG"
 
   publish-dotnet:
     name: Publish .NET → NuGet
