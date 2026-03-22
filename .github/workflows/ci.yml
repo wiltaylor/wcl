@@ -270,7 +270,9 @@ jobs:
           report_paths: bindings/jvm/build/test-results/test/*.xml
           check_name: JVM Tests
       - name: Run JVM example
-        run: cd examples/jvm && ./gradlew run --quiet
+        run: |
+          cd bindings/jvm && ./gradlew jar
+          cd ../../examples/jvm && ./gradlew run --quiet
 
   test-ruby:
     name: Test Ruby
