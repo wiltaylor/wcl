@@ -20,9 +20,6 @@ path = "src/bin/wcl.rs"
 required-features = ["cli"]
 
 [dependencies]
-# Derive macro (still a separate proc-macro crate)
-wcl_derive = { workspace = true }
-
 # Core deps (from wcl_core)
 nom = { workspace = true }
 miette = { workspace = true, optional = true }

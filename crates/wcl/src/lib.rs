@@ -44,7 +44,6 @@ pub use crate::serde_impl::{
     Error as SerdeError,
 };
 
-pub use wcl_derive::{WclDeserialize, WclSchema};
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -1161,78 +1160,6 @@ mod tests {
         assert_eq!(services[1].get("port"), Some(&Value::Int(9090)));
     }
 
-    // ── wcl_derive tests ─────────────────────────────────────────────────
-
-    #[test]
-    fn test_wcl_deserialize_basic_struct() {
-        #[derive(WclDeserialize, Debug, PartialEq)]
-        struct Config {
-            port: i64,
-            host: String,
-        }
-
-        let result: Result<Config, _> = from_str("port = 8080\nhost = \"localhost\"");
-        assert!(result.is_ok(), "error: {:?}", result.err());
-        let config = result.unwrap();
-        assert_eq!(config.port, 8080);
-        assert_eq!(config.host, "localhost");
-    }
-
-    #[test]
-    fn test_wcl_deserialize_with_id() {
-        #[derive(WclDeserialize, Debug, PartialEq)]
-        struct Service {
-            #[wcl(id)]
-            name: Option<String>,
-            port: i64,
-        }
-
-        let mut map = indexmap::IndexMap::new();
-        map.insert("id".to_string(), Value::String("my-svc".to_string()));
-        map.insert("port".to_string(), Value::Int(8080));
-        let result: Result<Service, _> = from_value(Value::Map(map));
-        assert!(result.is_ok(), "error: {:?}", result.err());
-        let svc = result.unwrap();
-        assert_eq!(svc.name, Some("my-svc".to_string()));
-        assert_eq!(svc.port, 8080);
-    }
-
-    #[test]
-    fn test_wcl_deserialize_with_labels() {
-        #[derive(WclDeserialize, Debug, PartialEq)]
-        struct Resource {
-            #[wcl(args)]
-            tags: Vec<String>,
-            value: i64,
-        }
-
-        let mut map = indexmap::IndexMap::new();
-        map.insert(
-            "_args".to_string(),
-            Value::List(vec![
-                Value::String("prod".to_string()),
-                Value::String("us-east".to_string()),
-            ]),
-        );
-        map.insert("value".to_string(), Value::Int(42));
-        let result: Result<Resource, _> = from_value(Value::Map(map));
-        assert!(result.is_ok(), "error: {:?}", result.err());
-        let res = result.unwrap();
-        assert_eq!(res.tags, vec!["prod".to_string(), "us-east".to_string()]);
-    }
-
-    #[test]
-    fn test_wcl_deserialize_missing_field_errors() {
-        #[derive(WclDeserialize, Debug)]
-        struct NeedsPort {
-            #[allow(dead_code)]
-            port: i64,
-        }
-
-        let result: Result<NeedsPort, _> = from_str("host = \"localhost\"");
-        assert!(result.is_err());
-    }
-
     // ── Phase 1: Custom Function Registration ────────────────────────────
 
     #[test]
@@ -1430,80 +1357,6 @@ mod tests {
         assert_eq!(
             doc.values.get("result"),
             Some(&Value::String("processed: hello".to_string()))
-        );
-    }
-
-    // ── Phase 4: WclSchema derive macro ──────────────────────────────────
-
-    #[test]
-    fn test_wcl_schema_basic() {
-        #[derive(WclSchema)]
-        struct ServerConfig {
-            #[allow(dead_code)]
-            port: i64,
-            #[allow(dead_code)]
-            host: String,
-        }
-
-        let schema = ServerConfig::wcl_schema();
-        assert!(
-            schema.contains("schema \"server_config\""),
-            "schema: {}",
-            schema
-        );
-        assert!(schema.contains("port: int"), "schema: {}", schema);
-        assert!(schema.contains("host: string"), "schema: {}", schema);
-    }
-
-    #[test]
-    fn test_wcl_schema_with_optional() {
-        #[derive(WclSchema)]
-        struct Config {
-            #[allow(dead_code)]
-            name: String,
-            #[allow(dead_code)]
-            #[wcl(optional)]
-            debug: bool,
-        }
-
-        let schema = Config::wcl_schema();
-        assert!(
-            schema.contains("debug: bool @optional"),
-            "schema: {}",
-            schema
-        );
-    }
-
-    #[test]
-    fn test_wcl_schema_custom_name() {
-        #[derive(WclSchema)]
-        #[wcl(schema_name = "my_custom_schema")]
-        struct Foo {
-            #[allow(dead_code)]
-            value: i64,
-        }
-
-        let schema = Foo::wcl_schema();
-        assert!(
-            schema.contains("schema \"my_custom_schema\""),
-            "schema: {}",
-            schema
-        );
-    }
-
-    #[test]
-    fn test_wcl_schema_option_type_is_optional() {
-        #[derive(WclSchema)]
-        struct Config {
-            #[allow(dead_code)]
-            timeout: Option<i64>,
-        }
-
-        let schema = Config::wcl_schema();
-        assert!(
-            schema.contains("@optional"),
-            "Option<T> should generate @optional: {}",
-            schema
         );
     }
 
