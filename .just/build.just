@@ -55,6 +55,49 @@ ffi-windows-amd64:
 # Build FFI for all platforms
 ffi-all: ffi-linux-amd64 ffi-linux-arm64 ffi-darwin-amd64 ffi-darwin-arm64 ffi-windows-amd64
 
+# Cross-compile wcl CLI for Linux x86_64
+cli-linux-amd64:
+    #!/usr/bin/env bash
+    if [[ "$(uname -s)-$(uname -m)" == "Linux-x86_64" ]]; then
+        cargo build -p wcl --bin wcl --release
+    else
+        cargo zigbuild -p wcl --bin wcl --release --target x86_64-unknown-linux-gnu
+    fi
+
+# Cross-compile wcl CLI for Linux arm64
+cli-linux-arm64:
+    #!/usr/bin/env bash
+    if [[ "$(uname -s)-$(uname -m)" == "Linux-aarch64" ]]; then
+        cargo build -p wcl --bin wcl --release
+    else
+        cargo zigbuild -p wcl --bin wcl --release --target aarch64-unknown-linux-gnu
+    fi
+
+# Cross-compile wcl CLI for macOS x86_64
+cli-darwin-amd64:
+    #!/usr/bin/env bash
+    if [[ "$(uname -s)-$(uname -m)" == "Darwin-x86_64" ]]; then
+        cargo build -p wcl --bin wcl --release
+    else
+        cargo zigbuild -p wcl --bin wcl --release --target x86_64-apple-darwin
+    fi
+
+# Cross-compile wcl CLI for macOS arm64
+cli-darwin-arm64:
+    #!/usr/bin/env bash
+    if [[ "$(uname -s)-$(uname -m)" == "Darwin-arm64" ]]; then
+        cargo build -p wcl --bin wcl --release
+    else
+        cargo zigbuild -p wcl --bin wcl --release --target aarch64-apple-darwin
+    fi
+
+# Cross-compile wcl CLI for Windows x86_64
+cli-windows-amd64:
+    cargo zigbuild -p wcl --bin wcl --release --target x86_64-pc-windows-gnu
+
+# Cross-compile wcl CLI for all platforms
+cli-all: cli-linux-amd64 cli-linux-arm64 cli-darwin-amd64 cli-darwin-arm64 cli-windows-amd64
+
 # Build WASM module for Go (reuses WASI target)
 go-wasm: dotnet-wasm
     mkdir -p bindings/go/wasm

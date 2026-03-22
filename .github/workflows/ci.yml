@@ -510,8 +510,15 @@ jobs:
     if: github.event_name == 'push'
     steps:
       - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: x86_64-unknown-linux-gnu,aarch64-unknown-linux-gnu,x86_64-apple-darwin,aarch64-apple-darwin,x86_64-pc-windows-gnu
       - uses: taiki-e/install-action@just
+      - uses: taiki-e/install-action@cargo-zigbuild
+      - uses: Swatinem/rust-cache@f51f967e158417aafa338a1e46ab22095f07aa01
       - run: just pack set-version "${{ needs.version.outputs.version }}"
+      - run: just build cli-all
       - run: just pack vscode
       - uses: actions/upload-artifact@v7
         with:
