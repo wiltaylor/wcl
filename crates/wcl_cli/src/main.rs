@@ -4,6 +4,7 @@ use std::process;
 
 mod add;
 mod convert;
+mod docs;
 mod eval;
 mod fmt;
 mod inspect;
@@ -11,6 +12,7 @@ mod path;
 mod query;
 mod remove;
 mod set;
+mod table;
 mod validate;
 mod vars;
 
@@ -139,6 +141,59 @@ enum Commands {
         /// Path to remove (e.g. service#svc-old, service#svc-api.debug)
         path: String,
     },
+    /// Table row operations (insert, remove, update)
+    Table {
+        #[command(subcommand)]
+        action: TableAction,
+    },
+    /// Generate schema documentation as an mdBook
+    Docs {
+        /// Input WCL files
+        #[arg(required = true)]
+        files: Vec<PathBuf>,
+        /// Output directory
+        #[arg(long, default_value = "docs-out")]
+        output: PathBuf,
+        /// Book title
+        #[arg(long, default_value = "WCL Schema Reference")]
+        title: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum TableAction {
+    /// Insert a row into a table
+    Insert {
+        /// Input file
+        file: PathBuf,
+        /// Table name (inline ID)
+        table: String,
+        /// Row values as pipe-delimited: '"alice" | 25'
+        values: String,
+    },
+    /// Remove rows matching a condition
+    Remove {
+        /// Input file
+        file: PathBuf,
+        /// Table name (inline ID)
+        table: String,
+        /// Condition expression: 'name == "alice"'
+        #[arg(long = "where")]
+        condition: String,
+    },
+    /// Update cells in rows matching a condition
+    Update {
+        /// Input file
+        file: PathBuf,
+        /// Table name (inline ID)
+        table: String,
+        /// Condition: 'name == "alice"'
+        #[arg(long = "where")]
+        condition: String,
+        /// Assignments: 'age = 26, role = "admin"'
+        #[arg(long)]
+        set: String,
+    },
 }
 
 fn main() {
@@ -192,6 +247,29 @@ fn main() {
             file_auto,
         } => add::run(&file, &block_spec, file_auto),
         Commands::Remove { file, path } => remove::run(&file, &path),
+        Commands::Docs {
+            files,
+            output,
+            title,
+        } => docs::run(&files, &output, &title),
+        Commands::Table { action } => match action {
+            TableAction::Insert {
+                file,
+                table: table_name,
+                values,
+            } => table::run_insert(&file, &table_name, &values),
+            TableAction::Remove {
+                file,
+                table: table_name,
+                condition,
+            } => table::run_remove(&file, &table_name, &condition),
+            TableAction::Update {
+                file,
+                table: table_name,
+                condition,
+                set,
+            } => table::run_update(&file, &table_name, &condition, &set),
+        },
     };
 
     if let Err(e) = result {

@@ -36,7 +36,7 @@ pub fn run(
         let mut external_schemas = wcl::SchemaRegistry::new();
         let mut diag_bag = wcl::DiagnosticBag::new();
         external_schemas.collect(&schema_doc, &mut diag_bag);
-        external_schemas.validate(&doc.ast, &doc.values, &mut diag_bag);
+        external_schemas.validate(&doc.ast, &doc.values, &doc.symbol_sets, &mut diag_bag);
         doc.diagnostics.extend(diag_bag.into_diagnostics());
     }
 
