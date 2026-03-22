@@ -11,14 +11,7 @@ Add `wcl` as a path dependency (or git dependency) in your `Cargo.toml`:
 wcl = { path = "../wcl" }
 ```
 
-If you want to deserialize WCL directly into Rust structs, also enable the derive macro:
-
-```toml
-[dependencies]
-wcl = { path = "../wcl" }
-```
-
-The `wcl` crate re-exports everything you need, including the `WclDeserialize` derive macro.
+The `wcl` crate re-exports everything you need.
 
 ## Parsing a WCL String
 
@@ -144,7 +137,7 @@ Tables evaluate to `Value::List(Vec<Value::Map>)` — a list of row maps where e
 
 ```rust
 use wcl::{parse, ParseOptions};
-use wcl_eval::value::Value;
+use wcl::eval::value::Value;
 
 let doc = parse(r#"
     table users {
@@ -247,31 +240,6 @@ let config: AppConfig = from_str(r#"
 println!("{:?}", config);
 ```
 
-### With the `WclDeserialize` Derive Macro
-
-The `WclDeserialize` derive macro adds WCL-specific field attributes like `#[wcl(id)]` and `#[wcl(args)]`:
-
-```rust
-use wcl::{from_str, from_value, parse, ParseOptions, Value, WclDeserialize};
-
-#[derive(WclDeserialize, Debug)]
-struct Service {
-    #[wcl(id)]
-    name: Option<String>,
-    port: i64,
-    host: String,
-}
-
-// Deserialize from a flat WCL string (no block wrapper)
-let svc: Service = from_str(r#"
-    port = 8080
-    host = "localhost"
-"#).unwrap();
-
-println!("port: {}", svc.port);   // 8080
-println!("name: {:?}", svc.name); // None (no block ID in flat input)
-```
-
 ### Deserializing from `Value`
 
 If you already have a parsed `Document`, you can deserialize individual values using `from_value`:
@@ -351,34 +319,6 @@ registry.register(
     },
 );
 ```
-
-## Schema Generation from Rust Types
-
-The `WclSchema` derive macro generates WCL schema text from Rust structs:
-
-```rust
-use wcl::WclSchema;
-
-#[derive(WclSchema)]
-struct ServerConfig {
-    port: i64,
-    host: String,
-    #[wcl(optional)]
-    debug: bool,
-}
-
-// Generates: schema "server_config" { port: int\n host: string\n debug: bool @optional }
-let schema_text = ServerConfig::wcl_schema();
-```
-
-Supported `#[wcl(...)]` attributes:
-- `#[wcl(schema_name = "name")]` — override the schema name (default: snake_case of struct name)
-- `#[wcl(open)]` — allow extra fields in the schema
-- `#[wcl(optional)]` — mark field as optional
-- `#[wcl(default = "value")]` — set a default value
-- `#[wcl(validate(min = N, max = N))]` — add validation constraints
-
-Rust type mapping: `String` → `string`, `i32/i64/u32/u64` → `int`, `f32/f64` → `float`, `bool` → `bool`, `Option<T>` → T + `@optional`, `Vec<T>` → `list(T)`, `HashMap<K,V>` → `map(K, V)`.
 
 ## Library Files
 
