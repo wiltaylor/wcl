@@ -20,7 +20,8 @@
     "pkg/wcl_wasm_bg.wasm.d.ts",
     "pkg/wcl_wasm.js",
     "pkg/wcl_wasm.d.ts",
-    "pkg/wcl_wasm_bg.js"
+    "pkg/wcl_wasm_bg.js",
+    "README.md"
   ],
   "scripts": {
     "prepublishOnly": "wasm-pack build --target web"
