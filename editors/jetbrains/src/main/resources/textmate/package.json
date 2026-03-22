@@ -1,0 +1,12 @@
+{
+  "name": "wcl-textmate",
+  "contributes": {
+    "grammars": [
+      {
+        "language": "WCL",
+        "scopeName": "source.wcl",
+        "path": "./wcl.tmLanguage.json"
+      }
+    ]
+  }
+}

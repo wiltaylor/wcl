@@ -1,0 +1,50 @@
+<idea-plugin>
+    <id>dev.wcl.jetbrains</id>
+    <name>WCL - Wil's Configuration Language</name>
+    <vendor url="https://wcl.dev">Wil Taylor</vendor>
+
+    <description><![CDATA[
+    Language support for WCL (Wil's Configuration Language).
+    <ul>
+      <li>Syntax highlighting (TextMate grammar)</li>
+      <li>Diagnostics, hover, completions (LSP)</li>
+      <li>Go-to-definition, references (LSP)</li>
+      <li>Document formatting (LSP)</li>
+      <li>Signature help (LSP)</li>
+      <li>Semantic tokens (LSP)</li>
+    </ul>
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>org.jetbrains.plugins.textmate</depends>
+    <depends>com.redhat.devtools.lsp4ij</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <fileType
+            name="WCL"
+            implementationClass="dev.wcl.jetbrains.WclFileType"
+            fieldName="INSTANCE"
+            language="WCL"
+            extensions="wcl"/>
+    </extensions>
+
+    <extensions defaultExtensionNs="com.redhat.devtools.lsp4ij">
+        <server
+            id="dev.wcl.lsp"
+            name="WCL Language Server"
+            factoryClass="dev.wcl.jetbrains.lsp.WclLanguageServerFactory">
+            <description><![CDATA[
+            LSP server for WCL, providing diagnostics, completions, hover,
+            go-to-definition, references, formatting, and semantic tokens.
+            ]]></description>
+        </server>
+        <languageMapping
+            language="WCL"
+            serverId="dev.wcl.lsp"/>
+    </extensions>
+
+    <extensions defaultExtensionNs="org.jetbrains.plugins.textmate">
+        <bundleProvider
+            implementation="dev.wcl.jetbrains.WclTextMateBundleProvider"/>
+    </extensions>
+</idea-plugin>
