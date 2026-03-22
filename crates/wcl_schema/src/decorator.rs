@@ -273,6 +273,55 @@ impl DecoratorSchemaRegistry {
             span: Span::dummy(),
         });
         self.insert(ResolvedDecoratorSchema {
+            name: "child".to_string(),
+            targets: vec![DecoratorTarget::Schema],
+            params: vec![
+                DecoratorParam {
+                    name: "kind".to_string(),
+                    type_expr: TypeExpr::String(Span::dummy()),
+                    required: true,
+                    default: None,
+                    span: Span::dummy(),
+                },
+                DecoratorParam {
+                    name: "min".to_string(),
+                    type_expr: TypeExpr::Int(Span::dummy()),
+                    required: false,
+                    default: None,
+                    span: Span::dummy(),
+                },
+                DecoratorParam {
+                    name: "max".to_string(),
+                    type_expr: TypeExpr::Int(Span::dummy()),
+                    required: false,
+                    default: None,
+                    span: Span::dummy(),
+                },
+                DecoratorParam {
+                    name: "max_depth".to_string(),
+                    type_expr: TypeExpr::Int(Span::dummy()),
+                    required: false,
+                    default: None,
+                    span: Span::dummy(),
+                },
+            ],
+            constraints: vec![],
+            span: Span::dummy(),
+        });
+        self.insert(ResolvedDecoratorSchema {
+            name: "tagged".to_string(),
+            targets: vec![DecoratorTarget::Schema],
+            params: vec![DecoratorParam {
+                name: "field".to_string(),
+                type_expr: TypeExpr::String(Span::dummy()),
+                required: true,
+                default: None,
+                span: Span::dummy(),
+            }],
+            constraints: vec![],
+            span: Span::dummy(),
+        });
+        self.insert(ResolvedDecoratorSchema {
             name: "children".to_string(),
             targets: vec![DecoratorTarget::Schema],
             params: vec![DecoratorParam {
@@ -291,6 +340,19 @@ impl DecoratorSchemaRegistry {
             params: vec![DecoratorParam {
                 name: "kinds".to_string(),
                 type_expr: TypeExpr::List(Box::new(TypeExpr::String(Span::dummy())), Span::dummy()),
+                required: true,
+                default: None,
+                span: Span::dummy(),
+            }],
+            constraints: vec![],
+            span: Span::dummy(),
+        });
+        self.insert(ResolvedDecoratorSchema {
+            name: "symbol_set".to_string(),
+            targets: vec![DecoratorTarget::Schema],
+            params: vec![DecoratorParam {
+                name: "name".to_string(),
+                type_expr: TypeExpr::String(Span::dummy()),
                 required: true,
                 default: None,
                 span: Span::dummy(),

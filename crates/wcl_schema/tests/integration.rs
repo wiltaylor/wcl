@@ -4,7 +4,7 @@ use wcl_core::span::{FileId, Span};
 use wcl_core::trivia::Trivia;
 use wcl_eval::value::Value;
 use wcl_schema::types::{check_type, type_name};
-use wcl_schema::{IdRegistry, SchemaRegistry};
+use wcl_schema::{IdRegistry, SchemaRegistry, SymbolSetRegistry};
 
 // ── Span / AST helpers ───────────────────────────────────────────────────────
 
@@ -42,6 +42,7 @@ fn make_schema(name: &str, fields: Vec<SchemaField>) -> Schema {
         decorators: vec![],
         name: make_string_lit(name),
         fields,
+        variants: vec![],
         trivia: Trivia::default(),
         span: sp(),
     }
@@ -234,7 +235,12 @@ fn schema_validation_missing_required_field_emits_error() {
     let mut reg = SchemaRegistry::new();
     let mut diags = DiagnosticBag::new();
     reg.collect(&doc, &mut diags);
-    reg.validate(&doc, &indexmap::IndexMap::new(), &mut diags);
+    reg.validate(
+        &doc,
+        &indexmap::IndexMap::new(),
+        &SymbolSetRegistry::new(),
+        &mut diags,
+    );
 
     assert!(diags.has_errors(), "expected a missing-field error");
 }
@@ -262,7 +268,12 @@ fn schema_validation_present_required_field_no_error() {
     let mut reg = SchemaRegistry::new();
     let mut diags = DiagnosticBag::new();
     reg.collect(&doc, &mut diags);
-    reg.validate(&doc, &indexmap::IndexMap::new(), &mut diags);
+    reg.validate(
+        &doc,
+        &indexmap::IndexMap::new(),
+        &SymbolSetRegistry::new(),
+        &mut diags,
+    );
 
     assert!(
         !diags.has_errors(),
@@ -298,7 +309,12 @@ fn schema_validation_unknown_attribute_in_closed_schema_emits_error() {
     let mut reg = SchemaRegistry::new();
     let mut diags = DiagnosticBag::new();
     reg.collect(&doc, &mut diags);
-    reg.validate(&doc, &indexmap::IndexMap::new(), &mut diags);
+    reg.validate(
+        &doc,
+        &indexmap::IndexMap::new(),
+        &SymbolSetRegistry::new(),
+        &mut diags,
+    );
 
     assert!(diags.has_errors(), "expected an unknown-attribute error");
 }
@@ -336,7 +352,12 @@ fn schema_validation_open_schema_allows_unknown_attributes() {
     let mut reg = SchemaRegistry::new();
     let mut diags = DiagnosticBag::new();
     reg.collect(&doc, &mut diags);
-    reg.validate(&doc, &indexmap::IndexMap::new(), &mut diags);
+    reg.validate(
+        &doc,
+        &indexmap::IndexMap::new(),
+        &SymbolSetRegistry::new(),
+        &mut diags,
+    );
 
     assert!(
         !diags.has_errors(),
@@ -570,7 +591,12 @@ fn type_mismatch_string_value_for_int_field_emits_e071() {
     let mut reg = SchemaRegistry::new();
     let mut diags = DiagnosticBag::new();
     reg.collect(&doc, &mut diags);
-    reg.validate(&doc, &indexmap::IndexMap::new(), &mut diags);
+    reg.validate(
+        &doc,
+        &indexmap::IndexMap::new(),
+        &SymbolSetRegistry::new(),
+        &mut diags,
+    );
 
     assert!(diags.has_errors(), "expected a type mismatch error");
     let has_e071 = diags
@@ -603,7 +629,12 @@ fn type_match_int_value_for_int_field_no_error() {
     let mut reg = SchemaRegistry::new();
     let mut diags = DiagnosticBag::new();
     reg.collect(&doc, &mut diags);
-    reg.validate(&doc, &indexmap::IndexMap::new(), &mut diags);
+    reg.validate(
+        &doc,
+        &indexmap::IndexMap::new(),
+        &SymbolSetRegistry::new(),
+        &mut diags,
+    );
 
     assert!(
         !diags.has_errors(),
@@ -646,7 +677,12 @@ fn validate_min_below_minimum_emits_e073() {
     let mut reg = SchemaRegistry::new();
     let mut diags = DiagnosticBag::new();
     reg.collect(&doc, &mut diags);
-    reg.validate(&doc, &indexmap::IndexMap::new(), &mut diags);
+    reg.validate(
+        &doc,
+        &indexmap::IndexMap::new(),
+        &SymbolSetRegistry::new(),
+        &mut diags,
+    );
 
     assert!(diags.has_errors(), "expected min constraint violation");
     let has_e073 = diags
@@ -687,7 +723,12 @@ fn validate_pattern_mismatch_emits_e074() {
     let mut reg = SchemaRegistry::new();
     let mut diags = DiagnosticBag::new();
     reg.collect(&doc, &mut diags);
-    reg.validate(&doc, &indexmap::IndexMap::new(), &mut diags);
+    reg.validate(
+        &doc,
+        &indexmap::IndexMap::new(),
+        &SymbolSetRegistry::new(),
+        &mut diags,
+    );
 
     assert!(diags.has_errors(), "expected pattern constraint violation");
     let has_e074 = diags
@@ -734,7 +775,12 @@ fn validate_one_of_not_in_set_emits_e075() {
     let mut reg = SchemaRegistry::new();
     let mut diags = DiagnosticBag::new();
     reg.collect(&doc, &mut diags);
-    reg.validate(&doc, &indexmap::IndexMap::new(), &mut diags);
+    reg.validate(
+        &doc,
+        &indexmap::IndexMap::new(),
+        &SymbolSetRegistry::new(),
+        &mut diags,
+    );
 
     assert!(diags.has_errors(), "expected one_of constraint violation");
     let has_e075 = diags
@@ -780,7 +826,12 @@ fn ref_to_nonexistent_block_emits_e076() {
     let mut reg = SchemaRegistry::new();
     let mut diags = DiagnosticBag::new();
     reg.collect(&doc, &mut diags);
-    reg.validate(&doc, &indexmap::IndexMap::new(), &mut diags);
+    reg.validate(
+        &doc,
+        &indexmap::IndexMap::new(),
+        &SymbolSetRegistry::new(),
+        &mut diags,
+    );
 
     assert!(diags.has_errors(), "expected ref validation error");
     let has_e076 = diags
@@ -825,7 +876,12 @@ fn ref_to_existing_block_no_error() {
     let mut reg = SchemaRegistry::new();
     let mut diags = DiagnosticBag::new();
     reg.collect(&doc, &mut diags);
-    reg.validate(&doc, &indexmap::IndexMap::new(), &mut diags);
+    reg.validate(
+        &doc,
+        &indexmap::IndexMap::new(),
+        &SymbolSetRegistry::new(),
+        &mut diags,
+    );
 
     assert!(
         !diags.has_errors(),
@@ -869,7 +925,12 @@ fn id_pattern_mismatch_emits_e077() {
     let mut reg = SchemaRegistry::new();
     let mut diags = DiagnosticBag::new();
     reg.collect(&doc, &mut diags);
-    reg.validate(&doc, &indexmap::IndexMap::new(), &mut diags);
+    reg.validate(
+        &doc,
+        &indexmap::IndexMap::new(),
+        &SymbolSetRegistry::new(),
+        &mut diags,
+    );
 
     assert!(diags.has_errors(), "expected id_pattern violation");
     let has_e077 = diags
@@ -910,11 +971,1067 @@ fn id_pattern_match_no_error() {
     let mut reg = SchemaRegistry::new();
     let mut diags = DiagnosticBag::new();
     reg.collect(&doc, &mut diags);
-    reg.validate(&doc, &indexmap::IndexMap::new(), &mut diags);
+    reg.validate(
+        &doc,
+        &indexmap::IndexMap::new(),
+        &SymbolSetRegistry::new(),
+        &mut diags,
+    );
 
     assert!(
         !diags.has_errors(),
         "valid ID should not trigger error: {:?}",
         diags.diagnostics()
     );
+}
+
+// ── Feature 1: @child cardinality ─────────────────────────────────────────────
+
+fn make_child_decorator(kind: &str, min: Option<i64>, max: Option<i64>) -> Decorator {
+    let mut args = vec![DecoratorArg::Positional(Expr::StringLit(make_string_lit(
+        kind,
+    )))];
+    if let Some(m) = min {
+        args.push(DecoratorArg::Named(
+            make_ident("min"),
+            Expr::IntLit(m, sp()),
+        ));
+    }
+    if let Some(m) = max {
+        args.push(DecoratorArg::Named(
+            make_ident("max"),
+            Expr::IntLit(m, sp()),
+        ));
+    }
+    Decorator {
+        name: make_ident("child"),
+        args,
+        span: sp(),
+    }
+}
+
+fn make_schema_with_decorators(
+    name: &str,
+    fields: Vec<SchemaField>,
+    decorators: Vec<Decorator>,
+) -> Schema {
+    Schema {
+        decorators,
+        name: make_string_lit(name),
+        fields,
+        variants: vec![],
+        trivia: Trivia::default(),
+        span: sp(),
+    }
+}
+
+#[test]
+fn child_min_too_few_emits_e097() {
+    let schema = make_schema_with_decorators(
+        "server",
+        vec![make_schema_field("host", TypeExpr::String(sp()))],
+        vec![make_child_decorator("endpoint", Some(1), None)],
+    );
+    let block = make_block(
+        "server",
+        Some("web"),
+        false,
+        vec![BodyItem::Attribute(make_attribute(
+            "host",
+            Expr::StringLit(make_string_lit("localhost")),
+        ))],
+    );
+    let doc = make_doc(vec![
+        DocItem::Body(BodyItem::Schema(schema)),
+        DocItem::Body(BodyItem::Block(block)),
+    ]);
+
+    let mut reg = SchemaRegistry::new();
+    let mut diags = DiagnosticBag::new();
+    reg.collect(&doc, &mut diags);
+    reg.validate(
+        &doc,
+        &indexmap::IndexMap::new(),
+        &SymbolSetRegistry::new(),
+        &mut diags,
+    );
+
+    let e097: Vec<_> = diags
+        .diagnostics()
+        .iter()
+        .filter(|d| d.code.as_deref() == Some("E097"))
+        .collect();
+    assert_eq!(e097.len(), 1, "expected E097: {:?}", diags.diagnostics());
+    assert!(e097[0].message.contains("endpoint"));
+}
+
+#[test]
+fn child_max_exceeded_emits_e098() {
+    let schema = make_schema_with_decorators(
+        "server",
+        vec![make_schema_field("host", TypeExpr::String(sp()))],
+        vec![make_child_decorator("config", None, Some(1))],
+    );
+    let mut block = make_block(
+        "server",
+        Some("web"),
+        false,
+        vec![BodyItem::Attribute(make_attribute(
+            "host",
+            Expr::StringLit(make_string_lit("localhost")),
+        ))],
+    );
+    block.body.push(BodyItem::Block(make_block(
+        "config",
+        Some("a"),
+        false,
+        vec![],
+    )));
+    block.body.push(BodyItem::Block(make_block(
+        "config",
+        Some("b"),
+        false,
+        vec![],
+    )));
+    let doc = make_doc(vec![
+        DocItem::Body(BodyItem::Schema(schema)),
+        DocItem::Body(BodyItem::Block(block)),
+    ]);
+
+    let mut reg = SchemaRegistry::new();
+    let mut diags = DiagnosticBag::new();
+    reg.collect(&doc, &mut diags);
+    reg.validate(
+        &doc,
+        &indexmap::IndexMap::new(),
+        &SymbolSetRegistry::new(),
+        &mut diags,
+    );
+
+    let e098: Vec<_> = diags
+        .diagnostics()
+        .iter()
+        .filter(|d| d.code.as_deref() == Some("E098"))
+        .collect();
+    assert_eq!(e098.len(), 1, "expected E098: {:?}", diags.diagnostics());
+    assert!(e098[0].message.contains("config"));
+}
+
+#[test]
+fn child_within_bounds_no_error() {
+    let schema = make_schema_with_decorators(
+        "server",
+        vec![make_schema_field("host", TypeExpr::String(sp()))],
+        vec![make_child_decorator("endpoint", Some(1), Some(3))],
+    );
+    let mut block = make_block(
+        "server",
+        Some("web"),
+        false,
+        vec![BodyItem::Attribute(make_attribute(
+            "host",
+            Expr::StringLit(make_string_lit("localhost")),
+        ))],
+    );
+    block.body.push(BodyItem::Block(make_block(
+        "endpoint",
+        Some("ep1"),
+        false,
+        vec![],
+    )));
+    block.body.push(BodyItem::Block(make_block(
+        "endpoint",
+        Some("ep2"),
+        false,
+        vec![],
+    )));
+    let doc = make_doc(vec![
+        DocItem::Body(BodyItem::Schema(schema)),
+        DocItem::Body(BodyItem::Block(block)),
+    ]);
+
+    let mut reg = SchemaRegistry::new();
+    let mut diags = DiagnosticBag::new();
+    reg.collect(&doc, &mut diags);
+    reg.validate(
+        &doc,
+        &indexmap::IndexMap::new(),
+        &SymbolSetRegistry::new(),
+        &mut diags,
+    );
+
+    let cardinality_errors: Vec<_> = diags
+        .diagnostics()
+        .iter()
+        .filter(|d| d.code.as_deref() == Some("E097") || d.code.as_deref() == Some("E098"))
+        .collect();
+    assert!(
+        cardinality_errors.is_empty(),
+        "unexpected cardinality errors: {:?}",
+        cardinality_errors
+    );
+}
+
+#[test]
+fn child_adds_to_allowed_children() {
+    // @child("endpoint") should implicitly add "endpoint" to allowed children
+    let schema = make_schema_with_decorators(
+        "server",
+        vec![],
+        vec![make_child_decorator("endpoint", None, None)],
+    );
+    // An endpoint child should be allowed
+    let mut block = make_block("server", Some("web"), false, vec![]);
+    block.body.push(BodyItem::Block(make_block(
+        "endpoint",
+        Some("ep1"),
+        false,
+        vec![],
+    )));
+    // A "middleware" child should be rejected (allowed_children = ["endpoint"])
+    block.body.push(BodyItem::Block(make_block(
+        "middleware",
+        Some("mw1"),
+        false,
+        vec![],
+    )));
+
+    let doc = make_doc(vec![
+        DocItem::Body(BodyItem::Schema(schema)),
+        DocItem::Body(BodyItem::Block(block)),
+    ]);
+
+    let mut reg = SchemaRegistry::new();
+    let mut diags = DiagnosticBag::new();
+    reg.collect(&doc, &mut diags);
+    reg.validate(
+        &doc,
+        &indexmap::IndexMap::new(),
+        &SymbolSetRegistry::new(),
+        &mut diags,
+    );
+
+    let e095: Vec<_> = diags
+        .diagnostics()
+        .iter()
+        .filter(|d| d.code.as_deref() == Some("E095"))
+        .collect();
+    assert_eq!(e095.len(), 1);
+    assert!(e095[0].message.contains("middleware"));
+}
+
+// ── Feature 2: Self-nesting depth limit ───────────────────────────────────────
+
+fn make_child_decorator_with_depth(kind: &str, max_depth: i64) -> Decorator {
+    Decorator {
+        name: make_ident("child"),
+        args: vec![
+            DecoratorArg::Positional(Expr::StringLit(make_string_lit(kind))),
+            DecoratorArg::Named(make_ident("max_depth"), Expr::IntLit(max_depth, sp())),
+        ],
+        span: sp(),
+    }
+}
+
+#[test]
+fn self_nesting_exceeds_depth_emits_e099() {
+    let schema = make_schema_with_decorators(
+        "menu",
+        vec![make_schema_field("label", TypeExpr::String(sp()))],
+        vec![make_child_decorator_with_depth("menu", 2)],
+    );
+    // menu -> menu -> menu (depth 3 exceeds max_depth 2)
+    let deep = make_block(
+        "menu",
+        Some("deep"),
+        false,
+        vec![BodyItem::Attribute(make_attribute(
+            "label",
+            Expr::StringLit(make_string_lit("Recent")),
+        ))],
+    );
+    let sub = make_block(
+        "menu",
+        Some("sub"),
+        false,
+        vec![
+            BodyItem::Attribute(make_attribute(
+                "label",
+                Expr::StringLit(make_string_lit("Open")),
+            )),
+            BodyItem::Block(deep),
+        ],
+    );
+    let top = make_block(
+        "menu",
+        Some("top"),
+        false,
+        vec![
+            BodyItem::Attribute(make_attribute(
+                "label",
+                Expr::StringLit(make_string_lit("File")),
+            )),
+            BodyItem::Block(sub),
+        ],
+    );
+
+    let doc = make_doc(vec![
+        DocItem::Body(BodyItem::Schema(schema)),
+        DocItem::Body(BodyItem::Block(top)),
+    ]);
+
+    let mut reg = SchemaRegistry::new();
+    let mut diags = DiagnosticBag::new();
+    reg.collect(&doc, &mut diags);
+    reg.validate(
+        &doc,
+        &indexmap::IndexMap::new(),
+        &SymbolSetRegistry::new(),
+        &mut diags,
+    );
+
+    let e099: Vec<_> = diags
+        .diagnostics()
+        .iter()
+        .filter(|d| d.code.as_deref() == Some("E099"))
+        .collect();
+    assert_eq!(e099.len(), 1, "expected E099: {:?}", diags.diagnostics());
+    assert!(e099[0].message.contains("menu"));
+}
+
+#[test]
+fn self_nesting_within_depth_no_error() {
+    let schema = make_schema_with_decorators(
+        "menu",
+        vec![make_schema_field("label", TypeExpr::String(sp()))],
+        vec![make_child_decorator_with_depth("menu", 2)],
+    );
+    // menu -> menu (depth 2 is within max_depth 2)
+    let sub = make_block(
+        "menu",
+        Some("sub"),
+        false,
+        vec![BodyItem::Attribute(make_attribute(
+            "label",
+            Expr::StringLit(make_string_lit("Open")),
+        ))],
+    );
+    let top = make_block(
+        "menu",
+        Some("top"),
+        false,
+        vec![
+            BodyItem::Attribute(make_attribute(
+                "label",
+                Expr::StringLit(make_string_lit("File")),
+            )),
+            BodyItem::Block(sub),
+        ],
+    );
+
+    let doc = make_doc(vec![
+        DocItem::Body(BodyItem::Schema(schema)),
+        DocItem::Body(BodyItem::Block(top)),
+    ]);
+
+    let mut reg = SchemaRegistry::new();
+    let mut diags = DiagnosticBag::new();
+    reg.collect(&doc, &mut diags);
+    reg.validate(
+        &doc,
+        &indexmap::IndexMap::new(),
+        &SymbolSetRegistry::new(),
+        &mut diags,
+    );
+
+    let e099: Vec<_> = diags
+        .diagnostics()
+        .iter()
+        .filter(|d| d.code.as_deref() == Some("E099"))
+        .collect();
+    assert!(
+        e099.is_empty(),
+        "unexpected E099 errors: {:?}",
+        diags.diagnostics()
+    );
+}
+
+// ── Feature 3: Union field types (verify existing) ────────────────────────────
+
+#[test]
+fn union_type_accepts_all_variants() {
+    let union_type = TypeExpr::Union(
+        vec![
+            TypeExpr::String(sp()),
+            TypeExpr::Int(sp()),
+            TypeExpr::Bool(sp()),
+        ],
+        sp(),
+    );
+    let schema = make_schema("config", vec![make_schema_field("value", union_type)]);
+
+    // String value
+    let block_s = make_block(
+        "config",
+        Some("a"),
+        false,
+        vec![BodyItem::Attribute(make_attribute(
+            "value",
+            Expr::StringLit(make_string_lit("hello")),
+        ))],
+    );
+    // Int value
+    let block_i = make_block(
+        "config",
+        Some("b"),
+        false,
+        vec![BodyItem::Attribute(make_attribute(
+            "value",
+            Expr::IntLit(42, sp()),
+        ))],
+    );
+    // Bool value
+    let block_b = make_block(
+        "config",
+        Some("c"),
+        false,
+        vec![BodyItem::Attribute(make_attribute(
+            "value",
+            Expr::BoolLit(true, sp()),
+        ))],
+    );
+
+    let doc = make_doc(vec![
+        DocItem::Body(BodyItem::Schema(schema)),
+        DocItem::Body(BodyItem::Block(block_s)),
+        DocItem::Body(BodyItem::Block(block_i)),
+        DocItem::Body(BodyItem::Block(block_b)),
+    ]);
+
+    let mut reg = SchemaRegistry::new();
+    let mut diags = DiagnosticBag::new();
+    reg.collect(&doc, &mut diags);
+    reg.validate(
+        &doc,
+        &indexmap::IndexMap::new(),
+        &SymbolSetRegistry::new(),
+        &mut diags,
+    );
+
+    assert!(
+        !diags.has_errors(),
+        "union should accept all three types: {:?}",
+        diags.diagnostics()
+    );
+}
+
+#[test]
+fn union_type_rejects_wrong_type() {
+    let union_type = TypeExpr::Union(vec![TypeExpr::Int(sp()), TypeExpr::Bool(sp())], sp());
+    let schema = make_schema("config", vec![make_schema_field("value", union_type)]);
+
+    let block = make_block(
+        "config",
+        Some("a"),
+        false,
+        vec![BodyItem::Attribute(make_attribute(
+            "value",
+            Expr::StringLit(make_string_lit("not allowed")),
+        ))],
+    );
+
+    let doc = make_doc(vec![
+        DocItem::Body(BodyItem::Schema(schema)),
+        DocItem::Body(BodyItem::Block(block)),
+    ]);
+
+    let mut reg = SchemaRegistry::new();
+    let mut diags = DiagnosticBag::new();
+    reg.collect(&doc, &mut diags);
+    reg.validate(
+        &doc,
+        &indexmap::IndexMap::new(),
+        &SymbolSetRegistry::new(),
+        &mut diags,
+    );
+
+    let e071: Vec<_> = diags
+        .diagnostics()
+        .iter()
+        .filter(|d| d.code.as_deref() == Some("E071"))
+        .collect();
+    assert_eq!(e071.len(), 1);
+}
+
+// ── Feature 4: Tagged variant schemas ─────────────────────────────────────────
+
+#[test]
+fn tagged_variant_validates_matching_variant_fields() {
+    let tagged_dec = Decorator {
+        name: make_ident("tagged"),
+        args: vec![DecoratorArg::Positional(Expr::StringLit(make_string_lit(
+            "style",
+        )))],
+        span: sp(),
+    };
+    let mut schema = make_schema(
+        "api",
+        vec![make_schema_field("style", TypeExpr::String(sp())), {
+            let mut f = make_schema_field("version", TypeExpr::String(sp()));
+            f.decorators_after.push(Decorator {
+                name: make_ident("optional"),
+                args: vec![],
+                span: sp(),
+            });
+            f
+        }],
+    );
+    schema.decorators.push(tagged_dec);
+    schema.variants.push(SchemaVariant {
+        decorators: vec![],
+        tag_value: make_string_lit("rest"),
+        fields: vec![make_schema_field("base_path", TypeExpr::String(sp()))],
+        trivia: Trivia::default(),
+        span: sp(),
+    });
+    schema.variants.push(SchemaVariant {
+        decorators: vec![],
+        tag_value: make_string_lit("graphql"),
+        fields: vec![{
+            let mut f = make_schema_field("schema_path", TypeExpr::String(sp()));
+            f.decorators_after.push(Decorator {
+                name: make_ident("optional"),
+                args: vec![],
+                span: sp(),
+            });
+            f
+        }],
+        trivia: Trivia::default(),
+        span: sp(),
+    });
+
+    // REST API block — missing required base_path
+    let rest_block = make_block(
+        "api",
+        Some("rest-api"),
+        false,
+        vec![BodyItem::Attribute(make_attribute(
+            "style",
+            Expr::StringLit(make_string_lit("rest")),
+        ))],
+    );
+
+    let doc = make_doc(vec![
+        DocItem::Body(BodyItem::Schema(schema)),
+        DocItem::Body(BodyItem::Block(rest_block)),
+    ]);
+
+    let mut reg = SchemaRegistry::new();
+    let mut diags = DiagnosticBag::new();
+    reg.collect(&doc, &mut diags);
+    reg.validate(
+        &doc,
+        &indexmap::IndexMap::new(),
+        &SymbolSetRegistry::new(),
+        &mut diags,
+    );
+
+    // Should get E070 for missing base_path (variant required field)
+    let e070: Vec<_> = diags
+        .diagnostics()
+        .iter()
+        .filter(|d| d.code.as_deref() == Some("E070") && d.message.contains("base_path"))
+        .collect();
+    assert_eq!(
+        e070.len(),
+        1,
+        "expected missing base_path: {:?}",
+        diags.diagnostics()
+    );
+}
+
+#[test]
+fn tagged_variant_passes_when_fields_present() {
+    let tagged_dec = Decorator {
+        name: make_ident("tagged"),
+        args: vec![DecoratorArg::Positional(Expr::StringLit(make_string_lit(
+            "style",
+        )))],
+        span: sp(),
+    };
+    let mut schema = make_schema(
+        "api",
+        vec![make_schema_field("style", TypeExpr::String(sp()))],
+    );
+    schema.decorators.push(tagged_dec);
+    schema.variants.push(SchemaVariant {
+        decorators: vec![],
+        tag_value: make_string_lit("rest"),
+        fields: vec![make_schema_field("base_path", TypeExpr::String(sp()))],
+        trivia: Trivia::default(),
+        span: sp(),
+    });
+
+    let rest_block = make_block(
+        "api",
+        Some("rest-api"),
+        false,
+        vec![
+            BodyItem::Attribute(make_attribute(
+                "style",
+                Expr::StringLit(make_string_lit("rest")),
+            )),
+            BodyItem::Attribute(make_attribute(
+                "base_path",
+                Expr::StringLit(make_string_lit("/api/v1")),
+            )),
+        ],
+    );
+
+    let doc = make_doc(vec![
+        DocItem::Body(BodyItem::Schema(schema)),
+        DocItem::Body(BodyItem::Block(rest_block)),
+    ]);
+
+    let mut reg = SchemaRegistry::new();
+    let mut diags = DiagnosticBag::new();
+    reg.collect(&doc, &mut diags);
+    reg.validate(
+        &doc,
+        &indexmap::IndexMap::new(),
+        &SymbolSetRegistry::new(),
+        &mut diags,
+    );
+
+    assert!(
+        !diags.has_errors(),
+        "valid variant block should not error: {:?}",
+        diags.diagnostics()
+    );
+}
+
+#[test]
+fn tagged_variant_graphql_optional_passes() {
+    let tagged_dec = Decorator {
+        name: make_ident("tagged"),
+        args: vec![DecoratorArg::Positional(Expr::StringLit(make_string_lit(
+            "style",
+        )))],
+        span: sp(),
+    };
+    let mut schema = make_schema(
+        "api",
+        vec![make_schema_field("style", TypeExpr::String(sp()))],
+    );
+    schema.decorators.push(tagged_dec);
+    schema.variants.push(SchemaVariant {
+        decorators: vec![],
+        tag_value: make_string_lit("graphql"),
+        fields: vec![{
+            let mut f = make_schema_field("schema_path", TypeExpr::String(sp()));
+            f.decorators_after.push(Decorator {
+                name: make_ident("optional"),
+                args: vec![],
+                span: sp(),
+            });
+            f
+        }],
+        trivia: Trivia::default(),
+        span: sp(),
+    });
+
+    // graphql block with no schema_path — should pass since optional
+    let gql_block = make_block(
+        "api",
+        Some("gql-api"),
+        false,
+        vec![BodyItem::Attribute(make_attribute(
+            "style",
+            Expr::StringLit(make_string_lit("graphql")),
+        ))],
+    );
+
+    let doc = make_doc(vec![
+        DocItem::Body(BodyItem::Schema(schema)),
+        DocItem::Body(BodyItem::Block(gql_block)),
+    ]);
+
+    let mut reg = SchemaRegistry::new();
+    let mut diags = DiagnosticBag::new();
+    reg.collect(&doc, &mut diags);
+    reg.validate(
+        &doc,
+        &indexmap::IndexMap::new(),
+        &SymbolSetRegistry::new(),
+        &mut diags,
+    );
+
+    assert!(
+        !diags.has_errors(),
+        "optional variant field should not error: {:?}",
+        diags.diagnostics()
+    );
+}
+
+#[test]
+fn tagged_variant_no_match_only_common_fields() {
+    let tagged_dec = Decorator {
+        name: make_ident("tagged"),
+        args: vec![DecoratorArg::Positional(Expr::StringLit(make_string_lit(
+            "style",
+        )))],
+        span: sp(),
+    };
+    let mut schema = make_schema(
+        "api",
+        vec![make_schema_field("style", TypeExpr::String(sp()))],
+    );
+    schema.decorators.push(tagged_dec);
+    schema.variants.push(SchemaVariant {
+        decorators: vec![],
+        tag_value: make_string_lit("rest"),
+        fields: vec![make_schema_field("base_path", TypeExpr::String(sp()))],
+        trivia: Trivia::default(),
+        span: sp(),
+    });
+
+    // Block with style="unknown" — no variant matches, only common validated
+    let block = make_block(
+        "api",
+        Some("custom"),
+        false,
+        vec![BodyItem::Attribute(make_attribute(
+            "style",
+            Expr::StringLit(make_string_lit("unknown")),
+        ))],
+    );
+
+    let doc = make_doc(vec![
+        DocItem::Body(BodyItem::Schema(schema)),
+        DocItem::Body(BodyItem::Block(block)),
+    ]);
+
+    let mut reg = SchemaRegistry::new();
+    let mut diags = DiagnosticBag::new();
+    reg.collect(&doc, &mut diags);
+    reg.validate(
+        &doc,
+        &indexmap::IndexMap::new(),
+        &SymbolSetRegistry::new(),
+        &mut diags,
+    );
+
+    // No error — unknown variant value is valid, base_path not required
+    assert!(
+        !diags.has_errors(),
+        "unknown variant should not error: {:?}",
+        diags.diagnostics()
+    );
+}
+
+#[test]
+fn doc_decorator_round_trips_through_resolution() {
+    // Schema-level @doc
+    let doc_dec = Decorator {
+        name: make_ident("doc"),
+        args: vec![DecoratorArg::Positional(Expr::StringLit(make_string_lit(
+            "A service definition.",
+        )))],
+        span: sp(),
+    };
+    // Field-level @doc
+    let mut field = make_schema_field("name", TypeExpr::String(sp()));
+    field.decorators_after.push(Decorator {
+        name: make_ident("doc"),
+        args: vec![DecoratorArg::Positional(Expr::StringLit(make_string_lit(
+            "The service name.",
+        )))],
+        span: sp(),
+    });
+
+    let schema = make_schema_with_decorators("service", vec![field], vec![doc_dec]);
+    let doc = make_doc(vec![DocItem::Body(BodyItem::Schema(schema))]);
+
+    let mut reg = SchemaRegistry::new();
+    let mut diags = DiagnosticBag::new();
+    reg.collect(&doc, &mut diags);
+
+    assert!(!diags.has_errors());
+    let s = &reg.schemas["service"];
+    assert_eq!(s.doc.as_deref(), Some("A service definition."));
+    assert_eq!(s.fields[0].doc.as_deref(), Some("The service name."));
+}
+
+#[test]
+fn tagged_variant_children_override() {
+    let tagged_dec = Decorator {
+        name: make_ident("tagged"),
+        args: vec![DecoratorArg::Positional(Expr::StringLit(make_string_lit(
+            "style",
+        )))],
+        span: sp(),
+    };
+    let children_dec = Decorator {
+        name: make_ident("children"),
+        args: vec![DecoratorArg::Positional(Expr::List(
+            vec![Expr::StringLit(make_string_lit("resource"))],
+            sp(),
+        ))],
+        span: sp(),
+    };
+    let mut schema = make_schema(
+        "api",
+        vec![make_schema_field("style", TypeExpr::String(sp()))],
+    );
+    schema.decorators.push(tagged_dec);
+    schema.variants.push(SchemaVariant {
+        decorators: vec![children_dec],
+        tag_value: make_string_lit("rest"),
+        fields: vec![],
+        trivia: Trivia::default(),
+        span: sp(),
+    });
+
+    // REST API block with disallowed child
+    let mut block = make_block(
+        "api",
+        Some("rest-api"),
+        false,
+        vec![BodyItem::Attribute(make_attribute(
+            "style",
+            Expr::StringLit(make_string_lit("rest")),
+        ))],
+    );
+    block.body.push(BodyItem::Block(make_block(
+        "forbidden",
+        None,
+        false,
+        vec![],
+    )));
+
+    let doc = make_doc(vec![
+        DocItem::Body(BodyItem::Schema(schema)),
+        DocItem::Body(BodyItem::Block(block)),
+    ]);
+
+    let mut reg = SchemaRegistry::new();
+    let mut diags = DiagnosticBag::new();
+    reg.collect(&doc, &mut diags);
+    reg.validate(
+        &doc,
+        &indexmap::IndexMap::new(),
+        &SymbolSetRegistry::new(),
+        &mut diags,
+    );
+
+    let e095: Vec<_> = diags
+        .diagnostics()
+        .iter()
+        .filter(|d| d.code.as_deref() == Some("E095"))
+        .collect();
+    assert_eq!(
+        e095.len(),
+        1,
+        "expected E095 for forbidden child: {:?}",
+        diags.diagnostics()
+    );
+}
+
+// ── Symbol type, symbol sets, and @symbol_set tests ──────────────────────────
+
+#[test]
+fn symbol_type_check_accepts_symbol_value() {
+    assert!(check_type(
+        &Value::Symbol("GET".into()),
+        &TypeExpr::Symbol(sp())
+    ));
+}
+
+#[test]
+fn symbol_type_check_rejects_string() {
+    assert!(!check_type(
+        &Value::String("GET".into()),
+        &TypeExpr::Symbol(sp())
+    ));
+}
+
+#[test]
+fn symbol_type_name() {
+    assert_eq!(type_name(&TypeExpr::Symbol(sp())), "symbol");
+}
+
+#[test]
+fn symbol_value_equality() {
+    assert_eq!(Value::Symbol("GET".into()), Value::Symbol("GET".into()));
+    assert_ne!(Value::Symbol("GET".into()), Value::Symbol("POST".into()));
+    // Symbol != String even with same text
+    assert_ne!(Value::Symbol("GET".into()), Value::String("GET".into()));
+}
+
+#[test]
+fn symbol_set_collection_and_validation() {
+    // Test symbol_set registry directly
+    let decl = SymbolSetDecl {
+        name: make_ident("http_method"),
+        members: vec![
+            SymbolMember {
+                name: "GET".into(),
+                value: None,
+                span: sp(),
+            },
+            SymbolMember {
+                name: "POST".into(),
+                value: None,
+                span: sp(),
+            },
+            SymbolMember {
+                name: "PUT".into(),
+                value: None,
+                span: sp(),
+            },
+        ],
+        trivia: Trivia::default(),
+        span: sp(),
+    };
+    let doc = Document {
+        items: vec![DocItem::Body(BodyItem::SymbolSetDecl(decl))],
+        trivia: Trivia::default(),
+        span: sp(),
+    };
+
+    let mut diags = DiagnosticBag::new();
+    let mut reg = SymbolSetRegistry::new();
+    reg.collect(&doc, &mut diags);
+    assert!(reg.set_exists("http_method"));
+    assert!(reg.contains("http_method", "GET"));
+    assert!(reg.contains("http_method", "POST"));
+    assert!(!reg.contains("http_method", "PATCH"));
+}
+
+#[test]
+fn symbol_set_duplicate_name_e102() {
+    let decl1 = SymbolSetDecl {
+        name: make_ident("colors"),
+        members: vec![SymbolMember {
+            name: "red".into(),
+            value: None,
+            span: sp(),
+        }],
+        trivia: Trivia::default(),
+        span: sp(),
+    };
+    let decl2 = SymbolSetDecl {
+        name: make_ident("colors"),
+        members: vec![SymbolMember {
+            name: "blue".into(),
+            value: None,
+            span: sp(),
+        }],
+        trivia: Trivia::default(),
+        span: sp(),
+    };
+    let doc = Document {
+        items: vec![
+            DocItem::Body(BodyItem::SymbolSetDecl(decl1)),
+            DocItem::Body(BodyItem::SymbolSetDecl(decl2)),
+        ],
+        trivia: Trivia::default(),
+        span: sp(),
+    };
+
+    let mut diags = DiagnosticBag::new();
+    let mut reg = SymbolSetRegistry::new();
+    reg.collect(&doc, &mut diags);
+    let e102: Vec<_> = diags
+        .diagnostics()
+        .iter()
+        .filter(|d| d.code.as_deref() == Some("E102"))
+        .collect();
+    assert_eq!(e102.len(), 1, "expected E102 for duplicate symbol_set name");
+}
+
+#[test]
+fn symbol_set_duplicate_member_e103() {
+    let decl = SymbolSetDecl {
+        name: make_ident("colors"),
+        members: vec![
+            SymbolMember {
+                name: "red".into(),
+                value: None,
+                span: sp(),
+            },
+            SymbolMember {
+                name: "green".into(),
+                value: None,
+                span: sp(),
+            },
+            SymbolMember {
+                name: "red".into(),
+                value: None,
+                span: sp(),
+            },
+        ],
+        trivia: Trivia::default(),
+        span: sp(),
+    };
+    let doc = Document {
+        items: vec![DocItem::Body(BodyItem::SymbolSetDecl(decl))],
+        trivia: Trivia::default(),
+        span: sp(),
+    };
+
+    let mut diags = DiagnosticBag::new();
+    let mut reg = SymbolSetRegistry::new();
+    reg.collect(&doc, &mut diags);
+    let e103: Vec<_> = diags
+        .diagnostics()
+        .iter()
+        .filter(|d| d.code.as_deref() == Some("E103"))
+        .collect();
+    assert_eq!(e103.len(), 1, "expected E103 for duplicate symbol");
+}
+
+#[test]
+fn symbol_set_all_accepts_any() {
+    let reg = SymbolSetRegistry::new();
+    assert!(reg.contains("all", "anything"));
+    assert!(reg.set_exists("all"));
+}
+
+#[test]
+fn symbol_set_value_mapping() {
+    let decl = SymbolSetDecl {
+        name: make_ident("multiplicity"),
+        members: vec![
+            SymbolMember {
+                name: "zero_or_one".into(),
+                value: Some(make_string_lit("0..1")),
+                span: sp(),
+            },
+            SymbolMember {
+                name: "one".into(),
+                value: Some(make_string_lit("1")),
+                span: sp(),
+            },
+            SymbolMember {
+                name: "many".into(),
+                value: None,
+                span: sp(),
+            },
+        ],
+        trivia: Trivia::default(),
+        span: sp(),
+    };
+    let doc = Document {
+        items: vec![DocItem::Body(BodyItem::SymbolSetDecl(decl))],
+        trivia: Trivia::default(),
+        span: sp(),
+    };
+
+    let mut diags = DiagnosticBag::new();
+    let mut reg = SymbolSetRegistry::new();
+    reg.collect(&doc, &mut diags);
+    assert_eq!(reg.serialize_symbol("multiplicity", "zero_or_one"), "0..1");
+    assert_eq!(reg.serialize_symbol("multiplicity", "one"), "1");
+    assert_eq!(reg.serialize_symbol("multiplicity", "many"), "many");
 }

@@ -8,21 +8,147 @@ use wcl_eval::value::Value;
 
 use crate::types::{check_type, type_name};
 
+// ── Symbol Set Registry ──────────────────────────────────────────────────────
+
+/// Info about a single symbol set.
+#[derive(Debug, Clone)]
+pub struct SymbolSetInfo {
+    /// The declared member names.
+    pub members: Vec<String>,
+    /// Maps symbol_name → serialization string (only for members with `= "..."`)
+    pub value_map: HashMap<String, String>,
+    pub span: Span,
+}
+
+/// Registry of all `symbol_set` declarations in a document.
+#[derive(Debug, Default)]
+pub struct SymbolSetRegistry {
+    pub sets: HashMap<String, SymbolSetInfo>,
+}
+
+impl SymbolSetRegistry {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Collect symbol_set declarations from the document AST.
+    pub fn collect(&mut self, doc: &Document, diagnostics: &mut DiagnosticBag) {
+        for item in &doc.items {
+            if let DocItem::Body(BodyItem::SymbolSetDecl(decl)) = item {
+                let name = decl.name.name.clone();
+                if self.sets.contains_key(&name) {
+                    diagnostics.error_with_code(
+                        format!("duplicate symbol_set name '{}'", name),
+                        decl.span,
+                        "E102",
+                    );
+                    continue;
+                }
+                let mut members = Vec::new();
+                let mut value_map = HashMap::new();
+                let mut seen_members = HashMap::new();
+                for member in &decl.members {
+                    if let Some(prev_span) = seen_members.get(&member.name) {
+                        diagnostics.error_with_code(
+                            format!(
+                                "duplicate symbol ':{name}' in symbol_set '{set}'",
+                                name = member.name,
+                                set = decl.name.name,
+                            ),
+                            member.span,
+                            "E103",
+                        );
+                        let _ = prev_span;
+                        continue;
+                    }
+                    seen_members.insert(member.name.clone(), member.span);
+                    members.push(member.name.clone());
+                    if let Some(ref val) = member.value {
+                        let s = string_lit_to_string(val);
+                        value_map.insert(member.name.clone(), s);
+                    }
+                }
+                self.sets.insert(
+                    name,
+                    SymbolSetInfo {
+                        members,
+                        value_map,
+                        span: decl.span,
+                    },
+                );
+            }
+        }
+    }
+
+    /// Check if a symbol name is a member of the named set.
+    pub fn contains(&self, set_name: &str, symbol_name: &str) -> bool {
+        if set_name == "all" {
+            return true;
+        }
+        self.sets
+            .get(set_name)
+            .map(|info| info.members.contains(&symbol_name.to_string()))
+            .unwrap_or(false)
+    }
+
+    /// Returns true if a set with the given name exists (or name is "all").
+    pub fn set_exists(&self, set_name: &str) -> bool {
+        set_name == "all" || self.sets.contains_key(set_name)
+    }
+
+    /// Get the serialization string for a symbol in a set.
+    /// Returns the mapped value if one exists, otherwise the symbol name itself.
+    pub fn serialize_symbol(&self, set_name: &str, symbol_name: &str) -> String {
+        if let Some(info) = self.sets.get(set_name) {
+            if let Some(mapped) = info.value_map.get(symbol_name) {
+                return mapped.clone();
+            }
+        }
+        symbol_name.to_string()
+    }
+}
+
 /// A resolved schema definition
 #[derive(Debug, Clone)]
 pub struct ResolvedSchema {
     pub name: String,
+    pub doc: Option<String>,
     pub fields: Vec<ResolvedField>,
     pub open: bool,
     pub text_field: Option<String>,
     pub allowed_children: Option<Vec<String>>,
     pub allowed_parents: Option<Vec<String>>,
+    pub child_constraints: Vec<ChildConstraint>,
+    pub tag_field: Option<String>,
+    pub variants: Vec<ResolvedVariant>,
+    pub span: Span,
+}
+
+/// Per-child-kind cardinality and depth constraints from `@child` decorators.
+#[derive(Debug, Clone)]
+pub struct ChildConstraint {
+    pub kind: String,
+    pub min: Option<usize>,
+    pub max: Option<usize>,
+    pub max_depth: Option<usize>,
+    pub span: Span,
+}
+
+/// A resolved tagged variant arm inside a schema.
+#[derive(Debug, Clone)]
+pub struct ResolvedVariant {
+    pub tag_value: String,
+    pub doc: Option<String>,
+    pub fields: Vec<ResolvedField>,
+    pub allowed_children: Option<Vec<String>>,
+    pub child_constraints: Vec<ChildConstraint>,
     pub span: Span,
 }
 
 #[derive(Debug, Clone)]
 pub struct ResolvedField {
     pub name: String,
+    pub doc: Option<String>,
     pub type_expr: TypeExpr,
     pub required: bool,
     pub default: Option<Value>,
@@ -31,6 +157,7 @@ pub struct ResolvedField {
     pub id_pattern: Option<String>,
     pub text: bool,
     pub inline_index: Option<usize>,
+    pub symbol_set: Option<String>,
     pub span: Span,
 }
 
@@ -74,13 +201,59 @@ impl SchemaRegistry {
     }
 
     fn resolve_schema(&self, schema: &Schema, diagnostics: &mut DiagnosticBag) -> ResolvedSchema {
+        let doc = get_decorator_string_arg(&schema.decorators, "doc");
         let open = schema.decorators.iter().any(|d| d.name.name == "open");
-        let allowed_children = get_decorator_string_list_arg(&schema.decorators, "children");
+        let mut allowed_children = get_decorator_string_list_arg(&schema.decorators, "children");
         let allowed_parents = get_decorator_string_list_arg(&schema.decorators, "parent");
+        let tag_field = get_decorator_string_arg(&schema.decorators, "tagged");
+
+        // Parse @child decorators
+        let child_constraints: Vec<ChildConstraint> = schema
+            .decorators
+            .iter()
+            .filter(|d| d.name.name == "child")
+            .filter_map(parse_child_decorator)
+            .collect();
+
+        // Merge @child kinds into allowed_children
+        if !child_constraints.is_empty() {
+            let children = allowed_children.get_or_insert_with(Vec::new);
+            for cc in &child_constraints {
+                if !children.contains(&cc.kind) {
+                    children.push(cc.kind.clone());
+                }
+            }
+        }
+
+        // Resolve variants
+        let mut variants = Vec::new();
+        for variant in &schema.variants {
+            let variant_fields = resolve_fields(&variant.fields, &mut None, diagnostics);
+            let variant_allowed_children =
+                get_decorator_string_list_arg(&variant.decorators, "children");
+            let variant_child_constraints: Vec<ChildConstraint> = variant
+                .decorators
+                .iter()
+                .filter(|d| d.name.name == "child")
+                .filter_map(parse_child_decorator)
+                .collect();
+            let variant_doc = get_decorator_string_arg(&variant.decorators, "doc");
+            variants.push(ResolvedVariant {
+                tag_value: string_lit_to_string(&variant.tag_value),
+                doc: variant_doc,
+                fields: variant_fields,
+                allowed_children: variant_allowed_children,
+                child_constraints: variant_child_constraints,
+                span: variant.span,
+            });
+        }
+
         let mut fields = Vec::new();
         let mut text_field = None;
 
         for field in &schema.fields {
+            let field_doc = get_decorator_string_arg(&field.decorators_before, "doc")
+                .or_else(|| get_decorator_string_arg(&field.decorators_after, "doc"));
             let required = !has_decorator(&field.decorators_before, "optional")
                 && !has_decorator(&field.decorators_after, "optional");
             let default = get_decorator_value(&field.decorators_before, "default")
@@ -126,8 +299,12 @@ impl SchemaRegistry {
                 }
             }
 
+            let symbol_set = get_decorator_string_arg(&field.decorators_before, "symbol_set")
+                .or_else(|| get_decorator_string_arg(&field.decorators_after, "symbol_set"));
+
             fields.push(ResolvedField {
                 name: field.name.name.clone(),
+                doc: field_doc,
                 type_expr: field.type_expr.clone(),
                 required,
                 default,
@@ -136,17 +313,22 @@ impl SchemaRegistry {
                 id_pattern,
                 text: is_text,
                 inline_index,
+                symbol_set,
                 span: field.span,
             });
         }
 
         ResolvedSchema {
             name: string_lit_to_string(&schema.name),
+            doc,
             fields,
             open,
             text_field,
             allowed_children,
             allowed_parents,
+            child_constraints,
+            tag_field,
+            variants,
             span: schema.span,
         }
     }
@@ -159,11 +341,12 @@ impl SchemaRegistry {
         &self,
         doc: &Document,
         values: &IndexMap<String, Value>,
+        symbol_sets: &SymbolSetRegistry,
         diagnostics: &mut DiagnosticBag,
     ) {
         // Collect all block IDs grouped by kind for @ref validation.
         let block_ids = collect_block_ids(&doc.items);
-        self.validate_items(&doc.items, values, &block_ids, diagnostics);
+        self.validate_items(&doc.items, values, &block_ids, symbol_sets, diagnostics);
     }
 
     fn validate_items(
@@ -171,13 +354,22 @@ impl SchemaRegistry {
         items: &[DocItem],
         values: &IndexMap<String, Value>,
         block_ids: &HashMap<String, Vec<String>>,
+        symbol_sets: &SymbolSetRegistry,
         diagnostics: &mut DiagnosticBag,
     ) {
         for item in items {
             match item {
                 DocItem::Body(BodyItem::Block(block)) => {
                     let block_values = resolve_block_values(block, values);
-                    self.validate_block(block, block_values.as_ref(), block_ids, None, diagnostics);
+                    self.validate_block(
+                        block,
+                        block_values.as_ref(),
+                        block_ids,
+                        None,
+                        &HashMap::new(),
+                        symbol_sets,
+                        diagnostics,
+                    );
                 }
                 DocItem::Body(BodyItem::Table(table)) => {
                     self.validate_table_containment(table, None, diagnostics);
@@ -240,16 +432,40 @@ impl SchemaRegistry {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn validate_block(
         &self,
         block: &Block,
         block_values: Option<&IndexMap<String, Value>>,
         block_ids: &HashMap<String, Vec<String>>,
         parent_kind: Option<&str>,
+        kind_depths: &HashMap<String, usize>,
+        symbol_sets: &SymbolSetRegistry,
         diagnostics: &mut DiagnosticBag,
     ) {
         let child_kind = &block.kind.name;
         let parent_name = parent_kind.unwrap_or("_root");
+
+        // E099: Check self-nesting depth limit
+        if let Some(parent_schema) = self.schemas.get(parent_name) {
+            for cc in &parent_schema.child_constraints {
+                if cc.kind == *child_kind {
+                    if let Some(max_depth) = cc.max_depth {
+                        let current_depth = kind_depths.get(child_kind).copied().unwrap_or(0);
+                        if current_depth >= max_depth {
+                            diagnostics.error_with_code(
+                                format!(
+                                    "block '{}' exceeds maximum nesting depth of {}",
+                                    child_kind, max_depth,
+                                ),
+                                block.span,
+                                "E099",
+                            );
+                        }
+                    }
+                }
+            }
+        }
 
         // E096: Check child's @parent constraint
         if let Some(child_schema) = self.schemas.get(child_kind) {
@@ -347,7 +563,11 @@ impl SchemaRegistry {
             if !schema.open {
                 for item in &block.body {
                     if let BodyItem::Attribute(attr) = item {
-                        let known = schema.fields.iter().any(|f| f.name == attr.name.name);
+                        let known = schema.fields.iter().any(|f| f.name == attr.name.name)
+                            || schema
+                                .variants
+                                .iter()
+                                .any(|v| v.fields.iter().any(|f| f.name == attr.name.name));
                         if !known {
                             diagnostics.error_with_code(
                                 format!(
@@ -409,6 +629,30 @@ impl SchemaRegistry {
                                     diagnostics,
                                 );
                             }
+
+                            // M6: @symbol_set validation
+                            if let Some(ref set_name) = field.symbol_set {
+                                if !symbol_sets.set_exists(set_name) {
+                                    diagnostics.error_with_code(
+                                        format!(
+                                            "referenced symbol_set '{}' does not exist (field '{}')",
+                                            set_name, field.name
+                                        ),
+                                        attr.span,
+                                        "E101",
+                                    );
+                                } else if let Value::Symbol(ref sym) = val {
+                                    if !symbol_sets.contains(set_name, sym) {
+                                        diagnostics.error_with_code(
+                                            format!(
+                                                "symbol ':{sym}' is not a member of symbol_set '{set_name}'",
+                                            ),
+                                            attr.span,
+                                            "E100",
+                                        );
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -438,7 +682,183 @@ impl SchemaRegistry {
             }
         }
 
+        // Child cardinality validation (E097/E098) and tagged variant validation
+        if let Some(schema) = self.schemas.get(&block.kind.name) {
+            // E097/E098: @child cardinality constraints
+            // Determine which constraints to use (variant may override)
+            let active_constraints = &schema.child_constraints;
+            let mut active_children_override: Option<&Option<Vec<String>>> = None;
+
+            // Tagged variant validation
+            if let Some(ref tag_name) = schema.tag_field {
+                // Find the tag field value
+                let tag_value = block_values
+                    .and_then(|bv| bv.get(tag_name))
+                    .cloned()
+                    .or_else(|| {
+                        block.body.iter().find_map(|item| {
+                            if let BodyItem::Attribute(attr) = item {
+                                if attr.name.name == *tag_name {
+                                    return expr_to_value(&attr.value);
+                                }
+                            }
+                            None
+                        })
+                    });
+
+                if let Some(Value::String(ref tv)) = tag_value {
+                    if let Some(variant) = schema.variants.iter().find(|v| v.tag_value == *tv) {
+                        // Validate variant's required fields
+                        for field in &variant.fields {
+                            if field.required {
+                                let has_attr = block.body.iter().any(|item| {
+                                    matches!(item, BodyItem::Attribute(attr) if attr.name.name == field.name)
+                                });
+                                if !has_attr {
+                                    diagnostics.error_with_code(
+                                        format!(
+                                            "missing required field '{}' in block '{}' (variant '{}')",
+                                            field.name, block.kind.name, tv
+                                        ),
+                                        block.span,
+                                        "E070",
+                                    );
+                                }
+                            }
+                        }
+
+                        // Type check variant fields
+                        for item in &block.body {
+                            if let BodyItem::Attribute(attr) = item {
+                                if let Some(field) =
+                                    variant.fields.iter().find(|f| f.name == attr.name.name)
+                                {
+                                    let value = block_values
+                                        .and_then(|bv| bv.get(&attr.name.name))
+                                        .cloned()
+                                        .or_else(|| expr_to_value(&attr.value));
+
+                                    if let Some(ref val) = value {
+                                        if !check_type(val, &field.type_expr) {
+                                            diagnostics.error_with_code(
+                                                format!(
+                                                    "type mismatch for '{}': expected {}, got {}",
+                                                    field.name,
+                                                    type_name(&field.type_expr),
+                                                    value_type_label(val),
+                                                ),
+                                                attr.span,
+                                                "E071",
+                                            );
+                                        }
+
+                                        if let Some(ref constraints) = field.validate {
+                                            validate_constraints(
+                                                val,
+                                                constraints,
+                                                &field.name,
+                                                attr.span,
+                                                diagnostics,
+                                            );
+                                        }
+
+                                        // symbol_set validation for variant fields
+                                        if let Some(ref set_name) = field.symbol_set {
+                                            if !symbol_sets.set_exists(set_name) {
+                                                diagnostics.error_with_code(
+                                                    format!(
+                                                        "referenced symbol_set '{}' does not exist (field '{}')",
+                                                        set_name, field.name
+                                                    ),
+                                                    attr.span,
+                                                    "E101",
+                                                );
+                                            } else if let Value::Symbol(ref sym) = val {
+                                                if !symbol_sets.contains(set_name, sym) {
+                                                    diagnostics.error_with_code(
+                                                        format!(
+                                                            "symbol ':{sym}' is not a member of symbol_set '{set_name}'",
+                                                        ),
+                                                        attr.span,
+                                                        "E100",
+                                                    );
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // If variant has allowed_children, use it instead
+                        if variant.allowed_children.is_some() {
+                            active_children_override = Some(&variant.allowed_children);
+                        }
+                    }
+                }
+            }
+
+            // Check cardinality constraints
+            for cc in active_constraints {
+                let count = block
+                    .body
+                    .iter()
+                    .filter(
+                        |item| matches!(item, BodyItem::Block(child) if child.kind.name == cc.kind),
+                    )
+                    .count();
+
+                if let Some(min) = cc.min {
+                    if count < min {
+                        diagnostics.error_with_code(
+                            format!(
+                                "block '{}' requires at least {} '{}' child(ren), found {}",
+                                block.kind.name, min, cc.kind, count,
+                            ),
+                            block.span,
+                            "E097",
+                        );
+                    }
+                }
+
+                if let Some(max) = cc.max {
+                    if count > max {
+                        diagnostics.error_with_code(
+                            format!(
+                                "block '{}' allows at most {} '{}' child(ren), found {}",
+                                block.kind.name, max, cc.kind, count,
+                            ),
+                            block.span,
+                            "E098",
+                        );
+                    }
+                }
+            }
+
+            // If variant overrides children, validate child containment with variant's list
+            if let Some(Some(ref allowed)) = active_children_override {
+                for item in &block.body {
+                    if let BodyItem::Block(child) = item {
+                        if !allowed.iter().any(|c| c == &child.kind.name) {
+                            diagnostics.error_with_code(
+                                format!(
+                                    "block kind '{}' is not allowed as a child of '{}' (variant); allowed children: [{}]",
+                                    child.kind.name,
+                                    block.kind.name,
+                                    allowed.join(", "),
+                                ),
+                                child.span,
+                                "E095",
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
         // Recursively validate nested blocks and tables
+        let mut child_depths = kind_depths.clone();
+        *child_depths.entry(block.kind.name.clone()).or_insert(0) += 1;
         for item in &block.body {
             match item {
                 BodyItem::Block(child) => {
@@ -448,6 +868,8 @@ impl SchemaRegistry {
                         child_values.as_ref(),
                         block_ids,
                         Some(&block.kind.name),
+                        &child_depths,
+                        symbol_sets,
                         diagnostics,
                     );
                 }
@@ -458,6 +880,116 @@ impl SchemaRegistry {
             }
         }
     }
+}
+
+/// Parse a `@child("kind", min=N, max=N, max_depth=N)` decorator.
+fn parse_child_decorator(d: &Decorator) -> Option<ChildConstraint> {
+    let kind = d.args.first().and_then(|arg| match arg {
+        DecoratorArg::Positional(Expr::StringLit(s)) => Some(string_lit_to_string(s)),
+        _ => None,
+    })?;
+    let mut min = None;
+    let mut max = None;
+    let mut max_depth = None;
+    for arg in &d.args {
+        if let DecoratorArg::Named(name, expr) = arg {
+            let val = expr_to_value(expr).and_then(|v| match v {
+                Value::Int(i) => Some(i as usize),
+                _ => None,
+            });
+            match name.name.as_str() {
+                "min" => min = val,
+                "max" => max = val,
+                "max_depth" => max_depth = val,
+                _ => {}
+            }
+        }
+    }
+    Some(ChildConstraint {
+        kind,
+        min,
+        max,
+        max_depth,
+        span: d.span,
+    })
+}
+
+/// Resolve a list of schema fields (shared by base schema and variants).
+fn resolve_fields(
+    fields: &[SchemaField],
+    text_field: &mut Option<String>,
+    diagnostics: &mut DiagnosticBag,
+) -> Vec<ResolvedField> {
+    let mut result = Vec::new();
+    for field in fields {
+        let field_doc = get_decorator_string_arg(&field.decorators_before, "doc")
+            .or_else(|| get_decorator_string_arg(&field.decorators_after, "doc"));
+        let required = !has_decorator(&field.decorators_before, "optional")
+            && !has_decorator(&field.decorators_after, "optional");
+        let default = get_decorator_value(&field.decorators_before, "default")
+            .or_else(|| get_decorator_value(&field.decorators_after, "default"));
+        let validate = get_validate_constraints(&field.decorators_before)
+            .or_else(|| get_validate_constraints(&field.decorators_after));
+        let ref_target = get_decorator_string_arg(&field.decorators_before, "ref")
+            .or_else(|| get_decorator_string_arg(&field.decorators_after, "ref"));
+        let id_pattern = get_decorator_string_arg(&field.decorators_before, "id_pattern")
+            .or_else(|| get_decorator_string_arg(&field.decorators_after, "id_pattern"));
+        let inline_index = get_decorator_int_arg(&field.decorators_before, "inline")
+            .or_else(|| get_decorator_int_arg(&field.decorators_after, "inline"))
+            .map(|n| n as usize);
+        let is_text = has_decorator(&field.decorators_before, "text")
+            || has_decorator(&field.decorators_after, "text");
+
+        if is_text {
+            if let Some(text_field) = text_field {
+                if field.name.name != "content" {
+                    diagnostics.error_with_code(
+                        format!(
+                            "@text field must be named 'content', found '{}'",
+                            field.name.name
+                        ),
+                        field.span,
+                        "E094",
+                    );
+                }
+                if !matches!(field.type_expr, TypeExpr::String(_)) {
+                    diagnostics.error_with_code(
+                        "@text field must have type 'string'".to_string(),
+                        field.span,
+                        "E094",
+                    );
+                }
+                if !text_field.is_empty() {
+                    diagnostics.error_with_code(
+                        "schema may have at most one @text field".to_string(),
+                        field.span,
+                        "E094",
+                    );
+                } else {
+                    *text_field = field.name.name.clone();
+                }
+            }
+        }
+
+        let symbol_set = get_decorator_string_arg(&field.decorators_before, "symbol_set")
+            .or_else(|| get_decorator_string_arg(&field.decorators_after, "symbol_set"));
+
+        result.push(ResolvedField {
+            name: field.name.name.clone(),
+            doc: field_doc,
+            type_expr: field.type_expr.clone(),
+            required,
+            default,
+            validate,
+            ref_target,
+            id_pattern,
+            text: is_text,
+            inline_index,
+            symbol_set,
+            span: field.span,
+        });
+    }
+    result
 }
 
 // ── Helper functions (pub(crate) so decorator.rs can reuse them) ──────────────
@@ -540,6 +1072,7 @@ pub(crate) fn expr_to_value(expr: &Expr) -> Option<Value> {
         Expr::BoolLit(b, _) => Some(Value::Bool(*b)),
         Expr::NullLit(_) => Some(Value::Null),
         Expr::StringLit(s) => Some(Value::String(string_lit_to_string(s))),
+        Expr::SymbolLit(name, _) => Some(Value::Symbol(name.clone())),
         Expr::List(items, _) => {
             let vals: Option<Vec<_>> = items.iter().map(expr_to_value).collect();
             vals.map(Value::List)
@@ -612,6 +1145,7 @@ pub(crate) fn value_type_label(value: &Value) -> &'static str {
         Value::List(_) => "list",
         Value::Map(_) => "map",
         Value::Set(_) => "set",
+        Value::Symbol(_) => "symbol",
         Value::BlockRef(_) => "block",
         Value::Function(_) => "function",
     }
@@ -884,6 +1418,7 @@ mod tests {
             decorators: vec![],
             name: make_string_lit(name),
             fields,
+            variants: vec![],
             trivia: Trivia::default(),
             span: dummy_span(),
         }
@@ -1093,7 +1628,7 @@ mod tests {
         assert!(!diags.has_errors());
 
         let values = IndexMap::new();
-        reg.validate(&doc, &values, &mut diags);
+        reg.validate(&doc, &values, &SymbolSetRegistry::new(), &mut diags);
 
         let e093: Vec<_> = diags
             .diagnostics()
@@ -1134,7 +1669,7 @@ mod tests {
         assert!(!diags.has_errors());
 
         let values = IndexMap::new();
-        reg.validate(&doc, &values, &mut diags);
+        reg.validate(&doc, &values, &SymbolSetRegistry::new(), &mut diags);
 
         let e094: Vec<_> = diags
             .diagnostics()
@@ -1168,7 +1703,7 @@ mod tests {
         assert!(!diags.has_errors());
 
         let values = IndexMap::new();
-        reg.validate(&doc, &values, &mut diags);
+        reg.validate(&doc, &values, &SymbolSetRegistry::new(), &mut diags);
 
         // No E093 or E094
         let text_errors: Vec<_> = diags
@@ -1210,6 +1745,7 @@ mod tests {
             decorators,
             name: make_string_lit(name),
             fields,
+            variants: vec![],
             trivia: Trivia::default(),
             span: dummy_span(),
         }
@@ -1250,7 +1786,12 @@ mod tests {
         let mut reg = SchemaRegistry::new();
         let mut diags = DiagnosticBag::new();
         reg.collect(&doc, &mut diags);
-        reg.validate(&doc, &IndexMap::new(), &mut diags);
+        reg.validate(
+            &doc,
+            &IndexMap::new(),
+            &SymbolSetRegistry::new(),
+            &mut diags,
+        );
         assert!(
             !diags.has_errors(),
             "unexpected errors: {:?}",
@@ -1276,7 +1817,12 @@ mod tests {
         let mut reg = SchemaRegistry::new();
         let mut diags = DiagnosticBag::new();
         reg.collect(&doc, &mut diags);
-        reg.validate(&doc, &IndexMap::new(), &mut diags);
+        reg.validate(
+            &doc,
+            &IndexMap::new(),
+            &SymbolSetRegistry::new(),
+            &mut diags,
+        );
         let e095: Vec<_> = diags
             .diagnostics()
             .iter()
@@ -1303,7 +1849,12 @@ mod tests {
         let mut reg = SchemaRegistry::new();
         let mut diags = DiagnosticBag::new();
         reg.collect(&doc, &mut diags);
-        reg.validate(&doc, &IndexMap::new(), &mut diags);
+        reg.validate(
+            &doc,
+            &IndexMap::new(),
+            &SymbolSetRegistry::new(),
+            &mut diags,
+        );
         let e096: Vec<_> = diags
             .diagnostics()
             .iter()
@@ -1328,7 +1879,12 @@ mod tests {
         let mut reg = SchemaRegistry::new();
         let mut diags = DiagnosticBag::new();
         reg.collect(&doc, &mut diags);
-        reg.validate(&doc, &IndexMap::new(), &mut diags);
+        reg.validate(
+            &doc,
+            &IndexMap::new(),
+            &SymbolSetRegistry::new(),
+            &mut diags,
+        );
         let e096: Vec<_> = diags
             .diagnostics()
             .iter()
@@ -1353,7 +1909,12 @@ mod tests {
         let mut reg = SchemaRegistry::new();
         let mut diags = DiagnosticBag::new();
         reg.collect(&doc, &mut diags);
-        reg.validate(&doc, &IndexMap::new(), &mut diags);
+        reg.validate(
+            &doc,
+            &IndexMap::new(),
+            &SymbolSetRegistry::new(),
+            &mut diags,
+        );
         let e096: Vec<_> = diags
             .diagnostics()
             .iter()
@@ -1380,7 +1941,12 @@ mod tests {
         let mut reg = SchemaRegistry::new();
         let mut diags = DiagnosticBag::new();
         reg.collect(&doc, &mut diags);
-        reg.validate(&doc, &IndexMap::new(), &mut diags);
+        reg.validate(
+            &doc,
+            &IndexMap::new(),
+            &SymbolSetRegistry::new(),
+            &mut diags,
+        );
         let e096: Vec<_> = diags
             .diagnostics()
             .iter()
@@ -1407,7 +1973,12 @@ mod tests {
         let mut reg = SchemaRegistry::new();
         let mut diags = DiagnosticBag::new();
         reg.collect(&doc, &mut diags);
-        reg.validate(&doc, &IndexMap::new(), &mut diags);
+        reg.validate(
+            &doc,
+            &IndexMap::new(),
+            &SymbolSetRegistry::new(),
+            &mut diags,
+        );
         let e095: Vec<_> = diags
             .diagnostics()
             .iter()
@@ -1430,7 +2001,12 @@ mod tests {
         let mut reg = SchemaRegistry::new();
         let mut diags = DiagnosticBag::new();
         reg.collect(&doc, &mut diags);
-        reg.validate(&doc, &IndexMap::new(), &mut diags);
+        reg.validate(
+            &doc,
+            &IndexMap::new(),
+            &SymbolSetRegistry::new(),
+            &mut diags,
+        );
         let containment: Vec<_> = diags
             .diagnostics()
             .iter()
@@ -1463,7 +2039,12 @@ mod tests {
         let mut reg = SchemaRegistry::new();
         let mut diags = DiagnosticBag::new();
         reg.collect(&doc, &mut diags);
-        reg.validate(&doc, &IndexMap::new(), &mut diags);
+        reg.validate(
+            &doc,
+            &IndexMap::new(),
+            &SymbolSetRegistry::new(),
+            &mut diags,
+        );
         let e095: Vec<_> = diags
             .diagnostics()
             .iter()
@@ -1494,7 +2075,12 @@ mod tests {
         let mut reg = SchemaRegistry::new();
         let mut diags = DiagnosticBag::new();
         reg.collect(&doc, &mut diags);
-        reg.validate(&doc, &IndexMap::new(), &mut diags);
+        reg.validate(
+            &doc,
+            &IndexMap::new(),
+            &SymbolSetRegistry::new(),
+            &mut diags,
+        );
         let e095: Vec<_> = diags
             .diagnostics()
             .iter()
@@ -1511,7 +2097,12 @@ mod tests {
         let mut reg = SchemaRegistry::new();
         let mut diags = DiagnosticBag::new();
         reg.collect(&doc, &mut diags);
-        reg.validate(&doc, &IndexMap::new(), &mut diags);
+        reg.validate(
+            &doc,
+            &IndexMap::new(),
+            &SymbolSetRegistry::new(),
+            &mut diags,
+        );
         let containment: Vec<_> = diags
             .diagnostics()
             .iter()
@@ -1543,7 +2134,12 @@ mod tests {
         let mut reg = SchemaRegistry::new();
         let mut diags = DiagnosticBag::new();
         reg.collect(&doc, &mut diags);
-        reg.validate(&doc, &IndexMap::new(), &mut diags);
+        reg.validate(
+            &doc,
+            &IndexMap::new(),
+            &SymbolSetRegistry::new(),
+            &mut diags,
+        );
         let containment: Vec<_> = diags
             .diagnostics()
             .iter()
@@ -1570,7 +2166,12 @@ mod tests {
         let mut reg = SchemaRegistry::new();
         let mut diags = DiagnosticBag::new();
         reg.collect(&doc, &mut diags);
-        reg.validate(&doc, &IndexMap::new(), &mut diags);
+        reg.validate(
+            &doc,
+            &IndexMap::new(),
+            &SymbolSetRegistry::new(),
+            &mut diags,
+        );
         let e095: Vec<_> = diags
             .diagnostics()
             .iter()
@@ -1597,7 +2198,12 @@ mod tests {
         let mut reg = SchemaRegistry::new();
         let mut diags = DiagnosticBag::new();
         reg.collect(&doc, &mut diags);
-        reg.validate(&doc, &IndexMap::new(), &mut diags);
+        reg.validate(
+            &doc,
+            &IndexMap::new(),
+            &SymbolSetRegistry::new(),
+            &mut diags,
+        );
         let containment: Vec<_> = diags
             .diagnostics()
             .iter()
@@ -1627,7 +2233,12 @@ mod tests {
         let mut reg = SchemaRegistry::new();
         let mut diags = DiagnosticBag::new();
         reg.collect(&doc, &mut diags);
-        reg.validate(&doc, &IndexMap::new(), &mut diags);
+        reg.validate(
+            &doc,
+            &IndexMap::new(),
+            &SymbolSetRegistry::new(),
+            &mut diags,
+        );
         let e095: Vec<_> = diags
             .diagnostics()
             .iter()
@@ -1652,7 +2263,12 @@ mod tests {
         let mut reg = SchemaRegistry::new();
         let mut diags = DiagnosticBag::new();
         reg.collect(&doc, &mut diags);
-        reg.validate(&doc, &IndexMap::new(), &mut diags);
+        reg.validate(
+            &doc,
+            &IndexMap::new(),
+            &SymbolSetRegistry::new(),
+            &mut diags,
+        );
         let e096: Vec<_> = diags
             .diagnostics()
             .iter()
@@ -1680,7 +2296,12 @@ mod tests {
         let mut reg = SchemaRegistry::new();
         let mut diags = DiagnosticBag::new();
         reg.collect(&doc, &mut diags);
-        reg.validate(&doc, &IndexMap::new(), &mut diags);
+        reg.validate(
+            &doc,
+            &IndexMap::new(),
+            &SymbolSetRegistry::new(),
+            &mut diags,
+        );
         let e096: Vec<_> = diags
             .diagnostics()
             .iter()
@@ -1705,7 +2326,12 @@ mod tests {
         let mut reg = SchemaRegistry::new();
         let mut diags = DiagnosticBag::new();
         reg.collect(&doc, &mut diags);
-        reg.validate(&doc, &IndexMap::new(), &mut diags);
+        reg.validate(
+            &doc,
+            &IndexMap::new(),
+            &SymbolSetRegistry::new(),
+            &mut diags,
+        );
         let e096: Vec<_> = diags
             .diagnostics()
             .iter()

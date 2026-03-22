@@ -10,4 +10,8 @@ pub mod types;
 
 pub use decorator::{Constraint, DecoratorParam, DecoratorSchemaRegistry, ResolvedDecoratorSchema};
 pub use id::IdRegistry;
-pub use schema::{ResolvedField, ResolvedSchema, SchemaRegistry, ValidateConstraints};
+pub use schema::{
+    ChildConstraint, ResolvedField, ResolvedSchema, ResolvedVariant, SchemaRegistry, SymbolSetInfo,
+    SymbolSetRegistry, ValidateConstraints,
+};
+pub use types::type_name;
