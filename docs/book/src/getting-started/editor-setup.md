@@ -32,7 +32,7 @@ ln -sfn "$(pwd)" ~/.vscode/extensions/wil.wcl-0.1.0
 
 The symlink approach means changes to the extension source are picked up immediately without reinstalling. Restart VS Code (or run "Developer: Reload Window") after linking.
 
-The extension automatically starts `wcl lsp` when a `.wcl` file is opened. Make sure `wcl` is on your `PATH` (i.e., installed via `cargo install --path crates/wcl --features cli`).
+The extension automatically starts `wcl lsp` when a `.wcl` file is opened. Make sure `wcl` is on your `PATH` (i.e., installed via `cargo install --path crates/wcl`).
 
 ## Neovim
 

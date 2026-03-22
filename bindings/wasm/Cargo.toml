@@ -11,7 +11,7 @@ crate-type = ["cdylib", "rlib"]
 [features]
 default = ["js"]
 js = ["wasm-bindgen", "js-sys", "serde-wasm-bindgen"]
-wasi = ["wcl/json", "serde_json"]
+wasi = ["serde_json"]
 
 [dependencies]
 wcl = { workspace = true }

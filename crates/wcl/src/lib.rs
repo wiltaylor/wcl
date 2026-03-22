@@ -9,15 +9,10 @@ pub mod lang;
 pub mod schema;
 pub mod serde_impl;
 
-#[cfg(feature = "lsp")]
-pub mod lsp;
-
-#[cfg(feature = "cli")]
 pub mod cli;
-
-#[cfg(feature = "json")]
 pub mod json;
 pub mod library;
+pub mod lsp;
 
 // Re-exports
 pub use crate::lang::{
@@ -2843,7 +2838,6 @@ symbol_set multi {
         assert_eq!(doc.symbol_sets.serialize_symbol("multi", "many"), "many");
     }
 
-    #[cfg(feature = "json")]
     #[test]
     fn test_symbol_json_serialization() {
         let doc = parse("method = :GET", ParseOptions::default());

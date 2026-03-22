@@ -20,7 +20,7 @@ cargo --version
 From the root of the WCL repository, install the `wcl` binary directly to `~/.cargo/bin/`:
 
 ```bash
-cargo install --path crates/wcl --features cli
+cargo install --path crates/wcl
 ```
 
 Cargo will build the binary in release mode and place it at `~/.cargo/bin/wcl`. As long as `~/.cargo/bin` is on your `PATH` (the default after running `rustup`), the `wcl` command is immediately available.

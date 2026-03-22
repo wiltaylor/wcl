@@ -8,21 +8,14 @@ documentation.workspace = true
 repository.workspace = true
 description = "WCL (Wil's Configuration Language) — a typed, block-structured configuration language"
 
-[features]
-default = []
-json = []
-lsp = ["dep:tower-lsp", "dep:tokio", "dep:dashmap", "dep:ropey"]
-cli = ["lsp", "json", "dep:clap", "dep:serde_yaml", "dep:toml", "dep:miette", "dep:assert_cmd", "dep:predicates"]
-
 [[bin]]
 name = "wcl"
 path = "src/bin/wcl.rs"
-required-features = ["cli"]
 
 [dependencies]
 # Core deps (from wcl_core)
 nom = { workspace = true }
-miette = { workspace = true, optional = true }
+miette = { workspace = true }
 thiserror = { workspace = true }
 
 # Eval deps (from wcl_eval)
@@ -36,20 +29,16 @@ indexmap = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
-# LSP deps (optional)
-tower-lsp = { workspace = true, optional = true }
-tokio = { workspace = true, optional = true }
-dashmap = { workspace = true, optional = true }
-ropey = { workspace = true, optional = true }
+# LSP deps
+tower-lsp = { workspace = true }
+tokio = { workspace = true }
+dashmap = { workspace = true }
+ropey = { workspace = true }
 
-# CLI deps (optional)
-clap = { workspace = true, optional = true }
-serde_yaml = { version = "0.9", optional = true }
-toml = { version = "0.8", optional = true }
-
-# CLI test deps (optional, needed for integration tests)
-assert_cmd = { version = "2", optional = true }
-predicates = { version = "3", optional = true }
+# CLI deps
+clap = { workspace = true }
+serde_yaml = "0.9"
+toml = "0.8"
 
 [dev-dependencies]
 criterion = { workspace = true }
