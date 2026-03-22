@@ -478,7 +478,7 @@ fn try_resolve_interpolated_id(id: &mut Option<InlineId>) {
 }
 
 /// Convert a `Value` to an `Expr` for substitution purposes.
-fn value_to_expr(value: &Value, span: Span) -> Option<Expr> {
+pub(crate) fn value_to_expr(value: &Value, span: Span) -> Option<Expr> {
     match value {
         Value::String(s) => Some(Expr::StringLit(StringLit {
             parts: vec![StringPart::Literal(s.clone())],

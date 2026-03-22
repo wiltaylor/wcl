@@ -331,6 +331,43 @@ pub fn builtin_signatures() -> Vec<FunctionSignature> {
             doc: "Count matching elements".into(),
         },
         FunctionSignature {
+            name: "find".into(),
+            params: vec![
+                "list: list".into(),
+                "key: string".into(),
+                "value: any".into(),
+            ],
+            return_type: "map|null".into(),
+            doc: "Find first row where key equals value".into(),
+        },
+        FunctionSignature {
+            name: "insert_row".into(),
+            params: vec!["list: list".into(), "row: map".into()],
+            return_type: "list".into(),
+            doc: "Append a row to a list".into(),
+        },
+        FunctionSignature {
+            name: "remove_rows".into(),
+            params: vec![
+                "list: list".into(),
+                "key: string".into(),
+                "value: any".into(),
+            ],
+            return_type: "list".into(),
+            doc: "Remove rows where key equals value".into(),
+        },
+        FunctionSignature {
+            name: "update_rows".into(),
+            params: vec![
+                "list: list".into(),
+                "key: string".into(),
+                "value: any".into(),
+                "updates: map".into(),
+            ],
+            return_type: "list".into(),
+            doc: "Update rows where key equals value".into(),
+        },
+        FunctionSignature {
             name: "sha256".into(),
             params: vec!["s: string".into()],
             return_type: "string".into(),
@@ -458,6 +495,12 @@ pub fn builtin_registry() -> HashMap<String, BuiltinFn> {
     m.insert("index_of".into(), wrap_builtin(index_of));
     m.insert("range".into(), wrap_builtin(range));
     m.insert("zip".into(), wrap_builtin(zip));
+
+    // Table manipulation functions (Section 14.3b)
+    m.insert("find".into(), wrap_builtin(fn_find));
+    m.insert("insert_row".into(), wrap_builtin(fn_insert_row));
+    m.insert("remove_rows".into(), wrap_builtin(fn_remove_rows));
+    m.insert("update_rows".into(), wrap_builtin(fn_update_rows));
 
     // Higher-order functions (Section 14.4) — require special evaluator support
     m.insert("map".into(), wrap_builtin(higher_order_placeholder));
@@ -1014,6 +1057,96 @@ fn zip(args: &[Value]) -> Result<Value, String> {
         .iter()
         .zip(l2.iter())
         .map(|(a, b): (&Value, &Value)| Value::List(vec![a.clone(), b.clone()]))
+        .collect();
+    Ok(Value::List(result))
+}
+
+// ---------------------------------------------------------------------------
+// Section 14.3b — Table Manipulation Functions
+// ---------------------------------------------------------------------------
+
+fn fn_find(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 3, "find")?;
+    let list = get_list(&args[0], 1, "find")?;
+    let key = get_string(&args[1], 2, "find")?;
+    let needle = &args[2];
+    for item in list {
+        if let Value::Map(map) = item {
+            if map.get(key) == Some(needle) {
+                return Ok(item.clone());
+            }
+        }
+    }
+    Ok(Value::Null)
+}
+
+fn fn_insert_row(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 2, "insert_row")?;
+    let list = get_list(&args[0], 1, "insert_row")?;
+    match &args[1] {
+        Value::Map(_) => {}
+        other => {
+            return Err(format!(
+                "insert_row: argument 2 must be map, got {}",
+                other.type_name()
+            ))
+        }
+    }
+    let mut result = list.to_vec();
+    result.push(args[1].clone());
+    Ok(Value::List(result))
+}
+
+fn fn_remove_rows(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 3, "remove_rows")?;
+    let list = get_list(&args[0], 1, "remove_rows")?;
+    let key = get_string(&args[1], 2, "remove_rows")?;
+    let needle = &args[2];
+    let result: Vec<Value> = list
+        .iter()
+        .filter(|item| {
+            if let Value::Map(map) = item {
+                map.get(key) != Some(needle)
+            } else {
+                true
+            }
+        })
+        .cloned()
+        .collect();
+    Ok(Value::List(result))
+}
+
+fn fn_update_rows(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 4, "update_rows")?;
+    let list = get_list(&args[0], 1, "update_rows")?;
+    let key = get_string(&args[1], 2, "update_rows")?;
+    let needle = &args[2];
+    let updates = match &args[3] {
+        Value::Map(m) => m,
+        other => {
+            return Err(format!(
+                "update_rows: argument 4 must be map, got {}",
+                other.type_name()
+            ))
+        }
+    };
+    let result: Vec<Value> = list
+        .iter()
+        .map(|item| {
+            if let Value::Map(map) = item {
+                if map.get(key) == Some(needle) {
+                    let mut merged = map.clone();
+                    for (k, v) in updates {
+                        merged.insert(k.clone(), v.clone());
+                    }
+                    Value::Map(merged)
+                } else {
+                    item.clone()
+                }
+            } else {
+                item.clone()
+            }
+        })
         .collect();
     Ok(Value::List(result))
 }
@@ -1773,6 +1906,10 @@ mod tests {
             "index_of",
             "range",
             "zip",
+            "find",
+            "insert_row",
+            "remove_rows",
+            "update_rows",
             "map",
             "filter",
             "every",
@@ -1804,6 +1941,139 @@ mod tests {
     fn test_higher_order_placeholder() {
         let err = higher_order_placeholder(&[]).unwrap_err();
         assert!(err.contains("higher-order functions require special evaluation"));
+    }
+
+    // --- Reference and Query Functions ---
+
+    // --- Table manipulation ---
+
+    fn make_row(pairs: &[(&str, Value)]) -> Value {
+        let mut m = IndexMap::new();
+        for (k, v) in pairs {
+            m.insert(k.to_string(), v.clone());
+        }
+        Value::Map(m)
+    }
+
+    fn sample_table() -> Value {
+        list(vec![
+            make_row(&[("name", s("alice")), ("role", s("admin"))]),
+            make_row(&[("name", s("bob")), ("role", s("user"))]),
+            make_row(&[("name", s("charlie")), ("role", s("user"))]),
+        ])
+    }
+
+    #[test]
+    fn test_find_returns_matching_row() {
+        let table = sample_table();
+        let result = fn_find(&[table, s("name"), s("alice")]).unwrap();
+        assert_eq!(
+            result,
+            make_row(&[("name", s("alice")), ("role", s("admin"))])
+        );
+    }
+
+    #[test]
+    fn test_find_returns_null_when_not_found() {
+        let table = sample_table();
+        let result = fn_find(&[table, s("name"), s("nobody")]).unwrap();
+        assert_eq!(result, Value::Null);
+    }
+
+    #[test]
+    fn test_find_on_empty_list() {
+        let result = fn_find(&[list(vec![]), s("name"), s("alice")]).unwrap();
+        assert_eq!(result, Value::Null);
+    }
+
+    #[test]
+    fn test_insert_row_appends() {
+        let table = sample_table();
+        let new_row = make_row(&[("name", s("dave")), ("role", s("admin"))]);
+        let result = fn_insert_row(&[table, new_row.clone()]).unwrap();
+        if let Value::List(rows) = result {
+            assert_eq!(rows.len(), 4);
+            assert_eq!(rows[3], new_row);
+        } else {
+            panic!("expected list");
+        }
+    }
+
+    #[test]
+    fn test_remove_rows_filters_matching() {
+        let table = sample_table();
+        let result = fn_remove_rows(&[table, s("role"), s("user")]).unwrap();
+        if let Value::List(rows) = result {
+            assert_eq!(rows.len(), 1);
+            assert_eq!(
+                rows[0],
+                make_row(&[("name", s("alice")), ("role", s("admin"))])
+            );
+        } else {
+            panic!("expected list");
+        }
+    }
+
+    #[test]
+    fn test_remove_rows_no_match_returns_same() {
+        let table = sample_table();
+        let result = fn_remove_rows(&[table.clone(), s("role"), s("superadmin")]).unwrap();
+        assert_eq!(result, table);
+    }
+
+    #[test]
+    fn test_update_rows_merges_updates() {
+        let table = sample_table();
+        let updates = make_row(&[("role", s("superadmin"))]);
+        let result = fn_update_rows(&[table, s("name"), s("alice"), updates]).unwrap();
+        if let Value::List(rows) = result {
+            assert_eq!(
+                rows[0],
+                make_row(&[("name", s("alice")), ("role", s("superadmin"))])
+            );
+            // other rows unchanged
+            assert_eq!(
+                rows[1],
+                make_row(&[("name", s("bob")), ("role", s("user"))])
+            );
+        } else {
+            panic!("expected list");
+        }
+    }
+
+    #[test]
+    fn test_update_rows_no_match_returns_same() {
+        let table = sample_table();
+        let updates = make_row(&[("role", s("superadmin"))]);
+        let result = fn_update_rows(&[table.clone(), s("name"), s("nobody"), updates]).unwrap();
+        assert_eq!(result, table);
+    }
+
+    #[test]
+    fn test_update_rows_preserves_unmatched() {
+        let table = sample_table();
+        let updates = make_row(&[("role", s("moderator"))]);
+        let result = fn_update_rows(&[table, s("name"), s("bob"), updates]).unwrap();
+        if let Value::List(rows) = result {
+            assert_eq!(rows.len(), 3);
+            // alice unchanged
+            assert_eq!(
+                rows[0],
+                make_row(&[("name", s("alice")), ("role", s("admin"))])
+            );
+            // bob updated
+            assert_eq!(
+                rows[1],
+                make_row(&[("name", s("bob")), ("role", s("moderator"))])
+            );
+            // charlie unchanged
+            assert_eq!(
+                rows[2],
+                make_row(&[("name", s("charlie")), ("role", s("user"))])
+            );
+        } else {
+            panic!("expected list");
+        }
     }
 
     // --- Reference and Query Functions ---

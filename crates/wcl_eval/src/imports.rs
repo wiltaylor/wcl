@@ -225,6 +225,12 @@ fn resolve_import_tables_in_items<FS: FileSystem + ?Sized>(
             DocItem::Body(BodyItem::Block(block)) => {
                 resolve_import_tables_in_body(&mut block.body, fs, base_dir, diagnostics);
             }
+            DocItem::Body(BodyItem::LetBinding(lb)) => {
+                resolve_let_import_table(&mut lb.value, fs, base_dir, diagnostics);
+            }
+            DocItem::ExportLet(el) => {
+                resolve_let_import_table(&mut el.value, fs, base_dir, diagnostics);
+            }
             _ => {}
         }
     }
@@ -244,8 +250,71 @@ fn resolve_import_tables_in_body<FS: FileSystem + ?Sized>(
             BodyItem::Block(block) => {
                 resolve_import_tables_in_body(&mut block.body, fs, base_dir, diagnostics);
             }
+            BodyItem::LetBinding(lb) => {
+                resolve_let_import_table(&mut lb.value, fs, base_dir, diagnostics);
+            }
             _ => {}
         }
+    }
+}
+
+fn resolve_let_import_table<FS: FileSystem + ?Sized>(
+    expr: &mut Expr,
+    fs: &FS,
+    base_dir: &Path,
+    diagnostics: &mut DiagnosticBag,
+) {
+    use crate::control_flow::value_to_expr;
+    use crate::evaluator::parse_table;
+
+    // Only handle import_table expressions
+    let (args, span) = match expr {
+        Expr::ImportTable(args, span) => (args, *span),
+        _ => return,
+    };
+
+    // Extract plain string path (no interpolations at this phase)
+    let path_str = string_lit_to_plain(&args.path);
+    if path_str.contains("<interpolation>") {
+        return;
+    }
+
+    let resolved = base_dir.join(&path_str);
+    let content = match fs.read_file(&resolved) {
+        Ok(c) => c,
+        Err(e) => {
+            diagnostics.error(
+                format!("cannot read import_table file '{}': {}", path_str, e),
+                span,
+            );
+            return;
+        }
+    };
+
+    let separator = args
+        .separator
+        .as_ref()
+        .and_then(|s| {
+            let plain = string_lit_to_plain(s);
+            plain.chars().next()
+        })
+        .unwrap_or(',');
+
+    let has_headers = args.headers.unwrap_or(true);
+    let explicit_columns: Option<Vec<String>> = args
+        .columns
+        .as_ref()
+        .map(|cols| cols.iter().map(string_lit_to_plain).collect());
+
+    let parsed = parse_table(
+        &content,
+        separator,
+        has_headers,
+        explicit_columns.as_deref(),
+    );
+
+    if let Some(list_expr) = value_to_expr(&parsed, span) {
+        *expr = list_expr;
     }
 }
 
@@ -1298,6 +1367,199 @@ mod tests {
             "expected no errors, got: {:?}",
             diags.diagnostics()
         );
+    }
+
+    // ── resolve_let_import_table tests ──────────────────────────────
+
+    fn make_let_import_table_doc(path: &str) -> Document {
+        use wcl_core::span::{FileId, Span};
+        use wcl_core::trivia::Trivia;
+
+        let span = Span::new(FileId(0), 0, 0);
+        let lb = LetBinding {
+            decorators: vec![],
+            partial: false,
+            name: Ident {
+                name: "data".to_string(),
+                span,
+            },
+            value: Expr::ImportTable(
+                ImportTableArgs {
+                    path: StringLit {
+                        parts: vec![StringPart::Literal(path.to_string())],
+                        span,
+                    },
+                    separator: None,
+                    headers: None,
+                    columns: None,
+                },
+                span,
+            ),
+            trivia: Trivia::empty(),
+            span,
+        };
+
+        Document {
+            items: vec![DocItem::Body(BodyItem::LetBinding(lb))],
+            trivia: Trivia::empty(),
+            span,
+        }
+    }
+
+    #[test]
+    fn resolve_import_tables_converts_let_binding() {
+        let mut fs = InMemoryFs::new();
+        fs.add_file(PathBuf::from("/project/data.csv"), "name,value\nalice,42");
+
+        let mut doc = make_let_import_table_doc("data.csv");
+        let mut diags = DiagnosticBag::new();
+        resolve_import_tables(&mut doc, &fs, Path::new("/project"), &mut diags);
+
+        assert!(
+            !diags.has_errors(),
+            "unexpected errors: {:?}",
+            diags.diagnostics()
+        );
+
+        if let DocItem::Body(BodyItem::LetBinding(lb)) = &doc.items[0] {
+            assert!(
+                matches!(lb.value, Expr::List(..)),
+                "expected let value to be a list, got: {:?}",
+                lb.value
+            );
+        } else {
+            panic!("expected let binding");
+        }
+    }
+
+    #[test]
+    fn resolve_import_tables_let_missing_file() {
+        let fs = InMemoryFs::new();
+        let mut doc = make_let_import_table_doc("missing.csv");
+        let mut diags = DiagnosticBag::new();
+        resolve_import_tables(&mut doc, &fs, Path::new("/project"), &mut diags);
+
+        assert!(diags.has_errors());
+        // value should still be import_table (unchanged)
+        if let DocItem::Body(BodyItem::LetBinding(lb)) = &doc.items[0] {
+            assert!(
+                matches!(lb.value, Expr::ImportTable(..)),
+                "expected import_table to be preserved"
+            );
+        }
+    }
+
+    #[test]
+    fn resolve_import_tables_let_with_interpolation() {
+        use wcl_core::span::{FileId, Span};
+        use wcl_core::trivia::Trivia;
+
+        let span = Span::new(FileId(0), 0, 0);
+        let lb = LetBinding {
+            decorators: vec![],
+            partial: false,
+            name: Ident {
+                name: "data".to_string(),
+                span,
+            },
+            value: Expr::ImportTable(
+                ImportTableArgs {
+                    path: StringLit {
+                        parts: vec![
+                            StringPart::Literal("data_".to_string()),
+                            StringPart::Interpolation(Box::new(Expr::MemberAccess(
+                                Box::new(Expr::Ident(Ident {
+                                    name: "env".to_string(),
+                                    span,
+                                })),
+                                Ident {
+                                    name: "name".to_string(),
+                                    span,
+                                },
+                                span,
+                            ))),
+                            StringPart::Literal(".csv".to_string()),
+                        ],
+                        span,
+                    },
+                    separator: None,
+                    headers: None,
+                    columns: None,
+                },
+                span,
+            ),
+            trivia: Trivia::empty(),
+            span,
+        };
+
+        let mut doc = Document {
+            items: vec![DocItem::Body(BodyItem::LetBinding(lb))],
+            trivia: Trivia::empty(),
+            span,
+        };
+
+        let fs = InMemoryFs::new();
+        let mut diags = DiagnosticBag::new();
+        resolve_import_tables(&mut doc, &fs, Path::new("/project"), &mut diags);
+
+        // Should be left unchanged (no error, no transformation)
+        assert!(!diags.has_errors());
+        if let DocItem::Body(BodyItem::LetBinding(lb)) = &doc.items[0] {
+            assert!(
+                matches!(lb.value, Expr::ImportTable(..)),
+                "interpolated path should be left unchanged"
+            );
+        }
+    }
+
+    #[test]
+    fn resolve_import_tables_export_let() {
+        use wcl_core::span::{FileId, Span};
+        use wcl_core::trivia::Trivia;
+
+        let mut fs = InMemoryFs::new();
+        fs.add_file(PathBuf::from("/project/data.csv"), "name,role\nalice,admin");
+
+        let span = Span::new(FileId(0), 0, 0);
+        let el = ExportLet {
+            name: Ident {
+                name: "data".to_string(),
+                span,
+            },
+            value: Expr::ImportTable(
+                ImportTableArgs {
+                    path: StringLit {
+                        parts: vec![StringPart::Literal("data.csv".to_string())],
+                        span,
+                    },
+                    separator: None,
+                    headers: None,
+                    columns: None,
+                },
+                span,
+            ),
+            trivia: Trivia::empty(),
+            span,
+        };
+
+        let mut doc = Document {
+            items: vec![DocItem::ExportLet(el)],
+            trivia: Trivia::empty(),
+            span,
+        };
+
+        let mut diags = DiagnosticBag::new();
+        resolve_import_tables(&mut doc, &fs, Path::new("/project"), &mut diags);
+
+        assert!(!diags.has_errors());
+        if let DocItem::ExportLet(el) = &doc.items[0] {
+            assert!(
+                matches!(el.value, Expr::List(..)),
+                "expected export let value to be a list"
+            );
+        } else {
+            panic!("expected export let");
+        }
     }
 
     // ── resolve_import_tables tests ─────────────────────────────────
