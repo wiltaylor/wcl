@@ -576,7 +576,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag "v${{ needs.version.outputs.version }}"
-          git push origin "v${{ needs.version.outputs.version }}"
+          git tag "bindings/go/v${{ needs.version.outputs.version }}"
+          git push origin "v${{ needs.version.outputs.version }}" "bindings/go/v${{ needs.version.outputs.version }}"
       - uses: actions/download-artifact@v4
         with:
           path: artifacts/
