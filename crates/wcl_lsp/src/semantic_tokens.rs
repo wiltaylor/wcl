@@ -121,6 +121,15 @@ impl AstContext {
                     self.collect_decorators(&field.decorators_before);
                     self.collect_decorators(&field.decorators_after);
                 }
+                for variant in &schema.variants {
+                    self.collect_decorators(&variant.decorators);
+                    for field in &variant.fields {
+                        self.attr_names.insert(field.name.span.start);
+                        self.collect_type_expr(&field.type_expr);
+                        self.collect_decorators(&field.decorators_before);
+                        self.collect_decorators(&field.decorators_after);
+                    }
+                }
             }
             ast::BodyItem::Table(table) => {
                 for col in &table.columns {
@@ -148,6 +157,7 @@ impl AstContext {
                     self.collect_type_expr(&field.type_expr);
                 }
             }
+            ast::BodyItem::SymbolSetDecl(_) => {}
         }
     }
 
@@ -282,7 +292,8 @@ pub fn compute_semantic_tokens(
             | TokenKind::Remove
             | TokenKind::SelfKw
             | TokenKind::Validation
-            | TokenKind::DecoratorSchema => (0, 0), // keyword
+            | TokenKind::DecoratorSchema
+            | TokenKind::SymbolSet => (0, 0), // keyword
 
             // Literals
             TokenKind::StringLit(_) | TokenKind::StringFragment(_) | TokenKind::Heredoc { .. } => {
@@ -290,6 +301,7 @@ pub fn compute_semantic_tokens(
             } // string
             TokenKind::IntLit(_) | TokenKind::FloatLit(_) => (6, 0), // number
             TokenKind::BoolLit(_) | TokenKind::NullLit => (0, 0),    // keyword-ish
+            TokenKind::SymbolLit(_) => (8, 0),                       // enumMember
 
             // Comments
             TokenKind::LineComment(_) | TokenKind::BlockComment(_) => (7, 0),
