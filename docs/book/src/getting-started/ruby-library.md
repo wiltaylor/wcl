@@ -121,8 +121,7 @@ Each `BlockRef` has the following properties:
 ```ruby
 block.kind        # String — block type name (e.g. "server")
 block.id          # String or nil — inline ID (e.g. "web-prod")
-block.labels      # Array<String> — labels
-block.attributes  # Hash — evaluated attribute values
+block.attributes  # Hash — evaluated attribute values (includes _args if inline args present)
 block.children    # Array<BlockRef> — nested child blocks
 block.decorators  # Array<Decorator> — decorators on this block
 ```

@@ -25,10 +25,10 @@ server {
 }
 ```
 
-Blocks may carry an inline ID (written with hyphens), string labels, or both:
+Blocks may carry an inline ID (written with hyphens) and inline arguments:
 
 ```wcl
-server #web-1 "production" {
+server web-1 8080 "production" {
   host = "0.0.0.0"
   port = 443
 }
@@ -88,6 +88,6 @@ WCL supports line comments (`// ...`), block comments (`/* ... */`), and doc com
 ## What's Next
 
 - [Attributes](./attributes.md) — value types, expressions, and duplicate rules
-- [Blocks](./blocks.md) — IDs, labels, decorators, partials, reserved types
+- [Blocks](./blocks.md) — IDs, inline arguments, decorators, partials, reserved types
 - [Data Types](./data-types.md) — the full primitive and composite type system
 - [Expressions](./expressions.md) — operators, precedence, function calls, lambdas

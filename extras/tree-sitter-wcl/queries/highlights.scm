@@ -197,6 +197,11 @@
   "import_raw"
 ] @function.builtin
 
+; ── Introspection builtins ──────────────────────────────────────────
+((call_expression
+  (identifier) @function.builtin)
+  (#any-of? @function.builtin "is_imported" "has_schema"))
+
 (selector
   (identifier) @type)
 (filter

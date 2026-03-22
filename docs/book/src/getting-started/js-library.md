@@ -113,7 +113,7 @@ This is the simplest way to use WCL when you just want the config values and don
 
 ## Working with Blocks
 
-Block values appear as objects with `kind`, `id`, `labels`, `attributes`, and `children`:
+Block values appear as objects with `kind`, `id`, `attributes`, and `children`:
 
 ```typescript
 const doc = parse(`

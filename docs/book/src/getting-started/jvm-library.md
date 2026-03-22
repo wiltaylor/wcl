@@ -150,8 +150,7 @@ Each `BlockRef` provides:
 
 - `getKind()` - block type name
 - `getId()` - optional block identifier
-- `getLabels()` - list of labels
-- `getAttributes()` - resolved attribute map
+- `getAttributes()` - resolved attribute map (includes `_args` if inline args are present)
 - `getChildren()` - nested child blocks
 - `getDecorators()` - attached decorators
 - `get(key)` - safe attribute access (returns `null` if missing)

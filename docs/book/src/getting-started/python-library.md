@@ -121,8 +121,7 @@ Each `BlockRef` has the following properties:
 ```python
 block.kind        # str — block type name (e.g. "server")
 block.id          # str | None — inline ID (e.g. "web-prod")
-block.labels      # list[str] — labels
-block.attributes  # dict — evaluated attribute values
+block.attributes  # dict — evaluated attribute values (includes _args if inline args present)
 block.children    # list[BlockRef] — nested child blocks
 block.decorators  # list[Decorator] — decorators on this block
 ```

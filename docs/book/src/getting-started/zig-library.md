@@ -141,7 +141,7 @@ for (servers.value.array.items) |block| {
 }
 ```
 
-Each block in the JSON array has the following fields: `kind` (string), `id` (string or null), `labels` (array), `attributes` (object), `children` (array), and `decorators` (array).
+Each block in the JSON array has the following fields: `kind` (string), `id` (string or null), `attributes` (object, includes `_args` if inline args are present), `children` (array), and `decorators` (array).
 
 ## Running Queries
 

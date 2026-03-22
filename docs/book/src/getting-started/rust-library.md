@@ -249,7 +249,7 @@ println!("{:?}", config);
 
 ### With the `WclDeserialize` Derive Macro
 
-The `WclDeserialize` derive macro adds WCL-specific field attributes like `#[wcl(id)]` and `#[wcl(labels)]`:
+The `WclDeserialize` derive macro adds WCL-specific field attributes like `#[wcl(id)]` and `#[wcl(args)]`:
 
 ```rust
 use wcl::{from_str, from_value, parse, ParseOptions, Value, WclDeserialize};

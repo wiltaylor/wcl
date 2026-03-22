@@ -318,5 +318,228 @@ namespace Wcl.Tests
             var br = list[0].AsBlockRef();
             Assert.Equal("api", br.Id);
         }
+
+        // ── Tables ──────────────────────────────────────────────────────
+
+        [Fact]
+        public void TableBlock()
+        {
+            using var doc = WclParser.Parse(@"
+                table users {
+                    name: string  age: int
+                    | ""Alice"" | 30 |
+                    | ""Bob""   | 25 |
+                }
+            ");
+            Assert.False(doc.HasErrors(), string.Join("; ", doc.Errors().ConvertAll(d => d.ToString())));
+
+            // Tables evaluate to a list of row maps
+            var users = doc.Values["users"];
+            Assert.Equal(WclValueKind.List, users.Kind);
+
+            var rows = users.AsList();
+            Assert.Equal(2, rows.Count);
+
+            // First row
+            var row0 = rows[0].AsMap();
+            Assert.Equal("Alice", row0["name"].AsString());
+            Assert.Equal(30L, row0["age"].AsInt());
+
+            // Second row
+            var row1 = rows[1].AsMap();
+            Assert.Equal("Bob", row1["name"].AsString());
+            Assert.Equal(25L, row1["age"].AsInt());
+        }
+
+        // ── Attribute Macros ────────────────────────────────────────────
+
+        [Fact]
+        public void AttributeMacroInject()
+        {
+            using var doc = WclParser.Parse(@"
+macro @add_env(env) {
+    inject {
+        environment = env
+    }
+}
+
+@add_env(""production"")
+server web {
+    port = 8080
+}
+            ");
+            Assert.False(doc.HasErrors(), string.Join("; ", doc.Errors().ConvertAll(d => d.ToString())));
+
+            var servers = doc.BlocksOfType("server");
+            Assert.Single(servers);
+            var s = servers[0];
+            Assert.Equal("web", s.Id);
+            Assert.Equal(8080L, s.Get("port")!.AsInt());
+            Assert.Equal("production", s.Get("environment")!.AsString());
+        }
+
+        // ── For Loops ───────────────────────────────────────────────────
+
+        [Fact]
+        public void ForLoop()
+        {
+            using var doc = WclParser.Parse(@"
+                let items = [""a"", ""b"", ""c""]
+                for item in items {
+                    entry {
+                        value = item
+                    }
+                }
+            ");
+            Assert.False(doc.HasErrors(), string.Join("; ", doc.Errors().ConvertAll(d => d.ToString())));
+
+            var entries = doc.BlocksOfType("entry");
+            Assert.Equal(3, entries.Count);
+            Assert.Equal("a", entries[0].Get("value")!.AsString());
+            Assert.Equal("b", entries[1].Get("value")!.AsString());
+            Assert.Equal("c", entries[2].Get("value")!.AsString());
+        }
+
+        // ── If/Else ────────────────────────────────────────────────────
+
+        [Fact]
+        public void IfConditionTrue()
+        {
+            using var doc = WclParser.Parse(@"
+                let enabled = true
+                if enabled {
+                    feature flags {
+                        active = true
+                    }
+                }
+            ");
+            Assert.False(doc.HasErrors(), string.Join("; ", doc.Errors().ConvertAll(d => d.ToString())));
+
+            var features = doc.BlocksOfType("feature");
+            Assert.Single(features);
+            Assert.Equal("flags", features[0].Id);
+            Assert.True(features[0].Get("active")!.AsBool());
+        }
+
+        [Fact]
+        public void IfConditionFalseNoBlock()
+        {
+            using var doc = WclParser.Parse(@"
+                let enabled = false
+                if enabled {
+                    feature flags {
+                        active = true
+                    }
+                }
+            ");
+            Assert.False(doc.HasErrors(), string.Join("; ", doc.Errors().ConvertAll(d => d.ToString())));
+
+            var features = doc.BlocksOfType("feature");
+            Assert.Empty(features);
+        }
+
+        [Fact]
+        public void IfElse()
+        {
+            using var doc = WclParser.Parse(@"
+                let debug = false
+                if debug {
+                    mode = ""debug""
+                } else {
+                    mode = ""release""
+                }
+            ");
+            Assert.False(doc.HasErrors(), string.Join("; ", doc.Errors().ConvertAll(d => d.ToString())));
+
+            Assert.Equal("release", doc.Values["mode"].AsString());
+        }
+
+        // ── Inline Args ────────────────────────────────────────────────
+
+        [Fact]
+        public void InlineArgs()
+        {
+            using var doc = WclParser.Parse(@"
+                server ""web"" {
+                    port = 8080
+                }
+            ");
+            Assert.False(doc.HasErrors(), string.Join("; ", doc.Errors().ConvertAll(d => d.ToString())));
+
+            var blocks = doc.Blocks();
+            Assert.Single(blocks);
+            Assert.Equal("server", blocks[0].Kind);
+            Assert.Equal(8080L, blocks[0].Get("port")!.AsInt());
+
+            // Inline args produce an _args attribute
+            var args = blocks[0].Get("_args");
+            Assert.NotNull(args);
+            Assert.Equal(WclValueKind.List, args!.Kind);
+            Assert.Equal("web", args.AsList()[0].AsString());
+        }
+
+        // ── Partial Let ────────────────────────────────────────────────
+
+        [Fact]
+        public void PartialLetConcatenatesLists()
+        {
+            using var doc = WclParser.Parse(@"
+                partial let tags = [""x"", ""y""]
+                partial let tags = [""z""]
+                all_tags = tags
+            ");
+            Assert.False(doc.HasErrors(), string.Join("; ", doc.Errors().ConvertAll(d => d.ToString())));
+
+            var allTags = doc.Values["all_tags"];
+            Assert.Equal(WclValueKind.List, allTags.Kind);
+            var items = allTags.AsList();
+            Assert.Equal(3, items.Count);
+            Assert.Equal("x", items[0].AsString());
+            Assert.Equal("y", items[1].AsString());
+            Assert.Equal("z", items[2].AsString());
+        }
+
+        // ── Schema Validation ──────────────────────────────────────────
+
+        [Fact]
+        public void SchemaValidationTypeMismatch()
+        {
+            using var doc = WclParser.Parse(@"
+schema ""Server"" {
+    port: int
+    name: string
+}
+
+server web : Server {
+    port = ""not_a_number""
+    name = ""web""
+}
+            ");
+            // Should have errors — port should be int but got string
+            Assert.True(doc.HasErrors(), "expected schema validation errors");
+
+            var errors = doc.Errors();
+            Assert.Contains(errors, d => d.Code == "E071");
+        }
+
+        [Fact]
+        public void SchemaValidationMissingField()
+        {
+            using var doc = WclParser.Parse(@"
+schema ""Server"" {
+    port: int
+    name: string
+}
+
+server web : Server {
+    port = 8080
+}
+            ");
+            // Should have errors — name is required but missing
+            Assert.True(doc.HasErrors(), "expected schema validation errors for missing field");
+
+            var errors = doc.Errors();
+            Assert.Contains(errors, d => d.Code == "E070");
+        }
     }
 }

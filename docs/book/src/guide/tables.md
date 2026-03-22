@@ -167,6 +167,58 @@ The first row of the CSV is treated as the column header by default. All cell va
 
 `import_table` follows the same path rules as `import`: relative paths only, resolved from the importing file, jailed to the project root.
 
+### Let-bound Tables
+
+You can assign an `import_table` call to a `let` binding. The table data becomes a list of row maps that can be used in expressions, for loops, and function calls:
+
+```wcl
+let data = import_table("users.csv")
+
+// Iterate over rows
+for row in data {
+  service ${row.name}-svc {
+    role = row.role
+  }
+}
+```
+
+Let-bound tables are not included in the serialized output (like all let bindings), but their data is available for use in expressions and control flow.
+
+## Table Manipulation Functions
+
+WCL provides built-in functions for working with table data (lists of row maps):
+
+### find(table, key, value)
+
+Returns the first row where `key` equals `value`, or `null` if not found:
+
+```wcl
+let data = import_table("users.csv")
+let admin = find(data, "role", "admin")
+admin_name = admin.name
+```
+
+### filter(table, predicate)
+
+Returns all rows matching the predicate (a lambda):
+
+```wcl
+let data = import_table("users.csv")
+let admins = filter(data, (r) => r.role == "admin")
+admin_count = len(admins)
+```
+
+### insert_row(table, row)
+
+Returns a new list with the given row map appended:
+
+```wcl
+let data = import_table("users.csv")
+let extended = insert_row(data, {name = "charlie", role = "viewer"})
+```
+
+These functions work on any list of maps, not just `import_table` results.
+
 ## Evaluation
 
 Tables are evaluated into a list of row maps. Each row becomes a map from column name to cell value. For example:

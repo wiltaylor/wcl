@@ -25,6 +25,9 @@ WCL provides a set of built-in decorators for schema validation, documentation, 
 | `@children(kinds)`     | schemas                    | `kinds`: list of strings         | Restricts which child blocks/tables may appear inside     |
 | `@parent(kinds)`       | schemas                    | `kinds`: list of strings         | Restricts which parent blocks may contain this block/table|
 | `@symbol_set(name)`   | schema fields              | `name`: string                   | Constrains a symbol-typed field to members of the named symbol set |
+| `@inline(N)`          | schema fields              | `N`: int                         | Maps positional inline arg at index N to this named field          |
+| `@text`               | schema fields              | none                             | Marks a `content: string` field as the text block target           |
+| `@merge_strategy(s)`  | partial blocks             | `s`: string                      | Controls how partial merges resolve conflicts                      |
 
 ---
 
@@ -379,6 +382,67 @@ schema "tag" {
 |-------|-----------|
 | E100  | Symbol value not in the declared symbol set |
 | E101  | Referenced symbol set does not exist |
+
+## @inline(N)
+
+Maps the Nth positional inline argument (0-based) to a named schema field. Without `@inline`, inline args are collected into a synthetic `_args` list. With `@inline`, they map to proper named attributes.
+
+```wcl
+schema "server" {
+    port: int    @inline(0)
+    env:  string @inline(1)
+    host: string
+}
+
+server web 8080 "prod" {
+    host = "localhost"
+}
+// Evaluates to: { port: 8080, env: "prod", host: "localhost" }
+```
+
+Any positional args not covered by an `@inline` mapping remain in `_args`. See [Blocks — Inline Arguments](blocks.md#inline-arguments) for full details.
+
+## @text
+
+Marks a schema field as the text content target for text block syntax. The field must be named `content` and have type `string`. A schema may have at most one `@text` field.
+
+When a schema has a `@text` field, blocks of that type can use text block syntax — a heredoc or string literal in place of a `{ body }`:
+
+```wcl
+schema "readme" {
+    content: string @text
+}
+
+// Heredoc syntax
+readme my-doc <<EOF
+# Hello World
+This is the content of the readme.
+EOF
+
+// String literal syntax
+readme short-doc "Simple one-line content"
+
+// String interpolation works too
+let name = "World"
+readme greeting "Hello ${name}!"
+```
+
+The text content is assigned to the `content` field:
+
+```json
+{
+  "my-doc": { "content": "# Hello World\nThis is the content of the readme.\n" }
+}
+```
+
+| Error | Condition |
+|-------|-----------|
+| E093  | Block uses text block syntax but its schema has no `@text` field |
+| E094  | `@text` field validation errors (wrong name or type) |
+
+## @merge_strategy(strategy)
+
+Controls how attribute conflicts are resolved during partial merges. See [Partial Declarations](partials.md) for details.
 
 ### Constraining table placement
 

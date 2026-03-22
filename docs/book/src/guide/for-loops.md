@@ -114,6 +114,50 @@ for env in ["staging", "prod"] {
 }
 ```
 
+## Iterating Over Tables
+
+Tables evaluate to lists of row maps, so they work directly as for-loop sources. This is especially powerful when combined with `let`-bound `import_table()`:
+
+```wcl
+let users = import_table("users.csv")
+
+for row in users {
+  service ${row.name}-svc {
+    role = row.role
+  }
+}
+```
+
+Inline tables also work:
+
+```wcl
+table ports {
+    name : string
+    port : int
+    | "web"  | 8080 |
+    | "api"  | 9090 |
+}
+
+for row in ports {
+  server ${row.name} {
+    listen_port = row.port
+  }
+}
+```
+
+Table manipulation functions like `filter()`, `find()`, and `insert_row()` can be used to transform table data before iteration:
+
+```wcl
+let data = import_table("users.csv")
+let admins = filter(data, (r) => r.role == "admin")
+
+for row in admins {
+  admin_service ${row.name} {
+    level = "elevated"
+  }
+}
+```
+
 ## Nested For Loops
 
 For loops can be nested up to the global nesting depth limit (default 32):

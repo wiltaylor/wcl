@@ -25,7 +25,7 @@ service svc-api "api-service" {
 
 Rules:
 - Every fragment sharing a type and ID must be marked `partial`. A non-partial block with the same type/ID as a partial fragment is an error.
-- All fragments must have identical labels (the quoted name string).
+- All fragments must have identical inline IDs.
 - The merged block is placed at the position of the **first** fragment encountered.
 
 ## Attribute Merge Rules

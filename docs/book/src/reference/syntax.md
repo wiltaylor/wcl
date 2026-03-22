@@ -21,7 +21,7 @@ Top-level items:
 - `import` declarations
 - `export` declarations
 - Attributes (`name = expr`)
-- Blocks (`type [id] [labels] { body }`)
+- Blocks (`type [id] [inline-args...] { body }`)
 - Tables
 - Let bindings (`let name = expr`)
 - Macro definitions
@@ -30,6 +30,7 @@ Top-level items:
 - Conditionals
 - Validation blocks
 - Schemas and decorator schemas
+- Symbol set declarations
 - Comments
 
 ## Attributes
@@ -52,16 +53,16 @@ service svc-api {
   port = 8080
 }
 
-service svc-api "v2" "internal" {
+service svc-api 8080 "production" {
   port = 9090
 }
 ```
 
-Syntax: `[decorators] [partial] type [id] [labels...] { body }`
+Syntax: `[decorators] [partial] type [id] [inline-args...] { body }`
 
 - `type` — bare identifier (the block kind)
 - `id` — identifier literal (may contain hyphens); used for unique identification
-- `labels` — zero or more string literals for additional categorisation
+- `inline-args` — zero or more positional expressions (int, float, string, bool, null, list) mapped to named fields via `@inline(N)` in a schema, or collected into `_args`
 
 ## Let Bindings
 

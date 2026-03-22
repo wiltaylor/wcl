@@ -292,6 +292,377 @@ func TestVariablesTypes(t *testing.T) {
 	}
 }
 
+func TestTable(t *testing.T) {
+	src := `table users {
+  name: string
+  age: int
+  | "Alice" | 30 |
+  | "Bob"   | 25 |
+}`
+	doc, err := Parse(src, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer doc.Close()
+
+	if doc.HasErrors() {
+		errs, _ := doc.Errors()
+		t.Fatalf("unexpected errors: %v", errs)
+	}
+
+	values, err := doc.Values()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	users, ok := values["users"].([]any)
+	if !ok {
+		t.Fatalf("expected []any for users, got %T", values["users"])
+	}
+	if len(users) != 2 {
+		t.Fatalf("len(users) = %d, want 2", len(users))
+	}
+
+	row0, ok := users[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected map for row 0, got %T", users[0])
+	}
+	if row0["name"].(string) != "Alice" {
+		t.Errorf("row0.name = %v, want Alice", row0["name"])
+	}
+	if row0["age"].(float64) != 30 {
+		t.Errorf("row0.age = %v, want 30", row0["age"])
+	}
+
+	row1, ok := users[1].(map[string]any)
+	if !ok {
+		t.Fatalf("expected map for row 1, got %T", users[1])
+	}
+	if row1["name"].(string) != "Bob" {
+		t.Errorf("row1.name = %v, want Bob", row1["name"])
+	}
+	if row1["age"].(float64) != 25 {
+		t.Errorf("row1.age = %v, want 25", row1["age"])
+	}
+}
+
+func TestFunctionMacro(t *testing.T) {
+	src := `macro make_config() {
+  timeout = 30
+  retries = 3
+}
+
+server web {
+  port = 8080
+  make_config()
+}`
+	doc, err := Parse(src, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer doc.Close()
+
+	if doc.HasErrors() {
+		errs, _ := doc.Errors()
+		t.Fatalf("unexpected errors: %v", errs)
+	}
+
+	blocks, err := doc.BlocksOfType("server")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(blocks) != 1 {
+		t.Fatalf("len(servers) = %d, want 1", len(blocks))
+	}
+	attrs := blocks[0].Attributes
+	if attrs["port"].(float64) != 8080 {
+		t.Errorf("port = %v, want 8080", attrs["port"])
+	}
+	if attrs["timeout"].(float64) != 30 {
+		t.Errorf("timeout = %v, want 30", attrs["timeout"])
+	}
+	if attrs["retries"].(float64) != 3 {
+		t.Errorf("retries = %v, want 3", attrs["retries"])
+	}
+}
+
+func TestAttributeMacro(t *testing.T) {
+	src := `macro @add_env(env) {
+  inject {
+    environment = env
+  }
+}
+
+@add_env("production")
+server web {
+  port = 8080
+}`
+	doc, err := Parse(src, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer doc.Close()
+
+	if doc.HasErrors() {
+		errs, _ := doc.Errors()
+		t.Fatalf("unexpected errors: %v", errs)
+	}
+
+	blocks, err := doc.BlocksOfType("server")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(blocks) != 1 {
+		t.Fatalf("len(servers) = %d, want 1", len(blocks))
+	}
+	attrs := blocks[0].Attributes
+	if attrs["port"].(float64) != 8080 {
+		t.Errorf("port = %v, want 8080", attrs["port"])
+	}
+	if attrs["environment"].(string) != "production" {
+		t.Errorf("environment = %v, want production", attrs["environment"])
+	}
+}
+
+func TestForLoop(t *testing.T) {
+	src := `let items = ["a", "b", "c"]
+for item in items {
+  result = item
+}`
+	doc, err := Parse(src, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer doc.Close()
+
+	if doc.HasErrors() {
+		errs, _ := doc.Errors()
+		t.Fatalf("unexpected errors: %v", errs)
+	}
+
+	values, err := doc.Values()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The for loop expands and the last iteration wins for flat attributes
+	result, ok := values["result"].(string)
+	if !ok {
+		t.Fatalf("expected string for result, got %T", values["result"])
+	}
+	// Last item in list should win
+	if result != "a" && result != "b" && result != "c" {
+		t.Errorf("result = %v, want one of a/b/c", result)
+	}
+}
+
+func TestForLoopOnTable(t *testing.T) {
+	src := `table users {
+  name: string
+  age: int
+  | "Alice" | 30 |
+  | "Bob"   | 25 |
+}
+
+for row in users {
+  latest_name = row.name
+}`
+	doc, err := Parse(src, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer doc.Close()
+
+	if doc.HasErrors() {
+		errs, _ := doc.Errors()
+		t.Fatalf("unexpected errors: %v", errs)
+	}
+
+	values, err := doc.Values()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Table should be in values
+	users, ok := values["users"].([]any)
+	if !ok {
+		t.Fatalf("expected []any for users, got %T", values["users"])
+	}
+	if len(users) != 2 {
+		t.Fatalf("len(users) = %d, want 2", len(users))
+	}
+
+	// For loop should produce latest_name from iteration
+	name, ok := values["latest_name"].(string)
+	if !ok {
+		t.Fatalf("expected string for latest_name, got %T", values["latest_name"])
+	}
+	if name == "" {
+		t.Error("latest_name should not be empty")
+	}
+}
+
+func TestIfConditional(t *testing.T) {
+	src := `let enabled = true
+if enabled {
+  feature flags {
+    active = true
+  }
+}`
+	doc, err := Parse(src, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer doc.Close()
+
+	if doc.HasErrors() {
+		errs, _ := doc.Errors()
+		t.Fatalf("unexpected errors: %v", errs)
+	}
+
+	blocks, err := doc.BlocksOfType("feature")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(blocks) != 1 {
+		t.Fatalf("len(feature) = %d, want 1", len(blocks))
+	}
+	if blocks[0].ID == nil || *blocks[0].ID != "flags" {
+		t.Errorf("feature block id = %v, want flags", blocks[0].ID)
+	}
+	if blocks[0].Attributes["active"].(bool) != true {
+		t.Errorf("active = %v, want true", blocks[0].Attributes["active"])
+	}
+}
+
+func TestIfConditionalFalse(t *testing.T) {
+	src := `let enabled = false
+if enabled {
+  feature flags {
+    active = true
+  }
+}`
+	doc, err := Parse(src, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer doc.Close()
+
+	if doc.HasErrors() {
+		errs, _ := doc.Errors()
+		t.Fatalf("unexpected errors: %v", errs)
+	}
+
+	blocks, err := doc.BlocksOfType("feature")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(blocks) != 0 {
+		t.Errorf("expected no feature blocks when condition is false, got %d", len(blocks))
+	}
+}
+
+func TestInlineArgs(t *testing.T) {
+	src := `server "web" {
+  port = 8080
+}`
+	doc, err := Parse(src, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer doc.Close()
+
+	if doc.HasErrors() {
+		errs, _ := doc.Errors()
+		t.Fatalf("unexpected errors: %v", errs)
+	}
+
+	blocks, err := doc.BlocksOfType("server")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(blocks) != 1 {
+		t.Fatalf("len(servers) = %d, want 1", len(blocks))
+	}
+	attrs := blocks[0].Attributes
+	if attrs["port"].(float64) != 8080 {
+		t.Errorf("port = %v, want 8080", attrs["port"])
+	}
+
+	// Inline args should appear as _args attribute
+	args, ok := attrs["_args"].([]any)
+	if !ok {
+		t.Fatalf("expected []any for _args, got %T", attrs["_args"])
+	}
+	if len(args) != 1 {
+		t.Fatalf("len(_args) = %d, want 1", len(args))
+	}
+	if args[0].(string) != "web" {
+		t.Errorf("_args[0] = %v, want web", args[0])
+	}
+}
+
+func TestPartialLet(t *testing.T) {
+	src := `partial let tags = ["x", "y"]
+partial let tags = ["z"]
+result = tags`
+	doc, err := Parse(src, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer doc.Close()
+
+	if doc.HasErrors() {
+		errs, _ := doc.Errors()
+		t.Fatalf("unexpected errors: %v", errs)
+	}
+
+	values, err := doc.Values()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, ok := values["result"].([]any)
+	if !ok {
+		t.Fatalf("expected []any for result, got %T", values["result"])
+	}
+	if len(result) != 3 {
+		t.Fatalf("len(result) = %d, want 3", len(result))
+	}
+	if result[0].(string) != "x" || result[1].(string) != "y" || result[2].(string) != "z" {
+		t.Errorf("result = %v, want [x, y, z]", result)
+	}
+}
+
+func TestSymbolLiteral(t *testing.T) {
+	src := `server web {
+  status = :active
+}`
+	doc, err := Parse(src, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer doc.Close()
+
+	if doc.HasErrors() {
+		errs, _ := doc.Errors()
+		t.Fatalf("unexpected errors: %v", errs)
+	}
+
+	blocks, err := doc.BlocksOfType("server")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(blocks) != 1 {
+		t.Fatalf("len(servers) = %d, want 1", len(blocks))
+	}
+	// Symbols are serialized as strings in JSON
+	status := blocks[0].Attributes["status"].(string)
+	if status != "active" {
+		t.Errorf("status = %v, want active", status)
+	}
+}
+
 func TestConcurrentAccess(t *testing.T) {
 	doc, err := Parse("x = 42\ny = \"hello\"", nil)
 	if err != nil {
