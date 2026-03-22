@@ -1,0 +1,78 @@
+================
+Symbol literal in expression
+================
+
+status = :active
+
+---
+
+(document
+  (attribute (identifier) (expression (symbol_literal))))
+
+================
+Symbol literal in list
+================
+
+states = [:pending, :active, :closed]
+
+---
+
+(document
+  (attribute (identifier) (expression
+    (list_literal
+      (expression (symbol_literal))
+      (expression (symbol_literal))
+      (expression (symbol_literal))))))
+
+================
+Basic symbol set declaration
+================
+
+symbol_set status {
+  :active
+  :inactive
+  :pending
+}
+
+---
+
+(document
+  (symbol_set_declaration
+    name: (identifier)
+    (symbol_set_member (symbol_literal))
+    (symbol_set_member (symbol_literal))
+    (symbol_set_member (symbol_literal))))
+
+================
+Symbol set with value mappings
+================
+
+symbol_set priority {
+  :low = "Low Priority"
+  :medium = "Medium Priority"
+  :high = "High Priority"
+}
+
+---
+
+(document
+  (symbol_set_declaration
+    name: (identifier)
+    (symbol_set_member (symbol_literal) (string_literal (string_content)))
+    (symbol_set_member (symbol_literal) (string_literal (string_content)))
+    (symbol_set_member (symbol_literal) (string_literal (string_content)))))
+
+================
+Symbol type in schema field
+================
+
+schema "task" {
+  status: symbol
+}
+
+---
+
+(document
+  (schema
+    (string_literal (string_content))
+    (schema_field (identifier) (type_expression (builtin_type)))))

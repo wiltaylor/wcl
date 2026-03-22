@@ -46,6 +46,10 @@ impl Parser {
                         self.advance();
                         Some(TypeExpr::Any(start_span))
                     }
+                    "symbol" => {
+                        self.advance();
+                        Some(TypeExpr::Symbol(start_span))
+                    }
                     "list" => {
                         self.advance();
                         if self.expect(&TokenKind::LParen).is_err() {

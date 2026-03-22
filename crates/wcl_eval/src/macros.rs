@@ -1186,6 +1186,7 @@ impl<'a> MacroExpander<'a> {
                 let parts: Vec<String> = types.iter().map(Self::type_expr_display).collect();
                 format!("union({})", parts.join(", "))
             }
+            TypeExpr::Symbol(_) => "symbol".to_string(),
         }
     }
 
@@ -1198,6 +1199,7 @@ impl<'a> MacroExpander<'a> {
             Value::Bool(_) => "bool".to_string(),
             Value::Null => "null".to_string(),
             Value::Identifier(_) => "identifier".to_string(),
+            Value::Symbol(_) => "symbol".to_string(),
             Value::List(_) => "list".to_string(),
             Value::Map(_) => "map".to_string(),
             Value::Set(_) => "set".to_string(),

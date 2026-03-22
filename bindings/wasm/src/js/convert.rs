@@ -5,7 +5,7 @@ use wcl::Value;
 /// Convert a WCL Value to a JsValue.
 pub fn value_to_js(value: &Value) -> JsValue {
     match value {
-        Value::String(s) | Value::Identifier(s) => JsValue::from_str(s),
+        Value::String(s) | Value::Identifier(s) | Value::Symbol(s) => JsValue::from_str(s),
         Value::Int(i) => JsValue::from_f64(*i as f64),
         Value::Float(f) => JsValue::from_f64(*f),
         Value::Bool(b) => JsValue::from_bool(*b),

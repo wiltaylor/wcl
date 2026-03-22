@@ -75,6 +75,7 @@ fn value_to_json(val: &wcl::Value) -> serde_json::Value {
         wcl::Value::Bool(b) => serde_json::Value::Bool(*b),
         wcl::Value::Null => serde_json::Value::Null,
         wcl::Value::Identifier(s) => serde_json::Value::String(s.clone()),
+        wcl::Value::Symbol(s) => serde_json::Value::String(s.clone()),
         wcl::Value::List(items) => {
             serde_json::Value::Array(items.iter().map(value_to_json).collect())
         }

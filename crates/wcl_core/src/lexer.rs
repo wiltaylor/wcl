@@ -22,6 +22,8 @@ pub enum TokenKind {
     FloatLit(f64),
     BoolLit(bool),
     NullLit,
+    /// Symbol literal: `:name`
+    SymbolLit(String),
 
     /// Heredoc value.
     Heredoc {
@@ -55,6 +57,7 @@ pub enum TokenKind {
     DecoratorSchema,
     Declare,
     Update,
+    SymbolSet,
 
     // Delimiters
     LBrace,
@@ -296,6 +299,25 @@ impl<'a> Lexer<'a> {
         if self.starts_with("..") {
             self.advance(2);
             return Some(self.make_tok(TokenKind::DotDot, start));
+        }
+
+        // Symbol literal — `:name` where name starts with [a-zA-Z_]
+        if c == ':' {
+            if let Some(next) = self.peek2() {
+                if next.is_ascii_alphabetic() || next == '_' {
+                    self.advance_char(); // consume ':'
+                    let name_start = self.pos;
+                    while let Some(ch) = self.peek() {
+                        if ch.is_ascii_alphanumeric() || ch == '_' {
+                            self.advance_char();
+                        } else {
+                            break;
+                        }
+                    }
+                    let name = self.input[name_start..self.pos].to_string();
+                    return Some(self.make_tok(TokenKind::SymbolLit(name), start));
+                }
+            }
         }
 
         // Single-char tokens
@@ -932,6 +954,7 @@ impl<'a> Lexer<'a> {
             "decorator_schema" => TokenKind::DecoratorSchema,
             "declare" => TokenKind::Declare,
             "update" => TokenKind::Update,
+            "symbol_set" => TokenKind::SymbolSet,
             other => {
                 if other.contains('-') {
                     TokenKind::IdentifierLit(other.to_string())
@@ -995,7 +1018,7 @@ mod tests {
 
     #[test]
     fn keywords() {
-        let src = "let partial macro schema table import export query ref for in if else when inject set remove self validation decorator_schema update";
+        let src = "let partial macro schema table import export query ref for in if else when inject set remove self validation decorator_schema update symbol_set";
         let ks = token_kinds_ok(src);
         assert_eq!(
             ks,
@@ -1021,6 +1044,7 @@ mod tests {
                 TokenKind::Validation,
                 TokenKind::DecoratorSchema,
                 TokenKind::Update,
+                TokenKind::SymbolSet,
                 TokenKind::Eof,
             ]
         );
@@ -1464,6 +1488,52 @@ mod tests {
     fn decorator_schema_keyword() {
         let ks = token_kinds_ok("decorator_schema");
         assert_eq!(ks[0], TokenKind::DecoratorSchema);
+    }
+
+    #[test]
+    fn symbol_literal() {
+        let ks = token_kinds_ok(":GET :relational :unix_socket");
+        assert_eq!(
+            ks,
+            vec![
+                TokenKind::SymbolLit("GET".into()),
+                TokenKind::SymbolLit("relational".into()),
+                TokenKind::SymbolLit("unix_socket".into()),
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn symbol_literal_not_colon() {
+        // `x: string` — colon followed by space, should remain Colon
+        let ks = token_kinds_ok("x: string");
+        assert_eq!(
+            ks,
+            vec![
+                TokenKind::Ident("x".into()),
+                TokenKind::Colon,
+                TokenKind::Ident("string".into()),
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn symbol_literal_in_ternary() {
+        // `a ? b : c` — colon before space and ident
+        let ks = token_kinds_ok("a ? b : c");
+        assert_eq!(
+            ks,
+            vec![
+                TokenKind::Ident("a".into()),
+                TokenKind::Question,
+                TokenKind::Ident("b".into()),
+                TokenKind::Colon,
+                TokenKind::Ident("c".into()),
+                TokenKind::Eof,
+            ]
+        );
     }
 
     #[test]
