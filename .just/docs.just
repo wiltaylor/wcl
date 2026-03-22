@@ -26,3 +26,12 @@ web-serve: book-build
 # Clean website build output
 web-clean:
     rm -rf site/public site/resources
+
+# Generate example SDF schema docs
+example-docs:
+    cargo run -- docs examples/SDF/sdf.wcl --output examples/SDF/docs --title "SDF Schema Reference"
+    mdbook build examples/SDF/docs
+
+# Serve example SDF schema docs locally
+example-docs-serve: example-docs
+    mdbook serve examples/SDF/docs
