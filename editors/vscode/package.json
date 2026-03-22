@@ -1,14 +1,17 @@
 {
   "name": "wcl",
   "displayName": "WCL - Wil's Configuration Language",
-  "description": "Language support for WCL (.wcl) files",
+  "description": "Syntax highlighting, diagnostics, hover, completions, go-to-definition, formatting, and more for WCL (Wil's Configuration Language). Includes a bundled LSP server.",
   "version": "0.0.0-local",
   "publisher": "wil",
+  "icon": "icon.png",
   "engines": {
     "vscode": "^1.75.0"
   },
   "categories": [
-    "Programming Languages"
+    "Programming Languages",
+    "Linters",
+    "Formatters"
   ],
   "activationEvents": [
     "onLanguage:wcl"
@@ -56,8 +59,13 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": ["wcl", "configuration", "language", "lsp"],
+  "author": "Wil Taylor",
+  "homepage": "https://wcl.dev",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wiltaylor/wcl"
+  },
   "license": "MIT",
   "type": "commonjs",
   "dependencies": {
