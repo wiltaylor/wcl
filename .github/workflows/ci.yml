@@ -152,6 +152,7 @@ jobs:
         run: cd examples/rust && cargo run --quiet
       - name: Run CLI examples
         run: |
+          cargo install --path crates/wcl
           just examples cli
 
   test-python:
