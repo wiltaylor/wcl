@@ -586,3 +586,81 @@ jobs:
           name: v${{ needs.version.outputs.version }}
           prerelease: ${{ contains(needs.version.outputs.version, '-alpha') }}
           files: artifacts/**/*
+
+  # ── Publish ─────────────────────────────────────────────────────────────
+
+  publish:
+    name: Publish Packages
+    runs-on: ubuntu-latest
+    needs: [version, release]
+    if: needs.version.outputs.do_release == 'true'
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      # ── Rust → crates.io ──
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - uses: Swatinem/rust-cache@f51f967e158417aafa338a1e46ab22095f07aa01
+      - name: Publish Rust crates
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+        run: |
+          just pack set-version "${{ needs.version.outputs.version }}"
+          for crate in wcl_derive wcl_core wcl_eval wcl_schema wcl_serde wcl wcl_lsp wcl_cli wcl_ffi; do
+            echo "Publishing $crate..."
+            cargo publish -p $crate --no-verify
+            sleep 30
+          done
+
+      # ── Python → PyPI ──
+      - name: Publish to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          pip install twine
+          twine upload artifacts/package-python/* --non-interactive
+
+      # ── JavaScript → npm ──
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
+          NPM_TAG=$([[ "${{ needs.version.outputs.version }}" == *-* ]] && echo "next" || echo "latest")
+          npm publish artifacts/package-wasm/*.tgz --access public --tag "$NPM_TAG"
+
+      # ── .NET → NuGet ──
+      - name: Publish to NuGet
+        run: |
+          dotnet nuget push "artifacts/package-dotnet/*.nupkg" \
+            --source https://api.nuget.org/v3/index.json \
+            --api-key ${{ secrets.NUGET_API_KEY }}
+
+      # ── JVM → GitHub Packages ──
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: taiki-e/install-action@just
+      - name: Publish to GitHub Packages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
+        run: |
+          just pack set-version "${{ needs.version.outputs.version }}"
+          just build jvm-wasm
+          cd bindings/jvm && ./gradlew publish
+
+      # ── Ruby → RubyGems ──
+      - name: Publish to RubyGems
+        env:
+          GEM_HOST_API_KEY: ${{ secrets.RUBYGEMS_API_KEY }}
+        run: gem push artifacts/package-ruby/*.gem
