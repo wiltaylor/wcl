@@ -1,0 +1,19 @@
+id = "wcl"
+name = "WCL"
+description = "WCL (Wil's Configuration Language) support with syntax highlighting and LSP integration."
+version = "0.0.1"
+schema_version = 1
+authors = ["Wil Taylor"]
+repository = "https://github.com/wiltaylor/wcl"
+
+[lib]
+kind = "Rust"
+version = "0.7.0"
+
+[grammars.wcl]
+repository = "https://github.com/wiltaylor/wcl"
+path = "extras/tree-sitter-wcl"
+rev = "332f7be2c545b08b5d06a6f223e919d2cb0fe04e"
+
+[language_servers.wcl-lsp]
+languages = ["WCL"]
