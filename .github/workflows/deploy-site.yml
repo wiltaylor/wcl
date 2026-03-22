@@ -1,0 +1,64 @@
+name: Deploy Site
+
+on:
+  push:
+    branches: [main]
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - name: Check if deploy needed
+        id: check
+        run: |
+          TRAILER=$(git log -1 --format='%(trailers:key=push-docs,valueonly)')
+          if [[ "$TRAILER" == "true" ]]; then
+            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          CHANGED=$(git diff --name-only HEAD~1 HEAD -- site/ docs/book/ | head -1)
+          if [[ -n "$CHANGED" ]]; then
+            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install Hugo
+        if: steps.check.outputs.should_deploy == 'true'
+        run: |
+          HUGO_VERSION=$(curl -s https://api.github.com/repos/gohugoio/hugo/releases/latest | grep -oP '"tag_name":\s*"v\K[^"]+')
+          wget -q "https://github.com/gohugoio/hugo/releases/download/v${HUGO_VERSION}/hugo_extended_${HUGO_VERSION}_linux-amd64.deb" -O hugo.deb
+          sudo dpkg -i hugo.deb
+
+      - name: Install mdBook
+        if: steps.check.outputs.should_deploy == 'true'
+        run: |
+          MDBOOK_VERSION=$(curl -s https://api.github.com/repos/rust-lang/mdBook/releases/latest | grep -oP '"tag_name":\s*"v\K[^"]+')
+          wget -q "https://github.com/rust-lang/mdBook/releases/download/v${MDBOOK_VERSION}/mdbook-v${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz" -O mdbook.tar.gz
+          tar xzf mdbook.tar.gz
+          sudo mv mdbook /usr/local/bin/
+
+      - uses: taiki-e/install-action@just
+        if: steps.check.outputs.should_deploy == 'true'
+
+      - name: Build site
+        if: steps.check.outputs.should_deploy == 'true'
+        run: just docs web-build
+
+      - name: Deploy to Cloudflare Pages
+        if: steps.check.outputs.should_deploy == 'true'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy
