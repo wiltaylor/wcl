@@ -9,6 +9,11 @@ pub trait FileSystem: Send + Sync {
     fn read_file(&self, path: &Path) -> Result<String, String>;
     fn canonicalize(&self, path: &Path) -> Result<PathBuf, String>;
     fn exists(&self, path: &Path) -> bool;
+    /// Return all paths matching a glob pattern.
+    fn glob(&self, pattern: &Path) -> Result<Vec<PathBuf>, String> {
+        let _ = pattern;
+        Err("glob not supported in this filesystem".to_string())
+    }
 }
 
 /// Real file system implementation.
@@ -25,6 +30,18 @@ impl FileSystem for RealFileSystem {
 
     fn exists(&self, path: &Path) -> bool {
         path.exists()
+    }
+
+    fn glob(&self, pattern: &Path) -> Result<Vec<PathBuf>, String> {
+        let pattern_str = pattern
+            .to_str()
+            .ok_or_else(|| "invalid glob pattern".to_string())?;
+        let mut paths: Vec<PathBuf> = glob::glob(pattern_str)
+            .map_err(|e| format!("invalid glob pattern: {}", e))?
+            .filter_map(|entry| entry.ok())
+            .collect();
+        paths.sort();
+        Ok(paths)
     }
 }
 
@@ -67,6 +84,22 @@ impl FileSystem for InMemoryFs {
     fn exists(&self, path: &Path) -> bool {
         let normalized = normalize_path(path);
         self.files.contains_key(&normalized)
+    }
+
+    fn glob(&self, pattern: &Path) -> Result<Vec<PathBuf>, String> {
+        let pattern_str = pattern
+            .to_str()
+            .ok_or_else(|| "invalid glob pattern".to_string())?;
+        let pat =
+            glob::Pattern::new(pattern_str).map_err(|e| format!("invalid glob pattern: {}", e))?;
+        let mut paths: Vec<PathBuf> = self
+            .files
+            .keys()
+            .filter(|p| pat.matches_path(p))
+            .cloned()
+            .collect();
+        paths.sort();
+        Ok(paths)
     }
 }
 
@@ -239,118 +272,160 @@ impl<'a, FS: FileSystem + ?Sized> ImportResolver<'a, FS> {
                 continue;
             }
 
-            // Resolve the path (library imports skip jail check)
-            let resolved = if import.kind == ImportKind::Library {
+            // Determine which files to import (glob expansion or single file)
+            let resolved_files: Vec<PathBuf> = if import.kind == ImportKind::Library {
+                // Library imports: no glob support
                 match resolve_library_import(&import_path_str, self.fs) {
-                    Some(p) => p,
+                    Some(p) => vec![p],
                     None => {
+                        if !import.optional {
+                            self.diagnostics.error_with_code(
+                                format!("library '{}' not found in search paths", import_path_str),
+                                span,
+                                "E015",
+                            );
+                        } else {
+                            doc.items.remove(idx);
+                        }
+                        continue;
+                    }
+                }
+            } else if import_path_str.contains('*') {
+                // Glob import: expand pattern
+                let base_dir = current_file.parent().unwrap_or_else(|| Path::new("."));
+                let pattern = normalize_path(&base_dir.join(&import_path_str));
+                match self.fs.glob(&pattern) {
+                    Ok(mut paths) => {
+                        // Filter to .wcl files only
+                        paths.retain(|p| p.extension().map(|e| e == "wcl").unwrap_or(false));
+                        if paths.is_empty() && !import.optional {
+                            self.diagnostics.error_with_code(
+                                format!("glob pattern '{}' matched no .wcl files", import_path_str),
+                                span,
+                                "E016",
+                            );
+                        }
+                        if paths.is_empty() {
+                            continue;
+                        }
+                        paths
+                    }
+                    Err(e) => {
                         self.diagnostics.error_with_code(
-                            format!("library '{}' not found in search paths", import_path_str),
+                            format!("glob error for '{}': {}", import_path_str, e),
                             span,
-                            "E015",
+                            "E016",
                         );
                         continue;
                     }
                 }
             } else {
+                // Single file import
                 match self.resolve_path(&import_path_str, current_file) {
-                    Ok(p) => p,
+                    Ok(p) => vec![p],
                     Err(diag) => {
-                        self.diagnostics.add(diag);
+                        if !import.optional {
+                            self.diagnostics.add(diag);
+                        } else {
+                            doc.items.remove(idx);
+                        }
                         continue;
                     }
                 }
             };
 
-            // Jail check (skip for library imports — they are intentionally outside project root)
-            if import.kind != ImportKind::Library {
-                if let Err(diag) = self.check_jail(&resolved, span) {
-                    self.diagnostics.add(diag);
+            // Process each resolved file
+            let mut all_merged_items: Vec<DocItem> = Vec::new();
+            for resolved in resolved_files {
+                // Jail check (skip for library imports)
+                if import.kind != ImportKind::Library {
+                    if let Err(diag) = self.check_jail(&resolved, span) {
+                        self.diagnostics.add(diag);
+                        continue;
+                    }
+                }
+
+                // Import-once: skip if already loaded
+                if self.loaded.contains(&resolved) {
                     continue;
                 }
-            }
+                self.loaded.insert(resolved.clone());
 
-            // Import-once: skip if already loaded
-            if self.loaded.contains(&resolved) {
-                doc.items.remove(idx);
-                continue;
-            }
-            self.loaded.insert(resolved.clone());
-
-            // Read the file
-            let source = match self.fs.read_file(&resolved) {
-                Ok(s) => s,
-                Err(e) => {
-                    self.diagnostics.error_with_code(
-                        format!("cannot read imported file '{}': {}", resolved.display(), e),
-                        span,
-                        "E010",
-                    );
-                    continue;
-                }
-            };
-
-            // Add to source map and parse
-            let file_id = self
-                .source_map
-                .add_file(resolved.to_string_lossy().into_owned(), source.clone());
-            let (mut imported_doc, parse_diags) = wcl_core::parse(&source, file_id);
-            self.diagnostics.merge(parse_diags);
-
-            // Recursively resolve imports in the imported document
-            let child_diags = self.resolve(&mut imported_doc, &resolved, depth + 1);
-            self.diagnostics.merge(child_diags);
-
-            // E035: Check re-exports reference defined names in the imported file
-            // Must check against the full imported doc items (before filtering)
-            for item in &imported_doc.items {
-                if let DocItem::ReExport(re_export) = item {
-                    let name_exists = imported_doc.items.iter().any(|mi| match mi {
-                        DocItem::ExportLet(el) => el.name.name == re_export.name.name,
-                        DocItem::Body(BodyItem::LetBinding(lb)) => {
-                            lb.name.name == re_export.name.name
+                // Read the file
+                let source = match self.fs.read_file(&resolved) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        if !import.optional {
+                            self.diagnostics.error_with_code(
+                                format!(
+                                    "cannot read imported file '{}': {}",
+                                    resolved.display(),
+                                    e
+                                ),
+                                span,
+                                "E010",
+                            );
                         }
-                        DocItem::Body(BodyItem::Block(b)) => b
-                            .inline_id
-                            .as_ref()
-                            .map(|id| match id {
-                                InlineId::Literal(lit) => lit.value == re_export.name.name,
-                                _ => false,
-                            })
-                            .unwrap_or(false),
-                        _ => false,
-                    });
-                    if !name_exists {
-                        self.diagnostics.error_with_code(
-                            format!("re-export of undefined name '{}'", re_export.name.name),
-                            re_export.span,
-                            "E035",
-                        );
+                        continue;
+                    }
+                };
+
+                // Add to source map and parse
+                let file_id = self
+                    .source_map
+                    .add_file(resolved.to_string_lossy().into_owned(), source.clone());
+                let (mut imported_doc, parse_diags) = wcl_core::parse(&source, file_id);
+                self.diagnostics.merge(parse_diags);
+
+                // Recursively resolve imports in the imported document
+                let child_diags = self.resolve(&mut imported_doc, &resolved, depth + 1);
+                self.diagnostics.merge(child_diags);
+
+                // E035: Check re-exports reference defined names in the imported file
+                for item in &imported_doc.items {
+                    if let DocItem::ReExport(re_export) = item {
+                        let name_exists = imported_doc.items.iter().any(|mi| match mi {
+                            DocItem::ExportLet(el) => el.name.name == re_export.name.name,
+                            DocItem::Body(BodyItem::LetBinding(lb)) => {
+                                lb.name.name == re_export.name.name
+                            }
+                            DocItem::Body(BodyItem::Block(b)) => b
+                                .inline_id
+                                .as_ref()
+                                .map(|id| match id {
+                                    InlineId::Literal(lit) => lit.value == re_export.name.name,
+                                    _ => false,
+                                })
+                                .unwrap_or(false),
+                            _ => false,
+                        });
+                        if !name_exists {
+                            self.diagnostics.error_with_code(
+                                format!("re-export of undefined name '{}'", re_export.name.name),
+                                re_export.span,
+                                "E035",
+                            );
+                        }
                     }
                 }
-            }
 
-            // Collect mergeable items from the imported document
-            let mut merged_items: Vec<DocItem> = Vec::new();
-            for item in imported_doc.items {
-                match &item {
-                    // Private let bindings are file-private, skip them
-                    DocItem::Body(BodyItem::LetBinding(_)) => {}
-                    // Everything else gets merged
-                    DocItem::Import(_) => {
-                        // Already resolved recursively, should not appear
-                    }
-                    DocItem::ExportLet(_)
-                    | DocItem::ReExport(_)
-                    | DocItem::Body(_)
-                    | DocItem::FunctionDecl(_) => {
-                        merged_items.push(item);
+                // Collect mergeable items from the imported document
+                for item in imported_doc.items {
+                    match &item {
+                        DocItem::Body(BodyItem::LetBinding(_)) => {}
+                        DocItem::Import(_) => {}
+                        DocItem::ExportLet(_)
+                        | DocItem::ReExport(_)
+                        | DocItem::Body(_)
+                        | DocItem::FunctionDecl(_) => {
+                            all_merged_items.push(item);
+                        }
                     }
                 }
             }
 
             // E034: Check for duplicate exported variable names across imports
-            for item in &merged_items {
+            for item in &all_merged_items {
                 if let DocItem::ExportLet(export) = item {
                     if !exported_names.insert(export.name.name.clone()) {
                         self.diagnostics.error_with_code(
@@ -367,7 +442,7 @@ impl<'a, FS: FileSystem + ?Sized> ImportResolver<'a, FS> {
 
             // Replace the import directive with the merged items
             doc.items.remove(idx);
-            for (offset, item) in merged_items.into_iter().enumerate() {
+            for (offset, item) in all_merged_items.into_iter().enumerate() {
                 doc.items.insert(idx + offset, item);
             }
         }
@@ -443,6 +518,11 @@ impl<'a, FS: FileSystem + ?Sized> ImportResolver<'a, FS> {
             .with_code("E011"));
         }
         Ok(())
+    }
+
+    /// Return the set of files that were actually loaded during resolution.
+    pub fn loaded_paths(&self) -> &HashSet<PathBuf> {
+        &self.loaded
     }
 
     /// Consume the resolver and return accumulated diagnostics.
@@ -728,5 +808,65 @@ mod tests {
             .filter(|d| d.code.as_deref() == Some("E035"))
             .collect();
         assert_eq!(e035_errors.len(), 0);
+    }
+
+    #[test]
+    fn glob_with_in_memory_fs() {
+        let mut fs = InMemoryFs::new();
+        fs.add_file(PathBuf::from("/project/schemas/a.wcl"), "schema \"a\" {}");
+        fs.add_file(PathBuf::from("/project/schemas/b.wcl"), "schema \"b\" {}");
+        fs.add_file(PathBuf::from("/project/schemas/c.txt"), "not wcl");
+
+        let matches = fs.glob(Path::new("/project/schemas/*.wcl")).unwrap();
+        assert_eq!(matches.len(), 2);
+        assert!(matches.contains(&PathBuf::from("/project/schemas/a.wcl")));
+        assert!(matches.contains(&PathBuf::from("/project/schemas/b.wcl")));
+    }
+
+    #[test]
+    fn glob_no_matches_returns_empty() {
+        let fs = InMemoryFs::new();
+        let matches = fs.glob(Path::new("/project/schemas/*.wcl")).unwrap();
+        assert!(matches.is_empty());
+    }
+
+    #[test]
+    fn optional_import_missing_file_no_error() {
+        let fs = InMemoryFs::new();
+        let mut sm = make_source_map();
+        let file_id = sm.add_file(
+            "main.wcl".to_string(),
+            "import? \"./missing.wcl\"".to_string(),
+        );
+        let (mut doc, _) = wcl_core::parse("import? \"./missing.wcl\"", file_id);
+
+        let mut resolver = ImportResolver::new(&fs, &mut sm, PathBuf::from("/project"), 32, true);
+        let diags = resolver.resolve(&mut doc, Path::new("/project/main.wcl"), 0);
+
+        assert!(
+            !diags.has_errors(),
+            "optional import should not produce errors: {:?}",
+            diags.diagnostics()
+        );
+    }
+
+    #[test]
+    fn optional_glob_no_matches_no_error() {
+        let fs = InMemoryFs::new();
+        let mut sm = make_source_map();
+        let file_id = sm.add_file(
+            "main.wcl".to_string(),
+            "import? \"./schemas/*.wcl\"".to_string(),
+        );
+        let (mut doc, _) = wcl_core::parse("import? \"./schemas/*.wcl\"", file_id);
+
+        let mut resolver = ImportResolver::new(&fs, &mut sm, PathBuf::from("/project"), 32, true);
+        let diags = resolver.resolve(&mut doc, Path::new("/project/main.wcl"), 0);
+
+        assert!(
+            !diags.has_errors(),
+            "optional glob should not produce errors: {:?}",
+            diags.diagnostics()
+        );
     }
 }

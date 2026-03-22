@@ -41,7 +41,11 @@ impl<'a> Fmt<'a> {
         match item {
             DocItem::Import(import) => {
                 self.indent();
-                self.out.push_str("import ");
+                if import.optional {
+                    self.out.push_str("import? ");
+                } else {
+                    self.out.push_str("import ");
+                }
                 if import.kind == ImportKind::Library {
                     self.out.push('<');
                     for part in &import.path.parts {
@@ -146,7 +150,12 @@ impl<'a> Fmt<'a> {
             }
             BodyItem::LetBinding(lb) => {
                 self.indent();
-                self.out.push_str(&format!("let {} = ", lb.name.name));
+                if lb.partial {
+                    self.out
+                        .push_str(&format!("partial let {} = ", lb.name.name));
+                } else {
+                    self.out.push_str(&format!("let {} = ", lb.name.name));
+                }
                 self.expr(&lb.value);
                 self.out.push('\n');
             }
@@ -228,6 +237,23 @@ impl<'a> Fmt<'a> {
                     self.out.push_str(&format!("{} = ", field.name.name));
                     self.type_expr(&field.type_expr);
                     self.out.push('\n');
+                }
+                for variant in &schema.variants {
+                    self.out.push('\n');
+                    self.indent();
+                    self.out.push_str("variant ");
+                    self.string_lit(&variant.tag_value);
+                    self.out.push_str(" {\n");
+                    self.indent += 1;
+                    for field in &variant.fields {
+                        self.indent();
+                        self.out.push_str(&format!("{} = ", field.name.name));
+                        self.type_expr(&field.type_expr);
+                        self.out.push('\n');
+                    }
+                    self.indent -= 1;
+                    self.indent();
+                    self.out.push_str("}\n");
                 }
                 self.indent -= 1;
                 self.indent();
@@ -339,6 +365,24 @@ impl<'a> Fmt<'a> {
                 self.indent();
                 self.out.push_str("}\n");
             }
+            BodyItem::SymbolSetDecl(decl) => {
+                self.indent();
+                self.out
+                    .push_str(&format!("symbol_set {} {{\n", decl.name.name));
+                self.indent += 1;
+                for member in &decl.members {
+                    self.indent();
+                    self.out.push_str(&format!(":{}", member.name));
+                    if let Some(ref val) = member.value {
+                        self.out.push_str(" = ");
+                        self.string_lit(val);
+                    }
+                    self.out.push('\n');
+                }
+                self.indent -= 1;
+                self.indent();
+                self.out.push_str("}\n");
+            }
         }
     }
 
@@ -406,6 +450,10 @@ impl<'a> Fmt<'a> {
             Expr::StringLit(s) => self.string_lit(s),
             Expr::Ident(id) => self.out.push_str(&id.name),
             Expr::IdentifierLit(id) => self.out.push_str(&id.value),
+            Expr::SymbolLit(name, _) => {
+                self.out.push(':');
+                self.out.push_str(name);
+            }
             Expr::List(items, _) => {
                 self.out.push('[');
                 for (i, item) in items.iter().enumerate() {
@@ -591,6 +639,7 @@ impl<'a> Fmt<'a> {
                 }
                 self.out.push(')');
             }
+            TypeExpr::Symbol(_) => self.out.push_str("symbol"),
         }
     }
 

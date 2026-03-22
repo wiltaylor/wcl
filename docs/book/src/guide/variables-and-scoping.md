@@ -162,6 +162,39 @@ service {
 }
 ```
 
+## Partial Let Bindings
+
+A `partial let` binding declares a list value that can be split across multiple declarations — including across multiple files. All fragments with the same name are concatenated into a single list.
+
+```wcl
+partial let tags = ["api", "public"]
+```
+
+This is useful when different modules each contribute to a shared collection without having to know about one another.
+
+### Multi-file example
+
+```wcl
+// base.wcl
+partial let allowed_origins = ["https://example.com"]
+
+// admin.wcl
+import "base.wcl"
+partial let allowed_origins = ["https://admin.example.com"]
+
+// The merged value used anywhere in scope:
+// allowed_origins → ["https://example.com", "https://admin.example.com"]
+//                   (or the reverse — order is not guaranteed)
+```
+
+### Rules
+
+- **Values must be lists.** A `partial let` whose value is not a list is an error (E038).
+- **Cannot mix partial and non-partial.** Declaring `let x = ...` and `partial let x = ...` with the same name in the same merged scope is an error (E039).
+- **Merge order is not guaranteed.** Fragments from different files or scopes may be concatenated in any order. Do not write code that depends on the position of elements within the merged list.
+
+Like plain `let` bindings, partial bindings are erased before serialization and do not appear in the output document.
+
 ## Scope Model
 
 WCL uses lexical scoping with three scope kinds:

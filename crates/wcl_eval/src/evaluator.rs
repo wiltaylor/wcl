@@ -23,6 +23,10 @@ pub struct Evaluator {
     declared_functions: HashSet<String>,
     /// External variables to inject before evaluation
     variables: IndexMap<String, Value>,
+    /// Files that were actually imported (for `is_imported()` introspection)
+    imported_paths: HashSet<PathBuf>,
+    /// Schema names declared in the document (for `has_schema()` introspection)
+    schema_names: HashSet<String>,
 }
 
 impl Evaluator {
@@ -36,6 +40,8 @@ impl Evaluator {
             block_scope_map: HashMap::new(),
             declared_functions: HashSet::new(),
             variables: IndexMap::new(),
+            imported_paths: HashSet::new(),
+            schema_names: HashSet::new(),
         }
     }
 
@@ -49,6 +55,8 @@ impl Evaluator {
             block_scope_map: HashMap::new(),
             declared_functions: HashSet::new(),
             variables: IndexMap::new(),
+            imported_paths: HashSet::new(),
+            schema_names: HashSet::new(),
         }
     }
 
@@ -71,6 +79,8 @@ impl Evaluator {
             block_scope_map: HashMap::new(),
             declared_functions: HashSet::new(),
             variables: IndexMap::new(),
+            imported_paths: HashSet::new(),
+            schema_names: HashSet::new(),
         }
     }
 
@@ -82,6 +92,16 @@ impl Evaluator {
     /// Set external variables to inject before evaluation.
     pub fn set_variables(&mut self, vars: IndexMap<String, Value>) {
         self.variables = vars;
+    }
+
+    /// Set the imported file paths (for `is_imported()` introspection).
+    pub fn set_imported_paths(&mut self, paths: HashSet<PathBuf>) {
+        self.imported_paths = paths;
+    }
+
+    /// Set the schema names (for `has_schema()` introspection).
+    pub fn set_schema_names(&mut self, names: HashSet<String>) {
+        self.schema_names = names;
     }
 
     /// Add a declared function name (from `declare` statements in library imports).
@@ -597,6 +617,7 @@ impl Evaluator {
             Expr::StringLit(s) => self.eval_string_lit(s, scope_id),
             Expr::Ident(ident) => self.eval_ident(ident, scope_id),
             Expr::IdentifierLit(id) => Ok(Value::Identifier(id.value.clone())),
+            Expr::SymbolLit(name, _) => Ok(Value::Symbol(name.clone())),
             Expr::List(items, _) => {
                 let mut vals = Vec::with_capacity(items.len());
                 for item in items {
@@ -1118,6 +1139,58 @@ impl Evaluator {
                     "map" | "filter" | "every" | "some" | "reduce" | "count"
                 ) {
                     return self.eval_higher_order(name, args, span, scope_id);
+                }
+
+                // Introspection functions (special-cased, need evaluator state)
+                if name == "is_imported" {
+                    let eval_args = self.eval_call_args(args, scope_id)?;
+                    if eval_args.len() != 1 {
+                        return Err(Diagnostic::error(
+                            "is_imported() expects exactly 1 argument",
+                            span,
+                        )
+                        .with_code("E052"));
+                    }
+                    let path_str = match &eval_args[0] {
+                        Value::String(s) => s.clone(),
+                        _ => {
+                            return Err(Diagnostic::error(
+                                "is_imported() argument must be a string",
+                                span,
+                            )
+                            .with_code("E052"))
+                        }
+                    };
+                    // Resolve relative to base_dir
+                    let result = if let Some(base) = &self.base_dir {
+                        let resolved = crate::imports::normalize_path(&base.join(&path_str));
+                        self.imported_paths.contains(&resolved)
+                    } else {
+                        false
+                    };
+                    return Ok(Value::Bool(result));
+                }
+
+                if name == "has_schema" {
+                    let eval_args = self.eval_call_args(args, scope_id)?;
+                    if eval_args.len() != 1 {
+                        return Err(Diagnostic::error(
+                            "has_schema() expects exactly 1 argument",
+                            span,
+                        )
+                        .with_code("E052"));
+                    }
+                    let schema_name = match &eval_args[0] {
+                        Value::String(s) => s.clone(),
+                        _ => {
+                            return Err(Diagnostic::error(
+                                "has_schema() argument must be a string",
+                                span,
+                            )
+                            .with_code("E052"))
+                        }
+                    };
+                    return Ok(Value::Bool(self.schema_names.contains(&schema_name)));
                 }
 
                 // Evaluate arguments eagerly for normal builtins and user fns
@@ -2525,6 +2598,7 @@ mod tests {
         let expr = Expr::BlockExpr(
             vec![LetBinding {
                 decorators: vec![],
+                partial: false,
                 name: mk_ident("x"),
                 value: Expr::IntLit(10, ds()),
                 trivia: wcl_core::trivia::Trivia::empty(),
@@ -3024,6 +3098,7 @@ mod tests {
     fn mk_let(name: &str, value: Expr) -> BodyItem {
         BodyItem::LetBinding(LetBinding {
             decorators: vec![],
+            partial: false,
             name: mk_ident(name),
             value,
             trivia: wcl_core::trivia::Trivia::empty(),
@@ -3034,6 +3109,7 @@ mod tests {
     fn mk_let_with_decorators(name: &str, value: Expr, decorators: Vec<Decorator>) -> BodyItem {
         BodyItem::LetBinding(LetBinding {
             decorators,
+            partial: false,
             name: mk_ident(name),
             value,
             trivia: wcl_core::trivia::Trivia::empty(),
@@ -3240,6 +3316,7 @@ mod tests {
         let doc = mk_doc(vec![
             BodyItem::LetBinding(LetBinding {
                 decorators: vec![],
+                partial: false,
                 name: mk_ident("name"),
                 value: Expr::StringLit(StringLit {
                     parts: vec![StringPart::Literal("World".to_string())],

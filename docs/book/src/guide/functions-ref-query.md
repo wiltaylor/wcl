@@ -1,6 +1,6 @@
 # Reference & Query Functions
 
-WCL provides four functions for working with blocks: `ref()` for resolving a block by ID, `query()` for selecting sets of blocks using a pipeline, `has()` for checking whether a block has a named attribute or child, and `has_decorator()` for checking whether a block carries a decorator. These are the bridge between the functional expression layer and the block-oriented document model.
+WCL provides six functions for inspecting the document and its environment: `ref()` for resolving a block by ID, `query()` for selecting sets of blocks using a pipeline, `has()` for checking whether a block has a named attribute or child, `has_decorator()` for checking whether a block carries a decorator, `is_imported()` for testing whether a file was imported, and `has_schema()` for testing whether a schema is declared. These are the bridge between the functional expression layer and the block-oriented document model.
 
 The query engine is covered in depth in the [Query Engine](./query-engine.md) chapter. This page focuses on the function call syntax and common patterns.
 
@@ -12,6 +12,8 @@ The query engine is covered in depth in the [Query Engine](./query-engine.md) ch
 | `query` | `query(pipeline) -> list` | Execute a query pipeline; return matching blocks |
 | `has` | `has(block, name: string) -> bool` | True if `block` has an attribute or child block named `name` |
 | `has_decorator` | `has_decorator(block, name: string) -> bool` | True if `block` carries the decorator `@name` |
+| `is_imported` | `is_imported(path: string) -> bool` | True if the given file path was imported |
+| `has_schema` | `has_schema(name: string) -> bool` | True if a schema with the given name is declared |
 
 ## ref
 
@@ -162,9 +164,47 @@ for svc in query(service) {
 }
 ```
 
-## Combining ref, query, has, and has_decorator
+## is_imported
 
-These four functions compose with the rest of WCL's expression language:
+`is_imported(path)` returns `true` if the given file path was imported into the current document. The path is resolved relative to the project root. This is useful for writing conditional configuration that activates only when an optional module is present.
+
+```wcl
+let has_auth = is_imported("./auth.wcl")
+
+if has_auth {
+  config security {
+    auth_enabled: true
+  }
+}
+```
+
+`is_imported` returns `false` for paths that were not imported — it never errors.
+
+## has_schema
+
+`has_schema(name)` returns `true` if a schema with the given name is declared in the document, including schemas brought in via imports. This lets configuration react to what schema definitions are available at evaluation time.
+
+```wcl
+let needs_schema = has_schema("service")
+
+if needs_schema {
+  config validation_enabled {
+    strict: true
+  }
+}
+```
+
+Like `is_imported`, `has_schema` returns `false` rather than erroring when the name is not found.
+
+```wcl
+// Guard generated blocks behind schema availability
+let has_svc_schema = has_schema("service")
+let has_db_schema  = has_schema("database")
+```
+
+## Combining ref, query, has, has_decorator, is_imported, and has_schema
+
+These six functions compose with the rest of WCL's expression language:
 
 ```wcl
 // All services that have a port attribute and are marked @public

@@ -42,10 +42,12 @@ pub enum ImportKind {
 }
 
 /// `import "./path/to/file.wcl"` or `import <name.wcl>`
+/// `import? "./optional.wcl"` — optional import (no error if missing)
 #[derive(Debug, Clone)]
 pub struct Import {
     pub path: StringLit,
     pub kind: ImportKind,
+    pub optional: bool,
     pub trivia: Trivia,
     pub span: Span,
 }
@@ -102,6 +104,7 @@ pub enum BodyItem {
     Validation(Validation),
     Schema(Schema),
     DecoratorSchema(DecoratorSchema),
+    SymbolSetDecl(SymbolSetDecl),
 }
 
 // ===== Identifiers =====
@@ -177,10 +180,11 @@ pub enum InlineId {
 
 // ===== Let Bindings =====
 
-/// `[@decorator...] let name = <expr>`
+/// `[@decorator...] [partial] let name = <expr>`
 #[derive(Debug, Clone)]
 pub struct LetBinding {
     pub decorators: Vec<Decorator>,
+    pub partial: bool,
     pub name: Ident,
     pub value: Expr,
     pub trivia: Trivia,
@@ -249,11 +253,24 @@ pub struct TableRow {
 
 // ===== Schemas =====
 
-/// `[@decorator...] schema "name" { fields... }`
+/// `[@decorator...] schema "name" { fields... [variant "value" { fields... }]... }`
 #[derive(Debug, Clone)]
 pub struct Schema {
     pub decorators: Vec<Decorator>,
     pub name: StringLit,
+    pub fields: Vec<SchemaField>,
+    pub variants: Vec<SchemaVariant>,
+    pub trivia: Trivia,
+    pub span: Span,
+}
+
+/// A tagged variant arm inside a schema definition.
+///
+/// `[@decorator...] variant "value" { fields... }`
+#[derive(Debug, Clone)]
+pub struct SchemaVariant {
+    pub decorators: Vec<Decorator>,
+    pub tag_value: StringLit,
     pub fields: Vec<SchemaField>,
     pub trivia: Trivia,
     pub span: Span,
@@ -292,6 +309,25 @@ pub enum DecoratorTarget {
     Attribute,
     Table,
     Schema,
+}
+
+// ===== Symbol Sets =====
+
+/// `symbol_set name { :sym1 :sym2 = "value" ... }`
+#[derive(Debug, Clone)]
+pub struct SymbolSetDecl {
+    pub name: Ident,
+    pub members: Vec<SymbolMember>,
+    pub trivia: Trivia,
+    pub span: Span,
+}
+
+/// A single member in a symbol set declaration.
+#[derive(Debug, Clone)]
+pub struct SymbolMember {
+    pub name: String,
+    pub value: Option<StringLit>,
+    pub span: Span,
 }
 
 // ===== Macros =====
@@ -531,6 +567,8 @@ pub enum TypeExpr {
     Ref(StringLit, Span),
     /// `union(t1, t2, ...)`
     Union(Vec<TypeExpr>, Span),
+    /// `symbol`
+    Symbol(Span),
 }
 
 impl TypeExpr {
@@ -548,7 +586,8 @@ impl TypeExpr {
             | TypeExpr::Map(_, _, s)
             | TypeExpr::Set(_, s)
             | TypeExpr::Ref(_, s)
-            | TypeExpr::Union(_, s) => *s,
+            | TypeExpr::Union(_, s)
+            | TypeExpr::Symbol(s) => *s,
         }
     }
 }
@@ -573,6 +612,8 @@ pub enum Expr {
     Ident(Ident),
     /// Identifier literal (`id` type value), e.g. `svc-auth`
     IdentifierLit(IdentifierLit),
+    /// Symbol literal: `:GET`, `:relational`
+    SymbolLit(String, Span),
     /// List literal: `[a, b, c]`
     List(Vec<Expr>, Span),
     /// Map literal: `{ key = val, ... }`
@@ -627,7 +668,8 @@ impl Expr {
             | Expr::Ref(_, s)
             | Expr::ImportRaw(_, s)
             | Expr::ImportTable(_, s)
-            | Expr::Paren(_, s) => *s,
+            | Expr::Paren(_, s)
+            | Expr::SymbolLit(_, s) => *s,
             Expr::StringLit(s) => s.span,
             Expr::Ident(i) => i.span,
             Expr::IdentifierLit(i) => i.span,

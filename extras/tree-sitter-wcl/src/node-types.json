@@ -92,6 +92,10 @@
           "named": true
         },
         {
+          "type": "symbol_literal",
+          "named": true
+        },
+        {
           "type": "unary_expression",
           "named": true
         }
@@ -200,6 +204,10 @@
         },
         {
           "type": "string_literal",
+          "named": true
+        },
+        {
+          "type": "symbol_literal",
           "named": true
         },
         {
@@ -354,6 +362,10 @@
           "named": true
         },
         {
+          "type": "symbol_set_declaration",
+          "named": true
+        },
+        {
           "type": "table",
           "named": true
         },
@@ -480,6 +492,10 @@
         {
           "type": "string_literal",
           "named": true
+        },
+        {
+          "type": "symbol_literal",
+          "named": true
         }
       ]
     }
@@ -604,6 +620,10 @@
           "named": true
         },
         {
+          "type": "symbol_literal",
+          "named": true
+        },
+        {
           "type": "unary_expression",
           "named": true
         }
@@ -664,6 +684,10 @@
         },
         {
           "type": "schema",
+          "named": true
+        },
+        {
+          "type": "symbol_set_declaration",
           "named": true
         },
         {
@@ -838,6 +862,10 @@
           "named": true
         },
         {
+          "type": "symbol_set_declaration",
+          "named": true
+        },
+        {
           "type": "table",
           "named": true
         },
@@ -894,6 +922,10 @@
         },
         {
           "type": "schema",
+          "named": true
+        },
+        {
+          "type": "symbol_set_declaration",
           "named": true
         },
         {
@@ -1005,6 +1037,10 @@
         },
         {
           "type": "string_literal",
+          "named": true
+        },
+        {
+          "type": "symbol_literal",
           "named": true
         },
         {
@@ -1142,6 +1178,10 @@
           "named": true
         },
         {
+          "type": "symbol_literal",
+          "named": true
+        },
+        {
           "type": "ternary_expression",
           "named": true
         },
@@ -1228,6 +1268,10 @@
           "named": true
         },
         {
+          "type": "symbol_set_declaration",
+          "named": true
+        },
+        {
           "type": "table",
           "named": true
         },
@@ -1292,6 +1336,10 @@
         },
         {
           "type": "schema",
+          "named": true
+        },
+        {
+          "type": "symbol_set_declaration",
           "named": true
         },
         {
@@ -1468,6 +1516,10 @@
         {
           "type": "string_literal",
           "named": true
+        },
+        {
+          "type": "symbol_literal",
+          "named": true
         }
       ]
     }
@@ -1521,6 +1573,10 @@
           "named": true
         },
         {
+          "type": "symbol_set_declaration",
+          "named": true
+        },
+        {
           "type": "table",
           "named": true
         },
@@ -1565,6 +1621,10 @@
         },
         {
           "type": "string_literal",
+          "named": true
+        },
+        {
+          "type": "symbol_literal",
           "named": true
         }
       ]
@@ -1855,6 +1915,10 @@
         {
           "type": "string_literal",
           "named": true
+        },
+        {
+          "type": "symbol_literal",
+          "named": true
         }
       ]
     }
@@ -1945,6 +2009,10 @@
         },
         {
           "type": "string_literal",
+          "named": true
+        },
+        {
+          "type": "symbol_literal",
           "named": true
         },
         {
@@ -2084,6 +2152,10 @@
         },
         {
           "type": "string_literal",
+          "named": true
+        },
+        {
+          "type": "symbol_literal",
           "named": true
         },
         {
@@ -2242,6 +2314,10 @@
           "named": true
         },
         {
+          "type": "schema_variant",
+          "named": true
+        },
+        {
           "type": "string_literal",
           "named": true
         }
@@ -2266,6 +2342,29 @@
         },
         {
           "type": "type_expression",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "schema_variant",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "decorator",
+          "named": true
+        },
+        {
+          "type": "schema_field",
+          "named": true
+        },
+        {
+          "type": "string_literal",
           "named": true
         }
       ]
@@ -2338,6 +2437,51 @@
         },
         {
           "type": "string_content",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "symbol_set_declaration",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "symbol_set_member",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "symbol_set_member",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "string_literal",
+          "named": true
+        },
+        {
+          "type": "symbol_literal",
           "named": true
         }
       ]
@@ -2511,6 +2655,10 @@
           "named": true
         },
         {
+          "type": "symbol_literal",
+          "named": true
+        },
+        {
           "type": "unary_expression",
           "named": true
         }
@@ -2661,6 +2809,10 @@
         },
         {
           "type": "string_literal",
+          "named": true
+        },
+        {
+          "type": "symbol_literal",
           "named": true
         },
         {
@@ -3031,6 +3183,18 @@
     "named": true
   },
   {
+    "type": "symbol",
+    "named": false
+  },
+  {
+    "type": "symbol_literal",
+    "named": true
+  },
+  {
+    "type": "symbol_set",
+    "named": false
+  },
+  {
     "type": "table",
     "named": false
   },
@@ -3048,6 +3212,10 @@
   },
   {
     "type": "validation",
+    "named": false
+  },
+  {
+    "type": "variant",
     "named": false
   },
   {

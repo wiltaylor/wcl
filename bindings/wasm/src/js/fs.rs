@@ -66,4 +66,8 @@ impl FileSystem for JsFileSystem {
             Err(_) => false,
         }
     }
+
+    fn glob(&self, _pattern: &Path) -> Result<Vec<PathBuf>, String> {
+        Err("glob imports are not supported in WASM contexts".to_string())
+    }
 }

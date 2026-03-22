@@ -20,9 +20,11 @@ pub use wcl_eval::{
     ScopeArena, ScopeEntry, ScopeEntryKind, ScopeId, ScopeKind, Value,
 };
 
+pub use wcl_schema::type_name;
 pub use wcl_schema::{
-    DecoratorSchemaRegistry, IdRegistry, ResolvedDecoratorSchema, ResolvedField, ResolvedSchema,
-    SchemaRegistry,
+    ChildConstraint, DecoratorSchemaRegistry, IdRegistry, ResolvedDecoratorSchema, ResolvedField,
+    ResolvedSchema, ResolvedVariant, SchemaRegistry, SymbolSetInfo, SymbolSetRegistry,
+    ValidateConstraints,
 };
 
 pub use wcl_serde::{
@@ -108,6 +110,8 @@ pub struct Document {
     pub schemas: SchemaRegistry,
     /// Decorator schema registry
     pub decorator_schemas: DecoratorSchemaRegistry,
+    /// Symbol set registry
+    pub symbol_sets: SymbolSetRegistry,
 }
 
 impl Document {
@@ -433,6 +437,7 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
         .fs
         .clone()
         .unwrap_or_else(|| Arc::new(RealFileSystem));
+    let mut imported_paths = std::collections::HashSet::new();
     if options.allow_imports {
         let mut resolver = ImportResolver::new(
             fs.as_ref(),
@@ -442,6 +447,7 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
             options.allow_imports,
         );
         let import_diags = resolver.resolve(&mut doc, &options.root_dir.join("<input>"), 0);
+        imported_paths = resolver.loaded_paths().clone();
         all_diagnostics.extend(import_diags.into_diagnostics());
     }
 
@@ -529,13 +535,43 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
         fn exists(&self, path: &std::path::Path) -> bool {
             self.0.exists(path)
         }
+        fn glob(&self, pattern: &std::path::Path) -> Result<Vec<PathBuf>, String> {
+            self.0.glob(pattern)
+        }
     }
+    // Pre-scan schema names for has_schema() introspection during evaluation
+    let schema_names: std::collections::HashSet<String> = doc
+        .items
+        .iter()
+        .filter_map(|item| {
+            if let ast::DocItem::Body(ast::BodyItem::Schema(s)) = item {
+                Some(
+                    s.name
+                        .parts
+                        .iter()
+                        .filter_map(|p| {
+                            if let ast::StringPart::Literal(l) = p {
+                                Some(l.clone())
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<String>(),
+                )
+            } else {
+                None
+            }
+        })
+        .collect();
+
     let mut evaluator = Evaluator::with_functions(
         &options.functions,
         Some(Box::new(ArcFs(fs))),
         Some(options.root_dir.clone()),
     );
     evaluator.set_variables(options.variables.clone());
+    evaluator.set_imported_paths(imported_paths);
+    evaluator.set_schema_names(schema_names);
     let values = evaluator.evaluate(&doc);
     all_diagnostics.extend(evaluator.into_diagnostics().into_diagnostics());
 
@@ -555,7 +591,11 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
     let mut values = values;
     apply_inline_mappings(&schemas, &mut values);
 
-    schemas.validate(&doc, &values, &mut diag_bag);
+    // Phase 9a2: Symbol set collection
+    let mut symbol_sets = SymbolSetRegistry::new();
+    symbol_sets.collect(&doc, &mut diag_bag);
+
+    schemas.validate(&doc, &values, &symbol_sets, &mut diag_bag);
     all_diagnostics.extend(diag_bag.into_diagnostics());
 
     // Phase 9b: Table column validation
@@ -585,6 +625,7 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
         source_map,
         schemas,
         decorator_schemas,
+        symbol_sets,
     }
 }
 
@@ -2714,5 +2755,386 @@ server web 8080 "extra" {
         } else {
             panic!("expected BlockRef, got {:?}", val);
         }
+    }
+
+    // ── Symbol tests ─────────────────────────────────────────────────────
+
+    #[test]
+    fn test_symbol_literal_evaluation() {
+        let doc = parse("method = :GET", ParseOptions::default());
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+        assert_eq!(doc.values.get("method"), Some(&Value::Symbol("GET".into())));
+    }
+
+    #[test]
+    fn test_symbol_set_collection() {
+        let doc = parse(
+            "symbol_set http_method { :GET :POST :PUT :DELETE }",
+            ParseOptions::default(),
+        );
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+        assert!(doc.symbol_sets.set_exists("http_method"));
+        assert!(doc.symbol_sets.contains("http_method", "GET"));
+        assert!(!doc.symbol_sets.contains("http_method", "PATCH"));
+    }
+
+    #[test]
+    fn test_symbol_set_valid_usage() {
+        let src = r#"
+symbol_set http_method { :GET :POST }
+schema "operation" {
+    method: symbol @symbol_set("http_method")
+}
+operation "x" {
+    method = :GET
+}
+"#;
+        let doc = parse(src, ParseOptions::default());
+        let errors = doc.errors();
+        assert!(errors.is_empty(), "expected no errors: {:?}", errors);
+    }
+
+    #[test]
+    fn test_symbol_set_invalid_member_e100() {
+        let src = r#"
+symbol_set http_method { :GET :POST }
+schema "operation" {
+    method: symbol @symbol_set("http_method")
+}
+operation "x" {
+    method = :PATCH
+}
+"#;
+        let doc = parse(src, ParseOptions::default());
+        let e100: Vec<_> = doc
+            .diagnostics
+            .iter()
+            .filter(|d| d.code.as_deref() == Some("E100"))
+            .collect();
+        assert_eq!(e100.len(), 1, "expected E100: {:?}", doc.diagnostics);
+    }
+
+    #[test]
+    fn test_symbol_set_missing_set_e101() {
+        let src = r#"
+schema "operation" {
+    method: symbol @symbol_set("nonexistent")
+}
+operation "x" {
+    method = :GET
+}
+"#;
+        let doc = parse(src, ParseOptions::default());
+        let e101: Vec<_> = doc
+            .diagnostics
+            .iter()
+            .filter(|d| d.code.as_deref() == Some("E101"))
+            .collect();
+        assert_eq!(e101.len(), 1, "expected E101: {:?}", doc.diagnostics);
+    }
+
+    #[test]
+    fn test_symbol_set_duplicate_e102() {
+        let src = "symbol_set x { :a }\nsymbol_set x { :b }";
+        let doc = parse(src, ParseOptions::default());
+        let e102: Vec<_> = doc
+            .diagnostics
+            .iter()
+            .filter(|d| d.code.as_deref() == Some("E102"))
+            .collect();
+        assert_eq!(e102.len(), 1, "expected E102: {:?}", doc.diagnostics);
+    }
+
+    #[test]
+    fn test_symbol_set_duplicate_member_e103() {
+        let src = "symbol_set x { :a :b :a }";
+        let doc = parse(src, ParseOptions::default());
+        let e103: Vec<_> = doc
+            .diagnostics
+            .iter()
+            .filter(|d| d.code.as_deref() == Some("E103"))
+            .collect();
+        assert_eq!(e103.len(), 1, "expected E103: {:?}", doc.diagnostics);
+    }
+
+    #[test]
+    fn test_symbol_set_all_accepts_any() {
+        let src = r#"
+schema "thing" {
+    kind: symbol @symbol_set("all")
+}
+thing "x" {
+    kind = :whatever
+}
+"#;
+        let doc = parse(src, ParseOptions::default());
+        let errors = doc.errors();
+        assert!(
+            errors.is_empty(),
+            "\"all\" should accept any symbol: {:?}",
+            errors
+        );
+    }
+
+    #[test]
+    fn test_symbol_type_mismatch_e071() {
+        let src = r#"
+schema "thing" {
+    kind: symbol
+}
+thing "x" {
+    kind = "not_a_symbol"
+}
+"#;
+        let doc = parse(src, ParseOptions::default());
+        let e071: Vec<_> = doc
+            .diagnostics
+            .iter()
+            .filter(|d| d.code.as_deref() == Some("E071"))
+            .collect();
+        assert_eq!(e071.len(), 1, "expected E071: {:?}", doc.diagnostics);
+    }
+
+    #[test]
+    fn test_symbol_set_value_mapping() {
+        let src = r#"
+symbol_set multi {
+    :zero_or_one = "0..1"
+    :one = "1"
+    :many
+}
+"#;
+        let doc = parse(src, ParseOptions::default());
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+        assert_eq!(
+            doc.symbol_sets.serialize_symbol("multi", "zero_or_one"),
+            "0..1"
+        );
+        assert_eq!(doc.symbol_sets.serialize_symbol("multi", "one"), "1");
+        assert_eq!(doc.symbol_sets.serialize_symbol("multi", "many"), "many");
+    }
+
+    #[cfg(feature = "json")]
+    #[test]
+    fn test_symbol_json_serialization() {
+        let doc = parse("method = :GET", ParseOptions::default());
+        let json = crate::json::value_to_json(doc.values.get("method").unwrap());
+        assert_eq!(json, serde_json::json!("GET"));
+    }
+
+    // ── Glob imports ────────────────────────────────────────────────────
+
+    #[test]
+    fn test_glob_import_matches_files() {
+        let mut fs = InMemoryFs::new();
+        fs.add_file(
+            std::path::PathBuf::from("/project/schemas/a.wcl"),
+            "schema \"a\" { name: string }",
+        );
+        fs.add_file(
+            std::path::PathBuf::from("/project/schemas/b.wcl"),
+            "schema \"b\" { port: int }",
+        );
+        // non-wcl file should be filtered out
+        fs.add_file(
+            std::path::PathBuf::from("/project/schemas/readme.md"),
+            "# Readme",
+        );
+        let opts = ParseOptions {
+            root_dir: std::path::PathBuf::from("/project"),
+            fs: Some(Arc::new(fs)),
+            ..ParseOptions::default()
+        };
+        let doc = parse("import \"./schemas/*.wcl\"", opts);
+        assert!(!doc.has_errors(), "errors: {:?}", doc.errors());
+        // Both schemas should be imported
+        assert!(doc.schemas.schemas.contains_key("a"));
+        assert!(doc.schemas.schemas.contains_key("b"));
+    }
+
+    #[test]
+    fn test_glob_import_no_match_emits_e016() {
+        let fs = InMemoryFs::new();
+        let opts = ParseOptions {
+            root_dir: std::path::PathBuf::from("/project"),
+            fs: Some(Arc::new(fs)),
+            ..ParseOptions::default()
+        };
+        let doc = parse("import \"./schemas/*.wcl\"", opts);
+        let e016: Vec<_> = doc
+            .diagnostics
+            .iter()
+            .filter(|d| d.code.as_deref() == Some("E016"))
+            .collect();
+        assert_eq!(e016.len(), 1);
+    }
+
+    // ── Optional imports ────────────────────────────────────────────────
+
+    #[test]
+    fn test_optional_import_missing_file_no_error() {
+        let fs = InMemoryFs::new();
+        let opts = ParseOptions {
+            root_dir: std::path::PathBuf::from("/project"),
+            fs: Some(Arc::new(fs)),
+            ..ParseOptions::default()
+        };
+        let doc = parse("import? \"./nonexistent.wcl\"", opts);
+        assert!(!doc.has_errors(), "errors: {:?}", doc.errors());
+    }
+
+    #[test]
+    fn test_optional_import_existing_file_imported() {
+        let mut fs = InMemoryFs::new();
+        fs.add_file(
+            std::path::PathBuf::from("/project/extra.wcl"),
+            "schema \"extra\" { name: string }",
+        );
+        let opts = ParseOptions {
+            root_dir: std::path::PathBuf::from("/project"),
+            fs: Some(Arc::new(fs)),
+            ..ParseOptions::default()
+        };
+        let doc = parse("import? \"./extra.wcl\"", opts);
+        assert!(!doc.has_errors(), "errors: {:?}", doc.errors());
+        assert!(doc.schemas.schemas.contains_key("extra"));
+    }
+
+    #[test]
+    fn test_optional_glob_no_matches_no_error() {
+        let fs = InMemoryFs::new();
+        let opts = ParseOptions {
+            root_dir: std::path::PathBuf::from("/project"),
+            fs: Some(Arc::new(fs)),
+            ..ParseOptions::default()
+        };
+        let doc = parse("import? \"./env/*.wcl\"", opts);
+        assert!(!doc.has_errors(), "errors: {:?}", doc.errors());
+    }
+
+    // ── Introspection functions ─────────────────────────────────────────
+
+    #[test]
+    fn test_has_schema_true() {
+        let source = r#"
+            schema "service" { port: int }
+            found = has_schema("service")
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        assert!(!doc.has_errors(), "errors: {:?}", doc.errors());
+        assert_eq!(doc.values.get("found"), Some(&Value::Bool(true)));
+    }
+
+    #[test]
+    fn test_has_schema_false() {
+        let source = "found = has_schema(\"nonexistent\")";
+        let doc = parse(source, ParseOptions::default());
+        assert!(!doc.has_errors(), "errors: {:?}", doc.errors());
+        assert_eq!(doc.values.get("found"), Some(&Value::Bool(false)));
+    }
+
+    #[test]
+    fn test_is_imported_with_imported_file() {
+        let mut fs = InMemoryFs::new();
+        fs.add_file(
+            std::path::PathBuf::from("/project/auth.wcl"),
+            "schema \"auth\" { token: string }",
+        );
+        let opts = ParseOptions {
+            root_dir: std::path::PathBuf::from("/project"),
+            fs: Some(Arc::new(fs)),
+            ..ParseOptions::default()
+        };
+        let source = r#"
+            import "./auth.wcl"
+            has_auth = is_imported("./auth.wcl")
+        "#;
+        let doc = parse(source, opts);
+        assert!(!doc.has_errors(), "errors: {:?}", doc.errors());
+        assert_eq!(doc.values.get("has_auth"), Some(&Value::Bool(true)));
+    }
+
+    #[test]
+    fn test_is_imported_false_for_non_imported() {
+        let opts = ParseOptions {
+            root_dir: std::path::PathBuf::from("/project"),
+            ..ParseOptions::default()
+        };
+        let source = "has_auth = is_imported(\"./auth.wcl\")";
+        let doc = parse(source, opts);
+        assert!(!doc.has_errors(), "errors: {:?}", doc.errors());
+        assert_eq!(doc.values.get("has_auth"), Some(&Value::Bool(false)));
+    }
+
+    // ── Partial let bindings ────────────────────────────────────────────
+
+    #[test]
+    fn test_partial_let_concatenates_lists() {
+        let source = r#"
+            partial let tags = ["api", "public"]
+            partial let tags = ["v2"]
+            all_tags = tags
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        assert!(!doc.has_errors(), "errors: {:?}", doc.errors());
+        if let Some(Value::List(items)) = doc.values.get("all_tags") {
+            assert_eq!(items.len(), 3);
+        } else {
+            panic!("expected list, got {:?}", doc.values.get("all_tags"));
+        }
+    }
+
+    #[test]
+    fn test_partial_let_three_fragments() {
+        let source = r#"
+            partial let items = [1]
+            partial let items = [2]
+            partial let items = [3]
+            count = len(items)
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        assert!(!doc.has_errors(), "errors: {:?}", doc.errors());
+        assert_eq!(doc.values.get("count"), Some(&Value::Int(3)));
+    }
+
+    #[test]
+    fn test_partial_let_single_clears_flag() {
+        let source = r#"
+            partial let tags = ["api"]
+            t = tags
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        assert!(!doc.has_errors(), "errors: {:?}", doc.errors());
+        assert_eq!(
+            doc.values.get("t"),
+            Some(&Value::List(vec![Value::String("api".to_string())]))
+        );
+    }
+
+    #[test]
+    fn test_partial_let_non_list_emits_e038() {
+        let source = "partial let x = 42";
+        let doc = parse(source, ParseOptions::default());
+        let e038: Vec<_> = doc
+            .diagnostics
+            .iter()
+            .filter(|d| d.code.as_deref() == Some("E038"))
+            .collect();
+        assert_eq!(e038.len(), 1);
+    }
+
+    #[test]
+    fn test_partial_let_mixed_emits_e039() {
+        let source = r#"
+            partial let tags = ["api"]
+            let tags = ["fixed"]
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        let e039: Vec<_> = doc
+            .diagnostics
+            .iter()
+            .filter(|d| d.code.as_deref() == Some("E039"))
+            .collect();
+        assert_eq!(e039.len(), 1);
     }
 }

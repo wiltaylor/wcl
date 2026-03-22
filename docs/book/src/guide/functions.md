@@ -1,6 +1,6 @@
 # Functions
 
-WCL provides 50+ built-in functions covering strings, math, collections, higher-order operations, aggregation, hashing, encoding, type coercion, and block references. All built-ins are **pure**, **deterministic**, and have **no side effects** — given the same inputs they always return the same output, and they never modify state.
+WCL provides 50+ built-in functions covering strings, math, collections, higher-order operations, aggregation, hashing, encoding, type coercion, block references, and document introspection. All built-ins are **pure**, **deterministic**, and have **no side effects** — given the same inputs they always return the same output, and they never modify state.
 
 Functions are called with parentheses:
 
@@ -21,7 +21,7 @@ let xs = filter([1,2,3], x => x > 1)  // [2, 3]
 | Aggregate | [Aggregate Functions](./functions-aggregate.md) | `sum`, `avg`, `min_of`, `max_of`, `count` |
 | Hash & Encoding | [Hash & Encoding Functions](./functions-hash-encoding.md) | `sha256`, `base64_encode`, `base64_decode`, `json_encode` |
 | Type Coercion | [Type Coercion Functions](./functions-type-coercion.md) | `to_string`, `to_int`, `to_float`, `to_bool`, `type_of` |
-| Reference & Query | [Reference & Query Functions](./functions-ref-query.md) | `ref`, `query`, `has`, `has_decorator` |
+| Reference & Query | [Reference & Query Functions](./functions-ref-query.md) | `ref`, `query`, `has`, `has_decorator`, `is_imported`, `has_schema` |
 
 ## User-Defined Functions
 

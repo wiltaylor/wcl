@@ -27,10 +27,11 @@ body_item       = attribute
                 | validation
                 | schema
                 | decorator_schema
+                | symbol_set_decl
                 | comment ;
 
 (* ===== Import Directives (top-level only) ===== *)
-import_decl     = "import" STRING_LIT ;
+import_decl     = "import" ["?"] (STRING_LIT | library_import) ;
 
 (* ===== Export Declarations (top-level only) ===== *)
 export_decl     = "export" "let" IDENT "=" expression
@@ -44,7 +45,7 @@ block           = { decorator } [ "partial" ] IDENT [ IDENTIFIER_LIT ]
                   { STRING_LIT } "{" body "}" ;
 
 (* ===== Let Bindings ===== *)
-let_binding     = "let" IDENT "=" expression ;
+let_binding     = { decorator } ["partial"] "let" IDENT "=" expression ;
 
 (* ===== Control Flow ===== *)
 for_loop        = "for" IDENT [ "," IDENT ] "in" expression "{" body "}" ;
@@ -59,7 +60,8 @@ column_decl     = { decorator } IDENT ":" type_expr ;
 table_row       = "|" expression { "|" expression } "|" ;
 
 (* ===== Schemas ===== *)
-schema          = { decorator } "schema" STRING_LIT "{" { schema_field } "}" ;
+schema          = { decorator } "schema" STRING_LIT "{" { schema_field | schema_variant } "}" ;
+schema_variant  = { decorator } "variant" STRING_LIT "{" { schema_field } "}" ;
 schema_field    = { decorator } IDENT "=" type_expr { decorator } ;
 
 (* ===== Decorator Schemas ===== *)
@@ -68,6 +70,11 @@ decorator_schema = { decorator } "decorator_schema" STRING_LIT
 decorator_schema_body = "target" "=" "[" target_list "]" { schema_field } ;
 target_list     = target { "," target } ;
 target          = "block" | "attribute" | "table" | "schema" ;
+
+(* ===== Symbol Sets ===== *)
+symbol_set_decl = "symbol_set" IDENT "{" { symbol_set_member } "}" ;
+symbol_set_member = symbol_lit [ "=" STRING_LIT ] ;
+symbol_lit      = ":" IDENT ;
 
 (* ===== Decorators ===== *)
 decorator       = "@" IDENT [ "(" decorator_args ")" ] ;
@@ -102,7 +109,7 @@ validation      = { decorator } "validation" STRING_LIT "{"
 
 (* ===== Types ===== *)
 type_expr       = "string" | "int" | "float" | "bool" | "null"
-                | "identifier" | "any"
+                | "identifier" | "symbol" | "any"
                 | "list" "(" type_expr ")"
                 | "map" "(" type_expr "," type_expr ")"
                 | "set" "(" type_expr ")"
@@ -123,7 +130,7 @@ unary_expr      = ( "!" | "-" ) unary_expr | postfix_expr ;
 postfix_expr    = primary_expr { ( "." IDENT | "[" expression "]"
                 | "(" [ arg_list ] ")" ) } ;
 primary_expr    = INT_LIT | FLOAT_LIT | STRING_LIT | BOOL_LIT | NULL_LIT
-                | IDENTIFIER_LIT | IDENT
+                | IDENTIFIER_LIT | IDENT | symbol_lit
                 | list_literal | map_literal
                 | "(" expression ")"
                 | query_expr

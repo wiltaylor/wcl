@@ -77,6 +77,10 @@
         {
           "type": "SYMBOL",
           "name": "declare_statement"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "symbol_set_declaration"
         }
       ]
     },
@@ -86,6 +90,18 @@
         {
           "type": "STRING",
           "value": "import"
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "STRING",
+              "value": "?"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
         },
         {
           "type": "CHOICE",
@@ -262,6 +278,10 @@
         },
         {
           "type": "SYMBOL",
+          "name": "symbol_literal"
+        },
+        {
+          "type": "SYMBOL",
           "name": "identifier"
         },
         {
@@ -293,6 +313,18 @@
     "let_binding": {
       "type": "SEQ",
       "members": [
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "STRING",
+              "value": "partial"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
         {
           "type": "STRING",
           "value": "let"
@@ -631,6 +663,50 @@
         {
           "type": "STRING",
           "value": "schema"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "string_literal"
+        },
+        {
+          "type": "STRING",
+          "value": "{"
+        },
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "schema_field"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "schema_variant"
+              }
+            ]
+          }
+        },
+        {
+          "type": "STRING",
+          "value": "}"
+        }
+      ]
+    },
+    "schema_variant": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "SYMBOL",
+            "name": "decorator"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": "variant"
         },
         {
           "type": "SYMBOL",
@@ -1535,6 +1611,10 @@
         {
           "type": "STRING",
           "value": "any"
+        },
+        {
+          "type": "STRING",
+          "value": "symbol"
         }
       ]
     },
@@ -2154,6 +2234,10 @@
         },
         {
           "type": "SYMBOL",
+          "name": "symbol_literal"
+        },
+        {
+          "type": "SYMBOL",
           "name": "identifier_literal"
         },
         {
@@ -2744,6 +2828,84 @@
           }
         ]
       }
+    },
+    "symbol_literal": {
+      "type": "TOKEN",
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "STRING",
+            "value": ":"
+          },
+          {
+            "type": "PATTERN",
+            "value": "[a-zA-Z_][a-zA-Z0-9_]*"
+          }
+        ]
+      }
+    },
+    "symbol_set_declaration": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "symbol_set"
+        },
+        {
+          "type": "FIELD",
+          "name": "name",
+          "content": {
+            "type": "SYMBOL",
+            "name": "identifier"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": "{"
+        },
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "SYMBOL",
+            "name": "symbol_set_member"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": "}"
+        }
+      ]
+    },
+    "symbol_set_member": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "symbol_literal"
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "STRING",
+                  "value": "="
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "string_literal"
+                }
+              ]
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        }
+      ]
     },
     "boolean_literal": {
       "type": "CHOICE",
