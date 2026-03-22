@@ -589,26 +589,19 @@ jobs:
 
   # ── Publish ─────────────────────────────────────────────────────────────
 
-  publish:
-    name: Publish Packages
+  publish-rust:
+    name: Publish Rust → crates.io
     runs-on: ubuntu-latest
     needs: [version, release]
     if: needs.version.outputs.do_release == 'true'
-    permissions:
-      contents: read
-      packages: write
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v4
-        with:
-          path: artifacts/
-
-      # ── Rust → crates.io ──
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - uses: taiki-e/install-action@just
       - uses: Swatinem/rust-cache@f51f967e158417aafa338a1e46ab22095f07aa01
-      - name: Publish Rust crates
+      - name: Publish crates
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
         run: |
@@ -619,37 +612,78 @@ jobs:
             sleep 30
           done
 
-      # ── Python → PyPI ──
+  publish-python:
+    name: Publish Python → PyPI
+    runs-on: ubuntu-latest
+    needs: [version, release]
+    if: needs.version.outputs.do_release == 'true'
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: package-python
+          path: dist/
       - name: Publish to PyPI
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
         run: |
           pip install twine
-          twine upload artifacts/package-python/* --non-interactive
+          twine upload dist/* --non-interactive
 
-      # ── JavaScript → npm ──
+  publish-wasm:
+    name: Publish JS → npm
+    runs-on: ubuntu-latest
+    needs: [version, release]
+    if: needs.version.outputs.do_release == 'true'
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: package-wasm
+          path: dist/
       - name: Publish to npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
           NPM_TAG=$([[ "${{ needs.version.outputs.version }}" == *-* ]] && echo "next" || echo "latest")
-          npm publish artifacts/package-wasm/*.tgz --access public --tag "$NPM_TAG"
+          npm publish dist/*.tgz --access public --tag "$NPM_TAG"
 
-      # ── .NET → NuGet ──
+  publish-dotnet:
+    name: Publish .NET → NuGet
+    runs-on: ubuntu-latest
+    needs: [version, release]
+    if: needs.version.outputs.do_release == 'true'
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: package-dotnet
+          path: dist/
       - name: Publish to NuGet
         run: |
-          dotnet nuget push "artifacts/package-dotnet/*.nupkg" \
+          dotnet nuget push "dist/*.nupkg" \
             --source https://api.nuget.org/v3/index.json \
             --api-key ${{ secrets.NUGET_API_KEY }}
 
-      # ── JVM → GitHub Packages ──
+  publish-jvm:
+    name: Publish JVM → GitHub Packages
+    runs-on: ubuntu-latest
+    needs: [version, release]
+    if: needs.version.outputs.do_release == 'true'
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v6
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: wasm32-wasip1
       - uses: taiki-e/install-action@just
+      - uses: Swatinem/rust-cache@f51f967e158417aafa338a1e46ab22095f07aa01
       - name: Publish to GitHub Packages
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -659,8 +693,17 @@ jobs:
           just build jvm-wasm
           cd bindings/jvm && ./gradlew publish
 
-      # ── Ruby → RubyGems ──
+  publish-ruby:
+    name: Publish Ruby → RubyGems
+    runs-on: ubuntu-latest
+    needs: [version, release]
+    if: needs.version.outputs.do_release == 'true'
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: package-ruby
+          path: dist/
       - name: Publish to RubyGems
         env:
           GEM_HOST_API_KEY: ${{ secrets.RUBYGEMS_API_KEY }}
-        run: gem push artifacts/package-ruby/*.gem
+        run: gem push dist/*.gem
