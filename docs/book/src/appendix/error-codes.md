@@ -13,6 +13,7 @@ This page lists all diagnostic codes produced by the WCL pipeline, grouped by ph
 | E011 | Import | Jail escape (path outside root) |
 | E013 | Import | Remote import forbidden |
 | E014 | Import | Max import depth exceeded |
+| E016 | Import | Glob pattern matched no files (non-optional import) |
 | E020 | Macro | Undefined macro |
 | E021 | Macro | Recursive macro expansion |
 | E022 | Macro | Max expansion depth exceeded |
@@ -30,6 +31,8 @@ This page lists all diagnostic codes produced by the WCL pipeline, grouped by ph
 | E034 | Export | Duplicate exported variable name |
 | E035 | Export | Re-export of undefined name |
 | E036 | Export | Export inside block |
+| E038 | Merge | Partial let binding value must be a list |
+| E039 | Merge | Let binding declared as both partial and non-partial with same name |
 | E040 | Scope | Undefined reference |
 | E041 | Scope | Cyclic dependency |
 | E050 | Eval | Type error in expression |
@@ -53,6 +56,13 @@ This page lists all diagnostic codes produced by the WCL pipeline, grouped by ph
 | E092 | Table | Inline columns defined when schema is applied |
 | E095 | Schema | Child not allowed by parent's `@children` constraint |
 | E096 | Schema | Item not allowed by its own `@parent` constraint |
+| E097 | Schema | Child count below `@child` minimum |
+| E098 | Schema | Child count above `@child` maximum |
+| E099 | Schema | Self-nesting exceeds `@child` max_depth |
+| E100 | Schema | Symbol value not in declared `symbol_set` |
+| E101 | Schema | Referenced `symbol_set` does not exist |
+| E102 | Parse  | Duplicate `symbol_set` name |
+| E103 | Parse  | Duplicate symbol within a `symbol_set` |
 
 ## Warnings
 

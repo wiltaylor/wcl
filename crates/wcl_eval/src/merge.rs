@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use wcl_core::ast::*;
 use wcl_core::diagnostic::DiagnosticBag;
 // Span is used transitively via wcl_core types but not directly in this module.
@@ -35,7 +35,13 @@ impl PartialMerger {
     /// Groups top-level blocks by `(kind, inline_id)` where `partial=true`,
     /// merges each group into a single block, and replaces all fragments with
     /// the merged block at the position of the first fragment.
+    ///
+    /// Also merges `partial let` bindings: multiple `partial let x = [...]`
+    /// declarations with the same name have their list values concatenated.
     pub fn merge(&mut self, doc: &mut Document) {
+        // Merge partial let bindings first
+        self.merge_partial_lets(&mut doc.items);
+
         // Phase 1: Identify groups of partial blocks by (kind, inline_id)
         // We need the inline_id as a string key for grouping.
         let mut groups: HashMap<(String, String), Vec<usize>> = HashMap::new();
@@ -222,6 +228,249 @@ impl PartialMerger {
         }
     }
 
+    /// Merge partial let bindings in a list of items (top-level or block body).
+    ///
+    /// Groups `partial let` bindings by name and concatenates their list values.
+    /// Emits E036 if a partial let value is not a list, E037 if a name appears
+    /// as both partial and non-partial.
+    fn merge_partial_lets(&mut self, items: &mut Vec<DocItem>) {
+        self.merge_partial_lets_in_body_items(items, true);
+    }
+
+    /// Inner implementation that works on DocItems (top-level) or BodyItems (block-level).
+    fn merge_partial_lets_in_body_items(&mut self, items: &mut Vec<DocItem>, _top_level: bool) {
+        use std::collections::HashMap;
+
+        // Collect indices of partial let bindings grouped by name
+        let mut groups: HashMap<String, Vec<usize>> = HashMap::new();
+        let mut group_order: Vec<String> = Vec::new();
+
+        // Also track non-partial let names for E037 detection
+        let mut non_partial_lets: HashSet<String> = HashSet::new();
+
+        for (idx, item) in items.iter().enumerate() {
+            if let DocItem::Body(BodyItem::LetBinding(lb)) = item {
+                if lb.partial {
+                    let name = lb.name.name.clone();
+                    let entry = groups.entry(name.clone()).or_insert_with(|| {
+                        group_order.push(name);
+                        Vec::new()
+                    });
+                    entry.push(idx);
+                } else {
+                    non_partial_lets.insert(lb.name.name.clone());
+                }
+            }
+        }
+
+        // E037: Check for mixed partial/non-partial with same name
+        for name in groups.keys() {
+            if non_partial_lets.contains(name) {
+                // Find a span for the error
+                if let Some(&idx) = groups[name].first() {
+                    if let DocItem::Body(BodyItem::LetBinding(lb)) = &items[idx] {
+                        self.diagnostics.error_with_code(
+                            format!(
+                                "let binding '{}' declared as both partial and non-partial",
+                                name
+                            ),
+                            lb.span,
+                            "E039",
+                        );
+                    }
+                }
+            }
+        }
+
+        // Process each group
+        let mut indices_to_remove: Vec<usize> = Vec::new();
+
+        for name in &group_order {
+            let indices = &groups[name];
+
+            if indices.len() == 1 {
+                // Single partial let: validate it's a list and clear partial flag
+                let idx = indices[0];
+                if let DocItem::Body(BodyItem::LetBinding(lb)) = &items[idx] {
+                    if !matches!(&lb.value, Expr::List(_, _)) {
+                        self.diagnostics.error_with_code(
+                            format!("partial let '{}' value must be a list", name),
+                            lb.span,
+                            "E038",
+                        );
+                    }
+                    let mut updated = lb.clone();
+                    updated.partial = false;
+                    items[idx] = DocItem::Body(BodyItem::LetBinding(updated));
+                }
+                continue;
+            }
+
+            // Concatenate list elements from all fragments
+            let mut all_elements: Vec<Expr> = Vec::new();
+            let mut combined_span = wcl_core::span::Span::dummy();
+            let mut first_lb: Option<LetBinding> = None;
+            let mut has_error = false;
+
+            for &idx in indices {
+                if let DocItem::Body(BodyItem::LetBinding(lb)) = &items[idx] {
+                    if first_lb.is_none() {
+                        combined_span = lb.span;
+                        first_lb = Some(lb.clone());
+                    } else {
+                        combined_span = combined_span.merge(lb.span);
+                    }
+                    match &lb.value {
+                        Expr::List(elements, _) => {
+                            all_elements.extend(elements.clone());
+                        }
+                        _ => {
+                            self.diagnostics.error_with_code(
+                                format!("partial let '{}' value must be a list", name),
+                                lb.span,
+                                "E038",
+                            );
+                            has_error = true;
+                        }
+                    }
+                }
+            }
+
+            if has_error {
+                continue;
+            }
+
+            // Replace first with merged, mark rest for removal
+            if let Some(mut merged_lb) = first_lb {
+                merged_lb.partial = false;
+                merged_lb.value = Expr::List(all_elements, combined_span);
+                merged_lb.span = combined_span;
+                items[indices[0]] = DocItem::Body(BodyItem::LetBinding(merged_lb));
+                for &idx in &indices[1..] {
+                    indices_to_remove.push(idx);
+                }
+            }
+        }
+
+        // Remove in reverse order
+        indices_to_remove.sort_unstable();
+        indices_to_remove.dedup();
+        for idx in indices_to_remove.into_iter().rev() {
+            items.remove(idx);
+        }
+    }
+
+    /// Merge partial let bindings within a block body.
+    fn merge_partial_lets_in_block_body(&mut self, body: &mut Vec<BodyItem>) {
+        let mut groups: HashMap<String, Vec<usize>> = HashMap::new();
+        let mut group_order: Vec<String> = Vec::new();
+        let mut non_partial_lets: HashSet<String> = HashSet::new();
+
+        for (idx, item) in body.iter().enumerate() {
+            if let BodyItem::LetBinding(lb) = item {
+                if lb.partial {
+                    let name = lb.name.name.clone();
+                    let entry = groups.entry(name.clone()).or_insert_with(|| {
+                        group_order.push(name);
+                        Vec::new()
+                    });
+                    entry.push(idx);
+                } else {
+                    non_partial_lets.insert(lb.name.name.clone());
+                }
+            }
+        }
+
+        for name in groups.keys() {
+            if non_partial_lets.contains(name) {
+                if let Some(&idx) = groups[name].first() {
+                    if let BodyItem::LetBinding(lb) = &body[idx] {
+                        self.diagnostics.error_with_code(
+                            format!(
+                                "let binding '{}' declared as both partial and non-partial",
+                                name
+                            ),
+                            lb.span,
+                            "E039",
+                        );
+                    }
+                }
+            }
+        }
+
+        let mut indices_to_remove: Vec<usize> = Vec::new();
+
+        for name in &group_order {
+            let indices = &groups[name];
+
+            if indices.len() == 1 {
+                let idx = indices[0];
+                if let BodyItem::LetBinding(lb) = &body[idx] {
+                    if !matches!(&lb.value, Expr::List(_, _)) {
+                        self.diagnostics.error_with_code(
+                            format!("partial let '{}' value must be a list", name),
+                            lb.span,
+                            "E038",
+                        );
+                    }
+                    let mut updated = lb.clone();
+                    updated.partial = false;
+                    body[idx] = BodyItem::LetBinding(updated);
+                }
+                continue;
+            }
+
+            let mut all_elements: Vec<Expr> = Vec::new();
+            let mut combined_span = wcl_core::span::Span::dummy();
+            let mut first_lb: Option<LetBinding> = None;
+            let mut has_error = false;
+
+            for &idx in indices {
+                if let BodyItem::LetBinding(lb) = &body[idx] {
+                    if first_lb.is_none() {
+                        combined_span = lb.span;
+                        first_lb = Some(lb.clone());
+                    } else {
+                        combined_span = combined_span.merge(lb.span);
+                    }
+                    match &lb.value {
+                        Expr::List(elements, _) => {
+                            all_elements.extend(elements.clone());
+                        }
+                        _ => {
+                            self.diagnostics.error_with_code(
+                                format!("partial let '{}' value must be a list", name),
+                                lb.span,
+                                "E038",
+                            );
+                            has_error = true;
+                        }
+                    }
+                }
+            }
+
+            if has_error {
+                continue;
+            }
+
+            if let Some(mut merged_lb) = first_lb {
+                merged_lb.partial = false;
+                merged_lb.value = Expr::List(all_elements, combined_span);
+                merged_lb.span = combined_span;
+                body[indices[0]] = BodyItem::LetBinding(merged_lb);
+                for &idx in &indices[1..] {
+                    indices_to_remove.push(idx);
+                }
+            }
+        }
+
+        indices_to_remove.sort_unstable();
+        indices_to_remove.dedup();
+        for idx in indices_to_remove.into_iter().rev() {
+            body.remove(idx);
+        }
+    }
+
     /// Merge multiple partial blocks into a single block.
     fn merge_blocks(&mut self, blocks: &[Block]) -> Block {
         assert!(!blocks.is_empty(), "merge_blocks called with empty slice");
@@ -343,6 +592,9 @@ impl PartialMerger {
                 merged.body.push(BodyItem::Block(merged_child));
             }
         }
+
+        // Merge partial let bindings within the merged block body
+        self.merge_partial_lets_in_block_body(&mut merged.body);
 
         merged
     }

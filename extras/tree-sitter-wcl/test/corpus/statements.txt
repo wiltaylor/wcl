@@ -91,3 +91,49 @@ declare my_fn(input: string) -> string
   (declare_statement (identifier)
     (parameter_list (parameter (identifier) (type_expression (builtin_type))))
     (type_expression (builtin_type))))
+
+================
+Optional import
+================
+
+import? "./local.wcl"
+
+---
+
+(document
+  (import_declaration (string_literal (string_content))))
+
+================
+Glob import
+================
+
+import "./schemas/*.wcl"
+
+---
+
+(document
+  (import_declaration (string_literal (string_content))))
+
+================
+Optional glob import
+================
+
+import? "./env/*.wcl"
+
+---
+
+(document
+  (import_declaration (string_literal (string_content))))
+
+================
+Partial let binding
+================
+
+partial let tags = ["api", "public"]
+
+---
+
+(document
+  (let_binding (identifier) (expression (list_literal
+    (expression (string_literal (string_content)))
+    (expression (string_literal (string_content)))))))

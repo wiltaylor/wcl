@@ -74,7 +74,11 @@ impl<'a> Formatter<'a> {
         match item {
             DocItem::Import(import) => {
                 self.write_indent();
-                self.output.push_str("import ");
+                if import.optional {
+                    self.output.push_str("import? ");
+                } else {
+                    self.output.push_str("import ");
+                }
                 if import.kind == ImportKind::Library {
                     self.output.push('<');
                     for part in &import.path.parts {
@@ -182,7 +186,12 @@ impl<'a> Formatter<'a> {
             }
             BodyItem::LetBinding(lb) => {
                 self.write_indent();
-                self.output.push_str(&format!("let {} = ", lb.name.name));
+                if lb.partial {
+                    self.output
+                        .push_str(&format!("partial let {} = ", lb.name.name));
+                } else {
+                    self.output.push_str(&format!("let {} = ", lb.name.name));
+                }
                 self.format_expr(&lb.value);
                 self.output.push('\n');
             }
@@ -268,6 +277,32 @@ impl<'a> Formatter<'a> {
                     }
                     self.output.push('\n');
                 }
+                for variant in &schema.variants {
+                    self.output.push('\n');
+                    for dec in &variant.decorators {
+                        self.write_indent();
+                        self.format_decorator_inline(dec);
+                        self.output.push('\n');
+                    }
+                    self.write_indent();
+                    self.output.push_str("variant ");
+                    self.format_string_lit(&variant.tag_value);
+                    self.output.push_str(" {\n");
+                    self.indent += 1;
+                    for field in &variant.fields {
+                        self.write_indent();
+                        self.output.push_str(&format!("{} = ", field.name.name));
+                        self.format_type_expr(&field.type_expr);
+                        for dec in &field.decorators_after {
+                            self.output.push(' ');
+                            self.format_decorator_inline(dec);
+                        }
+                        self.output.push('\n');
+                    }
+                    self.indent -= 1;
+                    self.write_indent();
+                    self.output.push_str("}\n");
+                }
                 self.indent -= 1;
                 self.write_indent();
                 self.output.push_str("}\n");
@@ -299,6 +334,24 @@ impl<'a> Formatter<'a> {
             BodyItem::MacroDef(_) | BodyItem::MacroCall(_) | BodyItem::DecoratorSchema(_) => {
                 self.write_indent();
                 self.output.push_str("// <unformatted item>\n");
+            }
+            BodyItem::SymbolSetDecl(decl) => {
+                self.write_indent();
+                self.output
+                    .push_str(&format!("symbol_set {} {{\n", decl.name.name));
+                self.indent += 1;
+                for member in &decl.members {
+                    self.write_indent();
+                    self.output.push_str(&format!(":{}", member.name));
+                    if let Some(ref val) = member.value {
+                        self.output.push_str(" = ");
+                        self.format_string_lit(val);
+                    }
+                    self.output.push('\n');
+                }
+                self.indent -= 1;
+                self.write_indent();
+                self.output.push_str("}\n");
             }
         }
     }
@@ -376,6 +429,10 @@ impl<'a> Formatter<'a> {
             Expr::StringLit(s) => self.format_string_lit(s),
             Expr::Ident(id) => self.output.push_str(&id.name),
             Expr::IdentifierLit(id) => self.output.push_str(&id.value),
+            Expr::SymbolLit(name, _) => {
+                self.output.push(':');
+                self.output.push_str(name);
+            }
             Expr::List(items, _) => {
                 self.output.push('[');
                 for (i, item) in items.iter().enumerate() {
@@ -591,6 +648,9 @@ impl<'a> Formatter<'a> {
                     self.format_type_expr(t);
                 }
                 self.output.push(')');
+            }
+            TypeExpr::Symbol(_) => {
+                self.output.push_str("symbol");
             }
         }
     }

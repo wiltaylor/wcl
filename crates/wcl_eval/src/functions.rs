@@ -396,6 +396,18 @@ pub fn builtin_signatures() -> Vec<FunctionSignature> {
             return_type: "bool".into(),
             doc: "Check decorator".into(),
         },
+        FunctionSignature {
+            name: "is_imported".into(),
+            params: vec!["path: string".into()],
+            return_type: "bool".into(),
+            doc: "Check if a file was imported".into(),
+        },
+        FunctionSignature {
+            name: "has_schema".into(),
+            params: vec!["name: string".into()],
+            return_type: "bool".into(),
+            doc: "Check if a schema is declared".into(),
+        },
     ]
 }
 

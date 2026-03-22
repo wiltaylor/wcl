@@ -239,6 +239,15 @@ impl Parser {
     fn parse_import(&mut self, trivia: Trivia) -> Option<Import> {
         let start_span = self.current_span();
         self.advance(); // consume `import`
+
+        // Check for optional import: `import?`
+        let optional = if matches!(self.peek_kind(), TokenKind::Question) {
+            self.advance(); // consume `?`
+            true
+        } else {
+            false
+        };
+
         self.skip_newlines();
 
         // Check for library import syntax: import <name.wcl>
@@ -267,6 +276,7 @@ impl Parser {
                         return Some(Import {
                             path,
                             kind: ImportKind::Library,
+                            optional,
                             trivia,
                             span,
                         });
@@ -287,6 +297,7 @@ impl Parser {
         Some(Import {
             path,
             kind: ImportKind::Relative,
+            optional,
             trivia,
             span,
         })
@@ -463,7 +474,7 @@ impl Parser {
                 Some(BodyItem::LetBinding(binding))
             }
             TokenKind::Partial => {
-                // Peek next: table or block
+                // Peek next: table, let, or block
                 let mut i = self.pos + 1;
                 while i < self.tokens.len() && matches!(self.tokens[i].kind, TokenKind::Newline) {
                     i += 1;
@@ -471,6 +482,12 @@ impl Parser {
                 if i < self.tokens.len() && matches!(self.tokens[i].kind, TokenKind::Table) {
                     let table = self.parse_table(decorators, trivia, true)?;
                     Some(BodyItem::Table(table))
+                } else if i < self.tokens.len() && matches!(self.tokens[i].kind, TokenKind::Let) {
+                    self.advance(); // consume `partial`
+                    self.skip_newlines();
+                    let mut binding = self.parse_let_binding(decorators, trivia)?;
+                    binding.partial = true;
+                    Some(BodyItem::LetBinding(binding))
                 } else {
                     let block = self.parse_block(decorators, trivia, true)?;
                     Some(BodyItem::Block(block))
@@ -499,6 +516,10 @@ impl Parser {
             TokenKind::Table => {
                 let t = self.parse_table(decorators, trivia, false)?;
                 Some(BodyItem::Table(t))
+            }
+            TokenKind::SymbolSet => {
+                let s = self.parse_symbol_set_decl(trivia)?;
+                Some(BodyItem::SymbolSetDecl(s))
             }
             TokenKind::Validation => {
                 let v = self.parse_validation(decorators, trivia)?;
@@ -596,6 +617,14 @@ impl Parser {
                 self.advance();
                 Ident {
                     name: "table".to_string(),
+                    span,
+                }
+            }
+            TokenKind::SymbolSet => {
+                let span = self.current_span();
+                self.advance();
+                Ident {
+                    name: "symbol_set".to_string(),
                     span,
                 }
             }
@@ -1060,6 +1089,7 @@ impl Parser {
         let span = start_span.merge(value.span());
         Some(LetBinding {
             decorators,
+            partial: false,
             name,
             value,
             trivia,
@@ -1272,11 +1302,23 @@ impl Parser {
         }
 
         let mut fields = Vec::new();
+        let mut variants = Vec::new();
         loop {
             let _trivia = self.collect_trivia();
             if matches!(self.peek_kind(), TokenKind::RBrace | TokenKind::Eof) {
                 break;
             }
+            // Check for decorators + variant keyword
+            let saved_pos = self.pos;
+            let decs = self.parse_decorators();
+            if matches!(self.peek_kind(), TokenKind::Ident(ref n) if n == "variant") {
+                if let Some(v) = self.parse_schema_variant(decs) {
+                    variants.push(v);
+                    continue;
+                }
+            }
+            // Not a variant — restore position and parse as field
+            self.pos = saved_pos;
             if let Some(field) = self.parse_schema_field() {
                 fields.push(field);
             } else {
@@ -1293,6 +1335,7 @@ impl Parser {
             decorators,
             name,
             fields,
+            variants,
             trivia,
             span,
         })
@@ -1317,6 +1360,44 @@ impl Parser {
             name,
             type_expr,
             decorators_after,
+            trivia,
+            span,
+        })
+    }
+
+    fn parse_schema_variant(&mut self, decorators: Vec<Decorator>) -> Option<SchemaVariant> {
+        let trivia = self.collect_trivia();
+        let start_span = self.current_span();
+        self.advance(); // consume `variant`
+        self.skip_newlines();
+        let tag_value = self.parse_string_lit()?;
+        self.skip_newlines();
+        if self.expect(&TokenKind::LBrace).is_err() {
+            return None;
+        }
+
+        let mut fields = Vec::new();
+        loop {
+            let _trivia = self.collect_trivia();
+            if matches!(self.peek_kind(), TokenKind::RBrace | TokenKind::Eof) {
+                break;
+            }
+            if let Some(field) = self.parse_schema_field() {
+                fields.push(field);
+            } else {
+                break;
+            }
+        }
+
+        if self.expect(&TokenKind::RBrace).is_err() {
+            return None;
+        }
+
+        let span = start_span.merge(self.prev_span());
+        Some(SchemaVariant {
+            decorators,
+            tag_value,
+            fields,
             trivia,
             span,
         })
@@ -2162,6 +2243,73 @@ impl Parser {
             else_branch,
             trivia,
             span,
+        })
+    }
+
+    // ── Symbol Set ────────────────────────────────────────────────────────
+
+    fn parse_symbol_set_decl(&mut self, trivia: Trivia) -> Option<SymbolSetDecl> {
+        let start_span = self.current_span();
+        self.advance(); // consume `symbol_set`
+        self.skip_newlines();
+
+        let name = self.expect_ident().ok()?;
+        self.skip_newlines();
+        if self.expect(&TokenKind::LBrace).is_err() {
+            return None;
+        }
+
+        let mut members = Vec::new();
+        loop {
+            self.skip_newlines();
+            if matches!(self.peek_kind(), TokenKind::RBrace) {
+                break;
+            }
+            match self.peek_kind().clone() {
+                TokenKind::SymbolLit(ref sym_name) => {
+                    let sym_name = sym_name.clone();
+                    let member_start = self.current_span();
+                    self.advance(); // consume symbol lit
+
+                    // Check for optional `= "string_value"`
+                    let value = if matches!(self.peek_kind(), TokenKind::Equals) {
+                        self.advance(); // consume `=`
+                        Some(self.parse_string_lit()?)
+                    } else {
+                        None
+                    };
+
+                    let member_end = self.prev_span();
+                    members.push(SymbolMember {
+                        name: sym_name,
+                        value,
+                        span: member_start.merge(member_end),
+                    });
+                }
+                _ => {
+                    self.diagnostics.error(
+                        format!(
+                            "expected symbol literal (e.g. :name) in symbol_set, found {:?}",
+                            self.peek_kind()
+                        ),
+                        self.current_span(),
+                    );
+                    self.advance();
+                    break;
+                }
+            }
+        }
+
+        if self.expect(&TokenKind::RBrace).is_err() {
+            return None;
+        }
+
+        let end_span = self.prev_span();
+        Some(SymbolSetDecl {
+            name,
+            members,
+            trivia,
+            span: start_span.merge(end_span),
         })
     }
 

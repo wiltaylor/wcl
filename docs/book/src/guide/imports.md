@@ -207,3 +207,47 @@ service svc-auth "auth-service" {
 ```
 
 Because `constants.wcl` is imported by both `main.wcl` and `auth.wcl`, it is evaluated once. The `export let` bindings are available wherever the file is imported.
+
+## Glob Imports
+
+A glob pattern can be used in place of a literal path to import multiple files at once:
+
+```wcl
+import "./schemas/*.wcl"
+import "./modules/**/*.wcl"
+```
+
+- `*` matches any file name within a single directory.
+- `**` matches any number of directory segments (recursive).
+- Matched files are processed in **alphabetical order** by resolved path, ensuring deterministic merge order regardless of filesystem traversal order.
+- If the pattern matches no files, error **E016** is reported. Use an optional import (see below) to suppress this.
+
+Each matched file is subject to the same path rules as a regular import: relative paths only, jailed to the project root, import-once deduplication, and depth limit enforcement.
+
+```wcl
+// Import every schema defined under the schemas/ directory
+import "./schemas/**/*.wcl"
+
+// Import all service definitions from a flat directory
+import "./services/*.wcl"
+```
+
+## Optional Imports
+
+Prefix the `import` keyword with `?` to make the import silently succeed when the target does not exist:
+
+```wcl
+import? "./local-overrides.wcl"
+```
+
+If `local-overrides.wcl` is absent the statement is a no-op. If the file exists, it is imported normally.
+
+Optional imports compose with glob patterns:
+
+```wcl
+import? "./env/*.wcl"
+```
+
+When glob and optional are combined, a pattern that matches no files is not an error — the statement is silently skipped. This is useful for environment-specific overlay directories that may not exist in every deployment.
+
+**Security errors are always reported.** A path that would escape the project root, exceed the depth limit, or violate another security constraint produces an error even when `?` is present. Optional only suppresses "file not found" and "no glob matches"; it does not suppress policy violations.

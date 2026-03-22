@@ -46,11 +46,12 @@ export default grammar({
         $.schema,
         $.decorator_schema,
         $.declare_statement,
+        $.symbol_set_declaration,
       ),
 
     // Imports
     import_declaration: ($) =>
-      seq("import", choice($.string_literal, $.library_import)),
+      seq("import", optional("?"), choice($.string_literal, $.library_import)),
 
     library_import: ($) => seq("<", /[^>]+/, ">"),
 
@@ -83,6 +84,7 @@ export default grammar({
         $.string_literal,
         $.boolean_literal,
         $.null_literal,
+        $.symbol_literal,
         $.identifier,
         $.list_literal,
       ),
@@ -90,7 +92,8 @@ export default grammar({
     block_body: ($) => seq("{", repeat($._body_item), "}"),
 
     // Let bindings
-    let_binding: ($) => seq("let", $.identifier, "=", $.expression),
+    let_binding: ($) =>
+      seq(optional("partial"), "let", $.identifier, "=", $.expression),
 
     // Control flow
     for_loop: ($) =>
@@ -146,6 +149,16 @@ export default grammar({
       seq(
         repeat($.decorator),
         "schema",
+        $.string_literal,
+        "{",
+        repeat(choice($.schema_field, $.schema_variant)),
+        "}",
+      ),
+
+    schema_variant: ($) =>
+      seq(
+        repeat($.decorator),
+        "variant",
         $.string_literal,
         "{",
         repeat($.schema_field),
@@ -303,7 +316,7 @@ export default grammar({
       ),
 
     builtin_type: ($) =>
-      choice("string", "int", "float", "bool", "null", "identifier", "any"),
+      choice("string", "int", "float", "bool", "null", "identifier", "any", "symbol"),
 
     list_type: ($) => seq("list", "(", $.type_expression, ")"),
     map_type: ($) =>
@@ -427,6 +440,7 @@ export default grammar({
         $.heredoc_literal,
         $.boolean_literal,
         $.null_literal,
+        $.symbol_literal,
         $.identifier_literal,
         $.identifier,
         $.list_literal,
@@ -544,6 +558,21 @@ export default grammar({
           /[a-zA-Z_][a-zA-Z0-9_]*/,
         ),
       ),
+
+    symbol_literal: ($) => token(seq(":", /[a-zA-Z_][a-zA-Z0-9_]*/)),
+
+    // Symbol sets
+    symbol_set_declaration: ($) =>
+      seq(
+        "symbol_set",
+        field("name", $.identifier),
+        "{",
+        repeat($.symbol_set_member),
+        "}",
+      ),
+
+    symbol_set_member: ($) =>
+      seq($.symbol_literal, optional(seq("=", $.string_literal))),
 
     boolean_literal: ($) => choice("true", "false"),
 
