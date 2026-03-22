@@ -148,6 +148,11 @@ jobs:
         with:
           report_paths: target/nextest/ci/junit.xml
           check_name: Rust Tests
+      - name: Run Rust example
+        run: cd examples/rust && cargo run --quiet
+      - name: Run CLI examples
+        run: |
+          just examples cli
 
   test-python:
     name: Test Python
@@ -170,6 +175,8 @@ jobs:
         with:
           report_paths: test-results/python.xml
           check_name: Python Tests
+      - name: Run Python example
+        run: cd examples/python && uv run example.py
 
   test-wasm:
     name: Test WASM
@@ -183,6 +190,8 @@ jobs:
       - uses: taiki-e/install-action@wasm-pack
       - uses: Swatinem/rust-cache@f51f967e158417aafa338a1e46ab22095f07aa01
       - run: just test wasm
+      - name: Run JavaScript example
+        run: cd examples/javascript && npm install --silent && node example.mjs
 
   test-dotnet:
     name: Test .NET
@@ -206,6 +215,8 @@ jobs:
         with:
           report_paths: test-results/dotnet.xml
           check_name: .NET Tests
+      - name: Run .NET example
+        run: cd examples/dotnet && dotnet run --verbosity quiet
 
   test-go:
     name: Test Go
@@ -231,6 +242,8 @@ jobs:
         with:
           report_paths: test-results/go.xml
           check_name: Go Tests
+      - name: Run Go example
+        run: cd examples/go && go run .
 
   test-jvm:
     name: Test JVM
@@ -255,6 +268,8 @@ jobs:
         with:
           report_paths: bindings/jvm/build/test-results/test/*.xml
           check_name: JVM Tests
+      - name: Run JVM example
+        run: cd examples/jvm && ./gradlew run --quiet
 
   test-ruby:
     name: Test Ruby
@@ -280,6 +295,8 @@ jobs:
         with:
           report_paths: test-results/ruby/*.xml
           check_name: Ruby Tests
+      - name: Run Ruby example
+        run: cd examples/ruby && bundle install --quiet && bundle exec ruby example.rb
 
   test-zig:
     name: Test Zig
