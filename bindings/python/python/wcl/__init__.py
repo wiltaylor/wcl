@@ -17,7 +17,8 @@ __all__ = [
 
 def parse(source, *, root_dir=None, allow_imports=None, max_import_depth=None,
           max_macro_depth=None, max_loop_depth=None, max_iterations=None,
-          functions=None, variables=None):
+          functions=None, variables=None, lib_paths=None,
+          no_default_lib_paths=None):
     """Parse a WCL source string and return a Document."""
     options = {}
     if root_dir is not None:
@@ -34,6 +35,10 @@ def parse(source, *, root_dir=None, allow_imports=None, max_import_depth=None,
         options["maxIterations"] = max_iterations
     if variables is not None:
         options["variables"] = variables
+    if lib_paths is not None:
+        options["libPaths"] = [str(p) for p in lib_paths]
+    if no_default_lib_paths is not None:
+        options["noDefaultLibPaths"] = no_default_lib_paths
 
     options_json = json.dumps(options) if options else None
     runtime = WasmRuntime.get()

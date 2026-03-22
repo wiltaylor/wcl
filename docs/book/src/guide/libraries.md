@@ -13,7 +13,23 @@ This searches for `myapp.wcl` in the library search paths:
 1. **User library**: `$XDG_DATA_HOME/wcl/lib/` (default: `~/.local/share/wcl/lib/`)
 2. **System library**: dirs in `$XDG_DATA_DIRS` + `/wcl/lib/` (default: `/usr/local/share/wcl/lib/`, `/usr/share/wcl/lib/`)
 
-The first match is used. Library imports skip the project root jail check.
+The first match is used. Library imports skip the project root jail check. Relative imports inside library files also skip the jail check, so libraries can freely import helper files in their own directory.
+
+### Custom Search Paths
+
+You can prepend extra directories to the library search path using the CLI `--lib-path` flag (repeatable). These are searched **before** the default XDG/system paths:
+
+```sh
+wcl eval main.wcl --lib-path ./my-libs --lib-path /opt/wcl-libs
+```
+
+To disable the default paths entirely (only use `--lib-path` directories):
+
+```sh
+wcl eval main.wcl --lib-path ./my-libs --no-default-lib-paths
+```
+
+Programmatically, set `lib_paths` and `no_default_lib_paths` on `ParseOptions`.
 
 ## Library File Contents
 

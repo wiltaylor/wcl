@@ -53,12 +53,17 @@ pub fn analyze(source: &str, options: &wcl::ParseOptions) -> AnalysisResult {
     // Import resolution
     if options.allow_imports {
         let fs = RealFileSystem;
+        let library_config = wcl_eval::LibraryConfig {
+            extra_paths: options.lib_paths.clone(),
+            no_default_paths: options.no_default_lib_paths,
+        };
         let mut resolver = ImportResolver::new(
             &fs,
             &mut source_map,
             options.root_dir.clone(),
             options.max_import_depth,
             options.allow_imports,
+            library_config,
         );
         let import_diags = resolver.resolve(&mut doc, &options.root_dir.join("<input>"), 0);
         all_diagnostics.extend(import_diags.into_diagnostics());

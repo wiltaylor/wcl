@@ -16,8 +16,8 @@ pub use wcl_core::{
 pub use wcl_eval::{
     builtin_signatures, BlockRef, BuiltinFn, ConflictMode, ControlFlowExpander, DecoratorValue,
     Evaluator, FileSystem, FunctionRegistry, FunctionSignature, FunctionValue, ImportResolver,
-    InMemoryFs, MacroExpander, MacroRegistry, PartialMerger, QueryEngine, RealFileSystem, Scope,
-    ScopeArena, ScopeEntry, ScopeEntryKind, ScopeId, ScopeKind, Value,
+    InMemoryFs, LibraryConfig, MacroExpander, MacroRegistry, PartialMerger, QueryEngine,
+    RealFileSystem, Scope, ScopeArena, ScopeEntry, ScopeEntryKind, ScopeId, ScopeKind, Value,
 };
 
 pub use wcl_schema::type_name;
@@ -60,6 +60,10 @@ pub struct ParseOptions {
     pub fs: Option<Arc<dyn FileSystem>>,
     /// External variables injected before evaluation
     pub variables: indexmap::IndexMap<String, Value>,
+    /// Extra library search paths (searched before defaults)
+    pub lib_paths: Vec<PathBuf>,
+    /// If true, skip the default XDG/system library search paths
+    pub no_default_lib_paths: bool,
 }
 
 impl std::fmt::Debug for ParseOptions {
@@ -91,6 +95,8 @@ impl Default for ParseOptions {
             functions: FunctionRegistry::default(),
             fs: None,
             variables: indexmap::IndexMap::new(),
+            lib_paths: Vec::new(),
+            no_default_lib_paths: false,
         }
     }
 }
@@ -437,6 +443,10 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
         .fs
         .clone()
         .unwrap_or_else(|| Arc::new(RealFileSystem));
+    let library_config = LibraryConfig {
+        extra_paths: options.lib_paths.clone(),
+        no_default_paths: options.no_default_lib_paths,
+    };
     let mut imported_paths = std::collections::HashSet::new();
     if options.allow_imports {
         let mut resolver = ImportResolver::new(
@@ -445,6 +455,7 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
             options.root_dir.clone(),
             options.max_import_depth,
             options.allow_imports,
+            library_config,
         );
         let import_diags = resolver.resolve(&mut doc, &options.root_dir.join("<input>"), 0);
         imported_paths = resolver.loaded_paths().clone();

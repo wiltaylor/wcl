@@ -120,7 +120,21 @@ pub fn normalize_path(path: &Path) -> PathBuf {
     components.iter().collect()
 }
 
+/// Configuration for library import search paths.
+#[derive(Debug, Clone, Default)]
+pub struct LibraryConfig {
+    /// Extra library search paths (searched before defaults).
+    pub extra_paths: Vec<PathBuf>,
+    /// If true, skip the default XDG/system search paths entirely.
+    pub no_default_paths: bool,
+}
+
 /// Return the search paths for well-known WCL library files.
+///
+/// When `config` is provided, extra paths are prepended and default paths
+/// can be disabled with `no_default_paths`.
+///
+/// Default paths:
 ///
 /// User library (searched first):
 ///   Linux/macOS: `$XDG_DATA_HOME/wcl/lib/` (default: `~/.local/share/wcl/lib/`)
@@ -130,42 +144,51 @@ pub fn normalize_path(path: &Path) -> PathBuf {
 ///   Linux:   each dir in `$XDG_DATA_DIRS` + `/wcl/lib/` (default: `/usr/local/share/wcl/lib/`, `/usr/share/wcl/lib/`)
 ///   macOS:   `/usr/local/share/wcl/lib/`
 ///   Windows: `%PROGRAMDATA%\wcl\lib\`
-pub fn library_search_paths() -> Vec<PathBuf> {
+pub fn library_search_paths(config: &LibraryConfig) -> Vec<PathBuf> {
     let mut paths = Vec::new();
 
-    // User library dir
-    if let Some(data_home) = std::env::var_os("XDG_DATA_HOME") {
-        paths.push(PathBuf::from(data_home).join("wcl/lib"));
-    } else if let Some(home) = std::env::var_os("HOME") {
-        paths.push(PathBuf::from(home).join(".local/share/wcl/lib"));
-    }
-    #[cfg(windows)]
-    if let Some(appdata) = std::env::var_os("APPDATA") {
-        paths.push(PathBuf::from(appdata).join("wcl\\lib"));
-    }
+    // Extra paths first (highest priority)
+    paths.extend(config.extra_paths.iter().cloned());
 
-    // System library dirs
-    if let Ok(data_dirs) = std::env::var("XDG_DATA_DIRS") {
-        for dir in data_dirs.split(':') {
-            if !dir.is_empty() {
-                paths.push(PathBuf::from(dir).join("wcl/lib"));
-            }
+    if !config.no_default_paths {
+        // User library dir
+        if let Some(data_home) = std::env::var_os("XDG_DATA_HOME") {
+            paths.push(PathBuf::from(data_home).join("wcl/lib"));
+        } else if let Some(home) = std::env::var_os("HOME") {
+            paths.push(PathBuf::from(home).join(".local/share/wcl/lib"));
         }
-    } else {
-        paths.push(PathBuf::from("/usr/local/share/wcl/lib"));
-        paths.push(PathBuf::from("/usr/share/wcl/lib"));
-    }
-    #[cfg(windows)]
-    if let Some(pd) = std::env::var_os("PROGRAMDATA") {
-        paths.push(PathBuf::from(pd).join("wcl\\lib"));
+        #[cfg(windows)]
+        if let Some(appdata) = std::env::var_os("APPDATA") {
+            paths.push(PathBuf::from(appdata).join("wcl\\lib"));
+        }
+
+        // System library dirs
+        if let Ok(data_dirs) = std::env::var("XDG_DATA_DIRS") {
+            for dir in data_dirs.split(':') {
+                if !dir.is_empty() {
+                    paths.push(PathBuf::from(dir).join("wcl/lib"));
+                }
+            }
+        } else {
+            paths.push(PathBuf::from("/usr/local/share/wcl/lib"));
+            paths.push(PathBuf::from("/usr/share/wcl/lib"));
+        }
+        #[cfg(windows)]
+        if let Some(pd) = std::env::var_os("PROGRAMDATA") {
+            paths.push(PathBuf::from(pd).join("wcl\\lib"));
+        }
     }
 
     paths
 }
 
 /// Resolve a library import name to a file path by searching `library_search_paths()`.
-pub fn resolve_library_import(name: &str, fs: &(impl FileSystem + ?Sized)) -> Option<PathBuf> {
-    for dir in library_search_paths() {
+pub fn resolve_library_import(
+    name: &str,
+    fs: &(impl FileSystem + ?Sized),
+    config: &LibraryConfig,
+) -> Option<PathBuf> {
+    for dir in library_search_paths(config) {
         let candidate = dir.join(name);
         if fs.exists(&candidate) {
             return Some(candidate);
@@ -186,6 +209,9 @@ pub struct ImportResolver<'a, FS: FileSystem + ?Sized> {
     allow_imports: bool,
     loaded: HashSet<PathBuf>,
     diagnostics: DiagnosticBag,
+    library_config: LibraryConfig,
+    /// Directories containing resolved library files (used to relax jail checks).
+    library_roots: HashSet<PathBuf>,
 }
 
 impl<'a, FS: FileSystem + ?Sized> ImportResolver<'a, FS> {
@@ -195,6 +221,7 @@ impl<'a, FS: FileSystem + ?Sized> ImportResolver<'a, FS> {
         root_dir: PathBuf,
         max_depth: u32,
         allow_imports: bool,
+        library_config: LibraryConfig,
     ) -> Self {
         ImportResolver {
             fs,
@@ -204,7 +231,14 @@ impl<'a, FS: FileSystem + ?Sized> ImportResolver<'a, FS> {
             allow_imports,
             loaded: HashSet::new(),
             diagnostics: DiagnosticBag::new(),
+            library_config,
+            library_roots: HashSet::new(),
         }
+    }
+
+    /// Check if a path is within any known library root directory.
+    fn is_within_library_root(&self, path: &Path) -> bool {
+        self.library_roots.iter().any(|root| path.starts_with(root))
     }
 
     /// Resolve all imports in a document, returning accumulated diagnostics.
@@ -275,7 +309,7 @@ impl<'a, FS: FileSystem + ?Sized> ImportResolver<'a, FS> {
             // Determine which files to import (glob expansion or single file)
             let resolved_files: Vec<PathBuf> = if import.kind == ImportKind::Library {
                 // Library imports: no glob support
-                match resolve_library_import(&import_path_str, self.fs) {
+                match resolve_library_import(&import_path_str, self.fs, &self.library_config) {
                     Some(p) => vec![p],
                     None => {
                         if !import.optional {
@@ -334,11 +368,25 @@ impl<'a, FS: FileSystem + ?Sized> ImportResolver<'a, FS> {
                 }
             };
 
+            // Check if the importing file is within a library root
+            let current_in_library = self.is_within_library_root(current_file);
+
             // Process each resolved file
             let mut all_merged_items: Vec<DocItem> = Vec::new();
             for resolved in resolved_files {
-                // Jail check (skip for library imports)
-                if import.kind != ImportKind::Library {
+                // Track library roots for resolved library files
+                if import.kind == ImportKind::Library {
+                    if let Some(parent) = resolved.parent() {
+                        self.library_roots.insert(parent.to_path_buf());
+                    }
+                }
+
+                // Jail check: skip for library imports, files within library roots,
+                // and imports from files that are themselves within a library root
+                if import.kind != ImportKind::Library
+                    && !current_in_library
+                    && !self.is_within_library_root(&resolved)
+                {
                     if let Err(diag) = self.check_jail(&resolved, span) {
                         self.diagnostics.add(diag);
                         continue;
@@ -558,7 +606,14 @@ mod tests {
     fn resolve_path_relative_to_current_file() {
         let fs = InMemoryFs::new();
         let mut sm = make_source_map();
-        let resolver = ImportResolver::new(&fs, &mut sm, PathBuf::from("/project"), 32, true);
+        let resolver = ImportResolver::new(
+            &fs,
+            &mut sm,
+            PathBuf::from("/project"),
+            32,
+            true,
+            LibraryConfig::default(),
+        );
 
         let result = resolver
             .resolve_path("./schemas.wcl", Path::new("/project/main.wcl"))
@@ -570,7 +625,14 @@ mod tests {
     fn resolve_path_nested_relative() {
         let fs = InMemoryFs::new();
         let mut sm = make_source_map();
-        let resolver = ImportResolver::new(&fs, &mut sm, PathBuf::from("/project"), 32, true);
+        let resolver = ImportResolver::new(
+            &fs,
+            &mut sm,
+            PathBuf::from("/project"),
+            32,
+            true,
+            LibraryConfig::default(),
+        );
 
         let result = resolver
             .resolve_path("./sub/file.wcl", Path::new("/project/dir/main.wcl"))
@@ -582,7 +644,14 @@ mod tests {
     fn resolve_path_rejects_absolute() {
         let fs = InMemoryFs::new();
         let mut sm = make_source_map();
-        let resolver = ImportResolver::new(&fs, &mut sm, PathBuf::from("/project"), 32, true);
+        let resolver = ImportResolver::new(
+            &fs,
+            &mut sm,
+            PathBuf::from("/project"),
+            32,
+            true,
+            LibraryConfig::default(),
+        );
 
         let result = resolver.resolve_path("/etc/passwd", Path::new("/project/main.wcl"));
         assert!(result.is_err());
@@ -596,7 +665,14 @@ mod tests {
     fn resolve_path_rejects_home_relative() {
         let fs = InMemoryFs::new();
         let mut sm = make_source_map();
-        let resolver = ImportResolver::new(&fs, &mut sm, PathBuf::from("/project"), 32, true);
+        let resolver = ImportResolver::new(
+            &fs,
+            &mut sm,
+            PathBuf::from("/project"),
+            32,
+            true,
+            LibraryConfig::default(),
+        );
 
         let result = resolver.resolve_path("~/file.wcl", Path::new("/project/main.wcl"));
         assert!(result.is_err());
@@ -607,7 +683,14 @@ mod tests {
     fn resolve_path_rejects_remote() {
         let fs = InMemoryFs::new();
         let mut sm = make_source_map();
-        let resolver = ImportResolver::new(&fs, &mut sm, PathBuf::from("/project"), 32, true);
+        let resolver = ImportResolver::new(
+            &fs,
+            &mut sm,
+            PathBuf::from("/project"),
+            32,
+            true,
+            LibraryConfig::default(),
+        );
 
         let result = resolver.resolve_path(
             "https://example.com/file.wcl",
@@ -624,7 +707,14 @@ mod tests {
     fn jail_check_allows_within_root() {
         let fs = InMemoryFs::new();
         let mut sm = make_source_map();
-        let resolver = ImportResolver::new(&fs, &mut sm, PathBuf::from("/project"), 32, true);
+        let resolver = ImportResolver::new(
+            &fs,
+            &mut sm,
+            PathBuf::from("/project"),
+            32,
+            true,
+            LibraryConfig::default(),
+        );
 
         let result = resolver.check_jail(Path::new("/project/sub/file.wcl"), Span::dummy());
         assert!(result.is_ok());
@@ -634,7 +724,14 @@ mod tests {
     fn jail_check_rejects_outside_root() {
         let fs = InMemoryFs::new();
         let mut sm = make_source_map();
-        let resolver = ImportResolver::new(&fs, &mut sm, PathBuf::from("/project"), 32, true);
+        let resolver = ImportResolver::new(
+            &fs,
+            &mut sm,
+            PathBuf::from("/project"),
+            32,
+            true,
+            LibraryConfig::default(),
+        );
 
         let result = resolver.check_jail(Path::new("/other/file.wcl"), Span::dummy());
         assert!(result.is_err());
@@ -649,7 +746,14 @@ mod tests {
         let mut fs = InMemoryFs::new();
         fs.add_file(PathBuf::from("/project/sub/../../../etc/passwd"), "bad");
         let mut sm = make_source_map();
-        let resolver = ImportResolver::new(&fs, &mut sm, PathBuf::from("/project"), 32, true);
+        let resolver = ImportResolver::new(
+            &fs,
+            &mut sm,
+            PathBuf::from("/project"),
+            32,
+            true,
+            LibraryConfig::default(),
+        );
 
         // After normalization, /project/sub/../../../etc/passwd becomes /etc/passwd
         let normalized = normalize_path(Path::new("/project/sub/../../../etc/passwd"));
@@ -702,7 +806,14 @@ mod tests {
         let (mut doc, _parse_diags) =
             wcl_core::parse("import \"./a.wcl\"\nimport \"./b.wcl\"", file_id);
 
-        let mut resolver = ImportResolver::new(&fs, &mut sm, PathBuf::from("/project"), 32, true);
+        let mut resolver = ImportResolver::new(
+            &fs,
+            &mut sm,
+            PathBuf::from("/project"),
+            32,
+            true,
+            LibraryConfig::default(),
+        );
         let diags = resolver.resolve(&mut doc, Path::new("/project/main.wcl"), 0);
 
         let e034_errors: Vec<_> = diags
@@ -743,7 +854,14 @@ mod tests {
         let (mut doc, _parse_diags) =
             wcl_core::parse("import \"./a.wcl\"\nimport \"./b.wcl\"", file_id);
 
-        let mut resolver = ImportResolver::new(&fs, &mut sm, PathBuf::from("/project"), 32, true);
+        let mut resolver = ImportResolver::new(
+            &fs,
+            &mut sm,
+            PathBuf::from("/project"),
+            32,
+            true,
+            LibraryConfig::default(),
+        );
         let diags = resolver.resolve(&mut doc, Path::new("/project/main.wcl"), 0);
 
         let e034_errors: Vec<_> = diags
@@ -765,7 +883,14 @@ mod tests {
         let file_id = sm.add_file("main.wcl".to_string(), "import \"./lib.wcl\"".to_string());
         let (mut doc, _parse_diags) = wcl_core::parse("import \"./lib.wcl\"", file_id);
 
-        let mut resolver = ImportResolver::new(&fs, &mut sm, PathBuf::from("/project"), 32, true);
+        let mut resolver = ImportResolver::new(
+            &fs,
+            &mut sm,
+            PathBuf::from("/project"),
+            32,
+            true,
+            LibraryConfig::default(),
+        );
         let diags = resolver.resolve(&mut doc, Path::new("/project/main.wcl"), 0);
 
         let e035_errors: Vec<_> = diags
@@ -799,7 +924,14 @@ mod tests {
         let file_id = sm.add_file("main.wcl".to_string(), "import \"./lib.wcl\"".to_string());
         let (mut doc, _parse_diags) = wcl_core::parse("import \"./lib.wcl\"", file_id);
 
-        let mut resolver = ImportResolver::new(&fs, &mut sm, PathBuf::from("/project"), 32, true);
+        let mut resolver = ImportResolver::new(
+            &fs,
+            &mut sm,
+            PathBuf::from("/project"),
+            32,
+            true,
+            LibraryConfig::default(),
+        );
         let diags = resolver.resolve(&mut doc, Path::new("/project/main.wcl"), 0);
 
         let e035_errors: Vec<_> = diags
@@ -840,7 +972,14 @@ mod tests {
         );
         let (mut doc, _) = wcl_core::parse("import? \"./missing.wcl\"", file_id);
 
-        let mut resolver = ImportResolver::new(&fs, &mut sm, PathBuf::from("/project"), 32, true);
+        let mut resolver = ImportResolver::new(
+            &fs,
+            &mut sm,
+            PathBuf::from("/project"),
+            32,
+            true,
+            LibraryConfig::default(),
+        );
         let diags = resolver.resolve(&mut doc, Path::new("/project/main.wcl"), 0);
 
         assert!(
@@ -860,12 +999,127 @@ mod tests {
         );
         let (mut doc, _) = wcl_core::parse("import? \"./schemas/*.wcl\"", file_id);
 
-        let mut resolver = ImportResolver::new(&fs, &mut sm, PathBuf::from("/project"), 32, true);
+        let mut resolver = ImportResolver::new(
+            &fs,
+            &mut sm,
+            PathBuf::from("/project"),
+            32,
+            true,
+            LibraryConfig::default(),
+        );
         let diags = resolver.resolve(&mut doc, Path::new("/project/main.wcl"), 0);
 
         assert!(
             !diags.has_errors(),
             "optional glob should not produce errors: {:?}",
+            diags.diagnostics()
+        );
+    }
+
+    #[test]
+    fn extra_paths_searched_before_defaults() {
+        let mut fs = InMemoryFs::new();
+        fs.add_file(PathBuf::from("/custom/lib/mylib.wcl"), "x = 1");
+
+        let config = LibraryConfig {
+            extra_paths: vec![PathBuf::from("/custom/lib")],
+            no_default_paths: false,
+        };
+        let result = resolve_library_import("mylib.wcl", &fs, &config);
+        assert_eq!(result, Some(PathBuf::from("/custom/lib/mylib.wcl")));
+    }
+
+    #[test]
+    fn no_default_paths_disables_defaults() {
+        let config = LibraryConfig {
+            extra_paths: vec![],
+            no_default_paths: true,
+        };
+        let paths = library_search_paths(&config);
+        assert!(paths.is_empty(), "expected no paths, got: {:?}", paths);
+    }
+
+    #[test]
+    fn multiple_extra_paths_searched_in_order() {
+        let mut fs = InMemoryFs::new();
+        fs.add_file(PathBuf::from("/first/mylib.wcl"), "x = 1");
+        fs.add_file(PathBuf::from("/second/mylib.wcl"), "x = 2");
+
+        let config = LibraryConfig {
+            extra_paths: vec![PathBuf::from("/first"), PathBuf::from("/second")],
+            no_default_paths: true,
+        };
+        let result = resolve_library_import("mylib.wcl", &fs, &config);
+        assert_eq!(result, Some(PathBuf::from("/first/mylib.wcl")));
+    }
+
+    #[test]
+    fn default_library_config_behaves_like_before() {
+        let config = LibraryConfig::default();
+        let paths = library_search_paths(&config);
+        // Should include at least one default path
+        assert!(!paths.is_empty());
+    }
+
+    #[test]
+    fn library_file_relative_import_no_jail_error() {
+        // Library file at /usr/lib/wcl/mylib.wcl imports ./helper.wcl
+        // The project root is /project — helper.wcl is outside project root
+        // but should NOT trigger a jail error because mylib.wcl is a library file.
+        let mut fs = InMemoryFs::new();
+        fs.add_file(
+            PathBuf::from("/libdir/mylib.wcl"),
+            "import \"./helper.wcl\"",
+        );
+        fs.add_file(PathBuf::from("/libdir/helper.wcl"), "x = 42");
+
+        let mut sm = make_source_map();
+        let source = "import <mylib.wcl>";
+        let file_id = sm.add_file("main.wcl".to_string(), source.to_string());
+        let (mut doc, _) = wcl_core::parse(source, file_id);
+
+        let config = LibraryConfig {
+            extra_paths: vec![PathBuf::from("/libdir")],
+            no_default_paths: true,
+        };
+        let mut resolver =
+            ImportResolver::new(&fs, &mut sm, PathBuf::from("/project"), 32, true, config);
+        let diags = resolver.resolve(&mut doc, Path::new("/project/main.wcl"), 0);
+
+        let jail_errors: Vec<_> = diags
+            .diagnostics()
+            .iter()
+            .filter(|d| d.code.as_deref() == Some("E011"))
+            .collect();
+        assert!(
+            jail_errors.is_empty(),
+            "expected no jail errors for library-nested imports, got: {:?}",
+            jail_errors
+        );
+    }
+
+    #[test]
+    fn library_importing_another_library_works() {
+        let mut fs = InMemoryFs::new();
+        fs.add_file(PathBuf::from("/libdir/outer.wcl"), "import <inner.wcl>");
+        fs.add_file(PathBuf::from("/libdir/inner.wcl"), "y = 99");
+
+        let mut sm = make_source_map();
+        let source = "import <outer.wcl>";
+        let file_id = sm.add_file("main.wcl".to_string(), source.to_string());
+        let (mut doc, _) = wcl_core::parse(source, file_id);
+
+        let config = LibraryConfig {
+            extra_paths: vec![PathBuf::from("/libdir")],
+            no_default_paths: true,
+        };
+        let mut resolver =
+            ImportResolver::new(&fs, &mut sm, PathBuf::from("/project"), 32, true, config);
+        let diags = resolver.resolve(&mut doc, Path::new("/project/main.wcl"), 0);
+
+        assert!(
+            !diags.has_errors(),
+            "expected no errors, got: {:?}",
             diags.diagnostics()
         );
     }

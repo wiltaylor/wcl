@@ -5,17 +5,23 @@ use std::path::Path;
 use wcl::{ResolvedField, ResolvedSchema, ResolvedVariant, ValidateConstraints};
 use wcl_schema::type_name;
 
-pub fn run(files: &[std::path::PathBuf], output: &Path, title: &str) -> Result<(), String> {
+pub fn run(
+    files: &[std::path::PathBuf],
+    output: &Path,
+    title: &str,
+    lib_args: &crate::LibraryArgs,
+) -> Result<(), String> {
     // Parse all files and collect schemas
     let mut all_schemas: HashMap<String, ResolvedSchema> = HashMap::new();
 
     for file in files {
         let source = fs::read_to_string(file)
             .map_err(|e| format!("failed to read {}: {}", file.display(), e))?;
-        let opts = wcl::ParseOptions {
+        let mut opts = wcl::ParseOptions {
             root_dir: file.parent().unwrap_or(Path::new(".")).to_path_buf(),
             ..Default::default()
         };
+        lib_args.apply(&mut opts);
         let doc = wcl::parse(&source, opts);
         for (name, schema) in doc.schemas.schemas {
             all_schemas.insert(name, schema);
