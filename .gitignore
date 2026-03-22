@@ -10,3 +10,4 @@ docs/book/wcl-grammar.js
 site/static/js/wcl.js
 editors/vscode/*.vsix
 extras/pygments/__pycache__/
+examples/SDF/docs/book/
