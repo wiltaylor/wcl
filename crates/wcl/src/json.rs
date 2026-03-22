@@ -12,6 +12,7 @@ pub fn value_to_json(value: &Value) -> serde_json::Value {
         Value::Bool(b) => json!(b),
         Value::Null => serde_json::Value::Null,
         Value::Identifier(s) => json!(s),
+        Value::Symbol(s) => json!(s),
         Value::List(items) => serde_json::Value::Array(items.iter().map(value_to_json).collect()),
         Value::Map(map) => {
             let obj: serde_json::Map<String, serde_json::Value> = map

@@ -11,6 +11,7 @@ pub fn check_type(value: &Value, type_expr: &TypeExpr) -> bool {
         (Value::Bool(_), TypeExpr::Bool(_)) => true,
         (Value::Null, TypeExpr::Null(_)) => true,
         (Value::Identifier(_), TypeExpr::Identifier(_)) => true,
+        (Value::Symbol(_), TypeExpr::Symbol(_)) => true,
         (Value::List(items), TypeExpr::List(inner, _)) => {
             items.iter().all(|item| check_type(item, inner))
         }
@@ -36,6 +37,7 @@ pub fn type_name(type_expr: &TypeExpr) -> String {
         TypeExpr::Null(_) => "null".to_string(),
         TypeExpr::Identifier(_) => "identifier".to_string(),
         TypeExpr::Any(_) => "any".to_string(),
+        TypeExpr::Symbol(_) => "symbol".to_string(),
         TypeExpr::List(inner, _) => format!("list({})", type_name(inner)),
         TypeExpr::Map(k, v, _) => format!("map({}, {})", type_name(k), type_name(v)),
         TypeExpr::Set(inner, _) => format!("set({})", type_name(inner)),

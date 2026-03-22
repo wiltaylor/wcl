@@ -24,6 +24,7 @@ impl<'de> de::Deserializer<'de> for Deserializer {
             Value::Bool(b) => visitor.visit_bool(b),
             Value::Null => visitor.visit_none(),
             Value::Identifier(s) => visitor.visit_string(s),
+            Value::Symbol(s) => visitor.visit_string(s),
             Value::List(items) => {
                 let seq = SeqDeserializer {
                     iter: items.into_iter(),
@@ -190,6 +191,7 @@ impl<'de> de::Deserializer<'de> for Deserializer {
         match self.value {
             Value::String(s) => visitor.visit_string(s),
             Value::Identifier(s) => visitor.visit_string(s),
+            Value::Symbol(s) => visitor.visit_string(s),
             _ => Err(Error::TypeMismatch {
                 expected: "string".to_string(),
                 got: self.value.type_name().to_string(),

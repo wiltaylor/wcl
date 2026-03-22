@@ -164,6 +164,12 @@ impl Parser {
                 let s = self.parse_string_lit()?;
                 Some(Expr::StringLit(s))
             }
+            TokenKind::SymbolLit(ref name) => {
+                let name = name.clone();
+                let span = self.current_span();
+                self.advance();
+                Some(Expr::SymbolLit(name, span))
+            }
             TokenKind::IdentifierLit(ref val) => {
                 let val = val.clone();
                 let span = self.current_span();

@@ -20,6 +20,8 @@ pub enum Value {
     Set(Vec<Value>),
     /// Reference to a block (block type, inline id, attributes map, child blocks, decorators)
     BlockRef(BlockRef),
+    /// Symbol value (e.g. `:GET`, `:relational`)
+    Symbol(String),
     /// Lambda/function value
     Function(FunctionValue),
 }
@@ -93,6 +95,7 @@ impl Value {
             Value::List(_) => "list",
             Value::Map(_) => "map",
             Value::Set(_) => "set",
+            Value::Symbol(_) => "symbol",
             Value::BlockRef(_) => "block_ref",
             Value::Function(_) => "function",
         }
@@ -154,6 +157,13 @@ impl Value {
         }
     }
 
+    pub fn as_symbol(&self) -> Option<&str> {
+        match self {
+            Value::Symbol(s) => Some(s),
+            _ => None,
+        }
+    }
+
     pub fn as_block_ref(&self) -> Option<&BlockRef> {
         match self {
             Value::BlockRef(b) => Some(b),
@@ -173,6 +183,7 @@ impl Value {
             Value::Bool(b) => Ok(b.to_string()),
             Value::Null => Ok("null".to_string()),
             Value::Identifier(s) => Ok(s.clone()),
+            Value::Symbol(s) => Ok(format!(":{}", s)),
             _ => Err(format!(
                 "cannot interpolate {} into string",
                 self.type_name()
@@ -190,6 +201,7 @@ impl PartialEq for Value {
             (Value::Bool(a), Value::Bool(b)) => a == b,
             (Value::Null, Value::Null) => true,
             (Value::Identifier(a), Value::Identifier(b)) => a == b,
+            (Value::Symbol(a), Value::Symbol(b)) => a == b,
             (Value::List(a), Value::List(b)) => a == b,
             (Value::Map(a), Value::Map(b)) => a == b,
             (Value::Set(a), Value::Set(b)) => a == b,
@@ -207,6 +219,7 @@ impl fmt::Display for Value {
             Value::Bool(b) => write!(f, "{}", b),
             Value::Null => write!(f, "null"),
             Value::Identifier(s) => write!(f, "{}", s),
+            Value::Symbol(s) => write!(f, ":{}", s),
             Value::List(items) => {
                 write!(f, "[")?;
                 for (i, item) in items.iter().enumerate() {
