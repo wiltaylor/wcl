@@ -34,6 +34,7 @@ dotnet:
 
 # Run JVM example
 jvm:
+    just build jvm
     cd examples/jvm && ./gradlew run --quiet
 
 # Run Ruby example
