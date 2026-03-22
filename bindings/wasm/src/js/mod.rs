@@ -150,6 +150,25 @@ fn build_parse_options(options: Option<JsValue>) -> Result<wcl::ParseOptions, Js
         }
     }
 
+    // libPaths: string[]
+    if let Ok(v) = js_sys::Reflect::get(options, &JsValue::from_str("libPaths")) {
+        if js_sys::Array::is_array(&v) {
+            let arr = js_sys::Array::from(&v);
+            for i in 0..arr.length() {
+                if let Some(s) = arr.get(i).as_string() {
+                    opts.lib_paths.push(PathBuf::from(s));
+                }
+            }
+        }
+    }
+
+    // noDefaultLibPaths: boolean
+    if let Ok(v) = js_sys::Reflect::get(options, &JsValue::from_str("noDefaultLibPaths")) {
+        if let Some(b) = v.as_bool() {
+            opts.no_default_lib_paths = b;
+        }
+    }
+
     // functions: Record<string, Function>
     if let Ok(v) = js_sys::Reflect::get(options, &JsValue::from_str("functions")) {
         if v.is_object() && !v.is_null() && !v.is_undefined() {

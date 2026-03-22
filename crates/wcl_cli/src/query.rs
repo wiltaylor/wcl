@@ -1,11 +1,14 @@
 use std::path::{Path, PathBuf};
 
+use crate::LibraryArgs;
+
 pub fn run(
     file: &Path,
     query_str: &str,
     format: &str,
     count: bool,
     recursive: bool,
+    lib_args: &LibraryArgs,
 ) -> Result<(), String> {
     if recursive && file.is_dir() {
         let files = collect_wcl_files(file)?;
@@ -19,10 +22,11 @@ pub fn run(
             let source = std::fs::read_to_string(wcl_file)
                 .map_err(|e| format!("cannot read {}: {}", wcl_file.display(), e))?;
 
-            let options = wcl::ParseOptions {
+            let mut options = wcl::ParseOptions {
                 root_dir: wcl_file.parent().unwrap_or(Path::new(".")).to_path_buf(),
                 ..Default::default()
             };
+            lib_args.apply(&mut options);
 
             let doc = wcl::parse(&source, options);
             if doc.has_errors() {
@@ -80,10 +84,11 @@ pub fn run(
     let source = std::fs::read_to_string(file)
         .map_err(|e| format!("cannot read {}: {}", file.display(), e))?;
 
-    let options = wcl::ParseOptions {
+    let mut options = wcl::ParseOptions {
         root_dir: file.parent().unwrap_or(Path::new(".")).to_path_buf(),
         ..Default::default()
     };
+    lib_args.apply(&mut options);
 
     let doc = wcl::parse(&source, options);
     if doc.has_errors() {

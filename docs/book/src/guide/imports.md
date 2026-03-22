@@ -53,7 +53,7 @@ Library files are searched in these directories (in order):
 1. **User library**: `$XDG_DATA_HOME/wcl/lib/` (default: `~/.local/share/wcl/lib/`)
 2. **System library**: each dir in `$XDG_DATA_DIRS` + `/wcl/lib/` (default: `/usr/local/share/wcl/lib/`, `/usr/share/wcl/lib/`)
 
-Library imports **skip the jail check** since they are intentionally located outside the project root. All other rules (import-once, depth limit, recursive resolution) still apply.
+Library imports **skip the jail check** since they are intentionally located outside the project root. Relative imports inside library files (e.g., `import "./helper.wcl"`) also skip the jail check, so library files can freely compose helper files within their own directory. All other rules (import-once, depth limit, recursive resolution) still apply.
 
 Library files can contain schemas, `declare` stubs for host-registered functions, and any other WCL content:
 
@@ -66,6 +66,8 @@ schema "server_config" {
 
 declare my_custom_fn(input: string) -> string
 ```
+
+You can add custom library search paths using the `--lib-path` CLI flag or the `lib_paths` option in `ParseOptions`. Use `--no-default-lib-paths` to disable the default XDG/system paths entirely.
 
 See the [Libraries guide](../guide/libraries.md) for how to create and manage library files.
 

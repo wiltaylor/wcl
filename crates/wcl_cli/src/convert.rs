@@ -1,15 +1,23 @@
 use std::path::Path;
 
-pub fn run(file: &Path, to: Option<&str>, from: Option<&str>) -> Result<(), String> {
+use crate::LibraryArgs;
+
+pub fn run(
+    file: &Path,
+    to: Option<&str>,
+    from: Option<&str>,
+    lib_args: &LibraryArgs,
+) -> Result<(), String> {
     let source = std::fs::read_to_string(file)
         .map_err(|e| format!("cannot read {}: {}", file.display(), e))?;
 
     match to {
         Some("json") => {
-            let options = wcl::ParseOptions {
+            let mut options = wcl::ParseOptions {
                 root_dir: file.parent().unwrap_or(Path::new(".")).to_path_buf(),
                 ..Default::default()
             };
+            lib_args.apply(&mut options);
             let doc = wcl::parse(&source, options);
             if doc.has_errors() {
                 for diag in doc.errors() {
@@ -26,10 +34,11 @@ pub fn run(file: &Path, to: Option<&str>, from: Option<&str>) -> Result<(), Stri
             Ok(())
         }
         Some("yaml") | Some("yml") => {
-            let options = wcl::ParseOptions {
+            let mut options = wcl::ParseOptions {
                 root_dir: file.parent().unwrap_or(Path::new(".")).to_path_buf(),
                 ..Default::default()
             };
+            lib_args.apply(&mut options);
             let doc = wcl::parse(&source, options);
             if doc.has_errors() {
                 for diag in doc.errors() {
@@ -47,10 +56,11 @@ pub fn run(file: &Path, to: Option<&str>, from: Option<&str>) -> Result<(), Stri
             Ok(())
         }
         Some("toml") => {
-            let options = wcl::ParseOptions {
+            let mut options = wcl::ParseOptions {
                 root_dir: file.parent().unwrap_or(Path::new(".")).to_path_buf(),
                 ..Default::default()
             };
+            lib_args.apply(&mut options);
             let doc = wcl::parse(&source, options);
             if doc.has_errors() {
                 for diag in doc.errors() {

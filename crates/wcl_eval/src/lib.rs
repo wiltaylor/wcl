@@ -16,7 +16,7 @@ pub use evaluator::Evaluator;
 pub use functions::{builtin_signatures, BuiltinFn, FunctionRegistry, FunctionSignature};
 pub use imports::{
     library_search_paths, resolve_library_import, FileSystem, ImportResolver, InMemoryFs,
-    RealFileSystem,
+    LibraryConfig, RealFileSystem,
 };
 pub use macros::{MacroExpander, MacroRegistry};
 pub use merge::{ConflictMode, PartialMerger};

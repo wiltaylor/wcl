@@ -2,6 +2,24 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use std::process;
 
+/// Shared library search path options
+#[derive(clap::Args, Clone, Debug, Default)]
+pub struct LibraryArgs {
+    /// Extra library search path (may be repeated; searched before defaults)
+    #[arg(long = "lib-path", value_name = "DIR")]
+    pub lib_paths: Vec<PathBuf>,
+    /// Disable default XDG/system library search paths
+    #[arg(long)]
+    pub no_default_lib_paths: bool,
+}
+
+impl LibraryArgs {
+    pub fn apply(&self, opts: &mut wcl::ParseOptions) {
+        opts.lib_paths.clone_from(&self.lib_paths);
+        opts.no_default_lib_paths = self.no_default_lib_paths;
+    }
+}
+
 mod add;
 mod convert;
 mod docs;
@@ -42,6 +60,8 @@ enum Commands {
         /// Set a variable (KEY=VALUE, may repeat)
         #[arg(long = "var", value_name = "KEY=VALUE")]
         vars: Vec<String>,
+        #[command(flatten)]
+        lib_args: LibraryArgs,
     },
     /// Format a WCL document
     Fmt {
@@ -69,6 +89,8 @@ enum Commands {
         /// Search recursively in directory
         #[arg(long)]
         recursive: bool,
+        #[command(flatten)]
+        lib_args: LibraryArgs,
     },
     /// Inspect the AST or HIR of a WCL document
     Inspect {
@@ -97,6 +119,8 @@ enum Commands {
         /// Set a variable (KEY=VALUE, may repeat)
         #[arg(long = "var", value_name = "KEY=VALUE")]
         vars: Vec<String>,
+        #[command(flatten)]
+        lib_args: LibraryArgs,
     },
     /// Start the WCL language server
     Lsp {
@@ -114,6 +138,8 @@ enum Commands {
         /// Input format for conversion to WCL
         #[arg(long)]
         from: Option<String>,
+        #[command(flatten)]
+        lib_args: LibraryArgs,
     },
     /// Set a value by path
     Set {
@@ -157,6 +183,8 @@ enum Commands {
         /// Book title
         #[arg(long, default_value = "WCL Schema Reference")]
         title: String,
+        #[command(flatten)]
+        lib_args: LibraryArgs,
     },
 }
 
@@ -205,7 +233,8 @@ fn main() {
             strict,
             schema,
             vars,
-        } => validate::run(&file, strict, schema.as_deref(), &vars),
+            lib_args,
+        } => validate::run(&file, strict, schema.as_deref(), &vars, &lib_args),
         Commands::Fmt { file, write, check } => fmt::run(&file, write, check),
         Commands::Query {
             file,
@@ -213,7 +242,8 @@ fn main() {
             format,
             count,
             recursive,
-        } => query::run(&file, &query, &format, count, recursive),
+            lib_args,
+        } => query::run(&file, &query, &format, count, recursive, &lib_args),
         Commands::Inspect {
             file,
             ast,
@@ -221,7 +251,12 @@ fn main() {
             scopes,
             deps,
         } => inspect::run(&file, ast, hir, scopes, deps),
-        Commands::Eval { file, format, vars } => eval::run(&file, &format, &vars),
+        Commands::Eval {
+            file,
+            format,
+            vars,
+            lib_args,
+        } => eval::run(&file, &format, &vars, &lib_args),
         Commands::Lsp { tcp } => {
             let rt = tokio::runtime::Runtime::new()
                 .map_err(|e| format!("failed to create tokio runtime: {}", e));
@@ -239,7 +274,12 @@ fn main() {
                 Err(e) => Err(e),
             }
         }
-        Commands::Convert { file, to, from } => convert::run(&file, to.as_deref(), from.as_deref()),
+        Commands::Convert {
+            file,
+            to,
+            from,
+            lib_args,
+        } => convert::run(&file, to.as_deref(), from.as_deref(), &lib_args),
         Commands::Set { file, path, value } => set::run(&file, &path, &value),
         Commands::Add {
             file,
@@ -251,7 +291,8 @@ fn main() {
             files,
             output,
             title,
-        } => docs::run(&files, &output, &title),
+            lib_args,
+        } => docs::run(&files, &output, &title, &lib_args),
         Commands::Table { action } => match action {
             TableAction::Insert {
                 file,

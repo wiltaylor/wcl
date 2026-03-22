@@ -82,7 +82,11 @@ fn resolve_import_path(import: &ast::Import, current_uri: &Url) -> Option<GotoDe
 
     let resolved = if import.kind == ast::ImportKind::Library {
         // Search library paths
-        wcl_eval::resolve_library_import(&path_str, &wcl_eval::RealFileSystem)?
+        wcl_eval::resolve_library_import(
+            &path_str,
+            &wcl_eval::RealFileSystem,
+            &wcl_eval::LibraryConfig::default(),
+        )?
     } else {
         let import_path = Path::new(&path_str);
         if import_path.is_absolute() {
