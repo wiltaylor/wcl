@@ -55,16 +55,31 @@ dotnet:
     cp bindings/dotnet/src/Wcl/bin/Release/*.nupkg "{{pkg}}/dotnet/"
     echo ".NET package packaged to {{pkg}}/dotnet/"
 
-# Package VS Code extension into .packages/vscode/
-vscode:
+# Package VS Code extension for a single platform
+vscode-platform target vsce_target:
     #!/bin/bash
     set -euo pipefail
     mkdir -p "{{pkg}}/vscode"
+    mkdir -p editors/vscode/bin
+    if [[ "{{vsce_target}}" == win32-* ]]; then
+        cp "target/{{target}}/release/wcl.exe" editors/vscode/bin/
+    else
+        if [[ -f "target/{{target}}/release/wcl" ]]; then
+            cp "target/{{target}}/release/wcl" editors/vscode/bin/
+        else
+            cp "target/release/wcl" editors/vscode/bin/
+        fi
+        chmod +x editors/vscode/bin/wcl
+    fi
     cd editors/vscode
     npm install
-    npx --yes @vscode/vsce package --allow-missing-repository
+    npx --yes @vscode/vsce package --target "{{vsce_target}}" --allow-missing-repository
     cp *.vsix "{{pkg}}/vscode/"
-    echo "VS Code extension packaged to {{pkg}}/vscode/"
+    rm -rf bin *.vsix
+    echo "VS Code extension ({{vsce_target}}) packaged to {{pkg}}/vscode/"
+
+# Package VS Code extension for all platforms (requires cli-all to be run first)
+vscode: (vscode-platform "x86_64-unknown-linux-gnu" "linux-x64") (vscode-platform "aarch64-unknown-linux-gnu" "linux-arm64") (vscode-platform "x86_64-apple-darwin" "darwin-x64") (vscode-platform "aarch64-apple-darwin" "darwin-arm64") (vscode-platform "x86_64-pc-windows-gnu" "win32-x64")
 
 # Package tree-sitter-wcl into .packages/tree-sitter-wcl/ (npm + Rust crate)
 tree-sitter-wcl:

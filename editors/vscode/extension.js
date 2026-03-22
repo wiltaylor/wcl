@@ -7,9 +7,17 @@ const { LanguageClient } = require("vscode-languageclient/node");
 let client;
 
 function findWclBinary(configured) {
+  // 1. Check for bundled binary (platform-specific VSIX)
+  const binName = process.platform === "win32" ? "wcl.exe" : "wcl";
+  const bundled = path.join(__dirname, "bin", binName);
+  if (fs.existsSync(bundled)) {
+    return bundled;
+  }
+  // 2. User-configured absolute path
   if (path.isAbsolute(configured) && fs.existsSync(configured)) {
     return configured;
   }
+  // 3. Cargo bin fallback
   const cargoBin = path.join(os.homedir(), ".cargo", "bin", "wcl");
   if (fs.existsSync(cargoBin)) {
     return cargoBin;
