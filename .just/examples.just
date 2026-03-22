@@ -18,7 +18,7 @@ rust:
 
 # Run Python example
 python:
-    cd examples/python && python3 example.py
+    cd examples/python && uv run example.py
 
 # Run JavaScript example
 javascript:
@@ -38,4 +38,4 @@ jvm:
 
 # Run Ruby example
 ruby:
-    cd examples/ruby && ruby example.rb
+    cd examples/ruby && bundle install --quiet && bundle exec ruby example.rb

@@ -9,10 +9,17 @@ java {
 
 repositories {
     mavenCentral()
+    maven {
+        url = uri("https://maven.pkg.github.com/wiltaylor/wcl")
+        credentials {
+            username = System.getenv("GITHUB_ACTOR") ?: project.findProperty("gpr.user") ?: ""
+            password = System.getenv("GITHUB_TOKEN") ?: project.findProperty("gpr.key") ?: ""
+        }
+    }
 }
 
 dependencies {
-    implementation files('../../bindings/jvm/build/libs/wcl-0.0.0-local.jar')
+    implementation 'io.github.wiltaylor:wcl:0.2.4-alpha'
     implementation 'com.dylibso.chicory:runtime:1.1.0'
     implementation 'com.dylibso.chicory:wasi:1.1.0'
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.18.2'
