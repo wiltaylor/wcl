@@ -44,6 +44,7 @@ The following primitive types are available for schema fields:
 | `list`   | A list of values                   |
 | `map`    | A key-value map                    |
 | `any`    | Accepts any value type             |
+| `symbol` | A symbol literal (e.g. `:GET`)     |
 
 ## Field Decorators
 
@@ -222,6 +223,200 @@ service "svc-worker" {
 
 The `svc-worker` block inherits `env = "production"` and `replicas = 1` from the schema defaults.
 
+## Per-Child Cardinality with @child
+
+Use `@child("kind", min=N, max=N)` to enforce how many children of a given kind a block must/may have:
+
+```wcl
+schema "server" {
+    @child("endpoint", min=1, max=10)
+    @child("config", max=1)
+    port: int
+    host: string
+}
+```
+
+- `min` — error if fewer children of that kind exist (E097)
+- `max` — error if more children of that kind exist (E098)
+- `@child("kind")` with no min/max just adds the kind to the allowed children set (like `@children`)
+- `@child` entries merge into the `@children` constraint automatically
+
+### Self-Nesting with max_depth
+
+Use `@child("kind", max_depth=N)` to allow a block to contain itself, up to a depth limit:
+
+```wcl
+schema "menu" {
+    @child("menu", max_depth=3)
+    label: string
+}
+
+menu top {
+    label = "File"
+    menu sub {
+        label = "Open"
+        menu deep {
+            label = "Recent"  // depth 3 — allowed
+            // menu too-deep { ... }  // ERROR E099: exceeds max depth
+        }
+    }
+}
+```
+
+## Union Field Types
+
+Use `union(t1, t2, ...)` to declare that a field accepts any of the listed types:
+
+```wcl
+schema "config" {
+    value: union(string, int, bool)
+}
+
+config a { value = "hello" }
+config b { value = 42 }
+config c { value = true }
+```
+
+## Tagged Variant Schemas
+
+Use `@tagged("field")` and `variant "value" { ... }` to define schemas where required fields depend on a discriminator value:
+
+```wcl
+@tagged("style")
+schema "api" {
+    style: string
+    version: string @optional
+
+    @children(["resource"])
+    variant "rest" {
+        base_path: string
+    }
+
+    @children(["gql_query", "gql_mutation"])
+    variant "graphql" {
+        schema_path: string @optional
+    }
+}
+
+api rest-api {
+    style = "rest"
+    base_path = "/api/v1"
+}
+
+api gql-api {
+    style = "graphql"
+}
+```
+
+- Common fields (outside variants) apply to all blocks
+- When the tag field matches a variant, that variant's fields are also validated
+- When no variant matches, only common fields are validated
+- Variant `@children`/`@child` decorators override the base schema's containment for that variant
+- Variant fields are accepted by closed schemas even when not in the active variant
+
+## Symbols
+
+Symbol literals are lightweight, identifier-like values prefixed with a colon. They are useful when a field represents a fixed set of named options rather than arbitrary strings.
+
+### Symbol Literals
+
+A symbol literal is written as a colon followed by an identifier:
+
+```wcl
+endpoint list_users {
+    method = :GET
+    path   = "/users"
+}
+```
+
+Symbol values are distinct from strings. `:GET` is not the same as `"GET"`.
+
+### Symbol Sets
+
+A `symbol_set` declaration defines a named group of valid symbols:
+
+```wcl
+symbol_set http_method {
+    :GET
+    :POST
+    :PUT
+    :PATCH
+    :DELETE
+    :HEAD
+    :OPTIONS
+}
+```
+
+### Value Mappings
+
+Each member of a symbol set can optionally map to a string value using `=`. This controls how the symbol serializes to JSON:
+
+```wcl
+symbol_set curl_option {
+    :unix_socket = "unix-socket"
+    :compressed  = "compressed"
+    :verbose     = "verbose"
+}
+```
+
+Without an explicit mapping, a symbol serializes to its name as a string (e.g. `:GET` becomes `"GET"` in JSON output).
+
+### Using @symbol_set in Schemas
+
+Use the `symbol` type and the `@symbol_set` decorator to constrain a field to members of a declared set:
+
+```wcl
+schema "endpoint" {
+    method: symbol @symbol_set("http_method")
+    path:   string
+}
+```
+
+If a block provides a symbol value that is not a member of the referenced set, error E100 is raised. If the named set does not exist, error E101 is raised.
+
+### The Special "all" Set
+
+Use the set name `"all"` to accept any symbol value without restricting to a specific set:
+
+```wcl
+schema "tag" {
+    kind: symbol @symbol_set("all")
+}
+
+tag important {
+    kind = :priority    // any symbol is accepted
+}
+```
+
+This is useful when you want the `symbol` type for its semantics (not a free-form string) but do not want to enumerate every valid value.
+
+### JSON Serialization
+
+Symbols serialize to JSON as strings:
+
+- A symbol with no value mapping serializes to its identifier name: `:GET` becomes `"GET"`.
+- A symbol with a value mapping serializes to the mapped string: `:unix_socket = "unix-socket"` becomes `"unix-socket"`.
+
+```wcl
+symbol_set http_method { :GET :POST }
+
+endpoint example {
+    method = :GET
+}
+
+// JSON output:
+// { "endpoint": { "example": { "method": "GET" } } }
+```
+
+### Symbol Error Codes
+
+| Code | Meaning |
+|------|---------|
+| E100 | Symbol value not in declared `symbol_set` |
+| E101 | Referenced `symbol_set` does not exist |
+| E102 | Duplicate `symbol_set` name |
+| E103 | Duplicate symbol within a `symbol_set` |
+
 ## Error Codes
 
 | Code | Meaning                                       |
@@ -240,6 +435,13 @@ The `svc-worker` block inherits `env = "production"` and `replicas = 1` from the
 | E092 | Inline columns defined when schema is applied |
 | E095 | Child not allowed by parent's `@children` list |
 | E096 | Item not allowed by its own `@parent` list     |
+| E097 | Child count below `@child` minimum            |
+| E098 | Child count above `@child` maximum            |
+| E099 | Self-nesting exceeds `@child` max_depth       |
+| E100 | Symbol value not in declared `symbol_set`      |
+| E101 | Referenced `symbol_set` does not exist          |
+| E102 | Duplicate `symbol_set` name                    |
+| E103 | Duplicate symbol within a `symbol_set`         |
 
 ## Block & Table Containment
 
