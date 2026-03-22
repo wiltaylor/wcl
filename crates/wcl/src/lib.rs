@@ -3335,4 +3335,192 @@ symbol_set multi {
         assert!(doc.values.get("b-1").is_some(), "expected b-1 block");
         assert!(doc.values.get("c-2").is_some(), "expected c-2 block");
     }
+
+    // ── Let-bound import_table + for loops ────────────────────────────
+
+    fn has_errors(diags: &[crate::Diagnostic]) -> bool {
+        diags
+            .iter()
+            .any(|d| d.severity == wcl_core::diagnostic::Severity::Error)
+    }
+
+    fn error_diags(diags: &[crate::Diagnostic]) -> Vec<&crate::Diagnostic> {
+        diags
+            .iter()
+            .filter(|d| d.severity == wcl_core::diagnostic::Severity::Error)
+            .collect()
+    }
+
+    #[test]
+    fn test_for_loop_over_let_import_table() {
+        use std::sync::Arc;
+
+        let mut fs = InMemoryFs::new();
+        fs.add_file(
+            std::path::PathBuf::from("/project/users.csv"),
+            "name,role\nalice,admin\nbob,user",
+        );
+
+        let mut opts = ParseOptions::default();
+        opts.root_dir = std::path::PathBuf::from("/project");
+        opts.fs = Some(Arc::new(fs));
+
+        let source = r#"
+            let data = import_table("users.csv")
+
+            for row in data {
+                service ${row.name}-svc {
+                    role = row.role
+                }
+            }
+        "#;
+        let doc = parse(source, opts);
+        assert!(
+            !has_errors(&doc.diagnostics),
+            "expected no errors, got: {:?}",
+            error_diags(&doc.diagnostics)
+        );
+
+        let alice_svc = doc.values.get("alice-svc");
+        assert!(
+            alice_svc.is_some(),
+            "expected alice-svc block, got keys: {:?}",
+            doc.values.keys().collect::<Vec<_>>()
+        );
+        let alice = alice_svc
+            .unwrap()
+            .as_block_ref()
+            .expect("expected block ref");
+        assert_eq!(
+            alice.attributes.get("role"),
+            Some(&Value::String("admin".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_let_import_table_not_in_output() {
+        use std::sync::Arc;
+
+        let mut fs = InMemoryFs::new();
+        fs.add_file(
+            std::path::PathBuf::from("/project/data.csv"),
+            "name,value\nalice,42",
+        );
+
+        let mut opts = ParseOptions::default();
+        opts.root_dir = std::path::PathBuf::from("/project");
+        opts.fs = Some(Arc::new(fs));
+
+        let source = r#"
+            let data = import_table("data.csv")
+            x = 1
+        "#;
+        let doc = parse(source, opts);
+        assert!(
+            !has_errors(&doc.diagnostics),
+            "expected no errors, got: {:?}",
+            error_diags(&doc.diagnostics)
+        );
+
+        // let bindings should not appear in output values
+        assert!(
+            !doc.values.contains_key("data"),
+            "let-bound table should not appear in output"
+        );
+        assert_eq!(doc.values.get("x"), Some(&Value::Int(1)));
+    }
+
+    #[test]
+    fn test_find_on_table() {
+        use std::sync::Arc;
+
+        let mut fs = InMemoryFs::new();
+        fs.add_file(
+            std::path::PathBuf::from("/project/users.csv"),
+            "name,role\nalice,admin\nbob,user",
+        );
+
+        let mut opts = ParseOptions::default();
+        opts.root_dir = std::path::PathBuf::from("/project");
+        opts.fs = Some(Arc::new(fs));
+
+        let source = r#"
+            let data = import_table("users.csv")
+            let row = find(data, "name", "alice")
+            result = row.role
+        "#;
+        let doc = parse(source, opts);
+        assert!(
+            !has_errors(&doc.diagnostics),
+            "expected no errors, got: {:?}",
+            error_diags(&doc.diagnostics)
+        );
+        assert_eq!(
+            doc.values.get("result"),
+            Some(&Value::String("admin".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_filter_lambda_on_table() {
+        use std::sync::Arc;
+
+        let mut fs = InMemoryFs::new();
+        fs.add_file(
+            std::path::PathBuf::from("/project/users.csv"),
+            "name,role\nalice,admin\nbob,user\ncharlie,admin",
+        );
+
+        let mut opts = ParseOptions::default();
+        opts.root_dir = std::path::PathBuf::from("/project");
+        opts.fs = Some(Arc::new(fs));
+
+        let source = r#"
+            let data = import_table("users.csv")
+            let admins = filter(data, (r) => r.role == "admin")
+            count = len(admins)
+        "#;
+        let doc = parse(source, opts);
+        assert!(
+            !has_errors(&doc.diagnostics),
+            "expected no errors, got: {:?}",
+            error_diags(&doc.diagnostics)
+        );
+        assert_eq!(doc.values.get("count"), Some(&Value::Int(2)));
+    }
+
+    #[test]
+    fn test_insert_row_in_for_loop() {
+        use std::sync::Arc;
+
+        let mut fs = InMemoryFs::new();
+        fs.add_file(
+            std::path::PathBuf::from("/project/users.csv"),
+            "name,role\nalice,admin",
+        );
+
+        let mut opts = ParseOptions::default();
+        opts.root_dir = std::path::PathBuf::from("/project");
+        opts.fs = Some(Arc::new(fs));
+
+        let source = r#"
+            let data = import_table("users.csv")
+            let extended = insert_row(data, {name = "bob", role = "user"})
+
+            for row in extended {
+                service ${row.name}-svc {
+                    role = row.role
+                }
+            }
+        "#;
+        let doc = parse(source, opts);
+        assert!(
+            !has_errors(&doc.diagnostics),
+            "expected no errors, got: {:?}",
+            error_diags(&doc.diagnostics)
+        );
+
+        assert!(doc.values.get("alice-svc").is_some(), "expected alice-svc");
+        assert!(doc.values.get("bob-svc").is_some(), "expected bob-svc");
+    }
 }
