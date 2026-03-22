@@ -1,0 +1,6 @@
+[book]
+title = "SDF Schema Reference"
+src = "src"
+
+[output.html]
+default-theme = "light"
