@@ -212,6 +212,28 @@ schema "config" {
         (type_expression (builtin_type)))))))
 
 ================
+Schema variant
+================
+
+schema "api" {
+  style: string
+
+  variant "rest" {
+    base_path: string
+  }
+}
+
+---
+
+(document
+  (schema (string_literal (string_content))
+    (schema_field (identifier)
+      (type_expression (builtin_type)))
+    (schema_variant (string_literal (string_content))
+      (schema_field (identifier)
+        (type_expression (builtin_type))))))
+
+================
 List type
 ================
 

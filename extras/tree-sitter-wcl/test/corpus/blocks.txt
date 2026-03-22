@@ -27,7 +27,7 @@ server web-prod {
     (attribute (identifier) (expression (integer_literal))))))
 
 ================
-Block with labels
+Block with inline args
 ================
 
 server "us-east" {
@@ -37,7 +37,7 @@ server "us-east" {
 ---
 
 (document
-  (block (identifier) (string_literal (string_content)) (block_body
+  (block (identifier) (inline_arg (string_literal (string_content))) (block_body
     (attribute (identifier) (expression (integer_literal))))))
 
 ================
