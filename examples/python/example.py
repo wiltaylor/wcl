@@ -1,3 +1,8 @@
+#!/usr/bin/env -S uv run
+# /// script
+# requires-python = ">=3.9"
+# dependencies = ["pywcl>=0.2.4a1"]
+# ///
 """WCL Python binding example."""
 
 import os
