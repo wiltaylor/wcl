@@ -13,6 +13,7 @@ This page lists all diagnostic codes produced by the WCL pipeline, grouped by ph
 | E011 | Import | Jail escape (path outside root) |
 | E013 | Import | Remote import forbidden |
 | E014 | Import | Max import depth exceeded |
+| E015 | Import | Library not found in search paths |
 | E016 | Import | Glob pattern matched no files (non-optional import) |
 | E020 | Macro | Undefined macro |
 | E021 | Macro | Recursive macro expansion |
@@ -38,7 +39,7 @@ This page lists all diagnostic codes produced by the WCL pipeline, grouped by ph
 | E050 | Eval | Type error in expression |
 | E051 | Eval | Division by zero |
 | E052 | Eval | Unknown function |
-| E053 | Eval | Ref resolution failed |
+| E053 | Eval | Declared-but-unregistered function (from `declare` in library) |
 | E054 | Eval | Index out of bounds |
 | E060 | Decorator | Unknown decorator |
 | E061 | Decorator | Invalid target |
@@ -54,6 +55,8 @@ This page lists all diagnostic codes produced by the WCL pipeline, grouped by ph
 | E090 | Table | @table_index references nonexistent column |
 | E091 | Table | Duplicate value in unique table index |
 | E092 | Table | Inline columns defined when schema is applied |
+| E093 | Schema | Block uses text block syntax but schema has no `@text` field |
+| E094 | Schema | `@text` field validation errors (wrong name or type) |
 | E095 | Schema | Child not allowed by parent's `@children` constraint |
 | E096 | Schema | Item not allowed by its own `@parent` constraint |
 | E097 | Schema | Child count below `@child` minimum |
@@ -70,7 +73,7 @@ This page lists all diagnostic codes produced by the WCL pipeline, grouped by ph
 |------|-------|-------------|
 | W001 | Scope | Shadowing warning |
 | W002 | Scope | Unused variable |
-| W003 | Merge | Label mismatch in partial merge |
+| W003 | Merge | Inline args mismatch in partial merge |
 
 ## Diagnostic Output Format
 

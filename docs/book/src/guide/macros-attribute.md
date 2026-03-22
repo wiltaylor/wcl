@@ -233,7 +233,7 @@ Inside an attribute macro body, `self` refers to the block the macro is applied 
 | `self.id`            | The block's ID label (e.g. `"api"`)              |
 | `self.attr(name)`    | The value of the named attribute                 |
 | `self.has(name)`     | `true` if the attribute exists on the block      |
-| `self.labels`        | List of all label strings on the block           |
+| `self.args`          | List of inline argument values on the block      |
 | `self.decorators`    | List of decorator names applied to the block     |
 
 `self` is **only available in attribute macros**. It is not defined in function macro bodies.

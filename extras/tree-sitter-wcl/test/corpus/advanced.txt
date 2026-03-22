@@ -355,3 +355,155 @@ port = 8080
         (named_argument (identifier) (expression (integer_literal)))))
     (identifier)
     (expression (integer_literal))))
+
+================
+Attribute macro with transform directives
+================
+
+macro @add_env(env) {
+  inject {
+    environment = env
+  }
+  set {
+    managed = true
+  }
+  remove [obsolete]
+}
+
+---
+
+(document
+  (macro_definition
+    (attribute_macro (identifier)
+      (parameter_list (parameter (identifier)))
+      (transform_directive
+        (inject_block
+          (attribute (identifier) (expression (identifier)))))
+      (transform_directive
+        (set_block
+          (attribute (identifier) (expression (boolean_literal)))))
+      (transform_directive
+        (remove_block (identifier))))))
+
+================
+Attribute macro invocation on block
+================
+
+@add_env("production")
+server web {
+  port = 8080
+}
+
+---
+
+(document
+  (block
+    (decorator (identifier)
+      (decorator_arguments (expression (string_literal (string_content)))))
+    (identifier)
+    (inline_arg (identifier))
+    (block_body
+      (attribute (identifier) (expression (integer_literal))))))
+
+================
+Table with schema reference
+================
+
+table users : UserSchema {
+  name: string
+  | "Alice" |
+}
+
+---
+
+(document
+  (table (identifier) (identifier)
+    (column_declaration (identifier) (type_expression (builtin_type)))
+    (table_row (expression (string_literal (string_content))))))
+
+================
+Table assignment with import_table
+================
+
+table users = import_table("data.csv")
+
+---
+
+(document
+  (table (identifier)
+    (expression
+      (import_table_expression
+        (string_literal (string_content))))))
+
+================
+Table assignment with import_table named args
+================
+
+table users = import_table("data.csv", headers = false, columns = ["name", "age"])
+
+---
+
+(document
+  (table (identifier)
+    (expression
+      (import_table_expression
+        (string_literal (string_content))
+        (import_table_arg (identifier) (expression (boolean_literal)))
+        (import_table_arg (identifier) (expression (list_literal
+          (expression (string_literal (string_content)))
+          (expression (string_literal (string_content))))))))))
+
+================
+Schema with decorator examples
+================
+
+schema "Parent" {
+  @child(kind = "child_block", min = 1)
+  @inline(0)
+  name: string
+  @parent(kind = "root")
+  owner: string
+  @tagged
+  tag: symbol
+}
+
+---
+
+(document
+  (schema (string_literal (string_content))
+    (schema_field
+      (decorator (identifier)
+        (decorator_arguments
+          (named_argument (identifier) (expression (string_literal (string_content))))
+          (named_argument (identifier) (expression (integer_literal)))))
+      (decorator (identifier)
+        (decorator_arguments (expression (integer_literal))))
+      (identifier)
+      (type_expression (builtin_type))
+      (decorator (identifier)
+        (decorator_arguments
+          (named_argument (identifier) (expression (string_literal (string_content)))))))
+    (schema_field
+      (identifier)
+      (type_expression (builtin_type))
+      (decorator (identifier)))
+    (schema_field
+      (identifier)
+      (type_expression (builtin_type)))))
+
+================
+Introspection function calls
+================
+
+let imported = is_imported("other.wcl")
+let has_it = has_schema("MySchema")
+
+---
+
+(document
+  (let_binding (identifier) (expression
+    (call_expression (identifier)
+      (argument_list (expression (string_literal (string_content)))))))
+  (let_binding (identifier) (expression
+    (call_expression (identifier)
+      (argument_list (expression (string_literal (string_content))))))))

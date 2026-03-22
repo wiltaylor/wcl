@@ -28,10 +28,12 @@ body_item       = attribute
                 | schema
                 | decorator_schema
                 | symbol_set_decl
+                | declare_stmt
                 | comment ;
 
 (* ===== Import Directives (top-level only) ===== *)
 import_decl     = "import" ["?"] (STRING_LIT | library_import) ;
+library_import  = "<" IDENT { "." IDENT } ".wcl" ">" ;
 
 (* ===== Export Declarations (top-level only) ===== *)
 export_decl     = "export" "let" IDENT "=" expression
@@ -42,7 +44,10 @@ attribute       = { decorator } IDENT "=" expression ;
 
 (* ===== Blocks ===== *)
 block           = { decorator } [ "partial" ] IDENT [ IDENTIFIER_LIT ]
-                  { STRING_LIT } "{" body "}" ;
+                  { inline_arg } ( "{" body "}" | text_content ) ;
+inline_arg      = INT_LIT | FLOAT_LIT | STRING_LIT | BOOL_LIT | NULL_LIT
+                | symbol_lit | IDENT | list_literal ;
+text_content    = STRING_LIT | heredoc ;
 
 (* ===== Let Bindings ===== *)
 let_binding     = { decorator } ["partial"] "let" IDENT "=" expression ;
@@ -101,6 +106,11 @@ set_block       = "set" "{" { attribute } "}" ;
 remove_block    = "remove" "[" ident_list "]" ;
 ident_list      = IDENT { "," IDENT } [ "," ] ;
 when_block      = "when" expression "{" { transform_directive } "}" ;
+
+(* ===== Declare Statements ===== *)
+declare_stmt    = "declare" IDENT "(" [ declare_params ] ")" [ "->" type_expr ] ;
+declare_params  = declare_param { "," declare_param } ;
+declare_param   = IDENT ":" type_expr ;
 
 (* ===== Validation ===== *)
 validation      = { decorator } "validation" STRING_LIT "{"

@@ -137,8 +137,7 @@ Each `BlockRef` has the following fields:
 type BlockRef struct {
     Kind       string         // block type name (e.g. "server")
     ID         *string        // inline ID (e.g. "web-prod"), nil if none
-    Labels     []string       // labels
-    Attributes map[string]any // evaluated attribute values
+    Attributes map[string]any // evaluated attribute values (includes _args if inline args present)
     Children   []BlockRef     // nested child blocks
     Decorators []Decorator    // decorators applied to this block
 }
