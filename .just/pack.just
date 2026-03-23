@@ -61,7 +61,13 @@ vscode-platform target vsce_target:
     set -euo pipefail
     bin_src=""
     if [[ "{{vsce_target}}" == win32-* ]]; then
-        bin_src="target/{{target}}/release/wcl.exe"
+        # Try both MSVC and GNU Windows targets
+        for t in "{{target}}" "$(echo '{{target}}' | sed 's/-gnu$/-msvc/' | sed 's/-msvc$/-gnu/')"; do
+            if [[ -f "target/${t}/release/wcl.exe" ]]; then
+                bin_src="target/${t}/release/wcl.exe"
+                break
+            fi
+        done
     elif [[ -f "target/{{target}}/release/wcl" ]]; then
         bin_src="target/{{target}}/release/wcl"
     elif [[ -f "target/release/wcl" ]]; then
@@ -220,7 +226,13 @@ jetbrains-platform target platform_name:
     set -euo pipefail
     bin_src=""
     if [[ "{{platform_name}}" == windows-* ]]; then
-        bin_src="target/{{target}}/release/wcl.exe"
+        # Try both MSVC and GNU Windows targets
+        for t in "{{target}}" "$(echo '{{target}}' | sed 's/-gnu$/-msvc/' | sed 's/-msvc$/-gnu/')"; do
+            if [[ -f "target/${t}/release/wcl.exe" ]]; then
+                bin_src="target/${t}/release/wcl.exe"
+                break
+            fi
+        done
     elif [[ -f "target/{{target}}/release/wcl" ]]; then
         bin_src="target/{{target}}/release/wcl"
     elif [[ -f "target/release/wcl" ]]; then
