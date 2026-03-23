@@ -1,8 +1,8 @@
 use std::path::Path;
 
 use crate::lang::ast;
+use async_lsp::lsp_types::{GotoDefinitionResponse, Location, Url};
 use ropey::Rope;
-use tower_lsp::lsp_types::{GotoDefinitionResponse, Location, Url};
 
 use crate::lsp::ast_utils::{find_node_at_offset, NodeAtOffset};
 use crate::lsp::convert::span_to_lsp_range;
@@ -84,10 +84,7 @@ pub fn goto_type_definition(
 }
 
 /// Walk AST to find a Schema whose name matches `target_name`, returning its name span.
-fn find_schema_in_ast(
-    doc: &ast::Document,
-    target_name: &str,
-) -> Option<crate::lang::span::Span> {
+fn find_schema_in_ast(doc: &ast::Document, target_name: &str) -> Option<crate::lang::span::Span> {
     for item in &doc.items {
         if let ast::DocItem::Body(ast::BodyItem::Schema(schema)) = item {
             let name = crate::schema::schema::string_lit_to_string(&schema.name);
@@ -138,7 +135,7 @@ fn resolve_import_path(import: &ast::Import, current_uri: &Url) -> Option<GotoDe
     let target_uri = Url::from_file_path(&resolved).ok()?;
     Some(GotoDefinitionResponse::Scalar(Location {
         uri: target_uri,
-        range: tower_lsp::lsp_types::Range::default(),
+        range: async_lsp::lsp_types::Range::default(),
     }))
 }
 
@@ -173,7 +170,7 @@ fn find_macro_def_in_body(item: &ast::BodyItem, name: &str) -> Option<crate::lan
 mod tests {
     use super::*;
     use crate::lsp::analysis::analyze;
-    use tower_lsp::lsp_types::Url;
+    use async_lsp::lsp_types::Url;
 
     #[test]
     fn test_goto_definition_let_binding() {

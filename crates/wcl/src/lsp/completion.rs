@@ -1,4 +1,4 @@
-use tower_lsp::lsp_types::{CompletionItem, CompletionItemKind};
+use async_lsp::lsp_types::{CompletionItem, CompletionItemKind};
 
 use crate::lsp::state::AnalysisResult;
 

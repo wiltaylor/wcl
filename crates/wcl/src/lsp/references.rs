@@ -1,7 +1,7 @@
 use crate::eval::{ScopeId, ScopeKind};
 use crate::lang::ast::*;
+use async_lsp::lsp_types::Location;
 use ropey::Rope;
-use tower_lsp::lsp_types::Location;
 
 use crate::lsp::ast_utils::{find_node_at_offset, NodeAtOffset};
 use crate::lsp::convert::span_to_lsp_range;
@@ -11,7 +11,7 @@ pub fn find_references(
     analysis: &AnalysisResult,
     offset: usize,
     rope: &Rope,
-    uri: &tower_lsp::lsp_types::Url,
+    uri: &async_lsp::lsp_types::Url,
     include_declaration: bool,
 ) -> Vec<Location> {
     let node = find_node_at_offset(&analysis.ast, offset);
@@ -223,7 +223,7 @@ fn find_def_span(analysis: &AnalysisResult, name: &str) -> Option<crate::lang::s
 fn collect_block_kinds(
     doc: &Document,
     kind_name: &str,
-    uri: &tower_lsp::lsp_types::Url,
+    uri: &async_lsp::lsp_types::Url,
     rope: &Rope,
     out: &mut Vec<Location>,
 ) {
@@ -237,7 +237,7 @@ fn collect_block_kinds(
 fn collect_block_kinds_in_body(
     item: &BodyItem,
     kind_name: &str,
-    uri: &tower_lsp::lsp_types::Url,
+    uri: &async_lsp::lsp_types::Url,
     rope: &Rope,
     out: &mut Vec<Location>,
 ) {
@@ -288,7 +288,7 @@ fn collect_block_kinds_in_body(
 fn collect_name_refs(
     doc: &Document,
     name: &str,
-    uri: &tower_lsp::lsp_types::Url,
+    uri: &async_lsp::lsp_types::Url,
     rope: &Rope,
     out: &mut Vec<Location>,
 ) {
@@ -320,7 +320,7 @@ fn collect_name_refs(
 fn collect_in_body(
     item: &BodyItem,
     name: &str,
-    uri: &tower_lsp::lsp_types::Url,
+    uri: &async_lsp::lsp_types::Url,
     rope: &Rope,
     out: &mut Vec<Location>,
 ) {
@@ -420,7 +420,7 @@ fn collect_in_body(
 fn collect_in_expr(
     expr: &Expr,
     name: &str,
-    uri: &tower_lsp::lsp_types::Url,
+    uri: &async_lsp::lsp_types::Url,
     rope: &Rope,
     out: &mut Vec<Location>,
 ) {
@@ -482,7 +482,7 @@ fn collect_in_expr(
 mod tests {
     use super::*;
     use crate::lsp::analysis::analyze;
-    use tower_lsp::lsp_types::Url;
+    use async_lsp::lsp_types::Url;
 
     fn get_refs(source: &str, offset: usize, include_decl: bool) -> Vec<Location> {
         let analysis = analyze(source, &crate::ParseOptions::default());
@@ -593,8 +593,7 @@ mod tests {
 
     #[test]
     fn test_find_refs_schema_excludes_declaration() {
-        let source =
-            "schema \"server\" {\n    port: int\n}\nserver web { port = 8080 }";
+        let source = "schema \"server\" {\n    port: int\n}\nserver web { port = 8080 }";
         let offset = source.find("\"server\"").unwrap() + 1;
         let refs = get_refs(source, offset, false);
         // Should find only the block kind, not the schema declaration

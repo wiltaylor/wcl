@@ -1,12 +1,13 @@
+use std::collections::HashMap;
+
 use crate::eval::{FunctionSignature, MacroRegistry, ScopeArena};
 use crate::lang::ast;
 use crate::lang::diagnostic::Diagnostic;
 use crate::lang::lexer::Token;
 use crate::lang::span::{FileId, SourceMap};
 use crate::schema::SchemaRegistry;
-use dashmap::DashMap;
+use async_lsp::lsp_types::Url;
 use ropey::Rope;
-use tower_lsp::lsp_types::Url;
 
 pub struct DocumentState {
     pub uri: Url,
@@ -30,7 +31,7 @@ pub struct AnalysisResult {
 }
 
 pub struct WorldState {
-    pub documents: DashMap<Url, DocumentState>,
+    pub documents: HashMap<Url, DocumentState>,
     pub default_options: crate::ParseOptions,
 }
 
@@ -43,7 +44,7 @@ impl Default for WorldState {
 impl WorldState {
     pub fn new() -> Self {
         WorldState {
-            documents: DashMap::new(),
+            documents: HashMap::new(),
             default_options: crate::ParseOptions::default(),
         }
     }

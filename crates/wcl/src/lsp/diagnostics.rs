@@ -1,9 +1,9 @@
 use crate::lang::diagnostic::{Diagnostic, Severity};
 use crate::lang::span::Span;
-use ropey::Rope;
-use tower_lsp::lsp_types::{
+use async_lsp::lsp_types::{
     self as lsp, DiagnosticRelatedInformation, DiagnosticSeverity, Location, NumberOrString,
 };
+use ropey::Rope;
 
 use crate::lsp::convert::span_to_lsp_range;
 
@@ -12,7 +12,7 @@ use crate::lsp::convert::span_to_lsp_range;
 pub fn to_lsp_diagnostic(
     diag: &Diagnostic,
     rope: &Rope,
-    uri: &tower_lsp::lsp_types::Url,
+    uri: &async_lsp::lsp_types::Url,
 ) -> Option<lsp::Diagnostic> {
     // Skip diagnostics with dummy spans
     if is_dummy_span(diag.span) {
@@ -78,7 +78,7 @@ fn is_dummy_span(span: Span) -> bool {
 mod tests {
     use super::*;
     use crate::lang::span::{FileId, Span};
-    use tower_lsp::lsp_types::Url;
+    use async_lsp::lsp_types::Url;
 
     #[test]
     fn test_error_severity() {

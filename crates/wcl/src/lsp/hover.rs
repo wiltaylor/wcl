@@ -1,7 +1,7 @@
 use crate::lang::ast::*;
 use crate::lang::trivia::CommentStyle;
+use async_lsp::lsp_types::{Hover, HoverContents, MarkupContent, MarkupKind};
 use ropey::Rope;
-use tower_lsp::lsp_types::{Hover, HoverContents, MarkupContent, MarkupKind};
 
 use crate::lsp::ast_utils::{find_node_at_offset, NodeAtOffset};
 use crate::lsp::convert::span_to_lsp_range;

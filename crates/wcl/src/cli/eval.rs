@@ -53,7 +53,7 @@ pub fn run(
             println!("{}", serde_json::to_string_pretty(&json).unwrap());
         }
         "yaml" | "yml" => {
-            let yaml = serde_yaml::to_string(&json).map_err(|e| format!("YAML error: {}", e))?;
+            let yaml = serde_yaml_ng::to_string(&json).map_err(|e| format!("YAML error: {}", e))?;
             print!("{}", yaml);
         }
         "toml" => {

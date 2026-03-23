@@ -15,15 +15,37 @@ pub mod signature_help;
 pub mod state;
 pub mod symbols;
 
-use tower_lsp::{LspService, Server};
+use async_lsp::client_monitor::ClientProcessMonitorLayer;
+use async_lsp::concurrency::ConcurrencyLayer;
+use async_lsp::panic::CatchUnwindLayer;
+use async_lsp::server::LifecycleLayer;
+use async_lsp::tracing::TracingLayer;
+use tower::ServiceBuilder;
 
 /// Start the LSP server over stdio.
 pub async fn start_stdio() {
-    let stdin = tokio::io::stdin();
-    let stdout = tokio::io::stdout();
+    let (server, _) = async_lsp::MainLoop::new_server(|client| {
+        ServiceBuilder::new()
+            .layer(TracingLayer::default())
+            .layer(LifecycleLayer::default())
+            .layer(CatchUnwindLayer::default())
+            .layer(ConcurrencyLayer::default())
+            .layer(ClientProcessMonitorLayer::new(client.clone()))
+            .service(server::WclLanguageServer::new_router(client))
+    });
 
-    let (service, socket) = LspService::new(server::WclLanguageServer::new);
-    Server::new(stdin, stdout, socket).serve(service).await;
+    #[cfg(unix)]
+    let (stdin, stdout) = (
+        async_lsp::stdio::PipeStdin::lock_tokio().unwrap(),
+        async_lsp::stdio::PipeStdout::lock_tokio().unwrap(),
+    );
+    #[cfg(not(unix))]
+    let (stdin, stdout) = (
+        tokio_util::compat::TokioAsyncReadCompatExt::compat(tokio::io::stdin()),
+        tokio_util::compat::TokioAsyncWriteCompatExt::compat_write(tokio::io::stdout()),
+    );
+
+    server.run_buffered(stdin, stdout).await.unwrap();
 }
 
 /// Start the LSP server over TCP at the given address.
@@ -34,7 +56,19 @@ pub async fn start_tcp(addr: &str) -> Result<(), Box<dyn std::error::Error>> {
     let (stream, _) = listener.accept().await?;
     let (read, write) = tokio::io::split(stream);
 
-    let (service, socket) = LspService::new(server::WclLanguageServer::new);
-    Server::new(read, write, socket).serve(service).await;
+    let (server, _) = async_lsp::MainLoop::new_server(|client| {
+        ServiceBuilder::new()
+            .layer(TracingLayer::default())
+            .layer(LifecycleLayer::default())
+            .layer(CatchUnwindLayer::default())
+            .layer(ConcurrencyLayer::default())
+            .layer(ClientProcessMonitorLayer::new(client.clone()))
+            .service(server::WclLanguageServer::new_router(client))
+    });
+
+    let read = tokio_util::compat::TokioAsyncReadCompatExt::compat(read);
+    let write = tokio_util::compat::TokioAsyncWriteCompatExt::compat_write(write);
+
+    server.run_buffered(read, write).await?;
     Ok(())
 }
