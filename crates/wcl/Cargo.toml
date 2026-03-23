@@ -32,15 +32,17 @@ serde_json = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 # LSP deps
-tower-lsp = { workspace = true }
+async-lsp = { workspace = true }
+futures = { workspace = true }
+tower = { workspace = true }
 tokio = { workspace = true }
-dashmap = { workspace = true }
+tokio-util = { workspace = true }
 ropey = { workspace = true }
 
 # CLI deps
 clap = { workspace = true }
-serde_yaml = "0.9"
-toml = "0.8"
+serde_yaml_ng = "0.10"
+toml = "1"
 
 [dev-dependencies]
 criterion = { workspace = true }

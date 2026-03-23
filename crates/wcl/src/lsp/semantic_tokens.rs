@@ -1,10 +1,10 @@
 use crate::lang::ast;
 use crate::lang::lexer::{Token, TokenKind};
-use ropey::Rope;
-use std::collections::HashSet;
-use tower_lsp::lsp_types::{
+use async_lsp::lsp_types::{
     SemanticToken, SemanticTokenModifier, SemanticTokenType, SemanticTokensLegend,
 };
+use ropey::Rope;
+use std::collections::HashSet;
 
 pub const TOKEN_TYPES: &[SemanticTokenType] = &[
     SemanticTokenType::KEYWORD,   // 0

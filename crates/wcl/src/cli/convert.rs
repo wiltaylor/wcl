@@ -51,7 +51,7 @@ pub fn run(
                 json_map.insert(key.clone(), value_to_json(val));
             }
             let json = serde_json::Value::Object(json_map);
-            let yaml = serde_yaml::to_string(&json).map_err(|e| format!("YAML error: {}", e))?;
+            let yaml = serde_yaml_ng::to_string(&json).map_err(|e| format!("YAML error: {}", e))?;
             print!("{}", yaml);
             Ok(())
         }
@@ -90,7 +90,7 @@ pub fn run(
             }
             Some("yaml") | Some("yml") => {
                 let yaml: serde_json::Value =
-                    serde_yaml::from_str(&source).map_err(|e| format!("invalid YAML: {}", e))?;
+                    serde_yaml_ng::from_str(&source).map_err(|e| format!("invalid YAML: {}", e))?;
                 print_json_as_wcl(&yaml, 0);
                 Ok(())
             }

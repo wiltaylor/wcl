@@ -1,6 +1,6 @@
 use crate::lang::span::Span;
+use async_lsp::lsp_types::{Position, Range};
 use ropey::Rope;
-use tower_lsp::lsp_types::{Position, Range};
 
 /// Convert a WCL byte-offset Span to an LSP Range using a rope for line/column lookup.
 pub fn span_to_lsp_range(span: Span, rope: &Rope) -> Range {

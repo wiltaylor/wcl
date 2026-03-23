@@ -1,6 +1,6 @@
 use crate::lang::ast::*;
+use async_lsp::lsp_types::{DocumentSymbol, SymbolKind};
 use ropey::Rope;
-use tower_lsp::lsp_types::{DocumentSymbol, SymbolKind};
 
 use crate::lsp::convert::span_to_lsp_range;
 

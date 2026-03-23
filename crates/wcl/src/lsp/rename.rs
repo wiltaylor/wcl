@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
+use async_lsp::lsp_types::{Range, TextEdit, Url, WorkspaceEdit};
 use ropey::Rope;
-use tower_lsp::lsp_types::{Range, TextEdit, Url, WorkspaceEdit};
 
 use crate::lsp::ast_utils::{find_node_at_offset, NodeAtOffset};
 use crate::lsp::convert::span_to_lsp_range;

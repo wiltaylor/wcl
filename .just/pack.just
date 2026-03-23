@@ -55,20 +55,26 @@ dotnet:
     cp bindings/dotnet/src/Wcl/bin/Release/*.nupkg "{{pkg}}/dotnet/"
     echo ".NET package packaged to {{pkg}}/dotnet/"
 
-# Package VS Code extension for a single platform
+# Package VS Code extension for a single platform (skips if binary not found)
 vscode-platform target vsce_target:
     #!/bin/bash
     set -euo pipefail
+    bin_src=""
+    if [[ "{{vsce_target}}" == win32-* ]]; then
+        bin_src="target/{{target}}/release/wcl.exe"
+    elif [[ -f "target/{{target}}/release/wcl" ]]; then
+        bin_src="target/{{target}}/release/wcl"
+    elif [[ -f "target/release/wcl" ]]; then
+        bin_src="target/release/wcl"
+    fi
+    if [[ -z "$bin_src" || ! -f "$bin_src" ]]; then
+        echo "Skipping VS Code extension ({{vsce_target}}): no CLI binary at target/{{target}}/release/"
+        exit 0
+    fi
     mkdir -p "{{pkg}}/vscode"
     mkdir -p editors/vscode/bin
-    if [[ "{{vsce_target}}" == win32-* ]]; then
-        cp "target/{{target}}/release/wcl.exe" editors/vscode/bin/
-    else
-        if [[ -f "target/{{target}}/release/wcl" ]]; then
-            cp "target/{{target}}/release/wcl" editors/vscode/bin/
-        else
-            cp "target/release/wcl" editors/vscode/bin/
-        fi
+    cp "$bin_src" editors/vscode/bin/
+    if [[ "{{vsce_target}}" != win32-* ]]; then
         chmod +x editors/vscode/bin/wcl
     fi
     cd editors/vscode
