@@ -521,7 +521,7 @@ jobs:
             target: aarch64-unknown-linux-gnu
             binary: wcl
           - platform: darwin-x64
-            os: macos-13
+            os: macos-latest
             target: x86_64-apple-darwin
             binary: wcl
           - platform: darwin-arm64
@@ -538,14 +538,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@f51f967e158417aafa338a1e46ab22095f07aa01
         with:
           key: cli-${{ matrix.platform }}
-      - run: cargo build -p wcl --bin wcl --release
+      - run: cargo build -p wcl --bin wcl --release --target ${{ matrix.target }}
       - uses: actions/upload-artifact@v7
         with:
           name: cli-${{ matrix.platform }}
-          path: target/release/${{ matrix.binary }}
+          path: target/${{ matrix.target }}/release/${{ matrix.binary }}
           retention-days: 1
 
   pack-vscode:
