@@ -18,3 +18,5 @@ examples/dotnet/obj/
 examples/dotnet/bin/
 examples/jvm/.gradle/
 examples/jvm/build/
+.idea/
+editors/jetbrains/.kotlin/
