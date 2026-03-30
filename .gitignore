@@ -22,3 +22,6 @@ examples/jvm/build/
 editors/jetbrains/.kotlin/
 examples/ruby/vendor/
 examples/ruby/Gemfile.lock
+*.wasm
+.tree/
+editors/zed/grammars/
