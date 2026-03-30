@@ -20,3 +20,5 @@ examples/jvm/.gradle/
 examples/jvm/build/
 .idea/
 editors/jetbrains/.kotlin/
+examples/ruby/vendor/
+examples/ruby/Gemfile.lock
