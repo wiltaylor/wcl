@@ -96,7 +96,10 @@
 (interpolation
   "${" @punctuation.special
   "}" @punctuation.special)
-(heredoc_literal) @string
+(heredoc_literal
+  (heredoc_start) @string.special
+  (heredoc_body)? @string
+  (heredoc_end) @string.special)
 
 (symbol_literal) @constant
 

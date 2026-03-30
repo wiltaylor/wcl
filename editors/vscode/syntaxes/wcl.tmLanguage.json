@@ -111,9 +111,56 @@
     "heredocs": {
       "patterns": [
         {
+          "comment": "Raw heredoc (<<'TAG' or <<-'TAG') — no interpolation or escapes",
+          "name": "string.unquoted.heredoc.raw.wcl",
+          "begin": "<<-?'([a-zA-Z_]\\w*)'",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.string.begin.heredoc.wcl" }
+          },
+          "end": "^\\s*\\1\\s*$",
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.string.end.heredoc.wcl" }
+          }
+        },
+        {
+          "comment": "Standard/indented heredoc (<<TAG or <<-TAG) — with interpolation and escapes",
           "name": "string.unquoted.heredoc.wcl",
-          "begin": "<<-?'?([a-zA-Z_]\\w*)'?",
-          "end": "^\\1\\s*$"
+          "begin": "<<-?([a-zA-Z_]\\w*)",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.string.begin.heredoc.wcl" }
+          },
+          "end": "^\\s*\\1\\s*$",
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.string.end.heredoc.wcl" }
+          },
+          "patterns": [
+            {
+              "name": "constant.character.escape.wcl",
+              "match": "\\\\[\"\\\\/nrt]"
+            },
+            {
+              "name": "constant.character.escape.unicode.wcl",
+              "match": "\\\\u[0-9a-fA-F]{4}"
+            },
+            {
+              "name": "constant.character.escape.unicode.wcl",
+              "match": "\\\\U[0-9a-fA-F]{8}"
+            },
+            {
+              "name": "meta.embedded.expression.wcl",
+              "begin": "\\$\\{",
+              "end": "\\}",
+              "beginCaptures": {
+                "0": { "name": "punctuation.definition.interpolation.begin.wcl" }
+              },
+              "endCaptures": {
+                "0": { "name": "punctuation.definition.interpolation.end.wcl" }
+              },
+              "patterns": [
+                { "include": "source.wcl" }
+              ]
+            }
+          ]
         }
       ]
     },

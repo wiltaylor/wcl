@@ -1,0 +1,110 @@
+================
+Basic heredoc
+================
+
+x = <<EOF
+hello
+world
+EOF
+
+---
+
+(document
+  (attribute (identifier) (expression
+    (heredoc_literal
+      (heredoc_start)
+      (heredoc_body)
+      (heredoc_end)))))
+
+================
+Indented heredoc
+================
+
+x = <<-EOF
+    hello
+    world
+    EOF
+
+---
+
+(document
+  (attribute (identifier) (expression
+    (heredoc_literal
+      (heredoc_start)
+      (heredoc_body)
+      (heredoc_end)))))
+
+================
+Raw heredoc
+================
+
+x = <<'EOF'
+no ${interp} here
+EOF
+
+---
+
+(document
+  (attribute (identifier) (expression
+    (heredoc_literal
+      (heredoc_start)
+      (heredoc_body)
+      (heredoc_end)))))
+
+================
+Indented raw heredoc
+================
+
+x = <<-'EOF'
+    no ${interp} here
+    EOF
+
+---
+
+(document
+  (attribute (identifier) (expression
+    (heredoc_literal
+      (heredoc_start)
+      (heredoc_body)
+      (heredoc_end)))))
+
+================
+Heredoc with empty body
+================
+
+x = <<EOF
+EOF
+
+---
+
+(document
+  (attribute (identifier) (expression
+    (heredoc_literal
+      (heredoc_start)
+      (heredoc_end)))))
+
+================
+Multiple heredocs in file
+================
+
+a = <<EOF
+first
+EOF
+
+b = <<END
+second
+END
+
+---
+
+(document
+  (attribute (identifier) (expression
+    (heredoc_literal
+      (heredoc_start)
+      (heredoc_body)
+      (heredoc_end))))
+  (attribute (identifier) (expression
+    (heredoc_literal
+      (heredoc_start)
+      (heredoc_body)
+      (heredoc_end)))))

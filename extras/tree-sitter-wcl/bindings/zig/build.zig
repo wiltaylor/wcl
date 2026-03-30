@@ -14,6 +14,10 @@ pub fn build(b: *std.Build) void {
         .file = b.path("../../src/parser.c"),
         .flags = &.{ "-std=c11", "-fPIC" },
     });
+    ts_mod.addCSourceFile(.{
+        .file = b.path("../../src/scanner.c"),
+        .flags = &.{ "-std=c11", "-fPIC" },
+    });
     ts_mod.addIncludePath(b.path("../../src"));
     ts_mod.linkSystemLibrary("c", .{});
 
@@ -45,6 +49,10 @@ pub fn build(b: *std.Build) void {
 
     test_mod.addCSourceFile(.{
         .file = b.path("../../src/parser.c"),
+        .flags = &.{ "-std=c11", "-fPIC" },
+    });
+    test_mod.addCSourceFile(.{
+        .file = b.path("../../src/scanner.c"),
         .flags = &.{ "-std=c11", "-fPIC" },
     });
     test_mod.addIncludePath(b.path("../../src"));

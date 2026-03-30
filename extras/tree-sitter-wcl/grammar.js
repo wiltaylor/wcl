@@ -19,6 +19,8 @@ export default grammar({
 
   extras: ($) => [/\s/, $.line_comment, $.block_comment, $.doc_comment],
 
+  externals: ($) => [$.heredoc_start, $.heredoc_body, $.heredoc_end],
+
   word: ($) => $.identifier,
 
   conflicts: ($) => [
@@ -545,19 +547,10 @@ export default grammar({
         /\\["\\/nrt]|\\u[0-9a-fA-F]{4}|\\U[0-9a-fA-F]{8}/,
       ),
 
-    // Heredoc: matched as a single token. Tree-sitter can't do matched
-    // delimiters without an external scanner, so we match the common form.
+    // Heredoc: uses an external scanner (src/scanner.c) to correctly
+    // match opening and closing delimiters.
     heredoc_literal: ($) =>
-      token(
-        seq(
-          "<<",
-          optional(choice("-", "'")),
-          /[a-zA-Z_][a-zA-Z0-9_]*/,
-          optional("'"),
-          /\n[\s\S]*\n/,
-          /[a-zA-Z_][a-zA-Z0-9_]*/,
-        ),
-      ),
+      seq($.heredoc_start, optional($.heredoc_body), $.heredoc_end),
 
     symbol_literal: ($) => token(seq(":", /[a-zA-Z_][a-zA-Z0-9_]*/)),
 
