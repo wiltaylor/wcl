@@ -32,9 +32,7 @@ impl Serializer {
     }
 
     fn write_newline(&mut self) {
-        if self.pretty {
-            self.output.push('\n');
-        }
+        self.output.push('\n');
     }
 }
 

@@ -158,7 +158,7 @@ mod tests {
         }
         let p = Point { x: 1, y: 2 };
         let result = to_string(&p).unwrap();
-        assert_eq!(result, "{x = 1y = 2}");
+        assert_eq!(result, "{x = 1\ny = 2\n}");
     }
 
     #[test]
@@ -302,5 +302,42 @@ mod tests {
         let val = Value::String("not a number".to_string());
         let result: Result<i64, Error> = from_value(val);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn ser_struct_compact_fields_separated() {
+        #[derive(Debug, Serialize)]
+        struct Point {
+            x: i32,
+            y: i32,
+            z: i32,
+        }
+        let p = Point { x: 1, y: 2, z: 3 };
+        let result = to_string(&p).unwrap();
+        // Each field must be on its own line, not concatenated
+        assert_eq!(result, "{x = 1\ny = 2\nz = 3\n}");
+    }
+
+    #[test]
+    fn ser_vec_of_structs_compact() {
+        #[derive(Debug, Serialize)]
+        struct Tool {
+            name: String,
+            enabled: bool,
+        }
+        let tools = vec![
+            Tool {
+                name: "deploy".into(),
+                enabled: true,
+            },
+            Tool {
+                name: "test".into(),
+                enabled: false,
+            },
+        ];
+        let result = to_string(&tools).unwrap();
+        // Fields within each struct must be separated, not concatenated
+        assert!(result.contains("name = \"deploy\"\nenabled = true"));
+        assert!(result.contains("name = \"test\"\nenabled = false"));
     }
 }
