@@ -14,16 +14,23 @@ pub fn from_value<'de, T: Deserialize<'de>>(value: Value) -> Result<T, Error> {
     T::deserialize(de::Deserializer::from_value(value))
 }
 
-/// Serialize a Rust type to WCL text
+/// Serialize a Rust type to pretty-printed WCL text (4-space indentation)
 pub fn to_string<T: Serialize>(value: &T) -> Result<String, Error> {
-    let mut serializer = ser::Serializer::new(false);
+    let mut serializer = ser::Serializer::new(true);
     value.serialize(&mut serializer)?;
     Ok(serializer.into_output())
 }
 
-/// Serialize a Rust type to pretty-printed WCL text
+/// Serialize a Rust type to pretty-printed WCL text (alias for `to_string`)
 pub fn to_string_pretty<T: Serialize>(value: &T) -> Result<String, Error> {
     let mut serializer = ser::Serializer::new(true);
+    value.serialize(&mut serializer)?;
+    Ok(serializer.into_output())
+}
+
+/// Serialize a Rust type to compact (inline) WCL text
+pub fn to_string_compact<T: Serialize>(value: &T) -> Result<String, Error> {
+    let mut serializer = ser::Serializer::new(false);
     value.serialize(&mut serializer)?;
     Ok(serializer.into_output())
 }
@@ -150,7 +157,7 @@ mod tests {
     }
 
     #[test]
-    fn ser_struct_compact() {
+    fn ser_struct_default_is_pretty() {
         #[derive(Serialize)]
         struct Point {
             x: i32,
@@ -158,6 +165,18 @@ mod tests {
         }
         let p = Point { x: 1, y: 2 };
         let result = to_string(&p).unwrap();
+        assert_eq!(result, "{\n    x = 1\n    y = 2\n}");
+    }
+
+    #[test]
+    fn ser_struct_compact() {
+        #[derive(Serialize)]
+        struct Point {
+            x: i32,
+            y: i32,
+        }
+        let p = Point { x: 1, y: 2 };
+        let result = to_string_compact(&p).unwrap();
         assert_eq!(result, "{x = 1\ny = 2\n}");
     }
 
@@ -313,7 +332,7 @@ mod tests {
             z: i32,
         }
         let p = Point { x: 1, y: 2, z: 3 };
-        let result = to_string(&p).unwrap();
+        let result = to_string_compact(&p).unwrap();
         // Each field must be on its own line, not concatenated
         assert_eq!(result, "{x = 1\ny = 2\nz = 3\n}");
     }
@@ -335,7 +354,7 @@ mod tests {
                 enabled: false,
             },
         ];
-        let result = to_string(&tools).unwrap();
+        let result = to_string_compact(&tools).unwrap();
         // Fields within each struct must be separated, not concatenated
         assert!(result.contains("name = \"deploy\"\nenabled = true"));
         assert!(result.contains("name = \"test\"\nenabled = false"));

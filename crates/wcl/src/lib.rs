@@ -37,8 +37,8 @@ pub use crate::schema::{
 };
 
 pub use crate::serde_impl::{
-    from_value, to_string as value_to_string, to_string_pretty as value_to_string_pretty,
-    Error as SerdeError,
+    from_value, to_string as value_to_string, to_string_compact as value_to_string_compact,
+    to_string_pretty as value_to_string_pretty, Error as SerdeError,
 };
 
 use std::path::PathBuf;
@@ -787,9 +787,14 @@ pub fn to_string<T: serde::Serialize>(value: &T) -> Result<String, SerdeError> {
     value_to_string(value)
 }
 
-/// Serialize a Rust value to pretty-printed WCL text
+/// Serialize a Rust value to pretty-printed WCL text (same as to_string)
 pub fn to_string_pretty<T: serde::Serialize>(value: &T) -> Result<String, SerdeError> {
     value_to_string_pretty(value)
+}
+
+/// Serialize a Rust value to compact (inline) WCL text
+pub fn to_string_compact<T: serde::Serialize>(value: &T) -> Result<String, SerdeError> {
+    value_to_string_compact(value)
 }
 
 #[cfg(test)]
