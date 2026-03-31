@@ -154,6 +154,12 @@ namespace Wcl.Wasm
                         parts[i] = WclValueToJson(items[i]);
                     return "{\"__type\":\"set\",\"items\":[" + string.Join(",", parts) + "]}";
                 }
+                case WclValueKind.BigInt:
+                    return value.AsBigInt().ToString(CultureInfo.InvariantCulture);
+                case WclValueKind.Date:
+                    return JsonSerializer.Serialize(value.AsDate());
+                case WclValueKind.Duration:
+                    return JsonSerializer.Serialize(value.AsDuration());
                 case WclValueKind.BlockRef:
                 {
                     var br = value.AsBlockRef();

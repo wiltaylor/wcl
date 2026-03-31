@@ -45,10 +45,20 @@ namespace Wcl.Serde
             // Primitives
             if (targetType == typeof(string))
             {
+                if (value.Kind == WclValueKind.Date) return value.AsDate();
+                if (value.Kind == WclValueKind.Duration) return value.AsDuration();
                 return value.AsString();
             }
-            if (targetType == typeof(long) || targetType == typeof(Int64)) return value.AsInt();
-            if (targetType == typeof(int) || targetType == typeof(Int32)) return (int)value.AsInt();
+            if (targetType == typeof(long) || targetType == typeof(Int64))
+            {
+                if (value.Kind == WclValueKind.BigInt) return value.AsBigInt();
+                return value.AsInt();
+            }
+            if (targetType == typeof(int) || targetType == typeof(Int32))
+            {
+                if (value.Kind == WclValueKind.BigInt) return (int)value.AsBigInt();
+                return (int)value.AsInt();
+            }
             if (targetType == typeof(double)) return value.Kind == WclValueKind.Int ? (double)value.AsInt() : value.AsFloat();
             if (targetType == typeof(float)) return value.Kind == WclValueKind.Int ? (float)value.AsInt() : (float)value.AsFloat();
             if (targetType == typeof(bool)) return value.AsBool();

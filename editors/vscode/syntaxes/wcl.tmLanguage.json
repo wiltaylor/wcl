@@ -7,6 +7,9 @@
       "include": "#comments"
     },
     {
+      "include": "#prefixed_literals"
+    },
+    {
       "include": "#strings"
     },
     {
@@ -41,6 +44,18 @@
     }
   ],
   "repository": {
+    "prefixed_literals": {
+      "patterns": [
+        {
+          "name": "constant.other.date.wcl",
+          "match": "\\bd\"[^\"]*\""
+        },
+        {
+          "name": "constant.other.duration.wcl",
+          "match": "\\bdur\"[^\"]*\""
+        }
+      ]
+    },
     "comments": {
       "patterns": [
         {
@@ -243,7 +258,7 @@
       "patterns": [
         {
           "name": "support.type.builtin.wcl",
-          "match": "\\b(string|int|float|bool|identifier|any|symbol)\\b(?!\\s*[=(])"
+          "match": "\\b(string|bool|identifier|any|symbol|i8|u8|i16|u16|i32|u32|i64|u64|i128|u128|f32|f64|date|duration)\\b(?!\\s*[=(])"
         },
         {
           "name": "support.type.builtin.wcl",

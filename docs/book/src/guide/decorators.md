@@ -50,7 +50,7 @@ Decorators can be placed on:
 | Attribute      | `port = 8080 @required`                        |
 | Block          | `service "api" @deprecated("use v2") { ... }` |
 | Table          | `table#hosts @open { ... }`                    |
-| Schema field   | `port: int @validate(min = 1, max = 65535)`    |
+| Schema field   | `port: i64 @validate(min = 1, max = 65535)`    |
 | Schema itself  | `schema "service" @open { ... }`               |
 | Partial block  | `partial service @partial_requires([port]) { }`|
 

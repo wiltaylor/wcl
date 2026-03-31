@@ -20,6 +20,7 @@ impl<'de> de::Deserializer<'de> for Deserializer {
         match self.value {
             Value::String(s) => visitor.visit_string(s),
             Value::Int(i) => visitor.visit_i64(i),
+            Value::BigInt(i) => visitor.visit_i128(i),
             Value::Float(f) => visitor.visit_f64(f),
             Value::Bool(b) => visitor.visit_bool(b),
             Value::Null => visitor.visit_none(),
@@ -62,6 +63,8 @@ impl<'de> de::Deserializer<'de> for Deserializer {
             Value::Function(_) => Err(Error::Message(
                 "cannot deserialize function values".to_string(),
             )),
+            Value::Date(s) => visitor.visit_string(s),
+            Value::Duration(s) => visitor.visit_string(s),
         }
     }
 

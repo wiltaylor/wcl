@@ -250,7 +250,7 @@ mod tests {
 
     #[test]
     fn test_goto_type_definition_block_to_schema() {
-        let source = "schema \"server\" {\n    port: int\n}\nserver web { port = 8080 }";
+        let source = "schema \"server\" {\n    port: i64\n}\nserver web { port = 8080 }";
         let analysis = analyze(source, &crate::ParseOptions::default());
         let rope = Rope::from_str(source);
         let uri = Url::parse("file:///test.wcl").unwrap();

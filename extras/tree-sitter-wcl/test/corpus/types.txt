@@ -1,0 +1,70 @@
+================
+New numeric types in schema
+================
+
+schema "metrics" {
+  count: u32
+  offset: i64
+  ratio: f64
+  small: i8
+}
+
+---
+
+(document
+  (schema (string_literal (string_content))
+    (schema_field (identifier) (type_expression (builtin_type)))
+    (schema_field (identifier) (type_expression (builtin_type)))
+    (schema_field (identifier) (type_expression (builtin_type)))
+    (schema_field (identifier) (type_expression (builtin_type)))))
+
+================
+Date and duration types in schema
+================
+
+schema "event" {
+  start: date
+  length: duration
+}
+
+---
+
+(document
+  (schema (string_literal (string_content))
+    (schema_field (identifier) (type_expression (builtin_type)))
+    (schema_field (identifier) (type_expression (builtin_type)))))
+
+================
+Date literal
+================
+
+start = d"2024-03-15"
+
+---
+
+(document
+  (attribute (identifier) (expression (date_literal))))
+
+================
+Duration literal
+================
+
+timeout = dur"P1Y2M3D"
+
+---
+
+(document
+  (attribute (identifier) (expression (duration_literal))))
+
+================
+Date and duration in expressions
+================
+
+let deadline = d"2025-12-31"
+let interval = dur"PT30M"
+
+---
+
+(document
+  (let_binding (identifier) (expression (date_literal)))
+  (let_binding (identifier) (expression (duration_literal))))

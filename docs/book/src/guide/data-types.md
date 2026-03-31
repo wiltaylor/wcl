@@ -55,7 +55,7 @@ template = <<'EOF'
 EOF
 ```
 
-### `int`
+### `i64`
 
 Integer literals support several bases and underscore separators for readability:
 
@@ -68,7 +68,7 @@ separated = 1_000_000
 negative  = -42
 ```
 
-### `float`
+### `f64`
 
 Floating-point literals support decimal and scientific notation:
 
@@ -106,7 +106,7 @@ An ordered collection of values of type `T`. List literals use `[...]` with comm
 ports    = [8080, 8081, 8082]
 names    = ["alice", "bob", "carol",]   // trailing comma OK
 mixed    = [1, "two", true]             // list(any)
-nested   = [[1, 2], [3, 4]]             // list(list(int))
+nested   = [[1, 2], [3, 4]]             // list(list(i64))
 ```
 
 ### `map(K, V)`
@@ -160,7 +160,7 @@ Accepts a value that matches any of the listed types. Declared in schemas:
 
 ```wcl
 schema "flex_port" {
-  port: union(int, string)
+  port: union(i64, string)
 }
 ```
 
@@ -174,15 +174,15 @@ WCL is strictly typed. Implicit coercions are intentionally minimal:
 
 | From  | To    | When                                      |
 |-------|-------|-------------------------------------------|
-| `int` | `float` | In arithmetic expressions involving floats |
+| `i64` | `f64` | In arithmetic expressions involving floats |
 
 All other conversions require explicit function calls:
 
 | Function      | Converts to | Example                       |
 |---------------|-------------|-------------------------------|
 | `to_string(v)` | `string`   | `to_string(42)` → `"42"`      |
-| `to_int(v)`   | `int`       | `to_int("42")` → `42`         |
-| `to_float(v)` | `float`     | `to_float("3.14")` → `3.14`   |
+| `to_int(v)`   | `i64`       | `to_int("42")` → `42`         |
+| `to_float(v)` | `f64`       | `to_float("3.14")` → `3.14`   |
 | `to_bool(v)`  | `bool`      | `to_bool(0)` → `false`        |
 
 Attempting an invalid coercion (for example `to_int("hello")`) produces a runtime error.
@@ -194,7 +194,7 @@ When writing schema definitions, type names use the following syntax:
 ```wcl
 schema "server_config" {
   host:    string
-  port:    int
+  port:    i64
   enabled: bool
   tags:    list(string)
   meta:    map(string, any)

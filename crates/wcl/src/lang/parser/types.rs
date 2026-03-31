@@ -8,7 +8,8 @@ use super::Parser;
 impl Parser {
     /// Parse a type expression.
     ///
-    /// Handles: string, int, float, bool, null, identifier, any,
+    /// Handles: string, i8, u8, ..., i128, u128, f32, f64, date, duration,
+    /// bool, null, identifier, any, symbol,
     /// list(T), map(K,V), set(T), ref("name"), union(T1, T2, ...)
     pub(crate) fn parse_type_expr(&mut self) -> Option<TypeExpr> {
         self.skip_newlines();
@@ -22,13 +23,61 @@ impl Parser {
                         self.advance();
                         Some(TypeExpr::String(start_span))
                     }
-                    "int" => {
+                    "i8" => {
                         self.advance();
-                        Some(TypeExpr::Int(start_span))
+                        Some(TypeExpr::I8(start_span))
                     }
-                    "float" => {
+                    "u8" => {
                         self.advance();
-                        Some(TypeExpr::Float(start_span))
+                        Some(TypeExpr::U8(start_span))
+                    }
+                    "i16" => {
+                        self.advance();
+                        Some(TypeExpr::I16(start_span))
+                    }
+                    "u16" => {
+                        self.advance();
+                        Some(TypeExpr::U16(start_span))
+                    }
+                    "i32" => {
+                        self.advance();
+                        Some(TypeExpr::I32(start_span))
+                    }
+                    "u32" => {
+                        self.advance();
+                        Some(TypeExpr::U32(start_span))
+                    }
+                    "i64" => {
+                        self.advance();
+                        Some(TypeExpr::I64(start_span))
+                    }
+                    "u64" => {
+                        self.advance();
+                        Some(TypeExpr::U64(start_span))
+                    }
+                    "i128" => {
+                        self.advance();
+                        Some(TypeExpr::I128(start_span))
+                    }
+                    "u128" => {
+                        self.advance();
+                        Some(TypeExpr::U128(start_span))
+                    }
+                    "f32" => {
+                        self.advance();
+                        Some(TypeExpr::F32(start_span))
+                    }
+                    "f64" => {
+                        self.advance();
+                        Some(TypeExpr::F64(start_span))
+                    }
+                    "date" => {
+                        self.advance();
+                        Some(TypeExpr::Date(start_span))
+                    }
+                    "duration" => {
+                        self.advance();
+                        Some(TypeExpr::Duration(start_span))
                     }
                     "bool" => {
                         self.advance();

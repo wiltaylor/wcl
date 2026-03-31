@@ -962,7 +962,7 @@ fn validate_with_schema_valid() {
     let f = wcl_file(
         r#"
 schema "server" {
-    port: int
+    port: i64
     host: string
 }
 
@@ -980,7 +980,7 @@ fn validate_with_schema_type_mismatch() {
     let f = wcl_file(
         r#"
 schema "server" {
-    port: int
+    port: i64
 }
 
 server web {
@@ -998,7 +998,7 @@ fn validate_with_schema_missing_required() {
     let f = wcl_file(
         r#"
 schema "server" {
-    port: int
+    port: i64
     host: string
 }
 
@@ -1017,7 +1017,7 @@ fn validate_schema_optional_field() {
     let f = wcl_file(
         r#"
 schema "server" {
-    port: int
+    port: i64
     host: string @optional
 }
 
@@ -1160,7 +1160,7 @@ fn workflow_set_validate_query() {
     let f = wcl_file(
         r#"
 schema "server" {
-    port: int
+    port: i64
     host: string @optional
 }
 

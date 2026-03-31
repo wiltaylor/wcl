@@ -254,8 +254,20 @@ fn hover_type_expr(te: &TypeExpr, rope: &Rope) -> Option<Hover> {
 fn type_expr_str(te: &TypeExpr) -> String {
     match te {
         TypeExpr::String(_) => "string".to_string(),
-        TypeExpr::Int(_) => "int".to_string(),
-        TypeExpr::Float(_) => "float".to_string(),
+        TypeExpr::I8(_) => "i8".to_string(),
+        TypeExpr::U8(_) => "u8".to_string(),
+        TypeExpr::I16(_) => "i16".to_string(),
+        TypeExpr::U16(_) => "u16".to_string(),
+        TypeExpr::I32(_) => "i32".to_string(),
+        TypeExpr::U32(_) => "u32".to_string(),
+        TypeExpr::I64(_) => "i64".to_string(),
+        TypeExpr::U64(_) => "u64".to_string(),
+        TypeExpr::I128(_) => "i128".to_string(),
+        TypeExpr::U128(_) => "u128".to_string(),
+        TypeExpr::F32(_) => "f32".to_string(),
+        TypeExpr::F64(_) => "f64".to_string(),
+        TypeExpr::Date(_) => "date".to_string(),
+        TypeExpr::Duration(_) => "duration".to_string(),
         TypeExpr::Bool(_) => "bool".to_string(),
         TypeExpr::Null(_) => "null".to_string(),
         TypeExpr::Identifier(_) => "identifier".to_string(),
@@ -437,8 +449,8 @@ mod tests {
             "string"
         );
         assert_eq!(
-            type_expr_str(&TypeExpr::Int(crate::lang::Span::dummy())),
-            "int"
+            type_expr_str(&TypeExpr::I64(crate::lang::Span::dummy())),
+            "i64"
         );
         assert_eq!(
             type_expr_str(&TypeExpr::Any(crate::lang::Span::dummy())),
@@ -512,7 +524,7 @@ mod tests {
                         name: "count".to_string(),
                         span: crate::lang::Span::dummy(),
                     },
-                    type_constraint: Some(TypeExpr::Int(crate::lang::Span::dummy())),
+                    type_constraint: Some(TypeExpr::I64(crate::lang::Span::dummy())),
                     default: None,
                     span: crate::lang::Span::dummy(),
                 },
@@ -521,7 +533,7 @@ mod tests {
             trivia: crate::lang::Trivia::empty(),
             span: crate::lang::Span::dummy(),
         };
-        let rope = ropey::Rope::from_str("macro greet(name: string, count: int) {}");
+        let rope = ropey::Rope::from_str("macro greet(name: string, count: i64) {}");
         let h = hover_macro_def(&md, &rope).unwrap();
         let val = hover_value(&h);
         assert!(
@@ -530,7 +542,7 @@ mod tests {
             val,
         );
         assert!(
-            val.contains("count: int"),
+            val.contains("count: i64"),
             "should show param type constraint, got: {}",
             val,
         );

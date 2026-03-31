@@ -6,11 +6,11 @@ Schemas define the expected shape of blocks — their fields, types, and constra
 
 ```wcl
 schema "service" {
-    port:     int    @required
+    port:     u16    @required
     region:   string @required
     env:      string @default("production")
     tags:     list   @optional
-    replicas: int    @validate(min = 1, max = 100)
+    replicas: u32    @validate(min = 1, max = 100)
 }
 ```
 
@@ -35,16 +35,28 @@ Matching is done by block type name. There is no explicit `@schema` annotation n
 
 The following primitive types are available for schema fields:
 
-| Type     | Description                        |
-|----------|------------------------------------|
-| `string` | A string value                     |
-| `int`    | An integer value                   |
-| `float`  | A floating-point value             |
-| `bool`   | A boolean value                    |
-| `list`   | A list of values                   |
-| `map`    | A key-value map                    |
-| `any`    | Accepts any value type             |
-| `symbol` | A symbol literal (e.g. `:GET`)     |
+| Type       | Description                                          |
+|------------|------------------------------------------------------|
+| `string`   | A string value                                       |
+| `i8`       | Signed 8-bit integer (-128 to 127)                   |
+| `u8`       | Unsigned 8-bit integer (0 to 255)                    |
+| `i16`      | Signed 16-bit integer (-32,768 to 32,767)            |
+| `u16`      | Unsigned 16-bit integer (0 to 65,535)                |
+| `i32`      | Signed 32-bit integer (-2^31 to 2^31-1)             |
+| `u32`      | Unsigned 32-bit integer (0 to 2^32-1)               |
+| `i64`      | Signed 64-bit integer (-2^63 to 2^63-1)             |
+| `u64`      | Unsigned 64-bit integer (0 to 2^64-1)               |
+| `i128`     | Signed 128-bit integer (-2^127 to 2^127-1)          |
+| `u128`     | Unsigned 128-bit integer (0 to 2^128-1)             |
+| `f32`      | 32-bit floating-point (IEEE 754 single precision)    |
+| `f64`      | 64-bit floating-point (IEEE 754 double precision)    |
+| `bool`     | A boolean value                                      |
+| `date`     | ISO 8601 date (YYYY-MM-DD), literal syntax `d"2024-03-15"` |
+| `duration` | ISO 8601 duration, literal syntax `dur"P1Y2M3D"`    |
+| `list`     | A list of values                                     |
+| `map`      | A key-value map                                      |
+| `any`      | Accepts any value type                               |
+| `symbol`   | A symbol literal (e.g. `:GET`)                       |
 
 ## Field Decorators
 
@@ -55,7 +67,7 @@ Fields are required by default. You may add `@required` explicitly for clarity:
 ```wcl
 schema "database" {
     host: string @required
-    port: int    @required
+    port: u16    @required
 }
 ```
 
@@ -65,7 +77,7 @@ Marks a field as not required. If the field is absent from the block, no error i
 
 ```wcl
 schema "service" {
-    debug_port: int @optional
+    debug_port: u16 @optional
 }
 ```
 
@@ -76,7 +88,7 @@ Provides a default value used when the field is absent. Implies `@optional`:
 ```wcl
 schema "service" {
     env:      string @default("production")
-    replicas: int    @default(1)
+    replicas: u32    @default(1)
 }
 ```
 
@@ -86,10 +98,10 @@ Attaches constraints to a field's value:
 
 ```wcl
 schema "service" {
-    port:     int    @validate(min = 1, max = 65535)
+    port:     u16    @validate(min = 1, max = 65535)
     env:      string @validate(one_of = ["development", "staging", "production"])
     name:     string @validate(pattern = "^[a-z][a-z0-9-]*$")
-    replicas: int    @validate(min = 1, max = 100, custom_msg = "replicas must be between 1 and 100")
+    replicas: u32    @validate(min = 1, max = 100, custom_msg = "replicas must be between 1 and 100")
 }
 ```
 
@@ -97,10 +109,10 @@ Available constraint arguments:
 
 | Argument     | Applies to       | Description                              |
 |--------------|------------------|------------------------------------------|
-| `min`        | int, float       | Minimum value (inclusive)                |
-| `max`        | int, float       | Maximum value (inclusive)                |
+| `min`        | numeric types    | Minimum value (inclusive)                |
+| `max`        | numeric types    | Maximum value (inclusive)                |
 | `pattern`    | string           | Regex pattern the value must match       |
-| `one_of`     | string, int      | Value must be one of the listed options  |
+| `one_of`     | string, numeric  | Value must be one of the listed options  |
 | `custom_msg` | any              | Custom error message on violation        |
 
 ## Cross-References with @ref
@@ -122,7 +134,7 @@ Use `@id_pattern("glob")` on a schema's identifier field to enforce naming conve
 
 ```wcl
 schema "service" @id_pattern("svc-*") {
-    port: int
+    port: u16
 }
 ```
 
@@ -153,7 +165,7 @@ Add the `@open` decorator to allow extra attributes:
 
 ```wcl
 schema "service" @open {
-    port:   int
+    port:   u16
     region: string
 }
 ```
@@ -185,7 +197,7 @@ WCL schemas do not support inheritance. Instead, use two composition mechanisms:
 
 ```wcl
 schema "base_service" {
-    port:   int
+    port:   u16
     region: string
 }
 
@@ -200,11 +212,11 @@ schema "web_service" {
 
 ```wcl
 schema "service" @id_pattern("svc-*") {
-    port:     int    @required @validate(min = 1, max = 65535)
+    port:     u16    @required @validate(min = 1, max = 65535)
     region:   string @required @validate(one_of = ["us-east-1", "eu-west-1", "ap-south-1"])
     env:      string @default("production") @validate(one_of = ["development", "staging", "production"])
     tags:     list   @optional
-    replicas: int    @default(1) @validate(min = 1, max = 100)
+    replicas: u32    @default(1) @validate(min = 1, max = 100)
 }
 
 service "svc-api" {
@@ -231,7 +243,7 @@ Use `@child("kind", min=N, max=N)` to enforce how many children of a given kind 
 schema "server" {
     @child("endpoint", min=1, max=10)
     @child("config", max=1)
-    port: int
+    port: u16
     host: string
 }
 ```
@@ -269,7 +281,7 @@ Use `union(t1, t2, ...)` to declare that a field accepts any of the listed types
 
 ```wcl
 schema "config" {
-    value: union(string, int, bool)
+    value: union(string, i64, bool)
 }
 
 config a { value = "hello" }
@@ -502,7 +514,7 @@ You can apply a schema to a table using the colon syntax or the `@schema` decora
 ```wcl
 schema "user_row" {
     name : string
-    age  : int
+    age  : u32
 }
 
 # Colon syntax

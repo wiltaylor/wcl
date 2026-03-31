@@ -7,9 +7,9 @@ WCL is strongly typed and does not coerce values implicitly. When you need to co
 | Function | Signature | Description |
 |---|---|---|
 | `to_string` | `to_string(value: any) -> string` | Convert any value to its string representation |
-| `to_int` | `to_int(value: string\|float\|bool) -> int` | Parse or truncate a value to integer |
-| `to_float` | `to_float(value: string\|int\|bool) -> float` | Parse or promote a value to float |
-| `to_bool` | `to_bool(value: string\|int) -> bool` | Parse a value to boolean |
+| `to_int` | `to_int(value: string\|f64\|bool) -> i64` | Parse or truncate a value to integer |
+| `to_float` | `to_float(value: string\|i64\|bool) -> f64` | Parse or promote a value to float |
+| `to_bool` | `to_bool(value: string\|i64) -> bool` | Parse a value to boolean |
 | `type_of` | `type_of(value: any) -> string` | Return a string naming the value's type |
 
 ## Examples
@@ -81,8 +81,8 @@ Returns a lowercase string naming the type of the given value.
 | Value type | `type_of` result |
 |---|---|
 | `string` | `"string"` |
-| `int` | `"int"` |
-| `float` | `"float"` |
+| `i64` | `"int"` |
+| `f64` | `"float"` |
 | `bool` | `"bool"` |
 | `list` | `"list"` |
 | `map` | `"map"` |

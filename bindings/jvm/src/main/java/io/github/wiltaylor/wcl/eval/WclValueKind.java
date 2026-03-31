@@ -2,5 +2,6 @@ package io.github.wiltaylor.wcl.eval;
 
 public enum WclValueKind {
     STRING, INT, FLOAT, BOOL, NULL,
-    LIST, MAP, SET, BLOCK_REF
+    LIST, MAP, SET, BLOCK_REF,
+    BIG_INT, DATE, DURATION
 }

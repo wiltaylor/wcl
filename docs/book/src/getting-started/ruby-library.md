@@ -75,8 +75,8 @@ WCL types map to Ruby types as follows:
 | WCL Type | Ruby Type |
 |----------|-----------|
 | `string` | `String` |
-| `int` | `Integer` |
-| `float` | `Float` |
+| `i64` | `Integer` |
+| `f64` | `Float` |
 | `bool` | `true` / `false` |
 | `null` | `nil` |
 | `list` | `Array` |
@@ -261,7 +261,7 @@ doc = Wcl.parse(<<~WCL)
     }
 
     schema "server" {
-        port: int
+        port: i64
     }
 WCL
 
@@ -299,7 +299,7 @@ require "wcl"
 
 doc = Wcl.parse(<<~WCL)
     schema "server" {
-        port: int
+        port: i64
         host: string @optional
     }
 

@@ -49,7 +49,7 @@ schema "ServiceSchema" {
   @required
   name : string
   @min(1) @max(65535)
-  port : int
+  port : i64
   host : string
 }
 

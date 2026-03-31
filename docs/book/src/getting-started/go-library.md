@@ -151,7 +151,7 @@ Tables evaluate to a slice of row maps (`[]map[string]interface{}`). Each row is
 doc, _ := wcl.Parse(`
     table users {
         name : string
-        age  : int
+        age  : i64
         | "alice" | 25 |
         | "bob"   | 30 |
     }
@@ -317,7 +317,7 @@ doc, _ := wcl.Parse(`
     }
 
     schema "server" {
-        port: int
+        port: i64
     }
 `, nil)
 defer doc.Close()
@@ -379,7 +379,7 @@ import (
 func main() {
     doc, err := wcl.Parse(`
         schema "server" {
-            port: int
+            port: i64
             host: string @optional
         }
 

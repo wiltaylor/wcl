@@ -59,7 +59,7 @@ With a schema, fields decorated with `@inline(N)` map positional args to named a
 ```wcl
 schema "server" {
     id: identifier @inline(0)
-    port: int @inline(1)
+    port: i64 @inline(1)
     env: string @inline(2)
     host: string
 }

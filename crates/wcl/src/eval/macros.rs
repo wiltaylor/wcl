@@ -1144,8 +1144,23 @@ impl<'a> MacroExpander<'a> {
     fn value_matches_type(value: &Value, type_expr: &TypeExpr) -> bool {
         match type_expr {
             TypeExpr::String(_) => matches!(value, Value::String(_)),
-            TypeExpr::Int(_) => matches!(value, Value::Int(_)),
-            TypeExpr::Float(_) => matches!(value, Value::Float(_) | Value::Int(_)),
+            TypeExpr::I8(_)
+            | TypeExpr::U8(_)
+            | TypeExpr::I16(_)
+            | TypeExpr::U16(_)
+            | TypeExpr::I32(_)
+            | TypeExpr::U32(_)
+            | TypeExpr::I64(_)
+            | TypeExpr::U64(_)
+            | TypeExpr::I128(_)
+            | TypeExpr::U128(_) => {
+                matches!(value, Value::Int(_) | Value::BigInt(_))
+            }
+            TypeExpr::F32(_) | TypeExpr::F64(_) => {
+                matches!(value, Value::Float(_) | Value::Int(_) | Value::BigInt(_))
+            }
+            TypeExpr::Date(_) => matches!(value, Value::Date(_)),
+            TypeExpr::Duration(_) => matches!(value, Value::Duration(_)),
             TypeExpr::Bool(_) => matches!(value, Value::Bool(_)),
             TypeExpr::Null(_) => matches!(value, Value::Null),
             TypeExpr::Any(_) => true,
@@ -1168,8 +1183,20 @@ impl<'a> MacroExpander<'a> {
     fn type_expr_display(type_expr: &TypeExpr) -> String {
         match type_expr {
             TypeExpr::String(_) => "string".to_string(),
-            TypeExpr::Int(_) => "int".to_string(),
-            TypeExpr::Float(_) => "float".to_string(),
+            TypeExpr::I8(_) => "i8".to_string(),
+            TypeExpr::U8(_) => "u8".to_string(),
+            TypeExpr::I16(_) => "i16".to_string(),
+            TypeExpr::U16(_) => "u16".to_string(),
+            TypeExpr::I32(_) => "i32".to_string(),
+            TypeExpr::U32(_) => "u32".to_string(),
+            TypeExpr::I64(_) => "i64".to_string(),
+            TypeExpr::U64(_) => "u64".to_string(),
+            TypeExpr::I128(_) => "i128".to_string(),
+            TypeExpr::U128(_) => "u128".to_string(),
+            TypeExpr::F32(_) => "f32".to_string(),
+            TypeExpr::F64(_) => "f64".to_string(),
+            TypeExpr::Date(_) => "date".to_string(),
+            TypeExpr::Duration(_) => "duration".to_string(),
             TypeExpr::Bool(_) => "bool".to_string(),
             TypeExpr::Null(_) => "null".to_string(),
             TypeExpr::Any(_) => "any".to_string(),
@@ -1195,6 +1222,7 @@ impl<'a> MacroExpander<'a> {
         match value {
             Value::String(_) => "string".to_string(),
             Value::Int(_) => "int".to_string(),
+            Value::BigInt(_) => "bigint".to_string(),
             Value::Float(_) => "float".to_string(),
             Value::Bool(_) => "bool".to_string(),
             Value::Null => "null".to_string(),
@@ -1205,6 +1233,8 @@ impl<'a> MacroExpander<'a> {
             Value::Set(_) => "set".to_string(),
             Value::BlockRef(_) => "block".to_string(),
             Value::Function(_) => "function".to_string(),
+            Value::Date(_) => "date".to_string(),
+            Value::Duration(_) => "duration".to_string(),
         }
     }
 
@@ -2099,7 +2129,7 @@ mod tests {
 
         let params = vec![MacroParam {
             name: make_ident("port"),
-            type_constraint: Some(TypeExpr::Int(dummy_span())),
+            type_constraint: Some(TypeExpr::I64(dummy_span())),
             default: None,
             span: dummy_span(),
         }];
@@ -2116,7 +2146,7 @@ mod tests {
 
         let params = vec![MacroParam {
             name: make_ident("port"),
-            type_constraint: Some(TypeExpr::Int(dummy_span())),
+            type_constraint: Some(TypeExpr::I64(dummy_span())),
             default: None,
             span: dummy_span(),
         }];

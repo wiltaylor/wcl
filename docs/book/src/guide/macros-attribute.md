@@ -307,7 +307,7 @@ job "nightly-backup" @common_tags(team = "data") {
 ```wcl
 macro @with_monitoring(
     alert_channel:  string = "ops",
-    metrics_port:   int    = 9100,
+    metrics_port:   i64    = 9100,
     health_path:    string = "/healthz"
 ) {
     inject {

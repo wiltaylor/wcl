@@ -98,6 +98,9 @@
   "}" @punctuation.special)
 (heredoc_literal) @string
 
+(date_literal) @string.special
+(duration_literal) @string.special
+
 (symbol_literal) @constant
 
 (boolean_literal) @constant.builtin

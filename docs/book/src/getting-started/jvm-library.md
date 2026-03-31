@@ -278,7 +278,7 @@ try (var doc = Wcl.parse("""
         port = "not_a_number"
     }
     schema "server" {
-        port: int
+        port: i64
     }
 """)) {
     for (var diag : doc.getDiagnostics()) {
@@ -329,7 +329,7 @@ public class Example {
         // 1. Parse with schema validation
         try (var doc = Wcl.parse("""
             schema "server" {
-                port: int
+                port: i64
                 host: string @optional
             }
             server svc-api {

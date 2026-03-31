@@ -50,8 +50,8 @@ server web-prod {
 
 schema "server" {
     host: string @optional
-    port: int
-    workers: int
+    port: i64
+    workers: i64
     api_key: string
 }
 ```
@@ -62,7 +62,7 @@ Key things to notice:
 - The `schema "server"` block automatically validates every `server` block by matching the name
 - `workers = max(4, 2)` is an evaluated expression using a built-in function
 - `@sensitive` is a decorator that can be handled by tooling (e.g., to redact the value from output)
-- Schema fields use colon syntax (`port: int`) to declare expected types
+- Schema fields use colon syntax (`port: i64`) to declare expected types
 
 ## Where to Go Next
 

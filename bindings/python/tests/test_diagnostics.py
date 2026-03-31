@@ -24,7 +24,7 @@ def test_valid_doc_no_errors():
 
 def test_diagnostic_code():
     source = """
-schema "cfg" { port: int }
+schema "cfg" { port: i64 }
 cfg { port = "bad" }
 """
     doc = wcl.parse(source)

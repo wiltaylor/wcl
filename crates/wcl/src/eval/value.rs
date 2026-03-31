@@ -7,6 +7,8 @@ use std::fmt;
 pub enum Value {
     String(String),
     Int(i64),
+    /// Large integer for values exceeding i64 range (u64 large values, i128, u128)
+    BigInt(i128),
     Float(f64),
     Bool(bool),
     Null,
@@ -24,6 +26,10 @@ pub enum Value {
     Symbol(String),
     /// Lambda/function value
     Function(FunctionValue),
+    /// ISO 8601 date value (e.g. `d"2024-03-15"`)
+    Date(String),
+    /// ISO 8601 duration value (e.g. `dur"P1Y2M3D"`)
+    Duration(String),
 }
 
 #[derive(Debug, Clone)]
@@ -88,6 +94,7 @@ impl Value {
         match self {
             Value::String(_) => "string",
             Value::Int(_) => "int",
+            Value::BigInt(_) => "bigint",
             Value::Float(_) => "float",
             Value::Bool(_) => "bool",
             Value::Null => "null",
@@ -98,6 +105,8 @@ impl Value {
             Value::Symbol(_) => "symbol",
             Value::BlockRef(_) => "block_ref",
             Value::Function(_) => "function",
+            Value::Date(_) => "date",
+            Value::Duration(_) => "duration",
         }
     }
 
@@ -175,15 +184,40 @@ impl Value {
         matches!(self, Value::Null)
     }
 
+    pub fn as_bigint(&self) -> Option<i128> {
+        match self {
+            Value::BigInt(i) => Some(*i),
+            Value::Int(i) => Some(*i as i128),
+            _ => None,
+        }
+    }
+
+    pub fn as_date(&self) -> Option<&str> {
+        match self {
+            Value::Date(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    pub fn as_duration(&self) -> Option<&str> {
+        match self {
+            Value::Duration(s) => Some(s),
+            _ => None,
+        }
+    }
+
     pub fn to_interp_string(&self) -> Result<String, String> {
         match self {
             Value::String(s) => Ok(s.clone()),
             Value::Int(i) => Ok(i.to_string()),
+            Value::BigInt(i) => Ok(i.to_string()),
             Value::Float(f) => Ok(f.to_string()),
             Value::Bool(b) => Ok(b.to_string()),
             Value::Null => Ok("null".to_string()),
             Value::Identifier(s) => Ok(s.clone()),
             Value::Symbol(s) => Ok(format!(":{}", s)),
+            Value::Date(s) => Ok(s.clone()),
+            Value::Duration(s) => Ok(s.clone()),
             _ => Err(format!(
                 "cannot interpolate {} into string",
                 self.type_name()
@@ -197,6 +231,9 @@ impl PartialEq for Value {
         match (self, other) {
             (Value::String(a), Value::String(b)) => a == b,
             (Value::Int(a), Value::Int(b)) => a == b,
+            (Value::BigInt(a), Value::BigInt(b)) => a == b,
+            (Value::Int(a), Value::BigInt(b)) => (*a as i128) == *b,
+            (Value::BigInt(a), Value::Int(b)) => *a == (*b as i128),
             (Value::Float(a), Value::Float(b)) => a == b,
             (Value::Bool(a), Value::Bool(b)) => a == b,
             (Value::Null, Value::Null) => true,
@@ -205,6 +242,8 @@ impl PartialEq for Value {
             (Value::List(a), Value::List(b)) => a == b,
             (Value::Map(a), Value::Map(b)) => a == b,
             (Value::Set(a), Value::Set(b)) => a == b,
+            (Value::Date(a), Value::Date(b)) => a == b,
+            (Value::Duration(a), Value::Duration(b)) => a == b,
             _ => false,
         }
     }
@@ -215,6 +254,7 @@ impl fmt::Display for Value {
         match self {
             Value::String(s) => write!(f, "{}", s),
             Value::Int(i) => write!(f, "{}", i),
+            Value::BigInt(i) => write!(f, "{}", i),
             Value::Float(v) => write!(f, "{}", v),
             Value::Bool(b) => write!(f, "{}", b),
             Value::Null => write!(f, "null"),
@@ -268,6 +308,8 @@ impl fmt::Display for Value {
                 write!(f, " }}")
             }
             Value::Function(_) => write!(f, "<function>"),
+            Value::Date(s) => write!(f, "d\"{}\"", s),
+            Value::Duration(s) => write!(f, "dur\"{}\"", s),
         }
     }
 }

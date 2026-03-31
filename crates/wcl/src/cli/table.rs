@@ -321,7 +321,7 @@ mod tests {
     fn test_insert_row() {
         let content = r#"table users {
     name : string
-    age  : int
+    age  : i64
     | "alice" | 25 |
     | "bob"   | 30 |
 }
@@ -344,7 +344,7 @@ mod tests {
     fn test_remove_row() {
         let content = r#"table users {
     name : string
-    age  : int
+    age  : i64
     | "alice" | 25 |
     | "bob"   | 30 |
 }
@@ -366,7 +366,7 @@ mod tests {
     fn test_update_row() {
         let content = r#"table users {
     name : string
-    age  : int
+    age  : i64
     | "alice" | 25 |
     | "bob"   | 30 |
 }
@@ -403,7 +403,7 @@ mod tests {
     fn test_insert_into_empty_table() {
         let content = r#"table users {
     name : string
-    age  : int
+    age  : i64
 }
 "#;
         let f = write_temp(content);

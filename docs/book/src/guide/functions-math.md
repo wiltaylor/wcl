@@ -1,19 +1,19 @@
 # Math Functions
 
-WCL's math functions operate on `int` and `float` values. Functions that accept either type promote integers to floats where needed and are noted below.
+WCL's math functions operate on `i64` and `f64` values. Functions that accept either type promote integers to floats where needed and are noted below.
 
 ## Reference
 
 | Function | Signature | Description |
 |---|---|---|
-| `abs` | `abs(n: int\|float) -> int\|float` | Absolute value; preserves input type |
-| `min` | `min(a: int\|float, b: int\|float) -> int\|float` | Smaller of two values |
-| `max` | `max(a: int\|float, b: int\|float) -> int\|float` | Larger of two values |
-| `floor` | `floor(n: float) -> int` | Round down to nearest integer |
-| `ceil` | `ceil(n: float) -> int` | Round up to nearest integer |
-| `round` | `round(n: float) -> int` | Round to nearest integer (half-up) |
-| `sqrt` | `sqrt(n: int\|float) -> float` | Square root; always returns float |
-| `pow` | `pow(base: int\|float, exp: int\|float) -> float` | Raise base to the power of exp; always returns float |
+| `abs` | `abs(n: i64\|f64) -> i64\|f64` | Absolute value; preserves input type |
+| `min` | `min(a: i64\|f64, b: i64\|f64) -> i64\|f64` | Smaller of two values |
+| `max` | `max(a: i64\|f64, b: i64\|f64) -> i64\|f64` | Larger of two values |
+| `floor` | `floor(n: f64) -> i64` | Round down to nearest integer |
+| `ceil` | `ceil(n: f64) -> i64` | Round up to nearest integer |
+| `round` | `round(n: f64) -> i64` | Round to nearest integer (half-up) |
+| `sqrt` | `sqrt(n: i64\|f64) -> f64` | Square root; always returns float |
+| `pow` | `pow(base: i64\|f64, exp: i64\|f64) -> f64` | Raise base to the power of exp; always returns float |
 
 ## Examples
 

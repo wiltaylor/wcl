@@ -59,6 +59,18 @@ public final class WclValue {
         return new WclValue(WclValueKind.BLOCK_REF, null, 0, 0, false, null, null, blockRef);
     }
 
+    public static WclValue ofBigInt(long value) {
+        return new WclValue(WclValueKind.BIG_INT, null, value, 0, false, null, null, null);
+    }
+
+    public static WclValue ofDate(String value) {
+        return new WclValue(WclValueKind.DATE, value, 0, 0, false, null, null, null);
+    }
+
+    public static WclValue ofDuration(String value) {
+        return new WclValue(WclValueKind.DURATION, value, 0, 0, false, null, null, null);
+    }
+
     // Accessors
     public WclValueKind getKind() { return kind; }
 
@@ -102,6 +114,21 @@ public final class WclValue {
         return blockRef;
     }
 
+    public long asBigInt() {
+        if (kind != WclValueKind.BIG_INT) throw new IllegalStateException("expected bigint, got " + typeName());
+        return intValue;
+    }
+
+    public String asDate() {
+        if (kind != WclValueKind.DATE) throw new IllegalStateException("expected date, got " + typeName());
+        return stringValue;
+    }
+
+    public String asDuration() {
+        if (kind != WclValueKind.DURATION) throw new IllegalStateException("expected duration, got " + typeName());
+        return stringValue;
+    }
+
     // Try accessors
     public Optional<String> tryAsString() {
         return kind == WclValueKind.STRING ? Optional.of(stringValue) : Optional.empty();
@@ -130,6 +157,9 @@ public final class WclValue {
             case MAP -> "map";
             case SET -> "set";
             case BLOCK_REF -> "block_ref";
+            case BIG_INT -> "bigint";
+            case DATE -> "date";
+            case DURATION -> "duration";
         };
     }
 
@@ -139,8 +169,8 @@ public final class WclValue {
         if (!(obj instanceof WclValue other)) return false;
         if (kind != other.kind) return false;
         return switch (kind) {
-            case STRING -> Objects.equals(stringValue, other.stringValue);
-            case INT -> intValue == other.intValue;
+            case STRING, DATE, DURATION -> Objects.equals(stringValue, other.stringValue);
+            case INT, BIG_INT -> intValue == other.intValue;
             case FLOAT -> Double.compare(floatValue, other.floatValue) == 0;
             case BOOL -> boolValue == other.boolValue;
             case NULL -> true;
@@ -158,8 +188,8 @@ public final class WclValue {
     @Override
     public String toString() {
         return switch (kind) {
-            case STRING -> stringValue;
-            case INT -> Long.toString(intValue);
+            case STRING, DATE, DURATION -> stringValue;
+            case INT, BIG_INT -> Long.toString(intValue);
             case FLOAT -> Double.toString(floatValue);
             case BOOL -> boolValue ? "true" : "false";
             case NULL -> "null";

@@ -50,7 +50,7 @@ See [Attribute Macros](./macros-attribute.md) for full syntax and examples.
 Both macro types support typed parameters with optional defaults:
 
 ```wcl
-macro deploy(name: string, replicas: int = 1, env: string = "production") {
+macro deploy(name: string, replicas: i64 = 1, env: string = "production") {
     deployment name {
         replicas = replicas
         env      = env

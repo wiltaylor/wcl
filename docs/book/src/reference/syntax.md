@@ -62,7 +62,7 @@ Syntax: `[decorators] [partial] type [id] [inline-args...] { body }`
 
 - `type` — bare identifier (the block kind)
 - `id` — identifier literal (may contain hyphens); used for unique identification
-- `inline-args` — zero or more positional expressions (int, float, string, bool, null, list) mapped to named fields via `@inline(N)` in a schema, or collected into `_args`
+- `inline-args` — zero or more positional expressions (integer, float, string, bool, null, list) mapped to named fields via `@inline(N)` in a schema, or collected into `_args`
 
 ## Let Bindings
 
@@ -128,12 +128,12 @@ Tables declare typed columns followed by row data using `|`-delimited syntax.
 
 ```wcl
 schema "ServiceSchema" {
-  port    : int
+  port    : i64
   host    : string
   @required
   name    : string
   @min(1) @max(65535)
-  port    : int
+  port    : i64
 }
 ```
 
@@ -169,7 +169,7 @@ Decorators appear immediately before the item they annotate. They accept positio
 ### Function Macro Definition
 
 ```wcl
-macro service_defaults(port: int, host: string = "localhost") {
+macro service_defaults(port: i64, host: string = "localhost") {
   port    = port
   host    = host
   enabled = true

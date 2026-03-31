@@ -24,6 +24,10 @@ pub enum TokenKind {
     NullLit,
     /// Symbol literal: `:name`
     SymbolLit(String),
+    /// Date literal: `d"2024-03-15"`
+    DateLit(String),
+    /// Duration literal: `dur"P1Y2M3D"`
+    DurationLit(String),
 
     /// Heredoc value.
     Heredoc {
@@ -900,6 +904,44 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    // ── Prefix string literal lexer (d"..." and dur"...") ─────────────────
+
+    fn lex_prefix_string_literal(&mut self, prefix: &str, start: usize) -> Token {
+        // Skip the opening quote
+        self.advance_char(); // consume '"'
+        let content_start = self.pos;
+
+        while let Some(c) = self.peek() {
+            if c == '"' {
+                let content = self.input[content_start..self.pos].to_string();
+                self.advance_char(); // consume closing '"'
+                let kind = if prefix == "d" {
+                    TokenKind::DateLit(content)
+                } else {
+                    TokenKind::DurationLit(content)
+                };
+                return self.make_tok(kind, start);
+            } else if c == '\n' || c == '\r' {
+                break;
+            } else {
+                self.advance_char();
+            }
+        }
+        // Unterminated string
+        self.errors.push(Diagnostic::error(
+            "unterminated prefix string literal",
+            Span::new(self.file, start, self.pos),
+        ));
+        self.make_tok(
+            if prefix == "d" {
+                TokenKind::DateLit(self.input[content_start..self.pos].to_string())
+            } else {
+                TokenKind::DurationLit(self.input[content_start..self.pos].to_string())
+            },
+            start,
+        )
+    }
+
     // ── Identifier / keyword lexer ────────────────────────────────────────
 
     fn lex_ident_or_keyword(&mut self, start: usize) -> Token {
@@ -926,6 +968,11 @@ impl<'a> Lexer<'a> {
             }
         }
         let word = &self.input[word_start..self.pos];
+
+        // Check for date/duration prefix literals: d"..." and dur"..."
+        if (word == "d" || word == "dur") && self.peek() == Some('"') {
+            return self.lex_prefix_string_literal(word, start);
+        }
 
         // Check keywords first (keywords cannot contain hyphens)
         let kind = match word {

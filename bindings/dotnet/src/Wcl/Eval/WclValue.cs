@@ -8,7 +8,8 @@ namespace Wcl.Eval
     public enum WclValueKind
     {
         String, Int, Float, Bool, Null,
-        List, Map, Set, BlockRef
+        List, Map, Set, BlockRef,
+        BigInt, Date, Duration
     }
 
     public class WclValue : IEquatable<WclValue>
@@ -48,6 +49,9 @@ namespace Wcl.Eval
         public static WclValue NewMap(OrderedMap<string, WclValue> map) => new WclValue(WclValueKind.Map, map: map);
         public static WclValue NewSet(List<WclValue> items) => new WclValue(WclValueKind.Set, list: items);
         public static WclValue NewBlockRef(BlockRef blockRef) => new WclValue(WclValueKind.BlockRef, br: blockRef);
+        public static WclValue NewBigInt(long value) => new WclValue(WclValueKind.BigInt, i: value);
+        public static WclValue NewDate(string value) => new WclValue(WclValueKind.Date, s: value);
+        public static WclValue NewDuration(string value) => new WclValue(WclValueKind.Duration, s: value);
 
         // Accessors
         public string AsString() => Kind == WclValueKind.String ? _stringValue! : throw new InvalidOperationException($"expected string, got {TypeName}");
@@ -58,6 +62,9 @@ namespace Wcl.Eval
         public OrderedMap<string, WclValue> AsMap() => Kind == WclValueKind.Map ? _mapValue! : throw new InvalidOperationException($"expected map, got {TypeName}");
         public List<WclValue> AsSet() => Kind == WclValueKind.Set ? _listValue! : throw new InvalidOperationException($"expected set, got {TypeName}");
         public BlockRef AsBlockRef() => Kind == WclValueKind.BlockRef ? _blockRef! : throw new InvalidOperationException($"expected block_ref, got {TypeName}");
+        public long AsBigInt() => Kind == WclValueKind.BigInt ? _intValue : throw new InvalidOperationException($"expected bigint, got {TypeName}");
+        public string AsDate() => Kind == WclValueKind.Date ? _stringValue! : throw new InvalidOperationException($"expected date, got {TypeName}");
+        public string AsDuration() => Kind == WclValueKind.Duration ? _stringValue! : throw new InvalidOperationException($"expected duration, got {TypeName}");
 
         // Try accessors
         public string? TryAsString() => Kind == WclValueKind.String ? _stringValue : null;
@@ -67,6 +74,9 @@ namespace Wcl.Eval
         public List<WclValue>? TryAsList() => Kind == WclValueKind.List ? _listValue : null;
         public OrderedMap<string, WclValue>? TryAsMap() => Kind == WclValueKind.Map ? _mapValue : null;
         public BlockRef? TryAsBlockRef() => Kind == WclValueKind.BlockRef ? _blockRef : null;
+        public long? TryAsBigInt() => Kind == WclValueKind.BigInt ? _intValue : (long?)null;
+        public string? TryAsDate() => Kind == WclValueKind.Date ? _stringValue : null;
+        public string? TryAsDuration() => Kind == WclValueKind.Duration ? _stringValue : null;
 
         public bool IsNull => Kind == WclValueKind.Null;
 
@@ -83,6 +93,9 @@ namespace Wcl.Eval
             WclValueKind.Map => "map",
             WclValueKind.Set => "set",
             WclValueKind.BlockRef => "block_ref",
+            WclValueKind.BigInt => "bigint",
+            WclValueKind.Date => "date",
+            WclValueKind.Duration => "duration",
             _ => "unknown",
         };
 
@@ -95,6 +108,9 @@ namespace Wcl.Eval
                 case WclValueKind.Float: return _floatValue.ToString(System.Globalization.CultureInfo.InvariantCulture);
                 case WclValueKind.Bool: return _boolValue ? "true" : "false";
                 case WclValueKind.Null: return "null";
+                case WclValueKind.BigInt: return _intValue.ToString();
+                case WclValueKind.Date: return _stringValue!;
+                case WclValueKind.Duration: return _stringValue!;
                 default: throw new InvalidOperationException($"cannot interpolate {TypeName} into string");
             }
         }
@@ -105,8 +121,13 @@ namespace Wcl.Eval
             if (Kind != other.Kind) return false;
             switch (Kind)
             {
-                case WclValueKind.String: return _stringValue == other._stringValue;
-                case WclValueKind.Int: return _intValue == other._intValue;
+                case WclValueKind.String:
+                case WclValueKind.Date:
+                case WclValueKind.Duration:
+                    return _stringValue == other._stringValue;
+                case WclValueKind.Int:
+                case WclValueKind.BigInt:
+                    return _intValue == other._intValue;
                 case WclValueKind.Float: return _floatValue == other._floatValue;
                 case WclValueKind.Bool: return _boolValue == other._boolValue;
                 case WclValueKind.Null: return true;
@@ -147,8 +168,13 @@ namespace Wcl.Eval
         {
             switch (Kind)
             {
-                case WclValueKind.String: return _stringValue!;
-                case WclValueKind.Int: return _intValue.ToString();
+                case WclValueKind.String:
+                case WclValueKind.Date:
+                case WclValueKind.Duration:
+                    return _stringValue!;
+                case WclValueKind.Int:
+                case WclValueKind.BigInt:
+                    return _intValue.ToString();
                 case WclValueKind.Float: return _floatValue.ToString(System.Globalization.CultureInfo.InvariantCulture);
                 case WclValueKind.Bool: return _boolValue ? "true" : "false";
                 case WclValueKind.Null: return "null";
