@@ -413,7 +413,8 @@ fn collect_in_body(
         BodyItem::Table(_)
         | BodyItem::Schema(_)
         | BodyItem::DecoratorSchema(_)
-        | BodyItem::SymbolSetDecl(_) => {}
+        | BodyItem::SymbolSetDecl(_)
+        | BodyItem::StructDef(_) => {}
     }
 }
 

@@ -378,6 +378,10 @@
           "named": true
         },
         {
+          "type": "struct_definition",
+          "named": true
+        },
+        {
           "type": "symbol_set_declaration",
           "named": true
         },
@@ -719,6 +723,10 @@
           "named": true
         },
         {
+          "type": "struct_definition",
+          "named": true
+        },
+        {
           "type": "symbol_set_declaration",
           "named": true
         },
@@ -894,6 +902,10 @@
           "named": true
         },
         {
+          "type": "struct_definition",
+          "named": true
+        },
+        {
           "type": "symbol_set_declaration",
           "named": true
         },
@@ -954,6 +966,10 @@
         },
         {
           "type": "schema",
+          "named": true
+        },
+        {
+          "type": "struct_definition",
           "named": true
         },
         {
@@ -1316,6 +1332,10 @@
           "named": true
         },
         {
+          "type": "struct_definition",
+          "named": true
+        },
+        {
           "type": "symbol_set_declaration",
           "named": true
         },
@@ -1384,6 +1404,10 @@
         },
         {
           "type": "schema",
+          "named": true
+        },
+        {
+          "type": "struct_definition",
           "named": true
         },
         {
@@ -1649,6 +1673,10 @@
         },
         {
           "type": "schema",
+          "named": true
+        },
+        {
+          "type": "struct_definition",
           "named": true
         },
         {
@@ -2554,6 +2582,33 @@
     }
   },
   {
+    "type": "struct_definition",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "decorator",
+          "named": true
+        },
+        {
+          "type": "schema_field",
+          "named": true
+        },
+        {
+          "type": "schema_variant",
+          "named": true
+        },
+        {
+          "type": "string_literal",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "symbol_set_declaration",
     "named": true,
     "fields": {
@@ -3352,6 +3407,10 @@
   {
     "type": "string_content",
     "named": true
+  },
+  {
+    "type": "struct",
+    "named": false
   },
   {
     "type": "symbol",

@@ -294,6 +294,8 @@ fn type_expr_to_string(te: &crate::lang::ast::TypeExpr) -> String {
             format!("union({})", parts.join(", "))
         }
         crate::lang::ast::TypeExpr::Symbol(_) => "symbol".into(),
+        crate::lang::ast::TypeExpr::StructType(ident, _) => ident.name.clone(),
+        crate::lang::ast::TypeExpr::Pattern(_) => "pattern".into(),
     }
 }
 

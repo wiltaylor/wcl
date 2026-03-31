@@ -219,12 +219,23 @@ impl Parser {
     fn parse_doc_item(&mut self) -> Option<DocItem> {
         let trivia = self.collect_trivia();
 
+        // Check for decorators before export (e.g. @stateful export let ...)
+        if matches!(self.peek_kind(), TokenKind::At) {
+            let saved_pos = self.pos;
+            let decorators = self.parse_decorators();
+            if matches!(self.peek_kind(), TokenKind::Export) {
+                return self.parse_export(decorators, trivia);
+            }
+            // Not export — restore position and fall through to normal dispatch
+            self.pos = saved_pos;
+        }
+
         match self.peek_kind() {
             TokenKind::Import => {
                 let imp = self.parse_import(trivia)?;
                 Some(DocItem::Import(imp))
             }
-            TokenKind::Export => self.parse_export(trivia),
+            TokenKind::Export => self.parse_export(vec![], trivia),
             TokenKind::Declare => {
                 let decl = self.parse_function_decl(trivia)?;
                 Some(DocItem::FunctionDecl(decl))
@@ -303,7 +314,7 @@ impl Parser {
         })
     }
 
-    fn parse_export(&mut self, trivia: Trivia) -> Option<DocItem> {
+    fn parse_export(&mut self, decorators: Vec<Decorator>, trivia: Trivia) -> Option<DocItem> {
         let start_span = self.current_span();
         self.advance(); // consume `export`
         self.skip_newlines();
@@ -321,6 +332,7 @@ impl Parser {
             let value = self.parse_expr()?;
             let span = start_span.merge(value.span());
             Some(DocItem::ExportLet(ExportLet {
+                decorators,
                 name,
                 value,
                 trivia,
@@ -377,18 +389,10 @@ impl Parser {
         self.skip_newlines();
 
         // Optional return type: `-> type`
-        let return_type = if self.at(&TokenKind::Minus) {
-            // peek ahead for `>`
-            let save_pos = self.pos;
-            self.advance(); // consume `-`
-            if self.at(&TokenKind::Gt) {
-                self.advance(); // consume `>`
-                self.skip_newlines();
-                Some(self.parse_type_expr()?)
-            } else {
-                self.pos = save_pos;
-                None
-            }
+        let return_type = if self.at(&TokenKind::Arrow) {
+            self.advance(); // consume `->`
+            self.skip_newlines();
+            Some(self.parse_type_expr()?)
         } else {
             None
         };
@@ -525,6 +529,15 @@ impl Parser {
                 let v = self.parse_validation(decorators, trivia)?;
                 Some(BodyItem::Validation(v))
             }
+            TokenKind::Struct => {
+                let s = self.parse_struct_def(decorators, trivia)?;
+                Some(BodyItem::StructDef(s))
+            }
+            // Transform-related keywords parse as regular blocks
+            TokenKind::Transform | TokenKind::Layout | TokenKind::Pipeline => {
+                let block = self.parse_block(decorators, trivia, false)?;
+                Some(BodyItem::Block(block))
+            }
             TokenKind::Ident(ref name) => {
                 let name = name.clone();
                 // Disambiguate: attribute (ident =), macro call (ident (), or block (ident ident/string/{)
@@ -535,7 +548,7 @@ impl Parser {
                 }
                 if i < self.tokens.len() {
                     match &self.tokens[i].kind {
-                        TokenKind::Equals => {
+                        TokenKind::Equals | TokenKind::PlusEquals => {
                             let attr = self.parse_attribute(decorators, trivia)?;
                             Some(BodyItem::Attribute(attr))
                         }
@@ -710,9 +723,14 @@ impl Parser {
         let start_span = self.current_span();
         let name = self.expect_ident().ok()?;
         self.skip_newlines();
-        if self.expect(&TokenKind::Equals).is_err() {
+        let assign_op = if self.at(&TokenKind::PlusEquals) {
+            self.advance();
+            AssignOp::AddAssign
+        } else if self.expect(&TokenKind::Equals).is_err() {
             return None;
-        }
+        } else {
+            AssignOp::Assign
+        };
         self.skip_newlines();
         let value = self.parse_expr()?;
         let span = start_span.merge(value.span());
@@ -720,6 +738,7 @@ impl Parser {
             decorators,
             name,
             value,
+            assign_op,
             trivia,
             span,
         })
@@ -740,7 +759,55 @@ impl Parser {
             self.skip_newlines();
         }
 
-        let kind = self.expect_ident().ok()?;
+        // Accept both plain identifiers and keyword tokens as block kind names
+        let kind = match self.peek_kind().clone() {
+            TokenKind::Ident(name) => {
+                let span = self.current_span();
+                self.advance();
+                Ident { name, span }
+            }
+            TokenKind::Transform => {
+                let span = self.current_span();
+                self.advance();
+                Ident {
+                    name: "transform".to_string(),
+                    span,
+                }
+            }
+            TokenKind::Layout => {
+                let span = self.current_span();
+                self.advance();
+                Ident {
+                    name: "layout".to_string(),
+                    span,
+                }
+            }
+            TokenKind::Pipeline => {
+                let span = self.current_span();
+                self.advance();
+                Ident {
+                    name: "pipeline".to_string(),
+                    span,
+                }
+            }
+            TokenKind::Stream => {
+                let span = self.current_span();
+                self.advance();
+                Ident {
+                    name: "stream".to_string(),
+                    span,
+                }
+            }
+            TokenKind::Codec => {
+                let span = self.current_span();
+                self.advance();
+                Ident {
+                    name: "codec".to_string(),
+                    span,
+                }
+            }
+            _ => self.expect_ident().ok()?,
+        };
         self.skip_newlines();
 
         let inline_id = self.parse_inline_id();
@@ -806,6 +873,7 @@ impl Parser {
             partial,
             kind,
             inline_id,
+            arrow_target: None,
             inline_args,
             body,
             text_content,
@@ -1406,6 +1474,61 @@ impl Parser {
             decorators,
             tag_value,
             fields,
+            trivia,
+            span,
+        })
+    }
+
+    /// Parse `[@decorator...] struct "name" { fields... [variant "value" { fields... }]... }`
+    fn parse_struct_def(
+        &mut self,
+        decorators: Vec<Decorator>,
+        trivia: Trivia,
+    ) -> Option<StructDef> {
+        let start_span = self.current_span();
+        self.advance(); // consume `struct`
+        self.skip_newlines();
+        let name = self.parse_string_lit()?;
+        self.skip_newlines();
+        if self.expect(&TokenKind::LBrace).is_err() {
+            return None;
+        }
+
+        let mut fields = Vec::new();
+        let mut variants = Vec::new();
+        loop {
+            let _trivia = self.collect_trivia();
+            if matches!(self.peek_kind(), TokenKind::RBrace | TokenKind::Eof) {
+                break;
+            }
+            // Check for decorators + variant keyword
+            let saved_pos = self.pos;
+            let decs = self.parse_decorators();
+            if matches!(self.peek_kind(), TokenKind::Ident(ref n) if n == "variant") {
+                if let Some(v) = self.parse_schema_variant(decs) {
+                    variants.push(v);
+                    continue;
+                }
+            }
+            // Not a variant — restore position and parse as field
+            self.pos = saved_pos;
+            if let Some(field) = self.parse_schema_field() {
+                fields.push(field);
+            } else {
+                break;
+            }
+        }
+
+        if self.expect(&TokenKind::RBrace).is_err() {
+            return None;
+        }
+
+        let span = start_span.merge(self.prev_span());
+        Some(StructDef {
+            decorators,
+            name,
+            fields,
+            variants,
             trivia,
             span,
         })

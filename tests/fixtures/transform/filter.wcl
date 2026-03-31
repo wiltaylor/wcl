@@ -1,0 +1,11 @@
+// Transform that filters and renames fields.
+transform filter-active {
+    input = "codec::json"
+    output = "codec::json"
+
+    @where(in.active == true)
+    map {
+        name   = in.name
+        status = "active"
+    }
+}

@@ -484,6 +484,11 @@ pub fn builtin_registry() -> HashMap<String, BuiltinFn> {
     m.insert("format".into(), wrap_builtin(fn_format));
     m.insert("regex_match".into(), wrap_builtin(regex_match));
     m.insert("regex_capture".into(), wrap_builtin(regex_capture));
+    m.insert("regex_replace".into(), wrap_builtin(regex_replace));
+    m.insert("regex_replace_all".into(), wrap_builtin(regex_replace_all));
+    m.insert("regex_split".into(), wrap_builtin(regex_split));
+    m.insert("regex_find".into(), wrap_builtin(regex_find));
+    m.insert("regex_find_all".into(), wrap_builtin(regex_find_all));
 
     // Math functions (Section 14.2)
     m.insert("abs".into(), wrap_builtin(abs));
@@ -818,10 +823,24 @@ fn fn_format(args: &[Value]) -> Result<Value, String> {
     Ok(Value::String(result))
 }
 
+/// Extract a regex pattern string from either a Value::String or Value::Pattern.
+fn get_pattern<'a>(v: &'a Value, pos: usize, fn_name: &str) -> Result<&'a str, String> {
+    match v {
+        Value::Pattern(s) => Ok(s.as_str()),
+        Value::String(s) => Ok(s.as_str()),
+        _ => Err(format!(
+            "{}: argument {} must be a pattern or string, got {}",
+            fn_name,
+            pos,
+            v.type_name()
+        )),
+    }
+}
+
 fn regex_match(args: &[Value]) -> Result<Value, String> {
     expect_args(args, 2, "regex_match")?;
     let s = get_string(&args[0], 1, "regex_match")?;
-    let pattern = get_string(&args[1], 2, "regex_match")?;
+    let pattern = get_pattern(&args[1], 2, "regex_match")?;
     let re =
         regex::Regex::new(pattern).map_err(|e| format!("regex_match: invalid pattern: {}", e))?;
     Ok(Value::Bool(re.is_match(s)))
@@ -830,7 +849,7 @@ fn regex_match(args: &[Value]) -> Result<Value, String> {
 fn regex_capture(args: &[Value]) -> Result<Value, String> {
     expect_args(args, 2, "regex_capture")?;
     let s = get_string(&args[0], 1, "regex_capture")?;
-    let pattern = get_string(&args[1], 2, "regex_capture")?;
+    let pattern = get_pattern(&args[1], 2, "regex_capture")?;
     let re =
         regex::Regex::new(pattern).map_err(|e| format!("regex_capture: invalid pattern: {}", e))?;
 
@@ -846,6 +865,61 @@ fn regex_capture(args: &[Value]) -> Result<Value, String> {
             .collect(),
     };
     Ok(Value::List(captures))
+}
+
+fn regex_replace(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 3, "regex_replace")?;
+    let s = get_string(&args[0], 1, "regex_replace")?;
+    let pattern = get_pattern(&args[1], 2, "regex_replace")?;
+    let replacement = get_string(&args[2], 3, "regex_replace")?;
+    let re =
+        regex::Regex::new(pattern).map_err(|e| format!("regex_replace: invalid pattern: {}", e))?;
+    Ok(Value::String(re.replace(s, replacement).into_owned()))
+}
+
+fn regex_replace_all(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 3, "regex_replace_all")?;
+    let s = get_string(&args[0], 1, "regex_replace_all")?;
+    let pattern = get_pattern(&args[1], 2, "regex_replace_all")?;
+    let replacement = get_string(&args[2], 3, "regex_replace_all")?;
+    let re = regex::Regex::new(pattern)
+        .map_err(|e| format!("regex_replace_all: invalid pattern: {}", e))?;
+    Ok(Value::String(re.replace_all(s, replacement).into_owned()))
+}
+
+fn regex_split(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 2, "regex_split")?;
+    let s = get_string(&args[0], 1, "regex_split")?;
+    let pattern = get_pattern(&args[1], 2, "regex_split")?;
+    let re =
+        regex::Regex::new(pattern).map_err(|e| format!("regex_split: invalid pattern: {}", e))?;
+    let parts: Vec<Value> = re.split(s).map(|p| Value::String(p.to_string())).collect();
+    Ok(Value::List(parts))
+}
+
+fn regex_find(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 2, "regex_find")?;
+    let s = get_string(&args[0], 1, "regex_find")?;
+    let pattern = get_pattern(&args[1], 2, "regex_find")?;
+    let re =
+        regex::Regex::new(pattern).map_err(|e| format!("regex_find: invalid pattern: {}", e))?;
+    match re.find(s) {
+        Some(m) => Ok(Value::String(m.as_str().to_string())),
+        None => Ok(Value::Null),
+    }
+}
+
+fn regex_find_all(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 2, "regex_find_all")?;
+    let s = get_string(&args[0], 1, "regex_find_all")?;
+    let pattern = get_pattern(&args[1], 2, "regex_find_all")?;
+    let re = regex::Regex::new(pattern)
+        .map_err(|e| format!("regex_find_all: invalid pattern: {}", e))?;
+    let matches: Vec<Value> = re
+        .find_iter(s)
+        .map(|m| Value::String(m.as_str().to_string()))
+        .collect();
+    Ok(Value::List(matches))
 }
 
 // ---------------------------------------------------------------------------
@@ -1803,6 +1877,55 @@ mod tests {
     fn test_regex_capture() {
         let result = regex_capture(&[s("2024-03-15"), s(r"(\d{4})-(\d{2})-(\d{2})")]).unwrap();
         assert_eq!(result, list(vec![s("2024"), s("03"), s("15")]));
+    }
+
+    #[test]
+    fn test_regex_match_with_pattern_value() {
+        assert_eq!(
+            regex_match(&[s("hello123"), Value::Pattern(r"\d+".into())]).unwrap(),
+            Value::Bool(true)
+        );
+    }
+
+    #[test]
+    fn test_regex_replace() {
+        assert_eq!(
+            regex_replace(&[s("hello world"), s(r"\s+"), s("-")]).unwrap(),
+            s("hello-world")
+        );
+    }
+
+    #[test]
+    fn test_regex_replace_all() {
+        assert_eq!(
+            regex_replace_all(&[s("a b c"), s(r"\s+"), s("-")]).unwrap(),
+            s("a-b-c")
+        );
+    }
+
+    #[test]
+    fn test_regex_split() {
+        assert_eq!(
+            regex_split(&[s("one:two::three"), s(r":+")]).unwrap(),
+            list(vec![s("one"), s("two"), s("three")])
+        );
+    }
+
+    #[test]
+    fn test_regex_find() {
+        assert_eq!(
+            regex_find(&[s("price: $42.50"), s(r"\d+\.\d+")]).unwrap(),
+            s("42.50")
+        );
+        assert_eq!(regex_find(&[s("none"), s(r"\d+")]).unwrap(), Value::Null);
+    }
+
+    #[test]
+    fn test_regex_find_all() {
+        assert_eq!(
+            regex_find_all(&[s("a1 b2 c3"), s(r"[a-z]\d")]).unwrap(),
+            list(vec![s("a1"), s("b2"), s("c3")])
+        );
     }
 
     // --- Math ---

@@ -1147,6 +1147,7 @@ pub(crate) fn value_type_label(value: &Value) -> &'static str {
         Value::Function(_) => "function",
         Value::Date(_) => "date",
         Value::Duration(_) => "duration",
+        Value::Pattern(_) => "pattern",
     }
 }
 
@@ -1531,6 +1532,7 @@ mod tests {
                     span: dummy_span(),
                 })
             }),
+            arrow_target: None,
             inline_args: vec![],
             body: vec![],
             text_content: text_content.map(|s| make_string_lit(s)),
@@ -1653,6 +1655,7 @@ mod tests {
             decorators: vec![],
             name: make_ident("content"),
             value: Expr::StringLit(make_string_lit("text")),
+            assign_op: crate::lang::ast::AssignOp::Assign,
             trivia: Trivia::default(),
             span: dummy_span(),
         }));

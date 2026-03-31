@@ -614,6 +614,7 @@ impl Evaluator {
             Expr::FloatLit(f, _) => Ok(Value::Float(*f)),
             Expr::DateLit(s, _) => Ok(Value::Date(s.clone())),
             Expr::DurationLit(s, _) => Ok(Value::Duration(s.clone())),
+            Expr::PatternLit(s, _) => Ok(Value::Pattern(s.clone())),
             Expr::BoolLit(b, _) => Ok(Value::Bool(*b)),
             Expr::NullLit(_) => Ok(Value::Null),
             Expr::StringLit(s) => self.eval_string_lit(s, scope_id),
@@ -670,6 +671,9 @@ impl Evaluator {
                 params: params.iter().map(|p| p.name.clone()).collect(),
                 body: FunctionBody::UserDefined(body.clone()),
                 closure_scope: Some(scope_id),
+                lambda_attrs: LambdaAttrs::default(),
+                param_types: vec![],
+                return_type: None,
             })),
             Expr::BlockExpr(lets, final_expr, _) => {
                 let block_scope = self.scopes.create_scope(ScopeKind::Lambda, Some(scope_id));
@@ -2723,6 +2727,9 @@ mod tests {
                         ds(),
                     ))),
                     closure_scope: Some(scope),
+                    lambda_attrs: crate::eval::value::LambdaAttrs::default(),
+                    param_types: vec![],
+                    return_type: None,
                 })),
                 span: ds(),
                 dependencies: Default::default(),
@@ -2773,6 +2780,7 @@ mod tests {
             decorators: vec![],
             name: mk_ident(name),
             value,
+            assign_op: crate::lang::ast::AssignOp::Assign,
             trivia: crate::lang::trivia::Trivia::empty(),
             span: ds(),
         })
@@ -2787,6 +2795,7 @@ mod tests {
                 value: id.to_string(),
                 span: ds(),
             })),
+            arrow_target: None,
             inline_args: vec![],
             body,
             text_content: None,
@@ -3343,6 +3352,7 @@ mod tests {
                 value: "my-doc".to_string(),
                 span: ds(),
             })),
+            arrow_target: None,
             inline_args: vec![],
             body: vec![],
             text_content: Some(StringLit {
@@ -3399,6 +3409,7 @@ mod tests {
                     value: "my-doc".to_string(),
                     span: ds(),
                 })),
+                arrow_target: None,
                 inline_args: vec![],
                 body: vec![],
                 text_content: Some(StringLit {

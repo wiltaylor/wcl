@@ -72,6 +72,7 @@ mod query;
 mod remove;
 mod set;
 mod table;
+mod transform;
 mod validate;
 mod vars;
 
@@ -227,6 +228,34 @@ enum Commands {
         #[command(flatten)]
         lib_args: LibraryArgs,
     },
+    /// Run data transformations
+    Transform {
+        #[command(subcommand)]
+        action: TransformAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum TransformAction {
+    /// Execute a transform
+    Run {
+        /// Transform name (block ID in the WCL file)
+        name: String,
+        /// WCL file containing the transform definition
+        #[arg(short, long)]
+        file: PathBuf,
+        /// Input data file (stdin if omitted)
+        #[arg(long)]
+        input: Option<PathBuf>,
+        /// Output data file (stdout if omitted)
+        #[arg(long)]
+        output: Option<PathBuf>,
+        /// Parameters (KEY=VALUE, may repeat)
+        #[arg(long = "param", value_name = "KEY=VALUE")]
+        params: Vec<String>,
+        #[command(flatten)]
+        lib_args: LibraryArgs,
+    },
 }
 
 #[derive(Subcommand)]
@@ -353,6 +382,23 @@ pub fn main() {
                 condition,
                 set,
             } => table::run_update(&file, &table_name, &condition, &set),
+        },
+        Commands::Transform { action } => match action {
+            TransformAction::Run {
+                name,
+                file,
+                input,
+                output,
+                params,
+                lib_args,
+            } => transform::run(
+                &name,
+                &file,
+                input.as_deref(),
+                output.as_deref(),
+                &params,
+                &lib_args,
+            ),
         },
     };
 

@@ -1,0 +1,9 @@
+// Example: Exported lambdas callable from host programs.
+
+export let double = x => x * 2
+
+export let greet = name => "Hello, ${name}!"
+
+export let add = (a, b) => a + b
+
+export let clamp = (value, lo, hi) => value < lo ? lo : (value > hi ? hi : value)

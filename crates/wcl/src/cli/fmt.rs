@@ -354,6 +354,48 @@ impl<'a> Formatter<'a> {
                 self.write_indent();
                 self.output.push_str("}\n");
             }
+            BodyItem::StructDef(s) => {
+                for dec in &s.decorators {
+                    self.format_decorator(dec);
+                }
+                self.write_indent();
+                self.output.push_str("struct ");
+                self.format_string_lit(&s.name);
+                self.output.push_str(" {\n");
+                self.indent += 1;
+                for field in &s.fields {
+                    self.write_indent();
+                    for dec in &field.decorators_before {
+                        self.format_decorator(dec);
+                    }
+                    self.output.push_str(&format!("{} : ", field.name.name));
+                    self.format_type_expr(&field.type_expr);
+                    for dec in &field.decorators_after {
+                        self.output.push(' ');
+                        self.format_decorator_inline(dec);
+                    }
+                    self.output.push('\n');
+                }
+                for variant in &s.variants {
+                    self.write_indent();
+                    self.output.push_str("variant ");
+                    self.format_string_lit(&variant.tag_value);
+                    self.output.push_str(" {\n");
+                    self.indent += 1;
+                    for field in &variant.fields {
+                        self.write_indent();
+                        self.output.push_str(&format!("{} : ", field.name.name));
+                        self.format_type_expr(&field.type_expr);
+                        self.output.push('\n');
+                    }
+                    self.indent -= 1;
+                    self.write_indent();
+                    self.output.push_str("}\n");
+                }
+                self.indent -= 1;
+                self.write_indent();
+                self.output.push_str("}\n");
+            }
         }
     }
 
@@ -664,6 +706,12 @@ impl<'a> Formatter<'a> {
             }
             TypeExpr::Symbol(_) => {
                 self.output.push_str("symbol");
+            }
+            TypeExpr::StructType(ident, _) => {
+                self.output.push_str(&ident.name);
+            }
+            TypeExpr::Pattern(_) => {
+                self.output.push_str("pattern");
             }
         }
     }

@@ -39,6 +39,7 @@ pub fn value_to_json(value: &Value) -> serde_json::Value {
         Value::Function(_) => serde_json::Value::Null,
         Value::Date(s) => json!(s),
         Value::Duration(s) => json!(s),
+        Value::Pattern(s) => json!(s),
     }
 }
 

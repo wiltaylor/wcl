@@ -53,6 +53,7 @@ fn make_attribute(name: &str, value: Expr) -> Attribute {
         decorators: vec![],
         name: make_ident(name),
         value,
+        assign_op: AssignOp::Assign,
         trivia: Trivia::default(),
         span: sp(),
     }
@@ -69,6 +70,7 @@ fn make_block(kind: &str, id: Option<&str>, partial: bool, body: Vec<BodyItem>) 
                 span: sp(),
             })
         }),
+        arrow_target: None,
         inline_args: vec![],
         body,
         text_content: None,

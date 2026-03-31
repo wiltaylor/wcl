@@ -195,7 +195,8 @@ fn body_item_symbol(item: &BodyItem, rope: &Rope) -> Option<DocumentSymbol> {
         | BodyItem::ForLoop(_)
         | BodyItem::Conditional(_)
         | BodyItem::DecoratorSchema(_)
-        | BodyItem::SymbolSetDecl(_) => None,
+        | BodyItem::SymbolSetDecl(_)
+        | BodyItem::StructDef(_) => None,
     }
 }
 

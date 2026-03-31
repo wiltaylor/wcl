@@ -1522,6 +1522,7 @@ mod tests {
 
         let span = Span::new(FileId(0), 0, 0);
         let el = ExportLet {
+            decorators: vec![],
             name: Ident {
                 name: "data".to_string(),
                 span,

@@ -8,6 +8,7 @@ pub mod eval;
 pub mod lang;
 pub mod schema;
 pub mod serde_impl;
+pub mod transform;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod cli;
@@ -32,8 +33,8 @@ pub use crate::eval::{
 pub use crate::schema::type_name;
 pub use crate::schema::{
     ChildConstraint, DecoratorSchemaRegistry, IdRegistry, ResolvedDecoratorSchema, ResolvedField,
-    ResolvedSchema, ResolvedVariant, SchemaRegistry, SymbolSetInfo, SymbolSetRegistry,
-    ValidateConstraints,
+    ResolvedSchema, ResolvedVariant, SchemaRegistry, StructRegistry, SymbolSetInfo,
+    SymbolSetRegistry, ValidateConstraints,
 };
 
 pub use crate::serde_impl::{
@@ -125,6 +126,8 @@ pub struct Document {
     pub decorator_schemas: DecoratorSchemaRegistry,
     /// Symbol set registry
     pub symbol_sets: SymbolSetRegistry,
+    /// Struct type registry
+    pub struct_registry: StructRegistry,
 }
 
 impl Document {
@@ -418,6 +421,107 @@ impl Document {
     pub fn errors(&self) -> Vec<&Diagnostic> {
         self.diagnostics.iter().filter(|d| d.is_error()).collect()
     }
+
+    /// List names of exported functions.
+    pub fn exported_function_names(&self) -> Vec<&str> {
+        self.values
+            .iter()
+            .filter_map(|(name, val)| {
+                if matches!(val, Value::Function(_)) {
+                    Some(name.as_str())
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    /// Call an exported function by name with the given arguments.
+    ///
+    /// The function must have been defined via `export let name = params => body`
+    /// in the WCL source.
+    pub fn call_function(&self, name: &str, args: &[Value]) -> Result<Value, String> {
+        let func_val = self
+            .values
+            .get(name)
+            .ok_or_else(|| format!("exported function '{}' not found", name))?;
+
+        let func = match func_val {
+            Value::Function(f) => f,
+            _ => {
+                return Err(format!(
+                    "'{}' is not a function, it's a {}",
+                    name,
+                    func_val.type_name()
+                ))
+            }
+        };
+
+        // Validate argument count
+        if args.len() != func.params.len() {
+            return Err(format!(
+                "function '{}' expects {} argument(s), got {}",
+                name,
+                func.params.len(),
+                args.len()
+            ));
+        }
+
+        // Create a temporary evaluator and evaluate the function body
+        let mut evaluator = crate::eval::evaluator::Evaluator::new();
+        let scope_id = evaluator
+            .scopes_mut()
+            .create_scope(crate::eval::scope::ScopeKind::Lambda, None);
+
+        // Bind parameters
+        for (i, param_name) in func.params.iter().enumerate() {
+            evaluator.scopes_mut().add_entry(
+                scope_id,
+                crate::eval::scope::ScopeEntry {
+                    name: param_name.clone(),
+                    kind: crate::eval::scope::ScopeEntryKind::LetBinding,
+                    value: Some(args[i].clone()),
+                    span: crate::lang::span::Span::dummy(),
+                    dependencies: std::collections::HashSet::new(),
+                    evaluated: true,
+                    read_count: 0,
+                },
+            );
+        }
+
+        // Evaluate the function body
+        match &func.body {
+            crate::eval::value::FunctionBody::UserDefined(expr) => evaluator
+                .eval_expr(expr, scope_id)
+                .map_err(|d| d.message.clone()),
+            crate::eval::value::FunctionBody::BlockExpr(lets, final_expr) => {
+                // Evaluate let bindings first
+                for (let_name, let_expr) in lets {
+                    let val = evaluator
+                        .eval_expr(let_expr, scope_id)
+                        .map_err(|d| d.message.clone())?;
+                    evaluator.scopes_mut().add_entry(
+                        scope_id,
+                        crate::eval::scope::ScopeEntry {
+                            name: let_name.clone(),
+                            kind: crate::eval::scope::ScopeEntryKind::LetBinding,
+                            value: Some(val),
+                            span: crate::lang::span::Span::dummy(),
+                            dependencies: std::collections::HashSet::new(),
+                            evaluated: true,
+                            read_count: 0,
+                        },
+                    );
+                }
+                evaluator
+                    .eval_expr(final_expr, scope_id)
+                    .map_err(|d| d.message.clone())
+            }
+            crate::eval::value::FunctionBody::Builtin(name) => {
+                Err(format!("cannot call builtin function '{}' directly", name))
+            }
+        }
+    }
 }
 
 /// Parse a WCL document from source text through the full pipeline.
@@ -691,6 +795,12 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
     );
     all_diagnostics.extend(diag_bag.into_diagnostics());
 
+    // Phase 9d: Collect struct definitions
+    let mut struct_registry = StructRegistry::new();
+    let mut struct_diag_bag = DiagnosticBag::new();
+    struct_registry.collect(&doc, &mut struct_diag_bag);
+    all_diagnostics.extend(struct_diag_bag.into_diagnostics());
+
     Document {
         ast: doc,
         values,
@@ -699,6 +809,7 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
         schemas,
         decorator_schemas,
         symbol_sets,
+        struct_registry,
     }
 }
 
@@ -3453,5 +3564,197 @@ endpoint e1 {
             "expected no errors but got: {:?}",
             error_diags(&doc.diagnostics)
         );
+    }
+
+    // ── Struct definition parsing ─────────────────────────────────────────
+
+    #[test]
+    fn test_parse_struct_def() {
+        let source = r#"
+            struct "Point" {
+                x : f64
+                y : f64
+            }
+        "#;
+        let (doc, diags) = crate::lang::parse(source, crate::lang::span::FileId(0));
+        let parse_errors: Vec<_> = diags
+            .into_diagnostics()
+            .into_iter()
+            .filter(|d| d.is_error())
+            .collect();
+        assert!(parse_errors.is_empty(), "parse errors: {:?}", parse_errors);
+        assert_eq!(doc.items.len(), 1);
+        if let ast::DocItem::Body(ast::BodyItem::StructDef(ref s)) = doc.items[0] {
+            // Check name is "Point"
+            assert_eq!(s.name.parts.len(), 1);
+            if let ast::StringPart::Literal(ref name) = s.name.parts[0] {
+                assert_eq!(name, "Point");
+            } else {
+                panic!("expected literal string part");
+            }
+            assert_eq!(s.fields.len(), 2);
+            assert_eq!(s.fields[0].name.name, "x");
+            assert_eq!(s.fields[1].name.name, "y");
+            assert!(s.variants.is_empty());
+        } else {
+            panic!("expected StructDef, got {:?}", doc.items[0]);
+        }
+    }
+
+    #[test]
+    fn test_parse_struct_with_variants() {
+        let source = r#"
+            @tagged("type")
+            struct "Section" {
+                type : u32
+                size : u64
+
+                variant "1" {
+                    data : list(u8)
+                }
+                variant "2" {
+                    name : string
+                }
+            }
+        "#;
+        let (doc, diags) = crate::lang::parse(source, crate::lang::span::FileId(0));
+        let parse_errors: Vec<_> = diags
+            .into_diagnostics()
+            .into_iter()
+            .filter(|d| d.is_error())
+            .collect();
+        assert!(parse_errors.is_empty(), "parse errors: {:?}", parse_errors);
+        if let ast::DocItem::Body(ast::BodyItem::StructDef(ref s)) = doc.items[0] {
+            assert_eq!(s.fields.len(), 2);
+            assert_eq!(s.variants.len(), 2);
+            assert!(s.decorators.len() == 1);
+            assert_eq!(s.decorators[0].name.name, "tagged");
+        } else {
+            panic!("expected StructDef");
+        }
+    }
+
+    #[test]
+    fn test_struct_type_in_schema() {
+        let source = r#"
+            struct "Point" {
+                x : f64
+                y : f64
+            }
+            schema "sprite" {
+                position : Point @required
+                name     : string @required
+            }
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        assert!(
+            !has_errors(&doc.diagnostics),
+            "errors: {:?}",
+            error_diags(&doc.diagnostics)
+        );
+    }
+
+    #[test]
+    fn test_pattern_type_in_schema() {
+        let source = r#"
+            schema "route" {
+                path : pattern @required
+                method : string @required
+            }
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        assert!(
+            !has_errors(&doc.diagnostics),
+            "errors: {:?}",
+            error_diags(&doc.diagnostics)
+        );
+    }
+
+    #[test]
+    fn test_plus_equals_attribute() {
+        let source = r#"
+            total += 1
+        "#;
+        let (doc, diags) = crate::lang::parse(source, crate::lang::span::FileId(0));
+        let parse_errors: Vec<_> = diags
+            .into_diagnostics()
+            .into_iter()
+            .filter(|d| d.is_error())
+            .collect();
+        assert!(parse_errors.is_empty(), "parse errors: {:?}", parse_errors);
+        if let ast::DocItem::Body(ast::BodyItem::Attribute(ref attr)) = doc.items[0] {
+            assert_eq!(attr.name.name, "total");
+            assert_eq!(attr.assign_op, ast::AssignOp::AddAssign);
+        } else {
+            panic!("expected Attribute with +=");
+        }
+    }
+
+    #[test]
+    fn test_call_exported_function() {
+        let source = r#"
+            export let double = x => x * 2
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        assert!(
+            !has_errors(&doc.diagnostics),
+            "errors: {:?}",
+            error_diags(&doc.diagnostics)
+        );
+
+        // Check that the function is listed
+        let fn_names = doc.exported_function_names();
+        assert!(
+            fn_names.contains(&"double"),
+            "expected 'double' in {:?}",
+            fn_names
+        );
+
+        // Call the function
+        let result = doc.call_function("double", &[Value::Int(21)]).unwrap();
+        assert_eq!(result, Value::Int(42));
+    }
+
+    #[test]
+    fn test_call_function_wrong_args() {
+        let source = r#"
+            export let add = (a, b) => a + b
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        let result = doc.call_function("add", &[Value::Int(1)]);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("expects 2 argument(s), got 1"));
+    }
+
+    #[test]
+    fn test_call_function_not_found() {
+        let source = r#"
+            name = "hello"
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        let result = doc.call_function("missing", &[]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_decorated_export_let() {
+        let source = r#"
+            @stateful
+            export let my_fn = x => x + 1
+        "#;
+        let (doc, diags) = crate::lang::parse(source, crate::lang::span::FileId(0));
+        let parse_errors: Vec<_> = diags
+            .into_diagnostics()
+            .into_iter()
+            .filter(|d| d.is_error())
+            .collect();
+        assert!(parse_errors.is_empty(), "parse errors: {:?}", parse_errors);
+        if let ast::DocItem::ExportLet(ref el) = doc.items[0] {
+            assert_eq!(el.decorators.len(), 1);
+            assert_eq!(el.decorators[0].name.name, "stateful");
+            assert_eq!(el.name.name, "my_fn");
+        } else {
+            panic!("expected ExportLet, got {:?}", doc.items[0]);
+        }
     }
 }

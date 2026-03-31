@@ -158,6 +158,7 @@ impl AstContext {
                 }
             }
             ast::BodyItem::SymbolSetDecl(_) => {}
+            ast::BodyItem::StructDef(_) => {}
         }
     }
 

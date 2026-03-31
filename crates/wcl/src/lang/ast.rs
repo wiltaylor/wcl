@@ -52,9 +52,10 @@ pub struct Import {
     pub span: Span,
 }
 
-/// `export let name = <expr>`
+/// `[@decorator...] export let name = <expr>`
 #[derive(Debug, Clone)]
 pub struct ExportLet {
+    pub decorators: Vec<Decorator>,
     pub name: Ident,
     pub value: Expr,
     pub trivia: Trivia,
@@ -105,6 +106,7 @@ pub enum BodyItem {
     Schema(Schema),
     DecoratorSchema(DecoratorSchema),
     SymbolSetDecl(SymbolSetDecl),
+    StructDef(StructDef),
 }
 
 // ===== Identifiers =====
@@ -148,8 +150,18 @@ pub struct Attribute {
     pub decorators: Vec<Decorator>,
     pub name: Ident,
     pub value: Expr,
+    pub assign_op: AssignOp,
     pub trivia: Trivia,
     pub span: Span,
+}
+
+/// The assignment operator used in an attribute.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AssignOp {
+    /// `=`
+    Assign,
+    /// `+=`
+    AddAssign,
 }
 
 // ===== Blocks =====
@@ -161,6 +173,8 @@ pub struct Block {
     pub partial: bool,
     pub kind: Ident,
     pub inline_id: Option<InlineId>,
+    /// For map x -> y { ... } syntax in transform blocks.
+    pub arrow_target: Option<Ident>,
     pub inline_args: Vec<Expr>,
     pub body: Vec<BodyItem>,
     pub text_content: Option<StringLit>,
@@ -289,6 +303,22 @@ pub struct SchemaField {
     pub span: Span,
 }
 
+// ===== Struct Definitions =====
+
+/// `[@decorator...] struct "name" { fields... [variant "value" { fields... }]... }`
+///
+/// Structs define value/data shapes (complementary to schemas which validate blocks).
+/// They can be used as types in schemas, other structs, function params, and type annotations.
+#[derive(Debug, Clone)]
+pub struct StructDef {
+    pub decorators: Vec<Decorator>,
+    pub name: StringLit,
+    pub fields: Vec<SchemaField>,
+    pub variants: Vec<SchemaVariant>,
+    pub trivia: Trivia,
+    pub span: Span,
+}
+
 // ===== Decorator Schemas =====
 
 /// `[@decorator...] decorator_schema "name" { target = [...] fields... }`
@@ -309,6 +339,7 @@ pub enum DecoratorTarget {
     Attribute,
     Table,
     Schema,
+    Let,
 }
 
 // ===== Symbol Sets =====
@@ -593,6 +624,10 @@ pub enum TypeExpr {
     Union(Vec<TypeExpr>, Span),
     /// `symbol`
     Symbol(Span),
+    /// Reference to a named struct type, e.g. `Point`, `PcapHeader`
+    StructType(Ident, Span),
+    /// `pattern` — a regex pattern value type
+    Pattern(Span),
 }
 
 impl TypeExpr {
@@ -623,7 +658,9 @@ impl TypeExpr {
             | TypeExpr::Set(_, s)
             | TypeExpr::Ref(_, s)
             | TypeExpr::Union(_, s)
-            | TypeExpr::Symbol(s) => *s,
+            | TypeExpr::Symbol(s)
+            | TypeExpr::StructType(_, s)
+            | TypeExpr::Pattern(s) => *s,
         }
     }
 }
@@ -684,6 +721,8 @@ pub enum Expr {
     DateLit(String, Span),
     /// Duration literal: `dur"P1Y2M3D"`
     DurationLit(String, Span),
+    /// Pattern literal: /regex/
+    PatternLit(String, Span),
 }
 
 impl Expr {
@@ -711,7 +750,8 @@ impl Expr {
             | Expr::Paren(_, s)
             | Expr::SymbolLit(_, s)
             | Expr::DateLit(_, s)
-            | Expr::DurationLit(_, s) => *s,
+            | Expr::DurationLit(_, s)
+            | Expr::PatternLit(_, s) => *s,
             Expr::StringLit(s) => s.span,
             Expr::Ident(i) => i.span,
             Expr::IdentifierLit(i) => i.span,
