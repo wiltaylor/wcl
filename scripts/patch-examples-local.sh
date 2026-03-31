@@ -22,16 +22,17 @@ sed -i "s|^# dependencies = \[\"pywcl>=.*\"\]|# dependencies = [\"pywcl @ file:/
 echo "  ✓ Python: patched to local source path"
 
 # ── Ruby ──
-# Replace rubygems version with local gem path
+# Replace rubygems version with local gem path and remove stale lockfile
 sed -i 's|^gem "wcl", ".*"|gem "wcl", path: "../../bindings/ruby"|' \
   "$REPO_ROOT/examples/ruby/Gemfile"
+rm -f "$REPO_ROOT/examples/ruby/Gemfile.lock"
 echo "  ✓ Ruby: patched to local gem path"
 
 # ── .NET ──
 # Replace NuGet version with local project reference
 DOTNET_PROJ="$REPO_ROOT/examples/dotnet/Example.csproj"
 if grep -q 'PackageReference Include="WclLang"' "$DOTNET_PROJ"; then
-  sed -i 's|<PackageReference Include="WclLang" Version=".*" />|<ProjectReference Include="../../bindings/dotnet/WclLang/WclLang.csproj" />|' \
+  sed -i 's|<PackageReference Include="WclLang" Version=".*" />|<ProjectReference Include="../../bindings/dotnet/src/Wcl/Wcl.csproj" />|' \
     "$DOTNET_PROJ"
   echo "  ✓ .NET: patched to local project reference"
 fi
