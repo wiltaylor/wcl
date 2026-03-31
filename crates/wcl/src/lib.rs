@@ -293,16 +293,19 @@ impl Document {
         });
         let mut attributes = indexmap::IndexMap::new();
 
-        // Evaluate inline_args into _args attribute
-        if !block.inline_args.is_empty() {
-            let evaluated_args: Vec<Value> = block
-                .inline_args
-                .iter()
-                .filter_map(|e| evaluator.eval_expr(e, scope).ok())
-                .collect();
-            if !evaluated_args.is_empty() {
-                attributes.insert("_args".to_string(), Value::List(evaluated_args));
-            }
+        // Prepend inline_id to args so @inline(0) captures it
+        let mut all_args: Vec<Value> = Vec::new();
+        if let Some(ref id_str) = id {
+            all_args.push(Value::Identifier(id_str.clone()));
+        }
+        let evaluated_args: Vec<Value> = block
+            .inline_args
+            .iter()
+            .filter_map(|e| evaluator.eval_expr(e, scope).ok())
+            .collect();
+        all_args.extend(evaluated_args);
+        if !all_args.is_empty() {
+            attributes.insert("_args".to_string(), Value::List(all_args));
         }
         for body_item in &block.body {
             if let ast::BodyItem::Attribute(attr) = body_item {
@@ -2613,6 +2616,7 @@ table services {
             assert_eq!(
                 br.get("_args"),
                 Some(&Value::List(vec![
+                    Value::Identifier("web".to_string()),
                     Value::Int(8080),
                     Value::String("prod".to_string()),
                 ]))
@@ -2630,8 +2634,9 @@ table services {
     fn inline_schema_maps_args_to_named_attributes() {
         let src = r#"
 schema "server" {
-    port: int @inline(0)
-    env: string @inline(1)
+    id: identifier @inline(0)
+    port: int @inline(1)
+    env: string @inline(2)
     host: string
 }
 server web 8080 "prod" {
@@ -2646,6 +2651,7 @@ server web 8080 "prod" {
             .find(|v| matches!(v, Value::BlockRef(br) if br.kind == "server"))
             .unwrap();
         if let Value::BlockRef(br) = val {
+            assert_eq!(br.get("id"), Some(&Value::Identifier("web".to_string())));
             assert_eq!(br.get("port"), Some(&Value::Int(8080)));
             assert_eq!(br.get("env"), Some(&Value::String("prod".to_string())));
             assert_eq!(
@@ -2663,7 +2669,7 @@ server web 8080 "prod" {
     fn inline_schema_partial_mapping_keeps_remaining_args() {
         let src = r#"
 schema "server" {
-    port: int @inline(0)
+    port: int @inline(1)
     host: string
 }
 server web 8080 "extra" {
@@ -2681,7 +2687,10 @@ server web 8080 "extra" {
             assert_eq!(br.get("port"), Some(&Value::Int(8080)));
             assert_eq!(
                 br.get("_args"),
-                Some(&Value::List(vec![Value::String("extra".to_string())]))
+                Some(&Value::List(vec![
+                    Value::Identifier("web".to_string()),
+                    Value::String("extra".to_string()),
+                ]))
             );
         } else {
             panic!("expected BlockRef, got {:?}", val);

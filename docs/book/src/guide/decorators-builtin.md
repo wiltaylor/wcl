@@ -387,17 +387,20 @@ schema "tag" {
 
 Maps the Nth positional inline argument (0-based) to a named schema field. Without `@inline`, inline args are collected into a synthetic `_args` list. With `@inline`, they map to proper named attributes.
 
+The block's inline identifier (if present) occupies index 0. Positional arguments following the identifier start at index 1.
+
 ```wcl
 schema "server" {
-    port: int    @inline(0)
-    env:  string @inline(1)
+    id:   identifier @inline(0)
+    port: int        @inline(1)
+    env:  string     @inline(2)
     host: string
 }
 
 server web 8080 "prod" {
     host = "localhost"
 }
-// Evaluates to: { port: 8080, env: "prod", host: "localhost" }
+// Evaluates to: { id: web, port: 8080, env: "prod", host: "localhost" }
 ```
 
 Any positional args not covered by an `@inline` mapping remain in `_args`. See [Blocks — Inline Arguments](blocks.md#inline-arguments) for full details.
