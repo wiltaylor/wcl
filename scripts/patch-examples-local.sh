@@ -22,15 +22,14 @@ sed -i "s|^# dependencies = \[\"pywcl>=.*\"\]|# dependencies = [\"pywcl @ file:/
 echo "  ✓ Python: patched to local source path"
 
 # ── Ruby ──
-# Build and install the local gem, then patch the Gemfile to accept any version.
-# This avoids Bundler path-source issues with the gemspec requiring the WASM file.
-(cd "$REPO_ROOT/bindings/ruby" && gem build wcl.gemspec -o /tmp/wcl-local.gem 2>/dev/null)
-gem install /tmp/wcl-local.gem --no-document 2>/dev/null || true
-sed -i 's|^gem "wcl", ".*"|gem "wcl"|' \
+# Use path: with an explicit version constraint that matches the dev version.
+# Bundler requires a version constraint to resolve pre-release versions.
+RUBY_DEV_VERSION=$(ruby -r "$REPO_ROOT/bindings/ruby/lib/wcl/version.rb" -e "puts Wcl::VERSION" 2>/dev/null || echo "0.0.0.dev0")
+sed -i "s|^gem \"wcl\", \".*\"|gem \"wcl\", \">= $RUBY_DEV_VERSION\", path: \"../../bindings/ruby\"|" \
   "$REPO_ROOT/examples/ruby/Gemfile"
 rm -f "$REPO_ROOT/examples/ruby/Gemfile.lock"
 rm -rf "$REPO_ROOT/examples/ruby/vendor"
-echo "  ✓ Ruby: installed local gem and patched Gemfile"
+echo "  ✓ Ruby: patched to local path (version $RUBY_DEV_VERSION)"
 
 # ── .NET ──
 # Replace NuGet version with local project reference
