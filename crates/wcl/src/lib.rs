@@ -3399,4 +3399,59 @@ symbol_set multi {
         assert!(doc.values.get("alice-svc").is_some(), "expected alice-svc");
         assert!(doc.values.get("bob-svc").is_some(), "expected bob-svc");
     }
+
+    #[test]
+    fn test_ref_decorator_parses() {
+        let source = r#"
+schema "endpoint" {
+    service_ref: string @ref("service")
+}
+
+service api { port = 8080 }
+
+endpoint e1 {
+    service_ref = "api"
+}
+"#;
+        let doc = parse(source, ParseOptions::default());
+        assert!(
+            !has_errors(&doc.diagnostics),
+            "expected no errors but got: {:?}",
+            error_diags(&doc.diagnostics)
+        );
+    }
+
+    #[test]
+    fn test_ref_across_import_no_false_e076() {
+        let mut fs = InMemoryFs::new();
+        fs.add_file(
+            std::path::PathBuf::from("/project/services.wcl"),
+            "service api { port = 8080 }",
+        );
+
+        let opts = ParseOptions {
+            root_dir: std::path::PathBuf::from("/project"),
+            fs: Some(Arc::new(fs)),
+            ..ParseOptions::default()
+        };
+
+        let source = r#"
+import "./services.wcl"
+
+schema "endpoint" {
+    service_ref: string @ref("service")
+}
+
+endpoint e1 {
+    service_ref = "api"
+}
+"#;
+
+        let doc = parse(source, opts);
+        assert!(
+            !has_errors(&doc.diagnostics),
+            "expected no errors but got: {:?}",
+            error_diags(&doc.diagnostics)
+        );
+    }
 }

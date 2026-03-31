@@ -628,6 +628,14 @@ impl Parser {
                     span,
                 }
             }
+            TokenKind::Ref => {
+                let span = self.current_span();
+                self.advance();
+                Ident {
+                    name: "ref".to_string(),
+                    span,
+                }
+            }
             _ => self.expect_ident().ok()?,
         };
         let args = if matches!(self.peek_kind(), TokenKind::LParen) {
