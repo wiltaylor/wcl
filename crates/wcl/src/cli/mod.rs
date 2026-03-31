@@ -1,6 +1,9 @@
 use clap::{Parser, Subcommand};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process;
+
+use crate::lang::diagnostic::{Diagnostic, Severity};
+use crate::lang::span::SourceMap;
 
 /// Shared library search path options
 #[derive(clap::Args, Clone, Debug, Default)]
@@ -17,6 +20,44 @@ impl LibraryArgs {
     pub fn apply(&self, opts: &mut crate::ParseOptions) {
         opts.lib_paths.clone_from(&self.lib_paths);
         opts.no_default_lib_paths = self.no_default_lib_paths;
+    }
+}
+
+/// Format a diagnostic with file location (line:col) when available.
+pub(crate) fn format_diagnostic(
+    diag: &Diagnostic,
+    source_map: &SourceMap,
+    fallback_path: &Path,
+) -> String {
+    let prefix = match diag.severity {
+        Severity::Error => "error",
+        Severity::Warning => "warning",
+        Severity::Info => "info",
+        Severity::Hint => "hint",
+    };
+
+    let code_part = match diag.code.as_deref() {
+        Some(c) => format!("[{}]", c),
+        None => String::new(),
+    };
+
+    let span = diag.span;
+    let is_dummy = span == crate::lang::span::Span::dummy();
+
+    if is_dummy {
+        format!("{}{}: {}", prefix, code_part, diag.message)
+    } else {
+        let (line, col) = source_map.line_col(span.file, span.start);
+        let file_path = source_map.get_file(span.file).path.as_str();
+        let display_path = if file_path.is_empty() || file_path == "<input>" {
+            fallback_path.display().to_string()
+        } else {
+            file_path.to_string()
+        };
+        format!(
+            "{}:{}:{}: {}{}: {}",
+            display_path, line, col, prefix, code_part, diag.message
+        )
     }
 }
 

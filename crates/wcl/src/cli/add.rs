@@ -5,12 +5,13 @@ pub fn run(file: &Path, block_spec: &str, _file_auto: bool) -> Result<(), String
         .map_err(|e| format!("cannot read {}: {}", file.display(), e))?;
 
     // Validate the existing document parses cleanly
-    let file_id = crate::lang::FileId(0);
+    let mut source_map = crate::lang::span::SourceMap::new();
+    let file_id = source_map.add_file(file.display().to_string(), source.clone());
     let (_, diags) = crate::lang::parse(&source, file_id);
     if diags.has_errors() {
         for d in diags.diagnostics() {
             if d.is_error() {
-                eprintln!("error: {}", d.message);
+                eprintln!("{}", super::format_diagnostic(d, &source_map, file));
             }
         }
         return Err(format!("parse errors in {}", file.display()));

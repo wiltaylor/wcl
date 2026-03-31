@@ -54,18 +54,7 @@ pub fn run(
         Ok(())
     } else {
         for diag in &doc.diagnostics {
-            let prefix = match diag.severity {
-                crate::Severity::Error => "error",
-                crate::Severity::Warning => "warning",
-                crate::Severity::Info => "info",
-                crate::Severity::Hint => "hint",
-            };
-            let code = diag.code.as_deref().unwrap_or("");
-            if code.is_empty() {
-                eprintln!("{}: {}", prefix, diag.message);
-            } else {
-                eprintln!("{}[{}]: {}", prefix, code, diag.message);
-            }
+            eprintln!("{}", super::format_diagnostic(diag, &doc.source_map, file));
         }
         Err(format!("{} error(s) found", errors.len()))
     }

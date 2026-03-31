@@ -31,7 +31,10 @@ pub fn run(
             let doc = crate::parse(&source, options);
             if doc.has_errors() {
                 for diag in doc.errors() {
-                    eprintln!("error [{}]: {}", wcl_file.display(), diag.message);
+                    eprintln!(
+                        "{}",
+                        super::format_diagnostic(diag, &doc.source_map, wcl_file)
+                    );
                 }
                 continue;
             }
@@ -93,7 +96,7 @@ pub fn run(
     let doc = crate::parse(&source, options);
     if doc.has_errors() {
         for diag in doc.errors() {
-            eprintln!("error: {}", diag.message);
+            eprintln!("{}", super::format_diagnostic(diag, &doc.source_map, file));
         }
         return Err("document has errors".to_string());
     }

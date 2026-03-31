@@ -85,12 +85,13 @@ pub fn run_insert(file: &Path, table_name: &str, values: &str) -> Result<(), Str
     let source = std::fs::read_to_string(file)
         .map_err(|e| format!("cannot read {}: {}", file.display(), e))?;
 
-    let file_id = crate::lang::FileId(0);
+    let mut source_map = crate::lang::span::SourceMap::new();
+    let file_id = source_map.add_file(file.display().to_string(), source.clone());
     let (doc, diags) = crate::lang::parse(&source, file_id);
     if diags.has_errors() {
         for d in diags.diagnostics() {
             if d.is_error() {
-                eprintln!("error: {}", d.message);
+                eprintln!("{}", super::format_diagnostic(d, &source_map, file));
             }
         }
         return Err(format!("parse errors in {}", file.display()));
@@ -157,12 +158,13 @@ pub fn run_remove(file: &Path, table_name: &str, condition: &str) -> Result<(), 
     let source = std::fs::read_to_string(file)
         .map_err(|e| format!("cannot read {}: {}", file.display(), e))?;
 
-    let file_id = crate::lang::FileId(0);
+    let mut source_map = crate::lang::span::SourceMap::new();
+    let file_id = source_map.add_file(file.display().to_string(), source.clone());
     let (doc, diags) = crate::lang::parse(&source, file_id);
     if diags.has_errors() {
         for d in diags.diagnostics() {
             if d.is_error() {
-                eprintln!("error: {}", d.message);
+                eprintln!("{}", super::format_diagnostic(d, &source_map, file));
             }
         }
         return Err(format!("parse errors in {}", file.display()));
@@ -220,12 +222,13 @@ pub fn run_update(
     let source = std::fs::read_to_string(file)
         .map_err(|e| format!("cannot read {}: {}", file.display(), e))?;
 
-    let file_id = crate::lang::FileId(0);
+    let mut source_map = crate::lang::span::SourceMap::new();
+    let file_id = source_map.add_file(file.display().to_string(), source.clone());
     let (doc, diags) = crate::lang::parse(&source, file_id);
     if diags.has_errors() {
         for d in diags.diagnostics() {
             if d.is_error() {
-                eprintln!("error: {}", d.message);
+                eprintln!("{}", super::format_diagnostic(d, &source_map, file));
             }
         }
         return Err(format!("parse errors in {}", file.display()));
