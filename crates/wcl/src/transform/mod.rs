@@ -70,7 +70,7 @@ pub struct TransformStats {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lang::ast::{Ident, StringLit, StringPart};
+    use crate::lang::ast::Ident;
     use crate::lang::span::Span;
 
     fn make_ident(name: &str) -> crate::lang::ast::Expr {
@@ -89,13 +89,6 @@ mod tests {
             },
             Span::dummy(),
         )
-    }
-
-    fn make_string(s: &str) -> crate::lang::ast::Expr {
-        crate::lang::ast::Expr::StringLit(StringLit {
-            parts: vec![StringPart::Literal(s.to_string())],
-            span: Span::dummy(),
-        })
     }
 
     #[test]

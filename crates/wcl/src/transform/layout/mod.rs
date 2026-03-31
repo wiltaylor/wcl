@@ -6,7 +6,7 @@
 use crate::eval::value::Value;
 use crate::schema::struct_registry::{ResolvedStruct, StructRegistry};
 use crate::transform::error::TransformError;
-use crate::transform::struct_parser::{self, EncodingConfig, Endianness, FieldEncoding};
+use crate::transform::struct_parser::{self, EncodingConfig, Endianness};
 use indexmap::IndexMap;
 
 /// A compiled layout section.
