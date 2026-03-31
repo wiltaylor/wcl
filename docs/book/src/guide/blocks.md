@@ -45,28 +45,29 @@ endpoint api true 3 { }
 service worker [1, 2, 3] { }
 ```
 
-Without a schema, inline args are collected into a synthetic `_args` list attribute:
+Without a schema, inline args (including the block's inline identifier) are collected into a synthetic `_args` list attribute:
 
 ```wcl
 server web 8080 "prod" {
   host = "localhost"
 }
-// Evaluates to: { _args: [8080, "prod"], host: "localhost" }
+// Evaluates to: { _args: [web, 8080, "prod"], host: "localhost" }
 ```
 
-With a schema, fields decorated with `@inline(N)` map positional args to named attributes:
+With a schema, fields decorated with `@inline(N)` map positional args to named attributes. The inline identifier occupies index 0, and additional arguments follow:
 
 ```wcl
 schema "server" {
-    port: int @inline(0)
-    env: string @inline(1)
+    id: identifier @inline(0)
+    port: int @inline(1)
+    env: string @inline(2)
     host: string
 }
 
 server web 8080 "prod" {
     host = "localhost"
 }
-// Evaluates to: { port: 8080, env: "prod", host: "localhost" }
+// Evaluates to: { id: web, port: 8080, env: "prod", host: "localhost" }
 ```
 
 Any args not mapped by `@inline` remain in `_args`.

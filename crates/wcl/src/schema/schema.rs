@@ -533,20 +533,16 @@ impl SchemaRegistry {
                     let has_attr = block.body.iter().any(|item| {
                         matches!(item, BodyItem::Attribute(attr) if attr.name.name == field.name)
                     });
-                    let is_id_field = field.name == "id";
-                    let has_id = block.inline_id.is_some();
                     // @text field is satisfied by text_content
                     let is_text_field = field.text && block.text_content.is_some();
-                    // @inline(N) field is satisfied by inline_args
+                    // @inline(N) field is satisfied by inline_args (+ inline_id at index 0)
+                    let effective_args_len =
+                        block.inline_args.len() + if block.inline_id.is_some() { 1 } else { 0 };
                     let is_inline_satisfied = field
                         .inline_index
-                        .is_some_and(|idx| idx < block.inline_args.len());
+                        .is_some_and(|idx| idx < effective_args_len);
 
-                    if !has_attr
-                        && (!is_id_field || !has_id)
-                        && !is_text_field
-                        && !is_inline_satisfied
-                    {
+                    if !has_attr && !is_text_field && !is_inline_satisfied {
                         diagnostics.error_with_code(
                             format!(
                                 "missing required field '{}' in block '{}'",
