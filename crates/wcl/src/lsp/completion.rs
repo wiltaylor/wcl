@@ -33,8 +33,20 @@ const KEYWORDS: &[&str] = &[
 /// Built-in WCL type names
 const TYPE_NAMES: &[&str] = &[
     "string",
-    "int",
-    "float",
+    "i8",
+    "u8",
+    "i16",
+    "u16",
+    "i32",
+    "u32",
+    "i64",
+    "u64",
+    "i128",
+    "u128",
+    "f32",
+    "f64",
+    "date",
+    "duration",
     "bool",
     "null",
     "identifier",
@@ -427,7 +439,9 @@ mod tests {
         let items = get_completions(source, source.len());
         let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
         assert!(labels.contains(&"string"));
-        assert!(labels.contains(&"int"));
+        assert!(labels.contains(&"i64"));
+        assert!(labels.contains(&"f64"));
+        assert!(labels.contains(&"date"));
         assert!(labels.contains(&"list"));
     }
 

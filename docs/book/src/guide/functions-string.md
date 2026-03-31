@@ -17,8 +17,8 @@ WCL's string functions operate on `string` values and return strings, booleans, 
 | `starts_with` | `starts_with(s: string, prefix: string) -> bool` | True if `s` starts with `prefix` |
 | `ends_with` | `ends_with(s: string, suffix: string) -> bool` | True if `s` ends with `suffix` |
 | `contains` | `contains(s: string, sub: string) -> bool` | True if `s` contains `sub` |
-| `length` | `length(s: string) -> int` | Number of characters (Unicode code points) |
-| `substr` | `substr(s: string, start: int, end: int) -> string` | Substring from `start` (inclusive) to `end` (exclusive) |
+| `length` | `length(s: string) -> i64` | Number of characters (Unicode code points) |
+| `substr` | `substr(s: string, start: i64, end: i64) -> string` | Substring from `start` (inclusive) to `end` (exclusive) |
 | `format` | `format(template: string, ...args) -> string` | Format string with `{}` placeholders |
 | `regex_match` | `regex_match(s: string, pattern: string) -> bool` | True if `s` matches the regex pattern |
 | `regex_capture` | `regex_capture(s: string, pattern: string) -> list` | List of capture groups from the first match |

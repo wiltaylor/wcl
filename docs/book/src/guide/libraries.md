@@ -46,10 +46,10 @@ Example library file:
 // ~/.local/share/wcl/lib/myapp.wcl
 
 schema "server_config" {
-    port: int
+    port: i64
     host: string @optional
     @validate(min = 1, max = 65535)
-    port: int
+    port: i64
 }
 
 declare transform(input: string) -> string
@@ -74,7 +74,7 @@ Create `.wcl` files manually and place them in the user library directory (`~/.l
 mkdir -p ~/.local/share/wcl/lib
 cat > ~/.local/share/wcl/lib/myapp.wcl << 'EOF'
 schema "config" {
-    port: int
+    port: i64
     host: string @optional
 }
 

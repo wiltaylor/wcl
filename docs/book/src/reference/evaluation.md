@@ -49,33 +49,35 @@ Equality is deep structural equality for lists and maps. Comparing values of dif
 
 | Operator | Types | Result |
 |----------|-------|--------|
-| `a < b` | `int`, `float`, `string` | `bool` |
-| `a > b` | `int`, `float`, `string` | `bool` |
-| `a <= b` | `int`, `float`, `string` | `bool` |
-| `a >= b` | `int`, `float`, `string` | `bool` |
+| `a < b` | `i64`, `f64`, `string`, `date`, `duration` | `bool` |
+| `a > b` | `i64`, `f64`, `string`, `date`, `duration` | `bool` |
+| `a <= b` | `i64`, `f64`, `string`, `date`, `duration` | `bool` |
+| `a >= b` | `i64`, `f64`, `string`, `date`, `duration` | `bool` |
 | `a =~ b` | `string`, `string` | `bool` |
 
 The `=~` operator matches the left operand against the right operand as a regular expression (RE2 syntax). Returns `true` if there is any match.
 
-Comparing across incompatible types (e.g., `int` with `string`) produces error E050.
+Comparing across incompatible types (e.g., `i64` with `string`) produces error E050.
 
 ## Arithmetic Operators
 
 | Operator | Types | Result | Notes |
 |----------|-------|--------|-------|
-| `a + b` | `int`, `int` | `int` | |
-| `a + b` | `float`, `float` | `float` | |
+| `a + b` | `i64`, `i64` | `i64` | Also works with other integer type pairs |
+| `a + b` | `f64`, `f64` | `f64` | Also works with `f32` pairs |
 | `a + b` | `string`, `string` | `string` | Concatenation |
 | `a + b` | `list`, `list` | `list` | Concatenation |
-| `a - b` | `int`, `int` | `int` | |
-| `a - b` | `float`, `float` | `float` | |
-| `a * b` | `int`, `int` | `int` | |
-| `a * b` | `float`, `float` | `float` | |
-| `a / b` | `int`, `int` | `int` | Integer division; error E051 if `b == 0` |
-| `a / b` | `float`, `float` | `float` | IEEE 754; `b == 0.0` produces infinity |
-| `a % b` | `int`, `int` | `int` | Remainder; error E051 if `b == 0` |
-| `-a` | `int` | `int` | Unary negation |
-| `-a` | `float` | `float` | Unary negation |
+| `a + b` | `date`, `duration` | `date` | Date offset |
+| `a - b` | `i64`, `i64` | `i64` | Also works with other integer type pairs |
+| `a - b` | `f64`, `f64` | `f64` | Also works with `f32` pairs |
+| `a - b` | `date`, `date` | `duration` | Date difference |
+| `a * b` | `i64`, `i64` | `i64` | Also works with other integer type pairs |
+| `a * b` | `f64`, `f64` | `f64` | Also works with `f32` pairs |
+| `a / b` | `i64`, `i64` | `i64` | Integer division; error E051 if `b == 0` |
+| `a / b` | `f64`, `f64` | `f64` | IEEE 754; `b == 0.0` produces infinity |
+| `a % b` | `i64`, `i64` | `i64` | Remainder; error E051 if `b == 0` |
+| `-a` | `i64` | `i64` | Unary negation (all signed integer types) |
+| `-a` | `f64` | `f64` | Unary negation (all float types) |
 
 ## Field Access and Indexing
 

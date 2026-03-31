@@ -6,7 +6,7 @@ WCL's collection functions work with lists and maps. They are pure — none muta
 
 | Function | Signature | Description |
 |---|---|---|
-| `len` | `len(coll: list\|map\|string) -> int` | Number of elements (or characters for strings) |
+| `len` | `len(coll: list\|map\|string) -> i64` | Number of elements (or characters for strings) |
 | `keys` | `keys(m: map) -> list` | Ordered list of a map's keys |
 | `values` | `values(m: map) -> list` | Ordered list of a map's values |
 | `flatten` | `flatten(list: list) -> list` | Recursively flatten nested lists one level |
@@ -15,8 +15,8 @@ WCL's collection functions work with lists and maps. They are pure — none muta
 | `sort` | `sort(list: list) -> list` | Sort in ascending order (strings lexicographic, numbers numeric) |
 | `reverse` | `reverse(list: list) -> list` | Reverse the order of a list |
 | `contains` | `contains(list: list, value) -> bool` | True if `value` is in the list |
-| `index_of` | `index_of(list: list, value) -> int` | Zero-based index of first occurrence, or -1 if not found |
-| `range` | `range(start: int, end: int) -> list` | List of integers from `start` (inclusive) to `end` (exclusive) |
+| `index_of` | `index_of(list: list, value) -> i64` | Zero-based index of first occurrence, or -1 if not found |
+| `range` | `range(start: i64, end: i64) -> list` | List of integers from `start` (inclusive) to `end` (exclusive) |
 | `zip` | `zip(a: list, b: list) -> list` | List of `[a_i, b_i]` pairs; length is the shorter of the two |
 
 ## Examples

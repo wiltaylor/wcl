@@ -601,8 +601,20 @@ impl<'a> Fmt<'a> {
     fn type_expr(&mut self, te: &TypeExpr) {
         match te {
             TypeExpr::String(_) => self.out.push_str("string"),
-            TypeExpr::Int(_) => self.out.push_str("int"),
-            TypeExpr::Float(_) => self.out.push_str("float"),
+            TypeExpr::I8(_) => self.out.push_str("i8"),
+            TypeExpr::U8(_) => self.out.push_str("u8"),
+            TypeExpr::I16(_) => self.out.push_str("i16"),
+            TypeExpr::U16(_) => self.out.push_str("u16"),
+            TypeExpr::I32(_) => self.out.push_str("i32"),
+            TypeExpr::U32(_) => self.out.push_str("u32"),
+            TypeExpr::I64(_) => self.out.push_str("i64"),
+            TypeExpr::U64(_) => self.out.push_str("u64"),
+            TypeExpr::I128(_) => self.out.push_str("i128"),
+            TypeExpr::U128(_) => self.out.push_str("u128"),
+            TypeExpr::F32(_) => self.out.push_str("f32"),
+            TypeExpr::F64(_) => self.out.push_str("f64"),
+            TypeExpr::Date(_) => self.out.push_str("date"),
+            TypeExpr::Duration(_) => self.out.push_str("duration"),
             TypeExpr::Bool(_) => self.out.push_str("bool"),
             TypeExpr::Null(_) => self.out.push_str("null"),
             TypeExpr::Identifier(_) => self.out.push_str("identifier"),
@@ -908,7 +920,7 @@ mod tests {
             params: vec![
                 MacroParam {
                     name: make_ident("x"),
-                    type_constraint: Some(TypeExpr::Int(dummy_span())),
+                    type_constraint: Some(TypeExpr::I64(dummy_span())),
                     default: None,
                     span: dummy_span(),
                 },
@@ -937,7 +949,7 @@ mod tests {
         let result = format_document(&doc);
         assert_eq!(
             result,
-            "macro my_macro(x: int, y = 42) {\n    value = x\n}\n\n"
+            "macro my_macro(x: i64, y = 42) {\n    value = x\n}\n\n"
         );
     }
 

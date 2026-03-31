@@ -76,8 +76,8 @@ WCL types map to Python types as follows:
 | WCL Type | Python Type |
 |----------|------------|
 | `string` | `str` |
-| `int` | `int` |
-| `float` | `float` |
+| `i64` | `int` |
+| `f64` | `float` |
 | `bool` | `bool` |
 | `null` | `None` |
 | `list` | `list` |
@@ -141,7 +141,7 @@ Tables evaluate to a list of row dicts. Each row is a dict mapping column names 
 doc = wcl.parse("""
     table users {
         name : string
-        age  : int
+        age  : i64
         | "alice" | 25 |
         | "bob"   | 30 |
     }
@@ -163,7 +163,7 @@ doc = wcl.parse("""
     service main {
         table config {
             key   : string
-            value : int
+            value : i64
             | "port" | 8080 |
         }
     }
@@ -310,7 +310,7 @@ doc = wcl.parse("""
     }
 
     schema "server" {
-        port: int
+        port: i64
     }
 """)
 
@@ -345,7 +345,7 @@ import wcl
 
 doc = wcl.parse("""
     schema "server" {
-        port: int
+        port: i64
         host: string @optional
     }
 

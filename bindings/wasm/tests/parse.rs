@@ -74,7 +74,7 @@ fn test_query_simple() {
 
 #[wasm_bindgen_test]
 fn test_table_parse() {
-    let source = r#"table users { name : string  age : int  | "Alice" | 30 | }"#;
+    let source = r#"table users { name : string  age : i64  | "Alice" | 30 | }"#;
     let result = wcl_wasm::parse(source, None).unwrap();
     let has_errors = js_sys::Reflect::get(&result, &JsValue::from_str("hasErrors")).unwrap();
     assert_eq!(has_errors.as_bool().unwrap(), false);

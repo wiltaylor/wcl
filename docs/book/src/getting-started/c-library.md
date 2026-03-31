@@ -348,7 +348,7 @@ The document collects all diagnostics from every pipeline phase. Each diagnostic
 
 ```c
 WclDocument *doc = wcl_ffi_parse(
-    "schema \"server\" { port: int }\n"
+    "schema \"server\" { port: i64 }\n"
     "server web { port = \"bad\" }\n",
     NULL
 );
@@ -385,7 +385,7 @@ All the examples above work identically in C++. The CMake target and compiler fl
 int main(void) {
     WclDocument *doc = wcl_ffi_parse(
         "schema \"server\" {\n"
-        "    port: int\n"
+        "    port: i64\n"
         "    host: string @optional\n"
         "}\n"
         "\n"

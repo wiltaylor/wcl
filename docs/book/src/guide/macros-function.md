@@ -24,10 +24,10 @@ Parameters with defaults are optional at the call site. Parameters without defau
 ```wcl
 macro service_endpoint(
     name:     string,
-    port:     int,
+    port:     i64,
     region:   string = "us-east-1",
     env:      string = "production",
-    replicas: int    = 1
+    replicas: i64    = 1
 ) {
     service name {
         port     = port
@@ -150,9 +150,9 @@ web_service("dashboard", 3000, "dash.example.com", tls = false)
 ```wcl
 macro service_endpoint(
     name:     string,
-    port:     int,
+    port:     i64,
     env:      string = "production",
-    replicas: int    = 1,
+    replicas: i64    = 1,
     region:   string = "us-east-1"
 ) {
     service name {

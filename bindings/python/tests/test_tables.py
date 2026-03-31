@@ -5,7 +5,7 @@ def test_table_inline_columns():
     doc = wcl.parse("""
         table users {
             name : string
-            age  : int
+            age  : i64
             | "Alice" | 30 |
             | "Bob"   | 25 |
         }
@@ -50,7 +50,7 @@ def test_table_type_mismatch_e071():
     doc = wcl.parse("""
         table users {
             name : string
-            port : int
+            port : i64
             | "web" | "bad" |
         }
     """)

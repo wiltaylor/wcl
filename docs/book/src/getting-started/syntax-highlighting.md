@@ -247,7 +247,7 @@ All highlighting definitions cover the same WCL syntax elements:
 | **Keywords** | `if`, `else`, `for`, `in`, `let`, `macro`, `schema`, `table`, `import`, `export` |
 | **Declaration keywords** | `declare`, `validation`, `decorator_schema`, `partial` |
 | **Transform keywords** | `inject`, `set`, `remove`, `when`, `check`, `message`, `target` |
-| **Built-in types** | `string`, `int`, `float`, `bool`, `any`, `identifier`, `list`, `map`, `set`, `union`, `ref` |
+| **Built-in types** | `string`, `i64`, `f64`, `bool`, `any`, `identifier`, `list`, `map`, `set`, `union`, `ref` |
 | **Built-in functions** | `query`, `has`, `import_table`, `import_raw` |
 | **Constants** | `true`, `false`, `null` |
 | **Numbers** | Integers, floats, hex (`0xFF`), octal (`0o77`), binary (`0b101`) |

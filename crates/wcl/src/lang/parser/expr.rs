@@ -150,6 +150,18 @@ impl Parser {
                 self.advance();
                 Some(Expr::FloatLit(n, span))
             }
+            TokenKind::DateLit(s) => {
+                let span = self.current_span();
+                let s = s.clone();
+                self.advance();
+                Some(Expr::DateLit(s, span))
+            }
+            TokenKind::DurationLit(s) => {
+                let span = self.current_span();
+                let s = s.clone();
+                self.advance();
+                Some(Expr::DurationLit(s, span))
+            }
             TokenKind::BoolLit(b) => {
                 let span = self.current_span();
                 self.advance();

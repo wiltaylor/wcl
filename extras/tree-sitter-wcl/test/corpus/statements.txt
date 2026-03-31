@@ -68,7 +68,7 @@ Schema
 ================
 
 schema "server" {
-  port: int
+  port: u16
   host: string @optional
 }
 

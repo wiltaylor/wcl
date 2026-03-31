@@ -45,7 +45,8 @@ attribute       = { decorator } IDENT "=" expression ;
 (* ===== Blocks ===== *)
 block           = { decorator } [ "partial" ] IDENT [ IDENTIFIER_LIT ]
                   { inline_arg } ( "{" body "}" | text_content ) ;
-inline_arg      = INT_LIT | FLOAT_LIT | STRING_LIT | BOOL_LIT | NULL_LIT
+inline_arg      = INT_LIT | FLOAT_LIT | DATE_LIT | DURATION_LIT
+                | STRING_LIT | BOOL_LIT | NULL_LIT
                 | symbol_lit | IDENT | list_literal ;
 text_content    = STRING_LIT | heredoc ;
 
@@ -118,8 +119,10 @@ validation      = { decorator } "validation" STRING_LIT "{"
                   "message" "=" expression "}" ;
 
 (* ===== Types ===== *)
-type_expr       = "string" | "int" | "float" | "bool" | "null"
-                | "identifier" | "symbol" | "any"
+type_expr       = "string" | "bool" | "null" | "identifier" | "symbol" | "any"
+                | "i8" | "u8" | "i16" | "u16" | "i32" | "u32"
+                | "i64" | "u64" | "i128" | "u128" | "f32" | "f64"
+                | "date" | "duration"
                 | "list" "(" type_expr ")"
                 | "map" "(" type_expr "," type_expr ")"
                 | "set" "(" type_expr ")"
@@ -139,7 +142,8 @@ multiplicative_expr = unary_expr { ( "*" | "/" | "%" ) unary_expr } ;
 unary_expr      = ( "!" | "-" ) unary_expr | postfix_expr ;
 postfix_expr    = primary_expr { ( "." IDENT | "[" expression "]"
                 | "(" [ arg_list ] ")" ) } ;
-primary_expr    = INT_LIT | FLOAT_LIT | STRING_LIT | BOOL_LIT | NULL_LIT
+primary_expr    = INT_LIT | FLOAT_LIT | DATE_LIT | DURATION_LIT
+                | STRING_LIT | BOOL_LIT | NULL_LIT
                 | IDENTIFIER_LIT | IDENT | symbol_lit
                 | list_literal | map_literal
                 | "(" expression ")"
@@ -194,6 +198,8 @@ INT_LIT         = digit { digit | "_" }
                 | "0b" bin_digit { bin_digit | "_" } ;
 FLOAT_LIT       = digit { digit } "." digit { digit }
                   [ ( "e" | "E" ) [ "+" | "-" ] digit { digit } ] ;
+DATE_LIT        = "d" '"' { any_char_except_dquote } '"' ;
+DURATION_LIT    = "dur" '"' { any_char_except_dquote } '"' ;
 BOOL_LIT        = "true" | "false" ;
 NULL_LIT        = "null" ;
 interpolation   = "${" expression "}" ;

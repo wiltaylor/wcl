@@ -26,7 +26,7 @@ class TestDiagnostics < Minitest::Test
 
   def test_diagnostic_code
     source = <<~WCL
-      schema "cfg" { port: int }
+      schema "cfg" { port: i64 }
       cfg { port = "bad" }
     WCL
     doc = Wcl.parse(source)

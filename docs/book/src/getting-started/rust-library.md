@@ -142,7 +142,7 @@ use wcl::eval::value::Value;
 let doc = parse(r#"
     table users {
         name : string
-        age  : int
+        age  : i64
         | "alice" | 25 |
         | "bob"   | 30 |
     }
@@ -287,8 +287,8 @@ opts.functions.functions.insert(
 // Optionally add a signature for LSP support (completions, signature help)
 opts.functions.signatures.push(FunctionSignature {
     name: "double".into(),
-    params: vec!["n: int".into()],
-    return_type: "int".into(),
+    params: vec!["n: i64".into()],
+    return_type: "i64".into(),
     doc: "Double a number".into(),
 });
 
@@ -384,7 +384,7 @@ let doc = parse(r#"
     }
 
     schema "server" {
-        port: int
+        port: i64
     }
 "#, ParseOptions::default());
 
@@ -406,7 +406,7 @@ use std::path::PathBuf;
 fn main() {
     let source = r#"
         schema "server" {
-            port: int
+            port: i64
             host: string @optional
         }
 

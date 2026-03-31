@@ -37,7 +37,7 @@ Marks a schema field as not required. If the field is absent from a block, no er
 
 ```wcl
 schema "service" {
-    debug_port: int    @optional
+    debug_port: u16    @optional
     log_level:  string @optional
 }
 ```
@@ -48,7 +48,7 @@ Marks a schema field as required. This is the default for all schema fields, but
 
 ```wcl
 schema "service" {
-    port:   int    @required
+    port:   u16    @required
     region: string @required
 }
 ```
@@ -60,7 +60,7 @@ Provides a fallback value when the field is absent from the block. A field with 
 ```wcl
 schema "service" {
     env:      string @default("production")
-    replicas: int    @default(1)
+    replicas: u32    @default(1)
     tls:      bool   @default(true)
 }
 ```
@@ -95,8 +95,8 @@ On an attribute:
 
 ```wcl
 schema "service" {
-    workers:  int @deprecated(message = "Use 'replicas' instead")
-    replicas: int @default(1)
+    workers:  u32 @deprecated(message = "Use 'replicas' instead")
+    replicas: u32 @default(1)
 }
 ```
 
@@ -108,19 +108,19 @@ Attaches value constraints to an attribute or schema field. Multiple constraint 
 
 ```wcl
 schema "endpoint" {
-    port:    int    @validate(min = 1, max = 65535)
+    port:    u16    @validate(min = 1, max = 65535)
     env:     string @validate(one_of = ["development", "staging", "production"])
     slug:    string @validate(pattern = "^[a-z0-9-]+$")
-    timeout: int    @validate(min = 1, max = 300, custom_msg = "timeout must be between 1 and 300 seconds")
+    timeout: u32    @validate(min = 1, max = 300, custom_msg = "timeout must be between 1 and 300 seconds")
 }
 ```
 
 | Argument     | Applies to  | Description                                     |
 |--------------|-------------|-------------------------------------------------|
-| `min`        | int, float  | Minimum value (inclusive)                       |
-| `max`        | int, float  | Maximum value (inclusive)                       |
-| `pattern`    | string      | Regular expression the value must fully match   |
-| `one_of`     | string, int | Value must be one of the given options          |
+| `min`        | numeric types | Minimum value (inclusive)                       |
+| `max`        | numeric types | Maximum value (inclusive)                       |
+| `pattern`    | string        | Regular expression the value must fully match   |
+| `one_of`     | string, numeric | Value must be one of the given options        |
 | `custom_msg` | any         | Custom message emitted on constraint violation  |
 
 ## @doc(text)
@@ -129,7 +129,7 @@ Attaches a documentation string to any declaration. Used by tooling and the lang
 
 ```wcl
 schema "service" {
-    port: int    @required @doc("The TCP port this service listens on.")
+    port: u16    @required @doc("The TCP port this service listens on.")
     env:  string @default("production") @doc("Deployment environment name.")
 }
 
@@ -145,8 +145,8 @@ Embeds a usage example directly inside a `decorator_schema` or `schema` declarat
 ```wcl
 decorator_schema "rate_limit" {
     target    = [attribute]
-    requests:  int
-    window_ms: int @default(1000)
+    requests:  u32
+    window_ms: u32 @default(1000)
 
     @example {
         calls_per_second = 100 @rate_limit(requests = 100, window_ms = 1000)
@@ -174,7 +174,7 @@ Enforces a naming convention on block IDs for a schema. Any block whose ID does 
 
 ```wcl
 schema "service" @id_pattern("svc-*") {
-    port: int
+    port: u16
 }
 
 service "svc-api" { port = 8080 }    // valid
@@ -392,7 +392,7 @@ The block's inline identifier (if present) occupies index 0. Positional argument
 ```wcl
 schema "server" {
     id:   identifier @inline(0)
-    port: int        @inline(1)
+    port: u16        @inline(1)
     env:  string     @inline(2)
     host: string
 }

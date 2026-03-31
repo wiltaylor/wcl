@@ -1041,7 +1041,7 @@ mod tests {
         let source = r#"
             table users {
                 name: string
-                port: int
+                port: i64
                 | "web" | 8080 |
                 | "api" | "bad" |
             }
@@ -1064,7 +1064,7 @@ mod tests {
         let source = r#"
             table users {
                 name: string
-                age: int
+                age: i64
                 | "Alice" | 30 |
                 | "Bob"   | 25 |
             }
@@ -1279,7 +1279,7 @@ mod tests {
     #[test]
     fn test_parse_function_decl() {
         let (doc, diags) = crate::lang::parse(
-            "declare my_fn(input: string, count: int) -> string",
+            "declare my_fn(input: string, count: i64) -> string",
             FileId(0),
         );
         let parse_errors: Vec<_> = diags
@@ -1989,7 +1989,7 @@ service main {
         let source = r#"
 table users {
     name : string
-    age : int
+    age : i64
     | "alice" | 25 |
     | "bob"   | 30 |
 }
@@ -2083,7 +2083,7 @@ table empty {
 let base = 100
 table config {
     key : string
-    value : int
+    value : i64
     | "port" | base + 80 |
     | "debug" | 0 |
 }
@@ -2113,7 +2113,7 @@ table config {
 table flags {
     key    : string
     active : bool
-    count  : int
+    count  : i64
     | "a" | true  | 10 |
     | "b" | false | 20 |
 }
@@ -2208,7 +2208,7 @@ name = "my-app"
         let source = r#"
 table prices {
     item  : string
-    price : float
+    price : f64
     | "apple"  | 1.50 |
     | "banana" | 0.75 |
 }
@@ -2392,7 +2392,7 @@ service main {
         let source = r#"
 table users {
     name : string
-    age  : int
+    age  : i64
     | "alice" | 25 |
     | "bob"   | 30 |
 }
@@ -2424,7 +2424,7 @@ table users {
         let source = r#"
 table users {
     name : string
-    age  : int
+    age  : i64
     | "alice" | 25 |
     | "bob"   | 30 |
 }
@@ -2447,7 +2447,7 @@ table users {
         let source = r#"
 table users {
     name : string
-    age  : int
+    age  : i64
     | "alice" | 25 |
     | "bob"   | 30 |
 }
@@ -2495,7 +2495,7 @@ service main {
         let source = r#"
 table users {
     name : string
-    age  : int
+    age  : i64
     | "alice" | 25 |
     | "bob"   | 30 |
     | "carol" | 20 |
@@ -2578,7 +2578,7 @@ let prefix = "svc"
 
 table services {
     name : string
-    port : int
+    port : i64
     | prefix + "-api"    | 8080 |
     | prefix + "-admin"  | 9090 |
 }
@@ -2635,7 +2635,7 @@ table services {
         let src = r#"
 schema "server" {
     id: identifier @inline(0)
-    port: int @inline(1)
+    port: i64 @inline(1)
     env: string @inline(2)
     host: string
 }
@@ -2669,7 +2669,7 @@ server web 8080 "prod" {
     fn inline_schema_partial_mapping_keeps_remaining_args() {
         let src = r#"
 schema "server" {
-    port: int @inline(1)
+    port: i64 @inline(1)
     host: string
 }
 server web 8080 "extra" {
@@ -2872,7 +2872,7 @@ symbol_set multi {
         );
         fs.add_file(
             std::path::PathBuf::from("/project/schemas/b.wcl"),
-            "schema \"b\" { port: int }",
+            "schema \"b\" { port: i64 }",
         );
         // non-wcl file should be filtered out
         fs.add_file(
@@ -2956,7 +2956,7 @@ symbol_set multi {
     #[test]
     fn test_has_schema_true() {
         let source = r#"
-            schema "service" { port: int }
+            schema "service" { port: i64 }
             found = has_schema("service")
         "#;
         let doc = parse(source, ParseOptions::default());

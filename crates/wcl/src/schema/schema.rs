@@ -1134,6 +1134,7 @@ pub(crate) fn value_type_label(value: &Value) -> &'static str {
     match value {
         Value::String(_) => "string",
         Value::Int(_) => "int",
+        Value::BigInt(_) => "bigint",
         Value::Float(_) => "float",
         Value::Bool(_) => "bool",
         Value::Null => "null",
@@ -1144,6 +1145,8 @@ pub(crate) fn value_type_label(value: &Value) -> &'static str {
         Value::Symbol(_) => "symbol",
         Value::BlockRef(_) => "block",
         Value::Function(_) => "function",
+        Value::Date(_) => "date",
+        Value::Duration(_) => "duration",
     }
 }
 
@@ -1586,7 +1589,7 @@ mod tests {
             "readme",
             vec![make_text_schema_field(
                 "content",
-                TypeExpr::Int(dummy_span()),
+                TypeExpr::I64(dummy_span()),
             )],
         );
         let doc = make_document(vec![DocItem::Body(BodyItem::Schema(schema))]);

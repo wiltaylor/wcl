@@ -578,7 +578,7 @@ mod tests {
     #[test]
     fn test_find_refs_schema_name() {
         let source =
-            "schema \"server\" {\n    port: int\n}\nserver web { port = 8080 }\nserver api { port = 9090 }";
+            "schema \"server\" {\n    port: i64\n}\nserver web { port = 8080 }\nserver api { port = 9090 }";
         // offset at the schema name "server" (inside the string literal)
         let offset = source.find("\"server\"").unwrap() + 1;
         let refs = get_refs(source, offset, true);
@@ -593,7 +593,7 @@ mod tests {
 
     #[test]
     fn test_find_refs_schema_excludes_declaration() {
-        let source = "schema \"server\" {\n    port: int\n}\nserver web { port = 8080 }";
+        let source = "schema \"server\" {\n    port: i64\n}\nserver web { port = 8080 }";
         let offset = source.find("\"server\"").unwrap() + 1;
         let refs = get_refs(source, offset, false);
         // Should find only the block kind, not the schema declaration

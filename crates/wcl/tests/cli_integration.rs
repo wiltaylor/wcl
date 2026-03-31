@@ -207,7 +207,7 @@ fn validate_with_external_schema_valid_config() {
     let schema = wcl_file(
         r#"
 schema "server" {
-    port: int
+    port: i64
     host: string
 }
 "#,
@@ -238,7 +238,7 @@ fn validate_with_external_schema_missing_required_field() {
     let schema = wcl_file(
         r#"
 schema "server" {
-    port: int
+    port: i64
     host: string
 }
 "#,
@@ -268,7 +268,7 @@ fn validate_with_external_schema_type_mismatch() {
     let schema = wcl_file(
         r#"
 schema "server" {
-    port: int
+    port: i64
     host: string
 }
 "#,

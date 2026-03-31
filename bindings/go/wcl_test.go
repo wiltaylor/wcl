@@ -295,7 +295,7 @@ func TestVariablesTypes(t *testing.T) {
 func TestTable(t *testing.T) {
 	src := `table users {
   name: string
-  age: int
+  age: i64
   | "Alice" | 30 |
   | "Bob"   | 25 |
 }`
@@ -459,7 +459,7 @@ for item in items {
 func TestForLoopOnTable(t *testing.T) {
 	src := `table users {
   name: string
-  age: int
+  age: i64
   | "Alice" | 30 |
   | "Bob"   | 25 |
 }

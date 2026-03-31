@@ -129,12 +129,12 @@ pub fn builtin_signatures() -> Vec<FunctionSignature> {
         FunctionSignature {
             name: "length".into(),
             params: vec!["s: string".into()],
-            return_type: "int".into(),
+            return_type: "i64".into(),
             doc: "String length".into(),
         },
         FunctionSignature {
             name: "substr".into(),
-            params: vec!["s: string".into(), "start: int".into(), "end: int".into()],
+            params: vec!["s: string".into(), "start: i64".into(), "end: i64".into()],
             return_type: "string".into(),
             doc: "Substring".into(),
         },
@@ -176,38 +176,38 @@ pub fn builtin_signatures() -> Vec<FunctionSignature> {
         },
         FunctionSignature {
             name: "floor".into(),
-            params: vec!["n: float".into()],
-            return_type: "int".into(),
+            params: vec!["n: f64".into()],
+            return_type: "i64".into(),
             doc: "Floor".into(),
         },
         FunctionSignature {
             name: "ceil".into(),
-            params: vec!["n: float".into()],
-            return_type: "int".into(),
+            params: vec!["n: f64".into()],
+            return_type: "i64".into(),
             doc: "Ceiling".into(),
         },
         FunctionSignature {
             name: "round".into(),
-            params: vec!["n: float".into()],
-            return_type: "int".into(),
+            params: vec!["n: f64".into()],
+            return_type: "i64".into(),
             doc: "Round".into(),
         },
         FunctionSignature {
             name: "sqrt".into(),
-            params: vec!["n: float".into()],
-            return_type: "float".into(),
+            params: vec!["n: f64".into()],
+            return_type: "f64".into(),
             doc: "Square root".into(),
         },
         FunctionSignature {
             name: "pow".into(),
-            params: vec!["base: float".into(), "exp: float".into()],
-            return_type: "float".into(),
+            params: vec!["base: f64".into(), "exp: f64".into()],
+            return_type: "f64".into(),
             doc: "Power".into(),
         },
         FunctionSignature {
             name: "len".into(),
             params: vec!["collection".into()],
-            return_type: "int".into(),
+            return_type: "i64".into(),
             doc: "Collection length".into(),
         },
         FunctionSignature {
@@ -255,13 +255,13 @@ pub fn builtin_signatures() -> Vec<FunctionSignature> {
         FunctionSignature {
             name: "index_of".into(),
             params: vec!["list: list".into(), "elem".into()],
-            return_type: "int".into(),
+            return_type: "i64".into(),
             doc: "Find element index".into(),
         },
         FunctionSignature {
             name: "range".into(),
-            params: vec!["start: int".into(), "end: int".into()],
-            return_type: "list(int)".into(),
+            params: vec!["start: i64".into(), "end: i64".into()],
+            return_type: "list(i64)".into(),
             doc: "Integer range".into(),
         },
         FunctionSignature {
@@ -309,7 +309,7 @@ pub fn builtin_signatures() -> Vec<FunctionSignature> {
         FunctionSignature {
             name: "avg".into(),
             params: vec!["list: list(number)".into()],
-            return_type: "float".into(),
+            return_type: "f64".into(),
             doc: "Average".into(),
         },
         FunctionSignature {
@@ -327,7 +327,7 @@ pub fn builtin_signatures() -> Vec<FunctionSignature> {
         FunctionSignature {
             name: "count".into(),
             params: vec!["list: list".into(), "fn: lambda".into()],
-            return_type: "int".into(),
+            return_type: "i64".into(),
             doc: "Count matching elements".into(),
         },
         FunctionSignature {
@@ -400,13 +400,13 @@ pub fn builtin_signatures() -> Vec<FunctionSignature> {
         FunctionSignature {
             name: "to_int".into(),
             params: vec!["value".into()],
-            return_type: "int".into(),
+            return_type: "i64".into(),
             doc: "Convert to int".into(),
         },
         FunctionSignature {
             name: "to_float".into(),
             params: vec!["value".into()],
-            return_type: "float".into(),
+            return_type: "f64".into(),
             doc: "Convert to float".into(),
         },
         FunctionSignature {
@@ -444,6 +444,18 @@ pub fn builtin_signatures() -> Vec<FunctionSignature> {
             params: vec!["name: string".into()],
             return_type: "bool".into(),
             doc: "Check if a schema is declared".into(),
+        },
+        FunctionSignature {
+            name: "date".into(),
+            params: vec!["s: string".into()],
+            return_type: "date".into(),
+            doc: "Parse ISO 8601 date (YYYY-MM-DD)".into(),
+        },
+        FunctionSignature {
+            name: "duration".into(),
+            params: vec!["s: string".into()],
+            return_type: "duration".into(),
+            doc: "Parse ISO 8601 duration (PnYnMnDTnHnMnS)".into(),
         },
     ]
 }
@@ -533,6 +545,10 @@ pub fn builtin_registry() -> HashMap<String, BuiltinFn> {
     m.insert("has".into(), wrap_builtin(fn_has));
     m.insert("has_decorator".into(), wrap_builtin(fn_has_decorator));
 
+    // Date/Duration constructors (Section 14.8)
+    m.insert("date".into(), wrap_builtin(fn_date));
+    m.insert("duration".into(), wrap_builtin(fn_duration));
+
     m
 }
 
@@ -581,6 +597,16 @@ fn get_string<'a>(v: &'a Value, pos: usize, fn_name: &str) -> Result<&'a str, St
 fn get_int(v: &Value, pos: usize, fn_name: &str) -> Result<i64, String> {
     match v {
         Value::Int(i) => Ok(*i),
+        Value::BigInt(i) => {
+            if *i > i64::MAX as i128 || *i < i64::MIN as i128 {
+                Err(format!(
+                    "{}: argument {} bigint value {} overflows i64",
+                    fn_name, pos, i
+                ))
+            } else {
+                Ok(*i as i64)
+            }
+        }
         other => Err(format!(
             "{}: argument {} must be int, got {}",
             fn_name,
@@ -602,10 +628,11 @@ fn get_list<'a>(v: &'a Value, pos: usize, fn_name: &str) -> Result<&'a [Value], 
     }
 }
 
-/// Coerce Int or Float to f64 for numeric operations.
+/// Coerce Int, BigInt, or Float to f64 for numeric operations.
 fn coerce_to_float(v: &Value, pos: usize, fn_name: &str) -> Result<f64, String> {
     match v {
         Value::Int(i) => Ok(*i as f64),
+        Value::BigInt(i) => Ok(*i as f64),
         Value::Float(f) => Ok(*f),
         other => Err(format!(
             "{}: argument {} must be int or float, got {}",
@@ -829,6 +856,7 @@ fn abs(args: &[Value]) -> Result<Value, String> {
     expect_args(args, 1, "abs")?;
     match &args[0] {
         Value::Int(i) => Ok(Value::Int(i.abs())),
+        Value::BigInt(i) => Ok(Value::BigInt(i.abs())),
         Value::Float(f) => Ok(Value::Float(f.abs())),
         other => Err(format!(
             "abs: argument must be int or float, got {}",
@@ -841,6 +869,9 @@ fn fn_min(args: &[Value]) -> Result<Value, String> {
     expect_args(args, 2, "min")?;
     match (&args[0], &args[1]) {
         (Value::Int(a), Value::Int(b)) => Ok(Value::Int(*a.min(b))),
+        (Value::BigInt(a), Value::BigInt(b)) => Ok(Value::BigInt(*a.min(b))),
+        (Value::Int(a), Value::BigInt(b)) => Ok(Value::BigInt((*a as i128).min(*b))),
+        (Value::BigInt(a), Value::Int(b)) => Ok(Value::BigInt((*a).min(*b as i128))),
         _ => {
             let a = coerce_to_float(&args[0], 1, "min")?;
             let b = coerce_to_float(&args[1], 2, "min")?;
@@ -853,6 +884,9 @@ fn fn_max(args: &[Value]) -> Result<Value, String> {
     expect_args(args, 2, "max")?;
     match (&args[0], &args[1]) {
         (Value::Int(a), Value::Int(b)) => Ok(Value::Int(*a.max(b))),
+        (Value::BigInt(a), Value::BigInt(b)) => Ok(Value::BigInt(*a.max(b))),
+        (Value::Int(a), Value::BigInt(b)) => Ok(Value::BigInt((*a as i128).max(*b))),
+        (Value::BigInt(a), Value::Int(b)) => Ok(Value::BigInt((*a).max(*b as i128))),
         _ => {
             let a = coerce_to_float(&args[0], 1, "max")?;
             let b = coerce_to_float(&args[1], 2, "max")?;
@@ -976,9 +1010,14 @@ fn value_cmp(a: &Value, b: &Value) -> Option<std::cmp::Ordering> {
     use std::cmp::Ordering;
     match (a, b) {
         (Value::Int(x), Value::Int(y)) => x.partial_cmp(y),
+        (Value::BigInt(x), Value::BigInt(y)) => x.partial_cmp(y),
+        (Value::Int(x), Value::BigInt(y)) => (*x as i128).partial_cmp(y),
+        (Value::BigInt(x), Value::Int(y)) => x.partial_cmp(&(*y as i128)),
         (Value::Float(x), Value::Float(y)) => x.partial_cmp(y),
         (Value::Int(x), Value::Float(y)) => (*x as f64).partial_cmp(y),
         (Value::Float(x), Value::Int(y)) => x.partial_cmp(&(*y as f64)),
+        (Value::BigInt(x), Value::Float(y)) => (*x as f64).partial_cmp(y),
+        (Value::Float(x), Value::BigInt(y)) => x.partial_cmp(&(*y as f64)),
         (Value::String(x), Value::String(y)) => Some(x.cmp(y)),
         (Value::Bool(x), Value::Bool(y)) => Some(x.cmp(y)),
         _ => Some(Ordering::Equal), // fallback: treat as equal for mixed types
@@ -1170,10 +1209,17 @@ fn sum(args: &[Value]) -> Result<Value, String> {
         return Ok(Value::Int(0));
     }
     let mut has_float = false;
+    let mut has_bigint = false;
     for v in list {
-        if matches!(v, Value::Float(_)) {
-            has_float = true;
-            break;
+        match v {
+            Value::Float(_) => {
+                has_float = true;
+                break;
+            }
+            Value::BigInt(_) => {
+                has_bigint = true;
+            }
+            _ => {}
         }
     }
     if has_float {
@@ -1182,6 +1228,22 @@ fn sum(args: &[Value]) -> Result<Value, String> {
             acc += coerce_to_float(v, i + 1, "sum")?;
         }
         Ok(Value::Float(acc))
+    } else if has_bigint {
+        let mut acc = 0i128;
+        for (i, v) in list.iter().enumerate() {
+            match v {
+                Value::Int(n) => acc += *n as i128,
+                Value::BigInt(n) => acc += n,
+                other => {
+                    return Err(format!(
+                        "sum: element {} must be int or float, got {}",
+                        i + 1,
+                        other.type_name()
+                    ))
+                }
+            }
+        }
+        Ok(Value::BigInt(acc))
     } else {
         let mut acc = 0i64;
         for (i, v) in list.iter().enumerate() {
@@ -1309,6 +1371,13 @@ fn to_int(args: &[Value]) -> Result<Value, String> {
     expect_args(args, 1, "to_int")?;
     match &args[0] {
         Value::Int(i) => Ok(Value::Int(*i)),
+        Value::BigInt(i) => {
+            if *i > i64::MAX as i128 || *i < i64::MIN as i128 {
+                Err(format!("to_int: bigint value {} overflows i64", i))
+            } else {
+                Ok(Value::Int(*i as i64))
+            }
+        }
         Value::Float(f) => Ok(Value::Int(*f as i64)),
         Value::Bool(b) => Ok(Value::Int(if *b { 1 } else { 0 })),
         Value::String(s) => s
@@ -1328,6 +1397,7 @@ fn to_float(args: &[Value]) -> Result<Value, String> {
     match &args[0] {
         Value::Float(f) => Ok(Value::Float(*f)),
         Value::Int(i) => Ok(Value::Float(*i as f64)),
+        Value::BigInt(i) => Ok(Value::Float(*i as f64)),
         Value::String(s) => s
             .trim()
             .parse::<f64>()
@@ -1406,6 +1476,154 @@ fn fn_has_decorator(args: &[Value]) -> Result<Value, String> {
     let deco_name = get_string(&args[1], 2, "has_decorator")?;
     let found = block_ref.decorators.iter().any(|d| d.name == deco_name);
     Ok(Value::Bool(found))
+}
+
+// ---------------------------------------------------------------------------
+// Section 14.8 — Date/Duration Constructors
+// ---------------------------------------------------------------------------
+
+/// Validate and construct an ISO 8601 date (YYYY-MM-DD).
+fn fn_date(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 1, "date")?;
+    let s = get_string(&args[0], 1, "date")?;
+    validate_iso_date(s)?;
+    Ok(Value::Date(s.to_string()))
+}
+
+/// Validate and construct an ISO 8601 duration (PnYnMnDTnHnMnS).
+fn fn_duration(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 1, "duration")?;
+    let s = get_string(&args[0], 1, "duration")?;
+    validate_iso_duration(s)?;
+    Ok(Value::Duration(s.to_string()))
+}
+
+fn validate_iso_date(s: &str) -> Result<(), String> {
+    let bytes = s.as_bytes();
+    // Expect exactly YYYY-MM-DD (10 chars)
+    if bytes.len() != 10 || bytes[4] != b'-' || bytes[7] != b'-' {
+        return Err(format!("date: invalid format {:?}, expected YYYY-MM-DD", s));
+    }
+    let year: u32 = s[0..4]
+        .parse()
+        .map_err(|_| format!("date: invalid year in {:?}", s))?;
+    let month: u32 = s[5..7]
+        .parse()
+        .map_err(|_| format!("date: invalid month in {:?}", s))?;
+    let day: u32 = s[8..10]
+        .parse()
+        .map_err(|_| format!("date: invalid day in {:?}", s))?;
+
+    if !(1..=9999).contains(&year) {
+        return Err(format!("date: year {} out of range 0001-9999", year));
+    }
+    if !(1..=12).contains(&month) {
+        return Err(format!("date: month {} out of range 01-12", month));
+    }
+    let max_day = match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 => {
+            if (year.is_multiple_of(4) && !year.is_multiple_of(100)) || year.is_multiple_of(400) {
+                29
+            } else {
+                28
+            }
+        }
+        _ => unreachable!(),
+    };
+    if !(1..=max_day).contains(&day) {
+        return Err(format!(
+            "date: day {} out of range for month {} (max {})",
+            day, month, max_day
+        ));
+    }
+    Ok(())
+}
+
+fn validate_iso_duration(s: &str) -> Result<(), String> {
+    if s.is_empty() || !s.starts_with('P') {
+        return Err(format!(
+            "duration: invalid format {:?}, must start with 'P'",
+            s
+        ));
+    }
+    let rest = &s[1..];
+    if rest.is_empty() {
+        return Err(format!(
+            "duration: empty duration {:?}, need at least one component",
+            s
+        ));
+    }
+
+    // Split on 'T' to separate date and time parts
+    let (date_part, time_part) = if let Some(t_pos) = rest.find('T') {
+        (&rest[..t_pos], Some(&rest[t_pos + 1..]))
+    } else {
+        (rest, None)
+    };
+
+    let mut found_any = false;
+
+    // Parse date components: nY, nM, nD
+    if !date_part.is_empty() {
+        let mut remaining = date_part;
+        for expected in ['Y', 'M', 'D'] {
+            if let Some(pos) = remaining.find(expected) {
+                let num_str = &remaining[..pos];
+                if num_str.is_empty() || num_str.parse::<f64>().is_err() {
+                    return Err(format!(
+                        "duration: invalid number before '{}' in {:?}",
+                        expected, s
+                    ));
+                }
+                found_any = true;
+                remaining = &remaining[pos + 1..];
+            }
+        }
+        if !remaining.is_empty() {
+            return Err(format!(
+                "duration: unexpected characters {:?} in date part of {:?}",
+                remaining, s
+            ));
+        }
+    }
+
+    // Parse time components: nH, nM, nS
+    if let Some(tp) = time_part {
+        if tp.is_empty() {
+            return Err(format!(
+                "duration: 'T' present but no time components in {:?}",
+                s
+            ));
+        }
+        let mut remaining = tp;
+        for expected in ['H', 'M', 'S'] {
+            if let Some(pos) = remaining.find(expected) {
+                let num_str = &remaining[..pos];
+                if num_str.is_empty() || num_str.parse::<f64>().is_err() {
+                    return Err(format!(
+                        "duration: invalid number before '{}' in {:?}",
+                        expected, s
+                    ));
+                }
+                found_any = true;
+                remaining = &remaining[pos + 1..];
+            }
+        }
+        if !remaining.is_empty() {
+            return Err(format!(
+                "duration: unexpected characters {:?} in time part of {:?}",
+                remaining, s
+            ));
+        }
+    }
+
+    if !found_any {
+        return Err(format!("duration: no valid components found in {:?}", s));
+    }
+
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -1931,6 +2149,8 @@ mod tests {
             "type_of",
             "has",
             "has_decorator",
+            "date",
+            "duration",
         ];
         for name in &expected {
             assert!(registry.contains_key(*name), "missing builtin: {}", name);
@@ -2163,5 +2383,132 @@ mod tests {
     #[test]
     fn test_has_decorator_wrong_arg_type() {
         assert!(fn_has_decorator(&[s("not a block"), s("deco")]).is_err());
+    }
+
+    // --- BigInt support ---
+
+    fn bi(v: i128) -> Value {
+        Value::BigInt(v)
+    }
+
+    #[test]
+    fn test_abs_bigint() {
+        assert_eq!(abs(&[bi(-100)]).unwrap(), bi(100));
+        assert_eq!(abs(&[bi(42)]).unwrap(), bi(42));
+    }
+
+    #[test]
+    fn test_min_max_bigint() {
+        assert_eq!(fn_min(&[bi(10), bi(20)]).unwrap(), bi(10));
+        assert_eq!(fn_max(&[bi(10), bi(20)]).unwrap(), bi(20));
+        // Mixed Int/BigInt promotion
+        assert_eq!(fn_min(&[i(5), bi(3)]).unwrap(), bi(3));
+        assert_eq!(fn_max(&[i(5), bi(3)]).unwrap(), bi(5));
+        assert_eq!(fn_min(&[bi(5), i(3)]).unwrap(), bi(3));
+        assert_eq!(fn_max(&[bi(5), i(3)]).unwrap(), bi(5));
+    }
+
+    #[test]
+    fn test_sum_bigint() {
+        assert_eq!(
+            sum(&[list(vec![bi(100), bi(200), bi(300)])]).unwrap(),
+            bi(600)
+        );
+        // Mixed Int and BigInt
+        assert_eq!(sum(&[list(vec![i(10), bi(20)])]).unwrap(), bi(30));
+    }
+
+    #[test]
+    fn test_avg_bigint() {
+        // BigInt values get coerced to f64 for avg
+        assert_eq!(avg(&[list(vec![bi(10), bi(20)])]).unwrap(), f(15.0));
+    }
+
+    #[test]
+    fn test_to_int_bigint() {
+        assert_eq!(to_int(&[bi(42)]).unwrap(), i(42));
+        // Overflow
+        assert!(to_int(&[bi(i64::MAX as i128 + 1)]).is_err());
+    }
+
+    #[test]
+    fn test_to_float_bigint() {
+        assert_eq!(to_float(&[bi(42)]).unwrap(), f(42.0));
+    }
+
+    #[test]
+    fn test_coerce_to_float_bigint() {
+        // Tested indirectly through sqrt/pow
+        assert_eq!(sqrt(&[bi(9)]).unwrap(), f(3.0));
+    }
+
+    // --- Date/Duration constructors ---
+
+    #[test]
+    fn test_date_valid() {
+        assert_eq!(
+            fn_date(&[s("2024-03-15")]).unwrap(),
+            Value::Date("2024-03-15".to_string())
+        );
+        assert_eq!(
+            fn_date(&[s("2000-02-29")]).unwrap(),
+            Value::Date("2000-02-29".to_string())
+        );
+    }
+
+    #[test]
+    fn test_date_invalid() {
+        assert!(fn_date(&[s("not-a-date")]).is_err());
+        assert!(fn_date(&[s("2024-13-01")]).is_err()); // invalid month
+        assert!(fn_date(&[s("2024-02-30")]).is_err()); // invalid day
+        assert!(fn_date(&[s("2023-02-29")]).is_err()); // not a leap year
+        assert!(fn_date(&[s("0000-01-01")]).is_err()); // year 0
+        assert!(fn_date(&[i(42)]).is_err()); // wrong type
+    }
+
+    #[test]
+    fn test_duration_valid() {
+        assert_eq!(
+            fn_duration(&[s("P1Y")]).unwrap(),
+            Value::Duration("P1Y".to_string())
+        );
+        assert_eq!(
+            fn_duration(&[s("P1Y2M3D")]).unwrap(),
+            Value::Duration("P1Y2M3D".to_string())
+        );
+        assert_eq!(
+            fn_duration(&[s("PT1H30M")]).unwrap(),
+            Value::Duration("PT1H30M".to_string())
+        );
+        assert_eq!(
+            fn_duration(&[s("P1Y2M3DT4H5M6S")]).unwrap(),
+            Value::Duration("P1Y2M3DT4H5M6S".to_string())
+        );
+        assert_eq!(
+            fn_duration(&[s("PT0.5S")]).unwrap(),
+            Value::Duration("PT0.5S".to_string())
+        );
+    }
+
+    #[test]
+    fn test_duration_invalid() {
+        assert!(fn_duration(&[s("not-a-duration")]).is_err());
+        assert!(fn_duration(&[s("P")]).is_err()); // empty
+        assert!(fn_duration(&[s("PT")]).is_err()); // T but no components
+        assert!(fn_duration(&[s("1Y")]).is_err()); // missing P
+        assert!(fn_duration(&[i(42)]).is_err()); // wrong type
+    }
+
+    #[test]
+    fn test_type_of_new_variants() {
+        assert_eq!(type_of(&[bi(42)]).unwrap(), s("bigint"));
+        assert_eq!(
+            type_of(&[Value::Date("2024-01-01".into())]).unwrap(),
+            s("date")
+        );
+        assert_eq!(
+            type_of(&[Value::Duration("P1D".into())]).unwrap(),
+            s("duration")
+        );
     }
 }

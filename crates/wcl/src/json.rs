@@ -8,6 +8,14 @@ pub fn value_to_json(value: &Value) -> serde_json::Value {
     match value {
         Value::String(s) => json!(s),
         Value::Int(i) => json!(i),
+        Value::BigInt(i) => {
+            // i128 may not fit in JSON number; serialize as string if too large
+            if *i >= i64::MIN as i128 && *i <= i64::MAX as i128 {
+                json!(*i as i64)
+            } else {
+                json!(i.to_string())
+            }
+        }
         Value::Float(f) => json!(f),
         Value::Bool(b) => json!(b),
         Value::Null => serde_json::Value::Null,
@@ -29,6 +37,8 @@ pub fn value_to_json(value: &Value) -> serde_json::Value {
         }
         Value::BlockRef(br) => block_ref_to_json(br),
         Value::Function(_) => serde_json::Value::Null,
+        Value::Date(s) => json!(s),
+        Value::Duration(s) => json!(s),
     }
 }
 

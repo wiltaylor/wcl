@@ -88,7 +88,7 @@ Custom functions are registered via `ParseOptions.functions` (a `FunctionRegistr
 Library files can include `declare` statements that describe functions provided by the host application:
 
 ```wcl
-declare my_fn(input: string, count: int) -> string
+declare my_fn(input: string, count: i64) -> string
 ```
 
 This serves two purposes:

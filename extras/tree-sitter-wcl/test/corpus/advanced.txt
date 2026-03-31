@@ -39,7 +39,7 @@ Table
 
 table endpoints {
   name: string
-  port: int
+  port: u16
   | "api"  | 8080 |
   | "web"  | 80   |
 }
@@ -95,7 +95,7 @@ Decorator schema
 
 decorator_schema "monitor" {
   target = [block, attribute]
-  interval: int
+  interval: u32
 }
 
 ---
@@ -199,7 +199,7 @@ Union type
 ================
 
 schema "config" {
-  value: union(string, int)
+  value: union(string, i64)
 }
 
 ---

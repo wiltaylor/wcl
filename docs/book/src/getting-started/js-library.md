@@ -140,7 +140,7 @@ Tables evaluate to an array of row objects. Each row is an object mapping column
 const doc = parse(`
   table users {
     name : string
-    age  : int
+    age  : i64
     | "alice" | 25 |
     | "bob"   | 30 |
   }
@@ -159,7 +159,7 @@ const doc = parse(`
   service main {
     table config {
       key   : string
-      value : int
+      value : i64
       | "port" | 8080 |
     }
   }
@@ -312,7 +312,7 @@ const doc = parse(`
   }
 
   schema "server" {
-    port: int
+    port: i64
   }
 `);
 
@@ -344,7 +344,7 @@ console.log(`Starting ${config.app_name} on port ${config.port}`);
 // Full document with validation
 const doc = parse(`
   schema "server" {
-    port: int
+    port: i64
     host: string @optional
   }
 

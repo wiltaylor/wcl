@@ -283,7 +283,7 @@ mod tests {
         let table = mk_table(
             vec![
                 mk_column("name", TypeExpr::String(ds())),
-                mk_column("port", TypeExpr::Int(ds())),
+                mk_column("port", TypeExpr::I64(ds())),
             ],
             vec![mk_row(vec![
                 mk_string_expr("web"),
@@ -299,7 +299,7 @@ mod tests {
     #[test]
     fn type_mismatch_in_table_cell() {
         let table = mk_table(
-            vec![mk_column("port", TypeExpr::Int(ds()))],
+            vec![mk_column("port", TypeExpr::I64(ds()))],
             vec![mk_row(vec![mk_string_expr("not_a_number")])],
         );
         let doc = mk_doc_with_table(table);
@@ -313,8 +313,8 @@ mod tests {
     fn wrong_cell_count_errors() {
         let table = mk_table(
             vec![
-                mk_column("a", TypeExpr::Int(ds())),
-                mk_column("b", TypeExpr::Int(ds())),
+                mk_column("a", TypeExpr::I64(ds())),
+                mk_column("b", TypeExpr::I64(ds())),
             ],
             vec![mk_row(vec![Expr::IntLit(1, ds())])], // only 1 cell for 2 columns
         );
@@ -326,7 +326,7 @@ mod tests {
 
     #[test]
     fn column_validate_constraint_enforced() {
-        let mut col = mk_column("port", TypeExpr::Int(ds()));
+        let mut col = mk_column("port", TypeExpr::I64(ds()));
         col.decorators.push(Decorator {
             name: mk_ident("validate"),
             args: vec![
@@ -352,7 +352,7 @@ mod tests {
     #[test]
     fn nested_table_in_block_validated() {
         let table = mk_table(
-            vec![mk_column("x", TypeExpr::Int(ds()))],
+            vec![mk_column("x", TypeExpr::I64(ds()))],
             vec![mk_row(vec![mk_string_expr("wrong")])],
         );
         let block = Block {
@@ -428,7 +428,7 @@ mod tests {
             vec![mk_table_index_decorator(vec!["name"], false)],
             vec![
                 mk_column("name", TypeExpr::String(ds())),
-                mk_column("port", TypeExpr::Int(ds())),
+                mk_column("port", TypeExpr::I64(ds())),
             ],
             vec![mk_row(vec![
                 mk_string_expr("web"),
@@ -496,7 +496,7 @@ mod tests {
             vec![mk_table_index_decorator(vec!["host", "port"], true)],
             vec![
                 mk_column("host", TypeExpr::String(ds())),
-                mk_column("port", TypeExpr::Int(ds())),
+                mk_column("port", TypeExpr::I64(ds())),
             ],
             vec![
                 mk_row(vec![mk_string_expr("web"), Expr::IntLit(80, ds())]),

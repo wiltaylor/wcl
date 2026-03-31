@@ -60,7 +60,7 @@ Library files can contain schemas, `declare` stubs for host-registered functions
 ```wcl
 // ~/.local/share/wcl/lib/myapp.wcl
 schema "server_config" {
-    port: int
+    port: i64
     host: string @optional
 }
 

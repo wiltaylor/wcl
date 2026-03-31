@@ -160,6 +160,21 @@ public final class JsonConvert {
                 for (int i = 0; i < items.size(); i++) parts[i] = wclValueToJson(items.get(i));
                 yield "{\"__type\":\"set\",\"items\":[" + String.join(",", parts) + "]}";
             }
+            case BIG_INT -> Long.toString(value.asBigInt());
+            case DATE -> {
+                try {
+                    yield MAPPER.writeValueAsString(value.asDate());
+                } catch (Exception e) {
+                    yield "\"\"";
+                }
+            }
+            case DURATION -> {
+                try {
+                    yield MAPPER.writeValueAsString(value.asDuration());
+                } catch (Exception e) {
+                    yield "\"\"";
+                }
+            }
             case BLOCK_REF -> blockRefToJson(value.asBlockRef());
         };
     }

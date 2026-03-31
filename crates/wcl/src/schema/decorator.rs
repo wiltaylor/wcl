@@ -116,14 +116,14 @@ impl DecoratorSchemaRegistry {
             params: vec![
                 DecoratorParam {
                     name: "min".to_string(),
-                    type_expr: TypeExpr::Float(Span::dummy()),
+                    type_expr: TypeExpr::F64(Span::dummy()),
                     required: false,
                     default: None,
                     span: Span::dummy(),
                 },
                 DecoratorParam {
                     name: "max".to_string(),
-                    type_expr: TypeExpr::Float(Span::dummy()),
+                    type_expr: TypeExpr::F64(Span::dummy()),
                     required: false,
                     default: None,
                     span: Span::dummy(),
@@ -250,7 +250,7 @@ impl DecoratorSchemaRegistry {
             targets: vec![DecoratorTarget::Block],
             params: vec![DecoratorParam {
                 name: "order".to_string(),
-                type_expr: TypeExpr::Int(Span::dummy()),
+                type_expr: TypeExpr::I64(Span::dummy()),
                 required: true,
                 default: None,
                 span: Span::dummy(),
@@ -285,21 +285,21 @@ impl DecoratorSchemaRegistry {
                 },
                 DecoratorParam {
                     name: "min".to_string(),
-                    type_expr: TypeExpr::Int(Span::dummy()),
+                    type_expr: TypeExpr::I64(Span::dummy()),
                     required: false,
                     default: None,
                     span: Span::dummy(),
                 },
                 DecoratorParam {
                     name: "max".to_string(),
-                    type_expr: TypeExpr::Int(Span::dummy()),
+                    type_expr: TypeExpr::I64(Span::dummy()),
                     required: false,
                     default: None,
                     span: Span::dummy(),
                 },
                 DecoratorParam {
                     name: "max_depth".to_string(),
-                    type_expr: TypeExpr::Int(Span::dummy()),
+                    type_expr: TypeExpr::I64(Span::dummy()),
                     required: false,
                     default: None,
                     span: Span::dummy(),

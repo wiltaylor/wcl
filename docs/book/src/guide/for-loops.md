@@ -133,7 +133,7 @@ Inline tables also work:
 ```wcl
 table ports {
     name : string
-    port : int
+    port : i64
     | "web"  | 8080 |
     | "api"  | 9090 |
 }

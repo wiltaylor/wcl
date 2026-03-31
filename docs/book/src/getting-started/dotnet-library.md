@@ -176,7 +176,7 @@ Tables evaluate to a list of row dictionaries. Each row is a `Dictionary<string,
 var doc = Wcl.Parse(@"
     table users {
         name : string
-        age  : int
+        age  : i64
         | ""alice"" | 25 |
         | ""bob""   | 30 |
     }
@@ -371,7 +371,7 @@ using var doc = WclParser.Parse(@"
     }
 
     schema ""server"" {
-        port: int
+        port: i64
     }
 ");
 
@@ -421,7 +421,7 @@ using Wcl.Eval;
 
 using var doc = WclParser.Parse(@"
     schema ""server"" {
-        port: int
+        port: i64
         host: string @optional
     }
 

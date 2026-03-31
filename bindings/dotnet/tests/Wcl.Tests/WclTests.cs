@@ -326,7 +326,7 @@ namespace Wcl.Tests
         {
             using var doc = WclParser.Parse(@"
                 table users {
-                    name: string  age: int
+                    name: string  age: i64
                     | ""Alice"" | 30 |
                     | ""Bob""   | 25 |
                 }
@@ -506,7 +506,7 @@ server web {
         {
             using var doc = WclParser.Parse(@"
 schema ""Server"" {
-    port: int
+    port: i64
     name: string
 }
 
@@ -515,7 +515,7 @@ server web : Server {
     name = ""web""
 }
             ");
-            // Should have errors — port should be int but got string
+            // Should have errors — port should be i64 but got string
             Assert.True(doc.HasErrors(), "expected schema validation errors");
 
             var errors = doc.Errors();
@@ -527,7 +527,7 @@ server web : Server {
         {
             using var doc = WclParser.Parse(@"
 schema ""Server"" {
-    port: int
+    port: i64
     name: string
 }
 

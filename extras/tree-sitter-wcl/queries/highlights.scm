@@ -89,6 +89,8 @@
 
 (integer_literal) @number
 (float_literal) @number.float
+(date_literal) @string.special
+(duration_literal) @string.special
 
 (string_literal) @string
 (string_content) @string

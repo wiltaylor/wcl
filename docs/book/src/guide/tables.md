@@ -18,7 +18,7 @@ The block contains two sections in order: column declarations followed by rows. 
 
 ## Column Declarations
 
-Each column is declared as `name : type`. The supported types are the same primitive types used elsewhere in WCL (`string`, `int`, `float`, `bool`).
+Each column is declared as `name : type`. The supported types are the same primitive types used elsewhere in WCL (`string`, `i64`, `f64`, `bool`).
 
 Columns accept the following decorators:
 
@@ -33,7 +33,7 @@ Columns accept the following decorators:
 table user_roles {
     username  : string  @doc("Login name")
     role      : string  @validate(one_of(["admin", "viewer", "editor"]))
-    max_items : int     @default(100)
+    max_items : i64     @default(100)
     api_key   : string  @sensitive
 
     | "alice" | "admin"  | 500 | "key-abc" |
@@ -56,7 +56,7 @@ let base_port = 8000
 
 table services {
     name : string
-    port : int
+    port : i64
 
     | "auth"    | base_port + 1 |
     | "gateway" | base_port + 2 |
@@ -96,7 +96,7 @@ You can apply an existing schema to a table instead of declaring columns inline.
 ```wcl
 schema "user_row" {
     name : string
-    age  : int
+    age  : i64
 }
 
 table users : user_row {
@@ -226,7 +226,7 @@ Tables are evaluated into a list of row maps. Each row becomes a map from column
 ```wcl
 table users {
     name : string
-    age  : int
+    age  : i64
     | "alice" | 25 |
     | "bob"   | 30 |
 }
@@ -248,7 +248,7 @@ let base = 100
 
 table config {
     key   : string
-    value : int
+    value : i64
     | "port"  | base + 80 |
     | "debug" | 0          |
 }

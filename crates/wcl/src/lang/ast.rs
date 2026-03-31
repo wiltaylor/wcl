@@ -545,10 +545,34 @@ pub struct Validation {
 pub enum TypeExpr {
     /// `string`
     String(Span),
-    /// `int`
-    Int(Span),
-    /// `float`
-    Float(Span),
+    /// `i8`
+    I8(Span),
+    /// `u8`
+    U8(Span),
+    /// `i16`
+    I16(Span),
+    /// `u16`
+    U16(Span),
+    /// `i32`
+    I32(Span),
+    /// `u32`
+    U32(Span),
+    /// `i64`
+    I64(Span),
+    /// `u64`
+    U64(Span),
+    /// `i128`
+    I128(Span),
+    /// `u128`
+    U128(Span),
+    /// `f32`
+    F32(Span),
+    /// `f64`
+    F64(Span),
+    /// `date` — ISO 8601 date
+    Date(Span),
+    /// `duration` — ISO 8601 duration
+    Duration(Span),
     /// `bool`
     Bool(Span),
     /// `null`
@@ -576,8 +600,20 @@ impl TypeExpr {
     pub fn span(&self) -> Span {
         match self {
             TypeExpr::String(s)
-            | TypeExpr::Int(s)
-            | TypeExpr::Float(s)
+            | TypeExpr::I8(s)
+            | TypeExpr::U8(s)
+            | TypeExpr::I16(s)
+            | TypeExpr::U16(s)
+            | TypeExpr::I32(s)
+            | TypeExpr::U32(s)
+            | TypeExpr::I64(s)
+            | TypeExpr::U64(s)
+            | TypeExpr::I128(s)
+            | TypeExpr::U128(s)
+            | TypeExpr::F32(s)
+            | TypeExpr::F64(s)
+            | TypeExpr::Date(s)
+            | TypeExpr::Duration(s)
             | TypeExpr::Bool(s)
             | TypeExpr::Null(s)
             | TypeExpr::Identifier(s)
@@ -644,6 +680,10 @@ pub enum Expr {
     ImportTable(ImportTableArgs, Span),
     /// Parenthesized expression — preserved for formatting fidelity
     Paren(Box<Expr>, Span),
+    /// Date literal: `d"2024-03-15"`
+    DateLit(String, Span),
+    /// Duration literal: `dur"P1Y2M3D"`
+    DurationLit(String, Span),
 }
 
 impl Expr {
@@ -669,7 +709,9 @@ impl Expr {
             | Expr::ImportRaw(_, s)
             | Expr::ImportTable(_, s)
             | Expr::Paren(_, s)
-            | Expr::SymbolLit(_, s) => *s,
+            | Expr::SymbolLit(_, s)
+            | Expr::DateLit(_, s)
+            | Expr::DurationLit(_, s) => *s,
             Expr::StringLit(s) => s.span,
             Expr::Ident(i) => i.span,
             Expr::IdentifierLit(i) => i.span,

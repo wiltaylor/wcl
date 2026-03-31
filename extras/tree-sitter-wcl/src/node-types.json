@@ -20,6 +20,14 @@
           "named": true
         },
         {
+          "type": "date_literal",
+          "named": true
+        },
+        {
+          "type": "duration_literal",
+          "named": true
+        },
+        {
           "type": "float_literal",
           "named": true
         },
@@ -128,6 +136,14 @@
         },
         {
           "type": "comparison_expression",
+          "named": true
+        },
+        {
+          "type": "date_literal",
+          "named": true
+        },
+        {
+          "type": "duration_literal",
           "named": true
         },
         {
@@ -426,6 +442,14 @@
           "named": true
         },
         {
+          "type": "date_literal",
+          "named": true
+        },
+        {
+          "type": "duration_literal",
+          "named": true
+        },
+        {
           "type": "float_literal",
           "named": true
         },
@@ -545,6 +569,14 @@
         },
         {
           "type": "comparison_expression",
+          "named": true
+        },
+        {
+          "type": "date_literal",
+          "named": true
+        },
+        {
+          "type": "duration_literal",
           "named": true
         },
         {
@@ -964,6 +996,14 @@
           "named": true
         },
         {
+          "type": "date_literal",
+          "named": true
+        },
+        {
+          "type": "duration_literal",
+          "named": true
+        },
+        {
           "type": "equality_expression",
           "named": true
         },
@@ -1095,6 +1135,14 @@
         },
         {
           "type": "comparison_expression",
+          "named": true
+        },
+        {
+          "type": "date_literal",
+          "named": true
+        },
+        {
+          "type": "duration_literal",
           "named": true
         },
         {
@@ -1469,6 +1517,14 @@
           "named": true
         },
         {
+          "type": "date_literal",
+          "named": true
+        },
+        {
+          "type": "duration_literal",
+          "named": true
+        },
+        {
           "type": "expression",
           "named": true
         },
@@ -1620,6 +1676,14 @@
       "types": [
         {
           "type": "boolean_literal",
+          "named": true
+        },
+        {
+          "type": "date_literal",
+          "named": true
+        },
+        {
+          "type": "duration_literal",
           "named": true
         },
         {
@@ -1872,6 +1936,14 @@
           "named": true
         },
         {
+          "type": "date_literal",
+          "named": true
+        },
+        {
+          "type": "duration_literal",
+          "named": true
+        },
+        {
           "type": "float_literal",
           "named": true
         },
@@ -1960,6 +2032,14 @@
         },
         {
           "type": "call_expression",
+          "named": true
+        },
+        {
+          "type": "date_literal",
+          "named": true
+        },
+        {
+          "type": "duration_literal",
           "named": true
         },
         {
@@ -2095,6 +2175,14 @@
         },
         {
           "type": "comparison_expression",
+          "named": true
+        },
+        {
+          "type": "date_literal",
+          "named": true
+        },
+        {
+          "type": "duration_literal",
           "named": true
         },
         {
@@ -2594,6 +2682,14 @@
           "named": true
         },
         {
+          "type": "date_literal",
+          "named": true
+        },
+        {
+          "type": "duration_literal",
+          "named": true
+        },
+        {
           "type": "equality_expression",
           "named": true
         },
@@ -2764,6 +2860,14 @@
         },
         {
           "type": "call_expression",
+          "named": true
+        },
+        {
+          "type": "date_literal",
+          "named": true
+        },
+        {
+          "type": "duration_literal",
           "named": true
         },
         {
@@ -3052,6 +3156,14 @@
     "named": false
   },
   {
+    "type": "date",
+    "named": false
+  },
+  {
+    "type": "date_literal",
+    "named": true
+  },
+  {
     "type": "declare",
     "named": false
   },
@@ -3063,6 +3175,14 @@
     "type": "doc_comment",
     "named": true,
     "extra": true
+  },
+  {
+    "type": "duration",
+    "named": false
+  },
+  {
+    "type": "duration_literal",
+    "named": true
   },
   {
     "type": "else",
@@ -3077,11 +3197,15 @@
     "named": false
   },
   {
-    "type": "false",
+    "type": "f32",
     "named": false
   },
   {
-    "type": "float",
+    "type": "f64",
+    "named": false
+  },
+  {
+    "type": "false",
     "named": false
   },
   {
@@ -3107,6 +3231,26 @@
   {
     "type": "heredoc_start",
     "named": true
+  },
+  {
+    "type": "i128",
+    "named": false
+  },
+  {
+    "type": "i16",
+    "named": false
+  },
+  {
+    "type": "i32",
+    "named": false
+  },
+  {
+    "type": "i64",
+    "named": false
+  },
+  {
+    "type": "i8",
+    "named": false
   },
   {
     "type": "identifier",
@@ -3142,10 +3286,6 @@
   },
   {
     "type": "inject",
-    "named": false
-  },
-  {
-    "type": "int",
     "named": false
   },
   {
@@ -3235,6 +3375,26 @@
   },
   {
     "type": "true",
+    "named": false
+  },
+  {
+    "type": "u128",
+    "named": false
+  },
+  {
+    "type": "u16",
+    "named": false
+  },
+  {
+    "type": "u32",
+    "named": false
+  },
+  {
+    "type": "u64",
+    "named": false
+  },
+  {
+    "type": "u8",
     "named": false
   },
   {

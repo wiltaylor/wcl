@@ -83,6 +83,8 @@ export default grammar({
       choice(
         $.integer_literal,
         $.float_literal,
+        $.date_literal,
+        $.duration_literal,
         $.string_literal,
         $.boolean_literal,
         $.null_literal,
@@ -318,7 +320,9 @@ export default grammar({
       ),
 
     builtin_type: ($) =>
-      choice("string", "int", "float", "bool", "null", "identifier", "any", "symbol"),
+      choice("string", "bool", "null", "identifier", "any", "symbol",
+             "i8", "u8", "i16", "u16", "i32", "u32", "i64", "u64",
+             "i128", "u128", "f32", "f64", "date", "duration"),
 
     list_type: ($) => seq("list", "(", $.type_expression, ")"),
     map_type: ($) =>
@@ -438,6 +442,8 @@ export default grammar({
       choice(
         $.integer_literal,
         $.float_literal,
+        $.date_literal,
+        $.duration_literal,
         $.string_literal,
         $.heredoc_literal,
         $.boolean_literal,
@@ -533,6 +539,10 @@ export default grammar({
 
     float_literal: ($) =>
       token(/[0-9][0-9_]*\.[0-9][0-9_]*([eE][+-]?[0-9]+)?/),
+
+    date_literal: ($) => token(seq("d", token.immediate(/"[^"]*"/))),
+
+    duration_literal: ($) => token(seq("dur", token.immediate(/"[^"]*"/))),
 
     string_literal: ($) =>
       seq('"', repeat(choice($.interpolation, $.escape_sequence, $.string_content)), '"'),

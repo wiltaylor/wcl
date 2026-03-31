@@ -53,8 +53,8 @@ server web {
 
 schema "server" {
     host    : string
-    port    : int
-    workers : int
+    port    : i64
+    workers : i64
 }
 ```
 
@@ -69,11 +69,11 @@ wcl validate hello.wcl
 If the configuration is valid, the command exits with code 0 and no output. If there is a type mismatch or a missing required field, you will see a diagnostic:
 
 ```
-error[E071]: type mismatch for field `port`: expected int, got string
+error[E071]: type mismatch for field `port`: expected i64, got string
   --> hello.wcl:3:12
    |
  3 |     port = "3000"
-   |            ^^^^^^ expected int
+   |            ^^^^^^ expected i64
 ```
 
 ## JSON Output with a Schema

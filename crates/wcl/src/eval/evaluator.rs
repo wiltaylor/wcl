@@ -612,6 +612,8 @@ impl Evaluator {
         match expr {
             Expr::IntLit(i, _) => Ok(Value::Int(*i)),
             Expr::FloatLit(f, _) => Ok(Value::Float(*f)),
+            Expr::DateLit(s, _) => Ok(Value::Date(s.clone())),
+            Expr::DurationLit(s, _) => Ok(Value::Duration(s.clone())),
             Expr::BoolLit(b, _) => Ok(Value::Bool(*b)),
             Expr::NullLit(_) => Ok(Value::Null),
             Expr::StringLit(s) => self.eval_string_lit(s, scope_id),
@@ -866,8 +868,12 @@ impl Evaluator {
 
         match op {
             BinOp::Add => self.eval_add(&l, &r, span),
-            BinOp::Sub => self.eval_arithmetic(&l, &r, span, |a, b| a - b, |a, b| a - b),
-            BinOp::Mul => self.eval_arithmetic(&l, &r, span, |a, b| a * b, |a, b| a * b),
+            BinOp::Sub => {
+                self.eval_arithmetic(&l, &r, span, |a, b| a - b, |a, b| a - b, |a, b| a - b)
+            }
+            BinOp::Mul => {
+                self.eval_arithmetic(&l, &r, span, |a, b| a * b, |a, b| a * b, |a, b| a * b)
+            }
             BinOp::Div => self.eval_div(&l, &r, span),
             BinOp::Mod => self.eval_mod(&l, &r, span),
             BinOp::Eq => Ok(Value::Bool(l == r)),
@@ -883,9 +889,14 @@ impl Evaluator {
     fn eval_add(&self, l: &Value, r: &Value, span: Span) -> Result<Value, Diagnostic> {
         match (l, r) {
             (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a + b)),
+            (Value::BigInt(a), Value::BigInt(b)) => Ok(Value::BigInt(a + b)),
+            (Value::Int(a), Value::BigInt(b)) => Ok(Value::BigInt(*a as i128 + b)),
+            (Value::BigInt(a), Value::Int(b)) => Ok(Value::BigInt(a + *b as i128)),
             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a + b)),
             (Value::Int(a), Value::Float(b)) => Ok(Value::Float(*a as f64 + b)),
             (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a + *b as f64)),
+            (Value::BigInt(a), Value::Float(b)) => Ok(Value::Float(*a as f64 + b)),
+            (Value::Float(a), Value::BigInt(b)) => Ok(Value::Float(a + *b as f64)),
             (Value::String(a), Value::String(b)) => Ok(Value::String(format!("{}{}", a, b))),
             _ => Err(Diagnostic::error(
                 format!("cannot add {} and {}", l.type_name(), r.type_name()),
@@ -902,12 +913,18 @@ impl Evaluator {
         span: Span,
         int_op: impl Fn(i64, i64) -> i64,
         float_op: impl Fn(f64, f64) -> f64,
+        bigint_op: impl Fn(i128, i128) -> i128,
     ) -> Result<Value, Diagnostic> {
         match (l, r) {
             (Value::Int(a), Value::Int(b)) => Ok(Value::Int(int_op(*a, *b))),
+            (Value::BigInt(a), Value::BigInt(b)) => Ok(Value::BigInt(bigint_op(*a, *b))),
+            (Value::Int(a), Value::BigInt(b)) => Ok(Value::BigInt(bigint_op(*a as i128, *b))),
+            (Value::BigInt(a), Value::Int(b)) => Ok(Value::BigInt(bigint_op(*a, *b as i128))),
             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(float_op(*a, *b))),
             (Value::Int(a), Value::Float(b)) => Ok(Value::Float(float_op(*a as f64, *b))),
             (Value::Float(a), Value::Int(b)) => Ok(Value::Float(float_op(*a, *b as f64))),
+            (Value::BigInt(a), Value::Float(b)) => Ok(Value::Float(float_op(*a as f64, *b))),
+            (Value::Float(a), Value::BigInt(b)) => Ok(Value::Float(float_op(*a, *b as f64))),
             _ => Err(Diagnostic::error(
                 format!(
                     "arithmetic requires numeric operands, got {} and {}",
@@ -925,7 +942,13 @@ impl Evaluator {
             (_, Value::Int(0)) => {
                 Err(Diagnostic::error("division by zero", span).with_code("E051"))
             }
+            (_, Value::BigInt(0)) => {
+                Err(Diagnostic::error("division by zero", span).with_code("E051"))
+            }
             (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a / b)),
+            (Value::BigInt(a), Value::BigInt(b)) => Ok(Value::BigInt(a / b)),
+            (Value::Int(a), Value::BigInt(b)) => Ok(Value::BigInt(*a as i128 / b)),
+            (Value::BigInt(a), Value::Int(b)) => Ok(Value::BigInt(a / *b as i128)),
             (Value::Float(a), Value::Float(b)) => {
                 if *b == 0.0 {
                     return Err(Diagnostic::error("division by zero", span).with_code("E051"));
@@ -939,6 +962,13 @@ impl Evaluator {
                 Ok(Value::Float(*a as f64 / b))
             }
             (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a / *b as f64)),
+            (Value::BigInt(a), Value::Float(b)) => {
+                if *b == 0.0 {
+                    return Err(Diagnostic::error("division by zero", span).with_code("E051"));
+                }
+                Ok(Value::Float(*a as f64 / b))
+            }
+            (Value::Float(a), Value::BigInt(b)) => Ok(Value::Float(a / *b as f64)),
             _ => {
                 Err(Diagnostic::error("division requires numeric operands", span).with_code("E050"))
             }
@@ -953,7 +983,25 @@ impl Evaluator {
                 }
                 Ok(Value::Int(a % b))
             }
-            _ => Err(Diagnostic::error("modulo requires int operands", span).with_code("E050")),
+            (Value::BigInt(a), Value::BigInt(b)) => {
+                if *b == 0 {
+                    return Err(Diagnostic::error("modulo by zero", span).with_code("E051"));
+                }
+                Ok(Value::BigInt(a % b))
+            }
+            (Value::Int(a), Value::BigInt(b)) => {
+                if *b == 0 {
+                    return Err(Diagnostic::error("modulo by zero", span).with_code("E051"));
+                }
+                Ok(Value::BigInt(*a as i128 % b))
+            }
+            (Value::BigInt(a), Value::Int(b)) => {
+                if *b == 0 {
+                    return Err(Diagnostic::error("modulo by zero", span).with_code("E051"));
+                }
+                Ok(Value::BigInt(a % *b as i128))
+            }
+            _ => Err(Diagnostic::error("modulo requires integer operands", span).with_code("E050")),
         }
     }
 
@@ -966,10 +1014,17 @@ impl Evaluator {
     ) -> Result<Value, Diagnostic> {
         let result = match (l, r) {
             (Value::Int(a), Value::Int(b)) => compare_ord(a, b, op),
+            (Value::BigInt(a), Value::BigInt(b)) => compare_ord(a, b, op),
+            (Value::Int(a), Value::BigInt(b)) => compare_ord(&(*a as i128), b, op),
+            (Value::BigInt(a), Value::Int(b)) => compare_ord(a, &(*b as i128), op),
             (Value::Float(a), Value::Float(b)) => compare_partial_ord(a, b, op),
             (Value::Int(a), Value::Float(b)) => compare_partial_ord(&(*a as f64), b, op),
             (Value::Float(a), Value::Int(b)) => compare_partial_ord(a, &(*b as f64), op),
+            (Value::BigInt(a), Value::Float(b)) => compare_partial_ord(&(*a as f64), b, op),
+            (Value::Float(a), Value::BigInt(b)) => compare_partial_ord(a, &(*b as f64), op),
             (Value::String(a), Value::String(b)) => compare_ord(a, b, op),
+            (Value::Date(a), Value::Date(b)) => compare_ord(a, b, op),
+            (Value::Duration(a), Value::Duration(b)) => compare_ord(a, b, op),
             _ => {
                 return Err(Diagnostic::error(
                     format!("cannot compare {} and {}", l.type_name(), r.type_name()),
@@ -1013,6 +1068,7 @@ impl Evaluator {
             UnaryOp::Neg => {
                 match val {
                     Value::Int(i) => Ok(Value::Int(-i)),
+                    Value::BigInt(i) => Ok(Value::BigInt(-i)),
                     Value::Float(f) => Ok(Value::Float(-f)),
                     _ => Err(Diagnostic::error("unary - requires numeric operand", span)
                         .with_code("E050")),

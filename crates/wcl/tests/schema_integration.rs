@@ -97,12 +97,12 @@ fn type_check_string_value_against_string_type() {
 
 #[test]
 fn type_check_int_value_against_int_type() {
-    assert!(check_type(&Value::Int(42), &TypeExpr::Int(sp())));
+    assert!(check_type(&Value::Int(42), &TypeExpr::I64(sp())));
 }
 
 #[test]
 fn type_check_float_value_against_float_type() {
-    assert!(check_type(&Value::Float(3.14), &TypeExpr::Float(sp())));
+    assert!(check_type(&Value::Float(3.14), &TypeExpr::F64(sp())));
 }
 
 #[test]
@@ -127,7 +127,7 @@ fn type_check_any_accepts_every_value() {
 
 #[test]
 fn type_check_list_of_ints() {
-    let list_type = TypeExpr::List(Box::new(TypeExpr::Int(sp())), sp());
+    let list_type = TypeExpr::List(Box::new(TypeExpr::I64(sp())), sp());
     assert!(check_type(
         &Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)]),
         &list_type
@@ -147,7 +147,7 @@ fn type_check_union_string_or_null() {
 fn type_mismatch_string_vs_int() {
     assert!(!check_type(
         &Value::String("x".into()),
-        &TypeExpr::Int(sp())
+        &TypeExpr::I64(sp())
     ));
 }
 
@@ -158,12 +158,13 @@ fn type_mismatch_int_vs_string() {
 
 #[test]
 fn type_mismatch_float_vs_int() {
-    assert!(!check_type(&Value::Float(1.0), &TypeExpr::Int(sp())));
+    assert!(!check_type(&Value::Float(1.0), &TypeExpr::I64(sp())));
 }
 
 #[test]
-fn type_mismatch_int_vs_float() {
-    assert!(!check_type(&Value::Int(1), &TypeExpr::Float(sp())));
+fn int_value_matches_float_type() {
+    // Int values are accepted by float types (implicit widening)
+    assert!(check_type(&Value::Int(1), &TypeExpr::F64(sp())));
 }
 
 #[test]
@@ -178,13 +179,13 @@ fn type_mismatch_null_vs_bool() {
 
 #[test]
 fn type_mismatch_string_not_in_union_of_int_and_bool() {
-    let union_type = TypeExpr::Union(vec![TypeExpr::Int(sp()), TypeExpr::Bool(sp())], sp());
+    let union_type = TypeExpr::Union(vec![TypeExpr::I64(sp()), TypeExpr::Bool(sp())], sp());
     assert!(!check_type(&Value::String("no".into()), &union_type));
 }
 
 #[test]
 fn type_mismatch_heterogeneous_list_vs_typed_list() {
-    let list_type = TypeExpr::List(Box::new(TypeExpr::Int(sp())), sp());
+    let list_type = TypeExpr::List(Box::new(TypeExpr::I64(sp())), sp());
     // Mixed int + string fails
     assert!(!check_type(
         &Value::List(vec![Value::Int(1), Value::String("oops".into())]),
@@ -197,8 +198,8 @@ fn type_mismatch_heterogeneous_list_vs_typed_list() {
 #[test]
 fn type_name_returns_correct_strings() {
     assert_eq!(type_name(&TypeExpr::String(sp())), "string");
-    assert_eq!(type_name(&TypeExpr::Int(sp())), "int");
-    assert_eq!(type_name(&TypeExpr::Float(sp())), "float");
+    assert_eq!(type_name(&TypeExpr::I64(sp())), "i64");
+    assert_eq!(type_name(&TypeExpr::F64(sp())), "f64");
     assert_eq!(type_name(&TypeExpr::Bool(sp())), "bool");
     assert_eq!(type_name(&TypeExpr::Null(sp())), "null");
     assert_eq!(type_name(&TypeExpr::Any(sp())), "any");
@@ -212,8 +213,8 @@ fn type_name_compound_list() {
 
 #[test]
 fn type_name_union() {
-    let t = TypeExpr::Union(vec![TypeExpr::Int(sp()), TypeExpr::Null(sp())], sp());
-    assert_eq!(type_name(&t), "union(int, null)");
+    let t = TypeExpr::Union(vec![TypeExpr::I64(sp()), TypeExpr::Null(sp())], sp());
+    assert_eq!(type_name(&t), "union(i64, null)");
 }
 
 // ── SchemaRegistry: missing required field detection ─────────────────────────
@@ -572,7 +573,7 @@ fn id_registry_same_id_in_different_scopes_no_error() {
 fn type_mismatch_string_value_for_int_field_emits_e071() {
     let schema = make_schema(
         "service",
-        vec![make_schema_field("port", TypeExpr::Int(sp()))],
+        vec![make_schema_field("port", TypeExpr::I64(sp()))],
     );
     let block = make_block(
         "service",
@@ -610,7 +611,7 @@ fn type_mismatch_string_value_for_int_field_emits_e071() {
 fn type_match_int_value_for_int_field_no_error() {
     let schema = make_schema(
         "service",
-        vec![make_schema_field("port", TypeExpr::Int(sp()))],
+        vec![make_schema_field("port", TypeExpr::I64(sp()))],
     );
     let block = make_block(
         "service",
@@ -656,7 +657,7 @@ fn validate_min_below_minimum_emits_e073() {
         )],
         span: sp(),
     };
-    let mut field = make_schema_field("port", TypeExpr::Int(sp()));
+    let mut field = make_schema_field("port", TypeExpr::I64(sp()));
     field.decorators_after.push(validate_dec);
 
     let schema = make_schema("service", vec![field]);
@@ -1363,7 +1364,7 @@ fn union_type_accepts_all_variants() {
     let union_type = TypeExpr::Union(
         vec![
             TypeExpr::String(sp()),
-            TypeExpr::Int(sp()),
+            TypeExpr::I64(sp()),
             TypeExpr::Bool(sp()),
         ],
         sp(),
@@ -1427,7 +1428,7 @@ fn union_type_accepts_all_variants() {
 
 #[test]
 fn union_type_rejects_wrong_type() {
-    let union_type = TypeExpr::Union(vec![TypeExpr::Int(sp()), TypeExpr::Bool(sp())], sp());
+    let union_type = TypeExpr::Union(vec![TypeExpr::I64(sp()), TypeExpr::Bool(sp())], sp());
     let schema = make_schema("config", vec![make_schema_field("value", union_type)]);
 
     let block = make_block(

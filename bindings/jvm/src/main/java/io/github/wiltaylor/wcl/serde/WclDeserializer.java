@@ -25,9 +25,19 @@ public final class WclDeserializer {
         }
 
         // Primitives and wrappers
-        if (rawType == String.class) return value.asString();
-        if (rawType == long.class || rawType == Long.class) return value.asInt();
-        if (rawType == int.class || rawType == Integer.class) return (int) value.asInt();
+        if (rawType == String.class) {
+            if (value.getKind() == WclValueKind.DATE) return value.asDate();
+            if (value.getKind() == WclValueKind.DURATION) return value.asDuration();
+            return value.asString();
+        }
+        if (rawType == long.class || rawType == Long.class) {
+            if (value.getKind() == WclValueKind.BIG_INT) return value.asBigInt();
+            return value.asInt();
+        }
+        if (rawType == int.class || rawType == Integer.class) {
+            if (value.getKind() == WclValueKind.BIG_INT) return (int) value.asBigInt();
+            return (int) value.asInt();
+        }
         if (rawType == double.class || rawType == Double.class) {
             return value.getKind() == WclValueKind.INT ? (double) value.asInt() : value.asFloat();
         }
@@ -66,6 +76,9 @@ public final class WclDeserializer {
                     for (var item : items) list.add(convertValue(item, Object.class, null));
                     yield list;
                 }
+                case BIG_INT -> value.asBigInt();
+                case DATE -> value.asDate();
+                case DURATION -> value.asDuration();
                 case BLOCK_REF -> value.asBlockRef();
             };
         }

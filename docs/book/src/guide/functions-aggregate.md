@@ -6,11 +6,11 @@ Aggregate functions reduce a list of numbers to a single scalar value. They are 
 
 | Function | Signature | Description |
 |---|---|---|
-| `sum` | `sum(list: list) -> int\|float` | Sum of all elements |
-| `avg` | `avg(list: list) -> float` | Arithmetic mean of all elements |
-| `min_of` | `min_of(list: list) -> int\|float` | Smallest element |
-| `max_of` | `max_of(list: list) -> int\|float` | Largest element |
-| `count` | `count(list: list, fn: lambda) -> int` | Number of elements for which `fn` returns `true` |
+| `sum` | `sum(list: list) -> i64\|f64` | Sum of all elements |
+| `avg` | `avg(list: list) -> f64` | Arithmetic mean of all elements |
+| `min_of` | `min_of(list: list) -> i64\|f64` | Smallest element |
+| `max_of` | `max_of(list: list) -> i64\|f64` | Largest element |
+| `count` | `count(list: list, fn: lambda) -> i64` | Number of elements for which `fn` returns `true` |
 
 > Note: `min` and `max` take two scalar arguments and compare them directly. `min_of` and `max_of` take a list and find the extreme value within it. See [Math Functions](./functions-math.md) for `min`/`max`.
 
@@ -37,7 +37,7 @@ let scores = [80, 90, 70, 100, 85]
 let mean = avg(scores)    // 85.0
 ```
 
-`avg` always returns a `float`, even for integer input lists.
+`avg` always returns an `f64`, even for integer input lists.
 
 ### min_of / max_of
 

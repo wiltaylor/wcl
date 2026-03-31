@@ -4,7 +4,7 @@ class TestSchema < Minitest::Test
   def test_missing_required_field
     source = <<~WCL
       schema "config" {
-          port: int
+          port: i64
           host: string
       }
 
@@ -20,7 +20,7 @@ class TestSchema < Minitest::Test
   def test_type_mismatch
     source = <<~WCL
       schema "config" {
-          port: int
+          port: i64
       }
 
       config {
@@ -35,7 +35,7 @@ class TestSchema < Minitest::Test
   def test_valid_schema_no_errors
     source = <<~WCL
       schema "config" {
-          port: int
+          port: i64
           host: string
       }
 
@@ -69,7 +69,7 @@ class TestSchema < Minitest::Test
   def test_constraint_violation
     source = <<~WCL
       schema "config" {
-          port: int @validate(min=1, max=65535)
+          port: i64 @validate(min=1, max=65535)
       }
 
       config {

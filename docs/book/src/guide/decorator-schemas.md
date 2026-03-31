@@ -22,9 +22,9 @@ The `target` field is a list of one or more of: `block`, `attribute`, `table`, `
 decorator_schema "rate_limit" {
     target = [attribute, block]
 
-    requests:  int
-    window_ms: int @default(1000)
-    burst:     int @optional
+    requests:  i64
+    window_ms: i64 @default(1000)
+    burst:     i64 @optional
 }
 ```
 
@@ -50,8 +50,8 @@ Parameters without `@optional` or `@default` must be supplied at every call site
 ```wcl
 decorator_schema "retry" {
     target       = [block]
-    max_attempts: int
-    backoff_ms:   int
+    max_attempts: i64
+    backoff_ms:   i64
 }
 ```
 
@@ -65,7 +65,7 @@ service "api" @retry(max_attempts = 3, backoff_ms = 200) { ... }
 ```wcl
 decorator_schema "cache" {
     target = [attribute, block]
-    ttl_ms: int
+    ttl_ms: i64
     key:    string @optional
 }
 ```
@@ -75,7 +75,7 @@ decorator_schema "cache" {
 ```wcl
 decorator_schema "timeout" {
     target     = [block, attribute]
-    seconds:    int
+    seconds:    i64
     on_timeout: string @default("error")
 }
 ```
@@ -105,8 +105,8 @@ Use `@constraint` on the `decorator_schema` block itself to express relationship
 ```wcl
 decorator_schema "validate_range" @constraint(requires = ["min", "max"]) {
     target = [attribute, schema]
-    min:    int @optional
-    max:    int @optional
+    min:    i64 @optional
+    max:    i64 @optional
 }
 ```
 
@@ -147,8 +147,8 @@ You can embed a usage example directly in a `decorator_schema` using the `@examp
 ```wcl
 decorator_schema "rate_limit" {
     target    = [attribute, block]
-    requests:  int
-    window_ms: int @default(1000)
+    requests:  i64
+    window_ms: i64 @default(1000)
 
     @example {
         service "api" @rate_limit(requests = 500, window_ms = 1000) {
@@ -165,9 +165,9 @@ The `@example` body is not evaluated as live configuration; it is stored as docu
 ```wcl
 decorator_schema "slo" {
     target       = [block]
-    availability: float
-    latency_p99:  int   @optional
-    error_budget: float @default(0.001)
+    availability: f64
+    latency_p99:  i64   @optional
+    error_budget: f64 @default(0.001)
 
     @example {
         service "payments" @slo(availability = 0.999, latency_p99 = 200) {
@@ -185,4 +185,4 @@ service "internal-tools" @slo(availability = 0.99) {
 }
 ```
 
-WCL will validate that every `@slo` use targets a block, provides `availability`, and that `availability` and `error_budget` are floats.
+WCL will validate that every `@slo` use targets a block, provides `availability`, and that `availability` and `error_budget` are `f64` values.

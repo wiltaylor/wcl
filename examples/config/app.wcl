@@ -7,17 +7,17 @@ let regions = ["us-east", "eu-west", "ap-south"]
 // ── Schemas with validation constraints ──
 schema "server" {
     host: string
-    port: int @validate(min = 1, max = 65535)
-    workers: int @validate(min = 1, max = 32)
+    port: i64 @validate(min = 1, max = 65535)
+    workers: i64 @validate(min = 1, max = 32)
     tls: bool @optional
     region: string @optional
 }
 
 schema "database" {
     host: string
-    port: int
+    port: i64
     name: string
-    max_connections: int @validate(min = 1, max = 1000)
+    max_connections: i64 @validate(min = 1, max = 1000)
     ssl: bool @optional
 }
 
