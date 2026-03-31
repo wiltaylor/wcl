@@ -25,7 +25,7 @@ pub fn run(
 
     if doc.has_errors() {
         for diag in doc.errors() {
-            eprintln!("error: {}", diag.message);
+            eprintln!("{}", super::format_diagnostic(diag, &doc.source_map, file));
         }
         return Err("document has errors".to_string());
     }
