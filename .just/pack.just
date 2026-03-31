@@ -62,7 +62,7 @@ vscode-platform target vsce_target:
     bin_src=""
     if [[ "{{vsce_target}}" == win32-* ]]; then
         # Try both MSVC and GNU Windows targets
-        for t in "{{target}}" "$(echo '{{target}}' | sed 's/-gnu$/-msvc/' | sed 's/-msvc$/-gnu/')"; do
+        for t in "{{target}}" "$(echo '{{target}}' | sed -E 's/-gnu$/-msvc/; t; s/-msvc$/-gnu/')"; do
             if [[ -f "target/${t}/release/wcl.exe" ]]; then
                 bin_src="target/${t}/release/wcl.exe"
                 break
@@ -91,7 +91,7 @@ vscode-platform target vsce_target:
     echo "VS Code extension ({{vsce_target}}) packaged to {{pkg}}/vscode/"
 
 # Package VS Code extension for all platforms (requires cli-all to be run first)
-vscode: (vscode-platform "x86_64-unknown-linux-gnu" "linux-x64") (vscode-platform "aarch64-unknown-linux-gnu" "linux-arm64") (vscode-platform "x86_64-apple-darwin" "darwin-x64") (vscode-platform "aarch64-apple-darwin" "darwin-arm64") (vscode-platform "x86_64-pc-windows-gnu" "win32-x64")
+vscode: (vscode-platform "x86_64-unknown-linux-gnu" "linux-x64") (vscode-platform "aarch64-unknown-linux-gnu" "linux-arm64") (vscode-platform "x86_64-apple-darwin" "darwin-x64") (vscode-platform "aarch64-apple-darwin" "darwin-arm64") (vscode-platform "x86_64-pc-windows-msvc" "win32-x64")
 
 # Package tree-sitter-wcl into .packages/tree-sitter-wcl/ (npm + Rust crate)
 tree-sitter-wcl:
@@ -227,7 +227,7 @@ jetbrains-platform target platform_name:
     bin_src=""
     if [[ "{{platform_name}}" == windows-* ]]; then
         # Try both MSVC and GNU Windows targets
-        for t in "{{target}}" "$(echo '{{target}}' | sed 's/-gnu$/-msvc/' | sed 's/-msvc$/-gnu/')"; do
+        for t in "{{target}}" "$(echo '{{target}}' | sed -E 's/-gnu$/-msvc/; t; s/-msvc$/-gnu/')"; do
             if [[ -f "target/${t}/release/wcl.exe" ]]; then
                 bin_src="target/${t}/release/wcl.exe"
                 break
@@ -258,7 +258,7 @@ jetbrains-platform target platform_name:
     echo "JetBrains plugin ({{platform_name}}) packaged to {{pkg}}/jetbrains/"
 
 # Package JetBrains plugin for all platforms (requires cli-all to be run first)
-jetbrains: (jetbrains-platform "x86_64-unknown-linux-gnu" "linux-x64") (jetbrains-platform "aarch64-unknown-linux-gnu" "linux-arm64") (jetbrains-platform "x86_64-apple-darwin" "darwin-x64") (jetbrains-platform "aarch64-apple-darwin" "darwin-arm64") (jetbrains-platform "x86_64-pc-windows-gnu" "windows-x64")
+jetbrains: (jetbrains-platform "x86_64-unknown-linux-gnu" "linux-x64") (jetbrains-platform "aarch64-unknown-linux-gnu" "linux-arm64") (jetbrains-platform "x86_64-apple-darwin" "darwin-x64") (jetbrains-platform "aarch64-apple-darwin" "darwin-arm64") (jetbrains-platform "x86_64-pc-windows-msvc" "windows-x64")
 
 # Package Zed extension into .packages/zed/
 zed:
