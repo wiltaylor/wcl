@@ -32,6 +32,10 @@ wdoc:
 wdoc-serve:
     wcl wdoc serve examples/wdoc/site.wcl examples/wdoc/pages.wcl --port 3000 --open
 
+# Serve wdoc example using locally-built binary
+wdoc-serve-local:
+    cargo run --quiet -- wdoc serve examples/wdoc/site.wcl examples/wdoc/pages.wcl --port 3000 --open
+
 # Run CLI examples (requires wcl in PATH)
 cli:
     bash examples/cli/eval.sh

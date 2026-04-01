@@ -64,7 +64,7 @@ pub async fn serve(
 
     for path in &watch_paths {
         watcher
-            .watch(path, RecursiveMode::Recursive)
+            .watch(path, RecursiveMode::NonRecursive)
             .map_err(|e| format!("failed to watch {}: {e}", path.display()))?;
     }
 
