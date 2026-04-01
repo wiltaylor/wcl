@@ -23,6 +23,9 @@ pub const BASE_CSS: &str = r#"/* wdoc base styles */
     --color-code-border: #e1e4e8;
     --color-toggle-bg: #e0e0e0;
     --color-toggle-knob: #ffffff;
+    --color-table-border: #d0d7de;
+    --color-table-header-bg: #f0f3f6;
+    --color-table-stripe: #f6f8fa;
 }
 
 /* Dark theme */
@@ -38,6 +41,9 @@ pub const BASE_CSS: &str = r#"/* wdoc base styles */
     --color-code-border: #30363d;
     --color-toggle-bg: #30363d;
     --color-toggle-knob: #e6edf3;
+    --color-table-border: #30363d;
+    --color-table-header-bg: #161b22;
+    --color-table-stripe: #0d1117;
 }
 
 html { font-size: 16px; }
@@ -163,6 +169,33 @@ h6.wdoc-heading { font-size: 0.9rem; }
 }
 /* Override highlight.js background to match our code box */
 .wdoc-code .hljs { background: transparent; padding: 0; }
+
+/* Tables */
+.wdoc-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 1rem;
+    font-size: 0.9rem;
+}
+.wdoc-table caption {
+    caption-side: top;
+    text-align: left;
+    font-weight: 600;
+    padding-bottom: 0.5rem;
+    color: var(--color-text);
+}
+.wdoc-table th, .wdoc-table td {
+    border: 1px solid var(--color-table-border);
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+}
+.wdoc-table th {
+    background: var(--color-table-header-bg);
+    font-weight: 600;
+}
+.wdoc-table tbody tr:nth-child(even) {
+    background: var(--color-table-stripe);
+}
 
 a { color: var(--color-link); text-decoration: none; }
 a:hover { text-decoration: underline; }

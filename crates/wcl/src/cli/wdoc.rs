@@ -225,6 +225,19 @@ fn register_template_builtins(reg: &mut FunctionRegistry) {
         }) as BuiltinFn,
         mk("wdoc_render_code", "Render a code block"),
     );
+
+    reg.register(
+        "wdoc_render_table",
+        std::sync::Arc::new(|args: &[Value]| {
+            let attrs = match args.first() {
+                Some(Value::Map(m)) => m,
+                Some(Value::BlockRef(br)) => &br.attributes,
+                _ => return Err("wdoc_render_table expects a map argument".into()),
+            };
+            Ok(Value::String(render_table_html(attrs)))
+        }) as BuiltinFn,
+        mk("wdoc_render_table", "Render a table element"),
+    );
 }
 
 /// Convert a Value::Map to IndexMap<String, String> for template functions.
@@ -247,6 +260,62 @@ fn value_map_to_string_map(val: Option<&Value>) -> Result<IndexMap<String, Strin
         result.insert(k.clone(), s);
     }
     Ok(result)
+}
+
+/// Render a `wdoc_table` block to an HTML `<table>`.
+/// Finds the first `Value::List` attribute (the table data) and builds HTML rows.
+fn render_table_html(attrs: &IndexMap<String, Value>) -> String {
+    use std::fmt::Write;
+
+    let caption = attrs.get("caption").and_then(|v| v.as_string());
+
+    // Find the first List attribute — that's the table data
+    let rows: Option<&Vec<Value>> = attrs.values().find_map(|v| match v {
+        Value::List(list) => Some(list),
+        _ => None,
+    });
+
+    let rows = match rows {
+        Some(r) if !r.is_empty() => r,
+        _ => return "<p class=\"wdoc-paragraph\"><em>(empty table)</em></p>".to_string(),
+    };
+
+    let mut html = String::from("<table class=\"wdoc-table\">\n");
+
+    if let Some(cap) = caption {
+        writeln!(html, "<caption>{cap}</caption>").unwrap();
+    }
+
+    // Extract headers from the first row's keys
+    if let Value::Map(first_row) = &rows[0] {
+        html.push_str("<thead><tr>");
+        for key in first_row.keys() {
+            write!(html, "<th>{key}</th>").unwrap();
+        }
+        html.push_str("</tr></thead>\n");
+    }
+
+    // Render body rows
+    html.push_str("<tbody>\n");
+    for row in rows {
+        if let Value::Map(map) = row {
+            html.push_str("<tr>");
+            for val in map.values() {
+                let cell = match val {
+                    Value::String(s) => s.clone(),
+                    Value::Int(i) => i.to_string(),
+                    Value::Float(f) => f.to_string(),
+                    Value::Bool(b) => b.to_string(),
+                    Value::Null => String::new(),
+                    other => format!("{other}"),
+                };
+                write!(html, "<td>{cell}</td>").unwrap();
+            }
+            html.push_str("</tr>\n");
+        }
+    }
+    html.push_str("</tbody>\n</table>");
+    html
 }
 
 // ---------------------------------------------------------------------------
