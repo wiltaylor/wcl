@@ -23,6 +23,10 @@ wdoc my_docs {
         wdoc_section advanced "Advanced Features" {}
     }
 
+    wdoc_section bindings "Language Bindings" {
+        wdoc_section binding_examples "Binding Examples" {}
+    }
+
     wdoc_section reference "Reference" {
         wdoc_section cli_ref "CLI Reference" {}
     }
