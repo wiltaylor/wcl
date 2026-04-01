@@ -55,4 +55,16 @@ echo "=== 11. Order summary with boolean computed field ==="
 wcl transform run order-summary -f "$ORDER_TRANSFORMS" --input "$ORDERS"
 echo ""
 
+echo "=== 12. Binary → JSON (struct + layout) ==="
+wcl transform run sensor-to-json -f "$DIR/../transforms/binary_format.wcl" --input "$DIR/../transforms/sensor_data.bin"
+echo ""
+
+echo "=== 13. Text (TSV) → JSON ==="
+wcl transform run tsv-to-json -f "$DIR/../transforms/text_log.wcl" --input "$DIR/../transforms/access.log"
+echo ""
+
+echo "=== 14. Text (space-separated) → JSON ==="
+wcl transform run space-log -f "$DIR/../transforms/text_log.wcl" --input "$DIR/../transforms/requests.log"
+echo ""
+
 echo "=== All transform examples complete ==="

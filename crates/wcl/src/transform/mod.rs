@@ -20,17 +20,26 @@ pub use mapper::{map_record, map_records, FieldMapping, MapConfig, MapResult, Wh
 
 use std::io::{Read, Write};
 
+/// Context for transforms that need access to struct and layout registries.
+pub struct TransformContext<'a> {
+    pub struct_registry: &'a crate::schema::struct_registry::StructRegistry,
+    pub layout_registry: &'a crate::schema::layout_registry::LayoutRegistry,
+}
+
 /// Execute a transform: read input via codec, apply field mappings, write output via codec.
 ///
 /// This is the main entry point for the transform runtime.
+/// The optional `context` parameter provides struct/layout registries for binary codec.
+#[allow(clippy::too_many_arguments)]
 pub fn execute(
     input_codec: &str,
     input_reader: impl Read,
     output_codec: &str,
     output_writer: &mut dyn Write,
     config: &MapConfig,
-    _input_options: &codec::CodecOptions,
+    input_options: &codec::CodecOptions,
     output_options: &codec::CodecOptions,
+    context: Option<&TransformContext>,
 ) -> Result<TransformStats, TransformError> {
     // Decode input records
     let records = match input_codec {
@@ -41,6 +50,39 @@ pub fn execute(
         "hcl" => codec::hcl_codec::decode_hcl_records(input_reader)?,
         "xml" => codec::xml::decode_xml_records(input_reader)?,
         "msgpack" => codec::msgpack::decode_msgpack_records(input_reader)?,
+        "binary" => {
+            let ctx = context.ok_or_else(|| {
+                TransformError::Other("binary codec requires transform context".into())
+            })?;
+            let layout_name = input_options
+                .get("layout")
+                .and_then(|v| v.as_string())
+                .ok_or_else(|| {
+                    TransformError::Other("binary codec requires 'layout' option".into())
+                })?;
+            let mut data = Vec::new();
+            let mut reader_box: Box<dyn Read> = Box::new(input_reader);
+            reader_box
+                .read_to_end(&mut data)
+                .map_err(TransformError::Io)?;
+            codec::binary_codec::decode_binary_records(
+                &data,
+                layout_name,
+                ctx.struct_registry,
+                ctx.layout_registry,
+            )?
+        }
+        "text" => {
+            let separator = input_options
+                .get("separator")
+                .and_then(|v| v.as_string())
+                .unwrap_or("\t");
+            let has_header = input_options
+                .get("has_header")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            codec::text_codec::decode_text_records(input_reader, separator, has_header)?
+        }
         _ => return Err(TransformError::UnknownCodec(input_codec.to_string())),
     };
 
@@ -61,6 +103,35 @@ pub fn execute(
         "hcl" => codec::hcl_codec::encode_hcl_records(&transformed, output_writer)?,
         "xml" => codec::xml::encode_xml_records(&transformed, output_writer, "root")?,
         "msgpack" => codec::msgpack::encode_msgpack_records(&transformed, output_writer)?,
+        "binary" => {
+            let ctx = context.ok_or_else(|| {
+                TransformError::Other("binary codec requires transform context".into())
+            })?;
+            let layout_name = output_options
+                .get("layout")
+                .and_then(|v| v.as_string())
+                .ok_or_else(|| {
+                    TransformError::Other("binary codec requires 'layout' option".into())
+                })?;
+            codec::binary_codec::encode_binary_records(
+                &transformed,
+                layout_name,
+                ctx.struct_registry,
+                ctx.layout_registry,
+                output_writer,
+            )?;
+        }
+        "text" => {
+            let separator = output_options
+                .get("separator")
+                .and_then(|v| v.as_string())
+                .unwrap_or("\t");
+            let header = output_options
+                .get("header")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            codec::text_codec::encode_text_records(&transformed, output_writer, separator, header)?;
+        }
         _ => return Err(TransformError::UnknownCodec(output_codec.to_string())),
     }
 
@@ -130,6 +201,7 @@ mod tests {
             &config,
             &indexmap::IndexMap::new(),
             &indexmap::IndexMap::new(),
+            None,
         )
         .unwrap();
 
@@ -167,6 +239,7 @@ mod tests {
             &config,
             &indexmap::IndexMap::new(),
             &indexmap::IndexMap::new(),
+            None,
         )
         .unwrap();
 

@@ -1,0 +1,5 @@
+192.168.1.1 GET /api/users 200
+192.168.1.2 POST /api/login 401
+10.0.0.5 GET /health 200
+192.168.1.1 DELETE /api/users/42 204
+10.0.0.5 GET /metrics 200

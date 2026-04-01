@@ -1,0 +1,6 @@
+timestamp	level	message
+2026-03-31T10:00:00Z	INFO	Server started on port 8080
+2026-03-31T10:00:05Z	INFO	Connected to database
+2026-03-31T10:01:23Z	WARN	High memory usage: 85%
+2026-03-31T10:02:45Z	ERROR	Connection refused to redis
+2026-03-31T10:03:00Z	INFO	Retry succeeded for redis

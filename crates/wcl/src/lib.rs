@@ -128,6 +128,8 @@ pub struct Document {
     pub symbol_sets: SymbolSetRegistry,
     /// Struct type registry
     pub struct_registry: StructRegistry,
+    /// Layout definition registry
+    pub layout_registry: crate::schema::LayoutRegistry,
 }
 
 impl Document {
@@ -801,6 +803,12 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
     struct_registry.collect(&doc, &mut struct_diag_bag);
     all_diagnostics.extend(struct_diag_bag.into_diagnostics());
 
+    // Phase 9e: Collect layout definitions
+    let mut layout_registry = crate::schema::LayoutRegistry::new();
+    let mut layout_diag_bag = DiagnosticBag::new();
+    layout_registry.collect(&doc, &mut layout_diag_bag);
+    all_diagnostics.extend(layout_diag_bag.into_diagnostics());
+
     Document {
         ast: doc,
         values,
@@ -810,6 +818,7 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
         decorator_schemas,
         symbol_sets,
         struct_registry,
+        layout_registry,
     }
 }
 

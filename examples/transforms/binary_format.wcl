@@ -1,0 +1,36 @@
+// Binary format example: sensor log with header + streaming records.
+
+struct "FileHeader" {
+    magic   : u32
+    version : u16
+    count   : u32
+}
+
+struct "SensorReading" {
+    sensor_id : u16
+    temp      : f32
+    humidity  : f32
+}
+
+// Layout: encoding decorators go ON the section blocks, not inside them
+layout sensor-log {
+    @le
+    FileHeader header {
+    }
+
+    @le @stream @count(header.count)
+    SensorReading readings {
+    }
+}
+
+transform sensor-to-json {
+    input        = "codec::binary"
+    input_layout = "sensor-log"
+    output       = "codec::json"
+
+    map {
+        sensor   = in.sensor_id
+        temp_c   = in.temp
+        humidity = in.humidity
+    }
+}

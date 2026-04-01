@@ -131,6 +131,8 @@ transform convert {
 | `hcl` | HCL (HashiCorp Configuration Language) — fully buffered |
 | `xml` | XML — fully buffered, elements become fields |
 | `msgpack` | MessagePack — binary format, arrays are multi-record |
+| `binary` | Custom binary formats — uses struct definitions + layout for parsing/writing |
+| `text` | Line-oriented text — configurable separator, optional header row |
 
 ### Codec Options
 
