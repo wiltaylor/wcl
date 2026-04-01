@@ -1,0 +1,47 @@
+// Transforms demonstrating different codec combinations.
+
+// YAML → JSON
+transform yaml-to-json {
+    input  = "codec::yaml"
+    output = "codec::json"
+
+    map {
+        name       = "${in.first_name} ${in.last_name}"
+        age        = in.age
+        department = in.department
+    }
+}
+
+// CSV → JSON
+transform csv-to-json {
+    input  = "codec::csv"
+    output = "codec::json"
+
+    map {
+        full_name  = "${in.first_name} ${in.last_name}"
+        department = in.department
+    }
+}
+
+// JSON → YAML
+transform json-to-yaml {
+    input  = "codec::json"
+    output = "codec::yaml"
+
+    map {
+        name = "${in.first_name} ${in.last_name}"
+        age  = in.age
+    }
+}
+
+// JSON → CSV
+transform json-to-csv {
+    input  = "codec::json"
+    output = "codec::csv"
+
+    map {
+        name       = "${in.first_name} ${in.last_name}"
+        department = in.department
+        age        = in.age
+    }
+}

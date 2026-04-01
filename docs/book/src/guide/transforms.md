@@ -125,8 +125,12 @@ transform convert {
 | Codec | Description |
 |-------|-------------|
 | `json` | JSON — arrays stream per element, objects are single records |
-
-More codecs (YAML, CSV, TOML, HCL, XML, MessagePack) are planned.
+| `yaml` | YAML — fully buffered, sequences are multi-record |
+| `csv` | CSV — one row per record, header row provides field names |
+| `toml` | TOML — fully buffered, tables become records |
+| `hcl` | HCL (HashiCorp Configuration Language) — fully buffered |
+| `xml` | XML — fully buffered, elements become fields |
+| `msgpack` | MessagePack — binary format, arrays are multi-record |
 
 ### Codec Options
 

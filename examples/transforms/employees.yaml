@@ -1,0 +1,12 @@
+- first_name: Alice
+  last_name: Smith
+  age: 32
+  department: engineering
+- first_name: Bob
+  last_name: Jones
+  age: 24
+  department: marketing
+- first_name: Carol
+  last_name: Chen
+  age: 38
+  department: engineering
