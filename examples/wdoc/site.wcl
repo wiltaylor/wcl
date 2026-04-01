@@ -36,18 +36,15 @@ wdoc my_docs {
 
 wdoc_style default {
     for_heading {
-        color = "#1a1a2e"
         font_family = "'Segoe UI', sans-serif"
     }
     for_paragraph {
-        color = "#333"
         line_height = "1.7"
     }
 }
 
 wdoc_style hero {
     for_heading {
-        color = "#0f3460"
         font_size = "2.5rem"
         text_align = "center"
         margin_bottom = "1rem"
@@ -55,6 +52,5 @@ wdoc_style hero {
     for_paragraph {
         text_align = "center"
         font_size = "1.2rem"
-        color = "#555"
     }
 }
