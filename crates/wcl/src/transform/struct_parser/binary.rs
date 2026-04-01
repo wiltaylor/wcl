@@ -4,7 +4,7 @@ use crate::eval::value::Value;
 use crate::lang::ast::TypeExpr;
 use crate::schema::struct_registry::ResolvedStruct;
 use crate::transform::error::TransformError;
-use crate::transform::struct_parser::{EncodingConfig, Endianness, FieldEncoding};
+use crate::transform::struct_parser::{EncodingConfig, Endianness};
 use indexmap::IndexMap;
 
 /// Binary data parser with cursor tracking.
@@ -49,7 +49,7 @@ impl<'a> BinaryParser<'a> {
                 .unwrap_or(self.encoding.default_endian);
 
             // Check magic value assertion
-            if let Some(ref fe) = field_encoding {
+            if let Some(fe) = field_encoding {
                 if let Some(ref magic) = fe.magic {
                     let pos = self.cursor;
                     let value = self.read_type(&field.type_expr, endian)?;
@@ -69,7 +69,7 @@ impl<'a> BinaryParser<'a> {
             map.insert(field.name.clone(), value);
 
             // Apply padding after
-            if let Some(ref fe) = field_encoding {
+            if let Some(fe) = field_encoding {
                 if let Some(pad) = fe.padding_after {
                     self.skip(pad)?;
                 }

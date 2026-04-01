@@ -122,7 +122,7 @@ pub fn execute_fused(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lang::ast::{BinOp, Expr, Ident, StringLit, StringPart};
+    use crate::lang::ast::{BinOp, Expr, Ident};
     use crate::lang::span::Span;
     use crate::transform::mapper::{FieldMapping, WhereClause};
     use indexmap::IndexMap;
