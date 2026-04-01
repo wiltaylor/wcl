@@ -1,0 +1,61 @@
+// Extract metadata from a ZIP file into JSON.
+//
+// ZIP local file entry format (per PKWARE APPNOTE):
+//   signature:        u32  (0x04034b50)
+//   version_needed:   u16
+//   flags:            u16
+//   compression:      u16  (0=stored, 8=deflate)
+//   mod_time:         u16
+//   mod_date:         u16
+//   crc32:            u32
+//   compressed_size:  u32
+//   uncompressed_size: u32
+//   filename_length:  u16
+//   extra_length:     u16
+//   filename:         string[filename_length]
+//   extra_field:      list(u8)[extra_length]  (skipped)
+//   data:             list(u8)[compressed_size]  (skipped)
+
+struct "ZipLocalEntry" {
+    signature        : u32
+    version_needed   : u16
+    flags            : u16
+    compression      : u16
+    mod_time         : u16
+    mod_date         : u16
+    crc32            : u32
+    compressed_size  : u32
+    uncompressed_size : u32
+    filename_length  : u16
+    extra_length     : u16
+    filename         : string
+    extra_field      : list(u8)
+}
+
+layout zip-entries {
+    // Stream 3 entries (for sample.zip — in practice the count would
+    // come from parsing the end-of-central-directory record first).
+    // @length reads variable-length fields using a prior field's value.
+    // @skip jumps over binary payload data without storing it.
+    @le @stream @count(3)
+    @length("filename", "filename_length")
+    @length("extra_field", "extra_length")
+    @skip("extra_field", "compressed_size")
+    ZipLocalEntry entries {
+    }
+}
+
+transform zip-to-json {
+    input        = "codec::binary"
+    input_layout = "zip-entries"
+    output       = "codec::json"
+
+    @where(in.signature == 67324752)
+    map {
+        filename          = in.filename
+        compressed_size   = in.compressed_size
+        uncompressed_size = in.uncompressed_size
+        compression       = in.compression == 0 ? "stored" : "deflate"
+        crc32             = in.crc32
+    }
+}
