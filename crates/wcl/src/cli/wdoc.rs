@@ -655,12 +655,8 @@ pub fn run_serve(
 
     let output_dir = std::env::temp_dir().join(format!("wdoc-serve-{}", std::process::id()));
 
-    let watch_paths: Vec<PathBuf> = files
-        .iter()
-        .filter_map(|f| f.parent().map(|p| p.to_path_buf()))
-        .collect::<std::collections::HashSet<_>>()
-        .into_iter()
-        .collect();
+    // Watch the specific input files, not entire directories
+    let watch_paths: Vec<PathBuf> = files.clone();
 
     let build_fn = move || parse_and_extract(&files, &vars, &lib_args);
 
