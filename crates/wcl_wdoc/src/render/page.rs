@@ -3,6 +3,17 @@ use std::fmt::Write;
 use crate::model::*;
 use crate::render::layout::render_layout_items;
 
+/// highlight.js CDN links + theme CSS injected into <head>.
+const HLJS_HEAD: &str = r#"<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+<script src="wcl-grammar.js"></script>"#;
+
+/// highlight.js initialization script injected before </body>.
+const HLJS_INIT: &str = r#"<script>
+hljs.registerLanguage('wcl', hljsDefineWcl);
+hljs.highlightAll();
+</script>"#;
+
 /// Render a single page as a complete HTML document.
 pub fn render_page(doc: &WdocDocument, page: &Page, css_path: &str) -> String {
     let mut html = String::with_capacity(4096);
@@ -17,11 +28,13 @@ pub fn render_page(doc: &WdocDocument, page: &Page, css_path: &str) -> String {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{title} — {doc_title}</title>
 <link rel="stylesheet" href="{css_path}">
+{HLJS_HEAD}
 </head>
 <body>
 "#,
         title = page.title,
         doc_title = doc.title,
+        HLJS_HEAD = HLJS_HEAD,
     )
     .unwrap();
 
@@ -33,7 +46,9 @@ pub fn render_page(doc: &WdocDocument, page: &Page, css_path: &str) -> String {
     render_layout_items(&page.layout.children, &mut html);
     html.push_str("</main>\n");
 
-    html.push_str("</body>\n</html>\n");
+    // highlight.js init
+    html.push_str(HLJS_INIT);
+    html.push_str("\n</body>\n</html>\n");
     html
 }
 
