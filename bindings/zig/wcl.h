@@ -120,6 +120,19 @@ WclDocument *wcl_ffi_parse_with_functions(const char *source,
 char *wcl_ffi_list_libraries(void);
 
 /**
+ * Call an exported function by name.
+ *
+ * `args_json` is a JSON array of arguments. Returns a JSON string with
+ * the result, or an `ERR:message` string on failure.
+ */
+char *wcl_ffi_call_function(WclDocument *doc, const char *name, const char *args_json);
+
+/**
+ * List exported functions as a JSON array of objects with `name` and `params` fields.
+ */
+char *wcl_ffi_list_functions(WclDocument *doc);
+
+/**
  * Free a string previously returned by any `wcl_ffi_*` function.
  *
  * Safe to call with null.
