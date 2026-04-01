@@ -6,6 +6,7 @@
 
 pub mod binary;
 pub mod plan;
+pub mod writer;
 
 use crate::eval::value::Value;
 use crate::schema::struct_registry::ResolvedStruct;

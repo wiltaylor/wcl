@@ -83,24 +83,84 @@ pub fn run(
         None => Box::new(io::stdin()),
     };
 
-    // Read all input
-    let mut input_buf = String::new();
+    // Read all input (as bytes to support binary codecs)
+    let mut input_bytes = Vec::new();
     let mut reader: Box<dyn Read> = input_data;
     reader
-        .read_to_string(&mut input_buf)
+        .read_to_end(&mut input_bytes)
         .map_err(|e| format!("cannot read input: {}", e))?;
 
     // Open output
     let mut output_buf = Vec::new();
 
+    // Build codec options from transform block attributes
+    let mut input_options: indexmap::IndexMap<String, crate::eval::value::Value> =
+        indexmap::IndexMap::new();
+    let mut output_options: indexmap::IndexMap<String, crate::eval::value::Value> =
+        indexmap::IndexMap::new();
+
+    // Extract layout and text codec options from AST attributes
+    for item in &transform_block.body {
+        if let crate::lang::ast::BodyItem::Attribute(attr) = item {
+            let value_str = extract_string_value(&attr.value);
+            match attr.name.name.as_str() {
+                "input_layout" => {
+                    if let Some(s) = value_str {
+                        input_options
+                            .insert("layout".to_string(), crate::eval::value::Value::String(s));
+                    }
+                }
+                "output_layout" => {
+                    if let Some(s) = value_str {
+                        output_options
+                            .insert("layout".to_string(), crate::eval::value::Value::String(s));
+                    }
+                }
+                "separator" => {
+                    if let Some(s) = value_str {
+                        input_options.insert(
+                            "separator".to_string(),
+                            crate::eval::value::Value::String(s.clone()),
+                        );
+                        output_options.insert(
+                            "separator".to_string(),
+                            crate::eval::value::Value::String(s),
+                        );
+                    }
+                }
+                "has_header" => {
+                    if let crate::lang::ast::Expr::BoolLit(b, _) = &attr.value {
+                        input_options.insert(
+                            "has_header".to_string(),
+                            crate::eval::value::Value::Bool(*b),
+                        );
+                    }
+                }
+                "header" => {
+                    if let crate::lang::ast::Expr::BoolLit(b, _) = &attr.value {
+                        output_options
+                            .insert("header".to_string(), crate::eval::value::Value::Bool(*b));
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    let ctx = transform::TransformContext {
+        struct_registry: &doc.struct_registry,
+        layout_registry: &doc.layout_registry,
+    };
+
     let stats = transform::execute(
         &input_codec,
-        input_buf.as_bytes(),
+        input_bytes.as_slice(),
         &output_codec,
         &mut output_buf,
         &map_config,
-        &indexmap::IndexMap::new(),
-        &indexmap::IndexMap::new(),
+        &input_options,
+        &output_options,
+        Some(&ctx),
     )
     .map_err(|e| format!("transform error: {}", e))?;
 
@@ -195,10 +255,21 @@ fn build_map_config(block: &crate::lang::ast::Block) -> Result<MapConfig, String
                 }
             }
             // Direct attributes in the transform block (simple transforms without map sub-block)
+            // Skip known transform-level config attributes.
             BodyItem::Attribute(attr)
-                if attr.name.name != "input"
-                    && attr.name.name != "output"
-                    && attr.name.name != "auto_map" =>
+                if !matches!(
+                    attr.name.name.as_str(),
+                    "input"
+                        | "output"
+                        | "auto_map"
+                        | "input_layout"
+                        | "output_layout"
+                        | "separator"
+                        | "has_header"
+                        | "header"
+                        | "on_parse_error"
+                        | "on_output_error"
+                ) =>
             {
                 mappings.push(FieldMapping {
                     output_name: attr.name.name.clone(),

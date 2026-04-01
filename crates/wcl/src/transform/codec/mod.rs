@@ -3,10 +3,12 @@
 //! Each codec provides a Decoder (read) and Encoder (write) that operate on
 //! the unified Event stream.
 
+pub mod binary_codec;
 pub mod csv_codec;
 pub mod hcl_codec;
 pub mod json;
 pub mod msgpack;
+pub mod text_codec;
 pub mod toml_codec;
 pub mod xml;
 pub mod yaml;
@@ -116,7 +118,9 @@ impl Default for CodecRegistry {
 }
 
 /// All codec names supported by the transform engine.
-pub const SUPPORTED_CODECS: &[&str] = &["json", "yaml", "csv", "toml", "hcl", "xml", "msgpack"];
+pub const SUPPORTED_CODECS: &[&str] = &[
+    "json", "yaml", "csv", "toml", "hcl", "xml", "msgpack", "binary", "text",
+];
 
 /// Decode an entire input into a list of records (each record is a Value::Map).
 pub fn decode_all(decoder: &mut dyn Decoder) -> Result<Vec<Value>, TransformError> {

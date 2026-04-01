@@ -649,6 +649,30 @@ impl Parser {
                     span,
                 }
             }
+            TokenKind::Stream => {
+                let span = self.current_span();
+                self.advance();
+                Ident {
+                    name: "stream".to_string(),
+                    span,
+                }
+            }
+            TokenKind::Codec => {
+                let span = self.current_span();
+                self.advance();
+                Ident {
+                    name: "codec".to_string(),
+                    span,
+                }
+            }
+            TokenKind::Struct => {
+                let span = self.current_span();
+                self.advance();
+                Ident {
+                    name: "struct".to_string(),
+                    span,
+                }
+            }
             _ => self.expect_ident().ok()?,
         };
         let args = if matches!(self.peek_kind(), TokenKind::LParen) {
