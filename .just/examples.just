@@ -16,7 +16,8 @@ patch-local:
 
 # Restore binding examples to use published package versions
 unpatch-local:
-    git checkout -- examples/rust/Cargo.toml examples/python/example.py examples/ruby/Gemfile examples/dotnet/Example.csproj
+    rm -rf examples/rust/.cargo
+    git checkout -- examples/python/example.py examples/ruby/Gemfile examples/dotnet/Example.csproj
     git checkout -- examples/ruby/Gemfile.lock 2>/dev/null || true
 
 # Update published package versions in examples

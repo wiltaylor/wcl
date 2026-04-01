@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Patch example projects to use locally-built packages instead of published versions.
 # Used in CI to test examples against the current codebase.
-# This is a destructive operation — only run in ephemeral CI environments.
+#
+# For Rust: uses a gitignored .cargo/config.toml override (non-destructive).
+# For other languages: modifies tracked files (use unpatch-local to restore).
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -9,10 +11,14 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 echo "Patching examples to use local packages..."
 
 # ── Rust ──
-# Replace crates.io version with path dependency
-sed -i 's|^wcl = ".*"|wcl = { path = "../../crates/wcl" }|' \
-  "$REPO_ROOT/examples/rust/Cargo.toml"
-echo "  ✓ Rust: patched to path dependency"
+# Use Cargo's [patch] mechanism via a gitignored .cargo/config.toml.
+# This overrides the crates.io dependency without touching Cargo.toml.
+mkdir -p "$REPO_ROOT/examples/rust/.cargo"
+cat > "$REPO_ROOT/examples/rust/.cargo/config.toml" <<EOF
+[patch.crates-io]
+wcl = { path = "../../crates/wcl" }
+EOF
+echo "  ✓ Rust: patched via .cargo/config.toml (gitignored)"
 
 # ── Python ──
 # Point inline script dependency to local source build.
