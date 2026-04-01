@@ -3,6 +3,14 @@ set working-directory := '..'
 # Run all examples
 all: cli rust python javascript go dotnet jvm ruby
 
+# Patch examples to use locally-built packages (for CI)
+patch-local:
+    bash scripts/patch-examples-local.sh
+
+# Update published package versions in examples
+update-versions version:
+    bash scripts/update-example-versions.sh {{version}}
+
 # Run CLI examples
 cli:
     bash examples/cli/eval.sh

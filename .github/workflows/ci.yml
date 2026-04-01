@@ -148,6 +148,8 @@ jobs:
         with:
           report_paths: target/nextest/ci/junit.xml
           check_name: Rust Tests
+      - name: Patch examples to use local packages
+        run: bash scripts/patch-examples-local.sh
       - name: Run Rust example
         run: cd examples/rust && cargo run --quiet
       - name: Run CLI examples
@@ -176,6 +178,8 @@ jobs:
         with:
           report_paths: test-results/python.xml
           check_name: Python Tests
+      - name: Patch examples to use local packages
+        run: bash scripts/patch-examples-local.sh
       - name: Run Python example
         run: cd examples/python && uv run example.py
 
@@ -216,6 +220,8 @@ jobs:
         with:
           report_paths: test-results/dotnet.xml
           check_name: .NET Tests
+      - name: Patch examples to use local packages
+        run: bash scripts/patch-examples-local.sh
       - name: Run .NET example
         run: cd examples/dotnet && dotnet run --verbosity quiet
 
@@ -298,6 +304,8 @@ jobs:
         with:
           report_paths: test-results/ruby/*.xml
           check_name: Ruby Tests
+      - name: Patch examples to use local packages
+        run: bash scripts/patch-examples-local.sh
       - name: Run Ruby example
         run: cd examples/ruby && bundle install --quiet && bundle exec ruby example.rb
 
