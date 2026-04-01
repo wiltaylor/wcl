@@ -33,6 +33,12 @@ schema "code" {
     content: string
 }
 
+@template("html", "wdoc_render_table")
+@open
+schema "wdoc_table" {
+    caption: string @optional
+}
+
 // --- Decorator schemas ---
 
 decorator_schema "style" {
@@ -52,3 +58,4 @@ declare wdoc_render_heading(block: any) -> string
 declare wdoc_render_paragraph(block: any) -> string
 declare wdoc_render_image(block: any) -> string
 declare wdoc_render_code(block: any) -> string
+declare wdoc_render_table(block: any) -> string

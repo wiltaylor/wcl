@@ -206,6 +206,40 @@ wdoc_page basics {
                     language = "json"
                     content = "{\n  \"server\": {\n    \"api\": {\n      \"host\": \"0.0.0.0\",\n      \"port\": 8080,\n      \"workers\": 8,\n      \"tls\": true\n    },\n    \"worker-us-east\": {\n      \"host\": \"us-east.internal\",\n      \"port\": 10000,\n      \"workers\": 4,\n      \"region\": \"us-east\"\n    }\n  }\n}"
                 }
+
+                heading h2f {
+                    level = 2
+                    content = "Tables"
+                }
+                paragraph p7 { content = "WCL supports inline data tables with typed columns. Here is how they look when rendered:" }
+
+                wdoc_table tbl_servers {
+                    caption = "Server Configuration"
+                    table data {
+                        name: string
+                        host: string
+                        port: i64
+                        workers: i64
+                        tls: bool
+                        | "api"            | "0.0.0.0"           | 8080  | 8 | true  |
+                        | "admin"          | "127.0.0.1"         | 9090  | 2 | false |
+                        | "worker-us-east" | "us-east.internal"  | 10000 | 4 | true  |
+                        | "worker-eu-west" | "eu-west.internal"  | 10000 | 4 | true  |
+                    }
+                }
+
+                wdoc_table tbl_users {
+                    caption = "Team Members"
+                    table data {
+                        name: string
+                        role: string
+                        admin: bool
+                        | "alice" | "engineering" | true  |
+                        | "bob"   | "marketing"  | false |
+                        | "carol" | "engineering" | true  |
+                        | "dave"  | "operations"  | false |
+                    }
+                }
             }
         }
     }
@@ -253,6 +287,19 @@ wdoc_page advanced {
                 code c2 {
                     language = "wcl"
                     content = "// Inline table\ntable users {\n    name:  string\n    role:  string\n    admin: bool\n    | \"alice\" | \"eng\"   | true  |\n    | \"bob\"   | \"sales\" | false |\n    | \"carol\" | \"eng\"   | true  |\n}\n\n// Import from CSV\ntable inventory = import_table(\n    \"data/inventory.csv\",\n    headers = true\n)\n\n// Query table data\nlet admins = query(users | .admin == true)\nlet eng_count = len(query(users | .role == \"eng\"))"
+                }
+
+                paragraph p3b { content = "Rendered table output:" }
+                wdoc_table tbl_users {
+                    caption = "Users Table"
+                    table data {
+                        name: string
+                        role: string
+                        admin: bool
+                        | "alice" | "eng"   | true  |
+                        | "bob"   | "sales" | false |
+                        | "carol" | "eng"   | true  |
+                    }
                 }
             }
         }
