@@ -1,0 +1,10 @@
+[
+  {"first_name": "Alice",   "last_name": "Smith",   "age": 32, "email": "Alice.Smith@EXAMPLE.com",   "department": "engineering", "phone": "+1-555-0101"},
+  {"first_name": "Bob",     "last_name": "Jones",   "age": 24, "email": "BOB.jones@example.com",     "department": "marketing",   "phone": "+1-555-0102"},
+  {"first_name": "Carol",   "last_name": "Chen",    "age": 38, "email": " carol.chen@example.com  ", "department": "engineering", "phone": "+1-555-0103"},
+  {"first_name": "Dave",    "last_name": "Wilson",  "age": 27, "email": "dave.wilson@example.com",   "department": "sales",       "phone": "+1-555-0104"},
+  {"first_name": "Eve",     "last_name": "Taylor",  "age": 45, "email": "eve.taylor@EXAMPLE.COM",    "department": "engineering", "phone": "+1-555-0105"},
+  {"first_name": "Frank",   "last_name": "Brown",   "age": 22, "email": "frank.brown@example.com",   "department": "marketing",   "phone": "+1-555-0106"},
+  {"first_name": "Grace",   "last_name": "Lee",     "age": 31, "email": "Grace.Lee@Example.com",     "department": "Product Management", "phone": "+1-555-0107"},
+  {"first_name": "Henry",   "last_name": "Garcia",  "age": 29, "email": "henry.garcia@example.com",  "department": "engineering", "phone": "+1-555-0108"}
+]

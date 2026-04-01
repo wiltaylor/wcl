@@ -30,12 +30,14 @@ pub fn run(
 
     let doc = crate::parse(&source, options);
 
-    // Filter out E040 (undefined reference) errors — transform map blocks
-    // reference `in` which is only available at transform runtime, not parse time.
+    // Filter out errors that are expected in transform files:
+    // - E040: undefined reference — `in` is only available at transform runtime
+    // - E060: unknown decorator — transform decorators (@where, @stream, etc.)
+    //   are not registered in the decorator schema registry
     let real_errors: Vec<_> = doc
         .errors()
         .into_iter()
-        .filter(|d| d.code.as_deref() != Some("E040"))
+        .filter(|d| !matches!(d.code.as_deref(), Some("E040") | Some("E060")))
         .collect();
     if !real_errors.is_empty() {
         for diag in &real_errors {

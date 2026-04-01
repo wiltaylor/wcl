@@ -1,0 +1,56 @@
+// ── Order processing transforms ──
+
+// ── 1. Filter to shipped orders only ──
+transform shipped-orders {
+    input  = "codec::json"
+    output = "codec::json"
+
+    @where(in.status == "shipped")
+    map {
+        order    = in.order_id
+        customer = in.customer
+        total    = in.amount
+        items    = in.items
+    }
+}
+
+// ── 2. High-value orders (amount > $200) ──
+transform high-value {
+    input  = "codec::json"
+    output = "codec::json"
+
+    @where(in.amount > 200)
+    map {
+        order    = in.order_id
+        customer = in.customer
+        amount   = in.amount
+        tier     = in.amount > 1000 ? "premium" : "standard"
+    }
+}
+
+// ── 3. Per-item cost calculation ──
+transform per-item-cost {
+    input  = "codec::json"
+    output = "codec::json"
+
+    @where(in.items > 0)
+    map {
+        order         = in.order_id
+        total         = in.amount
+        item_count    = in.items
+        cost_per_item = in.amount / in.items
+    }
+}
+
+// ── 4. Order summary — select only key fields ──
+transform order-summary {
+    input  = "codec::json"
+    output = "codec::json"
+
+    map {
+        id     = in.order_id
+        who    = in.customer
+        amount = in.amount
+        done   = in.status == "shipped"
+    }
+}

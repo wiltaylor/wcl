@@ -1,0 +1,89 @@
+// ── WCL Transform Examples ──
+// A collection of transforms demonstrating different features.
+
+// ── 1. Simple rename: pick and rename fields ──
+transform rename-fields {
+    input  = "codec::json"
+    output = "codec::json"
+
+    map {
+        full_name = "${in.first_name} ${in.last_name}"
+        email     = in.email
+        years_old = in.age
+    }
+}
+
+// ── 2. Enrichment: compute new fields from existing ones ──
+transform enrich {
+    input  = "codec::json"
+    output = "codec::json"
+
+    map {
+        name       = "${in.first_name} ${in.last_name}"
+        email      = lower(in.email)
+        age_months = in.age * 12
+        is_senior  = in.age >= 30
+        role       = in.department == "engineering" ? "engineer" : "staff"
+    }
+}
+
+// ── 3. Filter: keep only matching records ──
+transform seniors-only {
+    input  = "codec::json"
+    output = "codec::json"
+
+    @where(in.age >= 30)
+    map {
+        name = "${in.first_name} ${in.last_name}"
+        age  = in.age
+    }
+}
+
+// ── 4. Multi-filter: combine multiple where conditions ──
+transform senior-engineers {
+    input  = "codec::json"
+    output = "codec::json"
+
+    @where(in.age >= 30)
+    @where(in.department == "engineering")
+    map {
+        name       = "${in.first_name} ${in.last_name}"
+        department = in.department
+    }
+}
+
+// ── 5. Passthrough with selection: pick specific fields ──
+transform contact-info {
+    input  = "codec::json"
+    output = "codec::json"
+
+    map {
+        name  = "${in.first_name} ${in.last_name}"
+        email = in.email
+        phone = in.phone
+    }
+}
+
+// ── 6. String manipulation: clean and normalize data ──
+transform normalize {
+    input  = "codec::json"
+    output = "codec::json"
+
+    map {
+        name       = upper("${in.first_name} ${in.last_name}")
+        email      = lower(trim(in.email))
+        department = replace(lower(in.department), " ", "-")
+    }
+}
+
+// ── 7. Conditional logic in field expressions ──
+transform classify {
+    input  = "codec::json"
+    output = "codec::json"
+
+    map {
+        name     = "${in.first_name} ${in.last_name}"
+        category = in.age < 25 ? "junior" : (in.age < 35 ? "mid" : "senior")
+        can_lead = in.age >= 30 && in.department == "engineering"
+    }
+}

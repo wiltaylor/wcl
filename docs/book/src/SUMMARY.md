@@ -70,6 +70,9 @@
 - [add](./cli/add.md)
 - [remove](./cli/remove.md)
 - [lsp](./cli/lsp.md)
+- [transform](./cli/transform.md)
+- [table](./cli/table.md)
+- [docs](./cli/docs.md)
 
 # Language Reference
 

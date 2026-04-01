@@ -1,0 +1,10 @@
+[
+  {"order_id": "ORD-001", "customer": "alice",  "amount": 150.00, "status": "shipped",   "items": 3},
+  {"order_id": "ORD-002", "customer": "bob",    "amount": 89.99,  "status": "pending",   "items": 1},
+  {"order_id": "ORD-003", "customer": "carol",  "amount": 2500.00,"status": "shipped",   "items": 12},
+  {"order_id": "ORD-004", "customer": "alice",  "amount": 45.50,  "status": "cancelled", "items": 2},
+  {"order_id": "ORD-005", "customer": "dave",   "amount": 320.00, "status": "shipped",   "items": 5},
+  {"order_id": "ORD-006", "customer": "eve",    "amount": 1200.00,"status": "pending",   "items": 8},
+  {"order_id": "ORD-007", "customer": "bob",    "amount": 67.00,  "status": "shipped",   "items": 1},
+  {"order_id": "ORD-008", "customer": "carol",  "amount": 430.00, "status": "shipped",   "items": 4}
+]
