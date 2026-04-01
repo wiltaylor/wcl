@@ -46,8 +46,18 @@ pub async fn serve(
 
     let mut watcher: RecommendedWatcher =
         notify::recommended_watcher(move |res: Result<notify::Event, notify::Error>| {
-            if res.is_ok() {
-                let _ = notify_tx.blocking_send(());
+            if let Ok(event) = res {
+                // Only trigger on data writes, not access/metadata
+                use notify::event::{CreateKind, ModifyKind, RemoveKind};
+                use notify::EventKind;
+                match event.kind {
+                    EventKind::Create(CreateKind::File)
+                    | EventKind::Modify(ModifyKind::Data(_))
+                    | EventKind::Remove(RemoveKind::File) => {
+                        let _ = notify_tx.blocking_send(());
+                    }
+                    _ => {}
+                }
             }
         })
         .map_err(|e| format!("failed to create file watcher: {e}"))?;
@@ -63,8 +73,8 @@ pub async fn serve(
     tokio::spawn(async move {
         let mut generation: u64 = 0;
         while notify_rx.recv().await.is_some() {
-            // Debounce
-            tokio::time::sleep(Duration::from_millis(200)).await;
+            // Debounce — wait for writes to settle
+            tokio::time::sleep(Duration::from_millis(500)).await;
             while notify_rx.try_recv().is_ok() {}
 
             eprintln!("wdoc: rebuilding...");
