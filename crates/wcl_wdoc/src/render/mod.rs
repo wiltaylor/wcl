@@ -1,0 +1,38 @@
+pub mod assets;
+pub mod content;
+pub mod layout;
+pub mod page;
+
+use std::fs;
+use std::path::Path;
+
+use crate::model::WdocDocument;
+
+/// Render a `WdocDocument` to an output directory as static HTML files.
+pub fn render_document(doc: &WdocDocument, output: &Path) -> Result<(), String> {
+    // Create output directory
+    fs::create_dir_all(output).map_err(|e| format!("failed to create output directory: {e}"))?;
+
+    // Generate CSS: base + user styles
+    let mut css = assets::BASE_CSS.to_string();
+    css.push('\n');
+    css.push_str(&assets::generate_style_css(&doc.styles));
+
+    fs::write(output.join("styles.css"), &css)
+        .map_err(|e| format!("failed to write styles.css: {e}"))?;
+
+    // Render index page
+    let index_html = page::render_index(doc, "styles.css");
+    fs::write(output.join("index.html"), &index_html)
+        .map_err(|e| format!("failed to write index.html: {e}"))?;
+
+    // Render each page
+    for p in &doc.pages {
+        let html = page::render_page(doc, p, "styles.css");
+        let filename = format!("{}.html", p.id);
+        fs::write(output.join(&filename), &html)
+            .map_err(|e| format!("failed to write {filename}: {e}"))?;
+    }
+
+    Ok(())
+}

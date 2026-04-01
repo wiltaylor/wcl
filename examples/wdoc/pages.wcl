@@ -1,0 +1,243 @@
+// Pages for the WCL documentation example
+
+import <wdoc.wcl>
+
+// Overview page
+
+wdoc_page overview {
+    section = "my_docs.getting_started.overview"
+    title = "Overview"
+
+    wdoc_layout {
+        vsplit {
+            split {
+                size = 100
+
+                @style("hero")
+                heading h1 {
+                    level = 1
+                    content = "WCL - Wils Configuration Language"
+                }
+
+                @style("hero")
+                paragraph p1 {
+                    content = "A typed, block-structured configuration language with schemas, validation, and powerful expressions."
+                }
+
+                heading h2 {
+                    level = 2
+                    content = "Why WCL?"
+                }
+
+                paragraph p2 {
+                    content = "WCL brings the " + bold("safety of typed schemas") + " and the " + bold("flexibility of expressions") + " to configuration files."
+                }
+
+                heading h3 {
+                    level = 3
+                    content = "Key Features"
+                }
+
+                paragraph p3 { content = bold("Typed schemas") + " - define and validate your configuration structure." }
+                paragraph p4 { content = bold("Expressions") + " - variables, conditionals, loops, and functions." }
+                paragraph p5 { content = bold("Tables") + " - structured tabular data with column types." }
+                paragraph p6 { content = bold("Imports") + " - modular configuration with library support." }
+            }
+        }
+    }
+}
+
+// Installation page (two-column layout)
+
+wdoc_page install {
+    section = "my_docs.getting_started.installation"
+    title = "Installation"
+
+    wdoc_layout {
+        vsplit {
+            split {
+                size = 70
+
+                heading h1 {
+                    level = 1
+                    content = "Installation"
+                }
+
+                paragraph p1 {
+                    content = "Install WCL using one of the methods below. Pre-built binaries are available for Linux, macOS, and Windows."
+                }
+
+                heading h2a {
+                    level = 2
+                    content = "From Source"
+                }
+                code c1 { language = "bash"
+                    content = "cargo install wcl" }
+
+                heading h2b {
+                    level = 2
+                    content = "Verify Installation"
+                }
+                paragraph p2 { content = "After installing, verify that WCL is available:" }
+                code c2 { language = "bash"
+                    content = "wcl --version" }
+            }
+            split {
+                size = 30
+
+                heading h3 {
+                    level = 3
+                    content = "Quick Links"
+                }
+                paragraph l1 { content = link("GitHub Repository", "https://github.com/wiltaylor/wcl") }
+                paragraph l2 { content = link("API Documentation", "https://wcl.dev/docs") }
+                paragraph l3 { content = link("Release Notes", "https://github.com/wiltaylor/wcl/releases") }
+            }
+        }
+    }
+}
+
+// Language Basics page
+
+wdoc_page basics {
+    section = "my_docs.guide.basics"
+    title = "Language Basics"
+
+    wdoc_layout {
+        vsplit {
+            split {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Language Basics"
+                }
+
+                paragraph p1 {
+                    content = "WCL is a " + bold("block-structured") + " configuration language. Everything is built from " + italic("blocks") + ", " + italic("attributes") + ", and " + italic("expressions") + "."
+                }
+
+                heading h2a {
+                    level = 2
+                    content = "Blocks"
+                }
+                paragraph p2 { content = "Blocks are the fundamental building unit. Each block has a " + bold("kind") + " and an optional " + bold("ID") + ":" }
+                code c1 { language = "wcl"
+                    content = "server api {\n    host = \"0.0.0.0\"\n    port = 8080\n    workers = 4\n}" }
+
+                heading h2b {
+                    level = 2
+                    content = "Variables"
+                }
+                paragraph p3 { content = "Use " + bold("let") + " bindings to define variables:" }
+                code c2 { language = "wcl"
+                    content = "let base_port = 8000\n\nserver api {\n    port = base_port + 80\n}" }
+
+                heading h2c {
+                    level = 2
+                    content = "Schemas"
+                }
+                paragraph p4 { content = "Schemas define the expected structure and validate at " + bold("parse time") + ":" }
+                code c3 { language = "wcl"
+                    content = "schema \"server\" {\n    host: string\n    port: i64 @validate(min = 1, max = 65535)\n}" }
+            }
+        }
+    }
+}
+
+// Advanced Features page (multi-column)
+
+wdoc_page advanced {
+    section = "my_docs.guide.advanced"
+    title = "Advanced Features"
+
+    wdoc_layout {
+        vsplit {
+            split {
+                size = 100
+                heading h1 {
+                    level = 1
+                    content = "Advanced Features"
+                }
+                paragraph p1 { content = "WCL supports control flow, tables, imports, macros, and more." }
+            }
+        }
+        vsplit {
+            split {
+                size = 50
+
+                heading h2a {
+                    level = 2
+                    content = "Control Flow"
+                }
+                paragraph p2 { content = "Generate blocks with " + bold("for") + " loops and " + bold("if") + " conditionals:" }
+                code c1 { language = "wcl"
+                    content = "for region in regions {\n    server worker {\n        host = region + \".internal\"\n    }\n}" }
+            }
+            split {
+                size = 50
+
+                heading h2b {
+                    level = 2
+                    content = "Tables"
+                }
+                paragraph p3 { content = "Structured tabular data with typed columns:" }
+                code c2 { language = "wcl"
+                    content = "table users {\n    name:  string\n    role:  string\n    | \"alice\" | \"eng\"   |\n    | \"bob\"   | \"sales\" |\n}" }
+            }
+        }
+    }
+}
+
+// CLI Reference page
+
+wdoc_page cli_ref {
+    section = "my_docs.reference.cli_ref"
+    title = "CLI Reference"
+
+    wdoc_layout {
+        vsplit {
+            split {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "CLI Reference"
+                }
+                paragraph p1 { content = "The " + bold("wcl") + " command-line tool provides several subcommands." }
+
+                heading h2a {
+                    level = 2
+                    content = "eval"
+                }
+                paragraph p2 { content = "Evaluate and output resolved configuration:" }
+                code c1 { language = "bash"
+                    content = "wcl eval config.wcl --format json" }
+
+                heading h2b {
+                    level = 2
+                    content = "validate"
+                }
+                paragraph p3 { content = "Check for errors without producing output:" }
+                code c2 { language = "bash"
+                    content = "wcl validate config.wcl --strict" }
+
+                heading h2c {
+                    level = 2
+                    content = "query"
+                }
+                paragraph p4 { content = "Query specific values using selectors:" }
+                code c3 { language = "bash"
+                    content = "wcl query config.wcl \"server#api.port\"" }
+
+                heading h2d {
+                    level = 2
+                    content = "fmt"
+                }
+                paragraph p5 { content = "Format WCL source code:" }
+                code c4 { language = "bash"
+                    content = "wcl fmt config.wcl --write" }
+            }
+        }
+    }
+}

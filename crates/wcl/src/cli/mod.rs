@@ -75,6 +75,7 @@ mod table;
 mod transform;
 mod validate;
 mod vars;
+mod wdoc;
 
 #[derive(Parser)]
 #[command(
@@ -233,6 +234,11 @@ enum Commands {
         #[command(subcommand)]
         action: TransformAction,
     },
+    /// Build, validate, or serve wdoc documentation
+    Wdoc {
+        #[command(subcommand)]
+        action: WdocAction,
+    },
 }
 
 #[derive(Subcommand)]
@@ -253,6 +259,52 @@ enum TransformAction {
         /// Parameters (KEY=VALUE, may repeat)
         #[arg(long = "param", value_name = "KEY=VALUE")]
         params: Vec<String>,
+        #[command(flatten)]
+        lib_args: LibraryArgs,
+    },
+}
+
+#[derive(Subcommand)]
+enum WdocAction {
+    /// Build wdoc to HTML
+    Build {
+        /// Input WCL file(s)
+        #[arg(required = true)]
+        files: Vec<PathBuf>,
+        /// Output directory
+        #[arg(long, default_value = "wdoc-out")]
+        output: PathBuf,
+        /// Set a variable (KEY=VALUE, may repeat)
+        #[arg(long = "var", value_name = "KEY=VALUE")]
+        vars: Vec<String>,
+        #[command(flatten)]
+        lib_args: LibraryArgs,
+    },
+    /// Validate wdoc structure without building
+    Validate {
+        /// Input WCL file(s)
+        #[arg(required = true)]
+        files: Vec<PathBuf>,
+        /// Set a variable (KEY=VALUE, may repeat)
+        #[arg(long = "var", value_name = "KEY=VALUE")]
+        vars: Vec<String>,
+        #[command(flatten)]
+        lib_args: LibraryArgs,
+    },
+    /// Start a dev server with live reload
+    Serve {
+        /// Input WCL file(s)
+        #[arg(required = true)]
+        files: Vec<PathBuf>,
+        /// Port to listen on
+        #[arg(long, default_value = "3000")]
+        port: u16,
+        /// Open browser automatically
+        #[arg(long)]
+        open: bool,
+        /// Set a variable (KEY=VALUE, may repeat)
+        #[arg(long = "var", value_name = "KEY=VALUE")]
+        vars: Vec<String>,
         #[command(flatten)]
         lib_args: LibraryArgs,
     },
@@ -382,6 +434,26 @@ pub fn main() {
                 condition,
                 set,
             } => table::run_update(&file, &table_name, &condition, &set),
+        },
+        Commands::Wdoc { action } => match action {
+            WdocAction::Build {
+                files,
+                output,
+                vars,
+                lib_args,
+            } => wdoc::run_build(&files, &output, &vars, &lib_args),
+            WdocAction::Validate {
+                files,
+                vars,
+                lib_args,
+            } => wdoc::run_validate(&files, &vars, &lib_args),
+            WdocAction::Serve {
+                files,
+                port,
+                open,
+                vars,
+                lib_args,
+            } => wdoc::run_serve(&files, port, open, &vars, &lib_args),
         },
         Commands::Transform { action } => match action {
             TransformAction::Run {

@@ -24,10 +24,11 @@ pub use crate::lang::{
 };
 
 pub use crate::eval::{
-    builtin_signatures, BlockRef, BuiltinFn, ConflictMode, ControlFlowExpander, DecoratorValue,
-    Evaluator, FileSystem, FunctionRegistry, FunctionSignature, FunctionValue, ImportResolver,
-    InMemoryFs, LibraryConfig, MacroExpander, MacroRegistry, PartialMerger, QueryEngine,
-    RealFileSystem, Scope, ScopeArena, ScopeEntry, ScopeEntryKind, ScopeId, ScopeKind, Value,
+    builtin_signatures, call_lambda, BlockRef, BuiltinFn, ConflictMode, ControlFlowExpander,
+    DecoratorValue, Evaluator, FileSystem, FunctionRegistry, FunctionSignature, FunctionValue,
+    ImportResolver, InMemoryFs, LibraryConfig, MacroExpander, MacroRegistry, PartialMerger,
+    QueryEngine, RealFileSystem, Scope, ScopeArena, ScopeEntry, ScopeEntryKind, ScopeId, ScopeKind,
+    Value,
 };
 
 pub use crate::schema::type_name;
