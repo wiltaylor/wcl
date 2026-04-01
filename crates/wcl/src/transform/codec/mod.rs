@@ -3,7 +3,13 @@
 //! Each codec provides a Decoder (read) and Encoder (write) that operate on
 //! the unified Event stream.
 
+pub mod csv_codec;
+pub mod hcl_codec;
 pub mod json;
+pub mod msgpack;
+pub mod toml_codec;
+pub mod xml;
+pub mod yaml;
 
 use crate::transform::error::TransformError;
 use crate::transform::event::Event;
@@ -98,7 +104,8 @@ impl CodecRegistry {
 
     /// List available codec names.
     pub fn available(&self) -> Vec<&str> {
-        self.decoders.keys().map(|s| s.as_str()).collect()
+        // Include all codecs supported by the execute() function
+        SUPPORTED_CODECS.to_vec()
     }
 }
 
@@ -107,6 +114,9 @@ impl Default for CodecRegistry {
         Self::new()
     }
 }
+
+/// All codec names supported by the transform engine.
+pub const SUPPORTED_CODECS: &[&str] = &["json", "yaml", "csv", "toml", "hcl", "xml", "msgpack"];
 
 /// Decode an entire input into a list of records (each record is a Value::Map).
 pub fn decode_all(decoder: &mut dyn Decoder) -> Result<Vec<Value>, TransformError> {
@@ -156,8 +166,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn codec_registry_has_json() {
+    fn codec_registry_has_all_codecs() {
         let reg = CodecRegistry::new();
-        assert!(reg.available().contains(&"json"));
+        let avail = reg.available();
+        for codec in SUPPORTED_CODECS {
+            assert!(avail.contains(codec), "missing codec: {}", codec);
+        }
     }
 }

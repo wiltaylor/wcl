@@ -35,6 +35,12 @@ pub fn execute(
     // Decode input records
     let records = match input_codec {
         "json" => codec::json::decode_json_records(input_reader)?,
+        "yaml" => codec::yaml::decode_yaml_records(input_reader)?,
+        "csv" => codec::csv_codec::decode_csv_records(input_reader, true, b',')?,
+        "toml" => codec::toml_codec::decode_toml_records(input_reader)?,
+        "hcl" => codec::hcl_codec::decode_hcl_records(input_reader)?,
+        "xml" => codec::xml::decode_xml_records(input_reader)?,
+        "msgpack" => codec::msgpack::decode_msgpack_records(input_reader)?,
         _ => return Err(TransformError::UnknownCodec(input_codec.to_string())),
     };
 
@@ -49,6 +55,12 @@ pub fn execute(
 
     match output_codec {
         "json" => codec::json::encode_json_records(&transformed, output_writer, pretty)?,
+        "yaml" => codec::yaml::encode_yaml_records(&transformed, output_writer, pretty)?,
+        "csv" => codec::csv_codec::encode_csv_records(&transformed, output_writer, b',')?,
+        "toml" => codec::toml_codec::encode_toml_records(&transformed, output_writer, pretty)?,
+        "hcl" => codec::hcl_codec::encode_hcl_records(&transformed, output_writer)?,
+        "xml" => codec::xml::encode_xml_records(&transformed, output_writer, "root")?,
+        "msgpack" => codec::msgpack::encode_msgpack_records(&transformed, output_writer)?,
         _ => return Err(TransformError::UnknownCodec(output_codec.to_string())),
     }
 

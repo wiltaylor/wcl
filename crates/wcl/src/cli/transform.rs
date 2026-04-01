@@ -5,7 +5,6 @@ use std::io::{self, Read};
 use std::path::Path;
 
 use crate::cli::LibraryArgs;
-use crate::eval::value::Value;
 use crate::lang::ast::{BodyItem, DocItem};
 use crate::transform::{self, FieldMapping, MapConfig, WhereClause};
 
@@ -69,9 +68,8 @@ pub fn run(
         })
         .ok_or_else(|| format!("transform '{}' not found in {}", name, file.display()))?;
 
-    // Extract codec names from the transform block's evaluated values
-    let transform_values = doc.values.get(name);
-    let (input_codec, output_codec) = extract_codec_names(transform_values)?;
+    // Extract codec names from the transform block's AST attributes
+    let (input_codec, output_codec) = extract_codec_names_from_ast(transform_block)?;
 
     // Build the MapConfig from the transform's map sub-blocks
     let map_config = build_map_config(transform_block)?;
@@ -126,22 +124,45 @@ pub fn run(
     Ok(())
 }
 
-/// Extract input/output codec names from the transform block.
-fn extract_codec_names(transform_values: Option<&Value>) -> Result<(String, String), String> {
-    // For now, default to json if not explicitly specified
-    let (mut input_codec, mut output_codec) = ("json".to_string(), "json".to_string());
+/// Extract input/output codec names from the transform block's AST.
+fn extract_codec_names_from_ast(
+    block: &crate::lang::ast::Block,
+) -> Result<(String, String), String> {
+    let mut input_codec = "json".to_string();
+    let mut output_codec = "json".to_string();
 
-    if let Some(Value::Map(ref map)) = transform_values {
-        if let Some(Value::String(ref codec)) = map.get("input") {
-            // Parse "codec::json" format
-            input_codec = codec.strip_prefix("codec::").unwrap_or(codec).to_string();
-        }
-        if let Some(Value::String(ref codec)) = map.get("output") {
-            output_codec = codec.strip_prefix("codec::").unwrap_or(codec).to_string();
+    for item in &block.body {
+        if let BodyItem::Attribute(attr) = item {
+            let value_str = extract_string_value(&attr.value);
+            if let Some(ref s) = value_str {
+                let codec_name = s.strip_prefix("codec::").unwrap_or(s).to_string();
+                match attr.name.name.as_str() {
+                    "input" => input_codec = codec_name,
+                    "output" => output_codec = codec_name,
+                    _ => {}
+                }
+            }
         }
     }
 
     Ok((input_codec, output_codec))
+}
+
+/// Try to extract a plain string value from an AST expression.
+fn extract_string_value(expr: &crate::lang::ast::Expr) -> Option<String> {
+    if let crate::lang::ast::Expr::StringLit(s) = expr {
+        let mut result = String::new();
+        for part in &s.parts {
+            if let crate::lang::ast::StringPart::Literal(lit) = part {
+                result.push_str(lit);
+            } else {
+                return None; // interpolated strings can't be resolved statically
+            }
+        }
+        Some(result)
+    } else {
+        None
+    }
 }
 
 /// Build a MapConfig from the transform block's AST.

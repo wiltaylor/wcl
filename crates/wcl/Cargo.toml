@@ -44,6 +44,12 @@ clap = { workspace = true }
 serde_yaml_ng = "0.10"
 toml = "1"
 
+# Codec deps (transform system)
+csv = "1"
+hcl-rs = "0.18"
+quick-xml = { version = "0.37", features = ["serialize"] }
+rmp-serde = "1"
+
 [dev-dependencies]
 criterion = { workspace = true }
 serde_json = { workspace = true }
