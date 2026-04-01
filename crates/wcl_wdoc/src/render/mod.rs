@@ -29,10 +29,16 @@ pub fn render_document(doc: &WdocDocument, output: &Path) -> Result<(), String> 
     .map_err(|e| format!("failed to write highlight.min.js: {e}"))?;
 
     fs::write(
-        output.join("highlight-github.min.css"),
-        crate::library::HIGHLIGHTJS_THEME_CSS,
+        output.join("highlight-light.min.css"),
+        crate::library::HIGHLIGHTJS_THEME_LIGHT_CSS,
     )
-    .map_err(|e| format!("failed to write highlight-github.min.css: {e}"))?;
+    .map_err(|e| format!("failed to write highlight-light.min.css: {e}"))?;
+
+    fs::write(
+        output.join("highlight-dark.min.css"),
+        crate::library::HIGHLIGHTJS_THEME_DARK_CSS,
+    )
+    .map_err(|e| format!("failed to write highlight-dark.min.css: {e}"))?;
 
     fs::write(
         output.join("wcl-grammar.js"),
