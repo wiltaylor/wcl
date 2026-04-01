@@ -19,6 +19,7 @@
   "partial"
   "macro"
   "schema"
+  "struct"
   "table"
   "validation"
   "decorator_schema"

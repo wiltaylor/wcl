@@ -62,6 +62,11 @@ pub fn value_to_js(value: &Value) -> JsValue {
         Value::Date(s) => JsValue::from_str(s),
         Value::Duration(s) => JsValue::from_str(s),
         Value::Function(_) => JsValue::NULL,
+        Value::Pattern(s) => {
+            // Convert to JS RegExp
+            let re = js_sys::RegExp::new(s, "");
+            re.into()
+        }
     }
 }
 

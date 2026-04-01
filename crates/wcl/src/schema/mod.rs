@@ -6,6 +6,7 @@ pub mod document;
 pub mod id;
 #[allow(clippy::module_inception)]
 pub mod schema;
+pub mod struct_registry;
 pub mod table;
 pub mod types;
 
@@ -15,4 +16,5 @@ pub use schema::{
     ChildConstraint, ResolvedField, ResolvedSchema, ResolvedVariant, SchemaRegistry, SymbolSetInfo,
     SymbolSetRegistry, ValidateConstraints,
 };
+pub use struct_registry::StructRegistry;
 pub use types::type_name;

@@ -72,6 +72,10 @@
         },
         {
           "type": "SYMBOL",
+          "name": "struct_definition"
+        },
+        {
+          "type": "SYMBOL",
           "name": "decorator_schema"
         },
         {
@@ -772,6 +776,50 @@
         ]
       }
     },
+    "struct_definition": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "SYMBOL",
+            "name": "decorator"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": "struct"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "string_literal"
+        },
+        {
+          "type": "STRING",
+          "value": "{"
+        },
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "schema_field"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "schema_variant"
+              }
+            ]
+          }
+        },
+        {
+          "type": "STRING",
+          "value": "}"
+        }
+      ]
+    },
     "decorator_schema": {
       "type": "SEQ",
       "members": [
@@ -887,6 +935,10 @@
         {
           "type": "STRING",
           "value": "schema"
+        },
+        {
+          "type": "STRING",
+          "value": "let"
         }
       ]
     },

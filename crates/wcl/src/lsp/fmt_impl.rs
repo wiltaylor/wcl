@@ -353,6 +353,7 @@ impl<'a> Fmt<'a> {
                             DecoratorTarget::Attribute => "attribute",
                             DecoratorTarget::Table => "table",
                             DecoratorTarget::Schema => "schema",
+                            DecoratorTarget::Let => "let",
                         };
                         self.out.push_str(name);
                     }
@@ -378,6 +379,45 @@ impl<'a> Fmt<'a> {
                         self.string_lit(val);
                     }
                     self.out.push('\n');
+                }
+                self.indent -= 1;
+                self.indent();
+                self.out.push_str("}\n");
+            }
+            BodyItem::StructDef(s) => {
+                for dec in &s.decorators {
+                    self.decorator(dec);
+                }
+                self.indent();
+                self.out.push_str("struct ");
+                self.string_lit(&s.name);
+                self.out.push_str(" {\n");
+                self.indent += 1;
+                for field in &s.fields {
+                    self.indent();
+                    self.out.push_str(&format!("{} : ", field.name.name));
+                    self.type_expr(&field.type_expr);
+                    for dec in &field.decorators_after {
+                        self.out.push(' ');
+                        self.decorator_inline(dec);
+                    }
+                    self.out.push('\n');
+                }
+                for variant in &s.variants {
+                    self.indent();
+                    self.out.push_str("variant ");
+                    self.string_lit(&variant.tag_value);
+                    self.out.push_str(" {\n");
+                    self.indent += 1;
+                    for field in &variant.fields {
+                        self.indent();
+                        self.out.push_str(&format!("{} : ", field.name.name));
+                        self.type_expr(&field.type_expr);
+                        self.out.push('\n');
+                    }
+                    self.indent -= 1;
+                    self.indent();
+                    self.out.push_str("}\n");
                 }
                 self.indent -= 1;
                 self.indent();
@@ -652,6 +692,8 @@ impl<'a> Fmt<'a> {
                 self.out.push(')');
             }
             TypeExpr::Symbol(_) => self.out.push_str("symbol"),
+            TypeExpr::StructType(ident, _) => self.out.push_str(&ident.name),
+            TypeExpr::Pattern(_) => self.out.push_str("pattern"),
         }
     }
 
@@ -935,6 +977,7 @@ mod tests {
                 decorators: vec![],
                 name: make_ident("value"),
                 value: Expr::Ident(make_ident("x")),
+                assign_op: crate::lang::ast::AssignOp::Assign,
                 trivia: dummy_trivia(),
                 span: dummy_span(),
             })]),

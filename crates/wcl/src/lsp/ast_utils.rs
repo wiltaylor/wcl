@@ -312,6 +312,7 @@ fn find_in_body_item<'a>(item: &'a BodyItem, offset: usize) -> NodeAtOffset<'a> 
         }
         BodyItem::DecoratorSchema(_) => {}
         BodyItem::SymbolSetDecl(_) => {}
+        BodyItem::StructDef(_) => {}
     }
     NodeAtOffset::None
 }

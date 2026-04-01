@@ -207,6 +207,16 @@ impl Parser {
                     span,
                 }))
             }
+            // `in` is a keyword in for-loops but also a valid identifier in
+            // expressions (e.g. `in.name` in transform map blocks)
+            TokenKind::In => {
+                let span = self.current_span();
+                self.advance();
+                Some(Expr::Ident(Ident {
+                    name: "in".to_string(),
+                    span,
+                }))
+            }
             TokenKind::LBracket => self.parse_list_literal(),
             TokenKind::LBrace => {
                 // Could be map literal or block expression.

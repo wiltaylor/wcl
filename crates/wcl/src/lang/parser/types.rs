@@ -170,6 +170,10 @@ impl Parser {
                         let end_span = self.prev_span();
                         Some(TypeExpr::Union(types, start_span.merge(end_span)))
                     }
+                    "pattern" => {
+                        self.advance();
+                        Some(TypeExpr::Pattern(start_span))
+                    }
                     "function" => {
                         self.diagnostics.error(
                             "the `function` type cannot be used in schema field declarations",
@@ -179,11 +183,13 @@ impl Parser {
                         None
                     }
                     _ => {
-                        // Unknown type name — treat as error
-                        self.diagnostics
-                            .error(format!("unknown type: {}", name), start_span);
+                        // Treat unknown identifiers as struct type references
+                        let ident = Ident {
+                            name: name.clone(),
+                            span: start_span,
+                        };
                         self.advance();
-                        None
+                        Some(TypeExpr::StructType(ident, start_span))
                     }
                 }
             }

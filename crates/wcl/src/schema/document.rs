@@ -59,6 +59,7 @@ fn validate_rule(
             span: validation.span,
         },
         value: validation.check.clone(),
+        assign_op: crate::lang::ast::AssignOp::Assign,
         trivia: crate::lang::trivia::Trivia::default(),
         span: validation.span,
     })));
@@ -69,6 +70,7 @@ fn validate_rule(
             span: validation.span,
         },
         value: validation.message.clone(),
+        assign_op: crate::lang::ast::AssignOp::Assign,
         trivia: crate::lang::trivia::Trivia::default(),
         span: validation.span,
     })));

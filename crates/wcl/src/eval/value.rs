@@ -30,6 +30,8 @@ pub enum Value {
     Date(String),
     /// ISO 8601 duration value (e.g. `dur"P1Y2M3D"`)
     Duration(String),
+    /// Regex pattern value (e.g. /^[a-z]+$/)
+    Pattern(String),
 }
 
 #[derive(Debug, Clone)]
@@ -70,6 +72,27 @@ pub struct FunctionValue {
     pub params: Vec<String>,
     pub body: FunctionBody,
     pub closure_scope: Option<ScopeId>,
+    /// Attributes from decorators on the let binding (e.g. @stateful, @accumulator)
+    pub lambda_attrs: LambdaAttrs,
+    /// Type annotations for parameters (if provided)
+    pub param_types: Vec<Option<String>>,
+    /// Return type annotation (if provided)
+    pub return_type: Option<String>,
+}
+
+/// Attributes derived from decorators on a let/export-let binding containing a lambda.
+#[derive(Debug, Clone, Default)]
+pub struct LambdaAttrs {
+    pub stateful: Option<StatefulAttr>,
+    pub accumulator: bool,
+    pub instrumented: bool,
+}
+
+/// Configuration for the @stateful decorator.
+#[derive(Debug, Clone)]
+pub struct StatefulAttr {
+    /// Optional named scope: `@stateful(scope = "per_sensor")`
+    pub scope: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -107,6 +130,7 @@ impl Value {
             Value::Function(_) => "function",
             Value::Date(_) => "date",
             Value::Duration(_) => "duration",
+            Value::Pattern(_) => "pattern",
         }
     }
 
@@ -218,6 +242,7 @@ impl Value {
             Value::Symbol(s) => Ok(format!(":{}", s)),
             Value::Date(s) => Ok(s.clone()),
             Value::Duration(s) => Ok(s.clone()),
+            Value::Pattern(s) => Ok(format!("/{}/", s)),
             _ => Err(format!(
                 "cannot interpolate {} into string",
                 self.type_name()
@@ -244,6 +269,7 @@ impl PartialEq for Value {
             (Value::Set(a), Value::Set(b)) => a == b,
             (Value::Date(a), Value::Date(b)) => a == b,
             (Value::Duration(a), Value::Duration(b)) => a == b,
+            (Value::Pattern(a), Value::Pattern(b)) => a == b,
             _ => false,
         }
     }
@@ -310,6 +336,7 @@ impl fmt::Display for Value {
             Value::Function(_) => write!(f, "<function>"),
             Value::Date(s) => write!(f, "d\"{}\"", s),
             Value::Duration(s) => write!(f, "dur\"{}\"", s),
+            Value::Pattern(s) => write!(f, "/{}/", s),
         }
     }
 }
@@ -342,6 +369,9 @@ mod tests {
             params: vec![],
             body: FunctionBody::Builtin("len".into()),
             closure_scope: None,
+            lambda_attrs: LambdaAttrs::default(),
+            param_types: vec![],
+            return_type: None,
         });
         assert_eq!(f.type_name(), "function");
     }

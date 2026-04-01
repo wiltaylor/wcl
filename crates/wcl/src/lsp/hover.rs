@@ -291,6 +291,8 @@ fn type_expr_str(te: &TypeExpr) -> String {
             format!("union({})", parts.join(", "))
         }
         TypeExpr::Symbol(_) => "symbol".to_string(),
+        TypeExpr::StructType(ident, _) => ident.name.clone(),
+        TypeExpr::Pattern(_) => "pattern".to_string(),
     }
 }
 

@@ -62,6 +62,12 @@ pub enum TokenKind {
     Declare,
     Update,
     SymbolSet,
+    Struct,
+    Transform,
+    Pipeline,
+    Layout,
+    Stream,
+    Codec,
 
     // Delimiters
     LBrace,
@@ -85,7 +91,9 @@ pub enum TokenKind {
 
     // Operators
     Plus,
+    PlusEquals,
     Minus,
+    Arrow,
     Star,
     Slash,
     Percent,
@@ -100,6 +108,8 @@ pub enum TokenKind {
     Or,
     Not,
     FatArrow,
+    /// Pattern literal: /regex/
+    PatternLit(String),
 
     // String interpolation start `${`
     InterpStart,
@@ -299,6 +309,14 @@ impl<'a> Lexer<'a> {
         if self.starts_with("=>") {
             self.advance(2);
             return Some(self.make_tok(TokenKind::FatArrow, start));
+        }
+        if self.starts_with("->") {
+            self.advance(2);
+            return Some(self.make_tok(TokenKind::Arrow, start));
+        }
+        if self.starts_with("+=") {
+            self.advance(2);
+            return Some(self.make_tok(TokenKind::PlusEquals, start));
         }
         if self.starts_with("..") {
             self.advance(2);
@@ -1002,6 +1020,12 @@ impl<'a> Lexer<'a> {
             "declare" => TokenKind::Declare,
             "update" => TokenKind::Update,
             "symbol_set" => TokenKind::SymbolSet,
+            "struct" => TokenKind::Struct,
+            "transform" => TokenKind::Transform,
+            "pipeline" => TokenKind::Pipeline,
+            "layout" => TokenKind::Layout,
+            "stream" => TokenKind::Stream,
+            "codec" => TokenKind::Codec,
             other => {
                 if other.contains('-') {
                     TokenKind::IdentifierLit(other.to_string())
@@ -1065,7 +1089,7 @@ mod tests {
 
     #[test]
     fn keywords() {
-        let src = "let partial macro schema table import export query ref for in if else when inject set remove self validation decorator_schema update symbol_set";
+        let src = "let partial macro schema table import export query ref for in if else when inject set remove self validation decorator_schema update symbol_set struct transform pipeline layout stream codec";
         let ks = token_kinds_ok(src);
         assert_eq!(
             ks,
@@ -1092,6 +1116,12 @@ mod tests {
                 TokenKind::DecoratorSchema,
                 TokenKind::Update,
                 TokenKind::SymbolSet,
+                TokenKind::Struct,
+                TokenKind::Transform,
+                TokenKind::Pipeline,
+                TokenKind::Layout,
+                TokenKind::Stream,
+                TokenKind::Codec,
                 TokenKind::Eof,
             ]
         );
@@ -1409,7 +1439,7 @@ mod tests {
 
     #[test]
     fn multi_char_operators() {
-        let ks = token_kinds_ok("== != <= >= =~ && || => .. ${");
+        let ks = token_kinds_ok("== != <= >= =~ && || => -> += .. ${");
         assert_eq!(
             ks,
             vec![
@@ -1421,6 +1451,8 @@ mod tests {
                 TokenKind::And,
                 TokenKind::Or,
                 TokenKind::FatArrow,
+                TokenKind::Arrow,
+                TokenKind::PlusEquals,
                 TokenKind::DotDot,
                 TokenKind::InterpStart,
                 TokenKind::Eof,

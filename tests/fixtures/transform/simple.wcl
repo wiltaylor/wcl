@@ -1,0 +1,10 @@
+// A simple JSON-to-JSON transform that renames and filters fields.
+transform rename-fields {
+    input = "codec::json"
+    output = "codec::json"
+
+    map {
+        user_name = in.name
+        user_age  = in.age
+    }
+}

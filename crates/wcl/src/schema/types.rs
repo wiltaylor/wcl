@@ -54,6 +54,9 @@ pub fn check_type(value: &Value, type_expr: &TypeExpr) -> bool {
         (Value::Set(items), TypeExpr::Set(inner, _)) => {
             items.iter().all(|item| check_type(item, inner))
         }
+        (Value::Pattern(_), TypeExpr::Pattern(_)) => true,
+        // StructType validation is handled by the StructRegistry, not here
+        (Value::Map(_), TypeExpr::StructType(_, _)) => true,
         (_, TypeExpr::Union(types, _)) => types.iter().any(|t| check_type(value, t)),
         _ => false,
     }
@@ -96,6 +99,8 @@ pub fn type_name(type_expr: &TypeExpr) -> String {
             let names: Vec<_> = types.iter().map(type_name).collect();
             format!("union({})", names.join(", "))
         }
+        TypeExpr::StructType(ident, _) => ident.name.clone(),
+        TypeExpr::Pattern(_) => "pattern".to_string(),
     }
 }
 

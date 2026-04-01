@@ -317,6 +317,90 @@ pub extern "C" fn wcl_ffi_list_libraries() -> *mut c_char {
     }
 }
 
+// ── Function calling ─────────────────────────────────────────────────────
+
+/// Call an exported function by name.
+///
+/// `args_json` is a JSON array of arguments. Returns a JSON string with
+/// the result, or an `ERR:message` string on failure.
+#[no_mangle]
+pub extern "C" fn wcl_ffi_call_function(
+    doc: *mut WclDocument,
+    name: *const c_char,
+    args_json: *const c_char,
+) -> *mut c_char {
+    clear_last_error();
+    let doc = unsafe { &*(doc as *const wcl::Document) };
+    let name = unsafe { CStr::from_ptr(name) }.to_str().unwrap_or("");
+    let args_str = if args_json.is_null() {
+        "[]"
+    } else {
+        unsafe { CStr::from_ptr(args_json) }
+            .to_str()
+            .unwrap_or("[]")
+    };
+
+    let args: Vec<wcl::Value> = match serde_json::from_str::<Vec<serde_json::Value>>(args_str) {
+        Ok(json_args) => {
+            let mut vals = Vec::new();
+            for jv in &json_args {
+                match convert::json_to_value(jv) {
+                    Ok(v) => vals.push(v),
+                    Err(e) => {
+                        let msg = format!("ERR:arg conversion: {}", e);
+                        return CString::new(msg).unwrap().into_raw();
+                    }
+                }
+            }
+            vals
+        }
+        Err(e) => {
+            let msg = format!("ERR:invalid args JSON: {}", e);
+            return CString::new(msg).unwrap().into_raw();
+        }
+    };
+
+    match doc.call_function(name, &args) {
+        Ok(result) => {
+            let json = wcl::json::value_to_json(&result);
+            let s = serde_json::to_string(&json).unwrap_or_else(|_| "null".to_string());
+            CString::new(s).unwrap().into_raw()
+        }
+        Err(e) => {
+            let msg = format!("ERR:{}", e);
+            CString::new(msg).unwrap().into_raw()
+        }
+    }
+}
+
+/// List exported functions as a JSON array of objects with `name` and `params` fields.
+#[no_mangle]
+pub extern "C" fn wcl_ffi_list_functions(doc: *mut WclDocument) -> *mut c_char {
+    clear_last_error();
+    let doc = unsafe { &*(doc as *const wcl::Document) };
+
+    let names = doc.exported_function_names();
+    let mut entries = Vec::new();
+    for name in &names {
+        let params = doc
+            .values
+            .get(*name)
+            .and_then(|v| match v {
+                wcl::Value::Function(f) => Some(&f.params),
+                _ => None,
+            })
+            .cloned()
+            .unwrap_or_default();
+        entries.push(serde_json::json!({
+            "name": name,
+            "params": params,
+        }));
+    }
+
+    let json = serde_json::to_string(&entries).unwrap_or_else(|_| "[]".to_string());
+    CString::new(json).unwrap().into_raw()
+}
+
 // ── Memory management ────────────────────────────────────────────────────
 
 /// Free a string previously returned by any `wcl_ffi_*` function.

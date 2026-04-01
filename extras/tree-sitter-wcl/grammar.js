@@ -46,6 +46,7 @@ export default grammar({
         $.conditional,
         $.validation,
         $.schema,
+        $.struct_definition,
         $.decorator_schema,
         $.declare_statement,
         $.symbol_set_declaration,
@@ -180,6 +181,17 @@ export default grammar({
         ),
       ),
 
+    // Struct definitions
+    struct_definition: ($) =>
+      seq(
+        repeat($.decorator),
+        "struct",
+        $.string_literal,
+        "{",
+        repeat(choice($.schema_field, $.schema_variant)),
+        "}",
+      ),
+
     // Decorator schemas
     decorator_schema: ($) =>
       seq(
@@ -201,7 +213,7 @@ export default grammar({
         repeat($.schema_field),
       ),
 
-    target_type: ($) => choice("block", "attribute", "table", "schema"),
+    target_type: ($) => choice("block", "attribute", "table", "schema", "let"),
 
     // Decorators
     decorator: ($) =>

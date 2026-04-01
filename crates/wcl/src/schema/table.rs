@@ -360,6 +360,7 @@ mod tests {
             partial: false,
             kind: mk_ident("outer"),
             inline_id: None,
+            arrow_target: None,
             inline_args: vec![],
             body: vec![BodyItem::Table(table)],
             text_content: None,

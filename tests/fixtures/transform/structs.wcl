@@ -1,0 +1,41 @@
+// Example: Struct definitions as reusable data types.
+
+struct "Point" {
+    x : f64
+    y : f64
+}
+
+struct "Color" {
+    r : u8
+    g : u8
+    b : u8
+    a : u8 @optional
+}
+
+struct "Rectangle" {
+    origin : Point
+    size   : Point
+}
+
+// Use structs as types in schemas
+schema "sprite" {
+    position : Point @required
+    tint     : Color @optional
+    name     : string @required
+    visible  : bool
+}
+
+// Struct with variants (tagged union)
+@tagged("type")
+struct "Message" {
+    type : string
+
+    variant "text" {
+        body : string
+    }
+    variant "image" {
+        url    : string
+        width  : i32
+        height : i32
+    }
+}

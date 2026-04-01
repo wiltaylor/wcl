@@ -125,6 +125,7 @@ mod tests {
             partial,
             kind: make_ident(kind),
             inline_id: id.map(make_inline_id),
+            arrow_target: None,
             inline_args: vec![],
             body: vec![],
             text_content: None,

@@ -65,6 +65,7 @@ impl<'de> de::Deserializer<'de> for Deserializer {
             )),
             Value::Date(s) => visitor.visit_string(s),
             Value::Duration(s) => visitor.visit_string(s),
+            Value::Pattern(s) => visitor.visit_string(s),
         }
     }
 

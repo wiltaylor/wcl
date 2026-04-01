@@ -238,7 +238,7 @@
         },
         {
           "name": "keyword.declaration.wcl",
-          "match": "\\b(let|partial|macro|schema|table|validation|decorator_schema|declare|variant|symbol_set)\\b"
+          "match": "\\b(let|partial|macro|schema|struct|transform|pipeline|layout|stream|codec|table|validation|decorator_schema|declare|variant|symbol_set)\\b"
         },
         {
           "name": "keyword.control.import.wcl",
