@@ -5,13 +5,15 @@ use crate::render::layout::render_layout_items;
 
 /// highlight.js local assets injected into <head>.
 const HLJS_HEAD: &str = r#"<link rel="stylesheet" href="highlight-github.min.css">
-<script src="highlight.min.js"></script>
-<script src="wcl-grammar.js"></script>"#;
+<script defer src="highlight.min.js"></script>
+<script defer src="wcl-grammar.js"></script>"#;
 
 /// highlight.js initialization script injected before </body>.
 const HLJS_INIT: &str = r#"<script>
-hljs.registerLanguage('wcl', hljsDefineWcl);
-hljs.highlightAll();
+document.addEventListener('DOMContentLoaded', function() {
+    hljs.registerLanguage('wcl', hljsDefineWcl);
+    hljs.highlightAll();
+});
 </script>"#;
 
 /// Render a single page as a complete HTML document.
