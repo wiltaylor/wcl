@@ -110,44 +110,30 @@ pub fn render_page(doc: &WdocDocument, page: &Page, css_path: &str) -> String {
     html
 }
 
-/// Render the index page (list of all sections with links to first page).
-pub fn render_index(doc: &WdocDocument, css_path: &str) -> String {
-    let mut html = String::with_capacity(2048);
+/// Render the index page — redirects to the first page if one exists.
+pub fn render_index(doc: &WdocDocument, _css_path: &str) -> String {
+    // Redirect to the first page
+    let target = doc
+        .pages
+        .first()
+        .map(|p| format!("{}.html", p.id))
+        .unwrap_or_else(|| "#".to_string());
 
-    write!(
-        html,
+    format!(
         r#"<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="0; url={target}">
 <title>{title}</title>
-<link rel="stylesheet" href="{css_path}">
 </head>
 <body>
+<p>Redirecting to <a href="{target}">{target}</a>...</p>
+</body>
+</html>
 "#,
         title = doc.title,
     )
-    .unwrap();
-
-    render_nav(doc, "", &mut html);
-
-    html.push_str("<main class=\"wdoc-content\">\n");
-    writeln!(html, "<h1 class=\"wdoc-heading\">{}</h1>", doc.title).unwrap();
-
-    if let Some(author) = &doc.author {
-        writeln!(html, "<p class=\"wdoc-paragraph\">By {author}</p>").unwrap();
-    }
-    if let Some(version) = &doc.version {
-        writeln!(html, "<p class=\"wdoc-paragraph\">Version {version}</p>").unwrap();
-    }
-
-    // Section listing omitted — the nav sidebar serves as the table of contents
-
-    html.push_str("</main>\n");
-    html.push_str(THEME_SCRIPT);
-    html.push_str("\n</body>\n</html>\n");
-    html
 }
 
 fn render_nav(doc: &WdocDocument, active_section: &str, html: &mut String) {
@@ -206,4 +192,3 @@ fn render_nav_sections(
         html.push_str("</li>\n");
     }
 }
-
