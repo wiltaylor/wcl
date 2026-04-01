@@ -24,15 +24,17 @@ struct ServeState {
 pub async fn serve(
     build_fn: impl Fn() -> Result<WdocDocument, String> + Send + Sync + 'static,
     watch_paths: Vec<PathBuf>,
+    asset_dirs: Vec<PathBuf>,
     output_dir: PathBuf,
     port: u16,
     open_browser: bool,
 ) -> Result<(), String> {
     let build_fn = Arc::new(build_fn);
+    let asset_dir_refs: Vec<&std::path::Path> = asset_dirs.iter().map(|p| p.as_path()).collect();
 
     // Initial build
     let doc = build_fn().map_err(|e| format!("initial build failed: {e}"))?;
-    crate::render::render_document(&doc, &output_dir)?;
+    crate::render::render_document(&doc, &output_dir, &asset_dir_refs)?;
     eprintln!("wdoc: built to {}", output_dir.display());
 
     // Reload signal
@@ -80,7 +82,10 @@ pub async fn serve(
             eprintln!("wdoc: rebuilding...");
             match build_fn_watch() {
                 Ok(doc) => {
-                    if let Err(e) = crate::render::render_document(&doc, &output_dir_watch) {
+                    let arefs: Vec<&std::path::Path> =
+                        asset_dirs.iter().map(|p| p.as_path()).collect();
+                    if let Err(e) = crate::render::render_document(&doc, &output_dir_watch, &arefs)
+                    {
                         eprintln!("wdoc: render error: {e}");
                         continue;
                     }
