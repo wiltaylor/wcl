@@ -21,6 +21,13 @@ pub fn render_document(doc: &WdocDocument, output: &Path) -> Result<(), String> 
     fs::write(output.join("styles.css"), &css)
         .map_err(|e| format!("failed to write styles.css: {e}"))?;
 
+    // Write WCL highlight.js grammar
+    fs::write(
+        output.join("wcl-grammar.js"),
+        crate::library::WCL_HIGHLIGHTJS_GRAMMAR,
+    )
+    .map_err(|e| format!("failed to write wcl-grammar.js: {e}"))?;
+
     // Render index page
     let index_html = page::render_index(doc, "styles.css");
     fs::write(output.join("index.html"), &index_html)

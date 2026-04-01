@@ -86,6 +86,25 @@ h6.wdoc-heading { font-size: 0.9rem; }
 
 .wdoc-paragraph { margin-bottom: 1rem; }
 
+/* Code blocks */
+.wdoc-code {
+    background: #f6f8fa;
+    border: 1px solid #e1e4e8;
+    border-radius: 6px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    overflow-x: auto;
+    font-size: 0.875rem;
+    line-height: 1.5;
+}
+.wdoc-code code {
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    background: none;
+    padding: 0;
+}
+/* Override highlight.js background to match our code box */
+.wdoc-code .hljs { background: transparent; padding: 0; }
+
 a { color: var(--color-link); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
