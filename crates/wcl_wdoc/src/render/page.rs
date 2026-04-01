@@ -142,12 +142,7 @@ pub fn render_index(doc: &WdocDocument, css_path: &str) -> String {
         writeln!(html, "<p class=\"wdoc-paragraph\">Version {version}</p>").unwrap();
     }
 
-    // Section listing
-    if !doc.sections.is_empty() {
-        html.push_str("<h2 class=\"wdoc-heading\">Contents</h2>\n<ul>\n");
-        render_section_list(&doc.sections, &doc.pages, &mut html);
-        html.push_str("</ul>\n");
-    }
+    // Section listing omitted — the nav sidebar serves as the table of contents
 
     html.push_str("</main>\n");
     html.push_str(THEME_SCRIPT);
@@ -212,20 +207,3 @@ fn render_nav_sections(
     }
 }
 
-fn render_section_list(sections: &[Section], pages: &[Page], html: &mut String) {
-    for section in sections {
-        let page_link = pages
-            .iter()
-            .find(|p| p.section_id == section.id)
-            .map(|p| format!("<a href=\"{}.html\">{}</a>", p.id, section.title))
-            .unwrap_or_else(|| section.title.clone());
-
-        writeln!(html, "<li>{page_link}").unwrap();
-        if !section.children.is_empty() {
-            html.push_str("<ul>\n");
-            render_section_list(&section.children, pages, html);
-            html.push_str("</ul>\n");
-        }
-        html.push_str("</li>\n");
-    }
-}
