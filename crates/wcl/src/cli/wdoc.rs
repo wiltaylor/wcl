@@ -688,7 +688,13 @@ pub fn run_build(
     lib_args: &LibraryArgs,
 ) -> Result<(), String> {
     let doc = parse_and_extract(files, vars, lib_args)?;
-    wcl_wdoc::render_to(&doc, output)?;
+    let asset_dirs: Vec<&Path> = files
+        .iter()
+        .filter_map(|f| f.parent())
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+    wcl_wdoc::render_to(&doc, output, &asset_dirs)?;
     println!(
         "wdoc: built {} page(s) to {}",
         doc.pages.len(),
@@ -727,6 +733,14 @@ pub fn run_serve(
     // Watch the specific input files, not entire directories
     let watch_paths: Vec<PathBuf> = files.clone();
 
+    // Asset directories = parent dirs of input files
+    let asset_dirs: Vec<PathBuf> = files
+        .iter()
+        .filter_map(|f| f.parent().map(|p| p.to_path_buf()))
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+
     let build_fn = move || parse_and_extract(&files, &vars, &lib_args);
 
     let rt = tokio::runtime::Runtime::new()
@@ -735,6 +749,7 @@ pub fn run_serve(
     rt.block_on(wcl_wdoc::serve::serve(
         build_fn,
         watch_paths,
+        asset_dirs,
         output_dir,
         port,
         open,

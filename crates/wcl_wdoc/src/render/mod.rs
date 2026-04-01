@@ -9,7 +9,12 @@ use std::path::Path;
 use crate::model::WdocDocument;
 
 /// Render a `WdocDocument` to an output directory as static HTML files.
-pub fn render_document(doc: &WdocDocument, output: &Path) -> Result<(), String> {
+/// `asset_dirs` are source directories to scan for image/asset files to copy.
+pub fn render_document(
+    doc: &WdocDocument,
+    output: &Path,
+    asset_dirs: &[&Path],
+) -> Result<(), String> {
     // Create output directory
     fs::create_dir_all(output).map_err(|e| format!("failed to create output directory: {e}"))?;
 
@@ -66,5 +71,49 @@ pub fn render_document(doc: &WdocDocument, output: &Path) -> Result<(), String> 
             .map_err(|e| format!("failed to write index.html: {e}"))?;
     }
 
+    // Copy asset files (images, etc.) from source directories
+    let asset_extensions = ["png", "jpg", "jpeg", "gif", "svg", "webp", "ico"];
+    for dir in asset_dirs {
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    // Copy subdirectories (e.g., images/)
+                    let dir_name = path.file_name().unwrap();
+                    let dest_dir = output.join(dir_name);
+                    if let Err(e) = copy_dir_assets(&path, &dest_dir, &asset_extensions) {
+                        eprintln!(
+                            "wdoc: warning: failed to copy assets from {}: {e}",
+                            path.display()
+                        );
+                    }
+                } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                    if asset_extensions.contains(&ext) {
+                        let dest = output.join(path.file_name().unwrap());
+                        let _ = fs::copy(&path, &dest);
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn copy_dir_assets(src: &Path, dest: &Path, extensions: &[&str]) -> Result<(), String> {
+    fs::create_dir_all(dest).map_err(|e| format!("mkdir {}: {e}", dest.display()))?;
+    for entry in fs::read_dir(src).map_err(|e| format!("read {}: {e}", src.display()))? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        if path.is_file() {
+            if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                if extensions.contains(&ext) {
+                    let dest_file = dest.join(path.file_name().unwrap());
+                    fs::copy(&path, &dest_file)
+                        .map_err(|e| format!("copy {}: {e}", path.display()))?;
+                }
+            }
+        }
+    }
     Ok(())
 }

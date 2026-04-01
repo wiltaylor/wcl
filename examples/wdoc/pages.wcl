@@ -16,6 +16,11 @@ wdoc_page overview {
             split s1 {
                 size = 100
 
+                image hero_img {
+                    src = "images/hero-banner.png"
+                    alt = "WCL Documentation"
+                }
+
                 @style("hero")
                 heading h1 {
                     level = 1
@@ -181,6 +186,12 @@ wdoc_page basics {
                     level = 2
                     content = "Schemas and Validation"
                 }
+
+                image img_schemas {
+                    src = "images/schemas.png"
+                    alt = "Schema validation diagram"
+                }
+
                 paragraph p4 { content = "Schemas define the expected structure and validate your configuration at " + bold("parse time") + ". Errors are caught before deployment:" }
                 code c3 {
                     language = "wcl"
