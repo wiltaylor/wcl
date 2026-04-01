@@ -21,7 +21,19 @@ pub fn render_document(doc: &WdocDocument, output: &Path) -> Result<(), String> 
     fs::write(output.join("styles.css"), &css)
         .map_err(|e| format!("failed to write styles.css: {e}"))?;
 
-    // Write WCL highlight.js grammar
+    // Write highlight.js assets (bundled locally so file:// works)
+    fs::write(
+        output.join("highlight.min.js"),
+        crate::library::HIGHLIGHTJS_CORE,
+    )
+    .map_err(|e| format!("failed to write highlight.min.js: {e}"))?;
+
+    fs::write(
+        output.join("highlight-github.min.css"),
+        crate::library::HIGHLIGHTJS_THEME_CSS,
+    )
+    .map_err(|e| format!("failed to write highlight-github.min.css: {e}"))?;
+
     fs::write(
         output.join("wcl-grammar.js"),
         crate::library::WCL_HIGHLIGHTJS_GRAMMAR,
