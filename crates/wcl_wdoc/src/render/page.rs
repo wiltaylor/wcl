@@ -114,7 +114,6 @@ fn render_nav(doc: &WdocDocument, active_section: &str, html: &mut String) {
     html.push_str("<nav class=\"wdoc-nav\">\n");
     writeln!(html, "<div class=\"wdoc-nav-title\">{}</div>", doc.title).unwrap();
     html.push_str("<ul>\n");
-    writeln!(html, "<li><a href=\"index.html\">Home</a></li>").unwrap();
     render_nav_sections(&doc.sections, &doc.pages, active_section, html);
     html.push_str("</ul>\n");
 
