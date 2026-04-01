@@ -6,6 +6,7 @@ use crate::model::{StyleRule, WdocStyle};
 pub const BASE_CSS: &str = r#"/* wdoc base styles */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* Light theme (default) */
 :root {
     --nav-width: 260px;
     --content-max-width: 960px;
@@ -18,6 +19,25 @@ pub const BASE_CSS: &str = r#"/* wdoc base styles */
     --color-link: #0366d6;
     --color-nav-hover: #e8e8e8;
     --color-nav-active: #dbeafe;
+    --color-code-bg: #f6f8fa;
+    --color-code-border: #e1e4e8;
+    --color-toggle-bg: #e0e0e0;
+    --color-toggle-knob: #ffffff;
+}
+
+/* Dark theme */
+[data-theme="dark"] {
+    --color-bg: #0d1117;
+    --color-text: #e6edf3;
+    --color-nav-bg: #161b22;
+    --color-nav-border: #30363d;
+    --color-link: #58a6ff;
+    --color-nav-hover: #1f2937;
+    --color-nav-active: #1c3a5f;
+    --color-code-bg: #161b22;
+    --color-code-border: #30363d;
+    --color-toggle-bg: #30363d;
+    --color-toggle-knob: #e6edf3;
 }
 
 html { font-size: 16px; }
@@ -42,6 +62,8 @@ body {
     top: 0;
     left: 0;
     bottom: 0;
+    display: flex;
+    flex-direction: column;
 }
 .wdoc-nav-title {
     font-size: 1.1rem;
@@ -50,7 +72,7 @@ body {
     border-bottom: 1px solid var(--color-nav-border);
     margin-bottom: 0.75rem;
 }
-.wdoc-nav ul { list-style: none; }
+.wdoc-nav ul { list-style: none; flex: 1; }
 .wdoc-nav li a {
     display: block;
     padding: 0.35rem 1.25rem;
@@ -61,6 +83,41 @@ body {
 .wdoc-nav li a:hover { background: var(--color-nav-hover); }
 .wdoc-nav li a.active { background: var(--color-nav-active); font-weight: 600; }
 .wdoc-nav li ul { padding-left: 1rem; }
+
+/* Theme toggle */
+.wdoc-theme-toggle {
+    padding: 0.75rem 1.25rem;
+    border-top: 1px solid var(--color-nav-border);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8rem;
+    color: var(--color-text);
+    cursor: pointer;
+    user-select: none;
+}
+.wdoc-theme-toggle-track {
+    width: 36px;
+    height: 20px;
+    background: var(--color-toggle-bg);
+    border-radius: 10px;
+    position: relative;
+    transition: background 0.2s;
+}
+.wdoc-theme-toggle-knob {
+    width: 16px;
+    height: 16px;
+    background: var(--color-toggle-knob);
+    border-radius: 50%;
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    transition: transform 0.2s;
+}
+[data-theme="dark"] .wdoc-theme-toggle-knob {
+    transform: translateX(16px);
+}
+.wdoc-theme-icon { font-size: 1rem; }
 
 /* Main content area — centered in the space right of the nav */
 .wdoc-content {
@@ -90,8 +147,8 @@ h6.wdoc-heading { font-size: 0.9rem; }
 
 /* Code blocks */
 .wdoc-code {
-    background: #f6f8fa;
-    border: 1px solid #e1e4e8;
+    background: var(--color-code-bg);
+    border: 1px solid var(--color-code-border);
     border-radius: 6px;
     padding: 1rem;
     margin-bottom: 1rem;
