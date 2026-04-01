@@ -39,6 +39,43 @@ schema "wdoc_table" {
     caption: string @optional
 }
 
+// --- Diagram and shape schemas ---
+
+@template("html", "wdoc_render_diagram")
+@open
+schema "wdoc_diagram" {
+    width: i32 @optional
+    height: i32 @optional
+}
+
+@template("shape", "shape_render_rect")
+@open
+schema "svg_rect" { }
+
+@template("shape", "shape_render_circle")
+@open
+schema "svg_circle" { }
+
+@template("shape", "shape_render_ellipse")
+@open
+schema "svg_ellipse" { }
+
+@template("shape", "shape_render_line")
+@open
+schema "svg_line" { }
+
+@template("shape", "shape_render_path")
+@open
+schema "svg_path" { }
+
+@template("shape", "shape_render_text")
+@open
+schema "svg_text" { }
+
+@template("shape", "shape_render_connection")
+@open
+schema "svg_connection" { }
+
 // --- Decorator schemas ---
 
 decorator_schema "style" {
@@ -59,3 +96,4 @@ declare wdoc_render_paragraph(block: any) -> string
 declare wdoc_render_image(block: any) -> string
 declare wdoc_render_code(block: any) -> string
 declare wdoc_render_table(block: any) -> string
+declare wdoc_render_diagram(block: any) -> string

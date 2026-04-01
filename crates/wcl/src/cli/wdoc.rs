@@ -103,10 +103,11 @@ fn collect_template_fns(
 /// Call a template function with block attributes as a Value::Map.
 fn call_template(
     func: &TemplateFn,
-    block_attrs: &IndexMap<String, Value>,
+    block: &BlockRef,
     builtins: &HashMap<String, BuiltinFn>,
 ) -> Result<String, String> {
-    let arg = Value::Map(block_attrs.clone());
+    // Pass the full BlockRef so template functions can access children
+    let arg = Value::BlockRef(block.clone());
     let result = match func {
         TemplateFn::Lambda(fv) => crate::call_lambda(fv, &[arg], builtins)?,
         TemplateFn::Builtin(f) => f(&[arg])?,
@@ -238,6 +239,13 @@ fn register_template_builtins(reg: &mut FunctionRegistry) {
         }) as BuiltinFn,
         mk("wdoc_render_table", "Render a table element"),
     );
+
+    reg.register(
+        "wdoc_render_diagram",
+        std::sync::Arc::new(|args: &[Value]| Ok(Value::String(render_diagram_html(args))))
+            as BuiltinFn,
+        mk("wdoc_render_diagram", "Render a diagram as inline SVG"),
+    );
 }
 
 /// Convert a Value::Map to IndexMap<String, String> for template functions.
@@ -318,6 +326,136 @@ fn render_table_html(attrs: &IndexMap<String, Value>) -> String {
     html
 }
 
+/// Render a `wdoc_diagram` block to inline SVG.
+/// Converts WCL Value tree → ShapeNode tree, then calls shapes::render_diagram_svg.
+fn render_diagram_html(args: &[Value]) -> String {
+    use wcl_wdoc::shapes::*;
+
+    let br = match args.first() {
+        Some(Value::BlockRef(br)) => br,
+        _ => return "<div class=\"wdoc-diagram\">(invalid diagram)</div>".to_string(),
+    };
+
+    let diagram_w = val_f64(br.attributes.get("width")).unwrap_or(600.0);
+    let diagram_h = val_f64(br.attributes.get("height")).unwrap_or(400.0);
+    let padding = val_f64(br.attributes.get("padding")).unwrap_or(0.0);
+
+    let mut shapes = Vec::new();
+    let mut connections = Vec::new();
+
+    // Walk child blocks from both attributes and children
+    for val in br.attributes.values() {
+        if let Value::BlockRef(child) = val {
+            collect_shape_or_connection(child, &mut shapes, &mut connections);
+        }
+    }
+    for child in &br.children {
+        collect_shape_or_connection(child, &mut shapes, &mut connections);
+    }
+
+    let mut diagram = Diagram {
+        width: diagram_w,
+        height: diagram_h,
+        shapes,
+        connections,
+        padding,
+    };
+
+    render_diagram_svg(&mut diagram)
+}
+
+fn collect_shape_or_connection(
+    br: &BlockRef,
+    shapes: &mut Vec<wcl_wdoc::shapes::ShapeNode>,
+    connections: &mut Vec<wcl_wdoc::shapes::Connection>,
+) {
+    use wcl_wdoc::shapes::*;
+
+    if br.kind == "svg_connection" {
+        let a = value_map_to_string_map_lossy(&br.attributes);
+        connections.push(Connection {
+            from_id: a.get("from").cloned().unwrap_or_default(),
+            to_id: a.get("to").cloned().unwrap_or_default(),
+            direction: parse_direction_str(a.get("direction").map(|s| s.as_str()).unwrap_or("")),
+            from_anchor: parse_anchor_str(a.get("from_anchor").map(|s| s.as_str()).unwrap_or("")),
+            to_anchor: parse_anchor_str(a.get("to_anchor").map(|s| s.as_str()).unwrap_or("")),
+            label: a.get("label").cloned(),
+            curve: parse_curve_str(a.get("curve").map(|s| s.as_str()).unwrap_or("")),
+            attrs: a,
+        });
+        return;
+    }
+
+    if let Some(kind) = parse_shape_kind(&br.kind) {
+        let a = value_map_to_string_map_lossy(&br.attributes);
+
+        let mut children = Vec::new();
+        let mut child_connections = Vec::new();
+        for val in br.attributes.values() {
+            if let Value::BlockRef(child_br) = val {
+                collect_shape_or_connection(child_br, &mut children, &mut child_connections);
+            }
+        }
+        for child_br in &br.children {
+            collect_shape_or_connection(child_br, &mut children, &mut child_connections);
+        }
+
+        let f = |k: &str| a.get(k).and_then(|s| s.parse::<f64>().ok());
+        let align = parse_alignment_str(a.get("align").map(|s| s.as_str()).unwrap_or("none"));
+        let gap = f("gap").unwrap_or(0.0);
+        let pad = f("padding").unwrap_or(0.0);
+
+        shapes.push(ShapeNode {
+            kind,
+            id: br.id.clone(),
+            x: f("x"),
+            y: f("y"),
+            width: f("width"),
+            height: f("height"),
+            top: f("top"),
+            bottom: f("bottom"),
+            left: f("left"),
+            right: f("right"),
+            resolved: Bounds::default(),
+            attrs: a,
+            children,
+            align,
+            gap,
+            padding: pad,
+        });
+    }
+}
+
+/// Convert Value map to string map without erroring — for diagram attributes.
+fn value_map_to_string_map_lossy(map: &IndexMap<String, Value>) -> IndexMap<String, String> {
+    let mut result = IndexMap::new();
+    for (k, v) in map {
+        if k.starts_with('_') {
+            continue;
+        }
+        let s = match v {
+            Value::String(s) => s.clone(),
+            Value::Int(i) => i.to_string(),
+            Value::Float(f) => f.to_string(),
+            Value::Bool(b) => b.to_string(),
+            Value::Null => String::new(),
+            Value::BlockRef(_) => continue, // skip child blocks
+            _ => format!("{v}"),
+        };
+        result.insert(k.clone(), s);
+    }
+    result
+}
+
+fn val_f64(v: Option<&Value>) -> Option<f64> {
+    match v {
+        Some(Value::Int(i)) => Some(*i as f64),
+        Some(Value::Float(f)) => Some(*f),
+        Some(Value::String(s)) => s.parse().ok(),
+        _ => None,
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Extraction: BlockRef → wdoc model (with template function calls)
 // ---------------------------------------------------------------------------
@@ -341,7 +479,7 @@ impl ExtractCtx {
             .get(fn_name)
             .ok_or_else(|| format!("template function '{fn_name}' not found for '{kind}'"))?;
 
-        call_template(func, &block.attributes, &self.builtins)
+        call_template(func, block, &self.builtins)
     }
 }
 

@@ -2,6 +2,7 @@ pub mod library;
 pub mod model;
 pub mod render;
 pub mod serve;
+pub mod shapes;
 pub mod templates;
 pub mod validate;
 

@@ -342,6 +342,136 @@ wdoc_page advanced {
                 }
             }
         }
+        vsplit v6b {
+            split s9b {
+                size = 100
+
+                heading h2e {
+                    level = 2
+                    content = "Diagrams"
+                }
+                paragraph p6 { content = "Create vector diagrams directly in WCL with shapes, connections, and layout:" }
+
+                wdoc_diagram architecture {
+                    width = 700
+                    height = 280
+
+                    svg_rect client {
+                        x = 30
+                        y = 100
+                        width = 140
+                        height = 70
+                        rx = 8
+                        fill = "var(--color-nav-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 2
+
+                        svg_text client_label {
+                            content = "Client"
+                            font_size = 16
+                            fill = "var(--color-text)"
+                        }
+                    }
+
+                    svg_rect api {
+                        x = 260
+                        y = 30
+                        width = 160
+                        height = 70
+                        rx = 8
+                        fill = "var(--color-code-bg)"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+
+                        svg_text api_label {
+                            content = "API Server"
+                            font_size = 16
+                            fill = "var(--color-text)"
+                        }
+                    }
+
+                    svg_rect db {
+                        x = 260
+                        y = 170
+                        width = 160
+                        height = 70
+                        rx = 8
+                        fill = "var(--color-code-bg)"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+
+                        svg_text db_label {
+                            content = "Database"
+                            font_size = 16
+                            fill = "var(--color-text)"
+                        }
+                    }
+
+                    svg_rect cache {
+                        x = 520
+                        y = 100
+                        width = 140
+                        height = 70
+                        rx = 8
+                        fill = "var(--color-nav-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 2
+
+                        svg_text cache_label {
+                            content = "Cache"
+                            font_size = 16
+                            fill = "var(--color-text)"
+                        }
+                    }
+
+                    svg_connection c1 {
+                        from = "client"
+                        to = "api"
+                        direction = "to"
+                        from_anchor = "right"
+                        to_anchor = "left"
+                        label = "HTTP"
+                        stroke = "var(--color-text)"
+                        stroke_width = 2
+                    }
+
+                    svg_connection c2 {
+                        from = "api"
+                        to = "db"
+                        direction = "both"
+                        from_anchor = "bottom"
+                        to_anchor = "top"
+                        label = "SQL"
+                        stroke = "var(--color-text)"
+                        stroke_width = 2
+                    }
+
+                    svg_connection c3 {
+                        from = "api"
+                        to = "cache"
+                        direction = "both"
+                        from_anchor = "right"
+                        to_anchor = "left"
+                        label = "Redis"
+                        stroke = "var(--color-text)"
+                        stroke_width = 2
+                    }
+
+                    svg_connection c4 {
+                        from = "client"
+                        to = "db"
+                        direction = "to"
+                        curve = "bezier"
+                        from_anchor = "bottom"
+                        to_anchor = "left"
+                        label = "Direct Query"
+                        stroke = "var(--color-text)"
+                        stroke_width = 1
+                        stroke_dasharray = "5,5"
+                    }
+                }
+            }
+        }
     }
 }
 
