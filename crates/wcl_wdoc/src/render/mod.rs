@@ -47,17 +47,23 @@ pub fn render_document(doc: &WdocDocument, output: &Path) -> Result<(), String> 
     .map_err(|e| format!("failed to write wcl-grammar.js: {e}"))?;
 
     // Render each page
-    for (i, p) in doc.pages.iter().enumerate() {
+    for p in &doc.pages {
         let html = page::render_page(doc, p, "styles.css");
         let filename = format!("{}.html", p.id);
         fs::write(output.join(&filename), &html)
             .map_err(|e| format!("failed to write {filename}: {e}"))?;
+    }
 
-        // First page doubles as index.html
-        if i == 0 {
-            fs::write(output.join("index.html"), &html)
-                .map_err(|e| format!("failed to write index.html: {e}"))?;
-        }
+    // index.html redirects to the first page
+    if let Some(first) = doc.pages.first() {
+        let target = format!("{}.html", first.id);
+        let redirect = format!(
+            "<!DOCTYPE html><html><head>\
+             <meta http-equiv=\"refresh\" content=\"0;url={target}\">\
+             </head><body></body></html>"
+        );
+        fs::write(output.join("index.html"), redirect)
+            .map_err(|e| format!("failed to write index.html: {e}"))?;
     }
 
     Ok(())
