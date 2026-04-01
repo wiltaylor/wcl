@@ -38,6 +38,12 @@ pub struct FieldEncoding {
     pub magic: Option<Vec<u8>>,
     pub padding_after: Option<usize>,
     pub align: Option<usize>,
+    /// Read N bytes where N comes from a previously-parsed field's value.
+    /// For `string`: read N bytes as UTF-8 (no null terminator).
+    /// For `list(u8)`: read exactly N bytes.
+    pub length_field: Option<String>,
+    /// Skip (read and discard) N bytes where N comes from a previously-parsed field.
+    pub skip_field: Option<String>,
 }
 
 /// Parse binary data into a WCL Value::Map according to a struct definition.

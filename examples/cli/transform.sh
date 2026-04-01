@@ -67,4 +67,8 @@ echo "=== 14. Text (space-separated) → JSON ==="
 wcl transform run space-log -f "$DIR/../transforms/text_log.wcl" --input "$DIR/../transforms/requests.log"
 echo ""
 
+echo "=== 15. ZIP metadata → JSON (binary struct parsing) ==="
+wcl transform run zip-to-json -f "$DIR/../transforms/zip_metadata.wcl" --input "$DIR/../transforms/sample.zip"
+echo ""
+
 echo "=== All transform examples complete ==="

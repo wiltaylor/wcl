@@ -205,8 +205,57 @@ pub fn encoding_from_decorators(decorators: &[crate::lang::ast::Decorator]) -> E
                     crate::lang::ast::Expr::IntLit(n, _),
                 )) = dec.args.first()
                 {
-                    // Global padding — not field-specific
                     let _ = n; // TODO: apply to previous field
+                }
+            }
+            // @length("field_name", "length_source") — read field_name using
+            // length from length_source
+            "length" => {
+                if let (
+                    Some(crate::lang::ast::DecoratorArg::Positional(
+                        crate::lang::ast::Expr::StringLit(field_s),
+                    )),
+                    Some(crate::lang::ast::DecoratorArg::Positional(
+                        crate::lang::ast::Expr::StringLit(len_s),
+                    )),
+                ) = (dec.args.first(), dec.args.get(1))
+                {
+                    if let (
+                        [crate::lang::ast::StringPart::Literal(field_name)],
+                        [crate::lang::ast::StringPart::Literal(len_field)],
+                    ) = (&field_s.parts[..], &len_s.parts[..])
+                    {
+                        config
+                            .field_overrides
+                            .entry(field_name.clone())
+                            .or_default()
+                            .length_field = Some(len_field.clone());
+                    }
+                }
+            }
+            // @skip("field_name", "length_source") — skip bytes after field_name
+            // using length from length_source
+            "skip" => {
+                if let (
+                    Some(crate::lang::ast::DecoratorArg::Positional(
+                        crate::lang::ast::Expr::StringLit(field_s),
+                    )),
+                    Some(crate::lang::ast::DecoratorArg::Positional(
+                        crate::lang::ast::Expr::StringLit(len_s),
+                    )),
+                ) = (dec.args.first(), dec.args.get(1))
+                {
+                    if let (
+                        [crate::lang::ast::StringPart::Literal(field_name)],
+                        [crate::lang::ast::StringPart::Literal(skip_field)],
+                    ) = (&field_s.parts[..], &len_s.parts[..])
+                    {
+                        config
+                            .field_overrides
+                            .entry(field_name.clone())
+                            .or_default()
+                            .skip_field = Some(skip_field.clone());
+                    }
                 }
             }
             _ => {}

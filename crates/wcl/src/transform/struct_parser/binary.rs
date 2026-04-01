@@ -65,11 +65,25 @@ impl<'a> BinaryParser<'a> {
                 }
             }
 
-            let value = self.read_type(&field.type_expr, endian)?;
+            // Check for length_field: read N bytes where N comes from a prior field
+            let value = if let Some(fe) = field_encoding {
+                if let Some(ref len_field) = fe.length_field {
+                    let n = self.resolve_field_length(&map, len_field, &field.name)?;
+                    self.read_n_bytes_as_type(&field.type_expr, n)?
+                } else {
+                    self.read_type(&field.type_expr, endian)?
+                }
+            } else {
+                self.read_type(&field.type_expr, endian)?
+            };
             map.insert(field.name.clone(), value);
 
-            // Apply padding after
+            // Apply skip_field: skip N bytes where N comes from a prior field
             if let Some(fe) = field_encoding {
+                if let Some(ref skip_src) = fe.skip_field {
+                    let n = self.resolve_field_length(&map, skip_src, &field.name)?;
+                    self.skip(n)?;
+                }
                 if let Some(pad) = fe.padding_after {
                     self.skip(pad)?;
                 }
@@ -83,6 +97,59 @@ impl<'a> BinaryParser<'a> {
         }
 
         Ok(Value::Map(map))
+    }
+
+    /// Resolve a field length from a previously-parsed field's integer value.
+    fn resolve_field_length(
+        &self,
+        map: &IndexMap<String, Value>,
+        field_name: &str,
+        current_field: &str,
+    ) -> Result<usize, TransformError> {
+        match map.get(field_name) {
+            Some(Value::Int(n)) => Ok(*n as usize),
+            Some(Value::BigInt(n)) => Ok(*n as usize),
+            Some(other) => Err(TransformError::Codec(format!(
+                "length field '{}' for '{}' must be integer, got {}",
+                field_name,
+                current_field,
+                other.type_name()
+            ))),
+            None => Err(TransformError::Codec(format!(
+                "length field '{}' for '{}' not found (must be declared before this field)",
+                field_name, current_field
+            ))),
+        }
+    }
+
+    /// Read N bytes and interpret according to the type expression.
+    fn read_n_bytes_as_type(
+        &mut self,
+        type_expr: &TypeExpr,
+        n: usize,
+    ) -> Result<Value, TransformError> {
+        self.ensure_bytes(n)?;
+        match type_expr {
+            TypeExpr::String(_) => {
+                let s =
+                    String::from_utf8_lossy(&self.data[self.cursor..self.cursor + n]).to_string();
+                self.cursor += n;
+                Ok(Value::String(s))
+            }
+            TypeExpr::List(inner, _) if matches!(inner.as_ref(), TypeExpr::U8(_)) => {
+                let bytes: Vec<Value> = self.data[self.cursor..self.cursor + n]
+                    .iter()
+                    .map(|&b| Value::Int(b as i64))
+                    .collect();
+                self.cursor += n;
+                Ok(Value::List(bytes))
+            }
+            _ => {
+                // For other types, just skip N bytes and return null
+                self.cursor += n;
+                Ok(Value::Null)
+            }
+        }
     }
 
     fn read_type(
