@@ -2,15 +2,18 @@
 
 import <wdoc.wcl>
 
-// Overview page
+// Helper: literal dollar sign for code examples containing ${...}
+let D = "$"
+
+// ── Overview page ──
 
 wdoc_page overview {
     section = "my_docs.getting_started.overview"
     title = "Overview"
 
     wdoc_layout {
-        vsplit {
-            split {
+        vsplit v1 {
+            split s1 {
                 size = 100
 
                 @style("hero")
@@ -30,32 +33,47 @@ wdoc_page overview {
                 }
 
                 paragraph p2 {
-                    content = "WCL brings the " + bold("safety of typed schemas") + " and the " + bold("flexibility of expressions") + " to configuration files."
+                    content = "WCL brings the " + bold("safety of typed schemas") + " and the " + bold("flexibility of expressions") + " to configuration files. No more YAML indentation bugs or JSON without comments."
                 }
 
-                heading h3 {
+                heading h3a {
+                    level = 3
+                    content = "Quick Example"
+                }
+
+                paragraph p3 {
+                    content = "Here is a complete WCL configuration with schemas, variables, control flow, and validation:"
+                }
+
+                code c1 {
+                    language = "wcl"
+                    content = "// Define the structure\nschema \"server\" {\n    host: string\n    port: i64 @validate(min = 1, max = 65535)\n    workers: i64 @validate(min = 1, max = 32)\n    tls: bool @optional\n    region: string @optional\n}\n\n// Variables and expressions\nlet environment = \"production\"\nlet base_port = 8000\nlet is_prod = environment == \"production\"\nlet regions = [\"us-east\", \"eu-west\", \"ap-south\"]\n\n// Static blocks\nserver api {\n    host = \"0.0.0.0\"\n    port = base_port + 80\n    workers = is_prod ? 8 : 2\n    tls = is_prod\n}\n\n// Dynamic blocks with control flow\nfor region in regions {\n    server worker-" + D + "{region} {\n        host = \"" + D + "{region}.internal\"\n        port = base_port + 2000\n        workers = 4\n        region = region\n    }\n}\n\n// Data tables\ntable users {\n    name:  string\n    role:  string\n    admin: bool\n    | \"alice\" | \"engineering\" | true  |\n    | \"bob\"   | \"marketing\"  | false |\n    | \"carol\" | \"engineering\" | true  |\n}\n\n// Validation\nvalidation \"port uniqueness\" {\n    let ports = query(server | .port)\n    check = len(distinct(ports)) == len(ports)\n    message = \"All server ports must be unique\"\n}"
+                }
+
+                heading h3b {
                     level = 3
                     content = "Key Features"
                 }
 
-                paragraph p3 { content = bold("Typed schemas") + " - define and validate your configuration structure." }
-                paragraph p4 { content = bold("Expressions") + " - variables, conditionals, loops, and functions." }
-                paragraph p5 { content = bold("Tables") + " - structured tabular data with column types." }
-                paragraph p6 { content = bold("Imports") + " - modular configuration with library support." }
+                paragraph p4 { content = bold("Typed schemas") + " - define and validate your configuration structure at parse time." }
+                paragraph p5 { content = bold("Expressions") + " - variables, conditionals, loops, string interpolation, and 45+ built-in functions." }
+                paragraph p6 { content = bold("Tables") + " - structured tabular data with typed columns and CSV import." }
+                paragraph p7 { content = bold("Imports and Libraries") + " - modular configuration with library support and glob imports." }
+                paragraph p8 { content = bold("Multiple output formats") + " - evaluate to JSON, YAML, TOML, or MessagePack." }
             }
         }
     }
 }
 
-// Installation page (two-column layout)
+// ── Installation page ──
 
 wdoc_page install {
     section = "my_docs.getting_started.installation"
     title = "Installation"
 
     wdoc_layout {
-        vsplit {
-            split {
+        vsplit v2 {
+            split s2 {
                 size = 70
 
                 heading h1 {
@@ -69,20 +87,41 @@ wdoc_page install {
 
                 heading h2a {
                     level = 2
-                    content = "From Source"
+                    content = "From Source (Rust)"
                 }
-                code c1 { language = "bash"
-                    content = "cargo install wcl" }
+                code c1 {
+                    language = "bash"
+                    content = "# Install from crates.io\ncargo install wcl\n\n# Or build from source\ngit clone https://github.com/wiltaylor/wcl\ncd wcl\ncargo install --path crates/wcl"
+                }
 
                 heading h2b {
                     level = 2
+                    content = "Python Bindings"
+                }
+                code c2 {
+                    language = "bash"
+                    content = "pip install pywcl"
+                }
+
+                heading h2c {
+                    level = 2
+                    content = ".NET Bindings"
+                }
+                code c3 {
+                    language = "bash"
+                    content = "dotnet add package WclLang"
+                }
+
+                heading h2d {
+                    level = 2
                     content = "Verify Installation"
                 }
-                paragraph p2 { content = "After installing, verify that WCL is available:" }
-                code c2 { language = "bash"
-                    content = "wcl --version" }
+                code c4 {
+                    language = "bash"
+                    content = "$ wcl --version\nwcl 0.2.4\n\n$ echo 'server api { host = \"0.0.0.0\" }' | wcl eval /dev/stdin --format json\n{\n  \"server\": {\n    \"api\": {\n      \"host\": \"0.0.0.0\"\n    }\n  }\n}"
+                }
             }
-            split {
+            split s3 {
                 size = 30
 
                 heading h3 {
@@ -92,20 +131,21 @@ wdoc_page install {
                 paragraph l1 { content = link("GitHub Repository", "https://github.com/wiltaylor/wcl") }
                 paragraph l2 { content = link("API Documentation", "https://wcl.dev/docs") }
                 paragraph l3 { content = link("Release Notes", "https://github.com/wiltaylor/wcl/releases") }
+                paragraph l4 { content = link("VS Code Extension", "https://marketplace.visualstudio.com") }
             }
         }
     }
 }
 
-// Language Basics page
+// ── Language Basics page ──
 
 wdoc_page basics {
     section = "my_docs.guide.basics"
     title = "Language Basics"
 
     wdoc_layout {
-        vsplit {
-            split {
+        vsplit v3 {
+            split s4 {
                 size = 100
 
                 heading h1 {
@@ -119,124 +159,355 @@ wdoc_page basics {
 
                 heading h2a {
                     level = 2
-                    content = "Blocks"
+                    content = "Blocks and Attributes"
                 }
-                paragraph p2 { content = "Blocks are the fundamental building unit. Each block has a " + bold("kind") + " and an optional " + bold("ID") + ":" }
-                code c1 { language = "wcl"
-                    content = "server api {\n    host = \"0.0.0.0\"\n    port = 8080\n    workers = 4\n}" }
+                paragraph p2 { content = "Blocks are the fundamental building unit. Each block has a " + bold("kind") + " and an optional " + bold("ID") + ". Attributes are key-value pairs inside blocks:" }
+                code c1 {
+                    language = "wcl"
+                    content = "// A block with kind 'server' and ID 'api'\nserver api {\n    host = \"0.0.0.0\"\n    port = 8080\n    workers = 4\n    tls = true\n\n    // Nested blocks\n    upstream backend {\n        host = \"10.0.1.1\"\n        port = 8081\n        weight = 100\n    }\n\n    logging {\n        level = \"info\"\n        format = \"json\"\n    }\n}"
+                }
 
                 heading h2b {
                     level = 2
-                    content = "Variables"
+                    content = "Variables and Expressions"
                 }
-                paragraph p3 { content = "Use " + bold("let") + " bindings to define variables:" }
-                code c2 { language = "wcl"
-                    content = "let base_port = 8000\n\nserver api {\n    port = base_port + 80\n}" }
+                paragraph p3 { content = "Use " + bold("let") + " bindings for variables. WCL supports arithmetic, string interpolation, ternary expressions, and 45+ built-in functions:" }
+                code c2 {
+                    language = "wcl"
+                    content = "let environment = \"production\"\nlet base_port = 8000\nlet is_prod = environment == \"production\"\nlet max_conn = is_prod ? 100 : 5\n\n// String interpolation\nlet greeting = \"Running in " + D + "{environment} mode\"\n\n// Built-in functions\nlet regions = [\"us-east\", \"eu-west\", \"ap-south\"]\nlet count = len(regions)\nlet upper_regions = map_fn(regions, fn(r) { upper(r) })\nlet hash = sha256(\"secret-key\")\nlet encoded = base64_encode(\"hello world\")"
+                }
 
                 heading h2c {
                     level = 2
-                    content = "Schemas"
+                    content = "Schemas and Validation"
                 }
-                paragraph p4 { content = "Schemas define the expected structure and validate at " + bold("parse time") + ":" }
-                code c3 { language = "wcl"
-                    content = "schema \"server\" {\n    host: string\n    port: i64 @validate(min = 1, max = 65535)\n}" }
+                paragraph p4 { content = "Schemas define the expected structure and validate your configuration at " + bold("parse time") + ". Errors are caught before deployment:" }
+                code c3 {
+                    language = "wcl"
+                    content = "schema \"server\" {\n    host: string\n    port: i64 @validate(min = 1, max = 65535)\n    workers: i64 @validate(min = 1, max = 32)\n    tls: bool @optional @default(false)\n    region: string @optional @validate(one_of = [\"us-east\", \"eu-west\", \"ap-south\"])\n}\n\n// Decorators provide metadata\n@doc(\"Primary API server\")\n@deprecated(\"Use the new gateway block instead\")\nserver api {\n    host = \"0.0.0.0\"\n    port = 8080\n    workers = 8\n}"
+                }
+
+                heading h2d {
+                    level = 2
+                    content = "Imports and Libraries"
+                }
+                paragraph p5 { content = "Split configuration across files and reuse shared definitions:" }
+                code c4 {
+                    language = "wcl"
+                    content = "// Relative imports\nimport \"./schemas.wcl\"\nimport \"./defaults.wcl\"\n\n// Glob imports\nimport \"./services/*.wcl\"\n\n// Optional imports (no error if missing)\nimport? \"./local-overrides.wcl\"\n\n// Library imports (from search paths)\nimport <common-schemas.wcl>"
+                }
+
+                heading h2e {
+                    level = 2
+                    content = "Evaluated Output"
+                }
+                paragraph p6 { content = "WCL evaluates to structured data. Here is what the JSON output looks like:" }
+                code c5 {
+                    language = "json"
+                    content = "{\n  \"server\": {\n    \"api\": {\n      \"host\": \"0.0.0.0\",\n      \"port\": 8080,\n      \"workers\": 8,\n      \"tls\": true\n    },\n    \"worker-us-east\": {\n      \"host\": \"us-east.internal\",\n      \"port\": 10000,\n      \"workers\": 4,\n      \"region\": \"us-east\"\n    }\n  }\n}"
+                }
             }
         }
     }
 }
 
-// Advanced Features page (multi-column)
+// ── Advanced Features page ──
 
 wdoc_page advanced {
     section = "my_docs.guide.advanced"
     title = "Advanced Features"
 
     wdoc_layout {
-        vsplit {
-            split {
+        vsplit v4 {
+            split s5 {
                 size = 100
                 heading h1 {
                     level = 1
                     content = "Advanced Features"
                 }
-                paragraph p1 { content = "WCL supports control flow, tables, imports, macros, and more." }
+                paragraph p1 { content = "WCL supports control flow, tables, macros, transforms, and more." }
             }
         }
-        vsplit {
-            split {
+        vsplit v5 {
+            split s6 {
                 size = 50
 
                 heading h2a {
                     level = 2
                     content = "Control Flow"
                 }
-                paragraph p2 { content = "Generate blocks with " + bold("for") + " loops and " + bold("if") + " conditionals:" }
-                code c1 { language = "wcl"
-                    content = "for region in regions {\n    server worker {\n        host = region + \".internal\"\n    }\n}" }
+                paragraph p2 { content = "Generate blocks dynamically with " + bold("for") + " loops and " + bold("if/else") + " conditionals:" }
+                code c1 {
+                    language = "wcl"
+                    content = "let regions = [\"us-east\", \"eu-west\"]\nlet is_prod = true\n\nfor region in regions {\n    server worker-" + D + "{region} {\n        host = \"" + D + "{region}.internal\"\n        port = 9000\n        workers = is_prod ? 8 : 2\n    }\n}\n\nif is_prod {\n    database primary {\n        host = \"db.internal\"\n        max_connections = 100\n        ssl = true\n    }\n} else {\n    database primary {\n        host = \"localhost\"\n        max_connections = 5\n    }\n}"
+                }
             }
-            split {
+            split s7 {
                 size = 50
 
                 heading h2b {
                     level = 2
-                    content = "Tables"
+                    content = "Tables and CSV Import"
                 }
-                paragraph p3 { content = "Structured tabular data with typed columns:" }
-                code c2 { language = "wcl"
-                    content = "table users {\n    name:  string\n    role:  string\n    | \"alice\" | \"eng\"   |\n    | \"bob\"   | \"sales\" |\n}" }
+                paragraph p3 { content = "Structured tabular data with typed columns, queryable with selectors:" }
+                code c2 {
+                    language = "wcl"
+                    content = "// Inline table\ntable users {\n    name:  string\n    role:  string\n    admin: bool\n    | \"alice\" | \"eng\"   | true  |\n    | \"bob\"   | \"sales\" | false |\n    | \"carol\" | \"eng\"   | true  |\n}\n\n// Import from CSV\ntable inventory = import_table(\n    \"data/inventory.csv\",\n    headers = true\n)\n\n// Query table data\nlet admins = query(users | .admin == true)\nlet eng_count = len(query(users | .role == \"eng\"))"
+                }
+            }
+        }
+        vsplit v6 {
+            split s8 {
+                size = 50
+
+                heading h2c {
+                    level = 2
+                    content = "Macros"
+                }
+                paragraph p4 { content = "Define reusable block templates with macros:" }
+                code c3 {
+                    language = "wcl"
+                    content = "// Define a macro\nmacro standard_server(name, port) {\n    server " + D + "{name} {\n        host = \"0.0.0.0\"\n        port = port\n        workers = 4\n        tls = true\n        logging {\n            level = \"info\"\n            format = \"json\"\n        }\n    }\n}\n\n// Use the macro\nstandard_server(\"api\", 8080)\nstandard_server(\"admin\", 9090)"
+                }
+            }
+            split s9 {
+                size = 50
+
+                heading h2d {
+                    level = 2
+                    content = "Data Transforms"
+                }
+                paragraph p5 { content = "Transform data between formats with the transform system:" }
+                code c4 {
+                    language = "wcl"
+                    content = "transform csv_to_json {\n    input_format = \"csv\"\n    output_format = \"json\"\n\n    map row -> entry {\n        name = row.name\n        email = lower(row.email)\n        active = row.status == \"active\"\n        tags = split(row.tags, \",\")\n    }\n\n    filter entry {\n        check = entry.active == true\n    }\n}"
+                }
             }
         }
     }
 }
 
-// CLI Reference page
+// ── Language Bindings page ──
+
+wdoc_page binding_examples {
+    section = "my_docs.bindings.binding_examples"
+    title = "Binding Examples"
+
+    wdoc_layout {
+        vsplit v7 {
+            split s10 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Language Bindings"
+                }
+
+                paragraph p1 {
+                    content = "WCL provides native bindings for multiple languages. Each binding evaluates WCL documents and returns structured data in the host language."
+                }
+            }
+        }
+        vsplit v8 {
+            split s11 {
+                size = 50
+
+                heading h2a {
+                    level = 2
+                    content = "Rust"
+                }
+                paragraph pa { content = "The Rust crate provides the full WCL API:" }
+                code rust {
+                    language = "rust"
+                    content = "use wcl::{parse, ParseOptions, Value};\n\nfn main() {\n    let source = r#\"\n        server api {\n            host = \"0.0.0.0\"\n            port = 8080\n        }\n    \"#;\n\n    let doc = parse(source, ParseOptions::default());\n\n    if doc.has_errors() {\n        for diag in &doc.diagnostics {\n            eprintln!(\"{}\", diag.message);\n        }\n        return;\n    }\n\n    for (name, value) in &doc.values {\n        match value {\n            Value::BlockRef(block) => {\n                println!(\"Block: {} ({})\", block.kind, name);\n                for (k, v) in &block.attributes {\n                    println!(\"  {} = {:?}\", k, v);\n                }\n            }\n            _ => println!(\"{} = {:?}\", name, value),\n        }\n    }\n}"
+                }
+            }
+            split s12 {
+                size = 50
+
+                heading h2b {
+                    level = 2
+                    content = "Python"
+                }
+                paragraph pb { content = "The Python binding via PyO3:" }
+                code python {
+                    language = "python"
+                    content = "import pywcl\n\nsource = \"\"\"\nschema \"server\" {\n    host: string\n    port: i64 @validate(min = 1, max = 65535)\n}\n\nserver api {\n    host = \"0.0.0.0\"\n    port = 8080\n}\n\nserver admin {\n    host = \"127.0.0.1\"\n    port = 9090\n}\n\"\"\"\n\n# Parse and evaluate\nresult = pywcl.parse(source)\n\n# Access as Python dicts\nfor name, server in result[\"server\"].items():\n    print(f\"{name}: {server['host']}:{server['port']}\")\n\n# Query with selectors\nports = pywcl.query(source, \"server | .port\")\nprint(f\"Ports in use: {ports}\")"
+                }
+            }
+        }
+        vsplit v9 {
+            split s13 {
+                size = 50
+
+                heading h2c {
+                    level = 2
+                    content = "Go"
+                }
+                paragraph pc { content = "The Go binding via CGo:" }
+                code golang {
+                    language = "go"
+                    content = "package main\n\nimport (\n\t\"encoding/json\"\n\t\"fmt\"\n\t\"log\"\n\n\t\"github.com/wiltaylor/wcl/bindings/go/wcl\"\n)\n\nfunc main() {\n\tsource := `\n\t\tserver api {\n\t\t\thost = \"0.0.0.0\"\n\t\t\tport = 8080\n\t\t\ttls = true\n\t\t}\n\t`\n\n\tresult, err := wcl.Parse(source)\n\tif err != nil {\n\t\tlog.Fatal(err)\n\t}\n\n\t// Marshal to JSON for easy access\n\tdata, _ := json.MarshalIndent(result, \"\", \"  \")\n\tfmt.Println(string(data))\n}"
+                }
+            }
+            split s14 {
+                size = 50
+
+                heading h2d {
+                    level = 2
+                    content = "JavaScript (WASM)"
+                }
+                paragraph pd { content = "The WASM binding for browsers and Node.js:" }
+                code javascript {
+                    language = "javascript"
+                    content = "import init, { parse, query } from '@aspect/wcl-wasm';\n\nawait init();\n\nconst source = `\n  let regions = [\"us-east\", \"eu-west\"]\n\n  for region in regions {\n    server worker-" + D + "{region} {\n      host = \"" + D + "{region}.internal\"\n      port = 9000\n    }\n  }\n`;\n\nconst result = parse(source);\nconsole.log('Servers:', JSON.stringify(result.values, null, 2));\n\n// Query support\nconst hosts = query(source, 'server | .host');\nconsole.log('All hosts:', hosts);"
+                }
+            }
+        }
+        vsplit v10 {
+            split s15 {
+                size = 50
+
+                heading h2e {
+                    level = 2
+                    content = "C# / .NET"
+                }
+                paragraph pe { content = "The .NET binding:" }
+                code csharp {
+                    language = "csharp"
+                    content = "using WclLang;\nusing System.Text.Json;\n\nvar source = @\"\n    database primary {\n        host = \"\"db.internal\"\"\n        port = 5432\n        name = \"\"myapp\"\"\n        max_connections = 100\n        ssl = true\n    }\n\";\n\nvar result = Wcl.Parse(source);\nvar json = JsonSerializer.Serialize(result,\n    new JsonSerializerOptions { WriteIndented = true });\n\nConsole.WriteLine(json);"
+                }
+            }
+            split s16 {
+                size = 50
+
+                heading h2f {
+                    level = 2
+                    content = "Ruby"
+                }
+                paragraph pf { content = "The Ruby binding:" }
+                code ruby {
+                    language = "ruby"
+                    content = "require 'wcl'\n\nsource = <<~WCL\n  schema \"cache\" {\n    host: string\n    port: i64\n    ttl: i64 @validate(min = 0)\n  }\n\n  cache redis {\n    host = \"redis.internal\"\n    port = 6379\n    ttl = 300\n  }\nWCL\n\nresult = Wcl.parse(source)\nresult['cache'].each do |name, config|\n  puts \"#{name}: #{config['host']}:#{config['port']}\"\nend"
+                }
+            }
+        }
+        vsplit v11 {
+            split s17 {
+                size = 100
+
+                heading h2g {
+                    level = 2
+                    content = "Output Formats"
+                }
+                paragraph pg { content = "WCL can evaluate to multiple output formats. Here is the same configuration rendered as YAML and TOML:" }
+            }
+        }
+        vsplit v12 {
+            split s18 {
+                size = 50
+
+                heading h3a {
+                    level = 3
+                    content = "YAML Output"
+                }
+                code yaml_out {
+                    language = "yaml"
+                    content = "server:\n  api:\n    host: \"0.0.0.0\"\n    port: 8080\n    workers: 8\n    tls: true\n  worker-us-east:\n    host: us-east.internal\n    port: 10000\n    workers: 4\n    region: us-east\ndatabase:\n  primary:\n    host: db.internal\n    port: 5432\n    name: myapp\n    max_connections: 100\n    ssl: true"
+                }
+            }
+            split s19 {
+                size = 50
+
+                heading h3b {
+                    level = 3
+                    content = "TOML Output"
+                }
+                code toml_out {
+                    language = "toml"
+                    content = "[server.api]\nhost = \"0.0.0.0\"\nport = 8080\nworkers = 8\ntls = true\n\n[server.worker-us-east]\nhost = \"us-east.internal\"\nport = 10000\nworkers = 4\nregion = \"us-east\"\n\n[database.primary]\nhost = \"db.internal\"\nport = 5432\nname = \"myapp\"\nmax_connections = 100\nssl = true"
+                }
+            }
+        }
+    }
+}
+
+// ── CLI Reference page ──
 
 wdoc_page cli_ref {
     section = "my_docs.reference.cli_ref"
     title = "CLI Reference"
 
     wdoc_layout {
-        vsplit {
-            split {
+        vsplit v13 {
+            split s20 {
                 size = 100
 
                 heading h1 {
                     level = 1
                     content = "CLI Reference"
                 }
-                paragraph p1 { content = "The " + bold("wcl") + " command-line tool provides several subcommands." }
+                paragraph p1 { content = "The " + bold("wcl") + " command-line tool provides several subcommands for working with WCL documents." }
 
                 heading h2a {
                     level = 2
                     content = "eval"
                 }
-                paragraph p2 { content = "Evaluate and output resolved configuration:" }
-                code c1 { language = "bash"
-                    content = "wcl eval config.wcl --format json" }
+                paragraph p2 { content = "Evaluate a WCL document and output resolved configuration:" }
+                code c1 {
+                    language = "bash"
+                    content = "# Output as JSON (default)\nwcl eval config.wcl --format json\n\n# Output as YAML\nwcl eval config.wcl --format yaml\n\n# Output as TOML\nwcl eval config.wcl --format toml\n\n# With variables\nwcl eval config.wcl --var ENV=production --var PORT=8080"
+                }
 
                 heading h2b {
                     level = 2
                     content = "validate"
                 }
                 paragraph p3 { content = "Check for errors without producing output:" }
-                code c2 { language = "bash"
-                    content = "wcl validate config.wcl --strict" }
+                code c2 {
+                    language = "bash"
+                    content = "# Basic validation\nwcl validate config.wcl\n\n# Strict mode (warnings are errors)\nwcl validate config.wcl --strict\n\n# With external schema\nwcl validate config.wcl --schema schemas.wcl"
+                }
 
                 heading h2c {
                     level = 2
                     content = "query"
                 }
                 paragraph p4 { content = "Query specific values using selectors:" }
-                code c3 { language = "bash"
-                    content = "wcl query config.wcl \"server#api.port\"" }
+                code c3 {
+                    language = "bash"
+                    content = "# Get a specific value by path\nwcl query config.wcl \"server#api.port\"\n\n# Filter blocks by kind\nwcl query config.wcl \"server | .host\"\n\n# Count results\nwcl query config.wcl \"server\" --count\n\n# Output as JSON\nwcl query config.wcl \"database | .max_connections\" --format json"
+                }
 
                 heading h2d {
                     level = 2
                     content = "fmt"
                 }
-                paragraph p5 { content = "Format WCL source code:" }
-                code c4 { language = "bash"
-                    content = "wcl fmt config.wcl --write" }
+                paragraph p5 { content = "Format WCL source code consistently:" }
+                code c4 {
+                    language = "bash"
+                    content = "# Format and print to stdout\nwcl fmt config.wcl\n\n# Format in-place\nwcl fmt config.wcl --write\n\n# Check formatting (CI-friendly, exit code only)\nwcl fmt config.wcl --check"
+                }
+
+                heading h2e {
+                    level = 2
+                    content = "convert"
+                }
+                paragraph p6 { content = "Convert between WCL and other configuration formats:" }
+                code c5 {
+                    language = "bash"
+                    content = "# WCL to JSON\nwcl convert config.wcl --to json\n\n# JSON to WCL\nwcl convert config.json --from json\n\n# YAML to WCL\nwcl convert config.yaml --from yaml"
+                }
+
+                heading h2f {
+                    level = 2
+                    content = "wdoc"
+                }
+                paragraph p7 { content = "Build documentation sites from WCL-based wdoc files:" }
+                code c6 {
+                    language = "bash"
+                    content = "# Build HTML output\nwcl wdoc build site.wcl pages.wcl --output docs-out/\n\n# Validate without building\nwcl wdoc validate site.wcl pages.wcl\n\n# Live preview with hot reload\nwcl wdoc serve site.wcl pages.wcl --port 3000 --open"
+                }
             }
         }
     }
