@@ -3,9 +3,9 @@ use std::fmt::Write;
 use crate::model::*;
 use crate::render::layout::render_layout_items;
 
-/// highlight.js CDN links + theme CSS injected into <head>.
-const HLJS_HEAD: &str = r#"<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github.min.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+/// highlight.js local assets injected into <head>.
+const HLJS_HEAD: &str = r#"<link rel="stylesheet" href="highlight-github.min.css">
+<script src="highlight.min.js"></script>
 <script src="wcl-grammar.js"></script>"#;
 
 /// highlight.js initialization script injected before </body>.
