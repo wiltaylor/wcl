@@ -1,0 +1,54 @@
+// wdoc standard library — common document elements and template functions
+//
+// Usage: import <wdoc.wcl>
+
+// --- Content element schemas ---
+
+@template("html", "wdoc_render_heading")
+@open
+schema "heading" {
+    level: i32
+    content: string
+}
+
+@template("html", "wdoc_render_paragraph")
+@open
+schema "paragraph" {
+    content: string
+}
+
+@template("html", "wdoc_render_image")
+@open
+schema "image" {
+    src: string
+    alt: string @optional
+    width: string @optional
+    height: string @optional
+}
+
+@template("html", "wdoc_render_code")
+@open
+schema "code" {
+    language: string @optional
+    content: string
+}
+
+// --- Decorator schemas ---
+
+decorator_schema "style" {
+    target = [block]
+    name: string
+}
+
+// --- Inline formatting functions ---
+
+declare bold(text: string) -> string
+declare italic(text: string) -> string
+declare link(text: string, url: string) -> string
+
+// --- Template rendering functions ---
+
+declare wdoc_render_heading(block: any) -> string
+declare wdoc_render_paragraph(block: any) -> string
+declare wdoc_render_image(block: any) -> string
+declare wdoc_render_code(block: any) -> string

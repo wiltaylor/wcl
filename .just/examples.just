@@ -23,6 +23,15 @@ unpatch-local:
 update-versions version:
     bash scripts/update-example-versions.sh {{version}}
 
+# Build wdoc example (requires wcl in PATH)
+wdoc:
+    wcl wdoc build examples/wdoc/site.wcl examples/wdoc/pages.wcl --output /tmp/wdoc-example
+    @echo "wdoc: output at /tmp/wdoc-example/index.html"
+
+# Serve wdoc example with live reload (requires wcl in PATH)
+wdoc-serve:
+    wcl wdoc serve examples/wdoc/site.wcl examples/wdoc/pages.wcl --port 3000 --open
+
 # Run CLI examples (requires wcl in PATH)
 cli:
     bash examples/cli/eval.sh

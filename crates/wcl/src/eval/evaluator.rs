@@ -1889,6 +1889,83 @@ impl Default for Evaluator {
 // Free-standing helpers
 // =====================================================================
 
+/// Call a `FunctionValue` with the given arguments using a temporary evaluator.
+///
+/// This allows calling WCL lambdas (exported via `export let`) from Rust code
+/// after the main evaluation phase has completed. Template lambdas should be
+/// self-contained (no closure captures from the original scope).
+///
+/// For `FunctionBody::Builtin`, the function is looked up in `builtins`.
+pub fn call_lambda(
+    func: &FunctionValue,
+    args: &[Value],
+    builtins: &HashMap<String, BuiltinFn>,
+) -> Result<Value, String> {
+    if args.len() != func.params.len() {
+        return Err(format!(
+            "expected {} arguments, got {}",
+            func.params.len(),
+            args.len()
+        ));
+    }
+
+    match &func.body {
+        FunctionBody::Builtin(name) => {
+            if let Some(f) = builtins.get(name.as_str()) {
+                f(args)
+            } else {
+                Err(format!("unknown builtin function '{name}'"))
+            }
+        }
+        FunctionBody::UserDefined(_) | FunctionBody::BlockExpr(_, _) => {
+            let mut eval = Evaluator::new();
+            // Register builtins so the lambda body can call other functions
+            for (name, f) in builtins {
+                eval.register_function(name.clone(), f.clone());
+            }
+            let scope = eval.scopes_mut().create_scope(ScopeKind::Lambda, None);
+            for (param, arg) in func.params.iter().zip(args.iter()) {
+                eval.scopes_mut().add_entry(
+                    scope,
+                    ScopeEntry {
+                        name: param.clone(),
+                        kind: ScopeEntryKind::LetBinding,
+                        value: Some(arg.clone()),
+                        span: Span::dummy(),
+                        dependencies: Default::default(),
+                        evaluated: true,
+                        read_count: 0,
+                    },
+                );
+            }
+            match &func.body {
+                FunctionBody::UserDefined(expr) => {
+                    eval.eval_expr(expr, scope).map_err(|d| d.message)
+                }
+                FunctionBody::BlockExpr(lets, final_expr) => {
+                    for (name, expr) in lets {
+                        let val = eval.eval_expr(expr, scope).map_err(|d| d.message)?;
+                        eval.scopes_mut().add_entry(
+                            scope,
+                            ScopeEntry {
+                                name: name.clone(),
+                                kind: ScopeEntryKind::LetBinding,
+                                value: Some(val),
+                                span: Span::dummy(),
+                                dependencies: Default::default(),
+                                evaluated: true,
+                                read_count: 0,
+                            },
+                        );
+                    }
+                    eval.eval_expr(final_expr, scope).map_err(|d| d.message)
+                }
+                _ => unreachable!(),
+            }
+        }
+    }
+}
+
 /// Check whether a list of decorators contains `@allow(arg_name)`.
 fn has_allow_decorator(decorators: &[Decorator], arg_name: &str) -> bool {
     decorators.iter().any(|d| {

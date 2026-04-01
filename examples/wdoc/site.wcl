@@ -1,0 +1,56 @@
+// ── WCL Documentation Example ──
+//
+// This demonstrates the wdoc documentation format built on WCL.
+// Build:  wcl wdoc build examples/wdoc/site.wcl examples/wdoc/pages.wcl --output /tmp/wdoc-example
+// Serve:  wcl wdoc serve examples/wdoc/site.wcl examples/wdoc/pages.wcl --port 3000
+
+import <wdoc.wcl>
+
+// ── Document definition with section outline ──
+
+wdoc my_docs {
+    title = "WCL Documentation Example"
+    version = "1.0.0"
+    author = "WCL Team"
+
+    wdoc_section getting_started "Getting Started" {
+        wdoc_section overview "Overview" {}
+        wdoc_section installation "Installation" {}
+    }
+
+    wdoc_section guide "User Guide" {
+        wdoc_section basics "Language Basics" {}
+        wdoc_section advanced "Advanced Features" {}
+    }
+
+    wdoc_section reference "Reference" {
+        wdoc_section cli_ref "CLI Reference" {}
+    }
+}
+
+// ── Styles ──
+
+wdoc_style default {
+    for_heading {
+        color = "#1a1a2e"
+        font_family = "'Segoe UI', sans-serif"
+    }
+    for_paragraph {
+        color = "#333"
+        line_height = "1.7"
+    }
+}
+
+wdoc_style hero {
+    for_heading {
+        color = "#0f3460"
+        font_size = "2.5rem"
+        text_align = "center"
+        margin_bottom = "1rem"
+    }
+    for_paragraph {
+        text_align = "center"
+        font_size = "1.2rem"
+        color = "#555"
+    }
+}

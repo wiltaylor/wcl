@@ -39,6 +39,9 @@ quick-xml = { version = "0.37", features = ["serialize"] }
 rmp-serde = "1"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# Wdoc
+wcl_wdoc = { workspace = true }
+
 # LSP deps
 async-lsp = { workspace = true }
 futures = { workspace = true }
