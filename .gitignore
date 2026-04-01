@@ -13,7 +13,9 @@ extras/pygments/__pycache__/
 examples/SDF/docs/book/
 .env
 .claude/worktrees/
+.claude/scheduled_tasks.lock
 examples/rust/Cargo.lock
+examples/rust/.cargo/
 examples/dotnet/obj/
 examples/dotnet/bin/
 examples/jvm/.gradle/
