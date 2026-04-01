@@ -110,32 +110,6 @@ pub fn render_page(doc: &WdocDocument, page: &Page, css_path: &str) -> String {
     html
 }
 
-/// Render the index page — redirects to the first page if one exists.
-pub fn render_index(doc: &WdocDocument, _css_path: &str) -> String {
-    // Redirect to the first page
-    let target = doc
-        .pages
-        .first()
-        .map(|p| format!("{}.html", p.id))
-        .unwrap_or_else(|| "#".to_string());
-
-    format!(
-        r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta http-equiv="refresh" content="0; url={target}">
-<title>{title}</title>
-</head>
-<body>
-<p>Redirecting to <a href="{target}">{target}</a>...</p>
-</body>
-</html>
-"#,
-        title = doc.title,
-    )
-}
-
 fn render_nav(doc: &WdocDocument, active_section: &str, html: &mut String) {
     html.push_str("<nav class=\"wdoc-nav\">\n");
     writeln!(html, "<div class=\"wdoc-nav-title\">{}</div>", doc.title).unwrap();
