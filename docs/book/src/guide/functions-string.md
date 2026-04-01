@@ -22,6 +22,11 @@ WCL's string functions operate on `string` values and return strings, booleans, 
 | `format` | `format(template: string, ...args) -> string` | Format string with `{}` placeholders |
 | `regex_match` | `regex_match(s: string, pattern: string) -> bool` | True if `s` matches the regex pattern |
 | `regex_capture` | `regex_capture(s: string, pattern: string) -> list` | List of capture groups from the first match |
+| `regex_replace` | `regex_replace(s: string, pattern: string\|pattern, replacement: string) -> string` | Replace the first match of `pattern` in `s` with `replacement` |
+| `regex_replace_all` | `regex_replace_all(s: string, pattern: string\|pattern, replacement: string) -> string` | Replace all matches of `pattern` in `s` with `replacement` |
+| `regex_split` | `regex_split(s: string, pattern: string\|pattern) -> list` | Split `s` on all matches of `pattern` |
+| `regex_find` | `regex_find(s: string, pattern: string\|pattern) -> string?` | Return the first match of `pattern` in `s`, or `null` |
+| `regex_find_all` | `regex_find_all(s: string, pattern: string\|pattern) -> list` | Return all matches of `pattern` in `s` |
 
 ## Examples
 
@@ -96,6 +101,44 @@ let groups = regex_capture("2024-03-15", "(\\d{4})-(\\d{2})-(\\d{2})")
 ```
 
 Returns an empty list if there is no match. The list contains only the capture groups, not the full match.
+
+### regex_replace
+
+```wcl
+let result = regex_replace("hello world", "\\s+", "-")
+// "hello-world" (only first match replaced)
+```
+
+### regex_replace_all
+
+```wcl
+let result = regex_replace_all("a b  c", "\\s+", "-")
+// "a-b-c" (all matches replaced)
+```
+
+### regex_split
+
+```wcl
+let parts = regex_split("one:two::three", ":+")
+// ["one", "two", "three"]
+```
+
+### regex_find
+
+```wcl
+let price = regex_find("Total: $42.50", "\\d+\\.\\d+")
+// "42.50"
+
+let none = regex_find("no numbers here", "\\d+")
+// null
+```
+
+### regex_find_all
+
+```wcl
+let nums = regex_find_all("a1 b2 c3", "[a-z]\\d")
+// ["a1", "b2", "c3"]
+```
 
 ## String Interpolation
 
