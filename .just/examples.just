@@ -3,15 +3,27 @@ set working-directory := '..'
 # Run all examples
 all: cli rust python javascript go dotnet jvm ruby
 
-# Patch examples to use locally-built packages (for CI)
+# Build and run ALL examples against the locally-built wcl
+run-local: install-local patch-local cli transform rust
+
+# Install the locally-built CLI so examples use it
+install-local:
+    cargo install --path crates/wcl --quiet
+
+# Patch binding examples to use locally-built packages (for CI)
 patch-local:
     bash scripts/patch-examples-local.sh
+
+# Restore binding examples to use published package versions
+unpatch-local:
+    git checkout -- examples/rust/Cargo.toml examples/python/example.py examples/ruby/Gemfile examples/dotnet/Example.csproj
+    git checkout -- examples/ruby/Gemfile.lock 2>/dev/null || true
 
 # Update published package versions in examples
 update-versions version:
     bash scripts/update-example-versions.sh {{version}}
 
-# Run CLI examples
+# Run CLI examples (requires wcl in PATH)
 cli:
     bash examples/cli/eval.sh
     bash examples/cli/query.sh
@@ -19,6 +31,10 @@ cli:
     bash examples/cli/fmt.sh
     bash examples/cli/convert.sh
     bash examples/cli/manipulate.sh
+
+# Run transform examples (requires wcl in PATH)
+transform:
+    bash examples/cli/transform.sh
 
 # Run Rust example
 rust:
