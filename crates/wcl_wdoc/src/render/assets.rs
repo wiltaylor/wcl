@@ -62,12 +62,14 @@ body {
 .wdoc-nav li a.active { background: var(--color-nav-active); font-weight: 600; }
 .wdoc-nav li ul { padding-left: 1rem; }
 
-/* Main content area */
+/* Main content area — centered in the space right of the nav */
 .wdoc-content {
     margin-left: var(--nav-width);
-    flex: 1;
-    padding: 2rem 2.5rem;
     max-width: var(--content-max-width);
+    padding: 2rem 2.5rem;
+    /* Center horizontally in remaining viewport space */
+    margin-right: auto;
+    margin-left: calc(var(--nav-width) + max(0px, (100vw - var(--nav-width) - var(--content-max-width)) / 2));
 }
 
 /* Splits (flexbox layout) */
