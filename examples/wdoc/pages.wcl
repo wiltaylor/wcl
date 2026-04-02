@@ -60,11 +60,13 @@ wdoc_page overview {
                     content = "Key Features"
                 }
 
-                paragraph p4 { content = bold("Typed schemas") + " - define and validate your configuration structure at parse time." }
-                paragraph p5 { content = bold("Expressions") + " - variables, conditionals, loops, string interpolation, and 45+ built-in functions." }
-                paragraph p6 { content = bold("Tables") + " - structured tabular data with typed columns and CSV import." }
-                paragraph p7 { content = bold("Imports and Libraries") + " - modular configuration with library support and glob imports." }
-                paragraph p8 { content = bold("Multiple output formats") + " - evaluate to JSON, YAML, TOML, or MessagePack." }
+                paragraph p4 { content = icon("shield-check") + " " + bold("Typed schemas") + " - define and validate your configuration structure at parse time." }
+                paragraph p5 { content = icon("code-slash") + " " + bold("Expressions") + " - variables, conditionals, loops, string interpolation, and 45+ built-in functions." }
+                paragraph p6 { content = icon("table") + " " + bold("Tables") + " - structured tabular data with typed columns and CSV import." }
+                paragraph p7 { content = icon("box-arrow-in-right") + " " + bold("Imports and Libraries") + " - modular configuration with library support and glob imports." }
+                paragraph p8 { content = icon("filetype-json") + " " + bold("Multiple output formats") + " - evaluate to JSON, YAML, TOML, or MessagePack." }
+                paragraph p9 { content = icon("brush") + " " + bold("Diagrams and Shapes") + " - vector diagrams with shapes, connections, and graph layouts." }
+                paragraph p10 { content = icon("palette") + " " + bold("Dark mode") + " - system detection with manual toggle, theme-aware throughout." }
             }
         }
     }
@@ -133,10 +135,10 @@ wdoc_page install {
                     level = 3
                     content = "Quick Links"
                 }
-                paragraph l1 { content = link("GitHub Repository", "https://github.com/wiltaylor/wcl") }
-                paragraph l2 { content = link("API Documentation", "https://wcl.dev/docs") }
-                paragraph l3 { content = link("Release Notes", "https://github.com/wiltaylor/wcl/releases") }
-                paragraph l4 { content = link("VS Code Extension", "https://marketplace.visualstudio.com") }
+                paragraph l1 { content = icon("github") + " " + link("GitHub Repository", "https://github.com/wiltaylor/wcl") }
+                paragraph l2 { content = icon("book") + " " + link("API Documentation", "https://wcl.dev/docs") }
+                paragraph l3 { content = icon("tag") + " " + link("Release Notes", "https://github.com/wiltaylor/wcl/releases") }
+                paragraph l4 { content = icon("window") + " " + link("VS Code Extension", "https://marketplace.visualstudio.com") }
             }
         }
     }
@@ -3744,7 +3746,7 @@ wdoc_page cli_ref {
 
                 heading h2a {
                     level = 2
-                    content = "eval"
+                    content = icon("play-fill") + " eval"
                 }
                 paragraph p2 { content = "Evaluate a WCL document and output resolved configuration:" }
                 code c1 {
@@ -3754,7 +3756,7 @@ wdoc_page cli_ref {
 
                 heading h2b {
                     level = 2
-                    content = "validate"
+                    content = icon("check-circle") + " validate"
                 }
                 paragraph p3 { content = "Check for errors without producing output:" }
                 code c2 {
@@ -3764,7 +3766,7 @@ wdoc_page cli_ref {
 
                 heading h2c {
                     level = 2
-                    content = "query"
+                    content = icon("search") + " query"
                 }
                 paragraph p4 { content = "Query specific values using selectors:" }
                 code c3 {
@@ -3774,7 +3776,7 @@ wdoc_page cli_ref {
 
                 heading h2d {
                     level = 2
-                    content = "fmt"
+                    content = icon("text-indent-left") + " fmt"
                 }
                 paragraph p5 { content = "Format WCL source code consistently:" }
                 code c4 {
@@ -3784,7 +3786,7 @@ wdoc_page cli_ref {
 
                 heading h2e {
                     level = 2
-                    content = "convert"
+                    content = icon("arrow-left-right") + " convert"
                 }
                 paragraph p6 { content = "Convert between WCL and other configuration formats:" }
                 code c5 {
@@ -3794,7 +3796,7 @@ wdoc_page cli_ref {
 
                 heading h2f {
                     level = 2
-                    content = "wdoc"
+                    content = icon("file-earmark-richtext") + " wdoc"
                 }
                 paragraph p7 { content = "Build documentation sites from WCL-based wdoc files:" }
                 code c6 {
