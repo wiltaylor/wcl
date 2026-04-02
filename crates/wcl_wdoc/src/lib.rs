@@ -6,6 +6,7 @@ pub mod serve;
 pub mod shapes;
 pub mod templates;
 pub mod validate;
+pub mod widgets;
 
 use crate::model::WdocDocument;
 use crate::validate::{WdocDiagnostic, WdocSeverity};

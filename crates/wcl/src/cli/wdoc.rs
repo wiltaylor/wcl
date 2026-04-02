@@ -394,9 +394,24 @@ fn collect_shape_or_connection(
     }
 
     if let Some(kind) = parse_shape_kind(&br.kind) {
-        let a = value_map_to_string_map_lossy(&br.attributes);
+        let mut a = value_map_to_string_map_lossy(&br.attributes);
 
-        let mut children = Vec::new();
+        // For widgets, get template-generated children (shape primitives)
+        let mut children = if wcl_wdoc::widgets::is_widget(&br.kind) {
+            let w = a
+                .get("width")
+                .and_then(|s| s.parse::<f64>().ok())
+                .unwrap_or(200.0);
+            let h = a
+                .get("height")
+                .and_then(|s| s.parse::<f64>().ok())
+                .unwrap_or(100.0);
+            wcl_wdoc::widgets::build_widget(&br.kind, w, h, &a)
+        } else {
+            Vec::new()
+        };
+
+        // Also collect any user-defined child shapes from the block
         let mut child_connections = Vec::new();
         for val in br.attributes.values() {
             if let Value::BlockRef(child_br) = val {
@@ -407,22 +422,39 @@ fn collect_shape_or_connection(
             collect_shape_or_connection(child_br, &mut children, &mut child_connections);
         }
 
-        let f = |k: &str| a.get(k).and_then(|s| s.parse::<f64>().ok());
+        let pf =
+            |m: &IndexMap<String, String>, k: &str| m.get(k).and_then(|s| s.parse::<f64>().ok());
         let align = parse_alignment_str(a.get("align").map(|s| s.as_str()).unwrap_or("none"));
-        let gap = f("gap").unwrap_or(0.0);
-        let pad = f("padding").unwrap_or(0.0);
+        let gap = pf(&a, "gap").unwrap_or(0.0);
+        let pad = pf(&a, "padding").unwrap_or(0.0);
+        let nx = pf(&a, "x");
+        let ny = pf(&a, "y");
+        let nw = pf(&a, "width");
+        let nh = pf(&a, "height");
+        let ntop = pf(&a, "top");
+        let nbot = pf(&a, "bottom");
+        let nleft = pf(&a, "left");
+        let nright = pf(&a, "right");
+
+        // Widgets are invisible containers — their template provides all visuals
+        if wcl_wdoc::widgets::is_widget(&br.kind) {
+            a.entry("fill".to_string())
+                .or_insert_with(|| "none".to_string());
+            a.entry("stroke".to_string())
+                .or_insert_with(|| "none".to_string());
+        }
 
         shapes.push(ShapeNode {
             kind,
             id: br.id.clone(),
-            x: f("x"),
-            y: f("y"),
-            width: f("width"),
-            height: f("height"),
-            top: f("top"),
-            bottom: f("bottom"),
-            left: f("left"),
-            right: f("right"),
+            x: nx,
+            y: ny,
+            width: nw,
+            height: nh,
+            top: ntop,
+            bottom: nbot,
+            left: nleft,
+            right: nright,
             resolved: Bounds::default(),
             attrs: a,
             children,

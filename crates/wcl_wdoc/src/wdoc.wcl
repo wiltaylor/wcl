@@ -76,6 +76,44 @@ schema "shape_text" { }
 @open
 schema "shape_connection" { }
 
+// --- UI Widget schemas (composite shapes) ---
+
+@template("shape", "widget_render_phone")
+@open
+schema "widget_phone" { }
+
+@template("shape", "widget_render_browser")
+@open
+schema "widget_browser" { }
+
+@template("shape", "widget_render_button")
+@open
+schema "widget_button" { }
+
+@template("shape", "widget_render_input")
+@open
+schema "widget_input" { }
+
+@template("shape", "widget_render_card")
+@open
+schema "widget_card" { }
+
+@template("shape", "widget_render_avatar")
+@open
+schema "widget_avatar" { }
+
+@template("shape", "widget_render_toggle")
+@open
+schema "widget_toggle" { }
+
+@template("shape", "widget_render_badge")
+@open
+schema "widget_badge" { }
+
+@template("shape", "widget_render_navbar")
+@open
+schema "widget_navbar" { }
+
 // --- Decorator schemas ---
 
 decorator_schema "style" {
