@@ -495,10 +495,17 @@ fn render_shape_svg(node: &ShapeNode, svg: &mut String) {
             // Center text within resolved bounds
             let tx = b.x + b.width / 2.0;
             let ty = b.y + b.height / 2.0;
+            // Default fill to currentColor so text is visible in dark mode
+            let fill_default = if node.attrs.contains_key("fill") {
+                ""
+            } else {
+                " fill=\"currentColor\""
+            };
             write!(
                 svg,
                 "<text x=\"{tx}\" y=\"{ty}\" font-size=\"{font_size}\" \
-                 text-anchor=\"{anchor}\" dominant-baseline=\"central\"{style}>{content}</text>"
+                 text-anchor=\"{anchor}\" dominant-baseline=\"central\"\
+                 {fill_default}{style}>{content}</text>"
             )
             .unwrap();
         }
