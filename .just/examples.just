@@ -4,7 +4,7 @@ set working-directory := '..'
 all: cli rust python javascript go dotnet jvm ruby
 
 # Build and run ALL examples against the locally-built wcl
-run-local: install-local patch-local cli transform rust
+run-local: install-local patch-local cli transform rust unpatch-local
 
 # Install the locally-built CLI so examples use it
 install-local:
@@ -33,8 +33,8 @@ wdoc:
 wdoc-serve:
     wcl wdoc serve examples/wdoc/site.wcl examples/wdoc/pages.wcl --port 3000 --open
 
-# Serve wdoc example using locally-built binary
-wdoc-serve-local:
+# Serve wdoc example using locally-built binary (restores patched files on exit)
+wdoc-serve-local: patch-local && unpatch-local
     cargo run --quiet -- wdoc serve examples/wdoc/site.wcl examples/wdoc/pages.wcl --port 3000 --open
 
 # Run CLI examples (requires wcl in PATH)
