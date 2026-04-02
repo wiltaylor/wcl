@@ -577,11 +577,11 @@ fn render_connection_svg(conn: &Connection, shape_map: &HashMap<String, Bounds>,
 
     if let Some(label) = &conn.label {
         let mx = (x1 + x2) / 2.0;
-        let my = (y1 + y2) / 2.0;
+        let my = (y1 + y2) / 2.0 - 10.0;
         write!(
             svg,
             "<text x=\"{mx}\" y=\"{my}\" text-anchor=\"middle\" \
-             dominant-baseline=\"central\" font-size=\"12\" fill=\"currentColor\">{label}</text>"
+             dominant-baseline=\"auto\" font-size=\"12\" fill=\"currentColor\">{label}</text>"
         )
         .unwrap();
     }
