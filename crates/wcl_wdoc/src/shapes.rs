@@ -248,12 +248,12 @@ pub fn parse_curve_str(s: &str) -> CurveStyle {
 
 pub fn parse_shape_kind(kind: &str) -> Option<ShapeKind> {
     match kind {
-        "shape_rect" => Some(ShapeKind::Rect),
-        "shape_circle" => Some(ShapeKind::Circle),
-        "shape_ellipse" => Some(ShapeKind::Ellipse),
-        "shape_line" => Some(ShapeKind::Line),
-        "shape_path" => Some(ShapeKind::Path),
-        "shape_text" => Some(ShapeKind::Text),
+        "wdoc::draw::rect" => Some(ShapeKind::Rect),
+        "wdoc::draw::circle" => Some(ShapeKind::Circle),
+        "wdoc::draw::ellipse" => Some(ShapeKind::Ellipse),
+        "wdoc::draw::line" => Some(ShapeKind::Line),
+        "wdoc::draw::path" => Some(ShapeKind::Path),
+        "wdoc::draw::text" => Some(ShapeKind::Text),
         // Widgets are treated as rects for layout (they have bounds and children)
         k if crate::widgets::is_widget(k) => Some(ShapeKind::Rect),
         _ => None,

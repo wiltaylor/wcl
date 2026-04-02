@@ -1242,28 +1242,39 @@ impl Evaluator {
                 // Evaluate arguments eagerly for normal builtins and user fns
                 let eval_args = self.eval_call_args(args, scope_id)?;
 
+                // Resolve through namespace aliases for regular functions
+                let resolved_name: std::borrow::Cow<'_, str> =
+                    if let Some(qualified) = self.namespace_aliases.aliases.get(name.as_str()) {
+                        std::borrow::Cow::Borrowed(qualified.as_str())
+                    } else {
+                        std::borrow::Cow::Borrowed(name.as_str())
+                    };
+
                 // Check builtin functions
-                if let Some(builtin) = self.builtins.get(name.as_str()).cloned() {
+                if let Some(builtin) = self.builtins.get(resolved_name.as_ref()).cloned() {
                     return builtin(&eval_args).map_err(|e| {
                         Diagnostic::error(format!("in {}(): {}", name, e), span).with_code("E052")
                     });
                 }
 
                 // Check user-defined functions in scope
-                let maybe_func = self.scopes.resolve(scope_id, name).and_then(|(_, entry)| {
-                    if let Some(Value::Function(func)) = &entry.value {
-                        Some(func.clone())
-                    } else {
-                        None
-                    }
-                });
+                let maybe_func =
+                    self.scopes
+                        .resolve(scope_id, &resolved_name)
+                        .and_then(|(_, entry)| {
+                            if let Some(Value::Function(func)) = &entry.value {
+                                Some(func.clone())
+                            } else {
+                                None
+                            }
+                        });
                 if let Some(func) = maybe_func {
-                    self.scopes.record_read(scope_id, name);
+                    self.scopes.record_read(scope_id, &resolved_name);
                     return self.call_user_fn(&func, &eval_args, span);
                 }
 
                 // Check if function is declared (from library import) but not registered
-                if self.declared_functions.contains(name.as_str()) {
+                if self.declared_functions.contains(resolved_name.as_ref()) {
                     return Err(
                         Diagnostic::error(
                             format!("function '{}' is declared in library but not registered by host application", name),
@@ -1649,7 +1660,12 @@ impl Evaluator {
         }
 
         BlockRef {
-            kind: block.kind.name.clone(),
+            kind: self
+                .namespace_aliases
+                .aliases
+                .get(&block.kind.name)
+                .cloned()
+                .unwrap_or_else(|| block.kind.name.clone()),
             id: inline_id,
             attributes,
             children,
