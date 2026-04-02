@@ -336,9 +336,13 @@ fn render_diagram_html(args: &[Value]) -> String {
         _ => return "<div class=\"wdoc-diagram\">(invalid diagram)</div>".to_string(),
     };
 
+    let str_attrs = value_map_to_string_map_lossy(&br.attributes);
+
     let diagram_w = val_f64(br.attributes.get("width")).unwrap_or(600.0);
     let diagram_h = val_f64(br.attributes.get("height")).unwrap_or(400.0);
     let padding = val_f64(br.attributes.get("padding")).unwrap_or(0.0);
+    let gap = val_f64(br.attributes.get("gap")).unwrap_or(40.0);
+    let align = parse_alignment_str(str_attrs.get("align").map(|s| s.as_str()).unwrap_or("none"));
 
     let mut shapes = Vec::new();
     let mut connections = Vec::new();
@@ -359,6 +363,9 @@ fn render_diagram_html(args: &[Value]) -> String {
         shapes,
         connections,
         padding,
+        align,
+        gap,
+        options: str_attrs,
     };
 
     render_diagram_svg(&mut diagram)
