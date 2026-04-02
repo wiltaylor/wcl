@@ -177,6 +177,26 @@ fn wdoc_functions() -> FunctionRegistry {
         ),
     );
 
+    reg.register(
+        "icon",
+        std::sync::Arc::new(|args: &[Value]| {
+            let name = args
+                .first()
+                .and_then(|v| v.as_string())
+                .ok_or("icon() expects a string argument (icon name)")?;
+            // Optional size as second arg
+            let size = args.get(1).and_then(|v| v.as_string()).unwrap_or("1em");
+            Ok(Value::String(format!(
+                "<i class=\"bi bi-{name}\" style=\"font-size:{size}\"></i>"
+            )))
+        }) as BuiltinFn,
+        mk(
+            "icon",
+            vec!["name: string", "size: string"],
+            "Insert a Bootstrap Icon by name",
+        ),
+    );
+
     // Template rendering functions — receive Value::Map, return HTML string
     register_template_builtins(&mut reg);
 

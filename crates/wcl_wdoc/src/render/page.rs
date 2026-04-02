@@ -3,10 +3,10 @@ use std::fmt::Write;
 use crate::model::*;
 use crate::render::layout::render_layout_items;
 
-/// highlight.js local assets injected into <head>.
-/// Both light and dark themes loaded; JS toggles which is active.
+/// highlight.js local assets + Bootstrap Icons injected into <head>.
 const HLJS_HEAD: &str = r#"<link rel="stylesheet" href="highlight-light.min.css" id="hljs-light">
 <link rel="stylesheet" href="highlight-dark.min.css" id="hljs-dark" disabled>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <script defer src="highlight.min.js"></script>
 <script defer src="wcl-grammar.js"></script>"#;
 
