@@ -23,6 +23,10 @@ wdoc my_docs {
         wdoc_section advanced "Advanced Features" {}
     }
 
+    wdoc_section diagrams "Diagrams" {
+        wdoc_section diagram_examples "Diagram Examples" {}
+    }
+
     wdoc_section bindings "Language Bindings" {
         wdoc_section binding_examples "Binding Examples" {}
     }
