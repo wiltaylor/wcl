@@ -92,9 +92,20 @@ fn attr<'a>(attrs: &'a IndexMap<String, String>, key: &str) -> Option<&'a str> {
 // Public API
 // ---------------------------------------------------------------------------
 
-/// Check if a block kind is a widget.
+/// Check if a block kind is a widget (composite shape in the wdoc::draw namespace).
 pub fn is_widget(kind: &str) -> bool {
-    kind.starts_with("widget_")
+    kind.starts_with("wdoc::draw::")
+        && !matches!(
+            kind,
+            "wdoc::draw::rect"
+                | "wdoc::draw::circle"
+                | "wdoc::draw::ellipse"
+                | "wdoc::draw::line"
+                | "wdoc::draw::path"
+                | "wdoc::draw::text"
+                | "wdoc::draw::connection"
+                | "wdoc::draw::diagram"
+        )
 }
 
 /// Build widget child shapes by kind. Returns primitives for the widget's visual structure.
@@ -105,37 +116,37 @@ pub fn build_widget(
     attrs: &IndexMap<String, String>,
 ) -> Vec<ShapeNode> {
     match kind {
-        "widget_phone" => phone_shapes(w, h, attrs),
-        "widget_browser" => browser_shapes(w, h, attrs),
-        "widget_button" => button_shapes(w, h, attrs),
-        "widget_input" => input_shapes(w, h, attrs),
-        "widget_card" => card_shapes(w, h, attrs),
-        "widget_avatar" => avatar_shapes(w, h, attrs),
-        "widget_toggle" => toggle_shapes(w, h, attrs),
-        "widget_badge" => badge_shapes(w, h, attrs),
-        "widget_navbar" => navbar_shapes(w, h, attrs),
+        "wdoc::draw::phone" => phone_shapes(w, h, attrs),
+        "wdoc::draw::browser" => browser_shapes(w, h, attrs),
+        "wdoc::draw::button" => button_shapes(w, h, attrs),
+        "wdoc::draw::input" => input_shapes(w, h, attrs),
+        "wdoc::draw::card" => card_shapes(w, h, attrs),
+        "wdoc::draw::avatar" => avatar_shapes(w, h, attrs),
+        "wdoc::draw::toggle" => toggle_shapes(w, h, attrs),
+        "wdoc::draw::badge" => badge_shapes(w, h, attrs),
+        "wdoc::draw::navbar" => navbar_shapes(w, h, attrs),
         // Flowchart
-        "widget_flow_process" => flow_process(w, h, attrs),
-        "widget_flow_decision" => flow_decision(w, h, attrs),
-        "widget_flow_terminal" => flow_terminal(w, h, attrs),
-        "widget_flow_io" => flow_io(w, h, attrs),
-        "widget_flow_subprocess" => flow_subprocess(w, h, attrs),
+        "wdoc::draw::flow_process" => flow_process(w, h, attrs),
+        "wdoc::draw::flow_decision" => flow_decision(w, h, attrs),
+        "wdoc::draw::flow_terminal" => flow_terminal(w, h, attrs),
+        "wdoc::draw::flow_io" => flow_io(w, h, attrs),
+        "wdoc::draw::flow_subprocess" => flow_subprocess(w, h, attrs),
         // C4
-        "widget_c4_person" => c4_person(w, h, attrs),
-        "widget_c4_system" => c4_system(w, h, attrs),
-        "widget_c4_container" => c4_container(w, h, attrs),
-        "widget_c4_component" => c4_component(w, h, attrs),
-        "widget_c4_boundary" => c4_boundary(w, h, attrs),
+        "wdoc::draw::c4_person" => c4_person(w, h, attrs),
+        "wdoc::draw::c4_system" => c4_system(w, h, attrs),
+        "wdoc::draw::c4_container" => c4_container(w, h, attrs),
+        "wdoc::draw::c4_component" => c4_component(w, h, attrs),
+        "wdoc::draw::c4_boundary" => c4_boundary(w, h, attrs),
         // UML
-        "widget_uml_class" => uml_class(w, h, attrs),
-        "widget_uml_actor" => uml_actor(w, h, attrs),
-        "widget_uml_package" => uml_package(w, h, attrs),
-        "widget_uml_note" => uml_note(w, h, attrs),
+        "wdoc::draw::uml_class" => uml_class(w, h, attrs),
+        "wdoc::draw::uml_actor" => uml_actor(w, h, attrs),
+        "wdoc::draw::uml_package" => uml_package(w, h, attrs),
+        "wdoc::draw::uml_note" => uml_note(w, h, attrs),
         // Network
-        "widget_node_server" => node_server(w, h, attrs),
-        "widget_node_database" => node_database(w, h, attrs),
-        "widget_node_cloud" => node_cloud(w, h, attrs),
-        "widget_node_user" => node_user(w, h, attrs),
+        "wdoc::draw::server" => node_server(w, h, attrs),
+        "wdoc::draw::database" => node_database(w, h, attrs),
+        "wdoc::draw::cloud" => node_cloud(w, h, attrs),
+        "wdoc::draw::user" => node_user(w, h, attrs),
         _ => vec![],
     }
 }

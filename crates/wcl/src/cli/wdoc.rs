@@ -131,9 +131,9 @@ fn wdoc_functions() -> FunctionRegistry {
         doc: doc.into(),
     };
 
-    // Inline formatting
+    // Inline formatting (qualified under wdoc:: namespace)
     reg.register(
-        "bold",
+        "wdoc::bold",
         std::sync::Arc::new(|args: &[Value]| {
             let t = args
                 .first()
@@ -141,11 +141,15 @@ fn wdoc_functions() -> FunctionRegistry {
                 .ok_or("bold() expects a string argument")?;
             Ok(Value::String(format!("<strong>{t}</strong>")))
         }) as BuiltinFn,
-        mk("bold", vec!["text: string"], "Wrap text in <strong> tags"),
+        mk(
+            "wdoc::bold",
+            vec!["text: string"],
+            "Wrap text in <strong> tags",
+        ),
     );
 
     reg.register(
-        "italic",
+        "wdoc::italic",
         std::sync::Arc::new(|args: &[Value]| {
             let t = args
                 .first()
@@ -153,11 +157,15 @@ fn wdoc_functions() -> FunctionRegistry {
                 .ok_or("italic() expects a string argument")?;
             Ok(Value::String(format!("<em>{t}</em>")))
         }) as BuiltinFn,
-        mk("italic", vec!["text: string"], "Wrap text in <em> tags"),
+        mk(
+            "wdoc::italic",
+            vec!["text: string"],
+            "Wrap text in <em> tags",
+        ),
     );
 
     reg.register(
-        "link",
+        "wdoc::link",
         std::sync::Arc::new(|args: &[Value]| {
             if args.len() != 2 {
                 return Err("link() expects 2 arguments (text, url)".into());
@@ -171,14 +179,14 @@ fn wdoc_functions() -> FunctionRegistry {
             Ok(Value::String(format!("<a href=\"{url}\">{text}</a>")))
         }) as BuiltinFn,
         mk(
-            "link",
+            "wdoc::link",
             vec!["text: string", "url: string"],
             "Create an <a> link",
         ),
     );
 
     reg.register(
-        "icon",
+        "wdoc::icon",
         std::sync::Arc::new(|args: &[Value]| {
             let name = args
                 .first()
@@ -208,7 +216,7 @@ fn wdoc_functions() -> FunctionRegistry {
             )))
         }) as BuiltinFn,
         mk(
-            "icon",
+            "wdoc::icon",
             vec!["name: string", "size: string", "color: string"],
             "Insert a Bootstrap Icon (optional size and color)",
         ),
@@ -229,43 +237,43 @@ fn register_template_builtins(reg: &mut FunctionRegistry) {
     };
 
     reg.register(
-        "wdoc_render_heading",
+        "wdoc::render_heading",
         std::sync::Arc::new(|args: &[Value]| {
             let attrs = value_map_to_string_map(args.first())?;
             Ok(Value::String(wcl_wdoc::templates::render_heading(&attrs)))
         }) as BuiltinFn,
-        mk("wdoc_render_heading", "Render a heading element"),
+        mk("wdoc::render_heading", "Render a heading element"),
     );
 
     reg.register(
-        "wdoc_render_paragraph",
+        "wdoc::render_paragraph",
         std::sync::Arc::new(|args: &[Value]| {
             let attrs = value_map_to_string_map(args.first())?;
             Ok(Value::String(wcl_wdoc::templates::render_paragraph(&attrs)))
         }) as BuiltinFn,
-        mk("wdoc_render_paragraph", "Render a paragraph element"),
+        mk("wdoc::render_paragraph", "Render a paragraph element"),
     );
 
     reg.register(
-        "wdoc_render_image",
+        "wdoc::render_image",
         std::sync::Arc::new(|args: &[Value]| {
             let attrs = value_map_to_string_map(args.first())?;
             Ok(Value::String(wcl_wdoc::templates::render_image(&attrs)))
         }) as BuiltinFn,
-        mk("wdoc_render_image", "Render an image element"),
+        mk("wdoc::render_image", "Render an image element"),
     );
 
     reg.register(
-        "wdoc_render_code",
+        "wdoc::render_code",
         std::sync::Arc::new(|args: &[Value]| {
             let attrs = value_map_to_string_map(args.first())?;
             Ok(Value::String(wcl_wdoc::templates::render_code(&attrs)))
         }) as BuiltinFn,
-        mk("wdoc_render_code", "Render a code block"),
+        mk("wdoc::render_code", "Render a code block"),
     );
 
     reg.register(
-        "wdoc_render_table",
+        "wdoc::render_table",
         std::sync::Arc::new(|args: &[Value]| {
             let attrs = match args.first() {
                 Some(Value::Map(m)) => m,
@@ -274,14 +282,14 @@ fn register_template_builtins(reg: &mut FunctionRegistry) {
             };
             Ok(Value::String(render_table_html(attrs)))
         }) as BuiltinFn,
-        mk("wdoc_render_table", "Render a table element"),
+        mk("wdoc::render_table", "Render a table element"),
     );
 
     reg.register(
-        "wdoc_render_diagram",
+        "wdoc::render_diagram",
         std::sync::Arc::new(|args: &[Value]| Ok(Value::String(render_diagram_html(args))))
             as BuiltinFn,
-        mk("wdoc_render_diagram", "Render a diagram as inline SVG"),
+        mk("wdoc::render_diagram", "Render a diagram as inline SVG"),
     );
 }
 
@@ -403,7 +411,7 @@ fn render_callout_html(block: &BlockRef, ctx: &ExtractCtx) -> String {
     for child_block in all_child_blocks(block) {
         match child_block.kind.as_str() {
             // Skip known non-content attributes
-            "wdoc_layout" | "wdoc_section" | "wdoc_page" | "wdoc" | "wdoc_style" => {}
+            "wdoc::layout" | "wdoc::section" | "wdoc::page" | "wdoc::doc" | "wdoc::style" => {}
             _kind => {
                 if let Ok(child_html) = ctx.render_block(child_block) {
                     html.push_str(&child_html);
@@ -469,7 +477,7 @@ fn collect_shape_or_connection(
 ) {
     use wcl_wdoc::shapes::*;
 
-    if br.kind == "shape_connection" {
+    if br.kind == "wdoc::draw::connection" {
         let a = value_map_to_string_map_lossy(&br.attributes);
         connections.push(Connection {
             from_id: a.get("from").cloned().unwrap_or_default(),
@@ -636,15 +644,15 @@ fn extract(values: &IndexMap<String, Value>, ctx: &ExtractCtx) -> Result<WdocDoc
     for value in values.values() {
         if let Value::BlockRef(block) = value {
             match block.kind.as_str() {
-                "wdoc" => wdoc_block = Some(block),
-                "wdoc_page" => pages.push(extract_page(block, ctx)?),
-                "wdoc_style" => styles.push(extract_style(block)),
+                "wdoc::doc" => wdoc_block = Some(block),
+                "wdoc::page" => pages.push(extract_page(block, ctx)?),
+                "wdoc::style" => styles.push(extract_style(block)),
                 _ => {}
             }
         }
     }
 
-    let wdoc = wdoc_block.ok_or("no wdoc block found in document")?;
+    let wdoc = wdoc_block.ok_or("no wdoc::doc block found in document")?;
 
     let title = wdoc
         .attributes
@@ -668,9 +676,9 @@ fn extract(values: &IndexMap<String, Value>, ctx: &ExtractCtx) -> Result<WdocDoc
     let mut sections = Vec::new();
     for child in all_child_blocks(wdoc) {
         match child.kind.as_str() {
-            "wdoc_section" => sections.push(extract_section(child, &name)?),
-            "wdoc_page" => pages.push(extract_page(child, ctx)?),
-            "wdoc_style" => styles.push(extract_style(child)),
+            "wdoc::section" => sections.push(extract_section(child, &name)?),
+            "wdoc::page" => pages.push(extract_page(child, ctx)?),
+            "wdoc::style" => styles.push(extract_style(child)),
             _ => {}
         }
     }
@@ -716,7 +724,7 @@ fn extract_section(block: &BlockRef, parent_path: &str) -> Result<Section, Strin
 
     let mut children = Vec::new();
     for child in all_child_blocks(block) {
-        if child.kind == "wdoc_section" {
+        if child.kind == "wdoc::section" {
             children.push(extract_section(child, &id)?);
         }
     }
@@ -736,20 +744,20 @@ fn extract_page(block: &BlockRef, ctx: &ExtractCtx) -> Result<Page, String> {
         .attributes
         .get("section")
         .and_then(|v| v.as_string())
-        .ok_or_else(|| format!("wdoc_page '{id}' missing 'section' attribute"))?
+        .ok_or_else(|| format!("page '{id}' missing 'section' attribute"))?
         .to_string();
 
     let title = block
         .attributes
         .get("title")
         .and_then(|v| v.as_string())
-        .ok_or_else(|| format!("wdoc_page '{id}' missing 'title' attribute"))?
+        .ok_or_else(|| format!("page '{id}' missing 'title' attribute"))?
         .to_string();
 
     let all_children = all_child_blocks(block);
     let layout = all_children
         .iter()
-        .find(|c| c.kind == "wdoc_layout")
+        .find(|c| c.kind == "wdoc::layout")
         .map(|c| extract_layout(c, ctx))
         .unwrap_or(Layout {
             children: Vec::new(),
@@ -784,12 +792,13 @@ fn extract_layout_children(block: &BlockRef, ctx: &ExtractCtx) -> Vec<LayoutItem
                 ctx,
             ))),
             // Known structural blocks are not content
-            "wdoc_layout" | "wdoc_section" | "wdoc_page" | "wdoc" | "wdoc_style" | "split" => {}
+            "wdoc::layout" | "wdoc::section" | "wdoc::page" | "wdoc::doc" | "wdoc::style"
+            | "split" => {}
             // Callout — container with header + nested content blocks
-            "callout" => {
+            "wdoc::callout" => {
                 let html = render_callout_html(child, ctx);
                 items.push(LayoutItem::Content(ContentBlock {
-                    kind: "callout".to_string(),
+                    kind: "wdoc::callout".to_string(),
                     id: child.id.clone(),
                     rendered_html: html,
                     style: get_style_decorator(child),

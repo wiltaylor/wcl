@@ -5,48 +5,49 @@
 // Serve:  wcl wdoc serve examples/wdoc/site.wcl examples/wdoc/pages.wcl --port 3000
 
 import <wdoc.wcl>
+use wdoc::{doc, page, section, style, layout, heading, paragraph, image, code, table, callout, bold, italic, link, icon}
 
 // ── Document definition with section outline ──
 
-wdoc my_docs {
+doc my_docs {
     title = "WCL Documentation Example"
     version = "1.0.0"
     author = "WCL Team"
 
-    wdoc_section getting_started "Getting Started" {
-        wdoc_section overview "Overview" {}
-        wdoc_section installation "Installation" {}
+    section getting_started "Getting Started" {
+        section overview "Overview" {}
+        section installation "Installation" {}
     }
 
-    wdoc_section guide "User Guide" {
-        wdoc_section basics "Language Basics" {}
-        wdoc_section advanced "Advanced Features" {}
+    section guide "User Guide" {
+        section basics "Language Basics" {}
+        section advanced "Advanced Features" {}
     }
 
-    wdoc_section diagrams "Diagrams" {
-        wdoc_section diagram_examples "Diagram Examples" {}
-        wdoc_section large_diagrams "Large Diagrams" {}
-        wdoc_section nested_diagrams "Nested Diagrams" {}
-        wdoc_section swimlane_diagrams "Swim Lane Diagrams" {}
-        wdoc_section wireframes "UI Wireframes" {}
-        wdoc_section flowchart_examples "Flowchart Shapes" {}
-        wdoc_section c4_examples "C4 Architecture" {}
-        wdoc_section uml_examples "UML Shapes" {}
-        wdoc_section network_examples "Network Diagrams" {}
+    section diagrams "Diagrams" {
+        section diagram_examples "Diagram Examples" {}
+        section large_diagrams "Large Diagrams" {}
+        section nested_diagrams "Nested Diagrams" {}
+        section swimlane_diagrams "Swim Lane Diagrams" {}
+        section wireframes "UI Wireframes" {}
+        section flowchart_examples "Flowchart Shapes" {}
+        section c4_examples "C4 Architecture" {}
+        section uml_examples "UML Shapes" {}
+        section network_examples "Network Diagrams" {}
     }
 
-    wdoc_section bindings "Language Bindings" {
-        wdoc_section binding_examples "Binding Examples" {}
+    section bindings "Language Bindings" {
+        section binding_examples "Binding Examples" {}
     }
 
-    wdoc_section reference "Reference" {
-        wdoc_section cli_ref "CLI Reference" {}
+    section reference "Reference" {
+        section cli_ref "CLI Reference" {}
     }
 }
 
 // ── Styles ──
 
-wdoc_style default {
+style default {
     for_heading {
         font_family = "'Segoe UI', sans-serif"
     }
@@ -55,7 +56,7 @@ wdoc_style default {
     }
 }
 
-wdoc_style hero {
+style hero {
     for_heading {
         font_size = "2.5rem"
         text_align = "center"

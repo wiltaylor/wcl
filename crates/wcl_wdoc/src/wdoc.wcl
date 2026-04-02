@@ -1,227 +1,262 @@
 // wdoc standard library — common document elements and template functions
 //
-// Usage: import <wdoc.wcl>
+// Usage:
+//   import <wdoc.wcl>
+//   use wdoc::{doc, page, section, style, layout, heading, paragraph, image, code, table, callout, bold, italic, link, icon}
+//   use wdoc::draw::{diagram, rect, circle, ellipse, line, path, text, connection, ...}
 
-// --- Content element schemas ---
+namespace wdoc {
 
-@template("html", "wdoc_render_heading")
-@open
-schema "heading" {
-    level: i32
-    content: string
+    // --- Structural schemas ---
+
+    @open
+    schema "doc" {
+        title: string
+        version: string @optional
+        author: string @optional
+    }
+
+    @open
+    schema "page" {
+        section: string
+        title: string
+    }
+
+    @open
+    schema "section" { }
+
+    @open
+    schema "style" { }
+
+    @open
+    schema "layout" { }
+
+    // --- Content element schemas ---
+
+    @template("html", "wdoc::render_heading")
+    @open
+    schema "heading" {
+        level: i32
+        content: string
+    }
+
+    @template("html", "wdoc::render_paragraph")
+    @open
+    schema "paragraph" {
+        content: string
+    }
+
+    @template("html", "wdoc::render_image")
+    @open
+    schema "image" {
+        src: string
+        alt: string @optional
+        width: string @optional
+        height: string @optional
+    }
+
+    @template("html", "wdoc::render_code")
+    @open
+    schema "code" {
+        language: string @optional
+        content: string
+    }
+
+    @template("html", "wdoc::render_table")
+    @open
+    schema "table" {
+        caption: string @optional
+    }
+
+    @template("html", "wdoc::render_callout")
+    @open
+    schema "callout" {
+        icon: string @optional
+        header: string @optional
+        color: string @optional
+    }
+
+    // --- Diagram and shape schemas ---
+
+    namespace draw {
+
+        @template("html", "wdoc::render_diagram")
+        @open
+        schema "diagram" {
+            width: i32 @optional
+            height: i32 @optional
+        }
+
+        @template("shape", "shape_render_rect")
+        @open
+        schema "rect" { }
+
+        @template("shape", "shape_render_circle")
+        @open
+        schema "circle" { }
+
+        @template("shape", "shape_render_ellipse")
+        @open
+        schema "ellipse" { }
+
+        @template("shape", "shape_render_line")
+        @open
+        schema "line" { }
+
+        @template("shape", "shape_render_path")
+        @open
+        schema "path" { }
+
+        @template("shape", "shape_render_text")
+        @open
+        schema "text" { }
+
+        @template("shape", "shape_render_connection")
+        @open
+        schema "connection" { }
+
+        // --- UI Widget schemas (composite shapes) ---
+
+        @template("shape", "widget_render_phone")
+        @open
+        schema "phone" { }
+
+        @template("shape", "widget_render_browser")
+        @open
+        schema "browser" { }
+
+        @template("shape", "widget_render_button")
+        @open
+        schema "button" { }
+
+        @template("shape", "widget_render_input")
+        @open
+        schema "input" { }
+
+        @template("shape", "widget_render_card")
+        @open
+        schema "card" { }
+
+        @template("shape", "widget_render_avatar")
+        @open
+        schema "avatar" { }
+
+        @template("shape", "widget_render_toggle")
+        @open
+        schema "toggle" { }
+
+        @template("shape", "widget_render_badge")
+        @open
+        schema "badge" { }
+
+        @template("shape", "widget_render_navbar")
+        @open
+        schema "navbar" { }
+
+        // --- Flowchart shapes ---
+
+        @template("shape", "widget_render_flow_process")
+        @open
+        schema "flow_process" { }
+
+        @template("shape", "widget_render_flow_decision")
+        @open
+        schema "flow_decision" { }
+
+        @template("shape", "widget_render_flow_terminal")
+        @open
+        schema "flow_terminal" { }
+
+        @template("shape", "widget_render_flow_io")
+        @open
+        schema "flow_io" { }
+
+        @template("shape", "widget_render_flow_subprocess")
+        @open
+        schema "flow_subprocess" { }
+
+        // --- C4 diagram shapes ---
+
+        @template("shape", "widget_render_c4_person")
+        @open
+        schema "c4_person" { }
+
+        @template("shape", "widget_render_c4_system")
+        @open
+        schema "c4_system" { }
+
+        @template("shape", "widget_render_c4_container")
+        @open
+        schema "c4_container" { }
+
+        @template("shape", "widget_render_c4_component")
+        @open
+        schema "c4_component" { }
+
+        @template("shape", "widget_render_c4_boundary")
+        @open
+        schema "c4_boundary" { }
+
+        // --- UML shapes ---
+
+        @template("shape", "widget_render_uml_class")
+        @open
+        schema "uml_class" { }
+
+        @template("shape", "widget_render_uml_actor")
+        @open
+        schema "uml_actor" { }
+
+        @template("shape", "widget_render_uml_package")
+        @open
+        schema "uml_package" { }
+
+        @template("shape", "widget_render_uml_note")
+        @open
+        schema "uml_note" { }
+
+        // --- Network/infrastructure node shapes ---
+
+        @template("shape", "widget_render_node_server")
+        @open
+        schema "server" { }
+
+        @template("shape", "widget_render_node_database")
+        @open
+        schema "database" { }
+
+        @template("shape", "widget_render_node_cloud")
+        @open
+        schema "cloud" { }
+
+        @template("shape", "widget_render_node_user")
+        @open
+        schema "user" { }
+
+    }
+
+    // --- Decorator schemas ---
+
+    decorator_schema "style" {
+        target = [block]
+        name: string
+    }
+
+    // --- Inline formatting functions ---
+
+    declare bold(text: string) -> string
+    declare italic(text: string) -> string
+    declare link(text: string, url: string) -> string
+    declare icon(name: string, size: string, color: string) -> string
+
+    // --- Template rendering functions ---
+
+    declare render_callout(block: any) -> string
+    declare render_heading(block: any) -> string
+    declare render_paragraph(block: any) -> string
+    declare render_image(block: any) -> string
+    declare render_code(block: any) -> string
+    declare render_table(block: any) -> string
+    declare render_diagram(block: any) -> string
+
 }
-
-@template("html", "wdoc_render_paragraph")
-@open
-schema "paragraph" {
-    content: string
-}
-
-@template("html", "wdoc_render_image")
-@open
-schema "image" {
-    src: string
-    alt: string @optional
-    width: string @optional
-    height: string @optional
-}
-
-@template("html", "wdoc_render_code")
-@open
-schema "code" {
-    language: string @optional
-    content: string
-}
-
-@template("html", "wdoc_render_table")
-@open
-schema "wdoc_table" {
-    caption: string @optional
-}
-
-@template("html", "wdoc_render_callout")
-@open
-schema "callout" {
-    icon: string @optional
-    header: string @optional
-    color: string @optional
-}
-
-// --- Diagram and shape schemas ---
-
-@template("html", "wdoc_render_diagram")
-@open
-schema "wdoc_diagram" {
-    width: i32 @optional
-    height: i32 @optional
-}
-
-@template("shape", "shape_render_rect")
-@open
-schema "shape_rect" { }
-
-@template("shape", "shape_render_circle")
-@open
-schema "shape_circle" { }
-
-@template("shape", "shape_render_ellipse")
-@open
-schema "shape_ellipse" { }
-
-@template("shape", "shape_render_line")
-@open
-schema "shape_line" { }
-
-@template("shape", "shape_render_path")
-@open
-schema "shape_path" { }
-
-@template("shape", "shape_render_text")
-@open
-schema "shape_text" { }
-
-@template("shape", "shape_render_connection")
-@open
-schema "shape_connection" { }
-
-// --- UI Widget schemas (composite shapes) ---
-
-@template("shape", "widget_render_phone")
-@open
-schema "widget_phone" { }
-
-@template("shape", "widget_render_browser")
-@open
-schema "widget_browser" { }
-
-@template("shape", "widget_render_button")
-@open
-schema "widget_button" { }
-
-@template("shape", "widget_render_input")
-@open
-schema "widget_input" { }
-
-@template("shape", "widget_render_card")
-@open
-schema "widget_card" { }
-
-@template("shape", "widget_render_avatar")
-@open
-schema "widget_avatar" { }
-
-@template("shape", "widget_render_toggle")
-@open
-schema "widget_toggle" { }
-
-@template("shape", "widget_render_badge")
-@open
-schema "widget_badge" { }
-
-@template("shape", "widget_render_navbar")
-@open
-schema "widget_navbar" { }
-
-// --- Flowchart shapes ---
-
-@template("shape", "widget_render_flow_process")
-@open
-schema "widget_flow_process" { }
-
-@template("shape", "widget_render_flow_decision")
-@open
-schema "widget_flow_decision" { }
-
-@template("shape", "widget_render_flow_terminal")
-@open
-schema "widget_flow_terminal" { }
-
-@template("shape", "widget_render_flow_io")
-@open
-schema "widget_flow_io" { }
-
-@template("shape", "widget_render_flow_subprocess")
-@open
-schema "widget_flow_subprocess" { }
-
-// --- C4 diagram shapes ---
-
-@template("shape", "widget_render_c4_person")
-@open
-schema "widget_c4_person" { }
-
-@template("shape", "widget_render_c4_system")
-@open
-schema "widget_c4_system" { }
-
-@template("shape", "widget_render_c4_container")
-@open
-schema "widget_c4_container" { }
-
-@template("shape", "widget_render_c4_component")
-@open
-schema "widget_c4_component" { }
-
-@template("shape", "widget_render_c4_boundary")
-@open
-schema "widget_c4_boundary" { }
-
-// --- UML shapes ---
-
-@template("shape", "widget_render_uml_class")
-@open
-schema "widget_uml_class" { }
-
-@template("shape", "widget_render_uml_actor")
-@open
-schema "widget_uml_actor" { }
-
-@template("shape", "widget_render_uml_package")
-@open
-schema "widget_uml_package" { }
-
-@template("shape", "widget_render_uml_note")
-@open
-schema "widget_uml_note" { }
-
-// --- Network/infrastructure node shapes ---
-
-@template("shape", "widget_render_node_server")
-@open
-schema "widget_node_server" { }
-
-@template("shape", "widget_render_node_database")
-@open
-schema "widget_node_database" { }
-
-@template("shape", "widget_render_node_cloud")
-@open
-schema "widget_node_cloud" { }
-
-@template("shape", "widget_render_node_user")
-@open
-schema "widget_node_user" { }
-
-// --- Decorator schemas ---
-
-decorator_schema "style" {
-    target = [block]
-    name: string
-}
-
-// --- Inline formatting functions ---
-
-declare bold(text: string) -> string
-declare italic(text: string) -> string
-declare link(text: string, url: string) -> string
-declare icon(name: string, size: string, color: string) -> string
-
-// --- Template rendering functions ---
-
-declare wdoc_render_callout(block: any) -> string
-declare wdoc_render_heading(block: any) -> string
-declare wdoc_render_paragraph(block: any) -> string
-declare wdoc_render_image(block: any) -> string
-declare wdoc_render_code(block: any) -> string
-declare wdoc_render_table(block: any) -> string
-declare wdoc_render_diagram(block: any) -> string

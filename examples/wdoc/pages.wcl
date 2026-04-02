@@ -1,17 +1,19 @@
 // Pages for the WCL documentation example
 
 import <wdoc.wcl>
+use wdoc::{doc, page, section, style, layout, heading, paragraph, image, code, table, callout, bold, italic, link, icon}
+use wdoc::draw::{diagram, rect, circle, ellipse, line, path, text, connection, phone, browser, button, input, card, avatar, toggle, badge, navbar, flow_process, flow_decision, flow_terminal, flow_io, flow_subprocess, c4_person, c4_system, c4_container, c4_component, c4_boundary, uml_class, uml_actor, uml_package, uml_note, server, database, cloud, user}
 
 // Helper: literal dollar sign for code examples containing ${...}
 let D = "$"
 
 // ── Overview page ──
 
-wdoc_page overview {
+page overview {
     section = "my_docs.getting_started.overview"
     title = "Overview"
 
-    wdoc_layout {
+    layout {
         vsplit v1 {
             split s1 {
                 size = 100
@@ -81,11 +83,11 @@ wdoc_page overview {
 
 // ── Installation page ──
 
-wdoc_page install {
+page install {
     section = "my_docs.getting_started.installation"
     title = "Installation"
 
-    wdoc_layout {
+    layout {
         vsplit v2 {
             split s2 {
                 size = 70
@@ -153,11 +155,11 @@ wdoc_page install {
 
 // ── Language Basics page ──
 
-wdoc_page basics {
+page basics {
     section = "my_docs.guide.basics"
     title = "Language Basics"
 
-    wdoc_layout {
+    layout {
         vsplit v3 {
             split s4 {
                 size = 100
@@ -251,7 +253,7 @@ wdoc_page basics {
                 }
                 paragraph p7 { content = "WCL supports inline data tables with typed columns. Here is how they look when rendered:" }
 
-                wdoc_table tbl_servers {
+                table tbl_servers {
                     caption = "Server Configuration"
                     table data {
                         name: string
@@ -266,7 +268,7 @@ wdoc_page basics {
                     }
                 }
 
-                wdoc_table tbl_users {
+                table tbl_users {
                     caption = "Team Members"
                     table data {
                         name: string
@@ -285,11 +287,11 @@ wdoc_page basics {
 
 // ── Advanced Features page ──
 
-wdoc_page advanced {
+page advanced {
     section = "my_docs.guide.advanced"
     title = "Advanced Features"
 
-    wdoc_layout {
+    layout {
         vsplit v4 {
             split s5 {
                 size = 100
@@ -328,7 +330,7 @@ wdoc_page advanced {
                 }
 
                 paragraph p3b { content = "Rendered table output:" }
-                wdoc_table tbl_users {
+                table tbl_users {
                     caption = "Users Table"
                     table data {
                         name: string
@@ -379,11 +381,11 @@ wdoc_page advanced {
                 }
                 paragraph p6 { content = "Create vector diagrams directly in WCL with shapes, connections, and layout:" }
 
-                wdoc_diagram architecture {
+                diagram architecture {
                     width = 700
                     height = 280
 
-                    shape_rect client {
+                    rect client {
                         x = 30
                         y = 100
                         width = 140
@@ -393,14 +395,14 @@ wdoc_page advanced {
                         stroke = "var(--color-nav-border)"
                         stroke_width = 2
 
-                        shape_text client_label {
+                        text client_label {
                             content = "Client"
                             font_size = 16
                             fill = "var(--color-text)"
                         }
                     }
 
-                    shape_rect api {
+                    rect api {
                         x = 260
                         y = 30
                         width = 160
@@ -410,14 +412,14 @@ wdoc_page advanced {
                         stroke = "var(--color-link)"
                         stroke_width = 2
 
-                        shape_text api_label {
+                        text api_label {
                             content = "API Server"
                             font_size = 16
                             fill = "var(--color-text)"
                         }
                     }
 
-                    shape_rect db {
+                    rect db {
                         x = 260
                         y = 170
                         width = 160
@@ -427,14 +429,14 @@ wdoc_page advanced {
                         stroke = "var(--color-link)"
                         stroke_width = 2
 
-                        shape_text db_label {
+                        text db_label {
                             content = "Database"
                             font_size = 16
                             fill = "var(--color-text)"
                         }
                     }
 
-                    shape_rect cache {
+                    rect cache {
                         x = 520
                         y = 100
                         width = 140
@@ -444,14 +446,14 @@ wdoc_page advanced {
                         stroke = "var(--color-nav-border)"
                         stroke_width = 2
 
-                        shape_text cache_label {
+                        text cache_label {
                             content = "Cache"
                             font_size = 16
                             fill = "var(--color-text)"
                         }
                     }
 
-                    shape_connection c1 {
+                    connection c1 {
                         from = "client"
                         to = "api"
                         direction = "to"
@@ -462,7 +464,7 @@ wdoc_page advanced {
                         stroke_width = 2
                     }
 
-                    shape_connection c2 {
+                    connection c2 {
                         from = "api"
                         to = "db"
                         direction = "both"
@@ -473,7 +475,7 @@ wdoc_page advanced {
                         stroke_width = 2
                     }
 
-                    shape_connection c3 {
+                    connection c3 {
                         from = "api"
                         to = "cache"
                         direction = "both"
@@ -484,7 +486,7 @@ wdoc_page advanced {
                         stroke_width = 2
                     }
 
-                    shape_connection c4 {
+                    connection c4 {
                         from = "client"
                         to = "db"
                         direction = "to"
@@ -504,11 +506,11 @@ wdoc_page advanced {
 
 // ── Diagram Examples page ──
 
-wdoc_page diagram_examples {
+page diagram_examples {
     section = "my_docs.diagrams.diagram_examples"
     title = "Diagram Examples"
 
-    wdoc_layout {
+    layout {
         vsplit v_diag1 {
             split s_diag1 {
                 size = 100
@@ -532,11 +534,11 @@ wdoc_page diagram_examples {
                 }
                 paragraph pd2 { content = "Rectangles, circles, ellipses, and lines with theme-aware colors:" }
 
-                wdoc_diagram basic_shapes {
+                diagram basic_shapes {
                     width = 700
                     height = 200
 
-                    shape_rect r1 {
+                    rect r1 {
                         x = 20
                         y = 30
                         width = 120
@@ -545,20 +547,20 @@ wdoc_page diagram_examples {
                         fill = "var(--color-nav-bg)"
                         stroke = "var(--color-link)"
                         stroke_width = 2
-                        shape_text t1 { content = "Rectangle" }
+                        text t1 { content = "Rectangle" }
                     }
 
-                    shape_circle c1 {
+                    circle c1 {
                         x = 180
                         y = 30
                         r = 40
                         fill = "var(--color-code-bg)"
                         stroke = "var(--color-link)"
                         stroke_width = 2
-                        shape_text t2 { content = "Circle" }
+                        text t2 { content = "Circle" }
                     }
 
-                    shape_ellipse e1 {
+                    ellipse e1 {
                         x = 300
                         y = 30
                         rx = 70
@@ -566,10 +568,10 @@ wdoc_page diagram_examples {
                         fill = "var(--color-nav-bg)"
                         stroke = "var(--color-nav-border)"
                         stroke_width = 2
-                        shape_text t3 { content = "Ellipse" }
+                        text t3 { content = "Ellipse" }
                     }
 
-                    shape_line l1 {
+                    line l1 {
                         x1 = 480
                         y1 = 40
                         x2 = 650
@@ -578,7 +580,7 @@ wdoc_page diagram_examples {
                         stroke_width = 2
                     }
 
-                    shape_line l2 {
+                    line l2 {
                         x1 = 480
                         y1 = 80
                         x2 = 650
@@ -588,7 +590,7 @@ wdoc_page diagram_examples {
                         stroke_dasharray = "8,4"
                     }
 
-                    shape_line l3 {
+                    line l3 {
                         x1 = 480
                         y1 = 120
                         x2 = 650
@@ -597,7 +599,7 @@ wdoc_page diagram_examples {
                         stroke_width = 3
                     }
 
-                    shape_text lines_label {
+                    text lines_label {
                         x = 480
                         y = 150
                         width = 170
@@ -621,11 +623,11 @@ wdoc_page diagram_examples {
                 }
                 paragraph pd3 { content = "Connect shapes with straight or bezier lines. Arrows indicate direction:" }
 
-                wdoc_diagram conn_demo {
+                diagram conn_demo {
                     width = 700
                     height = 220
 
-                    shape_rect a {
+                    rect a {
                         x = 30
                         y = 30
                         width = 120
@@ -634,10 +636,10 @@ wdoc_page diagram_examples {
                         fill = "var(--color-code-bg)"
                         stroke = "var(--color-link)"
                         stroke_width = 2
-                        shape_text ta { content = "Source" }
+                        text ta { content = "Source" }
                     }
 
-                    shape_rect b {
+                    rect b {
                         x = 280
                         y = 30
                         width = 120
@@ -646,10 +648,10 @@ wdoc_page diagram_examples {
                         fill = "var(--color-code-bg)"
                         stroke = "var(--color-link)"
                         stroke_width = 2
-                        shape_text tb { content = "Target" }
+                        text tb { content = "Target" }
                     }
 
-                    shape_rect c {
+                    rect c {
                         x = 530
                         y = 30
                         width = 120
@@ -658,10 +660,10 @@ wdoc_page diagram_examples {
                         fill = "var(--color-code-bg)"
                         stroke = "var(--color-link)"
                         stroke_width = 2
-                        shape_text tc { content = "Both" }
+                        text tc { content = "Both" }
                     }
 
-                    shape_rect d {
+                    rect d {
                         x = 30
                         y = 140
                         width = 120
@@ -670,10 +672,10 @@ wdoc_page diagram_examples {
                         fill = "var(--color-nav-bg)"
                         stroke = "var(--color-nav-border)"
                         stroke_width = 2
-                        shape_text td { content = "Bezier" }
+                        text td { content = "Bezier" }
                     }
 
-                    shape_rect e {
+                    rect e {
                         x = 530
                         y = 140
                         width = 120
@@ -682,10 +684,10 @@ wdoc_page diagram_examples {
                         fill = "var(--color-nav-bg)"
                         stroke = "var(--color-nav-border)"
                         stroke_width = 2
-                        shape_text te { content = "Curve" }
+                        text te { content = "Curve" }
                     }
 
-                    shape_connection ab {
+                    connection ab {
                         from = "a"
                         to = "b"
                         direction = "to"
@@ -694,7 +696,7 @@ wdoc_page diagram_examples {
                         stroke_width = 2
                     }
 
-                    shape_connection bc {
+                    connection bc {
                         from = "b"
                         to = "c"
                         direction = "both"
@@ -703,7 +705,7 @@ wdoc_page diagram_examples {
                         stroke_width = 2
                     }
 
-                    shape_connection de {
+                    connection de {
                         from = "d"
                         to = "e"
                         direction = "to"
@@ -727,11 +729,11 @@ wdoc_page diagram_examples {
                 }
                 paragraph pd4 { content = "Shapes can be anchored to parent edges. They stretch to fill the space between anchors:" }
 
-                wdoc_diagram anchored {
+                diagram anchored {
                     width = 700
                     height = 250
 
-                    shape_rect outer {
+                    rect outer {
                         left = 10
                         right = 10
                         top = 10
@@ -742,7 +744,7 @@ wdoc_page diagram_examples {
                         stroke_width = 1
                         stroke_dasharray = "4,4"
 
-                        shape_rect header {
+                        rect header {
                             left = 0
                             right = 0
                             top = 0
@@ -750,10 +752,10 @@ wdoc_page diagram_examples {
                             fill = "var(--color-nav-bg)"
                             stroke = "var(--color-nav-border)"
                             stroke_width = 1
-                            shape_text ht { content = "Header (anchored top, full width)" }
+                            text ht { content = "Header (anchored top, full width)" }
                         }
 
-                        shape_rect sidebar {
+                        rect sidebar {
                             left = 0
                             top = 50
                             bottom = 50
@@ -761,10 +763,10 @@ wdoc_page diagram_examples {
                             fill = "var(--color-code-bg)"
                             stroke = "var(--color-code-border)"
                             stroke_width = 1
-                            shape_text st { content = "Sidebar" }
+                            text st { content = "Sidebar" }
                         }
 
-                        shape_rect content_area {
+                        rect content_area {
                             left = 160
                             top = 50
                             right = 0
@@ -772,12 +774,12 @@ wdoc_page diagram_examples {
                             fill = "var(--color-nav-bg)"
                             stroke = "var(--color-nav-border)"
                             stroke_width = 1
-                            shape_text ct {
+                            text ct {
                                 content = "Content (fills remaining space)"
                             }
                         }
 
-                        shape_rect footer {
+                        rect footer {
                             left = 0
                             right = 0
                             bottom = 0
@@ -785,7 +787,7 @@ wdoc_page diagram_examples {
                             fill = "var(--color-nav-bg)"
                             stroke = "var(--color-nav-border)"
                             stroke_width = 1
-                            shape_text ft { content = "Footer (anchored bottom, full width)" }
+                            text ft { content = "Footer (anchored bottom, full width)" }
                         }
                     }
                 }
@@ -803,11 +805,11 @@ wdoc_page diagram_examples {
                 }
                 paragraph pd5 { content = "Use " + bold("align = \"stack\"") + " to automatically stack children vertically with spacing:" }
 
-                wdoc_diagram stack_demo {
+                diagram stack_demo {
                     width = 400
                     height = 220
 
-                    shape_rect container {
+                    rect container {
                         x = 20
                         y = 10
                         width = 360
@@ -820,30 +822,30 @@ wdoc_page diagram_examples {
                         gap = 10
                         padding = 15
 
-                        shape_rect item1 {
+                        rect item1 {
                             height = 40
                             rx = 4
                             fill = "var(--color-link)"
-                            shape_text t1 {
+                            text t1 {
                                 content = "Item 1"
                                 fill = "#ffffff"
                             }
                         }
 
-                        shape_rect item2 {
+                        rect item2 {
                             height = 40
                             rx = 4
                             fill = "var(--color-nav-active)"
-                            shape_text t2 { content = "Item 2" }
+                            text t2 { content = "Item 2" }
                         }
 
-                        shape_rect item3 {
+                        rect item3 {
                             height = 40
                             rx = 4
                             fill = "var(--color-code-bg)"
                             stroke = "var(--color-code-border)"
                             stroke_width = 1
-                            shape_text t3 { content = "Item 3" }
+                            text t3 { content = "Item 3" }
                         }
                     }
                 }
@@ -871,84 +873,84 @@ wdoc_page diagram_examples {
                 }
                 paragraph pd7 { content = "Use " + bold("align = \"layered\"") + " for directed graphs. Nodes are arranged in layers based on edge direction:" }
 
-                wdoc_diagram layered_demo {
+                diagram layered_demo {
                     width = 600
                     height = 350
                     align = "layered"
                     gap = 40
 
-                    shape_rect input {
+                    rect input {
                         width = 120
                         height = 50
                         rx = 6
                         fill = "var(--color-code-bg)"
                         stroke = "var(--color-link)"
                         stroke_width = 2
-                        shape_text t { content = "Input" }
+                        text t { content = "Input" }
                     }
 
-                    shape_rect validate {
+                    rect validate {
                         width = 120
                         height = 50
                         rx = 6
                         fill = "var(--color-code-bg)"
                         stroke = "var(--color-link)"
                         stroke_width = 2
-                        shape_text t { content = "Validate" }
+                        text t { content = "Validate" }
                     }
 
-                    shape_rect xform {
+                    rect xform {
                         width = 120
                         height = 50
                         rx = 6
                         fill = "var(--color-code-bg)"
                         stroke = "var(--color-link)"
                         stroke_width = 2
-                        shape_text t { content = "Transform" }
+                        text t { content = "Transform" }
                     }
 
-                    shape_rect cache {
+                    rect cache {
                         width = 120
                         height = 50
                         rx = 6
                         fill = "var(--color-nav-bg)"
                         stroke = "var(--color-nav-border)"
                         stroke_width = 2
-                        shape_text t { content = "Cache" }
+                        text t { content = "Cache" }
                     }
 
-                    shape_rect output {
+                    rect output {
                         width = 120
                         height = 50
                         rx = 6
                         fill = "var(--color-code-bg)"
                         stroke = "var(--color-link)"
                         stroke_width = 2
-                        shape_text t { content = "Output" }
+                        text t { content = "Output" }
                     }
 
-                    shape_connection c1 {
+                    connection c1 {
                         from = "input"
                         to = "validate"
                         direction = "to"
                         stroke = "var(--color-text)"
                         stroke_width = 2
                     }
-                    shape_connection c2 {
+                    connection c2 {
                         from = "validate"
                         to = "xform"
                         direction = "to"
                         stroke = "var(--color-text)"
                         stroke_width = 2
                     }
-                    shape_connection c3 {
+                    connection c3 {
                         from = "xform"
                         to = "cache"
                         direction = "to"
                         stroke = "var(--color-text)"
                         stroke_width = 2
                     }
-                    shape_connection c4 {
+                    connection c4 {
                         from = "xform"
                         to = "output"
                         direction = "to"
@@ -970,83 +972,83 @@ wdoc_page diagram_examples {
                 }
                 paragraph pd8 { content = "Use " + bold("align = \"force\"") + " for network diagrams. Connected nodes attract, all nodes repel:" }
 
-                wdoc_diagram network {
+                diagram network {
                     width = 500
                     height = 350
                     align = "force"
 
-                    shape_circle web {
+                    circle web {
                         r = 28
                         fill = "var(--color-link)"
-                        shape_text t { content = "Web"
+                        text t { content = "Web"
                             fill = "#fff" }
                     }
-                    shape_circle api {
+                    circle api {
                         r = 28
                         fill = "var(--color-link)"
-                        shape_text t { content = "API"
+                        text t { content = "API"
                             fill = "#fff" }
                     }
-                    shape_circle auth {
+                    circle auth {
                         r = 28
                         fill = "var(--color-nav-bg)"
                         stroke = "var(--color-nav-border)"
                         stroke_width = 2
-                        shape_text t { content = "Auth" }
+                        text t { content = "Auth" }
                     }
-                    shape_circle db {
+                    circle db {
                         r = 28
                         fill = "var(--color-nav-bg)"
                         stroke = "var(--color-nav-border)"
                         stroke_width = 2
-                        shape_text t { content = "DB" }
+                        text t { content = "DB" }
                     }
-                    shape_circle cache_node {
+                    circle cache_node {
                         r = 28
                         fill = "var(--color-nav-bg)"
                         stroke = "var(--color-nav-border)"
                         stroke_width = 2
-                        shape_text t { content = "Cache" }
+                        text t { content = "Cache" }
                     }
-                    shape_circle queue {
+                    circle queue {
                         r = 28
                         fill = "var(--color-code-bg)"
                         stroke = "var(--color-code-border)"
                         stroke_width = 2
-                        shape_text t { content = "Queue" }
+                        text t { content = "Queue" }
                     }
 
-                    shape_connection e1 {
+                    connection e1 {
                         from = "web"
                         to = "api"
                         direction = "to"
                         stroke = "var(--color-text)"
                     }
-                    shape_connection e2 {
+                    connection e2 {
                         from = "api"
                         to = "auth"
                         direction = "both"
                         stroke = "var(--color-text)"
                     }
-                    shape_connection e3 {
+                    connection e3 {
                         from = "api"
                         to = "db"
                         direction = "both"
                         stroke = "var(--color-text)"
                     }
-                    shape_connection e4 {
+                    connection e4 {
                         from = "api"
                         to = "cache_node"
                         direction = "both"
                         stroke = "var(--color-text)"
                     }
-                    shape_connection e5 {
+                    connection e5 {
                         from = "api"
                         to = "queue"
                         direction = "to"
                         stroke = "var(--color-text)"
                     }
-                    shape_connection e6 {
+                    connection e6 {
                         from = "queue"
                         to = "db"
                         direction = "to"
@@ -1067,87 +1069,87 @@ wdoc_page diagram_examples {
                 }
                 paragraph pd9 { content = "Use " + bold("align = \"radial\"") + " with a " + bold("root") + " node for tree hierarchies:" }
 
-                wdoc_diagram org {
+                diagram org {
                     width = 500
                     height = 400
                     align = "radial"
                     root = "ceo"
 
-                    shape_circle ceo {
+                    circle ceo {
                         r = 30
                         fill = "var(--color-link)"
-                        shape_text t { content = "CEO"
+                        text t { content = "CEO"
                             fill = "#fff" }
                     }
-                    shape_circle cto {
+                    circle cto {
                         r = 24
                         fill = "var(--color-code-bg)"
                         stroke = "var(--color-link)"
                         stroke_width = 2
-                        shape_text t { content = "CTO" }
+                        text t { content = "CTO" }
                     }
-                    shape_circle cfo {
+                    circle cfo {
                         r = 24
                         fill = "var(--color-code-bg)"
                         stroke = "var(--color-link)"
                         stroke_width = 2
-                        shape_text t { content = "CFO" }
+                        text t { content = "CFO" }
                     }
-                    shape_circle vpe {
+                    circle vpe {
                         r = 24
                         fill = "var(--color-code-bg)"
                         stroke = "var(--color-link)"
                         stroke_width = 2
-                        shape_text t { content = "VP Eng" }
+                        text t { content = "VP Eng" }
                     }
-                    shape_circle eng1 {
+                    circle eng1 {
                         r = 18
                         fill = "var(--color-nav-bg)"
                         stroke = "var(--color-nav-border)"
                         stroke_width = 1
-                        shape_text t { content = "Eng1" }
+                        text t { content = "Eng1" }
                     }
-                    shape_circle eng2 {
+                    circle eng2 {
                         r = 18
                         fill = "var(--color-nav-bg)"
                         stroke = "var(--color-nav-border)"
                         stroke_width = 1
-                        shape_text t { content = "Eng2" }
+                        text t { content = "Eng2" }
                     }
-                    shape_circle fin1 {
+                    circle fin1 {
                         r = 18
                         fill = "var(--color-nav-bg)"
                         stroke = "var(--color-nav-border)"
                         stroke_width = 1
-                        shape_text t { content = "Fin" }
+                        text t { content = "Fin" }
                     }
 
-                    shape_connection r1 {
+                    connection r1 {
                         from = "ceo"
                         to = "cto"
                         stroke = "var(--color-text)"
                     }
-                    shape_connection r2 {
+                    connection r2 {
                         from = "ceo"
                         to = "cfo"
                         stroke = "var(--color-text)"
                     }
-                    shape_connection r3 {
+                    connection r3 {
                         from = "ceo"
                         to = "vpe"
                         stroke = "var(--color-text)"
                     }
-                    shape_connection r4 {
+                    connection r4 {
                         from = "vpe"
                         to = "eng1"
                         stroke = "var(--color-text)"
                     }
-                    shape_connection r5 {
+                    connection r5 {
                         from = "vpe"
                         to = "eng2"
                         stroke = "var(--color-text)"
                     }
-                    shape_connection r6 {
+                    connection r6 {
                         from = "cfo"
                         to = "fin1"
                         stroke = "var(--color-text)"
@@ -1167,66 +1169,66 @@ wdoc_page diagram_examples {
                 }
                 paragraph pd10 { content = "Use " + bold("align = \"grid\"") + " with optional " + bold("columns") + " for regular arrangements:" }
 
-                wdoc_diagram dashboard {
+                diagram dashboard {
                     width = 500
                     height = 300
                     align = "grid"
                     columns = 3
                     gap = 20
 
-                    shape_rect s1 {
+                    rect s1 {
                         width = 100
                         height = 60
                         rx = 6
                         fill = "var(--color-code-bg)"
                         stroke = "var(--color-code-border)"
                         stroke_width = 1
-                        shape_text t { content = "Widget 1" }
+                        text t { content = "Widget 1" }
                     }
-                    shape_rect s2 {
+                    rect s2 {
                         width = 100
                         height = 60
                         rx = 6
                         fill = "var(--color-code-bg)"
                         stroke = "var(--color-code-border)"
                         stroke_width = 1
-                        shape_text t { content = "Widget 2" }
+                        text t { content = "Widget 2" }
                     }
-                    shape_rect s3 {
+                    rect s3 {
                         width = 100
                         height = 60
                         rx = 6
                         fill = "var(--color-code-bg)"
                         stroke = "var(--color-code-border)"
                         stroke_width = 1
-                        shape_text t { content = "Widget 3" }
+                        text t { content = "Widget 3" }
                     }
-                    shape_rect s4 {
+                    rect s4 {
                         width = 100
                         height = 60
                         rx = 6
                         fill = "var(--color-code-bg)"
                         stroke = "var(--color-code-border)"
                         stroke_width = 1
-                        shape_text t { content = "Widget 4" }
+                        text t { content = "Widget 4" }
                     }
-                    shape_rect s5 {
+                    rect s5 {
                         width = 100
                         height = 60
                         rx = 6
                         fill = "var(--color-code-bg)"
                         stroke = "var(--color-code-border)"
                         stroke_width = 1
-                        shape_text t { content = "Widget 5" }
+                        text t { content = "Widget 5" }
                     }
-                    shape_rect s6 {
+                    rect s6 {
                         width = 100
                         height = 60
                         rx = 6
                         fill = "var(--color-code-bg)"
                         stroke = "var(--color-code-border)"
                         stroke_width = 1
-                        shape_text t { content = "Widget 6" }
+                        text t { content = "Widget 6" }
                     }
                 }
             }
@@ -1238,11 +1240,11 @@ wdoc_page diagram_examples {
 
 let grid_items = ["auth", "users", "posts", "media", "search", "notify", "billing", "analytics", "config", "logging", "metrics", "cache", "queue", "storage", "gateway"]
 
-wdoc_page large_diagrams {
+page large_diagrams {
     section = "my_docs.diagrams.large_diagrams"
     title = "Large Diagrams"
 
-    wdoc_layout {
+    layout {
         // Large grid
         vsplit v_lg1 {
             split s_lg1 {
@@ -1254,7 +1256,7 @@ wdoc_page large_diagrams {
                 }
                 paragraph plg1 { content = "A grid layout with many items, generated with a WCL " + bold("for") + " loop:" }
 
-                wdoc_diagram large_grid {
+                diagram large_grid {
                     width = 700
                     height = 400
                     align = "grid"
@@ -1262,14 +1264,14 @@ wdoc_page large_diagrams {
                     gap = 15
 
                     for svc in grid_items {
-                        shape_rect ${svc} {
+                        rect ${svc} {
                             width = 110
                             height = 55
                             rx = 6
                             fill = "var(--color-code-bg)"
                             stroke = "var(--color-code-border)"
                             stroke_width = 1
-                            shape_text t { content = svc }
+                            text t { content = svc }
                         }
                     }
                 }
@@ -1287,149 +1289,149 @@ wdoc_page large_diagrams {
                 }
                 paragraph plg2 { content = "A complex force-directed network with many interconnections:" }
 
-                wdoc_diagram large_force {
+                diagram large_force {
                     width = 700
                     height = 500
                     align = "force"
 
-                    shape_circle f_web {
+                    circle f_web {
                         r = 25
                         fill = "var(--color-link)"
-                        shape_text t { content = "Web"
+                        text t { content = "Web"
                             fill = "#fff" }
                     }
-                    shape_circle f_mobile {
+                    circle f_mobile {
                         r = 25
                         fill = "var(--color-link)"
-                        shape_text t { content = "Mobile"
+                        text t { content = "Mobile"
                             fill = "#fff" }
                     }
-                    shape_circle f_gw {
+                    circle f_gw {
                         r = 30
                         fill = "var(--color-link)"
-                        shape_text t { content = "Gateway"
+                        text t { content = "Gateway"
                             fill = "#fff" }
                     }
-                    shape_circle f_auth {
+                    circle f_auth {
                         r = 22
                         fill = "var(--color-code-bg)"
                         stroke = "var(--color-link)"
                         stroke_width = 2
-                        shape_text t { content = "Auth" }
+                        text t { content = "Auth" }
                     }
-                    shape_circle f_users {
+                    circle f_users {
                         r = 22
                         fill = "var(--color-code-bg)"
                         stroke = "var(--color-link)"
                         stroke_width = 2
-                        shape_text t { content = "Users" }
+                        text t { content = "Users" }
                     }
-                    shape_circle f_posts {
+                    circle f_posts {
                         r = 22
                         fill = "var(--color-code-bg)"
                         stroke = "var(--color-link)"
                         stroke_width = 2
-                        shape_text t { content = "Posts" }
+                        text t { content = "Posts" }
                     }
-                    shape_circle f_media {
+                    circle f_media {
                         r = 22
                         fill = "var(--color-code-bg)"
                         stroke = "var(--color-link)"
                         stroke_width = 2
-                        shape_text t { content = "Media" }
+                        text t { content = "Media" }
                     }
-                    shape_circle f_search {
+                    circle f_search {
                         r = 22
                         fill = "var(--color-nav-bg)"
                         stroke = "var(--color-nav-border)"
                         stroke_width = 2
-                        shape_text t { content = "Search" }
+                        text t { content = "Search" }
                     }
-                    shape_circle f_db {
+                    circle f_db {
                         r = 25
                         fill = "var(--color-nav-bg)"
                         stroke = "var(--color-nav-border)"
                         stroke_width = 2
-                        shape_text t { content = "DB" }
+                        text t { content = "DB" }
                     }
-                    shape_circle f_cache {
+                    circle f_cache {
                         r = 22
                         fill = "var(--color-nav-bg)"
                         stroke = "var(--color-nav-border)"
                         stroke_width = 2
-                        shape_text t { content = "Cache" }
+                        text t { content = "Cache" }
                     }
-                    shape_circle f_queue {
+                    circle f_queue {
                         r = 22
                         fill = "var(--color-nav-bg)"
                         stroke = "var(--color-nav-border)"
                         stroke_width = 2
-                        shape_text t { content = "Queue" }
+                        text t { content = "Queue" }
                     }
-                    shape_circle f_storage {
+                    circle f_storage {
                         r = 22
                         fill = "var(--color-nav-bg)"
                         stroke = "var(--color-nav-border)"
                         stroke_width = 2
-                        shape_text t { content = "Storage" }
+                        text t { content = "Storage" }
                     }
 
                     // Client → Gateway
-                    shape_connection fe1 { from = "f_web"
+                    connection fe1 { from = "f_web"
                         to = "f_gw"
                         direction = "to"
                         stroke = "var(--color-text)" }
-                    shape_connection fe2 { from = "f_mobile"
+                    connection fe2 { from = "f_mobile"
                         to = "f_gw"
                         direction = "to"
                         stroke = "var(--color-text)" }
                     // Gateway → Services
-                    shape_connection fe3 { from = "f_gw"
+                    connection fe3 { from = "f_gw"
                         to = "f_auth"
                         direction = "to"
                         stroke = "var(--color-text)" }
-                    shape_connection fe4 { from = "f_gw"
+                    connection fe4 { from = "f_gw"
                         to = "f_users"
                         direction = "to"
                         stroke = "var(--color-text)" }
-                    shape_connection fe5 { from = "f_gw"
+                    connection fe5 { from = "f_gw"
                         to = "f_posts"
                         direction = "to"
                         stroke = "var(--color-text)" }
-                    shape_connection fe6 { from = "f_gw"
+                    connection fe6 { from = "f_gw"
                         to = "f_media"
                         direction = "to"
                         stroke = "var(--color-text)" }
                     // Services → Data
-                    shape_connection fe7 { from = "f_users"
+                    connection fe7 { from = "f_users"
                         to = "f_db"
                         direction = "both"
                         stroke = "var(--color-text)" }
-                    shape_connection fe8 { from = "f_posts"
+                    connection fe8 { from = "f_posts"
                         to = "f_db"
                         direction = "both"
                         stroke = "var(--color-text)" }
-                    shape_connection fe9 { from = "f_posts"
+                    connection fe9 { from = "f_posts"
                         to = "f_search"
                         direction = "to"
                         stroke = "var(--color-text)" }
-                    shape_connection fe10 { from = "f_media"
+                    connection fe10 { from = "f_media"
                         to = "f_storage"
                         direction = "both"
                         stroke = "var(--color-text)" }
-                    shape_connection fe11 { from = "f_auth"
+                    connection fe11 { from = "f_auth"
                         to = "f_cache"
                         direction = "both"
                         stroke = "var(--color-text)" }
-                    shape_connection fe12 { from = "f_posts"
+                    connection fe12 { from = "f_posts"
                         to = "f_queue"
                         direction = "to"
                         stroke = "var(--color-text)" }
-                    shape_connection fe13 { from = "f_queue"
+                    connection fe13 { from = "f_queue"
                         to = "f_search"
                         direction = "to"
                         stroke = "var(--color-text)" }
-                    shape_connection fe14 { from = "f_search"
+                    connection fe14 { from = "f_search"
                         to = "f_cache"
                         direction = "both"
                         stroke = "var(--color-text)" }
@@ -1448,152 +1450,152 @@ wdoc_page large_diagrams {
                 }
                 paragraph plg3 { content = "A CI/CD pipeline with branching and merging stages:" }
 
-                wdoc_diagram large_layered {
+                diagram large_layered {
                     width = 700
                     height = 500
                     align = "layered"
                     gap = 30
 
-                    shape_rect l_src {
+                    rect l_src {
                         width = 100
                         height = 40
                         rx = 4
                         fill = "var(--color-code-bg)"
                         stroke = "var(--color-link)"
                         stroke_width = 2
-                        shape_text t { content = "Source" }
+                        text t { content = "Source" }
                     }
-                    shape_rect l_lint {
+                    rect l_lint {
                         width = 100
                         height = 40
                         rx = 4
                         fill = "var(--color-code-bg)"
                         stroke = "var(--color-link)"
                         stroke_width = 2
-                        shape_text t { content = "Lint" }
+                        text t { content = "Lint" }
                     }
-                    shape_rect l_test {
+                    rect l_test {
                         width = 100
                         height = 40
                         rx = 4
                         fill = "var(--color-code-bg)"
                         stroke = "var(--color-link)"
                         stroke_width = 2
-                        shape_text t { content = "Test" }
+                        text t { content = "Test" }
                     }
-                    shape_rect l_build {
+                    rect l_build {
                         width = 100
                         height = 40
                         rx = 4
                         fill = "var(--color-code-bg)"
                         stroke = "var(--color-link)"
                         stroke_width = 2
-                        shape_text t { content = "Build" }
+                        text t { content = "Build" }
                     }
-                    shape_rect l_linux {
+                    rect l_linux {
                         width = 100
                         height = 40
                         rx = 4
                         fill = "var(--color-nav-bg)"
                         stroke = "var(--color-nav-border)"
                         stroke_width = 1
-                        shape_text t { content = "Linux" }
+                        text t { content = "Linux" }
                     }
-                    shape_rect l_macos {
+                    rect l_macos {
                         width = 100
                         height = 40
                         rx = 4
                         fill = "var(--color-nav-bg)"
                         stroke = "var(--color-nav-border)"
                         stroke_width = 1
-                        shape_text t { content = "macOS" }
+                        text t { content = "macOS" }
                     }
-                    shape_rect l_windows {
+                    rect l_windows {
                         width = 100
                         height = 40
                         rx = 4
                         fill = "var(--color-nav-bg)"
                         stroke = "var(--color-nav-border)"
                         stroke_width = 1
-                        shape_text t { content = "Windows" }
+                        text t { content = "Windows" }
                     }
-                    shape_rect l_package {
+                    rect l_package {
                         width = 100
                         height = 40
                         rx = 4
                         fill = "var(--color-code-bg)"
                         stroke = "var(--color-link)"
                         stroke_width = 2
-                        shape_text t { content = "Package" }
+                        text t { content = "Package" }
                     }
-                    shape_rect l_staging {
+                    rect l_staging {
                         width = 100
                         height = 40
                         rx = 4
                         fill = "var(--color-code-bg)"
                         stroke = "var(--color-link)"
                         stroke_width = 2
-                        shape_text t { content = "Staging" }
+                        text t { content = "Staging" }
                     }
-                    shape_rect l_prod {
+                    rect l_prod {
                         width = 100
                         height = 40
                         rx = 4
                         fill = "var(--color-link)"
-                        shape_text t { content = "Production"
+                        text t { content = "Production"
                             fill = "#fff" }
                     }
 
-                    shape_connection lc1 { from = "l_src"
+                    connection lc1 { from = "l_src"
                         to = "l_lint"
                         direction = "to"
                         stroke = "var(--color-text)"
                         stroke_width = 2 }
-                    shape_connection lc2 { from = "l_src"
+                    connection lc2 { from = "l_src"
                         to = "l_test"
                         direction = "to"
                         stroke = "var(--color-text)"
                         stroke_width = 2 }
-                    shape_connection lc3 { from = "l_lint"
+                    connection lc3 { from = "l_lint"
                         to = "l_build"
                         direction = "to"
                         stroke = "var(--color-text)"
                         stroke_width = 2 }
-                    shape_connection lc4 { from = "l_test"
+                    connection lc4 { from = "l_test"
                         to = "l_build"
                         direction = "to"
                         stroke = "var(--color-text)"
                         stroke_width = 2 }
-                    shape_connection lc5 { from = "l_build"
+                    connection lc5 { from = "l_build"
                         to = "l_linux"
                         direction = "to"
                         stroke = "var(--color-text)" }
-                    shape_connection lc6 { from = "l_build"
+                    connection lc6 { from = "l_build"
                         to = "l_macos"
                         direction = "to"
                         stroke = "var(--color-text)" }
-                    shape_connection lc7 { from = "l_build"
+                    connection lc7 { from = "l_build"
                         to = "l_windows"
                         direction = "to"
                         stroke = "var(--color-text)" }
-                    shape_connection lc8 { from = "l_linux"
+                    connection lc8 { from = "l_linux"
                         to = "l_package"
                         direction = "to"
                         stroke = "var(--color-text)" }
-                    shape_connection lc9 { from = "l_macos"
+                    connection lc9 { from = "l_macos"
                         to = "l_package"
                         direction = "to"
                         stroke = "var(--color-text)" }
-                    shape_connection lc10 { from = "l_windows"
+                    connection lc10 { from = "l_windows"
                         to = "l_package"
                         direction = "to"
                         stroke = "var(--color-text)" }
-                    shape_connection lc11 { from = "l_package"
+                    connection lc11 { from = "l_package"
                         to = "l_staging"
                         direction = "to"
                         stroke = "var(--color-text)"
                         stroke_width = 2 }
-                    shape_connection lc12 { from = "l_staging"
+                    connection lc12 { from = "l_staging"
                         to = "l_prod"
                         direction = "to"
                         stroke = "var(--color-text)"
@@ -1613,169 +1615,169 @@ wdoc_page large_diagrams {
                 }
                 paragraph plg4 { content = "An org chart with three levels of hierarchy:" }
 
-                wdoc_diagram large_radial {
+                diagram large_radial {
                     width = 600
                     height = 500
                     align = "radial"
                     root = "r_ceo"
 
-                    shape_circle r_ceo {
+                    circle r_ceo {
                         r = 30
                         fill = "var(--color-link)"
-                        shape_text t { content = "CEO"
+                        text t { content = "CEO"
                             fill = "#fff" }
                     }
-                    shape_circle r_cto {
+                    circle r_cto {
                         r = 24
                         fill = "var(--color-code-bg)"
                         stroke = "var(--color-link)"
                         stroke_width = 2
-                        shape_text t { content = "CTO" }
+                        text t { content = "CTO" }
                     }
-                    shape_circle r_cfo {
+                    circle r_cfo {
                         r = 24
                         fill = "var(--color-code-bg)"
                         stroke = "var(--color-link)"
                         stroke_width = 2
-                        shape_text t { content = "CFO" }
+                        text t { content = "CFO" }
                     }
-                    shape_circle r_coo {
+                    circle r_coo {
                         r = 24
                         fill = "var(--color-code-bg)"
                         stroke = "var(--color-link)"
                         stroke_width = 2
-                        shape_text t { content = "COO" }
+                        text t { content = "COO" }
                     }
-                    shape_circle r_cmo {
+                    circle r_cmo {
                         r = 24
                         fill = "var(--color-code-bg)"
                         stroke = "var(--color-link)"
                         stroke_width = 2
-                        shape_text t { content = "CMO" }
+                        text t { content = "CMO" }
                     }
-                    shape_circle r_e1 {
+                    circle r_e1 {
                         r = 16
                         fill = "var(--color-nav-bg)"
                         stroke = "var(--color-nav-border)"
                         stroke_width = 1
-                        shape_text t { content = "FE"
+                        text t { content = "FE"
                             font_size = 11 }
                     }
-                    shape_circle r_e2 {
+                    circle r_e2 {
                         r = 16
                         fill = "var(--color-nav-bg)"
                         stroke = "var(--color-nav-border)"
                         stroke_width = 1
-                        shape_text t { content = "BE"
+                        text t { content = "BE"
                             font_size = 11 }
                     }
-                    shape_circle r_e3 {
+                    circle r_e3 {
                         r = 16
                         fill = "var(--color-nav-bg)"
                         stroke = "var(--color-nav-border)"
                         stroke_width = 1
-                        shape_text t { content = "Infra"
+                        text t { content = "Infra"
                             font_size = 11 }
                     }
-                    shape_circle r_f1 {
+                    circle r_f1 {
                         r = 16
                         fill = "var(--color-nav-bg)"
                         stroke = "var(--color-nav-border)"
                         stroke_width = 1
-                        shape_text t { content = "Acct"
+                        text t { content = "Acct"
                             font_size = 11 }
                     }
-                    shape_circle r_f2 {
+                    circle r_f2 {
                         r = 16
                         fill = "var(--color-nav-bg)"
                         stroke = "var(--color-nav-border)"
                         stroke_width = 1
-                        shape_text t { content = "Tax"
+                        text t { content = "Tax"
                             font_size = 11 }
                     }
-                    shape_circle r_o1 {
+                    circle r_o1 {
                         r = 16
                         fill = "var(--color-nav-bg)"
                         stroke = "var(--color-nav-border)"
                         stroke_width = 1
-                        shape_text t { content = "HR"
+                        text t { content = "HR"
                             font_size = 11 }
                     }
-                    shape_circle r_o2 {
+                    circle r_o2 {
                         r = 16
                         fill = "var(--color-nav-bg)"
                         stroke = "var(--color-nav-border)"
                         stroke_width = 1
-                        shape_text t { content = "Ops"
+                        text t { content = "Ops"
                             font_size = 11 }
                     }
-                    shape_circle r_m1 {
+                    circle r_m1 {
                         r = 16
                         fill = "var(--color-nav-bg)"
                         stroke = "var(--color-nav-border)"
                         stroke_width = 1
-                        shape_text t { content = "Brand"
+                        text t { content = "Brand"
                             font_size = 11 }
                     }
-                    shape_circle r_m2 {
+                    circle r_m2 {
                         r = 16
                         fill = "var(--color-nav-bg)"
                         stroke = "var(--color-nav-border)"
                         stroke_width = 1
-                        shape_text t { content = "Growth"
+                        text t { content = "Growth"
                             font_size = 10 }
                     }
-                    shape_circle r_m3 {
+                    circle r_m3 {
                         r = 16
                         fill = "var(--color-nav-bg)"
                         stroke = "var(--color-nav-border)"
                         stroke_width = 1
-                        shape_text t { content = "Sales"
+                        text t { content = "Sales"
                             font_size = 11 }
                     }
 
                     // Level 1
-                    shape_connection rc1 { from = "r_ceo"
+                    connection rc1 { from = "r_ceo"
                         to = "r_cto"
                         stroke = "var(--color-text)" }
-                    shape_connection rc2 { from = "r_ceo"
+                    connection rc2 { from = "r_ceo"
                         to = "r_cfo"
                         stroke = "var(--color-text)" }
-                    shape_connection rc3 { from = "r_ceo"
+                    connection rc3 { from = "r_ceo"
                         to = "r_coo"
                         stroke = "var(--color-text)" }
-                    shape_connection rc4 { from = "r_ceo"
+                    connection rc4 { from = "r_ceo"
                         to = "r_cmo"
                         stroke = "var(--color-text)" }
                     // Level 2
-                    shape_connection rc5 { from = "r_cto"
+                    connection rc5 { from = "r_cto"
                         to = "r_e1"
                         stroke = "var(--color-text)" }
-                    shape_connection rc6 { from = "r_cto"
+                    connection rc6 { from = "r_cto"
                         to = "r_e2"
                         stroke = "var(--color-text)" }
-                    shape_connection rc7 { from = "r_cto"
+                    connection rc7 { from = "r_cto"
                         to = "r_e3"
                         stroke = "var(--color-text)" }
-                    shape_connection rc8 { from = "r_cfo"
+                    connection rc8 { from = "r_cfo"
                         to = "r_f1"
                         stroke = "var(--color-text)" }
-                    shape_connection rc9 { from = "r_cfo"
+                    connection rc9 { from = "r_cfo"
                         to = "r_f2"
                         stroke = "var(--color-text)" }
-                    shape_connection rc10 { from = "r_coo"
+                    connection rc10 { from = "r_coo"
                         to = "r_o1"
                         stroke = "var(--color-text)" }
-                    shape_connection rc11 { from = "r_coo"
+                    connection rc11 { from = "r_coo"
                         to = "r_o2"
                         stroke = "var(--color-text)" }
-                    shape_connection rc12 { from = "r_cmo"
+                    connection rc12 { from = "r_cmo"
                         to = "r_m1"
                         stroke = "var(--color-text)" }
-                    shape_connection rc13 { from = "r_cmo"
+                    connection rc13 { from = "r_cmo"
                         to = "r_m2"
                         stroke = "var(--color-text)" }
-                    shape_connection rc14 { from = "r_cmo"
+                    connection rc14 { from = "r_cmo"
                         to = "r_m3"
                         stroke = "var(--color-text)" }
                 }
@@ -1786,11 +1788,11 @@ wdoc_page large_diagrams {
 
 // ── Nested Diagrams page ──
 
-wdoc_page nested_diagrams {
+page nested_diagrams {
     section = "my_docs.diagrams.nested_diagrams"
     title = "Nested Diagrams"
 
-    wdoc_layout {
+    layout {
         vsplit v_nd1 {
             split s_nd1 {
                 size = 100
@@ -1816,12 +1818,12 @@ wdoc_page nested_diagrams {
                 }
                 paragraph pnd2 { content = "Each subsystem box contains its own internal flowchart. Connections span across nesting levels:" }
 
-                wdoc_diagram nested_arch {
+                diagram nested_arch {
                     width = 800
                     height = 550
 
                     // === Frontend Subsystem ===
-                    shape_rect frontend {
+                    rect frontend {
                         x = 20
                         y = 20
                         width = 350
@@ -1831,7 +1833,7 @@ wdoc_page nested_diagrams {
                         stroke = "var(--color-link)"
                         stroke_width = 2
 
-                        shape_text fe_title {
+                        text fe_title {
                             x = 10
                             y = 5
                             width = 330
@@ -1840,7 +1842,7 @@ wdoc_page nested_diagrams {
                             font_size = 16
                         }
 
-                        shape_rect fe_router {
+                        rect fe_router {
                             x = 20
                             y = 40
                             width = 100
@@ -1849,10 +1851,10 @@ wdoc_page nested_diagrams {
                             fill = "var(--color-code-bg)"
                             stroke = "var(--color-code-border)"
                             stroke_width = 1
-                            shape_text t { content = "Router" }
+                            text t { content = "Router" }
                         }
 
-                        shape_rect fe_auth_ui {
+                        rect fe_auth_ui {
                             x = 20
                             y = 110
                             width = 100
@@ -1861,10 +1863,10 @@ wdoc_page nested_diagrams {
                             fill = "var(--color-code-bg)"
                             stroke = "var(--color-code-border)"
                             stroke_width = 1
-                            shape_text t { content = "Auth UI" }
+                            text t { content = "Auth UI" }
                         }
 
-                        shape_rect fe_dashboard {
+                        rect fe_dashboard {
                             x = 140
                             y = 110
                             width = 100
@@ -1873,10 +1875,10 @@ wdoc_page nested_diagrams {
                             fill = "var(--color-code-bg)"
                             stroke = "var(--color-code-border)"
                             stroke_width = 1
-                            shape_text t { content = "Dashboard" }
+                            text t { content = "Dashboard" }
                         }
 
-                        shape_rect fe_api_client {
+                        rect fe_api_client {
                             x = 230
                             y = 40
                             width = 100
@@ -1885,29 +1887,29 @@ wdoc_page nested_diagrams {
                             fill = "var(--color-code-bg)"
                             stroke = "var(--color-link)"
                             stroke_width = 2
-                            shape_text t { content = "API Client" }
+                            text t { content = "API Client" }
                         }
 
                         // Internal frontend connections
-                        shape_connection fec1 {
+                        connection fec1 {
                             from = "fe_router"
                             to = "fe_auth_ui"
                             direction = "to"
                             stroke = "var(--color-text)"
                         }
-                        shape_connection fec2 {
+                        connection fec2 {
                             from = "fe_router"
                             to = "fe_dashboard"
                             direction = "to"
                             stroke = "var(--color-text)"
                         }
-                        shape_connection fec3 {
+                        connection fec3 {
                             from = "fe_dashboard"
                             to = "fe_api_client"
                             direction = "to"
                             stroke = "var(--color-text)"
                         }
-                        shape_connection fec4 {
+                        connection fec4 {
                             from = "fe_auth_ui"
                             to = "fe_api_client"
                             direction = "to"
@@ -1916,7 +1918,7 @@ wdoc_page nested_diagrams {
                     }
 
                     // === Backend Subsystem ===
-                    shape_rect backend {
+                    rect backend {
                         x = 420
                         y = 20
                         width = 350
@@ -1926,7 +1928,7 @@ wdoc_page nested_diagrams {
                         stroke = "var(--color-link)"
                         stroke_width = 2
 
-                        shape_text be_title {
+                        text be_title {
                             x = 10
                             y = 5
                             width = 330
@@ -1935,7 +1937,7 @@ wdoc_page nested_diagrams {
                             font_size = 16
                         }
 
-                        shape_rect be_gateway {
+                        rect be_gateway {
                             x = 15
                             y = 40
                             width = 100
@@ -1944,10 +1946,10 @@ wdoc_page nested_diagrams {
                             fill = "var(--color-code-bg)"
                             stroke = "var(--color-link)"
                             stroke_width = 2
-                            shape_text t { content = "Gateway" }
+                            text t { content = "Gateway" }
                         }
 
-                        shape_rect be_auth_svc {
+                        rect be_auth_svc {
                             x = 15
                             y = 110
                             width = 100
@@ -1956,10 +1958,10 @@ wdoc_page nested_diagrams {
                             fill = "var(--color-code-bg)"
                             stroke = "var(--color-code-border)"
                             stroke_width = 1
-                            shape_text t { content = "Auth Svc" }
+                            text t { content = "Auth Svc" }
                         }
 
-                        shape_rect be_user_svc {
+                        rect be_user_svc {
                             x = 130
                             y = 110
                             width = 100
@@ -1968,10 +1970,10 @@ wdoc_page nested_diagrams {
                             fill = "var(--color-code-bg)"
                             stroke = "var(--color-code-border)"
                             stroke_width = 1
-                            shape_text t { content = "User Svc" }
+                            text t { content = "User Svc" }
                         }
 
-                        shape_rect be_data_svc {
+                        rect be_data_svc {
                             x = 240
                             y = 110
                             width = 100
@@ -1980,10 +1982,10 @@ wdoc_page nested_diagrams {
                             fill = "var(--color-code-bg)"
                             stroke = "var(--color-code-border)"
                             stroke_width = 1
-                            shape_text t { content = "Data Svc" }
+                            text t { content = "Data Svc" }
                         }
 
-                        shape_rect be_queue {
+                        rect be_queue {
                             x = 240
                             y = 40
                             width = 100
@@ -1992,29 +1994,29 @@ wdoc_page nested_diagrams {
                             fill = "var(--color-code-bg)"
                             stroke = "var(--color-code-border)"
                             stroke_width = 1
-                            shape_text t { content = "Queue" }
+                            text t { content = "Queue" }
                         }
 
                         // Internal backend connections
-                        shape_connection bec1 {
+                        connection bec1 {
                             from = "be_gateway"
                             to = "be_auth_svc"
                             direction = "to"
                             stroke = "var(--color-text)"
                         }
-                        shape_connection bec2 {
+                        connection bec2 {
                             from = "be_gateway"
                             to = "be_user_svc"
                             direction = "to"
                             stroke = "var(--color-text)"
                         }
-                        shape_connection bec3 {
+                        connection bec3 {
                             from = "be_gateway"
                             to = "be_data_svc"
                             direction = "to"
                             stroke = "var(--color-text)"
                         }
-                        shape_connection bec4 {
+                        connection bec4 {
                             from = "be_data_svc"
                             to = "be_queue"
                             direction = "to"
@@ -2023,7 +2025,7 @@ wdoc_page nested_diagrams {
                     }
 
                     // === Data Layer ===
-                    shape_rect data_layer {
+                    rect data_layer {
                         x = 150
                         y = 300
                         width = 500
@@ -2033,7 +2035,7 @@ wdoc_page nested_diagrams {
                         stroke = "var(--color-nav-border)"
                         stroke_width = 2
 
-                        shape_text dl_title {
+                        text dl_title {
                             x = 10
                             y = 5
                             width = 480
@@ -2042,7 +2044,7 @@ wdoc_page nested_diagrams {
                             font_size = 16
                         }
 
-                        shape_rect dl_postgres {
+                        rect dl_postgres {
                             x = 20
                             y = 50
                             width = 110
@@ -2051,10 +2053,10 @@ wdoc_page nested_diagrams {
                             fill = "var(--color-code-bg)"
                             stroke = "var(--color-code-border)"
                             stroke_width = 1
-                            shape_text t { content = "PostgreSQL" }
+                            text t { content = "PostgreSQL" }
                         }
 
-                        shape_rect dl_redis {
+                        rect dl_redis {
                             x = 150
                             y = 50
                             width = 110
@@ -2063,10 +2065,10 @@ wdoc_page nested_diagrams {
                             fill = "var(--color-code-bg)"
                             stroke = "var(--color-code-border)"
                             stroke_width = 1
-                            shape_text t { content = "Redis" }
+                            text t { content = "Redis" }
                         }
 
-                        shape_rect dl_s3 {
+                        rect dl_s3 {
                             x = 280
                             y = 50
                             width = 110
@@ -2075,10 +2077,10 @@ wdoc_page nested_diagrams {
                             fill = "var(--color-code-bg)"
                             stroke = "var(--color-code-border)"
                             stroke_width = 1
-                            shape_text t { content = "S3 Storage" }
+                            text t { content = "S3 Storage" }
                         }
 
-                        shape_rect dl_elastic {
+                        rect dl_elastic {
                             x = 80
                             y = 130
                             width = 110
@@ -2087,10 +2089,10 @@ wdoc_page nested_diagrams {
                             fill = "var(--color-code-bg)"
                             stroke = "var(--color-code-border)"
                             stroke_width = 1
-                            shape_text t { content = "Elastic" }
+                            text t { content = "Elastic" }
                         }
 
-                        shape_rect dl_kafka {
+                        rect dl_kafka {
                             x = 220
                             y = 130
                             width = 110
@@ -2099,11 +2101,11 @@ wdoc_page nested_diagrams {
                             fill = "var(--color-code-bg)"
                             stroke = "var(--color-code-border)"
                             stroke_width = 1
-                            shape_text t { content = "Kafka" }
+                            text t { content = "Kafka" }
                         }
 
                         // Internal data connections
-                        shape_connection dlc1 {
+                        connection dlc1 {
                             from = "dl_redis"
                             to = "dl_postgres"
                             direction = "both"
@@ -2111,7 +2113,7 @@ wdoc_page nested_diagrams {
                             stroke_dasharray = "4,3"
                             label = "cache"
                         }
-                        shape_connection dlc2 {
+                        connection dlc2 {
                             from = "dl_kafka"
                             to = "dl_elastic"
                             direction = "to"
@@ -2123,7 +2125,7 @@ wdoc_page nested_diagrams {
                     // === Cross-hierarchy connections ===
 
                     // Frontend API Client → Backend Gateway
-                    shape_connection xc1 {
+                    connection xc1 {
                         from = "frontend.fe_api_client"
                         to = "backend.be_gateway"
                         direction = "to"
@@ -2133,7 +2135,7 @@ wdoc_page nested_diagrams {
                     }
 
                     // Backend Auth → Data Postgres
-                    shape_connection xc2 {
+                    connection xc2 {
                         from = "backend.be_auth_svc"
                         to = "data_layer.dl_postgres"
                         direction = "both"
@@ -2143,7 +2145,7 @@ wdoc_page nested_diagrams {
                     }
 
                     // Backend User → Data Postgres
-                    shape_connection xc3 {
+                    connection xc3 {
                         from = "backend.be_user_svc"
                         to = "data_layer.dl_postgres"
                         direction = "both"
@@ -2152,7 +2154,7 @@ wdoc_page nested_diagrams {
                     }
 
                     // Backend User → Data Redis (cache)
-                    shape_connection xc4 {
+                    connection xc4 {
                         from = "backend.be_user_svc"
                         to = "data_layer.dl_redis"
                         direction = "both"
@@ -2162,7 +2164,7 @@ wdoc_page nested_diagrams {
                     }
 
                     // Backend Data → Data S3
-                    shape_connection xc5 {
+                    connection xc5 {
                         from = "backend.be_data_svc"
                         to = "data_layer.dl_s3"
                         direction = "both"
@@ -2172,7 +2174,7 @@ wdoc_page nested_diagrams {
                     }
 
                     // Backend Queue → Data Kafka
-                    shape_connection xc6 {
+                    connection xc6 {
                         from = "backend.be_queue"
                         to = "data_layer.dl_kafka"
                         direction = "to"
@@ -2182,7 +2184,7 @@ wdoc_page nested_diagrams {
                     }
 
                     // Backend Data → Data Elastic (search)
-                    shape_connection xc7 {
+                    connection xc7 {
                         from = "backend.be_data_svc"
                         to = "data_layer.dl_elastic"
                         direction = "to"
@@ -2205,12 +2207,12 @@ wdoc_page nested_diagrams {
                 }
                 paragraph pnd3 { content = "Each environment contains its own service topology. Connections show the promotion path between environments:" }
 
-                wdoc_diagram deploy_flow {
+                diagram deploy_flow {
                     width = 800
                     height = 400
 
                     // === Dev Environment ===
-                    shape_rect env_dev {
+                    rect env_dev {
                         x = 20
                         y = 30
                         width = 230
@@ -2220,7 +2222,7 @@ wdoc_page nested_diagrams {
                         stroke = "var(--color-nav-border)"
                         stroke_width = 2
 
-                        shape_text dev_label {
+                        text dev_label {
                             x = 10
                             y = 5
                             width = 210
@@ -2229,7 +2231,7 @@ wdoc_page nested_diagrams {
                             font_size = 15
                         }
 
-                        shape_rect dev_api {
+                        rect dev_api {
                             x = 20
                             y = 40
                             width = 85
@@ -2237,9 +2239,9 @@ wdoc_page nested_diagrams {
                             rx = 4
                             fill = "var(--color-nav-bg)"
                             stroke = "var(--color-nav-border)"
-                            shape_text t { content = "API" }
+                            text t { content = "API" }
                         }
-                        shape_rect dev_web {
+                        rect dev_web {
                             x = 120
                             y = 40
                             width = 85
@@ -2247,9 +2249,9 @@ wdoc_page nested_diagrams {
                             rx = 4
                             fill = "var(--color-nav-bg)"
                             stroke = "var(--color-nav-border)"
-                            shape_text t { content = "Web" }
+                            text t { content = "Web" }
                         }
-                        shape_rect dev_worker {
+                        rect dev_worker {
                             x = 20
                             y = 100
                             width = 85
@@ -2257,9 +2259,9 @@ wdoc_page nested_diagrams {
                             rx = 4
                             fill = "var(--color-nav-bg)"
                             stroke = "var(--color-nav-border)"
-                            shape_text t { content = "Worker" }
+                            text t { content = "Worker" }
                         }
-                        shape_rect dev_db {
+                        rect dev_db {
                             x = 120
                             y = 100
                             width = 85
@@ -2267,22 +2269,22 @@ wdoc_page nested_diagrams {
                             rx = 4
                             fill = "var(--color-nav-bg)"
                             stroke = "var(--color-nav-border)"
-                            shape_text t { content = "DB" }
+                            text t { content = "DB" }
                         }
 
-                        shape_connection dc1 {
+                        connection dc1 {
                             from = "dev_web"
                             to = "dev_api"
                             direction = "to"
                             stroke = "var(--color-text)"
                         }
-                        shape_connection dc2 {
+                        connection dc2 {
                             from = "dev_api"
                             to = "dev_db"
                             direction = "both"
                             stroke = "var(--color-text)"
                         }
-                        shape_connection dc3 {
+                        connection dc3 {
                             from = "dev_api"
                             to = "dev_worker"
                             direction = "to"
@@ -2291,7 +2293,7 @@ wdoc_page nested_diagrams {
                     }
 
                     // === Staging Environment ===
-                    shape_rect env_staging {
+                    rect env_staging {
                         x = 290
                         y = 30
                         width = 230
@@ -2301,7 +2303,7 @@ wdoc_page nested_diagrams {
                         stroke = "var(--color-link)"
                         stroke_width = 2
 
-                        shape_text stg_label {
+                        text stg_label {
                             x = 10
                             y = 5
                             width = 210
@@ -2310,7 +2312,7 @@ wdoc_page nested_diagrams {
                             font_size = 15
                         }
 
-                        shape_rect stg_api {
+                        rect stg_api {
                             x = 20
                             y = 40
                             width = 85
@@ -2318,9 +2320,9 @@ wdoc_page nested_diagrams {
                             rx = 4
                             fill = "var(--color-nav-bg)"
                             stroke = "var(--color-nav-border)"
-                            shape_text t { content = "API" }
+                            text t { content = "API" }
                         }
-                        shape_rect stg_web {
+                        rect stg_web {
                             x = 120
                             y = 40
                             width = 85
@@ -2328,9 +2330,9 @@ wdoc_page nested_diagrams {
                             rx = 4
                             fill = "var(--color-nav-bg)"
                             stroke = "var(--color-nav-border)"
-                            shape_text t { content = "Web" }
+                            text t { content = "Web" }
                         }
-                        shape_rect stg_worker {
+                        rect stg_worker {
                             x = 20
                             y = 100
                             width = 85
@@ -2338,9 +2340,9 @@ wdoc_page nested_diagrams {
                             rx = 4
                             fill = "var(--color-nav-bg)"
                             stroke = "var(--color-nav-border)"
-                            shape_text t { content = "Worker" }
+                            text t { content = "Worker" }
                         }
-                        shape_rect stg_db {
+                        rect stg_db {
                             x = 120
                             y = 100
                             width = 85
@@ -2348,22 +2350,22 @@ wdoc_page nested_diagrams {
                             rx = 4
                             fill = "var(--color-nav-bg)"
                             stroke = "var(--color-nav-border)"
-                            shape_text t { content = "DB" }
+                            text t { content = "DB" }
                         }
 
-                        shape_connection sc1 {
+                        connection sc1 {
                             from = "stg_web"
                             to = "stg_api"
                             direction = "to"
                             stroke = "var(--color-text)"
                         }
-                        shape_connection sc2 {
+                        connection sc2 {
                             from = "stg_api"
                             to = "stg_db"
                             direction = "both"
                             stroke = "var(--color-text)"
                         }
-                        shape_connection sc3 {
+                        connection sc3 {
                             from = "stg_api"
                             to = "stg_worker"
                             direction = "to"
@@ -2372,7 +2374,7 @@ wdoc_page nested_diagrams {
                     }
 
                     // === Production Environment ===
-                    shape_rect env_prod {
+                    rect env_prod {
                         x = 560
                         y = 30
                         width = 230
@@ -2382,7 +2384,7 @@ wdoc_page nested_diagrams {
                         stroke = "var(--color-link)"
                         stroke_width = 3
 
-                        shape_text prod_label {
+                        text prod_label {
                             x = 10
                             y = 5
                             width = 210
@@ -2391,7 +2393,7 @@ wdoc_page nested_diagrams {
                             font_size = 15
                         }
 
-                        shape_rect prod_api {
+                        rect prod_api {
                             x = 20
                             y = 40
                             width = 85
@@ -2399,9 +2401,9 @@ wdoc_page nested_diagrams {
                             rx = 4
                             fill = "var(--color-nav-bg)"
                             stroke = "var(--color-nav-border)"
-                            shape_text t { content = "API x3" }
+                            text t { content = "API x3" }
                         }
-                        shape_rect prod_web {
+                        rect prod_web {
                             x = 120
                             y = 40
                             width = 85
@@ -2409,9 +2411,9 @@ wdoc_page nested_diagrams {
                             rx = 4
                             fill = "var(--color-nav-bg)"
                             stroke = "var(--color-nav-border)"
-                            shape_text t { content = "Web x3" }
+                            text t { content = "Web x3" }
                         }
-                        shape_rect prod_worker {
+                        rect prod_worker {
                             x = 20
                             y = 100
                             width = 85
@@ -2419,9 +2421,9 @@ wdoc_page nested_diagrams {
                             rx = 4
                             fill = "var(--color-nav-bg)"
                             stroke = "var(--color-nav-border)"
-                            shape_text t { content = "Worker x5" }
+                            text t { content = "Worker x5" }
                         }
-                        shape_rect prod_db {
+                        rect prod_db {
                             x = 120
                             y = 100
                             width = 85
@@ -2429,22 +2431,22 @@ wdoc_page nested_diagrams {
                             rx = 4
                             fill = "var(--color-nav-bg)"
                             stroke = "var(--color-nav-border)"
-                            shape_text t { content = "DB HA" }
+                            text t { content = "DB HA" }
                         }
 
-                        shape_connection pc1 {
+                        connection pc1 {
                             from = "prod_web"
                             to = "prod_api"
                             direction = "to"
                             stroke = "var(--color-text)"
                         }
-                        shape_connection pc2 {
+                        connection pc2 {
                             from = "prod_api"
                             to = "prod_db"
                             direction = "both"
                             stroke = "var(--color-text)"
                         }
-                        shape_connection pc3 {
+                        connection pc3 {
                             from = "prod_api"
                             to = "prod_worker"
                             direction = "to"
@@ -2453,7 +2455,7 @@ wdoc_page nested_diagrams {
                     }
 
                     // === Cross-environment promotion connections ===
-                    shape_connection promote_dev_stg {
+                    connection promote_dev_stg {
                         from = "env_dev"
                         to = "env_staging"
                         direction = "to"
@@ -2464,7 +2466,7 @@ wdoc_page nested_diagrams {
                         label = "promote"
                     }
 
-                    shape_connection promote_stg_prod {
+                    connection promote_stg_prod {
                         from = "env_staging"
                         to = "env_prod"
                         direction = "to"
@@ -2476,7 +2478,7 @@ wdoc_page nested_diagrams {
                     }
 
                     // Cross-env data connections
-                    shape_connection data_sync_1 {
+                    connection data_sync_1 {
                         from = "env_dev.dev_db"
                         to = "env_staging.stg_db"
                         direction = "to"
@@ -2488,7 +2490,7 @@ wdoc_page nested_diagrams {
                         label = "schema sync"
                     }
 
-                    shape_connection data_sync_2 {
+                    connection data_sync_2 {
                         from = "env_staging.stg_db"
                         to = "env_prod.prod_db"
                         direction = "to"
@@ -2507,11 +2509,11 @@ wdoc_page nested_diagrams {
 
 // ── Swim Lane Diagrams page ──
 
-wdoc_page swimlane_diagrams {
+page swimlane_diagrams {
     section = "my_docs.diagrams.swimlane_diagrams"
     title = "Swim Lane Diagrams"
 
-    wdoc_layout {
+    layout {
         vsplit v_sw1 {
             split s_sw1 {
                 size = 100
@@ -2537,12 +2539,12 @@ wdoc_page swimlane_diagrams {
                 }
                 paragraph psw2 { content = "Three swim lanes showing the handoffs between Customer, System, and Warehouse:" }
 
-                wdoc_diagram order_flow {
+                diagram order_flow {
                     width = 800
                     height = 500
 
                     // Lane backgrounds (anchored full-height strips)
-                    shape_rect lane_customer {
+                    rect lane_customer {
                         left = 0
                         top = 40
                         bottom = 0
@@ -2551,7 +2553,7 @@ wdoc_page swimlane_diagrams {
                         stroke = "var(--color-code-border)"
                         stroke_width = 1
                     }
-                    shape_rect lane_system {
+                    rect lane_system {
                         left = 260
                         top = 40
                         bottom = 0
@@ -2560,7 +2562,7 @@ wdoc_page swimlane_diagrams {
                         stroke = "var(--color-nav-border)"
                         stroke_width = 1
                     }
-                    shape_rect lane_warehouse {
+                    rect lane_warehouse {
                         left = 530
                         top = 40
                         bottom = 0
@@ -2571,39 +2573,39 @@ wdoc_page swimlane_diagrams {
                     }
 
                     // Lane headers
-                    shape_rect hdr_customer {
+                    rect hdr_customer {
                         x = 0
                         y = 0
                         width = 250
                         height = 40
                         fill = "var(--color-link)"
-                        shape_text t { content = "Customer"
+                        text t { content = "Customer"
                             fill = "#fff"
                             font_size = 15 }
                     }
-                    shape_rect hdr_system {
+                    rect hdr_system {
                         x = 260
                         y = 0
                         width = 260
                         height = 40
                         fill = "var(--color-link)"
-                        shape_text t { content = "System"
+                        text t { content = "System"
                             fill = "#fff"
                             font_size = 15 }
                     }
-                    shape_rect hdr_warehouse {
+                    rect hdr_warehouse {
                         x = 530
                         y = 0
                         width = 270
                         height = 40
                         fill = "var(--color-link)"
-                        shape_text t { content = "Warehouse"
+                        text t { content = "Warehouse"
                             fill = "#fff"
                             font_size = 15 }
                     }
 
                     // Customer lane steps
-                    shape_rect c_browse {
+                    rect c_browse {
                         x = 50
                         y = 70
                         width = 150
@@ -2612,9 +2614,9 @@ wdoc_page swimlane_diagrams {
                         fill = "var(--color-bg)"
                         stroke = "var(--color-link)"
                         stroke_width = 2
-                        shape_text t { content = "Browse Items" }
+                        text t { content = "Browse Items" }
                     }
-                    shape_rect c_order {
+                    rect c_order {
                         x = 50
                         y = 150
                         width = 150
@@ -2623,9 +2625,9 @@ wdoc_page swimlane_diagrams {
                         fill = "var(--color-bg)"
                         stroke = "var(--color-link)"
                         stroke_width = 2
-                        shape_text t { content = "Place Order" }
+                        text t { content = "Place Order" }
                     }
-                    shape_rect c_pay {
+                    rect c_pay {
                         x = 50
                         y = 240
                         width = 150
@@ -2634,9 +2636,9 @@ wdoc_page swimlane_diagrams {
                         fill = "var(--color-bg)"
                         stroke = "var(--color-link)"
                         stroke_width = 2
-                        shape_text t { content = "Pay" }
+                        text t { content = "Pay" }
                     }
-                    shape_rect c_receive {
+                    rect c_receive {
                         x = 50
                         y = 420
                         width = 150
@@ -2645,11 +2647,11 @@ wdoc_page swimlane_diagrams {
                         fill = "var(--color-bg)"
                         stroke = "var(--color-link)"
                         stroke_width = 2
-                        shape_text t { content = "Receive Package" }
+                        text t { content = "Receive Package" }
                     }
 
                     // System lane steps
-                    shape_rect s_validate {
+                    rect s_validate {
                         x = 310
                         y = 150
                         width = 160
@@ -2658,9 +2660,9 @@ wdoc_page swimlane_diagrams {
                         fill = "var(--color-bg)"
                         stroke = "var(--color-nav-border)"
                         stroke_width = 2
-                        shape_text t { content = "Validate Order" }
+                        text t { content = "Validate Order" }
                     }
-                    shape_rect s_payment {
+                    rect s_payment {
                         x = 310
                         y = 240
                         width = 160
@@ -2669,9 +2671,9 @@ wdoc_page swimlane_diagrams {
                         fill = "var(--color-bg)"
                         stroke = "var(--color-nav-border)"
                         stroke_width = 2
-                        shape_text t { content = "Process Payment" }
+                        text t { content = "Process Payment" }
                     }
-                    shape_rect s_notify {
+                    rect s_notify {
                         x = 310
                         y = 330
                         width = 160
@@ -2680,9 +2682,9 @@ wdoc_page swimlane_diagrams {
                         fill = "var(--color-bg)"
                         stroke = "var(--color-nav-border)"
                         stroke_width = 2
-                        shape_text t { content = "Send Notification" }
+                        text t { content = "Send Notification" }
                     }
-                    shape_rect s_tracking {
+                    rect s_tracking {
                         x = 310
                         y = 420
                         width = 160
@@ -2691,11 +2693,11 @@ wdoc_page swimlane_diagrams {
                         fill = "var(--color-bg)"
                         stroke = "var(--color-nav-border)"
                         stroke_width = 2
-                        shape_text t { content = "Update Tracking" }
+                        text t { content = "Update Tracking" }
                     }
 
                     // Warehouse lane steps
-                    shape_rect w_check {
+                    rect w_check {
                         x = 580
                         y = 240
                         width = 160
@@ -2704,9 +2706,9 @@ wdoc_page swimlane_diagrams {
                         fill = "var(--color-bg)"
                         stroke = "var(--color-code-border)"
                         stroke_width = 2
-                        shape_text t { content = "Check Stock" }
+                        text t { content = "Check Stock" }
                     }
-                    shape_rect w_pick {
+                    rect w_pick {
                         x = 580
                         y = 330
                         width = 160
@@ -2715,9 +2717,9 @@ wdoc_page swimlane_diagrams {
                         fill = "var(--color-bg)"
                         stroke = "var(--color-code-border)"
                         stroke_width = 2
-                        shape_text t { content = "Pick & Pack" }
+                        text t { content = "Pick & Pack" }
                     }
-                    shape_rect w_ship {
+                    rect w_ship {
                         x = 580
                         y = 420
                         width = 160
@@ -2726,25 +2728,25 @@ wdoc_page swimlane_diagrams {
                         fill = "var(--color-bg)"
                         stroke = "var(--color-code-border)"
                         stroke_width = 2
-                        shape_text t { content = "Ship" }
+                        text t { content = "Ship" }
                     }
 
                     // In-lane connections
-                    shape_connection oc1 {
+                    connection oc1 {
                         from = "c_browse"
                         to = "c_order"
                         direction = "to"
                         stroke = "var(--color-text)"
                         stroke_width = 2
                     }
-                    shape_connection oc7 {
+                    connection oc7 {
                         from = "w_check"
                         to = "w_pick"
                         direction = "to"
                         stroke = "var(--color-text)"
                         stroke_width = 2
                     }
-                    shape_connection oc8 {
+                    connection oc8 {
                         from = "w_pick"
                         to = "w_ship"
                         direction = "to"
@@ -2753,7 +2755,7 @@ wdoc_page swimlane_diagrams {
                     }
 
                     // Cross-lane connections (handoffs)
-                    shape_connection oc2 {
+                    connection oc2 {
                         from = "c_order"
                         to = "s_validate"
                         direction = "to"
@@ -2763,7 +2765,7 @@ wdoc_page swimlane_diagrams {
                         stroke_width = 2
                         label = "submit"
                     }
-                    shape_connection oc3 {
+                    connection oc3 {
                         from = "c_pay"
                         to = "s_payment"
                         direction = "to"
@@ -2772,14 +2774,14 @@ wdoc_page swimlane_diagrams {
                         stroke = "var(--color-link)"
                         stroke_width = 2
                     }
-                    shape_connection oc4 {
+                    connection oc4 {
                         from = "s_validate"
                         to = "s_payment"
                         direction = "to"
                         stroke = "var(--color-text)"
                         stroke_width = 2
                     }
-                    shape_connection oc5 {
+                    connection oc5 {
                         from = "s_payment"
                         to = "w_check"
                         direction = "to"
@@ -2789,7 +2791,7 @@ wdoc_page swimlane_diagrams {
                         stroke_width = 2
                         label = "fulfill"
                     }
-                    shape_connection oc9 {
+                    connection oc9 {
                         from = "w_ship"
                         to = "s_tracking"
                         direction = "to"
@@ -2799,7 +2801,7 @@ wdoc_page swimlane_diagrams {
                         stroke_width = 2
                         label = "shipped"
                     }
-                    shape_connection oc10 {
+                    connection oc10 {
                         from = "s_notify"
                         to = "c_receive"
                         direction = "to"
@@ -2808,7 +2810,7 @@ wdoc_page swimlane_diagrams {
                         stroke = "var(--color-link)"
                         stroke_width = 2
                     }
-                    shape_connection oc11 {
+                    connection oc11 {
                         from = "s_tracking"
                         to = "s_notify"
                         direction = "to"
@@ -2830,12 +2832,12 @@ wdoc_page swimlane_diagrams {
                 }
                 paragraph psw3 { content = "Horizontal swim lanes with the flow going left-to-right:" }
 
-                wdoc_diagram reg_flow {
+                diagram reg_flow {
                     width = 800
                     height = 420
 
                     // Horizontal lane backgrounds
-                    shape_rect lane_user {
+                    rect lane_user {
                         left = 80
                         top = 0
                         right = 0
@@ -2844,7 +2846,7 @@ wdoc_page swimlane_diagrams {
                         stroke = "var(--color-code-border)"
                         stroke_width = 1
                     }
-                    shape_rect lane_api {
+                    rect lane_api {
                         left = 80
                         top = 140
                         right = 0
@@ -2853,7 +2855,7 @@ wdoc_page swimlane_diagrams {
                         stroke = "var(--color-nav-border)"
                         stroke_width = 1
                     }
-                    shape_rect lane_email {
+                    rect lane_email {
                         left = 80
                         top = 280
                         right = 0
@@ -2864,39 +2866,39 @@ wdoc_page swimlane_diagrams {
                     }
 
                     // Lane labels (rotated via vertical text positioning)
-                    shape_rect lbl_user {
+                    rect lbl_user {
                         x = 0
                         y = 0
                         width = 75
                         height = 130
                         fill = "var(--color-link)"
-                        shape_text t { content = "User"
+                        text t { content = "User"
                             fill = "#fff"
                             font_size = 14 }
                     }
-                    shape_rect lbl_api {
+                    rect lbl_api {
                         x = 0
                         y = 140
                         width = 75
                         height = 130
                         fill = "var(--color-link)"
-                        shape_text t { content = "API"
+                        text t { content = "API"
                             fill = "#fff"
                             font_size = 14 }
                     }
-                    shape_rect lbl_email {
+                    rect lbl_email {
                         x = 0
                         y = 280
                         width = 75
                         height = 130
                         fill = "var(--color-link)"
-                        shape_text t { content = "Email"
+                        text t { content = "Email"
                             fill = "#fff"
                             font_size = 14 }
                     }
 
                     // User lane steps
-                    shape_rect u_signup {
+                    rect u_signup {
                         x = 110
                         y = 35
                         width = 120
@@ -2905,9 +2907,9 @@ wdoc_page swimlane_diagrams {
                         fill = "var(--color-bg)"
                         stroke = "var(--color-link)"
                         stroke_width = 2
-                        shape_text t { content = "Sign Up" }
+                        text t { content = "Sign Up" }
                     }
-                    shape_rect u_fill {
+                    rect u_fill {
                         x = 290
                         y = 35
                         width = 120
@@ -2916,9 +2918,9 @@ wdoc_page swimlane_diagrams {
                         fill = "var(--color-bg)"
                         stroke = "var(--color-link)"
                         stroke_width = 2
-                        shape_text t { content = "Fill Form" }
+                        text t { content = "Fill Form" }
                     }
-                    shape_rect u_verify {
+                    rect u_verify {
                         x = 570
                         y = 35
                         width = 120
@@ -2927,11 +2929,11 @@ wdoc_page swimlane_diagrams {
                         fill = "var(--color-bg)"
                         stroke = "var(--color-link)"
                         stroke_width = 2
-                        shape_text t { content = "Click Link" }
+                        text t { content = "Click Link" }
                     }
 
                     // API lane steps
-                    shape_rect a_validate {
+                    rect a_validate {
                         x = 290
                         y = 180
                         width = 120
@@ -2940,9 +2942,9 @@ wdoc_page swimlane_diagrams {
                         fill = "var(--color-bg)"
                         stroke = "var(--color-nav-border)"
                         stroke_width = 2
-                        shape_text t { content = "Validate" }
+                        text t { content = "Validate" }
                     }
-                    shape_rect a_create {
+                    rect a_create {
                         x = 460
                         y = 180
                         width = 120
@@ -2951,9 +2953,9 @@ wdoc_page swimlane_diagrams {
                         fill = "var(--color-bg)"
                         stroke = "var(--color-nav-border)"
                         stroke_width = 2
-                        shape_text t { content = "Create User" }
+                        text t { content = "Create User" }
                     }
-                    shape_rect a_activate {
+                    rect a_activate {
                         x = 630
                         y = 180
                         width = 120
@@ -2962,11 +2964,11 @@ wdoc_page swimlane_diagrams {
                         fill = "var(--color-bg)"
                         stroke = "var(--color-nav-border)"
                         stroke_width = 2
-                        shape_text t { content = "Activate" }
+                        text t { content = "Activate" }
                     }
 
                     // Email lane steps
-                    shape_rect e_send {
+                    rect e_send {
                         x = 460
                         y = 320
                         width = 130
@@ -2975,9 +2977,9 @@ wdoc_page swimlane_diagrams {
                         fill = "var(--color-bg)"
                         stroke = "var(--color-code-border)"
                         stroke_width = 2
-                        shape_text t { content = "Send Verify" }
+                        text t { content = "Send Verify" }
                     }
-                    shape_rect e_welcome {
+                    rect e_welcome {
                         x = 630
                         y = 320
                         width = 130
@@ -2986,18 +2988,18 @@ wdoc_page swimlane_diagrams {
                         fill = "var(--color-bg)"
                         stroke = "var(--color-code-border)"
                         stroke_width = 2
-                        shape_text t { content = "Welcome Mail" }
+                        text t { content = "Welcome Mail" }
                     }
 
                     // In-lane flow
-                    shape_connection rc1 {
+                    connection rc1 {
                         from = "u_signup"
                         to = "u_fill"
                         direction = "to"
                         stroke = "var(--color-text)"
                         stroke_width = 2
                     }
-                    shape_connection rc5 {
+                    connection rc5 {
                         from = "a_validate"
                         to = "a_create"
                         direction = "to"
@@ -3006,7 +3008,7 @@ wdoc_page swimlane_diagrams {
                     }
 
                     // Cross-lane handoffs
-                    shape_connection rc2 {
+                    connection rc2 {
                         from = "u_fill"
                         to = "a_validate"
                         direction = "to"
@@ -3016,7 +3018,7 @@ wdoc_page swimlane_diagrams {
                         stroke_width = 2
                         label = "POST"
                     }
-                    shape_connection rc3 {
+                    connection rc3 {
                         from = "a_create"
                         to = "e_send"
                         direction = "to"
@@ -3026,7 +3028,7 @@ wdoc_page swimlane_diagrams {
                         stroke_width = 2
                         label = "trigger"
                     }
-                    shape_connection rc4 {
+                    connection rc4 {
                         from = "e_send"
                         to = "u_verify"
                         direction = "to"
@@ -3037,7 +3039,7 @@ wdoc_page swimlane_diagrams {
                         stroke_width = 2
                         label = "email link"
                     }
-                    shape_connection rc6 {
+                    connection rc6 {
                         from = "u_verify"
                         to = "a_activate"
                         direction = "to"
@@ -3047,7 +3049,7 @@ wdoc_page swimlane_diagrams {
                         stroke_width = 2
                         label = "GET"
                     }
-                    shape_connection rc7 {
+                    connection rc7 {
                         from = "a_activate"
                         to = "e_welcome"
                         direction = "to"
@@ -3064,11 +3066,11 @@ wdoc_page swimlane_diagrams {
 
 // ── UI Wireframes page ──
 
-wdoc_page wireframes {
+page wireframes {
     section = "my_docs.diagrams.wireframes"
     title = "UI Wireframes"
 
-    wdoc_layout {
+    layout {
         vsplit v_wf1 {
             split s_wf1 {
                 size = 100
@@ -3092,11 +3094,11 @@ wdoc_page wireframes {
                 }
                 paragraph pwf2 { content = "Use " + bold("widget_phone") + " and " + bold("widget_browser") + " for device mockups. They accept " + bold("title") + ", " + bold("url") + ", and color attributes:" }
 
-                wdoc_diagram device_frames {
+                diagram device_frames {
                     width = 750
                     height = 340
 
-                    widget_phone phone1 {
+                    phone phone1 {
                         x = 20
                         y = 10
                         width = 220
@@ -3104,7 +3106,7 @@ wdoc_page wireframes {
                         title = "My App"
                     }
 
-                    widget_phone phone2 {
+                    phone phone2 {
                         x = 260
                         y = 10
                         width = 220
@@ -3113,7 +3115,7 @@ wdoc_page wireframes {
                         header_fill = "var(--color-nav-bg)"
                     }
 
-                    widget_browser browser1 {
+                    browser browser1 {
                         x = 500
                         y = 10
                         width = 240
@@ -3122,7 +3124,7 @@ wdoc_page wireframes {
                         url = "https://app.example.com"
                     }
 
-                    widget_browser browser2 {
+                    browser browser2 {
                         x = 500
                         y = 200
                         width = 240
@@ -3144,12 +3146,12 @@ wdoc_page wireframes {
                     content = "Buttons, Inputs, and Controls"
                 }
 
-                wdoc_diagram controls {
+                diagram controls {
                     width = 700
                     height = 220
 
                     // Button variants
-                    widget_button btn1 {
+                    button btn1 {
                         x = 20
                         y = 20
                         width = 120
@@ -3157,7 +3159,7 @@ wdoc_page wireframes {
                         label = "Primary"
                         variant = "primary"
                     }
-                    widget_button btn2 {
+                    button btn2 {
                         x = 150
                         y = 20
                         width = 120
@@ -3165,7 +3167,7 @@ wdoc_page wireframes {
                         label = "Secondary"
                         variant = "secondary"
                     }
-                    widget_button btn3 {
+                    button btn3 {
                         x = 280
                         y = 20
                         width = 120
@@ -3175,7 +3177,7 @@ wdoc_page wireframes {
                     }
 
                     // Input fields
-                    widget_input inp1 {
+                    input inp1 {
                         x = 20
                         y = 80
                         width = 200
@@ -3183,7 +3185,7 @@ wdoc_page wireframes {
                         label = "Email"
                         placeholder = "you@example.com"
                     }
-                    widget_input inp2 {
+                    input inp2 {
                         x = 240
                         y = 80
                         width = 200
@@ -3193,14 +3195,14 @@ wdoc_page wireframes {
                     }
 
                     // Toggles
-                    widget_toggle tog1 {
+                    toggle tog1 {
                         x = 20
                         y = 160
                         width = 44
                         height = 24
                         on = "true"
                     }
-                    widget_toggle tog2 {
+                    toggle tog2 {
                         x = 80
                         y = 160
                         width = 44
@@ -3209,7 +3211,7 @@ wdoc_page wireframes {
                     }
 
                     // Badges
-                    widget_badge badge1 {
+                    badge badge1 {
                         x = 150
                         y = 160
                         width = 70
@@ -3217,7 +3219,7 @@ wdoc_page wireframes {
                         label = "Active"
                         color = "var(--color-link)"
                     }
-                    widget_badge badge2 {
+                    badge badge2 {
                         x = 230
                         y = 160
                         width = 80
@@ -3225,7 +3227,7 @@ wdoc_page wireframes {
                         label = "Warning"
                         color = "#e6a700"
                     }
-                    widget_badge badge3 {
+                    badge badge3 {
                         x = 320
                         y = 160
                         width = 60
@@ -3235,7 +3237,7 @@ wdoc_page wireframes {
                     }
 
                     // Avatars
-                    widget_avatar av1 {
+                    avatar av1 {
                         x = 460
                         y = 20
                         width = 50
@@ -3243,7 +3245,7 @@ wdoc_page wireframes {
                         initials = "AT"
                         color = "var(--color-link)"
                     }
-                    widget_avatar av2 {
+                    avatar av2 {
                         x = 520
                         y = 20
                         width = 50
@@ -3251,7 +3253,7 @@ wdoc_page wireframes {
                         initials = "BK"
                         color = "#8b5cf6"
                     }
-                    widget_avatar av3 {
+                    avatar av3 {
                         x = 580
                         y = 20
                         width = 50
@@ -3259,7 +3261,7 @@ wdoc_page wireframes {
                         initials = "CD"
                         color = "#059669"
                     }
-                    widget_avatar av4 {
+                    avatar av4 {
                         x = 640
                         y = 20
                         width = 50
@@ -3269,7 +3271,7 @@ wdoc_page wireframes {
                     }
 
                     // Navbar
-                    widget_navbar nav1 {
+                    navbar nav1 {
                         x = 460
                         y = 90
                         width = 230
@@ -3277,7 +3279,7 @@ wdoc_page wireframes {
                         items = "Home,Projects,Settings"
                         active_index = 0
                     }
-                    widget_navbar nav2 {
+                    navbar nav2 {
                         x = 460
                         y = 140
                         width = 230
@@ -3300,11 +3302,11 @@ wdoc_page wireframes {
                 }
                 paragraph pwf4 { content = "Widgets can contain additional shapes. The widget template provides the structure, user shapes are added on top:" }
 
-                wdoc_diagram card_demo {
+                diagram card_demo {
                     width = 700
                     height = 250
 
-                    widget_card card1 {
+                    card card1 {
                         x = 20
                         y = 10
                         width = 200
@@ -3312,7 +3314,7 @@ wdoc_page wireframes {
                         title = "User Profile"
 
                         // Custom content inside the card
-                        widget_avatar av {
+                        avatar av {
                             x = 70
                             y = 45
                             width = 60
@@ -3320,7 +3322,7 @@ wdoc_page wireframes {
                             initials = "JD"
                             color = "var(--color-link)"
                         }
-                        shape_text name {
+                        text name {
                             x = 20
                             y = 120
                             width = 160
@@ -3328,7 +3330,7 @@ wdoc_page wireframes {
                             content = "Jane Doe"
                             font_size = 14
                         }
-                        shape_text role {
+                        text role {
                             x = 20
                             y = 140
                             width = 160
@@ -3337,7 +3339,7 @@ wdoc_page wireframes {
                             font_size = 11
                             opacity = 0.6
                         }
-                        widget_badge status {
+                        badge status {
                             x = 55
                             y = 165
                             width = 90
@@ -3347,14 +3349,14 @@ wdoc_page wireframes {
                         }
                     }
 
-                    widget_card card2 {
+                    card card2 {
                         x = 240
                         y = 10
                         width = 200
                         height = 220
                         title = "Statistics"
 
-                        shape_text stat1_label {
+                        text stat1_label {
                             x = 15
                             y = 45
                             width = 170
@@ -3364,7 +3366,7 @@ wdoc_page wireframes {
                             anchor = "start"
                             opacity = 0.6
                         }
-                        shape_text stat1_val {
+                        text stat1_val {
                             x = 15
                             y = 65
                             width = 170
@@ -3373,7 +3375,7 @@ wdoc_page wireframes {
                             font_size = 24
                             anchor = "start"
                         }
-                        shape_text stat2_label {
+                        text stat2_label {
                             x = 15
                             y = 105
                             width = 170
@@ -3383,7 +3385,7 @@ wdoc_page wireframes {
                             anchor = "start"
                             opacity = 0.6
                         }
-                        shape_text stat2_val {
+                        text stat2_val {
                             x = 15
                             y = 125
                             width = 170
@@ -3392,7 +3394,7 @@ wdoc_page wireframes {
                             font_size = 24
                             anchor = "start"
                         }
-                        widget_badge trend {
+                        badge trend {
                             x = 55
                             y = 170
                             width = 90
@@ -3402,14 +3404,14 @@ wdoc_page wireframes {
                         }
                     }
 
-                    widget_card card3 {
+                    card card3 {
                         x = 460
                         y = 10
                         width = 220
                         height = 220
                         title = "Quick Actions"
 
-                        widget_button act1 {
+                        button act1 {
                             x = 15
                             y = 45
                             width = 190
@@ -3417,7 +3419,7 @@ wdoc_page wireframes {
                             label = "New Project"
                             variant = "primary"
                         }
-                        widget_button act2 {
+                        button act2 {
                             x = 15
                             y = 90
                             width = 190
@@ -3425,7 +3427,7 @@ wdoc_page wireframes {
                             label = "Invite Member"
                             variant = "secondary"
                         }
-                        widget_button act3 {
+                        button act3 {
                             x = 15
                             y = 135
                             width = 190
@@ -3448,17 +3450,17 @@ wdoc_page wireframes {
                     content = "Login Form (composed from widgets)"
                 }
 
-                wdoc_diagram login {
+                diagram login {
                     width = 400
                     height = 380
 
-                    widget_card form {
+                    card form {
                         x = 20
                         y = 10
                         width = 360
                         height = 360
 
-                        widget_avatar logo {
+                        avatar logo {
                             x = 145
                             y = 15
                             width = 50
@@ -3467,7 +3469,7 @@ wdoc_page wireframes {
                             color = "var(--color-link)"
                         }
 
-                        shape_text title {
+                        text title {
                             x = 30
                             y = 75
                             width = 300
@@ -3476,7 +3478,7 @@ wdoc_page wireframes {
                             font_size = 20
                         }
 
-                        widget_input email {
+                        input email {
                             x = 30
                             y = 115
                             width = 300
@@ -3485,7 +3487,7 @@ wdoc_page wireframes {
                             placeholder = "you@example.com"
                         }
 
-                        widget_input password {
+                        input password {
                             x = 30
                             y = 185
                             width = 300
@@ -3494,7 +3496,7 @@ wdoc_page wireframes {
                             placeholder = "********"
                         }
 
-                        widget_button signin {
+                        button signin {
                             x = 30
                             y = 260
                             width = 300
@@ -3503,7 +3505,7 @@ wdoc_page wireframes {
                             variant = "primary"
                         }
 
-                        widget_button github {
+                        button github {
                             x = 30
                             y = 315
                             width = 142
@@ -3511,7 +3513,7 @@ wdoc_page wireframes {
                             label = "GitHub"
                             variant = "outline"
                         }
-                        widget_button google {
+                        button google {
                             x = 188
                             y = 315
                             width = 142
@@ -3535,11 +3537,11 @@ wdoc_page wireframes {
                 }
                 paragraph pwf6 { content = "Shapes with an " + bold("href") + " attribute become clickable links. Click the screens below to navigate:" }
 
-                wdoc_diagram clickable_screens {
+                diagram clickable_screens {
                     width = 750
                     height = 380
 
-                    widget_phone screen_overview {
+                    phone screen_overview {
                         x = 20
                         y = 30
                         width = 200
@@ -3548,7 +3550,7 @@ wdoc_page wireframes {
                         href = "overview.html"
                     }
 
-                    widget_phone screen_install {
+                    phone screen_install {
                         x = 240
                         y = 30
                         width = 200
@@ -3557,7 +3559,7 @@ wdoc_page wireframes {
                         href = "install.html"
                     }
 
-                    widget_browser screen_basics {
+                    browser screen_basics {
                         x = 470
                         y = 30
                         width = 260
@@ -3567,7 +3569,7 @@ wdoc_page wireframes {
                         href = "basics.html"
                     }
 
-                    widget_browser screen_advanced {
+                    browser screen_advanced {
                         x = 470
                         y = 210
                         width = 260
@@ -3577,7 +3579,7 @@ wdoc_page wireframes {
                         href = "advanced.html"
                     }
 
-                    shape_connection nav1 {
+                    connection nav1 {
                         from = "screen_overview"
                         to = "screen_install"
                         direction = "to"
@@ -3588,7 +3590,7 @@ wdoc_page wireframes {
                         label = "next"
                     }
 
-                    shape_connection nav2 {
+                    connection nav2 {
                         from = "screen_install"
                         to = "screen_basics"
                         direction = "to"
@@ -3609,11 +3611,11 @@ wdoc_page wireframes {
 
 // ── Flowchart Shapes page ──
 
-wdoc_page flowchart_examples {
+page flowchart_examples {
     section = "my_docs.diagrams.flowchart_examples"
     title = "Flowchart Shapes"
 
-    wdoc_layout {
+    layout {
         vsplit v_fc1 {
             split s_fc1 {
                 size = 100
@@ -3624,100 +3626,100 @@ wdoc_page flowchart_examples {
                 }
                 paragraph pfc1 { content = "All five flowchart shape types with the " + bold("layered") + " layout engine:" }
 
-                wdoc_diagram flowchart_demo {
+                diagram flowchart_demo {
                     width = 700
                     height = 500
                     align = "layered"
                     gap = 40
 
-                    widget_flow_terminal start {
+                    flow_terminal start {
                         width = 130
                         height = 40
                         label = "Start"
                     }
 
-                    widget_flow_io input_data {
+                    flow_io input_data {
                         width = 150
                         height = 50
                         label = "Read Input"
                     }
 
-                    widget_flow_process validate {
+                    flow_process validate {
                         width = 150
                         height = 50
                         label = "Validate Data"
                     }
 
-                    widget_flow_decision is_valid {
+                    flow_decision is_valid {
                         width = 110
                         height = 80
                         label = "Valid?"
                     }
 
-                    widget_flow_subprocess process_data {
+                    flow_subprocess process_data {
                         width = 160
                         height = 50
                         label = "Process Data"
                     }
 
-                    widget_flow_process log_error {
+                    flow_process log_error {
                         width = 140
                         height = 50
                         label = "Log Error"
                         color = "#d32f2f"
                     }
 
-                    widget_flow_io write_output {
+                    flow_io write_output {
                         width = 150
                         height = 50
                         label = "Write Output"
                     }
 
-                    widget_flow_terminal done {
+                    flow_terminal done {
                         width = 130
                         height = 40
                         label = "End"
                         color = "#28a745"
                     }
 
-                    shape_connection fc1 { from = "start"
+                    connection fc1 { from = "start"
                         to = "input_data"
                         direction = "to"
                         stroke = "var(--color-text)"
                         stroke_width = 2 }
-                    shape_connection fc2 { from = "input_data"
+                    connection fc2 { from = "input_data"
                         to = "validate"
                         direction = "to"
                         stroke = "var(--color-text)"
                         stroke_width = 2 }
-                    shape_connection fc3 { from = "validate"
+                    connection fc3 { from = "validate"
                         to = "is_valid"
                         direction = "to"
                         stroke = "var(--color-text)"
                         stroke_width = 2 }
-                    shape_connection fc4 { from = "is_valid"
+                    connection fc4 { from = "is_valid"
                         to = "process_data"
                         direction = "to"
                         stroke = "var(--color-text)"
                         stroke_width = 2
                         label = "Yes" }
-                    shape_connection fc5 { from = "is_valid"
+                    connection fc5 { from = "is_valid"
                         to = "log_error"
                         direction = "to"
                         stroke = "#d32f2f"
                         stroke_width = 2
                         label = "No" }
-                    shape_connection fc6 { from = "process_data"
+                    connection fc6 { from = "process_data"
                         to = "write_output"
                         direction = "to"
                         stroke = "var(--color-text)"
                         stroke_width = 2 }
-                    shape_connection fc7 { from = "write_output"
+                    connection fc7 { from = "write_output"
                         to = "done"
                         direction = "to"
                         stroke = "var(--color-text)"
                         stroke_width = 2 }
-                    shape_connection fc8 { from = "log_error"
+                    connection fc8 { from = "log_error"
                         to = "done"
                         direction = "to"
                         stroke = "#d32f2f"
@@ -3731,11 +3733,11 @@ wdoc_page flowchart_examples {
 
 // ── C4 Architecture page ──
 
-wdoc_page c4_examples {
+page c4_examples {
     section = "my_docs.diagrams.c4_examples"
     title = "C4 Architecture"
 
-    wdoc_layout {
+    layout {
         vsplit v_c41 {
             split s_c41 {
                 size = 100
@@ -3751,11 +3753,11 @@ wdoc_page c4_examples {
                     content = "Context Diagram"
                 }
 
-                wdoc_diagram c4_context {
+                diagram c4_context {
                     width = 700
                     height = 350
 
-                    widget_c4_person user {
+                    c4_person user {
                         x = 50
                         y = 100
                         width = 100
@@ -3764,7 +3766,7 @@ wdoc_page c4_examples {
                         description = "Uses the app"
                     }
 
-                    widget_c4_system main_sys {
+                    c4_system main_sys {
                         x = 270
                         y = 80
                         width = 160
@@ -3773,7 +3775,7 @@ wdoc_page c4_examples {
                         description = "Core platform"
                     }
 
-                    widget_c4_system email_sys {
+                    c4_system email_sys {
                         x = 530
                         y = 30
                         width = 150
@@ -3783,7 +3785,7 @@ wdoc_page c4_examples {
                         external = "true"
                     }
 
-                    widget_c4_system payment_sys {
+                    c4_system payment_sys {
                         x = 530
                         y = 160
                         width = 150
@@ -3793,19 +3795,19 @@ wdoc_page c4_examples {
                         external = "true"
                     }
 
-                    shape_connection cc1 { from = "user"
+                    connection cc1 { from = "user"
                         to = "main_sys"
                         direction = "to"
                         stroke = "var(--color-text)"
                         stroke_width = 2
                         label = "Uses" }
-                    shape_connection cc2 { from = "main_sys"
+                    connection cc2 { from = "main_sys"
                         to = "email_sys"
                         direction = "to"
                         stroke = "var(--color-text)"
                         stroke_width = 2
                         label = "Sends emails" }
-                    shape_connection cc3 { from = "main_sys"
+                    connection cc3 { from = "main_sys"
                         to = "payment_sys"
                         direction = "to"
                         stroke = "var(--color-text)"
@@ -3818,11 +3820,11 @@ wdoc_page c4_examples {
                     content = "Container Diagram"
                 }
 
-                wdoc_diagram c4_container {
+                diagram c4_container {
                     width = 700
                     height = 350
 
-                    widget_c4_boundary boundary {
+                    c4_boundary boundary {
                         x = 120
                         y = 10
                         width = 460
@@ -3830,7 +3832,7 @@ wdoc_page c4_examples {
                         label = "My App [System Boundary]"
                     }
 
-                    widget_c4_person c4user {
+                    c4_person c4user {
                         x = 10
                         y = 100
                         width = 90
@@ -3838,7 +3840,7 @@ wdoc_page c4_examples {
                         label = "User"
                     }
 
-                    widget_c4_container webapp {
+                    c4_container webapp {
                         x = 140
                         y = 40
                         width = 140
@@ -3848,7 +3850,7 @@ wdoc_page c4_examples {
                         color = "#438DD5"
                     }
 
-                    widget_c4_container api {
+                    c4_container api {
                         x = 310
                         y = 40
                         width = 140
@@ -3858,7 +3860,7 @@ wdoc_page c4_examples {
                         color = "#438DD5"
                     }
 
-                    widget_c4_container worker {
+                    c4_container worker {
                         x = 140
                         y = 150
                         width = 140
@@ -3868,7 +3870,7 @@ wdoc_page c4_examples {
                         color = "#438DD5"
                     }
 
-                    widget_c4_container db {
+                    c4_container db {
                         x = 310
                         y = 150
                         width = 140
@@ -3878,7 +3880,7 @@ wdoc_page c4_examples {
                         color = "#438DD5"
                     }
 
-                    widget_c4_container cache {
+                    c4_container cache {
                         x = 310
                         y = 260
                         width = 140
@@ -3888,27 +3890,27 @@ wdoc_page c4_examples {
                         color = "#438DD5"
                     }
 
-                    shape_connection ct1 { from = "c4user"
+                    connection ct1 { from = "c4user"
                         to = "webapp"
                         direction = "to"
                         stroke = "var(--color-text)"
                         label = "HTTPS" }
-                    shape_connection ct2 { from = "webapp"
+                    connection ct2 { from = "webapp"
                         to = "api"
                         direction = "to"
                         stroke = "var(--color-text)"
                         label = "REST" }
-                    shape_connection ct3 { from = "api"
+                    connection ct3 { from = "api"
                         to = "db"
                         direction = "both"
                         stroke = "var(--color-text)"
                         label = "SQL" }
-                    shape_connection ct4 { from = "api"
+                    connection ct4 { from = "api"
                         to = "worker"
                         direction = "to"
                         stroke = "var(--color-text)"
                         label = "Queue" }
-                    shape_connection ct5 { from = "api"
+                    connection ct5 { from = "api"
                         to = "cache"
                         direction = "both"
                         stroke = "var(--color-text)"
@@ -3921,11 +3923,11 @@ wdoc_page c4_examples {
 
 // ── UML Shapes page ──
 
-wdoc_page uml_examples {
+page uml_examples {
     section = "my_docs.diagrams.uml_examples"
     title = "UML Shapes"
 
-    wdoc_layout {
+    layout {
         vsplit v_uml1 {
             split s_uml1 {
                 size = 100
@@ -3941,11 +3943,11 @@ wdoc_page uml_examples {
                 }
                 paragraph puml1 { content = "UML class boxes with fields and methods (pipe-separated):" }
 
-                wdoc_diagram uml_class_demo {
+                diagram uml_class_demo {
                     width = 700
                     height = 300
 
-                    widget_uml_class user_class {
+                    uml_class user_class {
                         x = 30
                         y = 20
                         width = 180
@@ -3955,7 +3957,7 @@ wdoc_page uml_examples {
                         methods = "+ login()|- validate()|+ toString(): String"
                     }
 
-                    widget_uml_class order_class {
+                    uml_class order_class {
                         x = 270
                         y = 20
                         width = 180
@@ -3966,7 +3968,7 @@ wdoc_page uml_examples {
                         methods = "+ submit()|- calculate()"
                     }
 
-                    widget_uml_class repo_class {
+                    uml_class repo_class {
                         x = 510
                         y = 20
                         width = 170
@@ -3977,14 +3979,14 @@ wdoc_page uml_examples {
                         methods = "+ find(id)|+ save(order)"
                     }
 
-                    shape_connection uc1 { from = "user_class"
+                    connection uc1 { from = "user_class"
                         to = "order_class"
                         direction = "to"
                         from_anchor = "right"
                         to_anchor = "left"
                         stroke = "var(--color-text)"
                         label = "places" }
-                    shape_connection uc2 { from = "order_class"
+                    connection uc2 { from = "order_class"
                         to = "repo_class"
                         direction = "to"
                         from_anchor = "right"
@@ -3999,11 +4001,11 @@ wdoc_page uml_examples {
                     content = "Use Case and Packages"
                 }
 
-                wdoc_diagram uml_other {
+                diagram uml_other {
                     width = 700
                     height = 280
 
-                    widget_uml_actor actor1 {
+                    uml_actor actor1 {
                         x = 30
                         y = 30
                         width = 60
@@ -4011,7 +4013,7 @@ wdoc_page uml_examples {
                         label = "Customer"
                     }
 
-                    widget_uml_actor actor2 {
+                    uml_actor actor2 {
                         x = 30
                         y = 160
                         width = 60
@@ -4019,7 +4021,7 @@ wdoc_page uml_examples {
                         label = "Admin"
                     }
 
-                    widget_uml_package pkg_frontend {
+                    uml_package pkg_frontend {
                         x = 150
                         y = 20
                         width = 200
@@ -4027,7 +4029,7 @@ wdoc_page uml_examples {
                         label = "Frontend"
                     }
 
-                    widget_uml_package pkg_backend {
+                    uml_package pkg_backend {
                         x = 150
                         y = 160
                         width = 200
@@ -4035,7 +4037,7 @@ wdoc_page uml_examples {
                         label = "Backend"
                     }
 
-                    widget_uml_note note1 {
+                    uml_note note1 {
                         x = 420
                         y = 30
                         width = 250
@@ -4043,7 +4045,7 @@ wdoc_page uml_examples {
                         label = "The frontend package contains all React components and routing logic."
                     }
 
-                    widget_uml_note note2 {
+                    uml_note note2 {
                         x = 420
                         y = 140
                         width = 250
@@ -4051,15 +4053,15 @@ wdoc_page uml_examples {
                         label = "Backend handles auth, data, and business logic via REST API."
                     }
 
-                    shape_connection un1 { from = "actor1"
+                    connection un1 { from = "actor1"
                         to = "pkg_frontend"
                         direction = "to"
                         stroke = "var(--color-text)" }
-                    shape_connection un2 { from = "actor2"
+                    connection un2 { from = "actor2"
                         to = "pkg_backend"
                         direction = "to"
                         stroke = "var(--color-text)" }
-                    shape_connection un3 { from = "pkg_frontend"
+                    connection un3 { from = "pkg_frontend"
                         to = "pkg_backend"
                         direction = "to"
                         stroke = "var(--color-text)"
@@ -4073,11 +4075,11 @@ wdoc_page uml_examples {
 
 // ── Network Diagrams page ──
 
-wdoc_page network_examples {
+page network_examples {
     section = "my_docs.diagrams.network_examples"
     title = "Network Diagrams"
 
-    wdoc_layout {
+    layout {
         vsplit v_net1 {
             split s_net1 {
                 size = 100
@@ -4088,11 +4090,11 @@ wdoc_page network_examples {
                 }
                 paragraph pnet1 { content = "Infrastructure shapes for servers, databases, cloud services, and users:" }
 
-                wdoc_diagram network_arch {
+                diagram network_arch {
                     width = 750
                     height = 450
 
-                    widget_node_user users {
+                    user users {
                         x = 20
                         y = 150
                         width = 80
@@ -4100,7 +4102,7 @@ wdoc_page network_examples {
                         label = "Users"
                     }
 
-                    widget_node_cloud cdn {
+                    cloud cdn {
                         x = 150
                         y = 30
                         width = 140
@@ -4108,7 +4110,7 @@ wdoc_page network_examples {
                         label = "CDN"
                     }
 
-                    widget_node_server lb {
+                    server lb {
                         x = 160
                         y = 170
                         width = 90
@@ -4116,7 +4118,7 @@ wdoc_page network_examples {
                         label = "Load Balancer"
                     }
 
-                    widget_node_server web1 {
+                    server web1 {
                         x = 320
                         y = 50
                         width = 90
@@ -4124,7 +4126,7 @@ wdoc_page network_examples {
                         label = "Web 1"
                     }
 
-                    widget_node_server web2 {
+                    server web2 {
                         x = 320
                         y = 200
                         width = 90
@@ -4132,7 +4134,7 @@ wdoc_page network_examples {
                         label = "Web 2"
                     }
 
-                    widget_node_server api_srv {
+                    server api_srv {
                         x = 320
                         y = 340
                         width = 90
@@ -4140,7 +4142,7 @@ wdoc_page network_examples {
                         label = "API"
                     }
 
-                    widget_node_database primary_db {
+                    database primary_db {
                         x = 500
                         y = 50
                         width = 100
@@ -4148,7 +4150,7 @@ wdoc_page network_examples {
                         label = "Primary DB"
                     }
 
-                    widget_node_database replica_db {
+                    database replica_db {
                         x = 500
                         y = 210
                         width = 100
@@ -4156,7 +4158,7 @@ wdoc_page network_examples {
                         label = "Replica DB"
                     }
 
-                    widget_node_server cache_srv {
+                    server cache_srv {
                         x = 500
                         y = 360
                         width = 90
@@ -4164,7 +4166,7 @@ wdoc_page network_examples {
                         label = "Redis"
                     }
 
-                    widget_node_cloud storage {
+                    cloud storage {
                         x = 640
                         y = 100
                         width = 100
@@ -4172,7 +4174,7 @@ wdoc_page network_examples {
                         label = "S3"
                     }
 
-                    widget_node_cloud monitoring {
+                    cloud monitoring {
                         x = 640
                         y = 240
                         width = 100
@@ -4181,12 +4183,12 @@ wdoc_page network_examples {
                     }
 
                     // User connections
-                    shape_connection nc1 { from = "users"
+                    connection nc1 { from = "users"
                         to = "cdn"
                         direction = "to"
                         stroke = "var(--color-text)"
                         label = "static" }
-                    shape_connection nc2 { from = "users"
+                    connection nc2 { from = "users"
                         to = "lb"
                         direction = "to"
                         stroke = "var(--color-text)"
@@ -4194,40 +4196,40 @@ wdoc_page network_examples {
                         label = "HTTPS" }
 
                     // LB → servers
-                    shape_connection nc3 { from = "lb"
+                    connection nc3 { from = "lb"
                         to = "web1"
                         direction = "to"
                         stroke = "var(--color-text)" }
-                    shape_connection nc4 { from = "lb"
+                    connection nc4 { from = "lb"
                         to = "web2"
                         direction = "to"
                         stroke = "var(--color-text)" }
-                    shape_connection nc5 { from = "lb"
+                    connection nc5 { from = "lb"
                         to = "api_srv"
                         direction = "to"
                         stroke = "var(--color-text)" }
 
                     // Servers → data
-                    shape_connection nc6 { from = "web1"
+                    connection nc6 { from = "web1"
                         to = "primary_db"
                         direction = "both"
                         stroke = "var(--color-text)" }
-                    shape_connection nc7 { from = "web2"
+                    connection nc7 { from = "web2"
                         to = "replica_db"
                         direction = "to"
                         stroke = "var(--color-text)"
                         stroke_dasharray = "4,3" }
-                    shape_connection nc8 { from = "api_srv"
+                    connection nc8 { from = "api_srv"
                         to = "cache_srv"
                         direction = "both"
                         stroke = "var(--color-text)" }
-                    shape_connection nc9 { from = "api_srv"
+                    connection nc9 { from = "api_srv"
                         to = "primary_db"
                         direction = "both"
                         stroke = "var(--color-text)" }
 
                     // DB replication
-                    shape_connection nc10 { from = "primary_db"
+                    connection nc10 { from = "primary_db"
                         to = "replica_db"
                         direction = "to"
                         stroke = "var(--color-text)"
@@ -4235,12 +4237,12 @@ wdoc_page network_examples {
                         label = "replicate" }
 
                     // Cloud services
-                    shape_connection nc11 { from = "web1"
+                    connection nc11 { from = "web1"
                         to = "storage"
                         direction = "to"
                         stroke = "var(--color-text)"
                         stroke_dasharray = "4,3" }
-                    shape_connection nc12 { from = "web2"
+                    connection nc12 { from = "web2"
                         to = "monitoring"
                         direction = "to"
                         stroke = "var(--color-text)"
@@ -4253,11 +4255,11 @@ wdoc_page network_examples {
 
 // ── Language Bindings page ──
 
-wdoc_page binding_examples {
+page binding_examples {
     section = "my_docs.bindings.binding_examples"
     title = "Binding Examples"
 
-    wdoc_layout {
+    layout {
         vsplit v7 {
             split s10 {
                 size = 100
@@ -4398,11 +4400,11 @@ wdoc_page binding_examples {
 
 // ── CLI Reference page ──
 
-wdoc_page cli_ref {
+page cli_ref {
     section = "my_docs.reference.cli_ref"
     title = "CLI Reference"
 
-    wdoc_layout {
+    layout {
         vsplit v13 {
             split s20 {
                 size = 100
