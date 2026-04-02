@@ -28,6 +28,7 @@ wdoc my_docs {
         wdoc_section large_diagrams "Large Diagrams" {}
         wdoc_section nested_diagrams "Nested Diagrams" {}
         wdoc_section swimlane_diagrams "Swim Lane Diagrams" {}
+        wdoc_section wireframes "UI Wireframes" {}
     }
 
     wdoc_section bindings "Language Bindings" {
