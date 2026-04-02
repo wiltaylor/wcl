@@ -184,16 +184,33 @@ fn wdoc_functions() -> FunctionRegistry {
                 .first()
                 .and_then(|v| v.as_string())
                 .ok_or("icon() expects a string argument (icon name)")?;
-            // Optional size as second arg
-            let size = args.get(1).and_then(|v| v.as_string()).unwrap_or("1em");
+            // Optional second arg: size (e.g. "1.5em", "24px")
+            let size = args.get(1).and_then(|v| v.as_string());
+            // Optional third arg: color (e.g. "red", "#ff0000", "var(--color-link)")
+            let color = args.get(2).and_then(|v| v.as_string());
+
+            let mut style = String::new();
+            if let Some(s) = size {
+                style.push_str(&format!("font-size:{s};"));
+            }
+            if let Some(c) = color {
+                style.push_str(&format!("color:{c};"));
+            }
+
+            let style_attr = if style.is_empty() {
+                String::new()
+            } else {
+                format!(" style=\"{style}\"")
+            };
+
             Ok(Value::String(format!(
-                "<i class=\"bi bi-{name}\" style=\"font-size:{size}\"></i>"
+                "<i class=\"bi bi-{name}\"{style_attr}></i>"
             )))
         }) as BuiltinFn,
         mk(
             "icon",
-            vec!["name: string", "size: string"],
-            "Insert a Bootstrap Icon by name",
+            vec!["name: string", "size: string", "color: string"],
+            "Insert a Bootstrap Icon (optional size and color)",
         ),
     );
 
