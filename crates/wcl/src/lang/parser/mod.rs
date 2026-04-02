@@ -240,6 +240,14 @@ impl Parser {
                 let decl = self.parse_function_decl(trivia)?;
                 Some(DocItem::FunctionDecl(decl))
             }
+            TokenKind::Namespace => {
+                let ns = self.parse_namespace_decl(trivia)?;
+                Some(DocItem::Namespace(ns))
+            }
+            TokenKind::Use => {
+                let use_decl = self.parse_use_decl(trivia)?;
+                Some(DocItem::Use(use_decl))
+            }
             _ => {
                 let body_item = self.parse_body_item_with_trivia(trivia)?;
                 Some(DocItem::Body(body_item))
@@ -312,6 +320,172 @@ impl Parser {
             trivia,
             span,
         })
+    }
+
+    /// Parse a `::` separated path: `ident (:: ident)*`
+    fn parse_namespace_path(&mut self) -> Option<Vec<Ident>> {
+        let first = self.expect_ident().ok()?;
+        let mut path = vec![first];
+        while self.at(&TokenKind::ColonColon) {
+            self.advance(); // consume `::`
+            path.push(self.expect_ident().ok()?);
+        }
+        Some(path)
+    }
+
+    fn parse_namespace_decl(&mut self, trivia: Trivia) -> Option<NamespaceDecl> {
+        let start_span = self.current_span();
+        self.advance(); // consume `namespace`
+        self.skip_newlines();
+
+        let path = self.parse_namespace_path()?;
+        self.skip_newlines();
+
+        if self.at(&TokenKind::LBrace) {
+            // Braced form: namespace foo::bar { ... }
+            self.advance(); // consume `{`
+            let mut items = Vec::new();
+            loop {
+                let _trivia = self.collect_trivia();
+                if matches!(self.peek_kind(), TokenKind::RBrace | TokenKind::Eof) {
+                    break;
+                }
+                if let Some(item) = self.parse_doc_item() {
+                    items.push(item);
+                } else {
+                    // Skip one token to recover
+                    if !self.at(&TokenKind::Eof) {
+                        self.advance();
+                    }
+                }
+            }
+            if self.expect(&TokenKind::RBrace).is_err() {
+                return None;
+            }
+            let span = start_span.merge(self.prev_span());
+            Some(NamespaceDecl {
+                path,
+                items,
+                file_level: false,
+                trivia,
+                span,
+            })
+        } else {
+            // File-level form: namespace foo::bar
+            let span = start_span.merge(path.last().unwrap().span);
+            Some(NamespaceDecl {
+                path,
+                items: vec![],
+                file_level: true,
+                trivia,
+                span,
+            })
+        }
+    }
+
+    fn parse_use_decl(&mut self, trivia: Trivia) -> Option<UseDecl> {
+        let start_span = self.current_span();
+        self.advance(); // consume `use`
+        self.skip_newlines();
+
+        // Parse all segments: `ident :: ident :: ... :: (ident | { ... })`
+        // Strategy: greedily parse ident :: ident :: ... then check what follows
+        // the last `::`: if `{`, everything is namespace path; if ident, split
+        // last ident off as target.
+        let first = self.expect_ident().ok()?;
+        let mut segments = vec![first];
+
+        // Consume :: ident pairs until we can't
+        loop {
+            if !self.at(&TokenKind::ColonColon) {
+                break;
+            }
+            self.advance(); // consume `::`
+
+            if self.at(&TokenKind::LBrace) {
+                // Grouped targets: use foo::bar::{a, b}
+                // All segments so far are the namespace path
+                self.advance(); // consume `{`
+                let mut targets = Vec::new();
+                loop {
+                    self.skip_newlines();
+                    if matches!(self.peek_kind(), TokenKind::RBrace | TokenKind::Eof) {
+                        break;
+                    }
+                    if let Some(target) = self.parse_use_target() {
+                        targets.push(target);
+                    } else {
+                        break;
+                    }
+                    self.skip_newlines();
+                    if self.at(&TokenKind::Comma) {
+                        self.advance();
+                    } else {
+                        break;
+                    }
+                }
+                self.skip_newlines();
+                if self.expect(&TokenKind::RBrace).is_err() {
+                    return None;
+                }
+
+                let span = start_span.merge(self.prev_span());
+                return Some(UseDecl {
+                    namespace_path: segments,
+                    targets,
+                    trivia,
+                    span,
+                });
+            }
+
+            // Regular ident segment
+            segments.push(self.expect_ident().ok()?);
+        }
+
+        // No `{` encountered: all but last segment = namespace path, last = target
+        if segments.len() < 2 {
+            self.diagnostics.error_with_code(
+                "expected `::` after namespace in use declaration",
+                self.current_span(),
+                "E002",
+            );
+            return None;
+        }
+
+        let last = segments.pop().unwrap();
+        let alias = if self.at(&TokenKind::Arrow) {
+            self.advance();
+            Some(self.expect_ident().ok()?)
+        } else {
+            None
+        };
+        let end = alias.as_ref().map(|a| a.span).unwrap_or(last.span);
+        let target = UseTarget {
+            name: last,
+            alias,
+            span: segments.first().unwrap().span.merge(end),
+        };
+
+        let span = start_span.merge(self.prev_span());
+        Some(UseDecl {
+            namespace_path: segments,
+            targets: vec![target],
+            trivia,
+            span,
+        })
+    }
+
+    fn parse_use_target(&mut self) -> Option<UseTarget> {
+        let name = self.expect_ident().ok()?;
+        let alias = if self.at(&TokenKind::Arrow) {
+            self.advance(); // consume `->`
+            Some(self.expect_ident().ok()?)
+        } else {
+            None
+        };
+        let end = alias.as_ref().map(|a| a.span).unwrap_or(name.span);
+        let span = name.span.merge(end);
+        Some(UseTarget { name, alias, span })
     }
 
     fn parse_export(&mut self, decorators: Vec<Decorator>, trivia: Trivia) -> Option<DocItem> {
@@ -3778,6 +3952,123 @@ macro @filter() {
                 }
             }
             other => panic!("expected MacroDef, got {:?}", other),
+        }
+    }
+
+    // ── Namespace / Use ──────────────────────────────────────────────────
+
+    #[test]
+    fn test_namespace_braced() {
+        let (doc, diags) =
+            parse("namespace networking {\n  schema \"service\" {\n    port: int\n  }\n}");
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
+        assert_eq!(doc.items.len(), 1);
+        match &doc.items[0] {
+            DocItem::Namespace(ns) => {
+                assert_eq!(join_path(&ns.path), "networking");
+                assert!(!ns.file_level);
+                assert_eq!(ns.items.len(), 1);
+            }
+            other => panic!("expected Namespace, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_namespace_file_level() {
+        let (doc, diags) = parse("namespace networking\nport = 8080");
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
+        assert_eq!(doc.items.len(), 2);
+        match &doc.items[0] {
+            DocItem::Namespace(ns) => {
+                assert_eq!(join_path(&ns.path), "networking");
+                assert!(ns.file_level);
+                assert!(ns.items.is_empty());
+            }
+            other => panic!("expected Namespace, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_use_single() {
+        let (doc, diags) = parse("use networking::service");
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
+        assert_eq!(doc.items.len(), 1);
+        match &doc.items[0] {
+            DocItem::Use(u) => {
+                assert_eq!(join_path(&u.namespace_path), "networking");
+                assert_eq!(u.targets.len(), 1);
+                assert_eq!(u.targets[0].name.name, "service");
+                assert!(u.targets[0].alias.is_none());
+            }
+            other => panic!("expected Use, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_use_single_with_alias() {
+        let (doc, diags) = parse("use networking::service -> svc");
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
+        match &doc.items[0] {
+            DocItem::Use(u) => {
+                assert_eq!(u.targets[0].name.name, "service");
+                assert_eq!(u.targets[0].alias.as_ref().unwrap().name, "svc");
+            }
+            other => panic!("expected Use, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_use_grouped() {
+        let (doc, diags) = parse("use networking::{service, endpoint}");
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
+        match &doc.items[0] {
+            DocItem::Use(u) => {
+                assert_eq!(join_path(&u.namespace_path), "networking");
+                assert_eq!(u.targets.len(), 2);
+                assert_eq!(u.targets[0].name.name, "service");
+                assert_eq!(u.targets[1].name.name, "endpoint");
+            }
+            other => panic!("expected Use, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_use_grouped_with_aliases() {
+        let (doc, diags) = parse("use networking::{service -> svc, endpoint -> ep}");
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
+        match &doc.items[0] {
+            DocItem::Use(u) => {
+                assert_eq!(u.targets.len(), 2);
+                assert_eq!(u.targets[0].name.name, "service");
+                assert_eq!(u.targets[0].alias.as_ref().unwrap().name, "svc");
+                assert_eq!(u.targets[1].name.name, "endpoint");
+                assert_eq!(u.targets[1].alias.as_ref().unwrap().name, "ep");
+            }
+            other => panic!("expected Use, got {:?}", other),
         }
     }
 }

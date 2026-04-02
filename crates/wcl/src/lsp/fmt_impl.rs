@@ -88,6 +88,47 @@ impl<'a> Fmt<'a> {
                 }
                 self.out.push('\n');
             }
+            DocItem::Namespace(ns) => {
+                self.indent();
+                let ns_path = join_path(&ns.path);
+                if ns.file_level {
+                    self.out.push_str(&format!("namespace {}\n", ns_path));
+                } else {
+                    self.out.push_str(&format!("namespace {} {{\n", ns_path));
+                    self.indent += 1;
+                    for inner in &ns.items {
+                        self.doc_item(inner);
+                    }
+                    self.indent -= 1;
+                    self.indent();
+                    self.out.push_str("}\n");
+                }
+            }
+            DocItem::Use(use_decl) => {
+                self.indent();
+                let ns_path = join_path(&use_decl.namespace_path);
+                if use_decl.targets.len() == 1 {
+                    let t = &use_decl.targets[0];
+                    self.out
+                        .push_str(&format!("use {}::{}", ns_path, t.name.name));
+                    if let Some(ref alias) = t.alias {
+                        self.out.push_str(&format!(" -> {}", alias.name));
+                    }
+                } else {
+                    self.out.push_str(&format!("use {}::{{", ns_path));
+                    for (i, t) in use_decl.targets.iter().enumerate() {
+                        if i > 0 {
+                            self.out.push_str(", ");
+                        }
+                        self.out.push_str(&t.name.name);
+                        if let Some(ref alias) = t.alias {
+                            self.out.push_str(&format!(" -> {}", alias.name));
+                        }
+                    }
+                    self.out.push('}');
+                }
+                self.out.push('\n');
+            }
         }
     }
 

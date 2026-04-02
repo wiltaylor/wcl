@@ -66,6 +66,9 @@ This page lists all diagnostic codes produced by the WCL pipeline, grouped by ph
 | E101 | Schema | Referenced `symbol_set` does not exist |
 | E102 | Parse  | Duplicate `symbol_set` name |
 | E103 | Parse  | Duplicate symbol within a `symbol_set` |
+| E120 | Namespace | `use` target not found in namespace |
+| E121 | Namespace | Namespace not found in `use` or qualified access |
+| E123 | Namespace | File-level `namespace` must appear before other items |
 
 ## Warnings
 

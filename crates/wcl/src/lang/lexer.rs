@@ -68,6 +68,8 @@ pub enum TokenKind {
     Layout,
     Stream,
     Codec,
+    Namespace,
+    Use,
 
     // Delimiters
     LBrace,
@@ -86,6 +88,7 @@ pub enum TokenKind {
     Hash,
     At,
     Colon,
+    ColonColon,
     Question,
     Semicolon,
 
@@ -321,6 +324,12 @@ impl<'a> Lexer<'a> {
         if self.starts_with("..") {
             self.advance(2);
             return Some(self.make_tok(TokenKind::DotDot, start));
+        }
+
+        // Double-colon `::` — namespace separator
+        if self.starts_with("::") {
+            self.advance(2);
+            return Some(self.make_tok(TokenKind::ColonColon, start));
         }
 
         // Symbol literal — `:name` where name starts with [a-zA-Z_]
@@ -1026,6 +1035,8 @@ impl<'a> Lexer<'a> {
             "layout" => TokenKind::Layout,
             "stream" => TokenKind::Stream,
             "codec" => TokenKind::Codec,
+            "namespace" => TokenKind::Namespace,
+            "use" => TokenKind::Use,
             other => {
                 if other.contains('-') {
                     TokenKind::IdentifierLit(other.to_string())
@@ -1089,7 +1100,7 @@ mod tests {
 
     #[test]
     fn keywords() {
-        let src = "let partial macro schema table import export query ref for in if else when inject set remove self validation decorator_schema update symbol_set struct transform pipeline layout stream codec";
+        let src = "let partial macro schema table import export query ref for in if else when inject set remove self validation decorator_schema update symbol_set struct transform pipeline layout stream codec namespace use";
         let ks = token_kinds_ok(src);
         assert_eq!(
             ks,
@@ -1122,6 +1133,8 @@ mod tests {
                 TokenKind::Layout,
                 TokenKind::Stream,
                 TokenKind::Codec,
+                TokenKind::Namespace,
+                TokenKind::Use,
                 TokenKind::Eof,
             ]
         );
@@ -1439,7 +1452,7 @@ mod tests {
 
     #[test]
     fn multi_char_operators() {
-        let ks = token_kinds_ok("== != <= >= =~ && || => -> += .. ${");
+        let ks = token_kinds_ok("== != <= >= =~ && || => -> += .. :: ${");
         assert_eq!(
             ks,
             vec![
@@ -1454,6 +1467,7 @@ mod tests {
                 TokenKind::Arrow,
                 TokenKind::PlusEquals,
                 TokenKind::DotDot,
+                TokenKind::ColonColon,
                 TokenKind::InterpStart,
                 TokenKind::Eof,
             ]
@@ -1676,6 +1690,71 @@ mod tests {
                 TokenKind::IntLit(8080),
                 TokenKind::LineComment("// default port".into()),
                 TokenKind::Newline,
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    // ── Namespace / use tokens ───────────────────────────────────────────
+
+    #[test]
+    fn colon_colon_token() {
+        let ks = token_kinds_ok("foo::bar");
+        assert_eq!(
+            ks,
+            vec![
+                TokenKind::Ident("foo".into()),
+                TokenKind::ColonColon,
+                TokenKind::Ident("bar".into()),
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn colon_colon_does_not_eat_symbol_literal() {
+        // `::foo` should be ColonColon + Ident, not Colon + SymbolLit
+        let ks = token_kinds_ok("::foo");
+        assert_eq!(
+            ks,
+            vec![
+                TokenKind::ColonColon,
+                TokenKind::Ident("foo".into()),
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn single_colon_still_works() {
+        // `:foo` is still a symbol literal
+        let ks = token_kinds_ok(":foo");
+        assert_eq!(ks, vec![TokenKind::SymbolLit("foo".into()), TokenKind::Eof]);
+    }
+
+    #[test]
+    fn namespace_use_in_context() {
+        let ks = token_kinds_ok("use foo::bar");
+        assert_eq!(
+            ks,
+            vec![
+                TokenKind::Use,
+                TokenKind::Ident("foo".into()),
+                TokenKind::ColonColon,
+                TokenKind::Ident("bar".into()),
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn namespace_keyword_in_context() {
+        let ks = token_kinds_ok("namespace networking");
+        assert_eq!(
+            ks,
+            vec![
+                TokenKind::Namespace,
+                TokenKind::Ident("networking".into()),
                 TokenKind::Eof,
             ]
         );

@@ -53,6 +53,7 @@
 - [Data Tables](./guide/tables.md)
 - [Imports](./guide/imports.md)
 - [Libraries](./guide/libraries.md)
+- [Namespaces](./guide/namespaces.md)
 - [Partial Declarations](./guide/partials.md)
 - [Query Engine](./guide/query-engine.md)
 - [Validation Blocks](./guide/validation-blocks.md)

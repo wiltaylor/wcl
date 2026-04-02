@@ -898,6 +898,10 @@
           "named": true
         },
         {
+          "type": "namespace_declaration",
+          "named": true
+        },
+        {
           "type": "schema",
           "named": true
         },
@@ -911,6 +915,10 @@
         },
         {
           "type": "table",
+          "named": true
+        },
+        {
+          "type": "use_declaration",
           "named": true
         },
         {
@@ -2173,6 +2181,108 @@
     }
   },
   {
+    "type": "namespace_declaration",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "attribute",
+          "named": true
+        },
+        {
+          "type": "block",
+          "named": true
+        },
+        {
+          "type": "conditional",
+          "named": true
+        },
+        {
+          "type": "declare_statement",
+          "named": true
+        },
+        {
+          "type": "decorator_schema",
+          "named": true
+        },
+        {
+          "type": "export_declaration",
+          "named": true
+        },
+        {
+          "type": "for_loop",
+          "named": true
+        },
+        {
+          "type": "import_declaration",
+          "named": true
+        },
+        {
+          "type": "let_binding",
+          "named": true
+        },
+        {
+          "type": "macro_call",
+          "named": true
+        },
+        {
+          "type": "macro_definition",
+          "named": true
+        },
+        {
+          "type": "namespace_declaration",
+          "named": true
+        },
+        {
+          "type": "namespace_path",
+          "named": true
+        },
+        {
+          "type": "schema",
+          "named": true
+        },
+        {
+          "type": "struct_definition",
+          "named": true
+        },
+        {
+          "type": "symbol_set_declaration",
+          "named": true
+        },
+        {
+          "type": "table",
+          "named": true
+        },
+        {
+          "type": "use_declaration",
+          "named": true
+        },
+        {
+          "type": "validation",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "namespace_path",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "identifier",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "null_literal",
     "named": true,
     "fields": {}
@@ -3020,6 +3130,40 @@
     }
   },
   {
+    "type": "use_declaration",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "identifier",
+          "named": true
+        },
+        {
+          "type": "use_target",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "use_target",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "identifier",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "validation",
     "named": true,
     "fields": {},
@@ -3135,6 +3279,10 @@
   },
   {
     "type": ":",
+    "named": false
+  },
+  {
+    "type": "::",
     "named": false
   },
   {
@@ -3373,6 +3521,10 @@
     "named": false
   },
   {
+    "type": "namespace",
+    "named": false
+  },
+  {
     "type": "null",
     "named": false
   },
@@ -3458,6 +3610,10 @@
   },
   {
     "type": "union",
+    "named": false
+  },
+  {
+    "type": "use",
     "named": false
   },
   {

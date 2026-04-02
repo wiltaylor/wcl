@@ -313,7 +313,49 @@ fn collect_name_refs(
                 }
             }
             DocItem::Import(_) | DocItem::FunctionDecl(_) => {}
+            DocItem::Namespace(ns) => {
+                for inner in &ns.items {
+                    collect_in_doc_item(inner, name, uri, rope, out);
+                }
+            }
+            DocItem::Use(_) => {}
         }
+    }
+}
+
+fn collect_in_doc_item(
+    item: &DocItem,
+    name: &str,
+    uri: &async_lsp::lsp_types::Url,
+    rope: &Rope,
+    out: &mut Vec<Location>,
+) {
+    match item {
+        DocItem::Body(body_item) => collect_in_body(body_item, name, uri, rope, out),
+        DocItem::ExportLet(el) => {
+            if el.name.name == name {
+                out.push(Location {
+                    uri: uri.clone(),
+                    range: span_to_lsp_range(el.name.span, rope),
+                });
+            }
+            collect_in_expr(&el.value, name, uri, rope, out);
+        }
+        DocItem::ReExport(re) => {
+            if re.name.name == name {
+                out.push(Location {
+                    uri: uri.clone(),
+                    range: span_to_lsp_range(re.name.span, rope),
+                });
+            }
+        }
+        DocItem::Import(_) | DocItem::FunctionDecl(_) => {}
+        DocItem::Namespace(ns) => {
+            for inner in &ns.items {
+                collect_in_doc_item(inner, name, uri, rope, out);
+            }
+        }
+        DocItem::Use(_) => {}
     }
 }
 

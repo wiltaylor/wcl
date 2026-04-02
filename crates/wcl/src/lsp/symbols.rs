@@ -71,6 +71,59 @@ fn doc_item_symbol(item: &DocItem, rope: &Rope) -> Option<DocumentSymbol> {
             selection_range: span_to_lsp_range(decl.name.span, rope),
             children: None,
         }),
+        DocItem::Namespace(ns) => {
+            let children: Vec<_> = ns
+                .items
+                .iter()
+                .filter_map(|i| doc_item_symbol(i, rope))
+                .collect();
+            Some(DocumentSymbol {
+                name: join_path(&ns.path),
+                detail: Some("namespace".to_string()),
+                kind: SymbolKind::NAMESPACE,
+                tags: None,
+                deprecated: None,
+                range: span_to_lsp_range(ns.span, rope),
+                selection_range: span_to_lsp_range(ns.path.first().unwrap().span, rope),
+                children: if children.is_empty() {
+                    None
+                } else {
+                    Some(children)
+                },
+            })
+        }
+        DocItem::Use(use_decl) => {
+            let target_names: Vec<_> = use_decl
+                .targets
+                .iter()
+                .map(|t| {
+                    if let Some(ref alias) = t.alias {
+                        format!("{} -> {}", t.name.name, alias.name)
+                    } else {
+                        t.name.name.clone()
+                    }
+                })
+                .collect();
+            let ns_path = join_path(&use_decl.namespace_path);
+            let display = if target_names.len() == 1 {
+                format!("use {}::{}", ns_path, target_names[0])
+            } else {
+                format!("use {}::{{{}}}", ns_path, target_names.join(", "))
+            };
+            Some(DocumentSymbol {
+                name: display,
+                detail: Some("use".to_string()),
+                kind: SymbolKind::PACKAGE,
+                tags: None,
+                deprecated: None,
+                range: span_to_lsp_range(use_decl.span, rope),
+                selection_range: span_to_lsp_range(
+                    use_decl.namespace_path.first().unwrap().span,
+                    rope,
+                ),
+                children: None,
+            })
+        }
     }
 }
 

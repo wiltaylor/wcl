@@ -250,6 +250,21 @@ impl Parser {
             return Some(Expr::Lambda(vec![ident], Box::new(body), span));
         }
 
+        // Check for qualified name: `namespace::name` or `a::b::c`
+        if matches!(self.peek_kind(), TokenKind::ColonColon) {
+            let mut name = ident.name.clone();
+            let mut end_span = ident.span;
+            while matches!(self.peek_kind(), TokenKind::ColonColon) {
+                self.advance(); // consume ::
+                let member = self.expect_ident().ok()?;
+                name = format!("{}::{}", name, member.name);
+                end_span = member.span;
+            }
+            let span = ident.span.merge(end_span);
+            let qualified = Ident { name, span };
+            return Some(Expr::Ident(qualified));
+        }
+
         Some(Expr::Ident(ident))
     }
 

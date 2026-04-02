@@ -78,6 +78,40 @@ fn find_in_doc_item<'a>(item: &'a DocItem, offset: usize) -> NodeAtOffset<'a> {
             return find_in_body_item(body_item, offset);
         }
         DocItem::FunctionDecl(_) => {}
+        DocItem::Namespace(ns) => {
+            if contains(ns.span, offset) {
+                for seg in &ns.path {
+                    if contains(seg.span, offset) {
+                        return NodeAtOffset::IdentRef(seg);
+                    }
+                }
+                for inner in &ns.items {
+                    let result = find_in_doc_item(inner, offset);
+                    if !matches!(result, NodeAtOffset::None) {
+                        return result;
+                    }
+                }
+            }
+        }
+        DocItem::Use(use_decl) => {
+            if contains(use_decl.span, offset) {
+                for seg in &use_decl.namespace_path {
+                    if contains(seg.span, offset) {
+                        return NodeAtOffset::IdentRef(seg);
+                    }
+                }
+                for t in &use_decl.targets {
+                    if contains(t.name.span, offset) {
+                        return NodeAtOffset::IdentRef(&t.name);
+                    }
+                    if let Some(ref alias) = t.alias {
+                        if contains(alias.span, offset) {
+                            return NodeAtOffset::IdentRef(alias);
+                        }
+                    }
+                }
+            }
+        }
     }
     NodeAtOffset::None
 }

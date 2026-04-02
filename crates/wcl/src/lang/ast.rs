@@ -30,6 +30,8 @@ pub enum DocItem {
     ReExport(ReExport),
     Body(BodyItem),
     FunctionDecl(FunctionDecl),
+    Namespace(NamespaceDecl),
+    Use(UseDecl),
 }
 
 /// Whether an import uses a relative path or a well-known library name.
@@ -86,6 +88,52 @@ pub struct FunctionDecl {
 pub struct FunctionDeclParam {
     pub name: Ident,
     pub type_expr: TypeExpr,
+    pub span: Span,
+}
+
+// ===== Namespaces =====
+
+/// Join a path of identifiers with `::`.
+pub fn join_path(path: &[Ident]) -> String {
+    path.iter()
+        .map(|i| i.name.as_str())
+        .collect::<Vec<_>>()
+        .join("::")
+}
+
+/// `namespace foo { ... }`, `namespace foo::bar { ... }`, or `namespace foo` (file-level).
+///
+/// Braced form scopes the enclosed items under the namespace path.
+/// File-level form (no braces) scopes all remaining items in the file.
+/// Nested namespaces are supported: `namespace foo { namespace bar { ... } }` or `namespace foo::bar { ... }`.
+#[derive(Debug, Clone)]
+pub struct NamespaceDecl {
+    /// Namespace path segments, e.g. `[foo]` or `[foo, bar]` for `namespace foo::bar`.
+    pub path: Vec<Ident>,
+    /// Items enclosed in the braced form. Empty for file-level form.
+    pub items: Vec<DocItem>,
+    /// `true` when the declaration uses file-level syntax (no braces).
+    pub file_level: bool,
+    pub trivia: Trivia,
+    pub span: Span,
+}
+
+/// `use foo::bar`, `use foo::bar::baz -> alias`, `use foo::bar::{a, b -> c}`
+#[derive(Debug, Clone)]
+pub struct UseDecl {
+    /// Namespace path segments, e.g. `[foo]` or `[foo, bar]` for `use foo::bar::item`.
+    pub namespace_path: Vec<Ident>,
+    pub targets: Vec<UseTarget>,
+    pub trivia: Trivia,
+    pub span: Span,
+}
+
+/// A single target in a `use` declaration.
+#[derive(Debug, Clone)]
+pub struct UseTarget {
+    pub name: Ident,
+    /// Optional alias: `-> alias_name`
+    pub alias: Option<Ident>,
     pub span: Span,
 }
 

@@ -81,6 +81,14 @@ pub fn analyze(source: &str, options: &crate::ParseOptions) -> AnalysisResult {
         all_diagnostics.extend(diag_bag.into_diagnostics());
     }
 
+    // Phase 3b: Namespace resolution
+    let namespace_aliases = {
+        let mut diag_bag = DiagnosticBag::new();
+        let aliases = crate::eval::namespaces::resolve(&mut doc, &mut diag_bag);
+        all_diagnostics.extend(diag_bag.into_diagnostics());
+        aliases
+    };
+
     // Macro expansion
     let mut expander = MacroExpander::new(&macro_registry, options.max_macro_depth);
     expander.expand(&mut doc);
@@ -194,6 +202,7 @@ pub fn analyze(source: &str, options: &crate::ParseOptions) -> AnalysisResult {
 
     // Schema validation
     let mut schemas = SchemaRegistry::new();
+    schemas.namespace_aliases = namespace_aliases.aliases;
     let mut diag_bag = DiagnosticBag::new();
     schemas.collect(&doc, &mut diag_bag);
     let mut symbol_sets = crate::schema::SymbolSetRegistry::new();

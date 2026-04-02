@@ -7,6 +7,7 @@ pub mod functions;
 pub mod imports;
 pub mod macros;
 pub mod merge;
+pub mod namespaces;
 pub mod query;
 pub mod scope;
 pub mod value;
@@ -20,6 +21,7 @@ pub use imports::{
 };
 pub use macros::{MacroExpander, MacroRegistry};
 pub use merge::{ConflictMode, PartialMerger};
+pub use namespaces::NamespaceAliases;
 pub use query::QueryEngine;
 pub use scope::{Scope, ScopeArena, ScopeEntry, ScopeEntryKind, ScopeKind};
 pub use value::{BlockRef, DecoratorValue, FunctionBody, FunctionValue, ScopeId, Value};
