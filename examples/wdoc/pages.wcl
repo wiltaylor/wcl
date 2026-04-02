@@ -356,7 +356,7 @@ wdoc_page advanced {
                     width = 700
                     height = 280
 
-                    svg_rect client {
+                    shape_rect client {
                         x = 30
                         y = 100
                         width = 140
@@ -366,14 +366,14 @@ wdoc_page advanced {
                         stroke = "var(--color-nav-border)"
                         stroke_width = 2
 
-                        svg_text client_label {
+                        shape_text client_label {
                             content = "Client"
                             font_size = 16
                             fill = "var(--color-text)"
                         }
                     }
 
-                    svg_rect api {
+                    shape_rect api {
                         x = 260
                         y = 30
                         width = 160
@@ -383,14 +383,14 @@ wdoc_page advanced {
                         stroke = "var(--color-link)"
                         stroke_width = 2
 
-                        svg_text api_label {
+                        shape_text api_label {
                             content = "API Server"
                             font_size = 16
                             fill = "var(--color-text)"
                         }
                     }
 
-                    svg_rect db {
+                    shape_rect db {
                         x = 260
                         y = 170
                         width = 160
@@ -400,14 +400,14 @@ wdoc_page advanced {
                         stroke = "var(--color-link)"
                         stroke_width = 2
 
-                        svg_text db_label {
+                        shape_text db_label {
                             content = "Database"
                             font_size = 16
                             fill = "var(--color-text)"
                         }
                     }
 
-                    svg_rect cache {
+                    shape_rect cache {
                         x = 520
                         y = 100
                         width = 140
@@ -417,14 +417,14 @@ wdoc_page advanced {
                         stroke = "var(--color-nav-border)"
                         stroke_width = 2
 
-                        svg_text cache_label {
+                        shape_text cache_label {
                             content = "Cache"
                             font_size = 16
                             fill = "var(--color-text)"
                         }
                     }
 
-                    svg_connection c1 {
+                    shape_connection c1 {
                         from = "client"
                         to = "api"
                         direction = "to"
@@ -435,7 +435,7 @@ wdoc_page advanced {
                         stroke_width = 2
                     }
 
-                    svg_connection c2 {
+                    shape_connection c2 {
                         from = "api"
                         to = "db"
                         direction = "both"
@@ -446,7 +446,7 @@ wdoc_page advanced {
                         stroke_width = 2
                     }
 
-                    svg_connection c3 {
+                    shape_connection c3 {
                         from = "api"
                         to = "cache"
                         direction = "both"
@@ -457,7 +457,7 @@ wdoc_page advanced {
                         stroke_width = 2
                     }
 
-                    svg_connection c4 {
+                    shape_connection c4 {
                         from = "client"
                         to = "db"
                         direction = "to"
@@ -509,7 +509,7 @@ wdoc_page diagram_examples {
                     width = 700
                     height = 200
 
-                    svg_rect r1 {
+                    shape_rect r1 {
                         x = 20
                         y = 30
                         width = 120
@@ -518,20 +518,20 @@ wdoc_page diagram_examples {
                         fill = "var(--color-nav-bg)"
                         stroke = "var(--color-link)"
                         stroke_width = 2
-                        svg_text t1 { content = "Rectangle" }
+                        shape_text t1 { content = "Rectangle" }
                     }
 
-                    svg_circle c1 {
+                    shape_circle c1 {
                         x = 180
                         y = 30
                         r = 40
                         fill = "var(--color-code-bg)"
                         stroke = "var(--color-link)"
                         stroke_width = 2
-                        svg_text t2 { content = "Circle" }
+                        shape_text t2 { content = "Circle" }
                     }
 
-                    svg_ellipse e1 {
+                    shape_ellipse e1 {
                         x = 300
                         y = 30
                         rx = 70
@@ -539,10 +539,10 @@ wdoc_page diagram_examples {
                         fill = "var(--color-nav-bg)"
                         stroke = "var(--color-nav-border)"
                         stroke_width = 2
-                        svg_text t3 { content = "Ellipse" }
+                        shape_text t3 { content = "Ellipse" }
                     }
 
-                    svg_line l1 {
+                    shape_line l1 {
                         x1 = 480
                         y1 = 40
                         x2 = 650
@@ -551,7 +551,7 @@ wdoc_page diagram_examples {
                         stroke_width = 2
                     }
 
-                    svg_line l2 {
+                    shape_line l2 {
                         x1 = 480
                         y1 = 80
                         x2 = 650
@@ -561,7 +561,7 @@ wdoc_page diagram_examples {
                         stroke_dasharray = "8,4"
                     }
 
-                    svg_line l3 {
+                    shape_line l3 {
                         x1 = 480
                         y1 = 120
                         x2 = 650
@@ -570,7 +570,7 @@ wdoc_page diagram_examples {
                         stroke_width = 3
                     }
 
-                    svg_text lines_label {
+                    shape_text lines_label {
                         x = 480
                         y = 150
                         width = 170
@@ -598,7 +598,7 @@ wdoc_page diagram_examples {
                     width = 700
                     height = 220
 
-                    svg_rect a {
+                    shape_rect a {
                         x = 30
                         y = 30
                         width = 120
@@ -607,10 +607,10 @@ wdoc_page diagram_examples {
                         fill = "var(--color-code-bg)"
                         stroke = "var(--color-link)"
                         stroke_width = 2
-                        svg_text ta { content = "Source" }
+                        shape_text ta { content = "Source" }
                     }
 
-                    svg_rect b {
+                    shape_rect b {
                         x = 280
                         y = 30
                         width = 120
@@ -619,10 +619,10 @@ wdoc_page diagram_examples {
                         fill = "var(--color-code-bg)"
                         stroke = "var(--color-link)"
                         stroke_width = 2
-                        svg_text tb { content = "Target" }
+                        shape_text tb { content = "Target" }
                     }
 
-                    svg_rect c {
+                    shape_rect c {
                         x = 530
                         y = 30
                         width = 120
@@ -631,10 +631,10 @@ wdoc_page diagram_examples {
                         fill = "var(--color-code-bg)"
                         stroke = "var(--color-link)"
                         stroke_width = 2
-                        svg_text tc { content = "Both" }
+                        shape_text tc { content = "Both" }
                     }
 
-                    svg_rect d {
+                    shape_rect d {
                         x = 30
                         y = 140
                         width = 120
@@ -643,10 +643,10 @@ wdoc_page diagram_examples {
                         fill = "var(--color-nav-bg)"
                         stroke = "var(--color-nav-border)"
                         stroke_width = 2
-                        svg_text td { content = "Bezier" }
+                        shape_text td { content = "Bezier" }
                     }
 
-                    svg_rect e {
+                    shape_rect e {
                         x = 530
                         y = 140
                         width = 120
@@ -655,10 +655,10 @@ wdoc_page diagram_examples {
                         fill = "var(--color-nav-bg)"
                         stroke = "var(--color-nav-border)"
                         stroke_width = 2
-                        svg_text te { content = "Curve" }
+                        shape_text te { content = "Curve" }
                     }
 
-                    svg_connection ab {
+                    shape_connection ab {
                         from = "a"
                         to = "b"
                         direction = "to"
@@ -667,7 +667,7 @@ wdoc_page diagram_examples {
                         stroke_width = 2
                     }
 
-                    svg_connection bc {
+                    shape_connection bc {
                         from = "b"
                         to = "c"
                         direction = "both"
@@ -676,7 +676,7 @@ wdoc_page diagram_examples {
                         stroke_width = 2
                     }
 
-                    svg_connection de {
+                    shape_connection de {
                         from = "d"
                         to = "e"
                         direction = "to"
@@ -704,7 +704,7 @@ wdoc_page diagram_examples {
                     width = 700
                     height = 250
 
-                    svg_rect outer {
+                    shape_rect outer {
                         left = 10
                         right = 10
                         top = 10
@@ -715,7 +715,7 @@ wdoc_page diagram_examples {
                         stroke_width = 1
                         stroke_dasharray = "4,4"
 
-                        svg_rect header {
+                        shape_rect header {
                             left = 0
                             right = 0
                             top = 0
@@ -723,10 +723,10 @@ wdoc_page diagram_examples {
                             fill = "var(--color-nav-bg)"
                             stroke = "var(--color-nav-border)"
                             stroke_width = 1
-                            svg_text ht { content = "Header (anchored top, full width)" }
+                            shape_text ht { content = "Header (anchored top, full width)" }
                         }
 
-                        svg_rect sidebar {
+                        shape_rect sidebar {
                             left = 0
                             top = 50
                             bottom = 50
@@ -734,10 +734,10 @@ wdoc_page diagram_examples {
                             fill = "var(--color-code-bg)"
                             stroke = "var(--color-code-border)"
                             stroke_width = 1
-                            svg_text st { content = "Sidebar" }
+                            shape_text st { content = "Sidebar" }
                         }
 
-                        svg_rect content_area {
+                        shape_rect content_area {
                             left = 160
                             top = 50
                             right = 0
@@ -745,12 +745,12 @@ wdoc_page diagram_examples {
                             fill = "var(--color-nav-bg)"
                             stroke = "var(--color-nav-border)"
                             stroke_width = 1
-                            svg_text ct {
+                            shape_text ct {
                                 content = "Content (fills remaining space)"
                             }
                         }
 
-                        svg_rect footer {
+                        shape_rect footer {
                             left = 0
                             right = 0
                             bottom = 0
@@ -758,7 +758,7 @@ wdoc_page diagram_examples {
                             fill = "var(--color-nav-bg)"
                             stroke = "var(--color-nav-border)"
                             stroke_width = 1
-                            svg_text ft { content = "Footer (anchored bottom, full width)" }
+                            shape_text ft { content = "Footer (anchored bottom, full width)" }
                         }
                     }
                 }
@@ -780,7 +780,7 @@ wdoc_page diagram_examples {
                     width = 400
                     height = 220
 
-                    svg_rect container {
+                    shape_rect container {
                         x = 20
                         y = 10
                         width = 360
@@ -793,30 +793,30 @@ wdoc_page diagram_examples {
                         gap = 10
                         padding = 15
 
-                        svg_rect item1 {
+                        shape_rect item1 {
                             height = 40
                             rx = 4
                             fill = "var(--color-link)"
-                            svg_text t1 {
+                            shape_text t1 {
                                 content = "Item 1"
                                 fill = "#ffffff"
                             }
                         }
 
-                        svg_rect item2 {
+                        shape_rect item2 {
                             height = 40
                             rx = 4
                             fill = "var(--color-nav-active)"
-                            svg_text t2 { content = "Item 2" }
+                            shape_text t2 { content = "Item 2" }
                         }
 
-                        svg_rect item3 {
+                        shape_rect item3 {
                             height = 40
                             rx = 4
                             fill = "var(--color-code-bg)"
                             stroke = "var(--color-code-border)"
                             stroke_width = 1
-                            svg_text t3 { content = "Item 3" }
+                            shape_text t3 { content = "Item 3" }
                         }
                     }
                 }
@@ -828,7 +828,7 @@ wdoc_page diagram_examples {
                 paragraph pd6 { content = "Here is the WCL code for the stack layout diagram above:" }
                 code cd1 {
                     language = "wcl"
-                    content = "wdoc_diagram stack_demo {\n    width = 400\n    height = 220\n\n    svg_rect container {\n        x = 20\n        y = 10\n        width = 360\n        height = 200\n        align = \"stack\"\n        gap = 10\n        padding = 15\n\n        svg_rect item1 {\n            height = 40\n            fill = \"var(--color-link)\"\n            svg_text t1 { content = \"Item 1\" }\n        }\n        svg_rect item2 {\n            height = 40\n            fill = \"var(--color-nav-active)\"\n            svg_text t2 { content = \"Item 2\" }\n        }\n    }\n}"
+                    content = "wdoc_diagram stack_demo {\n    width = 400\n    height = 220\n\n    shape_rect container {\n        x = 20\n        y = 10\n        width = 360\n        height = 200\n        align = \"stack\"\n        gap = 10\n        padding = 15\n\n        shape_rect item1 {\n            height = 40\n            fill = \"var(--color-link)\"\n            shape_text t1 { content = \"Item 1\" }\n        }\n        shape_rect item2 {\n            height = 40\n            fill = \"var(--color-nav-active)\"\n            shape_text t2 { content = \"Item 2\" }\n        }\n    }\n}"
                 }
             }
         }
