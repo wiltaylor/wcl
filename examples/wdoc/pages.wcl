@@ -1757,6 +1757,727 @@ wdoc_page large_diagrams {
     }
 }
 
+// ── Nested Diagrams page ──
+
+wdoc_page nested_diagrams {
+    section = "my_docs.diagrams.nested_diagrams"
+    title = "Nested Diagrams"
+
+    wdoc_layout {
+        vsplit v_nd1 {
+            split s_nd1 {
+                size = 100
+
+                heading hnd1 {
+                    level = 1
+                    content = "Nested Diagrams"
+                }
+                paragraph pnd1 {
+                    content = "Shapes can contain other shapes, forming nested flowcharts. Connections can reference shapes at any nesting level using dot-separated paths (e.g. " + bold("\"parent.child\"") + ")."
+                }
+            }
+        }
+
+        // --- Example: System architecture with nested subsystems ---
+        vsplit v_nd2 {
+            split s_nd2 {
+                size = 100
+
+                heading hnd2 {
+                    level = 2
+                    content = "System Architecture with Nested Subsystems"
+                }
+                paragraph pnd2 { content = "Each subsystem box contains its own internal flowchart. Connections span across nesting levels:" }
+
+                wdoc_diagram nested_arch {
+                    width = 800
+                    height = 550
+
+                    // === Frontend Subsystem ===
+                    shape_rect frontend {
+                        x = 20
+                        y = 20
+                        width = 350
+                        height = 220
+                        rx = 12
+                        fill = "var(--color-nav-bg)"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+
+                        shape_text fe_title {
+                            x = 10
+                            y = 5
+                            width = 330
+                            height = 25
+                            content = "Frontend"
+                            font_size = 16
+                        }
+
+                        shape_rect fe_router {
+                            x = 20
+                            y = 40
+                            width = 100
+                            height = 45
+                            rx = 4
+                            fill = "var(--color-code-bg)"
+                            stroke = "var(--color-code-border)"
+                            stroke_width = 1
+                            shape_text t { content = "Router" }
+                        }
+
+                        shape_rect fe_auth_ui {
+                            x = 20
+                            y = 110
+                            width = 100
+                            height = 45
+                            rx = 4
+                            fill = "var(--color-code-bg)"
+                            stroke = "var(--color-code-border)"
+                            stroke_width = 1
+                            shape_text t { content = "Auth UI" }
+                        }
+
+                        shape_rect fe_dashboard {
+                            x = 140
+                            y = 110
+                            width = 100
+                            height = 45
+                            rx = 4
+                            fill = "var(--color-code-bg)"
+                            stroke = "var(--color-code-border)"
+                            stroke_width = 1
+                            shape_text t { content = "Dashboard" }
+                        }
+
+                        shape_rect fe_api_client {
+                            x = 230
+                            y = 40
+                            width = 100
+                            height = 45
+                            rx = 4
+                            fill = "var(--color-code-bg)"
+                            stroke = "var(--color-link)"
+                            stroke_width = 2
+                            shape_text t { content = "API Client" }
+                        }
+
+                        // Internal frontend connections
+                        shape_connection fec1 {
+                            from = "fe_router"
+                            to = "fe_auth_ui"
+                            direction = "to"
+                            stroke = "var(--color-text)"
+                        }
+                        shape_connection fec2 {
+                            from = "fe_router"
+                            to = "fe_dashboard"
+                            direction = "to"
+                            stroke = "var(--color-text)"
+                        }
+                        shape_connection fec3 {
+                            from = "fe_dashboard"
+                            to = "fe_api_client"
+                            direction = "to"
+                            stroke = "var(--color-text)"
+                        }
+                        shape_connection fec4 {
+                            from = "fe_auth_ui"
+                            to = "fe_api_client"
+                            direction = "to"
+                            stroke = "var(--color-text)"
+                        }
+                    }
+
+                    // === Backend Subsystem ===
+                    shape_rect backend {
+                        x = 420
+                        y = 20
+                        width = 350
+                        height = 220
+                        rx = 12
+                        fill = "var(--color-nav-bg)"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+
+                        shape_text be_title {
+                            x = 10
+                            y = 5
+                            width = 330
+                            height = 25
+                            content = "Backend"
+                            font_size = 16
+                        }
+
+                        shape_rect be_gateway {
+                            x = 15
+                            y = 40
+                            width = 100
+                            height = 45
+                            rx = 4
+                            fill = "var(--color-code-bg)"
+                            stroke = "var(--color-link)"
+                            stroke_width = 2
+                            shape_text t { content = "Gateway" }
+                        }
+
+                        shape_rect be_auth_svc {
+                            x = 15
+                            y = 110
+                            width = 100
+                            height = 45
+                            rx = 4
+                            fill = "var(--color-code-bg)"
+                            stroke = "var(--color-code-border)"
+                            stroke_width = 1
+                            shape_text t { content = "Auth Svc" }
+                        }
+
+                        shape_rect be_user_svc {
+                            x = 130
+                            y = 110
+                            width = 100
+                            height = 45
+                            rx = 4
+                            fill = "var(--color-code-bg)"
+                            stroke = "var(--color-code-border)"
+                            stroke_width = 1
+                            shape_text t { content = "User Svc" }
+                        }
+
+                        shape_rect be_data_svc {
+                            x = 240
+                            y = 110
+                            width = 100
+                            height = 45
+                            rx = 4
+                            fill = "var(--color-code-bg)"
+                            stroke = "var(--color-code-border)"
+                            stroke_width = 1
+                            shape_text t { content = "Data Svc" }
+                        }
+
+                        shape_rect be_queue {
+                            x = 240
+                            y = 40
+                            width = 100
+                            height = 45
+                            rx = 4
+                            fill = "var(--color-code-bg)"
+                            stroke = "var(--color-code-border)"
+                            stroke_width = 1
+                            shape_text t { content = "Queue" }
+                        }
+
+                        // Internal backend connections
+                        shape_connection bec1 {
+                            from = "be_gateway"
+                            to = "be_auth_svc"
+                            direction = "to"
+                            stroke = "var(--color-text)"
+                        }
+                        shape_connection bec2 {
+                            from = "be_gateway"
+                            to = "be_user_svc"
+                            direction = "to"
+                            stroke = "var(--color-text)"
+                        }
+                        shape_connection bec3 {
+                            from = "be_gateway"
+                            to = "be_data_svc"
+                            direction = "to"
+                            stroke = "var(--color-text)"
+                        }
+                        shape_connection bec4 {
+                            from = "be_data_svc"
+                            to = "be_queue"
+                            direction = "to"
+                            stroke = "var(--color-text)"
+                        }
+                    }
+
+                    // === Data Layer ===
+                    shape_rect data_layer {
+                        x = 150
+                        y = 300
+                        width = 500
+                        height = 220
+                        rx = 12
+                        fill = "var(--color-nav-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 2
+
+                        shape_text dl_title {
+                            x = 10
+                            y = 5
+                            width = 480
+                            height = 25
+                            content = "Data Layer"
+                            font_size = 16
+                        }
+
+                        shape_rect dl_postgres {
+                            x = 20
+                            y = 50
+                            width = 110
+                            height = 50
+                            rx = 4
+                            fill = "var(--color-code-bg)"
+                            stroke = "var(--color-code-border)"
+                            stroke_width = 1
+                            shape_text t { content = "PostgreSQL" }
+                        }
+
+                        shape_rect dl_redis {
+                            x = 150
+                            y = 50
+                            width = 110
+                            height = 50
+                            rx = 4
+                            fill = "var(--color-code-bg)"
+                            stroke = "var(--color-code-border)"
+                            stroke_width = 1
+                            shape_text t { content = "Redis" }
+                        }
+
+                        shape_rect dl_s3 {
+                            x = 280
+                            y = 50
+                            width = 110
+                            height = 50
+                            rx = 4
+                            fill = "var(--color-code-bg)"
+                            stroke = "var(--color-code-border)"
+                            stroke_width = 1
+                            shape_text t { content = "S3 Storage" }
+                        }
+
+                        shape_rect dl_elastic {
+                            x = 80
+                            y = 130
+                            width = 110
+                            height = 50
+                            rx = 4
+                            fill = "var(--color-code-bg)"
+                            stroke = "var(--color-code-border)"
+                            stroke_width = 1
+                            shape_text t { content = "Elastic" }
+                        }
+
+                        shape_rect dl_kafka {
+                            x = 220
+                            y = 130
+                            width = 110
+                            height = 50
+                            rx = 4
+                            fill = "var(--color-code-bg)"
+                            stroke = "var(--color-code-border)"
+                            stroke_width = 1
+                            shape_text t { content = "Kafka" }
+                        }
+
+                        // Internal data connections
+                        shape_connection dlc1 {
+                            from = "dl_redis"
+                            to = "dl_postgres"
+                            direction = "both"
+                            stroke = "var(--color-text)"
+                            stroke_dasharray = "4,3"
+                            label = "cache"
+                        }
+                        shape_connection dlc2 {
+                            from = "dl_kafka"
+                            to = "dl_elastic"
+                            direction = "to"
+                            stroke = "var(--color-text)"
+                            label = "index"
+                        }
+                    }
+
+                    // === Cross-hierarchy connections ===
+
+                    // Frontend API Client → Backend Gateway
+                    shape_connection xc1 {
+                        from = "frontend.fe_api_client"
+                        to = "backend.be_gateway"
+                        direction = "to"
+                        stroke = "var(--color-link)"
+                        stroke_width = 3
+                        label = "REST API"
+                    }
+
+                    // Backend Auth → Data Postgres
+                    shape_connection xc2 {
+                        from = "backend.be_auth_svc"
+                        to = "data_layer.dl_postgres"
+                        direction = "both"
+                        stroke = "var(--color-text)"
+                        stroke_width = 2
+                        label = "auth data"
+                    }
+
+                    // Backend User → Data Postgres
+                    shape_connection xc3 {
+                        from = "backend.be_user_svc"
+                        to = "data_layer.dl_postgres"
+                        direction = "both"
+                        stroke = "var(--color-text)"
+                        stroke_width = 2
+                    }
+
+                    // Backend User → Data Redis (cache)
+                    shape_connection xc4 {
+                        from = "backend.be_user_svc"
+                        to = "data_layer.dl_redis"
+                        direction = "both"
+                        stroke = "var(--color-text)"
+                        stroke_dasharray = "5,3"
+                        label = "cache"
+                    }
+
+                    // Backend Data → Data S3
+                    shape_connection xc5 {
+                        from = "backend.be_data_svc"
+                        to = "data_layer.dl_s3"
+                        direction = "both"
+                        stroke = "var(--color-text)"
+                        stroke_width = 2
+                        label = "files"
+                    }
+
+                    // Backend Queue → Data Kafka
+                    shape_connection xc6 {
+                        from = "backend.be_queue"
+                        to = "data_layer.dl_kafka"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        stroke_width = 2
+                        label = "events"
+                    }
+
+                    // Backend Data → Data Elastic (search)
+                    shape_connection xc7 {
+                        from = "backend.be_data_svc"
+                        to = "data_layer.dl_elastic"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        stroke_dasharray = "5,3"
+                        label = "search"
+                    }
+                }
+            }
+        }
+
+        // --- Example: Nested deployment flow ---
+        vsplit v_nd3 {
+            split s_nd3 {
+                size = 100
+
+                heading hnd3 {
+                    level = 2
+                    content = "Nested Deployment Pipeline"
+                }
+                paragraph pnd3 { content = "Each environment contains its own service topology. Connections show the promotion path between environments:" }
+
+                wdoc_diagram deploy_flow {
+                    width = 800
+                    height = 400
+
+                    // === Dev Environment ===
+                    shape_rect env_dev {
+                        x = 20
+                        y = 30
+                        width = 230
+                        height = 340
+                        rx = 10
+                        fill = "var(--color-code-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 2
+
+                        shape_text dev_label {
+                            x = 10
+                            y = 5
+                            width = 210
+                            height = 25
+                            content = "Development"
+                            font_size = 15
+                        }
+
+                        shape_rect dev_api {
+                            x = 20
+                            y = 40
+                            width = 85
+                            height = 40
+                            rx = 4
+                            fill = "var(--color-nav-bg)"
+                            stroke = "var(--color-nav-border)"
+                            shape_text t { content = "API" }
+                        }
+                        shape_rect dev_web {
+                            x = 120
+                            y = 40
+                            width = 85
+                            height = 40
+                            rx = 4
+                            fill = "var(--color-nav-bg)"
+                            stroke = "var(--color-nav-border)"
+                            shape_text t { content = "Web" }
+                        }
+                        shape_rect dev_worker {
+                            x = 20
+                            y = 100
+                            width = 85
+                            height = 40
+                            rx = 4
+                            fill = "var(--color-nav-bg)"
+                            stroke = "var(--color-nav-border)"
+                            shape_text t { content = "Worker" }
+                        }
+                        shape_rect dev_db {
+                            x = 120
+                            y = 100
+                            width = 85
+                            height = 40
+                            rx = 4
+                            fill = "var(--color-nav-bg)"
+                            stroke = "var(--color-nav-border)"
+                            shape_text t { content = "DB" }
+                        }
+
+                        shape_connection dc1 {
+                            from = "dev_web"
+                            to = "dev_api"
+                            direction = "to"
+                            stroke = "var(--color-text)"
+                        }
+                        shape_connection dc2 {
+                            from = "dev_api"
+                            to = "dev_db"
+                            direction = "both"
+                            stroke = "var(--color-text)"
+                        }
+                        shape_connection dc3 {
+                            from = "dev_api"
+                            to = "dev_worker"
+                            direction = "to"
+                            stroke = "var(--color-text)"
+                        }
+                    }
+
+                    // === Staging Environment ===
+                    shape_rect env_staging {
+                        x = 290
+                        y = 30
+                        width = 230
+                        height = 340
+                        rx = 10
+                        fill = "var(--color-code-bg)"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+
+                        shape_text stg_label {
+                            x = 10
+                            y = 5
+                            width = 210
+                            height = 25
+                            content = "Staging"
+                            font_size = 15
+                        }
+
+                        shape_rect stg_api {
+                            x = 20
+                            y = 40
+                            width = 85
+                            height = 40
+                            rx = 4
+                            fill = "var(--color-nav-bg)"
+                            stroke = "var(--color-nav-border)"
+                            shape_text t { content = "API" }
+                        }
+                        shape_rect stg_web {
+                            x = 120
+                            y = 40
+                            width = 85
+                            height = 40
+                            rx = 4
+                            fill = "var(--color-nav-bg)"
+                            stroke = "var(--color-nav-border)"
+                            shape_text t { content = "Web" }
+                        }
+                        shape_rect stg_worker {
+                            x = 20
+                            y = 100
+                            width = 85
+                            height = 40
+                            rx = 4
+                            fill = "var(--color-nav-bg)"
+                            stroke = "var(--color-nav-border)"
+                            shape_text t { content = "Worker" }
+                        }
+                        shape_rect stg_db {
+                            x = 120
+                            y = 100
+                            width = 85
+                            height = 40
+                            rx = 4
+                            fill = "var(--color-nav-bg)"
+                            stroke = "var(--color-nav-border)"
+                            shape_text t { content = "DB" }
+                        }
+
+                        shape_connection sc1 {
+                            from = "stg_web"
+                            to = "stg_api"
+                            direction = "to"
+                            stroke = "var(--color-text)"
+                        }
+                        shape_connection sc2 {
+                            from = "stg_api"
+                            to = "stg_db"
+                            direction = "both"
+                            stroke = "var(--color-text)"
+                        }
+                        shape_connection sc3 {
+                            from = "stg_api"
+                            to = "stg_worker"
+                            direction = "to"
+                            stroke = "var(--color-text)"
+                        }
+                    }
+
+                    // === Production Environment ===
+                    shape_rect env_prod {
+                        x = 560
+                        y = 30
+                        width = 230
+                        height = 340
+                        rx = 10
+                        fill = "var(--color-code-bg)"
+                        stroke = "var(--color-link)"
+                        stroke_width = 3
+
+                        shape_text prod_label {
+                            x = 10
+                            y = 5
+                            width = 210
+                            height = 25
+                            content = "Production"
+                            font_size = 15
+                        }
+
+                        shape_rect prod_api {
+                            x = 20
+                            y = 40
+                            width = 85
+                            height = 40
+                            rx = 4
+                            fill = "var(--color-nav-bg)"
+                            stroke = "var(--color-nav-border)"
+                            shape_text t { content = "API x3" }
+                        }
+                        shape_rect prod_web {
+                            x = 120
+                            y = 40
+                            width = 85
+                            height = 40
+                            rx = 4
+                            fill = "var(--color-nav-bg)"
+                            stroke = "var(--color-nav-border)"
+                            shape_text t { content = "Web x3" }
+                        }
+                        shape_rect prod_worker {
+                            x = 20
+                            y = 100
+                            width = 85
+                            height = 40
+                            rx = 4
+                            fill = "var(--color-nav-bg)"
+                            stroke = "var(--color-nav-border)"
+                            shape_text t { content = "Worker x5" }
+                        }
+                        shape_rect prod_db {
+                            x = 120
+                            y = 100
+                            width = 85
+                            height = 40
+                            rx = 4
+                            fill = "var(--color-nav-bg)"
+                            stroke = "var(--color-nav-border)"
+                            shape_text t { content = "DB HA" }
+                        }
+
+                        shape_connection pc1 {
+                            from = "prod_web"
+                            to = "prod_api"
+                            direction = "to"
+                            stroke = "var(--color-text)"
+                        }
+                        shape_connection pc2 {
+                            from = "prod_api"
+                            to = "prod_db"
+                            direction = "both"
+                            stroke = "var(--color-text)"
+                        }
+                        shape_connection pc3 {
+                            from = "prod_api"
+                            to = "prod_worker"
+                            direction = "to"
+                            stroke = "var(--color-text)"
+                        }
+                    }
+
+                    // === Cross-environment promotion connections ===
+                    shape_connection promote_dev_stg {
+                        from = "env_dev"
+                        to = "env_staging"
+                        direction = "to"
+                        from_anchor = "right"
+                        to_anchor = "left"
+                        stroke = "var(--color-link)"
+                        stroke_width = 3
+                        label = "promote"
+                    }
+
+                    shape_connection promote_stg_prod {
+                        from = "env_staging"
+                        to = "env_prod"
+                        direction = "to"
+                        from_anchor = "right"
+                        to_anchor = "left"
+                        stroke = "var(--color-link)"
+                        stroke_width = 3
+                        label = "deploy"
+                    }
+
+                    // Cross-env data connections
+                    shape_connection data_sync_1 {
+                        from = "env_dev.dev_db"
+                        to = "env_staging.stg_db"
+                        direction = "to"
+                        curve = "bezier"
+                        from_anchor = "bottom"
+                        to_anchor = "bottom"
+                        stroke = "var(--color-text)"
+                        stroke_dasharray = "5,3"
+                        label = "schema sync"
+                    }
+
+                    shape_connection data_sync_2 {
+                        from = "env_staging.stg_db"
+                        to = "env_prod.prod_db"
+                        direction = "to"
+                        curve = "bezier"
+                        from_anchor = "bottom"
+                        to_anchor = "bottom"
+                        stroke = "var(--color-text)"
+                        stroke_dasharray = "5,3"
+                        label = "migrate"
+                    }
+                }
+            }
+        }
+    }
+}
+
 // ── Language Bindings page ──
 
 wdoc_page binding_examples {

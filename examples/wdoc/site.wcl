@@ -26,6 +26,7 @@ wdoc my_docs {
     wdoc_section diagrams "Diagrams" {
         wdoc_section diagram_examples "Diagram Examples" {}
         wdoc_section large_diagrams "Large Diagrams" {}
+        wdoc_section nested_diagrams "Nested Diagrams" {}
     }
 
     wdoc_section bindings "Language Bindings" {
