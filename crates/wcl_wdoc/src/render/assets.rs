@@ -180,6 +180,24 @@ h6.wdoc-heading { font-size: 0.9rem; }
     height: auto;
 }
 
+/* Callout blocks */
+.wdoc-callout {
+    border-left: 4px solid var(--color-nav-border);
+    border-radius: 6px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 1rem;
+    background: var(--color-code-bg);
+}
+.wdoc-callout-header {
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 1rem;
+}
+.wdoc-callout-body > *:last-child { margin-bottom: 0; }
+
 /* Clickable diagram shapes */
 .wdoc-diagram svg a { cursor: pointer; }
 .wdoc-diagram svg a:hover rect,

@@ -363,6 +363,60 @@ fn render_table_html(attrs: &IndexMap<String, Value>) -> String {
     html
 }
 
+/// Render a `callout` block — colored container with icon, header, and nested content.
+fn render_callout_html(block: &BlockRef, ctx: &ExtractCtx) -> String {
+    use std::fmt::Write;
+
+    let color = block
+        .attributes
+        .get("color")
+        .and_then(|v| v.as_string())
+        .unwrap_or("var(--color-nav-border)");
+    let header = block.attributes.get("header").and_then(|v| v.as_string());
+    let icon = block.attributes.get("icon").and_then(|v| v.as_string());
+
+    let mut html = String::new();
+    write!(
+        html,
+        "<div class=\"wdoc-callout\" style=\"border-left-color:{color};\">"
+    )
+    .unwrap();
+
+    // Header with optional icon
+    if header.is_some() || icon.is_some() {
+        write!(
+            html,
+            "<div class=\"wdoc-callout-header\" style=\"color:{color};\">"
+        )
+        .unwrap();
+        if let Some(ic) = icon {
+            write!(html, "<i class=\"bi bi-{ic}\"></i> ").unwrap();
+        }
+        if let Some(hdr) = header {
+            html.push_str(hdr);
+        }
+        html.push_str("</div>");
+    }
+
+    // Body: render child content blocks
+    html.push_str("<div class=\"wdoc-callout-body\">");
+    for child_block in all_child_blocks(block) {
+        match child_block.kind.as_str() {
+            // Skip known non-content attributes
+            "wdoc_layout" | "wdoc_section" | "wdoc_page" | "wdoc" | "wdoc_style" => {}
+            _kind => {
+                if let Ok(child_html) = ctx.render_block(child_block) {
+                    html.push_str(&child_html);
+                    html.push('\n');
+                }
+            }
+        }
+    }
+    html.push_str("</div></div>");
+
+    html
+}
+
 /// Render a `wdoc_diagram` block to inline SVG.
 /// Converts WCL Value tree → ShapeNode tree, then calls shapes::render_diagram_svg.
 fn render_diagram_html(args: &[Value]) -> String {
@@ -731,6 +785,16 @@ fn extract_layout_children(block: &BlockRef, ctx: &ExtractCtx) -> Vec<LayoutItem
             ))),
             // Known structural blocks are not content
             "wdoc_layout" | "wdoc_section" | "wdoc_page" | "wdoc" | "wdoc_style" | "split" => {}
+            // Callout — container with header + nested content blocks
+            "callout" => {
+                let html = render_callout_html(child, ctx);
+                items.push(LayoutItem::Content(ContentBlock {
+                    kind: "callout".to_string(),
+                    id: child.id.clone(),
+                    rendered_html: html,
+                    style: get_style_decorator(child),
+                }));
+            }
             // Everything else is a content block — try to render via template
             kind => {
                 let rendered = ctx.render_block(child);
