@@ -39,6 +39,14 @@ schema "wdoc_table" {
     caption: string @optional
 }
 
+@template("html", "wdoc_render_callout")
+@open
+schema "callout" {
+    icon: string @optional
+    header: string @optional
+    color: string @optional
+}
+
 // --- Diagram and shape schemas ---
 
 @template("html", "wdoc_render_diagram")
@@ -130,6 +138,7 @@ declare icon(name: string, size: string, color: string) -> string
 
 // --- Template rendering functions ---
 
+declare wdoc_render_callout(block: any) -> string
 declare wdoc_render_heading(block: any) -> string
 declare wdoc_render_paragraph(block: any) -> string
 declare wdoc_render_image(block: any) -> string

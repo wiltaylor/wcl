@@ -41,6 +41,13 @@ wdoc_page overview {
                     content = "WCL brings the " + bold("safety of typed schemas") + " and the " + bold("flexibility of expressions") + " to configuration files. No more YAML indentation bugs or JSON without comments."
                 }
 
+                callout welcome {
+                    icon = "check-circle"
+                    header = "Ready to go"
+                    color = "#28a745"
+                    paragraph w_p1 { content = "WCL is installed and ready. Explore the examples below to see what it can do." }
+                }
+
                 heading h3a {
                     level = 3
                     content = "Quick Example"
@@ -164,6 +171,13 @@ wdoc_page basics {
                     content = "WCL is a " + bold("block-structured") + " configuration language. Everything is built from " + italic("blocks") + ", " + italic("attributes") + ", and " + italic("expressions") + "."
                 }
 
+                callout tip {
+                    icon = "lightbulb"
+                    header = "Getting Started"
+                    color = "#0366d6"
+                    paragraph tip_p1 { content = "New to WCL? Start with blocks and schemas, then explore expressions and imports." }
+                }
+
                 heading h2a {
                     level = 2
                     content = "Blocks and Attributes"
@@ -198,6 +212,17 @@ wdoc_page basics {
                 code c3 {
                     language = "wcl"
                     content = "schema \"server\" {\n    host: string\n    port: i64 @validate(min = 1, max = 65535)\n    workers: i64 @validate(min = 1, max = 32)\n    tls: bool @optional @default(false)\n    region: string @optional @validate(one_of = [\"us-east\", \"eu-west\", \"ap-south\"])\n}\n\n// Decorators provide metadata\n@doc(\"Primary API server\")\n@deprecated(\"Use the new gateway block instead\")\nserver api {\n    host = \"0.0.0.0\"\n    port = 8080\n    workers = 8\n}"
+                }
+
+                callout schema_note {
+                    icon = "exclamation-triangle"
+                    header = "Schema Validation"
+                    color = "#e6a700"
+                    paragraph sn_p1 { content = "Schema errors are caught at " + bold("parse time") + ", not runtime. This means invalid configs fail fast before deployment." }
+                    code sn_c1 {
+                        language = "bash"
+                        content = "$ wcl validate config.wcl\nerror[E071]: type mismatch: expected i64, got string"
+                    }
                 }
 
                 heading h2d {
