@@ -3496,6 +3496,86 @@ wdoc_page wireframes {
                 }
             }
         }
+
+        // --- Clickable interactive diagram ---
+        vsplit v_wf6 {
+            split s_wf6 {
+                size = 100
+
+                heading hwf6 {
+                    level = 2
+                    content = "Interactive Clickable Diagram"
+                }
+                paragraph pwf6 { content = "Shapes with an " + bold("href") + " attribute become clickable links. Click the screens below to navigate:" }
+
+                wdoc_diagram clickable_screens {
+                    width = 750
+                    height = 380
+
+                    widget_phone screen_overview {
+                        x = 20
+                        y = 30
+                        width = 200
+                        height = 300
+                        title = "Overview"
+                        href = "overview.html"
+                    }
+
+                    widget_phone screen_install {
+                        x = 240
+                        y = 30
+                        width = 200
+                        height = 300
+                        title = "Install"
+                        href = "install.html"
+                    }
+
+                    widget_browser screen_basics {
+                        x = 470
+                        y = 30
+                        width = 260
+                        height = 160
+                        title = "Basics"
+                        url = "Language Basics"
+                        href = "basics.html"
+                    }
+
+                    widget_browser screen_advanced {
+                        x = 470
+                        y = 210
+                        width = 260
+                        height = 120
+                        title = "Advanced"
+                        url = "Advanced Features"
+                        href = "advanced.html"
+                    }
+
+                    shape_connection nav1 {
+                        from = "screen_overview"
+                        to = "screen_install"
+                        direction = "to"
+                        from_anchor = "right"
+                        to_anchor = "left"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        label = "next"
+                    }
+
+                    shape_connection nav2 {
+                        from = "screen_install"
+                        to = "screen_basics"
+                        direction = "to"
+                        from_anchor = "right"
+                        to_anchor = "left"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        label = "next"
+                    }
+                }
+
+                paragraph pwf6b { content = "Internal page links also work in text: " + link("Go to Overview", "overview.html") + " | " + link("Installation", "install.html#installation") + " | " + link("Schemas section", "basics.html#schemas-and-validation") }
+            }
+        }
     }
 }
 
