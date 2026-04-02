@@ -3050,632 +3050,397 @@ wdoc_page wireframes {
                     level = 1
                     content = "UI Wireframes"
                 }
-                paragraph pwf1 { content = "The shape system can be used to create UI wireframe mockups. Anchored positioning makes it easy to build responsive-style layouts." }
+                paragraph pwf1 { content = "Reusable UI widget shapes built from diagram primitives. Each widget is a schema with a template that returns shape primitives — no SVG hardcoding." }
             }
         }
 
-        // --- Desktop App Wireframe ---
+        // --- Widget showcase: phone, browser, buttons, inputs ---
         vsplit v_wf2 {
             split s_wf2 {
                 size = 100
 
                 heading hwf2 {
                     level = 2
-                    content = "Desktop Application"
+                    content = "Phone and Browser Frames"
                 }
+                paragraph pwf2 { content = "Use " + bold("widget_phone") + " and " + bold("widget_browser") + " for device mockups. They accept " + bold("title") + ", " + bold("url") + ", and color attributes:" }
 
-                wdoc_diagram desktop_app {
+                wdoc_diagram device_frames {
                     width = 750
-                    height = 480
+                    height = 340
 
-                    // Window chrome
-                    shape_rect window {
-                        left = 0
-                        right = 0
-                        top = 0
-                        bottom = 0
-                        rx = 8
-                        fill = "var(--color-bg)"
-                        stroke = "var(--color-nav-border)"
-                        stroke_width = 2
+                    widget_phone phone1 {
+                        x = 20
+                        y = 10
+                        width = 220
+                        height = 320
+                        title = "My App"
+                    }
 
-                        // Title bar
-                        shape_rect titlebar {
-                            left = 0
-                            right = 0
-                            top = 0
-                            height = 35
-                            fill = "var(--color-nav-bg)"
-                            stroke = "var(--color-nav-border)"
-                            stroke_width = 1
+                    widget_phone phone2 {
+                        x = 260
+                        y = 10
+                        width = 220
+                        height = 320
+                        title = "Settings"
+                        header_fill = "var(--color-nav-bg)"
+                    }
 
-                            // Window controls (dots)
-                            shape_circle btn_close {
-                                x = 12
-                                y = 10
-                                r = 6
-                                fill = "#ff5f56"
-                            }
-                            shape_circle btn_min {
-                                x = 32
-                                y = 10
-                                r = 6
-                                fill = "#ffbd2e"
-                            }
-                            shape_circle btn_max {
-                                x = 52
-                                y = 10
-                                r = 6
-                                fill = "#27c93f"
-                            }
+                    widget_browser browser1 {
+                        x = 500
+                        y = 10
+                        width = 240
+                        height = 180
+                        title = "Dashboard"
+                        url = "https://app.example.com"
+                    }
 
-                            shape_text app_title {
-                                x = 280
-                                y = 0
-                                width = 200
-                                height = 35
-                                content = "My Application"
-                                font_size = 13
-                            }
-                        }
-
-                        // Menu bar
-                        shape_rect menubar {
-                            left = 0
-                            right = 0
-                            top = 35
-                            height = 30
-                            fill = "var(--color-nav-bg)"
-                            stroke = "var(--color-nav-border)"
-                            stroke_width = 1
-
-                            shape_text menu_file {
-                                x = 10
-                                y = 0
-                                width = 40
-                                height = 30
-                                content = "File"
-                                font_size = 12
-                            }
-                            shape_text menu_edit {
-                                x = 60
-                                y = 0
-                                width = 40
-                                height = 30
-                                content = "Edit"
-                                font_size = 12
-                            }
-                            shape_text menu_view {
-                                x = 110
-                                y = 0
-                                width = 40
-                                height = 30
-                                content = "View"
-                                font_size = 12
-                            }
-                            shape_text menu_help {
-                                x = 160
-                                y = 0
-                                width = 40
-                                height = 30
-                                content = "Help"
-                                font_size = 12
-                            }
-                        }
-
-                        // Sidebar
-                        shape_rect sidebar {
-                            left = 0
-                            top = 65
-                            bottom = 30
-                            width = 180
-                            fill = "var(--color-nav-bg)"
-                            stroke = "var(--color-nav-border)"
-                            stroke_width = 1
-
-                            shape_text nav1 {
-                                x = 5
-                                y = 10
-                                width = 170
-                                height = 25
-                                content = "Dashboard"
-                                font_size = 12
-                            }
-                            shape_text nav2 {
-                                x = 5
-                                y = 38
-                                width = 170
-                                height = 25
-                                content = "Projects"
-                                font_size = 12
-                            }
-                            shape_text nav3 {
-                                x = 5
-                                y = 66
-                                width = 170
-                                height = 25
-                                content = "Settings"
-                                font_size = 12
-                            }
-                            shape_text nav4 {
-                                x = 5
-                                y = 94
-                                width = 170
-                                height = 25
-                                content = "Users"
-                                font_size = 12
-                            }
-
-                            // Active indicator
-                            shape_rect active_ind {
-                                x = 0
-                                y = 8
-                                width = 3
-                                height = 25
-                                fill = "var(--color-link)"
-                            }
-                        }
-
-                        // Main content area
-                        shape_rect main_content {
-                            left = 185
-                            top = 65
-                            right = 5
-                            bottom = 30
-                            fill = "var(--color-bg)"
-
-                            // Page header
-                            shape_text page_title {
-                                x = 15
-                                y = 10
-                                width = 200
-                                height = 25
-                                content = "Dashboard"
-                                font_size = 18
-                                anchor = "start"
-                            }
-
-                            // Stat cards row
-                            shape_rect card1 {
-                                x = 15
-                                y = 45
-                                width = 130
-                                height = 70
-                                rx = 6
-                                fill = "var(--color-code-bg)"
-                                stroke = "var(--color-code-border)"
-                                stroke_width = 1
-                                shape_text ct1 {
-                                    x = 10
-                                    y = 10
-                                    width = 110
-                                    height = 20
-                                    content = "Users"
-                                    font_size = 11
-                                }
-                                shape_text cv1 {
-                                    x = 10
-                                    y = 35
-                                    width = 110
-                                    height = 25
-                                    content = "1,234"
-                                    font_size = 22
-                                }
-                            }
-                            shape_rect card2 {
-                                x = 155
-                                y = 45
-                                width = 130
-                                height = 70
-                                rx = 6
-                                fill = "var(--color-code-bg)"
-                                stroke = "var(--color-code-border)"
-                                stroke_width = 1
-                                shape_text ct2 {
-                                    x = 10
-                                    y = 10
-                                    width = 110
-                                    height = 20
-                                    content = "Revenue"
-                                    font_size = 11
-                                }
-                                shape_text cv2 {
-                                    x = 10
-                                    y = 35
-                                    width = 110
-                                    height = 25
-                                    content = "$45.2K"
-                                    font_size = 22
-                                }
-                            }
-                            shape_rect card3 {
-                                x = 295
-                                y = 45
-                                width = 130
-                                height = 70
-                                rx = 6
-                                fill = "var(--color-code-bg)"
-                                stroke = "var(--color-code-border)"
-                                stroke_width = 1
-                                shape_text ct3 {
-                                    x = 10
-                                    y = 10
-                                    width = 110
-                                    height = 20
-                                    content = "Projects"
-                                    font_size = 11
-                                }
-                                shape_text cv3 {
-                                    x = 10
-                                    y = 35
-                                    width = 110
-                                    height = 25
-                                    content = "42"
-                                    font_size = 22
-                                }
-                            }
-
-                            // Chart placeholder
-                            shape_rect chart_area {
-                                x = 15
-                                y = 130
-                                width = 410
-                                height = 180
-                                rx = 6
-                                fill = "var(--color-code-bg)"
-                                stroke = "var(--color-code-border)"
-                                stroke_width = 1
-
-                                shape_text chart_title {
-                                    x = 10
-                                    y = 5
-                                    width = 200
-                                    height = 20
-                                    content = "Activity (Last 30 days)"
-                                    font_size = 11
-                                    anchor = "start"
-                                }
-
-                                // Fake bar chart
-                                shape_rect bar1 { x = 30
-                                    y = 120
-                                    width = 20
-                                    height = 45
-                                    fill = "var(--color-link)"
-                                    opacity = 0.7 }
-                                shape_rect bar2 { x = 60
-                                    y = 90
-                                    width = 20
-                                    height = 75
-                                    fill = "var(--color-link)"
-                                    opacity = 0.7 }
-                                shape_rect bar3 { x = 90
-                                    y = 70
-                                    width = 20
-                                    height = 95
-                                    fill = "var(--color-link)"
-                                    opacity = 0.7 }
-                                shape_rect bar4 { x = 120
-                                    y = 100
-                                    width = 20
-                                    height = 65
-                                    fill = "var(--color-link)"
-                                    opacity = 0.7 }
-                                shape_rect bar5 { x = 150
-                                    y = 60
-                                    width = 20
-                                    height = 105
-                                    fill = "var(--color-link)"
-                                    opacity = 0.8 }
-                                shape_rect bar6 { x = 180
-                                    y = 40
-                                    width = 20
-                                    height = 125
-                                    fill = "var(--color-link)"
-                                    opacity = 0.9 }
-                                shape_rect bar7 { x = 210
-                                    y = 55
-                                    width = 20
-                                    height = 110
-                                    fill = "var(--color-link)" }
-                            }
-                        }
-
-                        // Status bar
-                        shape_rect statusbar {
-                            left = 0
-                            right = 0
-                            bottom = 0
-                            height = 25
-                            fill = "var(--color-nav-bg)"
-                            stroke = "var(--color-nav-border)"
-                            stroke_width = 1
-
-                            shape_text status_text {
-                                x = 10
-                                y = 0
-                                width = 200
-                                height = 25
-                                content = "Ready"
-                                font_size = 11
-                                anchor = "start"
-                            }
-                        }
+                    widget_browser browser2 {
+                        x = 500
+                        y = 200
+                        width = 240
+                        height = 130
+                        title = "Docs"
+                        url = "https://docs.example.com"
                     }
                 }
             }
         }
 
-        // --- Mobile App Wireframe ---
+        // --- Buttons and inputs ---
         vsplit v_wf3 {
             split s_wf3 {
                 size = 100
 
                 heading hwf3 {
                     level = 2
-                    content = "Mobile App"
+                    content = "Buttons, Inputs, and Controls"
                 }
 
-                wdoc_diagram mobile_app {
-                    width = 300
-                    height = 560
+                wdoc_diagram controls {
+                    width = 700
+                    height = 220
 
-                    // Phone frame
-                    shape_rect phone {
-                        left = 0
-                        right = 0
-                        top = 0
-                        bottom = 0
-                        rx = 24
-                        fill = "var(--color-bg)"
-                        stroke = "var(--color-nav-border)"
-                        stroke_width = 3
+                    // Button variants
+                    widget_button btn1 {
+                        x = 20
+                        y = 20
+                        width = 120
+                        height = 38
+                        label = "Primary"
+                        variant = "primary"
+                    }
+                    widget_button btn2 {
+                        x = 150
+                        y = 20
+                        width = 120
+                        height = 38
+                        label = "Secondary"
+                        variant = "secondary"
+                    }
+                    widget_button btn3 {
+                        x = 280
+                        y = 20
+                        width = 120
+                        height = 38
+                        label = "Outline"
+                        variant = "outline"
+                    }
 
-                        // Status bar
-                        shape_rect mob_status {
-                            left = 20
-                            right = 20
-                            top = 10
-                            height = 20
-                            fill = "var(--color-bg)"
-                            shape_text time_txt {
-                                x = 0
-                                y = 0
-                                width = 60
-                                height = 20
-                                content = "9:41"
-                                font_size = 12
-                                anchor = "start"
-                            }
-                        }
+                    // Input fields
+                    widget_input inp1 {
+                        x = 20
+                        y = 80
+                        width = 200
+                        height = 55
+                        label = "Email"
+                        placeholder = "you@example.com"
+                    }
+                    widget_input inp2 {
+                        x = 240
+                        y = 80
+                        width = 200
+                        height = 55
+                        label = "Password"
+                        placeholder = "********"
+                    }
 
-                        // Header
-                        shape_rect mob_header {
-                            left = 0
-                            right = 0
-                            top = 35
-                            height = 50
-                            fill = "var(--color-link)"
-                            shape_text header_txt {
-                                content = "Feed"
-                                fill = "#fff"
-                                font_size = 18
-                            }
-                        }
+                    // Toggles
+                    widget_toggle tog1 {
+                        x = 20
+                        y = 160
+                        width = 44
+                        height = 24
+                        on = "true"
+                    }
+                    widget_toggle tog2 {
+                        x = 80
+                        y = 160
+                        width = 44
+                        height = 24
+                        on = "false"
+                    }
 
-                        // Content cards
-                        shape_rect mob_card1 {
-                            left = 12
-                            right = 12
-                            top = 95
-                            height = 110
-                            rx = 8
-                            fill = "var(--color-code-bg)"
-                            stroke = "var(--color-code-border)"
-                            stroke_width = 1
+                    // Badges
+                    widget_badge badge1 {
+                        x = 150
+                        y = 160
+                        width = 70
+                        height = 24
+                        label = "Active"
+                        color = "var(--color-link)"
+                    }
+                    widget_badge badge2 {
+                        x = 230
+                        y = 160
+                        width = 80
+                        height = 24
+                        label = "Warning"
+                        color = "#e6a700"
+                    }
+                    widget_badge badge3 {
+                        x = 320
+                        y = 160
+                        width = 60
+                        height = 24
+                        label = "Error"
+                        color = "#d32f2f"
+                    }
 
-                            shape_circle avatar1 {
-                                x = 10
-                                y = 10
-                                r = 15
-                                fill = "var(--color-nav-border)"
-                            }
-                            shape_text username1 {
-                                x = 45
-                                y = 8
-                                width = 150
-                                height = 18
-                                content = "alice_dev"
-                                font_size = 13
-                                anchor = "start"
-                            }
-                            shape_text post1 {
-                                x = 45
-                                y = 28
-                                width = 200
-                                height = 15
-                                content = "Just shipped v2.0!"
-                                font_size = 11
-                                anchor = "start"
-                            }
-                            shape_rect img_placeholder1 {
-                                x = 10
-                                y = 55
-                                width = 256
-                                height = 45
-                                rx = 4
-                                fill = "var(--color-nav-bg)"
-                                stroke = "var(--color-nav-border)"
-                                stroke_width = 1
-                            }
-                        }
+                    // Avatars
+                    widget_avatar av1 {
+                        x = 460
+                        y = 20
+                        width = 50
+                        height = 50
+                        initials = "AT"
+                        color = "var(--color-link)"
+                    }
+                    widget_avatar av2 {
+                        x = 520
+                        y = 20
+                        width = 50
+                        height = 50
+                        initials = "BK"
+                        color = "#8b5cf6"
+                    }
+                    widget_avatar av3 {
+                        x = 580
+                        y = 20
+                        width = 50
+                        height = 50
+                        initials = "CD"
+                        color = "#059669"
+                    }
+                    widget_avatar av4 {
+                        x = 640
+                        y = 20
+                        width = 50
+                        height = 50
+                        initials = "EF"
+                        color = "#dc2626"
+                    }
 
-                        shape_rect mob_card2 {
-                            left = 12
-                            right = 12
-                            top = 215
-                            height = 110
-                            rx = 8
-                            fill = "var(--color-code-bg)"
-                            stroke = "var(--color-code-border)"
-                            stroke_width = 1
-
-                            shape_circle avatar2 {
-                                x = 10
-                                y = 10
-                                r = 15
-                                fill = "var(--color-nav-border)"
-                            }
-                            shape_text username2 {
-                                x = 45
-                                y = 8
-                                width = 150
-                                height = 18
-                                content = "bob_ops"
-                                font_size = 13
-                                anchor = "start"
-                            }
-                            shape_text post2 {
-                                x = 45
-                                y = 28
-                                width = 200
-                                height = 15
-                                content = "Deploy went smooth"
-                                font_size = 11
-                                anchor = "start"
-                            }
-                            shape_rect img_placeholder2 {
-                                x = 10
-                                y = 55
-                                width = 256
-                                height = 45
-                                rx = 4
-                                fill = "var(--color-nav-bg)"
-                                stroke = "var(--color-nav-border)"
-                                stroke_width = 1
-                            }
-                        }
-
-                        shape_rect mob_card3 {
-                            left = 12
-                            right = 12
-                            top = 335
-                            height = 80
-                            rx = 8
-                            fill = "var(--color-code-bg)"
-                            stroke = "var(--color-code-border)"
-                            stroke_width = 1
-
-                            shape_circle avatar3 {
-                                x = 10
-                                y = 10
-                                r = 15
-                                fill = "var(--color-nav-border)"
-                            }
-                            shape_text username3 {
-                                x = 45
-                                y = 8
-                                width = 150
-                                height = 18
-                                content = "carol_eng"
-                                font_size = 13
-                                anchor = "start"
-                            }
-                            shape_text post3 {
-                                x = 45
-                                y = 28
-                                width = 200
-                                height = 15
-                                content = "PR review anyone?"
-                                font_size = 11
-                                anchor = "start"
-                            }
-                        }
-
-                        // Bottom nav bar
-                        shape_rect mob_navbar {
-                            left = 0
-                            right = 0
-                            bottom = 10
-                            height = 50
-                            fill = "var(--color-nav-bg)"
-                            stroke = "var(--color-nav-border)"
-                            stroke_width = 1
-
-                            shape_text nav_home {
-                                x = 15
-                                y = 5
-                                width = 55
-                                height = 40
-                                content = "Home"
-                                font_size = 11
-                            }
-                            shape_text nav_search {
-                                x = 80
-                                y = 5
-                                width = 55
-                                height = 40
-                                content = "Search"
-                                font_size = 11
-                            }
-                            shape_text nav_add {
-                                x = 145
-                                y = 5
-                                width = 55
-                                height = 40
-                                content = "+"
-                                font_size = 20
-                            }
-                            shape_text nav_notif {
-                                x = 200
-                                y = 5
-                                width = 55
-                                height = 40
-                                content = "Alerts"
-                                font_size = 11
-                            }
-                        }
+                    // Navbar
+                    widget_navbar nav1 {
+                        x = 460
+                        y = 90
+                        width = 230
+                        height = 40
+                        items = "Home,Projects,Settings"
+                        active_index = 0
+                    }
+                    widget_navbar nav2 {
+                        x = 460
+                        y = 140
+                        width = 230
+                        height = 40
+                        items = "Feed,Search,Profile,More"
+                        active_index = 2
                     }
                 }
             }
         }
 
-        // --- Login Form Wireframe ---
+        // --- Cards with content ---
         vsplit v_wf4 {
             split s_wf4 {
                 size = 100
 
                 heading hwf4 {
                     level = 2
-                    content = "Login Form"
+                    content = "Cards and Composition"
+                }
+                paragraph pwf4 { content = "Widgets can contain additional shapes. The widget template provides the structure, user shapes are added on top:" }
+
+                wdoc_diagram card_demo {
+                    width = 700
+                    height = 250
+
+                    widget_card card1 {
+                        x = 20
+                        y = 10
+                        width = 200
+                        height = 220
+                        title = "User Profile"
+
+                        // Custom content inside the card
+                        widget_avatar av {
+                            x = 70
+                            y = 45
+                            width = 60
+                            height = 60
+                            initials = "JD"
+                            color = "var(--color-link)"
+                        }
+                        shape_text name {
+                            x = 20
+                            y = 120
+                            width = 160
+                            height = 20
+                            content = "Jane Doe"
+                            font_size = 14
+                        }
+                        shape_text role {
+                            x = 20
+                            y = 140
+                            width = 160
+                            height = 18
+                            content = "Engineering Lead"
+                            font_size = 11
+                            opacity = 0.6
+                        }
+                        widget_badge status {
+                            x = 55
+                            y = 165
+                            width = 90
+                            height = 22
+                            label = "Available"
+                            color = "#059669"
+                        }
+                    }
+
+                    widget_card card2 {
+                        x = 240
+                        y = 10
+                        width = 200
+                        height = 220
+                        title = "Statistics"
+
+                        shape_text stat1_label {
+                            x = 15
+                            y = 45
+                            width = 170
+                            height = 16
+                            content = "Active Users"
+                            font_size = 11
+                            anchor = "start"
+                            opacity = 0.6
+                        }
+                        shape_text stat1_val {
+                            x = 15
+                            y = 65
+                            width = 170
+                            height = 25
+                            content = "12,847"
+                            font_size = 24
+                            anchor = "start"
+                        }
+                        shape_text stat2_label {
+                            x = 15
+                            y = 105
+                            width = 170
+                            height = 16
+                            content = "Revenue"
+                            font_size = 11
+                            anchor = "start"
+                            opacity = 0.6
+                        }
+                        shape_text stat2_val {
+                            x = 15
+                            y = 125
+                            width = 170
+                            height = 25
+                            content = "$284K"
+                            font_size = 24
+                            anchor = "start"
+                        }
+                        widget_badge trend {
+                            x = 55
+                            y = 170
+                            width = 90
+                            height = 22
+                            label = "+12.5%"
+                            color = "#059669"
+                        }
+                    }
+
+                    widget_card card3 {
+                        x = 460
+                        y = 10
+                        width = 220
+                        height = 220
+                        title = "Quick Actions"
+
+                        widget_button act1 {
+                            x = 15
+                            y = 45
+                            width = 190
+                            height = 34
+                            label = "New Project"
+                            variant = "primary"
+                        }
+                        widget_button act2 {
+                            x = 15
+                            y = 90
+                            width = 190
+                            height = 34
+                            label = "Invite Member"
+                            variant = "secondary"
+                        }
+                        widget_button act3 {
+                            x = 15
+                            y = 135
+                            width = 190
+                            height = 34
+                            label = "View Reports"
+                            variant = "outline"
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- Login form using widgets ---
+        vsplit v_wf5 {
+            split s_wf5 {
+                size = 100
+
+                heading hwf5 {
+                    level = 2
+                    content = "Login Form (composed from widgets)"
                 }
 
-                wdoc_diagram login_form {
+                wdoc_diagram login {
                     width = 400
-                    height = 420
+                    height = 380
 
-                    shape_rect form_card {
-                        left = 20
-                        right = 20
-                        top = 20
-                        bottom = 20
-                        rx = 12
-                        fill = "var(--color-bg)"
-                        stroke = "var(--color-nav-border)"
-                        stroke_width = 2
+                    widget_card form {
+                        x = 20
+                        y = 10
+                        width = 360
+                        height = 360
 
-                        // Logo placeholder
-                        shape_circle logo {
-                            x = 140
+                        widget_avatar logo {
+                            x = 145
                             y = 15
-                            r = 25
-                            fill = "var(--color-link)"
-                            shape_text lt { content = "W"
-                                fill = "#fff"
-                                font_size = 22 }
+                            width = 50
+                            height = 50
+                            initials = "W"
+                            color = "var(--color-link)"
                         }
 
-                        shape_text form_title {
+                        shape_text title {
                             x = 30
                             y = 75
                             width = 300
@@ -3683,132 +3448,49 @@ wdoc_page wireframes {
                             content = "Welcome back"
                             font_size = 20
                         }
-                        shape_text form_sub {
+
+                        widget_input email {
                             x = 30
-                            y = 100
+                            y = 115
                             width = 300
-                            height = 20
-                            content = "Sign in to your account"
-                            font_size = 12
+                            height = 55
+                            label = "Email"
+                            placeholder = "you@example.com"
                         }
 
-                        // Email field
-                        shape_text email_label {
+                        widget_input password {
                             x = 30
-                            y = 135
-                            width = 100
-                            height = 18
-                            content = "Email"
-                            font_size = 12
-                            anchor = "start"
-                        }
-                        shape_rect email_input {
-                            x = 30
-                            y = 155
+                            y = 185
                             width = 300
-                            height = 38
-                            rx = 6
-                            fill = "var(--color-code-bg)"
-                            stroke = "var(--color-code-border)"
-                            stroke_width = 1
-                            shape_text ph1 {
-                                x = 8
-                                y = 0
-                                width = 280
-                                height = 38
-                                content = "you@example.com"
-                                font_size = 13
-                                anchor = "start"
-                                opacity = 0.5
-                            }
+                            height = 55
+                            label = "Password"
+                            placeholder = "********"
                         }
 
-                        // Password field
-                        shape_text pw_label {
+                        widget_button signin {
                             x = 30
-                            y = 205
-                            width = 100
-                            height = 18
-                            content = "Password"
-                            font_size = 12
-                            anchor = "start"
-                        }
-                        shape_rect pw_input {
-                            x = 30
-                            y = 225
+                            y = 260
                             width = 300
-                            height = 38
-                            rx = 6
-                            fill = "var(--color-code-bg)"
-                            stroke = "var(--color-code-border)"
-                            stroke_width = 1
-                            shape_text ph2 {
-                                x = 8
-                                y = 0
-                                width = 280
-                                height = 38
-                                content = "********"
-                                font_size = 13
-                                anchor = "start"
-                                opacity = 0.5
-                            }
+                            height = 40
+                            label = "Sign In"
+                            variant = "primary"
                         }
 
-                        // Sign in button
-                        shape_rect signin_btn {
+                        widget_button github {
                             x = 30
-                            y = 285
-                            width = 300
-                            height = 42
-                            rx = 8
-                            fill = "var(--color-link)"
-                            shape_text btn_txt { content = "Sign In"
-                                fill = "#fff"
-                                font_size = 15 }
-                        }
-
-                        // Divider
-                        shape_line divider {
-                            x1 = 30
-                            y1 = 345
-                            x2 = 330
-                            y2 = 345
-                            stroke = "var(--color-nav-border)"
-                            stroke_width = 1
-                        }
-                        shape_text or_txt {
-                            x = 100
-                            y = 333
-                            width = 160
-                            height = 20
-                            content = "or continue with"
-                            font_size = 11
-                        }
-
-                        // Social buttons
-                        shape_rect social_gh {
-                            x = 55
-                            y = 358
-                            width = 120
+                            y = 315
+                            width = 142
                             height = 35
-                            rx = 6
-                            fill = "var(--color-nav-bg)"
-                            stroke = "var(--color-nav-border)"
-                            stroke_width = 1
-                            shape_text sgt { content = "GitHub"
-                                font_size = 12 }
+                            label = "GitHub"
+                            variant = "outline"
                         }
-                        shape_rect social_gl {
-                            x = 185
-                            y = 358
-                            width = 120
+                        widget_button google {
+                            x = 188
+                            y = 315
+                            width = 142
                             height = 35
-                            rx = 6
-                            fill = "var(--color-nav-bg)"
-                            stroke = "var(--color-nav-border)"
-                            stroke_width = 1
-                            shape_text slt { content = "Google"
-                                font_size = 12 }
+                            label = "Google"
+                            variant = "outline"
                         }
                     }
                 }
@@ -3816,6 +3498,7 @@ wdoc_page wireframes {
         }
     }
 }
+
 
 // ── Language Bindings page ──
 

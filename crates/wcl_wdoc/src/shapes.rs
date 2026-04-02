@@ -254,6 +254,8 @@ pub fn parse_shape_kind(kind: &str) -> Option<ShapeKind> {
         "shape_line" => Some(ShapeKind::Line),
         "shape_path" => Some(ShapeKind::Path),
         "shape_text" => Some(ShapeKind::Text),
+        // Widgets are treated as rects for layout (they have bounds and children)
+        k if crate::widgets::is_widget(k) => Some(ShapeKind::Rect),
         _ => None,
     }
 }
