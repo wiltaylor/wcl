@@ -832,6 +832,378 @@ wdoc_page diagram_examples {
                 }
             }
         }
+
+        // --- Example 5: Layered (Sugiyama) layout ---
+        vsplit v_diag6 {
+            split s_diag6 {
+                size = 100
+
+                heading hd7 {
+                    level = 2
+                    content = "Layered Layout (Flowchart)"
+                }
+                paragraph pd7 { content = "Use " + bold("align = \"layered\"") + " for directed graphs. Nodes are arranged in layers based on edge direction:" }
+
+                wdoc_diagram layered_demo {
+                    width = 600
+                    height = 350
+                    align = "layered"
+                    gap = 40
+
+                    shape_rect input {
+                        width = 120
+                        height = 50
+                        rx = 6
+                        fill = "var(--color-code-bg)"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        shape_text t { content = "Input" }
+                    }
+
+                    shape_rect validate {
+                        width = 120
+                        height = 50
+                        rx = 6
+                        fill = "var(--color-code-bg)"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        shape_text t { content = "Validate" }
+                    }
+
+                    shape_rect xform {
+                        width = 120
+                        height = 50
+                        rx = 6
+                        fill = "var(--color-code-bg)"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        shape_text t { content = "Transform" }
+                    }
+
+                    shape_rect cache {
+                        width = 120
+                        height = 50
+                        rx = 6
+                        fill = "var(--color-nav-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 2
+                        shape_text t { content = "Cache" }
+                    }
+
+                    shape_rect output {
+                        width = 120
+                        height = 50
+                        rx = 6
+                        fill = "var(--color-code-bg)"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        shape_text t { content = "Output" }
+                    }
+
+                    shape_connection c1 {
+                        from = "input"
+                        to = "validate"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        stroke_width = 2
+                    }
+                    shape_connection c2 {
+                        from = "validate"
+                        to = "xform"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        stroke_width = 2
+                    }
+                    shape_connection c3 {
+                        from = "xform"
+                        to = "cache"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        stroke_width = 2
+                    }
+                    shape_connection c4 {
+                        from = "xform"
+                        to = "output"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        stroke_width = 2
+                    }
+                }
+            }
+        }
+
+        // --- Example 6: Force-directed layout ---
+        vsplit v_diag7 {
+            split s_diag7 {
+                size = 100
+
+                heading hd8 {
+                    level = 2
+                    content = "Force-Directed Layout (Network)"
+                }
+                paragraph pd8 { content = "Use " + bold("align = \"force\"") + " for network diagrams. Connected nodes attract, all nodes repel:" }
+
+                wdoc_diagram network {
+                    width = 500
+                    height = 350
+                    align = "force"
+
+                    shape_circle web {
+                        r = 28
+                        fill = "var(--color-link)"
+                        shape_text t { content = "Web"
+                            fill = "#fff" }
+                    }
+                    shape_circle api {
+                        r = 28
+                        fill = "var(--color-link)"
+                        shape_text t { content = "API"
+                            fill = "#fff" }
+                    }
+                    shape_circle auth {
+                        r = 28
+                        fill = "var(--color-nav-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 2
+                        shape_text t { content = "Auth" }
+                    }
+                    shape_circle db {
+                        r = 28
+                        fill = "var(--color-nav-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 2
+                        shape_text t { content = "DB" }
+                    }
+                    shape_circle cache_node {
+                        r = 28
+                        fill = "var(--color-nav-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 2
+                        shape_text t { content = "Cache" }
+                    }
+                    shape_circle queue {
+                        r = 28
+                        fill = "var(--color-code-bg)"
+                        stroke = "var(--color-code-border)"
+                        stroke_width = 2
+                        shape_text t { content = "Queue" }
+                    }
+
+                    shape_connection e1 {
+                        from = "web"
+                        to = "api"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                    }
+                    shape_connection e2 {
+                        from = "api"
+                        to = "auth"
+                        direction = "both"
+                        stroke = "var(--color-text)"
+                    }
+                    shape_connection e3 {
+                        from = "api"
+                        to = "db"
+                        direction = "both"
+                        stroke = "var(--color-text)"
+                    }
+                    shape_connection e4 {
+                        from = "api"
+                        to = "cache_node"
+                        direction = "both"
+                        stroke = "var(--color-text)"
+                    }
+                    shape_connection e5 {
+                        from = "api"
+                        to = "queue"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                    }
+                    shape_connection e6 {
+                        from = "queue"
+                        to = "db"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                    }
+                }
+            }
+        }
+
+        // --- Example 7: Radial layout ---
+        vsplit v_diag8 {
+            split s_diag8 {
+                size = 100
+
+                heading hd9 {
+                    level = 2
+                    content = "Radial Layout (Hierarchy)"
+                }
+                paragraph pd9 { content = "Use " + bold("align = \"radial\"") + " with a " + bold("root") + " node for tree hierarchies:" }
+
+                wdoc_diagram org {
+                    width = 500
+                    height = 400
+                    align = "radial"
+                    root = "ceo"
+
+                    shape_circle ceo {
+                        r = 30
+                        fill = "var(--color-link)"
+                        shape_text t { content = "CEO"
+                            fill = "#fff" }
+                    }
+                    shape_circle cto {
+                        r = 24
+                        fill = "var(--color-code-bg)"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        shape_text t { content = "CTO" }
+                    }
+                    shape_circle cfo {
+                        r = 24
+                        fill = "var(--color-code-bg)"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        shape_text t { content = "CFO" }
+                    }
+                    shape_circle vpe {
+                        r = 24
+                        fill = "var(--color-code-bg)"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        shape_text t { content = "VP Eng" }
+                    }
+                    shape_circle eng1 {
+                        r = 18
+                        fill = "var(--color-nav-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 1
+                        shape_text t { content = "Eng1" }
+                    }
+                    shape_circle eng2 {
+                        r = 18
+                        fill = "var(--color-nav-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 1
+                        shape_text t { content = "Eng2" }
+                    }
+                    shape_circle fin1 {
+                        r = 18
+                        fill = "var(--color-nav-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 1
+                        shape_text t { content = "Fin" }
+                    }
+
+                    shape_connection r1 {
+                        from = "ceo"
+                        to = "cto"
+                        stroke = "var(--color-text)"
+                    }
+                    shape_connection r2 {
+                        from = "ceo"
+                        to = "cfo"
+                        stroke = "var(--color-text)"
+                    }
+                    shape_connection r3 {
+                        from = "ceo"
+                        to = "vpe"
+                        stroke = "var(--color-text)"
+                    }
+                    shape_connection r4 {
+                        from = "vpe"
+                        to = "eng1"
+                        stroke = "var(--color-text)"
+                    }
+                    shape_connection r5 {
+                        from = "vpe"
+                        to = "eng2"
+                        stroke = "var(--color-text)"
+                    }
+                    shape_connection r6 {
+                        from = "cfo"
+                        to = "fin1"
+                        stroke = "var(--color-text)"
+                    }
+                }
+            }
+        }
+
+        // --- Example 8: Grid layout ---
+        vsplit v_diag9 {
+            split s_diag9 {
+                size = 100
+
+                heading hd10 {
+                    level = 2
+                    content = "Grid Layout"
+                }
+                paragraph pd10 { content = "Use " + bold("align = \"grid\"") + " with optional " + bold("columns") + " for regular arrangements:" }
+
+                wdoc_diagram dashboard {
+                    width = 500
+                    height = 300
+                    align = "grid"
+                    columns = 3
+                    gap = 20
+
+                    shape_rect s1 {
+                        width = 100
+                        height = 60
+                        rx = 6
+                        fill = "var(--color-code-bg)"
+                        stroke = "var(--color-code-border)"
+                        stroke_width = 1
+                        shape_text t { content = "Widget 1" }
+                    }
+                    shape_rect s2 {
+                        width = 100
+                        height = 60
+                        rx = 6
+                        fill = "var(--color-code-bg)"
+                        stroke = "var(--color-code-border)"
+                        stroke_width = 1
+                        shape_text t { content = "Widget 2" }
+                    }
+                    shape_rect s3 {
+                        width = 100
+                        height = 60
+                        rx = 6
+                        fill = "var(--color-code-bg)"
+                        stroke = "var(--color-code-border)"
+                        stroke_width = 1
+                        shape_text t { content = "Widget 3" }
+                    }
+                    shape_rect s4 {
+                        width = 100
+                        height = 60
+                        rx = 6
+                        fill = "var(--color-code-bg)"
+                        stroke = "var(--color-code-border)"
+                        stroke_width = 1
+                        shape_text t { content = "Widget 4" }
+                    }
+                    shape_rect s5 {
+                        width = 100
+                        height = 60
+                        rx = 6
+                        fill = "var(--color-code-bg)"
+                        stroke = "var(--color-code-border)"
+                        stroke_width = 1
+                        shape_text t { content = "Widget 5" }
+                    }
+                    shape_rect s6 {
+                        width = 100
+                        height = 60
+                        rx = 6
+                        fill = "var(--color-code-bg)"
+                        stroke = "var(--color-code-border)"
+                        stroke_width = 1
+                        shape_text t { content = "Widget 6" }
+                    }
+                }
+            }
+        }
     }
 }
 

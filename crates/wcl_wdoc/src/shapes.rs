@@ -28,6 +28,10 @@ pub enum Alignment {
     Flow,
     Stack,
     Center,
+    Layered,
+    Force,
+    Radial,
+    Grid,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -138,6 +142,9 @@ pub struct Diagram {
     pub shapes: Vec<ShapeNode>,
     pub connections: Vec<Connection>,
     pub padding: f64,
+    pub align: Alignment,
+    pub gap: f64,
+    pub options: IndexMap<String, String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -153,7 +160,14 @@ pub fn render_diagram_svg(diagram: &mut Diagram) -> String {
         width: diagram.width - diagram.padding * 2.0,
         height: diagram.height - diagram.padding * 2.0,
     };
-    resolve_children(&mut diagram.shapes, &inner, Alignment::None, 0.0);
+    resolve_children(
+        &mut diagram.shapes,
+        &diagram.connections,
+        &inner,
+        diagram.align,
+        diagram.gap,
+        &diagram.options,
+    );
 
     // Phase 2b: build shape map for connections
     let shape_map = build_shape_map(&diagram.shapes, 0.0, 0.0);
@@ -197,6 +211,10 @@ pub fn parse_alignment_str(s: &str) -> Alignment {
         "flow" => Alignment::Flow,
         "stack" => Alignment::Stack,
         "center" => Alignment::Center,
+        "layered" => Alignment::Layered,
+        "force" => Alignment::Force,
+        "radial" => Alignment::Radial,
+        "grid" => Alignment::Grid,
         _ => Alignment::None,
     }
 }
@@ -244,7 +262,14 @@ pub fn parse_shape_kind(kind: &str) -> Option<ShapeKind> {
 // Layout resolution
 // ---------------------------------------------------------------------------
 
-fn resolve_children(children: &mut [ShapeNode], parent: &Bounds, align: Alignment, gap: f64) {
+fn resolve_children(
+    children: &mut [ShapeNode],
+    connections: &[Connection],
+    parent: &Bounds,
+    align: Alignment,
+    gap: f64,
+    options: &IndexMap<String, String>,
+) {
     // First pass: resolve anchored/absolute children
     for child in children.iter_mut() {
         resolve_bounds(child, parent);
@@ -263,6 +288,19 @@ fn resolve_children(children: &mut [ShapeNode], parent: &Bounds, align: Alignmen
             Alignment::Stack => layout_stack(children, &unpositioned, parent, gap),
             Alignment::Flow => layout_flow(children, &unpositioned, parent, gap),
             Alignment::Center => layout_center(children, &unpositioned, parent),
+            // Graph-aware layouts operate on ALL children (not just unpositioned)
+            Alignment::Layered => {
+                crate::graph_layout::layout_layered(children, connections, parent, gap, options)
+            }
+            Alignment::Force => {
+                crate::graph_layout::layout_force(children, connections, parent, gap, options)
+            }
+            Alignment::Radial => {
+                crate::graph_layout::layout_radial(children, connections, parent, gap, options)
+            }
+            Alignment::Grid => {
+                crate::graph_layout::layout_grid(children, connections, parent, gap, options)
+            }
             Alignment::None => {}
         }
     }
@@ -275,7 +313,14 @@ fn resolve_children(children: &mut [ShapeNode], parent: &Bounds, align: Alignmen
             width: (child.resolved.width - child.padding * 2.0).max(0.0),
             height: (child.resolved.height - child.padding * 2.0).max(0.0),
         };
-        resolve_children(&mut child.children, &inner, child.align, child.gap);
+        resolve_children(
+            &mut child.children,
+            connections,
+            &inner,
+            child.align,
+            child.gap,
+            &IndexMap::new(),
+        );
     }
 }
 
@@ -679,6 +724,9 @@ mod tests {
             width: 400.0,
             height: 200.0,
             padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
             shapes: vec![ShapeNode {
                 kind: ShapeKind::Rect,
                 id: Some("box1".into()),
