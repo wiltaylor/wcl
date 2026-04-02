@@ -122,6 +122,86 @@ schema "widget_badge" { }
 @open
 schema "widget_navbar" { }
 
+// --- Flowchart shapes ---
+
+@template("shape", "widget_render_flow_process")
+@open
+schema "widget_flow_process" { }
+
+@template("shape", "widget_render_flow_decision")
+@open
+schema "widget_flow_decision" { }
+
+@template("shape", "widget_render_flow_terminal")
+@open
+schema "widget_flow_terminal" { }
+
+@template("shape", "widget_render_flow_io")
+@open
+schema "widget_flow_io" { }
+
+@template("shape", "widget_render_flow_subprocess")
+@open
+schema "widget_flow_subprocess" { }
+
+// --- C4 diagram shapes ---
+
+@template("shape", "widget_render_c4_person")
+@open
+schema "widget_c4_person" { }
+
+@template("shape", "widget_render_c4_system")
+@open
+schema "widget_c4_system" { }
+
+@template("shape", "widget_render_c4_container")
+@open
+schema "widget_c4_container" { }
+
+@template("shape", "widget_render_c4_component")
+@open
+schema "widget_c4_component" { }
+
+@template("shape", "widget_render_c4_boundary")
+@open
+schema "widget_c4_boundary" { }
+
+// --- UML shapes ---
+
+@template("shape", "widget_render_uml_class")
+@open
+schema "widget_uml_class" { }
+
+@template("shape", "widget_render_uml_actor")
+@open
+schema "widget_uml_actor" { }
+
+@template("shape", "widget_render_uml_package")
+@open
+schema "widget_uml_package" { }
+
+@template("shape", "widget_render_uml_note")
+@open
+schema "widget_uml_note" { }
+
+// --- Network/infrastructure node shapes ---
+
+@template("shape", "widget_render_node_server")
+@open
+schema "widget_node_server" { }
+
+@template("shape", "widget_render_node_database")
+@open
+schema "widget_node_database" { }
+
+@template("shape", "widget_render_node_cloud")
+@open
+schema "widget_node_cloud" { }
+
+@template("shape", "widget_render_node_user")
+@open
+schema "widget_node_user" { }
+
 // --- Decorator schemas ---
 
 decorator_schema "style" {
