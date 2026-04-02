@@ -29,6 +29,10 @@ wdoc my_docs {
         wdoc_section nested_diagrams "Nested Diagrams" {}
         wdoc_section swimlane_diagrams "Swim Lane Diagrams" {}
         wdoc_section wireframes "UI Wireframes" {}
+        wdoc_section flowchart_examples "Flowchart Shapes" {}
+        wdoc_section c4_examples "C4 Architecture" {}
+        wdoc_section uml_examples "UML Shapes" {}
+        wdoc_section network_examples "Network Diagrams" {}
     }
 
     wdoc_section bindings "Language Bindings" {

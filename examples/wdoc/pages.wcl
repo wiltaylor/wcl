@@ -3607,6 +3607,650 @@ wdoc_page wireframes {
 }
 
 
+// ── Flowchart Shapes page ──
+
+wdoc_page flowchart_examples {
+    section = "my_docs.diagrams.flowchart_examples"
+    title = "Flowchart Shapes"
+
+    wdoc_layout {
+        vsplit v_fc1 {
+            split s_fc1 {
+                size = 100
+
+                heading hfc1 {
+                    level = 1
+                    content = "Flowchart Shapes"
+                }
+                paragraph pfc1 { content = "All five flowchart shape types with the " + bold("layered") + " layout engine:" }
+
+                wdoc_diagram flowchart_demo {
+                    width = 700
+                    height = 500
+                    align = "layered"
+                    gap = 40
+
+                    widget_flow_terminal start {
+                        width = 130
+                        height = 40
+                        label = "Start"
+                    }
+
+                    widget_flow_io input_data {
+                        width = 150
+                        height = 50
+                        label = "Read Input"
+                    }
+
+                    widget_flow_process validate {
+                        width = 150
+                        height = 50
+                        label = "Validate Data"
+                    }
+
+                    widget_flow_decision is_valid {
+                        width = 110
+                        height = 80
+                        label = "Valid?"
+                    }
+
+                    widget_flow_subprocess process_data {
+                        width = 160
+                        height = 50
+                        label = "Process Data"
+                    }
+
+                    widget_flow_process log_error {
+                        width = 140
+                        height = 50
+                        label = "Log Error"
+                        color = "#d32f2f"
+                    }
+
+                    widget_flow_io write_output {
+                        width = 150
+                        height = 50
+                        label = "Write Output"
+                    }
+
+                    widget_flow_terminal done {
+                        width = 130
+                        height = 40
+                        label = "End"
+                        color = "#28a745"
+                    }
+
+                    shape_connection fc1 { from = "start"
+                        to = "input_data"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        stroke_width = 2 }
+                    shape_connection fc2 { from = "input_data"
+                        to = "validate"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        stroke_width = 2 }
+                    shape_connection fc3 { from = "validate"
+                        to = "is_valid"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        stroke_width = 2 }
+                    shape_connection fc4 { from = "is_valid"
+                        to = "process_data"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        stroke_width = 2
+                        label = "Yes" }
+                    shape_connection fc5 { from = "is_valid"
+                        to = "log_error"
+                        direction = "to"
+                        stroke = "#d32f2f"
+                        stroke_width = 2
+                        label = "No" }
+                    shape_connection fc6 { from = "process_data"
+                        to = "write_output"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        stroke_width = 2 }
+                    shape_connection fc7 { from = "write_output"
+                        to = "done"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        stroke_width = 2 }
+                    shape_connection fc8 { from = "log_error"
+                        to = "done"
+                        direction = "to"
+                        stroke = "#d32f2f"
+                        stroke_width = 1
+                        stroke_dasharray = "5,3" }
+                }
+            }
+        }
+    }
+}
+
+// ── C4 Architecture page ──
+
+wdoc_page c4_examples {
+    section = "my_docs.diagrams.c4_examples"
+    title = "C4 Architecture"
+
+    wdoc_layout {
+        vsplit v_c41 {
+            split s_c41 {
+                size = 100
+
+                heading hc41 {
+                    level = 1
+                    content = "C4 Architecture Diagrams"
+                }
+                paragraph pc41 { content = "C4 model shapes for software architecture at different zoom levels:" }
+
+                heading hc42 {
+                    level = 2
+                    content = "Context Diagram"
+                }
+
+                wdoc_diagram c4_context {
+                    width = 700
+                    height = 350
+
+                    widget_c4_person user {
+                        x = 50
+                        y = 100
+                        width = 100
+                        height = 110
+                        label = "Customer"
+                        description = "Uses the app"
+                    }
+
+                    widget_c4_system main_sys {
+                        x = 270
+                        y = 80
+                        width = 160
+                        height = 90
+                        label = "My App"
+                        description = "Core platform"
+                    }
+
+                    widget_c4_system email_sys {
+                        x = 530
+                        y = 30
+                        width = 150
+                        height = 80
+                        label = "Email System"
+                        description = "Sends emails"
+                        external = "true"
+                    }
+
+                    widget_c4_system payment_sys {
+                        x = 530
+                        y = 160
+                        width = 150
+                        height = 80
+                        label = "Payment"
+                        description = "Processes payments"
+                        external = "true"
+                    }
+
+                    shape_connection cc1 { from = "user"
+                        to = "main_sys"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        stroke_width = 2
+                        label = "Uses" }
+                    shape_connection cc2 { from = "main_sys"
+                        to = "email_sys"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        stroke_width = 2
+                        label = "Sends emails" }
+                    shape_connection cc3 { from = "main_sys"
+                        to = "payment_sys"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        stroke_width = 2
+                        label = "Charges" }
+                }
+
+                heading hc43 {
+                    level = 2
+                    content = "Container Diagram"
+                }
+
+                wdoc_diagram c4_container {
+                    width = 700
+                    height = 350
+
+                    widget_c4_boundary boundary {
+                        x = 120
+                        y = 10
+                        width = 460
+                        height = 330
+                        label = "My App [System Boundary]"
+                    }
+
+                    widget_c4_person c4user {
+                        x = 10
+                        y = 100
+                        width = 90
+                        height = 100
+                        label = "User"
+                    }
+
+                    widget_c4_container webapp {
+                        x = 140
+                        y = 40
+                        width = 140
+                        height = 70
+                        label = "Web App"
+                        technology = "React"
+                        color = "#438DD5"
+                    }
+
+                    widget_c4_container api {
+                        x = 310
+                        y = 40
+                        width = 140
+                        height = 70
+                        label = "API"
+                        technology = "Rust"
+                        color = "#438DD5"
+                    }
+
+                    widget_c4_container worker {
+                        x = 140
+                        y = 150
+                        width = 140
+                        height = 70
+                        label = "Worker"
+                        technology = "Rust"
+                        color = "#438DD5"
+                    }
+
+                    widget_c4_container db {
+                        x = 310
+                        y = 150
+                        width = 140
+                        height = 70
+                        label = "Database"
+                        technology = "PostgreSQL"
+                        color = "#438DD5"
+                    }
+
+                    widget_c4_container cache {
+                        x = 310
+                        y = 260
+                        width = 140
+                        height = 60
+                        label = "Cache"
+                        technology = "Redis"
+                        color = "#438DD5"
+                    }
+
+                    shape_connection ct1 { from = "c4user"
+                        to = "webapp"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        label = "HTTPS" }
+                    shape_connection ct2 { from = "webapp"
+                        to = "api"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        label = "REST" }
+                    shape_connection ct3 { from = "api"
+                        to = "db"
+                        direction = "both"
+                        stroke = "var(--color-text)"
+                        label = "SQL" }
+                    shape_connection ct4 { from = "api"
+                        to = "worker"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        label = "Queue" }
+                    shape_connection ct5 { from = "api"
+                        to = "cache"
+                        direction = "both"
+                        stroke = "var(--color-text)"
+                        stroke_dasharray = "4,3" }
+                }
+            }
+        }
+    }
+}
+
+// ── UML Shapes page ──
+
+wdoc_page uml_examples {
+    section = "my_docs.diagrams.uml_examples"
+    title = "UML Shapes"
+
+    wdoc_layout {
+        vsplit v_uml1 {
+            split s_uml1 {
+                size = 100
+
+                heading huml1 {
+                    level = 1
+                    content = "UML Shapes"
+                }
+
+                heading huml2 {
+                    level = 2
+                    content = "Class Diagram"
+                }
+                paragraph puml1 { content = "UML class boxes with fields and methods (pipe-separated):" }
+
+                wdoc_diagram uml_class_demo {
+                    width = 700
+                    height = 300
+
+                    widget_uml_class user_class {
+                        x = 30
+                        y = 20
+                        width = 180
+                        height = 160
+                        label = "User"
+                        fields = "- id: i64|- name: String|- email: String|- active: bool"
+                        methods = "+ login()|- validate()|+ toString(): String"
+                    }
+
+                    widget_uml_class order_class {
+                        x = 270
+                        y = 20
+                        width = 180
+                        height = 140
+                        label = "Order"
+                        stereotype = "Entity"
+                        fields = "- id: i64|- total: f64|- status: String"
+                        methods = "+ submit()|- calculate()"
+                    }
+
+                    widget_uml_class repo_class {
+                        x = 510
+                        y = 20
+                        width = 170
+                        height = 120
+                        label = "OrderRepo"
+                        stereotype = "Repository"
+                        fields = "- db: Database"
+                        methods = "+ find(id)|+ save(order)"
+                    }
+
+                    shape_connection uc1 { from = "user_class"
+                        to = "order_class"
+                        direction = "to"
+                        from_anchor = "right"
+                        to_anchor = "left"
+                        stroke = "var(--color-text)"
+                        label = "places" }
+                    shape_connection uc2 { from = "order_class"
+                        to = "repo_class"
+                        direction = "to"
+                        from_anchor = "right"
+                        to_anchor = "left"
+                        stroke = "var(--color-text)"
+                        stroke_dasharray = "5,3"
+                        label = "persisted by" }
+                }
+
+                heading huml3 {
+                    level = 2
+                    content = "Use Case and Packages"
+                }
+
+                wdoc_diagram uml_other {
+                    width = 700
+                    height = 280
+
+                    widget_uml_actor actor1 {
+                        x = 30
+                        y = 30
+                        width = 60
+                        height = 100
+                        label = "Customer"
+                    }
+
+                    widget_uml_actor actor2 {
+                        x = 30
+                        y = 160
+                        width = 60
+                        height = 100
+                        label = "Admin"
+                    }
+
+                    widget_uml_package pkg_frontend {
+                        x = 150
+                        y = 20
+                        width = 200
+                        height = 130
+                        label = "Frontend"
+                    }
+
+                    widget_uml_package pkg_backend {
+                        x = 150
+                        y = 160
+                        width = 200
+                        height = 100
+                        label = "Backend"
+                    }
+
+                    widget_uml_note note1 {
+                        x = 420
+                        y = 30
+                        width = 250
+                        height = 80
+                        label = "The frontend package contains all React components and routing logic."
+                    }
+
+                    widget_uml_note note2 {
+                        x = 420
+                        y = 140
+                        width = 250
+                        height = 80
+                        label = "Backend handles auth, data, and business logic via REST API."
+                    }
+
+                    shape_connection un1 { from = "actor1"
+                        to = "pkg_frontend"
+                        direction = "to"
+                        stroke = "var(--color-text)" }
+                    shape_connection un2 { from = "actor2"
+                        to = "pkg_backend"
+                        direction = "to"
+                        stroke = "var(--color-text)" }
+                    shape_connection un3 { from = "pkg_frontend"
+                        to = "pkg_backend"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        stroke_dasharray = "5,3"
+                        label = "REST API" }
+                }
+            }
+        }
+    }
+}
+
+// ── Network Diagrams page ──
+
+wdoc_page network_examples {
+    section = "my_docs.diagrams.network_examples"
+    title = "Network Diagrams"
+
+    wdoc_layout {
+        vsplit v_net1 {
+            split s_net1 {
+                size = 100
+
+                heading hnet1 {
+                    level = 1
+                    content = "Network Diagrams"
+                }
+                paragraph pnet1 { content = "Infrastructure shapes for servers, databases, cloud services, and users:" }
+
+                wdoc_diagram network_arch {
+                    width = 750
+                    height = 450
+
+                    widget_node_user users {
+                        x = 20
+                        y = 150
+                        width = 80
+                        height = 100
+                        label = "Users"
+                    }
+
+                    widget_node_cloud cdn {
+                        x = 150
+                        y = 30
+                        width = 140
+                        height = 100
+                        label = "CDN"
+                    }
+
+                    widget_node_server lb {
+                        x = 160
+                        y = 170
+                        width = 90
+                        height = 110
+                        label = "Load Balancer"
+                    }
+
+                    widget_node_server web1 {
+                        x = 320
+                        y = 50
+                        width = 90
+                        height = 110
+                        label = "Web 1"
+                    }
+
+                    widget_node_server web2 {
+                        x = 320
+                        y = 200
+                        width = 90
+                        height = 110
+                        label = "Web 2"
+                    }
+
+                    widget_node_server api_srv {
+                        x = 320
+                        y = 340
+                        width = 90
+                        height = 110
+                        label = "API"
+                    }
+
+                    widget_node_database primary_db {
+                        x = 500
+                        y = 50
+                        width = 100
+                        height = 120
+                        label = "Primary DB"
+                    }
+
+                    widget_node_database replica_db {
+                        x = 500
+                        y = 210
+                        width = 100
+                        height = 120
+                        label = "Replica DB"
+                    }
+
+                    widget_node_server cache_srv {
+                        x = 500
+                        y = 360
+                        width = 90
+                        height = 90
+                        label = "Redis"
+                    }
+
+                    widget_node_cloud storage {
+                        x = 640
+                        y = 100
+                        width = 100
+                        height = 80
+                        label = "S3"
+                    }
+
+                    widget_node_cloud monitoring {
+                        x = 640
+                        y = 240
+                        width = 100
+                        height = 80
+                        label = "Monitoring"
+                    }
+
+                    // User connections
+                    shape_connection nc1 { from = "users"
+                        to = "cdn"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        label = "static" }
+                    shape_connection nc2 { from = "users"
+                        to = "lb"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        stroke_width = 2
+                        label = "HTTPS" }
+
+                    // LB → servers
+                    shape_connection nc3 { from = "lb"
+                        to = "web1"
+                        direction = "to"
+                        stroke = "var(--color-text)" }
+                    shape_connection nc4 { from = "lb"
+                        to = "web2"
+                        direction = "to"
+                        stroke = "var(--color-text)" }
+                    shape_connection nc5 { from = "lb"
+                        to = "api_srv"
+                        direction = "to"
+                        stroke = "var(--color-text)" }
+
+                    // Servers → data
+                    shape_connection nc6 { from = "web1"
+                        to = "primary_db"
+                        direction = "both"
+                        stroke = "var(--color-text)" }
+                    shape_connection nc7 { from = "web2"
+                        to = "replica_db"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        stroke_dasharray = "4,3" }
+                    shape_connection nc8 { from = "api_srv"
+                        to = "cache_srv"
+                        direction = "both"
+                        stroke = "var(--color-text)" }
+                    shape_connection nc9 { from = "api_srv"
+                        to = "primary_db"
+                        direction = "both"
+                        stroke = "var(--color-text)" }
+
+                    // DB replication
+                    shape_connection nc10 { from = "primary_db"
+                        to = "replica_db"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        stroke_dasharray = "5,3"
+                        label = "replicate" }
+
+                    // Cloud services
+                    shape_connection nc11 { from = "web1"
+                        to = "storage"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        stroke_dasharray = "4,3" }
+                    shape_connection nc12 { from = "web2"
+                        to = "monitoring"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        stroke_dasharray = "4,3" }
+                }
+            }
+        }
+    }
+}
+
 // ── Language Bindings page ──
 
 wdoc_page binding_examples {
