@@ -2478,6 +2478,563 @@ wdoc_page nested_diagrams {
     }
 }
 
+// ── Swim Lane Diagrams page ──
+
+wdoc_page swimlane_diagrams {
+    section = "my_docs.diagrams.swimlane_diagrams"
+    title = "Swim Lane Diagrams"
+
+    wdoc_layout {
+        vsplit v_sw1 {
+            split s_sw1 {
+                size = 100
+
+                heading hsw1 {
+                    level = 1
+                    content = "Swim Lane Diagrams"
+                }
+                paragraph psw1 {
+                    content = "Swim lane diagrams use anchored rectangles as lanes with shapes inside each lane. Connections cross lane boundaries to show handoffs between actors."
+                }
+            }
+        }
+
+        // --- Example 1: Order Processing ---
+        vsplit v_sw2 {
+            split s_sw2 {
+                size = 100
+
+                heading hsw2 {
+                    level = 2
+                    content = "Order Processing Flow"
+                }
+                paragraph psw2 { content = "Three swim lanes showing the handoffs between Customer, System, and Warehouse:" }
+
+                wdoc_diagram order_flow {
+                    width = 800
+                    height = 500
+
+                    // Lane backgrounds (anchored full-height strips)
+                    shape_rect lane_customer {
+                        left = 0
+                        top = 40
+                        bottom = 0
+                        width = 250
+                        fill = "var(--color-code-bg)"
+                        stroke = "var(--color-code-border)"
+                        stroke_width = 1
+                    }
+                    shape_rect lane_system {
+                        left = 260
+                        top = 40
+                        bottom = 0
+                        width = 260
+                        fill = "var(--color-nav-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 1
+                    }
+                    shape_rect lane_warehouse {
+                        left = 530
+                        top = 40
+                        bottom = 0
+                        width = 270
+                        fill = "var(--color-code-bg)"
+                        stroke = "var(--color-code-border)"
+                        stroke_width = 1
+                    }
+
+                    // Lane headers
+                    shape_rect hdr_customer {
+                        x = 0
+                        y = 0
+                        width = 250
+                        height = 40
+                        fill = "var(--color-link)"
+                        shape_text t { content = "Customer"
+                            fill = "#fff"
+                            font_size = 15 }
+                    }
+                    shape_rect hdr_system {
+                        x = 260
+                        y = 0
+                        width = 260
+                        height = 40
+                        fill = "var(--color-link)"
+                        shape_text t { content = "System"
+                            fill = "#fff"
+                            font_size = 15 }
+                    }
+                    shape_rect hdr_warehouse {
+                        x = 530
+                        y = 0
+                        width = 270
+                        height = 40
+                        fill = "var(--color-link)"
+                        shape_text t { content = "Warehouse"
+                            fill = "#fff"
+                            font_size = 15 }
+                    }
+
+                    // Customer lane steps
+                    shape_rect c_browse {
+                        x = 50
+                        y = 70
+                        width = 150
+                        height = 45
+                        rx = 20
+                        fill = "var(--color-bg)"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        shape_text t { content = "Browse Items" }
+                    }
+                    shape_rect c_order {
+                        x = 50
+                        y = 150
+                        width = 150
+                        height = 45
+                        rx = 6
+                        fill = "var(--color-bg)"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        shape_text t { content = "Place Order" }
+                    }
+                    shape_rect c_pay {
+                        x = 50
+                        y = 240
+                        width = 150
+                        height = 45
+                        rx = 6
+                        fill = "var(--color-bg)"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        shape_text t { content = "Pay" }
+                    }
+                    shape_rect c_receive {
+                        x = 50
+                        y = 420
+                        width = 150
+                        height = 45
+                        rx = 20
+                        fill = "var(--color-bg)"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        shape_text t { content = "Receive Package" }
+                    }
+
+                    // System lane steps
+                    shape_rect s_validate {
+                        x = 310
+                        y = 150
+                        width = 160
+                        height = 45
+                        rx = 6
+                        fill = "var(--color-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 2
+                        shape_text t { content = "Validate Order" }
+                    }
+                    shape_rect s_payment {
+                        x = 310
+                        y = 240
+                        width = 160
+                        height = 45
+                        rx = 6
+                        fill = "var(--color-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 2
+                        shape_text t { content = "Process Payment" }
+                    }
+                    shape_rect s_notify {
+                        x = 310
+                        y = 330
+                        width = 160
+                        height = 45
+                        rx = 6
+                        fill = "var(--color-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 2
+                        shape_text t { content = "Send Notification" }
+                    }
+                    shape_rect s_tracking {
+                        x = 310
+                        y = 420
+                        width = 160
+                        height = 45
+                        rx = 6
+                        fill = "var(--color-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 2
+                        shape_text t { content = "Update Tracking" }
+                    }
+
+                    // Warehouse lane steps
+                    shape_rect w_check {
+                        x = 580
+                        y = 240
+                        width = 160
+                        height = 45
+                        rx = 6
+                        fill = "var(--color-bg)"
+                        stroke = "var(--color-code-border)"
+                        stroke_width = 2
+                        shape_text t { content = "Check Stock" }
+                    }
+                    shape_rect w_pick {
+                        x = 580
+                        y = 330
+                        width = 160
+                        height = 45
+                        rx = 6
+                        fill = "var(--color-bg)"
+                        stroke = "var(--color-code-border)"
+                        stroke_width = 2
+                        shape_text t { content = "Pick & Pack" }
+                    }
+                    shape_rect w_ship {
+                        x = 580
+                        y = 420
+                        width = 160
+                        height = 45
+                        rx = 6
+                        fill = "var(--color-bg)"
+                        stroke = "var(--color-code-border)"
+                        stroke_width = 2
+                        shape_text t { content = "Ship" }
+                    }
+
+                    // In-lane connections
+                    shape_connection oc1 {
+                        from = "c_browse"
+                        to = "c_order"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        stroke_width = 2
+                    }
+                    shape_connection oc7 {
+                        from = "w_check"
+                        to = "w_pick"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        stroke_width = 2
+                    }
+                    shape_connection oc8 {
+                        from = "w_pick"
+                        to = "w_ship"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        stroke_width = 2
+                    }
+
+                    // Cross-lane connections (handoffs)
+                    shape_connection oc2 {
+                        from = "c_order"
+                        to = "s_validate"
+                        direction = "to"
+                        from_anchor = "right"
+                        to_anchor = "left"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        label = "submit"
+                    }
+                    shape_connection oc3 {
+                        from = "c_pay"
+                        to = "s_payment"
+                        direction = "to"
+                        from_anchor = "right"
+                        to_anchor = "left"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                    }
+                    shape_connection oc4 {
+                        from = "s_validate"
+                        to = "s_payment"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        stroke_width = 2
+                    }
+                    shape_connection oc5 {
+                        from = "s_payment"
+                        to = "w_check"
+                        direction = "to"
+                        from_anchor = "right"
+                        to_anchor = "left"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        label = "fulfill"
+                    }
+                    shape_connection oc9 {
+                        from = "w_ship"
+                        to = "s_tracking"
+                        direction = "to"
+                        from_anchor = "left"
+                        to_anchor = "right"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        label = "shipped"
+                    }
+                    shape_connection oc10 {
+                        from = "s_notify"
+                        to = "c_receive"
+                        direction = "to"
+                        from_anchor = "left"
+                        to_anchor = "right"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                    }
+                    shape_connection oc11 {
+                        from = "s_tracking"
+                        to = "s_notify"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        stroke_width = 2
+                    }
+                }
+            }
+        }
+
+        // --- Example 2: Horizontal swim lanes (user registration) ---
+        vsplit v_sw3 {
+            split s_sw3 {
+                size = 100
+
+                heading hsw3 {
+                    level = 2
+                    content = "User Registration (Horizontal Lanes)"
+                }
+                paragraph psw3 { content = "Horizontal swim lanes with the flow going left-to-right:" }
+
+                wdoc_diagram reg_flow {
+                    width = 800
+                    height = 420
+
+                    // Horizontal lane backgrounds
+                    shape_rect lane_user {
+                        left = 80
+                        top = 0
+                        right = 0
+                        height = 130
+                        fill = "var(--color-code-bg)"
+                        stroke = "var(--color-code-border)"
+                        stroke_width = 1
+                    }
+                    shape_rect lane_api {
+                        left = 80
+                        top = 140
+                        right = 0
+                        height = 130
+                        fill = "var(--color-nav-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 1
+                    }
+                    shape_rect lane_email {
+                        left = 80
+                        top = 280
+                        right = 0
+                        height = 130
+                        fill = "var(--color-code-bg)"
+                        stroke = "var(--color-code-border)"
+                        stroke_width = 1
+                    }
+
+                    // Lane labels (rotated via vertical text positioning)
+                    shape_rect lbl_user {
+                        x = 0
+                        y = 0
+                        width = 75
+                        height = 130
+                        fill = "var(--color-link)"
+                        shape_text t { content = "User"
+                            fill = "#fff"
+                            font_size = 14 }
+                    }
+                    shape_rect lbl_api {
+                        x = 0
+                        y = 140
+                        width = 75
+                        height = 130
+                        fill = "var(--color-link)"
+                        shape_text t { content = "API"
+                            fill = "#fff"
+                            font_size = 14 }
+                    }
+                    shape_rect lbl_email {
+                        x = 0
+                        y = 280
+                        width = 75
+                        height = 130
+                        fill = "var(--color-link)"
+                        shape_text t { content = "Email"
+                            fill = "#fff"
+                            font_size = 14 }
+                    }
+
+                    // User lane steps
+                    shape_rect u_signup {
+                        x = 110
+                        y = 35
+                        width = 120
+                        height = 45
+                        rx = 20
+                        fill = "var(--color-bg)"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        shape_text t { content = "Sign Up" }
+                    }
+                    shape_rect u_fill {
+                        x = 290
+                        y = 35
+                        width = 120
+                        height = 45
+                        rx = 6
+                        fill = "var(--color-bg)"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        shape_text t { content = "Fill Form" }
+                    }
+                    shape_rect u_verify {
+                        x = 570
+                        y = 35
+                        width = 120
+                        height = 45
+                        rx = 6
+                        fill = "var(--color-bg)"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        shape_text t { content = "Click Link" }
+                    }
+
+                    // API lane steps
+                    shape_rect a_validate {
+                        x = 290
+                        y = 180
+                        width = 120
+                        height = 45
+                        rx = 6
+                        fill = "var(--color-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 2
+                        shape_text t { content = "Validate" }
+                    }
+                    shape_rect a_create {
+                        x = 460
+                        y = 180
+                        width = 120
+                        height = 45
+                        rx = 6
+                        fill = "var(--color-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 2
+                        shape_text t { content = "Create User" }
+                    }
+                    shape_rect a_activate {
+                        x = 630
+                        y = 180
+                        width = 120
+                        height = 45
+                        rx = 6
+                        fill = "var(--color-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 2
+                        shape_text t { content = "Activate" }
+                    }
+
+                    // Email lane steps
+                    shape_rect e_send {
+                        x = 460
+                        y = 320
+                        width = 130
+                        height = 45
+                        rx = 6
+                        fill = "var(--color-bg)"
+                        stroke = "var(--color-code-border)"
+                        stroke_width = 2
+                        shape_text t { content = "Send Verify" }
+                    }
+                    shape_rect e_welcome {
+                        x = 630
+                        y = 320
+                        width = 130
+                        height = 45
+                        rx = 20
+                        fill = "var(--color-bg)"
+                        stroke = "var(--color-code-border)"
+                        stroke_width = 2
+                        shape_text t { content = "Welcome Mail" }
+                    }
+
+                    // In-lane flow
+                    shape_connection rc1 {
+                        from = "u_signup"
+                        to = "u_fill"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        stroke_width = 2
+                    }
+                    shape_connection rc5 {
+                        from = "a_validate"
+                        to = "a_create"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        stroke_width = 2
+                    }
+
+                    // Cross-lane handoffs
+                    shape_connection rc2 {
+                        from = "u_fill"
+                        to = "a_validate"
+                        direction = "to"
+                        from_anchor = "bottom"
+                        to_anchor = "top"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        label = "POST"
+                    }
+                    shape_connection rc3 {
+                        from = "a_create"
+                        to = "e_send"
+                        direction = "to"
+                        from_anchor = "bottom"
+                        to_anchor = "top"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        label = "trigger"
+                    }
+                    shape_connection rc4 {
+                        from = "e_send"
+                        to = "u_verify"
+                        direction = "to"
+                        from_anchor = "top"
+                        to_anchor = "bottom"
+                        curve = "bezier"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        label = "email link"
+                    }
+                    shape_connection rc6 {
+                        from = "u_verify"
+                        to = "a_activate"
+                        direction = "to"
+                        from_anchor = "bottom"
+                        to_anchor = "top"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        label = "GET"
+                    }
+                    shape_connection rc7 {
+                        from = "a_activate"
+                        to = "e_welcome"
+                        direction = "to"
+                        from_anchor = "bottom"
+                        to_anchor = "top"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                    }
+                }
+            }
+        }
+    }
+}
+
 // ── Language Bindings page ──
 
 wdoc_page binding_examples {
