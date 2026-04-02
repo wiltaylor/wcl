@@ -371,7 +371,7 @@ fn collect_shape_or_connection(
 ) {
     use wcl_wdoc::shapes::*;
 
-    if br.kind == "svg_connection" {
+    if br.kind == "shape_connection" {
         let a = value_map_to_string_map_lossy(&br.attributes);
         connections.push(Connection {
             from_id: a.get("from").cloned().unwrap_or_default(),

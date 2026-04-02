@@ -50,31 +50,31 @@ schema "wdoc_diagram" {
 
 @template("shape", "shape_render_rect")
 @open
-schema "svg_rect" { }
+schema "shape_rect" { }
 
 @template("shape", "shape_render_circle")
 @open
-schema "svg_circle" { }
+schema "shape_circle" { }
 
 @template("shape", "shape_render_ellipse")
 @open
-schema "svg_ellipse" { }
+schema "shape_ellipse" { }
 
 @template("shape", "shape_render_line")
 @open
-schema "svg_line" { }
+schema "shape_line" { }
 
 @template("shape", "shape_render_path")
 @open
-schema "svg_path" { }
+schema "shape_path" { }
 
 @template("shape", "shape_render_text")
 @open
-schema "svg_text" { }
+schema "shape_text" { }
 
 @template("shape", "shape_render_connection")
 @open
-schema "svg_connection" { }
+schema "shape_connection" { }
 
 // --- Decorator schemas ---
 

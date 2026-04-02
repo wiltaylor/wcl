@@ -230,12 +230,12 @@ pub fn parse_curve_str(s: &str) -> CurveStyle {
 
 pub fn parse_shape_kind(kind: &str) -> Option<ShapeKind> {
     match kind {
-        "svg_rect" => Some(ShapeKind::Rect),
-        "svg_circle" => Some(ShapeKind::Circle),
-        "svg_ellipse" => Some(ShapeKind::Ellipse),
-        "svg_line" => Some(ShapeKind::Line),
-        "svg_path" => Some(ShapeKind::Path),
-        "svg_text" => Some(ShapeKind::Text),
+        "shape_rect" => Some(ShapeKind::Rect),
+        "shape_circle" => Some(ShapeKind::Circle),
+        "shape_ellipse" => Some(ShapeKind::Ellipse),
+        "shape_line" => Some(ShapeKind::Line),
+        "shape_path" => Some(ShapeKind::Path),
+        "shape_text" => Some(ShapeKind::Text),
         _ => None,
     }
 }
