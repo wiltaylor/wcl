@@ -475,6 +475,366 @@ wdoc_page advanced {
     }
 }
 
+// ── Diagram Examples page ──
+
+wdoc_page diagram_examples {
+    section = "my_docs.diagrams.diagram_examples"
+    title = "Diagram Examples"
+
+    wdoc_layout {
+        vsplit v_diag1 {
+            split s_diag1 {
+                size = 100
+
+                heading hd1 {
+                    level = 1
+                    content = "Diagram Examples"
+                }
+                paragraph pd1 { content = "WCL supports inline vector diagrams with shapes, connections, text labels, and theme-aware styling. Diagrams render as inline SVG." }
+            }
+        }
+
+        // --- Example 1: Simple shapes ---
+        vsplit v_diag2 {
+            split s_diag2 {
+                size = 100
+
+                heading hd2 {
+                    level = 2
+                    content = "Basic Shapes"
+                }
+                paragraph pd2 { content = "Rectangles, circles, ellipses, and lines with theme-aware colors:" }
+
+                wdoc_diagram basic_shapes {
+                    width = 700
+                    height = 200
+
+                    svg_rect r1 {
+                        x = 20
+                        y = 30
+                        width = 120
+                        height = 80
+                        rx = 8
+                        fill = "var(--color-nav-bg)"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        svg_text t1 { content = "Rectangle" }
+                    }
+
+                    svg_circle c1 {
+                        x = 180
+                        y = 30
+                        r = 40
+                        fill = "var(--color-code-bg)"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        svg_text t2 { content = "Circle" }
+                    }
+
+                    svg_ellipse e1 {
+                        x = 300
+                        y = 30
+                        rx = 70
+                        ry = 40
+                        fill = "var(--color-nav-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 2
+                        svg_text t3 { content = "Ellipse" }
+                    }
+
+                    svg_line l1 {
+                        x1 = 480
+                        y1 = 40
+                        x2 = 650
+                        y2 = 40
+                        stroke = "var(--color-text)"
+                        stroke_width = 2
+                    }
+
+                    svg_line l2 {
+                        x1 = 480
+                        y1 = 80
+                        x2 = 650
+                        y2 = 80
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        stroke_dasharray = "8,4"
+                    }
+
+                    svg_line l3 {
+                        x1 = 480
+                        y1 = 120
+                        x2 = 650
+                        y2 = 120
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 3
+                    }
+
+                    svg_text lines_label {
+                        x = 480
+                        y = 150
+                        width = 170
+                        height = 30
+                        content = "Lines (solid, dashed, thick)"
+                        font_size = 12
+                        fill = "var(--color-text)"
+                    }
+                }
+            }
+        }
+
+        // --- Example 2: Connections with arrows ---
+        vsplit v_diag3 {
+            split s_diag3 {
+                size = 100
+
+                heading hd3 {
+                    level = 2
+                    content = "Connections and Arrows"
+                }
+                paragraph pd3 { content = "Connect shapes with straight or bezier lines. Arrows indicate direction:" }
+
+                wdoc_diagram conn_demo {
+                    width = 700
+                    height = 220
+
+                    svg_rect a {
+                        x = 30
+                        y = 30
+                        width = 120
+                        height = 60
+                        rx = 6
+                        fill = "var(--color-code-bg)"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        svg_text ta { content = "Source" }
+                    }
+
+                    svg_rect b {
+                        x = 280
+                        y = 30
+                        width = 120
+                        height = 60
+                        rx = 6
+                        fill = "var(--color-code-bg)"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        svg_text tb { content = "Target" }
+                    }
+
+                    svg_rect c {
+                        x = 530
+                        y = 30
+                        width = 120
+                        height = 60
+                        rx = 6
+                        fill = "var(--color-code-bg)"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        svg_text tc { content = "Both" }
+                    }
+
+                    svg_rect d {
+                        x = 30
+                        y = 140
+                        width = 120
+                        height = 60
+                        rx = 6
+                        fill = "var(--color-nav-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 2
+                        svg_text td { content = "Bezier" }
+                    }
+
+                    svg_rect e {
+                        x = 530
+                        y = 140
+                        width = 120
+                        height = 60
+                        rx = 6
+                        fill = "var(--color-nav-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 2
+                        svg_text te { content = "Curve" }
+                    }
+
+                    svg_connection ab {
+                        from = "a"
+                        to = "b"
+                        direction = "to"
+                        label = "one-way"
+                        stroke = "var(--color-text)"
+                        stroke_width = 2
+                    }
+
+                    svg_connection bc {
+                        from = "b"
+                        to = "c"
+                        direction = "both"
+                        label = "bidirectional"
+                        stroke = "var(--color-text)"
+                        stroke_width = 2
+                    }
+
+                    svg_connection de {
+                        from = "d"
+                        to = "e"
+                        direction = "to"
+                        curve = "bezier"
+                        label = "bezier curve"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                    }
+                }
+            }
+        }
+
+        // --- Example 3: Anchored layout ---
+        vsplit v_diag4 {
+            split s_diag4 {
+                size = 100
+
+                heading hd4 {
+                    level = 2
+                    content = "Anchored Positioning"
+                }
+                paragraph pd4 { content = "Shapes can be anchored to parent edges. They stretch to fill the space between anchors:" }
+
+                wdoc_diagram anchored {
+                    width = 700
+                    height = 250
+
+                    svg_rect outer {
+                        left = 10
+                        right = 10
+                        top = 10
+                        bottom = 10
+                        rx = 4
+                        fill = "none"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 1
+                        stroke_dasharray = "4,4"
+
+                        svg_rect header {
+                            left = 0
+                            right = 0
+                            top = 0
+                            height = 40
+                            fill = "var(--color-nav-bg)"
+                            stroke = "var(--color-nav-border)"
+                            stroke_width = 1
+                            svg_text ht { content = "Header (anchored top, full width)" }
+                        }
+
+                        svg_rect sidebar {
+                            left = 0
+                            top = 50
+                            bottom = 50
+                            width = 150
+                            fill = "var(--color-code-bg)"
+                            stroke = "var(--color-code-border)"
+                            stroke_width = 1
+                            svg_text st { content = "Sidebar" }
+                        }
+
+                        svg_rect content_area {
+                            left = 160
+                            top = 50
+                            right = 0
+                            bottom = 50
+                            fill = "var(--color-nav-bg)"
+                            stroke = "var(--color-nav-border)"
+                            stroke_width = 1
+                            svg_text ct {
+                                content = "Content (fills remaining space)"
+                            }
+                        }
+
+                        svg_rect footer {
+                            left = 0
+                            right = 0
+                            bottom = 0
+                            height = 40
+                            fill = "var(--color-nav-bg)"
+                            stroke = "var(--color-nav-border)"
+                            stroke_width = 1
+                            svg_text ft { content = "Footer (anchored bottom, full width)" }
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- Example 4: Stack layout ---
+        vsplit v_diag5 {
+            split s_diag5 {
+                size = 100
+
+                heading hd5 {
+                    level = 2
+                    content = "Stack Layout"
+                }
+                paragraph pd5 { content = "Use " + bold("align = \"stack\"") + " to automatically stack children vertically with spacing:" }
+
+                wdoc_diagram stack_demo {
+                    width = 400
+                    height = 220
+
+                    svg_rect container {
+                        x = 20
+                        y = 10
+                        width = 360
+                        height = 200
+                        rx = 8
+                        fill = "none"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 1
+                        align = "stack"
+                        gap = 10
+                        padding = 15
+
+                        svg_rect item1 {
+                            height = 40
+                            rx = 4
+                            fill = "var(--color-link)"
+                            svg_text t1 {
+                                content = "Item 1"
+                                fill = "#ffffff"
+                            }
+                        }
+
+                        svg_rect item2 {
+                            height = 40
+                            rx = 4
+                            fill = "var(--color-nav-active)"
+                            svg_text t2 { content = "Item 2" }
+                        }
+
+                        svg_rect item3 {
+                            height = 40
+                            rx = 4
+                            fill = "var(--color-code-bg)"
+                            stroke = "var(--color-code-border)"
+                            stroke_width = 1
+                            svg_text t3 { content = "Item 3" }
+                        }
+                    }
+                }
+
+                heading hd6 {
+                    level = 2
+                    content = "WCL Source"
+                }
+                paragraph pd6 { content = "Here is the WCL code for the stack layout diagram above:" }
+                code cd1 {
+                    language = "wcl"
+                    content = "wdoc_diagram stack_demo {\n    width = 400\n    height = 220\n\n    svg_rect container {\n        x = 20\n        y = 10\n        width = 360\n        height = 200\n        align = \"stack\"\n        gap = 10\n        padding = 15\n\n        svg_rect item1 {\n            height = 40\n            fill = \"var(--color-link)\"\n            svg_text t1 { content = \"Item 1\" }\n        }\n        svg_rect item2 {\n            height = 40\n            fill = \"var(--color-nav-active)\"\n            svg_text t2 { content = \"Item 2\" }\n        }\n    }\n}"
+                }
+            }
+        }
+    }
+}
+
 // ── Language Bindings page ──
 
 wdoc_page binding_examples {
