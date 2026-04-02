@@ -170,6 +170,16 @@ h6.wdoc-heading { font-size: 0.9rem; }
 /* Override highlight.js background to match our code box */
 .wdoc-code .hljs { background: transparent; padding: 0; }
 
+/* Diagrams */
+.wdoc-diagram {
+    margin-bottom: 1rem;
+    text-align: center;
+}
+.wdoc-diagram svg {
+    max-width: 100%;
+    height: auto;
+}
+
 /* Images */
 .wdoc-image {
     max-width: 100%;
