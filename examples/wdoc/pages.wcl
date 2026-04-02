@@ -1207,6 +1207,556 @@ wdoc_page diagram_examples {
     }
 }
 
+// ── Large Scale Diagram Examples (generated with for loops) ──
+
+let grid_items = ["auth", "users", "posts", "media", "search", "notify", "billing", "analytics", "config", "logging", "metrics", "cache", "queue", "storage", "gateway"]
+
+wdoc_page large_diagrams {
+    section = "my_docs.diagrams.large_diagrams"
+    title = "Large Diagrams"
+
+    wdoc_layout {
+        // Large grid
+        vsplit v_lg1 {
+            split s_lg1 {
+                size = 100
+
+                heading hlg1 {
+                    level = 2
+                    content = "Large Grid (15 services)"
+                }
+                paragraph plg1 { content = "A grid layout with many items, generated with a WCL " + bold("for") + " loop:" }
+
+                wdoc_diagram large_grid {
+                    width = 700
+                    height = 400
+                    align = "grid"
+                    columns = 5
+                    gap = 15
+
+                    for svc in grid_items {
+                        shape_rect ${svc} {
+                            width = 110
+                            height = 55
+                            rx = 6
+                            fill = "var(--color-code-bg)"
+                            stroke = "var(--color-code-border)"
+                            stroke_width = 1
+                            shape_text t { content = svc }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Large force-directed network
+        vsplit v_lg2 {
+            split s_lg2 {
+                size = 100
+
+                heading hlg2 {
+                    level = 2
+                    content = "Large Force Network (12 nodes)"
+                }
+                paragraph plg2 { content = "A complex force-directed network with many interconnections:" }
+
+                wdoc_diagram large_force {
+                    width = 700
+                    height = 500
+                    align = "force"
+
+                    shape_circle f_web {
+                        r = 25
+                        fill = "var(--color-link)"
+                        shape_text t { content = "Web"
+                            fill = "#fff" }
+                    }
+                    shape_circle f_mobile {
+                        r = 25
+                        fill = "var(--color-link)"
+                        shape_text t { content = "Mobile"
+                            fill = "#fff" }
+                    }
+                    shape_circle f_gw {
+                        r = 30
+                        fill = "var(--color-link)"
+                        shape_text t { content = "Gateway"
+                            fill = "#fff" }
+                    }
+                    shape_circle f_auth {
+                        r = 22
+                        fill = "var(--color-code-bg)"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        shape_text t { content = "Auth" }
+                    }
+                    shape_circle f_users {
+                        r = 22
+                        fill = "var(--color-code-bg)"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        shape_text t { content = "Users" }
+                    }
+                    shape_circle f_posts {
+                        r = 22
+                        fill = "var(--color-code-bg)"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        shape_text t { content = "Posts" }
+                    }
+                    shape_circle f_media {
+                        r = 22
+                        fill = "var(--color-code-bg)"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        shape_text t { content = "Media" }
+                    }
+                    shape_circle f_search {
+                        r = 22
+                        fill = "var(--color-nav-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 2
+                        shape_text t { content = "Search" }
+                    }
+                    shape_circle f_db {
+                        r = 25
+                        fill = "var(--color-nav-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 2
+                        shape_text t { content = "DB" }
+                    }
+                    shape_circle f_cache {
+                        r = 22
+                        fill = "var(--color-nav-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 2
+                        shape_text t { content = "Cache" }
+                    }
+                    shape_circle f_queue {
+                        r = 22
+                        fill = "var(--color-nav-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 2
+                        shape_text t { content = "Queue" }
+                    }
+                    shape_circle f_storage {
+                        r = 22
+                        fill = "var(--color-nav-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 2
+                        shape_text t { content = "Storage" }
+                    }
+
+                    // Client → Gateway
+                    shape_connection fe1 { from = "f_web"
+                        to = "f_gw"
+                        direction = "to"
+                        stroke = "var(--color-text)" }
+                    shape_connection fe2 { from = "f_mobile"
+                        to = "f_gw"
+                        direction = "to"
+                        stroke = "var(--color-text)" }
+                    // Gateway → Services
+                    shape_connection fe3 { from = "f_gw"
+                        to = "f_auth"
+                        direction = "to"
+                        stroke = "var(--color-text)" }
+                    shape_connection fe4 { from = "f_gw"
+                        to = "f_users"
+                        direction = "to"
+                        stroke = "var(--color-text)" }
+                    shape_connection fe5 { from = "f_gw"
+                        to = "f_posts"
+                        direction = "to"
+                        stroke = "var(--color-text)" }
+                    shape_connection fe6 { from = "f_gw"
+                        to = "f_media"
+                        direction = "to"
+                        stroke = "var(--color-text)" }
+                    // Services → Data
+                    shape_connection fe7 { from = "f_users"
+                        to = "f_db"
+                        direction = "both"
+                        stroke = "var(--color-text)" }
+                    shape_connection fe8 { from = "f_posts"
+                        to = "f_db"
+                        direction = "both"
+                        stroke = "var(--color-text)" }
+                    shape_connection fe9 { from = "f_posts"
+                        to = "f_search"
+                        direction = "to"
+                        stroke = "var(--color-text)" }
+                    shape_connection fe10 { from = "f_media"
+                        to = "f_storage"
+                        direction = "both"
+                        stroke = "var(--color-text)" }
+                    shape_connection fe11 { from = "f_auth"
+                        to = "f_cache"
+                        direction = "both"
+                        stroke = "var(--color-text)" }
+                    shape_connection fe12 { from = "f_posts"
+                        to = "f_queue"
+                        direction = "to"
+                        stroke = "var(--color-text)" }
+                    shape_connection fe13 { from = "f_queue"
+                        to = "f_search"
+                        direction = "to"
+                        stroke = "var(--color-text)" }
+                    shape_connection fe14 { from = "f_search"
+                        to = "f_cache"
+                        direction = "both"
+                        stroke = "var(--color-text)" }
+                }
+            }
+        }
+
+        // Large layered pipeline
+        vsplit v_lg3 {
+            split s_lg3 {
+                size = 100
+
+                heading hlg3 {
+                    level = 2
+                    content = "Large Layered Pipeline (10 stages)"
+                }
+                paragraph plg3 { content = "A CI/CD pipeline with branching and merging stages:" }
+
+                wdoc_diagram large_layered {
+                    width = 700
+                    height = 500
+                    align = "layered"
+                    gap = 30
+
+                    shape_rect l_src {
+                        width = 100
+                        height = 40
+                        rx = 4
+                        fill = "var(--color-code-bg)"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        shape_text t { content = "Source" }
+                    }
+                    shape_rect l_lint {
+                        width = 100
+                        height = 40
+                        rx = 4
+                        fill = "var(--color-code-bg)"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        shape_text t { content = "Lint" }
+                    }
+                    shape_rect l_test {
+                        width = 100
+                        height = 40
+                        rx = 4
+                        fill = "var(--color-code-bg)"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        shape_text t { content = "Test" }
+                    }
+                    shape_rect l_build {
+                        width = 100
+                        height = 40
+                        rx = 4
+                        fill = "var(--color-code-bg)"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        shape_text t { content = "Build" }
+                    }
+                    shape_rect l_linux {
+                        width = 100
+                        height = 40
+                        rx = 4
+                        fill = "var(--color-nav-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 1
+                        shape_text t { content = "Linux" }
+                    }
+                    shape_rect l_macos {
+                        width = 100
+                        height = 40
+                        rx = 4
+                        fill = "var(--color-nav-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 1
+                        shape_text t { content = "macOS" }
+                    }
+                    shape_rect l_windows {
+                        width = 100
+                        height = 40
+                        rx = 4
+                        fill = "var(--color-nav-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 1
+                        shape_text t { content = "Windows" }
+                    }
+                    shape_rect l_package {
+                        width = 100
+                        height = 40
+                        rx = 4
+                        fill = "var(--color-code-bg)"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        shape_text t { content = "Package" }
+                    }
+                    shape_rect l_staging {
+                        width = 100
+                        height = 40
+                        rx = 4
+                        fill = "var(--color-code-bg)"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        shape_text t { content = "Staging" }
+                    }
+                    shape_rect l_prod {
+                        width = 100
+                        height = 40
+                        rx = 4
+                        fill = "var(--color-link)"
+                        shape_text t { content = "Production"
+                            fill = "#fff" }
+                    }
+
+                    shape_connection lc1 { from = "l_src"
+                        to = "l_lint"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        stroke_width = 2 }
+                    shape_connection lc2 { from = "l_src"
+                        to = "l_test"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        stroke_width = 2 }
+                    shape_connection lc3 { from = "l_lint"
+                        to = "l_build"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        stroke_width = 2 }
+                    shape_connection lc4 { from = "l_test"
+                        to = "l_build"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        stroke_width = 2 }
+                    shape_connection lc5 { from = "l_build"
+                        to = "l_linux"
+                        direction = "to"
+                        stroke = "var(--color-text)" }
+                    shape_connection lc6 { from = "l_build"
+                        to = "l_macos"
+                        direction = "to"
+                        stroke = "var(--color-text)" }
+                    shape_connection lc7 { from = "l_build"
+                        to = "l_windows"
+                        direction = "to"
+                        stroke = "var(--color-text)" }
+                    shape_connection lc8 { from = "l_linux"
+                        to = "l_package"
+                        direction = "to"
+                        stroke = "var(--color-text)" }
+                    shape_connection lc9 { from = "l_macos"
+                        to = "l_package"
+                        direction = "to"
+                        stroke = "var(--color-text)" }
+                    shape_connection lc10 { from = "l_windows"
+                        to = "l_package"
+                        direction = "to"
+                        stroke = "var(--color-text)" }
+                    shape_connection lc11 { from = "l_package"
+                        to = "l_staging"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        stroke_width = 2 }
+                    shape_connection lc12 { from = "l_staging"
+                        to = "l_prod"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        stroke_width = 2 }
+                }
+            }
+        }
+
+        // Radial with many nodes
+        vsplit v_lg4 {
+            split s_lg4 {
+                size = 100
+
+                heading hlg4 {
+                    level = 2
+                    content = "Large Radial Hierarchy (15 nodes)"
+                }
+                paragraph plg4 { content = "An org chart with three levels of hierarchy:" }
+
+                wdoc_diagram large_radial {
+                    width = 600
+                    height = 500
+                    align = "radial"
+                    root = "r_ceo"
+
+                    shape_circle r_ceo {
+                        r = 30
+                        fill = "var(--color-link)"
+                        shape_text t { content = "CEO"
+                            fill = "#fff" }
+                    }
+                    shape_circle r_cto {
+                        r = 24
+                        fill = "var(--color-code-bg)"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        shape_text t { content = "CTO" }
+                    }
+                    shape_circle r_cfo {
+                        r = 24
+                        fill = "var(--color-code-bg)"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        shape_text t { content = "CFO" }
+                    }
+                    shape_circle r_coo {
+                        r = 24
+                        fill = "var(--color-code-bg)"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        shape_text t { content = "COO" }
+                    }
+                    shape_circle r_cmo {
+                        r = 24
+                        fill = "var(--color-code-bg)"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        shape_text t { content = "CMO" }
+                    }
+                    shape_circle r_e1 {
+                        r = 16
+                        fill = "var(--color-nav-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 1
+                        shape_text t { content = "FE"
+                            font_size = 11 }
+                    }
+                    shape_circle r_e2 {
+                        r = 16
+                        fill = "var(--color-nav-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 1
+                        shape_text t { content = "BE"
+                            font_size = 11 }
+                    }
+                    shape_circle r_e3 {
+                        r = 16
+                        fill = "var(--color-nav-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 1
+                        shape_text t { content = "Infra"
+                            font_size = 11 }
+                    }
+                    shape_circle r_f1 {
+                        r = 16
+                        fill = "var(--color-nav-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 1
+                        shape_text t { content = "Acct"
+                            font_size = 11 }
+                    }
+                    shape_circle r_f2 {
+                        r = 16
+                        fill = "var(--color-nav-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 1
+                        shape_text t { content = "Tax"
+                            font_size = 11 }
+                    }
+                    shape_circle r_o1 {
+                        r = 16
+                        fill = "var(--color-nav-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 1
+                        shape_text t { content = "HR"
+                            font_size = 11 }
+                    }
+                    shape_circle r_o2 {
+                        r = 16
+                        fill = "var(--color-nav-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 1
+                        shape_text t { content = "Ops"
+                            font_size = 11 }
+                    }
+                    shape_circle r_m1 {
+                        r = 16
+                        fill = "var(--color-nav-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 1
+                        shape_text t { content = "Brand"
+                            font_size = 11 }
+                    }
+                    shape_circle r_m2 {
+                        r = 16
+                        fill = "var(--color-nav-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 1
+                        shape_text t { content = "Growth"
+                            font_size = 10 }
+                    }
+                    shape_circle r_m3 {
+                        r = 16
+                        fill = "var(--color-nav-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 1
+                        shape_text t { content = "Sales"
+                            font_size = 11 }
+                    }
+
+                    // Level 1
+                    shape_connection rc1 { from = "r_ceo"
+                        to = "r_cto"
+                        stroke = "var(--color-text)" }
+                    shape_connection rc2 { from = "r_ceo"
+                        to = "r_cfo"
+                        stroke = "var(--color-text)" }
+                    shape_connection rc3 { from = "r_ceo"
+                        to = "r_coo"
+                        stroke = "var(--color-text)" }
+                    shape_connection rc4 { from = "r_ceo"
+                        to = "r_cmo"
+                        stroke = "var(--color-text)" }
+                    // Level 2
+                    shape_connection rc5 { from = "r_cto"
+                        to = "r_e1"
+                        stroke = "var(--color-text)" }
+                    shape_connection rc6 { from = "r_cto"
+                        to = "r_e2"
+                        stroke = "var(--color-text)" }
+                    shape_connection rc7 { from = "r_cto"
+                        to = "r_e3"
+                        stroke = "var(--color-text)" }
+                    shape_connection rc8 { from = "r_cfo"
+                        to = "r_f1"
+                        stroke = "var(--color-text)" }
+                    shape_connection rc9 { from = "r_cfo"
+                        to = "r_f2"
+                        stroke = "var(--color-text)" }
+                    shape_connection rc10 { from = "r_coo"
+                        to = "r_o1"
+                        stroke = "var(--color-text)" }
+                    shape_connection rc11 { from = "r_coo"
+                        to = "r_o2"
+                        stroke = "var(--color-text)" }
+                    shape_connection rc12 { from = "r_cmo"
+                        to = "r_m1"
+                        stroke = "var(--color-text)" }
+                    shape_connection rc13 { from = "r_cmo"
+                        to = "r_m2"
+                        stroke = "var(--color-text)" }
+                    shape_connection rc14 { from = "r_cmo"
+                        to = "r_m3"
+                        stroke = "var(--color-text)" }
+                }
+            }
+        }
+    }
+}
+
 // ── Language Bindings page ──
 
 wdoc_page binding_examples {
