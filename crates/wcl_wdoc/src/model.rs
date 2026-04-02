@@ -74,6 +74,8 @@ pub struct Split {
 pub struct ContentBlock {
     /// Block kind (e.g. "heading", "paragraph", "image", "code")
     pub kind: String,
+    /// Optional block ID for anchor linking
+    pub id: Option<String>,
     /// HTML output from the template function
     pub rendered_html: String,
     /// Style class from @style decorator

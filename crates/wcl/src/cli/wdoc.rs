@@ -700,6 +700,7 @@ fn extract_layout_children(block: &BlockRef, ctx: &ExtractCtx) -> Vec<LayoutItem
                 match rendered {
                     Ok(html) => items.push(LayoutItem::Content(ContentBlock {
                         kind: kind.to_string(),
+                        id: child.id.clone(),
                         rendered_html: html,
                         style: get_style_decorator(child),
                     })),

@@ -8,7 +8,17 @@ use std::fmt::Write;
 
 use indexmap::IndexMap;
 
-/// Render a heading element.
+/// Generate a URL-safe slug from text.
+pub fn slugify(s: &str) -> String {
+    let slug: String = s
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { '-' })
+        .collect();
+    slug.trim_matches('-').to_string()
+}
+
+/// Render a heading element with an anchor ID.
 /// Expects: `level` (i64), `content` (string)
 pub fn render_heading(attrs: &IndexMap<String, String>) -> String {
     let level = attrs
@@ -17,7 +27,8 @@ pub fn render_heading(attrs: &IndexMap<String, String>) -> String {
         .unwrap_or(1)
         .clamp(1, 6);
     let content = attrs.get("content").map(|s| s.as_str()).unwrap_or("");
-    format!("<h{level} class=\"wdoc-heading\">{content}</h{level}>")
+    let slug = slugify(content);
+    format!("<h{level} id=\"{slug}\" class=\"wdoc-heading\">{content}</h{level}>")
 }
 
 /// Render a paragraph element.
@@ -166,7 +177,7 @@ mod tests {
     #[test]
     fn test_render_heading() {
         let html = render_heading(&attrs(&[("level", "2"), ("content", "Hello")]));
-        assert_eq!(html, "<h2 class=\"wdoc-heading\">Hello</h2>");
+        assert_eq!(html, "<h2 id=\"hello\" class=\"wdoc-heading\">Hello</h2>");
     }
 
     #[test]

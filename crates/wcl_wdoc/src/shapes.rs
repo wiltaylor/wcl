@@ -480,6 +480,12 @@ fn render_shape_svg(node: &ShapeNode, svg: &mut String) {
     let b = &node.resolved;
     let style = svg_style_attrs(&node.attrs);
 
+    // Wrap in <a> if shape has an href attribute (clickable)
+    let href = node.attrs.get("href");
+    if let Some(url) = href {
+        write!(svg, "<a href=\"{url}\" target=\"_top\">").unwrap();
+    }
+
     match node.kind {
         ShapeKind::Rect => {
             let rx = node.attrs.get("rx").map(|s| s.as_str()).unwrap_or("0");
@@ -571,6 +577,11 @@ fn render_shape_svg(node: &ShapeNode, svg: &mut String) {
             render_shape_svg(child, svg);
         }
         svg.push_str("</g>");
+    }
+
+    // Close <a> wrapper if shape was clickable
+    if href.is_some() {
+        svg.push_str("</a>");
     }
 }
 

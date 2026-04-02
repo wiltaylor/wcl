@@ -180,6 +180,12 @@ h6.wdoc-heading { font-size: 0.9rem; }
     height: auto;
 }
 
+/* Clickable diagram shapes */
+.wdoc-diagram svg a { cursor: pointer; }
+.wdoc-diagram svg a:hover rect,
+.wdoc-diagram svg a:hover circle,
+.wdoc-diagram svg a:hover ellipse { opacity: 0.85; }
+
 /* Images */
 .wdoc-image {
     max-width: 100%;
