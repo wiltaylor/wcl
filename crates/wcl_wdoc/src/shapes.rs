@@ -539,8 +539,12 @@ fn render_shape_svg(node: &ShapeNode, svg: &mut String) {
                 .get("anchor")
                 .map(|s| s.as_str())
                 .unwrap_or("middle");
-            // Center text within resolved bounds
-            let tx = b.x + b.width / 2.0;
+            // Position text based on anchor
+            let tx = match anchor {
+                "start" => b.x,
+                "end" => b.x + b.width,
+                _ => b.x + b.width / 2.0, // "middle"
+            };
             let ty = b.y + b.height / 2.0;
             // Default fill to currentColor so text is visible in dark mode
             let fill_default = if node.attrs.contains_key("fill") {
