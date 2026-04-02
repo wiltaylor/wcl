@@ -53,6 +53,8 @@ struct AstContext {
     fn_call_names: HashSet<usize>,
     /// Byte offsets of identifiers used as macro parameter names
     param_names: HashSet<usize>,
+    /// Byte offsets of identifiers used as namespace names
+    namespace_names: HashSet<usize>,
 }
 
 impl AstContext {
@@ -67,6 +69,7 @@ impl AstContext {
             type_spans: HashSet::new(),
             fn_call_names: HashSet::new(),
             param_names: HashSet::new(),
+            namespace_names: HashSet::new(),
         }
     }
 
@@ -77,6 +80,25 @@ impl AstContext {
                 ast::DocItem::ExportLet(el) => {
                     self.let_names.insert(el.name.span.start);
                     self.collect_expr(&el.value);
+                }
+                ast::DocItem::Namespace(ns) => {
+                    for seg in &ns.path {
+                        self.namespace_names.insert(seg.span.start);
+                    }
+                    for inner in &ns.items {
+                        match inner {
+                            ast::DocItem::Body(body_item) => self.collect_body(body_item),
+                            ast::DocItem::Namespace(_) | ast::DocItem::Use(_) => {
+                                // Nested namespaces/use — handled recursively by collect_from_doc
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                ast::DocItem::Use(use_decl) => {
+                    for seg in &use_decl.namespace_path {
+                        self.namespace_names.insert(seg.span.start);
+                    }
                 }
                 _ => {}
             }
@@ -294,7 +316,9 @@ pub fn compute_semantic_tokens(
             | TokenKind::SelfKw
             | TokenKind::Validation
             | TokenKind::DecoratorSchema
-            | TokenKind::SymbolSet => (0, 0), // keyword
+            | TokenKind::SymbolSet
+            | TokenKind::Namespace
+            | TokenKind::Use => (0, 0), // keyword
 
             // Literals
             TokenKind::StringLit(_) | TokenKind::StringFragment(_) | TokenKind::Heredoc { .. } => {
@@ -333,7 +357,9 @@ pub fn compute_semantic_tokens(
             TokenKind::Ident(_) | TokenKind::IdentifierLit(_) => {
                 let start = token.span.start;
                 if let Some(ctx) = &ctx {
-                    if ctx.decorator_names.contains(&start) {
+                    if ctx.namespace_names.contains(&start) {
+                        (10, 0) // namespace
+                    } else if ctx.decorator_names.contains(&start) {
                         (9, 0) // decorator
                     } else if ctx.block_kinds.contains(&start) {
                         (4, 0) // type

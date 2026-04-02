@@ -32,7 +32,13 @@ export default grammar({
     document: ($) => repeat($._doc_item),
 
     _doc_item: ($) =>
-      choice($.import_declaration, $.export_declaration, $._body_item),
+      choice(
+        $.import_declaration,
+        $.export_declaration,
+        $.namespace_declaration,
+        $.use_declaration,
+        $._body_item,
+      ),
 
     _body_item: ($) =>
       choice(
@@ -64,6 +70,28 @@ export default grammar({
         seq("export", "let", $.identifier, "=", $.expression),
         seq("export", $.identifier),
       ),
+
+    // Namespaces
+    namespace_path: ($) => seq($.identifier, repeat(seq("::", $.identifier))),
+
+    namespace_declaration: ($) =>
+      choice(
+        seq("namespace", $.namespace_path, "{", repeat($._doc_item), "}"),
+        seq("namespace", $.namespace_path),
+      ),
+
+    // Use declarations — path is inlined to avoid conflict with namespace_path's :: repeat
+    use_declaration: ($) =>
+      seq(
+        "use",
+        $.identifier,
+        repeat(seq("::", $.identifier)),
+        "::",
+        choice($.use_target, seq("{", commaSep1($.use_target), "}")),
+      ),
+
+    use_target: ($) =>
+      seq($.identifier, optional(seq("->", $.identifier))),
 
     // Attributes
     attribute: ($) =>

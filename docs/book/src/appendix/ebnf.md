@@ -14,7 +14,7 @@ Notation:
 ```ebnf
 (* ===== Top-level ===== *)
 document        = trivia { doc_item } trivia ;
-doc_item        = import_decl | export_decl | body_item ;
+doc_item        = import_decl | export_decl | namespace_decl | use_decl | body_item ;
 body            = { body_item } ;
 body_item       = attribute
                 | block
@@ -34,6 +34,12 @@ body_item       = attribute
 (* ===== Import Directives (top-level only) ===== *)
 import_decl     = "import" ["?"] (STRING_LIT | library_import) ;
 library_import  = "<" IDENT { "." IDENT } ".wcl" ">" ;
+
+(* ===== Namespaces ===== *)
+namespace_path  = IDENT { "::" IDENT } ;
+namespace_decl  = "namespace" namespace_path ( "{" { doc_item } "}" | (* file-level *) ) ;
+use_decl        = "use" namespace_path "::" ( use_target | "{" use_target { "," use_target } "}" ) ;
+use_target      = IDENT [ "->" IDENT ] ;
 
 (* ===== Export Declarations (top-level only) ===== *)
 export_decl     = "export" "let" IDENT "=" expression

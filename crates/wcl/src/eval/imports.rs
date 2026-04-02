@@ -710,7 +710,9 @@ impl<'a, FS: FileSystem + ?Sized> ImportResolver<'a, FS> {
                         DocItem::ExportLet(_)
                         | DocItem::ReExport(_)
                         | DocItem::Body(_)
-                        | DocItem::FunctionDecl(_) => {
+                        | DocItem::FunctionDecl(_)
+                        | DocItem::Namespace(_)
+                        | DocItem::Use(_) => {
                             all_merged_items.push(item);
                         }
                     }

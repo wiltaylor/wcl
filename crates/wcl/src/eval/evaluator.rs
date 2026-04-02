@@ -8,6 +8,7 @@ use indexmap::IndexMap;
 
 use crate::eval::functions::{builtin_registry, BuiltinFn, FunctionRegistry};
 use crate::eval::imports::FileSystem;
+use crate::eval::namespaces::NamespaceAliases;
 use crate::eval::scope::*;
 use crate::eval::value::*;
 
@@ -27,6 +28,8 @@ pub struct Evaluator {
     imported_paths: HashSet<PathBuf>,
     /// Schema names declared in the document (for `has_schema()` introspection)
     schema_names: HashSet<String>,
+    /// Namespace aliases from `use` declarations
+    namespace_aliases: NamespaceAliases,
 }
 
 impl Evaluator {
@@ -42,6 +45,7 @@ impl Evaluator {
             variables: IndexMap::new(),
             imported_paths: HashSet::new(),
             schema_names: HashSet::new(),
+            namespace_aliases: NamespaceAliases::default(),
         }
     }
 
@@ -57,6 +61,7 @@ impl Evaluator {
             variables: IndexMap::new(),
             imported_paths: HashSet::new(),
             schema_names: HashSet::new(),
+            namespace_aliases: NamespaceAliases::default(),
         }
     }
 
@@ -81,6 +86,7 @@ impl Evaluator {
             variables: IndexMap::new(),
             imported_paths: HashSet::new(),
             schema_names: HashSet::new(),
+            namespace_aliases: NamespaceAliases::default(),
         }
     }
 
@@ -107,6 +113,11 @@ impl Evaluator {
     /// Add a declared function name (from `declare` statements in library imports).
     pub fn add_declared_function(&mut self, name: impl Into<String>) {
         self.declared_functions.insert(name.into());
+    }
+
+    /// Set namespace aliases from `use` declarations.
+    pub fn set_namespace_aliases(&mut self, aliases: NamespaceAliases) {
+        self.namespace_aliases = aliases;
     }
 
     /// Evaluate a full document. Returns the evaluated document as a list of
@@ -809,6 +820,7 @@ impl Evaluator {
     // ------------------------------------------------------------------
 
     fn eval_ident(&mut self, ident: &Ident, scope_id: ScopeId) -> Result<Value, Diagnostic> {
+        // Try direct resolution first
         let resolved = self
             .scopes
             .resolve(scope_id, &ident.name)
@@ -816,19 +828,44 @@ impl Evaluator {
         match resolved {
             Some((Some(val), _)) => {
                 self.scopes.record_read(scope_id, &ident.name);
-                Ok(val)
+                return Ok(val);
             }
-            Some((None, _)) => Err(Diagnostic::error(
-                format!("variable '{}' has not been evaluated yet", ident.name),
-                ident.span,
-            )
-            .with_code("E040")),
-            None => Err(Diagnostic::error(
-                format!("undefined reference '{}'", ident.name),
-                ident.span,
-            )
-            .with_code("E040")),
+            Some((None, _)) => {
+                return Err(Diagnostic::error(
+                    format!("variable '{}' has not been evaluated yet", ident.name),
+                    ident.span,
+                )
+                .with_code("E040"));
+            }
+            None => {}
         }
+
+        // Try namespace alias resolution
+        if let Some(qualified) = self.namespace_aliases.aliases.get(&ident.name).cloned() {
+            let resolved = self
+                .scopes
+                .resolve(scope_id, &qualified)
+                .map(|(_, entry)| (entry.value.clone(), entry.evaluated));
+            match resolved {
+                Some((Some(val), _)) => {
+                    self.scopes.record_read(scope_id, &qualified);
+                    return Ok(val);
+                }
+                Some((None, _)) => {
+                    return Err(Diagnostic::error(
+                        format!("variable '{}' has not been evaluated yet", ident.name),
+                        ident.span,
+                    )
+                    .with_code("E040"));
+                }
+                None => {}
+            }
+        }
+
+        Err(
+            Diagnostic::error(format!("undefined reference '{}'", ident.name), ident.span)
+                .with_code("E040"),
+        )
     }
 
     // ------------------------------------------------------------------

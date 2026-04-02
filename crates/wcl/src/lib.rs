@@ -586,6 +586,14 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
         all_diagnostics.extend(diag_bag.into_diagnostics());
     }
 
+    // Phase 3b: Namespace resolution — qualify names, flatten namespace wrappers
+    let namespace_aliases = {
+        let mut diag_bag = crate::lang::diagnostic::DiagnosticBag::new();
+        let aliases = crate::eval::namespaces::resolve(&mut doc, &mut diag_bag);
+        all_diagnostics.extend(diag_bag.into_diagnostics());
+        aliases
+    };
+
     // Phase 4: Macro expansion
     let mut expander = MacroExpander::new(&macro_registry, options.max_macro_depth);
     expander.expand(&mut doc);
@@ -752,6 +760,7 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
     evaluator.set_variables(options.variables.clone());
     evaluator.set_imported_paths(imported_paths);
     evaluator.set_schema_names(schema_names);
+    evaluator.set_namespace_aliases(namespace_aliases.clone());
     let values = evaluator.evaluate(&doc);
     all_diagnostics.extend(evaluator.into_diagnostics().into_diagnostics());
 
@@ -764,6 +773,7 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
 
     // Phase 9: Schema validation
     let mut schemas = SchemaRegistry::new();
+    schemas.namespace_aliases = namespace_aliases.aliases;
     let mut diag_bag = DiagnosticBag::new();
     schemas.collect(&doc, &mut diag_bag);
 
@@ -3766,5 +3776,117 @@ endpoint e1 {
         } else {
             panic!("expected ExportLet, got {:?}", doc.items[0]);
         }
+    }
+
+    // ── Namespace integration tests ──────────────────────────────────────
+
+    #[test]
+    fn test_namespace_braced_evaluates() {
+        let src = r#"
+namespace networking {
+    service web {
+        port = 8080
+    }
+}
+"#;
+        let doc = parse(src, ParseOptions::default());
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+        let val = doc.values.get("web");
+        assert!(
+            val.is_some(),
+            "expected 'web' in values, got: {:?}",
+            doc.values.keys().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_namespace_file_level_evaluates() {
+        let src = r#"
+namespace myns
+
+service api {
+    port = 3000
+}
+"#;
+        let doc = parse(src, ParseOptions::default());
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+        let val = doc.values.get("api");
+        assert!(
+            val.is_some(),
+            "expected 'api' in values, got: {:?}",
+            doc.values.keys().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_namespace_schema_validation() {
+        let src = r#"
+namespace net {
+    schema "service" {
+        port: i64
+    }
+
+    service "web" {
+        port = 8080
+    }
+}
+"#;
+        let doc = parse(src, ParseOptions::default());
+        // Filter out any non-E071 errors (type mismatch false positives are a separate issue)
+        let real_errors: Vec<_> = doc
+            .diagnostics
+            .iter()
+            .filter(|d| d.severity == crate::lang::diagnostic::Severity::Error)
+            .collect();
+        assert!(real_errors.is_empty(), "errors: {:?}", real_errors);
+    }
+
+    #[test]
+    fn test_namespace_qualified_access_in_expr() {
+        let src = r#"
+namespace config {
+    let base_port = 8000
+}
+
+service "web" {
+    port = config::base_port + 80
+}
+"#;
+        let doc = parse(src, ParseOptions::default());
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+    }
+
+    #[test]
+    fn test_use_unknown_namespace_error() {
+        let src = r#"
+use nonexistent::thing
+"#;
+        let doc = parse(src, ParseOptions::default());
+        let errors: Vec<_> = doc
+            .diagnostics
+            .iter()
+            .filter(|d| d.code.as_deref() == Some("E121"))
+            .collect();
+        assert_eq!(errors.len(), 1, "expected E121: {:?}", doc.diagnostics);
+    }
+
+    #[test]
+    fn test_use_unknown_target_error() {
+        let src = r#"
+namespace net {
+    schema "service" {
+        port: i64
+    }
+}
+
+use net::nonexistent
+"#;
+        let doc = parse(src, ParseOptions::default());
+        let errors: Vec<_> = doc
+            .diagnostics
+            .iter()
+            .filter(|d| d.code.as_deref() == Some("E120"))
+            .collect();
+        assert_eq!(errors.len(), 1, "expected E120: {:?}", doc.diagnostics);
     }
 }

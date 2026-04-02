@@ -31,7 +31,10 @@
 [
   "import"
   "export"
+  "use"
 ] @keyword.import
+
+"namespace" @keyword
 
 [
   "inject"
@@ -82,6 +85,7 @@
 [
   ","
   "."
+  "::"
 ] @punctuation.delimiter
 
 "@" @punctuation.special
@@ -148,6 +152,15 @@
 
 (block
   (identifier) @type)
+
+; ── Namespaces ────────────────────────────────────────────────────────
+
+(namespace_declaration
+  (namespace_path
+    (identifier) @module))
+
+(use_declaration
+  (identifier) @module)
 
 ; ── Schema names ──────────────────────────────────────────────────────────
 

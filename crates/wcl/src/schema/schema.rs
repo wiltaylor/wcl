@@ -174,11 +174,22 @@ pub struct ValidateConstraints {
 #[derive(Debug, Default)]
 pub struct SchemaRegistry {
     pub schemas: HashMap<String, ResolvedSchema>,
+    /// Namespace aliases from `use` declarations for alias-aware lookup.
+    pub namespace_aliases: HashMap<String, String>,
 }
 
 impl SchemaRegistry {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Look up a schema by name, falling back to namespace alias resolution.
+    pub fn get_schema(&self, name: &str) -> Option<&ResolvedSchema> {
+        self.schemas.get(name).or_else(|| {
+            self.namespace_aliases
+                .get(name)
+                .and_then(|qualified| self.schemas.get(qualified))
+        })
     }
 
     /// Extract and register schemas from the document AST
@@ -504,7 +515,7 @@ impl SchemaRegistry {
         }
 
         // Check if there's a schema for this block type
-        if let Some(schema) = self.schemas.get(&block.kind.name) {
+        if let Some(schema) = self.get_schema(&block.kind.name) {
             // Text block validation
             if block.text_content.is_some() && schema.text_field.is_none() {
                 diagnostics.error_with_code(
@@ -679,7 +690,7 @@ impl SchemaRegistry {
         }
 
         // Child cardinality validation (E097/E098) and tagged variant validation
-        if let Some(schema) = self.schemas.get(&block.kind.name) {
+        if let Some(schema) = self.get_schema(&block.kind.name) {
             // E097/E098: @child cardinality constraints
             // Determine which constraints to use (variant may override)
             let active_constraints = &schema.child_constraints;
