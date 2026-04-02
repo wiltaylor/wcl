@@ -114,6 +114,28 @@ pub fn build_widget(
         "widget_toggle" => toggle_shapes(w, h, attrs),
         "widget_badge" => badge_shapes(w, h, attrs),
         "widget_navbar" => navbar_shapes(w, h, attrs),
+        // Flowchart
+        "widget_flow_process" => flow_process(w, h, attrs),
+        "widget_flow_decision" => flow_decision(w, h, attrs),
+        "widget_flow_terminal" => flow_terminal(w, h, attrs),
+        "widget_flow_io" => flow_io(w, h, attrs),
+        "widget_flow_subprocess" => flow_subprocess(w, h, attrs),
+        // C4
+        "widget_c4_person" => c4_person(w, h, attrs),
+        "widget_c4_system" => c4_system(w, h, attrs),
+        "widget_c4_container" => c4_container(w, h, attrs),
+        "widget_c4_component" => c4_component(w, h, attrs),
+        "widget_c4_boundary" => c4_boundary(w, h, attrs),
+        // UML
+        "widget_uml_class" => uml_class(w, h, attrs),
+        "widget_uml_actor" => uml_actor(w, h, attrs),
+        "widget_uml_package" => uml_package(w, h, attrs),
+        "widget_uml_note" => uml_note(w, h, attrs),
+        // Network
+        "widget_node_server" => node_server(w, h, attrs),
+        "widget_node_database" => node_database(w, h, attrs),
+        "widget_node_cloud" => node_cloud(w, h, attrs),
+        "widget_node_user" => node_user(w, h, attrs),
         _ => vec![],
     }
 }
@@ -451,4 +473,595 @@ fn navbar_shapes(w: f64, h: f64, attrs: &IndexMap<String, String>) -> Vec<ShapeN
     }
 
     shapes
+}
+
+// ===========================================================================
+// Flowchart shapes
+// ===========================================================================
+
+fn flow_process(w: f64, h: f64, attrs: &IndexMap<String, String>) -> Vec<ShapeNode> {
+    let label = attr(attrs, "label").unwrap_or("Process");
+    let color = attr(attrs, "color").unwrap_or("var(--color-link)");
+    vec![
+        rect(
+            0.0,
+            0.0,
+            w,
+            h,
+            &[
+                ("rx", "4"),
+                ("fill", "var(--color-bg)"),
+                ("stroke", color),
+                ("stroke_width", "2"),
+            ],
+        ),
+        text(0.0, 0.0, w, h, label, 13.0, &[]),
+    ]
+}
+
+fn flow_decision(w: f64, h: f64, attrs: &IndexMap<String, String>) -> Vec<ShapeNode> {
+    let label = attr(attrs, "label").unwrap_or("?");
+    let color = attr(attrs, "color").unwrap_or("var(--color-link)");
+    let (cx, cy) = (w / 2.0, h / 2.0);
+    let mut p = make_node(ShapeKind::Path, 0.0, 0.0, w, h);
+    p.attrs.insert(
+        "d".into(),
+        format!("M {cx} 0 L {w} {cy} L {cx} {h} L 0 {cy} Z"),
+    );
+    p.attrs.insert("fill".into(), "var(--color-bg)".into());
+    p.attrs.insert("stroke".into(), color.into());
+    p.attrs.insert("stroke_width".into(), "2".into());
+    vec![p, text(0.0, 0.0, w, h, label, 12.0, &[])]
+}
+
+fn flow_terminal(w: f64, h: f64, attrs: &IndexMap<String, String>) -> Vec<ShapeNode> {
+    let label = attr(attrs, "label").unwrap_or("Start");
+    let color = attr(attrs, "color").unwrap_or("var(--color-link)");
+    vec![
+        rect(
+            0.0,
+            0.0,
+            w,
+            h,
+            &[("rx", &format!("{}", h / 2.0)), ("fill", color)],
+        ),
+        text(0.0, 0.0, w, h, label, 13.0, &[("fill", "#fff")]),
+    ]
+}
+
+fn flow_io(w: f64, h: f64, attrs: &IndexMap<String, String>) -> Vec<ShapeNode> {
+    let label = attr(attrs, "label").unwrap_or("I/O");
+    let color = attr(attrs, "color").unwrap_or("var(--color-link)");
+    let s = w * 0.15;
+    let mut p = make_node(ShapeKind::Path, 0.0, 0.0, w, h);
+    p.attrs.insert(
+        "d".into(),
+        format!("M {s} 0 L {w} 0 L {} {h} L 0 {h} Z", w - s),
+    );
+    p.attrs.insert("fill".into(), "var(--color-bg)".into());
+    p.attrs.insert("stroke".into(), color.into());
+    p.attrs.insert("stroke_width".into(), "2".into());
+    vec![p, text(0.0, 0.0, w, h, label, 12.0, &[])]
+}
+
+fn flow_subprocess(w: f64, h: f64, attrs: &IndexMap<String, String>) -> Vec<ShapeNode> {
+    let label = attr(attrs, "label").unwrap_or("Subprocess");
+    let color = attr(attrs, "color").unwrap_or("var(--color-link)");
+    vec![
+        rect(
+            0.0,
+            0.0,
+            w,
+            h,
+            &[
+                ("rx", "4"),
+                ("fill", "var(--color-bg)"),
+                ("stroke", color),
+                ("stroke_width", "2"),
+            ],
+        ),
+        line(
+            10.0,
+            0.0,
+            10.0,
+            h,
+            &[("stroke", color), ("stroke_width", "1")],
+        ),
+        line(
+            w - 10.0,
+            0.0,
+            w - 10.0,
+            h,
+            &[("stroke", color), ("stroke_width", "1")],
+        ),
+        text(0.0, 0.0, w, h, label, 13.0, &[]),
+    ]
+}
+
+// ===========================================================================
+// C4 diagram shapes
+// ===========================================================================
+
+fn c4_person(w: f64, h: f64, attrs: &IndexMap<String, String>) -> Vec<ShapeNode> {
+    let name = attr(attrs, "label").unwrap_or("Person");
+    let desc = attr(attrs, "description").unwrap_or("");
+    let color = attr(attrs, "color").unwrap_or("var(--color-link)");
+    let hr = 18.0;
+    let by = hr * 2.0 + 4.0;
+    let mut shapes = vec![
+        circle(w / 2.0 - hr, 0.0, hr, &[("fill", color)]),
+        rect(0.0, by, w, h - by, &[("rx", "4"), ("fill", color)]),
+        text(0.0, by, w, 22.0, name, 14.0, &[("fill", "#fff")]),
+    ];
+    if !desc.is_empty() {
+        shapes.push(text(
+            4.0,
+            by + 22.0,
+            w - 8.0,
+            16.0,
+            desc,
+            10.0,
+            &[("fill", "#fff"), ("opacity", "0.8")],
+        ));
+    }
+    shapes
+}
+
+fn c4_system(w: f64, h: f64, attrs: &IndexMap<String, String>) -> Vec<ShapeNode> {
+    let name = attr(attrs, "label").unwrap_or("System");
+    let desc = attr(attrs, "description").unwrap_or("");
+    let color = attr(attrs, "color").unwrap_or("var(--color-link)");
+    let ext = attr(attrs, "external").unwrap_or("false") == "true";
+    let tag = if ext { "[External System]" } else { "[System]" };
+    let dash = if ext { "5,3" } else { "" };
+    let mut shapes = vec![
+        rect(
+            0.0,
+            0.0,
+            w,
+            h,
+            &[("rx", "8"), ("fill", color), ("stroke_dasharray", dash)],
+        ),
+        text(0.0, 8.0, w, 22.0, name, 15.0, &[("fill", "#fff")]),
+        text(
+            0.0,
+            28.0,
+            w,
+            14.0,
+            tag,
+            10.0,
+            &[("fill", "#fff"), ("opacity", "0.7")],
+        ),
+    ];
+    if !desc.is_empty() {
+        shapes.push(text(
+            6.0,
+            46.0,
+            w - 12.0,
+            16.0,
+            desc,
+            10.0,
+            &[("fill", "#fff"), ("opacity", "0.85")],
+        ));
+    }
+    shapes
+}
+
+fn c4_container(w: f64, h: f64, attrs: &IndexMap<String, String>) -> Vec<ShapeNode> {
+    let name = attr(attrs, "label").unwrap_or("Container");
+    let tech = attr(attrs, "technology").unwrap_or("");
+    let desc = attr(attrs, "description").unwrap_or("");
+    let color = attr(attrs, "color").unwrap_or("#438DD5");
+    let mut shapes = vec![
+        rect(0.0, 0.0, w, h, &[("rx", "6"), ("fill", color)]),
+        text(0.0, 8.0, w, 20.0, name, 14.0, &[("fill", "#fff")]),
+    ];
+    if !tech.is_empty() {
+        shapes.push(text(
+            0.0,
+            26.0,
+            w,
+            14.0,
+            &format!("[{tech}]"),
+            10.0,
+            &[("fill", "#fff"), ("opacity", "0.7")],
+        ));
+    }
+    if !desc.is_empty() {
+        shapes.push(text(
+            6.0,
+            44.0,
+            w - 12.0,
+            16.0,
+            desc,
+            10.0,
+            &[("fill", "#fff"), ("opacity", "0.85")],
+        ));
+    }
+    shapes
+}
+
+fn c4_component(w: f64, h: f64, attrs: &IndexMap<String, String>) -> Vec<ShapeNode> {
+    let name = attr(attrs, "label").unwrap_or("Component");
+    let tech = attr(attrs, "technology").unwrap_or("");
+    let color = attr(attrs, "color").unwrap_or("#85BBF0");
+    let mut shapes = vec![
+        rect(0.0, 0.0, w, h, &[("rx", "4"), ("fill", color)]),
+        text(0.0, 6.0, w, 18.0, name, 13.0, &[("fill", "#fff")]),
+    ];
+    if !tech.is_empty() {
+        shapes.push(text(
+            0.0,
+            24.0,
+            w,
+            14.0,
+            &format!("[{tech}]"),
+            9.0,
+            &[("fill", "#fff"), ("opacity", "0.7")],
+        ));
+    }
+    shapes
+}
+
+fn c4_boundary(w: f64, h: f64, attrs: &IndexMap<String, String>) -> Vec<ShapeNode> {
+    let name = attr(attrs, "label").unwrap_or("Boundary");
+    let color = attr(attrs, "color").unwrap_or("var(--color-nav-border)");
+    vec![
+        rect(
+            0.0,
+            0.0,
+            w,
+            h,
+            &[
+                ("rx", "4"),
+                ("fill", "none"),
+                ("stroke", color),
+                ("stroke_width", "2"),
+                ("stroke_dasharray", "8,4"),
+            ],
+        ),
+        text(8.0, 4.0, w - 16.0, 18.0, name, 12.0, &[("anchor", "start")]),
+    ]
+}
+
+// ===========================================================================
+// UML shapes
+// ===========================================================================
+
+fn uml_class(w: f64, h: f64, attrs: &IndexMap<String, String>) -> Vec<ShapeNode> {
+    let name = attr(attrs, "label").unwrap_or("ClassName");
+    let stereotype = attr(attrs, "stereotype");
+    let fields_str = attr(attrs, "fields").unwrap_or("");
+    let methods_str = attr(attrs, "methods").unwrap_or("");
+    let color = attr(attrs, "color").unwrap_or("var(--color-link)");
+    let hdr_h = if stereotype.is_some() { 40.0 } else { 28.0 };
+    let fields: Vec<&str> = fields_str.split('|').filter(|s| !s.is_empty()).collect();
+    let methods: Vec<&str> = methods_str.split('|').filter(|s| !s.is_empty()).collect();
+    let field_h = (fields.len() as f64 * 16.0).max(16.0);
+
+    let mut shapes = vec![
+        rect(
+            0.0,
+            0.0,
+            w,
+            h,
+            &[
+                ("fill", "var(--color-bg)"),
+                ("stroke", color),
+                ("stroke_width", "2"),
+            ],
+        ),
+        rect(0.0, 0.0, w, hdr_h, &[("fill", color)]),
+    ];
+    let mut y = 4.0;
+    if let Some(st) = stereotype {
+        shapes.push(text(
+            0.0,
+            y,
+            w,
+            14.0,
+            &format!("<<{st}>>"),
+            9.0,
+            &[("fill", "#fff"), ("opacity", "0.8")],
+        ));
+        y += 14.0;
+    }
+    shapes.push(text(0.0, y, w, 20.0, name, 14.0, &[("fill", "#fff")]));
+    shapes.push(line(
+        0.0,
+        hdr_h,
+        w,
+        hdr_h,
+        &[("stroke", color), ("stroke_width", "1")],
+    ));
+    let mut fy = hdr_h + 4.0;
+    for f in &fields {
+        shapes.push(text(
+            8.0,
+            fy,
+            w - 16.0,
+            14.0,
+            f.trim(),
+            11.0,
+            &[("anchor", "start")],
+        ));
+        fy += 16.0;
+    }
+    let my_start = hdr_h + field_h + 4.0;
+    shapes.push(line(
+        0.0,
+        my_start,
+        w,
+        my_start,
+        &[("stroke", color), ("stroke_width", "1")],
+    ));
+    let mut my = my_start + 4.0;
+    for m in &methods {
+        shapes.push(text(
+            8.0,
+            my,
+            w - 16.0,
+            14.0,
+            m.trim(),
+            11.0,
+            &[("anchor", "start")],
+        ));
+        my += 16.0;
+    }
+    shapes
+}
+
+fn uml_actor(w: f64, h: f64, attrs: &IndexMap<String, String>) -> Vec<ShapeNode> {
+    let name = attr(attrs, "label").unwrap_or("Actor");
+    let color = attr(attrs, "color").unwrap_or("currentColor");
+    let cx = w / 2.0;
+    let hr = h * 0.12;
+    let bt = hr * 2.0 + 2.0;
+    let bm = h * 0.5;
+    let ay = bt + (bm - bt) * 0.3;
+    let ly = h * 0.78;
+    vec![
+        circle(
+            cx - hr,
+            0.0,
+            hr,
+            &[("fill", "none"), ("stroke", color), ("stroke_width", "2")],
+        ),
+        line(cx, bt, cx, bm, &[("stroke", color), ("stroke_width", "2")]),
+        line(
+            cx - w * 0.3,
+            ay,
+            cx + w * 0.3,
+            ay,
+            &[("stroke", color), ("stroke_width", "2")],
+        ),
+        line(
+            cx,
+            bm,
+            cx - w * 0.25,
+            ly,
+            &[("stroke", color), ("stroke_width", "2")],
+        ),
+        line(
+            cx,
+            bm,
+            cx + w * 0.25,
+            ly,
+            &[("stroke", color), ("stroke_width", "2")],
+        ),
+        text(0.0, h * 0.82, w, h * 0.18, name, 11.0, &[]),
+    ]
+}
+
+fn uml_package(w: f64, h: f64, attrs: &IndexMap<String, String>) -> Vec<ShapeNode> {
+    let name = attr(attrs, "label").unwrap_or("Package");
+    let color = attr(attrs, "color").unwrap_or("var(--color-link)");
+    let tw = w * 0.4;
+    vec![
+        rect(
+            0.0,
+            0.0,
+            tw,
+            20.0,
+            &[
+                ("fill", "var(--color-bg)"),
+                ("stroke", color),
+                ("stroke_width", "1.5"),
+            ],
+        ),
+        text(0.0, 0.0, tw, 20.0, name, 11.0, &[]),
+        rect(
+            0.0,
+            19.0,
+            w,
+            h - 19.0,
+            &[
+                ("fill", "var(--color-bg)"),
+                ("stroke", color),
+                ("stroke_width", "1.5"),
+            ],
+        ),
+    ]
+}
+
+fn uml_note(w: f64, h: f64, attrs: &IndexMap<String, String>) -> Vec<ShapeNode> {
+    let label = attr(attrs, "label").unwrap_or("Note");
+    let color = attr(attrs, "color").unwrap_or("var(--color-nav-border)");
+    let fold = 15.0;
+    let mut body = make_node(ShapeKind::Path, 0.0, 0.0, w, h);
+    body.attrs.insert(
+        "d".into(),
+        format!("M 0 0 L {} 0 L {w} {fold} L {w} {h} L 0 {h} Z", w - fold),
+    );
+    body.attrs
+        .insert("fill".into(), "var(--color-code-bg)".into());
+    body.attrs.insert("stroke".into(), color.into());
+    body.attrs.insert("stroke_width".into(), "1.5".into());
+    let mut corner = make_node(ShapeKind::Path, 0.0, 0.0, w, h);
+    corner.attrs.insert(
+        "d".into(),
+        format!("M {} 0 L {} {fold} L {w} {fold}", w - fold, w - fold),
+    );
+    corner.attrs.insert("fill".into(), "none".into());
+    corner.attrs.insert("stroke".into(), color.into());
+    corner.attrs.insert("stroke_width".into(), "1".into());
+    vec![
+        body,
+        corner,
+        text(
+            8.0,
+            8.0,
+            w - 16.0,
+            h - 16.0,
+            label,
+            11.0,
+            &[("anchor", "start")],
+        ),
+    ]
+}
+
+// ===========================================================================
+// Network/infrastructure node shapes
+// ===========================================================================
+
+fn node_server(w: f64, h: f64, attrs: &IndexMap<String, String>) -> Vec<ShapeNode> {
+    let name = attr(attrs, "label").unwrap_or("Server");
+    let color = attr(attrs, "color").unwrap_or("var(--color-link)");
+    let rh = h * 0.6;
+    vec![
+        rect(
+            0.0,
+            0.0,
+            w,
+            rh,
+            &[
+                ("rx", "4"),
+                ("fill", "var(--color-code-bg)"),
+                ("stroke", color),
+                ("stroke_width", "2"),
+            ],
+        ),
+        rect(
+            6.0,
+            6.0,
+            w - 12.0,
+            rh * 0.25,
+            &[
+                ("rx", "2"),
+                ("fill", "var(--color-nav-bg)"),
+                ("stroke", color),
+                ("stroke_width", "1"),
+            ],
+        ),
+        rect(
+            6.0,
+            6.0 + rh * 0.32,
+            w - 12.0,
+            rh * 0.25,
+            &[
+                ("rx", "2"),
+                ("fill", "var(--color-nav-bg)"),
+                ("stroke", color),
+                ("stroke_width", "1"),
+            ],
+        ),
+        circle(w - 18.0, 8.0, 3.0, &[("fill", "#28a745")]),
+        circle(w - 18.0, 8.0 + rh * 0.32, 3.0, &[("fill", "#28a745")]),
+        text(0.0, rh + 4.0, w, h - rh - 4.0, name, 12.0, &[]),
+    ]
+}
+
+fn node_database(w: f64, h: f64, attrs: &IndexMap<String, String>) -> Vec<ShapeNode> {
+    let name = attr(attrs, "label").unwrap_or("Database");
+    let color = attr(attrs, "color").unwrap_or("var(--color-link)");
+    let eh = h * 0.15;
+    let bh = h * 0.55;
+    let mut body = make_node(ShapeKind::Path, 0.0, 0.0, w, h);
+    body.attrs.insert(
+        "d".into(),
+        format!(
+            "M 0 {eh} L 0 {bh} Q 0 {} {} {} Q {w} {} {w} {bh} L {w} {eh}",
+            bh + eh,
+            w / 2.0,
+            bh + eh,
+            bh + eh
+        ),
+    );
+    body.attrs
+        .insert("fill".into(), "var(--color-code-bg)".into());
+    body.attrs.insert("stroke".into(), color.into());
+    body.attrs.insert("stroke_width".into(), "2".into());
+    let mut top = make_node(ShapeKind::Path, 0.0, 0.0, w, h);
+    top.attrs.insert(
+        "d".into(),
+        format!(
+            "M 0 {eh} Q 0 0 {} 0 Q {w} 0 {w} {eh} Q {w} {} {} {} Q 0 {} 0 {eh}",
+            w / 2.0,
+            eh * 2.0,
+            w / 2.0,
+            eh * 2.0,
+            eh * 2.0
+        ),
+    );
+    top.attrs
+        .insert("fill".into(), "var(--color-nav-bg)".into());
+    top.attrs.insert("stroke".into(), color.into());
+    top.attrs.insert("stroke_width".into(), "2".into());
+    vec![
+        body,
+        top,
+        text(0.0, bh + eh + 4.0, w, h - bh - eh - 4.0, name, 12.0, &[]),
+    ]
+}
+
+fn node_cloud(w: f64, h: f64, attrs: &IndexMap<String, String>) -> Vec<ShapeNode> {
+    let name = attr(attrs, "label").unwrap_or("Cloud");
+    let color = attr(attrs, "color").unwrap_or("var(--color-link)");
+    let ch = h * 0.7;
+    let mut p = make_node(ShapeKind::Path, 0.0, 0.0, w, h);
+    p.attrs.insert(
+        "d".into(),
+        format!(
+            "M {} {} Q 0 {} 0 {} Q 0 {} {} 0 Q {} 0 {} {} Q {} 0 {} {} Q {} {} {} {} Z",
+            w * 0.2,
+            ch * 0.8,
+            ch * 0.8,
+            ch * 0.5,
+            ch * 0.1,
+            w * 0.25,
+            w * 0.4,
+            w * 0.5,
+            ch * 0.05,
+            w * 0.6,
+            w,
+            ch * 0.1,
+            w * 1.05,
+            ch * 0.6,
+            w * 0.8,
+            ch * 0.8
+        ),
+    );
+    p.attrs.insert("fill".into(), "var(--color-code-bg)".into());
+    p.attrs.insert("stroke".into(), color.into());
+    p.attrs.insert("stroke_width".into(), "2".into());
+    vec![p, text(0.0, ch * 0.2, w, ch * 0.5, name, 13.0, &[])]
+}
+
+fn node_user(w: f64, h: f64, attrs: &IndexMap<String, String>) -> Vec<ShapeNode> {
+    let name = attr(attrs, "label").unwrap_or("User");
+    let color = attr(attrs, "color").unwrap_or("var(--color-link)");
+    let ih = h * 0.65;
+    let hr = ih * 0.22;
+    let cx = w / 2.0;
+    vec![
+        circle(cx - hr, 0.0, hr, &[("fill", color)]),
+        rect(
+            cx - w * 0.35,
+            hr * 2.0 + 4.0,
+            w * 0.7,
+            ih - hr * 2.0 - 4.0,
+            &[("rx", &format!("{}", w * 0.15)), ("fill", color)],
+        ),
+        text(0.0, ih + 4.0, w, h - ih - 4.0, name, 12.0, &[]),
+    ]
 }
