@@ -60,13 +60,13 @@ wdoc_page overview {
                     content = "Key Features"
                 }
 
-                paragraph p4 { content = icon("shield-check") + " " + bold("Typed schemas") + " - define and validate your configuration structure at parse time." }
-                paragraph p5 { content = icon("code-slash") + " " + bold("Expressions") + " - variables, conditionals, loops, string interpolation, and 45+ built-in functions." }
-                paragraph p6 { content = icon("table") + " " + bold("Tables") + " - structured tabular data with typed columns and CSV import." }
-                paragraph p7 { content = icon("box-arrow-in-right") + " " + bold("Imports and Libraries") + " - modular configuration with library support and glob imports." }
-                paragraph p8 { content = icon("filetype-json") + " " + bold("Multiple output formats") + " - evaluate to JSON, YAML, TOML, or MessagePack." }
-                paragraph p9 { content = icon("brush") + " " + bold("Diagrams and Shapes") + " - vector diagrams with shapes, connections, and graph layouts." }
-                paragraph p10 { content = icon("palette") + " " + bold("Dark mode") + " - system detection with manual toggle, theme-aware throughout." }
+                paragraph p4 { content = icon("shield-check", "1.1em", "#28a745") + " " + bold("Typed schemas") + " - define and validate your configuration structure at parse time." }
+                paragraph p5 { content = icon("code-slash", "1.1em", "var(--color-link)") + " " + bold("Expressions") + " - variables, conditionals, loops, string interpolation, and 45+ built-in functions." }
+                paragraph p6 { content = icon("table", "1.1em", "#6f42c1") + " " + bold("Tables") + " - structured tabular data with typed columns and CSV import." }
+                paragraph p7 { content = icon("box-arrow-in-right", "1.1em", "#fd7e14") + " " + bold("Imports and Libraries") + " - modular configuration with library support and glob imports." }
+                paragraph p8 { content = icon("filetype-json", "1.1em", "#e83e8c") + " " + bold("Multiple output formats") + " - evaluate to JSON, YAML, TOML, or MessagePack." }
+                paragraph p9 { content = icon("brush", "1.1em", "#17a2b8") + " " + bold("Diagrams and Shapes") + " - vector diagrams with shapes, connections, and graph layouts." }
+                paragraph p10 { content = icon("palette", "1.1em", "#6610f2") + " " + bold("Dark mode") + " - system detection with manual toggle, theme-aware throughout." }
             }
         }
     }
