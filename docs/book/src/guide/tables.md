@@ -117,6 +117,61 @@ table users {
 
 When a schema is applied, you cannot also declare inline columns. Doing so produces error E092.
 
+## Multiline Cell Values (Heredocs)
+
+When a table cell contains multiline text — such as documentation, scripts, or templates — use a heredoc instead of a regular string literal:
+
+```wcl
+table docs {
+    title : string
+    body  : string
+
+    | "Getting Started" | <<-EOF
+        Install the package:
+        npm install wcl
+
+        Then import it:
+        const wcl = require("wcl")
+        EOF
+    |
+    | "Configuration" | <<-EOF
+        Create a config file and add your settings.
+        EOF
+    |
+}
+```
+
+The closing `|` for a heredoc cell goes on its own line after the heredoc delimiter.
+
+All heredoc variants work in table cells:
+
+| Variant | Syntax | Behaviour |
+|---|---|---|
+| Standard | `<<EOF` | Content preserved as-is |
+| Indented | `<<-EOF` | Strips leading whitespace based on closing delimiter indent |
+| Raw | `<<'EOF'` | No escape processing, no `${…}` interpolation |
+| Indented raw | `<<-'EOF'` | Both indented and raw |
+
+Use `<<-TAG` (indented) for readability — the content aligns with the surrounding table indent and leading whitespace is stripped automatically.
+
+Heredoc cells support interpolation (except in raw mode):
+
+```wcl
+let pkg = "wcl"
+
+table steps {
+    name : string
+    cmd  : string
+
+    | "install" | <<-EOF
+        npm install ${pkg}
+        EOF
+    |
+}
+```
+
+> **Tip:** Put heredoc cells in the last column for the cleanest visual layout.
+
 ## Loading Tables from CSV
 
 Use `import_table("path.csv")` to load a CSV file as a table value.

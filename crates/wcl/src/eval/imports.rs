@@ -425,6 +425,7 @@ fn resolve_single_import_table<FS: FileSystem + ?Sized>(
                             match val {
                                 Value::String(s) => Expr::StringLit(StringLit {
                                     parts: vec![StringPart::Literal(s)],
+                                    heredoc: None,
                                     span,
                                 }),
                                 _ => Expr::NullLit(span),
@@ -1389,6 +1390,7 @@ mod tests {
                 ImportTableArgs {
                     path: StringLit {
                         parts: vec![StringPart::Literal(path.to_string())],
+                        heredoc: None,
                         span,
                     },
                     separator: None,
@@ -1482,6 +1484,7 @@ mod tests {
                             ))),
                             StringPart::Literal(".csv".to_string()),
                         ],
+                        heredoc: None,
                         span,
                     },
                     separator: None,
@@ -1533,6 +1536,7 @@ mod tests {
                 ImportTableArgs {
                     path: StringLit {
                         parts: vec![StringPart::Literal("data.csv".to_string())],
+                        heredoc: None,
                         span,
                     },
                     separator: None,
@@ -1586,6 +1590,7 @@ mod tests {
                 ImportTableArgs {
                     path: StringLit {
                         parts: vec![StringPart::Literal(path.to_string())],
+                        heredoc: None,
                         span,
                     },
                     separator: None,
@@ -1679,6 +1684,7 @@ mod tests {
             rows: vec![TableRow {
                 cells: vec![Expr::StringLit(StringLit {
                     parts: vec![StringPart::Literal("val".to_string())],
+                    heredoc: None,
                     span,
                 })],
                 span,
@@ -1731,10 +1737,12 @@ mod tests {
                 ImportTableArgs {
                     path: StringLit {
                         parts: vec![StringPart::Literal("data.tsv".to_string())],
+                        heredoc: None,
                         span,
                     },
                     separator: Some(StringLit {
                         parts: vec![StringPart::Literal("\t".to_string())],
+                        heredoc: None,
                         span,
                     }),
                     headers: None,

@@ -22,6 +22,7 @@ fn make_ident(name: &str) -> Ident {
 fn make_string_lit(s: &str) -> StringLit {
     StringLit {
         parts: vec![StringPart::Literal(s.to_string())],
+        heredoc: None,
         span: sp(),
     }
 }
@@ -1760,7 +1761,7 @@ fn doc_decorator_round_trips_through_resolution() {
     reg.collect(&doc, &mut diags);
 
     assert!(!diags.has_errors());
-    let s = &reg.schemas["service"];
+    let s = reg.get_schema("service", None).unwrap();
     assert_eq!(s.doc.as_deref(), Some("A service definition."));
     assert_eq!(s.fields[0].doc.as_deref(), Some("The service name."));
 }
@@ -2037,4 +2038,257 @@ fn symbol_set_value_mapping() {
     assert_eq!(reg.serialize_symbol("multiplicity", "zero_or_one"), "0..1");
     assert_eq!(reg.serialize_symbol("multiplicity", "one"), "1");
     assert_eq!(reg.serialize_symbol("multiplicity", "many"), "many");
+}
+
+// ── Parent-scoped schema resolution tests ────────────────────────────────────
+
+fn make_decorator_string_list(name: &str, values: &[&str]) -> Decorator {
+    let items: Vec<Expr> = values
+        .iter()
+        .map(|v| Expr::StringLit(make_string_lit(v)))
+        .collect();
+    Decorator {
+        name: make_ident(name),
+        args: vec![DecoratorArg::Positional(Expr::List(items, sp()))],
+        span: sp(),
+    }
+}
+
+#[test]
+fn parent_scoped_same_name_no_e001() {
+    // Two schemas named "section" with different @parent scopes — should NOT trigger E001
+    let s1 = make_schema_with_decorators(
+        "section",
+        vec![make_schema_field("title", TypeExpr::String(sp()))],
+        vec![make_decorator_string_list("parent", &["doc"])],
+    );
+    let s2 = make_schema_with_decorators(
+        "section",
+        vec![make_schema_field("heading", TypeExpr::String(sp()))],
+        vec![make_decorator_string_list("parent", &["page"])],
+    );
+    let doc = make_doc(vec![
+        DocItem::Body(BodyItem::Schema(s1)),
+        DocItem::Body(BodyItem::Schema(s2)),
+    ]);
+
+    let mut reg = SchemaRegistry::new();
+    let mut diags = DiagnosticBag::new();
+    reg.collect(&doc, &mut diags);
+    assert!(
+        !diags.has_errors(),
+        "unexpected errors: {:?}",
+        diags.diagnostics()
+    );
+}
+
+#[test]
+fn parent_scoped_overlapping_triggers_e001() {
+    // Two schemas named "section" both with @parent(["doc"]) — E001
+    let s1 = make_schema_with_decorators(
+        "section",
+        vec![],
+        vec![make_decorator_string_list("parent", &["doc"])],
+    );
+    let s2 = make_schema_with_decorators(
+        "section",
+        vec![],
+        vec![make_decorator_string_list("parent", &["doc"])],
+    );
+    let doc = make_doc(vec![
+        DocItem::Body(BodyItem::Schema(s1)),
+        DocItem::Body(BodyItem::Schema(s2)),
+    ]);
+
+    let mut reg = SchemaRegistry::new();
+    let mut diags = DiagnosticBag::new();
+    reg.collect(&doc, &mut diags);
+    let e001: Vec<_> = diags
+        .diagnostics()
+        .iter()
+        .filter(|d| d.code.as_deref() == Some("E001"))
+        .collect();
+    assert_eq!(e001.len(), 1);
+}
+
+#[test]
+fn parent_scoped_both_unscoped_triggers_e001() {
+    // Two schemas named "section" with no @parent — E001 (existing behavior)
+    let s1 = make_schema_with_decorators(
+        "section",
+        vec![make_schema_field("a", TypeExpr::String(sp()))],
+        vec![],
+    );
+    let s2 = make_schema_with_decorators(
+        "section",
+        vec![make_schema_field("b", TypeExpr::String(sp()))],
+        vec![],
+    );
+    let doc = make_doc(vec![
+        DocItem::Body(BodyItem::Schema(s1)),
+        DocItem::Body(BodyItem::Schema(s2)),
+    ]);
+
+    let mut reg = SchemaRegistry::new();
+    let mut diags = DiagnosticBag::new();
+    reg.collect(&doc, &mut diags);
+    let e001: Vec<_> = diags
+        .diagnostics()
+        .iter()
+        .filter(|d| d.code.as_deref() == Some("E001"))
+        .collect();
+    assert_eq!(e001.len(), 1);
+}
+
+#[test]
+fn parent_scoped_plus_unscoped_fallback_ok() {
+    // One scoped + one unscoped — OK (unscoped is fallback)
+    let s1 = make_schema_with_decorators(
+        "section",
+        vec![make_schema_field("title", TypeExpr::String(sp()))],
+        vec![make_decorator_string_list("parent", &["doc"])],
+    );
+    let s2 = make_schema_with_decorators(
+        "section",
+        vec![make_schema_field("content", TypeExpr::String(sp()))],
+        vec![],
+    );
+    let doc = make_doc(vec![
+        DocItem::Body(BodyItem::Schema(s1)),
+        DocItem::Body(BodyItem::Schema(s2)),
+    ]);
+
+    let mut reg = SchemaRegistry::new();
+    let mut diags = DiagnosticBag::new();
+    reg.collect(&doc, &mut diags);
+    assert!(
+        !diags.has_errors(),
+        "unexpected errors: {:?}",
+        diags.diagnostics()
+    );
+}
+
+#[test]
+fn parent_scoped_resolves_correct_fields() {
+    // "section" in "doc" requires title; "section" in "page" requires heading
+    let s_doc = make_schema_with_decorators(
+        "section",
+        vec![make_schema_field("title", TypeExpr::String(sp()))],
+        vec![make_decorator_string_list("parent", &["doc"])],
+    );
+    let s_page = make_schema_with_decorators(
+        "section",
+        vec![make_schema_field("heading", TypeExpr::String(sp()))],
+        vec![make_decorator_string_list("parent", &["page"])],
+    );
+    let doc_schema = make_schema("doc", vec![]);
+    let page_schema = make_schema("page", vec![]);
+
+    // section inside doc — has "title" (correct) but missing "heading" should be fine
+    let section_in_doc = make_block(
+        "section",
+        Some("s1"),
+        false,
+        vec![BodyItem::Attribute(make_attribute(
+            "title",
+            Expr::StringLit(make_string_lit("Hello")),
+        ))],
+    );
+    let doc_block = make_block(
+        "doc",
+        Some("d1"),
+        false,
+        vec![BodyItem::Block(section_in_doc)],
+    );
+
+    // section inside page — has "heading" (correct)
+    let section_in_page = make_block(
+        "section",
+        Some("s2"),
+        false,
+        vec![BodyItem::Attribute(make_attribute(
+            "heading",
+            Expr::StringLit(make_string_lit("World")),
+        ))],
+    );
+    let page_block = make_block(
+        "page",
+        Some("p1"),
+        false,
+        vec![BodyItem::Block(section_in_page)],
+    );
+
+    let doc = make_doc(vec![
+        DocItem::Body(BodyItem::Schema(s_doc)),
+        DocItem::Body(BodyItem::Schema(s_page)),
+        DocItem::Body(BodyItem::Schema(doc_schema)),
+        DocItem::Body(BodyItem::Schema(page_schema)),
+        DocItem::Body(BodyItem::Block(doc_block)),
+        DocItem::Body(BodyItem::Block(page_block)),
+    ]);
+
+    let mut reg = SchemaRegistry::new();
+    let mut diags = DiagnosticBag::new();
+    reg.collect(&doc, &mut diags);
+    reg.validate(
+        &doc,
+        &indexmap::IndexMap::new(),
+        &SymbolSetRegistry::new(),
+        &mut diags,
+    );
+
+    // Should have no errors — each section has the correct field for its parent context
+    let errors: Vec<_> = diags
+        .diagnostics()
+        .iter()
+        .filter(|d| d.severity == wcl::lang::diagnostic::Severity::Error)
+        .collect();
+    assert!(errors.is_empty(), "unexpected errors: {:?}", errors);
+}
+
+#[test]
+fn parent_scoped_wrong_fields_gives_e070() {
+    // "section" in "doc" requires "title" — place one without title → E070
+    let s_doc = make_schema_with_decorators(
+        "section",
+        vec![make_schema_field("title", TypeExpr::String(sp()))],
+        vec![make_decorator_string_list("parent", &["doc"])],
+    );
+    let doc_schema = make_schema("doc", vec![]);
+
+    let section_missing_title = make_block("section", Some("s1"), false, vec![]);
+    let doc_block = make_block(
+        "doc",
+        Some("d1"),
+        false,
+        vec![BodyItem::Block(section_missing_title)],
+    );
+
+    let doc = make_doc(vec![
+        DocItem::Body(BodyItem::Schema(s_doc)),
+        DocItem::Body(BodyItem::Schema(doc_schema)),
+        DocItem::Body(BodyItem::Block(doc_block)),
+    ]);
+
+    let mut reg = SchemaRegistry::new();
+    let mut diags = DiagnosticBag::new();
+    reg.collect(&doc, &mut diags);
+    reg.validate(
+        &doc,
+        &indexmap::IndexMap::new(),
+        &SymbolSetRegistry::new(),
+        &mut diags,
+    );
+
+    let e070: Vec<_> = diags
+        .diagnostics()
+        .iter()
+        .filter(|d| d.code.as_deref() == Some("E070"))
+        .collect();
+    assert_eq!(
+        e070.len(),
+        1,
+        "expected E070 for missing title: {:?}",
+        diags.diagnostics()
+    );
 }

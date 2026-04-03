@@ -482,6 +482,7 @@ pub(crate) fn value_to_expr(value: &Value, span: Span) -> Option<Expr> {
     match value {
         Value::String(s) => Some(Expr::StringLit(StringLit {
             parts: vec![StringPart::Literal(s.clone())],
+            heredoc: None,
             span,
         })),
         Value::Int(i) => Some(Expr::IntLit(*i, span)),

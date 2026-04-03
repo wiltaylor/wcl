@@ -86,6 +86,59 @@ impl Parser {
         }
     }
 
+    /// Expect an identifier or keyword (keywords are accepted as identifiers in
+    /// contexts like `use` targets where any name should be valid).
+    fn expect_ident_or_keyword(&mut self) -> Result<Ident, ()> {
+        let kind = self.peek_kind().clone();
+        let keyword_name = match &kind {
+            TokenKind::Ident(name) => Some(name.clone()),
+            TokenKind::Let => Some("let".into()),
+            TokenKind::Partial => Some("partial".into()),
+            TokenKind::Macro => Some("macro".into()),
+            TokenKind::Schema => Some("schema".into()),
+            TokenKind::Table => Some("table".into()),
+            TokenKind::Import => Some("import".into()),
+            TokenKind::Export => Some("export".into()),
+            TokenKind::Query => Some("query".into()),
+            TokenKind::Ref => Some("ref".into()),
+            TokenKind::For => Some("for".into()),
+            TokenKind::In => Some("in".into()),
+            TokenKind::If => Some("if".into()),
+            TokenKind::Else => Some("else".into()),
+            TokenKind::When => Some("when".into()),
+            TokenKind::Inject => Some("inject".into()),
+            TokenKind::Set => Some("set".into()),
+            TokenKind::Remove => Some("remove".into()),
+            TokenKind::SelfKw => Some("self".into()),
+            TokenKind::Validation => Some("validation".into()),
+            TokenKind::DecoratorSchema => Some("decorator_schema".into()),
+            TokenKind::Declare => Some("declare".into()),
+            TokenKind::Update => Some("update".into()),
+            TokenKind::SymbolSet => Some("symbol_set".into()),
+            TokenKind::Struct => Some("struct".into()),
+            TokenKind::Transform => Some("transform".into()),
+            TokenKind::Pipeline => Some("pipeline".into()),
+            TokenKind::Layout => Some("layout".into()),
+            TokenKind::Stream => Some("stream".into()),
+            TokenKind::Codec => Some("codec".into()),
+            TokenKind::Namespace => Some("namespace".into()),
+            TokenKind::Use => Some("use".into()),
+            _ => None,
+        };
+        if let Some(name) = keyword_name {
+            let span = self.current_span();
+            self.advance();
+            Ok(Ident { name, span })
+        } else {
+            self.diagnostics.error_with_code(
+                format!("expected identifier, found {:?}", self.peek_kind()),
+                self.current_span(),
+                "E002",
+            );
+            Err(())
+        }
+    }
+
     /// Try to parse an identifier; returns None if not at an Ident token.
     fn try_parse_ident(&mut self) -> Option<Ident> {
         if let TokenKind::Ident(ref name) = self.peek_kind().clone() {
@@ -290,6 +343,7 @@ impl Parser {
                         let span = start_span.merge(end_span);
                         let path = StringLit {
                             parts: vec![StringPart::Literal(full_name)],
+                            heredoc: None,
                             span,
                         };
                         return Some(Import {
@@ -392,7 +446,7 @@ impl Parser {
         // Strategy: greedily parse ident :: ident :: ... then check what follows
         // the last `::`: if `{`, everything is namespace path; if ident, split
         // last ident off as target.
-        let first = self.expect_ident().ok()?;
+        let first = self.expect_ident_or_keyword().ok()?;
         let mut segments = vec![first];
 
         // Consume :: ident pairs until we can't
@@ -438,8 +492,8 @@ impl Parser {
                 });
             }
 
-            // Regular ident segment
-            segments.push(self.expect_ident().ok()?);
+            // Regular ident segment (keywords also valid in use paths)
+            segments.push(self.expect_ident_or_keyword().ok()?);
         }
 
         // No `{` encountered: all but last segment = namespace path, last = target
@@ -455,7 +509,7 @@ impl Parser {
         let last = segments.pop().unwrap();
         let alias = if self.at(&TokenKind::Arrow) {
             self.advance();
-            Some(self.expect_ident().ok()?)
+            Some(self.expect_ident_or_keyword().ok()?)
         } else {
             None
         };
@@ -476,10 +530,10 @@ impl Parser {
     }
 
     fn parse_use_target(&mut self) -> Option<UseTarget> {
-        let name = self.expect_ident().ok()?;
+        let name = self.expect_ident_or_keyword().ok()?;
         let alias = if self.at(&TokenKind::Arrow) {
             self.advance(); // consume `->`
-            Some(self.expect_ident().ok()?)
+            Some(self.expect_ident_or_keyword().ok()?)
         } else {
             None
         };
@@ -958,54 +1012,7 @@ impl Parser {
         }
 
         // Accept both plain identifiers and keyword tokens as block kind names
-        let kind = match self.peek_kind().clone() {
-            TokenKind::Ident(name) => {
-                let span = self.current_span();
-                self.advance();
-                Ident { name, span }
-            }
-            TokenKind::Transform => {
-                let span = self.current_span();
-                self.advance();
-                Ident {
-                    name: "transform".to_string(),
-                    span,
-                }
-            }
-            TokenKind::Layout => {
-                let span = self.current_span();
-                self.advance();
-                Ident {
-                    name: "layout".to_string(),
-                    span,
-                }
-            }
-            TokenKind::Pipeline => {
-                let span = self.current_span();
-                self.advance();
-                Ident {
-                    name: "pipeline".to_string(),
-                    span,
-                }
-            }
-            TokenKind::Stream => {
-                let span = self.current_span();
-                self.advance();
-                Ident {
-                    name: "stream".to_string(),
-                    span,
-                }
-            }
-            TokenKind::Codec => {
-                let span = self.current_span();
-                self.advance();
-                Ident {
-                    name: "codec".to_string(),
-                    span,
-                }
-            }
-            _ => self.expect_ident().ok()?,
-        };
+        let kind = self.expect_ident_or_keyword().ok()?;
         self.skip_newlines();
 
         let inline_id = self.parse_inline_id();
@@ -2752,14 +2759,20 @@ impl Parser {
                 let span = self.current_span();
                 self.advance();
                 let parts = Self::parse_string_interpolation(&content, span);
-                Some(StringLit { parts, span })
+                Some(StringLit {
+                    parts,
+                    heredoc: None,
+                    span,
+                })
             }
             TokenKind::Heredoc {
                 ref content,
-                indented: _,
+                ref tag,
+                indented,
                 raw,
             } => {
                 let content = content.clone();
+                let tag = tag.clone();
                 let span = self.current_span();
                 self.advance();
                 let parts = if raw {
@@ -2767,7 +2780,12 @@ impl Parser {
                 } else {
                     Self::parse_string_interpolation(&content, span)
                 };
-                Some(StringLit { parts, span })
+                let heredoc = Some(HeredocInfo { tag, indented, raw });
+                Some(StringLit {
+                    parts,
+                    heredoc,
+                    span,
+                })
             }
             _ => {
                 self.diagnostics.error(

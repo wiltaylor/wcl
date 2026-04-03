@@ -173,7 +173,7 @@ pub struct ValidateConstraints {
 /// Registry of schemas extracted from the document
 #[derive(Debug, Default)]
 pub struct SchemaRegistry {
-    pub schemas: HashMap<String, ResolvedSchema>,
+    pub schemas: HashMap<String, Vec<ResolvedSchema>>,
     /// Namespace aliases from `use` declarations for alias-aware lookup.
     pub namespace_aliases: HashMap<String, String>,
 }
@@ -183,30 +183,122 @@ impl SchemaRegistry {
         Self::default()
     }
 
-    /// Look up a schema by name, falling back to namespace alias resolution.
-    pub fn get_schema(&self, name: &str) -> Option<&ResolvedSchema> {
-        self.schemas.get(name).or_else(|| {
+    /// Look up a schema by name and parent context.
+    ///
+    /// Resolution order: parent-scoped match (via `@parent`) > unscoped fallback.
+    /// Falls back to namespace alias resolution if direct lookup fails.
+    pub fn get_schema(&self, name: &str, parent_kind: Option<&str>) -> Option<&ResolvedSchema> {
+        let candidates = self.schemas.get(name).or_else(|| {
             self.namespace_aliases
                 .get(name)
                 .and_then(|qualified| self.schemas.get(qualified))
-        })
+        })?;
+
+        if let Some(parent) = parent_kind {
+            // Resolve parent through aliases (e.g. "style" → "wdoc::style")
+            let resolved_parent = self
+                .namespace_aliases
+                .get(parent)
+                .map(String::as_str)
+                .unwrap_or(parent);
+            // Prefer parent-scoped match
+            if let Some(scoped) = candidates.iter().find(|s| {
+                s.allowed_parents
+                    .as_ref()
+                    .is_some_and(|ps| ps.iter().any(|p| p == resolved_parent))
+            }) {
+                return Some(scoped);
+            }
+        }
+
+        // Fall back to unscoped (no @parent)
+        candidates.iter().find(|s| s.allowed_parents.is_none())
     }
 
-    /// Extract and register schemas from the document AST
+    /// Check if placing a child kind under a given parent violates @parent constraints.
+    ///
+    /// Examines ALL schema variants for the child name. Returns the combined allowed
+    /// parents list if the placement is invalid, or `None` if it's valid.
+    /// Placement is valid if any variant has no @parent (unscoped) or any variant's
+    /// @parent list includes the current parent.
+    fn check_parent_violation(&self, child_kind: &str, parent_name: &str) -> Option<Vec<String>> {
+        let candidates = self.schemas.get(child_kind).or_else(|| {
+            self.namespace_aliases
+                .get(child_kind)
+                .and_then(|qualified| self.schemas.get(qualified))
+        })?;
+
+        // Resolve parent through aliases
+        let resolved_parent = self
+            .namespace_aliases
+            .get(parent_name)
+            .map(String::as_str)
+            .unwrap_or(parent_name);
+
+        // If any variant has no @parent, placement is always valid
+        if candidates.iter().any(|s| s.allowed_parents.is_none()) {
+            return None;
+        }
+
+        // Check if any variant allows this parent
+        let any_allows = candidates.iter().any(|s| {
+            s.allowed_parents
+                .as_ref()
+                .is_some_and(|ps| ps.iter().any(|p| p == resolved_parent))
+        });
+
+        if any_allows {
+            None
+        } else {
+            // Collect all allowed parents across variants for the error message
+            let mut all_parents: Vec<String> = candidates
+                .iter()
+                .filter_map(|s| s.allowed_parents.as_ref())
+                .flatten()
+                .cloned()
+                .collect();
+            all_parents.sort();
+            all_parents.dedup();
+            Some(all_parents)
+        }
+    }
+
+    /// Iterate all schemas (flattened across parent scopes).
+    pub fn all_schemas(&self) -> impl Iterator<Item = (&String, &ResolvedSchema)> {
+        self.schemas
+            .iter()
+            .flat_map(|(name, vec)| vec.iter().map(move |s| (name, s)))
+    }
+
+    /// Extract and register schemas from the document AST.
+    ///
+    /// Multiple schemas with the same name are allowed if their `@parent` scopes
+    /// don't overlap. E001 fires only on true duplicates (both unscoped or
+    /// overlapping parent lists).
     pub fn collect(&mut self, doc: &Document, diagnostics: &mut DiagnosticBag) {
         for item in &doc.items {
             if let DocItem::Body(BodyItem::Schema(schema)) = item {
                 let name = string_lit_to_string(&schema.name);
-                if self.schemas.contains_key(&name) {
+                let resolved = self.resolve_schema(schema, diagnostics);
+                let candidates = self.schemas.entry(name.clone()).or_default();
+
+                let has_conflict = candidates.iter().any(|existing| {
+                    match (&existing.allowed_parents, &resolved.allowed_parents) {
+                        (None, None) => true,
+                        (Some(ep), Some(np)) => ep.iter().any(|e| np.contains(e)),
+                        _ => false,
+                    }
+                });
+
+                if has_conflict {
                     diagnostics.error_with_code(
-                        format!("duplicate schema name '{}'", name),
+                        format!("duplicate schema name '{}' with overlapping scope", name),
                         schema.span,
                         "E001",
                     );
-                    continue;
+                } else {
+                    candidates.push(resolved);
                 }
-                let resolved = self.resolve_schema(schema, diagnostics);
-                self.schemas.insert(name, resolved);
             }
         }
     }
@@ -214,9 +306,20 @@ impl SchemaRegistry {
     fn resolve_schema(&self, schema: &Schema, diagnostics: &mut DiagnosticBag) -> ResolvedSchema {
         let doc = get_decorator_string_arg(&schema.decorators, "doc");
         let open = schema.decorators.iter().any(|d| d.name.name == "open");
-        let mut allowed_children = get_decorator_string_list_arg(&schema.decorators, "children");
+        let allowed_children = get_decorator_string_list_arg(&schema.decorators, "children");
         let allowed_parents = get_decorator_string_list_arg(&schema.decorators, "parent");
         let tag_field = get_decorator_string_arg(&schema.decorators, "tagged");
+
+        // Resolve @parent/@children values through namespace aliases
+        let aliases = &self.namespace_aliases;
+        let resolve_names = |names: Vec<String>| -> Vec<String> {
+            names
+                .into_iter()
+                .map(|n| aliases.get(&n).cloned().unwrap_or(n))
+                .collect()
+        };
+        let mut allowed_children = allowed_children.map(&resolve_names);
+        let allowed_parents = allowed_parents.map(&resolve_names);
 
         // Parse @child decorators
         let child_constraints: Vec<ChildConstraint> = schema
@@ -224,6 +327,10 @@ impl SchemaRegistry {
             .iter()
             .filter(|d| d.name.name == "child")
             .filter_map(parse_child_decorator)
+            .map(|mut cc| {
+                cc.kind = aliases.get(&cc.kind).cloned().unwrap_or(cc.kind);
+                cc
+            })
             .collect();
 
         // Merge @child kinds into allowed_children
@@ -396,7 +503,12 @@ impl SchemaRegistry {
         parent_kind: Option<&str>,
         diagnostics: &mut DiagnosticBag,
     ) {
-        let parent_name = parent_kind.unwrap_or("_root");
+        let raw_parent = parent_kind.unwrap_or("_root");
+        let parent_name = self
+            .namespace_aliases
+            .get(raw_parent)
+            .map(String::as_str)
+            .unwrap_or(raw_parent);
         let table_child_name = match &table.schema_ref {
             Some(sr) => format!("table:{}", sr.name),
             None => "table".to_string(),
@@ -406,26 +518,22 @@ impl SchemaRegistry {
             None => "anonymous table".to_string(),
         };
 
-        // E096: Check table's @parent constraint
-        if let Some(table_schema) = self.schemas.get(&table_child_name) {
-            if let Some(ref allowed) = table_schema.allowed_parents {
-                if !allowed.iter().any(|p| p == parent_name) {
-                    diagnostics.error_with_code(
-                        format!(
-                            "{} is not allowed inside '{}'; allowed parents: [{}]",
-                            table_label,
-                            parent_name,
-                            allowed.join(", "),
-                        ),
-                        table.span,
-                        "E096",
-                    );
-                }
-            }
+        // E096: Check table's @parent constraint (across all schema variants)
+        if let Some(allowed) = self.check_parent_violation(&table_child_name, parent_name) {
+            diagnostics.error_with_code(
+                format!(
+                    "{} is not allowed inside '{}'; allowed parents: [{}]",
+                    table_label,
+                    parent_name,
+                    allowed.join(", "),
+                ),
+                table.span,
+                "E096",
+            );
         }
 
         // E095: Check parent's @children constraint
-        if let Some(parent_schema) = self.schemas.get(parent_name) {
+        if let Some(parent_schema) = self.get_schema(parent_name, None) {
             if let Some(ref allowed) = parent_schema.allowed_children {
                 if !allowed.iter().any(|c| c == &table_child_name) {
                     diagnostics.error_with_code(
@@ -454,11 +562,21 @@ impl SchemaRegistry {
         symbol_sets: &SymbolSetRegistry,
         diagnostics: &mut DiagnosticBag,
     ) {
-        let child_kind = &block.kind.name;
-        let parent_name = parent_kind.unwrap_or("_root");
+        let raw_child = &block.kind.name;
+        let child_kind = self
+            .namespace_aliases
+            .get(raw_child)
+            .map(String::as_str)
+            .unwrap_or(raw_child);
+        let raw_parent = parent_kind.unwrap_or("_root");
+        let parent_name = self
+            .namespace_aliases
+            .get(raw_parent)
+            .map(String::as_str)
+            .unwrap_or(raw_parent);
 
         // E099: Check self-nesting depth limit
-        if let Some(parent_schema) = self.schemas.get(parent_name) {
+        if let Some(parent_schema) = self.get_schema(parent_name, None) {
             for cc in &parent_schema.child_constraints {
                 if cc.kind == *child_kind {
                     if let Some(max_depth) = cc.max_depth {
@@ -478,26 +596,22 @@ impl SchemaRegistry {
             }
         }
 
-        // E096: Check child's @parent constraint
-        if let Some(child_schema) = self.schemas.get(child_kind) {
-            if let Some(ref allowed) = child_schema.allowed_parents {
-                if !allowed.iter().any(|p| p == parent_name) {
-                    diagnostics.error_with_code(
-                        format!(
-                            "block kind '{}' is not allowed inside '{}'; allowed parents: [{}]",
-                            child_kind,
-                            parent_name,
-                            allowed.join(", "),
-                        ),
-                        block.span,
-                        "E096",
-                    );
-                }
-            }
+        // E096: Check child's @parent constraint (across all schema variants for this name)
+        if let Some(allowed) = self.check_parent_violation(child_kind, parent_name) {
+            diagnostics.error_with_code(
+                format!(
+                    "block kind '{}' is not allowed inside '{}'; allowed parents: [{}]",
+                    child_kind,
+                    parent_name,
+                    allowed.join(", "),
+                ),
+                block.span,
+                "E096",
+            );
         }
 
         // E095: Check parent's @children constraint
-        if let Some(parent_schema) = self.schemas.get(parent_name) {
+        if let Some(parent_schema) = self.get_schema(parent_name, None) {
             if let Some(ref allowed) = parent_schema.allowed_children {
                 if !allowed.iter().any(|c| c == child_kind) {
                     diagnostics.error_with_code(
@@ -515,7 +629,7 @@ impl SchemaRegistry {
         }
 
         // Check if there's a schema for this block type
-        if let Some(schema) = self.get_schema(&block.kind.name) {
+        if let Some(schema) = self.get_schema(&block.kind.name, parent_kind) {
             // Text block validation
             if block.text_content.is_some() && schema.text_field.is_none() {
                 diagnostics.error_with_code(
@@ -690,7 +804,7 @@ impl SchemaRegistry {
         }
 
         // Child cardinality validation (E097/E098) and tagged variant validation
-        if let Some(schema) = self.get_schema(&block.kind.name) {
+        if let Some(schema) = self.get_schema(&block.kind.name, parent_kind) {
             // E097/E098: @child cardinality constraints
             // Determine which constraints to use (variant may override)
             let active_constraints = &schema.child_constraints;
@@ -1402,6 +1516,7 @@ mod tests {
     fn make_string_lit(s: &str) -> StringLit {
         StringLit {
             parts: vec![StringPart::Literal(s.to_string())],
+            heredoc: None,
             span: dummy_span(),
         }
     }
@@ -1456,7 +1571,7 @@ mod tests {
 
         assert!(!diags.has_errors());
         assert!(reg.schemas.contains_key("service"));
-        let s = &reg.schemas["service"];
+        let s = reg.get_schema("service", None).unwrap();
         assert_eq!(s.fields.len(), 1);
         assert_eq!(s.fields[0].name, "name");
     }
@@ -1492,13 +1607,14 @@ mod tests {
         reg.collect(&doc, &mut diags);
 
         assert!(!diags.has_errors());
-        assert!(reg.schemas["service"].open);
+        assert!(reg.get_schema("service", None).unwrap().open);
     }
 
     #[test]
     fn string_lit_to_string_works() {
         let s = StringLit {
             parts: vec![StringPart::Literal("hello".to_string())],
+            heredoc: None,
             span: dummy_span(),
         };
         assert_eq!(string_lit_to_string(&s), "hello");
@@ -1567,7 +1683,7 @@ mod tests {
         reg.collect(&doc, &mut diags);
 
         assert!(!diags.has_errors());
-        let s = &reg.schemas["readme"];
+        let s = reg.get_schema("readme", None).unwrap();
         assert_eq!(s.text_field, Some("content".to_string()));
         assert!(s.fields[0].text);
     }

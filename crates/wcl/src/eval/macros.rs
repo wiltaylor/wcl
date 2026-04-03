@@ -1446,6 +1446,7 @@ impl<'a> MacroExpander<'a> {
                     }
                 })
                 .collect(),
+            heredoc: lit.heredoc.clone(),
             span: lit.span,
         }
     }
@@ -1760,6 +1761,7 @@ mod tests {
             )),
             vec![CallArg::Positional(Expr::StringLit(StringLit {
                 parts: vec![StringPart::Literal("port".to_string())],
+                heredoc: None,
                 span: dummy_span(),
             }))],
             dummy_span(),
@@ -1809,6 +1811,7 @@ mod tests {
             )),
             vec![CallArg::Positional(Expr::StringLit(StringLit {
                 parts: vec![StringPart::Literal("missing_attr".to_string())],
+                heredoc: None,
                 span: dummy_span(),
             }))],
             dummy_span(),
@@ -1859,6 +1862,7 @@ mod tests {
                 )),
                 vec![CallArg::Positional(Expr::StringLit(StringLit {
                     parts: vec![StringPart::Literal("port".to_string())],
+                    heredoc: None,
                     span: dummy_span(),
                 }))],
                 dummy_span(),
@@ -1951,10 +1955,12 @@ mod tests {
             inline_args: vec![
                 Expr::StringLit(StringLit {
                     parts: vec![StringPart::Literal("web".to_string())],
+                    heredoc: None,
                     span: dummy_span(),
                 }),
                 Expr::StringLit(StringLit {
                     parts: vec![StringPart::Literal("prod".to_string())],
+                    heredoc: None,
                     span: dummy_span(),
                 }),
             ],
@@ -2082,6 +2088,7 @@ mod tests {
             Box::new(Expr::List(
                 vec![Expr::StringLit(StringLit {
                     parts: vec![StringPart::Literal("web".to_string())],
+                    heredoc: None,
                     span: dummy_span(),
                 })],
                 dummy_span(),
@@ -2116,6 +2123,7 @@ mod tests {
             arrow_target: None,
             inline_args: vec![Expr::StringLit(StringLit {
                 parts: vec![StringPart::Literal("web".to_string())],
+                heredoc: None,
                 span: dummy_span(),
             })],
             body: vec![BodyItem::Attribute(Attribute {
@@ -2172,6 +2180,7 @@ mod tests {
         }];
         let args = vec![MacroCallArg::Positional(Expr::StringLit(StringLit {
             parts: vec![StringPart::Literal("not_an_int".to_string())],
+            heredoc: None,
             span: dummy_span(),
         }))];
 
@@ -2260,10 +2269,12 @@ mod tests {
             vec![
                 Expr::StringLit(StringLit {
                     parts: vec![StringPart::Literal("a".to_string())],
+                    heredoc: None,
                     span: dummy_span(),
                 }),
                 Expr::StringLit(StringLit {
                     parts: vec![StringPart::Literal("b".to_string())],
+                    heredoc: None,
                     span: dummy_span(),
                 }),
             ],
@@ -2379,6 +2390,7 @@ mod tests {
     fn make_str_expr(s: &str) -> Expr {
         Expr::StringLit(StringLit {
             parts: vec![StringPart::Literal(s.to_string())],
+            heredoc: None,
             span: dummy_span(),
         })
     }

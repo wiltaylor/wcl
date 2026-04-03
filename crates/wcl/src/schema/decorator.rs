@@ -35,12 +35,15 @@ pub enum Constraint {
 #[derive(Debug)]
 pub struct DecoratorSchemaRegistry {
     pub schemas: HashMap<String, ResolvedDecoratorSchema>,
+    /// Namespace aliases from `use` declarations for alias-aware lookup.
+    pub namespace_aliases: HashMap<String, String>,
 }
 
 impl DecoratorSchemaRegistry {
     pub fn new() -> Self {
         let mut reg = DecoratorSchemaRegistry {
             schemas: HashMap::new(),
+            namespace_aliases: HashMap::new(),
         };
         reg.register_builtins();
         reg
@@ -487,7 +490,12 @@ impl DecoratorSchemaRegistry {
     ) {
         let name = &decorator.name.name;
 
-        if let Some(schema) = self.schemas.get(name) {
+        let schema_lookup = self.schemas.get(name).or_else(|| {
+            self.namespace_aliases
+                .get(name)
+                .and_then(|qualified| self.schemas.get(qualified))
+        });
+        if let Some(schema) = schema_lookup {
             // Check target validity
             if !schema.targets.contains(&target) {
                 diagnostics.error_with_code(
@@ -857,6 +865,7 @@ mod tests {
                 "a",
                 Expr::StringLit(StringLit {
                     parts: vec![StringPart::Literal("x".to_string())],
+                    heredoc: None,
                     span: Span::dummy(),
                 }),
             )],
@@ -901,6 +910,7 @@ mod tests {
         let str_expr = || {
             Expr::StringLit(StringLit {
                 parts: vec![StringPart::Literal("x".to_string())],
+                heredoc: None,
                 span: Span::dummy(),
             })
         };
@@ -1025,6 +1035,7 @@ mod tests {
         let str_expr = || {
             Expr::StringLit(StringLit {
                 parts: vec![StringPart::Literal("v".to_string())],
+                heredoc: None,
                 span: Span::dummy(),
             })
         };
@@ -1074,6 +1085,7 @@ mod tests {
                 "x",
                 Expr::StringLit(StringLit {
                     parts: vec![StringPart::Literal("v".to_string())],
+                    heredoc: None,
                     span: Span::dummy(),
                 }),
             )],
@@ -1123,6 +1135,7 @@ mod tests {
                 "x",
                 Expr::StringLit(StringLit {
                     parts: vec![StringPart::Literal("v".to_string())],
+                    heredoc: None,
                     span: Span::dummy(),
                 }),
             )],
@@ -1173,6 +1186,7 @@ mod tests {
         let str_expr = || {
             Expr::StringLit(StringLit {
                 parts: vec![StringPart::Literal("v".to_string())],
+                heredoc: None,
                 span: Span::dummy(),
             })
         };
@@ -1222,6 +1236,7 @@ mod tests {
                 "message",
                 Expr::StringLit(StringLit {
                     parts: vec![StringPart::Literal("old".to_string())],
+                    heredoc: None,
                     span: Span::dummy(),
                 }),
             )],

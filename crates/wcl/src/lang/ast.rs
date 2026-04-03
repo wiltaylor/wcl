@@ -174,10 +174,19 @@ pub struct IdentifierLit {
     pub span: Span,
 }
 
+/// Provenance information for heredoc string literals.
+#[derive(Debug, Clone)]
+pub struct HeredocInfo {
+    pub tag: String,
+    pub indented: bool,
+    pub raw: bool,
+}
+
 /// A string literal, potentially containing interpolated expressions.
 #[derive(Debug, Clone)]
 pub struct StringLit {
     pub parts: Vec<StringPart>,
+    pub heredoc: Option<HeredocInfo>,
     pub span: Span,
 }
 

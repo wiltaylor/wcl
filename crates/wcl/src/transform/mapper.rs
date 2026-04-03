@@ -143,6 +143,7 @@ mod tests {
     fn make_string(s: &str) -> Expr {
         Expr::StringLit(StringLit {
             parts: vec![StringPart::Literal(s.to_string())],
+            heredoc: None,
             span: Span::dummy(),
         })
     }

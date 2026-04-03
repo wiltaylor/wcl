@@ -470,6 +470,7 @@ mod tests {
             },
             args: vec![DecoratorArg::Positional(Expr::StringLit(StringLit {
                 parts: vec![StringPart::Literal("use v2".to_string())],
+                heredoc: None,
                 span: crate::lang::Span::dummy(),
             }))],
             span: crate::lang::Span::dummy(),
@@ -494,6 +495,7 @@ mod tests {
         let ref_type = TypeExpr::Ref(
             StringLit {
                 parts: vec![StringPart::Literal("my_schema".to_string())],
+                heredoc: None,
                 span: crate::lang::Span::dummy(),
             },
             crate::lang::Span::dummy(),
