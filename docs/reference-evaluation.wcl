@@ -1,0 +1,269 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, data_table, callout, bold, italic, link}
+
+let D = "$"
+
+page ref_evaluation {
+    section = "wcl_docs.reference.ref_evaluation"
+    title = "Expression Evaluation"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Expression Evaluation"
+                }
+
+                paragraph p1 {
+                    content = "This page describes how WCL evaluates expressions: operator precedence, type rules, short-circuit behavior, and error conditions."
+                }
+
+                heading h2_precedence {
+                    level = 2
+                    content = "Operator Precedence"
+                }
+
+                paragraph p2 {
+                    content = "Operators are listed from lowest to highest precedence:"
+                }
+
+                data_table t1 {
+                    caption = "Operator Precedence"
+                    rows = [
+                        { level = "1", operators = "?: (ternary)", associativity = "Right" },
+                        { level = "2", operators = "|| (logical or)", associativity = "Left" },
+                        { level = "3", operators = "&& (logical and)", associativity = "Left" },
+                        { level = "4", operators = "==, !=", associativity = "Left" },
+                        { level = "5", operators = "<, >, <=, >=, =~", associativity = "Left" },
+                        { level = "6", operators = "+, -", associativity = "Left" },
+                        { level = "7", operators = "*, /, %", associativity = "Left" },
+                        { level = "8", operators = "! (unary not), - (unary negation)", associativity = "Right (prefix)" },
+                        { level = "9", operators = ".field, [index], (call) (postfix)", associativity = "Left" }
+                    ]
+                }
+
+                heading h2_ternary {
+                    level = 2
+                    content = "Ternary Expression"
+                }
+
+                code c1 {
+                    language = "text"
+                    content = "condition ? then_value : else_value"
+                }
+
+                paragraph p3 {
+                    content = "The condition must evaluate to <code>bool</code>. Only the selected branch is evaluated."
+                }
+
+                heading h2_logical {
+                    level = 2
+                    content = "Logical Operators"
+                }
+
+                data_table t2 {
+                    caption = "Logical Operators"
+                    rows = [
+                        { operator = "a || b", types = "bool, bool", result = "bool" },
+                        { operator = "a && b", types = "bool, bool", result = "bool" },
+                        { operator = "!a", types = "bool", result = "bool" }
+                    ]
+                }
+
+                paragraph p4 {
+                    content = bold("Short-circuit evaluation") + ": <code>||</code> does not evaluate the right operand if the left is <code>true</code>. <code>&&</code> does not evaluate the right operand if the left is <code>false</code>."
+                }
+
+                heading h2_equality {
+                    level = 2
+                    content = "Equality Operators"
+                }
+
+                data_table t3 {
+                    caption = "Equality Operators"
+                    rows = [
+                        { operator = "a == b", types = "any matching types", result = "bool" },
+                        { operator = "a != b", types = "any matching types", result = "bool" }
+                    ]
+                }
+
+                paragraph p5 {
+                    content = "Equality is deep structural equality for lists and maps. Comparing values of different types always returns <code>false</code> for <code>==</code> and <code>true</code> for <code>!=</code> (no implicit coercion)."
+                }
+
+                heading h2_comparison {
+                    level = 2
+                    content = "Comparison Operators"
+                }
+
+                data_table t4 {
+                    caption = "Comparison Operators"
+                    rows = [
+                        { operator = "a < b", types = "i64, f64, string, date, duration", result = "bool" },
+                        { operator = "a > b", types = "i64, f64, string, date, duration", result = "bool" },
+                        { operator = "a <= b", types = "i64, f64, string, date, duration", result = "bool" },
+                        { operator = "a >= b", types = "i64, f64, string, date, duration", result = "bool" },
+                        { operator = "a =~ b", types = "string, string", result = "bool" }
+                    ]
+                }
+
+                paragraph p6 {
+                    content = "The <code>=~</code> operator matches the left operand against the right operand as a regular expression (RE2 syntax). Returns <code>true</code> if there is any match."
+                }
+
+                paragraph p7 {
+                    content = "Comparing across incompatible types (e.g., <code>i64</code> with <code>string</code>) produces error E050."
+                }
+
+                heading h2_arithmetic {
+                    level = 2
+                    content = "Arithmetic Operators"
+                }
+
+                data_table t5 {
+                    caption = "Arithmetic Operators"
+                    rows = [
+                        { operator = "a + b", types = "i64, i64", result = "i64", notes = "Also works with other integer type pairs" },
+                        { operator = "a + b", types = "f64, f64", result = "f64", notes = "Also works with f32 pairs" },
+                        { operator = "a + b", types = "string, string", result = "string", notes = "Concatenation" },
+                        { operator = "a + b", types = "list, list", result = "list", notes = "Concatenation" },
+                        { operator = "a + b", types = "date, duration", result = "date", notes = "Date offset" },
+                        { operator = "a - b", types = "i64, i64", result = "i64", notes = "Also works with other integer type pairs" },
+                        { operator = "a - b", types = "f64, f64", result = "f64", notes = "Also works with f32 pairs" },
+                        { operator = "a - b", types = "date, date", result = "duration", notes = "Date difference" },
+                        { operator = "a * b", types = "i64, i64", result = "i64", notes = "Also works with other integer type pairs" },
+                        { operator = "a * b", types = "f64, f64", result = "f64", notes = "Also works with f32 pairs" },
+                        { operator = "a / b", types = "i64, i64", result = "i64", notes = "Integer division; error E051 if b == 0" },
+                        { operator = "a / b", types = "f64, f64", result = "f64", notes = "IEEE 754; b == 0.0 produces infinity" },
+                        { operator = "a % b", types = "i64, i64", result = "i64", notes = "Remainder; error E051 if b == 0" },
+                        { operator = "-a", types = "i64", result = "i64", notes = "Unary negation (all signed integer types)" },
+                        { operator = "-a", types = "f64", result = "f64", notes = "Unary negation (all float types)" }
+                    ]
+                }
+
+                heading h2_field_access {
+                    level = 2
+                    content = "Field Access and Indexing"
+                }
+
+                code c2 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    obj.field        // access named field of a map or block
+                    list[0]          // index into a list (0-based)
+                    map["key"]       // index into a map by string key
+                    WCL
+                }
+
+                paragraph p8 {
+                    content = "Out-of-bounds list indexing produces error E054. Accessing a missing map key returns <code>null</code>."
+                }
+
+                heading h2_fn_calls {
+                    level = 2
+                    content = "Function Calls"
+                }
+
+                code c3 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    value.to_string()
+                    list.map(x => x * 2)
+                    string.split(",")
+                    WCL
+                }
+
+                paragraph p9 {
+                    content = "Postfix call syntax is used for built-in functions and lambda application. Calling an unknown function produces error E052."
+                }
+
+                heading h2_interp {
+                    level = 2
+                    content = "String Interpolation"
+                }
+
+                code c4 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let msg = "Hello, ${name}! Port is ${port + 1}."
+                    WCL
+                }
+
+                paragraph p10 {
+                    content = "Interpolated expressions (<code>" + D + "{...}</code>) are evaluated and converted to their string representation before concatenation. Any expression type is allowed inside <code>" + D + "{}</code>."
+                }
+
+                heading h2_query {
+                    level = 2
+                    content = "Query Expressions"
+                }
+
+                code c5 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let services = query(service | .port > 1024)
+                    WCL
+                }
+
+                paragraph p11 {
+                    content = "Query expressions run the pipeline query engine against the current document scope and return a list of matching resolved values. Queries are evaluated after scope construction is complete."
+                }
+
+                heading h2_ref {
+                    level = 2
+                    content = "Ref Expressions"
+                }
+
+                code c6 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let api = ref(svc-api)
+                    WCL
+                }
+
+                paragraph p12 {
+                    content = "A <code>ref</code> expression resolves to the block or value with the given identifier. If no matching identifier is found, error E053 is produced."
+                }
+
+                heading h2_lambda {
+                    level = 2
+                    content = "Lambda Expressions"
+                }
+
+                code c7 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let double = x => x * 2
+                    let add    = (a, b) => a + b
+                    let clamp  = (v, lo, hi) => v < lo ? lo : (v > hi ? hi : v)
+                    WCL
+                }
+
+                paragraph p13 {
+                    content = "Lambdas capture their lexical scope. They are first-class values and can be passed to built-in higher-order functions."
+                }
+
+                heading h2_errors {
+                    level = 2
+                    content = "Error Conditions"
+                }
+
+                data_table t6 {
+                    caption = "Error Conditions"
+                    rows = [
+                        { code = "E050", condition = "Type mismatch in operator or function call" },
+                        { code = "E051", condition = "Division or modulo by zero" },
+                        { code = "E052", condition = "Call to unknown function" },
+                        { code = "E053", condition = "ref() target identifier not found" },
+                        { code = "E054", condition = "List index out of bounds" },
+                        { code = "E040", condition = "Reference to undefined name" },
+                        { code = "E041", condition = "Cyclic dependency between names" }
+                    ]
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,276 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, data_table, callout, bold, italic, link}
+
+let D = "$"
+
+page ref_types {
+    section = "wcl_docs.reference.ref_types"
+    title = "Type System"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Type System"
+                }
+
+                paragraph p1 {
+                    content = "WCL has a rich static type system used in schema definitions, macro parameter declarations, table column declarations, and type expressions."
+                }
+
+                heading h2_primitives {
+                    level = 2
+                    content = "Primitive Types"
+                }
+
+                data_table t1 {
+                    caption = "Primitive Types"
+                    rows = [
+                        { type = "String", keywords = "string", description = "UTF-8 text, supports interpolation and heredocs", examples = "\"hello\", \"port: " + D + "{p}\"" },
+                        { type = "Integer", keywords = "i8, u8, i16, u16, i32, u32, i64, u64, i128, u128", description = "Signed and unsigned integers of various widths", examples = "42, 0xFF, 0o77, 0b1010" },
+                        { type = "Float", keywords = "f32, f64", description = "IEEE 754 floating-point numbers", examples = "3.14, 1.0e-3" },
+                        { type = "Boolean", keywords = "bool", description = "true or false", examples = "true, false" },
+                        { type = "Null", keywords = "null", description = "Absence of a value", examples = "null" },
+                        { type = "Identifier", keywords = "identifier", description = "An identifier literal (may contain hyphens)", examples = "#svc-api, #my-resource" },
+                        { type = "Date", keywords = "date", description = "ISO 8601 date", examples = "d\"2024-03-15\"" },
+                        { type = "Duration", keywords = "duration", description = "ISO 8601 duration", examples = "dur\"P1Y2M3D\"" }
+                    ]
+                }
+
+                heading h2_integers {
+                    level = 2
+                    content = "Integer Types"
+                }
+
+                paragraph p2 {
+                    content = "WCL provides a full set of fixed-width integer types covering both signed and unsigned variants:"
+                }
+
+                data_table t2 {
+                    caption = "Integer Types"
+                    rows = [
+                        { type = "i8", signed = "Yes", width = "8-bit", minimum = "\u2212128", maximum = "127" },
+                        { type = "u8", signed = "No", width = "8-bit", minimum = "0", maximum = "255" },
+                        { type = "i16", signed = "Yes", width = "16-bit", minimum = "\u221232,768", maximum = "32,767" },
+                        { type = "u16", signed = "No", width = "16-bit", minimum = "0", maximum = "65,535" },
+                        { type = "i32", signed = "Yes", width = "32-bit", minimum = "\u22122,147,483,648", maximum = "2,147,483,647" },
+                        { type = "u32", signed = "No", width = "32-bit", minimum = "0", maximum = "4,294,967,295" },
+                        { type = "i64", signed = "Yes", width = "64-bit", minimum = "\u22129.2 \u00d7 10\u00b9\u2078", maximum = "9.2 \u00d7 10\u00b9\u2078" },
+                        { type = "u64", signed = "No", width = "64-bit", minimum = "0", maximum = "1.8 \u00d7 10\u00b9\u2079" },
+                        { type = "i128", signed = "Yes", width = "128-bit", minimum = "\u22121.7 \u00d7 10\u00b3\u2078", maximum = "1.7 \u00d7 10\u00b3\u2078" },
+                        { type = "u128", signed = "No", width = "128-bit", minimum = "0", maximum = "3.4 \u00d7 10\u00b3\u2078" }
+                    ]
+                }
+
+                paragraph p3 {
+                    content = "<code>i64</code> is the default integer type. Untyped integer literals are inferred as <code>i64</code>. Values that exceed 64-bit range use BigInt (<code>i128</code>/<code>u128</code>) representation at runtime."
+                }
+
+                paragraph p4 {
+                    content = "Integer literals support multiple bases:"
+                }
+
+                paragraph p4_list {
+                    content = "<ul>" +
+                        "<li>Decimal: <code>42</code></li>" +
+                        "<li>Hexadecimal: <code>0xFF</code></li>" +
+                        "<li>Octal: <code>0o77</code></li>" +
+                        "<li>Binary: <code>0b1010</code></li>" +
+                        "</ul>"
+                }
+
+                heading h2_floats {
+                    level = 2
+                    content = "Float Types"
+                }
+
+                data_table t3 {
+                    caption = "Float Types"
+                    rows = [
+                        { type = "f32", width = "32-bit", precision = "~7 decimal digits", range = "\u00b13.4 \u00d7 10\u00b3\u2078" },
+                        { type = "f64", width = "64-bit", precision = "~15 decimal digits", range = "\u00b11.8 \u00d7 10\u00b3\u2070\u2078" }
+                    ]
+                }
+
+                paragraph p5 {
+                    content = "<code>f64</code> is the default float type. Untyped float literals are inferred as <code>f64</code>."
+                }
+
+                heading h2_date {
+                    level = 2
+                    content = "Date Type"
+                }
+
+                paragraph p6 {
+                    content = "The <code>date</code> type represents a calendar date in ISO 8601 format. Date literals use the <code>d\"...\"</code> prefix syntax:"
+                }
+
+                code c1 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let release = d"2024-03-15"
+                    let epoch   = d"1970-01-01"
+                    WCL
+                }
+
+                paragraph p7 {
+                    content = "Dates support comparison operators (<code>&lt;</code>, <code>&gt;</code>, <code>&lt;=</code>, <code>&gt;=</code>, <code>==</code>, <code>!=</code>)."
+                }
+
+                heading h2_duration {
+                    level = 2
+                    content = "Duration Type"
+                }
+
+                paragraph p8 {
+                    content = "The <code>duration</code> type represents a time span using ISO 8601 duration format. Duration literals use the <code>dur\"...\"</code> prefix syntax:"
+                }
+
+                code c2 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let timeout  = dur"PT30S"       // 30 seconds
+                    let interval = dur"P1Y2M3D"    // 1 year, 2 months, 3 days
+                    let ttl      = dur"PT1H30M"    // 1 hour, 30 minutes
+                    WCL
+                }
+
+                paragraph p9 {
+                    content = "Durations support comparison operators and can be added to dates."
+                }
+
+                heading h2_composite {
+                    level = 2
+                    content = "Composite Types"
+                }
+
+                data_table t4 {
+                    caption = "Composite Types"
+                    rows = [
+                        { type = "List", syntax = "list(T)", description = "Ordered sequence of values of type T", example = "[1, 2, 3]" },
+                        { type = "Map", syntax = "map(K, V)", description = "Key-value pairs; keys are type K, values type V", example = "{ a: 1, b: 2 }" },
+                        { type = "Set", syntax = "set(T)", description = "Unordered collection of unique values of type T", example = "[1, 2, 3]" }
+                    ]
+                }
+
+                heading h2_special {
+                    level = 2
+                    content = "Special Types"
+                }
+
+                data_table t5 {
+                    caption = "Special Types"
+                    rows = [
+                        { type = "Any", syntax = "any", description = "Accepts a value of any type; opts out of type checking" },
+                        { type = "Union", syntax = "union(T1, T2, ...)", description = "A value that may be any one of the listed types" },
+                        { type = "Ref", syntax = "ref(\"SchemaName\")", description = "A reference to a block conforming to the named schema" },
+                        { type = "Function", syntax = "\u2014", description = "First-class lambda values; not directly nameable in type expressions" }
+                    ]
+                }
+
+                heading h2_type_expr {
+                    level = 2
+                    content = "Type Expressions"
+                }
+
+                paragraph p10 {
+                    content = "Type expressions appear in schema fields, macro parameters, and table column declarations:"
+                }
+
+                code c3 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    schema "Config" {
+                      port    : i64
+                      host    : string
+                      tags    : list(string)
+                      meta    : map(string, any)
+                      env     : union(string, null)
+                      service : ref("ServiceSchema")
+                    }
+                    WCL
+                }
+
+                code c4 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    macro connect(host: string, port: i64 = 5432) {
+                      host = host
+                      port = port
+                    }
+                    WCL
+                }
+
+                code c5 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    table routes {
+                      path:    string
+                      method:  string
+                      active:  bool
+                      | "/api" | "GET" | true |
+                    }
+                    WCL
+                }
+
+                heading h2_coercion {
+                    level = 2
+                    content = "Type Coercion"
+                }
+
+                paragraph p11 {
+                    content = "WCL does not implicitly coerce between types. Type mismatches produce an error at evaluation time (E050) or schema validation time (E071). Explicit conversions are performed via built-in functions."
+                }
+
+                paragraph p12 {
+                    content = "Exceptions:"
+                }
+
+                paragraph p12_list {
+                    content = "<ul>" +
+                        "<li>Narrower integer types are accepted where a wider integer type is expected (e.g., <code>i8</code> widens to <code>i64</code>).</li>" +
+                        "<li>All integer types are accepted where a float type is expected (integer-to-float widening is safe).</li>" +
+                        "<li>Unsigned integers are accepted where a signed integer of greater width is expected (e.g., <code>u8</code> widens to <code>i16</code>).</li>" +
+                        "<li><code>null</code> is accepted for any <code>union(T, null)</code> type.</li>" +
+                        "<li><code>any</code> accepts all values without checking.</li>" +
+                        "</ul>"
+                }
+
+                heading h2_serde {
+                    level = 2
+                    content = "Serde Type Mapping"
+                }
+
+                paragraph p13 {
+                    content = "When serializing to JSON, YAML, or TOML, WCL types map as follows:"
+                }
+
+                data_table t6 {
+                    caption = "Serde Type Mapping"
+                    rows = [
+                        { wcl_type = "string", json = "string", yaml = "string", toml = "string" },
+                        { wcl_type = "i8..u128", json = "number (integer)", yaml = "int", toml = "integer" },
+                        { wcl_type = "f32, f64", json = "number (float)", yaml = "float", toml = "float" },
+                        { wcl_type = "bool", json = "boolean", yaml = "bool", toml = "boolean" },
+                        { wcl_type = "null", json = "null", yaml = "null", toml = "not representable (omitted)" },
+                        { wcl_type = "identifier", json = "string (bare name)", yaml = "string", toml = "string" },
+                        { wcl_type = "date", json = "string (ISO 8601)", yaml = "date", toml = "datetime" },
+                        { wcl_type = "duration", json = "string (ISO 8601)", yaml = "string", toml = "string" },
+                        { wcl_type = "list(T)", json = "array", yaml = "sequence", toml = "array" },
+                        { wcl_type = "map(K, V)", json = "object", yaml = "mapping", toml = "table" },
+                        { wcl_type = "set(T)", json = "array (deduplicated)", yaml = "sequence", toml = "array" },
+                        { wcl_type = "ref(...)", json = "resolved value", yaml = "resolved value", toml = "resolved value" },
+                        { wcl_type = "any", json = "native JSON value", yaml = "native", toml = "native" }
+                    ]
+                }
+
+                paragraph p14 {
+                    content = "Block structure is serialized as nested objects keyed by block type, then by block ID (if present)."
+                }
+            }
+        }
+    }
+}

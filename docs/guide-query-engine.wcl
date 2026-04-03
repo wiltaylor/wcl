@@ -1,0 +1,328 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
+
+page guide_query_engine {
+    section = "wcl_docs.guide.query_engine"
+    title = "Query Engine"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Query Engine"
+                }
+
+                paragraph p1 {
+                    content = "The query engine lets you search, filter, and project over all blocks in a document using a concise pipeline syntax. Queries can appear anywhere an expression is expected — inside <code>let</code> bindings, attribute values, and validation blocks."
+                }
+
+                heading h2_pipeline {
+                    level = 2
+                    content = "Pipeline Syntax"
+                }
+
+                code c1 {
+                    language = "wcl"
+                    content = "query(selector | filter | filter | ... | projection?)"
+                }
+
+                paragraph p2 {
+                    content = "A pipeline is a <code>selector</code> followed by zero or more <code>filter</code> steps and an optional trailing <code>projection</code>. Each step is separated by <code>|</code>."
+                }
+
+                heading h2_selectors {
+                    level = 2
+                    content = "Selectors"
+                }
+
+                paragraph p3 {
+                    content = "Selectors determine the initial set of blocks the pipeline operates on."
+                }
+
+                data_table t_selectors {
+                    caption = "Selectors"
+                    rows = [
+                        { selector = "service", matches = "All blocks of kind service" },
+                        { selector = "service#svc-auth", matches = "The block of kind service with ID svc-auth" },
+                        { selector = "config.server.listener", matches = "A nested attribute path — the listener attribute inside server inside config" },
+                        { selector = "..health_check", matches = "Recursive descent — all blocks named health_check at any depth" },
+                        { selector = ".", matches = "The document root" },
+                        { selector = "*", matches = "All top-level blocks" },
+                        { selector = "table#id", matches = "The table with the given ID" }
+                    ]
+                }
+
+                heading h3_selector_examples {
+                    level = 3
+                    content = "Examples"
+                }
+
+                code c2 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    // All services
+                    let all_services = query(service)
+
+                    // A specific service by ID
+                    let auth = query(service#svc-auth)
+
+                    // All tables
+                    let all_tables = query(table.*)
+
+                    // Every health_check block anywhere in the document
+                    let checks = query(..health_check)
+                    WCL
+                }
+
+                heading h2_filters {
+                    level = 2
+                    content = "Filters"
+                }
+
+                paragraph p4 {
+                    content = "Filters narrow the result set. Multiple filters are AND-combined — every filter in the chain must match."
+                }
+
+                heading h3_attr_comparison {
+                    level = 3
+                    content = "Attribute Comparison"
+                }
+
+                code c3 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    query(service | .port > 8080)
+                    query(service | .env == "production")
+                    query(service | .env != "staging")
+                    query(service | .workers >= 4)
+                    WCL
+                }
+
+                heading h3_regex {
+                    level = 3
+                    content = "Regex Match"
+                }
+
+                code c4 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    query(service | .name =~ "^api-")
+                    query(config  | .region =~ "us-.*")
+                    WCL
+                }
+
+                heading h3_has {
+                    level = 3
+                    content = "Existence Check: has"
+                }
+
+                code c5 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    // Blocks that have an 'auth' attribute
+                    query(service | has(.auth))
+
+                    // Blocks that carry a specific decorator
+                    query(service | has(@sensitive))
+                    query(service | has(@validate))
+                    WCL
+                }
+
+                heading h3_decorator_filter {
+                    level = 3
+                    content = "Decorator Argument Filtering"
+                }
+
+                paragraph p5 {
+                    content = "Filter on the arguments of a decorator:"
+                }
+
+                code c6 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    // Services whose @validate decorator has min > 0
+                    query(service | @validate.min > 0)
+
+                    // Blocks with @retry where attempts >= 3
+                    query(service | @retry.attempts >= 3)
+                    WCL
+                }
+
+                heading h3_compound {
+                    level = 3
+                    content = "Compound Filters"
+                }
+
+                paragraph p6 {
+                    content = "Chain multiple filters to AND them together:"
+                }
+
+                code c7 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    query(service | .env == "production" | .port > 8000 | has(@tls))
+                    WCL
+                }
+
+                heading h2_projections {
+                    level = 2
+                    content = "Projections"
+                }
+
+                paragraph p7 {
+                    content = "A projection extracts a single attribute value from each matched block, producing a list of values instead of a list of block references. The projection step must be the " + bold("last") + " step in the pipeline."
+                }
+
+                code c8 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    // List of port numbers from all production services
+                    let prod_ports = query(service | .env == "production" | .port)
+
+                    // List of names from all services
+                    let names = query(service | .name)
+                    WCL
+                }
+
+                paragraph p8 {
+                    content = "Without a projection, <code>query()</code> returns a <code>list(block_ref)</code>. With a projection, it returns a <code>list(value)</code>."
+                }
+
+                heading h2_result_types {
+                    level = 2
+                    content = "Result Types"
+                }
+
+                data_table t_results {
+                    caption = "Result Types"
+                    rows = [
+                        { expression = "query(service)", return_type = "list(block_ref)" },
+                        { expression = "query(service | .port)", return_type = "list(value) (the projected attribute values)" }
+                    ]
+                }
+
+                heading h2_aggregates {
+                    level = 2
+                    content = "Aggregate Functions"
+                }
+
+                paragraph p9 {
+                    content = "Aggregate functions operate on query results:"
+                }
+
+                data_table t_aggregates {
+                    caption = "Aggregate Functions"
+                    rows = [
+                        { function = "len(query(...))", description = "Number of matched items" },
+                        { function = "sum(query(... | .attr))", description = "Sum of numeric projection" },
+                        { function = "avg(query(... | .attr))", description = "Average of numeric projection" },
+                        { function = "distinct(query(... | .attr))", description = "Deduplicated list of projected values" }
+                    ]
+                }
+
+                code c9 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let service_count  = len(query(service))
+                    let total_workers  = sum(query(service | .workers))
+                    let avg_port       = avg(query(service | .port))
+                    let all_envs       = distinct(query(service | .env))
+                    WCL
+                }
+
+                heading h2_validation {
+                    level = 2
+                    content = "Using Queries in Validation"
+                }
+
+                code c10 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    validation "all-prod-services-have-tls" {
+                        let prod = query(service | .env == "production")
+                        check   = every(prod, s => has(s.tls))
+                        message = "all production services must have TLS configured"
+                    }
+
+                    validation "unique-ports" {
+                        let ports = query(service | .port)
+                        check   = len(ports) == len(distinct(ports))
+                        message = "each service must use a unique port"
+                    }
+                    WCL
+                }
+
+                heading h2_cli {
+                    level = 2
+                    content = "CLI Usage"
+                }
+
+                paragraph p10 {
+                    content = "The <code>wcl query</code> subcommand runs a pipeline against a file from the command line:"
+                }
+
+                code c11 {
+                    language = "bash"
+                    content = <<-'BASH'
+                    wcl query file.wcl 'service'
+                    wcl query file.wcl 'service | .env == "prod" | .port'
+                    wcl query file.wcl 'service | has(@tls)'
+                    BASH
+                }
+
+                heading h3_output_formats {
+                    level = 3
+                    content = "Output Formats"
+                }
+
+                data_table t_formats {
+                    caption = "Output Formats"
+                    rows = [
+                        { flag = "--format json", output = "JSON array" },
+                        { flag = "--format text", output = "One item per line (default)" },
+                        { flag = "--format csv", output = "Comma-separated values" },
+                        { flag = "--format wcl", output = "WCL block representation" }
+                    ]
+                }
+
+                heading h3_additional_flags {
+                    level = 3
+                    content = "Additional Flags"
+                }
+
+                data_table t_flags {
+                    caption = "Additional Flags"
+                    rows = [
+                        { flag = "--count", description = "Print the number of results instead of the results themselves" },
+                        { flag = "--recursive", description = "Descend into imported files" }
+                    ]
+                }
+
+                heading h3_cli_examples {
+                    level = 3
+                    content = "Examples"
+                }
+
+                code c12 {
+                    language = "bash"
+                    content = <<-'BASH'
+                    # Count production services
+                    wcl query --count infra.wcl 'service | .env == "production"'
+
+                    # Export port list as JSON
+                    wcl query --format json infra.wcl 'service | .env == "prod" | .port'
+
+                    # Find all services without TLS
+                    wcl query infra.wcl 'service | !has(@tls)'
+
+                    # Recursively find all health_check blocks across imports
+                    wcl query --recursive infra.wcl '..health_check'
+                    BASH
+                }
+            }
+        }
+    }
+}

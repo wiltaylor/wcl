@@ -1,0 +1,572 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
+
+page jvm_library {
+    section = "wcl_docs.getting_started.jvm_library"
+    title = "Using WCL as a JVM Library"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Using WCL as a JVM Library"
+                }
+
+                paragraph p1 {
+                    content = "WCL can be embedded into Java, Kotlin, Scala, and other JVM programs via the <code>wcl</code> Maven package. It uses " + link("Chicory", "https://github.com/nicovank/chicory") + " (a pure-Java WASM runtime) under the hood, so you get the full 11-phase WCL pipeline with no native dependencies."
+                }
+
+                heading h2_dep {
+                    level = 2
+                    content = "Adding the Dependency"
+                }
+
+                heading h3_gradle_kotlin {
+                    level = 3
+                    content = "Gradle (Kotlin DSL)"
+                }
+
+                code c1 {
+                    language = "kotlin"
+                    content = <<-'KT'
+                    dependencies {
+                        implementation("io.github.wiltaylor:wcl:0.1.0")
+                    }
+                    KT
+                }
+
+                heading h3_gradle_groovy {
+                    level = 3
+                    content = "Gradle (Groovy)"
+                }
+
+                code c2 {
+                    language = "groovy"
+                    content = <<-'GR'
+                    dependencies {
+                        implementation 'io.github.wiltaylor:wcl:0.1.0'
+                    }
+                    GR
+                }
+
+                heading h3_maven {
+                    level = 3
+                    content = "Maven"
+                }
+
+                code c3 {
+                    language = "xml"
+                    content = <<-'XML'
+                    <dependency>
+                        <groupId>io.github.wiltaylor</groupId>
+                        <artifactId>wcl</artifactId>
+                        <version>0.1.0</version>
+                    </dependency>
+                    XML
+                }
+
+                paragraph p2 {
+                    content = "The library requires Java 17+."
+                }
+
+                heading h2_parse_string {
+                    level = 2
+                    content = "Parsing a WCL String"
+                }
+
+                paragraph p3 {
+                    content = "Use <code>Wcl.parse()</code> to run the full pipeline and get a <code>WclDocument</code>:"
+                }
+
+                code c4 {
+                    language = "java"
+                    content = <<-'JAVA'
+                    import io.github.wiltaylor.wcl.Wcl;
+
+                    try (var doc = Wcl.parse("""
+                        server web-prod {
+                            host = "0.0.0.0"
+                            port = 8080
+                            debug = false
+                        }
+                    """)) {
+                        if (doc.hasErrors()) {
+                            for (var diag : doc.getErrors()) {
+                                System.err.println("error: " + diag.message());
+                            }
+                        } else {
+                            System.out.println("Document parsed successfully");
+                        }
+                    }
+                    JAVA
+                }
+
+                paragraph p4 {
+                    content = "<code>WclDocument</code> implements <code>AutoCloseable</code> and should be closed when no longer needed (via try-with-resources or <code>close()</code>)."
+                }
+
+                heading h2_parse_file {
+                    level = 2
+                    content = "Parsing a WCL File"
+                }
+
+                paragraph p5 {
+                    content = "<code>parseFile</code> reads and parses a file. It automatically sets <code>rootDir</code> to the file's parent directory so imports resolve correctly:"
+                }
+
+                code c5 {
+                    language = "java"
+                    content = <<-'JAVA'
+                    try (var doc = Wcl.parseFile("config/main.wcl")) {
+                        // ...
+                    }
+                    JAVA
+                }
+
+                paragraph p6 {
+                    content = "To override parse options:"
+                }
+
+                code c6 {
+                    language = "java"
+                    content = <<-'JAVA'
+                    var options = new ParseOptions().rootDir("./config");
+                    try (var doc = Wcl.parseFile("config/main.wcl", options)) {
+                        // ...
+                    }
+                    JAVA
+                }
+
+                heading h2_values {
+                    level = 2
+                    content = "Accessing Evaluated Values"
+                }
+
+                paragraph p7 {
+                    content = "After parsing, <code>doc.getValues()</code> returns a <code>LinkedHashMap&lt;String, WclValue&gt;</code> containing all evaluated top-level attributes and blocks:"
+                }
+
+                code c7 {
+                    language = "java"
+                    content = <<-'JAVA'
+                    import io.github.wiltaylor.wcl.Wcl;
+                    import io.github.wiltaylor.wcl.eval.WclValue;
+
+                    try (var doc = Wcl.parse("""
+                        name = "my-app"
+                        port = 8080
+                        tags = ["web", "prod"]
+                    """)) {
+                        var values = doc.getValues();
+
+                        System.out.println("name: " + values.get("name").asString());
+                        System.out.println("port: " + values.get("port").asInt());
+
+                        for (var tag : values.get("tags").asList()) {
+                            System.out.println("tag: " + tag.asString());
+                        }
+                    }
+                    JAVA
+                }
+
+                paragraph p8 {
+                    content = "<code>WclValue</code> is a tagged union with these value kinds:"
+                }
+
+                data_table t1 {
+                    rows = [
+                        ["Kind", "Factory", "Accessor"],
+                        ["<code>STRING</code>", "<code>WclValue.ofString(\"...\")</code>", "<code>.asString()</code>"],
+                        ["<code>INT</code>", "<code>WclValue.ofInt(42)</code>", "<code>.asInt()</code>"],
+                        ["<code>FLOAT</code>", "<code>WclValue.ofFloat(3.14)</code>", "<code>.asFloat()</code>"],
+                        ["<code>BOOL</code>", "<code>WclValue.ofBool(true)</code>", "<code>.asBool()</code>"],
+                        ["<code>NULL</code>", "<code>WclValue.NULL</code>", "<code>.isNull()</code>"],
+                        ["<code>LIST</code>", "<code>WclValue.ofList(...)</code>", "<code>.asList()</code>"],
+                        ["<code>MAP</code>", "<code>WclValue.ofMap(...)</code>", "<code>.asMap()</code>"],
+                        ["<code>SET</code>", "<code>WclValue.ofSet(...)</code>", "<code>.asSet()</code>"],
+                        ["<code>BLOCK_REF</code>", "<code>WclValue.ofBlockRef(...)</code>", "<code>.asBlockRef()</code>"]
+                    ]
+                }
+
+                paragraph p9 {
+                    content = "Safe accessors like <code>.tryAsString()</code> return <code>Optional</code> instead of throwing on type mismatch."
+                }
+
+                heading h2_blocks {
+                    level = 2
+                    content = "Working with Blocks"
+                }
+
+                paragraph p10 {
+                    content = "Use <code>getBlocks()</code> and <code>getBlocksOfType()</code> to access blocks with their resolved attribute values:"
+                }
+
+                code c8 {
+                    language = "java"
+                    content = <<-'JAVA'
+                    try (var doc = Wcl.parse("""
+                        server web-prod {
+                            host = "0.0.0.0"
+                            port = 8080
+                        }
+                        server web-staging {
+                            host = "staging.internal"
+                            port = 8081
+                        }
+                        database main-db {
+                            host = "db.internal"
+                            port = 5432
+                        }
+                    """)) {
+                        var blocks = doc.getBlocks();
+                        System.out.println("Total blocks: " + blocks.size()); // 3
+
+                        var servers = doc.getBlocksOfType("server");
+                        for (var s : servers) {
+                            System.out.printf("%s: %s:%s%n", s.getId(), s.get("host"), s.get("port"));
+                        }
+                    }
+                    JAVA
+                }
+
+                paragraph p11 {
+                    content = "Each <code>BlockRef</code> provides:"
+                }
+
+                paragraph p12 {
+                    content = "<ul>" +
+                        "<li><code>getKind()</code> - block type name</li>" +
+                        "<li><code>getId()</code> - optional block identifier</li>" +
+                        "<li><code>getAttributes()</code> - resolved attribute map (includes <code>_args</code> if inline args are present)</li>" +
+                        "<li><code>getChildren()</code> - nested child blocks</li>" +
+                        "<li><code>getDecorators()</code> - attached decorators</li>" +
+                        "<li><code>get(key)</code> - safe attribute access (returns <code>null</code> if missing)</li>" +
+                        "<li><code>hasDecorator(name)</code> / <code>getDecorator(name)</code> - decorator access</li>" +
+                        "</ul>"
+                }
+
+                heading h2_queries {
+                    level = 2
+                    content = "Running Queries"
+                }
+
+                paragraph p13 {
+                    content = "<code>query()</code> accepts the same query syntax as the <code>wcl query</code> CLI command:"
+                }
+
+                code c9 {
+                    language = "java"
+                    content = <<-'JAVA'
+                    try (var doc = Wcl.parse("""
+                        server svc-api { port = 8080, env = "prod" }
+                        server svc-admin { port = 9090, env = "prod" }
+                        server svc-debug { port = 3000, env = "dev" }
+                    """)) {
+                        var all = doc.query("server");
+                        var prod = doc.query("server | .env == \"prod\"");
+                        var ports = doc.query("server | .port");
+                        var api = doc.query("server#svc-api");
+                    }
+                    JAVA
+                }
+
+                heading h2_custom_fn {
+                    level = 2
+                    content = "Custom Functions"
+                }
+
+                paragraph p14 {
+                    content = "Register Java functions that are callable from WCL expressions:"
+                }
+
+                code c10 {
+                    language = "java"
+                    content = <<-'JAVA'
+                    import io.github.wiltaylor.wcl.Wcl;
+                    import io.github.wiltaylor.wcl.ParseOptions;
+                    import io.github.wiltaylor.wcl.eval.WclValue;
+
+                    var functions = Map.<String, java.util.function.Function<WclValue[], WclValue>>of(
+                        "double", args -> WclValue.ofInt(args[0].asInt() * 2),
+                        "greet", args -> WclValue.ofString("Hello, " + args[0].asString() + "!")
+                    );
+
+                    var opts = new ParseOptions().functions(functions);
+
+                    try (var doc = Wcl.parse("""
+                        result = double(21)
+                        message = greet("World")
+                    """, opts)) {
+                        System.out.println(doc.getValues().get("result").asInt());     // 42
+                        System.out.println(doc.getValues().get("message").asString()); // Hello, World!
+                    }
+                    JAVA
+                }
+
+                paragraph p15 {
+                    content = "Arguments and return values are serialized as JSON across the WASM boundary. Functions receive <code>WclValue[]</code> arguments and must return a <code>WclValue</code>."
+                }
+
+                heading h2_deser {
+                    level = 2
+                    content = "Deserializing into Java Types"
+                }
+
+                heading h3_from_string {
+                    level = 3
+                    content = "With fromString"
+                }
+
+                paragraph p16 {
+                    content = "Deserialize a WCL string directly into a Java type:"
+                }
+
+                code c11 {
+                    language = "java"
+                    content = <<-'JAVA'
+                    import io.github.wiltaylor.wcl.Wcl;
+                    import java.util.Map;
+
+                    var config = Wcl.fromString("""
+                        name = "my-app"
+                        port = 8080
+                        debug = false
+                    """, Map.class);
+                    JAVA
+                }
+
+                paragraph p17 {
+                    content = "For POJOs, fields are matched by snake_case conversion:"
+                }
+
+                code c12 {
+                    language = "java"
+                    content = <<-'JAVA'
+                    public class AppConfig {
+                        public String name;
+                        public long port;
+                        public boolean debug;
+                    }
+
+                    var config = Wcl.fromString("name = \"my-app\"\nport = 8080\ndebug = false", AppConfig.class);
+                    JAVA
+                }
+
+                heading h3_to_wcl {
+                    level = 3
+                    content = "Serializing to WCL"
+                }
+
+                paragraph p18 {
+                    content = "Convert a Java object back to WCL text:"
+                }
+
+                code c13 {
+                    language = "java"
+                    content = <<-'JAVA'
+                    var wcl = Wcl.toString(config);
+                    // name = "my-app"
+                    // port = 8080
+                    // debug = false
+
+                    var pretty = Wcl.toStringPretty(config);
+                    JAVA
+                }
+
+                heading h2_parse_options {
+                    level = 2
+                    content = "Parse Options"
+                }
+
+                paragraph p19 {
+                    content = "<code>ParseOptions</code> uses a fluent builder pattern. All fields are optional:"
+                }
+
+                code c14 {
+                    language = "java"
+                    content = <<-'JAVA'
+                    var options = new ParseOptions()
+                        .rootDir("./config")
+                        .allowImports(true)
+                        .maxImportDepth(32)
+                        .maxMacroDepth(64)
+                        .maxLoopDepth(32)
+                        .maxIterations(10000)
+                        .functions(Map.of("double", args -> WclValue.ofInt(args[0].asInt() * 2)));
+                    JAVA
+                }
+
+                paragraph p20 {
+                    content = "When processing untrusted input, disable imports to prevent file system access:"
+                }
+
+                code c15 {
+                    language = "java"
+                    content = <<-'JAVA'
+                    var options = new ParseOptions().allowImports(false);
+                    try (var doc = Wcl.parse(untrustedInput, options)) { ... }
+                    JAVA
+                }
+
+                heading h2_library {
+                    level = 2
+                    content = "Library Files"
+                }
+
+                paragraph p21 {
+                    content = "Create <code>.wcl</code> library files manually and place them in <code>~/.local/share/wcl/lib/</code>. Use <code>LibraryManager.list()</code> to list installed libraries. See the Libraries guide for details."
+                }
+
+                heading h2_error_handling {
+                    level = 2
+                    content = "Error Handling"
+                }
+
+                paragraph p22 {
+                    content = "The <code>WclDocument</code> collects all diagnostics from every pipeline phase. Each <code>Diagnostic</code> includes a severity, message, and optional error code:"
+                }
+
+                code c16 {
+                    language = "java"
+                    content = <<-'JAVA'
+                    try (var doc = Wcl.parse("""
+                        server web {
+                            port = "not_a_number"
+                        }
+                        schema "server" {
+                            port: i64
+                        }
+                    """)) {
+                        for (var diag : doc.getDiagnostics()) {
+                            var severity = diag.isError() ? "ERROR" : "WARN";
+                            var code = diag.code() != null ? diag.code() : "----";
+                            System.err.printf("[%s] %s: %s%n", severity, code, diag.message());
+                        }
+                    }
+                    JAVA
+                }
+
+                paragraph p23 {
+                    content = "The <code>Diagnostic</code> record:"
+                }
+
+                code c17 {
+                    language = "java"
+                    content = <<-'JAVA'
+                    public record Diagnostic(String severity, String message, String code) {
+                        public boolean isError();
+                    }
+                    JAVA
+                }
+
+                heading h2_thread_safety {
+                    level = 2
+                    content = "Thread Safety"
+                }
+
+                paragraph p24 {
+                    content = "Documents are safe to use from multiple threads. All methods acquire a lock internally, and values are cached after first access:"
+                }
+
+                code c18 {
+                    language = "java"
+                    content = <<-'JAVA'
+                    try (var doc = Wcl.parse("x = 42")) {
+                        var threads = new Thread[10];
+                        for (int i = 0; i < 10; i++) {
+                            threads[i] = new Thread(() -> {
+                                var values = doc.getValues();
+                                System.out.println(values.get("x").asInt()); // 42
+                            });
+                            threads[i].start();
+                        }
+                        for (var t : threads) t.join();
+                    }
+                    JAVA
+                }
+
+                heading h2_complete {
+                    level = 2
+                    content = "Complete Example"
+                }
+
+                code c19 {
+                    language = "java"
+                    content = <<-'JAVA'
+                    import io.github.wiltaylor.wcl.Wcl;
+                    import io.github.wiltaylor.wcl.ParseOptions;
+                    import io.github.wiltaylor.wcl.eval.WclValue;
+
+                    import java.util.Map;
+
+                    public class Example {
+                        public static void main(String[] args) {
+                            // 1. Parse with schema validation
+                            try (var doc = Wcl.parse("""
+                                schema "server" {
+                                    port: i64
+                                    host: string @optional
+                                }
+                                server svc-api {
+                                    port = 8080
+                                    host = "api.internal"
+                                }
+                                server svc-admin {
+                                    port = 9090
+                                    host = "admin.internal"
+                                }
+                            """)) {
+                                if (doc.hasErrors()) {
+                                    doc.getErrors().forEach(e -> System.err.println(e.message()));
+                                    return;
+                                }
+
+                                // 2. Query for all server ports
+                                var ports = doc.query("server | .port");
+                                System.out.println("All ports: " + ports);
+
+                                // 3. Iterate resolved blocks
+                                for (var server : doc.getBlocksOfType("server")) {
+                                    System.out.printf("%s: %s:%s%n",
+                                        server.getId(), server.get("host"), server.get("port"));
+                                }
+                            }
+
+                            // 4. Custom functions
+                            var opts = new ParseOptions().functions(Map.of(
+                                "double", a -> WclValue.ofInt(a[0].asInt() * 2)
+                            ));
+                            try (var doc2 = Wcl.parse("result = double(21)", opts)) {
+                                System.out.println("result = " + doc2.getValues().get("result").asInt()); // 42
+                            }
+                        }
+                    }
+                    JAVA
+                }
+
+                heading h2_from_source {
+                    level = 2
+                    content = "Building from Source"
+                }
+
+                code c20 {
+                    language = "bash"
+                    content = <<-'BASH'
+                    # Build the WASM module and Java project
+                    just build jvm
+
+                    # Run JVM tests
+                    just test jvm
+                    BASH
+                }
+
+                paragraph p25 {
+                    content = "This requires Java 17+ and a Rust toolchain (for building the WASM module)."
+                }
+            }
+        }
+    }
+}

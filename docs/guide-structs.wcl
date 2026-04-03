@@ -1,0 +1,259 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
+
+page guide_structs {
+    section = "wcl_docs.guide.structs"
+    title = "Structs"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Structs"
+                }
+
+                paragraph p1 {
+                    content = "Structs define named value/data shapes that can be used as types throughout WCL. While " + link("schemas", "guide-schemas.html") + " validate block structure, structs define the shape of values — they can be used as field types in schemas, other structs, function parameters, and type annotations."
+                }
+
+                heading h2_defining {
+                    level = 2
+                    content = "Defining a Struct"
+                }
+
+                code c1 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    struct "Point" {
+                        x : f64
+                        y : f64
+                    }
+
+                    struct "Color" {
+                        r : u8
+                        g : u8
+                        b : u8
+                        a : u8 @optional
+                    }
+                    WCL
+                }
+
+                paragraph p2 {
+                    content = "Fields use the same <code>name : type @decorators</code> syntax as schemas."
+                }
+
+                heading h2_using {
+                    level = 2
+                    content = "Using Structs as Types"
+                }
+
+                paragraph p3 {
+                    content = "Struct names can be used anywhere a type is expected:"
+                }
+
+                code c2 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    // In schemas
+                    schema "sprite" {
+                        position : Point @required
+                        tint     : Color @optional
+                        name     : string @required
+                    }
+
+                    // In other structs (composition)
+                    struct "Rectangle" {
+                        origin : Point
+                        size   : Point
+                    }
+
+                    // In lists
+                    struct "Polygon" {
+                        vertices : list(Point)
+                    }
+                    WCL
+                }
+
+                heading h2_nested {
+                    level = 2
+                    content = "Nested Composition"
+                }
+
+                paragraph p4 {
+                    content = "Structs compose naturally through nesting:"
+                }
+
+                code c3 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    struct "Address" {
+                        street : string
+                        city   : string
+                        zip    : string
+                    }
+
+                    struct "Person" {
+                        name    : string
+                        age     : i32
+                        address : Address
+                    }
+
+                    struct "Company" {
+                        name      : string
+                        employees : list(Person)
+                        hq        : Address
+                    }
+                    WCL
+                }
+
+                heading h2_variants {
+                    level = 2
+                    content = "Struct Variants"
+                }
+
+                paragraph p5 {
+                    content = "Structs support tagged variants using WCL's existing variant system. This models tagged unions / sum types:"
+                }
+
+                code c4 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    @tagged("type")
+                    struct "Message" {
+                        type : string
+
+                        variant "text" {
+                            body : string
+                        }
+                        variant "image" {
+                            url    : string
+                            width  : i32
+                            height : i32
+                        }
+                        variant "file" {
+                            path : string
+                            size : u64
+                        }
+                    }
+                    WCL
+                }
+
+                paragraph p6 {
+                    content = "The <code>@tagged(\"field\")</code> decorator specifies which field discriminates between variants. When a value is validated against this struct, the variant is selected by matching the tag field's value."
+                }
+
+                heading h2_binary {
+                    level = 2
+                    content = "Binary Format Structs"
+                }
+
+                paragraph p7 {
+                    content = "Structs are pure data shapes — they define " + italic("what") + " data looks like, not " + italic("how") + " it's encoded. Encoding details (endianness, padding, alignment) are specified in " + link("layout", "guide-transforms.html") + " definitions, not in the struct itself."
+                }
+
+                code c5 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    // Pure data shape — no encoding opinion
+                    struct "PcapGlobalHeader" {
+                        magic         : u32
+                        version_major : u16
+                        version_minor : u16
+                        thiszone      : i32
+                        snaplen       : u32
+                        link_type     : u32
+                    }
+
+                    struct "PcapPacket" {
+                        ts_sec       : u32
+                        ts_usec      : u32
+                        captured_len : u32
+                        original_len : u32
+                        payload      : list(u8)
+                    }
+                    WCL
+                }
+
+                paragraph p8 {
+                    content = "Encoding is specified in the layout:"
+                }
+
+                code c6 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    layout pcap {
+                        header : PcapGlobalHeader {
+                            @le                              // default little-endian
+                            @be("magic")                     // magic field is big-endian
+                            @magic("magic", 0xA1B2C3D4)     // assert constant value
+                        }
+
+                        @stream @count(header.record_count)
+                        packets : PcapPacket {
+                            @le
+                        }
+                    }
+                    WCL
+                }
+
+                paragraph p9 {
+                    content = "This separation means the same struct can be reused with different encodings (e.g., little-endian pcap vs big-endian pcap)."
+                }
+
+                heading h2_pattern {
+                    level = 2
+                    content = "Pattern Type in Structs"
+                }
+
+                paragraph p10 {
+                    content = "Structs can use the <code>pattern</code> type for fields that store regex values:"
+                }
+
+                code c7 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    struct "Route" {
+                        path    : pattern
+                        method  : string
+                        handler : string
+                    }
+
+                    struct "ParserConfig" {
+                        delimiter : pattern
+                        quote     : string @optional
+                        escape    : string @optional
+                    }
+                    WCL
+                }
+
+                paragraph p11 {
+                    content = "See " + link("Transforms: Pattern Type", "guide-transforms.html") + " for details on the <code>pattern</code> type."
+                }
+
+                heading h2_vs_schemas {
+                    level = 2
+                    content = "Structs vs Schemas"
+                }
+
+                data_table t1 {
+                    caption = "Structs vs Schemas"
+                    rows = [
+                        { feature = "Purpose", schema_col = "Validates block structure", struct_col = "Defines value/data shapes" },
+                        { feature = "Used on", schema_col = "Blocks (service, endpoint, etc.)", struct_col = "Values (fields, params, type annotations)" },
+                        { feature = "Syntax", schema_col = "schema \"name\" { ... }", struct_col = "struct \"name\" { ... }" },
+                        { feature = "Fields", schema_col = "name : type @decorators", struct_col = "name : type @decorators" },
+                        { feature = "Variants", schema_col = "Supported", struct_col = "Supported" },
+                        { feature = "Binary encoding", schema_col = "N/A", struct_col = "Via layout decorators" }
+                    ]
+                }
+
+                paragraph p12 {
+                    content = "Both use the same field syntax and support decorators and variants. The key difference: schemas validate " + italic("blocks") + " in WCL documents, while structs define " + italic("value types") + " usable anywhere a type annotation is expected."
+                }
+            }
+        }
+    }
+}

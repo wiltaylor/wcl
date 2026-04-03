@@ -1,0 +1,263 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
+
+page functions_higher_order {
+    section = "wcl_docs.guide.functions.functions_higher_order"
+    title = "Higher-Order Functions"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Higher-Order Functions"
+                }
+
+                paragraph p1 {
+                    content = "Higher-order functions accept a list and a " + bold("lambda") + " (anonymous function) and apply the lambda to elements. They are the primary tool for transforming and testing collections in WCL."
+                }
+
+                paragraph p2 {
+                    content = "Lambdas use the <code>=></code> syntax:"
+                }
+
+                code c1 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    // Single parameter — no parentheses needed
+                    x => x * 2
+
+                    // Multiple parameters
+                    (acc, x) => acc + x
+                    WCL
+                }
+
+                paragraph p3 {
+                    content = "Lambdas can also reference named functions from <code>let</code> bindings:"
+                }
+
+                code c2 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let double = x => x * 2
+                    let doubled = map([1, 2, 3], double)   // [2, 4, 6]
+                    WCL
+                }
+
+                heading h2_reference {
+                    level = 2
+                    content = "Reference"
+                }
+
+                data_table t1 {
+                    rows = [
+                        ["Function", "Signature", "Description"],
+                        ["map", "map(list: list, fn: lambda) -> list", "Apply fn to each element; return list of results"],
+                        ["filter", "filter(list: list, fn: lambda) -> list", "Keep elements for which fn returns true"],
+                        ["every", "every(list: list, fn: lambda) -> bool", "True if fn returns true for all elements"],
+                        ["some", "some(list: list, fn: lambda) -> bool", "True if fn returns true for at least one element"],
+                        ["reduce", "reduce(list: list, fn: lambda, initial) -> any", "Fold list into a single value using fn(accumulator, element)"]
+                    ]
+                }
+
+                heading h2_map {
+                    level = 2
+                    content = "map"
+                }
+
+                paragraph p4 {
+                    content = "Transform each element of a list:"
+                }
+
+                code c3 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let nums = [1, 2, 3, 4, 5]
+                    let squared = map(nums, x => x * x)       // [1, 4, 9, 16, 25]
+                    let strs = map(nums, x => to_string(x))   // ["1", "2", "3", "4", "5"]
+                    WCL
+                }
+
+                paragraph p5 {
+                    content = "Map over strings extracted from blocks:"
+                }
+
+                code c4 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let services = query(service)
+                    let names = map(services, s => s.name)    // ["web", "api", "worker"]
+                    WCL
+                }
+
+                heading h2_filter {
+                    level = 2
+                    content = "filter"
+                }
+
+                paragraph p6 {
+                    content = "Keep only elements that satisfy a predicate:"
+                }
+
+                code c5 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let nums = [1, 2, 3, 4, 5, 6]
+                    let evens = filter(nums, x => x % 2 == 0)   // [2, 4, 6]
+                    let large = filter(nums, x => x > 3)        // [4, 5, 6]
+                    WCL
+                }
+
+                paragraph p7 {
+                    content = "Filter blocks by attribute values:"
+                }
+
+                code c6 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let prod_svcs = filter(query(service), s => s.env == "prod")
+                    WCL
+                }
+
+                heading h2_every {
+                    level = 2
+                    content = "every"
+                }
+
+                paragraph p8 {
+                    content = "Check that all elements satisfy a predicate:"
+                }
+
+                code c7 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let all_positive = every([1, 2, 3], x => x > 0)     // true
+                    let all_even     = every([2, 4, 6], x => x % 2 == 0) // true
+                    let all_small    = every([1, 2, 100], x => x < 10)   // false
+                    WCL
+                }
+
+                paragraph p9 {
+                    content = "Short-circuits on the first <code>false</code> result."
+                }
+
+                heading h2_some {
+                    level = 2
+                    content = "some"
+                }
+
+                paragraph p10 {
+                    content = "Check that at least one element satisfies a predicate:"
+                }
+
+                code c8 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let has_large = some([1, 2, 3, 100], x => x > 50)   // true
+                    let has_neg   = some([1, 2, 3], x => x < 0)         // false
+                    WCL
+                }
+
+                paragraph p11 {
+                    content = "Short-circuits on the first <code>true</code> result."
+                }
+
+                heading h2_reduce {
+                    level = 2
+                    content = "reduce"
+                }
+
+                paragraph p12 {
+                    content = "Fold a list into a single accumulated value:"
+                }
+
+                code c9 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let nums = [1, 2, 3, 4, 5]
+                    let total = reduce(nums, (acc, x) => acc + x, 0)    // 15
+                    let product = reduce(nums, (acc, x) => acc * x, 1)  // 120
+                    WCL
+                }
+
+                paragraph p13 {
+                    content = "Build a string from a list:"
+                }
+
+                code c10 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let words = ["hello", "world", "wcl"]
+                    let sentence = reduce(words, (acc, w) => acc + " " + w, "")
+                    // " hello world wcl"  (note the leading space from the empty initial)
+                    WCL
+                }
+
+                paragraph p14 {
+                    content = "Build a map from a list of pairs:"
+                }
+
+                code c11 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let pairs = [["a", 1], ["b", 2], ["c", 3]]
+                    let m = reduce(pairs, (acc, p) => merge(acc, {[p[0]]: p[1]}), {})
+                    // {a: 1, b: 2, c: 3}
+                    WCL
+                }
+
+                heading h2_composing {
+                    level = 2
+                    content = "Composing Higher-Order Functions"
+                }
+
+                paragraph p15 {
+                    content = "Higher-order functions compose naturally:"
+                }
+
+                code c12 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let nums = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+                    // Sum of squares of even numbers
+                    let result = reduce(
+                      map(filter(nums, x => x % 2 == 0), x => x * x),
+                      (acc, x) => acc + x,
+                      0
+                    )
+                    // filter -> [2, 4, 6, 8, 10]
+                    // map    -> [4, 16, 36, 64, 100]
+                    // reduce -> 220
+                    WCL
+                }
+
+                heading h2_named {
+                    level = 2
+                    content = "Using Named Lambdas"
+                }
+
+                paragraph p16 {
+                    content = "Store predicates and transformers in <code>let</code> bindings for reuse:"
+                }
+
+                code c13 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let is_prod = s => s.env == "prod"
+                    let get_port = s => s.port
+
+                    let prod_services = filter(query(service), is_prod)
+                    let prod_ports    = map(prod_services, get_port)
+                    WCL
+                }
+
+                paragraph p17 {
+                    content = "Exported lambdas (via <code>export let</code>) can be shared across files the same way as data."
+                }
+            }
+        }
+    }
+}

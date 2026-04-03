@@ -1,0 +1,199 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
+
+page functions_aggregate {
+    section = "wcl_docs.guide.functions.functions_aggregate"
+    title = "Aggregate Functions"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Aggregate Functions"
+                }
+
+                paragraph p1 {
+                    content = "Aggregate functions reduce a list of numbers to a single scalar value. They are most useful for summarizing configuration data — computing totals, averages, and extremes across a collection of blocks or values."
+                }
+
+                heading h2_reference {
+                    level = 2
+                    content = "Reference"
+                }
+
+                data_table t1 {
+                    rows = [
+                        ["Function", "Signature", "Description"],
+                        ["sum", "sum(list: list) -> i64|f64", "Sum of all elements"],
+                        ["avg", "avg(list: list) -> f64", "Arithmetic mean of all elements"],
+                        ["min_of", "min_of(list: list) -> i64|f64", "Smallest element"],
+                        ["max_of", "max_of(list: list) -> i64|f64", "Largest element"],
+                        ["count", "count(list: list, fn: lambda) -> i64", "Number of elements for which fn returns true"]
+                    ]
+                }
+
+                callout note1 {
+                    icon = "info-circle"
+                    header = "Note"
+                    color = "#3498db"
+                    content = "<code>min</code> and <code>max</code> take two scalar arguments and compare them directly. <code>min_of</code> and <code>max_of</code> take a list and find the extreme value within it. See " + link("Math Functions", "functions_math.html") + " for <code>min</code>/<code>max</code>."
+                }
+
+                heading h2_examples {
+                    level = 2
+                    content = "Examples"
+                }
+
+                heading h3_sum {
+                    level = 3
+                    content = "sum"
+                }
+
+                code c1 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let totals = [10, 25, 30, 15]
+                    let total = sum(totals)    // 80
+                    WCL
+                }
+
+                paragraph p2 {
+                    content = "Sum an attribute across all matching blocks:"
+                }
+
+                code c2 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let all_replicas = map(query(service), s => s.replicas)
+                    let replica_count = sum(all_replicas)
+                    WCL
+                }
+
+                heading h3_avg {
+                    level = 3
+                    content = "avg"
+                }
+
+                code c3 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let scores = [80, 90, 70, 100, 85]
+                    let mean = avg(scores)    // 85.0
+                    WCL
+                }
+
+                paragraph p3 {
+                    content = "<code>avg</code> always returns an <code>f64</code>, even for integer input lists."
+                }
+
+                heading h3_min_max_of {
+                    level = 3
+                    content = "min_of / max_of"
+                }
+
+                code c4 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let latencies = [120, 45, 200, 88, 33]
+                    let fastest = min_of(latencies)    // 33
+                    let slowest = max_of(latencies)    // 200
+                    WCL
+                }
+
+                paragraph p4 {
+                    content = "Find the service with the highest replica count:"
+                }
+
+                code c5 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let counts = map(query(service), s => s.replicas)
+                    let max_replicas = max_of(counts)
+                    WCL
+                }
+
+                heading h3_count {
+                    level = 3
+                    content = "count"
+                }
+
+                paragraph p5 {
+                    content = "Count elements that satisfy a predicate:"
+                }
+
+                code c6 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let nums = [1, 2, 3, 4, 5, 6, 7, 8]
+                    let even_count = count(nums, x => x % 2 == 0)    // 4
+                    let large_count = count(nums, x => x > 5)        // 3
+                    WCL
+                }
+
+                paragraph p6 {
+                    content = "Count matching blocks:"
+                }
+
+                code c7 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let prod_count = count(query(service), s => s.env == "prod")
+                    WCL
+                }
+
+                heading h2_combining {
+                    level = 2
+                    content = "Combining Aggregates with Higher-Order Functions"
+                }
+
+                paragraph p7 {
+                    content = "Aggregate functions work naturally after <code>map</code> and <code>filter</code>:"
+                }
+
+                code c8 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    // Average port number across all production services
+                    let prod_ports = map(
+                      filter(query(service), s => s.env == "prod"),
+                      s => s.port
+                    )
+                    let avg_port = avg(prod_ports)
+                    WCL
+                }
+
+                code c9 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    // Total memory requested across all workers with > 2 replicas
+                    let high_replica_workers = filter(query(worker), w => w.replicas > 2)
+                    let memory_values = map(high_replica_workers, w => w.memory_mb)
+                    let total_memory = sum(memory_values)
+                    WCL
+                }
+
+                heading h2_validation {
+                    level = 2
+                    content = "Validation Use Case"
+                }
+
+                paragraph p8 {
+                    content = "Aggregates are useful inside <code>validate</code> blocks to enforce fleet-wide constraints:"
+                }
+
+                code c10 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    validate {
+                      let total = sum(map(query(service), s => s.replicas))
+                      assert total <= 50 : "Total replica count must not exceed 50"
+                    }
+                    WCL
+                }
+            }
+        }
+    }
+}

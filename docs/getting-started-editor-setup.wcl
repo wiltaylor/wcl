@@ -1,0 +1,228 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, bold, italic, link}
+
+page editor_setup {
+    section = "wcl_docs.getting_started.editor_setup"
+    title = "Editor Setup"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Editor Setup"
+                }
+
+                paragraph p1 {
+                    content = "WCL ships a language server (<code>wcl lsp</code>) that implements the Language Server Protocol. Any LSP-capable editor can use it. This page covers setup for VS Code, Neovim, and Helix."
+                }
+
+                heading h2_features {
+                    level = 2
+                    content = "LSP Features"
+                }
+
+                paragraph p2 {
+                    content = "<ul>" +
+                        "<li>Real-time diagnostics (parse errors, type mismatches, schema violations)</li>" +
+                        "<li>Hover documentation for blocks, attributes, and schema definitions</li>" +
+                        "<li>Go-to-definition for block references and macro uses</li>" +
+                        "<li>Completions for attribute names, block types, schema names, and decorator names</li>" +
+                        "<li>Semantic token highlighting</li>" +
+                        "<li>Signature help for macro and built-in function calls</li>" +
+                        "<li>Find references</li>" +
+                        "<li>Document formatting (<code>wcl fmt</code> integration)</li>" +
+                        "</ul>"
+                }
+
+                heading h2_vscode {
+                    level = 2
+                    content = "VS Code"
+                }
+
+                paragraph p3 {
+                    content = "A bundled VS Code extension is located in <code>editors/vscode/</code> in the repository. It handles syntax highlighting, LSP integration, and file association for <code>.wcl</code> files."
+                }
+
+                paragraph p4 {
+                    content = bold("Install with <code>just</code>") + " (if you have " + link("just", "https://github.com/casey/just") + " installed):"
+                }
+
+                code c1 {
+                    language = "bash"
+                    content = "just install-vscode"
+                }
+
+                paragraph p5 {
+                    content = bold("Install manually:")
+                }
+
+                code c2 {
+                    language = "bash"
+                    content = <<-'BASH'
+                    cd editors/vscode && npm install
+                    ln -sfn "$(pwd)" ~/.vscode/extensions/wil.wcl-0.1.0
+                    BASH
+                }
+
+                paragraph p6 {
+                    content = "The symlink approach means changes to the extension source are picked up immediately without reinstalling. Restart VS Code (or run \"Developer: Reload Window\") after linking."
+                }
+
+                paragraph p7 {
+                    content = "The extension automatically starts <code>wcl lsp</code> when a <code>.wcl</code> file is opened. Make sure <code>wcl</code> is on your <code>PATH</code> (i.e., installed via <code>cargo install --path crates/wcl</code>)."
+                }
+
+                heading h2_neovim {
+                    level = 2
+                    content = "Neovim"
+                }
+
+                paragraph p8 {
+                    content = "Add the following to your Neovim configuration (e.g., in an <code>ftplugin/wcl.lua</code> or your main <code>init.lua</code>):"
+                }
+
+                code c3 {
+                    language = "lua"
+                    content = <<-'LUA'
+                    vim.lsp.start({
+                        name = "wcl",
+                        cmd = { "wcl", "lsp" },
+                        root_dir = vim.fs.dirname(vim.fs.find({ ".git" }, { upward = true })[1]),
+                        filetypes = { "wcl" },
+                    })
+                    LUA
+                }
+
+                paragraph p9 {
+                    content = "You will also want to register the <code>.wcl</code> filetype so Neovim recognizes it:"
+                }
+
+                code c4 {
+                    language = "lua"
+                    content = <<-'LUA'
+                    vim.filetype.add({
+                        extension = {
+                            wcl = "wcl",
+                        },
+                    })
+                    LUA
+                }
+
+                paragraph p10 {
+                    content = "If you use <code>nvim-lspconfig</code>, a custom server entry works the same way — pass <code>cmd = { \"wcl\", \"lsp\" }</code> and set <code>filetypes = { \"wcl\" }</code>."
+                }
+
+                heading h2_helix {
+                    level = 2
+                    content = "Helix"
+                }
+
+                paragraph p11 {
+                    content = "Add the following to your <code>~/.config/helix/languages.toml</code>:"
+                }
+
+                code c5 {
+                    language = "toml"
+                    content = <<-'TOML'
+                    [[language]]
+                    name = "wcl"
+                    scope = "source.wcl"
+                    file-types = ["wcl"]
+                    language-servers = ["wcl-lsp"]
+
+                    [language-server.wcl-lsp]
+                    command = "wcl"
+                    args = ["lsp"]
+                    TOML
+                }
+
+                paragraph p12 {
+                    content = "Helix will start <code>wcl lsp</code> automatically when a <code>.wcl</code> file is opened. Run <code>hx --health wcl</code> to verify the language server is detected correctly."
+                }
+
+                heading h2_jetbrains {
+                    level = 2
+                    content = "JetBrains (IntelliJ IDEA, WebStorm, etc.)"
+                }
+
+                paragraph p13 {
+                    content = "A JetBrains plugin is located in <code>editors/jetbrains/</code> in the repository. It provides syntax highlighting via a TextMate grammar and full LSP integration via " + link("LSP4IJ", "https://github.com/redhat-developer/lsp4ij") + ". Works with all JetBrains IDEs including Community Edition."
+                }
+
+                paragraph p14 {
+                    content = bold("Prerequisites:") + " The plugin requires the " + link("LSP4IJ", "https://plugins.jetbrains.com/plugin/23257-lsp4ij") + " plugin to be installed in your IDE."
+                }
+
+                paragraph p15 {
+                    content = bold("Install from source:")
+                }
+
+                code c6 {
+                    language = "bash"
+                    content = "cd editors/jetbrains && ./gradlew buildPlugin"
+                }
+
+                paragraph p16 {
+                    content = "Then install the resulting ZIP from <code>editors/jetbrains/build/distributions/</code> via " + bold("Settings > Plugins > Install Plugin from Disk") + "."
+                }
+
+                paragraph p17 {
+                    content = "The plugin automatically starts <code>wcl lsp</code> when a <code>.wcl</code> file is opened. It looks for the <code>wcl</code> binary in this order:"
+                }
+
+                paragraph p18 {
+                    content = "<ol>" +
+                        "<li>Bundled binary (if installed from a platform-specific distribution)</li>" +
+                        "<li><code>~/.cargo/bin/wcl</code> (if installed via <code>cargo install</code>)</li>" +
+                        "<li>System <code>PATH</code></li>" +
+                        "</ol>"
+                }
+
+                heading h2_zed {
+                    level = 2
+                    content = "Zed"
+                }
+
+                paragraph p19 {
+                    content = "A Zed extension is located in <code>editors/zed/</code> in the repository. It provides tree-sitter-based syntax highlighting and LSP integration."
+                }
+
+                paragraph p20 {
+                    content = bold("Install from source:")
+                }
+
+                code c7 {
+                    language = "bash"
+                    content = <<-'BASH'
+                    ln -sfn "$(pwd)/editors/zed" ~/.local/share/zed/extensions/installed/wcl
+                    BASH
+                }
+
+                paragraph p21 {
+                    content = "Restart Zed after linking. The extension automatically starts <code>wcl lsp</code> when a <code>.wcl</code> file is opened. Make sure <code>wcl</code> is on your <code>PATH</code>."
+                }
+
+                heading h2_other {
+                    level = 2
+                    content = "Other Editors"
+                }
+
+                paragraph p22 {
+                    content = "Any editor with LSP support can use the WCL language server. The server communicates over stdio and is started with:"
+                }
+
+                code c8 {
+                    language = "bash"
+                    content = "wcl lsp"
+                }
+
+                paragraph p23 {
+                    content = "Refer to your editor's LSP documentation for how to register a custom language server with that command."
+                }
+            }
+        }
+    }
+}

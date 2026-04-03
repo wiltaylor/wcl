@@ -1,0 +1,150 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, data_table, callout, bold, italic, link}
+
+page cli_validate {
+    section = "wcl_docs.cli.cli_validate"
+    title = "wcl validate"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "wcl validate"
+                }
+
+                paragraph p1 {
+                    content = "Parse and validate a WCL document through all pipeline phases."
+                }
+
+                heading h2_usage {
+                    level = 2
+                    content = "Usage"
+                }
+
+                code c1 {
+                    language = "bash"
+                    content = "wcl validate <file> [options]"
+                }
+
+                heading h2_options {
+                    level = 2
+                    content = "Options"
+                }
+
+                data_table t1 {
+                    caption = "Options"
+                    rows = [
+                        { flag = "--strict", description = "Treat warnings as errors" },
+                        { flag = "--schema <file>", description = "Load an additional external schema file" },
+                        { flag = "--var KEY=VALUE", description = "Set an external variable (may be repeated)" }
+                    ]
+                }
+
+                heading h2_description {
+                    level = 2
+                    content = "Description"
+                }
+
+                paragraph p2 {
+                    content = "<code>wcl validate</code> runs the document through the full 11-phase pipeline:"
+                }
+
+                paragraph p2_list {
+                    content = "<ol>" +
+                        "<li>Parse</li>" +
+                        "<li>Macro collection</li>" +
+                        "<li>Import resolution</li>" +
+                        "<li>Macro expansion</li>" +
+                        "<li>Control flow expansion</li>" +
+                        "<li>Partial merge</li>" +
+                        "<li>Scope construction and evaluation</li>" +
+                        "<li>Decorator validation</li>" +
+                        "<li>Schema validation</li>" +
+                        "<li>ID uniqueness</li>" +
+                        "<li>Document validation</li>" +
+                        "</ol>"
+                }
+
+                paragraph p3 {
+                    content = "All diagnostics (errors and warnings) are printed to stderr. If any errors are produced, the command exits with a non-zero status code."
+                }
+
+                heading h2_exit_codes {
+                    level = 2
+                    content = "Exit Codes"
+                }
+
+                data_table t2 {
+                    caption = "Exit Codes"
+                    rows = [
+                        { code = "0", meaning = "Document is valid" },
+                        { code = "1", meaning = "One or more errors (or warnings with --strict)" },
+                        { code = "2", meaning = "Argument error" }
+                    ]
+                }
+
+                heading h2_examples {
+                    level = 2
+                    content = "Examples"
+                }
+
+                paragraph p4 {
+                    content = "Validate a file:"
+                }
+
+                code c2 {
+                    language = "bash"
+                    content = "wcl validate config.wcl"
+                }
+
+                paragraph p5 {
+                    content = "Validate strictly (warnings are errors):"
+                }
+
+                code c3 {
+                    language = "bash"
+                    content = "wcl validate --strict config.wcl"
+                }
+
+                paragraph p6 {
+                    content = "Validate against an external schema:"
+                }
+
+                code c4 {
+                    language = "bash"
+                    content = "wcl validate --schema schemas/service.wcl config.wcl"
+                }
+
+                paragraph p7 {
+                    content = "Validate with external variables:"
+                }
+
+                code c5 {
+                    language = "bash"
+                    content = "wcl validate --var PORT=8080 config.wcl"
+                }
+
+                heading h2_diagnostic_output {
+                    level = 2
+                    content = "Diagnostic Output"
+                }
+
+                code c6 {
+                    language = "text"
+                    content = <<-'DIAG'
+                    error[E070]: missing required field `port`
+                      --> config.wcl:12:3
+                       |
+                    12 |   service svc-api {
+                       |   ^^^^^^^^^^^^^^^ missing field `port`
+                       |
+                       = required by schema `ServiceSchema`
+                    DIAG
+                }
+            }
+        }
+    }
+}

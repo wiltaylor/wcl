@@ -1,0 +1,282 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
+
+page macros_function {
+    section = "wcl_docs.guide.macros.macros_function"
+    title = "Function Macros"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Function Macros"
+                }
+
+                paragraph p1 {
+                    content = "Function macros are named templates that expand into blocks, attributes, or other declarations at statement level. They are the primary way to eliminate repetitive block definitions in WCL."
+                }
+
+                heading h2_definition {
+                    level = 2
+                    content = "Definition"
+                }
+
+                code c1 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    macro name(param1, param2, param3 = default_value) {
+                        // body: blocks, attributes, let bindings, other macro calls
+                    }
+                    WCL
+                }
+
+                paragraph p2 {
+                    content = "The <code>macro</code> keyword is followed by the macro name, a parameter list, and a body enclosed in <code>{ }</code>."
+                }
+
+                heading h2_parameters {
+                    level = 2
+                    content = "Parameters"
+                }
+
+                paragraph p3 {
+                    content = "Parameters are positional by default. Each parameter may optionally have:"
+                }
+
+                paragraph p4 {
+                    content = "<ul>" +
+                        "<li>A " + bold("type annotation") + ": <code>name: string</code></li>" +
+                        "<li>A " + bold("default value") + ": <code>name = \"default\"</code> or <code>name: string = \"default\"</code></li>" +
+                        "</ul>"
+                }
+
+                paragraph p5 {
+                    content = "Parameters with defaults are optional at the call site. Parameters without defaults are required."
+                }
+
+                code c2 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    macro service_endpoint(
+                        name:     string,
+                        port:     i64,
+                        region:   string = "us-east-1",
+                        env:      string = "production",
+                        replicas: i64    = 1
+                    ) {
+                        service name {
+                            port     = port
+                            region   = region
+                            env      = env
+                            replicas = replicas
+                        }
+                    }
+                    WCL
+                }
+
+                heading h2_invocation {
+                    level = 2
+                    content = "Invocation"
+                }
+
+                paragraph p6 {
+                    content = "Function macros are called at " + bold("statement level") + " — the same positions where you can write a block or <code>let</code> binding. They are not valid as expression values."
+                }
+
+                code c3 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    service_endpoint("api", 8080)
+                    service_endpoint("worker", 9090, region = "eu-west-1")
+                    service_endpoint("batch", 7070, env = "staging", replicas = 4)
+                    WCL
+                }
+
+                paragraph p7 {
+                    content = "Arguments can be positional, named, or mixed. Named arguments may appear in any order and can follow positional ones:"
+                }
+
+                code c4 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    service_endpoint("api", 8080, env = "staging", replicas = 2)
+                    WCL
+                }
+
+                heading h2_body {
+                    level = 2
+                    content = "Body"
+                }
+
+                paragraph p8 {
+                    content = "The body of a function macro can contain:"
+                }
+
+                paragraph p9 {
+                    content = "<ul>" +
+                        "<li>" + bold("Block declarations") + " — the most common use case</li>" +
+                        "<li>" + bold("Attribute assignments") + " — when expanding into attribute context</li>" +
+                        "<li>" + bold("<code>let</code> bindings") + " — scoped to the macro, not visible outside</li>" +
+                        "<li>" + bold("Other macro calls") + " — for composition</li>" +
+                        "</ul>"
+                }
+
+                code c5 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    macro health_check(service_name, path = "/healthz", interval_s = 30) {
+                        let check_id = service_name + "-health"
+
+                        monitor check_id {
+                            target   = service_name
+                            path     = path
+                            interval = interval_s
+                            timeout  = 5
+                        }
+
+                        alert check_id + "-alert" {
+                            monitor = check_id
+                            channel = "ops"
+                        }
+                    }
+
+                    health_check("api")
+                    health_check("worker", path = "/health", interval_s = 60)
+                    WCL
+                }
+
+                paragraph p10 {
+                    content = "This expands to two <code>monitor</code> blocks and two <code>alert</code> blocks."
+                }
+
+                heading h2_hygiene {
+                    level = 2
+                    content = "Hygiene"
+                }
+
+                paragraph p11 {
+                    content = "<code>let</code> bindings defined inside a macro are scoped to the macro. They are resolved at the " + bold("definition site") + ", not the call site. This means:"
+                }
+
+                paragraph p12 {
+                    content = "<ul>" +
+                        "<li>The macro cannot accidentally read variables from the caller's scope (unless passed as arguments).</li>" +
+                        "<li>The macro's internal variables do not leak into the caller's scope.</li>" +
+                        "</ul>"
+                }
+
+                code c6 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let prefix = "global"
+
+                    macro make_db(name) {
+                        let prefix = "db"           // shadows outer "prefix" inside this macro only
+                        let full_name = prefix + "-" + name
+
+                        database full_name {
+                            host = "db.internal"
+                        }
+                    }
+
+                    make_db("primary")   // expands to database "db-primary" { ... }
+
+                    // "prefix" here is still "global" — the macro did not mutate it
+                    WCL
+                }
+
+                heading h2_composition {
+                    level = 2
+                    content = "Composition"
+                }
+
+                paragraph p13 {
+                    content = "Function macros can call other function macros. This lets you build complex templates from simpler ones:"
+                }
+
+                code c7 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    macro base_service(name, port) {
+                        service name {
+                            port   = port
+                            region = "us-east-1"
+                            env    = "production"
+                        }
+                    }
+
+                    macro web_service(name, port, domain, tls = true) {
+                        base_service(name, port)
+
+                        dns_record name {
+                            cname = domain
+                            tls   = tls
+                        }
+
+                        health_check(name)
+                    }
+
+                    macro health_check(name) {
+                        monitor name + "-check" {
+                            target = name
+                            path   = "/healthz"
+                        }
+                    }
+
+                    web_service("api", 8080, "api.example.com")
+                    web_service("dashboard", 3000, "dash.example.com", tls = false)
+                    WCL
+                }
+
+                heading h2_full_example {
+                    level = 2
+                    content = "Full Example"
+                }
+
+                code c8 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    macro service_endpoint(
+                        name:     string,
+                        port:     i64,
+                        env:      string = "production",
+                        replicas: i64    = 1,
+                        region:   string = "us-east-1"
+                    ) {
+                        service name {
+                            port     = port
+                            env      = env
+                            replicas = replicas
+                            region   = region
+                        }
+                    }
+
+                    macro health_check(name, path = "/healthz", interval_s = 30) {
+                        monitor name + "-health" {
+                            target   = name
+                            path     = path
+                            interval = interval_s
+                        }
+                    }
+
+                    macro monitored_service(name, port, env = "production") {
+                        service_endpoint(name, port, env = env)
+                        health_check(name)
+                    }
+
+                    monitored_service("api",    8080)
+                    monitored_service("worker", 9090, env = "staging")
+                    monitored_service("batch",  7070, env = "development")
+                    WCL
+                }
+
+                paragraph p14 {
+                    content = "This expands to three <code>service</code> blocks and three <code>monitor</code> blocks, each correctly parameterized."
+                }
+            }
+        }
+    }
+}

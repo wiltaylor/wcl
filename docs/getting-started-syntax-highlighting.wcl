@@ -1,0 +1,457 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
+
+page syntax_highlighting {
+    section = "wcl_docs.getting_started.syntax_highlighting"
+    title = "Syntax Highlighting"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Syntax Highlighting"
+                }
+
+                paragraph p1 {
+                    content = "WCL provides syntax highlighting definitions for a wide range of editors, tools, and platforms. These are distributed as standalone files in the <code>extras/</code> directory of the repository."
+                }
+
+                heading h2_overview {
+                    level = 2
+                    content = "Overview"
+                }
+
+                data_table t1 {
+                    rows = [
+                        ["Package", "Format", "Unlocks"],
+                        ["Tree-sitter Highlight Queries", "<code>.scm</code>", "Neovim, Helix, Zed, GitHub"],
+                        ["Sublime Syntax", "<code>.sublime-syntax</code>", "Sublime Text, Syntect, bat"],
+                        ["TextMate Grammar", "<code>.tmLanguage.json</code>", "VS Code, Shiki, Monaco"],
+                        ["highlight.js", "<code>.js</code>", "mdbook, any highlight.js site"],
+                        ["Pygments Lexer", "<code>.py</code>", "Pygments, Chroma, Hugo"]
+                    ]
+                }
+
+                heading h2_treesitter {
+                    level = 2
+                    content = "Tree-sitter Highlight Queries"
+                }
+
+                paragraph p2 {
+                    content = "The tree-sitter grammar (<code>extras/tree-sitter-wcl/</code>) provides the most accurate highlighting since it uses a full parse tree rather than regex heuristics. The query files are:"
+                }
+
+                data_table t2 {
+                    rows = [
+                        ["File", "Location", "Purpose"],
+                        ["<code>highlights.scm</code>", "<code>extras/tree-sitter-wcl/queries/</code>", "Core syntax highlighting"],
+                        ["<code>locals.scm</code>", "<code>extras/highlight-queries/</code>", "Scope-aware variable highlighting"],
+                        ["<code>textobjects.scm</code>", "<code>extras/highlight-queries/</code>", "Structural text objects (select block, function, etc.)"],
+                        ["<code>injections.scm</code>", "<code>extras/highlight-queries/</code>", "String interpolation injection"]
+                    ]
+                }
+
+                heading h3_neovim {
+                    level = 3
+                    content = "Neovim"
+                }
+
+                paragraph p3 {
+                    content = "Register the WCL filetype and copy the query files:"
+                }
+
+                code c1 {
+                    language = "bash"
+                    content = <<-'BASH'
+                    mkdir -p ~/.config/nvim/queries/wcl
+                    cp extras/tree-sitter-wcl/queries/highlights.scm ~/.config/nvim/queries/wcl/
+                    cp extras/highlight-queries/*.scm ~/.config/nvim/queries/wcl/
+                    BASH
+                }
+
+                paragraph p4 {
+                    content = "Add filetype detection in your <code>init.lua</code>:"
+                }
+
+                code c2 {
+                    language = "lua"
+                    content = <<-'LUA'
+                    vim.filetype.add({ extension = { wcl = "wcl" } })
+                    LUA
+                }
+
+                paragraph p5 {
+                    content = "If you use " + link("nvim-treesitter", "https://github.com/nvim-treesitter/nvim-treesitter") + ", you can register WCL as a custom parser. The query files above will then provide highlighting, text objects (with <code>nvim-treesitter-textobjects</code>), and scope-aware local variable highlights automatically."
+                }
+
+                heading h3_helix {
+                    level = 3
+                    content = "Helix"
+                }
+
+                paragraph p6 {
+                    content = "Copy the query files into the Helix runtime directory:"
+                }
+
+                code c3 {
+                    language = "bash"
+                    content = <<-'BASH'
+                    mkdir -p ~/.config/helix/runtime/queries/wcl
+                    cp extras/tree-sitter-wcl/queries/highlights.scm ~/.config/helix/runtime/queries/wcl/
+                    cp extras/highlight-queries/textobjects.scm ~/.config/helix/runtime/queries/wcl/
+                    cp extras/highlight-queries/injections.scm ~/.config/helix/runtime/queries/wcl/
+                    BASH
+                }
+
+                paragraph p7 {
+                    content = "Then add the language configuration to <code>~/.config/helix/languages.toml</code> (see " + link("Editor Setup", "editor_setup.html") + " for the full LSP config):"
+                }
+
+                code c4 {
+                    language = "toml"
+                    content = <<-'TOML'
+                    [[language]]
+                    name = "wcl"
+                    scope = "source.wcl"
+                    file-types = ["wcl"]
+
+                    [[grammar]]
+                    name = "wcl"
+                    source = { path = "/path/to/extras/tree-sitter-wcl" }
+                    TOML
+                }
+
+                heading h3_zed {
+                    level = 3
+                    content = "Zed"
+                }
+
+                paragraph p8 {
+                    content = "Zed supports tree-sitter grammars natively. Place the query files in an extension directory:"
+                }
+
+                code c5 {
+                    language = "text"
+                    content = <<-'TXT'
+                    languages/wcl/
+                      highlights.scm
+                      injections.scm
+                    TXT
+                }
+
+                heading h3_github {
+                    level = 3
+                    content = "GitHub"
+                }
+
+                paragraph p9 {
+                    content = "GitHub uses tree-sitter for syntax highlighting in repositories. Once tree-sitter-wcl is published and registered with " + link("github-linguist", "https://github.com/github-linguist/linguist") + ", <code>.wcl</code> files will be highlighted automatically on GitHub."
+                }
+
+                heading h2_vscode_shiki {
+                    level = 2
+                    content = "VS Code / Shiki"
+                }
+
+                paragraph p10 {
+                    content = "The VS Code extension (<code>editors/vscode/</code>) includes a TextMate grammar (<code>wcl.tmLanguage.json</code>) that provides syntax highlighting. See " + link("Editor Setup", "editor_setup.html") + " for installation."
+                }
+
+                paragraph p11 {
+                    content = "The TextMate grammar is generated from the canonical Sublime Syntax definition:"
+                }
+
+                code c6 {
+                    language = "bash"
+                    content = "just build vscode-syntax"
+                }
+
+                paragraph p12 {
+                    content = "This same <code>wcl.tmLanguage.json</code> file can be used with " + link("Shiki", "https://shiki.matsu.io/") + " (used by VitePress, Astro, and other static site generators):"
+                }
+
+                code c7 {
+                    language = "javascript"
+                    content = <<-'JS'
+                    import { createHighlighter } from 'shiki';
+                    import wclGrammar from './wcl.tmLanguage.json';
+
+                    const highlighter = await createHighlighter({
+                      langs: [
+                        {
+                          id: 'wcl',
+                          scopeName: 'source.wcl',
+                          ...wclGrammar,
+                        },
+                      ],
+                      themes: ['github-dark'],
+                    });
+
+                    const html = highlighter.codeToHtml(code, { lang: 'wcl' });
+                    JS
+                }
+
+                heading h2_sublime {
+                    level = 2
+                    content = "Sublime Text / Syntect / bat"
+                }
+
+                paragraph p13 {
+                    content = "The Sublime Syntax definition (<code>extras/sublime-syntax/WCL.sublime-syntax</code>) is the canonical regex-based syntax file. It supports nested block comments, string interpolation, heredocs, and all WCL keywords and types."
+                }
+
+                heading h3_sublime_text {
+                    level = 3
+                    content = "Sublime Text"
+                }
+
+                code c8 {
+                    language = "bash"
+                    content = <<-'BASH'
+                    cp extras/sublime-syntax/WCL.sublime-syntax \
+                       ~/.config/sublime-text/Packages/User/
+                    BASH
+                }
+
+                heading h3_bat {
+                    level = 3
+                    content = "bat"
+                }
+
+                paragraph p14 {
+                    content = link("bat", "https://github.com/sharkdp/bat") + " uses Syntect internally and can load custom <code>.sublime-syntax</code> files:"
+                }
+
+                code c9 {
+                    language = "bash"
+                    content = <<-'BASH'
+                    mkdir -p "$(bat --config-dir)/syntaxes"
+                    cp extras/sublime-syntax/WCL.sublime-syntax "$(bat --config-dir)/syntaxes/"
+                    bat cache --build
+                    BASH
+                }
+
+                paragraph p15 {
+                    content = "Then <code>bat file.wcl</code> will use WCL highlighting."
+                }
+
+                heading h3_syntect {
+                    level = 3
+                    content = "Syntect (Rust)"
+                }
+
+                paragraph p16 {
+                    content = "If you're building a Rust tool that uses " + link("Syntect", "https://github.com/trishume/syntect") + " for highlighting, load the syntax definition at build time:"
+                }
+
+                code c10 {
+                    language = "rust"
+                    content = <<-'RUST'
+                    use syntect::parsing::SyntaxSet;
+
+                    let mut builder = SyntaxSet::load_defaults_newlines().into_builder();
+                    builder.add_from_folder("path/to/extras/sublime-syntax/", true)?;
+                    let ss = builder.build();
+                    RUST
+                }
+
+                heading h2_hljs {
+                    level = 2
+                    content = "highlight.js / mdbook"
+                }
+
+                paragraph p17 {
+                    content = "The highlight.js grammar (<code>extras/highlightjs/wcl.js</code>) provides syntax highlighting for any site using " + link("highlight.js", "https://highlightjs.org/") + ", including " + link("mdbook", "https://rust-lang.github.io/mdBook/") + " (which uses highlight.js by default)."
+                }
+
+                heading h3_mdbook {
+                    level = 3
+                    content = "mdbook"
+                }
+
+                paragraph p18 {
+                    content = "To add WCL highlighting to an mdbook project:"
+                }
+
+                paragraph p19 {
+                    content = "1. Copy the grammar file:"
+                }
+
+                code c11 {
+                    language = "bash"
+                    content = <<-'BASH'
+                    mkdir -p docs/book/theme
+                    cp extras/highlightjs/wcl.js docs/book/theme/
+                    BASH
+                }
+
+                paragraph p20 {
+                    content = "2. Register it in <code>book.toml</code>:"
+                }
+
+                code c12 {
+                    language = "toml"
+                    content = <<-'TOML'
+                    [output.html]
+                    additional-js = ["theme/wcl.js"]
+                    TOML
+                }
+
+                paragraph p21 {
+                    content = "3. Add a registration snippet. Create <code>theme/highlight-wcl.js</code>:"
+                }
+
+                code c13 {
+                    language = "javascript"
+                    content = <<-'JS'
+                    if (typeof hljs !== 'undefined') {
+                      hljs.registerLanguage('wcl', function(hljs) {
+                        // The module exports a default function
+                        return wcl(hljs);
+                      });
+                    }
+                    JS
+                }
+
+                paragraph p22 {
+                    content = "And add it to <code>additional-js</code>:"
+                }
+
+                code c14 {
+                    language = "toml"
+                    content = <<-'TOML'
+                    [output.html]
+                    additional-js = ["theme/wcl.js", "theme/highlight-wcl.js"]
+                    TOML
+                }
+
+                paragraph p23 {
+                    content = "4. Use <code>wcl</code> as the language in fenced code blocks:"
+                }
+
+                code c15 {
+                    language = "markdown"
+                    content = <<-'MD'
+                    ```wcl
+                    server web-prod {
+                        host = "0.0.0.0"
+                        port = 8080
+                    }
+                    ```
+                    MD
+                }
+
+                heading h3_standalone_hljs {
+                    level = 3
+                    content = "Standalone highlight.js"
+                }
+
+                code c16 {
+                    language = "javascript"
+                    content = <<-'JS'
+                    import hljs from 'highlight.js/lib/core';
+                    import wcl from './wcl.js';
+
+                    hljs.registerLanguage('wcl', wcl);
+                    hljs.highlightAll();
+                    JS
+                }
+
+                heading h2_pygments {
+                    level = 2
+                    content = "Pygments / Chroma / Hugo"
+                }
+
+                paragraph p24 {
+                    content = "The Pygments lexer (<code>extras/pygments/wcl_lexer.py</code>) provides syntax highlighting for Python-based tools and can be converted for use with Go-based tools."
+                }
+
+                heading h3_pygments_tool {
+                    level = 3
+                    content = "Pygments"
+                }
+
+                paragraph p25 {
+                    content = "Use directly with the <code>-x</code> flag:"
+                }
+
+                code c17 {
+                    language = "bash"
+                    content = "pygmentize -l extras/pygments/wcl_lexer.py:WclLexer -x -f html input.wcl"
+                }
+
+                paragraph p26 {
+                    content = "Or install as a plugin by adding to your package's entry points:"
+                }
+
+                code c18 {
+                    language = "python"
+                    content = <<-'PY'
+                    # In setup.py or pyproject.toml
+                    [project.entry-points."pygments.lexers"]
+                    wcl = "wcl_lexer:WclLexer"
+                    PY
+                }
+
+                paragraph p27 {
+                    content = "Then <code>pygmentize -l wcl input.wcl</code> works directly."
+                }
+
+                heading h3_chroma {
+                    level = 3
+                    content = "Chroma / Hugo"
+                }
+
+                paragraph p28 {
+                    content = link("Chroma", "https://github.com/alecthomas/chroma") + " is the Go syntax highlighter used by Hugo. Chroma can import Pygments-style lexers. To add WCL support to a Hugo site:"
+                }
+
+                paragraph p29 {
+                    content = "<ol>" +
+                        "<li>Convert the Pygments lexer to a Chroma Go implementation (see the " + link("Chroma contributing guide", "https://github.com/alecthomas/chroma#adding-lexers") + ")</li>" +
+                        "<li>Or use the <code>chroma</code> CLI to test directly:</li>" +
+                        "</ol>"
+                }
+
+                code c19 {
+                    language = "bash"
+                    content = "chroma --lexer pygments --filename input.wcl < input.wcl"
+                }
+
+                heading h2_whats_highlighted {
+                    level = 2
+                    content = "What's Highlighted"
+                }
+
+                paragraph p30 {
+                    content = "All highlighting definitions cover the same WCL syntax elements:"
+                }
+
+                data_table t3 {
+                    rows = [
+                        ["Element", "Examples"],
+                        [bold("Keywords"), "<code>if</code>, <code>else</code>, <code>for</code>, <code>in</code>, <code>let</code>, <code>macro</code>, <code>schema</code>, <code>table</code>, <code>import</code>, <code>export</code>"],
+                        [bold("Declaration keywords"), "<code>declare</code>, <code>validation</code>, <code>decorator_schema</code>, <code>partial</code>"],
+                        [bold("Transform keywords"), "<code>inject</code>, <code>set</code>, <code>remove</code>, <code>when</code>, <code>check</code>, <code>message</code>, <code>target</code>"],
+                        [bold("Built-in types"), "<code>string</code>, <code>i64</code>, <code>f64</code>, <code>bool</code>, <code>any</code>, <code>identifier</code>, <code>list</code>, <code>map</code>, <code>set</code>, <code>union</code>, <code>ref</code>"],
+                        [bold("Built-in functions"), "<code>query</code>, <code>has</code>, <code>import_table</code>, <code>import_raw</code>"],
+                        [bold("Constants"), "<code>true</code>, <code>false</code>, <code>null</code>"],
+                        [bold("Numbers"), "Integers, floats, hex (<code>0xFF</code>), octal (<code>0o77</code>), binary (<code>0b101</code>)"],
+                        [bold("Strings"), "Double-quoted with <code>" + "$" + "{interpolation}</code> and <code>\\escape</code> sequences"],
+                        [bold("Heredocs"), "<code>&lt;&lt;EOF ... EOF</code>"],
+                        [bold("Decorators"), "<code>@optional</code>, <code>@deprecated(reason = \"...\")</code>"],
+                        [bold("Comments"), "<code>//</code>, <code>/* */</code>, <code>///</code> (doc comments)"],
+                        [bold("Operators"), "<code>+</code>, <code>-</code>, <code>*</code>, <code>/</code>, <code>%</code>, <code>==</code>, <code>!=</code>, <code>&amp;&amp;</code>, <code>||</code>, <code>=&gt;</code>, <code>-&gt;</code>, <code>|</code>, <code>?:</code>"]
+                    ]
+                }
+
+                paragraph p31 {
+                    content = "The tree-sitter queries additionally provide context-aware highlighting (distinguishing block types from identifiers, function calls from variables, parameters from local bindings, etc.) which regex-based highlighters cannot fully replicate."
+                }
+            }
+        }
+    }
+}

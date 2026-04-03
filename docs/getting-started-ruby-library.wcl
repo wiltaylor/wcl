@@ -1,0 +1,522 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
+
+page ruby_library {
+    section = "wcl_docs.getting_started.ruby_library"
+    title = "Using WCL as a Ruby Library"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Using WCL as a Ruby Library"
+                }
+
+                paragraph p1 {
+                    content = "WCL has Ruby bindings powered by a WASM module and the " + link("wasmtime", "https://github.com/bytecodealliance/wasmtime-rb") + " runtime. The <code>wcl</code> gem provides the full 11-phase parsing pipeline with native Ruby types — values come back as <code>Hash</code>, <code>Array</code>, <code>Integer</code>, <code>String</code>, etc."
+                }
+
+                heading h2_install {
+                    level = 2
+                    content = "Installation"
+                }
+
+                paragraph p2 {
+                    content = "Install from RubyGems:"
+                }
+
+                code c1 {
+                    language = "bash"
+                    content = "gem install wcl"
+                }
+
+                paragraph p3 {
+                    content = "Or add to your <code>Gemfile</code>:"
+                }
+
+                code c2 {
+                    language = "ruby"
+                    content = <<-'RUBY'
+                    gem "wcl"
+                    RUBY
+                }
+
+                heading h2_parse_string {
+                    level = 2
+                    content = "Parsing a WCL String"
+                }
+
+                paragraph p4 {
+                    content = "Use <code>Wcl.parse()</code> to run the full pipeline and get a <code>Document</code>:"
+                }
+
+                code c3 {
+                    language = "ruby"
+                    content = <<-'RUBY'
+                    require "wcl"
+
+                    doc = Wcl.parse(<<~WCL)
+                        server web-prod {
+                            host = "0.0.0.0"
+                            port = 8080
+                            debug = false
+                        }
+                    WCL
+
+                    if doc.has_errors?
+                      doc.errors.each { |e| puts "error: #{e.message}" }
+                    else
+                      puts "Document parsed successfully"
+                    end
+                    RUBY
+                }
+
+                heading h2_parse_file {
+                    level = 2
+                    content = "Parsing a WCL File"
+                }
+
+                paragraph p5 {
+                    content = "<code>Wcl.parse_file()</code> reads and parses a file. It automatically sets the root directory to the file's parent so imports resolve correctly:"
+                }
+
+                code c4 {
+                    language = "ruby"
+                    content = <<-'RUBY'
+                    doc = Wcl.parse_file("config/main.wcl")
+
+                    if doc.has_errors?
+                      doc.errors.each { |e| puts "error: #{e.message}" }
+                    end
+                    RUBY
+                }
+
+                paragraph p6 {
+                    content = "Raises <code>IOError</code> if the file doesn't exist."
+                }
+
+                heading h2_values {
+                    level = 2
+                    content = "Accessing Evaluated Values"
+                }
+
+                paragraph p7 {
+                    content = "After parsing, <code>doc.values</code> is a Ruby <code>Hash</code> with all evaluated top-level attributes and blocks. Values are converted to native Ruby types:"
+                }
+
+                code c5 {
+                    language = "ruby"
+                    content = <<-'RUBY'
+                    doc = Wcl.parse(<<~WCL)
+                        name = "my-app"
+                        port = 8080
+                        tags = ["web", "prod"]
+                        debug = false
+                    WCL
+
+                    puts doc.values["name"]   # "my-app" (String)
+                    puts doc.values["port"]   # 8080 (Integer)
+                    puts doc.values["tags"]   # ["web", "prod"] (Array)
+                    puts doc.values["debug"]  # false (FalseClass)
+                    RUBY
+                }
+
+                paragraph p8 {
+                    content = "WCL types map to Ruby types as follows:"
+                }
+
+                data_table t1 {
+                    rows = [
+                        ["WCL Type", "Ruby Type"],
+                        ["<code>string</code>", "<code>String</code>"],
+                        ["<code>i64</code>", "<code>Integer</code>"],
+                        ["<code>f64</code>", "<code>Float</code>"],
+                        ["<code>bool</code>", "<code>true</code> / <code>false</code>"],
+                        ["<code>null</code>", "<code>nil</code>"],
+                        ["<code>list</code>", "<code>Array</code>"],
+                        ["<code>map</code>", "<code>Hash</code>"],
+                        ["<code>set</code>", "<code>Set</code> (or <code>Array</code> if items are unhashable)"]
+                    ]
+                }
+
+                heading h2_blocks {
+                    level = 2
+                    content = "Working with Blocks"
+                }
+
+                paragraph p9 {
+                    content = "Use <code>blocks</code> and <code>blocks_of_type</code> to access parsed blocks with resolved attributes:"
+                }
+
+                code c6 {
+                    language = "ruby"
+                    content = <<-'RUBY'
+                    doc = Wcl.parse(<<~WCL)
+                        server web-prod {
+                            host = "0.0.0.0"
+                            port = 8080
+                        }
+
+                        server web-staging {
+                            host = "staging.internal"
+                            port = 8081
+                        }
+
+                        database main-db {
+                            host = "db.internal"
+                            port = 5432
+                        }
+                    WCL
+
+                    # Get all blocks
+                    blocks = doc.blocks
+                    puts "Total blocks: #{blocks.size}"  # 3
+
+                    # Get blocks of a specific type
+                    servers = doc.blocks_of_type("server")
+                    servers.each do |s|
+                      puts "server id=#{s.id} host=#{s.get('host')} port=#{s.get('port')}"
+                    end
+                    RUBY
+                }
+
+                paragraph p10 {
+                    content = "Each <code>BlockRef</code> has the following properties:"
+                }
+
+                code c7 {
+                    language = "ruby"
+                    content = <<-'RUBY'
+                    block.kind        # String — block type name (e.g. "server")
+                    block.id          # String or nil — inline ID (e.g. "web-prod")
+                    block.attributes  # Hash — evaluated attribute values (includes _args if inline args present)
+                    block.children    # Array<BlockRef> — nested child blocks
+                    block.decorators  # Array<Decorator> — decorators on this block
+                    RUBY
+                }
+
+                paragraph p11 {
+                    content = "And these methods:"
+                }
+
+                code c8 {
+                    language = "ruby"
+                    content = <<-'RUBY'
+                    block.get("port")                # attribute value, or nil if missing
+                    block["port"]                    # same as get
+                    block.has_decorator?("deprecated")  # true/false
+                    RUBY
+                }
+
+                heading h2_queries {
+                    level = 2
+                    content = "Running Queries"
+                }
+
+                paragraph p12 {
+                    content = "<code>doc.query()</code> accepts the same query syntax as the <code>wcl query</code> CLI command:"
+                }
+
+                code c9 {
+                    language = "ruby"
+                    content = <<-'RUBY'
+                    doc = Wcl.parse(<<~WCL)
+                        server svc-api {
+                            port = 8080
+                            env = "prod"
+                        }
+
+                        server svc-admin {
+                            port = 9090
+                            env = "prod"
+                        }
+
+                        server svc-debug {
+                            port = 3000
+                            env = "dev"
+                        }
+                    WCL
+
+                    # Select all server blocks
+                    all_servers = doc.query("server")
+
+                    # Filter by attribute
+                    prod = doc.query('server | .env == "prod"')
+
+                    # Project a single attribute
+                    ports = doc.query("server | .port")
+                    puts ports.inspect  # [8080, 9090, 3000]
+
+                    # Filter and project
+                    prod_ports = doc.query('server | .env == "prod" | .port')
+                    puts prod_ports.inspect  # [8080, 9090]
+
+                    # Filter by comparison
+                    high_ports = doc.query("server | .port > 8500")
+                    RUBY
+                }
+
+                paragraph p13 {
+                    content = "Raises <code>Wcl::ValueError</code> if the query is invalid."
+                }
+
+                heading h2_custom_fn {
+                    level = 2
+                    content = "Custom Functions"
+                }
+
+                paragraph p14 {
+                    content = "Register Ruby functions callable from WCL expressions by passing a <code>functions</code> hash:"
+                }
+
+                code c10 {
+                    language = "ruby"
+                    content = <<-'RUBY'
+                    double = ->(args) { args[0] * 2 }
+                    greet = ->(args) { "Hello, #{args[0]}!" }
+
+                    doc = Wcl.parse(<<~WCL, functions: { "double" => double, "greet" => greet })
+                        result = double(21)
+                        message = greet("World")
+                    WCL
+
+                    puts doc.values["result"]   # 42
+                    puts doc.values["message"]  # "Hello, World!"
+                    RUBY
+                }
+
+                paragraph p15 {
+                    content = "Functions receive a single <code>args</code> array with native Ruby values and should return a native Ruby value. Errors propagate as diagnostics:"
+                }
+
+                code c11 {
+                    language = "ruby"
+                    content = <<-'RUBY'
+                    safe_div = ->(args) {
+                      raise "division by zero" if args[1] == 0
+                      args[0].to_f / args[1]
+                    }
+
+                    doc = Wcl.parse('result = safe_div(10, 0)', functions: { "safe_div" => safe_div })
+                    puts doc.has_errors?  # true — the error becomes a diagnostic
+                    RUBY
+                }
+
+                paragraph p16 {
+                    content = "Functions can return any supported type:"
+                }
+
+                code c12 {
+                    language = "ruby"
+                    content = <<-'RUBY'
+                    make_list = ->(_args) { [1, 2, 3] }
+                    is_even = ->(args) { args[0] % 2 == 0 }
+                    noop = ->(_args) { nil }
+                    RUBY
+                }
+
+                paragraph p17 {
+                    content = "Custom functions also work in control flow expressions:"
+                }
+
+                code c13 {
+                    language = "ruby"
+                    content = <<-'RUBY'
+                    items = ->(_args) { [1, 2, 3] }
+
+                    doc = Wcl.parse(
+                      "for item in items() { entry { value = item } }",
+                      functions: { "items" => items }
+                    )
+                    RUBY
+                }
+
+                heading h2_parse_options {
+                    level = 2
+                    content = "Parse Options"
+                }
+
+                paragraph p18 {
+                    content = "All options are passed as keyword arguments to <code>Wcl.parse</code>:"
+                }
+
+                code c14 {
+                    language = "ruby"
+                    content = <<-'RUBY'
+                    doc = Wcl.parse(source,
+                      root_dir: "./config",           # root directory for import resolution
+                      allow_imports: true,            # enable/disable imports (default: true)
+                      max_import_depth: 32,           # max nested import depth (default: 32)
+                      max_macro_depth: 64,            # max macro expansion depth (default: 64)
+                      max_loop_depth: 32,             # max for-loop nesting (default: 32)
+                      max_iterations: 10000,          # max total loop iterations (default: 10,000)
+                      functions: { "my_fn" => my_fn } # custom functions
+                    )
+                    RUBY
+                }
+
+                paragraph p19 {
+                    content = "When processing untrusted input, disable imports to prevent file system access:"
+                }
+
+                code c15 {
+                    language = "ruby"
+                    content = "doc = Wcl.parse(untrusted_input, allow_imports: false)"
+                }
+
+                heading h2_library {
+                    level = 2
+                    content = "Library Files"
+                }
+
+                paragraph p20 {
+                    content = "Create <code>.wcl</code> library files manually and place them in <code>~/.local/share/wcl/lib/</code>. See the Libraries guide for details."
+                }
+
+                heading h2_error_handling {
+                    level = 2
+                    content = "Error Handling"
+                }
+
+                paragraph p21 {
+                    content = "The <code>Document</code> collects all diagnostics from every pipeline phase. Each <code>Diagnostic</code> has a severity, message, and optional error code:"
+                }
+
+                code c16 {
+                    language = "ruby"
+                    content = <<-'RUBY'
+                    doc = Wcl.parse(<<~WCL)
+                        server web {
+                            port = "not_a_number"
+                        }
+
+                        schema "server" {
+                            port: i64
+                        }
+                    WCL
+
+                    # Check for errors
+                    if doc.has_errors?
+                      doc.errors.each do |e|
+                        code = e.code ? "[#{e.code}] " : ""
+                        puts "#{e.severity}: #{code}#{e.message}"
+                      end
+                    end
+
+                    # All diagnostics (errors + warnings)
+                    doc.diagnostics.each { |d| puts "#{d.severity}: #{d.message}" }
+                    RUBY
+                }
+
+                paragraph p22 {
+                    content = "The <code>Diagnostic</code> type:"
+                }
+
+                code c17 {
+                    language = "ruby"
+                    content = <<-'RUBY'
+                    d.severity  # "error", "warning", "info", or "hint"
+                    d.message   # String — the diagnostic message
+                    d.code      # String or nil — e.g. "E071" for type mismatch
+                    d.error?    # true if severity is "error"
+                    d.warning?  # true if severity is "warning"
+                    d.inspect   # "#<Wcl::Diagnostic(error: [E071] type mismatch: ...)>"
+                    RUBY
+                }
+
+                paragraph p23 {
+                    content = "Use <code>doc.has_errors?</code> as a quick check, <code>doc.errors</code> for only errors, and <code>doc.diagnostics</code> for everything including warnings."
+                }
+
+                heading h2_complete {
+                    level = 2
+                    content = "Complete Example"
+                }
+
+                paragraph p24 {
+                    content = "Putting it all together — parse a configuration, validate it, query it, and extract values:"
+                }
+
+                code c18 {
+                    language = "ruby"
+                    content = <<-'RUBY'
+                    require "wcl"
+
+                    doc = Wcl.parse(<<~WCL)
+                        schema "server" {
+                            port: i64
+                            host: string @optional
+                        }
+
+                        server svc-api {
+                            port = 8080
+                            host = "api.internal"
+                        }
+
+                        server svc-admin {
+                            port = 9090
+                            host = "admin.internal"
+                        }
+                    WCL
+
+                    # 1. Check for errors
+                    if doc.has_errors?
+                      doc.errors.each { |e| puts "#{e.severity}: #{e.message}" }
+                      exit 1
+                    end
+
+                    # 2. Query for all server ports
+                    ports = doc.query("server | .port")
+                    puts "All ports: #{ports.inspect}"  # [8080, 9090]
+
+                    # 3. Iterate resolved blocks
+                    doc.blocks_of_type("server").each do |server|
+                      id = server.id || "(no id)"
+                      host = server.get("host")
+                      port = server.get("port")
+                      puts "#{id}: #{host}:#{port}"
+                    end
+
+                    # 4. Custom functions
+                    double = ->(args) { args[0] * 2 }
+                    doc2 = Wcl.parse("result = double(21)", functions: { "double" => double })
+                    puts "result = #{doc2.values['result']}"  # 42
+                    RUBY
+                }
+
+                heading h2_from_source {
+                    level = 2
+                    content = "Building from Source"
+                }
+
+                code c19 {
+                    language = "bash"
+                    content = <<-'BASH'
+                    # Build WASM module and copy to gem
+                    just build ruby-wasm
+
+                    # Install dependencies
+                    cd bindings/ruby
+                    bundle install
+
+                    # Run tests
+                    bundle exec rake test
+
+                    # Build gem
+                    gem build wcl.gemspec
+
+                    # Or via just
+                    just test ruby
+                    BASH
+                }
+
+                paragraph p25 {
+                    content = "This requires the Rust toolchain (with <code>wasm32-wasip1</code> target) and Ruby 3.1+."
+                }
+            }
+        }
+    }
+}

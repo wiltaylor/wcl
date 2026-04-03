@@ -1,0 +1,245 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
+
+page functions_collection {
+    section = "wcl_docs.guide.functions.functions_collection"
+    title = "Collection Functions"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Collection Functions"
+                }
+
+                paragraph p1 {
+                    content = "WCL's collection functions work with lists and maps. They are pure — none mutate their input; all return new values."
+                }
+
+                heading h2_reference {
+                    level = 2
+                    content = "Reference"
+                }
+
+                data_table t1 {
+                    rows = [
+                        ["Function", "Signature", "Description"],
+                        ["len", "len(coll: list|map|string) -> i64", "Number of elements (or characters for strings)"],
+                        ["keys", "keys(m: map) -> list", "Ordered list of a map's keys"],
+                        ["values", "values(m: map) -> list", "Ordered list of a map's values"],
+                        ["flatten", "flatten(list: list) -> list", "Recursively flatten nested lists one level"],
+                        ["concat", "concat(a: list, b: list) -> list", "Concatenate two lists"],
+                        ["distinct", "distinct(list: list) -> list", "Remove duplicate values, preserving first occurrence order"],
+                        ["sort", "sort(list: list) -> list", "Sort in ascending order (strings lexicographic, numbers numeric)"],
+                        ["reverse", "reverse(list: list) -> list", "Reverse the order of a list"],
+                        ["contains", "contains(list: list, value) -> bool", "True if value is in the list"],
+                        ["index_of", "index_of(list: list, value) -> i64", "Zero-based index of first occurrence, or -1 if not found"],
+                        ["range", "range(start: i64, end: i64) -> list", "List of integers from start (inclusive) to end (exclusive)"],
+                        ["zip", "zip(a: list, b: list) -> list", "List of [a_i, b_i] pairs; length is the shorter of the two"]
+                    ]
+                }
+
+                heading h2_examples {
+                    level = 2
+                    content = "Examples"
+                }
+
+                heading h3_len {
+                    level = 3
+                    content = "len"
+                }
+
+                code c1 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let n1 = len([1, 2, 3])             // 3
+                    let n2 = len({a: 1, b: 2})          // 2
+                    let n3 = len("hello")               // 5
+                    WCL
+                }
+
+                heading h3_keys_values {
+                    level = 3
+                    content = "keys / values"
+                }
+
+                code c2 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let config = {host: "localhost", port: 5432, db: "main"}
+                    let k = keys(config)    // ["host", "port", "db"]
+                    let v = values(config)  // ["localhost", 5432, "main"]
+                    WCL
+                }
+
+                heading h3_flatten {
+                    level = 3
+                    content = "flatten"
+                }
+
+                code c3 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let nested = [[1, 2], [3, [4, 5]], [6]]
+                    let flat = flatten(nested)   // [1, 2, 3, [4, 5], 6]
+                    WCL
+                }
+
+                paragraph p2 {
+                    content = "<code>flatten</code> goes one level deep. Call it again for deeper nesting."
+                }
+
+                heading h3_concat {
+                    level = 3
+                    content = "concat"
+                }
+
+                code c4 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let a = [1, 2, 3]
+                    let b = [4, 5, 6]
+                    let c = concat(a, b)    // [1, 2, 3, 4, 5, 6]
+                    WCL
+                }
+
+                heading h3_distinct {
+                    level = 3
+                    content = "distinct"
+                }
+
+                code c5 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let dupes = ["a", "b", "a", "c", "b"]
+                    let uniq = distinct(dupes)    // ["a", "b", "c"]
+                    WCL
+                }
+
+                heading h3_sort {
+                    level = 3
+                    content = "sort"
+                }
+
+                code c6 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let nums = sort([3, 1, 4, 1, 5, 9, 2])
+                    // [1, 1, 2, 3, 4, 5, 9]
+
+                    let words = sort(["banana", "apple", "cherry"])
+                    // ["apple", "banana", "cherry"]
+                    WCL
+                }
+
+                heading h3_reverse {
+                    level = 3
+                    content = "reverse"
+                }
+
+                code c7 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let rev = reverse([1, 2, 3, 4])    // [4, 3, 2, 1]
+                    WCL
+                }
+
+                heading h3_contains {
+                    level = 3
+                    content = "contains"
+                }
+
+                code c8 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let present = contains([10, 20, 30], 20)    // true
+                    let absent  = contains(["a", "b"], "c")    // false
+                    WCL
+                }
+
+                heading h3_index_of {
+                    level = 3
+                    content = "index_of"
+                }
+
+                code c9 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let i = index_of(["x", "y", "z"], "y")    // 1
+                    let j = index_of(["x", "y", "z"], "w")    // -1
+                    WCL
+                }
+
+                heading h3_range {
+                    level = 3
+                    content = "range"
+                }
+
+                code c10 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let r = range(0, 5)     // [0, 1, 2, 3, 4]
+                    let r2 = range(3, 7)    // [3, 4, 5, 6]
+                    WCL
+                }
+
+                paragraph p3 {
+                    content = "<code>range</code> is most often used as the source of a for loop:"
+                }
+
+                code c11 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    for i in range(0, 3) {
+                      item item-${i} { position: i }
+                    }
+                    WCL
+                }
+
+                heading h3_zip {
+                    level = 3
+                    content = "zip"
+                }
+
+                code c12 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let names = ["web", "api", "worker"]
+                    let ports = [80, 8080, 9000]
+                    let pairs = zip(names, ports)
+                    // [["web", 80], ["api", 8080], ["worker", 9000]]
+                    WCL
+                }
+
+                paragraph p4 {
+                    content = "If the lists have different lengths, the result has the length of the shorter list."
+                }
+
+                heading h2_combining {
+                    level = 2
+                    content = "Combining Collection Functions"
+                }
+
+                paragraph p5 {
+                    content = "Collection functions compose naturally:"
+                }
+
+                code c13 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let items = [3, 1, 4, 1, 5, 9, 2, 6, 5]
+                    let result = reverse(sort(distinct(items)))
+                    // [9, 6, 5, 4, 3, 2, 1]
+                    WCL
+                }
+
+                paragraph p6 {
+                    content = "For transforming or filtering list elements, see " + link("Higher-Order Functions", "functions_higher_order.html") + ". For numeric aggregation over lists, see " + link("Aggregate Functions", "functions_aggregate.html") + "."
+                }
+            }
+        }
+    }
+}

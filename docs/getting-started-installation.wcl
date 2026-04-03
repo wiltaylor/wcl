@@ -1,0 +1,130 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, bold, italic, link}
+
+page installation {
+    section = "wcl_docs.getting_started.installation"
+    title = "Installation"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Installation"
+                }
+
+                heading h2_prereq {
+                    level = 2
+                    content = "Prerequisites"
+                }
+
+                paragraph p1 {
+                    content = "WCL requires a Rust toolchain. If you do not have Rust installed, get it from " + link("rustup.rs", "https://rustup.rs") + ":"
+                }
+
+                code c1 {
+                    language = "bash"
+                    content = "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
+                }
+
+                paragraph p2 {
+                    content = "After installation, ensure <code>cargo</code> and <code>rustc</code> are on your <code>PATH</code>:"
+                }
+
+                code c2 {
+                    language = "bash"
+                    content = "rustc --version\ncargo --version"
+                }
+
+                heading h2_install {
+                    level = 2
+                    content = "Install the CLI"
+                }
+
+                paragraph p3 {
+                    content = "From the root of the WCL repository, install the <code>wcl</code> binary directly to <code>~/.cargo/bin/</code>:"
+                }
+
+                code c3 {
+                    language = "bash"
+                    content = "cargo install --path crates/wcl"
+                }
+
+                paragraph p4 {
+                    content = "Cargo will build the binary in release mode and place it at <code>~/.cargo/bin/wcl</code>. As long as <code>~/.cargo/bin</code> is on your <code>PATH</code> (the default after running <code>rustup</code>), the <code>wcl</code> command is immediately available."
+                }
+
+                heading h2_build {
+                    level = 2
+                    content = "Building from Source"
+                }
+
+                paragraph p5 {
+                    content = "To build the entire workspace without installing:"
+                }
+
+                code c4 {
+                    language = "bash"
+                    content = "cargo build --workspace"
+                }
+
+                paragraph p6 {
+                    content = "The debug binary will be at <code>target/debug/wcl</code>. For a release build:"
+                }
+
+                code c5 {
+                    language = "bash"
+                    content = "cargo build --workspace --release"
+                }
+
+                paragraph p7 {
+                    content = "The release binary will be at <code>target/release/wcl</code>."
+                }
+
+                paragraph p8 {
+                    content = "To run the full test suite:"
+                }
+
+                code c6 {
+                    language = "bash"
+                    content = "cargo test --workspace"
+                }
+
+                heading h2_verify {
+                    level = 2
+                    content = "Verify the Installation"
+                }
+
+                code c7 {
+                    language = "bash"
+                    content = "wcl --version"
+                }
+
+                paragraph p9 {
+                    content = "You should see output like:"
+                }
+
+                code c8 {
+                    language = "text"
+                    content = "wcl 0.1.0"
+                }
+
+                heading h2_uninstall {
+                    level = 2
+                    content = "Uninstalling"
+                }
+
+                code c9 {
+                    language = "bash"
+                    content = "cargo uninstall wcl"
+                }
+
+                paragraph p10 {
+                    content = "This removes the <code>wcl</code> binary from <code>~/.cargo/bin/</code>."
+                }
+            }
+        }
+    }
+}

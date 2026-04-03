@@ -1,0 +1,172 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, data_table, callout, bold, italic, link}
+
+page appendix_error_codes {
+    section = "wcl_docs.appendix.appendix_error_codes"
+    title = "Error Codes"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Error Codes"
+                }
+
+                paragraph p1 {
+                    content = "This page lists all diagnostic codes produced by the WCL pipeline, grouped by phase."
+                }
+
+                heading h2_errors {
+                    level = 2
+                    content = "Errors"
+                }
+
+                data_table t1 {
+                    caption = "Error Codes"
+                    rows = [
+                        { code = "E001", phase = "Schema", description = "Duplicate schema name (overlapping @parent scope or both unscoped)" },
+                        { code = "E002", phase = "Parse", description = "Unexpected token" },
+                        { code = "E003", phase = "Parse", description = "Unterminated string" },
+                        { code = "E010", phase = "Import", description = "File not found" },
+                        { code = "E011", phase = "Import", description = "Jail escape (path outside root)" },
+                        { code = "E013", phase = "Import", description = "Remote import forbidden" },
+                        { code = "E014", phase = "Import", description = "Max import depth exceeded" },
+                        { code = "E015", phase = "Import", description = "Library not found in search paths" },
+                        { code = "E016", phase = "Import", description = "Glob pattern matched no files (non-optional import)" },
+                        { code = "E020", phase = "Macro", description = "Undefined macro" },
+                        { code = "E021", phase = "Macro", description = "Recursive macro expansion" },
+                        { code = "E022", phase = "Macro", description = "Max expansion depth exceeded" },
+                        { code = "E023", phase = "Macro", description = "Wrong macro kind" },
+                        { code = "E024", phase = "Macro", description = "Parameter type mismatch" },
+                        { code = "E025", phase = "Control Flow", description = "For-loop iterable is not a list" },
+                        { code = "E026", phase = "Control Flow", description = "If/else condition is not bool" },
+                        { code = "E027", phase = "Control Flow", description = "Invalid expanded identifier" },
+                        { code = "E028", phase = "Control Flow", description = "Max iteration count exceeded" },
+                        { code = "E029", phase = "Control Flow", description = "Max nesting depth exceeded" },
+                        { code = "E030", phase = "Merge", description = "Duplicate ID (non-partial)" },
+                        { code = "E031", phase = "Merge", description = "Attribute conflict in partial merge" },
+                        { code = "E032", phase = "Merge", description = "Kind mismatch in partial merge" },
+                        { code = "E033", phase = "Merge", description = "Mixed partial/non-partial" },
+                        { code = "E034", phase = "Export", description = "Duplicate exported variable name" },
+                        { code = "E035", phase = "Export", description = "Re-export of undefined name" },
+                        { code = "E036", phase = "Export", description = "Export inside block" },
+                        { code = "E038", phase = "Merge", description = "Partial let binding value must be a list" },
+                        { code = "E039", phase = "Merge", description = "Let binding declared as both partial and non-partial with same name" },
+                        { code = "E040", phase = "Scope", description = "Undefined reference" },
+                        { code = "E041", phase = "Scope", description = "Cyclic dependency" },
+                        { code = "E050", phase = "Eval", description = "Type error in expression" },
+                        { code = "E051", phase = "Eval", description = "Division by zero" },
+                        { code = "E052", phase = "Eval", description = "Unknown function" },
+                        { code = "E053", phase = "Eval", description = "Declared-but-unregistered function (from declare in library)" },
+                        { code = "E054", phase = "Eval", description = "Index out of bounds" },
+                        { code = "E060", phase = "Decorator", description = "Unknown decorator" },
+                        { code = "E061", phase = "Decorator", description = "Invalid target" },
+                        { code = "E062", phase = "Decorator", description = "Missing required parameter" },
+                        { code = "E063", phase = "Decorator", description = "Parameter type mismatch" },
+                        { code = "E064", phase = "Decorator", description = "Constraint violation" },
+                        { code = "E070", phase = "Schema", description = "Missing required field" },
+                        { code = "E071", phase = "Schema", description = "Attribute type mismatch" },
+                        { code = "E072", phase = "Schema", description = "Unknown attribute (closed schema)" },
+                        { code = "E073", phase = "Schema", description = "Validate constraint violation" },
+                        { code = "E074", phase = "Schema", description = "Ref target not found" },
+                        { code = "E080", phase = "Validation", description = "Document validation failed" },
+                        { code = "E090", phase = "Table", description = "@table_index references nonexistent column" },
+                        { code = "E091", phase = "Table", description = "Duplicate value in unique table index" },
+                        { code = "E092", phase = "Table", description = "Inline columns defined when schema is applied" },
+                        { code = "E093", phase = "Schema", description = "Block uses text block syntax but schema has no @text field" },
+                        { code = "E094", phase = "Schema", description = "@text field validation errors (wrong name or type)" },
+                        { code = "E095", phase = "Schema", description = "Child not allowed by parent's @children constraint" },
+                        { code = "E096", phase = "Schema", description = "Item not allowed by its own @parent constraint" },
+                        { code = "E097", phase = "Schema", description = "Child count below @child minimum" },
+                        { code = "E098", phase = "Schema", description = "Child count above @child maximum" },
+                        { code = "E099", phase = "Schema", description = "Self-nesting exceeds @child max_depth" },
+                        { code = "E100", phase = "Schema", description = "Symbol value not in declared symbol_set" },
+                        { code = "E101", phase = "Schema", description = "Referenced symbol_set does not exist" },
+                        { code = "E102", phase = "Parse", description = "Duplicate symbol_set name" },
+                        { code = "E103", phase = "Parse", description = "Duplicate symbol within a symbol_set" },
+                        { code = "E120", phase = "Namespace", description = "use target not found in namespace" },
+                        { code = "E121", phase = "Namespace", description = "Namespace not found in use or qualified access" },
+                        { code = "E123", phase = "Namespace", description = "File-level namespace must appear before other items" }
+                    ]
+                }
+
+                heading h2_warnings {
+                    level = 2
+                    content = "Warnings"
+                }
+
+                data_table t2 {
+                    caption = "Warning Codes"
+                    rows = [
+                        { code = "W001", phase = "Scope", description = "Shadowing warning" },
+                        { code = "W002", phase = "Scope", description = "Unused variable" },
+                        { code = "W003", phase = "Merge", description = "Inline args mismatch in partial merge" }
+                    ]
+                }
+
+                heading h2_format {
+                    level = 2
+                    content = "Diagnostic Output Format"
+                }
+
+                paragraph p2 {
+                    content = "WCL diagnostics use a Rust-style format with source spans:"
+                }
+
+                code c1 {
+                    language = "text"
+                    content = <<-'DIAG'
+                    error[E070]: missing required field `port`
+                      --> config.wcl:12:3
+                       |
+                    12 |   service svc-api {
+                       |   ^^^^^^^^^^^^^^^ missing field `port`
+                       |
+                       = required by schema `ServiceSchema`
+
+                    warning[W001]: `port` shadows outer binding
+                      --> config.wcl:18:7
+                       |
+                    18 |   let port = 9090
+                       |       ^^^^ shadows binding at config.wcl:3:5
+                    DIAG
+                }
+
+                paragraph p3 {
+                    content = "Each diagnostic includes:"
+                }
+
+                paragraph p3_list {
+                    content = "<ul>" +
+                        "<li>" + bold("Severity") + " \u2014 <code>error</code> or <code>warning</code></li>" +
+                        "<li>" + bold("Code") + " \u2014 e.g. <code>[E070]</code></li>" +
+                        "<li>" + bold("Message") + " \u2014 human-readable description</li>" +
+                        "<li>" + bold("Location") + " \u2014 file path, line, and column (<code>file:line:col</code>)</li>" +
+                        "<li>" + bold("Source snippet") + " \u2014 the relevant source lines with a caret pointing to the problem</li>" +
+                        "<li>" + bold("Notes") + " \u2014 optional additional context (prefixed with <code>=</code>)</li>" +
+                        "</ul>"
+                }
+
+                heading h2_strict {
+                    level = 2
+                    content = "Using --strict"
+                }
+
+                paragraph p4 {
+                    content = "Running <code>wcl validate --strict</code> promotes all warnings to errors. This is useful in CI pipelines where zero warnings are required."
+                }
+
+                code c2 {
+                    language = "bash"
+                    content = <<-'BASH'
+                    wcl validate --strict config.wcl
+                    echo $?  # 0 if no errors or warnings; 1 if any
+                    BASH
+                }
+            }
+        }
+    }
+}

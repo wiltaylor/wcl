@@ -1,0 +1,619 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
+
+page c_library {
+    section = "wcl_docs.getting_started.c_library"
+    title = "Using WCL from C and C++"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Using WCL from C and C++"
+                }
+
+                paragraph p1 {
+                    content = "WCL provides a C static library (<code>libwcl_ffi.a</code> / <code>wcl_ffi.lib</code>) and a header (<code>wcl.h</code>) that expose the full 11-phase WCL pipeline. All complex values cross the boundary as JSON strings — parse them with your preferred JSON library (e.g. cJSON, nlohmann/json, jansson)."
+                }
+
+                paragraph p2 {
+                    content = "Prebuilt libraries are available for:"
+                }
+
+                data_table t1 {
+                    rows = [
+                        ["Platform", "Architecture", "Library"],
+                        ["Linux", "x86_64", "<code>lib/linux_amd64/libwcl_ffi.a</code>"],
+                        ["Linux", "aarch64", "<code>lib/linux_arm64/libwcl_ffi.a</code>"],
+                        ["macOS", "x86_64", "<code>lib/darwin_amd64/libwcl_ffi.a</code>"],
+                        ["macOS", "arm64", "<code>lib/darwin_arm64/libwcl_ffi.a</code>"],
+                        ["Windows", "x86_64", "<code>lib/windows_amd64/wcl_ffi.lib</code>"]
+                    ]
+                }
+
+                heading h2_prebuilt {
+                    level = 2
+                    content = "Using the Prebuilt Package"
+                }
+
+                paragraph p3 {
+                    content = "Download and extract the <code>wcl-ffi.tar.gz</code> archive. It contains everything you need:"
+                }
+
+                code c1 {
+                    language = "text"
+                    content = <<-'TXT'
+                    wcl-ffi/
+                      CMakeLists.txt          # CMake config (creates wcl::wcl target)
+                      include/wcl.h           # C header
+                      lib/
+                        linux_amd64/libwcl_ffi.a
+                        linux_arm64/libwcl_ffi.a
+                        darwin_amd64/libwcl_ffi.a
+                        darwin_arm64/libwcl_ffi.a
+                        windows_amd64/wcl_ffi.lib
+                    TXT
+                }
+
+                heading h3_cmake {
+                    level = 3
+                    content = "CMake"
+                }
+
+                paragraph p4 {
+                    content = "Add the extracted directory as a subdirectory in your project:"
+                }
+
+                code c2 {
+                    language = "cmake"
+                    content = <<-'CMAKE'
+                    cmake_minimum_required(VERSION 3.14)
+                    project(myapp LANGUAGES C)
+
+                    add_subdirectory(path/to/wcl-ffi)
+
+                    add_executable(myapp main.c)
+                    target_link_libraries(myapp PRIVATE wcl::wcl)
+                    CMAKE
+                }
+
+                paragraph p5 {
+                    content = "The <code>wcl::wcl</code> target automatically handles the include path, selects the correct library for your platform, and links the required system dependencies."
+                }
+
+                paragraph p6 {
+                    content = "Build:"
+                }
+
+                code c3 {
+                    language = "bash"
+                    content = "cmake -B build\ncmake --build build"
+                }
+
+                heading h3_no_cmake_linux {
+                    level = 3
+                    content = "Without CMake (Linux)"
+                }
+
+                code c4 {
+                    language = "bash"
+                    content = <<-'BASH'
+                    gcc -o myapp main.c \
+                        -Ipath/to/wcl-ffi/include \
+                        -Lpath/to/wcl-ffi/lib/linux_amd64 \
+                        -lwcl_ffi -lm -ldl -lpthread
+                    BASH
+                }
+
+                heading h3_no_cmake_macos {
+                    level = 3
+                    content = "Without CMake (macOS)"
+                }
+
+                code c5 {
+                    language = "bash"
+                    content = <<-'BASH'
+                    gcc -o myapp main.c \
+                        -Ipath/to/wcl-ffi/include \
+                        -Lpath/to/wcl-ffi/lib/darwin_arm64 \
+                        -lwcl_ffi -lm -ldl -lpthread -framework Security
+                    BASH
+                }
+
+                heading h3_no_cmake_windows {
+                    level = 3
+                    content = "Without CMake (Windows / MSVC)"
+                }
+
+                code c6 {
+                    language = "bash"
+                    content = <<-'BASH'
+                    cl /Fe:myapp.exe main.c \
+                        /I path\to\wcl-ffi\include \
+                        path\to\wcl-ffi\lib\windows_amd64\wcl_ffi.lib \
+                        ws2_32.lib bcrypt.lib userenv.lib
+                    BASH
+                }
+
+                heading h2_from_source {
+                    level = 2
+                    content = "Building from Source"
+                }
+
+                paragraph p7 {
+                    content = "If you need to build the library yourself (requires a Rust toolchain):"
+                }
+
+                code c7 {
+                    language = "bash"
+                    content = <<-'BASH'
+                    # Native platform only
+                    cargo build -p wcl_ffi --release
+                    # Output: target/release/libwcl_ffi.a (or .lib on Windows)
+
+                    # All platforms (requires cargo-zigbuild + zig)
+                    just build ffi-all
+
+                    # Package into an archive
+                    just pack ffi
+                    BASH
+                }
+
+                paragraph p8 {
+                    content = "When building from the source tree, the CMake file also searches <code>target/release/</code> for the library, so you can use <code>add_subdirectory</code> directly on <code>crates/wcl_ffi/</code>:"
+                }
+
+                code c8 {
+                    language = "cmake"
+                    content = <<-'CMAKE'
+                    add_subdirectory(path/to/wcl/crates/wcl_ffi)
+                    target_link_libraries(myapp PRIVATE wcl::wcl)
+                    CMAKE
+                }
+
+                paragraph p9 {
+                    content = "You can override the library location with <code>-DWCL_LIB_DIR</code>:"
+                }
+
+                code c9 {
+                    language = "bash"
+                    content = "cmake -B build -DWCL_LIB_DIR=/custom/path"
+                }
+
+                heading h2_api_ref {
+                    level = 2
+                    content = "C API Reference"
+                }
+
+                paragraph p10 {
+                    content = "All functions use null-terminated C strings. Strings returned by <code>wcl_ffi_*</code> functions are heap-allocated and " + bold("must") + " be freed with <code>wcl_ffi_string_free()</code>. Documents " + bold("must") + " be freed with <code>wcl_ffi_document_free()</code>."
+                }
+
+                code c10 {
+                    language = "c"
+                    content = "#include \"wcl.h\""
+                }
+
+                heading h3_parsing {
+                    level = 3
+                    content = "Parsing"
+                }
+
+                code c11 {
+                    language = "c"
+                    content = <<-'C'
+                    // Parse a source string. options_json may be NULL for defaults.
+                    WclDocument *wcl_ffi_parse(const char *source, const char *options_json);
+
+                    // Parse a file. Returns NULL on I/O error (check wcl_ffi_last_error()).
+                    WclDocument *wcl_ffi_parse_file(const char *path, const char *options_json);
+
+                    // Free a document. Safe to call with NULL.
+                    void wcl_ffi_document_free(WclDocument *doc);
+                    C
+                }
+
+                heading h3_accessing_values {
+                    level = 3
+                    content = "Accessing Values"
+                }
+
+                code c12 {
+                    language = "c"
+                    content = <<-'C'
+                    // Evaluated values as a JSON object string. Caller frees.
+                    char *wcl_ffi_document_values(const WclDocument *doc);
+
+                    // Check for errors.
+                    bool wcl_ffi_document_has_errors(const WclDocument *doc);
+
+                    // Error diagnostics as a JSON array string. Caller frees.
+                    char *wcl_ffi_document_errors(const WclDocument *doc);
+
+                    // All diagnostics as a JSON array string. Caller frees.
+                    char *wcl_ffi_document_diagnostics(const WclDocument *doc);
+                    C
+                }
+
+                heading h3_queries_blocks {
+                    level = 3
+                    content = "Queries and Blocks"
+                }
+
+                code c13 {
+                    language = "c"
+                    content = <<-'C'
+                    // Execute a query. Returns {"ok": ...} or {"error": "..."}. Caller frees.
+                    char *wcl_ffi_document_query(const WclDocument *doc, const char *query);
+
+                    // All blocks as a JSON array. Caller frees.
+                    char *wcl_ffi_document_blocks(const WclDocument *doc);
+
+                    // Blocks of a specific type. Caller frees.
+                    char *wcl_ffi_document_blocks_of_type(const WclDocument *doc, const char *kind);
+                    C
+                }
+
+                heading h3_custom_functions {
+                    level = 3
+                    content = "Custom Functions"
+                }
+
+                code c14 {
+                    language = "c"
+                    content = <<-'C'
+                    // Callback signature: receives JSON args, returns JSON result (malloc'd).
+                    // Return NULL on error, or prefix with "ERR:" for an error message.
+                    typedef char *(*WclCallbackFn)(void *ctx, const char *args_json);
+
+                    // Parse with custom functions.
+                    WclDocument *wcl_ffi_parse_with_functions(
+                        const char *source,
+                        const char *options_json,
+                        const char *const *func_names,      // array of function name strings
+                        const WclCallbackFn *func_callbacks, // array of callback pointers
+                        const uintptr_t *func_contexts,      // array of context pointers
+                        uintptr_t func_count
+                    );
+                    C
+                }
+
+                heading h3_utilities {
+                    level = 3
+                    content = "Utilities"
+                }
+
+                code c15 {
+                    language = "c"
+                    content = <<-'C'
+                    // Free a string returned by any wcl_ffi_* function. Safe with NULL.
+                    void wcl_ffi_string_free(char *s);
+
+                    // Last error message from a failed call. NULL if none. Caller frees.
+                    char *wcl_ffi_last_error(void);
+
+                    // List installed libraries. Returns JSON. Caller frees.
+                    char *wcl_ffi_list_libraries(void);
+                    C
+                }
+
+                heading h2_parse_string {
+                    level = 2
+                    content = "Parsing a WCL String"
+                }
+
+                code c16 {
+                    language = "c"
+                    content = <<-'C'
+                    #include <stdio.h>
+                    #include "wcl.h"
+
+                    int main(void) {
+                        WclDocument *doc = wcl_ffi_parse(
+                            "server web-prod {\n"
+                            "    host = \"0.0.0.0\"\n"
+                            "    port = 8080\n"
+                            "}\n",
+                            NULL
+                        );
+
+                        if (wcl_ffi_document_has_errors(doc)) {
+                            char *errors = wcl_ffi_document_errors(doc);
+                            fprintf(stderr, "Errors: %s\n", errors);
+                            wcl_ffi_string_free(errors);
+                        } else {
+                            char *values = wcl_ffi_document_values(doc);
+                            printf("Values: %s\n", values);
+                            wcl_ffi_string_free(values);
+                        }
+
+                        wcl_ffi_document_free(doc);
+                        return 0;
+                    }
+                    C
+                }
+
+                heading h2_parse_file {
+                    level = 2
+                    content = "Parsing a WCL File"
+                }
+
+                code c17 {
+                    language = "c"
+                    content = <<-'C'
+                    #include <stdio.h>
+                    #include "wcl.h"
+
+                    int main(void) {
+                        WclDocument *doc = wcl_ffi_parse_file("config/main.wcl", NULL);
+
+                        if (!doc) {
+                            char *err = wcl_ffi_last_error();
+                            fprintf(stderr, "Failed to open file: %s\n", err ? err : "unknown");
+                            wcl_ffi_string_free(err);
+                            return 1;
+                        }
+
+                        char *values = wcl_ffi_document_values(doc);
+                        printf("%s\n", values);
+                        wcl_ffi_string_free(values);
+                        wcl_ffi_document_free(doc);
+                        return 0;
+                    }
+                    C
+                }
+
+                heading h2_queries {
+                    level = 2
+                    content = "Running Queries"
+                }
+
+                code c18 {
+                    language = "c"
+                    content = <<-'C'
+                    WclDocument *doc = wcl_ffi_parse(
+                        "server svc-api { port = 8080 }\n"
+                        "server svc-admin { port = 9090 }\n",
+                        NULL
+                    );
+
+                    char *result = wcl_ffi_document_query(doc, "server | .port");
+                    printf("Ports: %s\n", result);  // {"ok":[8080,9090]}
+                    wcl_ffi_string_free(result);
+
+                    wcl_ffi_document_free(doc);
+                    C
+                }
+
+                heading h2_blocks {
+                    level = 2
+                    content = "Working with Blocks"
+                }
+
+                code c19 {
+                    language = "c"
+                    content = <<-'C'
+                    WclDocument *doc = wcl_ffi_parse(
+                        "server web { port = 80 }\n"
+                        "database main { port = 5432 }\n",
+                        NULL
+                    );
+
+                    // All blocks
+                    char *blocks = wcl_ffi_document_blocks(doc);
+                    printf("All blocks: %s\n", blocks);
+                    wcl_ffi_string_free(blocks);
+
+                    // Blocks of a specific type
+                    char *servers = wcl_ffi_document_blocks_of_type(doc, "server");
+                    printf("Servers: %s\n", servers);
+                    wcl_ffi_string_free(servers);
+
+                    wcl_ffi_document_free(doc);
+                    C
+                }
+
+                heading h2_custom_fn {
+                    level = 2
+                    content = "Custom Functions"
+                }
+
+                code c20 {
+                    language = "c"
+                    content = <<-'C'
+                    #include <stdio.h>
+                    #include <stdlib.h>
+                    #include <string.h>
+                    #include "wcl.h"
+
+                    // Callback: double the first argument.
+                    // Receives JSON array of args, returns JSON result (must be malloc'd).
+                    char *double_fn(void *ctx, const char *args_json) {
+                        (void)ctx;
+                        // Minimal parsing: args_json is e.g. "[21]"
+                        int n = 0;
+                        sscanf(args_json, "[%d]", &n);
+                        char *result = malloc(32);
+                        snprintf(result, 32, "%d", n * 2);
+                        return result;
+                    }
+
+                    int main(void) {
+                        const char *names[] = {"double"};
+                        WclCallbackFn callbacks[] = {double_fn};
+                        uintptr_t contexts[] = {0};
+
+                        WclDocument *doc = wcl_ffi_parse_with_functions(
+                            "result = double(21)",
+                            NULL,
+                            names, callbacks, contexts, 1
+                        );
+
+                        char *values = wcl_ffi_document_values(doc);
+                        printf("%s\n", values);  // {"result":42}
+                        wcl_ffi_string_free(values);
+                        wcl_ffi_document_free(doc);
+                        return 0;
+                    }
+                    C
+                }
+
+                heading h2_parse_options {
+                    level = 2
+                    content = "Parse Options"
+                }
+
+                paragraph p11 {
+                    content = "Options are passed as a JSON string:"
+                }
+
+                code c21 {
+                    language = "c"
+                    content = <<-'C'
+                    WclDocument *doc = wcl_ffi_parse(source,
+                        "{"
+                        "  \"rootDir\": \"./config\","
+                        "  \"allowImports\": false,"
+                        "  \"maxImportDepth\": 32,"
+                        "  \"maxMacroDepth\": 64,"
+                        "  \"maxLoopDepth\": 32,"
+                        "  \"maxIterations\": 10000"
+                        "}"
+                    );
+                    C
+                }
+
+                paragraph p12 {
+                    content = "Pass <code>NULL</code> for default options. When processing untrusted input, disable imports:"
+                }
+
+                code c22 {
+                    language = "c"
+                    content = <<-'C'
+                    WclDocument *doc = wcl_ffi_parse(untrusted, "{\"allowImports\": false}");
+                    C
+                }
+
+                heading h2_error_handling {
+                    level = 2
+                    content = "Error Handling"
+                }
+
+                paragraph p13 {
+                    content = "The document collects all diagnostics from every pipeline phase. Each diagnostic in the JSON array has <code>severity</code>, <code>message</code>, and an optional <code>code</code>:"
+                }
+
+                code c23 {
+                    language = "c"
+                    content = <<-'C'
+                    WclDocument *doc = wcl_ffi_parse(
+                        "schema \"server\" { port: i64 }\n"
+                        "server web { port = \"bad\" }\n",
+                        NULL
+                    );
+
+                    if (wcl_ffi_document_has_errors(doc)) {
+                        char *diags = wcl_ffi_document_diagnostics(doc);
+                        // diags is a JSON array:
+                        // [{"severity":"error","message":"...","code":"E071"}]
+                        printf("Diagnostics: %s\n", diags);
+                        wcl_ffi_string_free(diags);
+                    }
+
+                    wcl_ffi_document_free(doc);
+                    C
+                }
+
+                heading h2_cpp {
+                    level = 2
+                    content = "C++ Usage"
+                }
+
+                paragraph p14 {
+                    content = "The header is plain C and works directly from C++:"
+                }
+
+                code c24 {
+                    language = "cpp"
+                    content = <<-'CPP'
+                    extern "C" {
+                    #include "wcl.h"
+                    }
+                    CPP
+                }
+
+                paragraph p15 {
+                    content = "All the examples above work identically in C++. The CMake target and compiler flags are the same — just compile your <code>.cpp</code> files instead of <code>.c</code>."
+                }
+
+                heading h2_complete {
+                    level = 2
+                    content = "Complete Example"
+                }
+
+                code c25 {
+                    language = "c"
+                    content = <<-'C'
+                    #include <stdio.h>
+                    #include "wcl.h"
+
+                    int main(void) {
+                        WclDocument *doc = wcl_ffi_parse(
+                            "schema \"server\" {\n"
+                            "    port: i64\n"
+                            "    host: string @optional\n"
+                            "}\n"
+                            "\n"
+                            "server svc-api {\n"
+                            "    port = 8080\n"
+                            "    host = \"api.internal\"\n"
+                            "}\n"
+                            "\n"
+                            "server svc-admin {\n"
+                            "    port = 9090\n"
+                            "    host = \"admin.internal\"\n"
+                            "}\n",
+                            NULL
+                        );
+
+                        // 1. Check for errors
+                        if (wcl_ffi_document_has_errors(doc)) {
+                            char *errors = wcl_ffi_document_errors(doc);
+                            fprintf(stderr, "Errors: %s\n", errors);
+                            wcl_ffi_string_free(errors);
+                            wcl_ffi_document_free(doc);
+                            return 1;
+                        }
+
+                        // 2. Get evaluated values
+                        char *values = wcl_ffi_document_values(doc);
+                        printf("Values: %s\n", values);
+                        wcl_ffi_string_free(values);
+
+                        // 3. Query for all server ports
+                        char *ports = wcl_ffi_document_query(doc, "server | .port");
+                        printf("Ports: %s\n", ports);
+                        wcl_ffi_string_free(ports);
+
+                        // 4. Get server blocks
+                        char *servers = wcl_ffi_document_blocks_of_type(doc, "server");
+                        printf("Servers: %s\n", servers);
+                        wcl_ffi_string_free(servers);
+
+                        // 5. All diagnostics
+                        char *diags = wcl_ffi_document_diagnostics(doc);
+                        printf("Diagnostics: %s\n", diags);
+                        wcl_ffi_string_free(diags);
+
+                        wcl_ffi_document_free(doc);
+                        return 0;
+                    }
+                    C
+                }
+            }
+        }
+    }
+}

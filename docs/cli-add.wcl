@@ -1,0 +1,119 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, data_table, callout, bold, italic, link}
+
+page cli_add {
+    section = "wcl_docs.cli.cli_add"
+    title = "wcl add"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "wcl add"
+                }
+
+                paragraph p1 {
+                    content = "Add a new block to a WCL document."
+                }
+
+                heading h2_usage {
+                    level = 2
+                    content = "Usage"
+                }
+
+                code c1 {
+                    language = "bash"
+                    content = "wcl add <file> <block_spec> [options]"
+                }
+
+                heading h2_options {
+                    level = 2
+                    content = "Options"
+                }
+
+                data_table t1 {
+                    caption = "Options"
+                    rows = [
+                        { flag = "--file-auto", description = "Automatically determine the best placement for the new block" }
+                    ]
+                }
+
+                heading h2_description {
+                    level = 2
+                    content = "Description"
+                }
+
+                paragraph p2 {
+                    content = "<code>wcl add</code> appends a new empty block to the specified WCL document. The block is inserted and the file is written back in place. You can then use <code>wcl set</code> to populate attributes, or edit the file directly."
+                }
+
+                paragraph p3 {
+                    content = "The <code>&lt;block_spec&gt;</code> argument is a quoted string describing the block type and optional ID, matching WCL block declaration syntax."
+                }
+
+                heading h2_block_spec_syntax {
+                    level = 2
+                    content = "Block Spec Syntax"
+                }
+
+                data_table t2 {
+                    caption = "Block Spec Syntax"
+                    rows = [
+                        { spec = "\"service svc-new\"", result = "service svc-new { }" },
+                        { spec = "\"database primary\"", result = "database primary { }" },
+                        { spec = "\"config\"", result = "config { } (no ID)" }
+                    ]
+                }
+
+                heading h2_examples {
+                    level = 2
+                    content = "Examples"
+                }
+
+                paragraph p4 {
+                    content = "Add a new service block:"
+                }
+
+                code c2 {
+                    language = "bash"
+                    content = "wcl add config.wcl \"service svc-new\""
+                }
+
+                paragraph p5 {
+                    content = "Add a database block with auto-placement:"
+                }
+
+                code c3 {
+                    language = "bash"
+                    content = "wcl add config.wcl \"database replica\" --file-auto"
+                }
+
+                paragraph p6 {
+                    content = "Add a block with a label (quoted string in spec):"
+                }
+
+                code c4 {
+                    language = "bash"
+                    content = "wcl add config.wcl 'endpoint svc-api \"v2\"'"
+                }
+
+                heading h2_notes {
+                    level = 2
+                    content = "Notes"
+                }
+
+                paragraph p7 {
+                    content = "<ul>" +
+                        "<li>By default, the new block is appended at the end of the document.</li>" +
+                        "<li>With <code>--file-auto</code>, the CLI attempts to place the new block near existing blocks of the same type.</li>" +
+                        "<li>The new block is empty; use <code>wcl set</code> or direct editing to populate its attributes.</li>" +
+                        "<li>The block spec must be quoted in the shell to avoid splitting on spaces.</li>" +
+                        "</ul>"
+                }
+            }
+        }
+    }
+}

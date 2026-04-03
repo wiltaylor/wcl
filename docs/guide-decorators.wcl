@@ -1,0 +1,151 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
+
+page decorators {
+    section = "wcl_docs.guide.decorators"
+    title = "Decorators"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Decorators"
+                }
+
+                paragraph p1 {
+                    content = "Decorators attach metadata and behavioral hints to blocks, attributes, tables, and schema fields. They are the primary extension mechanism in WCL — used for schema constraints, documentation, macro transforms, and custom tooling."
+                }
+
+                heading h2_syntax {
+                    level = 2
+                    content = "Syntax"
+                }
+
+                paragraph p2 {
+                    content = "Decorators are written with a leading <code>@</code> followed by a name and an optional argument list:"
+                }
+
+                code c1 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    @name
+                    @name(positional_arg)
+                    @name(key = value)
+                    @name(positional_arg, key = value)
+                    WCL
+                }
+
+                paragraph p3 {
+                    content = "Multiple decorators can be stacked on the same target:"
+                }
+
+                code c2 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    port = 8080 @required @validate(min = 1, max = 65535) @doc("The port this service listens on")
+                    WCL
+                }
+
+                heading h2_arguments {
+                    level = 2
+                    content = "Arguments"
+                }
+
+                paragraph p4 {
+                    content = "Decorator arguments are full WCL expressions. They can reference variables, use arithmetic, or call built-in functions:"
+                }
+
+                code c3 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let max_port = 65535
+
+                    port = 8080 @validate(min = 1, max = max_port)
+                    WCL
+                }
+
+                paragraph p5 {
+                    content = "Arguments may be positional, named, or a mix of both. When a decorator accepts a single primary argument, positional form is the most concise:"
+                }
+
+                code c4 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    env = "production" @default("development")
+                    WCL
+                }
+
+                paragraph p6 {
+                    content = "Named arguments are used when providing multiple values or for clarity:"
+                }
+
+                code c5 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    @deprecated(message = "use new_field instead", since = "2.0")
+                    WCL
+                }
+
+                heading h2_targets {
+                    level = 2
+                    content = "Targets"
+                }
+
+                paragraph p7 {
+                    content = "Decorators can be placed on:"
+                }
+
+                data_table t1 {
+                    rows = [
+                        ["Target", "Example"],
+                        ["Attribute", "port = 8080 @required"],
+                        ["Block", "service \"api\" @deprecated(\"use v2\") { ... }"],
+                        ["Table", "table#hosts @open { ... }"],
+                        ["Schema field", "port: i64 @validate(min = 1, max = 65535)"],
+                        ["Schema itself", "schema \"service\" @open { ... }"],
+                        ["Partial block", "partial service @partial_requires([port]) { }"]
+                    ]
+                }
+
+                heading h2_stacking {
+                    level = 2
+                    content = "Stacking"
+                }
+
+                paragraph p8 {
+                    content = "Any number of decorators can appear on a single target. They are evaluated in declaration order:"
+                }
+
+                code c6 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    schema "endpoint" {
+                        url: string @required
+                                    @validate(pattern = "^https://")
+                                    @doc("Must be a full HTTPS URL")
+                    }
+                    WCL
+                }
+
+                heading h2_builtin_vs_custom {
+                    level = 2
+                    content = "Built-in vs Custom Decorators"
+                }
+
+                paragraph p9 {
+                    content = "WCL ships with a set of built-in decorators covering common needs. You can also define your own using decorator schemas, which let you validate arguments and restrict which targets a decorator may appear on."
+                }
+
+                paragraph p10 {
+                    content = "<ul>" +
+                        "<li>See " + link("Built-in Decorators", "decorators_builtin.html") + " for a full reference of the decorators provided by WCL.</li>" +
+                        "<li>See " + link("Decorator Schemas", "decorator_schemas.html") + " for how to define and validate custom decorators.</li>" +
+                        "</ul>"
+                }
+            }
+        }
+    }
+}

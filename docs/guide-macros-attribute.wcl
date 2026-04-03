@@ -1,0 +1,499 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
+
+page macros_attribute {
+    section = "wcl_docs.guide.macros.macros_attribute"
+    title = "Attribute Macros"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Attribute Macros"
+                }
+
+                paragraph p1 {
+                    content = "Attribute macros are invoked as decorators on a block and " + bold("transform") + " the block in place. Rather than generating new top-level content, they modify the block they are attached to — injecting child content, setting or removing attributes, and applying conditional changes."
+                }
+
+                heading h2_definition {
+                    level = 2
+                    content = "Definition"
+                }
+
+                code c1 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    macro @name(param1, param2 = default) {
+                        // transform operations
+                    }
+                    WCL
+                }
+
+                paragraph p2 {
+                    content = "The <code>macro</code> keyword is followed by <code>@name</code> (with the leading <code>@</code>) to indicate this is an attribute macro, then a parameter list and a body."
+                }
+
+                heading h2_invocation {
+                    level = 2
+                    content = "Invocation"
+                }
+
+                paragraph p3 {
+                    content = "Attribute macros are called by placing them as a decorator on a block declaration:"
+                }
+
+                code c2 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    service "api" @with_monitoring(alert_channel = "sre") {
+                        port = 8080
+                    }
+                    WCL
+                }
+
+                paragraph p4 {
+                    content = "The macro receives the block as its implicit <code>self</code> target and executes its transform operations against it."
+                }
+
+                heading h2_transform {
+                    level = 2
+                    content = "Transform Operations"
+                }
+
+                heading h3_inject {
+                    level = 3
+                    content = "inject { }"
+                }
+
+                paragraph p5 {
+                    content = "Adds child content to the block. All declarations inside <code>inject</code> are merged into the block's body:"
+                }
+
+                code c3 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    macro @with_defaults() {
+                        inject {
+                            region   = "us-east-1"
+                            env      = "production"
+                            replicas = 1
+                        }
+                    }
+
+                    service "api" @with_defaults() {
+                        port = 8080
+                    }
+                    // result: service "api" { port = 8080, region = "us-east-1", env = "production", replicas = 1 }
+                    WCL
+                }
+
+                paragraph p6 {
+                    content = "Injected values do not overwrite attributes already present on the block. Use <code>set</code> for that."
+                }
+
+                heading h3_set {
+                    level = 3
+                    content = "set { }"
+                }
+
+                paragraph p7 {
+                    content = "Sets or overwrites attributes on the block. Unlike <code>inject</code>, <code>set</code> will replace an existing value:"
+                }
+
+                code c4 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    macro @force_tls() {
+                        set {
+                            tls      = true
+                            protocol = "https"
+                        }
+                    }
+
+                    service "api" @force_tls() {
+                        port     = 8080
+                        protocol = "http"   // will be overwritten to "https"
+                    }
+                    WCL
+                }
+
+                heading h3_remove {
+                    level = 3
+                    content = "remove [targets]"
+                }
+
+                paragraph p8 {
+                    content = "Removes attributes, child blocks, or tables from the block. Each target in the list uses a different syntax to specify what to remove:"
+                }
+
+                data_table t1 {
+                    rows = [
+                        ["Syntax", "Removes"],
+                        ["name", "Attribute with that name"],
+                        ["kind#id", "Child block of kind with inline ID id"],
+                        ["kind#*", "All child blocks of kind"],
+                        ["kind[n]", "The nth child block of kind (0-based)"],
+                        ["table#id", "Table with inline ID id"],
+                        ["table#*", "All tables"],
+                        ["table[n]", "The nth table (0-based)"]
+                    ]
+                }
+
+                code c5 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    macro @strip_debug() {
+                        remove [debug_port, verbose_logging, trace_id]
+                    }
+
+                    service "api" @strip_debug() {
+                        port         = 8080
+                        debug_port   = 9999
+                        verbose_logging = true
+                    }
+                    // result: service "api" { port = 8080 }
+                    WCL
+                }
+
+                paragraph p9 {
+                    content = "Removing child blocks and tables:"
+                }
+
+                code c6 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    macro @secure() {
+                        remove [endpoint#debug, table#metrics]
+                    }
+
+                    @secure()
+                    service main {
+                        port = 8080
+                        endpoint health { path = "/health" }
+                        endpoint debug  { path = "/debug" }
+                        table metrics {
+                            key : string
+                            | "requests" |
+                        }
+                    }
+                    // result: endpoint debug and table metrics are removed
+                    WCL
+                }
+
+                paragraph p10 {
+                    content = "Wildcard and index removal:"
+                }
+
+                code c7 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    macro @clean() {
+                        remove [endpoint#*, table[0]]
+                    }
+                    WCL
+                }
+
+                heading h3_when {
+                    level = 3
+                    content = "when condition { }"
+                }
+
+                paragraph p11 {
+                    content = "Applies a set of transform operations only when <code>condition</code> is true. The condition is a WCL boolean expression and may reference <code>self</code> properties:"
+                }
+
+                code c8 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    macro @environment_defaults(env) {
+                        when env == "production" {
+                            set {
+                                replicas = 3
+                                tls      = true
+                            }
+                        }
+                        when env == "development" {
+                            set {
+                                replicas = 1
+                                tls      = false
+                            }
+                        }
+                        inject {
+                            env = env
+                        }
+                    }
+
+                    service "api" @environment_defaults(env = "production") {
+                        port = 8080
+                    }
+                    WCL
+                }
+
+                heading h3_update {
+                    level = 3
+                    content = "update selector { }"
+                }
+
+                paragraph p12 {
+                    content = "Applies transform directives to child blocks or row operations to tables. The selector identifies which child or table to target."
+                }
+
+                heading h4_update_child {
+                    level = 4
+                    content = "Updating child blocks"
+                }
+
+                code c9 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    macro @secure() {
+                        update endpoint#health {
+                            set { tls = true }
+                        }
+                        update endpoint {                // targets ALL endpoint children
+                            inject { auth = true }
+                        }
+                        update endpoint[0] {             // targets first endpoint by index
+                            set { primary = true }
+                        }
+                    }
+                    WCL
+                }
+
+                paragraph p13 {
+                    content = "The body of a block update contains the same directives as the top-level macro body (<code>inject</code>, <code>set</code>, <code>remove</code>, <code>when</code>, <code>update</code>)."
+                }
+
+                heading h4_update_tables {
+                    level = 4
+                    content = "Updating tables (row operations)"
+                }
+
+                paragraph p14 {
+                    content = "When the selector targets a table (<code>table#id</code> or <code>table[n]</code>), the body contains " + bold("table directives") + " instead of transform directives:"
+                }
+
+                data_table t2 {
+                    rows = [
+                        ["Directive", "Effect"],
+                        ["inject_rows { | val | ... | }", "Append rows to the table"],
+                        ["remove_rows where <expr>", "Remove rows where condition is true"],
+                        ["update_rows where <expr> { set { col = val } }", "Update cells in matching rows"],
+                        ["clear_rows", "Remove all data rows (columns preserved)"]
+                    ]
+                }
+
+                code c10 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    macro @filter_guests() {
+                        update table#users {
+                            remove_rows where role == "guest"
+                            inject_rows {
+                                | "admin" | "admin" |
+                            }
+                        }
+                    }
+
+                    @filter_guests()
+                    service main {
+                        table users {
+                            name : string
+                            role : string
+                            | "alice" | "admin" |
+                            | "bob"   | "guest" |
+                        }
+                    }
+                    // result: bob/guest row removed, admin/admin row added
+                    WCL
+                }
+
+                paragraph p15 {
+                    content = "Row conditions reference column names directly. Only literal comparisons are supported at macro expansion time (<code>==</code>, <code>!=</code>, <code>></code>, <code><</code>, <code>>=</code>, <code><=</code>, <code>&&</code>, <code>||</code>)."
+                }
+
+                heading h4_update_when {
+                    level = 4
+                    content = "Composition with when"
+                }
+
+                paragraph p16 {
+                    content = "<code>update</code> directives can be nested inside <code>when</code> blocks for conditional transforms:"
+                }
+
+                code c11 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    macro @env_config(env) {
+                        when env == "production" {
+                            update endpoint#health {
+                                set { tls = true }
+                            }
+                            update table#config {
+                                remove_rows where key == "debug"
+                            }
+                        }
+                    }
+                    WCL
+                }
+
+                heading h2_self {
+                    level = 2
+                    content = "The self Reference"
+                }
+
+                paragraph p17 {
+                    content = "Inside an attribute macro body, <code>self</code> refers to the block the macro is applied to. It exposes the block's properties as readable values for use in conditions and injected content."
+                }
+
+                data_table t3 {
+                    rows = [
+                        ["Expression", "Returns"],
+                        ["self.name", "The block's type name (e.g. \"service\")"],
+                        ["self.kind", "The block's kind string"],
+                        ["self.id", "The block's ID label (e.g. \"api\")"],
+                        ["self.attr(name)", "The value of the named attribute"],
+                        ["self.has(name)", "true if the attribute exists on the block"],
+                        ["self.args", "List of inline argument values on the block"],
+                        ["self.decorators", "List of decorator names applied to the block"]
+                    ]
+                }
+
+                paragraph p18 {
+                    content = "<code>self</code> is " + bold("only available in attribute macros") + ". It is not defined in function macro bodies."
+                }
+
+                heading h3_self_examples {
+                    level = 3
+                    content = "Examples Using self"
+                }
+
+                paragraph p19 {
+                    content = "Conditional injection based on an existing attribute:"
+                }
+
+                code c12 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    macro @with_monitoring(alert_channel = "ops") {
+                        inject {
+                            metrics_port = 9100
+                            health_path  = "/healthz"
+                        }
+                        set {
+                            monitoring_channel = alert_channel
+                        }
+                        when self.has("debug_port") {
+                            inject {
+                                debug_monitoring = true
+                            }
+                        }
+                    }
+                    WCL
+                }
+
+                paragraph p20 {
+                    content = "Using <code>self.id</code> in injected values:"
+                }
+
+                code c13 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    macro @with_log_config() {
+                        inject {
+                            log_prefix = self.name + "/" + self.id
+                        }
+                    }
+
+                    service "api" @with_log_config() {
+                        port = 8080
+                    }
+                    // result: service "api" { port = 8080, log_prefix = "service/api" }
+                    WCL
+                }
+
+                paragraph p21 {
+                    content = "Branching on block type:"
+                }
+
+                code c14 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    macro @common_tags(team) {
+                        set {
+                            team = team
+                        }
+                        when self.name == "service" {
+                            inject {
+                                service_mesh = true
+                            }
+                        }
+                        when self.name == "job" {
+                            inject {
+                                retry_policy = "exponential"
+                            }
+                        }
+                    }
+
+                    service "api" @common_tags(team = "platform") {
+                        port = 8080
+                    }
+
+                    job "nightly-backup" @common_tags(team = "data") {
+                        schedule = "0 2 * * *"
+                    }
+                    WCL
+                }
+
+                heading h2_full_example {
+                    level = 2
+                    content = "Full Example: @with_monitoring"
+                }
+
+                code c15 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    macro @with_monitoring(
+                        alert_channel:  string = "ops",
+                        metrics_port:   i64    = 9100,
+                        health_path:    string = "/healthz"
+                    ) {
+                        inject {
+                            metrics_port = metrics_port
+                            health_path  = health_path
+                        }
+                        set {
+                            monitoring_channel = alert_channel
+                        }
+                        when self.has("env") {
+                            when self.attr("env") == "production" {
+                                set {
+                                    alert_severity = "critical"
+                                }
+                            }
+                        }
+                    }
+
+                    service "api" @with_monitoring(alert_channel = "sre") {
+                        port = 8080
+                        env  = "production"
+                    }
+
+                    service "internal-tools" @with_monitoring() {
+                        port = 3000
+                        env  = "staging"
+                    }
+                    WCL
+                }
+
+                paragraph p22 {
+                    content = "After expansion, <code>service \"api\"</code> will have <code>metrics_port = 9100</code>, <code>health_path = \"/healthz\"</code>, <code>monitoring_channel = \"sre\"</code>, and <code>alert_severity = \"critical\"</code> merged in. <code>service \"internal-tools\"</code> will have the same fields except <code>alert_severity</code> is absent (its <code>env</code> is not <code>\"production\"</code>)."
+                }
+            }
+        }
+    }
+}

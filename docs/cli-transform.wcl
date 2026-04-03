@@ -1,0 +1,159 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, data_table, callout, bold, italic, link}
+
+page cli_transform {
+    section = "wcl_docs.cli.cli_transform"
+    title = "wcl transform"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "wcl transform"
+                }
+
+                paragraph p1 {
+                    content = "Run data transformations defined in WCL files."
+                }
+
+                heading h2_usage {
+                    level = 2
+                    content = "Usage"
+                }
+
+                code c1 {
+                    language = "bash"
+                    content = "wcl transform run <name> -f <file> [options]"
+                }
+
+                heading h2_subcommands {
+                    level = 2
+                    content = "Subcommands"
+                }
+
+                heading h3_run {
+                    level = 3
+                    content = "run"
+                }
+
+                paragraph p2 {
+                    content = "Execute a named transform."
+                }
+
+                data_table t1 {
+                    caption = "run Arguments and Flags"
+                    rows = [
+                        { argument_flag = "<name>", description = "Transform name (the block's inline ID)" },
+                        { argument_flag = "-f, --file <path>", description = "WCL file containing the transform definition" },
+                        { argument_flag = "--input <path>", description = "Input data file (reads from stdin if omitted)" },
+                        { argument_flag = "--output <path>", description = "Output data file (writes to stdout if omitted)" },
+                        { argument_flag = "--param KEY=VALUE", description = "Set a parameter (may be repeated)" },
+                        { argument_flag = "--lib-path <dir>", description = "Extra library search path (may be repeated)" },
+                        { argument_flag = "--no-default-lib-paths", description = "Disable default XDG/system library search paths" }
+                    ]
+                }
+
+                heading h2_description {
+                    level = 2
+                    content = "Description"
+                }
+
+                paragraph p3 {
+                    content = "<code>wcl transform run</code> finds a <code>transform</code> block by its inline ID in the given WCL file, then reads input data, applies the field mappings defined in the transform's <code>map</code> blocks, and writes the transformed output."
+                }
+
+                paragraph p4 {
+                    content = "The transform block specifies input and output codecs (currently <code>json</code>), and contains <code>map</code> sub-blocks that define how input fields are mapped to output fields. Inside map blocks, <code>in</code> refers to the current input record."
+                }
+
+                paragraph p5 {
+                    content = "Transform statistics (records read, written, filtered) are printed to stderr."
+                }
+
+                heading h2_examples {
+                    level = 2
+                    content = "Examples"
+                }
+
+                heading h3_define {
+                    level = 3
+                    content = "Define a transform"
+                }
+
+                code c2 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    // transforms.wcl
+                    transform rename-fields {
+                        input = "codec::json"
+                        output = "codec::json"
+
+                        map {
+                            user_name = in.name
+                            user_age  = in.age
+                        }
+                    }
+                    WCL
+                }
+
+                heading h3_run_it {
+                    level = 3
+                    content = "Run it"
+                }
+
+                code c3 {
+                    language = "bash"
+                    content = "wcl transform run rename-fields -f transforms.wcl --input data.json --output result.json"
+                }
+
+                heading h3_stream {
+                    level = 3
+                    content = "Stream from stdin to stdout"
+                }
+
+                code c4 {
+                    language = "bash"
+                    content = "cat data.json | wcl transform run rename-fields -f transforms.wcl"
+                }
+
+                heading h3_filtering {
+                    level = 3
+                    content = "With filtering"
+                }
+
+                code c5 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    transform active-users {
+                        input = "codec::json"
+                        output = "codec::json"
+
+                        @where(in.active == true)
+                        map {
+                            name = in.name
+                            email = lower(in.email)
+                        }
+                    }
+                    WCL
+                }
+
+                code c6 {
+                    language = "bash"
+                    content = "wcl transform run active-users -f transforms.wcl --input users.json"
+                }
+
+                paragraph p6 {
+                    content = "Output on stderr:"
+                }
+
+                code c7 {
+                    language = "text"
+                    content = "transform 'active-users': 100 records read, 42 written, 58 filtered"
+                }
+            }
+        }
+    }
+}

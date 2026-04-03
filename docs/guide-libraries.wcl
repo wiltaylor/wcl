@@ -1,0 +1,190 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
+
+page guide_libraries {
+    section = "wcl_docs.guide.libraries"
+    title = "WCL Libraries"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "WCL Libraries"
+                }
+
+                paragraph p1 {
+                    content = "WCL supports well-known library files that can be shared across projects. Libraries are installed in standard XDG directories and imported using angle-bracket syntax."
+                }
+
+                heading h2_importing {
+                    level = 2
+                    content = "Importing a Library"
+                }
+
+                code c1 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    import <myapp.wcl>
+                    WCL
+                }
+
+                paragraph p2 {
+                    content = "This searches for <code>myapp.wcl</code> in the library search paths:"
+                }
+
+                paragraph p3 {
+                    content = "<ol>" +
+                        "<li>" + bold("User library") + ": <code>$XDG_DATA_HOME/wcl/lib/</code> (default: <code>~/.local/share/wcl/lib/</code>)</li>" +
+                        "<li>" + bold("System library") + ": dirs in <code>$XDG_DATA_DIRS</code> + <code>/wcl/lib/</code> (default: <code>/usr/local/share/wcl/lib/</code>, <code>/usr/share/wcl/lib/</code>)</li>" +
+                        "</ol>"
+                }
+
+                paragraph p4 {
+                    content = "The first match is used. Library imports skip the project root jail check. Relative imports inside library files also skip the jail check, so libraries can freely import helper files in their own directory."
+                }
+
+                heading h3_custom_paths {
+                    level = 3
+                    content = "Custom Search Paths"
+                }
+
+                paragraph p5 {
+                    content = "You can prepend extra directories to the library search path using the CLI <code>--lib-path</code> flag (repeatable). These are searched " + bold("before") + " the default XDG/system paths:"
+                }
+
+                code c2 {
+                    language = "bash"
+                    content = "wcl eval main.wcl --lib-path ./my-libs --lib-path /opt/wcl-libs"
+                }
+
+                paragraph p6 {
+                    content = "To disable the default paths entirely (only use <code>--lib-path</code> directories):"
+                }
+
+                code c3 {
+                    language = "bash"
+                    content = "wcl eval main.wcl --lib-path ./my-libs --no-default-lib-paths"
+                }
+
+                paragraph p7 {
+                    content = "Programmatically, set <code>lib_paths</code> and <code>no_default_lib_paths</code> on <code>ParseOptions</code>."
+                }
+
+                heading h2_contents {
+                    level = 2
+                    content = "Library File Contents"
+                }
+
+                paragraph p8 {
+                    content = "A library file is a normal WCL file that can contain:"
+                }
+
+                paragraph p9 {
+                    content = "<ul>" +
+                        "<li>" + bold("Schemas") + " — type definitions for blocks</li>" +
+                        "<li>" + bold("Function declarations") + " (<code>declare</code>) — stubs for host-registered functions</li>" +
+                        "<li>" + bold("Decorator schemas") + " — custom decorator definitions</li>" +
+                        "<li>" + bold("Exported variables") + " — shared constants</li>" +
+                        "</ul>"
+                }
+
+                paragraph p10 {
+                    content = "Example library file:"
+                }
+
+                code c4 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    // ~/.local/share/wcl/lib/myapp.wcl
+
+                    schema "server_config" {
+                        port: i64
+                        host: string @optional
+                        @validate(min = 1, max = 65535)
+                        port: i64
+                    }
+
+                    declare transform(input: string) -> string
+                    declare validate_config(config: any) -> bool
+                    WCL
+                }
+
+                heading h2_declare {
+                    level = 2
+                    content = "Function Declarations"
+                }
+
+                paragraph p11 {
+                    content = "The <code>declare</code> keyword creates a function stub:"
+                }
+
+                code c5 {
+                    language = "wcl"
+                    content = "declare fn_name(param1: type1, param2: type2) -> return_type"
+                }
+
+                paragraph p12 {
+                    content = "Declarations tell the LSP about functions that will be provided by the host application at runtime. If a declared function is called but not registered, a helpful error is produced."
+                }
+
+                heading h2_creating {
+                    level = 2
+                    content = "Creating Library Files"
+                }
+
+                paragraph p13 {
+                    content = "Create <code>.wcl</code> files manually and place them in the user library directory (<code>~/.local/share/wcl/lib/</code> on Linux/macOS). For example:"
+                }
+
+                code c6 {
+                    language = "bash"
+                    content = <<-'BASH'
+                    mkdir -p ~/.local/share/wcl/lib
+                    cat > ~/.local/share/wcl/lib/myapp.wcl << 'EOF'
+                    schema "config" {
+                        port: i64
+                        host: string @optional
+                    }
+
+                    declare transform(input: string) -> string
+                    EOF
+                    BASH
+                }
+
+                paragraph p14 {
+                    content = "To list installed libraries from Rust:"
+                }
+
+                code c7 {
+                    language = "rust"
+                    content = <<-'RUST'
+                    for lib in wcl::library::list_libraries().unwrap() {
+                        println!("{}", lib.display());
+                    }
+                    RUST
+                }
+
+                heading h2_lsp {
+                    level = 2
+                    content = "LSP Support"
+                }
+
+                paragraph p15 {
+                    content = "The LSP automatically provides:"
+                }
+
+                paragraph p16 {
+                    content = "<ul>" +
+                        "<li>" + bold("Completions") + " for functions declared in imported libraries</li>" +
+                        "<li>" + bold("Signature help") + " with parameter names and types from <code>declare</code> statements</li>" +
+                        "<li>" + bold("Go-to-definition") + " for library imports (jumps to the library file)</li>" +
+                        "<li>" + bold("Diagnostics") + " if a declared function is not registered by the host</li>" +
+                        "</ul>"
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,128 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, data_table, callout, bold, italic, link}
+
+page introduction {
+    section = "wcl_docs.introduction"
+    title = "Introduction"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Introduction"
+                }
+
+                paragraph p1 {
+                    content = "WCL (Wil's Configuration Language) is a statically-typed, block-structured configuration language designed for expressive, validated, and maintainable configuration. It combines schemas, decorators, macros, data tables, a query engine, partial declarations, and a full Language Server Protocol (LSP) implementation into a single cohesive system."
+                }
+
+                heading h2_what {
+                    level = 2
+                    content = "What is WCL?"
+                }
+
+                paragraph p2 {
+                    content = "WCL is a configuration language built around named blocks of typed key-value attributes. Unlike general-purpose data formats, WCL is evaluated: it supports expressions, environment variable references, built-in functions, and cross-block references. Schemas enforce the shape of your data at validation time, and the entire pipeline from parsing to schema validation is designed to produce clear, actionable diagnostics."
+                }
+
+                paragraph p3 {
+                    content = "Core features:"
+                }
+
+                paragraph p3_list {
+                    content = "<ul>" +
+                        "<li>" + bold("Block-structured") + ": configuration is organized into named, typed blocks</li>" +
+                        "<li>" + bold("Static typing with schemas") + ": declare the expected shape of any block type and validate against it</li>" +
+                        "<li>" + bold("Decorators") + ": attach metadata or behavior to blocks and attributes with <code>@decorator</code> syntax</li>" +
+                        "<li>" + bold("Macros") + ": define reusable configuration fragments with function-style and attribute-style macros</li>" +
+                        "<li>" + bold("Data tables") + ": declare tabular data inline and query it</li>" +
+                        "<li>" + bold("Partial declarations") + ": split a block definition across multiple files or sites with <code>@partial</code></li>" +
+                        "<li>" + bold("Query engine") + ": select and filter blocks using a path-based query syntax</li>" +
+                        "<li>" + bold("Full LSP") + ": diagnostics, hover, go-to-definition, completions, formatting, and more</li>" +
+                        "</ul>"
+                }
+
+                heading h2_why {
+                    level = 2
+                    content = "Why WCL Instead of JSON, YAML, TOML, or HCL?"
+                }
+
+                data_table t1 {
+                    caption = "Feature Comparison"
+                    rows = [
+                        { feature = "Comments",           json = "No", yaml = "Yes", toml = "Yes", hcl = "Yes", wcl = "Yes (doc comments too)" },
+                        { feature = "Expressions",        json = "No", yaml = "No",  toml = "No",  hcl = "Yes", wcl = "Yes" },
+                        { feature = "Schemas / validation", json = "No", yaml = "No",  toml = "No",  hcl = "Partial", wcl = "Yes (first-class)" },
+                        { feature = "Macros / reuse",     json = "No", yaml = "Anchors", toml = "No", hcl = "Modules", wcl = "Yes" },
+                        { feature = "Decorators",         json = "No", yaml = "No",  toml = "No",  hcl = "No",  wcl = "Yes" },
+                        { feature = "Data tables",        json = "No", yaml = "No",  toml = "No",  hcl = "No",  wcl = "Yes" },
+                        { feature = "Query engine",       json = "No", yaml = "No",  toml = "No",  hcl = "No",  wcl = "Yes" },
+                        { feature = "LSP",                json = "No", yaml = "Limited", toml = "Limited", hcl = "Yes", wcl = "Yes" },
+                        { feature = "Static types",       json = "No", yaml = "No",  toml = "No",  hcl = "No",  wcl = "Yes" }
+                    ]
+                }
+
+                paragraph p4 {
+                    content = "JSON and TOML are simple but offer no reuse or validation. YAML is expressive but notorious for surprising parse behavior. HCL is powerful but tightly coupled to HashiCorp tooling. WCL is designed as a standalone, tool-agnostic configuration layer with a full validation and evaluation pipeline."
+                }
+
+                heading h2_example {
+                    level = 2
+                    content = "Quick Example"
+                }
+
+                paragraph p5 {
+                    content = "The following defines a production web server configuration with an enforcing schema:"
+                }
+
+                code c1 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    /// Production web server configuration
+                    server web-prod {
+                        host = "0.0.0.0"
+                        port = 8080
+                        workers = max(4, 2)
+
+                        @sensitive
+                        api_key = "sk-secret-key"
+                    }
+
+                    schema "server" {
+                        host: string @optional
+                        port: i64
+                        workers: i64
+                        api_key: string
+                    }
+                    WCL
+                }
+
+                paragraph p6 {
+                    content = "Key things to notice:"
+                }
+
+                paragraph p6_list {
+                    content = "<ul>" +
+                        "<li><code>server web-prod { ... }</code> is a block of type <code>server</code> with ID <code>web-prod</code></li>" +
+                        "<li>The <code>schema \"server\"</code> block automatically validates every <code>server</code> block by matching the name</li>" +
+                        "<li><code>workers = max(4, 2)</code> is an evaluated expression using a built-in function</li>" +
+                        "<li><code>@sensitive</code> is a decorator that can be handled by tooling (e.g., to redact the value from output)</li>" +
+                        "<li>Schema fields use colon syntax (<code>port: i64</code>) to declare expected types</li>" +
+                        "</ul>"
+                }
+
+                heading h2_next {
+                    level = 2
+                    content = "Where to Go Next"
+                }
+
+                paragraph p7 {
+                    content = "Ready to start using WCL? Head to " + link("Getting Started", "installation.html") + " to install the CLI and write your first configuration file."
+                }
+            }
+        }
+    }
+}

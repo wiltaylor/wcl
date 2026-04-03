@@ -1,0 +1,167 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, bold, italic, link}
+
+page first_config {
+    section = "wcl_docs.getting_started.first_config"
+    title = "Your First Config"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Your First Configuration File"
+                }
+
+                paragraph p1 {
+                    content = "This page walks through creating a WCL file, evaluating it, adding a schema, and validating it."
+                }
+
+                heading h2_create {
+                    level = 2
+                    content = "Create a File"
+                }
+
+                paragraph p2 {
+                    content = "Create a file called <code>hello.wcl</code> with a simple server block:"
+                }
+
+                code c1 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    server web {
+                        host = "localhost"
+                        port = 3000
+                        workers = 2
+                    }
+                    WCL
+                }
+
+                paragraph p3 {
+                    content = "A block in WCL has a type (<code>server</code>), an optional ID (<code>web</code>), and a body containing attribute assignments."
+                }
+
+                heading h2_eval {
+                    level = 2
+                    content = "Evaluate It"
+                }
+
+                paragraph p4 {
+                    content = "The <code>eval</code> command runs the WCL pipeline and outputs the result as JSON:"
+                }
+
+                code c2 {
+                    language = "bash"
+                    content = "wcl eval hello.wcl"
+                }
+
+                paragraph p5 {
+                    content = "Output:"
+                }
+
+                code c3 {
+                    language = "json"
+                    content = <<-'JSON'
+                    {
+                      "server": {
+                        "web": {
+                          "host": "localhost",
+                          "port": 3000,
+                          "workers": 2
+                        }
+                      }
+                    }
+                    JSON
+                }
+
+                paragraph p6 {
+                    content = "WCL evaluates expressions, resolves references, and expands macros before producing output. For a simple file like this, the output mirrors the input structure."
+                }
+
+                heading h2_schema {
+                    level = 2
+                    content = "Add a Schema"
+                }
+
+                paragraph p7 {
+                    content = "Extend <code>hello.wcl</code> to include a schema:"
+                }
+
+                code c4 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    server web {
+                        host = "localhost"
+                        port = 3000
+                        workers = 2
+                    }
+
+                    schema "server" {
+                        host    : string
+                        port    : i64
+                        workers : i64
+                    }
+                    WCL
+                }
+
+                paragraph p8 {
+                    content = "The <code>schema</code> block declares the expected type for each attribute. WCL matches schemas to blocks automatically by block type name — a schema named <code>\"server\"</code> validates all <code>server</code> blocks."
+                }
+
+                heading h2_validate {
+                    level = 2
+                    content = "Validate It"
+                }
+
+                code c5 {
+                    language = "bash"
+                    content = "wcl validate hello.wcl"
+                }
+
+                paragraph p9 {
+                    content = "If the configuration is valid, the command exits with code 0 and no output. If there is a type mismatch or a missing required field, you will see a diagnostic:"
+                }
+
+                code c6 {
+                    language = "text"
+                    content = <<-'TXT'
+                    error[E071]: type mismatch for field `port`: expected i64, got string
+                      --> hello.wcl:3:12
+                       |
+                     3 |     port = "3000"
+                       |            ^^^^^^ expected i64
+                    TXT
+                }
+
+                heading h2_json {
+                    level = 2
+                    content = "JSON Output with a Schema"
+                }
+
+                paragraph p10 {
+                    content = "Validation does not change the JSON output — <code>wcl eval hello.wcl</code> produces the same JSON structure as before. The schema is purely a validation constraint."
+                }
+
+                heading h2_concepts {
+                    level = 2
+                    content = "Key Concepts"
+                }
+
+                paragraph p11 {
+                    content = "<ul>" +
+                        "<li>" + bold("Blocks") + ": the primary unit of configuration. A block has a type, an optional ID, and a set of attributes.</li>" +
+                        "<li>" + bold("Attributes") + ": key-value pairs inside a block. Values can be literals, expressions, function calls, or references to other values.</li>" +
+                        "<li>" + bold("Schemas") + ": declare the expected type (and optionally constraints) for each attribute in a block. Schemas are matched to blocks automatically by block type name.</li>" +
+                        "<li>" + bold("Decorators") + ": <code>@name</code> or <code>@name(args)</code> annotations on blocks or attributes. Built-in decorators include <code>@sensitive</code>, <code>@optional</code>, <code>@partial</code>, and more.</li>" +
+                        "</ul>"
+                }
+
+                paragraph p12 {
+                    content = "From here, explore the " + link("CLI Quickstart", "cli_quickstart.html") + " to learn about the other commands available, or jump into the language reference to learn about expressions, macros, and the query engine."
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,131 @@
+// ── WCL Documentation ──
+//
+// Build:  wcl wdoc build docs/*.wcl --output docs/build
+// Serve:  wcl wdoc serve docs/*.wcl --port 3000
+
+import <wdoc.wcl>
+use wdoc::{doc, section, style}
+
+// ── Document definition with section outline ──
+
+doc wcl_docs {
+    title = "WCL — Wil's Configuration Language"
+    version = "0.1.0"
+    author = "Wil"
+
+    section introduction "Introduction" {}
+
+    section getting_started "Getting Started" {
+        section installation "Installation" {}
+        section first_config "Your First Config" {}
+        section cli_quickstart "CLI Quickstart" {}
+        section editor_setup "Editor Setup" {}
+        section syntax_highlighting "Syntax Highlighting" {}
+        section c_library "C / C++ Usage" {}
+        section rust_library "Rust Library Usage" {}
+        section python_library "Python Library Usage" {}
+        section go_library "Go Library Usage" {}
+        section js_library "JavaScript / TypeScript Usage" {}
+        section dotnet_library ".NET / C# Usage" {}
+        section jvm_library "JVM (Java/Kotlin) Usage" {}
+        section zig_library "Zig Library Usage" {}
+        section ruby_library "Ruby Library Usage" {}
+    }
+
+    section guide "Language Guide" {
+        section basic_syntax "Basic Syntax" {}
+        section attributes "Attributes" {}
+        section blocks "Blocks" {}
+        section comments "Comments" {}
+        section data_types "Data Types" {}
+        section expressions "Expressions" {}
+        section string_interpolation "String Interpolation" {}
+        section variables_and_scoping "Variables and Scoping" {}
+        section control_flow "Control Flow" {
+            section for_loops "For Loops" {}
+            section if_else "If/Else" {}
+        }
+        section functions "Functions" {
+            section functions_string "String Functions" {}
+            section functions_math "Math Functions" {}
+            section functions_collection "Collection Functions" {}
+            section functions_higher_order "Higher-Order Functions" {}
+            section functions_aggregate "Aggregate Functions" {}
+            section functions_hash_encoding "Hash & Encoding Functions" {}
+            section functions_type_coercion "Type Coercion Functions" {}
+            section functions_ref_query "Reference & Query Functions" {}
+        }
+        section structs "Structs" {}
+        section schemas "Schemas" {}
+        section transforms "Transforms" {}
+        section decorators "Decorators" {
+            section decorators_builtin "Built-in Decorators" {}
+            section decorator_schemas "Decorator Schemas" {}
+        }
+        section macros "Macros" {
+            section macros_function "Function Macros" {}
+            section macros_attribute "Attribute Macros" {}
+        }
+        section tables "Data Tables" {}
+        section imports "Imports" {}
+        section libraries "Libraries" {}
+        section namespaces "Namespaces" {}
+        section partials "Partial Declarations" {}
+        section query_engine "Query Engine" {}
+        section validation_blocks "Validation Blocks" {}
+    }
+
+    section cli "CLI Reference" {
+        section cli_overview "Overview" {}
+        section cli_validate "validate" {}
+        section cli_eval "eval" {}
+        section cli_fmt "fmt" {}
+        section cli_query "query" {}
+        section cli_inspect "inspect" {}
+        section cli_convert "convert" {}
+        section cli_set "set" {}
+        section cli_add "add" {}
+        section cli_remove "remove" {}
+        section cli_lsp "lsp" {}
+        section cli_transform "transform" {}
+        section cli_table "table" {}
+        section cli_docs "docs" {}
+    }
+
+    section reference "Language Reference" {
+        section ref_syntax "Syntax" {}
+        section ref_types "Type System" {}
+        section ref_evaluation "Expression Evaluation" {}
+        section ref_scoping "Scoping Rules" {}
+        section ref_pipeline "Evaluation Pipeline" {}
+    }
+
+    section appendix "Appendix" {
+        section appendix_ebnf "EBNF Grammar" {}
+        section appendix_error_codes "Error Codes" {}
+        section appendix_comparison "Comparison with Other Formats" {}
+    }
+}
+
+// ── Styles ──
+
+style default {
+    heading {
+        font_family = "'Segoe UI', sans-serif"
+    }
+    paragraph {
+        line_height = "1.7"
+    }
+}
+
+style hero {
+    heading {
+        font_size = "2.5rem"
+        text_align = "center"
+        margin_bottom = "1rem"
+    }
+    paragraph {
+        text_align = "center"
+        font_size = "1.2rem"
+    }
+}

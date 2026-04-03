@@ -1,0 +1,275 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
+
+let D = "$"
+
+page guide_attributes {
+    section = "wcl_docs.guide.attributes"
+    title = "Attributes"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Attributes"
+                }
+
+                paragraph p1 {
+                    content = "An attribute is a named value binding inside a block or at module scope. It is the primary way to attach data to a configuration node."
+                }
+
+                heading h2_syntax {
+                    level = 2
+                    content = "Syntax"
+                }
+
+                code c1 {
+                    language = "text"
+                    content = "name = expression"
+                }
+
+                paragraph p2 {
+                    content = "The " + bold("name") + " must be a valid identifier: it may contain ASCII letters, digits, and underscores, and must not start with a digit. Hyphens are not allowed in attribute names (they are only permitted in inline block IDs)."
+                }
+
+                code c2 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    // Valid attribute names
+                    host        = "localhost"
+                    port_number = 3000
+                    max_retries = 5
+                    _internal   = true
+
+                    // Invalid — hyphens are not allowed
+                    // max-retries = 5   // parse error
+                    WCL
+                }
+
+                heading h2_duplicate {
+                    level = 2
+                    content = "Duplicate Attributes"
+                }
+
+                paragraph p3 {
+                    content = "Declaring the same attribute name twice within the same block is an error:"
+                }
+
+                code c3 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    server {
+                      port = 8080
+                      port = 9090  // error: duplicate attribute "port"
+                    }
+                    WCL
+                }
+
+                heading h2_values {
+                    level = 2
+                    content = "Value Types"
+                }
+
+                paragraph p4 {
+                    content = "The right-hand side of an attribute can be any WCL expression."
+                }
+
+                heading h3_literals {
+                    level = 3
+                    content = "Literals"
+                }
+
+                code c4 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    string_val  = "hello"
+                    int_val     = 42
+                    float_val   = 3.14
+                    bool_val    = true
+                    null_val    = null
+                    WCL
+                }
+
+                heading h3_varrefs {
+                    level = 3
+                    content = "Variable References"
+                }
+
+                code c5 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let base_port = 8000
+
+                    service {
+                      port    = base_port
+                      alt_port = base_port + 1
+                    }
+                    WCL
+                }
+
+                heading h3_arithmetic {
+                    level = 3
+                    content = "Arithmetic Expressions"
+                }
+
+                code c6 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    timeout     = 30 * 1000          // milliseconds
+                    buffer_size = 4 * 1024 * 1024    // 4 MiB
+                    half_port   = base_port / 2
+                    remainder   = total % batch_size
+                    WCL
+                }
+
+                heading h3_functions {
+                    level = 3
+                    content = "Function Calls"
+                }
+
+                code c7 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    name_upper = upper("my-service")
+                    tag_count  = len(tags)
+                    checksum   = sha256(payload)
+                    combined   = concat("prefix-", name)
+                    WCL
+                }
+
+                heading h3_interpolation {
+                    level = 3
+                    content = "String Interpolation"
+                }
+
+                code c8 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    greeting = "Hello, ${user_name}!"
+                    url      = "https://${host}:${port}/api/v${version}"
+                    WCL
+                }
+
+                paragraph p5 {
+                    content = "See " + link("String Interpolation", "guide-string-interpolation.html") + " for full details."
+                }
+
+                heading h3_ternary {
+                    level = 3
+                    content = "Ternary Expressions"
+                }
+
+                code c9 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    mode    = debug ? "verbose" : "quiet"
+                    timeout = is_production ? 5000 : 30000
+                    WCL
+                }
+
+                heading h3_queries {
+                    level = 3
+                    content = "Queries"
+                }
+
+                paragraph p6 {
+                    content = "Query expressions select blocks from the current scope and return lists or single values:"
+                }
+
+                code c10 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    all_servers  = query server
+                    prod_servers = query server where env == "production"
+                    first_host   = (query server)[0].host
+                    WCL
+                }
+
+                paragraph p7 {
+                    content = "See " + link("Query Engine", "guide-query-engine.html") + " for the complete query syntax."
+                }
+
+                heading h3_refs {
+                    level = 3
+                    content = "Refs"
+                }
+
+                paragraph p8 {
+                    content = "A <code>ref</code> creates a typed reference to another block by its inline ID:"
+                }
+
+                code c11 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    database #primary {
+                      host = "db1.internal"
+                      port = 5432
+                    }
+
+                    connection {
+                      target = ref(db-primary)
+                    }
+                    WCL
+                }
+
+                heading h3_lists_maps {
+                    level = 3
+                    content = "Lists and Maps"
+                }
+
+                code c12 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    ports    = [8080, 8081, 8082]
+                    labels   = ["web", "api", "public"]
+                    env_vars = { HOST: "0.0.0.0", PORT: "8080" }
+                    WCL
+                }
+
+                heading h3_comparison {
+                    level = 3
+                    content = "Comparison and Logical Expressions"
+                }
+
+                code c13 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    is_valid   = port > 0 && port < 65536
+                    is_dev     = env == "development" || env == "dev"
+                    is_enabled = !disabled
+                    matches    = name =~ "^api-"
+                    WCL
+                }
+
+                heading h2_summary {
+                    level = 2
+                    content = "Summary"
+                }
+
+                data_table t1 {
+                    caption = "Value Kinds"
+                    rows = [
+                        { value_kind = "String literal", example = "\"hello\"" },
+                        { value_kind = "Integer literal", example = "42, 0xFF, 0b1010" },
+                        { value_kind = "Float literal", example = "3.14, 1.5e-3" },
+                        { value_kind = "Boolean literal", example = "true, false" },
+                        { value_kind = "Null literal", example = "null" },
+                        { value_kind = "Variable reference", example = "base_port" },
+                        { value_kind = "Arithmetic", example = "base_port + 1" },
+                        { value_kind = "Comparison/logical", example = "port > 0 && port < 65536" },
+                        { value_kind = "Ternary", example = "debug ? \"verbose\" : \"quiet\"" },
+                        { value_kind = "Function call", example = "upper(\"hello\")" },
+                        { value_kind = "String interpolation", example = "\"http://" + D + "{host}:" + D + "{port}\"" },
+                        { value_kind = "Query", example = "query(service | .port)" },
+                        { value_kind = "Ref", example = "ref(svc-api)" },
+                        { value_kind = "List", example = "[1, 2, 3]" },
+                        { value_kind = "Map", example = "{ key: \"value\" }" }
+                    ]
+                }
+            }
+        }
+    }
+}

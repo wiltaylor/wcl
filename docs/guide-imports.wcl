@@ -1,0 +1,453 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
+
+page guide_imports {
+    section = "wcl_docs.guide.imports"
+    title = "Imports"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Imports"
+                }
+
+                paragraph p1 {
+                    content = "Imports let you split a WCL configuration across multiple files and compose them at load time."
+                }
+
+                heading h2_syntax {
+                    level = 2
+                    content = "Basic Syntax"
+                }
+
+                code c1 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    import "./relative/path.wcl"
+                    WCL
+                }
+
+                paragraph p2 {
+                    content = "<code>import</code> is a top-level statement only — it cannot appear inside a block or expression. The path must be a string literal."
+                }
+
+                heading h2_merged {
+                    level = 2
+                    content = "What Gets Merged"
+                }
+
+                paragraph p3 {
+                    content = "When a file is imported, the following items from the imported file are merged into the importing scope:"
+                }
+
+                paragraph p4 {
+                    content = "<ul>" +
+                        "<li>Blocks (services, configs, etc.)</li>" +
+                        "<li>Attributes defined at the top level</li>" +
+                        "<li>Schemas and decorator schemas</li>" +
+                        "<li>Macro definitions</li>" +
+                        "<li>Tables</li>" +
+                        "<li>Validation blocks</li>" +
+                        "<li>Exported variables (<code>let</code> bindings declared with <code>export</code>)</li>" +
+                        "</ul>"
+                }
+
+                paragraph p5 {
+                    content = bold("Private bindings are not merged.") + " A plain <code>let</code> binding is file-private and is never visible to the importing file. Use <code>export let</code> to make a variable available across the import boundary:"
+                }
+
+                code c2 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    // shared.wcl
+                    export let environment = "production"
+                    export let base_port   = 9000
+                    WCL
+                }
+
+                code c3 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    // main.wcl
+                    import "./shared.wcl"
+
+                    service "api" {
+                        env  = environment    // "production"
+                        port = base_port + 1  // 9001
+                    }
+                    WCL
+                }
+
+                heading h2_library {
+                    level = 2
+                    content = "Library Imports"
+                }
+
+                paragraph p6 {
+                    content = "In addition to relative path imports, WCL supports well-known library imports using angle-bracket syntax:"
+                }
+
+                code c4 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    import <myapp.wcl>
+                    WCL
+                }
+
+                paragraph p7 {
+                    content = "Library files are searched in these directories (in order):"
+                }
+
+                paragraph p8 {
+                    content = "<ol>" +
+                        "<li>" + bold("User library") + ": <code>$XDG_DATA_HOME/wcl/lib/</code> (default: <code>~/.local/share/wcl/lib/</code>)</li>" +
+                        "<li>" + bold("System library") + ": each dir in <code>$XDG_DATA_DIRS</code> + <code>/wcl/lib/</code> (default: <code>/usr/local/share/wcl/lib/</code>, <code>/usr/share/wcl/lib/</code>)</li>" +
+                        "</ol>"
+                }
+
+                paragraph p9 {
+                    content = "Library imports " + bold("skip the jail check") + " since they are intentionally located outside the project root. Relative imports inside library files also skip the jail check, so library files can freely compose helper files within their own directory. All other rules (import-once, depth limit, recursive resolution) still apply."
+                }
+
+                paragraph p10 {
+                    content = "Library files can contain schemas, <code>declare</code> stubs for host-registered functions, and any other WCL content:"
+                }
+
+                code c5 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    // ~/.local/share/wcl/lib/myapp.wcl
+                    schema "server_config" {
+                        port: i64
+                        host: string @optional
+                    }
+
+                    declare my_custom_fn(input: string) -> string
+                    WCL
+                }
+
+                paragraph p11 {
+                    content = "You can add custom library search paths using the <code>--lib-path</code> CLI flag or the <code>lib_paths</code> option in <code>ParseOptions</code>. Use <code>--no-default-lib-paths</code> to disable the default XDG/system paths entirely."
+                }
+
+                paragraph p12 {
+                    content = "See the " + link("Libraries guide", "guide-libraries.html") + " for how to create and manage library files."
+                }
+
+                heading h2_path_rules {
+                    level = 2
+                    content = "Path Rules"
+                }
+
+                paragraph p13 {
+                    content = "<ul>" +
+                        "<li>" + bold("Relative paths only") + " (for quoted imports). Absolute paths and URLs are not accepted.</li>" +
+                        "<li>Paths are resolved relative to the file containing the <code>import</code> statement.</li>" +
+                        "<li>All resolved paths must remain inside the project root directory. Attempts to escape via <code>../../../</code> are rejected.</li>" +
+                        "<li>Symlinks that point outside the root are not followed.</li>" +
+                        "<li>Remote imports (HTTP/HTTPS) are not supported.</li>" +
+                        "</ul>"
+                }
+
+                heading h2_import_once {
+                    level = 2
+                    content = "Import-Once Semantics"
+                }
+
+                paragraph p14 {
+                    content = "WCL deduplicates imports by canonical path. If two files both import a third file, that third file is processed exactly once and its contents are merged a single time. Import graphs are therefore safe regardless of how many paths lead to the same file."
+                }
+
+                heading h2_circular {
+                    level = 2
+                    content = "Circular Imports"
+                }
+
+                paragraph p15 {
+                    content = "Circular import chains are detected and produce a clear error rather than looping infinitely. Restructure your files to break the cycle, typically by extracting shared definitions into a dedicated file that neither file in the cycle imports."
+                }
+
+                heading h2_depth {
+                    level = 2
+                    content = "Depth Limit"
+                }
+
+                paragraph p16 {
+                    content = "The default maximum import depth is " + bold("32") + ". This prevents runaway chains in generated or adversarial inputs. The limit can be raised programmatically when constructing the pipeline options, but the default is appropriate for all normal configurations."
+                }
+
+                heading h2_conflicts {
+                    level = 2
+                    content = "Merge Conflicts"
+                }
+
+                paragraph p17 {
+                    content = "Different item kinds have different conflict rules:"
+                }
+
+                data_table t_conflicts {
+                    caption = "Merge Conflict Rules"
+                    rows = [
+                        { item = "Blocks with distinct IDs", conflict_behavior = "Merged without conflict" },
+                        { item = "Blocks sharing an ID", conflict_behavior = "Requires partial — see Partial Declarations" },
+                        { item = "Duplicate schema name", conflict_behavior = "Error (E001)" },
+                        { item = "Duplicate decorator schema name", conflict_behavior = "Error" },
+                        { item = "Duplicate top-level attribute", conflict_behavior = "Error" },
+                        { item = "Macros with the same name", conflict_behavior = "Error" }
+                    ]
+                }
+
+                paragraph p18 {
+                    content = "If you need to compose fragments of the same block across files, declare every fragment as <code>partial</code> and let the merge phase assemble them."
+                }
+
+                heading h2_non_wcl {
+                    level = 2
+                    content = "Importing Non-WCL Files"
+                }
+
+                heading h3_raw {
+                    level = 3
+                    content = "Raw Text: import_raw"
+                }
+
+                paragraph p19 {
+                    content = "<code>import_raw(\"path\")</code> reads an arbitrary file and returns its contents as a string value. This is useful for embedding certificates, SQL, or other text assets:"
+                }
+
+                code c6 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    service "tls-frontend" {
+                        cert = import_raw("./certs/server.pem")
+                        key  = import_raw("./certs/server.key")
+                    }
+                    WCL
+                }
+
+                paragraph p20 {
+                    content = "The same path rules apply: relative only, jailed to the root."
+                }
+
+                heading h3_csv {
+                    level = 3
+                    content = "CSV Data: import_table"
+                }
+
+                paragraph p21 {
+                    content = "<code>import_table(\"path.csv\")</code> loads a CSV file as a table value:"
+                }
+
+                code c7 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let acl_rows = import_table("./acl.csv")
+                    let tsv_rows = import_table("./data.tsv", "\t")
+                    WCL
+                }
+
+                paragraph p22 {
+                    content = "Named arguments provide fine-grained control:"
+                }
+
+                code c8 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    // Custom separator
+                    let tsv = import_table("./data.tsv", separator="\t")
+
+                    // Skip the header row
+                    let raw = import_table("./data.csv", headers=false)
+
+                    // Explicit column names
+                    let data = import_table("./data.csv", headers=false, columns=["name", "age"])
+                    WCL
+                }
+
+                data_table t_import_opts {
+                    caption = "import_table Parameters"
+                    rows = [
+                        { parameter = "separator", type = "string", default = "\",\"", description = "Field separator character" },
+                        { parameter = "headers", type = "bool", default = "true", description = "Whether the first row contains column headers" },
+                        { parameter = "columns", type = "list", default = "—", description = "Explicit column names (overrides headers)" }
+                    ]
+                }
+
+                paragraph p23 {
+                    content = "Tables can be populated directly from CSV using assignment syntax:"
+                }
+
+                code c9 {
+                    language = "wcl"
+                    content = "table users : user_row = import_table(\"data.csv\")"
+                }
+
+                paragraph p24 {
+                    content = "See the " + link("Data Tables", "guide-tables.html") + " chapter for full details."
+                }
+
+                heading h2_security {
+                    level = 2
+                    content = "Security: allow_imports"
+                }
+
+                paragraph p25 {
+                    content = "When processing untrusted WCL input you can disable all file-loading operations by setting the <code>allow_imports</code> pipeline option to <code>false</code>. With this option disabled, any <code>import</code>, <code>import_raw</code>, or <code>import_table</code> statement produces an error rather than reading from disk. This is recommended for any context where the WCL source is not fully trusted."
+                }
+
+                code c10 {
+                    language = "rust"
+                    content = <<-'RUST'
+                    let opts = PipelineOptions {
+                        allow_imports: false,
+                        ..Default::default()
+                    };
+                    let doc = Document::from_str_with_options(src, opts)?;
+                    RUST
+                }
+
+                heading h2_example {
+                    level = 2
+                    content = "Example: Multi-File Layout"
+                }
+
+                code c11 {
+                    language = "text"
+                    content = <<-'TXT'
+                    config/
+                      main.wcl
+                      shared/
+                        constants.wcl
+                        schemas.wcl
+                      services/
+                        auth.wcl
+                        gateway.wcl
+                    TXT
+                }
+
+                code c12 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    // main.wcl
+                    import "./shared/constants.wcl"
+                    import "./shared/schemas.wcl"
+                    import "./services/auth.wcl"
+                    import "./services/gateway.wcl"
+                    WCL
+                }
+
+                code c13 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    // shared/constants.wcl
+                    export let region      = "us-east-1"
+                    export let log_level   = "info"
+                    export let base_domain = "example.internal"
+                    WCL
+                }
+
+                code c14 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    // services/auth.wcl
+                    import "../shared/constants.wcl"
+
+                    service svc-auth "auth-service" {
+                        region = region
+                        domain = "auth." + base_domain
+                        log    = log_level
+                    }
+                    WCL
+                }
+
+                paragraph p26 {
+                    content = "Because <code>constants.wcl</code> is imported by both <code>main.wcl</code> and <code>auth.wcl</code>, it is evaluated once. The <code>export let</code> bindings are available wherever the file is imported."
+                }
+
+                heading h2_glob {
+                    level = 2
+                    content = "Glob Imports"
+                }
+
+                paragraph p27 {
+                    content = "A glob pattern can be used in place of a literal path to import multiple files at once:"
+                }
+
+                code c15 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    import "./schemas/*.wcl"
+                    import "./modules/**/*.wcl"
+                    WCL
+                }
+
+                paragraph p28 {
+                    content = "<ul>" +
+                        "<li><code>*</code> matches any file name within a single directory.</li>" +
+                        "<li><code>**</code> matches any number of directory segments (recursive).</li>" +
+                        "<li>Matched files are processed in " + bold("alphabetical order") + " by resolved path, ensuring deterministic merge order regardless of filesystem traversal order.</li>" +
+                        "<li>If the pattern matches no files, error " + bold("E016") + " is reported. Use an optional import (see below) to suppress this.</li>" +
+                        "</ul>"
+                }
+
+                paragraph p29 {
+                    content = "Each matched file is subject to the same path rules as a regular import: relative paths only, jailed to the project root, import-once deduplication, and depth limit enforcement."
+                }
+
+                code c16 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    // Import every schema defined under the schemas/ directory
+                    import "./schemas/**/*.wcl"
+
+                    // Import all service definitions from a flat directory
+                    import "./services/*.wcl"
+                    WCL
+                }
+
+                heading h2_optional {
+                    level = 2
+                    content = "Optional Imports"
+                }
+
+                paragraph p30 {
+                    content = "Prefix the <code>import</code> keyword with <code>?</code> to make the import silently succeed when the target does not exist:"
+                }
+
+                code c17 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    import? "./local-overrides.wcl"
+                    WCL
+                }
+
+                paragraph p31 {
+                    content = "If <code>local-overrides.wcl</code> is absent the statement is a no-op. If the file exists, it is imported normally."
+                }
+
+                paragraph p32 {
+                    content = "Optional imports compose with glob patterns:"
+                }
+
+                code c18 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    import? "./env/*.wcl"
+                    WCL
+                }
+
+                paragraph p33 {
+                    content = "When glob and optional are combined, a pattern that matches no files is not an error — the statement is silently skipped. This is useful for environment-specific overlay directories that may not exist in every deployment."
+                }
+
+                paragraph p34 {
+                    content = bold("Security errors are always reported.") + " A path that would escape the project root, exceed the depth limit, or violate another security constraint produces an error even when <code>?</code> is present. Optional only suppresses \"file not found\" and \"no glob matches\"; it does not suppress policy violations."
+                }
+            }
+        }
+    }
+}

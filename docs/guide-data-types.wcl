@@ -1,0 +1,374 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
+
+let D = "$"
+
+page guide_data_types {
+    section = "wcl_docs.guide.data_types"
+    title = "Data Types"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Data Types"
+                }
+
+                paragraph p1 {
+                    content = "WCL has a rich type system covering primitive scalars, composite collections, and a set of special types used internally by the schema and query systems."
+                }
+
+                heading h2_primitives {
+                    level = 2
+                    content = "Primitive Types"
+                }
+
+                heading h3_string {
+                    level = 3
+                    content = "string"
+                }
+
+                paragraph p2 {
+                    content = "String values are written with double quotes. All standard escape sequences are supported:"
+                }
+
+                data_table t_escapes {
+                    caption = "Escape Sequences"
+                    rows = [
+                        { escape = "\\n", meaning = "Newline" },
+                        { escape = "\\t", meaning = "Tab" },
+                        { escape = "\\r", meaning = "Carriage return" },
+                        { escape = "\\\\", meaning = "Literal backslash" },
+                        { escape = "\\\"", meaning = "Literal double quote" },
+                        { escape = "\\0", meaning = "Null byte" },
+                        { escape = "\\uXXXX", meaning = "Unicode code point" }
+                    ]
+                }
+
+                code c1 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    greeting = "Hello, world!"
+                    escaped  = "Line one\nLine two"
+                    quoted   = "He said \"hello\""
+                    unicode  = "caf\u00E9"
+                    WCL
+                }
+
+                heading h4_heredocs {
+                    level = 4
+                    content = "Heredocs"
+                }
+
+                paragraph p3 {
+                    content = "For multi-line strings, WCL supports heredoc syntax. The delimiter must appear alone on its line."
+                }
+
+                paragraph p4 {
+                    content = "Standard heredoc (preserves leading whitespace):"
+                }
+
+                code c2 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    message = <<EOF
+                      Dear user,
+                      Welcome to WCL.
+                    EOF
+                    WCL
+                }
+
+                paragraph p5 {
+                    content = "Indented heredoc (<code>&lt;&lt;-</code>): strips the leading whitespace common to all lines, based on the closing delimiter's indentation:"
+                }
+
+                code c3 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    message = <<-EOF
+                      Dear user,
+                      Welcome to WCL.
+                      EOF
+                    WCL
+                }
+
+                paragraph p6 {
+                    content = "Raw heredoc (<code>&lt;&lt;'EOF'</code>): disables <code>" + D + "{...}</code> interpolation. The content is taken exactly as-is:"
+                }
+
+                code c4 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    template = <<'EOF'
+                      Use ${variable} syntax in your templates.
+                    EOF
+                    WCL
+                }
+
+                heading h3_i64 {
+                    level = 3
+                    content = "i64"
+                }
+
+                paragraph p7 {
+                    content = "Integer literals support several bases and underscore separators for readability:"
+                }
+
+                code c5 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    decimal   = 1000000
+                    hex       = 0xFF
+                    octal     = 0o755
+                    binary    = 0b1010_1010
+                    separated = 1_000_000
+                    negative  = -42
+                    WCL
+                }
+
+                heading h3_f64 {
+                    level = 3
+                    content = "f64"
+                }
+
+                paragraph p8 {
+                    content = "Floating-point literals support decimal and scientific notation:"
+                }
+
+                code c6 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    pi         = 3.14159
+                    small      = 1.5e-3
+                    large      = 2.998e8
+                    negative   = -0.5
+                    WCL
+                }
+
+                heading h3_bool {
+                    level = 3
+                    content = "bool"
+                }
+
+                code c7 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    enabled  = true
+                    disabled = false
+                    WCL
+                }
+
+                heading h3_null {
+                    level = 3
+                    content = "null"
+                }
+
+                code c8 {
+                    language = "wcl"
+                    content = "optional_field = null"
+                }
+
+                heading h3_identifier {
+                    level = 3
+                    content = "identifier"
+                }
+
+                paragraph p9 {
+                    content = "Bare identifiers (without quotes) are used in certain contexts such as schema type names and query selectors. They are distinct from strings at the type level."
+                }
+
+                heading h2_composite {
+                    level = 2
+                    content = "Composite Types"
+                }
+
+                heading h3_list {
+                    level = 3
+                    content = "list(T)"
+                }
+
+                paragraph p10 {
+                    content = "An ordered collection of values of type <code>T</code>. List literals use <code>[...]</code> with comma-separated elements. Trailing commas are allowed."
+                }
+
+                code c9 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    ports    = [8080, 8081, 8082]
+                    names    = ["alice", "bob", "carol",]   // trailing comma OK
+                    mixed    = [1, "two", true]             // list(any)
+                    nested   = [[1, 2], [3, 4]]             // list(list(i64))
+                    WCL
+                }
+
+                heading h3_map {
+                    level = 3
+                    content = "map(K, V)"
+                }
+
+                paragraph p11 {
+                    content = "An ordered map from keys of type <code>K</code> to values of type <code>V</code>. Map literals use <code>{ key: value, key2: value2 }</code> syntax:"
+                }
+
+                code c10 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    env_vars = {
+                      HOST:  "0.0.0.0",
+                      PORT:  "8080",
+                      DEBUG: "false",
+                    }
+
+                    scores = {
+                      alice: 95,
+                      bob:   87,
+                    }
+                    WCL
+                }
+
+                paragraph p12 {
+                    content = "Map keys are identifiers in literal syntax. When a key needs to be a computed value or contain special characters, use the <code>map()</code> built-in function."
+                }
+
+                heading h3_set {
+                    level = 3
+                    content = "set(T)"
+                }
+
+                paragraph p13 {
+                    content = "An unordered collection of unique values of type <code>T</code>. Sets are produced by the <code>set()</code> function and certain query operations; there is no dedicated set literal syntax."
+                }
+
+                code c11 {
+                    language = "wcl"
+                    content = "unique_ports = set([8080, 8080, 9090])  // {8080, 9090}"
+                }
+
+                heading h2_special {
+                    level = 2
+                    content = "Special Types"
+                }
+
+                heading h3_ref {
+                    level = 3
+                    content = "ref(schema)"
+                }
+
+                paragraph p14 {
+                    content = "A typed reference to another block by its inline ID. Used to create cross-block relationships validated by the schema system:"
+                }
+
+                code c12 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    database db-primary { host = "db.internal" }
+
+                    connection {
+                      target = ref(db-primary)
+                    }
+                    WCL
+                }
+
+                heading h3_any {
+                    level = 3
+                    content = "any"
+                }
+
+                paragraph p15 {
+                    content = "Accepts any value regardless of type. Used in schemas to opt out of type checking for a specific field, and returned by queries that mix types."
+                }
+
+                heading h3_union {
+                    level = 3
+                    content = "union(T1, T2, ...)"
+                }
+
+                paragraph p16 {
+                    content = "Accepts a value that matches any of the listed types. Declared in schemas:"
+                }
+
+                code c13 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    schema "flex_port" {
+                      port: union(i64, string)
+                    }
+                    WCL
+                }
+
+                heading h3_function {
+                    level = 3
+                    content = "function (internal)"
+                }
+
+                paragraph p17 {
+                    content = "The type of lambda expressions and built-in functions. It cannot be stored in an attribute or returned from the evaluator — it exists only during evaluation for use in higher-order functions like <code>map()</code>, <code>filter()</code>, and <code>sort_by()</code>."
+                }
+
+                heading h2_coercion {
+                    level = 2
+                    content = "Type Coercion"
+                }
+
+                paragraph p18 {
+                    content = "WCL is strictly typed. Implicit coercions are intentionally minimal:"
+                }
+
+                data_table t_implicit {
+                    caption = "Implicit Coercions"
+                    rows = [
+                        { from = "i64", to = "f64", condition = "In arithmetic expressions involving floats" }
+                    ]
+                }
+
+                paragraph p19 {
+                    content = "All other conversions require explicit function calls:"
+                }
+
+                data_table t_explicit {
+                    caption = "Explicit Conversion Functions"
+                    rows = [
+                        { function = "to_string(v)", converts_to = "string", example = "to_string(42) -> \"42\"" },
+                        { function = "to_int(v)", converts_to = "i64", example = "to_int(\"42\") -> 42" },
+                        { function = "to_float(v)", converts_to = "f64", example = "to_float(\"3.14\") -> 3.14" },
+                        { function = "to_bool(v)", converts_to = "bool", example = "to_bool(0) -> false" }
+                    ]
+                }
+
+                paragraph p20 {
+                    content = "Attempting an invalid coercion (for example <code>to_int(\"hello\")</code>) produces a runtime error."
+                }
+
+                heading h2_schema_types {
+                    level = 2
+                    content = "Type Names in Schemas"
+                }
+
+                paragraph p21 {
+                    content = "When writing schema definitions, type names use the following syntax:"
+                }
+
+                code c14 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    schema "server_config" {
+                      host:    string
+                      port:    i64
+                      enabled: bool
+                      tags:    list(string)
+                      meta:    map(string, any)
+                      addr:    union(string, null)
+                    }
+                    WCL
+                }
+
+                paragraph p22 {
+                    content = "See " + link("Schemas", "guide-schemas.html") + " for the complete schema language."
+                }
+            }
+        }
+    }
+}

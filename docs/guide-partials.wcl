@@ -1,0 +1,304 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
+
+page guide_partials {
+    section = "wcl_docs.guide.partials"
+    title = "Partial Declarations"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Partial Declarations"
+                }
+
+                paragraph p1 {
+                    content = "Partials allow a single logical block to be defined across multiple fragments — in the same file or spread across imported files. All fragments are merged into one complete block before evaluation proceeds."
+                }
+
+                heading h2_syntax {
+                    level = 2
+                    content = "Basic Syntax"
+                }
+
+                code c1 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    partial service svc-api "api-service" {
+                        port = 8080
+                    }
+
+                    partial service svc-api "api-service" {
+                        env = "production"
+                    }
+                    WCL
+                }
+
+                paragraph p2 {
+                    content = "After merging, the result is equivalent to:"
+                }
+
+                code c2 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    service svc-api "api-service" {
+                        port = 8080
+                        env  = "production"
+                    }
+                    WCL
+                }
+
+                paragraph p3 {
+                    content = "Rules:"
+                }
+
+                paragraph p4 {
+                    content = "<ul>" +
+                        "<li>Every fragment sharing a type and ID must be marked <code>partial</code>. A non-partial block with the same type/ID as a partial fragment is an error.</li>" +
+                        "<li>All fragments must have identical inline IDs.</li>" +
+                        "<li>The merged block is placed at the position of the " + bold("first") + " fragment encountered.</li>" +
+                        "</ul>"
+                }
+
+                heading h2_attr_merge {
+                    level = 2
+                    content = "Attribute Merge Rules"
+                }
+
+                paragraph p5 {
+                    content = "By default, WCL uses " + bold("strict") + " conflict mode: if two fragments both define the same attribute, the merge fails with an error. This is the safest default — it catches accidental duplication."
+                }
+
+                code c3 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    partial service svc-api "api-service" { port = 8080 }
+                    partial service svc-api "api-service" { port = 9090 }  // Error: duplicate attribute 'port'
+                    WCL
+                }
+
+                paragraph p6 {
+                    content = bold("Last-wins mode") + " relaxes this: the last fragment's value for a given attribute wins. Enable it by applying <code>@merge_strategy(\"last_wins\")</code> to the fragments, or by configuring <code>ConflictMode::LastWins</code> programmatically:"
+                }
+
+                code c4 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    partial service svc-api "api-service" @merge_strategy("last_wins") {
+                        port    = 8080
+                        timeout = 30
+                    }
+
+                    partial service svc-api "api-service" @merge_strategy("last_wins") {
+                        port = 9090   // overrides the first fragment's value
+                    }
+                    WCL
+                }
+
+                heading h2_child_merge {
+                    level = 2
+                    content = "Child Block Merging"
+                }
+
+                paragraph p7 {
+                    content = "Child blocks nested inside partial fragments are merged recursively:"
+                }
+
+                paragraph p8 {
+                    content = "<ul>" +
+                        "<li>Child blocks " + bold("with an ID") + " are matched by (type, ID) and merged by the same rules.</li>" +
+                        "<li>Child blocks " + bold("without an ID") + " are appended in order.</li>" +
+                        "</ul>"
+                }
+
+                code c5 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    partial service svc-api "api-service" {
+                        endpoint ep-health "/health" {
+                            method = "GET"
+                        }
+                    }
+
+                    partial service svc-api "api-service" {
+                        endpoint ep-health "/health" {
+                            timeout = 5
+                        }
+                        endpoint "/metrics" {
+                            method = "GET"
+                        }
+                    }
+                    WCL
+                }
+
+                paragraph p9 {
+                    content = "Merged result has <code>ep-health</code> with both <code>method</code> and <code>timeout</code>, plus the anonymous <code>/metrics</code> endpoint appended."
+                }
+
+                heading h2_decorator_merge {
+                    level = 2
+                    content = "Decorator Merging"
+                }
+
+                paragraph p10 {
+                    content = "Decorators from all fragments are combined. Duplicate decorator names are deduplicated — if the same decorator appears on multiple fragments, it is included once. The order follows fragment order."
+                }
+
+                code c6 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    partial service svc-api "api-service" @doc("Main API") { ... }
+                    partial service svc-api "api-service" @validate { ... }
+                    // Merged block has both @doc and @validate
+                    WCL
+                }
+
+                heading h2_ordering {
+                    level = 2
+                    content = "Explicit Ordering: @merge_order"
+                }
+
+                paragraph p11 {
+                    content = "By default, fragments are merged in the order they are encountered (depth-first import order, then source order). Use <code>@merge_order(n)</code> to assign an explicit integer priority. Lower numbers sort first."
+                }
+
+                code c7 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    partial service svc-api "api-service" @merge_order(10) {
+                        port = 8080
+                    }
+
+                    partial service svc-api "api-service" @merge_order(1) {
+                        // This fragment is applied first despite appearing second
+                        log_level = "debug"
+                    }
+                    WCL
+                }
+
+                paragraph p12 {
+                    content = "This is useful when the merge order would otherwise depend on import order, which can be fragile."
+                }
+
+                heading h2_requires {
+                    level = 2
+                    content = "Documenting Dependencies: @partial_requires"
+                }
+
+                paragraph p13 {
+                    content = "<code>@partial_requires([\"field1\", \"field2\"])</code> is a documentation decorator that declares which attributes a fragment expects another fragment to supply. It has no effect on merge behaviour but is surfaced by the LSP and validation tooling to help detect incomplete configurations:"
+                }
+
+                code c8 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    partial service svc-api "api-service" @partial_requires(["port", "env"]) {
+                        // This fragment uses port and env but does not define them.
+                        // Another fragment must supply them.
+                        healthcheck_url = "http://localhost:" + str(port) + "/health"
+                    }
+                    WCL
+                }
+
+                paragraph p14 {
+                    content = "If the merged block does not contain all fields listed in <code>@partial_requires</code>, a warning is emitted."
+                }
+
+                heading h2_cross_file {
+                    level = 2
+                    content = "Cross-File Composition"
+                }
+
+                paragraph p15 {
+                    content = "The most common use of partials is assembling a block from fragments in separate files:"
+                }
+
+                code c9 {
+                    language = "text"
+                    content = <<-'TXT'
+                    services/
+                      api-base.wcl      — core attributes
+                      api-tls.wcl       — TLS configuration
+                      api-observability.wcl — metrics and tracing
+                    TXT
+                }
+
+                code c10 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    // api-base.wcl
+                    partial service svc-api "api-service" {
+                        port    = 8443
+                        env     = "production"
+                        workers = 4
+                    }
+                    WCL
+                }
+
+                code c11 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    // api-tls.wcl
+                    partial service svc-api "api-service" {
+                        tls {
+                            cert = import_raw("./certs/server.pem")
+                            key  = import_raw("./certs/server.key")
+                        }
+                    }
+                    WCL
+                }
+
+                code c12 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    // api-observability.wcl
+                    partial service svc-api "api-service" {
+                        metrics {
+                            path = "/metrics"
+                            port = 9090
+                        }
+                        tracing {
+                            endpoint = "http://jaeger:14268/api/traces"
+                            sampling = 0.1
+                        }
+                    }
+                    WCL
+                }
+
+                code c13 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    // main.wcl
+                    import "./services/api-base.wcl"
+                    import "./services/api-tls.wcl"
+                    import "./services/api-observability.wcl"
+                    WCL
+                }
+
+                paragraph p16 {
+                    content = "The final document contains a single, fully merged <code>svc-api</code> block."
+                }
+
+                heading h2_conflict_ref {
+                    level = 2
+                    content = "ConflictMode Reference"
+                }
+
+                data_table t1 {
+                    caption = "ConflictMode Reference"
+                    rows = [
+                        { mode = "ConflictMode::Strict (default)", behaviour = "Error — duplicate attributes are forbidden" },
+                        { mode = "ConflictMode::LastWins", behaviour = "The value from the last fragment in merge order is kept" }
+                    ]
+                }
+
+                paragraph p17 {
+                    content = "Conflict mode is applied per-merge operation. When using the Rust API, pass <code>ConflictMode</code> to the merge phase options. When using decorators, <code>@merge_strategy(\"last_wins\")</code> activates last-wins mode on that block."
+                }
+            }
+        }
+    }
+}

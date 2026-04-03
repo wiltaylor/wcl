@@ -1,0 +1,253 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
+
+page if_else {
+    section = "wcl_docs.guide.control_flow.if_else"
+    title = "If/Else Conditionals"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "If/Else Conditionals"
+                }
+
+                paragraph p1 {
+                    content = "If/else conditionals let you include or exclude blocks, attributes, and children based on boolean expressions. Like for loops, they are declarative: the conditional is fully resolved during the control flow expansion phase, and only the matching branch appears in the evaluated document."
+                }
+
+                heading h2_syntax {
+                    level = 2
+                    content = "Syntax"
+                }
+
+                code c1 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    if expression {
+                      // branch body
+                    } else if expression {
+                      // branch body
+                    } else {
+                      // fallback body
+                    }
+                    WCL
+                }
+
+                paragraph p2 {
+                    content = "Any number of <code>else if</code> clauses may be chained. The <code>else</code> clause is optional. All branches are syntactically identical to block bodies and can contain any WCL statements."
+                }
+
+                heading h2_bool {
+                    level = 2
+                    content = "Conditions Must Be Boolean"
+                }
+
+                paragraph p3 {
+                    content = "WCL does not perform implicit coercion on condition expressions. The expression must evaluate to a <code>bool</code>. Passing a non-bool value is a compile-time error:"
+                }
+
+                code c2 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let count = 5
+
+                    // Correct
+                    if count > 0 { ... }
+
+                    // Error: count is an int, not a bool
+                    if count { ... }
+                    WCL
+                }
+
+                heading h2_inside_blocks {
+                    level = 2
+                    content = "Conditionals Inside Block Bodies"
+                }
+
+                paragraph p4 {
+                    content = "The most common use of <code>if/else</code> is to selectively include attributes or child blocks inside a block body:"
+                }
+
+                code c3 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    service api {
+                      port: 8080
+
+                      if env == "prod" {
+                        replicas: 3
+                        tls: true
+                      } else {
+                        replicas: 1
+                        tls: false
+                      }
+                    }
+                    WCL
+                }
+
+                heading h2_inline {
+                    level = 2
+                    content = "Inline Attribute Values"
+                }
+
+                paragraph p5 {
+                    content = "<code>if/else</code> can appear as an expression to select between two values:"
+                }
+
+                code c4 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    service api {
+                      replicas: if env == "prod" { 3 } else { 1 }
+                      log_level: if debug { "debug" } else { "info" }
+                    }
+                    WCL
+                }
+
+                paragraph p6 {
+                    content = "When used as an expression, each branch must contain exactly one value expression."
+                }
+
+                heading h2_queries {
+                    level = 2
+                    content = "Using Queries as Conditions"
+                }
+
+                paragraph p7 {
+                    content = "The result of <code>has()</code> or a boolean query expression can drive a conditional:"
+                }
+
+                code c5 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    for svc in query(service) {
+                      if has(svc, "port") {
+                        ingress ingress-${svc.name} {
+                          target: svc.name
+                          port: svc.port
+                        }
+                      }
+                    }
+                    WCL
+                }
+
+                code c6 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    if has_decorator(myblock, "public") {
+                      expose myblock {
+                        external: true
+                      }
+                    }
+                    WCL
+                }
+
+                heading h2_chained {
+                    level = 2
+                    content = "Chained Conditions"
+                }
+
+                code c7 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let tier = "gold"
+
+                    config limits {
+                      max_requests: if tier == "gold" {
+                        10000
+                      } else if tier == "silver" {
+                        5000
+                      } else {
+                        1000
+                      }
+                    }
+                    WCL
+                }
+
+                heading h2_composition {
+                    level = 2
+                    content = "Composition with For Loops"
+                }
+
+                paragraph p8 {
+                    content = "<code>if/else</code> and <code>for</code> loops compose freely. A conditional can appear inside a for loop body, and a for loop can appear inside a conditional branch:"
+                }
+
+                code c8 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    for env in ["staging", "prod"] {
+                      service web-${env} {
+                        replicas: if env == "prod" { 3 } else { 1 }
+
+                        if env == "prod" {
+                          alerts {
+                            pagerduty: true
+                          }
+                        }
+                      }
+                    }
+                    WCL
+                }
+
+                code c9 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    if enable_workers {
+                      for i in range(0, worker_count) {
+                        worker worker-${i} {
+                          id: i
+                        }
+                      }
+                    }
+                    WCL
+                }
+
+                heading h2_discarded {
+                    level = 2
+                    content = "Discarded Branches Are Not Validated"
+                }
+
+                paragraph p9 {
+                    content = "Only the matching branch is included in the expanded AST. The other branches are discarded before evaluation and schema validation. This means a discarded branch can reference names or produce structures that would otherwise be invalid, as long as the condition that guards it is false:"
+                }
+
+                code c10 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    if false {
+                      // This block is never evaluated, so undefined_var is not an error
+                      item x { value: undefined_var }
+                    }
+                    WCL
+                }
+
+                paragraph p10 {
+                    content = "Use this carefully — relying on discarded branches to suppress errors can make configs harder to understand."
+                }
+
+                heading h2_nesting {
+                    level = 2
+                    content = "Nesting Depth"
+                }
+
+                paragraph p11 {
+                    content = "If/else conditionals count toward the global nesting depth limit (default 32), shared with for loops."
+                }
+
+                heading h2_expansion {
+                    level = 2
+                    content = "Expansion Phase"
+                }
+
+                paragraph p12 {
+                    content = "Conditionals are expanded during " + bold("phase 5: control flow expansion") + ", after macro expansion. At the end of this phase the AST contains only the winning branch's content and no <code>if</code>/<code>else</code> nodes remain."
+                }
+            }
+        }
+    }
+}

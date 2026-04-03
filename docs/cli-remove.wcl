@@ -1,0 +1,111 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, data_table, callout, bold, italic, link}
+
+page cli_remove {
+    section = "wcl_docs.cli.cli_remove"
+    title = "wcl remove"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "wcl remove"
+                }
+
+                paragraph p1 {
+                    content = "Remove a block or attribute from a WCL document."
+                }
+
+                heading h2_usage {
+                    level = 2
+                    content = "Usage"
+                }
+
+                code c1 {
+                    language = "bash"
+                    content = "wcl remove <file> <path>"
+                }
+
+                heading h2_description {
+                    level = 2
+                    content = "Description"
+                }
+
+                paragraph p2 {
+                    content = "<code>wcl remove</code> deletes a block or attribute identified by <code>&lt;path&gt;</code> from the given document. The file is modified in place. The surrounding content, including comments and blank lines adjacent to the removed item, is cleaned up."
+                }
+
+                heading h2_path_syntax {
+                    level = 2
+                    content = "Path Syntax"
+                }
+
+                paragraph p3 {
+                    content = "The path syntax determines whether a block or an attribute is removed."
+                }
+
+                data_table t1 {
+                    caption = "Path Syntax"
+                    rows = [
+                        { path = "service#svc-old", what_is_removed = "The entire service block with ID svc-old" },
+                        { path = "service#svc-api.debug", what_is_removed = "The debug attribute inside service#svc-api" },
+                        { path = "database#primary.port", what_is_removed = "The port attribute inside database#primary" }
+                    ]
+                }
+
+                paragraph p4 {
+                    content = "A path with no trailing <code>.attribute</code> removes the whole block. A path with a trailing <code>.attribute</code> removes only that attribute from the block."
+                }
+
+                heading h2_examples {
+                    level = 2
+                    content = "Examples"
+                }
+
+                paragraph p5 {
+                    content = "Remove an entire block:"
+                }
+
+                code c2 {
+                    language = "bash"
+                    content = "wcl remove config.wcl service#svc-old"
+                }
+
+                paragraph p6 {
+                    content = "Remove a single attribute from a block:"
+                }
+
+                code c3 {
+                    language = "bash"
+                    content = "wcl remove config.wcl service#svc-api.debug"
+                }
+
+                paragraph p7 {
+                    content = "Remove a nested attribute:"
+                }
+
+                code c4 {
+                    language = "bash"
+                    content = "wcl remove config.wcl database#primary.tls.cert_path"
+                }
+
+                heading h2_notes {
+                    level = 2
+                    content = "Notes"
+                }
+
+                paragraph p8 {
+                    content = "<ul>" +
+                        "<li>Removing a block removes all of its contents, including nested blocks and attributes.</li>" +
+                        "<li>If the path does not exist in the document, an error is reported and the file is not modified.</li>" +
+                        "<li>The file is modified in place; no backup is created automatically.</li>" +
+                        "<li>To remove a partial block, all partial declarations sharing the same type and ID must be addressed individually.</li>" +
+                        "</ul>"
+                }
+            }
+        }
+    }
+}

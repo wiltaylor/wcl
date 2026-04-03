@@ -1,0 +1,321 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
+
+let D = "$"
+
+page guide_string_interpolation {
+    section = "wcl_docs.guide.string_interpolation"
+    title = "String Interpolation"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "String Interpolation"
+                }
+
+                paragraph p1 {
+                    content = "String interpolation lets you embed expressions directly inside string literals. The interpolated value is converted to a string and spliced into the surrounding text at runtime."
+                }
+
+                heading h2_syntax {
+                    level = 2
+                    content = "Syntax"
+                }
+
+                paragraph p2 {
+                    content = "Use <code>" + D + "{expression}</code> inside a double-quoted string or a heredoc:"
+                }
+
+                code c1 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    name = "api-gateway"
+                    port = 8080
+
+                    url = "http://${name}:${port}/health"
+                    // -> "http://api-gateway:8080/health"
+                    WCL
+                }
+
+                paragraph p3 {
+                    content = "The expression inside <code>" + D + "{...}</code> can be any valid WCL expression."
+                }
+
+                heading h2_types {
+                    level = 2
+                    content = "Supported Expression Types"
+                }
+
+                heading h3_varrefs {
+                    level = 3
+                    content = "Variable References"
+                }
+
+                code c2 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let env = "production"
+                    label = "env:${env}"
+                    // -> "env:production"
+                    WCL
+                }
+
+                heading h3_arithmetic {
+                    level = 3
+                    content = "Arithmetic"
+                }
+
+                code c3 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let base = 8000
+                    addr = "port ${base + 80} is in use"
+                    // -> "port 8080 is in use"
+                    WCL
+                }
+
+                heading h3_functions {
+                    level = 3
+                    content = "Function Calls"
+                }
+
+                code c4 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    name = "my-service"
+                    display = "Service: ${upper(name)}"
+                    // -> "Service: MY-SERVICE"
+
+                    items = ["a", "b", "c"]
+                    summary = "Items: ${join(", ", items)}"
+                    // -> "Items: a, b, c"
+                    WCL
+                }
+
+                heading h3_ternary {
+                    level = 3
+                    content = "Ternary Expressions"
+                }
+
+                code c5 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    debug = true
+                    mode = "Running in ${debug ? "debug" : "release"} mode"
+                    // -> "Running in debug mode"
+                    WCL
+                }
+
+                heading h3_member {
+                    level = 3
+                    content = "Member Access"
+                }
+
+                code c6 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    config {
+                      version = "2.1.0"
+                    }
+
+                    banner = "WCL config v${config.version}"
+                    // -> "WCL config v2.1.0"
+                    WCL
+                }
+
+                heading h3_nested {
+                    level = 3
+                    content = "Nested Interpolation"
+                }
+
+                paragraph p4 {
+                    content = "Interpolations can be nested when the inner expression itself contains a string with interpolation:"
+                }
+
+                code c7 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let prefix = "api"
+                    let version = 2
+                    path = "/v${version}/${prefix}-${to_string(version * 10)}"
+                    // -> "/v2/api-20"
+                    WCL
+                }
+
+                heading h2_coercion {
+                    level = 2
+                    content = "Type Coercion in Interpolation"
+                }
+
+                paragraph p5 {
+                    content = "When an interpolated expression evaluates to a non-string type, it is automatically converted:"
+                }
+
+                data_table t1 {
+                    caption = "Interpolation Type Coercion"
+                    rows = [
+                        { type = "string", conversion_rule = "Used as-is", example_result = "\"hello\" -> hello" },
+                        { type = "int", conversion_rule = "Decimal representation", example_result = "42 -> 42" },
+                        { type = "float", conversion_rule = "Decimal representation", example_result = "3.14 -> 3.14" },
+                        { type = "bool", conversion_rule = "true or false", example_result = "true -> true" },
+                        { type = "null", conversion_rule = "The literal string \"null\"", example_result = "null -> null" },
+                        { type = "identifier", conversion_rule = "The identifier's name", example_result = "foo -> foo" },
+                        { type = "list", conversion_rule = "Runtime error — not auto-converted", example_result = "" },
+                        { type = "map", conversion_rule = "Runtime error — not auto-converted", example_result = "" },
+                        { type = "function", conversion_rule = "Runtime error — not auto-converted", example_result = "" }
+                    ]
+                }
+
+                paragraph p6 {
+                    content = "To embed a list or map in a string, use an explicit conversion function such as <code>join()</code> or <code>to_string()</code>."
+                }
+
+                heading h2_escaping {
+                    level = 2
+                    content = "Escaping"
+                }
+
+                paragraph p7 {
+                    content = "To include a literal <code>" + D + "{</code> in a string without triggering interpolation, escape the dollar sign with a backslash:"
+                }
+
+                code c8 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    template = "Use \${variable} in your templates."
+                    // -> "Use ${variable} in your templates."
+                    WCL
+                }
+
+                heading h2_heredocs {
+                    level = 2
+                    content = "Interpolation in Heredocs"
+                }
+
+                paragraph p8 {
+                    content = "Standard and indented heredocs support interpolation. Raw heredocs (using single-quoted delimiters) do not."
+                }
+
+                paragraph p9 {
+                    content = "Standard heredoc with interpolation:"
+                }
+
+                code c9 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let host = "db.internal"
+                    let port = 5432
+
+                    dsn = <<EOF
+                    postgresql://${host}:${port}/mydb
+                    EOF
+                    WCL
+                }
+
+                paragraph p10 {
+                    content = "Indented heredoc with interpolation:"
+                }
+
+                code c10 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let name = "my-service"
+                    let version = "1.0.0"
+
+                    banner = <<-EOF
+                      Service: ${name}
+                      Version: ${version}
+                      EOF
+                    WCL
+                }
+
+                paragraph p11 {
+                    content = "Raw heredoc (interpolation disabled):"
+                }
+
+                code c11 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    example = <<'EOF'
+                      Use ${variable} to embed values at runtime.
+                    EOF
+                    // -> "  Use ${variable} to embed values at runtime.\n"
+                    WCL
+                }
+
+                heading h2_practical {
+                    level = 2
+                    content = "Practical Examples"
+                }
+
+                heading h3_urls {
+                    level = 3
+                    content = "Building URLs"
+                }
+
+                code c12 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let scheme  = "https"
+                    let host    = "api.example.com"
+                    let version = 2
+
+                    base_url     = "${scheme}://${host}/v${version}"
+                    health_check = "${base_url}/health"
+                    WCL
+                }
+
+                heading h3_log {
+                    level = 3
+                    content = "Log Format Strings"
+                }
+
+                code c13 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let service = "auth"
+                    let level   = "INFO"
+
+                    log_prefix = "[${upper(level)}] ${service}:"
+                    WCL
+                }
+
+                heading h3_paths {
+                    level = 3
+                    content = "Configuration File Paths"
+                }
+
+                code c14 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let app_name = "my-app"
+                    let env      = "production"
+
+                    config_path = "/etc/${app_name}/${env}/config.yaml"
+                    log_path    = "/var/log/${app_name}/${env}.log"
+                    WCL
+                }
+
+                heading h3_labels {
+                    level = 3
+                    content = "Dynamic Labels"
+                }
+
+                code c15 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let region  = "us-east-1"
+                    let zone    = "a"
+
+                    availability_zone = "${region}${zone}"       // "us-east-1a"
+                    resource_tag      = "zone:${region}-${zone}" // "zone:us-east-1-a"
+                    WCL
+                }
+            }
+        }
+    }
+}

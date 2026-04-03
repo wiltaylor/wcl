@@ -1,0 +1,174 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, data_table, callout, bold, italic, link}
+
+page cli_query {
+    section = "wcl_docs.cli.cli_query"
+    title = "wcl query"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "wcl query"
+                }
+
+                paragraph p1 {
+                    content = "Execute a query expression against a WCL document."
+                }
+
+                heading h2_usage {
+                    level = 2
+                    content = "Usage"
+                }
+
+                code c1 {
+                    language = "bash"
+                    content = <<-'BASH'
+                    wcl query <file> <query> [options]
+                    wcl query --recursive <dir> <query> [options]
+                    BASH
+                }
+
+                heading h2_options {
+                    level = 2
+                    content = "Options"
+                }
+
+                data_table t1 {
+                    caption = "Options"
+                    rows = [
+                        { flag = "--format <fmt>", description = "Output format: text, json, csv, or wcl (default: text)" },
+                        { flag = "--count", description = "Print the number of matching results instead of the results themselves" },
+                        { flag = "--recursive", description = "Search recursively across all .wcl files in a directory" }
+                    ]
+                }
+
+                heading h2_description {
+                    level = 2
+                    content = "Description"
+                }
+
+                paragraph p2 {
+                    content = "<code>wcl query</code> evaluates a query pipeline against the resolved document and prints matching results. The query syntax is the same as the inline <code>query(...)</code> expression in WCL source."
+                }
+
+                paragraph p3 {
+                    content = "A query pipeline is a selector followed by zero or more filters separated by <code>|</code>."
+                }
+
+                heading h2_selectors {
+                    level = 2
+                    content = "Selectors"
+                }
+
+                data_table t2 {
+                    caption = "Selectors"
+                    rows = [
+                        { syntax = "service", selects = "All blocks of type service" },
+                        { syntax = "service#svc-api", selects = "Block with type service and ID svc-api" },
+                        { syntax = "..service", selects = "All service blocks at any depth" },
+                        { syntax = "*", selects = "All top-level items" },
+                        { syntax = ".", selects = "The root document" }
+                    ]
+                }
+
+                heading h2_filters {
+                    level = 2
+                    content = "Filters"
+                }
+
+                data_table t3 {
+                    caption = "Filters"
+                    rows = [
+                        { syntax = ".port", meaning = "Has attribute port" },
+                        { syntax = ".port == 8080", meaning = "Attribute port equals 8080" },
+                        { syntax = ".name =~ \"api.*\"", meaning = "Attribute name matches regex" },
+                        { syntax = "has(.port)", meaning = "Has attribute port" },
+                        { syntax = "has(@deprecated)", meaning = "Has decorator @deprecated" },
+                        { syntax = "@tag.env == \"prod\"", meaning = "Decorator @tag has named arg env equal to \"prod\"" }
+                    ]
+                }
+
+                heading h2_examples {
+                    level = 2
+                    content = "Examples"
+                }
+
+                paragraph p4 {
+                    content = "Select all services:"
+                }
+
+                code c2 {
+                    language = "bash"
+                    content = "wcl query config.wcl 'service'"
+                }
+
+                paragraph p5 {
+                    content = "Select a specific block by ID:"
+                }
+
+                code c3 {
+                    language = "bash"
+                    content = "wcl query config.wcl 'service#svc-api'"
+                }
+
+                paragraph p6 {
+                    content = "Filter by attribute value:"
+                }
+
+                code c4 {
+                    language = "bash"
+                    content = "wcl query config.wcl 'service | .port == 8080'"
+                }
+
+                paragraph p7 {
+                    content = "Filter by regex match:"
+                }
+
+                code c5 {
+                    language = "bash"
+                    content = "wcl query config.wcl 'service | .name =~ \".*-api\"'"
+                }
+
+                paragraph p8 {
+                    content = "Count matching blocks:"
+                }
+
+                code c6 {
+                    language = "bash"
+                    content = "wcl query config.wcl 'service' --count"
+                }
+
+                paragraph p9 {
+                    content = "Output as JSON:"
+                }
+
+                code c7 {
+                    language = "bash"
+                    content = "wcl query config.wcl 'service | .port > 1024' --format json"
+                }
+
+                paragraph p10 {
+                    content = "Query recursively across a directory:"
+                }
+
+                code c8 {
+                    language = "bash"
+                    content = "wcl query --recursive ./configs 'service | has(@deprecated)'"
+                }
+
+                paragraph p11 {
+                    content = "Filter by decorator argument:"
+                }
+
+                code c9 {
+                    language = "bash"
+                    content = "wcl query config.wcl 'service | @tag.env == \"prod\"'"
+                }
+            }
+        }
+    }
+}

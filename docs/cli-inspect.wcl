@@ -1,0 +1,148 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, data_table, callout, bold, italic, link}
+
+page cli_inspect {
+    section = "wcl_docs.cli.cli_inspect"
+    title = "wcl inspect"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "wcl inspect"
+                }
+
+                paragraph p1 {
+                    content = "Inspect the internal representation of a WCL document."
+                }
+
+                heading h2_usage {
+                    level = 2
+                    content = "Usage"
+                }
+
+                code c1 {
+                    language = "bash"
+                    content = "wcl inspect <file> [options]"
+                }
+
+                heading h2_options {
+                    level = 2
+                    content = "Options"
+                }
+
+                data_table t1 {
+                    caption = "Options"
+                    rows = [
+                        { flag = "--ast", description = "Print the raw Abstract Syntax Tree" },
+                        { flag = "--hir", description = "Print the resolved High-level Intermediate Representation" },
+                        { flag = "--scopes", description = "Print the scope tree" },
+                        { flag = "--deps", description = "Print the dependency graph" }
+                    ]
+                }
+
+                heading h2_description {
+                    level = 2
+                    content = "Description"
+                }
+
+                paragraph p2 {
+                    content = "<code>wcl inspect</code> exposes the internal structure that WCL builds when processing a document. It is primarily useful for debugging WCL documents, understanding how the pipeline transforms source, and for tooling authors."
+                }
+
+                paragraph p3 {
+                    content = "Multiple flags may be combined. If no flag is given, <code>--hir</code> is used by default."
+                }
+
+                heading h3_ast {
+                    level = 3
+                    content = "--ast"
+                }
+
+                paragraph p4 {
+                    content = "Prints the raw parse tree produced by the parser, before any macro expansion, import resolution, or evaluation. Spans and token positions are included."
+                }
+
+                heading h3_hir {
+                    level = 3
+                    content = "--hir"
+                }
+
+                paragraph p5 {
+                    content = "Prints the fully resolved document after all pipeline phases complete. This corresponds to the same data that <code>wcl eval</code> serializes, but in WCL's internal tree format rather than a target serialization format."
+                }
+
+                heading h3_scopes {
+                    level = 3
+                    content = "--scopes"
+                }
+
+                paragraph p6 {
+                    content = "Prints the scope tree showing each scope, the names it defines, and their resolved values. Useful for understanding name resolution and spotting shadowing."
+                }
+
+                heading h3_deps {
+                    level = 3
+                    content = "--deps"
+                }
+
+                paragraph p7 {
+                    content = "Prints the dependency graph between attributes and let bindings. Shows which names each expression depends on, and the topological evaluation order."
+                }
+
+                heading h2_examples {
+                    level = 2
+                    content = "Examples"
+                }
+
+                paragraph p8 {
+                    content = "Inspect the AST of a file:"
+                }
+
+                code c2 {
+                    language = "bash"
+                    content = "wcl inspect config.wcl --ast"
+                }
+
+                paragraph p9 {
+                    content = "Inspect the resolved HIR:"
+                }
+
+                code c3 {
+                    language = "bash"
+                    content = "wcl inspect config.wcl --hir"
+                }
+
+                paragraph p10 {
+                    content = "View the scope tree:"
+                }
+
+                code c4 {
+                    language = "bash"
+                    content = "wcl inspect config.wcl --scopes"
+                }
+
+                paragraph p11 {
+                    content = "View the dependency graph:"
+                }
+
+                code c5 {
+                    language = "bash"
+                    content = "wcl inspect config.wcl --deps"
+                }
+
+                paragraph p12 {
+                    content = "Combine multiple views:"
+                }
+
+                code c6 {
+                    language = "bash"
+                    content = "wcl inspect config.wcl --scopes --deps"
+                }
+            }
+        }
+    }
+}

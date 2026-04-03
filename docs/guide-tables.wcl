@@ -1,0 +1,626 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
+
+page guide_tables {
+    section = "wcl_docs.guide.tables"
+    title = "Data Tables"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Data Tables"
+                }
+
+                paragraph p1 {
+                    content = "WCL's <code>table</code> construct provides structured, typed tabular data inside your configuration. Tables are first-class values: they can be validated, queried, and deserialized just like any other block."
+                }
+
+                heading h2_syntax {
+                    level = 2
+                    content = "Basic Syntax"
+                }
+
+                code c1 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    table id {
+                        column_name : type
+                        another_col : type
+
+                        | value1 | value2 |
+                        | value3 | value4 |
+                    }
+                    WCL
+                }
+
+                paragraph p2 {
+                    content = "The block contains two sections in order: column declarations followed by rows. Column declarations must appear before any row."
+                }
+
+                heading h2_columns {
+                    level = 2
+                    content = "Column Declarations"
+                }
+
+                paragraph p3 {
+                    content = "Each column is declared as <code>name : type</code>. The supported types are the same primitive types used elsewhere in WCL (<code>string</code>, <code>i64</code>, <code>f64</code>, <code>bool</code>)."
+                }
+
+                paragraph p4 {
+                    content = "Columns accept the following decorators:"
+                }
+
+                data_table t_col_decorators {
+                    caption = "Column Decorators"
+                    rows = [
+                        { decorator = "@validate(expr)", purpose = "Constraint expression applied to every cell in this column" },
+                        { decorator = "@doc(\"text\")", purpose = "Human-readable description of the column" },
+                        { decorator = "@sensitive", purpose = "Marks column values as sensitive (redacted in output)" },
+                        { decorator = "@default(value)", purpose = "Fallback value when a row omits this column" }
+                    ]
+                }
+
+                code c2 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    table user_roles {
+                        username  : string  @doc("Login name")
+                        role      : string  @validate(one_of(["admin", "viewer", "editor"]))
+                        max_items : i64     @default(100)
+                        api_key   : string  @sensitive
+
+                        | "alice" | "admin"  | 500 | "key-abc" |
+                        | "bob"   | "viewer" |     | "key-xyz" |
+                    }
+                    WCL
+                }
+
+                heading h2_rows {
+                    level = 2
+                    content = "Row Syntax"
+                }
+
+                paragraph p5 {
+                    content = "Rows are written as pipe-delimited expressions:"
+                }
+
+                code c3 {
+                    language = "wcl"
+                    content = "| expr1 | expr2 | expr3 |"
+                }
+
+                paragraph p6 {
+                    content = "Each cell is a full WCL expression, so you can reference variables, call built-in functions, and perform arithmetic:"
+                }
+
+                code c4 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let base_port = 8000
+
+                    table services {
+                        name : string
+                        port : i64
+
+                        | "auth"    | base_port + 1 |
+                        | "gateway" | base_port + 2 |
+                        | "metrics" | base_port + 3 |
+                    }
+                    WCL
+                }
+
+                paragraph p7 {
+                    content = "The number of values in every row must exactly match the number of declared columns. A mismatch is a parse error."
+                }
+
+                paragraph p8 {
+                    content = "Each cell value is type-checked against its column's declared type. A type mismatch produces a validation error."
+                }
+
+                heading h2_inline_ids {
+                    level = 2
+                    content = "Inline IDs"
+                }
+
+                paragraph p9 {
+                    content = "Tables require an inline ID:"
+                }
+
+                code c5 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    table perms_main {
+                        role     : string
+                        resource : string
+                        action   : string
+                        allow    : bool
+
+                        | "admin"  | "users"   | "delete" | true  |
+                        | "viewer" | "users"   | "read"   | true  |
+                        | "viewer" | "users"   | "write"  | false |
+                    }
+                    WCL
+                }
+
+                paragraph p10 {
+                    content = "The ID <code>perms_main</code> can then be used in <code>@ref</code> decorators and query selectors such as <code>table#perms_main</code>."
+                }
+
+                heading h2_schema_ref {
+                    level = 2
+                    content = "Schema Reference"
+                }
+
+                paragraph p11 {
+                    content = "You can apply an existing schema to a table instead of declaring columns inline. This is useful when multiple tables share the same structure."
+                }
+
+                heading h3_colon {
+                    level = 3
+                    content = "Colon syntax"
+                }
+
+                code c6 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    schema "user_row" {
+                        name : string
+                        age  : i64
+                    }
+
+                    table users : user_row {
+                        | "Alice" | 30 |
+                        | "Bob"   | 25 |
+                    }
+                    WCL
+                }
+
+                heading h3_decorator {
+                    level = 3
+                    content = "Decorator syntax"
+                }
+
+                code c7 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    @schema("user_row")
+                    table users {
+                        | "Alice" | 30 |
+                        | "Bob"   | 25 |
+                    }
+                    WCL
+                }
+
+                paragraph p12 {
+                    content = "When a schema is applied, you cannot also declare inline columns. Doing so produces error E092."
+                }
+
+                heading h2_heredocs {
+                    level = 2
+                    content = "Multiline Cell Values (Heredocs)"
+                }
+
+                paragraph p13 {
+                    content = "When a table cell contains multiline text — such as documentation, scripts, or templates — use a heredoc instead of a regular string literal:"
+                }
+
+                code c8 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    table docs {
+                        title : string
+                        body  : string
+
+                        | "Getting Started" | <<-EOF
+                            Install the package:
+                            npm install wcl
+
+                            Then import it:
+                            const wcl = require("wcl")
+                            EOF
+                        |
+                        | "Configuration" | <<-EOF
+                            Create a config file and add your settings.
+                            EOF
+                        |
+                    }
+                    WCL
+                }
+
+                paragraph p14 {
+                    content = "The closing <code>|</code> for a heredoc cell goes on its own line after the heredoc delimiter."
+                }
+
+                paragraph p15 {
+                    content = "All heredoc variants work in table cells:"
+                }
+
+                data_table t_heredoc_variants {
+                    caption = "Heredoc Variants"
+                    rows = [
+                        { variant = "Standard", syntax = "<<EOF", behaviour = "Content preserved as-is" },
+                        { variant = "Indented", syntax = "<<-EOF", behaviour = "Strips leading whitespace based on closing delimiter indent" },
+                        { variant = "Raw", syntax = "<<'EOF'", behaviour = "No escape processing, no ${...} interpolation" },
+                        { variant = "Indented raw", syntax = "<<-'EOF'", behaviour = "Both indented and raw" }
+                    ]
+                }
+
+                paragraph p16 {
+                    content = "Use <code>&lt;&lt;-TAG</code> (indented) for readability — the content aligns with the surrounding table indent and leading whitespace is stripped automatically."
+                }
+
+                paragraph p17 {
+                    content = "Heredoc cells support interpolation (except in raw mode):"
+                }
+
+                code c9 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let pkg = "wcl"
+
+                    table steps {
+                        name : string
+                        cmd  : string
+
+                        | "install" | <<-EOF
+                            npm install ${pkg}
+                            EOF
+                        |
+                    }
+                    WCL
+                }
+
+                callout tip1 {
+                    icon = "info-circle"
+                    header = "Tip"
+                    color = "#3498db"
+                    content = "Put heredoc cells in the last column for the cleanest visual layout."
+                }
+
+                heading h2_csv {
+                    level = 2
+                    content = "Loading Tables from CSV"
+                }
+
+                paragraph p18 {
+                    content = "Use <code>import_table(\"path.csv\")</code> to load a CSV file as a table value."
+                }
+
+                code c10 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let acl = import_table("./acl.csv")
+                    WCL
+                }
+
+                heading h3_options {
+                    level = 3
+                    content = "Options"
+                }
+
+                paragraph p19 {
+                    content = "<code>import_table</code> accepts named arguments for fine-grained control:"
+                }
+
+                data_table t_import_options {
+                    caption = "import_table Options"
+                    rows = [
+                        { parameter = "separator", type = "string", default = "\",\"", description = "Field separator character" },
+                        { parameter = "headers", type = "bool", default = "true", description = "Whether the first row contains column headers" },
+                        { parameter = "columns", type = "list", default = "—", description = "Explicit column names (overrides headers)" }
+                    ]
+                }
+
+                code c11 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    // Tab-separated (legacy positional syntax still works)
+                    let tsv = import_table("./data.tsv", "\t")
+
+                    // Named separator argument
+                    let tsv = import_table("./data.tsv", separator="\t")
+
+                    // No header row — columns are named "0", "1", ...
+                    let raw = import_table("./data.csv", headers=false)
+
+                    // No header row with explicit column names
+                    let data = import_table("./data.csv", headers=false, columns=["name", "age"])
+                    WCL
+                }
+
+                heading h3_assignment {
+                    level = 3
+                    content = "Table assignment syntax"
+                }
+
+                paragraph p20 {
+                    content = "You can populate a table directly from a CSV file using assignment syntax:"
+                }
+
+                code c12 {
+                    language = "wcl"
+                    content = "table users = import_table(\"data.csv\")"
+                }
+
+                paragraph p21 {
+                    content = "Combine with a schema reference to validate imported data:"
+                }
+
+                code c13 {
+                    language = "wcl"
+                    content = "table users : user_row = import_table(\"data.csv\")"
+                }
+
+                paragraph p22 {
+                    content = "The first row of the CSV is treated as the column header by default. All cell values are imported as strings; apply a schema if you need typed validation."
+                }
+
+                paragraph p23 {
+                    content = "<code>import_table</code> follows the same path rules as <code>import</code>: relative paths only, resolved from the importing file, jailed to the project root."
+                }
+
+                heading h3_let_bound {
+                    level = 3
+                    content = "Let-bound Tables"
+                }
+
+                paragraph p24 {
+                    content = "You can assign an <code>import_table</code> call to a <code>let</code> binding. The table data becomes a list of row maps that can be used in expressions, for loops, and function calls:"
+                }
+
+                code c14 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let data = import_table("users.csv")
+
+                    // Iterate over rows
+                    for row in data {
+                      service ${row.name}-svc {
+                        role = row.role
+                      }
+                    }
+                    WCL
+                }
+
+                paragraph p25 {
+                    content = "Let-bound tables are not included in the serialized output (like all let bindings), but their data is available for use in expressions and control flow."
+                }
+
+                heading h2_functions {
+                    level = 2
+                    content = "Table Manipulation Functions"
+                }
+
+                paragraph p26 {
+                    content = "WCL provides built-in functions for working with table data (lists of row maps):"
+                }
+
+                heading h3_find {
+                    level = 3
+                    content = "find(table, key, value)"
+                }
+
+                paragraph p27 {
+                    content = "Returns the first row where <code>key</code> equals <code>value</code>, or <code>null</code> if not found:"
+                }
+
+                code c15 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let data = import_table("users.csv")
+                    let admin = find(data, "role", "admin")
+                    admin_name = admin.name
+                    WCL
+                }
+
+                heading h3_filter {
+                    level = 3
+                    content = "filter(table, predicate)"
+                }
+
+                paragraph p28 {
+                    content = "Returns all rows matching the predicate (a lambda):"
+                }
+
+                code c16 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let data = import_table("users.csv")
+                    let admins = filter(data, (r) => r.role == "admin")
+                    admin_count = len(admins)
+                    WCL
+                }
+
+                heading h3_insert_row {
+                    level = 3
+                    content = "insert_row(table, row)"
+                }
+
+                paragraph p29 {
+                    content = "Returns a new list with the given row map appended:"
+                }
+
+                code c17 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let data = import_table("users.csv")
+                    let extended = insert_row(data, {name = "charlie", role = "viewer"})
+                    WCL
+                }
+
+                paragraph p30 {
+                    content = "These functions work on any list of maps, not just <code>import_table</code> results."
+                }
+
+                heading h2_evaluation {
+                    level = 2
+                    content = "Evaluation"
+                }
+
+                paragraph p31 {
+                    content = "Tables are evaluated into a list of row maps. Each row becomes a map from column name to cell value. For example:"
+                }
+
+                code c18 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    table users {
+                        name : string
+                        age  : i64
+                        | "alice" | 25 |
+                        | "bob"   | 30 |
+                    }
+                    WCL
+                }
+
+                paragraph p32 {
+                    content = "evaluates to a value equivalent to:"
+                }
+
+                code c19 {
+                    language = "json"
+                    content = <<-'JSON'
+                    [
+                        {"name": "alice", "age": 25},
+                        {"name": "bob", "age": 30}
+                    ]
+                    JSON
+                }
+
+                paragraph p33 {
+                    content = "Cell expressions are fully evaluated, so references, function calls, and arithmetic all work:"
+                }
+
+                code c20 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let base = 100
+
+                    table config {
+                        key   : string
+                        value : i64
+                        | "port"  | base + 80 |
+                        | "debug" | 0          |
+                    }
+                    // config evaluates to [{"key": "port", "value": 180}, {"key": "debug", "value": 0}]
+                    WCL
+                }
+
+                paragraph p34 {
+                    content = "Tables inside blocks appear in the block's attributes map, keyed by the table's inline ID. Tables at the top level appear as top-level values."
+                }
+
+                heading h2_deser {
+                    level = 2
+                    content = "Deserialization"
+                }
+
+                paragraph p35 {
+                    content = "When deserializing a document into Rust types, a table maps to <code>Vec&lt;T&gt;</code> where <code>T</code> is a struct whose fields correspond to the column names:"
+                }
+
+                code c21 {
+                    language = "rust"
+                    content = <<-'RUST'
+                    #[derive(Deserialize)]
+                    struct PermRow {
+                        role: String,
+                        resource: String,
+                        action: String,
+                        allow: bool,
+                    }
+
+                    let rows: Vec<PermRow> = doc.get_table("permissions")?;
+                    RUST
+                }
+
+                heading h2_querying {
+                    level = 2
+                    content = "Querying Tables"
+                }
+
+                paragraph p36 {
+                    content = "Use <code>query()</code> to filter rows. The selector <code>table#id</code> targets a specific table; filters then match on column values:"
+                }
+
+                code c22 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    validation "no-admin-deletes-on-prod" {
+                        let dangerous = query(table#permissions | .role == "viewer" | .allow == true | .action == "delete")
+                        check   = len(dangerous) == 0
+                        message = "viewers must not have delete permission"
+                    }
+                    WCL
+                }
+
+                paragraph p37 {
+                    content = "The full query pipeline syntax is described in the " + link("Query Engine", "guide-query-engine.html") + " chapter. Key points for tables:"
+                }
+
+                paragraph p38 {
+                    content = "<ul>" +
+                        "<li><code>.col == val</code> — exact match on a column value</li>" +
+                        "<li><code>.col =~ \"pattern\"</code> — regex match</li>" +
+                        "<li><code>.col > val</code> — numeric comparison</li>" +
+                        "<li><code>has(.col)</code> — column exists and is non-null</li>" +
+                        "<li>Append <code>| .col</code> at the end to project a single column as a list of values</li>" +
+                        "</ul>"
+                }
+
+                heading h3_perms_example {
+                    level = 3
+                    content = "Example: Permissions Table"
+                }
+
+                code c23 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    table perms_main {
+                        role     : string  @doc("Subject role")
+                        resource : string  @doc("Target resource type")
+                        action   : string  @validate(one_of(["read", "write", "delete"]))
+                        allow    : bool    @doc("Whether the action is permitted")
+
+                        | "admin"  | "users"    | "read"   | true  |
+                        | "admin"  | "users"    | "write"  | true  |
+                        | "admin"  | "users"    | "delete" | true  |
+                        | "editor" | "posts"    | "read"   | true  |
+                        | "editor" | "posts"    | "write"  | true  |
+                        | "editor" | "posts"    | "delete" | false |
+                        | "viewer" | "posts"    | "read"   | true  |
+                        | "viewer" | "posts"    | "write"  | false |
+                        | "viewer" | "posts"    | "delete" | false |
+                    }
+                    WCL
+                }
+
+                paragraph p39 {
+                    content = "Fetch all actions allowed for <code>editor</code>:"
+                }
+
+                code c24 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let editor_allowed = query(table#perms_main | .role == "editor" | .allow == true | .action)
+                    WCL
+                }
+
+                paragraph p40 {
+                    content = "Count total denied rules:"
+                }
+
+                code c25 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let denied_count = len(query(table#perms_main | .allow == false))
+                    WCL
+                }
+            }
+        }
+    }
+}

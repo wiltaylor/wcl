@@ -1,0 +1,282 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
+
+let D = "$"
+
+page functions_string {
+    section = "wcl_docs.guide.functions.functions_string"
+    title = "String Functions"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "String Functions"
+                }
+
+                paragraph p1 {
+                    content = "WCL's string functions operate on <code>string</code> values and return strings, booleans, lists, or integers depending on the operation. All are pure and side-effect free."
+                }
+
+                heading h2_reference {
+                    level = 2
+                    content = "Reference"
+                }
+
+                data_table t1 {
+                    rows = [
+                        ["Function", "Signature", "Description"],
+                        ["upper", "upper(s: string) -> string", "Convert to uppercase"],
+                        ["lower", "lower(s: string) -> string", "Convert to lowercase"],
+                        ["trim", "trim(s: string) -> string", "Remove leading and trailing whitespace"],
+                        ["trim_prefix", "trim_prefix(s: string, prefix: string) -> string", "Remove prefix if present"],
+                        ["trim_suffix", "trim_suffix(s: string, suffix: string) -> string", "Remove suffix if present"],
+                        ["replace", "replace(s: string, from: string, to: string) -> string", "Replace all occurrences of from with to"],
+                        ["split", "split(s: string, sep: string) -> list", "Split on separator, returning a list of strings"],
+                        ["join", "join(list: list, sep: string) -> string", "Join a list of strings with a separator"],
+                        ["starts_with", "starts_with(s: string, prefix: string) -> bool", "True if s starts with prefix"],
+                        ["ends_with", "ends_with(s: string, suffix: string) -> bool", "True if s ends with suffix"],
+                        ["contains", "contains(s: string, sub: string) -> bool", "True if s contains sub"],
+                        ["length", "length(s: string) -> i64", "Number of characters (Unicode code points)"],
+                        ["substr", "substr(s: string, start: i64, end: i64) -> string", "Substring from start (inclusive) to end (exclusive)"],
+                        ["format", "format(template: string, ...args) -> string", "Format string with {} placeholders"],
+                        ["regex_match", "regex_match(s: string, pattern: string) -> bool", "True if s matches the regex pattern"],
+                        ["regex_capture", "regex_capture(s: string, pattern: string) -> list", "List of capture groups from the first match"],
+                        ["regex_replace", "regex_replace(s: string, pattern: string, replacement: string) -> string", "Replace the first match of pattern in s with replacement"],
+                        ["regex_replace_all", "regex_replace_all(s: string, pattern: string, replacement: string) -> string", "Replace all matches of pattern in s with replacement"],
+                        ["regex_split", "regex_split(s: string, pattern: string) -> list", "Split s on all matches of pattern"],
+                        ["regex_find", "regex_find(s: string, pattern: string) -> string?", "Return the first match of pattern in s, or null"],
+                        ["regex_find_all", "regex_find_all(s: string, pattern: string) -> list", "Return all matches of pattern in s"]
+                    ]
+                }
+
+                heading h2_examples {
+                    level = 2
+                    content = "Examples"
+                }
+
+                heading h3_upper_lower {
+                    level = 3
+                    content = "upper / lower"
+                }
+
+                code c1 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let name = "Hello World"
+                    let up = upper(name)     // "HELLO WORLD"
+                    let lo = lower(name)     // "hello world"
+                    WCL
+                }
+
+                heading h3_trim {
+                    level = 3
+                    content = "trim / trim_prefix / trim_suffix"
+                }
+
+                code c2 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let padded = "  hello  "
+                    let clean = trim(padded)                         // "hello"
+                    let path = trim_prefix("/api/v1/users", "/api")  // "/v1/users"
+                    let file = trim_suffix("report.csv", ".csv")     // "report"
+                    WCL
+                }
+
+                heading h3_replace {
+                    level = 3
+                    content = "replace"
+                }
+
+                code c3 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let msg = replace("foo bar foo", "foo", "baz")  // "baz bar baz"
+                    WCL
+                }
+
+                heading h3_split_join {
+                    level = 3
+                    content = "split / join"
+                }
+
+                code c4 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let parts = split("a,b,c", ",")      // ["a", "b", "c"]
+                    let rejoined = join(parts, " | ")    // "a | b | c"
+                    WCL
+                }
+
+                heading h3_starts_ends_contains {
+                    level = 3
+                    content = "starts_with / ends_with / contains"
+                }
+
+                code c5 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let url = "https://example.com/api"
+                    let secure = starts_with(url, "https")   // true
+                    let is_api = ends_with(url, "/api")      // true
+                    let has_ex = contains(url, "example")   // true
+                    WCL
+                }
+
+                heading h3_length_substr {
+                    level = 3
+                    content = "length / substr"
+                }
+
+                code c6 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let s = "abcdef"
+                    let n = length(s)          // 6
+                    let sub = substr(s, 1, 4)  // "bcd"
+                    WCL
+                }
+
+                heading h3_format {
+                    level = 3
+                    content = "format"
+                }
+
+                code c7 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let msg = format("Hello, {}! You have {} messages.", "Alice", 3)
+                    // "Hello, Alice! You have 3 messages."
+                    WCL
+                }
+
+                paragraph p2 {
+                    content = "Placeholders are filled left to right. Each <code>{}</code> consumes one argument."
+                }
+
+                heading h3_regex_match {
+                    level = 3
+                    content = "regex_match"
+                }
+
+                code c8 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let valid = regex_match("user@example.com", "^[\\w.]+@[\\w.]+\\.[a-z]{2,}$")
+                    // true
+                    WCL
+                }
+
+                heading h3_regex_capture {
+                    level = 3
+                    content = "regex_capture"
+                }
+
+                code c9 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let groups = regex_capture("2024-03-15", "(\\d{4})-(\\d{2})-(\\d{2})")
+                    // ["2024", "03", "15"]
+                    WCL
+                }
+
+                paragraph p3 {
+                    content = "Returns an empty list if there is no match. The list contains only the capture groups, not the full match."
+                }
+
+                heading h3_regex_replace {
+                    level = 3
+                    content = "regex_replace"
+                }
+
+                code c10 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let result = regex_replace("hello world", "\\s+", "-")
+                    // "hello-world" (only first match replaced)
+                    WCL
+                }
+
+                heading h3_regex_replace_all {
+                    level = 3
+                    content = "regex_replace_all"
+                }
+
+                code c11 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let result = regex_replace_all("a b  c", "\\s+", "-")
+                    // "a-b-c" (all matches replaced)
+                    WCL
+                }
+
+                heading h3_regex_split {
+                    level = 3
+                    content = "regex_split"
+                }
+
+                code c12 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let parts = regex_split("one:two::three", ":+")
+                    // ["one", "two", "three"]
+                    WCL
+                }
+
+                heading h3_regex_find {
+                    level = 3
+                    content = "regex_find"
+                }
+
+                code c13 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let price = regex_find("Total: $42.50", "\\d+\\.\\d+")
+                    // "42.50"
+
+                    let none = regex_find("no numbers here", "\\d+")
+                    // null
+                    WCL
+                }
+
+                heading h3_regex_find_all {
+                    level = 3
+                    content = "regex_find_all"
+                }
+
+                code c14 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let nums = regex_find_all("a1 b2 c3", "[a-z]\\d")
+                    // ["a1", "b2", "c3"]
+                    WCL
+                }
+
+                heading h2_interpolation {
+                    level = 2
+                    content = "String Interpolation"
+                }
+
+                paragraph p4 {
+                    content = "In addition to these functions, WCL supports <code>" + D + "{}</code> interpolation inside string literals and block IDs:"
+                }
+
+                code c15 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let env = "prod"
+                    let tag = "deploy-${env}"   // "deploy-prod"
+                    WCL
+                }
+
+                paragraph p5 {
+                    content = "Interpolation converts any value to its string representation automatically."
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,566 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, bold, italic, link}
+
+page js_library {
+    section = "wcl_docs.getting_started.js_library"
+    title = "Using WCL in JavaScript / TypeScript"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Using WCL in JavaScript / TypeScript"
+                }
+
+                paragraph p1 {
+                    content = "WCL runs in the browser and Node.js via WebAssembly. The <code>wcl-wasm</code> package provides <code>parse</code>, <code>parseValues</code>, and <code>query</code> functions with full TypeScript types."
+                }
+
+                heading h2_install {
+                    level = 2
+                    content = "Installation"
+                }
+
+                code c1 {
+                    language = "bash"
+                    content = "npm install wcl-wasm"
+                }
+
+                heading h2_init {
+                    level = 2
+                    content = "Initialization"
+                }
+
+                paragraph p2 {
+                    content = "The WASM module must be initialized once before use:"
+                }
+
+                paragraph p3 {
+                    content = bold("Browser / Deno:")
+                }
+
+                code c2 {
+                    language = "typescript"
+                    content = <<-'TS'
+                    import { init, parse, parseValues, query } from "wcl-wasm";
+
+                    await init();
+                    TS
+                }
+
+                paragraph p4 {
+                    content = bold("Node.js (ESM):")
+                }
+
+                code c3 {
+                    language = "typescript"
+                    content = <<-'TS'
+                    import { init, parse, parseValues, query } from "wcl-wasm";
+                    import { readFileSync } from "node:fs";
+
+                    await init(readFileSync(new URL("../node_modules/wcl-wasm/pkg/wcl_wasm_bg.wasm", import.meta.url)));
+                    TS
+                }
+
+                paragraph p5 {
+                    content = bold("Node.js (CommonJS):")
+                }
+
+                code c4 {
+                    language = "javascript"
+                    content = <<-'JS'
+                    const { init, parse, parseValues, query } = require("wcl-wasm");
+                    const fs = require("node:fs");
+                    const path = require("node:path");
+
+                    async function main() {
+                      await init(fs.readFileSync(path.join(__dirname, "../node_modules/wcl-wasm/pkg/wcl_wasm_bg.wasm")));
+                      const doc = parse('x = 42');
+                      console.log(doc.values);
+                    }
+                    main();
+                    JS
+                }
+
+                paragraph p6 {
+                    content = "Calling any function before <code>init()</code> throws an error."
+                }
+
+                heading h2_parse_string {
+                    level = 2
+                    content = "Parsing a WCL String"
+                }
+
+                paragraph p7 {
+                    content = "<code>parse()</code> runs the full 11-phase pipeline and returns a document object:"
+                }
+
+                code c5 {
+                    language = "typescript"
+                    content = <<-'TS'
+                    import { init, parse } from "wcl-wasm";
+
+                    await init();
+
+                    const doc = parse(`
+                      server web-prod {
+                        host = "0.0.0.0"
+                        port = 8080
+                        debug = false
+                      }
+                    `);
+
+                    if (doc.hasErrors) {
+                      for (const d of doc.diagnostics) {
+                        console.error(`${d.severity}: ${d.message}`);
+                      }
+                    } else {
+                      console.log("Parsed successfully");
+                      console.log(doc.values);
+                    }
+                    TS
+                }
+
+                paragraph p8 {
+                    content = "The returned <code>WclDocument</code> has this shape:"
+                }
+
+                code c6 {
+                    language = "typescript"
+                    content = <<-'TS'
+                    interface WclDocument {
+                      values: Record<string, any>;      // evaluated top-level values
+                      hasErrors: boolean;                // true if any errors occurred
+                      diagnostics: WclDiagnostic[];     // all diagnostics
+                    }
+
+                    interface WclDiagnostic {
+                      severity: "error" | "warning";
+                      message: string;
+                      code?: string;                    // e.g. "E071" for type mismatch
+                    }
+                    TS
+                }
+
+                heading h2_values {
+                    level = 2
+                    content = "Getting Just the Values"
+                }
+
+                paragraph p9 {
+                    content = "<code>parseValues()</code> returns only the evaluated values and throws on errors:"
+                }
+
+                code c7 {
+                    language = "typescript"
+                    content = <<-'TS'
+                    try {
+                      const values = parseValues(`
+                        name = "my-app"
+                        port = 8080
+                        tags = ["web", "prod"]
+                      `);
+
+                      console.log(values.name);  // "my-app"
+                      console.log(values.port);  // 8080
+                      console.log(values.tags);  // ["web", "prod"]
+                    } catch (e) {
+                      console.error("Parse error:", e);
+                    }
+                    TS
+                }
+
+                paragraph p10 {
+                    content = "This is the simplest way to use WCL when you just want the config values and don't need diagnostics."
+                }
+
+                heading h2_blocks {
+                    level = 2
+                    content = "Working with Blocks"
+                }
+
+                paragraph p11 {
+                    content = "Block values appear as objects with <code>kind</code>, <code>id</code>, <code>attributes</code>, and <code>children</code>:"
+                }
+
+                code c8 {
+                    language = "typescript"
+                    content = <<-'TS'
+                    const doc = parse(`
+                      server web-prod {
+                        host = "0.0.0.0"
+                        port = 8080
+                      }
+
+                      server web-staging {
+                        host = "staging.internal"
+                        port = 8081
+                      }
+                    `);
+
+                    // Blocks appear as values keyed by their type
+                    // Use queries for structured access (see below)
+                    TS
+                }
+
+                heading h2_tables {
+                    level = 2
+                    content = "Working with Tables"
+                }
+
+                paragraph p12 {
+                    content = "Tables evaluate to an array of row objects. Each row is an object mapping column names to cell values:"
+                }
+
+                code c9 {
+                    language = "typescript"
+                    content = <<-'TS'
+                    const doc = parse(`
+                      table users {
+                        name : string
+                        age  : i64
+                        | "alice" | 25 |
+                        | "bob"   | 30 |
+                      }
+                    `);
+
+                    console.log(doc.values.users);
+                    // [{ name: "alice", age: 25 }, { name: "bob", age: 30 }]
+
+                    console.log(doc.values.users[0].name); // "alice"
+                    TS
+                }
+
+                paragraph p13 {
+                    content = "Tables inside blocks appear in the block's attributes:"
+                }
+
+                code c10 {
+                    language = "typescript"
+                    content = <<-'TS'
+                    const doc = parse(`
+                      service main {
+                        table config {
+                          key   : string
+                          value : i64
+                          | "port" | 8080 |
+                        }
+                      }
+                    `);
+
+                    // Access via the block's values
+                    console.log(doc.values.main.attributes.config);
+                    // [{ key: "port", value: 8080 }]
+                    TS
+                }
+
+                heading h2_queries {
+                    level = 2
+                    content = "Running Queries"
+                }
+
+                paragraph p14 {
+                    content = "<code>query()</code> parses a WCL string and executes a query in one call:"
+                }
+
+                code c11 {
+                    language = "typescript"
+                    content = <<-'TS'
+                    const result = query(`
+                      server svc-api {
+                        port = 8080
+                        env = "prod"
+                      }
+
+                      server svc-admin {
+                        port = 9090
+                        env = "prod"
+                      }
+
+                      server svc-debug {
+                        port = 3000
+                        env = "dev"
+                      }
+                    `, "server | .port");
+
+                    console.log(result);  // [8080, 9090, 3000]
+                    TS
+                }
+
+                paragraph p15 {
+                    content = "More query examples:"
+                }
+
+                code c12 {
+                    language = "typescript"
+                    content = <<-'TS'
+                    // Select all server blocks
+                    query(source, "server");
+
+                    // Filter by attribute
+                    query(source, 'server | .env == "prod"');
+
+                    // Filter and project
+                    query(source, 'server | .env == "prod" | .port');
+                    // → [8080, 9090]
+
+                    // Select by ID
+                    query(source, "server#svc-api");
+                    TS
+                }
+
+                paragraph p16 {
+                    content = "Throws if there are parse errors or if the query is invalid."
+                }
+
+                heading h2_custom_fn {
+                    level = 2
+                    content = "Custom Functions"
+                }
+
+                paragraph p17 {
+                    content = "Register custom JavaScript functions that are callable from WCL expressions:"
+                }
+
+                code c13 {
+                    language = "typescript"
+                    content = <<-'TS'
+                    const values = parseValues(`
+                      result = double(21)
+                      message = greet("World")
+                    `, {
+                      functions: {
+                        double: (n: number) => n * 2,
+                        greet: (name: string) => `Hello, ${name}!`,
+                      },
+                    });
+
+                    console.log(values.result);   // 42
+                    console.log(values.message);  // "Hello, World!"
+                    TS
+                }
+
+                paragraph p18 {
+                    content = "Functions receive native JavaScript values and should return native values. Errors can be thrown normally:"
+                }
+
+                code c14 {
+                    language = "typescript"
+                    content = <<-'TS'
+                    const values = parseValues("result = safe_div(10, 0)", {
+                      functions: {
+                        safe_div: (a: number, b: number) => {
+                          if (b === 0) throw new Error("division by zero");
+                          return a / b;
+                        },
+                      },
+                    });
+                    TS
+                }
+
+                heading h2_in_memory {
+                    level = 2
+                    content = "In-Memory Files for Imports"
+                }
+
+                paragraph p19 {
+                    content = "Provide files as a map for import resolution without filesystem access (useful in browsers):"
+                }
+
+                code c15 {
+                    language = "typescript"
+                    content = <<-'TS'
+                    const doc = parse('import "utils.wcl"\nresult = base_port + 1', {
+                      files: {
+                        "utils.wcl": "base_port = 8080",
+                      },
+                    });
+
+                    console.log(doc.values.result);  // 8081
+                    TS
+                }
+
+                heading h2_import_resolver {
+                    level = 2
+                    content = "Custom Import Resolver"
+                }
+
+                paragraph p20 {
+                    content = "For more control over import resolution, provide a synchronous callback:"
+                }
+
+                code c16 {
+                    language = "typescript"
+                    content = <<-'TS'
+                    const doc = parse('import "config.wcl"', {
+                      importResolver: (path: string) => {
+                        if (path.endsWith("config.wcl")) {
+                          return 'port = 8080';
+                        }
+                        return null;  // file not found
+                      },
+                    });
+                    TS
+                }
+
+                paragraph p21 {
+                    content = "If both <code>files</code> and <code>importResolver</code> are provided, <code>files</code> takes precedence."
+                }
+
+                heading h2_parse_options {
+                    level = 2
+                    content = "Parse Options"
+                }
+
+                paragraph p22 {
+                    content = "All options are optional:"
+                }
+
+                code c17 {
+                    language = "typescript"
+                    content = <<-'TS'
+                    interface ParseOptions {
+                      rootDir?: string;            // root directory for import resolution (default: ".")
+                      allowImports?: boolean;      // enable/disable imports (default: true)
+                      maxImportDepth?: number;     // max nested import depth (default: 32)
+                      maxMacroDepth?: number;      // max macro expansion depth (default: 64)
+                      maxLoopDepth?: number;       // max for-loop nesting (default: 32)
+                      maxIterations?: number;      // max total loop iterations (default: 10000)
+                      importResolver?: (path: string) => string | null;
+                      files?: Record<string, string>;
+                      functions?: Record<string, (...args: any[]) => any>;
+                    }
+                    TS
+                }
+
+                paragraph p23 {
+                    content = "When processing untrusted input, disable imports:"
+                }
+
+                code c18 {
+                    language = "typescript"
+                    content = "const doc = parse(untrustedInput, { allowImports: false });"
+                }
+
+                heading h2_error_handling {
+                    level = 2
+                    content = "Error Handling"
+                }
+
+                paragraph p24 {
+                    content = "Check <code>hasErrors</code> and inspect <code>diagnostics</code>:"
+                }
+
+                code c19 {
+                    language = "typescript"
+                    content = <<-'TS'
+                    const doc = parse(`
+                      server web {
+                        port = "not_a_number"
+                      }
+
+                      schema "server" {
+                        port: i64
+                      }
+                    `);
+
+                    if (doc.hasErrors) {
+                      for (const d of doc.diagnostics) {
+                        const code = d.code ? `[${d.code}] ` : "";
+                        console.error(`${d.severity}: ${code}${d.message}`);
+                      }
+                    }
+                    TS
+                }
+
+                paragraph p25 {
+                    content = "<code>parseValues()</code> and <code>query()</code> throw on errors instead of returning them."
+                }
+
+                heading h2_complete {
+                    level = 2
+                    content = "Complete Example"
+                }
+
+                code c20 {
+                    language = "typescript"
+                    content = <<-'TS'
+                    import { init, parse, parseValues, query } from "wcl-wasm";
+
+                    await init();
+
+                    // Simple value extraction
+                    const config = parseValues(`
+                      app_name = "my-service"
+                      port = 8080
+                      debug = false
+                    `);
+                    console.log(`Starting ${config.app_name} on port ${config.port}`);
+
+                    // Full document with validation
+                    const doc = parse(`
+                      schema "server" {
+                        port: i64
+                        host: string @optional
+                      }
+
+                      server svc-api {
+                        port = 8080
+                        host = "api.internal"
+                      }
+
+                      server svc-admin {
+                        port = 9090
+                        host = "admin.internal"
+                      }
+                    `);
+
+                    if (doc.hasErrors) {
+                      doc.diagnostics.forEach(d => console.error(d.message));
+                      process.exit(1);
+                    }
+
+                    // Query for all ports
+                    const ports = query(doc_source, "server | .port");
+                    console.log("All ports:", ports);  // [8080, 9090]
+
+                    // Custom functions
+                    const result = parseValues("doubled = double(21)", {
+                      functions: {
+                        double: (n) => n * 2,
+                      },
+                    });
+                    console.log(result.doubled);  // 42
+                    TS
+                }
+
+                heading h2_from_source {
+                    level = 2
+                    content = "Building from Source"
+                }
+
+                paragraph p26 {
+                    content = "To rebuild the WASM package from the Rust source:"
+                }
+
+                code c21 {
+                    language = "bash"
+                    content = <<-'BASH'
+                    # Build the WASM package
+                    just build-wasm
+
+                    # Run WASM tests
+                    just test-wasm
+                    BASH
+                }
+
+                paragraph p27 {
+                    content = "This requires <code>wasm-pack</code> and the Rust toolchain."
+                }
+            }
+        }
+    }
+}

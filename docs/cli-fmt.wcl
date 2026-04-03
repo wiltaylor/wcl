@@ -1,0 +1,138 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, data_table, callout, bold, italic, link}
+
+page cli_fmt {
+    section = "wcl_docs.cli.cli_fmt"
+    title = "wcl fmt"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "wcl fmt"
+                }
+
+                paragraph p1 {
+                    content = "Format a WCL document according to the standard style."
+                }
+
+                heading h2_usage {
+                    level = 2
+                    content = "Usage"
+                }
+
+                code c1 {
+                    language = "bash"
+                    content = "wcl fmt <file> [options]"
+                }
+
+                heading h2_options {
+                    level = 2
+                    content = "Options"
+                }
+
+                data_table t1 {
+                    caption = "Options"
+                    rows = [
+                        { flag = "--write", description = "Format the file in place instead of printing to stdout" },
+                        { flag = "--check", description = "Check whether the file is already formatted; exit non-zero if not" }
+                    ]
+                }
+
+                heading h2_description {
+                    level = 2
+                    content = "Description"
+                }
+
+                paragraph p2 {
+                    content = "<code>wcl fmt</code> applies canonical formatting to a WCL document. By default, it prints the formatted output to stdout, leaving the source file unchanged."
+                }
+
+                paragraph p3 {
+                    content = "The formatter preserves:"
+                }
+
+                paragraph p3_list {
+                    content = "<ul>" +
+                        "<li>All comments (line, block, and doc comments)</li>" +
+                        "<li>Blank line grouping within blocks</li>" +
+                        "<li>The logical structure and ordering of the document</li>" +
+                        "</ul>"
+                }
+
+                paragraph p4 {
+                    content = "The formatter normalises:"
+                }
+
+                paragraph p4_list {
+                    content = "<ul>" +
+                        "<li>Indentation (2 spaces per level)</li>" +
+                        "<li>Spacing around operators and delimiters</li>" +
+                        "<li>Trailing commas in lists and maps</li>" +
+                        "<li>Consistent quote style for string literals</li>" +
+                        "</ul>"
+                }
+
+                heading h2_exit_codes {
+                    level = 2
+                    content = "Exit Codes"
+                }
+
+                data_table t2 {
+                    caption = "Exit Codes"
+                    rows = [
+                        { code = "0", meaning = "Success (or file is already formatted when using --check)" },
+                        { code = "1", meaning = "File would be reformatted (only with --check)" },
+                        { code = "2", meaning = "Argument or parse error" }
+                    ]
+                }
+
+                heading h2_examples {
+                    level = 2
+                    content = "Examples"
+                }
+
+                paragraph p5 {
+                    content = "Print formatted output to stdout:"
+                }
+
+                code c2 {
+                    language = "bash"
+                    content = "wcl fmt config.wcl"
+                }
+
+                paragraph p6 {
+                    content = "Format file in place:"
+                }
+
+                code c3 {
+                    language = "bash"
+                    content = "wcl fmt --write config.wcl"
+                }
+
+                paragraph p7 {
+                    content = "Check formatting in CI (no changes written):"
+                }
+
+                code c4 {
+                    language = "bash"
+                    content = "wcl fmt --check config.wcl"
+                }
+
+                paragraph p8 {
+                    content = "Check all WCL files in a project:"
+                }
+
+                code c5 {
+                    language = "bash"
+                    content = <<-'BASH'
+                    find . -name '*.wcl' | xargs wcl fmt --check
+                    BASH
+                }
+            }
+        }
+    }
+}

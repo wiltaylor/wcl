@@ -1,0 +1,235 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, data_table, callout, bold, italic, link}
+
+page ref_scoping {
+    section = "wcl_docs.reference.ref_scoping"
+    title = "Scoping Rules"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Scoping Rules"
+                }
+
+                paragraph p1 {
+                    content = "This page describes how WCL constructs scopes, resolves names, and orders evaluation."
+                }
+
+                heading h2_scope_kinds {
+                    level = 2
+                    content = "Scope Kinds"
+                }
+
+                heading h3_module {
+                    level = 3
+                    content = "Module Scope"
+                }
+
+                paragraph p2 {
+                    content = "The top level of a WCL document forms the module scope. It contains:"
+                }
+
+                paragraph p2_list {
+                    content = "<ul>" +
+                        "<li>All top-level <code>let</code> bindings</li>" +
+                        "<li>All top-level attributes</li>" +
+                        "<li>All block declarations (accessible by type and ID)</li>" +
+                        "<li>All imported names (merged from <code>import</code> directives)</li>" +
+                        "<li>All exported names</li>" +
+                        "</ul>"
+                }
+
+                paragraph p3 {
+                    content = "Module scope is the root of the scope tree."
+                }
+
+                heading h3_block {
+                    level = 3
+                    content = "Block Scope"
+                }
+
+                paragraph p4 {
+                    content = "Each block (<code>service</code>, <code>database</code>, etc.) creates a child scope. Block scopes:"
+                }
+
+                paragraph p4_list {
+                    content = "<ul>" +
+                        "<li>Inherit all names from the enclosing module scope (or parent block scope)</li>" +
+                        "<li>Define their own attributes and let bindings, which are local to the block</li>" +
+                        "<li>Can reference names from any enclosing scope</li>" +
+                        "</ul>"
+                }
+
+                paragraph p5 {
+                    content = "Blocks can be nested. Inner blocks have access to all names in all enclosing scopes."
+                }
+
+                code c1 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let base_port = 8000
+
+                    service svc-api {
+                      // base_port is visible here from module scope
+                      port = base_port + 80
+
+                      let path_prefix = "/api"
+
+                      endpoint health {
+                        // both base_port and path_prefix are visible here
+                        path = path_prefix + "/health"
+                      }
+                    }
+                    WCL
+                }
+
+                heading h3_macro {
+                    level = 3
+                    content = "Macro Scope"
+                }
+
+                paragraph p6 {
+                    content = "When a macro is called, a new scope is created for the macro body. This scope:"
+                }
+
+                paragraph p6_list {
+                    content = "<ul>" +
+                        "<li>Contains the macro parameters bound to the call arguments</li>" +
+                        "<li>Does not inherit from the call site scope</li>" +
+                        "<li>Has read access to the module scope at the point of definition</li>" +
+                        "</ul>"
+                }
+
+                paragraph p7 {
+                    content = "Macro expansion happens before scope construction for the main document, so macro-generated items are treated as if they were written directly in the source."
+                }
+
+                heading h2_name_resolution {
+                    level = 2
+                    content = "Name Resolution Algorithm"
+                }
+
+                paragraph p8 {
+                    content = "When an identifier <code>x</code> is referenced in an expression:"
+                }
+
+                paragraph p8_list {
+                    content = "<ol>" +
+                        "<li>Search the current (innermost) scope for a binding named <code>x</code>.</li>" +
+                        "<li>If not found, walk up to the parent scope and repeat.</li>" +
+                        "<li>Continue until the module scope is reached.</li>" +
+                        "<li>If still not found, produce error E040 (undefined reference).</li>" +
+                        "</ol>"
+                }
+
+                paragraph p9 {
+                    content = "First match wins. The search is purely lexical (static scoping)."
+                }
+
+                heading h2_shadowing {
+                    level = 2
+                    content = "Shadowing"
+                }
+
+                paragraph p10 {
+                    content = "A name in an inner scope may shadow a name with the same identifier in an outer scope. This is permitted but produces warning W001 to alert the author."
+                }
+
+                code c2 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let port = 8080
+
+                    service svc-api {
+                      let port = 9090  // W001: shadows outer `port`
+                      exposed_port = port  // resolves to 9090
+                    }
+                    WCL
+                }
+
+                heading h2_dep_eval {
+                    level = 2
+                    content = "Dependency-Ordered Evaluation"
+                }
+
+                paragraph p11 {
+                    content = "Within a scope, WCL does not require declarations to appear in evaluation order. Instead:"
+                }
+
+                paragraph p11_list {
+                    content = "<ol>" +
+                        "<li>The evaluator builds a dependency graph by inspecting which names each expression references.</li>" +
+                        "<li>The graph is topologically sorted.</li>" +
+                        "<li>Expressions are evaluated in dependency order.</li>" +
+                        "</ol>"
+                }
+
+                paragraph p12 {
+                    content = "This means forward references are fully supported:"
+                }
+
+                code c3 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    service svc-api {
+                      base_url = "http://${host}:${port}"
+                      port     = 8080
+                      host     = "localhost"
+                    }
+                    WCL
+                }
+
+                paragraph p13 {
+                    content = "<code>base_url</code> is evaluated after <code>host</code> and <code>port</code> regardless of their textual order."
+                }
+
+                paragraph p14 {
+                    content = "If a cycle exists in the dependency graph, error E041 is produced for all names involved in the cycle."
+                }
+
+                heading h2_import_merge {
+                    level = 2
+                    content = "Import Merging and Scope"
+                }
+
+                paragraph p15 {
+                    content = "<code>import</code> directives are resolved before scope construction. The imported document's top-level items are merged into the current module scope. Imported names are visible throughout the entire importing document, including in items that textually precede the import declaration."
+                }
+
+                paragraph p16 {
+                    content = "Name conflicts between an imported document and the importing document are resolved in favour of the importing document (local definitions win)."
+                }
+
+                heading h2_export {
+                    level = 2
+                    content = "Export Visibility"
+                }
+
+                paragraph p17 {
+                    content = "<code>export let name = expr</code> and <code>export name</code> make names available to documents that import this file. Exported names are part of the module's public interface."
+                }
+
+                paragraph p18 {
+                    content = "Exports are only permitted at the top level. Exporting a name from inside a block produces error E036."
+                }
+
+                paragraph p19 {
+                    content = "Duplicate export names produce error E034. Exporting an undefined name produces error E035."
+                }
+
+                heading h2_unused {
+                    level = 2
+                    content = "Unused Variables"
+                }
+
+                paragraph p20 {
+                    content = "A <code>let</code> binding that is defined but never referenced produces warning W002. This warning is suppressed for exported names, since they may be consumed by other documents."
+                }
+            }
+        }
+    }
+}

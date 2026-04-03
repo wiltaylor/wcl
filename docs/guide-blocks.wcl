@@ -1,0 +1,369 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
+
+page guide_blocks {
+    section = "wcl_docs.guide.blocks"
+    title = "Blocks"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Blocks"
+                }
+
+                paragraph p1 {
+                    content = "A block is the primary structural unit of a WCL file. Blocks group attributes and nested blocks under a named type, and can carry optional identity and metadata."
+                }
+
+                heading h2_syntax {
+                    level = 2
+                    content = "Full Syntax"
+                }
+
+                code c1 {
+                    language = "text"
+                    content = "[decorators] [partial] type [inline-id] [inline-args...] { body }"
+                }
+
+                paragraph p2 {
+                    content = "Every component except <code>type</code> and <code>{ body }</code> is optional."
+                }
+
+                heading h2_components {
+                    level = 2
+                    content = "Components"
+                }
+
+                heading h3_type {
+                    level = 3
+                    content = "Block Type"
+                }
+
+                paragraph p3 {
+                    content = "The block type is a plain identifier that names the kind of configuration node. Types are user-defined unless they are one of the reserved names listed below."
+                }
+
+                code c2 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    server { }
+                    database { }
+                    endpoint { }
+                    my_custom_type { }
+                    WCL
+                }
+
+                heading h3_inline_id {
+                    level = 3
+                    content = "Inline ID"
+                }
+
+                paragraph p4 {
+                    content = "An inline ID uniquely identifies a block within its scope. It may contain letters, digits, and " + bold("hyphens") + " (unlike attribute names, which forbid hyphens):"
+                }
+
+                code c3 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    server web-1 { }
+                    database primary-db { }
+                    endpoint get-users { }
+                    WCL
+                }
+
+                paragraph p5 {
+                    content = "Inline IDs must be unique per block type within their scope. The only exception is <code>partial</code> blocks, which share an ID with the block they extend (see " + link("Partial Declarations", "guide-partials.html") + ")."
+                }
+
+                heading h3_inline_args {
+                    level = 3
+                    content = "Inline Arguments"
+                }
+
+                paragraph p6 {
+                    content = "Inline arguments are positional values placed between the inline ID (or block type) and the opening <code>{</code>. They accept any primary expression: integers, floats, strings, booleans, <code>null</code>, and lists."
+                }
+
+                code c4 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    server web 8080 "prod" { }
+                    endpoint api true 3 { }
+                    service worker [1, 2, 3] { }
+                    WCL
+                }
+
+                paragraph p7 {
+                    content = "Without a schema, inline args (including the block's inline identifier) are collected into a synthetic <code>_args</code> list attribute:"
+                }
+
+                code c5 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    server web 8080 "prod" {
+                      host = "localhost"
+                    }
+                    // Evaluates to: { _args: [web, 8080, "prod"], host: "localhost" }
+                    WCL
+                }
+
+                paragraph p8 {
+                    content = "With a schema, fields decorated with <code>@inline(N)</code> map positional args to named attributes. The inline identifier occupies index 0, and additional arguments follow:"
+                }
+
+                code c6 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    schema "server" {
+                        id: identifier @inline(0)
+                        port: i64 @inline(1)
+                        env: string @inline(2)
+                        host: string
+                    }
+
+                    server web 8080 "prod" {
+                        host = "localhost"
+                    }
+                    // Evaluates to: { id: web, port: 8080, env: "prod", host: "localhost" }
+                    WCL
+                }
+
+                paragraph p9 {
+                    content = "Any args not mapped by <code>@inline</code> remain in <code>_args</code>."
+                }
+
+                heading h3_decorators {
+                    level = 3
+                    content = "Decorators"
+                }
+
+                paragraph p10 {
+                    content = "Decorators are annotations that modify or validate a block. They are placed before the block type, one per line, each starting with <code>@</code>:"
+                }
+
+                code c7 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    @deprecated
+                    @env("production")
+                    server legacy { }
+
+                    @required
+                    server primary { }
+                    WCL
+                }
+
+                paragraph p11 {
+                    content = "See " + link("Decorators", "guide-decorators.html") + " for the full decorator system."
+                }
+
+                heading h3_partial {
+                    level = 3
+                    content = "The partial Keyword"
+                }
+
+                paragraph p12 {
+                    content = "The <code>partial</code> keyword marks a block as a partial declaration, meaning it will be merged into another block with the same type and ID. This allows spreading a block's definition across multiple files:"
+                }
+
+                code c8 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    partial server web-1 {
+                      host = "0.0.0.0"
+                    }
+
+                    partial server web-1 {
+                      port = 8080
+                    }
+                    WCL
+                }
+
+                paragraph p13 {
+                    content = "See " + link("Partial Declarations", "guide-partials.html") + " for merge semantics."
+                }
+
+                heading h3_body {
+                    level = 3
+                    content = "Body"
+                }
+
+                paragraph p14 {
+                    content = "The body is a <code>{ }</code>-delimited sequence of attributes, nested blocks, <code>let</code> bindings, <code>for</code> loops, and <code>if</code>/<code>else</code> expressions."
+                }
+
+                heading h2_reserved {
+                    level = 2
+                    content = "Reserved Block Types"
+                }
+
+                paragraph p15 {
+                    content = "The following block types have special semantics and are handled by the WCL pipeline:"
+                }
+
+                data_table t1 {
+                    caption = "Reserved Block Types"
+                    rows = [
+                        { type = "schema", purpose = "Defines a schema for validating user blocks" },
+                        { type = "decorator_schema", purpose = "Defines the parameter schema for a decorator" },
+                        { type = "table", purpose = "Tabular data with typed columns" },
+                        { type = "validation", purpose = "Inline validation assertions" },
+                        { type = "macro", purpose = "Defines a reusable macro (function or attribute form)" }
+                    ]
+                }
+
+                heading h2_examples {
+                    level = 2
+                    content = "Examples"
+                }
+
+                heading h3_minimal {
+                    level = 3
+                    content = "Minimal Block"
+                }
+
+                code c9 {
+                    language = "wcl"
+                    content = "server { }"
+                }
+
+                heading h3_with_attrs {
+                    level = 3
+                    content = "Block with Attributes"
+                }
+
+                code c10 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    server {
+                      host = "0.0.0.0"
+                      port = 8080
+                    }
+                    WCL
+                }
+
+                heading h3_with_id {
+                    level = 3
+                    content = "Block with Inline ID"
+                }
+
+                code c11 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    server web-1 {
+                      host = "0.0.0.0"
+                      port = 8080
+                    }
+                    WCL
+                }
+
+                heading h3_with_args {
+                    level = 3
+                    content = "Block with Inline Arguments"
+                }
+
+                code c12 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    server 8080 "production" {
+                      host = "prod.example.com"
+                    }
+                    WCL
+                }
+
+                heading h3_with_id_args {
+                    level = 3
+                    content = "Block with Inline ID and Arguments"
+                }
+
+                code c13 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    server web-1 8080 "production" {
+                      host = "prod.example.com"
+                    }
+                    WCL
+                }
+
+                heading h3_decorated {
+                    level = 3
+                    content = "Decorated Block"
+                }
+
+                code c14 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    @env("production")
+                    server primary {
+                      host = "prod.example.com"
+                      port = 443
+                    }
+                    WCL
+                }
+
+                heading h3_nested {
+                    level = 3
+                    content = "Nested Blocks"
+                }
+
+                code c15 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    application my-app {
+                      name    = "my-app"
+                      version = "1.0.0"
+
+                      server {
+                        host = "0.0.0.0"
+                        port = 8080
+
+                        tls {
+                          cert = "/etc/certs/server.crt"
+                          key  = "/etc/certs/server.key"
+                        }
+                      }
+
+                      database primary {
+                        host = "db.internal"
+                        port = 5432
+                      }
+                    }
+                    WCL
+                }
+
+                heading h3_siblings {
+                    level = 3
+                    content = "Multiple Sibling Blocks of the Same Type"
+                }
+
+                code c16 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    server web-1 {
+                      host = "10.0.0.1"
+                      port = 8080
+                    }
+
+                    server web-2 {
+                      host = "10.0.0.2"
+                      port = 8080
+                    }
+
+                    server web-3 {
+                      host = "10.0.0.3"
+                      port = 8080
+                    }
+                    WCL
+                }
+
+                paragraph p16 {
+                    content = "Blocks without IDs in the same scope are not required to be unique by the evaluator, but schemas may impose additional uniqueness constraints."
+                }
+            }
+        }
+    }
+}

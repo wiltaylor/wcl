@@ -1,0 +1,578 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
+
+page python_library {
+    section = "wcl_docs.getting_started.python_library"
+    title = "Using WCL as a Python Library"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Using WCL as a Python Library"
+                }
+
+                paragraph p1 {
+                    content = "WCL has native Python bindings via PyO3. The <code>pywcl</code> package provides the full 11-phase parsing pipeline with Pythonic types — values come back as native <code>dict</code>, <code>list</code>, <code>int</code>, <code>str</code>, etc."
+                }
+
+                heading h2_install {
+                    level = 2
+                    content = "Installation"
+                }
+
+                paragraph p2 {
+                    content = "Install from PyPI:"
+                }
+
+                code c1 {
+                    language = "bash"
+                    content = "pip install pywcl"
+                }
+
+                paragraph p3 {
+                    content = "Or install from source (requires a Rust toolchain and <code>maturin</code>):"
+                }
+
+                code c2 {
+                    language = "bash"
+                    content = "cd bindings/python\npip install -e ."
+                }
+
+                heading h2_parse_string {
+                    level = 2
+                    content = "Parsing a WCL String"
+                }
+
+                paragraph p4 {
+                    content = "Use <code>wcl.parse()</code> to run the full pipeline and get a <code>Document</code>:"
+                }
+
+                code c3 {
+                    language = "python"
+                    content = <<-'PY'
+                    import wcl
+
+                    doc = wcl.parse("""
+                        server web-prod {
+                            host = "0.0.0.0"
+                            port = 8080
+                            debug = false
+                        }
+                    """)
+
+                    if doc.has_errors:
+                        for e in doc.errors:
+                            print(f"error: {e.message}")
+                    else:
+                        print("Document parsed successfully")
+                    PY
+                }
+
+                heading h2_parse_file {
+                    level = 2
+                    content = "Parsing a WCL File"
+                }
+
+                paragraph p5 {
+                    content = "<code>parse_file()</code> reads and parses a file. It automatically sets the root directory to the file's parent so imports resolve correctly:"
+                }
+
+                code c4 {
+                    language = "python"
+                    content = <<-'PY'
+                    doc = wcl.parse_file("config/main.wcl")
+
+                    if doc.has_errors:
+                        for e in doc.errors:
+                            print(f"error: {e.message}")
+                    PY
+                }
+
+                paragraph p6 {
+                    content = "Raises <code>IOError</code> if the file doesn't exist."
+                }
+
+                heading h2_values {
+                    level = 2
+                    content = "Accessing Evaluated Values"
+                }
+
+                paragraph p7 {
+                    content = "After parsing, <code>doc.values</code> is a Python <code>dict</code> with all evaluated top-level attributes and blocks. Values are converted to native Python types:"
+                }
+
+                code c5 {
+                    language = "python"
+                    content = <<-'PY'
+                    doc = wcl.parse("""
+                        name = "my-app"
+                        port = 8080
+                        tags = ["web", "prod"]
+                        debug = false
+                    """)
+
+                    print(doc.values["name"])   # "my-app" (str)
+                    print(doc.values["port"])   # 8080 (int)
+                    print(doc.values["tags"])   # ["web", "prod"] (list)
+                    print(doc.values["debug"])  # False (bool)
+                    PY
+                }
+
+                paragraph p8 {
+                    content = "WCL types map to Python types as follows:"
+                }
+
+                data_table t1 {
+                    rows = [
+                        ["WCL Type", "Python Type"],
+                        ["<code>string</code>", "<code>str</code>"],
+                        ["<code>i64</code>", "<code>int</code>"],
+                        ["<code>f64</code>", "<code>float</code>"],
+                        ["<code>bool</code>", "<code>bool</code>"],
+                        ["<code>null</code>", "<code>None</code>"],
+                        ["<code>list</code>", "<code>list</code>"],
+                        ["<code>map</code>", "<code>dict</code>"],
+                        ["<code>set</code>", "<code>set</code> (or <code>list</code> if items are unhashable)"]
+                    ]
+                }
+
+                heading h2_blocks {
+                    level = 2
+                    content = "Working with Blocks"
+                }
+
+                paragraph p9 {
+                    content = "Use <code>blocks()</code> and <code>blocks_of_type()</code> to access parsed blocks with resolved attributes:"
+                }
+
+                code c6 {
+                    language = "python"
+                    content = <<-'PY'
+                    doc = wcl.parse("""
+                        server web-prod {
+                            host = "0.0.0.0"
+                            port = 8080
+                        }
+
+                        server web-staging {
+                            host = "staging.internal"
+                            port = 8081
+                        }
+
+                        database main-db {
+                            host = "db.internal"
+                            port = 5432
+                        }
+                    """)
+
+                    # Get all blocks
+                    blocks = doc.blocks()
+                    print(f"Total blocks: {len(blocks)}")  # 3
+
+                    # Get blocks of a specific type
+                    servers = doc.blocks_of_type("server")
+                    for s in servers:
+                        print(f"server id={s.id} host={s.get('host')} port={s.get('port')}")
+                    PY
+                }
+
+                paragraph p10 {
+                    content = "Each <code>BlockRef</code> has the following properties:"
+                }
+
+                code c7 {
+                    language = "python"
+                    content = <<-'PY'
+                    block.kind        # str — block type name (e.g. "server")
+                    block.id          # str | None — inline ID (e.g. "web-prod")
+                    block.attributes  # dict — evaluated attribute values (includes _args if inline args present)
+                    block.children    # list[BlockRef] — nested child blocks
+                    block.decorators  # list[Decorator] — decorators on this block
+                    PY
+                }
+
+                paragraph p11 {
+                    content = "And these methods:"
+                }
+
+                code c8 {
+                    language = "python"
+                    content = <<-'PY'
+                    block.get("port")              # attribute value, or None if missing
+                    block.has_decorator("deprecated")  # True/False
+                    PY
+                }
+
+                heading h2_tables {
+                    level = 2
+                    content = "Working with Tables"
+                }
+
+                paragraph p12 {
+                    content = "Tables evaluate to a list of row dicts. Each row is a dict mapping column names to cell values:"
+                }
+
+                code c9 {
+                    language = "python"
+                    content = <<-'PY'
+                    doc = wcl.parse("""
+                        table users {
+                            name : string
+                            age  : i64
+                            | "alice" | 25 |
+                            | "bob"   | 30 |
+                        }
+                    """)
+
+                    users = doc.values["users"]
+                    print(users)
+                    # [{"name": "alice", "age": 25}, {"name": "bob", "age": 30}]
+
+                    # Access individual rows
+                    print(users[0]["name"])  # "alice"
+                    print(users[1]["age"])   # 30
+                    PY
+                }
+
+                paragraph p13 {
+                    content = "Tables inside blocks appear in the block's attributes:"
+                }
+
+                code c10 {
+                    language = "python"
+                    content = <<-'PY'
+                    doc = wcl.parse("""
+                        service main {
+                            table config {
+                                key   : string
+                                value : i64
+                                | "port" | 8080 |
+                            }
+                        }
+                    """)
+
+                    block = doc.blocks_of_type("service")[0]
+                    print(block.get("config"))  # [{"key": "port", "value": 8080}]
+                    PY
+                }
+
+                heading h2_queries {
+                    level = 2
+                    content = "Running Queries"
+                }
+
+                paragraph p14 {
+                    content = "<code>doc.query()</code> accepts the same query syntax as the <code>wcl query</code> CLI command:"
+                }
+
+                code c11 {
+                    language = "python"
+                    content = <<-'PY'
+                    doc = wcl.parse("""
+                        server svc-api {
+                            port = 8080
+                            env = "prod"
+                        }
+
+                        server svc-admin {
+                            port = 9090
+                            env = "prod"
+                        }
+
+                        server svc-debug {
+                            port = 3000
+                            env = "dev"
+                        }
+                    """)
+
+                    # Select all server blocks
+                    all_servers = doc.query("server")
+
+                    # Filter by attribute
+                    prod = doc.query('server | .env == "prod"')
+
+                    # Project a single attribute
+                    ports = doc.query("server | .port")
+                    print(ports)  # [8080, 9090, 3000]
+
+                    # Filter and project
+                    prod_ports = doc.query('server | .env == "prod" | .port')
+                    print(prod_ports)  # [8080, 9090]
+
+                    # Filter by comparison
+                    high_ports = doc.query("server | .port > 8500")
+                    print(high_ports)  # [BlockRef for svc-admin, BlockRef for svc-debug]
+                    PY
+                }
+
+                paragraph p15 {
+                    content = "Raises <code>ValueError</code> if the query is invalid."
+                }
+
+                heading h2_custom_fn {
+                    level = 2
+                    content = "Custom Functions"
+                }
+
+                paragraph p16 {
+                    content = "Register Python functions callable from WCL expressions by passing a <code>functions</code> dict:"
+                }
+
+                code c12 {
+                    language = "python"
+                    content = <<-'PY'
+                    def double(args):
+                        return args[0] * 2
+
+                    def greet(args):
+                        return f"Hello, {args[0]}!"
+
+                    doc = wcl.parse("""
+                        result = double(21)
+                        message = greet("World")
+                    """, functions={"double": double, "greet": greet})
+
+                    print(doc.values["result"])   # 42
+                    print(doc.values["message"])  # "Hello, World!"
+                    PY
+                }
+
+                paragraph p17 {
+                    content = "Functions receive a single <code>args</code> list with native Python values and should return a native Python value. Errors propagate as diagnostics:"
+                }
+
+                code c13 {
+                    language = "python"
+                    content = <<-'PY'
+                    def safe_div(args):
+                        if args[1] == 0:
+                            raise ValueError("division by zero")
+                        return args[0] / args[1]
+
+                    doc = wcl.parse("result = safe_div(10, 0)", functions={"safe_div": safe_div})
+                    assert doc.has_errors  # The ValueError becomes a diagnostic
+                    PY
+                }
+
+                paragraph p18 {
+                    content = "Functions can return any supported type:"
+                }
+
+                code c14 {
+                    language = "python"
+                    content = <<-'PY'
+                    def make_list(args):
+                        return [1, 2, 3]
+
+                    def is_even(args):
+                        return args[0] % 2 == 0
+
+                    def noop(args):
+                        return None
+                    PY
+                }
+
+                paragraph p19 {
+                    content = "Custom functions also work in control flow expressions:"
+                }
+
+                code c15 {
+                    language = "python"
+                    content = <<-'PY'
+                    def items(args):
+                        return [1, 2, 3]
+
+                    doc = wcl.parse(
+                        "for item in items() { entry { value = item } }",
+                        functions={"items": items},
+                    )
+                    PY
+                }
+
+                heading h2_parse_options {
+                    level = 2
+                    content = "Parse Options"
+                }
+
+                paragraph p20 {
+                    content = "All options are passed as keyword arguments to <code>parse()</code>:"
+                }
+
+                code c16 {
+                    language = "python"
+                    content = <<-'PY'
+                    doc = wcl.parse(source,
+                        root_dir="./config",         # root directory for import resolution
+                        allow_imports=True,          # enable/disable imports (default: True)
+                        max_import_depth=32,         # max nested import depth (default: 32)
+                        max_macro_depth=64,          # max macro expansion depth (default: 64)
+                        max_loop_depth=32,           # max for-loop nesting (default: 32)
+                        max_iterations=10000,        # max total loop iterations (default: 10,000)
+                        functions={"my_fn": my_fn},  # custom functions
+                    )
+                    PY
+                }
+
+                paragraph p21 {
+                    content = "When processing untrusted input, disable imports to prevent file system access:"
+                }
+
+                code c17 {
+                    language = "python"
+                    content = "doc = wcl.parse(untrusted_input, allow_imports=False)"
+                }
+
+                heading h2_library {
+                    level = 2
+                    content = "Library Files"
+                }
+
+                paragraph p22 {
+                    content = "Create <code>.wcl</code> library files manually and place them in <code>~/.local/share/wcl/lib/</code>. Use <code>wcl.list_libraries()</code> to list installed libraries. See the Libraries guide for details."
+                }
+
+                heading h2_error_handling {
+                    level = 2
+                    content = "Error Handling"
+                }
+
+                paragraph p23 {
+                    content = "The <code>Document</code> collects all diagnostics from every pipeline phase. Each <code>Diagnostic</code> has a severity, message, and optional error code:"
+                }
+
+                code c18 {
+                    language = "python"
+                    content = <<-'PY'
+                    doc = wcl.parse("""
+                        server web {
+                            port = "not_a_number"
+                        }
+
+                        schema "server" {
+                            port: i64
+                        }
+                    """)
+
+                    # Check for errors
+                    if doc.has_errors:
+                        for e in doc.errors:
+                            code = f"[{e.code}] " if e.code else ""
+                            print(f"{e.severity}: {code}{e.message}")
+
+                    # All diagnostics (errors + warnings)
+                    for d in doc.diagnostics:
+                        print(f"{d.severity}: {d.message}")
+                    PY
+                }
+
+                paragraph p24 {
+                    content = "The <code>Diagnostic</code> type:"
+                }
+
+                code c19 {
+                    language = "python"
+                    content = <<-'PY'
+                    d.severity  # "error", "warning", "info", or "hint"
+                    d.message   # str — the diagnostic message
+                    d.code      # str | None — e.g. "E071" for type mismatch
+                    repr(d)     # "Diagnostic(error: [E071] type mismatch: ...)"
+                    PY
+                }
+
+                paragraph p25 {
+                    content = "Use <code>doc.has_errors</code> (bool) as a quick check, <code>doc.errors</code> for only errors, and <code>doc.diagnostics</code> for everything including warnings."
+                }
+
+                heading h2_complete {
+                    level = 2
+                    content = "Complete Example"
+                }
+
+                paragraph p26 {
+                    content = "Putting it all together — parse a configuration, validate it, query it, and extract values:"
+                }
+
+                code c20 {
+                    language = "python"
+                    content = <<-'PY'
+                    import wcl
+
+                    doc = wcl.parse("""
+                        schema "server" {
+                            port: i64
+                            host: string @optional
+                        }
+
+                        server svc-api {
+                            port = 8080
+                            host = "api.internal"
+                        }
+
+                        server svc-admin {
+                            port = 9090
+                            host = "admin.internal"
+                        }
+                    """)
+
+                    # 1. Check for errors
+                    if doc.has_errors:
+                        for e in doc.errors:
+                            print(f"{e.severity}: {e.message}")
+                        exit(1)
+
+                    # 2. Query for all server ports
+                    ports = doc.query("server | .port")
+                    print(f"All ports: {ports}")  # [8080, 9090]
+
+                    # 3. Iterate resolved blocks
+                    for server in doc.blocks_of_type("server"):
+                        id = server.id or "(no id)"
+                        host = server.get("host")
+                        port = server.get("port")
+                        print(f"{id}: {host}:{port}")
+
+                    # 4. Custom functions
+                    def double(args):
+                        return args[0] * 2
+
+                    doc2 = wcl.parse("result = double(21)", functions={"double": double})
+                    print(f"result = {doc2.values['result']}")  # 42
+                    PY
+                }
+
+                heading h2_from_source {
+                    level = 2
+                    content = "Building from Source"
+                }
+
+                code c21 {
+                    language = "bash"
+                    content = <<-'BASH'
+                    # Install development dependencies
+                    cd wcl_python
+                    python -m venv .venv
+                    source .venv/bin/activate
+                    pip install maturin pytest
+
+                    # Build and install in development mode
+                    maturin develop
+
+                    # Run tests
+                    pytest tests/ -v
+
+                    # Or via just
+                    just test-python
+                    BASH
+                }
+
+                paragraph p27 {
+                    content = "This requires the Rust toolchain and Python 3.8+."
+                }
+            }
+        }
+    }
+}
