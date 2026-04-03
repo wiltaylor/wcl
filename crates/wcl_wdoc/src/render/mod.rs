@@ -59,8 +59,8 @@ pub fn render_document(
             .map_err(|e| format!("failed to write {filename}: {e}"))?;
     }
 
-    // index.html redirects to the first page
-    if let Some(first) = doc.pages.first() {
+    // index.html redirects to the first page by section order
+    if let Some(first) = first_page_by_section_order(&doc.sections, &doc.pages) {
         let target = format!("{}.html", first.id);
         let redirect = format!(
             "<!DOCTYPE html><html><head>\
@@ -98,6 +98,22 @@ pub fn render_document(
     }
 
     Ok(())
+}
+
+/// Walk the section tree in declaration order and return the first page found.
+fn first_page_by_section_order<'a>(
+    sections: &[crate::model::Section],
+    pages: &'a [crate::model::Page],
+) -> Option<&'a crate::model::Page> {
+    for section in sections {
+        if let Some(page) = pages.iter().find(|p| p.section_id == section.id) {
+            return Some(page);
+        }
+        if let Some(page) = first_page_by_section_order(&section.children, pages) {
+            return Some(page);
+        }
+    }
+    None
 }
 
 fn copy_dir_assets(src: &Path, dest: &Path, extensions: &[&str]) -> Result<(), String> {
