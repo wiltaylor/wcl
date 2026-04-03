@@ -844,6 +844,7 @@ mod tests {
                 "env",
                 Expr::StringLit(StringLit {
                     parts: vec![StringPart::Literal("prod".to_string())],
+                    heredoc: None,
                     span: dummy_span(),
                 }),
             )],
@@ -1017,6 +1018,7 @@ mod tests {
             args: vec![DecoratorArg::Positional(Expr::List(
                 vec![Expr::StringLit(StringLit {
                     parts: vec![StringPart::Literal("tls".to_string())],
+                    heredoc: None,
                     span: dummy_span(),
                 })],
                 dummy_span(),
@@ -1050,10 +1052,12 @@ mod tests {
                 vec![
                     Expr::StringLit(StringLit {
                         parts: vec![StringPart::Literal("tls".to_string())],
+                        heredoc: None,
                         span: dummy_span(),
                     }),
                     Expr::StringLit(StringLit {
                         parts: vec![StringPart::Literal("monitoring".to_string())],
+                        heredoc: None,
                         span: dummy_span(),
                     }),
                 ],
@@ -1089,6 +1093,7 @@ mod tests {
             args: vec![DecoratorArg::Positional(Expr::List(
                 vec![Expr::StringLit(StringLit {
                     parts: vec![StringPart::Literal("monitoring".to_string())],
+                    heredoc: None,
                     span: dummy_span(),
                 })],
                 dummy_span(),

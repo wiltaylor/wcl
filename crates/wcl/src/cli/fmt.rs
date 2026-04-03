@@ -271,10 +271,17 @@ impl<'a> Formatter<'a> {
                     }
                     for row in &table.rows {
                         self.write_indent();
-                        for cell in &row.cells {
+                        for cell in row.cells.iter() {
+                            let is_heredoc =
+                                matches!(cell, Expr::StringLit(s) if s.heredoc.is_some());
                             self.output.push_str("| ");
                             self.format_expr(cell);
-                            self.output.push(' ');
+                            if is_heredoc {
+                                self.output.push('\n');
+                                self.write_indent();
+                            } else {
+                                self.output.push(' ');
+                            }
                         }
                         self.output.push_str("|\n");
                     }
@@ -667,6 +674,14 @@ impl<'a> Formatter<'a> {
     }
 
     fn format_string_lit(&mut self, s: &StringLit) {
+        if let Some(ref info) = s.heredoc {
+            self.format_heredoc(s, info);
+        } else {
+            self.format_quoted_string(s);
+        }
+    }
+
+    fn format_quoted_string(&mut self, s: &StringLit) {
         self.output.push('"');
         for part in &s.parts {
             match part {
@@ -690,6 +705,56 @@ impl<'a> Formatter<'a> {
             }
         }
         self.output.push('"');
+    }
+
+    fn format_heredoc(&mut self, s: &StringLit, info: &HeredocInfo) {
+        let tag = &info.tag;
+        // Emit opening delimiter
+        self.output.push_str("<<");
+        if info.indented {
+            self.output.push('-');
+        }
+        if info.raw {
+            self.output.push('\'');
+        }
+        self.output.push_str(tag);
+        if info.raw {
+            self.output.push('\'');
+        }
+        self.output.push('\n');
+
+        // Build the content string
+        let indent_str = "    ".repeat(self.indent + 1);
+        for part in &s.parts {
+            match part {
+                StringPart::Literal(text) => {
+                    if info.indented {
+                        for (i, line) in text.split('\n').enumerate() {
+                            if i > 0 {
+                                self.output.push('\n');
+                            }
+                            if !line.is_empty() {
+                                self.output.push_str(&indent_str);
+                            }
+                            self.output.push_str(line);
+                        }
+                    } else {
+                        self.output.push_str(text);
+                    }
+                }
+                StringPart::Interpolation(e) => {
+                    self.output.push_str("${");
+                    self.format_expr(e);
+                    self.output.push('}');
+                }
+            }
+        }
+        self.output.push('\n');
+        // Emit closing delimiter at current indent level
+        if info.indented {
+            self.output.push_str(&indent_str);
+        }
+        self.output.push_str(tag);
     }
 
     fn format_type_expr(&mut self, te: &TypeExpr) {

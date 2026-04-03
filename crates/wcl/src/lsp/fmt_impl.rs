@@ -234,10 +234,17 @@ impl<'a> Fmt<'a> {
                     }
                     for row in &table.rows {
                         self.indent();
-                        for cell in &row.cells {
+                        for cell in row.cells.iter() {
+                            let is_heredoc =
+                                matches!(cell, Expr::StringLit(s) if s.heredoc.is_some());
                             self.out.push_str("| ");
                             self.expr(cell);
-                            self.out.push(' ');
+                            if is_heredoc {
+                                self.out.push('\n');
+                                self.indent();
+                            } else {
+                                self.out.push(' ');
+                            }
                         }
                         self.out.push_str("|\n");
                     }
@@ -654,6 +661,14 @@ impl<'a> Fmt<'a> {
     }
 
     fn string_lit(&mut self, s: &StringLit) {
+        if let Some(ref info) = s.heredoc {
+            self.format_heredoc(s, info);
+        } else {
+            self.quoted_string(s);
+        }
+    }
+
+    fn quoted_string(&mut self, s: &StringLit) {
         self.out.push('"');
         for part in &s.parts {
             match part {
@@ -677,6 +692,53 @@ impl<'a> Fmt<'a> {
             }
         }
         self.out.push('"');
+    }
+
+    fn format_heredoc(&mut self, s: &StringLit, info: &HeredocInfo) {
+        let tag = &info.tag;
+        self.out.push_str("<<");
+        if info.indented {
+            self.out.push('-');
+        }
+        if info.raw {
+            self.out.push('\'');
+        }
+        self.out.push_str(tag);
+        if info.raw {
+            self.out.push('\'');
+        }
+        self.out.push('\n');
+
+        let indent_str = "    ".repeat(self.indent + 1);
+        for part in &s.parts {
+            match part {
+                StringPart::Literal(text) => {
+                    if info.indented {
+                        for (i, line) in text.split('\n').enumerate() {
+                            if i > 0 {
+                                self.out.push('\n');
+                            }
+                            if !line.is_empty() {
+                                self.out.push_str(&indent_str);
+                            }
+                            self.out.push_str(line);
+                        }
+                    } else {
+                        self.out.push_str(text);
+                    }
+                }
+                StringPart::Interpolation(e) => {
+                    self.out.push_str("${");
+                    self.expr(e);
+                    self.out.push('}');
+                }
+            }
+        }
+        self.out.push('\n');
+        if info.indented {
+            self.out.push_str(&indent_str);
+        }
+        self.out.push_str(tag);
     }
 
     fn type_expr(&mut self, te: &TypeExpr) {
@@ -990,6 +1052,7 @@ mod tests {
     fn make_string_lit(s: &str) -> StringLit {
         StringLit {
             parts: vec![StringPart::Literal(s.to_string())],
+            heredoc: None,
             span: dummy_span(),
         }
     }

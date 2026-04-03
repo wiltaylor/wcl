@@ -289,6 +289,7 @@ mod tests {
     fn make_string_lit(text: &str) -> StringLit {
         StringLit {
             parts: vec![StringPart::Literal(text.to_string())],
+            heredoc: None,
             span: dummy_span(),
         }
     }

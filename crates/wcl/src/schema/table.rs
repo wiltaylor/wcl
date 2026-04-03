@@ -274,6 +274,7 @@ mod tests {
     fn mk_string_expr(s: &str) -> Expr {
         Expr::StringLit(StringLit {
             parts: vec![StringPart::Literal(s.into())],
+            heredoc: None,
             span: ds(),
         })
     }

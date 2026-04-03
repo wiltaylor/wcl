@@ -2251,6 +2251,7 @@ mod tests {
         let scope = ev.scopes.create_scope(ScopeKind::Module, None);
         let expr = Expr::StringLit(StringLit {
             parts: vec![StringPart::Literal("hello".to_string())],
+            heredoc: None,
             span: ds(),
         });
         assert_eq!(
@@ -2283,6 +2284,7 @@ mod tests {
                 StringPart::Interpolation(Box::new(Expr::Ident(mk_ident("name")))),
                 StringPart::Literal("!".to_string()),
             ],
+            heredoc: None,
             span: ds(),
         });
         assert_eq!(
@@ -2298,11 +2300,13 @@ mod tests {
         let expr = Expr::BinaryOp(
             Box::new(Expr::StringLit(StringLit {
                 parts: vec![StringPart::Literal("foo".to_string())],
+                heredoc: None,
                 span: ds(),
             })),
             BinOp::Add,
             Box::new(Expr::StringLit(StringLit {
                 parts: vec![StringPart::Literal("bar".to_string())],
+                heredoc: None,
                 span: ds(),
             })),
             ds(),
@@ -2560,6 +2564,7 @@ mod tests {
             Box::new(Expr::Ident(mk_ident("upper"))),
             vec![CallArg::Positional(Expr::StringLit(StringLit {
                 parts: vec![StringPart::Literal("hello".to_string())],
+                heredoc: None,
                 span: ds(),
             }))],
             ds(),
@@ -2824,11 +2829,13 @@ mod tests {
         let expr = Expr::BinaryOp(
             Box::new(Expr::StringLit(StringLit {
                 parts: vec![StringPart::Literal("hello123".to_string())],
+                heredoc: None,
                 span: ds(),
             })),
             BinOp::Match,
             Box::new(Expr::StringLit(StringLit {
                 parts: vec![StringPart::Literal(r"\d+".to_string())],
+                heredoc: None,
                 span: ds(),
             })),
             ds(),
@@ -2901,6 +2908,7 @@ mod tests {
     fn mk_string_lit(s: &str) -> StringLit {
         StringLit {
             parts: vec![StringPart::Literal(s.to_string())],
+            heredoc: None,
             span: ds(),
         }
     }
@@ -3487,6 +3495,7 @@ mod tests {
             body: vec![],
             text_content: Some(StringLit {
                 parts: vec![StringPart::Literal("Hello world".to_string())],
+                heredoc: None,
                 span: ds(),
             }),
             trivia: crate::lang::trivia::Trivia::empty(),
@@ -3526,6 +3535,7 @@ mod tests {
                 name: mk_ident("name"),
                 value: Expr::StringLit(StringLit {
                     parts: vec![StringPart::Literal("World".to_string())],
+                    heredoc: None,
                     span: ds(),
                 }),
                 trivia: crate::lang::trivia::Trivia::empty(),
@@ -3548,6 +3558,7 @@ mod tests {
                         StringPart::Interpolation(Box::new(Expr::Ident(mk_ident("name")))),
                         StringPart::Literal("!".to_string()),
                     ],
+                    heredoc: None,
                     span: ds(),
                 }),
                 trivia: crate::lang::trivia::Trivia::empty(),

@@ -1,0 +1,53 @@
+table docs {
+    title : string
+    body : string
+
+    | "Getting Started" | <<-EOF
+        Install the package:
+        npm install wcl
+
+        Then import it:
+        const wcl = require("wcl")
+        EOF
+    |
+    | "Configuration" | <<-EOF
+        Create a config file:
+        touch app.wcl
+
+        Add your settings:
+        server api {
+          port = 8080
+        }
+        EOF
+    |
+}
+
+table scripts {
+    name : string
+    code : string
+
+    | "hello" | <<SCRIPT
+echo "Hello, World!"
+exit 0
+SCRIPT
+    |
+    | "deploy" | <<BASH
+#!/bin/bash
+set -e
+cargo build --release
+cp target/release/app /usr/local/bin/
+BASH
+    |
+}
+
+table templates {
+    name : string
+    content : string
+
+    | "raw" | <<-'TMPL'
+        Hello ${name},
+        This ${is} not interpolated.
+        TMPL
+    |
+}
+

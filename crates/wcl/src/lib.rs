@@ -766,6 +766,7 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
 
     // Phase 8: Decorator validation
     let mut decorator_schemas = DecoratorSchemaRegistry::new();
+    decorator_schemas.namespace_aliases = namespace_aliases.aliases.clone();
     let mut diag_bag = DiagnosticBag::new();
     decorator_schemas.collect(&doc, &mut diag_bag);
     decorator_schemas.validate_all(&doc, &mut diag_bag);
@@ -837,30 +838,35 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
 /// based on `@inline(N)` schema field decorators.
 fn apply_inline_mappings(schemas: &SchemaRegistry, values: &mut indexmap::IndexMap<String, Value>) {
     for value in values.values_mut() {
-        apply_inline_to_value(schemas, value);
+        apply_inline_to_value(schemas, value, None);
     }
 }
 
-fn apply_inline_to_value(schemas: &SchemaRegistry, value: &mut Value) {
+fn apply_inline_to_value(schemas: &SchemaRegistry, value: &mut Value, parent_kind: Option<&str>) {
     match value {
-        Value::BlockRef(br) => apply_inline_to_blockref(schemas, br),
+        Value::BlockRef(br) => apply_inline_to_blockref(schemas, br, parent_kind),
         Value::List(items) => {
             for item in items {
-                apply_inline_to_value(schemas, item);
+                apply_inline_to_value(schemas, item, parent_kind);
             }
         }
         _ => {}
     }
 }
 
-fn apply_inline_to_blockref(schemas: &SchemaRegistry, br: &mut BlockRef) {
-    // Recurse into children
+fn apply_inline_to_blockref(
+    schemas: &SchemaRegistry,
+    br: &mut BlockRef,
+    parent_kind: Option<&str>,
+) {
+    // Recurse into children (current block is their parent)
+    let kind = br.kind.clone();
     for child in &mut br.children {
-        apply_inline_to_blockref(schemas, child);
+        apply_inline_to_blockref(schemas, child, Some(&kind));
     }
 
-    // Look up schema for this block kind
-    if let Some(schema) = schemas.schemas.get(&br.kind) {
+    // Look up schema for this block kind, scoped to parent
+    if let Some(schema) = schemas.get_schema(&kind, parent_kind) {
         // Find fields with @inline(N)
         let inline_fields: Vec<(String, usize)> = schema
             .fields
@@ -3888,5 +3894,124 @@ use net::nonexistent
             .filter(|d| d.code.as_deref() == Some("E120"))
             .collect();
         assert_eq!(errors.len(), 1, "expected E120: {:?}", doc.diagnostics);
+    }
+
+    // ── Heredoc in table cells ───────────────────────────────────────────
+
+    #[test]
+    fn table_heredoc_basic() {
+        let src = r#"table docs {
+  title : string
+  body : string
+  | "Setup" | <<-EOF
+    Hello world
+    EOF
+  |
+}"#;
+        let doc = parse(src, ParseOptions::default());
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+        let json = crate::json::values_to_json(&doc.values);
+        let rows = json["docs"].as_array().unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0]["title"], "Setup");
+        assert_eq!(rows[0]["body"], "Hello world");
+    }
+
+    #[test]
+    fn table_heredoc_non_indented() {
+        let src = "table t {\n  col : string\n  | <<EOF\nline1\nline2\nEOF\n  |\n}";
+        let doc = parse(src, ParseOptions::default());
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+        let json = crate::json::values_to_json(&doc.values);
+        let rows = json["t"].as_array().unwrap();
+        assert_eq!(rows[0]["col"], "line1\nline2");
+    }
+
+    #[test]
+    fn table_heredoc_raw() {
+        let src = "table t {\n  col : string\n  | <<'RAW'\nno ${interp}\nRAW\n  |\n}";
+        let doc = parse(src, ParseOptions::default());
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+        let json = crate::json::values_to_json(&doc.values);
+        let rows = json["t"].as_array().unwrap();
+        assert_eq!(rows[0]["col"], "no ${interp}");
+    }
+
+    #[test]
+    fn table_heredoc_multiple_rows() {
+        let src = r#"table t {
+  name : string
+  desc : string
+  | "a" | <<-EOF
+    first
+    EOF
+  |
+  | "b" | <<-EOF
+    second
+    EOF
+  |
+}"#;
+        let doc = parse(src, ParseOptions::default());
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+        let json = crate::json::values_to_json(&doc.values);
+        let rows = json["t"].as_array().unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0]["desc"], "first");
+        assert_eq!(rows[1]["desc"], "second");
+    }
+
+    #[test]
+    fn table_heredoc_mixed_cells() {
+        let src = r#"table t {
+  a : string
+  b : i32
+  c : string
+  | <<-EOF
+    text
+    EOF
+  | 42 | "hello" |
+}"#;
+        let doc = parse(src, ParseOptions::default());
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+        let json = crate::json::values_to_json(&doc.values);
+        let rows = json["t"].as_array().unwrap();
+        assert_eq!(rows[0]["a"], "text");
+        assert_eq!(rows[0]["b"], 42);
+        assert_eq!(rows[0]["c"], "hello");
+    }
+
+    #[test]
+    fn table_heredoc_with_interpolation() {
+        let src = r#"let name = "world"
+table t {
+  col : string
+  | <<EOF
+hello ${name}!
+EOF
+  |
+}"#;
+        let doc = parse(src, ParseOptions::default());
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+        let json = crate::json::values_to_json(&doc.values);
+        let rows = json["t"].as_array().unwrap();
+        assert_eq!(rows[0]["col"], "hello world!");
+    }
+
+    #[test]
+    fn table_heredoc_preserves_tag() {
+        let src = "table t {\n  col : string\n  | <<SCRIPT\nhello\nSCRIPT\n  |\n}";
+        let doc = parse(src, ParseOptions::default());
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+        // Verify the AST preserves the tag
+        if let Some(ast::DocItem::Body(ast::BodyItem::Table(table))) = doc.ast.items.first() {
+            if let Some(row) = table.rows.first() {
+                if let ast::Expr::StringLit(s) = &row.cells[0] {
+                    let info = s.heredoc.as_ref().expect("should have heredoc info");
+                    assert_eq!(info.tag, "SCRIPT");
+                } else {
+                    panic!("expected StringLit");
+                }
+            }
+        }
     }
 }

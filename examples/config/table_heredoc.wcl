@@ -1,0 +1,90 @@
+// ── Heredocs in table cells ──
+// Tables can contain multiline text using heredoc syntax.
+// Use <<-TAG for indented heredocs (strips leading whitespace).
+
+// ── Runbook with multiline step descriptions ──
+table runbook {
+    step  : string
+    owner : string
+    notes : string
+
+    | "1. Provision" | "infra" | <<-EOF
+        Spin up infrastructure using Terraform.
+        Ensure the VPC peering is configured before
+        proceeding to the next step.
+        EOF
+    |
+    | "2. Deploy" | "platform" | <<-EOF
+        Deploy the application using:
+          cargo build --release
+          scp target/release/app prod:/opt/app/
+
+        Verify the health endpoint responds with 200.
+        EOF
+    |
+    | "3. Validate" | "qa" | <<-EOF
+        Run the integration test suite:
+          just test::integration
+
+        Check the Grafana dashboard for error spikes.
+        EOF
+    |
+}
+
+// ── Scripts table with non-indented heredocs ──
+// Use <<TAG (without -) when whitespace matters, e.g. scripts.
+table scripts {
+    name : string
+    lang : string
+    code : string
+
+    | "health-check" | "bash" | <<BASH
+#!/bin/bash
+set -euo pipefail
+curl -sf http://localhost:8080/health || {
+  echo "Health check failed" >&2
+  exit 1
+}
+echo "OK"
+BASH
+    |
+    | "seed-db" | "python" | <<PYTHON
+import psycopg2
+
+conn = psycopg2.connect("dbname=myapp")
+cur = conn.cursor()
+cur.execute("""
+    INSERT INTO users (name, role)
+    VALUES ('alice', 'admin'), ('bob', 'viewer')
+""")
+conn.commit()
+PYTHON
+    |
+}
+
+// ── Templates with raw heredocs (no interpolation) ──
+let app_name = "myapp"
+
+table email_templates {
+    name    : string
+    subject : string
+    body    : string
+
+    | "welcome" | "Welcome to ${app_name}!" | <<-'TMPL'
+        Hi ${user.name},
+
+        Welcome to the platform! Your account is ready.
+
+        — The ${app.name} Team
+        TMPL
+    |
+    | "alert" | "Alert: ${app_name} issue" | <<-'TMPL'
+        Incident #${incident.id} detected.
+
+        Service: ${service.name}
+        Severity: ${incident.severity}
+
+        Please investigate immediately.
+        TMPL
+    |
+}

@@ -32,6 +32,8 @@ pub enum TokenKind {
     /// Heredoc value.
     Heredoc {
         content: String,
+        /// The delimiter tag (e.g. `EOF`, `SCRIPT`).
+        tag: String,
         /// `<<-` indented form strips leading whitespace.
         indented: bool,
         /// `<<'TAG'` raw form — no escape processing or interpolation.
@@ -590,6 +592,7 @@ impl<'a> Lexer<'a> {
             return self.make_tok(
                 TokenKind::Heredoc {
                     content: String::new(),
+                    tag: String::new(),
                     indented,
                     raw,
                 },
@@ -688,6 +691,7 @@ impl<'a> Lexer<'a> {
         self.make_tok(
             TokenKind::Heredoc {
                 content,
+                tag,
                 indented,
                 raw,
             },
@@ -1338,6 +1342,7 @@ mod tests {
             ks[0],
             TokenKind::Heredoc {
                 content: "hello\nworld".into(),
+                tag: "EOF".into(),
                 indented: false,
                 raw: false,
             }
@@ -1352,6 +1357,7 @@ mod tests {
             ks[0],
             TokenKind::Heredoc {
                 content: "hello\nworld".into(),
+                tag: "EOF".into(),
                 indented: true,
                 raw: false,
             }
@@ -1366,6 +1372,7 @@ mod tests {
             ks[0],
             TokenKind::Heredoc {
                 content: "no ${interp} here".into(),
+                tag: "EOF".into(),
                 indented: false,
                 raw: true,
             }
@@ -1380,6 +1387,7 @@ mod tests {
             ks[0],
             TokenKind::Heredoc {
                 content: "hello\nworld".into(),
+                tag: "EOF".into(),
                 indented: false,
                 raw: false,
             }
