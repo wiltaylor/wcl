@@ -150,6 +150,9 @@ h5.wdoc-heading { font-size: 1rem; }
 h6.wdoc-heading { font-size: 0.9rem; }
 
 .wdoc-paragraph { margin-bottom: 1rem; }
+.wdoc-paragraph ul, .wdoc-paragraph ol,
+.wdoc-callout-body ul, .wdoc-callout-body ol { padding-left: 0; margin-bottom: 0.5rem; list-style-position: inside; }
+.wdoc-paragraph li, .wdoc-callout-body li { margin-bottom: 0.25rem; }
 
 /* Code blocks */
 .wdoc-code {
