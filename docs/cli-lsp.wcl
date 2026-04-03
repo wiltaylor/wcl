@@ -1,0 +1,153 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, data_table, callout, bold, italic, link}
+
+page cli_lsp {
+    section = "wcl_docs.cli.cli_lsp"
+    title = "wcl lsp"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "wcl lsp"
+                }
+
+                paragraph p1 {
+                    content = "Start the WCL Language Server Protocol (LSP) server."
+                }
+
+                heading h2_usage {
+                    level = 2
+                    content = "Usage"
+                }
+
+                code c1 {
+                    language = "bash"
+                    content = "wcl lsp [options]"
+                }
+
+                heading h2_options {
+                    level = 2
+                    content = "Options"
+                }
+
+                data_table t1 {
+                    caption = "Options"
+                    rows = [
+                        { flag = "--tcp <addr>", description = "Listen on a TCP address instead of stdio (e.g. 127.0.0.1:9257)" }
+                    ]
+                }
+
+                heading h2_description {
+                    level = 2
+                    content = "Description"
+                }
+
+                paragraph p2 {
+                    content = "<code>wcl lsp</code> starts the WCL language server, which implements the Language Server Protocol. Editors and IDEs connect to it to receive language intelligence features for WCL documents."
+                }
+
+                paragraph p3 {
+                    content = "By default, the server communicates over stdio, which is the standard transport for most editor integrations (VS Code, Neovim, Helix, etc.). The <code>--tcp</code> flag enables a TCP transport useful for debugging or unconventional editor setups."
+                }
+
+                heading h2_features {
+                    level = 2
+                    content = "Features"
+                }
+
+                data_table t2 {
+                    caption = "Features"
+                    rows = [
+                        { feature = "Diagnostics", description = "Real-time errors and warnings as you type, sourced from the full pipeline" },
+                        { feature = "Hover", description = "Type information and documentation for identifiers, blocks, and schema fields" },
+                        { feature = "Go to definition", description = "Jump to where a name, macro, schema, or imported identifier is defined" },
+                        { feature = "Completions", description = "Context-aware completions for identifiers, attribute names, block types, and decorators" },
+                        { feature = "Semantic tokens", description = "Syntax highlighting based on semantic meaning (not just token type)" },
+                        { feature = "Signature help", description = "Parameter hints when calling macros or functions" },
+                        { feature = "Find references", description = "Locate all uses of a definition across the document" },
+                        { feature = "Formatting", description = "Full-document formatting via wcl fmt" }
+                    ]
+                }
+
+                heading h2_editor_integration {
+                    level = 2
+                    content = "Editor Integration"
+                }
+
+                heading h3_vscode {
+                    level = 3
+                    content = "VS Code"
+                }
+
+                paragraph p4 {
+                    content = "Install the <code>wcl-vscode</code> extension. It starts <code>wcl lsp</code> automatically."
+                }
+
+                heading h3_neovim {
+                    level = 3
+                    content = "Neovim (nvim-lspconfig)"
+                }
+
+                code c2 {
+                    language = "lua"
+                    content = <<-'LUA'
+                    require('lspconfig').wcl.setup({
+                      cmd = { 'wcl', 'lsp' },
+                      filetypes = { 'wcl' },
+                      root_dir = require('lspconfig.util').root_pattern('.git', '*.wcl'),
+                    })
+                    LUA
+                }
+
+                heading h3_helix {
+                    level = 3
+                    content = "Helix"
+                }
+
+                paragraph p5 {
+                    content = "Add to <code>languages.toml</code>:"
+                }
+
+                code c3 {
+                    language = "toml"
+                    content = <<-'TOML'
+                    [[language]]
+                    name = "wcl"
+                    language-servers = ["wcl-lsp"]
+
+                    [language-server.wcl-lsp]
+                    command = "wcl"
+                    args = ["lsp"]
+                    TOML
+                }
+
+                heading h2_examples {
+                    level = 2
+                    content = "Examples"
+                }
+
+                paragraph p6 {
+                    content = "Start in stdio mode (used by editors automatically):"
+                }
+
+                code c4 {
+                    language = "bash"
+                    content = "wcl lsp"
+                }
+
+                paragraph p7 {
+                    content = "Start on a TCP port for debugging:"
+                }
+
+                code c5 {
+                    language = "bash"
+                    content = "wcl lsp --tcp 127.0.0.1:9257"
+                }
+            }
+        }
+    }
+}

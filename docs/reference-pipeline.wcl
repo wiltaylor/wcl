@@ -1,0 +1,300 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, data_table, callout, bold, italic, link}
+
+page ref_pipeline {
+    section = "wcl_docs.reference.ref_pipeline"
+    title = "Evaluation Pipeline"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Evaluation Pipeline"
+                }
+
+                paragraph p1 {
+                    content = "WCL processes a document through eleven sequential phases. Each phase transforms or validates the document before passing it to the next. Understanding the pipeline is useful when interpreting error messages and when reasoning about what is possible at each stage."
+                }
+
+                heading h2_overview {
+                    level = 2
+                    content = "Overview"
+                }
+
+                code c1 {
+                    language = "text"
+                    content = <<-'DIAGRAM'
+                    Source text
+                        |
+                        v
+                     1. Parse              -> AST
+                        |
+                        v
+                     2. Macro collection   -> MacroRegistry
+                        |
+                        v
+                     3. Import resolution  -> merged AST
+                        |
+                        v
+                     4. Macro expansion    -> expanded AST
+                        |
+                        v
+                     5. Control flow       -> flattened AST
+                        |
+                        v
+                     6. Partial merge      -> unified AST
+                        |
+                        v
+                     7. Scope construction -> ScopeArena + dependency graph
+                        |
+                        v
+                     8. Expression eval    -> resolved values
+                        |
+                        v
+                     9. Decorator valid.   -> (errors or ok)
+                        |
+                        v
+                    10. Schema validation  -> (errors or ok)
+                        |
+                        v
+                    11. Document valid.    -> final Document
+                    DIAGRAM
+                }
+
+                heading h2_phase1 {
+                    level = 2
+                    content = "Phase 1: Parse"
+                }
+
+                paragraph p2 {
+                    content = bold("Input") + ": raw source text" + "<br/>" + bold("Output") + ": Abstract Syntax Tree (AST)"
+                }
+
+                paragraph p3 {
+                    content = "The lexer tokenizes the source, and the parser produces an unambiguous AST. This phase handles:"
+                }
+
+                paragraph p3_list {
+                    content = "<ul>" +
+                        "<li>All syntactic constructs: blocks, attributes, let bindings, expressions, macros, schemas, tables, etc.</li>" +
+                        "<li>Comments and trivia (preserved for formatting)</li>" +
+                        "<li>Span information for every node (for diagnostics and LSP)</li>" +
+                        "</ul>"
+                }
+
+                paragraph p4 {
+                    content = "Errors here are E001 (syntax error), E002 (unexpected token), E003 (unterminated string)."
+                }
+
+                paragraph p5 {
+                    content = bold("Rationale") + ": parsing first gives a clean representation to work with. No evaluation can occur until syntax is confirmed valid."
+                }
+
+                heading h2_phase2 {
+                    level = 2
+                    content = "Phase 2: Macro Collection"
+                }
+
+                paragraph p6 {
+                    content = bold("Input") + ": AST" + "<br/>" + bold("Output") + ": MacroRegistry"
+                }
+
+                paragraph p7 {
+                    content = "All macro definitions (<code>macro name(...)</code>) are collected and registered before any expansion occurs. Both function macros and attribute macros are collected."
+                }
+
+                paragraph p8 {
+                    content = bold("Rationale") + ": macros must be fully registered before expansion so that call sites that appear before the definition in textual order can still be expanded. This enables any-order macro definitions, consistent with WCL's general any-order philosophy."
+                }
+
+                heading h2_phase3 {
+                    level = 2
+                    content = "Phase 3: Import Resolution"
+                }
+
+                paragraph p9 {
+                    content = bold("Input") + ": AST with <code>import</code> directives" + "<br/>" + bold("Output") + ": merged AST"
+                }
+
+                paragraph p10 {
+                    content = "Each <code>import \"path\"</code> directive is resolved to a file, parsed, and its top-level items are merged into the importing document's AST. Imports are processed recursively. The same file is not re-parsed if it has already been imported (import deduplication)."
+                }
+
+                paragraph p11 {
+                    content = "Errors: E010 (file not found), E011 (path escapes jail), E013 (remote import), E014 (max depth exceeded)."
+                }
+
+                paragraph p12 {
+                    content = bold("Rationale") + ": imports are resolved before macro expansion so that macros imported from other files are available during expansion."
+                }
+
+                heading h2_phase4 {
+                    level = 2
+                    content = "Phase 4: Macro Expansion"
+                }
+
+                paragraph p13 {
+                    content = bold("Input") + ": merged AST + MacroRegistry" + "<br/>" + bold("Output") + ": expanded AST (no macro calls remain)"
+                }
+
+                paragraph p14 {
+                    content = "Every macro call site is replaced with the expanded body of the macro, with parameters substituted. Attribute macros (<code>@macro_name</code>) are applied to their annotated items, injecting, setting, or removing attributes per their transform body."
+                }
+
+                paragraph p15 {
+                    content = "Errors: E020 (undefined macro), E021 (recursive expansion), E022 (max depth exceeded), E023 (wrong macro kind), E024 (parameter type mismatch)."
+                }
+
+                paragraph p16 {
+                    content = bold("Rationale") + ": macro expansion must happen before control flow so that macros can generate <code>for</code> loops and <code>if</code> blocks, and before scope construction so that generated items participate in normal scoping."
+                }
+
+                heading h2_phase5 {
+                    level = 2
+                    content = "Phase 5: Control Flow Expansion"
+                }
+
+                paragraph p17 {
+                    content = bold("Input") + ": expanded AST" + "<br/>" + bold("Output") + ": flattened AST (no <code>for</code>/<code>if</code> constructs remain)"
+                }
+
+                paragraph p18 {
+                    content = "<code>for</code> loops are unrolled: the loop body is repeated once per element in the iterable, with the loop variable substituted. <code>if</code>/<code>else</code> chains are evaluated and only the selected branch is retained."
+                }
+
+                paragraph p19 {
+                    content = "Errors: E025 (non-list iterable), E026 (non-bool condition), E027 (invalid expanded identifier), E028 (max iteration count), E029 (max nesting depth)."
+                }
+
+                paragraph p20 {
+                    content = bold("Rationale") + ": control flow must be resolved before partial merge and scope construction so that all generated blocks and attributes are known as concrete AST nodes before name resolution."
+                }
+
+                heading h2_phase6 {
+                    level = 2
+                    content = "Phase 6: Partial Merge"
+                }
+
+                paragraph p21 {
+                    content = bold("Input") + ": flattened AST" + "<br/>" + bold("Output") + ": unified AST (partial blocks merged)"
+                }
+
+                paragraph p22 {
+                    content = "Blocks declared as <code>partial</code> with the same type and ID are merged into a single block. Attributes from each partial declaration are combined. The order of attributes follows declaration order across partials."
+                }
+
+                paragraph p23 {
+                    content = "Errors: E030 (duplicate non-partial ID), E031 (attribute conflict), E032 (kind mismatch), E033 (mixed partial/non-partial). Warning W003 (label mismatch)."
+                }
+
+                paragraph p24 {
+                    content = bold("Rationale") + ": partial merging happens after control flow (which can generate partial blocks) and before scope construction so that the merged block is the single entity that participates in scope and evaluation."
+                }
+
+                heading h2_phase7 {
+                    level = 2
+                    content = "Phase 7: Scope Construction"
+                }
+
+                paragraph p25 {
+                    content = bold("Input") + ": unified AST" + "<br/>" + bold("Output") + ": ScopeArena (scope tree) + dependency graph"
+                }
+
+                paragraph p26 {
+                    content = "A scope tree is built: one module scope plus one child scope per block. For each scope, all defined names are recorded. A dependency graph is constructed by inspecting which names each expression references."
+                }
+
+                paragraph p27 {
+                    content = "Errors: E040 (undefined reference), E041 (cyclic dependency), E034/E035/E036 (export errors). Warning W001 (shadowing), W002 (unused variable)."
+                }
+
+                paragraph p28 {
+                    content = bold("Rationale") + ": scope construction is separated from evaluation so that the full dependency graph can be built before any expression is evaluated, enabling correct topological ordering."
+                }
+
+                heading h2_phase8 {
+                    level = 2
+                    content = "Phase 8: Expression Evaluation"
+                }
+
+                paragraph p29 {
+                    content = bold("Input") + ": ScopeArena + dependency graph" + "<br/>" + bold("Output") + ": resolved values for all attributes and let bindings"
+                }
+
+                paragraph p30 {
+                    content = "Expressions are evaluated in topological order (dependencies before dependents) within each scope. Query expressions (<code>query(...)</code>) are evaluated against the partially-resolved document. Ref expressions (<code>ref(id)</code>) are resolved to their target values."
+                }
+
+                paragraph p31 {
+                    content = "Errors: E050 (type error), E051 (division by zero), E052 (unknown function), E053 (ref not found), E054 (index out of bounds)."
+                }
+
+                paragraph p32 {
+                    content = bold("Rationale") + ": topo-sorted evaluation ensures each expression is evaluated only after its dependencies are known, without requiring the author to declare them in order."
+                }
+
+                heading h2_phase9 {
+                    level = 2
+                    content = "Phase 9: Decorator Validation"
+                }
+
+                paragraph p33 {
+                    content = bold("Input") + ": resolved document + decorator schemas" + "<br/>" + bold("Output") + ": (errors or ok)"
+                }
+
+                paragraph p34 {
+                    content = "Each decorator applied to a block, attribute, table, or schema is validated against its decorator schema (if one is registered). Required parameters are checked, types are verified, and constraint rules are applied."
+                }
+
+                paragraph p35 {
+                    content = "Errors: E060 (unknown decorator), E061 (invalid target), E062 (missing required parameter), E063 (parameter type mismatch), E064 (constraint violation)."
+                }
+
+                paragraph p36 {
+                    content = bold("Rationale") + ": decorator validation happens after full evaluation so that decorator argument values (which may be expressions) are fully resolved before checking."
+                }
+
+                heading h2_phase10 {
+                    level = 2
+                    content = "Phase 10: Schema Validation"
+                }
+
+                paragraph p37 {
+                    content = bold("Input") + ": resolved document + schema definitions" + "<br/>" + bold("Output") + ": (errors or ok)"
+                }
+
+                paragraph p38 {
+                    content = "Every block that is annotated with a schema reference is validated against that schema. Field presence, types, and constraints (min, max, pattern, one_of, ref) are checked."
+                }
+
+                paragraph p39 {
+                    content = "Errors: E070 (missing required field), E071 (type mismatch), E072 (unknown attribute in closed schema), E073 (constraint violation), E074 (ref target not found)."
+                }
+
+                paragraph p40 {
+                    content = bold("Rationale") + ": schema validation is the final structural check. It happens after evaluation because schema constraints may involve evaluated expressions (e.g., computed field values)."
+                }
+
+                heading h2_phase11 {
+                    level = 2
+                    content = "Phase 11: Document Validation"
+                }
+
+                paragraph p41 {
+                    content = bold("Input") + ": resolved document + validation blocks" + "<br/>" + bold("Output") + ": final Document"
+                }
+
+                paragraph p42 {
+                    content = "Each <code>validation</code> block is executed: its <code>check</code> expression is evaluated in the context of the resolved document, and if it returns <code>false</code>, the <code>message</code> expression is evaluated and reported as an error (E080)."
+                }
+
+                paragraph p43 {
+                    content = bold("Rationale") + ": document-level validation is the last phase because it can express cross-cutting invariants over the fully-evaluated document \u2014 things that cannot be expressed in per-block schemas alone."
+                }
+            }
+        }
+    }
+}

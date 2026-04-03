@@ -1,0 +1,540 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
+
+page guide_variables_and_scoping {
+    section = "wcl_docs.guide.variables_and_scoping"
+    title = "Variables and Scoping"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Variables and Scoping"
+                }
+
+                paragraph p1 {
+                    content = "WCL provides <code>let</code> bindings for named local values. Unlike block attributes, <code>let</code> bindings are private to their scope and are erased before serialization."
+                }
+
+                heading h2_let {
+                    level = 2
+                    content = "let Bindings"
+                }
+
+                paragraph p2 {
+                    content = "A <code>let</code> binding assigns a name to an expression. It is visible within the rest of the enclosing scope:"
+                }
+
+                code c1 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let base_port = 8000
+
+                    server #web-1 {
+                      port = base_port        // 8000
+                    }
+
+                    server #web-2 {
+                      port = base_port + 1    // 8001
+                    }
+                    WCL
+                }
+
+                paragraph p3 {
+                    content = "<code>let</code> bindings are " + bold("not") + " included in the evaluated output or in serialized JSON/TOML/YAML. They exist purely to reduce repetition."
+                }
+
+                heading h2_external {
+                    level = 2
+                    content = "External Variable Overrides"
+                }
+
+                paragraph p4 {
+                    content = "WCL documents can be parameterized with external variables injected at parse time. External variables " + bold("override") + " any <code>let</code> binding of the same name, allowing a document to define defaults that the caller can replace."
+                }
+
+                heading h3_cli {
+                    level = 3
+                    content = "CLI"
+                }
+
+                paragraph p5 {
+                    content = "Use the <code>--var</code> flag (repeatable) on <code>eval</code> or <code>validate</code>:"
+                }
+
+                code c2 {
+                    language = "bash"
+                    content = <<-'BASH'
+                    wcl eval --var PORT=8080 --var DEBUG=true config.wcl
+                    wcl validate --var PORT=8080 config.wcl
+                    BASH
+                }
+
+                paragraph p6 {
+                    content = "Values are auto-parsed: bare numbers become <code>int</code>/<code>float</code>, <code>true</code>/<code>false</code> become <code>bool</code>, <code>null</code> becomes <code>null</code>, quoted strings become <code>string</code>, and JSON arrays/objects are supported. An unquoted string that doesn't match any of the above is treated as a string."
+                }
+
+                heading h3_rust {
+                    level = 3
+                    content = "Rust API"
+                }
+
+                code c3 {
+                    language = "rust"
+                    content = <<-'RUST'
+                    let mut opts = ParseOptions::default();
+                    opts.variables.insert("PORT".into(), Value::Int(8080));
+                    let doc = wcl::parse(source, opts);
+                    RUST
+                }
+
+                heading h3_python {
+                    level = 3
+                    content = "Python"
+                }
+
+                code c4 {
+                    language = "python"
+                    content = <<-'PYTHON'
+                    doc = wcl.parse(source, variables={"PORT": 8080, "DEBUG": True})
+                    PYTHON
+                }
+
+                heading h3_js {
+                    level = 3
+                    content = "JavaScript (WASM)"
+                }
+
+                code c5 {
+                    language = "javascript"
+                    content = <<-'JS'
+                    const doc = parse(source, { variables: { PORT: 8080, DEBUG: true } });
+                    JS
+                }
+
+                heading h3_go {
+                    level = 3
+                    content = "Go"
+                }
+
+                code c6 {
+                    language = "go"
+                    content = <<-'GO'
+                    doc, err := wcl.Parse(source, &wcl.ParseOptions{
+                        Variables: map[string]any{"PORT": 8080, "DEBUG": true},
+                    })
+                    GO
+                }
+
+                heading h3_ruby {
+                    level = 3
+                    content = "Ruby"
+                }
+
+                code c7 {
+                    language = "ruby"
+                    content = <<-'RUBY'
+                    doc = Wcl.parse(source, variables: { "PORT" => 8080, "DEBUG" => true })
+                    RUBY
+                }
+
+                heading h3_dotnet {
+                    level = 3
+                    content = ".NET"
+                }
+
+                code c8 {
+                    language = "csharp"
+                    content = <<-'CSHARP'
+                    var doc = WclParser.Parse(source, new ParseOptions {
+                        Variables = new Dictionary<string, object> { ["PORT"] = 8080 }
+                    });
+                    CSHARP
+                }
+
+                heading h3_zig {
+                    level = 3
+                    content = "Zig"
+                }
+
+                paragraph p7 {
+                    content = "Pass variables as a JSON object string:"
+                }
+
+                code c9 {
+                    language = "zig"
+                    content = <<-'ZIG'
+                    var doc = try wcl.parse(allocator, source, .{
+                        .variables_json = "{\"PORT\":8080}",
+                    });
+                    ZIG
+                }
+
+                heading h3_override_semantics {
+                    level = 3
+                    content = "Override Semantics"
+                }
+
+                paragraph p8 {
+                    content = "External variables override document <code>let</code> bindings of the same name. This lets a document define sensible defaults while still being fully parameterizable:"
+                }
+
+                code c10 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let port = 8080       // default, overridden if --var port=... is set
+                    let host = "localhost" // default
+
+                    server {
+                        port = port
+                        host = host
+                    }
+                    WCL
+                }
+
+                code c11 {
+                    language = "bash"
+                    content = <<-'BASH'
+                    wcl eval --var port=9090 config.wcl
+                    # -> { "server": { ... "port": 9090, "host": "localhost" } }
+                    BASH
+                }
+
+                paragraph p9 {
+                    content = "External variables are also available in control flow expressions:"
+                }
+
+                code c12 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let regions = ["us"]  // default
+
+                    for region in regions {
+                        server { name = region }
+                    }
+                    WCL
+                }
+
+                code c13 {
+                    language = "bash"
+                    content = <<-'BASH'
+                    wcl eval --var 'regions=["us","eu","ap"]' config.wcl
+                    # -> produces 3 server blocks
+                    BASH
+                }
+
+                heading h2_export_let {
+                    level = 2
+                    content = "export let Bindings"
+                }
+
+                paragraph p10 {
+                    content = "An <code>export let</code> binding works like <code>let</code> but makes the name available to files that import this module:"
+                }
+
+                code c14 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    // config/defaults.wcl
+                    export let default_timeout = 5000
+                    export let default_retries = 3
+                    WCL
+                }
+
+                code c15 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    // app.wcl
+                    import "config/defaults.wcl"
+
+                    service {
+                      timeout = default_timeout    // 5000
+                      retries = default_retries    // 3
+                    }
+                    WCL
+                }
+
+                paragraph p11 {
+                    content = "Like plain <code>let</code> bindings, exported bindings are erased before serialization — they are not present in the output document."
+                }
+
+                heading h2_reexport {
+                    level = 2
+                    content = "Re-exporting Names"
+                }
+
+                paragraph p12 {
+                    content = "An <code>export name</code> statement re-exports a name that was imported from another module, making it available to the importer's importers:"
+                }
+
+                code c16 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    // lib/net.wcl
+                    export let port = 8080
+
+                    // lib/index.wcl
+                    import "lib/net.wcl"
+                    export port    // re-export to callers of lib/index.wcl
+
+                    // app.wcl
+                    import "lib/index.wcl"
+                    service {
+                      port = port    // 8080 — reached through re-export chain
+                    }
+                    WCL
+                }
+
+                heading h2_partial_let {
+                    level = 2
+                    content = "Partial Let Bindings"
+                }
+
+                paragraph p13 {
+                    content = "A <code>partial let</code> binding declares a list value that can be split across multiple declarations — including across multiple files. All fragments with the same name are concatenated into a single list."
+                }
+
+                code c17 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    partial let tags = ["api", "public"]
+                    WCL
+                }
+
+                paragraph p14 {
+                    content = "This is useful when different modules each contribute to a shared collection without having to know about one another."
+                }
+
+                heading h3_multifile {
+                    level = 3
+                    content = "Multi-file example"
+                }
+
+                code c18 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    // base.wcl
+                    partial let allowed_origins = ["https://example.com"]
+
+                    // admin.wcl
+                    import "base.wcl"
+                    partial let allowed_origins = ["https://admin.example.com"]
+
+                    // The merged value used anywhere in scope:
+                    // allowed_origins -> ["https://example.com", "https://admin.example.com"]
+                    //                   (or the reverse — order is not guaranteed)
+                    WCL
+                }
+
+                heading h3_rules {
+                    level = 3
+                    content = "Rules"
+                }
+
+                paragraph p15 {
+                    content = "<ul>" +
+                        "<li>" + bold("Values must be lists.") + " A <code>partial let</code> whose value is not a list is an error (E038).</li>" +
+                        "<li>" + bold("Cannot mix partial and non-partial.") + " Declaring <code>let x = ...</code> and <code>partial let x = ...</code> with the same name in the same merged scope is an error (E039).</li>" +
+                        "<li>" + bold("Merge order is not guaranteed.") + " Fragments from different files or scopes may be concatenated in any order. Do not write code that depends on the position of elements within the merged list.</li>" +
+                        "</ul>"
+                }
+
+                paragraph p16 {
+                    content = "Like plain <code>let</code> bindings, partial bindings are erased before serialization and do not appear in the output document."
+                }
+
+                heading h2_scope_model {
+                    level = 2
+                    content = "Scope Model"
+                }
+
+                paragraph p17 {
+                    content = "WCL uses lexical scoping with three scope kinds:"
+                }
+
+                data_table t_scopes {
+                    caption = "Scope Kinds"
+                    rows = [
+                        { scope_kind = "Module scope", created_by = "Each .wcl file", contains = "Top-level let, export let, blocks, attributes" },
+                        { scope_kind = "Block scope", created_by = "Each { } block body", contains = "let bindings, nested blocks, attributes" },
+                        { scope_kind = "Macro scope", created_by = "Each macro expansion", contains = "Macro parameters, local bindings" }
+                    ]
+                }
+
+                paragraph p18 {
+                    content = "Scopes form a chain. A name is resolved by walking the chain from innermost to outermost until a binding is found."
+                }
+
+                heading h2_resolution {
+                    level = 2
+                    content = "Name Resolution Order"
+                }
+
+                paragraph p19 {
+                    content = "Given a reference <code>x</code> inside a block:"
+                }
+
+                paragraph p20 {
+                    content = "<ol>" +
+                        "<li>Look for <code>x</code> as a <code>let</code> binding in the current block scope.</li>" +
+                        "<li>Look for <code>x</code> as an attribute in the current block scope.</li>" +
+                        "<li>Walk up to the enclosing scope and repeat.</li>" +
+                        "<li>Check module-level <code>let</code> and <code>export let</code> bindings.</li>" +
+                        "<li>Check imported names.</li>" +
+                        "<li>If not found, report an unresolved reference error.</li>" +
+                        "</ol>"
+                }
+
+                heading h2_eval_order {
+                    level = 2
+                    content = "Evaluation Order"
+                }
+
+                paragraph p21 {
+                    content = "WCL does " + bold("not") + " evaluate declarations in the order they appear. Instead, the evaluator performs a dependency-based topological sort: each name is evaluated after all names it depends on. This means you can reference a name before its declaration:"
+                }
+
+                code c19 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    full_url = "${scheme}://${host}:${port}"  // declared before its parts
+
+                    let scheme = "https"
+                    let host   = "api.example.com"
+                    let port   = 443
+                    WCL
+                }
+
+                paragraph p22 {
+                    content = "Circular references are detected and reported as errors:"
+                }
+
+                code c20 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let a = b + 1   // error: cyclic reference: a -> b -> a
+                    let b = a - 1
+                    WCL
+                }
+
+                heading h2_shadowing {
+                    level = 2
+                    content = "Shadowing"
+                }
+
+                paragraph p23 {
+                    content = "A <code>let</code> binding in an inner scope may shadow a name from an outer scope. This produces a warning by default:"
+                }
+
+                code c21 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let timeout = 5000
+
+                    service {
+                      let timeout = 1000    // warning: shadows outer binding "timeout"
+                      request_timeout = timeout
+                    }
+                    WCL
+                }
+
+                paragraph p24 {
+                    content = "To suppress the warning for a specific block, use the <code>@allow(shadowing)</code> decorator:"
+                }
+
+                code c22 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let timeout = 5000
+
+                    @allow(shadowing)
+                    service {
+                      let timeout = 1000    // no warning
+                      request_timeout = timeout
+                    }
+                    WCL
+                }
+
+                heading h2_unused {
+                    level = 2
+                    content = "Unused Variable Warnings"
+                }
+
+                paragraph p25 {
+                    content = "A <code>let</code> binding that is declared but never referenced produces an unused-variable warning:"
+                }
+
+                code c23 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let unused = "hello"   // warning: unused variable "unused"
+                    WCL
+                }
+
+                paragraph p26 {
+                    content = "To suppress the warning, prefix the name with an underscore:"
+                }
+
+                code c24 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let _unused = "hello"  // no warning
+                    WCL
+                }
+
+                heading h2_comparison {
+                    level = 2
+                    content = "Comparison: let vs export let vs Attribute"
+                }
+
+                data_table t_comparison {
+                    caption = "let vs export let vs Attribute"
+                    rows = [
+                        { feature = "Visible in current scope", let_col = "Yes", export_let = "Yes", attribute = "Yes" },
+                        { feature = "Visible to importers", let_col = "No", export_let = "Yes", attribute = "No" },
+                        { feature = "Appears in serialized output", let_col = "No", export_let = "No", attribute = "Yes" },
+                        { feature = "Can be query-selected", let_col = "No", export_let = "No", attribute = "Yes" },
+                        { feature = "Subject to schema validation", let_col = "No", export_let = "No", attribute = "Yes" },
+                        { feature = "Can be ref-erenced", let_col = "No", export_let = "No", attribute = "Yes (block-level)" }
+                    ]
+                }
+
+                heading h2_example {
+                    level = 2
+                    content = "Example: Shared Constants"
+                }
+
+                code c25 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    // shared/network.wcl
+                    export let internal_domain = "svc.cluster.local"
+                    export let default_port    = 8080
+
+                    // services/api.wcl
+                    import "shared/network.wcl"
+
+                    let service_name = "api-gateway"
+
+                    server #primary {
+                      host = "${service_name}.${internal_domain}"
+                      port = default_port
+                    }
+
+                    server #secondary {
+                      host = "${service_name}-2.${internal_domain}"
+                      port = default_port + 1
+                    }
+                    WCL
+                }
+
+                paragraph p27 {
+                    content = "After evaluation the <code>let</code> bindings and <code>export let</code> bindings are stripped; only <code>host</code> and <code>port</code> attributes appear in the output."
+                }
+            }
+        }
+    }
+}

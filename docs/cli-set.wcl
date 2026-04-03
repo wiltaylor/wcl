@@ -1,0 +1,123 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, data_table, callout, bold, italic, link}
+
+page cli_set {
+    section = "wcl_docs.cli.cli_set"
+    title = "wcl set"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "wcl set"
+                }
+
+                paragraph p1 {
+                    content = "Set an attribute value by path in a WCL document."
+                }
+
+                heading h2_usage {
+                    level = 2
+                    content = "Usage"
+                }
+
+                code c1 {
+                    language = "bash"
+                    content = "wcl set <file> <path> <value>"
+                }
+
+                heading h2_description {
+                    level = 2
+                    content = "Description"
+                }
+
+                paragraph p2 {
+                    content = "<code>wcl set</code> edits a WCL document by locating the attribute identified by <code>&lt;path&gt;</code> and replacing its value with <code>&lt;value&gt;</code>. The modified document is written back to the file in place. Formatting and comments in the rest of the file are preserved."
+                }
+
+                paragraph p3 {
+                    content = "The value is parsed as a WCL expression, so string values must be quoted."
+                }
+
+                heading h2_path_syntax {
+                    level = 2
+                    content = "Path Syntax"
+                }
+
+                paragraph p4 {
+                    content = "Paths use dot notation to navigate through the document structure:"
+                }
+
+                data_table t1 {
+                    caption = "Path Syntax"
+                    rows = [
+                        { path = "service#svc-api.port", meaning = "Attribute port inside block service with ID svc-api" },
+                        { path = "database#primary.host", meaning = "Attribute host inside block database with ID primary" },
+                        { path = "service#svc-api.tls.enabled", meaning = "Nested attribute access" }
+                    ]
+                }
+
+                paragraph p5 {
+                    content = "The <code>type#id</code> portion identifies the block. The <code>.attribute</code> portion names the attribute within that block."
+                }
+
+                heading h2_examples {
+                    level = 2
+                    content = "Examples"
+                }
+
+                paragraph p6 {
+                    content = "Set an integer value:"
+                }
+
+                code c2 {
+                    language = "bash"
+                    content = "wcl set config.wcl service#svc-api.port 9090"
+                }
+
+                paragraph p7 {
+                    content = "Set a string value:"
+                }
+
+                code c3 {
+                    language = "bash"
+                    content = "wcl set config.wcl service#svc-api.host '\"0.0.0.0\"'"
+                }
+
+                paragraph p8 {
+                    content = "Set a boolean value:"
+                }
+
+                code c4 {
+                    language = "bash"
+                    content = "wcl set config.wcl service#svc-api.tls.enabled true"
+                }
+
+                paragraph p9 {
+                    content = "Set a list value:"
+                }
+
+                code c5 {
+                    language = "bash"
+                    content = "wcl set config.wcl service#svc-api.tags '[\"prod\", \"api\"]'"
+                }
+
+                heading h2_notes {
+                    level = 2
+                    content = "Notes"
+                }
+
+                paragraph p10 {
+                    content = "<ul>" +
+                        "<li>The path must refer to an existing attribute. To add a new attribute, use <code>wcl add</code> or edit the file directly.</li>" +
+                        "<li>String values must include their quotes: use <code>'\"value\"'</code> in shell to pass a quoted string.</li>" +
+                        "<li>The file is modified in place; no backup is created automatically.</li>" +
+                        "</ul>"
+                }
+            }
+        }
+    }
+}

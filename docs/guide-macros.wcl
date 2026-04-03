@@ -1,0 +1,214 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
+
+page macros {
+    section = "wcl_docs.guide.macros"
+    title = "Macros"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Macros"
+                }
+
+                paragraph p1 {
+                    content = "Macros are WCL's code reuse mechanism. They let you define named templates that expand into blocks and attributes at the point of use — eliminating repetition without sacrificing explicitness in the final resolved document."
+                }
+
+                paragraph p2 {
+                    content = "WCL has two distinct macro types with different invocation styles and capabilities:"
+                }
+
+                heading h2_function_macros {
+                    level = 2
+                    content = "Function Macros"
+                }
+
+                paragraph p3 {
+                    content = "Function macros are reusable templates invoked at statement level, like a function call. They expand into one or more blocks or attributes in place."
+                }
+
+                code c1 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    macro service_endpoint(name, port, env = "production") {
+                        service name {
+                            port   = port
+                            env    = env
+                            region = "us-east-1"
+                        }
+                    }
+
+                    service_endpoint("api", 8080)
+                    service_endpoint("worker", 9090, env = "staging")
+                    WCL
+                }
+
+                paragraph p4 {
+                    content = "See " + link("Function Macros", "macros_function.html") + " for full syntax and examples."
+                }
+
+                heading h2_attribute_macros {
+                    level = 2
+                    content = "Attribute Macros"
+                }
+
+                paragraph p5 {
+                    content = "Attribute macros are invoked as decorators on a block and " + bold("transform") + " that block. They can inject child content, set or remove attributes, and apply conditional changes based on the block's own properties."
+                }
+
+                code c2 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    macro @with_monitoring(alert_channel = "ops") {
+                        inject {
+                            metrics_port = 9100
+                            health_path  = "/healthz"
+                        }
+                        set {
+                            monitoring_channel = alert_channel
+                        }
+                    }
+
+                    service "api" @with_monitoring(alert_channel = "sre") {
+                        port = 8080
+                    }
+                    WCL
+                }
+
+                paragraph p6 {
+                    content = "See " + link("Attribute Macros", "macros_attribute.html") + " for full syntax and examples."
+                }
+
+                heading h2_parameters {
+                    level = 2
+                    content = "Parameters"
+                }
+
+                paragraph p7 {
+                    content = "Both macro types support typed parameters with optional defaults:"
+                }
+
+                code c3 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    macro deploy(name: string, replicas: i64 = 1, env: string = "production") {
+                        deployment name {
+                            replicas = replicas
+                            env      = env
+                        }
+                    }
+                    WCL
+                }
+
+                paragraph p8 {
+                    content = "Type annotations are optional. When provided, WCL checks argument types at expansion time."
+                }
+
+                heading h2_hygiene {
+                    level = 2
+                    content = "Hygiene"
+                }
+
+                paragraph p9 {
+                    content = "Variables defined inside a macro with <code>let</code> are scoped to the macro definition site and do not leak into the caller's scope:"
+                }
+
+                code c4 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    macro make_service(name, port) {
+                        let internal_host = "internal." + name + ".svc"
+
+                        service name {
+                            port = port
+                            host = internal_host
+                        }
+                    }
+
+                    make_service("api", 8080)
+
+                    // internal_host is NOT visible here
+                    WCL
+                }
+
+                paragraph p10 {
+                    content = "This prevents macros from accidentally shadowing or polluting the surrounding scope."
+                }
+
+                heading h2_composition {
+                    level = 2
+                    content = "Composition"
+                }
+
+                paragraph p11 {
+                    content = "Macros can call other macros. A function macro can invoke another function macro; an attribute macro can invoke function macros from within its body:"
+                }
+
+                code c5 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    macro base_service(name, port) {
+                        service name {
+                            port   = port
+                            region = "us-east-1"
+                        }
+                    }
+
+                    macro web_service(name, port, domain) {
+                        base_service(name, port)
+                        dns_record name {
+                            cname = domain
+                        }
+                    }
+
+                    web_service("api", 8080, "api.example.com")
+                    WCL
+                }
+
+                heading h2_no_recursion {
+                    level = 2
+                    content = "No Recursion"
+                }
+
+                paragraph p12 {
+                    content = "Direct and indirect recursion in macros is detected and rejected at expansion time. WCL does not support self-referential macro expansion."
+                }
+
+                code c6 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    macro bad(n) {
+                        bad(n)    // error: recursive macro call detected
+                    }
+                    WCL
+                }
+
+                heading h2_depth_limit {
+                    level = 2
+                    content = "Expansion Depth Limit"
+                }
+
+                paragraph p13 {
+                    content = "Macro expansion has a maximum depth of " + bold("64") + ". Chains of macro calls that exceed this depth produce an expansion error. This prevents runaway expansion from deeply nested composition."
+                }
+
+                heading h2_further_reading {
+                    level = 2
+                    content = "Further Reading"
+                }
+
+                paragraph p14 {
+                    content = "<ul>" +
+                        "<li>" + link("Function Macros", "macros_function.html") + " — definition syntax, parameters, invocation, examples</li>" +
+                        "<li>" + link("Attribute Macros", "macros_attribute.html") + " — transform operations, the <code>self</code> reference, examples</li>" +
+                        "</ul>"
+                }
+            }
+        }
+    }
+}

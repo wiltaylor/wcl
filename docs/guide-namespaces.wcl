@@ -1,0 +1,301 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
+
+page guide_namespaces {
+    section = "wcl_docs.guide.namespaces"
+    title = "Namespaces"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Namespaces"
+                }
+
+                paragraph p1 {
+                    content = "Namespaces let you group schemas, blocks, and other items under a named prefix to avoid name collisions. This is especially useful in libraries and large projects with many schemas."
+                }
+
+                heading h2_braced {
+                    level = 2
+                    content = "Braced Namespace"
+                }
+
+                paragraph p2 {
+                    content = "Wrap items in a <code>namespace</code> block to scope them:"
+                }
+
+                code c1 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    namespace networking {
+                      schema "service" {
+                        port: int
+                        host: string
+                      }
+
+                      service "web-api" {
+                        port = 8080
+                        host = "0.0.0.0"
+                      }
+                    }
+                    WCL
+                }
+
+                paragraph p3 {
+                    content = "Items inside the namespace are accessible to each other without qualification. From outside, use the <code>::</code> separator:"
+                }
+
+                code c2 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    networking::service "internal" {
+                      port = 9090
+                      host = "127.0.0.1"
+                    }
+                    WCL
+                }
+
+                heading h2_file_level {
+                    level = 2
+                    content = "File-Level Namespace"
+                }
+
+                paragraph p4 {
+                    content = "Place <code>namespace</code> at the top of a file (without braces) to scope " + bold("all") + " items in the file:"
+                }
+
+                code c3 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    namespace networking
+
+                    schema "service" {
+                      port: int
+                      host: string
+                    }
+
+                    service "web-api" {
+                      port = 8080
+                      host = "0.0.0.0"
+                    }
+                    WCL
+                }
+
+                paragraph p5 {
+                    content = "This is the recommended pattern for library files where every item should be namespaced."
+                }
+
+                heading h2_importing {
+                    level = 2
+                    content = "Importing Namespaced Files"
+                }
+
+                paragraph p6 {
+                    content = "When you import a file that declares a namespace, its items come in already qualified:"
+                }
+
+                code c4 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    import "./networking.wcl"
+
+                    // Access items with the namespace prefix
+                    networking::service "my-svc" {
+                      port = 3000
+                      host = "localhost"
+                    }
+                    WCL
+                }
+
+                paragraph p7 {
+                    content = "The import itself does not add a namespace — the namespace is declared by the file author."
+                }
+
+                heading h2_use {
+                    level = 2
+                    content = "Use Declarations"
+                }
+
+                paragraph p8 {
+                    content = "Bring namespaced items into the current scope with <code>use</code>:"
+                }
+
+                code c5 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    import "./networking.wcl"
+
+                    // Single import
+                    use networking::service
+
+                    service "my-svc" {
+                      port = 3000
+                    }
+                    WCL
+                }
+
+                heading h3_aliasing {
+                    level = 3
+                    content = "Aliasing"
+                }
+
+                paragraph p9 {
+                    content = "Rename items with <code>-></code>:"
+                }
+
+                code c6 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    use networking::service -> svc
+
+                    svc "my-svc" {
+                      port = 3000
+                    }
+                    WCL
+                }
+
+                heading h3_grouped {
+                    level = 3
+                    content = "Grouped Imports"
+                }
+
+                paragraph p10 {
+                    content = "Import multiple items from the same namespace:"
+                }
+
+                code c7 {
+                    language = "wcl"
+                    content = "use networking::{service, endpoint}"
+                }
+
+                paragraph p11 {
+                    content = "With aliases:"
+                }
+
+                code c8 {
+                    language = "wcl"
+                    content = "use networking::{service -> svc, endpoint -> ep}"
+                }
+
+                heading h2_nested {
+                    level = 2
+                    content = "Nested Namespaces"
+                }
+
+                paragraph p12 {
+                    content = "Namespaces can be nested to create deeper hierarchies:"
+                }
+
+                code c9 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    namespace cloud {
+                      namespace aws {
+                        schema "instance" {
+                          type: string
+                          region: string
+                        }
+                      }
+
+                      namespace gcp {
+                        schema "instance" {
+                          machine_type: string
+                          zone: string
+                        }
+                      }
+                    }
+                    WCL
+                }
+
+                paragraph p13 {
+                    content = "Access nested items with <code>::</code>:"
+                }
+
+                code c10 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    cloud::aws::instance "web-1" {
+                      type = "t3.micro"
+                      region = "us-east-1"
+                    }
+                    WCL
+                }
+
+                heading h3_shorthand {
+                    level = 3
+                    content = "Shorthand Path Syntax"
+                }
+
+                paragraph p14 {
+                    content = "Declare deep namespaces in a single line with <code>::</code>:"
+                }
+
+                code c11 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    namespace cloud::aws {
+                      schema "instance" {
+                        type: string
+                      }
+                    }
+                    WCL
+                }
+
+                paragraph p15 {
+                    content = "This is equivalent to <code>namespace cloud { namespace aws { ... } }</code>."
+                }
+
+                paragraph p16 {
+                    content = "The file-level form also supports paths:"
+                }
+
+                code c12 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    namespace cloud::aws
+
+                    schema "instance" {
+                      type: string
+                    }
+                    WCL
+                }
+
+                heading h3_use_nested {
+                    level = 3
+                    content = "Use with Nested Namespaces"
+                }
+
+                paragraph p17 {
+                    content = "<code>use</code> declarations work with multi-segment paths:"
+                }
+
+                code c13 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    use cloud::aws::instance
+                    use cloud::gcp::{instance -> gcp_instance}
+                    WCL
+                }
+
+                heading h2_rules {
+                    level = 2
+                    content = "Rules"
+                }
+
+                paragraph p18 {
+                    content = "<ul>" +
+                        "<li>" + bold("File-level namespace") + " must appear before any other items in the file.</li>" +
+                        "<li>Inside a namespace, peer items are accessible without the <code>::</code> prefix.</li>" +
+                        "<li>Outside a namespace, always use <code>namespace::item</code> or a <code>use</code> declaration.</li>" +
+                        "<li>Namespace names follow standard identifier rules (<code>[a-zA-Z_][a-zA-Z0-9_]*</code>).</li>" +
+                        "<li>Namespaces can be nested to arbitrary depth.</li>" +
+                        "</ul>"
+                }
+            }
+        }
+    }
+}

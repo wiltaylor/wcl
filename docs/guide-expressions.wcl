@@ -1,0 +1,330 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
+
+page guide_expressions {
+    section = "wcl_docs.guide.expressions"
+    title = "Expressions"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Expressions"
+                }
+
+                paragraph p1 {
+                    content = "Expressions appear on the right-hand side of attribute bindings, inside <code>let</code> declarations, in query <code>where</code> clauses, in decorator arguments, and in lambda bodies. WCL expressions are eagerly evaluated after dependency-order resolution."
+                }
+
+                heading h2_precedence {
+                    level = 2
+                    content = "Operator Precedence"
+                }
+
+                paragraph p2 {
+                    content = "The table below lists all operators from lowest to highest precedence. Operators on the same row have equal precedence and are left-associative unless noted."
+                }
+
+                data_table t_prec {
+                    caption = "Operator Precedence"
+                    rows = [
+                        { precedence = "1 (lowest)", operators = "? :", description = "Ternary conditional", associativity = "Right" },
+                        { precedence = "2", operators = "||", description = "Logical OR", associativity = "Left" },
+                        { precedence = "3", operators = "&&", description = "Logical AND", associativity = "Left" },
+                        { precedence = "4", operators = "!", description = "Logical NOT (unary)", associativity = "Right (prefix)" },
+                        { precedence = "5", operators = "== != < > <= >= =~", description = "Comparison / regex", associativity = "Left" },
+                        { precedence = "6", operators = "+ -", description = "Additive", associativity = "Left" },
+                        { precedence = "7", operators = "* / %", description = "Multiplicative", associativity = "Left" },
+                        { precedence = "8", operators = "- (unary)", description = "Negation", associativity = "Right (prefix)" },
+                        { precedence = "9 (highest)", operators = "() [] . calls", description = "Grouping, index, member, call", associativity = "Left" }
+                    ]
+                }
+
+                paragraph p3 {
+                    content = "Use parentheses to override the default precedence."
+                }
+
+                heading h2_arithmetic {
+                    level = 2
+                    content = "Arithmetic"
+                }
+
+                paragraph p4 {
+                    content = "The <code>+</code>, <code>-</code>, <code>*</code>, <code>/</code>, and <code>%</code> operators work on numeric types. When one operand is an <code>int</code> and the other is a <code>float</code>, the <code>int</code> is promoted to <code>float</code>."
+                }
+
+                code c1 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    sum      = 10 + 3        // 13
+                    diff     = 10 - 3        // 7
+                    product  = 10 * 3        // 30
+                    quotient = 10 / 3        // 3   (integer division)
+                    float_q  = 10 / 3.0      // 3.333...
+                    remainder = 10 % 3       // 1
+                    WCL
+                }
+
+                paragraph p5 {
+                    content = "The <code>+</code> operator also concatenates strings:"
+                }
+
+                code c2 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    greeting = "Hello, " + "world!"  // "Hello, world!"
+                    WCL
+                }
+
+                paragraph p6 {
+                    content = "Division by zero is a runtime error."
+                }
+
+                heading h2_comparison {
+                    level = 2
+                    content = "Comparison"
+                }
+
+                paragraph p7 {
+                    content = "Comparison operators return a <code>bool</code>."
+                }
+
+                code c3 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    a == b    // equal
+                    a != b    // not equal
+                    a <  b    // less than
+                    a >  b    // greater than
+                    a <= b    // less than or equal
+                    a >= b    // greater than or equal
+                    WCL
+                }
+
+                paragraph p8 {
+                    content = "The <code>=~</code> operator tests whether the left operand (a <code>string</code>) matches the right operand (a regex literal string):"
+                }
+
+                code c4 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    is_api     = name =~ "^api-"
+                    is_version = tag  =~ "^v[0-9]+"
+                    WCL
+                }
+
+                heading h2_logical {
+                    level = 2
+                    content = "Logical"
+                }
+
+                code c5 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    a && b    // true if both are true   (short-circuits: b not evaluated if a is false)
+                    a || b    // true if either is true  (short-circuits: b not evaluated if a is true)
+                    !a        // true if a is false
+                    WCL
+                }
+
+                paragraph p9 {
+                    content = "Short-circuit evaluation means the right operand of <code>&&</code> and <code>||</code> is only evaluated when necessary."
+                }
+
+                heading h2_ternary {
+                    level = 2
+                    content = "Ternary"
+                }
+
+                code c6 {
+                    language = "wcl"
+                    content = "condition ? then_value : else_value"
+                }
+
+                paragraph p10 {
+                    content = "Both branches must produce values, but only the selected branch is evaluated:"
+                }
+
+                code c7 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    mode     = debug ? "verbose" : "quiet"
+                    timeout  = is_production ? 5000 : 500
+                    endpoint = use_tls ? "https://${host}" : "http://${host}"
+                    WCL
+                }
+
+                paragraph p11 {
+                    content = "Ternaries can be chained, though deeply nested ternaries reduce readability:"
+                }
+
+                code c8 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    level = score >= 90 ? "A"
+                          : score >= 80 ? "B"
+                          : score >= 70 ? "C"
+                          : "F"
+                    WCL
+                }
+
+                heading h2_member {
+                    level = 2
+                    content = "Member Access"
+                }
+
+                paragraph p12 {
+                    content = "Use <code>.</code> to access an attribute of a block value:"
+                }
+
+                code c9 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    db_host = config.database.host
+                    version = app.meta.version
+                    WCL
+                }
+
+                paragraph p13 {
+                    content = "Member access chains are resolved left-to-right. Accessing a missing key is a runtime error unless the field is declared <code>optional</code> in a schema."
+                }
+
+                heading h2_index {
+                    level = 2
+                    content = "Index Access"
+                }
+
+                paragraph p14 {
+                    content = "Lists are zero-indexed. Maps accept string or identifier keys."
+                }
+
+                code c10 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    first_port  = ports[0]
+                    last_port   = ports[len(ports) - 1]
+                    debug_flag  = env_vars["DEBUG"]
+                    WCL
+                }
+
+                paragraph p15 {
+                    content = "Out-of-bounds list access is a runtime error."
+                }
+
+                heading h2_functions {
+                    level = 2
+                    content = "Function Calls"
+                }
+
+                paragraph p16 {
+                    content = "Built-in and macro-defined functions are called with standard <code>name(args...)</code> syntax:"
+                }
+
+                code c11 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    upper_name = upper("hello")          // "HELLO"
+                    count      = len([1, 2, 3])          // 3
+                    hex_sum    = to_string(0xFF + 1)     // "256"
+                    joined     = join(", ", ["a","b"])   // "a, b"
+                    WCL
+                }
+
+                paragraph p17 {
+                    content = "See the " + link("Functions", "guide-functions.html") + " section for all built-in functions."
+                }
+
+                heading h2_lambdas {
+                    level = 2
+                    content = "Lambda Expressions"
+                }
+
+                paragraph p18 {
+                    content = "Lambdas are anonymous functions used with higher-order functions like <code>map()</code>, <code>filter()</code>, and <code>sort_by()</code>."
+                }
+
+                paragraph p19 {
+                    content = "Single-parameter shorthand (no parentheses needed):"
+                }
+
+                code c12 {
+                    language = "wcl"
+                    content = "doubled = map([1, 2, 3], x => x * 2)   // [2, 4, 6]"
+                }
+
+                paragraph p20 {
+                    content = "Multi-parameter lambda:"
+                }
+
+                code c13 {
+                    language = "wcl"
+                    content = "products = map(pairs, (a, b) => a * b)"
+                }
+
+                paragraph p21 {
+                    content = "Block lambdas allow multiple <code>let</code> bindings before the final expression:"
+                }
+
+                code c14 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    result = map(items, x => {
+                      let scaled = x * factor
+                      let clamped = min(scaled, 100)
+                      clamped
+                    })
+                    WCL
+                }
+
+                paragraph p22 {
+                    content = "Inside a block lambda, <code>let</code> bindings are local to the lambda body. The last expression is the return value."
+                }
+
+                paragraph p23 {
+                    content = "Lambdas are " + bold("not") + " values that can be stored in attributes. They exist only as arguments to higher-order functions."
+                }
+
+                heading h2_grouping {
+                    level = 2
+                    content = "Grouping"
+                }
+
+                paragraph p24 {
+                    content = "Parentheses override precedence in the usual way:"
+                }
+
+                code c15 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    val = (a + b) * c
+                    neg = -(x + y)
+                    WCL
+                }
+
+                heading h2_query {
+                    level = 2
+                    content = "Query Expressions"
+                }
+
+                paragraph p25 {
+                    content = "The <code>query</code> keyword selects blocks and returns a list:"
+                }
+
+                code c16 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    servers      = query server
+                    prod_servers = query server where env == "production"
+                    WCL
+                }
+
+                paragraph p26 {
+                    content = "See " + link("Query Engine", "guide-query-engine.html") + " for the full query language."
+                }
+            }
+        }
+    }
+}

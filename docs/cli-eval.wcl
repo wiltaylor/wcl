@@ -1,0 +1,149 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, data_table, callout, bold, italic, link}
+
+page cli_eval {
+    section = "wcl_docs.cli.cli_eval"
+    title = "wcl eval"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "wcl eval"
+                }
+
+                paragraph p1 {
+                    content = "Evaluate a WCL document and print the fully resolved output."
+                }
+
+                heading h2_usage {
+                    level = 2
+                    content = "Usage"
+                }
+
+                code c1 {
+                    language = "bash"
+                    content = "wcl eval <file> [options]"
+                }
+
+                heading h2_options {
+                    level = 2
+                    content = "Options"
+                }
+
+                data_table t1 {
+                    caption = "Options"
+                    rows = [
+                        { flag = "--format <fmt>", description = "Output format: json, yaml, or toml (default: json)" },
+                        { flag = "--var KEY=VALUE", description = "Set an external variable (may be repeated)" }
+                    ]
+                }
+
+                heading h2_description {
+                    level = 2
+                    content = "Description"
+                }
+
+                paragraph p2 {
+                    content = "<code>wcl eval</code> runs the full evaluation pipeline and serializes the resulting document to the requested format. All macros are expanded, all expressions evaluated, all imports merged, and all partial blocks resolved before output is produced."
+                }
+
+                paragraph p3 {
+                    content = "The output represents the final, fully-resolved state of the document — suitable for consumption by tools that do not understand WCL natively."
+                }
+
+                heading h2_examples {
+                    level = 2
+                    content = "Examples"
+                }
+
+                paragraph p4 {
+                    content = "Evaluate and print as JSON (default):"
+                }
+
+                code c2 {
+                    language = "bash"
+                    content = "wcl eval config.wcl"
+                }
+
+                paragraph p5 {
+                    content = "Evaluate and print as YAML:"
+                }
+
+                code c3 {
+                    language = "bash"
+                    content = "wcl eval config.wcl --format yaml"
+                }
+
+                paragraph p6 {
+                    content = "Evaluate and print as TOML:"
+                }
+
+                code c4 {
+                    language = "bash"
+                    content = "wcl eval config.wcl --format toml"
+                }
+
+                paragraph p7 {
+                    content = "Override variables:"
+                }
+
+                code c5 {
+                    language = "bash"
+                    content = "wcl eval --var PORT=8080 --var DEBUG=true config.wcl"
+                }
+
+                paragraph p8 {
+                    content = "Pipe output to another tool:"
+                }
+
+                code c6 {
+                    language = "bash"
+                    content = "wcl eval config.wcl | jq '.service'"
+                }
+
+                heading h2_example_output {
+                    level = 2
+                    content = "Example Output"
+                }
+
+                paragraph p9 {
+                    content = "Given:"
+                }
+
+                code c7 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let base_port = 8000
+
+                    service svc-api {
+                      port = base_port + 80
+                      host = "localhost"
+                    }
+                    WCL
+                }
+
+                paragraph p10 {
+                    content = "Running <code>wcl eval config.wcl</code> produces:"
+                }
+
+                code c8 {
+                    language = "json"
+                    content = <<-'JSON'
+                    {
+                      "service": {
+                        "svc-api": {
+                          "port": 8080,
+                          "host": "localhost"
+                        }
+                      }
+                    }
+                    JSON
+                }
+            }
+        }
+    }
+}

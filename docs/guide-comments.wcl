@@ -1,0 +1,178 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
+
+page guide_comments {
+    section = "wcl_docs.guide.comments"
+    title = "Comments"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Comments"
+                }
+
+                paragraph p1 {
+                    content = "WCL has three comment forms. All comments are preserved in the AST, enabling round-trip formatting and IDE tooling."
+                }
+
+                heading h2_line {
+                    level = 2
+                    content = "Line Comments"
+                }
+
+                paragraph p2 {
+                    content = "A line comment starts with <code>//</code> and extends to the end of the line:"
+                }
+
+                code c1 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    // This is a line comment.
+                    port = 8080  // inline comment after a value
+                    WCL
+                }
+
+                heading h2_block {
+                    level = 2
+                    content = "Block Comments"
+                }
+
+                paragraph p3 {
+                    content = "A block comment is delimited by <code>/*</code> and <code>*/</code>. Block comments are " + bold("nestable") + ", so you can comment out a region of code that already contains block comments:"
+                }
+
+                code c2 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    /*
+                      This entire section is commented out.
+
+                      server {
+                        /* nested block comment */
+                        port = 8080
+                      }
+                    */
+                    WCL
+                }
+
+                paragraph p4 {
+                    content = "Nesting depth is tracked accurately, so only the outermost <code>*/</code> closes the comment:"
+                }
+
+                code c3 {
+                    language = "wcl"
+                    content = "/* outer /* inner */ still in outer */ // now outside"
+                }
+
+                heading h2_doc {
+                    level = 2
+                    content = "Doc Comments"
+                }
+
+                paragraph p5 {
+                    content = "A doc comment starts with <code>///</code> and attaches to the declaration that immediately follows it:"
+                }
+
+                code c4 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    /// The primary web server.
+                    /// Listens on all interfaces.
+                    server #web-1 {
+                      /// The TCP port to bind.
+                      port = 8080
+                    }
+                    WCL
+                }
+
+                paragraph p6 {
+                    content = "Doc comments are used by the WCL language server to populate hover documentation in editors that support the LSP. Multiple consecutive <code>///</code> lines are merged into a single doc string."
+                }
+
+                heading h2_attachment {
+                    level = 2
+                    content = "Comment Attachment"
+                }
+
+                paragraph p7 {
+                    content = "The parser classifies comments into three categories based on their position relative to declarations:"
+                }
+
+                data_table t1 {
+                    caption = "Comment Categories"
+                    rows = [
+                        { category = "Leading", position = "One or more comment lines immediately before a declaration", example = "// comment\\nport = 8080" },
+                        { category = "Trailing", position = "A comment on the same line as a declaration, after the value", example = "port = 8080  // comment" },
+                        { category = "Floating", position = "A comment separated from any declaration by blank lines", example = "A comment in the middle of a block" }
+                    ]
+                }
+
+                paragraph p8 {
+                    content = "Floating comments are associated with the surrounding block rather than a specific declaration."
+                }
+
+                heading h2_roundtrip {
+                    level = 2
+                    content = "Round-Trip Preservation"
+                }
+
+                paragraph p9 {
+                    content = "All three comment categories — leading, trailing, and floating — are stored in the AST. The WCL formatter (<code>wcl fmt</code>) reads these nodes and restores them in their original positions, so formatting a file never discards comments."
+                }
+
+                heading h2_blank {
+                    level = 2
+                    content = "Blank Line Preservation"
+                }
+
+                paragraph p10 {
+                    content = "The parser records blank lines between declarations. The formatter uses this information to maintain vertical spacing, preventing it from collapsing logically grouped sections together."
+                }
+
+                code c5 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    // Database settings
+                    host = "db.internal"
+                    port = 5432
+
+                    // Connection pool settings
+                    pool_min = 2
+                    pool_max = 10
+                    WCL
+                }
+
+                paragraph p11 {
+                    content = "After formatting, the blank line between the two groups is preserved."
+                }
+
+                heading h2_linting {
+                    level = 2
+                    content = "Disabling Linting with Comments"
+                }
+
+                paragraph p12 {
+                    content = "Some diagnostics can be suppressed inline using the <code>@allow</code> decorator on a block. For example, to suppress a shadowing warning on a specific block:"
+                }
+
+                code c6 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    @allow(shadowing)
+                    server {
+                      let port = 8080
+                    }
+                    WCL
+                }
+
+                paragraph p13 {
+                    content = "See " + link("Built-in Decorators", "guide-decorators-builtin.html") + " for the full list of suppressible diagnostics."
+                }
+            }
+        }
+    }
+}

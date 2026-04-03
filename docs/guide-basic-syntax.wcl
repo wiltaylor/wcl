@@ -1,0 +1,167 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
+
+page guide_basic_syntax {
+    section = "wcl_docs.guide.basic_syntax"
+    title = "Basic Syntax"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Basic Syntax"
+                }
+
+                paragraph p1 {
+                    content = "WCL (Wil's Configuration Language) is a block-structured configuration language. Every WCL file is composed of two kinds of top-level declarations: " + bold("attributes") + " and " + bold("blocks") + ". Both may be nested to arbitrary depth inside block bodies."
+                }
+
+                heading h2_attributes {
+                    level = 2
+                    content = "Attributes"
+                }
+
+                paragraph p2 {
+                    content = "An attribute binds a name to a value using <code>=</code>:"
+                }
+
+                code c1 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    name = "acme-app"
+                    port = 8080
+                    debug = false
+                    WCL
+                }
+
+                paragraph p3 {
+                    content = "The left-hand side must be a valid identifier (letters, digits, and underscores — no hyphens). The right-hand side is any expression. See " + link("Attributes", "guide-attributes.html") + " for the full set of value types."
+                }
+
+                heading h2_blocks {
+                    level = 2
+                    content = "Blocks"
+                }
+
+                paragraph p4 {
+                    content = "A block groups related attributes and nested blocks under a " + italic("type") + " name:"
+                }
+
+                code c2 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    server {
+                      host = "0.0.0.0"
+                      port = 8080
+                    }
+                    WCL
+                }
+
+                paragraph p5 {
+                    content = "Blocks may carry an inline ID (written with hyphens) and inline arguments:"
+                }
+
+                code c3 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    server web-1 8080 "production" {
+                      host = "0.0.0.0"
+                      port = 443
+                    }
+                    WCL
+                }
+
+                paragraph p6 {
+                    content = "See " + link("Blocks", "guide-blocks.html") + " for the complete syntax including decorators, partials, and reserved block types."
+                }
+
+                heading h2_nesting {
+                    level = 2
+                    content = "Nesting"
+                }
+
+                paragraph p7 {
+                    content = "Block bodies can contain other blocks, creating a tree:"
+                }
+
+                code c4 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    application {
+                      name    = "my-service"
+                      version = "1.0.0"
+
+                      database {
+                        host = "db.internal"
+                        port = 5432
+
+                        pool {
+                          min = 2
+                          max = 10
+                        }
+                      }
+
+                      server {
+                        host = "0.0.0.0"
+                        port = 8080
+                      }
+                    }
+                    WCL
+                }
+
+                paragraph p8 {
+                    content = "There is no practical limit on nesting depth."
+                }
+
+                heading h2_complete {
+                    level = 2
+                    content = "A Complete Minimal File"
+                }
+
+                code c5 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    // Service configuration
+
+                    service #api {
+                      name    = "api-gateway"
+                      version = "2.1.0"
+                      enabled = true
+
+                      listen {
+                        host = "0.0.0.0"
+                        port = 8080
+                      }
+                    }
+                    WCL
+                }
+
+                heading h2_comments {
+                    level = 2
+                    content = "Comments"
+                }
+
+                paragraph p9 {
+                    content = "WCL supports line comments (<code>// ...</code>), block comments (<code>/* ... */</code>), and doc comments (<code>/// ...</code>). See " + link("Comments", "guide-comments.html") + " for details."
+                }
+
+                heading h2_next {
+                    level = 2
+                    content = "What's Next"
+                }
+
+                paragraph p10 {
+                    content = "<ul>" +
+                        "<li>" + link("Attributes", "guide-attributes.html") + " — value types, expressions, and duplicate rules</li>" +
+                        "<li>" + link("Blocks", "guide-blocks.html") + " — IDs, inline arguments, decorators, partials, reserved types</li>" +
+                        "<li>" + link("Data Types", "guide-data-types.html") + " — the full primitive and composite type system</li>" +
+                        "<li>" + link("Expressions", "guide-expressions.html") + " — operators, precedence, function calls, lambdas</li>" +
+                        "</ul>"
+                }
+            }
+        }
+    }
+}

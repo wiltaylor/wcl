@@ -1,0 +1,736 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
+
+page guide_transforms {
+    section = "wcl_docs.guide.transforms"
+    title = "Transforms"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Transforms"
+                }
+
+                paragraph p1 {
+                    content = "WCL Transform is a declarative data transformation engine that enables format conversion and field-level mapping using WCL's expression language. It supports streaming, stateful processing, accumulators, pipelines, and binary format parsing."
+                }
+
+                heading h2_basic {
+                    level = 2
+                    content = "Basic Transform"
+                }
+
+                paragraph p2 {
+                    content = "A transform maps data from an input format to an output format:"
+                }
+
+                code c1 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    transform rename-fields {
+                        input  = "codec::json"
+                        output = "codec::json"
+
+                        map {
+                            user_name = in.name
+                            user_age  = in.age
+                        }
+                    }
+                    WCL
+                }
+
+                paragraph p3 {
+                    content = "The <code>transform</code> block has an inline ID (<code>rename-fields</code>) used to reference it from the CLI. Inside:"
+                }
+
+                paragraph p4 {
+                    content = "<ul>" +
+                        "<li><code>input</code> and <code>output</code> specify codecs (format adapters)</li>" +
+                        "<li><code>map</code> blocks define field mappings</li>" +
+                        "<li><code>in</code> refers to the current input record</li>" +
+                        "</ul>"
+                }
+
+                paragraph p5 {
+                    content = "Each attribute in the map block defines an output field name and the expression to compute its value."
+                }
+
+                heading h2_running {
+                    level = 2
+                    content = "Running a Transform"
+                }
+
+                paragraph p6 {
+                    content = "Use the CLI to execute a transform:"
+                }
+
+                code c2 {
+                    language = "bash"
+                    content = "wcl transform run rename-fields -f transforms.wcl --input data.json --output result.json"
+                }
+
+                paragraph p7 {
+                    content = "<ul>" +
+                        "<li><code>--input</code>: Input data file (stdin if omitted)</li>" +
+                        "<li><code>--output</code>: Output file (stdout if omitted)</li>" +
+                        "<li><code>-f</code>: WCL file containing the transform definition</li>" +
+                        "</ul>"
+                }
+
+                paragraph p8 {
+                    content = "Transform statistics (records read, written, filtered) are printed to stderr."
+                }
+
+                heading h2_field_expr {
+                    level = 2
+                    content = "Field Expressions"
+                }
+
+                paragraph p9 {
+                    content = "Map expressions can use any WCL expression:"
+                }
+
+                code c3 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    transform enrich {
+                        input  = "codec::json"
+                        output = "codec::json"
+
+                        map {
+                            // Direct field mapping
+                            id = in.id
+
+                            // String interpolation
+                            display_name = "${in.first_name} ${in.last_name}"
+
+                            // Function calls
+                            email = lower(in.email)
+
+                            // Ternary expressions
+                            role = in.is_admin ? "admin" : "member"
+
+                            // Math
+                            age_months = in.age * 12
+
+                            // Regex
+                            domain = regex_find(in.email, "@(.+)")
+                        }
+                    }
+                    WCL
+                }
+
+                paragraph p10 {
+                    content = "Fields from the input record are accessible both via <code>in.field_name</code> and directly as <code>field_name</code> (the top-level fields are bound into scope)."
+                }
+
+                heading h2_filtering {
+                    level = 2
+                    content = "Filtering with @where"
+                }
+
+                paragraph p11 {
+                    content = "The <code>@where</code> decorator on a <code>map</code> block filters records. Records that don't match are dropped from the output:"
+                }
+
+                code c4 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    transform active-users {
+                        input  = "codec::json"
+                        output = "codec::json"
+
+                        @where(in.active == true)
+                        map {
+                            name = in.name
+                        }
+                    }
+                    WCL
+                }
+
+                paragraph p12 {
+                    content = "Multiple <code>@where</code> decorators are ANDed:"
+                }
+
+                code c5 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    @where(in.status == "active")
+                    @where(in.age >= 18)
+                    map {
+                        name = in.name
+                    }
+                    WCL
+                }
+
+                heading h2_codecs {
+                    level = 2
+                    content = "Codecs"
+                }
+
+                paragraph p13 {
+                    content = "Codecs handle format-specific parsing and emission. They are specified as string values on the <code>input</code> and <code>output</code> attributes:"
+                }
+
+                heading h3_available_codecs {
+                    level = 3
+                    content = "Available Codecs"
+                }
+
+                data_table t_codecs {
+                    caption = "Available Codecs"
+                    rows = [
+                        { codec_name = "json", description = "JSON — arrays stream per element, objects are single records" },
+                        { codec_name = "yaml", description = "YAML — fully buffered, sequences are multi-record" },
+                        { codec_name = "csv", description = "CSV — one row per record, header row provides field names" },
+                        { codec_name = "toml", description = "TOML — fully buffered, tables become records" },
+                        { codec_name = "hcl", description = "HCL (HashiCorp Configuration Language) — fully buffered" },
+                        { codec_name = "xml", description = "XML — fully buffered, elements become fields" },
+                        { codec_name = "msgpack", description = "MessagePack — binary format, arrays are multi-record" },
+                        { codec_name = "binary", description = "Custom binary formats — uses struct definitions + layout for parsing/writing" },
+                        { codec_name = "text", description = "Line-oriented text — configurable separator, optional header row" }
+                    ]
+                }
+
+                heading h2_structs {
+                    level = 2
+                    content = "Structs as Data Types"
+                }
+
+                paragraph p14 {
+                    content = link("Structs", "guide-structs.html") + " define pure data shapes that complement transforms. While transforms map between formats, structs define the structure of the data being transformed:"
+                }
+
+                code c6 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    struct "UserRecord" {
+                        id         : u64
+                        first_name : string
+                        last_name  : string
+                        email      : string
+                        age        : i32
+                    }
+
+                    struct "ApiUser" {
+                        id           : u64
+                        display_name : string
+                        email        : string
+                        role         : string
+                    }
+                    WCL
+                }
+
+                paragraph p15 {
+                    content = "Structs can be used as field types in schemas and other structs, and will be used by the layout engine for binary format parsing."
+                }
+
+                heading h2_stateful {
+                    level = 2
+                    content = "Stateful Transforms"
+                }
+
+                paragraph p16 {
+                    content = "Transforms can maintain state across records using the <code>@stateful</code> decorator on exported lambda functions. State is bounded by default (10,000 keys) with configurable eviction."
+                }
+
+                heading h3_declaring_stateful {
+                    level = 3
+                    content = "Declaring Stateful Functions"
+                }
+
+                code c7 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    @stateful
+                    export let running_avg = (value, window) => {
+                        let values = state.get("window") ?? []
+                        let updated = concat(values, [value])
+                        let trimmed = updated  // keep last N values
+                        state.set("window", trimmed)
+                        sum(trimmed) / len(trimmed)
+                    }
+                    WCL
+                }
+
+                paragraph p17 {
+                    content = "The <code>@stateful</code> decorator injects a <code>state</code> handle into the function's scope."
+                }
+
+                heading h3_state_api {
+                    level = 3
+                    content = "State API"
+                }
+
+                data_table t_state_api {
+                    caption = "State API"
+                    rows = [
+                        { method = "state.get", signature = "get(key: string) -> any?", description = "Returns null if key not found" },
+                        { method = "state.set", signature = "set(key: string, value: any)", description = "Upsert a value" },
+                        { method = "state.delete", signature = "delete(key: string) -> bool", description = "Returns true if key existed" },
+                        { method = "state.has", signature = "has(key: string) -> bool", description = "Check key existence" },
+                        { method = "state.keys", signature = "keys() -> list(string)", description = "All keys (use sparingly)" },
+                        { method = "state.clear", signature = "clear()", description = "Reset all state" }
+                    ]
+                }
+
+                heading h3_state_config {
+                    level = 3
+                    content = "State Configuration"
+                }
+
+                paragraph p18 {
+                    content = "State blocks in transforms configure the backend:"
+                }
+
+                code c8 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    transform with-state {
+                        input  = "codec::json"
+                        output = "codec::json"
+
+                        state {
+                            backend  = "memory"
+                            max_keys = 10000
+                            eviction = "lru"      // lru, fifo, or reject_new
+                        }
+
+                        map {
+                            // stateful functions can be called here
+                        }
+                    }
+                    WCL
+                }
+
+                heading h3_scoped_state {
+                    level = 3
+                    content = "Scoped State"
+                }
+
+                paragraph p19 {
+                    content = "Use <code>@stateful(scope = \"name\")</code> to link a function to a named state block:"
+                }
+
+                code c9 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    @stateful(scope = "per_sensor")
+                    export let sensor_avg = (temp, alpha) => {
+                        let prev = state.get("avg") ?? temp
+                        let result = alpha * temp + (1.0 - alpha) * prev
+                        state.set("avg", result)
+                        result
+                    }
+                    WCL
+                }
+
+                paragraph p20 {
+                    content = "When combined with <code>@group_by</code>, each group key gets independent state."
+                }
+
+                heading h2_accumulators {
+                    level = 2
+                    content = "Accumulators"
+                }
+
+                paragraph p21 {
+                    content = "Accumulators aggregate data from stream records into structured output. They provide the mechanism for stream-to-structured data flow."
+                }
+
+                heading h3_operators {
+                    level = 3
+                    content = "Accumulator Operators"
+                }
+
+                data_table t_accum {
+                    caption = "Accumulator Operators"
+                    rows = [
+                        { operator = "Sum", syntax = "field += expr", description = "Running sum (numeric)" },
+                        { operator = "Min", syntax = "min(current, expr)", description = "Running minimum" },
+                        { operator = "Max", syntax = "max(current, expr)", description = "Running maximum" },
+                        { operator = "Count", syntax = "count()", description = "Increment per record" },
+                        { operator = "First", syntax = "first(expr)", description = "Keep only the first value seen" },
+                        { operator = "Last", syntax = "last(expr)", description = "Keep the most recent value" },
+                        { operator = "Collect", syntax = "collect(expr)", description = "Append to a list" },
+                        { operator = "Collect Unique", syntax = "collect_unique(expr)", description = "Append unique values only" }
+                    ]
+                }
+
+                heading h3_accum_example {
+                    level = 3
+                    content = "Example"
+                }
+
+                code c10 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    transform stats {
+                        input  = "codec::json"
+                        output = "codec::json"
+
+                        accumulate records {
+                            total_count   += 1
+                            total_amount  += in.amount
+                            first_date     = first(in.date)
+                            last_date      = last(in.date)
+                            categories     = collect_unique(in.category)
+                        }
+                    }
+                    WCL
+                }
+
+                heading h3_bounded {
+                    level = 3
+                    content = "Bounded Collection"
+                }
+
+                paragraph p22 {
+                    content = "To prevent unbounded memory growth, <code>collect</code> and <code>collect_unique</code> support bounds:"
+                }
+
+                code c11 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    accumulate records {
+                        recent_ids = collect(in.id) {
+                            max_size = 1000
+                            overflow = "drop_oldest"  // or "drop_newest", "error"
+                        }
+                    }
+                    WCL
+                }
+
+                heading h2_pipelines {
+                    level = 2
+                    content = "Pipelines"
+                }
+
+                paragraph p23 {
+                    content = "Pipelines chain multiple transforms. Each step's output feeds the next step's input."
+                }
+
+                code c12 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    pipeline csv-to-api {
+                        steps = [
+                            transforms::parse_csv,
+                            transforms::normalize,
+                            transforms::emit_json,
+                        ]
+                    }
+                    WCL
+                }
+
+                heading h3_streaming {
+                    level = 3
+                    content = "Streaming Fusion"
+                }
+
+                paragraph p24 {
+                    content = "Adjacent pipeline steps are fused — each record flows through all steps before the next record enters, avoiding intermediate materialization:"
+                }
+
+                code c13 {
+                    language = "text"
+                    content = <<-'TXT'
+                    Record 1 -> Step 1 -> Step 2 -> Step 3 -> emit
+                    Record 2 -> Step 1 -> Step 2 -> Step 3 -> emit
+                    TXT
+                }
+
+                heading h3_pipeline_params {
+                    level = 3
+                    content = "Pipeline Parameters"
+                }
+
+                paragraph p25 {
+                    content = "Pipelines can accept parameters:"
+                }
+
+                code c14 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    pipeline configurable {
+                        params {
+                            threshold : f64 = 95.0
+                        }
+
+                        steps = [
+                            transforms::ingest,
+                            transforms::filter { min_value = params.threshold },
+                            transforms::emit,
+                        ]
+                    }
+                    WCL
+                }
+
+                heading h2_layouts {
+                    level = 2
+                    content = "Layouts and Binary Parsing"
+                }
+
+                paragraph p26 {
+                    content = "Layouts define how " + link("structs", "guide-structs.html") + " compose into complete format descriptions. They distinguish between " + bold("structured") + " (fully buffered) and " + bold("stream") + " (one-record-at-a-time) sections."
+                }
+
+                heading h3_layout_def {
+                    level = 3
+                    content = "Layout Definition"
+                }
+
+                code c15 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    layout pcap {
+                        // Structured: fully buffered, fields available to stream sections
+                        header : PcapGlobalHeader {
+                            @le
+                            @be("magic")
+                            @magic("magic", 0xA1B2C3D4)
+                        }
+
+                        // Streamed: records flow through one at a time
+                        @stream @count(header.record_count)
+                        packets : PcapPacket {
+                            @le
+                        }
+                    }
+                    WCL
+                }
+
+                heading h3_encoding {
+                    level = 3
+                    content = "Encoding Decorators"
+                }
+
+                paragraph p27 {
+                    content = "Encoding details live on layout sections, not on struct definitions. This keeps structs as pure data shapes:"
+                }
+
+                data_table t_encoding {
+                    caption = "Encoding Decorators"
+                    rows = [
+                        { decorator = "@le", purpose = "Default little-endian for all fields", example = "@le" },
+                        { decorator = "@be", purpose = "Default big-endian, or per-field override", example = "@be(\"magic\")" },
+                        { decorator = "@magic", purpose = "Assert a field equals an expected value", example = "@magic(\"magic\", 0xA1B2C3D4)" },
+                        { decorator = "@padding", purpose = "Skip N bytes after a field", example = "@padding(4)" },
+                        { decorator = "@align", purpose = "Align to N-byte boundary", example = "@align(16)" },
+                        { decorator = "@encoding", purpose = "String encoding for a field", example = "@encoding(\"payload\", \"raw\")" }
+                    ]
+                }
+
+                heading h3_structured_stream {
+                    level = 3
+                    content = "Structured vs Stream Sections"
+                }
+
+                paragraph p28 {
+                    content = "<ul>" +
+                        "<li>" + bold("Structured") + " sections are fully parsed into memory and available for random access by later sections (e.g., a file header with record counts).</li>" +
+                        "<li>" + bold("Stream") + " sections iterate one record at a time with bounded memory.</li>" +
+                        "</ul>"
+                }
+
+                heading h3_termination {
+                    level = 3
+                    content = "Stream Termination"
+                }
+
+                paragraph p29 {
+                    content = "Streams can terminate in several ways:"
+                }
+
+                code c16 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    // Fixed count from a structured field
+                    @stream @count(header.record_count)
+                    records : Record
+
+                    // End of input (default)
+                    @stream
+                    lines : TextLine
+
+                    // Size-bounded
+                    @stream @max_bytes(header.data_size)
+                    chunks : DataChunk
+                    WCL
+                }
+
+                heading h2_pattern {
+                    level = 2
+                    content = "Pattern Type and Regex Functions"
+                }
+
+                paragraph p30 {
+                    content = "WCL has a <code>pattern</code> type that stores a compiled regex. It is a first-class value, not just a validated string:"
+                }
+
+                code c17 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    schema "route" {
+                        path : pattern @required
+                    }
+                    WCL
+                }
+
+                paragraph p31 {
+                    content = "All regex functions accept either a plain string or a <code>pattern</code> value as the pattern argument:"
+                }
+
+                paragraph p32 {
+                    content = "<ul>" +
+                        "<li><code>regex_match(string, pattern) -> bool</code></li>" +
+                        "<li><code>regex_capture(string, pattern) -> list(string)</code></li>" +
+                        "<li><code>regex_replace(string, pattern, replacement) -> string</code></li>" +
+                        "<li><code>regex_replace_all(string, pattern, replacement) -> string</code></li>" +
+                        "<li><code>regex_split(string, pattern) -> list(string)</code></li>" +
+                        "<li><code>regex_find(string, pattern) -> string?</code></li>" +
+                        "<li><code>regex_find_all(string, pattern) -> list(string)</code></li>" +
+                        "</ul>"
+                }
+
+                heading h2_exported {
+                    level = 2
+                    content = "Exported Functions (Host-Callable Lambdas)"
+                }
+
+                paragraph p33 {
+                    content = "Functions defined with <code>export let</code> can be called from host programs (Rust, C, WASM, Python, Go, .NET):"
+                }
+
+                code c18 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    export let double = x => x * 2
+                    export let greet = name => "Hello, ${name}!"
+                    export let add = (a, b) => a + b
+                    WCL
+                }
+
+                heading h3_decorators_exported {
+                    level = 3
+                    content = "Decorators on Exported Functions"
+                }
+
+                code c19 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    @stateful
+                    export let counter = () => {
+                        let n = (state.get("n") ?? 0) + 1
+                        state.set("n", n)
+                        n
+                    }
+
+                    @accumulator
+                    export let track_total = (amount) => {
+                        acc.total += amount
+                    }
+                    WCL
+                }
+
+                heading h3_rust_api {
+                    level = 3
+                    content = "Rust API"
+                }
+
+                code c20 {
+                    language = "rust"
+                    content = <<-'RUST'
+                    let doc = wcl::parse(source, options);
+
+                    // List exported functions
+                    let names = doc.exported_function_names();
+                    // ["double", "greet", "add"]
+
+                    // Call a function
+                    let result = doc.call_function("double", &[Value::Int(21)])?;
+                    assert_eq!(result, Value::Int(42));
+                    RUST
+                }
+
+                heading h3_c_ffi {
+                    level = 3
+                    content = "C FFI"
+                }
+
+                code c21 {
+                    language = "c"
+                    content = <<-'CFFI'
+                    // Call a function (args as JSON array)
+                    char* result = wcl_ffi_call_function(doc, "double", "[21]");
+                    // result is "42"
+                    wcl_ffi_string_free(result);
+
+                    // List functions (returns JSON array)
+                    char* funcs = wcl_ffi_list_functions(doc);
+                    // [{"name":"double","params":["x"]}, ...]
+                    wcl_ffi_string_free(funcs);
+                    CFFI
+                }
+
+                heading h3_wasm_js {
+                    level = 3
+                    content = "WASM / JavaScript"
+                }
+
+                code c22 {
+                    language = "javascript"
+                    content = <<-'JSAPI'
+                    const doc = wcl.parse(source);
+                    const result = doc.callFunction("double", 21);
+                    // result === 42
+                    JSAPI
+                }
+
+                heading h2_error_handling {
+                    level = 2
+                    content = "Error Handling"
+                }
+
+                paragraph p34 {
+                    content = "Transforms can configure how errors are handled:"
+                }
+
+                code c23 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    transform with-errors {
+                        input  = "codec::json"
+                        output = "codec::json"
+
+                        on_parse_error = "skip"   // skip malformed records
+                        // or: "abort"            // stop the transform
+                        // or: "route"            // send to error stream
+                    }
+                    WCL
+                }
+
+                paragraph p35 {
+                    content = "When using <code>\"route\"</code>, define an error stream to capture malformed records:"
+                }
+
+                code c24 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    @error_stream
+                    errors : ParseError
+
+                    map errors -> error_log {
+                        line   = in.error.line_number
+                        reason = in.error.message
+                    }
+                    WCL
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,197 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
+
+page functions {
+    section = "wcl_docs.guide.functions"
+    title = "Functions"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Functions"
+                }
+
+                paragraph p1 {
+                    content = "WCL provides 50+ built-in functions covering strings, math, collections, higher-order operations, aggregation, hashing, encoding, type coercion, block references, and document introspection. All built-ins are " + bold("pure") + ", " + bold("deterministic") + ", and have " + bold("no side effects") + " — given the same inputs they always return the same output, and they never modify state."
+                }
+
+                paragraph p2 {
+                    content = "Functions are called with parentheses:"
+                }
+
+                code c1 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let s = upper("hello")         // "HELLO"
+                    let n = max(1, 2, 3)           // 3
+                    let xs = filter([1,2,3], x => x > 1)  // [2, 3]
+                    WCL
+                }
+
+                heading h2_categories {
+                    level = 2
+                    content = "Built-in Categories"
+                }
+
+                data_table t1 {
+                    rows = [
+                        ["Category", "Page", "Functions"],
+                        ["String", "String Functions", "upper, lower, trim, trim_prefix, trim_suffix, replace, split, join, starts_with, ends_with, contains, length, substr, format, regex_match, regex_capture"],
+                        ["Math", "Math Functions", "abs, min, max, floor, ceil, round, sqrt, pow"],
+                        ["Collection", "Collection Functions", "len, keys, values, flatten, concat, distinct, sort, reverse, contains, index_of, range, zip"],
+                        ["Higher-Order", "Higher-Order Functions", "map, filter, every, some, reduce"],
+                        ["Aggregate", "Aggregate Functions", "sum, avg, min_of, max_of, count"],
+                        ["Hash & Encoding", "Hash & Encoding Functions", "sha256, base64_encode, base64_decode, json_encode"],
+                        ["Type Coercion", "Type Coercion Functions", "to_string, to_int, to_float, to_bool, type_of"],
+                        ["Reference & Query", "Reference & Query Functions", "ref, query, has, has_decorator, is_imported, has_schema"]
+                    ]
+                }
+
+                heading h2_user_defined {
+                    level = 2
+                    content = "User-Defined Functions"
+                }
+
+                paragraph p3 {
+                    content = "WCL does not have a <code>fn</code> keyword. Instead, user-defined functions are " + bold("lambdas stored in <code>let</code> bindings") + ":"
+                }
+
+                code c2 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let double = x => x * 2
+                    let add = (x, y) => x + y
+                    let greet = name => "Hello, " + name + "!"
+                    WCL
+                }
+
+                paragraph p4 {
+                    content = "Single-parameter lambdas omit the parentheses. Multi-parameter lambdas use <code>(a, b, ...)</code>. The body is a single expression — lambdas do not have block bodies."
+                }
+
+                paragraph p5 {
+                    content = "Once bound, they are called exactly like built-ins:"
+                }
+
+                code c3 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let result = double(21)         // 42
+                    let sum = add(10, 32)           // 42
+                    let msg = greet("world")        // "Hello, world!"
+                    WCL
+                }
+
+                paragraph p6 {
+                    content = "Lambdas can be passed to higher-order functions:"
+                }
+
+                code c4 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let evens = filter([1,2,3,4,5], x => x % 2 == 0)  // [2, 4]
+                    let doubled = map([1,2,3], double)                  // [2, 4, 6]
+                    WCL
+                }
+
+                heading h3_limitations {
+                    level = 3
+                    content = "Limitations"
+                }
+
+                paragraph p7 {
+                    content = "<ul>" +
+                        "<li>" + bold("No recursion") + " — a lambda cannot call itself.</li>" +
+                        "<li>" + bold("No mutation") + " — lambdas are pure expressions; they cannot modify outer state.</li>" +
+                        "<li>" + bold("No variadic arguments") + " — arity is fixed at definition.</li>" +
+                        "<li>" + bold("No default parameters") + " — all parameters must be supplied at the call site.</li>" +
+                        "</ul>"
+                }
+
+                heading h2_exporting {
+                    level = 2
+                    content = "Exporting Functions"
+                }
+
+                paragraph p8 {
+                    content = "Use <code>export let</code> to make a lambda available to other files that import this one:"
+                }
+
+                code c5 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    // utils.wcl
+                    export let clamp = (val, lo, hi) => max(lo, min(hi, val))
+                    export let percent = (n, total) => (n / total) * 100.0
+                    WCL
+                }
+
+                code c6 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    // main.wcl
+                    import "utils.wcl"
+
+                    config display {
+                      value: clamp(input, 0, 100)
+                      pct: percent(input, 200)
+                    }
+                    WCL
+                }
+
+                heading h2_custom {
+                    level = 2
+                    content = "Custom Functions (Rust Host)"
+                }
+
+                paragraph p9 {
+                    content = "When using WCL as a Rust library, host programs can register custom <code>fn(&[Value]) -> Result&lt;Value, String&gt;</code> functions that are callable from WCL expressions. This allows domain-specific logic to be exposed to configuration files."
+                }
+
+                paragraph p10 {
+                    content = "Custom functions are registered via <code>ParseOptions.functions</code> (a <code>FunctionRegistry</code>). See the Rust Library Usage guide for details and examples."
+                }
+
+                heading h3_declare {
+                    level = 3
+                    content = "Function Declarations (declare)"
+                }
+
+                paragraph p11 {
+                    content = "Library files can include <code>declare</code> statements that describe functions provided by the host application:"
+                }
+
+                code c7 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    declare my_fn(input: string, count: i64) -> string
+                    WCL
+                }
+
+                paragraph p12 {
+                    content = "This serves two purposes:"
+                }
+
+                paragraph p13 {
+                    content = "<ol>" +
+                        "<li>The LSP uses declarations for completions and signature help</li>" +
+                        "<li>If a declared function is called but not registered by the host, a clear error is produced: " + italic("\"function 'X' is declared in library but not registered by host application\"") + "</li>" +
+                        "</ol>"
+                }
+
+                heading h2_purity {
+                    level = 2
+                    content = "Purity Guarantee"
+                }
+
+                paragraph p14 {
+                    content = "Because all functions (built-in and user-defined) are pure and the language has no I/O or mutation, a WCL document always evaluates to the same result given the same inputs. This makes configs safe to cache, diff, and analyze statically."
+                }
+            }
+        }
+    }
+}

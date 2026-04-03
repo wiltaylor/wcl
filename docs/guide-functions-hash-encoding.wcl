@@ -1,0 +1,165 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
+
+page functions_hash_encoding {
+    section = "wcl_docs.guide.functions.functions_hash_encoding"
+    title = "Hash & Encoding Functions"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Hash & Encoding Functions"
+                }
+
+                paragraph p1 {
+                    content = "WCL provides functions for hashing strings and encoding/decoding data. These are pure, deterministic functions useful for generating stable identifiers, verifying content, and interoperating with systems that expect encoded data."
+                }
+
+                heading h2_reference {
+                    level = 2
+                    content = "Reference"
+                }
+
+                data_table t1 {
+                    rows = [
+                        ["Function", "Signature", "Description"],
+                        ["sha256", "sha256(s: string) -> string", "Hex-encoded SHA-256 digest of the UTF-8 bytes of s"],
+                        ["base64_encode", "base64_encode(s: string) -> string", "Standard Base64 encoding of the UTF-8 bytes of s"],
+                        ["base64_decode", "base64_decode(s: string) -> string", "Decode a Base64-encoded string back to UTF-8"],
+                        ["json_encode", "json_encode(value: any) -> string", "Serialize any WCL value to a JSON string"]
+                    ]
+                }
+
+                heading h2_examples {
+                    level = 2
+                    content = "Examples"
+                }
+
+                heading h3_sha256 {
+                    level = 3
+                    content = "sha256"
+                }
+
+                code c1 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let digest = sha256("hello world")
+                    // "b94d27b9934d3e08a52e52d7da7dabfac484efe04294e576b35568b3f5d8d4a5"
+                    // (truncated for illustration)
+                    WCL
+                }
+
+                paragraph p2 {
+                    content = "Use <code>sha256</code> to generate stable, content-derived identifiers:"
+                }
+
+                code c2 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let artifact_id = sha256(format("{}-{}-{}", name, version, arch))
+
+                    artifact ${artifact_id} {
+                      name: name
+                      version: version
+                    }
+                    WCL
+                }
+
+                heading h3_base64 {
+                    level = 3
+                    content = "base64_encode / base64_decode"
+                }
+
+                code c3 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let encoded = base64_encode("user:password")   // "dXNlcjpwYXNzd29yZA=="
+                    let decoded = base64_decode(encoded)           // "user:password"
+                    WCL
+                }
+
+                paragraph p3 {
+                    content = "Encode a config value for embedding in an environment variable:"
+                }
+
+                code c4 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    config app {
+                      db_url_b64: base64_encode("postgres://host:5432/mydb")
+                    }
+                    WCL
+                }
+
+                heading h3_json_encode {
+                    level = 3
+                    content = "json_encode"
+                }
+
+                paragraph p4 {
+                    content = "<code>json_encode</code> converts any WCL value to its JSON representation:"
+                }
+
+                code c5 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let obj = {name: "web", port: 8080, tags: ["api", "public"]}
+                    let json = json_encode(obj)
+                    // "{\"name\":\"web\",\"port\":8080,\"tags\":[\"api\",\"public\"]}"
+                    WCL
+                }
+
+                paragraph p5 {
+                    content = "Scalar values:"
+                }
+
+                code c6 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let s = json_encode("hello")    // "\"hello\""
+                    let n = json_encode(42)         // "42"
+                    let b = json_encode(true)       // "true"
+                    let l = json_encode([1, 2, 3])  // "[1,2,3]"
+                    WCL
+                }
+
+                paragraph p6 {
+                    content = "<code>json_encode</code> is particularly useful when you need to embed structured data as a string in another system's configuration format:"
+                }
+
+                code c7 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    service api {
+                      env_vars: {
+                        APP_CONFIG: json_encode({
+                          timeout: 30
+                          retries: 3
+                          endpoints: ["primary", "fallback"]
+                        })
+                      }
+                    }
+                    WCL
+                }
+
+                heading h2_notes {
+                    level = 2
+                    content = "Notes"
+                }
+
+                paragraph p7 {
+                    content = "<ul>" +
+                        "<li><code>sha256</code> always produces lowercase hex output.</li>" +
+                        "<li><code>base64_encode</code> uses standard Base64 with padding (<code>=</code>). It does not produce URL-safe Base64.</li>" +
+                        "<li><code>base64_decode</code> returns a <code>string</code>. If the decoded bytes are not valid UTF-8, an error is raised.</li>" +
+                        "<li><code>json_encode</code> serializes WCL maps with keys in insertion order.</li>" +
+                        "</ul>"
+                }
+            }
+        }
+    }
+}

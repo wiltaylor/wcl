@@ -1,0 +1,233 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, bold, italic, link}
+
+page cli_quickstart {
+    section = "wcl_docs.getting_started.cli_quickstart"
+    title = "CLI Quickstart"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "CLI Quickstart"
+                }
+
+                paragraph p1 {
+                    content = "The <code>wcl</code> binary is the primary interface to the WCL toolchain. This page gives a quick tour of the most commonly used commands."
+                }
+
+                heading h2_eval {
+                    level = 2
+                    content = "Evaluate to JSON"
+                }
+
+                code c1 {
+                    language = "bash"
+                    content = "wcl eval config.wcl"
+                }
+
+                paragraph p2 {
+                    content = "Runs the full WCL pipeline (parse, macro expansion, evaluation, schema validation) and prints the result as JSON to stdout. Use <code>--pretty</code> for indented output (the default) or <code>--compact</code> for a single line."
+                }
+
+                heading h2_validate {
+                    level = 2
+                    content = "Validate"
+                }
+
+                code c2 {
+                    language = "bash"
+                    content = "wcl validate config.wcl"
+                }
+
+                paragraph p3 {
+                    content = "Runs the pipeline including schema validation and reports any diagnostics. Exits with a non-zero status code if there are errors. Useful as a pre-commit check or in CI."
+                }
+
+                heading h2_format {
+                    level = 2
+                    content = "Format"
+                }
+
+                code c3 {
+                    language = "bash"
+                    content = "wcl fmt config.wcl"
+                }
+
+                paragraph p4 {
+                    content = "Prints the formatted version of the file to stdout. To write the result back in place:"
+                }
+
+                code c4 {
+                    language = "bash"
+                    content = "wcl fmt config.wcl --write"
+                }
+
+                paragraph p5 {
+                    content = "To check whether a file is already formatted (useful in CI):"
+                }
+
+                code c5 {
+                    language = "bash"
+                    content = "wcl fmt config.wcl --check"
+                }
+
+                heading h2_query {
+                    level = 2
+                    content = "Query"
+                }
+
+                code c6 {
+                    language = "bash"
+                    content = <<-'BASH'
+                    wcl query config.wcl "server | .port > 8000"
+                    BASH
+                }
+
+                paragraph p6 {
+                    content = "Runs a query against the evaluated document and prints matching blocks as JSON. The query syntax selects blocks by type, filters by attribute values, and supports chaining. Some examples:"
+                }
+
+                code c7 {
+                    language = "bash"
+                    content = <<-'BASH'
+                    # All server blocks
+                    wcl query config.wcl "server"
+
+                    # Server blocks where port is greater than 8000
+                    wcl query config.wcl "server | .port > 8000"
+
+                    # A specific block by ID
+                    wcl query config.wcl "server#web-prod"
+                    BASH
+                }
+
+                heading h2_convert {
+                    level = 2
+                    content = "Convert"
+                }
+
+                paragraph p7 {
+                    content = "Convert between WCL and other formats:"
+                }
+
+                code c8 {
+                    language = "bash"
+                    content = <<-'BASH'
+                    # JSON to WCL
+                    wcl convert data.json --to wcl
+
+                    # WCL to YAML
+                    wcl convert config.wcl --to yaml
+
+                    # WCL to JSON
+                    wcl convert config.wcl --to json
+                    BASH
+                }
+
+                paragraph p8 {
+                    content = "Supported target formats: <code>wcl</code>, <code>json</code>, <code>yaml</code>, <code>toml</code>."
+                }
+
+                heading h2_set {
+                    level = 2
+                    content = "Set a Value"
+                }
+
+                paragraph p9 {
+                    content = "Update a single attribute value in a WCL file:"
+                }
+
+                code c9 {
+                    language = "bash"
+                    content = <<-'BASH'
+                    wcl set config.wcl "server#web.port" "9090"
+                    BASH
+                }
+
+                paragraph p10 {
+                    content = "The path syntax is <code>type#id.attribute</code>. The file is updated in place."
+                }
+
+                heading h2_add {
+                    level = 2
+                    content = "Add a Block"
+                }
+
+                code c10 {
+                    language = "bash"
+                    content = <<-'BASH'
+                    wcl add config.wcl "server new-svc"
+                    BASH
+                }
+
+                paragraph p11 {
+                    content = "Appends a new empty block of the given type and ID to the file. You can also pipe in a block body:"
+                }
+
+                code c11 {
+                    language = "bash"
+                    content = <<-'BASH'
+                    wcl add config.wcl "server new-svc" --body '{ port = 8081 }'
+                    BASH
+                }
+
+                heading h2_remove {
+                    level = 2
+                    content = "Remove a Block"
+                }
+
+                code c12 {
+                    language = "bash"
+                    content = <<-'BASH'
+                    wcl remove config.wcl "server#old-svc"
+                    BASH
+                }
+
+                paragraph p12 {
+                    content = "Removes the block with type <code>server</code> and ID <code>old-svc</code> from the file."
+                }
+
+                heading h2_inspect {
+                    level = 2
+                    content = "Inspect"
+                }
+
+                paragraph p13 {
+                    content = "Inspect internal representations for debugging or tooling development:"
+                }
+
+                code c13 {
+                    language = "bash"
+                    content = <<-'BASH'
+                    # Print the AST as pretty-printed text
+                    wcl inspect --ast config.wcl
+
+                    # Print the evaluated scope as JSON
+                    wcl inspect --scope config.wcl
+
+                    # Print all macros collected from the file
+                    wcl inspect --macros config.wcl
+                    BASH
+                }
+
+                heading h2_lsp {
+                    level = 2
+                    content = "Start the Language Server"
+                }
+
+                code c14 {
+                    language = "bash"
+                    content = "wcl lsp"
+                }
+
+                paragraph p14 {
+                    content = "Starts the WCL Language Server over stdio. This is normally invoked automatically by your editor extension or LSP client, not manually. See " + link("Editor Setup", "editor_setup.html") + " for configuration instructions."
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,687 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
+
+page dotnet_library {
+    section = "wcl_docs.getting_started.dotnet_library"
+    title = "Using WCL as a .NET Library"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Using WCL as a .NET Library"
+                }
+
+                paragraph p1 {
+                    content = "WCL can be embedded into .NET programs via the <code>WclLang</code> NuGet package. It uses a native shared library (P/Invoke) under the hood, so you get the full 11-phase WCL pipeline without needing a Rust toolchain."
+                }
+
+                heading h2_dep {
+                    level = 2
+                    content = "Adding the Dependency"
+                }
+
+                paragraph p2 {
+                    content = "Install from NuGet:"
+                }
+
+                code c1 {
+                    language = "bash"
+                    content = "dotnet add package WclLang"
+                }
+
+                paragraph p3 {
+                    content = "Or add a project reference for development from source:"
+                }
+
+                code c2 {
+                    language = "xml"
+                    content = <<-'XML'
+                    <ProjectReference Include="../wcl_dotnet/src/Wcl/Wcl.csproj" />
+                    XML
+                }
+
+                paragraph p4 {
+                    content = "The library targets <code>netstandard2.1</code> and works with .NET Core 3.0+ and .NET 5+."
+                }
+
+                callout note1 {
+                    icon = "info-circle"
+                    header = "Note"
+                    color = "#3498db"
+                    paragraph np1 {
+                        content = "This package uses P/Invoke with a native shared library (<code>libwcl_ffi.so</code> / <code>.dylib</code> / <code>.dll</code>). The native library must be present in the <code>runtimes/{rid}/native/</code> directory or alongside your application binary."
+                    }
+                }
+
+                heading h2_parse_string {
+                    level = 2
+                    content = "Parsing a WCL String"
+                }
+
+                paragraph p5 {
+                    content = "Use <code>WclParser.Parse()</code> to run the full pipeline and get a <code>WclDocument</code>:"
+                }
+
+                code c3 {
+                    language = "csharp"
+                    content = <<-'CS'
+                    using Wcl;
+
+                    using var doc = WclParser.Parse(@"
+                        server web-prod {
+                            host = ""0.0.0.0""
+                            port = 8080
+                            debug = false
+                        }
+                    ");
+
+                    if (doc.HasErrors())
+                    {
+                        foreach (var diag in doc.Errors())
+                        {
+                            Console.Error.WriteLine($"error: {diag.Message}");
+                        }
+                    }
+                    else
+                    {
+                        Console.WriteLine("Document parsed successfully");
+                    }
+                    CS
+                }
+
+                paragraph p6 {
+                    content = "<code>WclDocument</code> implements <code>IDisposable</code> and should be disposed when no longer needed. A finalizer is set as a safety net, but explicit disposal (via <code>using</code> or <code>Dispose()</code>) is preferred."
+                }
+
+                heading h2_parse_file {
+                    level = 2
+                    content = "Parsing a WCL File"
+                }
+
+                paragraph p7 {
+                    content = "<code>ParseFile</code> reads and parses a file. It automatically sets <code>RootDir</code> to the file's parent directory so imports resolve correctly:"
+                }
+
+                code c4 {
+                    language = "csharp"
+                    content = <<-'CS'
+                    using Wcl;
+
+                    using var doc = WclParser.ParseFile("config/main.wcl");
+                    CS
+                }
+
+                paragraph p8 {
+                    content = "To override parse options:"
+                }
+
+                code c5 {
+                    language = "csharp"
+                    content = <<-'CS'
+                    var options = new ParseOptions
+                    {
+                        RootDir = "./config"
+                    };
+
+                    using var doc = WclParser.ParseFile("config/main.wcl", options);
+                    CS
+                }
+
+                heading h2_values {
+                    level = 2
+                    content = "Accessing Evaluated Values"
+                }
+
+                paragraph p9 {
+                    content = "After parsing, <code>doc.Values</code> is an <code>OrderedMap&lt;string, WclValue&gt;</code> containing all evaluated top-level attributes and blocks:"
+                }
+
+                code c6 {
+                    language = "csharp"
+                    content = <<-'CS'
+                    using Wcl;
+                    using Wcl.Eval;
+
+                    using var doc = WclParser.Parse(@"
+                        name = ""my-app""
+                        port = 8080
+                        tags = [""web"", ""prod""]
+                    ");
+
+                    // Access scalar values
+                    if (doc.Values.TryGetValue("name", out var name))
+                        Console.WriteLine($"name: {name.AsString()}");
+
+                    if (doc.Values.TryGetValue("port", out var port))
+                        Console.WriteLine($"port: {port.AsInt()}");
+
+                    // Access list values
+                    if (doc.Values.TryGetValue("tags", out var tags))
+                    {
+                        foreach (var tag in tags.AsList())
+                            Console.WriteLine($"tag: {tag.AsString()}");
+                    }
+                    CS
+                }
+
+                paragraph p10 {
+                    content = "<code>WclValue</code> is a sealed type with these value kinds:"
+                }
+
+                data_table t1 {
+                    rows = [
+                        ["Kind", "Factory", "Accessor"],
+                        ["<code>String</code>", "<code>WclValue.NewString(\"...\")</code>", "<code>.AsString()</code>"],
+                        ["<code>Int</code>", "<code>WclValue.NewInt(42)</code>", "<code>.AsInt()</code>"],
+                        ["<code>Float</code>", "<code>WclValue.NewFloat(3.14)</code>", "<code>.AsFloat()</code>"],
+                        ["<code>Bool</code>", "<code>WclValue.NewBool(true)</code>", "<code>.AsBool()</code>"],
+                        ["<code>Null</code>", "<code>WclValue.Null</code>", "<code>.IsNull</code>"],
+                        ["<code>List</code>", "<code>WclValue.NewList(...)</code>", "<code>.AsList()</code>"],
+                        ["<code>Map</code>", "<code>WclValue.NewMap(...)</code>", "<code>.AsMap()</code>"],
+                        ["<code>Set</code>", "<code>WclValue.NewSet(...)</code>", "<code>.AsSet()</code>"],
+                        ["<code>BlockRef</code>", "<code>WclValue.NewBlockRef(...)</code>", "<code>.AsBlockRef()</code>"]
+                    ]
+                }
+
+                paragraph p11 {
+                    content = "Safe accessors like <code>.TryAsString()</code> return <code>null</code> instead of throwing on type mismatch."
+                }
+
+                heading h2_blocks {
+                    level = 2
+                    content = "Working with Blocks"
+                }
+
+                paragraph p12 {
+                    content = "Use <code>Blocks()</code> and <code>BlocksOfType()</code> to access blocks with their resolved attribute values:"
+                }
+
+                code c7 {
+                    language = "csharp"
+                    content = <<-'CS'
+                    using var doc = WclParser.Parse(@"
+                        server web-prod {
+                            host = ""0.0.0.0""
+                            port = 8080
+                        }
+
+                        server web-staging {
+                            host = ""staging.internal""
+                            port = 8081
+                        }
+
+                        database main-db {
+                            host = ""db.internal""
+                            port = 5432
+                        }
+                    ");
+
+                    // Get all blocks as resolved BlockRefs
+                    var blocks = doc.Blocks();
+                    Console.WriteLine($"Total blocks: {blocks.Count}"); // 3
+
+                    // Get blocks of a specific type
+                    var servers = doc.BlocksOfType("server");
+                    foreach (var s in servers)
+                    {
+                        Console.WriteLine($"server id={s.Id} host={s.Get("host")} port={s.Get("port")}");
+                    }
+                    CS
+                }
+
+                paragraph p13 {
+                    content = "Each <code>BlockRef</code> provides:"
+                }
+
+                code c8 {
+                    language = "csharp"
+                    content = <<-'CS'
+                    public class BlockRef
+                    {
+                        public string Kind { get; }
+                        public string? Id { get; }
+                        public List<string> Labels { get; }
+                        public OrderedMap<string, WclValue> Attributes { get; }
+                        public List<BlockRef> Children { get; }
+                        public List<DecoratorValue> Decorators { get; }
+
+                        public WclValue? Get(string key);           // safe attribute access
+                        public bool HasDecorator(string name);
+                        public DecoratorValue? GetDecorator(string name);
+                    }
+                    CS
+                }
+
+                heading h2_tables {
+                    level = 2
+                    content = "Working with Tables"
+                }
+
+                paragraph p14 {
+                    content = "Tables evaluate to a list of row dictionaries. Each row is a <code>Dictionary&lt;string, object&gt;</code> mapping column names to cell values:"
+                }
+
+                code c9 {
+                    language = "csharp"
+                    content = <<-'CS'
+                    var doc = Wcl.Parse(@"
+                        table users {
+                            name : string
+                            age  : i64
+                            | ""alice"" | 25 |
+                            | ""bob""   | 30 |
+                        }
+                    ");
+
+                    var users = (List<object>)doc.Values["users"];
+                    var row0 = (Dictionary<string, object>)users[0];
+                    Console.WriteLine(row0["name"]); // "alice"
+                    Console.WriteLine(row0["age"]);  // 25
+                    CS
+                }
+
+                paragraph p15 {
+                    content = "Tables inside blocks appear in the block's <code>Attributes</code> dictionary."
+                }
+
+                heading h2_queries {
+                    level = 2
+                    content = "Running Queries"
+                }
+
+                paragraph p16 {
+                    content = "<code>Query()</code> accepts the same query syntax as the <code>wcl query</code> CLI command:"
+                }
+
+                code c10 {
+                    language = "csharp"
+                    content = <<-'CS'
+                    using var doc = WclParser.Parse(@"
+                        server svc-api {
+                            port = 8080
+                            env = ""prod""
+                        }
+
+                        server svc-admin {
+                            port = 9090
+                            env = ""prod""
+                        }
+
+                        server svc-debug {
+                            port = 3000
+                            env = ""dev""
+                        }
+                    ");
+
+                    // Select all server blocks
+                    var all = doc.Query("server");
+
+                    // Filter by attribute
+                    var prod = doc.Query(@"server | .env == ""prod""");
+
+                    // Project a single attribute
+                    var ports = doc.Query("server | .port");
+                    // → List [8080, 9090, 3000]
+
+                    // Filter and project
+                    var prodPorts = doc.Query(@"server | .env == ""prod"" | .port");
+                    // → List [8080, 9090]
+
+                    // Select by ID
+                    var api = doc.Query("server#svc-api");
+                    CS
+                }
+
+                heading h2_custom_fn {
+                    level = 2
+                    content = "Custom Functions"
+                }
+
+                paragraph p17 {
+                    content = "You can register C# functions that are callable from WCL expressions. This lets your application extend WCL with domain-specific logic:"
+                }
+
+                code c11 {
+                    language = "csharp"
+                    content = <<-'CS'
+                    using Wcl;
+                    using Wcl.Eval;
+
+                    var opts = new ParseOptions
+                    {
+                        Functions = new Dictionary<string, Func<WclValue[], WclValue>>
+                        {
+                            ["double"] = args => WclValue.NewInt(args[0].AsInt() * 2),
+                            ["greet"] = args => WclValue.NewString($"Hello, {args[0].AsString()}!"),
+                        }
+                    };
+
+                    using var doc = WclParser.Parse(@"
+                        result = double(21)
+                        message = greet(""World"")
+                    ", opts);
+
+                    Console.WriteLine(doc.Values["result"].AsInt());     // 42
+                    Console.WriteLine(doc.Values["message"].AsString());  // "Hello, World!"
+                    CS
+                }
+
+                paragraph p18 {
+                    content = "Arguments and return values are serialized as JSON across the FFI boundary. Functions receive <code>WclValue[]</code> arguments and must return a <code>WclValue</code>. Use the factory methods to create return values."
+                }
+
+                paragraph p19 {
+                    content = "To signal a function failure, throw an exception:"
+                }
+
+                code c12 {
+                    language = "csharp"
+                    content = <<-'CS'
+                    ["safe_div"] = args =>
+                    {
+                        var a = args[0].AsFloat();
+                        var b = args[1].AsFloat();
+                        if (b == 0) throw new Exception("division by zero");
+                        return WclValue.NewFloat(a / b);
+                    }
+                    CS
+                }
+
+                heading h2_deser {
+                    level = 2
+                    content = "Deserializing into C# Types"
+                }
+
+                heading h3_from_string {
+                    level = 3
+                    content = "With FromString<T>"
+                }
+
+                paragraph p20 {
+                    content = "Deserialize a WCL string directly into a C# type:"
+                }
+
+                code c13 {
+                    language = "csharp"
+                    content = <<-'CS'
+                    using Wcl;
+
+                    public class AppConfig
+                    {
+                        public string Name { get; set; }
+                        public long Port { get; set; }
+                        public bool Debug { get; set; }
+                    }
+
+                    var config = WclParser.FromString<AppConfig>(@"
+                        name = ""my-app""
+                        port = 8080
+                        debug = false
+                    ");
+
+                    Console.WriteLine($"{config.Name} on port {config.Port}");
+                    CS
+                }
+
+                paragraph p21 {
+                    content = "<code>FromString&lt;T&gt;</code> throws if there are parse errors."
+                }
+
+                heading h3_to_wcl {
+                    level = 3
+                    content = "Serializing to WCL"
+                }
+
+                paragraph p22 {
+                    content = "Convert a C# object back to WCL text:"
+                }
+
+                code c14 {
+                    language = "csharp"
+                    content = <<-'CS'
+                    var config = new AppConfig { Name = "my-app", Port = 8080, Debug = false };
+
+                    var wcl = WclParser.ToString(config);
+                    // name = "my-app"
+                    // port = 8080
+                    // debug = false
+
+                    var pretty = WclParser.ToStringPretty(config);
+                    // Same but with indentation for nested structures
+                    CS
+                }
+
+                heading h2_parse_options {
+                    level = 2
+                    content = "Parse Options"
+                }
+
+                paragraph p23 {
+                    content = "<code>ParseOptions</code> controls the pipeline behavior. All fields are nullable — only set values are sent to the engine:"
+                }
+
+                code c15 {
+                    language = "csharp"
+                    content = <<-'CS'
+                    var options = new ParseOptions
+                    {
+                        // Root directory for import path resolution
+                        RootDir = "./config",
+
+                        // Whether imports are allowed (default: true)
+                        AllowImports = true,
+
+                        // Maximum depth for nested imports (default: 32)
+                        MaxImportDepth = 32,
+
+                        // Maximum macro expansion depth (default: 64)
+                        MaxMacroDepth = 64,
+
+                        // Maximum for-loop nesting depth (default: 32)
+                        MaxLoopDepth = 32,
+
+                        // Maximum total iterations across all for loops (default: 10,000)
+                        MaxIterations = 10000,
+
+                        // Custom functions callable from WCL expressions
+                        Functions = new Dictionary<string, Func<WclValue[], WclValue>> { ... },
+                    };
+                    CS
+                }
+
+                paragraph p24 {
+                    content = "When processing untrusted input, disable imports to prevent file system access:"
+                }
+
+                code c16 {
+                    language = "csharp"
+                    content = <<-'CS'
+                    var options = new ParseOptions { AllowImports = false };
+                    using var doc = WclParser.Parse(untrustedInput, options);
+                    CS
+                }
+
+                paragraph p25 {
+                    content = "Pass <code>null</code> for default options:"
+                }
+
+                code c17 {
+                    language = "csharp"
+                    content = "using var doc = WclParser.Parse(source, null);"
+                }
+
+                heading h2_library {
+                    level = 2
+                    content = "Library Files"
+                }
+
+                paragraph p26 {
+                    content = "Create <code>.wcl</code> library files manually and place them in <code>~/.local/share/wcl/lib/</code>. Use <code>LibraryManager.List()</code> to list installed libraries. See the Libraries guide for details."
+                }
+
+                heading h2_error_handling {
+                    level = 2
+                    content = "Error Handling"
+                }
+
+                paragraph p27 {
+                    content = "The <code>WclDocument</code> collects all diagnostics from every pipeline phase. Each <code>Diagnostic</code> includes a severity, message, and optional error code:"
+                }
+
+                code c18 {
+                    language = "csharp"
+                    content = <<-'CS'
+                    using var doc = WclParser.Parse(@"
+                        server web {
+                            port = ""not_a_number""
+                        }
+
+                        schema ""server"" {
+                            port: i64
+                        }
+                    ");
+
+                    foreach (var diag in doc.Diagnostics)
+                    {
+                        var severity = diag.IsError ? "ERROR" : "WARN";
+                        var code = diag.Code ?? "----";
+                        Console.Error.WriteLine($"[{severity}] {code}: {diag.Message}");
+                    }
+                    CS
+                }
+
+                paragraph p28 {
+                    content = "The <code>Diagnostic</code> type:"
+                }
+
+                code c19 {
+                    language = "csharp"
+                    content = <<-'CS'
+                    public class Diagnostic
+                    {
+                        public string Severity { get; }   // "error", "warning", "info", "hint"
+                        public string Message { get; }
+                        public string? Code { get; }      // e.g. "E071" for type mismatch
+                        public bool IsError { get; }
+                    }
+                    CS
+                }
+
+                heading h2_thread_safety {
+                    level = 2
+                    content = "Thread Safety"
+                }
+
+                paragraph p29 {
+                    content = "Documents are safe to use from multiple threads. All methods acquire a lock internally, and values are cached after first access:"
+                }
+
+                code c20 {
+                    language = "csharp"
+                    content = <<-'CS'
+                    using var doc = WclParser.Parse("x = 42");
+
+                    var tasks = Enumerable.Range(0, 10).Select(_ => Task.Run(() =>
+                    {
+                        var values = doc.Values;
+                        Console.WriteLine(values["x"].AsInt()); // 42
+                    }));
+
+                    await Task.WhenAll(tasks);
+                    CS
+                }
+
+                heading h2_complete {
+                    level = 2
+                    content = "Complete Example"
+                }
+
+                paragraph p30 {
+                    content = "Putting it all together — parse a configuration, validate it, query it, and extract values:"
+                }
+
+                code c21 {
+                    language = "csharp"
+                    content = <<-'CS'
+                    using Wcl;
+                    using Wcl.Eval;
+
+                    using var doc = WclParser.Parse(@"
+                        schema ""server"" {
+                            port: i64
+                            host: string @optional
+                        }
+
+                        server svc-api {
+                            port = 8080
+                            host = ""api.internal""
+                        }
+
+                        server svc-admin {
+                            port = 9090
+                            host = ""admin.internal""
+                        }
+                    ");
+
+                    // 1. Check for errors
+                    if (doc.HasErrors())
+                    {
+                        foreach (var e in doc.Errors())
+                            Console.Error.WriteLine(e.Message);
+                        Environment.Exit(1);
+                    }
+
+                    // 2. Query for all server ports
+                    var ports = doc.Query("server | .port");
+                    Console.WriteLine($"All ports: {ports}");
+
+                    // 3. Iterate resolved blocks
+                    foreach (var server in doc.BlocksOfType("server"))
+                    {
+                        var id = server.Id ?? "(no id)";
+                        var host = server.Get("host");
+                        var port = server.Get("port");
+                        Console.WriteLine($"{id}: {host}:{port}");
+                    }
+
+                    // 4. Custom functions
+                    var opts = new ParseOptions
+                    {
+                        Functions = new Dictionary<string, Func<WclValue[], WclValue>>
+                        {
+                            ["double"] = args => WclValue.NewInt(args[0].AsInt() * 2)
+                        }
+                    };
+
+                    using var doc2 = WclParser.Parse("result = double(21)", opts);
+                    Console.WriteLine($"result = {doc2.Values["result"].AsInt()}"); // 42
+                    CS
+                }
+
+                heading h2_from_source {
+                    level = 2
+                    content = "Building from Source"
+                }
+
+                code c22 {
+                    language = "bash"
+                    content = <<-'BASH'
+                    # Build the native library and .NET project
+                    just build dotnet
+
+                    # Run .NET tests
+                    just test dotnet
+                    BASH
+                }
+
+                paragraph p31 {
+                    content = "This requires the .NET SDK (6.0+) and a Rust toolchain (for building the native library)."
+                }
+            }
+        }
+    }
+}

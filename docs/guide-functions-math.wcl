@@ -1,0 +1,173 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
+
+page functions_math {
+    section = "wcl_docs.guide.functions.functions_math"
+    title = "Math Functions"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Math Functions"
+                }
+
+                paragraph p1 {
+                    content = "WCL's math functions operate on <code>i64</code> and <code>f64</code> values. Functions that accept either type promote integers to floats where needed and are noted below."
+                }
+
+                heading h2_reference {
+                    level = 2
+                    content = "Reference"
+                }
+
+                data_table t1 {
+                    rows = [
+                        ["Function", "Signature", "Description"],
+                        ["abs", "abs(n: i64|f64) -> i64|f64", "Absolute value; preserves input type"],
+                        ["min", "min(a: i64|f64, b: i64|f64) -> i64|f64", "Smaller of two values"],
+                        ["max", "max(a: i64|f64, b: i64|f64) -> i64|f64", "Larger of two values"],
+                        ["floor", "floor(n: f64) -> i64", "Round down to nearest integer"],
+                        ["ceil", "ceil(n: f64) -> i64", "Round up to nearest integer"],
+                        ["round", "round(n: f64) -> i64", "Round to nearest integer (half-up)"],
+                        ["sqrt", "sqrt(n: i64|f64) -> f64", "Square root; always returns float"],
+                        ["pow", "pow(base: i64|f64, exp: i64|f64) -> f64", "Raise base to the power of exp; always returns float"]
+                    ]
+                }
+
+                heading h2_examples {
+                    level = 2
+                    content = "Examples"
+                }
+
+                heading h3_abs {
+                    level = 3
+                    content = "abs"
+                }
+
+                code c1 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let a = abs(-42)     // 42
+                    let b = abs(-3.14)   // 3.14
+                    let c = abs(7)       // 7
+                    WCL
+                }
+
+                heading h3_min_max {
+                    level = 3
+                    content = "min / max"
+                }
+
+                code c2 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let lo = min(10, 3)    // 3
+                    let hi = max(10, 3)    // 10
+
+                    // Combine with variables
+                    let clamped = max(0, min(100, input_value))
+                    WCL
+                }
+
+                heading h3_floor_ceil_round {
+                    level = 3
+                    content = "floor / ceil / round"
+                }
+
+                code c3 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let f = 3.7
+                    let down = floor(f)   // 3
+                    let up   = ceil(f)    // 4
+                    let near = round(f)   // 4
+
+                    let g = 3.2
+                    let down2 = floor(g)  // 3
+                    let up2   = ceil(g)   // 4
+                    let near2 = round(g)  // 3
+                    WCL
+                }
+
+                heading h3_sqrt {
+                    level = 3
+                    content = "sqrt"
+                }
+
+                code c4 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let root = sqrt(16)     // 4.0
+                    let root2 = sqrt(2)     // 1.4142135623730951
+                    WCL
+                }
+
+                heading h3_pow {
+                    level = 3
+                    content = "pow"
+                }
+
+                code c5 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let squared = pow(4, 2)     // 16.0
+                    let cubed   = pow(2, 10)    // 1024.0
+                    let frac    = pow(8, 0.333) // ~2.0
+                    WCL
+                }
+
+                heading h2_arithmetic {
+                    level = 2
+                    content = "Integer Arithmetic"
+                }
+
+                paragraph p2 {
+                    content = "Standard arithmetic operators work on integers without calling functions:"
+                }
+
+                code c6 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let sum  = 10 + 3     // 13
+                    let diff = 10 - 3     // 7
+                    let prod = 10 * 3     // 30
+                    let quot = 10 / 3     // 3  (integer division)
+                    let rem  = 10 % 3     // 1
+                    WCL
+                }
+
+                paragraph p3 {
+                    content = "For floating-point division, ensure at least one operand is a float:"
+                }
+
+                code c7 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let ratio = 10.0 / 3  // 3.3333...
+                    WCL
+                }
+
+                heading h2_combining {
+                    level = 2
+                    content = "Combining Math with Collections"
+                }
+
+                paragraph p4 {
+                    content = "For aggregate operations over lists (sum, average, min/max of a list), see " + link("Aggregate Functions", "functions_aggregate.html") + ". For per-element operations, use " + link("Higher-Order Functions", "functions_higher_order.html") + ":"
+                }
+
+                code c8 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let values = [1, 4, 9, 16]
+                    let roots = map(values, x => sqrt(x))   // [1.0, 2.0, 3.0, 4.0]
+                    WCL
+                }
+            }
+        }
+    }
+}

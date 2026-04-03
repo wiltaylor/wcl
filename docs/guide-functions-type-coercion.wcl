@@ -1,0 +1,227 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
+
+let D = "$"
+
+page functions_type_coercion {
+    section = "wcl_docs.guide.functions.functions_type_coercion"
+    title = "Type Coercion Functions"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Type Coercion Functions"
+                }
+
+                paragraph p1 {
+                    content = "WCL is strongly typed and does not coerce values implicitly. When you need to convert between types, use these explicit coercion functions. The <code>type_of</code> function lets you inspect a value's type at evaluation time."
+                }
+
+                heading h2_reference {
+                    level = 2
+                    content = "Reference"
+                }
+
+                data_table t1 {
+                    rows = [
+                        ["Function", "Signature", "Description"],
+                        ["to_string", "to_string(value: any) -> string", "Convert any value to its string representation"],
+                        ["to_int", "to_int(value: string|f64|bool) -> i64", "Parse or truncate a value to integer"],
+                        ["to_float", "to_float(value: string|i64|bool) -> f64", "Parse or promote a value to float"],
+                        ["to_bool", "to_bool(value: string|i64) -> bool", "Parse a value to boolean"],
+                        ["type_of", "type_of(value: any) -> string", "Return a string naming the value's type"]
+                    ]
+                }
+
+                heading h2_examples {
+                    level = 2
+                    content = "Examples"
+                }
+
+                heading h3_to_string {
+                    level = 3
+                    content = "to_string"
+                }
+
+                paragraph p2 {
+                    content = "Converts any WCL value to a string. This is equivalent to placing a value inside <code>" + D + "{}</code> interpolation."
+                }
+
+                code c1 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let s1 = to_string(42)       // "42"
+                    let s2 = to_string(3.14)     // "3.14"
+                    let s3 = to_string(true)     // "true"
+                    let s4 = to_string([1, 2])   // "[1, 2]"
+                    WCL
+                }
+
+                paragraph p3 {
+                    content = "Useful when building strings from computed values:"
+                }
+
+                code c2 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let label = "replicas-" + to_string(replica_count)
+                    WCL
+                }
+
+                heading h3_to_int {
+                    level = 3
+                    content = "to_int"
+                }
+
+                paragraph p4 {
+                    content = "Converts strings, floats, and booleans to integers."
+                }
+
+                code c3 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let n1 = to_int("42")       // 42
+                    let n2 = to_int(3.9)        // 3  (truncates toward zero)
+                    let n3 = to_int(true)       // 1
+                    let n4 = to_int(false)      // 0
+                    WCL
+                }
+
+                paragraph p5 {
+                    content = "Parsing a string that is not a valid integer is a runtime error:"
+                }
+
+                code c4 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let bad = to_int("hello")   // error
+                    WCL
+                }
+
+                heading h3_to_float {
+                    level = 3
+                    content = "to_float"
+                }
+
+                paragraph p6 {
+                    content = "Converts strings, integers, and booleans to floats."
+                }
+
+                code c5 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let f1 = to_float("3.14")   // 3.14
+                    let f2 = to_float(10)       // 10.0
+                    let f3 = to_float(true)     // 1.0
+                    let f4 = to_float(false)    // 0.0
+                    WCL
+                }
+
+                heading h3_to_bool {
+                    level = 3
+                    content = "to_bool"
+                }
+
+                paragraph p7 {
+                    content = "Converts strings and integers to booleans."
+                }
+
+                paragraph p8 {
+                    content = "For strings: <code>\"true\"</code> becomes <code>true</code>, <code>\"false\"</code> becomes <code>false</code>. Any other string is a runtime error."
+                }
+
+                paragraph p9 {
+                    content = "For integers: <code>0</code> becomes <code>false</code>, any non-zero becomes <code>true</code>."
+                }
+
+                code c6 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let b1 = to_bool("true")    // true
+                    let b2 = to_bool("false")   // false
+                    let b3 = to_bool(1)         // true
+                    let b4 = to_bool(0)         // false
+                    WCL
+                }
+
+                heading h3_type_of {
+                    level = 3
+                    content = "type_of"
+                }
+
+                paragraph p10 {
+                    content = "Returns a lowercase string naming the type of the given value."
+                }
+
+                data_table t2 {
+                    rows = [
+                        ["Value type", "type_of result"],
+                        ["string", "\"string\""],
+                        ["i64", "\"int\""],
+                        ["f64", "\"float\""],
+                        ["bool", "\"bool\""],
+                        ["list", "\"list\""],
+                        ["map", "\"map\""],
+                        ["block reference", "\"block\""],
+                        ["null", "\"null\""]
+                    ]
+                }
+
+                code c7 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let t1 = type_of("hello")     // "string"
+                    let t2 = type_of(42)          // "int"
+                    let t3 = type_of(3.14)        // "float"
+                    let t4 = type_of(true)        // "bool"
+                    let t5 = type_of([1, 2, 3])   // "list"
+                    let t6 = type_of({a: 1})      // "map"
+                    WCL
+                }
+
+                paragraph p11 {
+                    content = "Branching on type:"
+                }
+
+                code c8 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let describe = v => if type_of(v) == "int" {
+                      "integer: " + to_string(v)
+                    } else if type_of(v) == "string" {
+                      "string: " + v
+                    } else {
+                      "other: " + to_string(v)
+                    }
+                    WCL
+                }
+
+                heading h2_no_implicit {
+                    level = 2
+                    content = "No Implicit Coercion"
+                }
+
+                paragraph p12 {
+                    content = "WCL never coerces types automatically. The following are all errors:"
+                }
+
+                code c9 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let bad1 = "count: " + 5       // error: cannot add string and int
+                    let bad2 = 1 + true            // error: cannot add int and bool
+                    let bad3 = if 1 { "yes" }      // error: condition must be bool
+                    WCL
+                }
+
+                paragraph p13 {
+                    content = "Always use an explicit coercion function when mixing types."
+                }
+            }
+        }
+    }
+}

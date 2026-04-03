@@ -1,0 +1,776 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
+
+page decorators_builtin {
+    section = "wcl_docs.guide.decorators.decorators_builtin"
+    title = "Built-in Decorators"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Built-in Decorators"
+                }
+
+                paragraph p1 {
+                    content = "WCL provides a set of built-in decorators for schema validation, documentation, macro transforms, and configuration semantics."
+                }
+
+                heading h2_reference {
+                    level = 2
+                    content = "Reference Table"
+                }
+
+                data_table t1 {
+                    rows = [
+                        ["Decorator", "Targets", "Arguments", "Description"],
+                        ["@optional", "schema fields", "none", "Field is not required"],
+                        ["@required", "schema fields", "none", "Field must be present (default for schema fields)"],
+                        ["@default(value)", "schema fields", "value: any", "Default value when field is absent"],
+                        ["@sensitive", "attributes", "redact_in_logs: bool = true", "Marks value as sensitive; redacted in log output"],
+                        ["@deprecated", "blocks, attributes", "message: string, since: string (optional)", "Warns when this item is used"],
+                        ["@validate(...)", "attributes, schema fields", "min, max, pattern, one_of, custom_msg", "Value constraints"],
+                        ["@doc(text)", "any", "text: string", "Inline documentation for the decorated item"],
+                        ["@example { }", "decorator schemas, schemas", "block body", "Embedded usage example"],
+                        ["@allow(rule)", "let bindings, attributes", "rule: string", "Suppresses a specific warning"],
+                        ["@id_pattern(glob)", "schemas", "glob: string", "Enforces naming convention on block IDs"],
+                        ["@ref(schema)", "schema identifier fields", "schema: string", "Requires value to reference an existing block of that type"],
+                        ["@partial_requires", "partial blocks", "fields: list of strings", "Declares expected merge dependencies"],
+                        ["@merge_order(n)", "partial blocks", "n: int", "Explicit ordering for partial merges"],
+                        ["@open", "schemas", "none", "Allows extra attributes not declared in the schema"],
+                        ["@child(kind, ...)", "schemas", "kind: string, min/max/max_depth: int (optional)", "Per-child cardinality and depth constraints"],
+                        ["@tagged(field)", "schemas", "field: string", "Names the discriminator field for tagged variant schemas"],
+                        ["@children(kinds)", "schemas", "kinds: list of strings", "Restricts which child blocks/tables may appear inside"],
+                        ["@parent(kinds)", "schemas", "kinds: list of strings", "Restricts which parent blocks may contain this block/table"],
+                        ["@symbol_set(name)", "schema fields", "name: string", "Constrains a symbol-typed field to members of the named symbol set"],
+                        ["@inline(N)", "schema fields", "N: int", "Maps positional inline arg at index N to this named field"],
+                        ["@text", "schema fields", "none", "Marks a content: string field as the text block target"],
+                        ["@merge_strategy(s)", "partial blocks", "s: string", "Controls how partial merges resolve conflicts"]
+                    ]
+                }
+
+                heading h2_optional {
+                    level = 2
+                    content = "@optional"
+                }
+
+                paragraph p2 {
+                    content = "Marks a schema field as not required. If the field is absent from a block, no error is raised."
+                }
+
+                code c1 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    schema "service" {
+                        debug_port: u16    @optional
+                        log_level:  string @optional
+                    }
+                    WCL
+                }
+
+                heading h2_required {
+                    level = 2
+                    content = "@required"
+                }
+
+                paragraph p3 {
+                    content = "Marks a schema field as required. This is the default for all schema fields, but can be written explicitly for clarity."
+                }
+
+                code c2 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    schema "service" {
+                        port:   u16    @required
+                        region: string @required
+                    }
+                    WCL
+                }
+
+                heading h2_default {
+                    level = 2
+                    content = "@default(value)"
+                }
+
+                paragraph p4 {
+                    content = "Provides a fallback value when the field is absent from the block. A field with <code>@default</code> is implicitly optional."
+                }
+
+                code c3 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    schema "service" {
+                        env:      string @default("production")
+                        replicas: u32    @default(1)
+                        tls:      bool   @default(true)
+                    }
+                    WCL
+                }
+
+                paragraph p5 {
+                    content = "The default value must be a valid WCL expression and must match the declared field type."
+                }
+
+                heading h2_sensitive {
+                    level = 2
+                    content = "@sensitive"
+                }
+
+                paragraph p6 {
+                    content = "Marks an attribute's value as sensitive. Tools and log output should redact this value."
+                }
+
+                code c4 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    database "primary" {
+                        host     = "db.internal"
+                        password = "s3cr3t" @sensitive
+                        api_key  = "change-me" @sensitive(redact_in_logs = true)
+                    }
+                    WCL
+                }
+
+                paragraph p7 {
+                    content = "The optional <code>redact_in_logs</code> argument defaults to <code>true</code>."
+                }
+
+                heading h2_deprecated {
+                    level = 2
+                    content = "@deprecated"
+                }
+
+                paragraph p8 {
+                    content = "Indicates that a block or attribute is deprecated. A warning is emitted when it is used."
+                }
+
+                code c5 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    service "legacy-api" @deprecated(message = "Use service 'api-v2' instead", since = "3.0") {
+                        port = 8080
+                    }
+                    WCL
+                }
+
+                paragraph p9 {
+                    content = "On an attribute:"
+                }
+
+                code c6 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    schema "service" {
+                        workers:  u32 @deprecated(message = "Use 'replicas' instead")
+                        replicas: u32 @default(1)
+                    }
+                    WCL
+                }
+
+                paragraph p10 {
+                    content = "<code>since</code> is optional and accepts a version string."
+                }
+
+                heading h2_validate {
+                    level = 2
+                    content = "@validate(...)"
+                }
+
+                paragraph p11 {
+                    content = "Attaches value constraints to an attribute or schema field. Multiple constraint arguments can be combined."
+                }
+
+                code c7 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    schema "endpoint" {
+                        port:    u16    @validate(min = 1, max = 65535)
+                        env:     string @validate(one_of = ["development", "staging", "production"])
+                        slug:    string @validate(pattern = "^[a-z0-9-]+$")
+                        timeout: u32    @validate(min = 1, max = 300, custom_msg = "timeout must be between 1 and 300 seconds")
+                    }
+                    WCL
+                }
+
+                data_table t2 {
+                    rows = [
+                        ["Argument", "Applies to", "Description"],
+                        ["min", "numeric types", "Minimum value (inclusive)"],
+                        ["max", "numeric types", "Maximum value (inclusive)"],
+                        ["pattern", "string", "Regular expression the value must fully match"],
+                        ["one_of", "string, numeric", "Value must be one of the given options"],
+                        ["custom_msg", "any", "Custom message emitted on constraint violation"]
+                    ]
+                }
+
+                heading h2_doc {
+                    level = 2
+                    content = "@doc(text)"
+                }
+
+                paragraph p12 {
+                    content = "Attaches a documentation string to any declaration. Used by tooling and the language server to provide hover documentation."
+                }
+
+                code c8 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    schema "service" {
+                        port: u16    @required @doc("The TCP port this service listens on.")
+                        env:  string @default("production") @doc("Deployment environment name.")
+                    }
+
+                    service "api" @doc("Main API service for the frontend.") {
+                        port = 8080
+                    }
+                    WCL
+                }
+
+                heading h2_example {
+                    level = 2
+                    content = "@example { }"
+                }
+
+                paragraph p13 {
+                    content = "Embeds a usage example directly inside a <code>decorator_schema</code> or <code>schema</code> declaration. Used by documentation generators and IDE tooling."
+                }
+
+                code c9 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    decorator_schema "rate_limit" {
+                        target    = [attribute]
+                        requests:  u32
+                        window_ms: u32 @default(1000)
+
+                        @example {
+                            calls_per_second = 100 @rate_limit(requests = 100, window_ms = 1000)
+                        }
+                    }
+                    WCL
+                }
+
+                heading h2_allow {
+                    level = 2
+                    content = "@allow(rule)"
+                }
+
+                paragraph p14 {
+                    content = "Suppresses a specific warning on a <code>let</code> binding or attribute. Use this when a warning is expected and intentional."
+                }
+
+                code c10 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let _unused = compute_value() @allow("unused_binding")
+
+                    service "api" {
+                        legacy_flag = true @allow("deprecated_field")
+                    }
+                    WCL
+                }
+
+                paragraph p15 {
+                    content = "The <code>rule</code> argument is a string identifying the warning to suppress."
+                }
+
+                heading h2_id_pattern {
+                    level = 2
+                    content = "@id_pattern(glob)"
+                }
+
+                paragraph p16 {
+                    content = "Enforces a naming convention on block IDs for a schema. Any block whose ID does not match the glob pattern produces a validation error (E077)."
+                }
+
+                code c11 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    schema "service" @id_pattern("svc-*") {
+                        port: u16
+                    }
+
+                    service "svc-api" { port = 8080 }    // valid
+                    service "api"     { port = 8080 }    // error E077: ID does not match "svc-*"
+                    WCL
+                }
+
+                heading h2_ref {
+                    level = 2
+                    content = "@ref(schema)"
+                }
+
+                paragraph p17 {
+                    content = "Applied to an identifier field in a schema. Requires that the field's value matches the ID of an existing block of the named type."
+                }
+
+                code c12 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    schema "deployment" {
+                        service_id: string @ref("service")
+                    }
+
+                    service api { port = 8080 }
+
+                    deployment d1 {
+                        service_id = "api"      // valid: service api exists
+                    }
+
+                    deployment d2 {
+                        service_id = "missing"  // error E076: no service "missing" found
+                    }
+                    WCL
+                }
+
+                paragraph p18 {
+                    content = "Resolution supports scoped lookup: bare IDs match by kind, qualified dotted paths (<code>\"alpha.http\"</code>) resolve from root, and relative paths (<code>\"../beta\"</code>) navigate up the block hierarchy."
+                }
+
+                heading h2_partial_requires {
+                    level = 2
+                    content = "@partial_requires(fields)"
+                }
+
+                paragraph p19 {
+                    content = "Declares that a partial block expects certain fields to be present after merging. This documents and enforces merge dependencies."
+                }
+
+                code c13 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    partial service @partial_requires(["port", "region"]) {
+                        env      = "production"
+                        replicas = 1
+                    }
+                    WCL
+                }
+
+                paragraph p20 {
+                    content = "If a block that includes this partial does not provide the listed fields either directly or through another partial, a validation error is raised."
+                }
+
+                heading h2_merge_order {
+                    level = 2
+                    content = "@merge_order(n)"
+                }
+
+                paragraph p21 {
+                    content = "Sets an explicit integer priority for partial merge ordering. Partials with lower <code>n</code> are merged first. Without this decorator, merge order follows declaration order."
+                }
+
+                code c14 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    partial service @merge_order(1) {
+                        env = "production"
+                    }
+
+                    partial service @merge_order(2) {
+                        env = "staging"    // this wins because it merges later
+                    }
+                    WCL
+                }
+
+                heading h2_child {
+                    level = 2
+                    content = "@child(kind, min=N, max=N, max_depth=N)"
+                }
+
+                paragraph p22 {
+                    content = "Constrains how many children of a specific kind a block may have. The <code>kind</code> argument is the first positional string; <code>min</code>, <code>max</code>, and <code>max_depth</code> are optional named integer arguments."
+                }
+
+                code c15 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    @child("endpoint", min=1, max=10)
+                    @child("config", max=1)
+                    schema "server" {
+                        host: string
+                    }
+                    WCL
+                }
+
+                paragraph p23 {
+                    content = "Each <code>@child</code> entry automatically adds its kind to the schema's allowed children set (as if it were also listed in <code>@children</code>). This means <code>@child(\"endpoint\")</code> with no bounds is equivalent to including <code>\"endpoint\"</code> in a <code>@children</code> list."
+                }
+
+                paragraph p24 {
+                    content = "Use <code>max_depth</code> for self-nesting blocks:"
+                }
+
+                code c16 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    @child("menu", max_depth=3)
+                    schema "menu" {
+                        label: string
+                    }
+                    WCL
+                }
+
+                data_table t3 {
+                    rows = [
+                        ["Error", "Condition"],
+                        ["E097", "Child count below minimum"],
+                        ["E098", "Child count above maximum"],
+                        ["E099", "Self-nesting exceeds max_depth"]
+                    ]
+                }
+
+                heading h2_tagged {
+                    level = 2
+                    content = "@tagged(field)"
+                }
+
+                paragraph p25 {
+                    content = "Names the discriminator field for tagged variant schemas. Used together with <code>variant</code> blocks inside the schema body."
+                }
+
+                code c17 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    @tagged("style")
+                    schema "api" {
+                        style: string
+                        version: string @optional
+
+                        variant "rest" {
+                            base_path: string
+                        }
+
+                        variant "graphql" {
+                            schema_path: string @optional
+                        }
+                    }
+                    WCL
+                }
+
+                paragraph p26 {
+                    content = "When a block's tag field matches a variant's value, that variant's fields and containment constraints are also validated. When no variant matches, only the common fields are checked."
+                }
+
+                heading h2_children {
+                    level = 2
+                    content = "@children(kinds)"
+                }
+
+                paragraph p27 {
+                    content = "Restricts which child blocks and tables may appear inside blocks of a given schema. The argument is a list of allowed block kind names and table identifiers."
+                }
+
+                code c18 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    @children(["endpoint", "middleware", "table:user_row"])
+                    schema "service" {
+                        name: string
+                    }
+
+                    service "api" {
+                        endpoint health { path = "/health" }     // allowed
+                        middleware auth { priority = 1 }          // allowed
+                        table users : user_row { | "Alice" | }   // allowed (table:user_row)
+                        // logger { level = "info" }             // ERROR E095: not in children list
+                    }
+                    WCL
+                }
+
+                paragraph p28 {
+                    content = "Special names in the children list:"
+                }
+
+                data_table t4 {
+                    rows = [
+                        ["Entry", "Meaning"],
+                        ["\"table\"", "Allows anonymous tables (no schema ref)"],
+                        ["\"table:X\"", "Allows tables with schema_ref = X"]
+                    ]
+                }
+
+                paragraph p29 {
+                    content = "An empty list <code>@children([])</code> forbids all child blocks and tables, making the schema a leaf:"
+                }
+
+                code c19 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    @children([])
+                    schema "leaf_node" {
+                        value: string
+                    }
+                    WCL
+                }
+
+                paragraph p30 {
+                    content = "You can also constrain what appears at the document root by defining a schema named <code>\"_root\"</code>:"
+                }
+
+                code c20 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    @children(["service", "config"])
+                    schema "_root" {}
+
+                    service main { port = 8080 }     // allowed
+                    database primary { host = "db" } // ERROR E095: not in _root children list
+                    WCL
+                }
+
+                heading h2_parent {
+                    level = 2
+                    content = "@parent(kinds)"
+                }
+
+                paragraph p31 {
+                    content = "Restricts where a block may appear. The argument is a list of allowed parent block kinds. Use <code>\"_root\"</code> to allow the block at the document root."
+                }
+
+                code c21 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    @parent(["service", "_root"])
+                    schema "endpoint" {
+                        path: string
+                    }
+
+                    service "api" {
+                        endpoint health { path = "/health" }   // allowed: parent is "service"
+                    }
+
+                    endpoint standalone { path = "/ping" }     // allowed: parent is _root
+                    WCL
+                }
+
+                paragraph p32 {
+                    content = "If a block appears inside a parent not in its <code>@parent</code> list, error E096 is emitted."
+                }
+
+                heading h3_parent_scoped {
+                    level = 3
+                    content = "Parent-Scoped Schemas"
+                }
+
+                paragraph p33 {
+                    content = "Multiple schemas with the same name are allowed when they have non-overlapping <code>@parent</code> scopes. The system selects the correct schema based on the block's parent context:"
+                }
+
+                code c22 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    @parent(["doc"])
+                    schema "section" {
+                        title: string
+                    }
+
+                    @parent(["page"])
+                    schema "section" {
+                        heading: string
+                        level: i32
+                    }
+
+                    // Optional unscoped fallback — used when no parent-scoped variant matches
+                    schema "section" {
+                        content: string
+                    }
+                    WCL
+                }
+
+                paragraph p34 {
+                    content = "Resolution order: parent-scoped match first, then unscoped fallback. Error E001 fires only when two schemas have the same name with overlapping <code>@parent</code> lists or when both are unscoped."
+                }
+
+                heading h2_symbol_set {
+                    level = 2
+                    content = "@symbol_set(name)"
+                }
+
+                paragraph p35 {
+                    content = "Constrains a <code>symbol</code>-typed schema field so that only members of the named symbol set are accepted. The argument is the name of a <code>symbol_set</code> declaration."
+                }
+
+                code c23 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    symbol_set http_method {
+                        :GET
+                        :POST
+                        :PUT
+                        :DELETE
+                    }
+
+                    schema "endpoint" {
+                        method: symbol @symbol_set("http_method")
+                        path:   string
+                    }
+
+                    endpoint list_users {
+                        method = :GET          // valid: :GET is in http_method
+                        path   = "/users"
+                    }
+
+                    endpoint bad {
+                        method = :PATCH        // error E100: :PATCH is not in symbol_set "http_method"
+                        path   = "/items"
+                    }
+                    WCL
+                }
+
+                paragraph p36 {
+                    content = "Use the special set name <code>\"all\"</code> to accept any symbol value without restricting to a specific set:"
+                }
+
+                code c24 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    schema "tag" {
+                        kind: symbol @symbol_set("all")
+                    }
+                    WCL
+                }
+
+                data_table t5 {
+                    rows = [
+                        ["Error", "Condition"],
+                        ["E100", "Symbol value not in the declared symbol set"],
+                        ["E101", "Referenced symbol set does not exist"]
+                    ]
+                }
+
+                heading h2_inline {
+                    level = 2
+                    content = "@inline(N)"
+                }
+
+                paragraph p37 {
+                    content = "Maps the Nth positional inline argument (0-based) to a named schema field. Without <code>@inline</code>, inline args are collected into a synthetic <code>_args</code> list. With <code>@inline</code>, they map to proper named attributes."
+                }
+
+                paragraph p38 {
+                    content = "The block's inline identifier (if present) occupies index 0. Positional arguments following the identifier start at index 1."
+                }
+
+                code c25 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    schema "server" {
+                        id:   identifier @inline(0)
+                        port: u16        @inline(1)
+                        env:  string     @inline(2)
+                        host: string
+                    }
+
+                    server web 8080 "prod" {
+                        host = "localhost"
+                    }
+                    // Evaluates to: { id: web, port: 8080, env: "prod", host: "localhost" }
+                    WCL
+                }
+
+                paragraph p39 {
+                    content = "Any positional args not covered by an <code>@inline</code> mapping remain in <code>_args</code>."
+                }
+
+                heading h2_text {
+                    level = 2
+                    content = "@text"
+                }
+
+                paragraph p40 {
+                    content = "Marks a schema field as the text content target for text block syntax. The field must be named <code>content</code> and have type <code>string</code>. A schema may have at most one <code>@text</code> field."
+                }
+
+                paragraph p41 {
+                    content = "When a schema has a <code>@text</code> field, blocks of that type can use text block syntax — a heredoc or string literal in place of a <code>{ body }</code>:"
+                }
+
+                code c26 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    schema "readme" {
+                        content: string @text
+                    }
+
+                    // Heredoc syntax
+                    readme my-doc <<EOF
+                    # Hello World
+                    This is the content of the readme.
+                    EOF
+
+                    // String literal syntax
+                    readme short-doc "Simple one-line content"
+
+                    // String interpolation works too
+                    let name = "World"
+                    readme greeting "Hello ${name}!"
+                    WCL
+                }
+
+                paragraph p42 {
+                    content = "The text content is assigned to the <code>content</code> field:"
+                }
+
+                code c27 {
+                    language = "json"
+                    content = <<-'JSON'
+                    {
+                      "my-doc": { "content": "# Hello World\nThis is the content of the readme.\n" }
+                    }
+                    JSON
+                }
+
+                data_table t6 {
+                    rows = [
+                        ["Error", "Condition"],
+                        ["E093", "Block uses text block syntax but its schema has no @text field"],
+                        ["E094", "@text field validation errors (wrong name or type)"]
+                    ]
+                }
+
+                heading h2_merge_strategy {
+                    level = 2
+                    content = "@merge_strategy(strategy)"
+                }
+
+                paragraph p43 {
+                    content = "Controls how attribute conflicts are resolved during partial merges. See the Partial Declarations documentation for details."
+                }
+
+                heading h3_table_placement {
+                    level = 3
+                    content = "Constraining table placement"
+                }
+
+                paragraph p44 {
+                    content = "To constrain where tables may appear, define a virtual schema with the <code>\"table\"</code> or <code>\"table:X\"</code> name:"
+                }
+
+                code c28 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    // Tables with schema_ref "user_row" may only appear inside "data" blocks
+                    @parent(["data"])
+                    schema "table:user_row" {}
+
+                    // Anonymous tables may only appear at the root
+                    @parent(["_root"])
+                    schema "table" {}
+                    WCL
+                }
+
+                heading h3_combined {
+                    level = 3
+                    content = "Combined constraints"
+                }
+
+                paragraph p45 {
+                    content = "Both <code>@children</code> and <code>@parent</code> are checked independently. If both are violated on the same item, both E095 and E096 are emitted. If neither decorator is present on a schema, nesting is unrestricted (backwards compatible)."
+                }
+            }
+        }
+    }
+}

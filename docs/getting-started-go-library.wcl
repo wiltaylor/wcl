@@ -1,0 +1,609 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, bold, italic, link}
+
+page go_library {
+    section = "wcl_docs.getting_started.go_library"
+    title = "Using WCL as a Go Library"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Using WCL as a Go Library"
+                }
+
+                paragraph p1 {
+                    content = "WCL can be embedded into Go programs via the <code>wcl_go</code> package. It uses an embedded WASM module with " + link("wazero", "https://wazero.io/") + " (a pure Go, zero-dependency WebAssembly runtime), so you get the full 11-phase WCL pipeline without needing a Rust toolchain or C compiler."
+                }
+
+                heading h2_dep {
+                    level = 2
+                    content = "Adding the Dependency"
+                }
+
+                paragraph p2 {
+                    content = "Add the module to your project:"
+                }
+
+                code c1 {
+                    language = "bash"
+                    content = "go get github.com/wiltaylor/wcl/bindings/go"
+                }
+
+                paragraph p3 {
+                    content = "Then import it:"
+                }
+
+                code c2 {
+                    language = "go"
+                    content = <<-'GO'
+                    import wcl "github.com/wiltaylor/wcl/bindings/go"
+                    GO
+                }
+
+                paragraph p4 {
+                    content = "No CGo or C compiler required — the WASM module is embedded directly in the Go binary."
+                }
+
+                heading h2_parse_string {
+                    level = 2
+                    content = "Parsing a WCL String"
+                }
+
+                paragraph p5 {
+                    content = "Use <code>wcl.Parse()</code> to run the full pipeline and get a <code>Document</code>:"
+                }
+
+                code c3 {
+                    language = "go"
+                    content = <<-'GO'
+                    package main
+
+                    import (
+                        "fmt"
+                        "log"
+
+                        wcl "github.com/wiltaylor/wcl/bindings/go"
+                    )
+
+                    func main() {
+                        doc, err := wcl.Parse(`
+                            server web-prod {
+                                host = "0.0.0.0"
+                                port = 8080
+                                debug = false
+                            }
+                        `, nil)
+                        if err != nil {
+                            log.Fatal(err)
+                        }
+                        defer doc.Close()
+
+                        if doc.HasErrors() {
+                            errs, _ := doc.Errors()
+                            for _, e := range errs {
+                                fmt.Printf("error: %s\n", e.Message)
+                            }
+                        } else {
+                            fmt.Println("Document parsed successfully")
+                        }
+                    }
+                    GO
+                }
+
+                paragraph p6 {
+                    content = "Always call <code>doc.Close()</code> when you're done with a document. A finalizer is set as a safety net, but explicit cleanup is preferred."
+                }
+
+                heading h2_parse_file {
+                    level = 2
+                    content = "Parsing a WCL File"
+                }
+
+                paragraph p7 {
+                    content = "<code>ParseFile</code> reads and parses a file. It automatically sets <code>RootDir</code> to the file's parent directory so imports resolve correctly:"
+                }
+
+                code c4 {
+                    language = "go"
+                    content = <<-'GO'
+                    doc, err := wcl.ParseFile("config/main.wcl", nil)
+                    if err != nil {
+                        log.Fatal(err)
+                    }
+                    defer doc.Close()
+                    GO
+                }
+
+                callout note1 {
+                    icon = "info-circle"
+                    header = "Note"
+                    color = "#3498db"
+                    paragraph np1 {
+                        content = "File reading happens on the Go side; the WASM module does not have direct filesystem access. Imports within parsed files that reference other files on disk will not resolve in the WASM environment."
+                    }
+                }
+
+                heading h2_values {
+                    level = 2
+                    content = "Accessing Evaluated Values"
+                }
+
+                paragraph p8 {
+                    content = "After parsing, <code>Values()</code> returns an ordered map of all evaluated top-level attributes and blocks:"
+                }
+
+                code c5 {
+                    language = "go"
+                    content = <<-'GO'
+                    doc, _ := wcl.Parse(`
+                        name = "my-app"
+                        port = 8080
+                        tags = ["web", "prod"]
+                    `, nil)
+                    defer doc.Close()
+
+                    values, err := doc.Values()
+                    if err != nil {
+                        log.Fatal(err)
+                    }
+
+                    fmt.Println(values["name"])  // "my-app"
+                    fmt.Println(values["port"])  // 8080 (float64 — JSON numbers)
+                    fmt.Println(values["tags"])  // ["web", "prod"]
+                    GO
+                }
+
+                callout note2 {
+                    icon = "info-circle"
+                    header = "Type note"
+                    color = "#3498db"
+                    paragraph np2 {
+                        content = "Values cross the WASM boundary as JSON, so numbers arrive as <code>float64</code>, strings as <code>string</code>, booleans as <code>bool</code>, lists as <code>[]any</code>, and maps as <code>map[string]any</code>."
+                    }
+                }
+
+                heading h2_blocks {
+                    level = 2
+                    content = "Working with Blocks"
+                }
+
+                paragraph p9 {
+                    content = "Use <code>Blocks()</code> and <code>BlocksOfType()</code> to access parsed blocks with their resolved attributes:"
+                }
+
+                code c6 {
+                    language = "go"
+                    content = <<-'GO'
+                    doc, _ := wcl.Parse(`
+                        server web-prod {
+                            host = "0.0.0.0"
+                            port = 8080
+                        }
+
+                        server web-staging {
+                            host = "staging.internal"
+                            port = 8081
+                        }
+
+                        database main-db {
+                            host = "db.internal"
+                            port = 5432
+                        }
+                    `, nil)
+                    defer doc.Close()
+
+                    // Get all blocks
+                    blocks, _ := doc.Blocks()
+                    fmt.Printf("Total blocks: %d\n", len(blocks)) // 3
+
+                    // Get blocks of a specific type
+                    servers, _ := doc.BlocksOfType("server")
+                    for _, s := range servers {
+                        fmt.Printf("server id=%v host=%v port=%v\n",
+                            s.ID, s.Attributes["host"], s.Attributes["port"])
+                    }
+                    GO
+                }
+
+                paragraph p10 {
+                    content = "Each <code>BlockRef</code> has the following fields:"
+                }
+
+                code c7 {
+                    language = "go"
+                    content = <<-'GO'
+                    type BlockRef struct {
+                        Kind       string         // block type name (e.g. "server")
+                        ID         *string        // inline ID (e.g. "web-prod"), nil if none
+                        Attributes map[string]any // evaluated attribute values (includes _args if inline args present)
+                        Children   []BlockRef     // nested child blocks
+                        Decorators []Decorator    // decorators applied to this block
+                    }
+                    GO
+                }
+
+                heading h2_tables {
+                    level = 2
+                    content = "Working with Tables"
+                }
+
+                paragraph p11 {
+                    content = "Tables evaluate to a slice of row maps (<code>[]map[string]interface{}</code>). Each row is a map from column name to cell value:"
+                }
+
+                code c8 {
+                    language = "go"
+                    content = <<-'GO'
+                    doc, _ := wcl.Parse(`
+                        table users {
+                            name : string
+                            age  : i64
+                            | "alice" | 25 |
+                            | "bob"   | 30 |
+                        }
+                    `)
+
+                    users := doc.Values["users"].([]interface{})
+                    row0 := users[0].(map[string]interface{})
+                    fmt.Println(row0["name"]) // "alice"
+                    fmt.Println(row0["age"])  // 25
+                    GO
+                }
+
+                paragraph p12 {
+                    content = "Tables inside blocks appear in the block's attributes map."
+                }
+
+                heading h2_queries {
+                    level = 2
+                    content = "Running Queries"
+                }
+
+                paragraph p13 {
+                    content = "<code>Query()</code> accepts the same query syntax as the <code>wcl query</code> CLI command:"
+                }
+
+                code c9 {
+                    language = "go"
+                    content = <<-'GO'
+                    doc, _ := wcl.Parse(`
+                        server svc-api {
+                            port = 8080
+                            env = "prod"
+                        }
+
+                        server svc-admin {
+                            port = 9090
+                            env = "prod"
+                        }
+
+                        server svc-debug {
+                            port = 3000
+                            env = "dev"
+                        }
+                    `, nil)
+                    defer doc.Close()
+
+                    // Select all server blocks
+                    all, _ := doc.Query("server")
+
+                    // Filter by attribute
+                    prod, _ := doc.Query(`server | .env == "prod"`)
+
+                    // Project a single attribute
+                    ports, _ := doc.Query("server | .port")
+                    fmt.Println(ports) // [8080, 9090, 3000]
+
+                    // Filter and project
+                    prodPorts, _ := doc.Query(`server | .env == "prod" | .port`)
+                    fmt.Println(prodPorts) // [8080, 9090]
+
+                    // Select by ID
+                    api, _ := doc.Query("server#svc-api")
+                    GO
+                }
+
+                heading h2_custom_fn {
+                    level = 2
+                    content = "Custom Functions"
+                }
+
+                paragraph p14 {
+                    content = "You can register Go functions that are callable from WCL expressions. This lets your application extend WCL with domain-specific logic:"
+                }
+
+                code c10 {
+                    language = "go"
+                    content = <<-'GO'
+                    opts := &wcl.ParseOptions{
+                        Functions: map[string]func([]any) (any, error){
+                            "double": func(args []any) (any, error) {
+                                n, ok := args[0].(float64)
+                                if !ok {
+                                    return nil, fmt.Errorf("expected number")
+                                }
+                                return n * 2, nil
+                            },
+                            "greet": func(args []any) (any, error) {
+                                name, ok := args[0].(string)
+                                if !ok {
+                                    return nil, fmt.Errorf("expected string")
+                                }
+                                return fmt.Sprintf("Hello, %s!", name), nil
+                            },
+                        },
+                    }
+
+                    doc, err := wcl.Parse(`
+                        result = double(21)
+                        message = greet("World")
+                    `, opts)
+                    if err != nil {
+                        log.Fatal(err)
+                    }
+                    defer doc.Close()
+
+                    values, _ := doc.Values()
+                    fmt.Println(values["result"])  // 42
+                    fmt.Println(values["message"]) // "Hello, World!"
+                    GO
+                }
+
+                paragraph p15 {
+                    content = "Arguments and return values are serialized as JSON across the WASM boundary. Numbers are <code>float64</code>, strings are <code>string</code>, lists are <code>[]any</code>, maps are <code>map[string]any</code>, booleans are <code>bool</code>, and <code>nil</code> maps to null."
+                }
+
+                paragraph p16 {
+                    content = "Return an error to signal a function failure:"
+                }
+
+                code c11 {
+                    language = "go"
+                    content = <<-'GO'
+                    "safe_div": func(args []any) (any, error) {
+                        a, b := args[0].(float64), args[1].(float64)
+                        if b == 0 {
+                            return nil, fmt.Errorf("division by zero")
+                        }
+                        return a / b, nil
+                    },
+                    GO
+                }
+
+                heading h2_parse_options {
+                    level = 2
+                    content = "Parse Options"
+                }
+
+                paragraph p17 {
+                    content = "<code>ParseOptions</code> controls the parser behavior:"
+                }
+
+                code c12 {
+                    language = "go"
+                    content = <<-'GO'
+                    allowImports := true
+
+                    opts := &wcl.ParseOptions{
+                        // Root directory for import path resolution
+                        RootDir: "./config",
+
+                        // Whether imports are allowed (pointer for optional; nil = default true)
+                        AllowImports: &allowImports,
+
+                        // Maximum depth for nested imports (default: 32)
+                        MaxImportDepth: 32,
+
+                        // Maximum macro expansion depth (default: 64)
+                        MaxMacroDepth: 64,
+
+                        // Maximum for-loop nesting depth (default: 32)
+                        MaxLoopDepth: 32,
+
+                        // Maximum total iterations across all for loops (default: 10,000)
+                        MaxIterations: 10000,
+
+                        // Custom functions callable from WCL expressions
+                        Functions: map[string]func([]any) (any, error){ ... },
+                    }
+
+                    doc, err := wcl.Parse(source, opts)
+                    GO
+                }
+
+                paragraph p18 {
+                    content = "When processing untrusted WCL input, disable imports to prevent file system access:"
+                }
+
+                code c13 {
+                    language = "go"
+                    content = <<-'GO'
+                    noImports := false
+                    doc, err := wcl.Parse(untrustedInput, &wcl.ParseOptions{
+                        AllowImports: &noImports,
+                    })
+                    GO
+                }
+
+                paragraph p19 {
+                    content = "Pass <code>nil</code> for default options:"
+                }
+
+                code c14 {
+                    language = "go"
+                    content = "doc, err := wcl.Parse(source, nil)"
+                }
+
+                heading h2_error_handling {
+                    level = 2
+                    content = "Error Handling"
+                }
+
+                paragraph p20 {
+                    content = "The <code>Document</code> collects all diagnostics from every pipeline phase. Each <code>Diagnostic</code> includes a severity, message, and optional error code:"
+                }
+
+                code c15 {
+                    language = "go"
+                    content = <<-'GO'
+                    doc, _ := wcl.Parse(`
+                        server web {
+                            port = "not_a_number"
+                        }
+
+                        schema "server" {
+                            port: i64
+                        }
+                    `, nil)
+                    defer doc.Close()
+
+                    diags, _ := doc.Diagnostics()
+                    for _, d := range diags {
+                        code := ""
+                        if d.Code != nil {
+                            code = "[" + *d.Code + "] "
+                        }
+                        fmt.Printf("%s: %s%s\n", d.Severity, code, d.Message)
+                    }
+                    GO
+                }
+
+                paragraph p21 {
+                    content = "The <code>Diagnostic</code> type:"
+                }
+
+                code c16 {
+                    language = "go"
+                    content = <<-'GO'
+                    type Diagnostic struct {
+                        Severity string  // "error", "warning", "info", "hint"
+                        Message  string
+                        Code     *string // e.g. "E071" for type mismatch, nil if no code
+                    }
+                    GO
+                }
+
+                heading h2_thread_safety {
+                    level = 2
+                    content = "Thread Safety"
+                }
+
+                paragraph p22 {
+                    content = "Documents are safe to use from multiple goroutines. All methods acquire a read lock internally:"
+                }
+
+                code c17 {
+                    language = "go"
+                    content = <<-'GO'
+                    doc, _ := wcl.Parse("x = 42", nil)
+                    defer doc.Close()
+
+                    var wg sync.WaitGroup
+                    for i := 0; i < 10; i++ {
+                        wg.Add(1)
+                        go func() {
+                            defer wg.Done()
+                            values, _ := doc.Values()
+                            fmt.Println(values["x"])
+                        }()
+                    }
+                    wg.Wait()
+                    GO
+                }
+
+                heading h2_complete {
+                    level = 2
+                    content = "Complete Example"
+                }
+
+                paragraph p23 {
+                    content = "Putting it all together — parse a configuration, validate it, query it, and extract values:"
+                }
+
+                code c18 {
+                    language = "go"
+                    content = <<-'GO'
+                    package main
+
+                    import (
+                        "fmt"
+                        "log"
+
+                        wcl "github.com/wiltaylor/wcl/bindings/go"
+                    )
+
+                    func main() {
+                        doc, err := wcl.Parse(`
+                            schema "server" {
+                                port: i64
+                                host: string @optional
+                            }
+
+                            server svc-api {
+                                port = 8080
+                                host = "api.internal"
+                            }
+
+                            server svc-admin {
+                                port = 9090
+                                host = "admin.internal"
+                            }
+                        `, nil)
+                        if err != nil {
+                            log.Fatal(err)
+                        }
+                        defer doc.Close()
+
+                        // 1. Check for errors
+                        if doc.HasErrors() {
+                            errs, _ := doc.Errors()
+                            for _, e := range errs {
+                                log.Printf("%s: %s", e.Severity, e.Message)
+                            }
+                            log.Fatal("validation failed")
+                        }
+
+                        // 2. Query for all server ports
+                        ports, _ := doc.Query("server | .port")
+                        fmt.Println("All ports:", ports)
+
+                        // 3. Iterate resolved blocks
+                        servers, _ := doc.BlocksOfType("server")
+                        for _, s := range servers {
+                            id := "(no id)"
+                            if s.ID != nil {
+                                id = *s.ID
+                            }
+                            fmt.Printf("%s: %v:%v\n", id, s.Attributes["host"], s.Attributes["port"])
+                        }
+                    }
+                    GO
+                }
+
+                heading h2_from_source {
+                    level = 2
+                    content = "Building from Source"
+                }
+
+                paragraph p24 {
+                    content = "If you want to rebuild the WASM module from the Rust source (e.g., after modifying the WCL codebase), run:"
+                }
+
+                code c19 {
+                    language = "bash"
+                    content = <<-'BASH'
+                    # Using just (recommended)
+                    just build go
+
+                    # Or via go generate (requires Rust toolchain)
+                    cd bindings/go && go generate ./...
+                    BASH
+                }
+            }
+        }
+    }
+}

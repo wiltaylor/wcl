@@ -1,12 +1,11 @@
 **/target/
 node_modules/
-docs/book/build/
+docs/build/
 site/public/
 site/resources/
 site/.hugo_build.lock
 .packages/
 .zig-cache/
-docs/book/wcl-grammar.js
 site/static/js/wcl.js
 editors/vscode/*.vsix
 extras/pygments/__pycache__/

@@ -1,0 +1,270 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
+
+page guide_validation_blocks {
+    section = "wcl_docs.guide.validation_blocks"
+    title = "Validation Blocks"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Validation Blocks"
+                }
+
+                paragraph p1 {
+                    content = "Validation blocks let you encode invariants about your configuration that go beyond per-field type and constraint checking. They run after all other pipeline phases — including imports, macro expansion, partial merging, and schema validation — so they can reason about the fully assembled document."
+                }
+
+                heading h2_syntax {
+                    level = 2
+                    content = "Syntax"
+                }
+
+                code c1 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    validation "name" {
+                        let intermediate = some_expr
+
+                        check   = bool_expression
+                        message = "human-readable error text"
+                    }
+                    WCL
+                }
+
+                paragraph p2 {
+                    content = "<ul>" +
+                        "<li><code>check</code> must evaluate to a <code>bool</code>. If it is <code>false</code>, a validation error (code E080) is emitted with the text from <code>message</code>.</li>" +
+                        "<li><code>message</code> is a string expression and may use interpolation.</li>" +
+                        "<li><code>let</code> bindings inside the block are local — they are computed before <code>check</code> is evaluated and are not visible outside the block.</li>" +
+                        "<li>Multiple <code>let</code> bindings are allowed; they are evaluated in order.</li>" +
+                        "</ul>"
+                }
+
+                heading h2_execution {
+                    level = 2
+                    content = "Execution Order"
+                }
+
+                paragraph p3 {
+                    content = "Validation blocks run in phase 11, after:"
+                }
+
+                paragraph p4 {
+                    content = "<ol>" +
+                        "<li>Parsing</li>" +
+                        "<li>Macro collection</li>" +
+                        "<li>Import resolution</li>" +
+                        "<li>Macro expansion</li>" +
+                        "<li>Control flow expansion</li>" +
+                        "<li>Partial merge</li>" +
+                        "<li>Scope construction and evaluation</li>" +
+                        "<li>Decorator validation</li>" +
+                        "<li>Schema validation</li>" +
+                        "<li>ID uniqueness checks</li>" +
+                        "<li>" + bold("Document validation") + " — validation blocks run here</li>" +
+                        "</ol>"
+                }
+
+                paragraph p5 {
+                    content = "This means <code>query()</code> calls inside a validation block see the complete, merged, evaluated document."
+                }
+
+                heading h2_warnings {
+                    level = 2
+                    content = "Warnings"
+                }
+
+                paragraph p6 {
+                    content = "Decorate a validation block with <code>@warning</code> to downgrade a failure from an error to a warning. The configuration is still accepted; the diagnostic is reported with warning severity."
+                }
+
+                code c2 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    validation "prefer-tls" @warning {
+                        let non_tls = query(service | !has(@tls))
+                        check   = len(non_tls) == 0
+                        message = "some services are not using TLS (non-fatal)"
+                    }
+                    WCL
+                }
+
+                heading h2_documentation {
+                    level = 2
+                    content = "Documentation"
+                }
+
+                paragraph p7 {
+                    content = "<code>@doc</code> adds a human-readable description surfaced by the LSP and tooling:"
+                }
+
+                code c3 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    validation "unique-ports" @doc("Each service must listen on a distinct port") {
+                        let ports = query(service | .port)
+                        check   = len(ports) == len(distinct(ports))
+                        message = "duplicate port assignments detected"
+                    }
+                    WCL
+                }
+
+                heading h2_local_bindings {
+                    level = 2
+                    content = "Local Bindings for Intermediate Computation"
+                }
+
+                paragraph p8 {
+                    content = "Use <code>let</code> bindings to break complex checks into readable steps:"
+                }
+
+                code c4 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    validation "prod-services-have-health-checks" {
+                        let prod         = query(service | .env == "production")
+                        let prod_with_hc = query(service | .env == "production" | has(.health_check))
+                        check   = len(prod) == len(prod_with_hc)
+                        message = "every production service must define a health_check block"
+                    }
+                    WCL
+                }
+
+                heading h2_patterns {
+                    level = 2
+                    content = "Common Patterns"
+                }
+
+                heading h3_unique_ports {
+                    level = 3
+                    content = "Unique Ports"
+                }
+
+                code c5 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    validation "unique-service-ports" {
+                        let ports = query(service | .port)
+                        check   = len(ports) == len(distinct(ports))
+                        message = "each service must use a unique port number"
+                    }
+                    WCL
+                }
+
+                heading h3_tls {
+                    level = 3
+                    content = "TLS Coverage"
+                }
+
+                code c6 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    validation "prod-tls-required" {
+                        let prod_no_tls = query(service | .env == "production" | !has(@tls))
+                        check   = len(prod_no_tls) == 0
+                        message = "all production services must be decorated with @tls"
+                    }
+                    WCL
+                }
+
+                heading h3_existence {
+                    level = 3
+                    content = "Service Existence Checks"
+                }
+
+                code c7 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    validation "gateway-references-valid-services" {
+                        let gateway_upstreams = query(gateway | .upstream)
+                        let service_names     = query(service | .name)
+                        check   = every(gateway_upstreams, u => contains(service_names, u))
+                        message = "gateway.upstream references a service that does not exist"
+                    }
+                    WCL
+                }
+
+                heading h3_every {
+                    level = 3
+                    content = "Universal Quantifier with every"
+                }
+
+                code c8 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    validation "all-services-have-env" {
+                        let services = query(service)
+                        check   = every(services, s => has(s.env))
+                        message = "every service must declare an env attribute"
+                    }
+                    WCL
+                }
+
+                heading h3_cross_table {
+                    level = 3
+                    content = "Cross-Table Integrity"
+                }
+
+                code c9 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    validation "permission-roles-are-defined" {
+                        let perm_roles    = distinct(query(table."permissions" | .role))
+                        let defined_roles = query(table."roles" | .name)
+                        check   = every(perm_roles, r => contains(defined_roles, r))
+                        message = "permissions table references a role not present in the roles table"
+                    }
+                    WCL
+                }
+
+                heading h3_counting {
+                    level = 3
+                    content = "Counting and Thresholds"
+                }
+
+                code c10 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    validation "minimum-replica-count" @warning {
+                        let under_replicated = query(service | .env == "production" | .replicas < 2)
+                        check   = len(under_replicated) == 0
+                        message = "production services should run at least 2 replicas"
+                    }
+                    WCL
+                }
+
+                heading h2_multiple {
+                    level = 2
+                    content = "Multiple Validation Blocks"
+                }
+
+                paragraph p9 {
+                    content = "You may define as many validation blocks as you need. Each is evaluated independently; all failures are collected and reported together."
+                }
+
+                code c11 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    validation "unique-ports"          { ... }
+                    validation "prod-tls-required"     { ... }
+                    validation "all-services-have-env" { ... }
+                    WCL
+                }
+
+                heading h2_error_code {
+                    level = 2
+                    content = "Error Code"
+                }
+
+                paragraph p10 {
+                    content = "Validation block failures are reported under error code " + bold("E080") + ". Schema-level constraint failures (from <code>@validate</code> in a schema) use E073-E075. Both kinds appear in the same diagnostic output."
+                }
+            }
+        }
+    }
+}

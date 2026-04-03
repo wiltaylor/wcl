@@ -1,0 +1,382 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, data_table, callout, bold, italic, link}
+
+let D = "$"
+
+page ref_syntax {
+    section = "wcl_docs.reference.ref_syntax"
+    title = "Syntax Reference"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Syntax Reference"
+                }
+
+                paragraph p1 {
+                    content = "This page is a concise formal summary of WCL syntax. The complete EBNF grammar is in the " + link("EBNF Grammar", "appendix_ebnf.html") + " appendix."
+                }
+
+                heading h2_doc_structure {
+                    level = 2
+                    content = "Document Structure"
+                }
+
+                paragraph p2 {
+                    content = "A WCL document is a sequence of top-level items. Order matters for readability but not for evaluation (declarations are dependency-ordered automatically)."
+                }
+
+                code c1 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    import "other.wcl"
+
+                    let base = 8000
+
+                    service svc-api {
+                      port = base + 80
+                    }
+                    WCL
+                }
+
+                paragraph p3 {
+                    content = "Top-level items:"
+                }
+
+                paragraph p3_list {
+                    content = "<ul>" +
+                        "<li><code>import</code> declarations</li>" +
+                        "<li><code>export</code> declarations</li>" +
+                        "<li>Attributes (<code>name = expr</code>)</li>" +
+                        "<li>Blocks (<code>type [id] [inline-args...] { body }</code>)</li>" +
+                        "<li>Tables</li>" +
+                        "<li>Let bindings (<code>let name = expr</code>)</li>" +
+                        "<li>Macro definitions</li>" +
+                        "<li>Macro calls</li>" +
+                        "<li>For loops</li>" +
+                        "<li>Conditionals</li>" +
+                        "<li>Validation blocks</li>" +
+                        "<li>Schemas and decorator schemas</li>" +
+                        "<li>Symbol set declarations</li>" +
+                        "<li>Comments</li>" +
+                        "</ul>"
+                }
+
+                heading h2_attributes {
+                    level = 2
+                    content = "Attributes"
+                }
+
+                code c2 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    port     = 8080
+                    host     = "localhost"
+                    enabled  = true
+                    ratio    = 1.5
+                    nothing  = null
+                    tag      = #prod
+                    WCL
+                }
+
+                paragraph p4 {
+                    content = "An attribute is an identifier followed by <code>=</code> and an expression."
+                }
+
+                heading h2_blocks {
+                    level = 2
+                    content = "Blocks"
+                }
+
+                code c3 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    service svc-api {
+                      port = 8080
+                    }
+
+                    service svc-api 8080 "production" {
+                      port = 9090
+                    }
+                    WCL
+                }
+
+                paragraph p5 {
+                    content = "Syntax: <code>[decorators] [partial] type [id] [inline-args...] { body }</code>"
+                }
+
+                paragraph p5_list {
+                    content = "<ul>" +
+                        "<li><code>type</code> \u2014 bare identifier (the block kind)</li>" +
+                        "<li><code>id</code> \u2014 identifier literal (may contain hyphens); used for unique identification</li>" +
+                        "<li><code>inline-args</code> \u2014 zero or more positional expressions (integer, float, string, bool, null, list) mapped to named fields via <code>@inline(N)</code> in a schema, or collected into <code>_args</code></li>" +
+                        "</ul>"
+                }
+
+                heading h2_let {
+                    level = 2
+                    content = "Let Bindings"
+                }
+
+                code c4 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let max_conns = 100
+                    let dsn = "postgres://localhost/${db_name}"
+                    WCL
+                }
+
+                paragraph p6 {
+                    content = "Let bindings are module-scoped. They are not included in the serialized output."
+                }
+
+                heading h2_imports {
+                    level = 2
+                    content = "Imports"
+                }
+
+                code c5 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    import "base.wcl"
+                    import "schemas/service.wcl"
+                    WCL
+                }
+
+                paragraph p7 {
+                    content = "Imports must appear at the top of the file. The imported document's contents are merged into the current document before evaluation."
+                }
+
+                heading h2_control_flow {
+                    level = 2
+                    content = "Control Flow"
+                }
+
+                heading h3_for {
+                    level = 3
+                    content = "For Loops"
+                }
+
+                code c6 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let ports = [8080, 8081, 8082]
+
+                    for i, port in ports {
+                      service "svc-${i}" {
+                        port = port
+                      }
+                    }
+                    WCL
+                }
+
+                heading h3_cond {
+                    level = 3
+                    content = "Conditionals"
+                }
+
+                code c7 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    if env == "prod" {
+                      replicas = 3
+                    } else if env == "staging" {
+                      replicas = 2
+                    } else {
+                      replicas = 1
+                    }
+                    WCL
+                }
+
+                heading h2_tables {
+                    level = 2
+                    content = "Tables"
+                }
+
+                code c8 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    table routes {
+                      path:   string
+                      method: string
+                      handler: string
+
+                      | "/health" | "GET"  | "health_handler" |
+                      | "/users"  | "GET"  | "list_users"     |
+                      | "/users"  | "POST" | "create_user"    |
+                    }
+                    WCL
+                }
+
+                paragraph p8 {
+                    content = "Tables declare typed columns followed by row data using <code>|</code>-delimited syntax."
+                }
+
+                heading h2_schemas {
+                    level = 2
+                    content = "Schemas"
+                }
+
+                code c9 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    schema "ServiceSchema" {
+                      port    : i64
+                      host    : string
+                      @required
+                      name    : string
+                      @min(1) @max(65535)
+                      port    : i64
+                    }
+                    WCL
+                }
+
+                paragraph p9 {
+                    content = "Schemas define the expected shape and constraints for blocks."
+                }
+
+                heading h2_dec_schemas {
+                    level = 2
+                    content = "Decorator Schemas"
+                }
+
+                code c10 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    decorator_schema "tag" {
+                      target = [block, attribute]
+                      env    : string
+                      tier   : string
+                    }
+                    WCL
+                }
+
+                paragraph p10 {
+                    content = "Decorator schemas define the structure of custom decorators."
+                }
+
+                heading h2_decorators {
+                    level = 2
+                    content = "Decorators"
+                }
+
+                code c11 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    @deprecated
+                    @tag(env = "prod", tier = "critical")
+                    @partial_requires(["port", "host"])
+                    service svc-api {
+                      port = 8080
+                    }
+                    WCL
+                }
+
+                paragraph p11 {
+                    content = "Decorators appear immediately before the item they annotate. They accept positional and named arguments."
+                }
+
+                heading h2_macros {
+                    level = 2
+                    content = "Macros"
+                }
+
+                heading h3_func_macro {
+                    level = 3
+                    content = "Function Macro Definition"
+                }
+
+                code c12 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    macro service_defaults(port: i64, host: string = "localhost") {
+                      port    = port
+                      host    = host
+                      enabled = true
+                    }
+                    WCL
+                }
+
+                heading h3_attr_macro {
+                    level = 3
+                    content = "Attribute Macro Definition"
+                }
+
+                code c13 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    macro @with_logging(level: string = "info") {
+                      inject {
+                        log_level = level
+                      }
+                    }
+                    WCL
+                }
+
+                heading h3_macro_call {
+                    level = 3
+                    content = "Macro Call"
+                }
+
+                code c14 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    service svc-api {
+                      service_defaults(8080)
+                    }
+                    WCL
+                }
+
+                heading h2_expressions {
+                    level = 2
+                    content = "Expressions"
+                }
+
+                data_table t1 {
+                    caption = "Expression Types"
+                    rows = [
+                        { category = "Literals", examples = "42, 3.14, \"hello\", true, false, null, #my-id" },
+                        { category = "Arithmetic", examples = "a + b, a - b, a * b, a / b, a % b" },
+                        { category = "Comparison", examples = "a == b, a != b, a < b, a >= b, a =~ \"pattern\"" },
+                        { category = "Logical", examples = "a && b, a || b, !a" },
+                        { category = "Ternary", examples = "cond ? then_val : else_val" },
+                        { category = "String interpolation", examples = "\"host: " + D + "{host}:" + D + "{port}\"" },
+                        { category = "List", examples = "[1, 2, 3]" },
+                        { category = "Map", examples = "{ key: \"value\" }" },
+                        { category = "Field access", examples = "obj.field" },
+                        { category = "Index", examples = "list[0], map[\"key\"]" },
+                        { category = "Query", examples = "query(service | .port > 1024)" },
+                        { category = "Ref", examples = "ref(svc-api)" },
+                        { category = "Lambda", examples = "x => x * 2, (a, b) => a + b" }
+                    ]
+                }
+
+                heading h2_comments {
+                    level = 2
+                    content = "Comments"
+                }
+
+                code c15 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    // Line comment
+
+                    /*
+                      Block comment
+                      (nestable)
+                    */
+
+                    /// Doc comment — attached to the next item
+                    service svc-api {
+                      port = 8080
+                    }
+                    WCL
+                }
+            }
+        }
+    }
+}

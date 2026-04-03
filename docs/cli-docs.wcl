@@ -1,0 +1,98 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, data_table, callout, bold, italic, link}
+
+page cli_docs {
+    section = "wcl_docs.cli.cli_docs"
+    title = "wcl docs"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "wcl docs"
+                }
+
+                paragraph p1 {
+                    content = "Generate schema documentation as an mdBook."
+                }
+
+                heading h2_usage {
+                    level = 2
+                    content = "Usage"
+                }
+
+                code c1 {
+                    language = "bash"
+                    content = "wcl docs <files...> [options]"
+                }
+
+                heading h2_options {
+                    level = 2
+                    content = "Options"
+                }
+
+                data_table t1 {
+                    caption = "Options"
+                    rows = [
+                        { flag = "--output <dir>", description = "Output directory (default: docs-out)" },
+                        { flag = "--title <title>", description = "Book title (default: WCL Schema Reference)" },
+                        { flag = "--lib-path <dir>", description = "Extra library search path (may be repeated)" },
+                        { flag = "--no-default-lib-paths", description = "Disable default library search paths" }
+                    ]
+                }
+
+                heading h2_description {
+                    level = 2
+                    content = "Description"
+                }
+
+                paragraph p2 {
+                    content = "<code>wcl docs</code> reads one or more WCL files, extracts all schema definitions, and generates a browsable mdBook with:"
+                }
+
+                paragraph p2_list {
+                    content = "<ul>" +
+                        "<li>A page for each schema showing its fields, types, decorators, and constraints</li>" +
+                        "<li>A summary page listing all schemas</li>" +
+                        "<li>Cross-references between schemas that reference each other</li>" +
+                        "</ul>"
+                }
+
+                heading h2_examples {
+                    level = 2
+                    content = "Examples"
+                }
+
+                paragraph p3 {
+                    content = "Generate docs from a single file:"
+                }
+
+                code c2 {
+                    language = "bash"
+                    content = "wcl docs schemas.wcl --output docs-out"
+                }
+
+                paragraph p4 {
+                    content = "Generate from multiple files with a custom title:"
+                }
+
+                code c3 {
+                    language = "bash"
+                    content = "wcl docs schemas/*.wcl --title \"My Project Schemas\" --output schema-docs"
+                }
+
+                paragraph p5 {
+                    content = "Then serve the book:"
+                }
+
+                code c4 {
+                    language = "bash"
+                    content = "cd docs-out && mdbook serve"
+                }
+            }
+        }
+    }
+}

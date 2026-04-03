@@ -1,0 +1,316 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
+
+page decorator_schemas {
+    section = "wcl_docs.guide.decorators.decorator_schemas"
+    title = "Decorator Schemas"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Decorator Schemas"
+                }
+
+                paragraph p1 {
+                    content = "Decorator schemas let you define custom decorators with typed parameters, target restrictions, and constraints. Once defined, WCL validates every use of the decorator against its schema — checking argument types, required parameters, and applicable targets."
+                }
+
+                heading h2_syntax {
+                    level = 2
+                    content = "Syntax"
+                }
+
+                code c1 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    decorator_schema "name" {
+                        target = [block, attribute, table, schema]
+
+                        param_name: type
+                        param_name: type @optional
+                        param_name: type @default(value)
+                    }
+                    WCL
+                }
+
+                paragraph p2 {
+                    content = "The <code>target</code> field is a list of one or more of: <code>block</code>, <code>attribute</code>, <code>table</code>, <code>schema</code>. It controls where the decorator may legally appear."
+                }
+
+                heading h2_example_rate_limit {
+                    level = 2
+                    content = "Example: Custom @rate_limit Decorator"
+                }
+
+                code c2 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    decorator_schema "rate_limit" {
+                        target = [attribute, block]
+
+                        requests:  i64
+                        window_ms: i64 @default(1000)
+                        burst:     i64 @optional
+                    }
+                    WCL
+                }
+
+                paragraph p3 {
+                    content = "This decorator can now be used on attributes and blocks:"
+                }
+
+                code c3 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    service "api" {
+                        calls_per_second = 100 @rate_limit(requests = 100, window_ms = 500)
+                        upload_endpoint  = "/upload" @rate_limit(requests = 10)
+                    }
+                    WCL
+                }
+
+                paragraph p4 {
+                    content = "Applying <code>@rate_limit</code> to a schema field or table would produce a validation error because <code>schema</code> and <code>table</code> are not listed in <code>target</code>."
+                }
+
+                heading h2_parameters {
+                    level = 2
+                    content = "Parameters"
+                }
+
+                paragraph p5 {
+                    content = "Each parameter is declared as a field with a name, type, and optional decorators."
+                }
+
+                heading h3_required_params {
+                    level = 3
+                    content = "Required Parameters"
+                }
+
+                paragraph p6 {
+                    content = "Parameters without <code>@optional</code> or <code>@default</code> must be supplied at every call site:"
+                }
+
+                code c4 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    decorator_schema "retry" {
+                        target       = [block]
+                        max_attempts: i64
+                        backoff_ms:   i64
+                    }
+                    WCL
+                }
+
+                code c5 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    service "api" @retry(max_attempts = 3, backoff_ms = 200) { ... }
+                    // error: missing required parameter backoff_ms would be caught if omitted
+                    WCL
+                }
+
+                heading h3_optional_params {
+                    level = 3
+                    content = "Optional Parameters"
+                }
+
+                code c6 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    decorator_schema "cache" {
+                        target = [attribute, block]
+                        ttl_ms: i64
+                        key:    string @optional
+                    }
+                    WCL
+                }
+
+                heading h3_default_params {
+                    level = 3
+                    content = "Parameters with Defaults"
+                }
+
+                code c7 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    decorator_schema "timeout" {
+                        target     = [block, attribute]
+                        seconds:    i64
+                        on_timeout: string @default("error")
+                    }
+                    WCL
+                }
+
+                heading h2_positional {
+                    level = 2
+                    content = "Positional Parameter Mapping"
+                }
+
+                paragraph p7 {
+                    content = "The first non-optional parameter of a decorator schema is the " + bold("positional parameter") + ". When the decorator is called with a single bare argument (no <code>key =</code>), the value is mapped to this parameter:"
+                }
+
+                code c8 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    decorator_schema "doc" {
+                        target = [block, attribute, schema]
+                        text:   string
+                    }
+                    WCL
+                }
+
+                paragraph p8 {
+                    content = "Both forms below are equivalent:"
+                }
+
+                code c9 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    port = 8080 @doc("The service port")
+                    port = 8080 @doc(text = "The service port")
+                    WCL
+                }
+
+                heading h2_constraints {
+                    level = 2
+                    content = "Constraints"
+                }
+
+                paragraph p9 {
+                    content = "Use <code>@constraint</code> on the <code>decorator_schema</code> block itself to express relationships between parameters:"
+                }
+
+                code c10 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    decorator_schema "validate_range" @constraint(requires = ["min", "max"]) {
+                        target = [attribute, schema]
+                        min:    i64 @optional
+                        max:    i64 @optional
+                    }
+                    WCL
+                }
+
+                paragraph p10 {
+                    content = "Available constraint kinds:"
+                }
+
+                data_table t1 {
+                    rows = [
+                        ["Kind", "Description"],
+                        ["any_of", "At least one of the listed parameters must be provided"],
+                        ["all_of", "All listed parameters must be provided together"],
+                        ["one_of", "Exactly one of the listed parameters must be provided"],
+                        ["requires", "If this decorator is present, the listed params are required"]
+                    ]
+                }
+
+                code c11 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    decorator_schema "alert" @constraint(any_of = ["email", "pagerduty", "slack"]) {
+                        target    = [block]
+                        email:     string @optional
+                        pagerduty: string @optional
+                        slack:     string @optional
+                    }
+                    WCL
+                }
+
+                heading h2_validation {
+                    level = 2
+                    content = "Validation"
+                }
+
+                paragraph p11 {
+                    content = "When a decorator is used in a document, WCL validates:"
+                }
+
+                paragraph p12 {
+                    content = "<ol>" +
+                        "<li>" + bold("Name match") + " — A <code>decorator_schema</code> with the decorator's name must exist.</li>" +
+                        "<li>" + bold("Valid target") + " — The decorated item's kind must be listed in <code>target</code>.</li>" +
+                        "<li>" + bold("Required parameters") + " — All non-optional, non-default parameters must be supplied.</li>" +
+                        "<li>" + bold("Type checking") + " — Each argument's value must match the declared parameter type.</li>" +
+                        "<li>" + bold("Constraints") + " — Any <code>@constraint</code> conditions are checked against the supplied arguments.</li>" +
+                        "</ol>"
+                }
+
+                paragraph p13 {
+                    content = "Errors from decorator schema validation are included in accumulative error reporting alongside schema validation errors."
+                }
+
+                heading h2_embedded_examples {
+                    level = 2
+                    content = "Embedded Examples with @example"
+                }
+
+                paragraph p14 {
+                    content = "You can embed a usage example directly in a <code>decorator_schema</code> using the <code>@example</code> decorator on the body:"
+                }
+
+                code c12 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    decorator_schema "rate_limit" {
+                        target    = [attribute, block]
+                        requests:  i64
+                        window_ms: i64 @default(1000)
+
+                        @example {
+                            service "api" @rate_limit(requests = 500, window_ms = 1000) {
+                                port = 8080
+                            }
+                        }
+                    }
+                    WCL
+                }
+
+                paragraph p15 {
+                    content = "The <code>@example</code> body is not evaluated as live configuration; it is stored as documentation metadata."
+                }
+
+                heading h2_full_example {
+                    level = 2
+                    content = "Full Example"
+                }
+
+                code c13 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    decorator_schema "slo" {
+                        target       = [block]
+                        availability: f64
+                        latency_p99:  i64   @optional
+                        error_budget: f64 @default(0.001)
+
+                        @example {
+                            service "payments" @slo(availability = 0.999, latency_p99 = 200) {
+                                port = 443
+                            }
+                        }
+                    }
+
+                    service "payments" @slo(availability = 0.999, latency_p99 = 200) {
+                        port = 443
+                    }
+
+                    service "internal-tools" @slo(availability = 0.99) {
+                        port = 8080
+                    }
+                    WCL
+                }
+
+                paragraph p16 {
+                    content = "WCL will validate that every <code>@slo</code> use targets a block, provides <code>availability</code>, and that <code>availability</code> and <code>error_budget</code> are <code>f64</code> values."
+                }
+            }
+        }
+    }
+}

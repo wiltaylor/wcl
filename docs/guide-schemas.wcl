@@ -1,0 +1,935 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
+
+page guide_schemas {
+    section = "wcl_docs.guide.schemas"
+    title = "Schemas"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Schemas"
+                }
+
+                paragraph p1 {
+                    content = "Schemas define the expected shape of blocks — their fields, types, and constraints. When a schema exists with the same name as a block type, WCL automatically validates every block of that type against it."
+                }
+
+                heading h2_syntax {
+                    level = 2
+                    content = "Syntax"
+                }
+
+                code c1 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    schema "service" {
+                        port:     u16    @required
+                        region:   string @required
+                        env:      string @default("production")
+                        tags:     list   @optional
+                        replicas: u32    @validate(min = 1, max = 100)
+                    }
+                    WCL
+                }
+
+                paragraph p2 {
+                    content = "A schema body is a list of field declarations. Each field has a name, a type, and zero or more decorators."
+                }
+
+                heading h2_matching {
+                    level = 2
+                    content = "Matching Blocks to Schemas"
+                }
+
+                paragraph p3 {
+                    content = "A schema named <code>\"service\"</code> is automatically applied to every <code>service</code> block in the document:"
+                }
+
+                code c2 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    service "api" {
+                        port    = 8080
+                        region  = "us-east-1"
+                        env     = "staging"
+                        replicas = 3
+                    }
+                    WCL
+                }
+
+                paragraph p4 {
+                    content = "Matching is done by block type name. There is no explicit <code>@schema</code> annotation needed on the block."
+                }
+
+                heading h2_field_types {
+                    level = 2
+                    content = "Field Types"
+                }
+
+                paragraph p5 {
+                    content = "The following primitive types are available for schema fields:"
+                }
+
+                data_table t_types {
+                    caption = "Schema Field Types"
+                    rows = [
+                        { type = "string", description = "A string value" },
+                        { type = "i8", description = "Signed 8-bit integer (-128 to 127)" },
+                        { type = "u8", description = "Unsigned 8-bit integer (0 to 255)" },
+                        { type = "i16", description = "Signed 16-bit integer (-32,768 to 32,767)" },
+                        { type = "u16", description = "Unsigned 16-bit integer (0 to 65,535)" },
+                        { type = "i32", description = "Signed 32-bit integer (-2^31 to 2^31-1)" },
+                        { type = "u32", description = "Unsigned 32-bit integer (0 to 2^32-1)" },
+                        { type = "i64", description = "Signed 64-bit integer (-2^63 to 2^63-1)" },
+                        { type = "u64", description = "Unsigned 64-bit integer (0 to 2^64-1)" },
+                        { type = "i128", description = "Signed 128-bit integer (-2^127 to 2^127-1)" },
+                        { type = "u128", description = "Unsigned 128-bit integer (0 to 2^128-1)" },
+                        { type = "f32", description = "32-bit floating-point (IEEE 754 single precision)" },
+                        { type = "f64", description = "64-bit floating-point (IEEE 754 double precision)" },
+                        { type = "bool", description = "A boolean value" },
+                        { type = "date", description = "ISO 8601 date (YYYY-MM-DD), literal syntax d\"2024-03-15\"" },
+                        { type = "duration", description = "ISO 8601 duration, literal syntax dur\"P1Y2M3D\"" },
+                        { type = "list", description = "A list of values" },
+                        { type = "map", description = "A key-value map" },
+                        { type = "any", description = "Accepts any value type" },
+                        { type = "symbol", description = "A symbol literal (e.g. :GET)" }
+                    ]
+                }
+
+                heading h2_field_decorators {
+                    level = 2
+                    content = "Field Decorators"
+                }
+
+                heading h3_required {
+                    level = 3
+                    content = "@required"
+                }
+
+                paragraph p6 {
+                    content = "Fields are required by default. You may add <code>@required</code> explicitly for clarity:"
+                }
+
+                code c3 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    schema "database" {
+                        host: string @required
+                        port: u16    @required
+                    }
+                    WCL
+                }
+
+                heading h3_optional {
+                    level = 3
+                    content = "@optional"
+                }
+
+                paragraph p7 {
+                    content = "Marks a field as not required. If the field is absent from the block, no error is raised:"
+                }
+
+                code c4 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    schema "service" {
+                        debug_port: u16 @optional
+                    }
+                    WCL
+                }
+
+                heading h3_default {
+                    level = 3
+                    content = "@default(value)"
+                }
+
+                paragraph p8 {
+                    content = "Provides a default value used when the field is absent. Implies <code>@optional</code>:"
+                }
+
+                code c5 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    schema "service" {
+                        env:      string @default("production")
+                        replicas: u32    @default(1)
+                    }
+                    WCL
+                }
+
+                heading h3_validate {
+                    level = 3
+                    content = "@validate(...)"
+                }
+
+                paragraph p9 {
+                    content = "Attaches constraints to a field's value:"
+                }
+
+                code c6 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    schema "service" {
+                        port:     u16    @validate(min = 1, max = 65535)
+                        env:      string @validate(one_of = ["development", "staging", "production"])
+                        name:     string @validate(pattern = "^[a-z][a-z0-9-]*$")
+                        replicas: u32    @validate(min = 1, max = 100, custom_msg = "replicas must be between 1 and 100")
+                    }
+                    WCL
+                }
+
+                paragraph p10 {
+                    content = "Available constraint arguments:"
+                }
+
+                data_table t_constraints {
+                    caption = "Constraint Arguments"
+                    rows = [
+                        { argument = "min", applies_to = "numeric types", description = "Minimum value (inclusive)" },
+                        { argument = "max", applies_to = "numeric types", description = "Maximum value (inclusive)" },
+                        { argument = "pattern", applies_to = "string", description = "Regex pattern the value must match" },
+                        { argument = "one_of", applies_to = "string, numeric", description = "Value must be one of the listed options" },
+                        { argument = "custom_msg", applies_to = "any", description = "Custom error message on violation" }
+                    ]
+                }
+
+                heading h2_ref {
+                    level = 2
+                    content = "Cross-References with @ref"
+                }
+
+                paragraph p11 {
+                    content = "Use <code>@ref(\"schema_name\")</code> on an identifier field to require that the referenced value points to a valid block of the named type:"
+                }
+
+                code c7 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    schema "deployment" {
+                        service_id: string @ref("service")
+                        region_id:  string @ref("region")
+                    }
+                    WCL
+                }
+
+                paragraph p12 {
+                    content = "When a <code>deployment</code> block has <code>service_id = \"api\"</code>, WCL verifies that a <code>service api</code> block exists in the document."
+                }
+
+                heading h3_qualified_ids {
+                    level = 3
+                    content = "Qualified IDs"
+                }
+
+                paragraph p13 {
+                    content = "Nested blocks receive " + bold("qualified IDs") + " formed by joining ancestor inline IDs with dots. For example:"
+                }
+
+                code c8 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    service alpha {
+                        port http {
+                            weight = 100
+                        }
+                    }
+                    WCL
+                }
+
+                paragraph p14 {
+                    content = "Here <code>http</code> has the qualified ID <code>alpha.http</code>. Qualified IDs are globally unique across all block kinds within a scope — you cannot have <code>service alpha</code> and <code>deployment alpha</code> in the same document."
+                }
+
+                heading h3_scoped_resolution {
+                    level = 3
+                    content = "Scoped Resolution"
+                }
+
+                paragraph p15 {
+                    content = "When a <code>@ref</code> field value is resolved, WCL tries multiple strategies:"
+                }
+
+                paragraph p16 {
+                    content = "<ol>" +
+                        "<li>" + bold("Bare ID") + " — matches any block of the target kind by its inline ID.</li>" +
+                        "<li>" + bold("Peer lookup") + " — if the reference is inside a block, bare names are also tried as peers (siblings in the same parent scope).</li>" +
+                        "<li>" + bold("Qualified path") + " — dotted paths like <code>\"alpha.http\"</code> resolve from the root.</li>" +
+                        "<li>" + bold("Relative path") + " — <code>\"../beta\"</code> navigates up one level from the current block's parent scope, then resolves <code>beta</code> there.</li>" +
+                        "</ol>"
+                }
+
+                heading h3_ref_expressions {
+                    level = 3
+                    content = "Ref Expressions"
+                }
+
+                paragraph p17 {
+                    content = "The <code>ref()</code> expression resolves a block reference at evaluation time:"
+                }
+
+                code c9 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    service alpha {
+                        port http { weight = 100 }
+                        port grpc { weight = 50 }
+                    }
+
+                    // Bare ID
+                    let svc = ref(alpha)
+
+                    // Qualified path (string syntax for dots)
+                    let p = ref("alpha.http")
+
+                    // Relative path from inside a block
+                    service beta {
+                        sibling_port = ref("../alpha.http")
+                    }
+                    WCL
+                }
+
+                paragraph p18 {
+                    content = "Namespaces (<code>namespace foo::bar</code>) do not affect qualified IDs — they only qualify block kind names via <code>::</code> syntax."
+                }
+
+                heading h2_id_pattern {
+                    level = 2
+                    content = "ID Naming Conventions with @id_pattern"
+                }
+
+                paragraph p19 {
+                    content = "Use <code>@id_pattern(\"glob\")</code> on a schema's identifier field to enforce naming conventions on block IDs:"
+                }
+
+                code c10 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    schema "service" @id_pattern("svc-*") {
+                        port: u16
+                    }
+                    WCL
+                }
+
+                paragraph p20 {
+                    content = "Any <code>service</code> block whose ID does not match the glob <code>svc-*</code> will produce a validation error."
+                }
+
+                heading h2_nested_ref {
+                    level = 2
+                    content = "Nested Schema References with ref()"
+                }
+
+                paragraph p21 {
+                    content = "Use <code>ref(\"other_schema\")</code> as a field type to require that the field's value conforms to another schema:"
+                }
+
+                code c11 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    schema "address" {
+                        street: string
+                        city:   string
+                        zip:    string @validate(pattern = "^[0-9]{5}$")
+                    }
+
+                    schema "contact" {
+                        name:    string
+                        address: ref("address")
+                    }
+                    WCL
+                }
+
+                heading h2_open_closed {
+                    level = 2
+                    content = "Open vs Closed Schemas"
+                }
+
+                paragraph p22 {
+                    content = "By default schemas are " + bold("closed") + ": any attribute present in a block but not declared in the schema produces an error (error code E072)."
+                }
+
+                paragraph p23 {
+                    content = "Add the <code>@open</code> decorator to allow extra attributes:"
+                }
+
+                code c12 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    schema "service" @open {
+                        port:   u16
+                        region: string
+                    }
+                    WCL
+                }
+
+                paragraph p24 {
+                    content = "An open schema validates all declared fields but silently permits additional attributes not listed in the schema."
+                }
+
+                heading h2_timing {
+                    level = 2
+                    content = "Validation Timing"
+                }
+
+                paragraph p25 {
+                    content = "Schema validation runs at " + bold("phase 9") + " of the WCL pipeline, after:"
+                }
+
+                paragraph p26 {
+                    content = "<ol>" +
+                        "<li>Import resolution</li>" +
+                        "<li>Macro expansion</li>" +
+                        "<li>Control flow expansion (for/if)</li>" +
+                        "<li>Partial merging</li>" +
+                        "<li>Scope construction and evaluation</li>" +
+                        "</ol>"
+                }
+
+                paragraph p27 {
+                    content = "This means schema validation sees the fully resolved document. Computed values, macro-generated blocks, and merged partials are all validated."
+                }
+
+                heading h2_accumulative {
+                    level = 2
+                    content = "Accumulative Error Reporting"
+                }
+
+                paragraph p28 {
+                    content = "Schema validation is accumulative. All violations across all blocks are collected before reporting, so you see every error in a single pass rather than stopping at the first failure."
+                }
+
+                heading h2_composition {
+                    level = 2
+                    content = "Composition: ref() and Partials"
+                }
+
+                paragraph p29 {
+                    content = "WCL schemas do not support inheritance. Instead, use two composition mechanisms:"
+                }
+
+                paragraph p30 {
+                    content = "<ul>" +
+                        "<li><code>ref(\"schema\")</code> — reference another schema as a field type.</li>" +
+                        "<li>" + bold("Partials") + " — share common attribute groups across blocks and merge them before validation runs.</li>" +
+                        "</ul>"
+                }
+
+                code c13 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    schema "base_service" {
+                        port:   u16
+                        region: string
+                    }
+
+                    schema "web_service" {
+                        base:   ref("base_service")
+                        domain: string
+                        tls:    bool @default(true)
+                    }
+                    WCL
+                }
+
+                heading h2_full_example {
+                    level = 2
+                    content = "Full Example"
+                }
+
+                code c14 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    schema "service" @id_pattern("svc-*") {
+                        port:     u16    @required @validate(min = 1, max = 65535)
+                        region:   string @required @validate(one_of = ["us-east-1", "eu-west-1", "ap-south-1"])
+                        env:      string @default("production") @validate(one_of = ["development", "staging", "production"])
+                        tags:     list   @optional
+                        replicas: u32    @default(1) @validate(min = 1, max = 100)
+                    }
+
+                    service "svc-api" {
+                        port     = 8080
+                        region   = "us-east-1"
+                        env      = "staging"
+                        tags     = ["web", "critical"]
+                        replicas = 3
+                    }
+
+                    service "svc-worker" {
+                        port   = 9090
+                        region = "eu-west-1"
+                    }
+                    WCL
+                }
+
+                paragraph p31 {
+                    content = "The <code>svc-worker</code> block inherits <code>env = \"production\"</code> and <code>replicas = 1</code> from the schema defaults."
+                }
+
+                heading h2_child {
+                    level = 2
+                    content = "Per-Child Cardinality with @child"
+                }
+
+                paragraph p32 {
+                    content = "Use <code>@child(\"kind\", min=N, max=N)</code> to enforce how many children of a given kind a block must/may have:"
+                }
+
+                code c15 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    schema "server" {
+                        @child("endpoint", min=1, max=10)
+                        @child("config", max=1)
+                        port: u16
+                        host: string
+                    }
+                    WCL
+                }
+
+                paragraph p33 {
+                    content = "<ul>" +
+                        "<li><code>min</code> — error if fewer children of that kind exist (E097)</li>" +
+                        "<li><code>max</code> — error if more children of that kind exist (E098)</li>" +
+                        "<li><code>@child(\"kind\")</code> with no min/max just adds the kind to the allowed children set (like <code>@children</code>)</li>" +
+                        "<li><code>@child</code> entries merge into the <code>@children</code> constraint automatically</li>" +
+                        "</ul>"
+                }
+
+                heading h3_self_nesting {
+                    level = 3
+                    content = "Self-Nesting with max_depth"
+                }
+
+                paragraph p34 {
+                    content = "Use <code>@child(\"kind\", max_depth=N)</code> to allow a block to contain itself, up to a depth limit:"
+                }
+
+                code c16 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    schema "menu" {
+                        @child("menu", max_depth=3)
+                        label: string
+                    }
+
+                    menu top {
+                        label = "File"
+                        menu sub {
+                            label = "Open"
+                            menu deep {
+                                label = "Recent"  // depth 3 — allowed
+                                // menu too-deep { ... }  // ERROR E099: exceeds max depth
+                            }
+                        }
+                    }
+                    WCL
+                }
+
+                heading h2_union {
+                    level = 2
+                    content = "Union Field Types"
+                }
+
+                paragraph p35 {
+                    content = "Use <code>union(t1, t2, ...)</code> to declare that a field accepts any of the listed types:"
+                }
+
+                code c17 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    schema "config" {
+                        value: union(string, i64, bool)
+                    }
+
+                    config a { value = "hello" }
+                    config b { value = 42 }
+                    config c { value = true }
+                    WCL
+                }
+
+                heading h2_tagged {
+                    level = 2
+                    content = "Tagged Variant Schemas"
+                }
+
+                paragraph p36 {
+                    content = "Use <code>@tagged(\"field\")</code> and <code>variant \"value\" { ... }</code> to define schemas where required fields depend on a discriminator value:"
+                }
+
+                code c18 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    @tagged("style")
+                    schema "api" {
+                        style: string
+                        version: string @optional
+
+                        @children(["resource"])
+                        variant "rest" {
+                            base_path: string
+                        }
+
+                        @children(["gql_query", "gql_mutation"])
+                        variant "graphql" {
+                            schema_path: string @optional
+                        }
+                    }
+
+                    api rest-api {
+                        style = "rest"
+                        base_path = "/api/v1"
+                    }
+
+                    api gql-api {
+                        style = "graphql"
+                    }
+                    WCL
+                }
+
+                paragraph p37 {
+                    content = "<ul>" +
+                        "<li>Common fields (outside variants) apply to all blocks</li>" +
+                        "<li>When the tag field matches a variant, that variant's fields are also validated</li>" +
+                        "<li>When no variant matches, only common fields are validated</li>" +
+                        "<li>Variant <code>@children</code>/<code>@child</code> decorators override the base schema's containment for that variant</li>" +
+                        "<li>Variant fields are accepted by closed schemas even when not in the active variant</li>" +
+                        "</ul>"
+                }
+
+                heading h2_symbols {
+                    level = 2
+                    content = "Symbols"
+                }
+
+                paragraph p38 {
+                    content = "Symbol literals are lightweight, identifier-like values prefixed with a colon. They are useful when a field represents a fixed set of named options rather than arbitrary strings."
+                }
+
+                heading h3_symbol_literals {
+                    level = 3
+                    content = "Symbol Literals"
+                }
+
+                paragraph p39 {
+                    content = "A symbol literal is written as a colon followed by an identifier:"
+                }
+
+                code c19 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    endpoint list_users {
+                        method = :GET
+                        path   = "/users"
+                    }
+                    WCL
+                }
+
+                paragraph p40 {
+                    content = "Symbol values are distinct from strings. <code>:GET</code> is not the same as <code>\"GET\"</code>."
+                }
+
+                heading h3_symbol_sets {
+                    level = 3
+                    content = "Symbol Sets"
+                }
+
+                paragraph p41 {
+                    content = "A <code>symbol_set</code> declaration defines a named group of valid symbols:"
+                }
+
+                code c20 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    symbol_set http_method {
+                        :GET
+                        :POST
+                        :PUT
+                        :PATCH
+                        :DELETE
+                        :HEAD
+                        :OPTIONS
+                    }
+                    WCL
+                }
+
+                heading h3_value_mappings {
+                    level = 3
+                    content = "Value Mappings"
+                }
+
+                paragraph p42 {
+                    content = "Each member of a symbol set can optionally map to a string value using <code>=</code>. This controls how the symbol serializes to JSON:"
+                }
+
+                code c21 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    symbol_set curl_option {
+                        :unix_socket = "unix-socket"
+                        :compressed  = "compressed"
+                        :verbose     = "verbose"
+                    }
+                    WCL
+                }
+
+                paragraph p43 {
+                    content = "Without an explicit mapping, a symbol serializes to its name as a string (e.g. <code>:GET</code> becomes <code>\"GET\"</code> in JSON output)."
+                }
+
+                heading h3_symbol_set_schema {
+                    level = 3
+                    content = "Using @symbol_set in Schemas"
+                }
+
+                paragraph p44 {
+                    content = "Use the <code>symbol</code> type and the <code>@symbol_set</code> decorator to constrain a field to members of a declared set:"
+                }
+
+                code c22 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    schema "endpoint" {
+                        method: symbol @symbol_set("http_method")
+                        path:   string
+                    }
+                    WCL
+                }
+
+                paragraph p45 {
+                    content = "If a block provides a symbol value that is not a member of the referenced set, error E100 is raised. If the named set does not exist, error E101 is raised."
+                }
+
+                heading h3_all_set {
+                    level = 3
+                    content = "The Special \"all\" Set"
+                }
+
+                paragraph p46 {
+                    content = "Use the set name <code>\"all\"</code> to accept any symbol value without restricting to a specific set:"
+                }
+
+                code c23 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    schema "tag" {
+                        kind: symbol @symbol_set("all")
+                    }
+
+                    tag important {
+                        kind = :priority    // any symbol is accepted
+                    }
+                    WCL
+                }
+
+                paragraph p47 {
+                    content = "This is useful when you want the <code>symbol</code> type for its semantics (not a free-form string) but do not want to enumerate every valid value."
+                }
+
+                heading h3_json_serialization {
+                    level = 3
+                    content = "JSON Serialization"
+                }
+
+                paragraph p48 {
+                    content = "Symbols serialize to JSON as strings:"
+                }
+
+                paragraph p49 {
+                    content = "<ul>" +
+                        "<li>A symbol with no value mapping serializes to its identifier name: <code>:GET</code> becomes <code>\"GET\"</code>.</li>" +
+                        "<li>A symbol with a value mapping serializes to the mapped string: <code>:unix_socket = \"unix-socket\"</code> becomes <code>\"unix-socket\"</code>.</li>" +
+                        "</ul>"
+                }
+
+                code c24 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    symbol_set http_method { :GET :POST }
+
+                    endpoint example {
+                        method = :GET
+                    }
+
+                    // JSON output:
+                    // { "endpoint": { "example": { "method": "GET" } } }
+                    WCL
+                }
+
+                heading h3_symbol_errors {
+                    level = 3
+                    content = "Symbol Error Codes"
+                }
+
+                data_table t_symbol_errors {
+                    caption = "Symbol Error Codes"
+                    rows = [
+                        { code = "E100", meaning = "Symbol value not in declared symbol_set" },
+                        { code = "E101", meaning = "Referenced symbol_set does not exist" },
+                        { code = "E102", meaning = "Duplicate symbol_set name" },
+                        { code = "E103", meaning = "Duplicate symbol within a symbol_set" }
+                    ]
+                }
+
+                heading h2_error_codes {
+                    level = 2
+                    content = "Error Codes"
+                }
+
+                data_table t_errors {
+                    caption = "Schema Error Codes"
+                    rows = [
+                        { code = "E001", meaning = "Duplicate schema name" },
+                        { code = "E030", meaning = "Duplicate block ID" },
+                        { code = "E070", meaning = "Missing required field" },
+                        { code = "E071", meaning = "Type mismatch" },
+                        { code = "E072", meaning = "Unknown attribute in closed schema" },
+                        { code = "E073", meaning = "min/max constraint violation" },
+                        { code = "E074", meaning = "Pattern constraint violation" },
+                        { code = "E075", meaning = "one_of constraint violation" },
+                        { code = "E076", meaning = "@ref target not found" },
+                        { code = "E077", meaning = "@id_pattern mismatch" },
+                        { code = "E080", meaning = "Validation block failure" },
+                        { code = "E092", meaning = "Inline columns defined when schema is applied" },
+                        { code = "E095", meaning = "Child not allowed by parent's @children list" },
+                        { code = "E096", meaning = "Item not allowed by its own @parent list" },
+                        { code = "E097", meaning = "Child count below @child minimum" },
+                        { code = "E098", meaning = "Child count above @child maximum" },
+                        { code = "E099", meaning = "Self-nesting exceeds @child max_depth" },
+                        { code = "E100", meaning = "Symbol value not in declared symbol_set" },
+                        { code = "E101", meaning = "Referenced symbol_set does not exist" },
+                        { code = "E102", meaning = "Duplicate symbol_set name" },
+                        { code = "E103", meaning = "Duplicate symbol within a symbol_set" }
+                    ]
+                }
+
+                heading h2_containment {
+                    level = 2
+                    content = "Block & Table Containment"
+                }
+
+                paragraph p50 {
+                    content = "Use <code>@children</code> and <code>@parent</code> decorators on schemas to constrain which blocks and tables can nest inside which others."
+                }
+
+                heading h3_children {
+                    level = 3
+                    content = "@children — restrict what a block may contain"
+                }
+
+                code c25 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    @children(["endpoint", "table:user_row"])
+                    schema "service" {
+                        name: string
+                    }
+
+                    service "api" {
+                        name = "my api"
+                        endpoint health { path = "/health" }     // allowed
+                        table users : user_row { | "Alice" | }   // allowed
+                        // logger { level = "info" }             // ERROR E095
+                    }
+                    WCL
+                }
+
+                paragraph p51 {
+                    content = "Use <code>@children([])</code> to create a leaf block that cannot contain any children."
+                }
+
+                heading h3_parent {
+                    level = 3
+                    content = "@parent — restrict where a block may appear"
+                }
+
+                code c26 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    @parent(["service", "_root"])
+                    schema "endpoint" {
+                        path: string
+                    }
+                    WCL
+                }
+
+                paragraph p52 {
+                    content = "The special name <code>\"_root\"</code> refers to the document's top level. Use a schema named <code>\"_root\"</code> with <code>@children</code> to constrain what appears at the top level:"
+                }
+
+                code c27 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    @children(["service", "config"])
+                    schema "_root" {}
+                    WCL
+                }
+
+                heading h3_table_containment {
+                    level = 3
+                    content = "Table containment"
+                }
+
+                paragraph p53 {
+                    content = "Define virtual schemas named <code>\"table\"</code> or <code>\"table:X\"</code> to constrain table placement:"
+                }
+
+                code c28 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    @parent(["data"])
+                    schema "table:user_row" {}
+
+                    @parent(["_root"])
+                    schema "table" {}
+                    WCL
+                }
+
+                paragraph p54 {
+                    content = "See " + link("Built-in Decorators", "guide-decorators-builtin.html") + " for full details."
+                }
+
+                heading h2_tables {
+                    level = 2
+                    content = "Applying Schemas to Tables"
+                }
+
+                paragraph p55 {
+                    content = "You can apply a schema to a table using the colon syntax or the <code>@schema</code> decorator:"
+                }
+
+                code c29 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    schema "user_row" {
+                        name : string
+                        age  : u32
+                    }
+
+                    // Colon syntax
+                    table users : user_row {
+                        | "Alice" | 30 |
+                    }
+
+                    // Decorator syntax
+                    @schema("user_row")
+                    table contacts {
+                        | "Bob" | 25 |
+                    }
+
+                    // With CSV import
+                    table imported : user_row = import_table("users.csv")
+                    WCL
+                }
+
+                paragraph p56 {
+                    content = "When a schema is applied, inline column declarations are not allowed (E092)."
+                }
+            }
+        }
+    }
+}

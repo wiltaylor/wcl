@@ -1,0 +1,372 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
+
+page functions_ref_query {
+    section = "wcl_docs.guide.functions.functions_ref_query"
+    title = "Reference & Query Functions"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Reference & Query Functions"
+                }
+
+                paragraph p1 {
+                    content = "WCL provides six functions for inspecting the document and its environment: <code>ref()</code> for resolving a block by ID, <code>query()</code> for selecting sets of blocks using a pipeline, <code>has()</code> for checking whether a block has a named attribute or child, <code>has_decorator()</code> for checking whether a block carries a decorator, <code>is_imported()</code> for testing whether a file was imported, and <code>has_schema()</code> for testing whether a schema is declared. These are the bridge between the functional expression layer and the block-oriented document model."
+                }
+
+                paragraph p2 {
+                    content = "The query engine is covered in depth in the Query Engine chapter. This page focuses on the function call syntax and common patterns."
+                }
+
+                heading h2_reference {
+                    level = 2
+                    content = "Reference"
+                }
+
+                data_table t1 {
+                    rows = [
+                        ["Function", "Signature", "Description"],
+                        ["ref", "ref(id: string) -> block", "Resolve a block by its ID; error if not found"],
+                        ["query", "query(pipeline) -> list", "Execute a query pipeline; return matching blocks"],
+                        ["has", "has(block, name: string) -> bool", "True if block has an attribute or child block named name"],
+                        ["has_decorator", "has_decorator(block, name: string) -> bool", "True if block carries the decorator @name"],
+                        ["is_imported", "is_imported(path: string) -> bool", "True if the given file path was imported"],
+                        ["has_schema", "has_schema(name: string) -> bool", "True if a schema with the given name is declared"]
+                    ]
+                }
+
+                heading h2_ref {
+                    level = 2
+                    content = "ref"
+                }
+
+                paragraph p3 {
+                    content = "<code>ref(id)</code> looks up a block by its inline ID and returns it as a value. Attribute access on the returned block uses dot notation."
+                }
+
+                code c1 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    service web {
+                      port: 8080
+                      image: "nginx:latest"
+                    }
+
+                    config proxy {
+                      upstream_port: ref("web").port     // 8080
+                      upstream_image: ref("web").image   // "nginx:latest"
+                    }
+                    WCL
+                }
+
+                paragraph p4 {
+                    content = "If the ID does not exist, <code>ref</code> raises a compile-time error. <code>ref</code> can resolve any block type, not just <code>service</code>."
+                }
+
+                code c2 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    database primary {
+                      host: "db.internal"
+                      port: 5432
+                    }
+
+                    service api {
+                      db_host: ref("primary").host
+                      db_port: ref("primary").port
+                    }
+                    WCL
+                }
+
+                heading h2_query {
+                    level = 2
+                    content = "query"
+                }
+
+                paragraph p5 {
+                    content = "<code>query(pipeline)</code> runs a query pipeline against the document and returns a list of matching blocks. The pipeline syntax is described fully in the Query Engine chapter."
+                }
+
+                paragraph p6 {
+                    content = "Basic form — select all blocks of a given type:"
+                }
+
+                code c3 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let all_services = query(service)
+                    let all_workers  = query(worker)
+                    WCL
+                }
+
+                paragraph p7 {
+                    content = "With a filter:"
+                }
+
+                code c4 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let prod_services = query(service | where env == "prod")
+                    WCL
+                }
+
+                paragraph p8 {
+                    content = "With multiple pipeline stages:"
+                }
+
+                code c5 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let names = query(service | where env == "prod" | select name)
+                    WCL
+                }
+
+                paragraph p9 {
+                    content = "Query results are lists. Use collection and higher-order functions on them:"
+                }
+
+                code c6 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let ports = map(query(service), s => s.port)
+                    let total_replicas = sum(map(query(service), s => s.replicas))
+                    WCL
+                }
+
+                paragraph p10 {
+                    content = "Use query results in for loops:"
+                }
+
+                code c7 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    for svc in query(service | where has(@public)) {
+                      ingress ingress-${svc.name} {
+                        target: svc.name
+                        port: svc.port
+                      }
+                    }
+                    WCL
+                }
+
+                heading h2_has {
+                    level = 2
+                    content = "has"
+                }
+
+                paragraph p11 {
+                    content = "<code>has(block, name)</code> tests whether a block contains a named attribute or child block. It returns <code>false</code> rather than erroring when the name is absent, making it safe to use in conditionals and filters."
+                }
+
+                code c8 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    service api {
+                      port: 8080
+                      // no "tls" attribute
+                    }
+
+                    service secure {
+                      port: 443
+                      tls: true
+                    }
+                    WCL
+                }
+
+                code c9 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let has_tls = has(ref("secure"), "tls")     // true
+                    let api_tls = has(ref("api"), "tls")        // false
+                    WCL
+                }
+
+                paragraph p12 {
+                    content = "Use in a filter to find blocks that have a particular attribute:"
+                }
+
+                code c10 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let tls_services = filter(query(service), s => has(s, "tls"))
+                    WCL
+                }
+
+                paragraph p13 {
+                    content = "Use in a conditional to selectively generate configuration:"
+                }
+
+                code c11 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    for svc in query(service) {
+                      if has(svc, "port") {
+                        health_check check-${svc.name} {
+                          url: "http://${svc.name}:${svc.port}/health"
+                        }
+                      }
+                    }
+                    WCL
+                }
+
+                heading h2_has_decorator {
+                    level = 2
+                    content = "has_decorator"
+                }
+
+                paragraph p14 {
+                    content = "<code>has_decorator(block, name)</code> tests whether a block was annotated with the decorator <code>@name</code>. The name is passed without the <code>@</code> prefix."
+                }
+
+                code c12 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    @public
+                    service web {
+                      port: 80
+                    }
+
+                    service internal-api {
+                      port: 8080
+                    }
+                    WCL
+                }
+
+                code c13 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let is_public = has_decorator(ref("web"), "public")           // true
+                    let api_public = has_decorator(ref("internal-api"), "public") // false
+                    WCL
+                }
+
+                paragraph p15 {
+                    content = "Filter to all publicly exposed services:"
+                }
+
+                code c14 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let public_services = filter(query(service), s => has_decorator(s, "public"))
+                    WCL
+                }
+
+                paragraph p16 {
+                    content = "Generate ingress rules only for <code>@public</code> blocks:"
+                }
+
+                code c15 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    for svc in query(service) {
+                      if has_decorator(svc, "public") {
+                        ingress ingress-${svc.name} {
+                          host: "${svc.name}.example.com"
+                          port: svc.port
+                        }
+                      }
+                    }
+                    WCL
+                }
+
+                heading h2_is_imported {
+                    level = 2
+                    content = "is_imported"
+                }
+
+                paragraph p17 {
+                    content = "<code>is_imported(path)</code> returns <code>true</code> if the given file path was imported into the current document. The path is resolved relative to the project root. This is useful for writing conditional configuration that activates only when an optional module is present."
+                }
+
+                code c16 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let has_auth = is_imported("./auth.wcl")
+
+                    if has_auth {
+                      config security {
+                        auth_enabled: true
+                      }
+                    }
+                    WCL
+                }
+
+                paragraph p18 {
+                    content = "<code>is_imported</code> returns <code>false</code> for paths that were not imported — it never errors."
+                }
+
+                heading h2_has_schema {
+                    level = 2
+                    content = "has_schema"
+                }
+
+                paragraph p19 {
+                    content = "<code>has_schema(name)</code> returns <code>true</code> if a schema with the given name is declared in the document, including schemas brought in via imports. This lets configuration react to what schema definitions are available at evaluation time."
+                }
+
+                code c17 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let needs_schema = has_schema("service")
+
+                    if needs_schema {
+                      config validation_enabled {
+                        strict: true
+                      }
+                    }
+                    WCL
+                }
+
+                paragraph p20 {
+                    content = "Like <code>is_imported</code>, <code>has_schema</code> returns <code>false</code> rather than erroring when the name is not found."
+                }
+
+                code c18 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    // Guard generated blocks behind schema availability
+                    let has_svc_schema = has_schema("service")
+                    let has_db_schema  = has_schema("database")
+                    WCL
+                }
+
+                heading h2_combining {
+                    level = 2
+                    content = "Combining ref, query, has, has_decorator, is_imported, and has_schema"
+                }
+
+                paragraph p21 {
+                    content = "These six functions compose with the rest of WCL's expression language:"
+                }
+
+                code c19 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    // All services that have a port attribute and are marked @public
+                    let exposed = filter(
+                      query(service | where has(@public)),
+                      s => has(s, "port")
+                    )
+
+                    // Generate a summary block
+                    config fleet_summary {
+                      total_services: len(query(service))
+                      public_count: count(query(service), s => has_decorator(s, "public"))
+                      total_replicas: sum(map(query(service), s => s.replicas))
+                      primary_db_host: ref("primary").host
+                    }
+                    WCL
+                }
+
+                paragraph p22 {
+                    content = "For advanced query pipeline syntax including multi-stage pipelines, recursive queries, and the <code>select</code> and <code>order_by</code> stages, see the Query Engine chapter."
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,95 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
+
+page control_flow {
+    section = "wcl_docs.guide.control_flow"
+    title = "Control Flow"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Control Flow"
+                }
+
+                paragraph p1 {
+                    content = "WCL provides two declarative control flow structures: " + bold("for loops") + " and " + bold("if/else conditionals") + ". Unlike imperative languages, these constructs do not execute at runtime — they expand into concrete blocks and attributes during the control flow expansion phase of the pipeline, before evaluation."
+                }
+
+                paragraph p2 {
+                    content = "This design keeps WCL configs purely declarative: the final evaluated document contains no loops or conditionals, only the concrete values they produced."
+                }
+
+                heading h2_structures {
+                    level = 2
+                    content = "Structures"
+                }
+
+                paragraph p3 {
+                    content = "<ul>" +
+                        "<li>" + bold(link("For Loops", "for_loops.html")) + " — iterate over lists, ranges, or query results to generate repeated blocks or values.</li>" +
+                        "<li>" + bold(link("If/Else Conditionals", "if_else.html")) + " — conditionally include blocks, attributes, or children based on boolean expressions.</li>" +
+                        "</ul>"
+                }
+
+                heading h2_expansion {
+                    level = 2
+                    content = "Expansion Phase"
+                }
+
+                paragraph p4 {
+                    content = "Both constructs are processed during " + bold("phase 5: control flow expansion") + ", after macro expansion and before partial merge and evaluation. At the end of this phase, the AST contains only concrete nodes."
+                }
+
+                heading h2_limits {
+                    level = 2
+                    content = "Limits"
+                }
+
+                paragraph p5 {
+                    content = "To prevent runaway configs and protect tooling performance, WCL enforces the following hard limits:"
+                }
+
+                data_table t1 {
+                    rows = [
+                        ["Limit", "Default"],
+                        ["Maximum nesting depth (loops + conditionals combined)", "32"],
+                        ["Maximum iterations per single for loop", "1,000"],
+                        ["Maximum total iterations across all for loops", "10,000"]
+                    ]
+                }
+
+                paragraph p6 {
+                    content = "Exceeding any of these limits is a compile-time error. The limits exist to keep configs analyzable and prevent accidental exponential expansion."
+                }
+
+                heading h2_composition {
+                    level = 2
+                    content = "Composition"
+                }
+
+                paragraph p7 {
+                    content = "For loops and if/else can be freely composed:"
+                }
+
+                code c1 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    for env in ["staging", "prod"] {
+                      service web-${env} {
+                        replicas: if env == "prod" { 3 } else { 1 }
+                      }
+                    }
+                    WCL
+                }
+
+                paragraph p8 {
+                    content = "See the individual pages for full syntax, scoping rules, and examples."
+                }
+            }
+        }
+    }
+}
