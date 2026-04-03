@@ -6,7 +6,7 @@ This page lists all diagnostic codes produced by the WCL pipeline, grouped by ph
 
 | Code | Phase | Description |
 |------|-------|-------------|
-| E001 | Parse | Syntax error |
+| E001 | Schema | Duplicate schema name (overlapping `@parent` scope or both unscoped) |
 | E002 | Parse | Unexpected token |
 | E003 | Parse | Unterminated string |
 | E010 | Import | File not found |

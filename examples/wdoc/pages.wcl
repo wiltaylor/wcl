@@ -1,7 +1,7 @@
 // Pages for the WCL documentation example
 
 import <wdoc.wcl>
-use wdoc::{doc, page, section, style, layout, heading, paragraph, image, code, table, callout, bold, italic, link, icon}
+use wdoc::{doc, page, section, style, layout, heading, paragraph, image, code, data_table, callout, bold, italic, link, icon}
 use wdoc::draw::{diagram, rect, circle, ellipse, line, path, text, connection, phone, browser, button, input, card, avatar, toggle, badge, navbar, flow_process, flow_decision, flow_terminal, flow_io, flow_subprocess, c4_person, c4_system, c4_container, c4_component, c4_boundary, uml_class, uml_actor, uml_package, uml_note, server, database, cloud, user}
 
 // Helper: literal dollar sign for code examples containing ${...}
@@ -253,7 +253,7 @@ page basics {
                 }
                 paragraph p7 { content = "WCL supports inline data tables with typed columns. Here is how they look when rendered:" }
 
-                table tbl_servers {
+                data_table tbl_servers {
                     caption = "Server Configuration"
                     table data {
                         name: string
@@ -268,7 +268,7 @@ page basics {
                     }
                 }
 
-                table tbl_users {
+                data_table tbl_users {
                     caption = "Team Members"
                     table data {
                         name: string
@@ -330,7 +330,7 @@ page advanced {
                 }
 
                 paragraph p3b { content = "Rendered table output:" }
-                table tbl_users {
+                data_table tbl_users {
                     caption = "Users Table"
                     table data {
                         name: string

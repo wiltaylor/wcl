@@ -342,6 +342,30 @@ endpoint standalone { path = "/ping" }     // allowed: parent is _root
 
 If a block appears inside a parent not in its `@parent` list, error E096 is emitted.
 
+### Parent-Scoped Schemas
+
+Multiple schemas with the same name are allowed when they have non-overlapping `@parent` scopes. The system selects the correct schema based on the block's parent context:
+
+```wcl
+@parent(["doc"])
+schema "section" {
+    title: string
+}
+
+@parent(["page"])
+schema "section" {
+    heading: string
+    level: i32
+}
+
+// Optional unscoped fallback — used when no parent-scoped variant matches
+schema "section" {
+    content: string
+}
+```
+
+Resolution order: parent-scoped match first, then unscoped fallback. Error E001 fires only when two schemas have the same name with overlapping `@parent` lists or when both are unscoped.
+
 ## @symbol_set(name)
 
 Constrains a `symbol`-typed schema field so that only members of the named symbol set are accepted. The argument is the name of a `symbol_set` declaration.

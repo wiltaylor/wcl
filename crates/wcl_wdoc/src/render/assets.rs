@@ -258,8 +258,8 @@ pub fn generate_style_css(styles: &[WdocStyle]) -> String {
 
     for style in styles {
         for rule in &style.rules {
-            // Strip "for_" prefix from target (e.g., "for_heading" → "heading")
-            let target = rule.target.strip_prefix("for_").unwrap_or(&rule.target);
+            // Extract leaf name from target (e.g., "wdoc::heading" → "heading")
+            let target = rule.target.rsplit("::").next().unwrap_or(&rule.target);
 
             if style.name == "default" {
                 write_rule(&mut css, &format!(".wdoc-{target}"), rule);

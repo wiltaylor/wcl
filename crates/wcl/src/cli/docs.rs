@@ -11,7 +11,7 @@ pub fn run(
     title: &str,
     lib_args: &crate::cli::LibraryArgs,
 ) -> Result<(), String> {
-    // Parse all files and collect schemas
+    // Parse all files and collect schemas (flattened from per-name vecs)
     let mut all_schemas: HashMap<String, ResolvedSchema> = HashMap::new();
 
     for file in files {
@@ -23,8 +23,17 @@ pub fn run(
         };
         lib_args.apply(&mut opts);
         let doc = crate::parse(&source, opts);
-        for (name, schema) in doc.schemas.schemas {
-            all_schemas.insert(name, schema);
+        for (name, schema_vec) in doc.schemas.schemas {
+            let has_scoped = schema_vec.len() > 1;
+            for schema in schema_vec {
+                let key = match &schema.allowed_parents {
+                    Some(parents) if has_scoped => {
+                        format!("{} (in {})", name, parents.join(", "))
+                    }
+                    _ => name.clone(),
+                };
+                all_schemas.insert(key, schema);
+            }
         }
     }
 
