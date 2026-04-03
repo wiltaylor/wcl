@@ -2,7 +2,7 @@
 //
 // Usage:
 //   import <wdoc.wcl>
-//   use wdoc::{doc, page, section, style, layout, heading, paragraph, image, code, table, callout, bold, italic, link, icon}
+//   use wdoc::{doc, page, section, style, layout, heading, paragraph, image, code, data_table, callout, bold, italic, link, icon}
 //   use wdoc::draw::{diagram, rect, circle, ellipse, line, path, text, connection, ...}
 
 namespace wdoc {
@@ -27,6 +27,15 @@ namespace wdoc {
 
     @open
     schema "style" { }
+
+    // Style child schemas — same names as content schemas but scoped to style blocks.
+    // Inside a style block, these are CSS property containers, not content elements.
+    @parent(["wdoc::style"]) @open schema "heading" { }
+    @parent(["wdoc::style"]) @open schema "paragraph" { }
+    @parent(["wdoc::style"]) @open schema "image" { }
+    @parent(["wdoc::style"]) @open schema "code" { }
+    @parent(["wdoc::style"]) @open schema "data_table" { }
+    @parent(["wdoc::style"]) @open schema "callout" { }
 
     @open
     schema "layout" { }
@@ -64,7 +73,7 @@ namespace wdoc {
 
     @template("html", "wdoc::render_table")
     @open
-    schema "table" {
+    schema "data_table" {
         caption: string @optional
     }
 

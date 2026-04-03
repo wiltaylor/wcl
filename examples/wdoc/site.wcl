@@ -5,7 +5,7 @@
 // Serve:  wcl wdoc serve examples/wdoc/site.wcl examples/wdoc/pages.wcl --port 3000
 
 import <wdoc.wcl>
-use wdoc::{doc, page, section, style, layout, heading, paragraph, image, code, table, callout, bold, italic, link, icon}
+use wdoc::{doc, page, section, style, layout, heading, paragraph, image, code, data_table, callout, bold, italic, link, icon}
 
 // ── Document definition with section outline ──
 
@@ -48,21 +48,21 @@ doc my_docs {
 // ── Styles ──
 
 style default {
-    for_heading {
+    heading {
         font_family = "'Segoe UI', sans-serif"
     }
-    for_paragraph {
+    paragraph {
         line_height = "1.7"
     }
 }
 
 style hero {
-    for_heading {
+    heading {
         font_size = "2.5rem"
         text_align = "center"
         margin_bottom = "1rem"
     }
-    for_paragraph {
+    paragraph {
         text_align = "center"
         font_size = "1.2rem"
     }
