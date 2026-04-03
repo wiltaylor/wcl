@@ -43,11 +43,11 @@ When making changes to WCL (especially AST, parser, schema, or language features
 - `syntaxes/wcl.tmLanguage.json` — add new keywords to TextMate regex
 - No test suite exists for the extension
 
-### Documentation (`docs/book/src/`) — MUST be updated for any language/syntax change
-- `guide/schemas.md` — schema features and examples
-- `guide/decorators-builtin.md` — built-in decorator reference table + sections
-- `appendix/error-codes.md` — add new error codes
-- `appendix/ebnf.md` — update EBNF grammar rules
+### Documentation (`docs/`) — MUST be updated for any language/syntax change
+- `docs/guide-schemas.wcl` — schema features and examples
+- `docs/guide-decorators-builtin.wcl` — built-in decorator reference table + sections
+- `docs/appendix-error-codes.wcl` — add new error codes
+- `docs/appendix-ebnf.wcl` — update EBNF grammar rules
 
 ### Bindings (`bindings/`)
 - python, wasm, go, dotnet — usually NO changes needed (they consume evaluated JSON, not AST)
