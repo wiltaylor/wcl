@@ -35,7 +35,17 @@ pub fn render_heading(attrs: &IndexMap<String, String>) -> String {
 /// Expects: `content` (string)
 pub fn render_paragraph(attrs: &IndexMap<String, String>) -> String {
     let content = attrs.get("content").map(|s| s.as_str()).unwrap_or("");
-    format!("<p class=\"wdoc-paragraph\">{content}</p>")
+    // Use <div> when content contains block-level elements — browsers auto-close
+    // <p> before block elements, breaking the wrapper and its CSS.
+    let has_block = content.contains("<ul")
+        || content.contains("<ol")
+        || content.contains("<table")
+        || content.contains("<div");
+    if has_block {
+        format!("<div class=\"wdoc-paragraph\">{content}</div>")
+    } else {
+        format!("<p class=\"wdoc-paragraph\">{content}</p>")
+    }
 }
 
 /// Render an image element.
