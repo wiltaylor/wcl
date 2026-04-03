@@ -298,6 +298,7 @@ mod tests {
         BlockRef {
             kind: kind.to_string(),
             id: id.map(|s| s.to_string()),
+            qualified_id: None,
             attributes,
             children: Vec::new(),
             decorators: Vec::new(),

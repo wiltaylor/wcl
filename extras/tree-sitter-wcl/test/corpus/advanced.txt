@@ -120,6 +120,33 @@ db = ref(main-db)
     (ref_expression (identifier_literal)))))
 
 ================
+Ref expression with string path
+================
+
+target = ref("alpha.http")
+parent = ref("../beta")
+
+---
+
+(document
+  (attribute (identifier) (expression
+    (ref_expression (string_literal (string_content)))))
+  (attribute (identifier) (expression
+    (ref_expression (string_literal (string_content))))))
+
+================
+Ref expression with bare identifier
+================
+
+db = ref(mydb)
+
+---
+
+(document
+  (attribute (identifier) (expression
+    (ref_expression (identifier)))))
+
+================
 Import table expression
 ================
 

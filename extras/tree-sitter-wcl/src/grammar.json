@@ -2978,8 +2978,25 @@
           "value": "("
         },
         {
-          "type": "SYMBOL",
-          "name": "identifier_literal"
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "identifier_literal"
+            },
+            {
+              "type": "FIELD",
+              "name": "ident",
+              "content": {
+                "type": "SYMBOL",
+                "name": "identifier"
+              }
+            },
+            {
+              "type": "SYMBOL",
+              "name": "string_literal"
+            }
+          ]
         },
         {
           "type": "STRING",

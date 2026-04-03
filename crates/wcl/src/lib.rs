@@ -184,7 +184,7 @@ impl Document {
             .iter()
             .filter_map(|item| match item {
                 ast::DocItem::Body(ast::BodyItem::Block(block)) => {
-                    Some(self.block_to_ref(block, &mut evaluator, scope))
+                    Some(self.block_to_ref(block, &mut evaluator, scope, None))
                 }
                 ast::DocItem::Body(ast::BodyItem::Table(table)) => Some(self.table_to_ref(table)),
                 _ => None,
@@ -211,6 +211,7 @@ impl Document {
         BlockRef {
             kind: "table".to_string(),
             id: name,
+            qualified_id: None,
             attributes: indexmap::IndexMap::new(),
             children,
             decorators: Vec::new(),
@@ -243,6 +244,7 @@ impl Document {
                     Some(BlockRef {
                         kind: "__row".to_string(),
                         id: None,
+                        qualified_id: None,
                         attributes: m.clone(),
                         children: Vec::new(),
                         decorators: Vec::new(),
@@ -267,6 +269,7 @@ impl Document {
                     Some(BlockRef {
                         kind: "__row".to_string(),
                         id: None,
+                        qualified_id: None,
                         attributes: m.clone(),
                         children: Vec::new(),
                         decorators: Vec::new(),
@@ -284,6 +287,7 @@ impl Document {
         block: &ast::Block,
         evaluator: &mut Evaluator,
         scope: ScopeId,
+        parent_qualified_id: Option<&str>,
     ) -> BlockRef {
         let kind = block.kind.name.clone();
         let id = block.inline_id.as_ref().map(|iid| match iid {
@@ -296,6 +300,12 @@ impl Document {
                 })
                 .collect::<Vec<_>>()
                 .join(""),
+        });
+
+        // Compute qualified ID from parent's qualified ID and this block's inline ID.
+        let qualified_id = id.as_ref().map(|bare_id| match parent_qualified_id {
+            Some(pqid) => format!("{}.{}", pqid, bare_id),
+            None => bare_id.clone(),
         });
         let mut attributes = indexmap::IndexMap::new();
 
@@ -325,7 +335,9 @@ impl Document {
             .body
             .iter()
             .filter_map(|item| match item {
-                ast::BodyItem::Block(child) => Some(self.block_to_ref(child, evaluator, scope)),
+                ast::BodyItem::Block(child) => {
+                    Some(self.block_to_ref(child, evaluator, scope, qualified_id.as_deref()))
+                }
                 _ => None,
             })
             .collect();
@@ -351,6 +363,7 @@ impl Document {
                 children.push(BlockRef {
                     kind: "table".to_string(),
                     id: table_name,
+                    qualified_id: None,
                     attributes: indexmap::IndexMap::new(),
                     children: row_children,
                     decorators: Vec::new(),
@@ -388,6 +401,7 @@ impl Document {
         BlockRef {
             kind,
             id,
+            qualified_id,
             attributes,
             children,
             decorators,
@@ -1277,6 +1291,63 @@ mod tests {
             Some(&Value::String("localhost".to_string()))
         );
         assert_eq!(blocks[0].get("missing"), None);
+    }
+
+    #[test]
+    fn test_qualified_ids_for_nested_blocks() {
+        let doc = parse(
+            r#"
+            service alpha {
+                port http {
+                    weight = 100
+                }
+                port grpc {
+                    weight = 50
+                }
+            }
+            service beta {
+                port https {
+                    weight = 200
+                }
+            }
+            "#,
+            ParseOptions::default(),
+        );
+        let blocks = doc.blocks();
+        // Top-level blocks get their bare ID as qualified_id
+        let alpha = blocks
+            .iter()
+            .find(|b| b.id.as_deref() == Some("alpha"))
+            .unwrap();
+        assert_eq!(alpha.qualified_id.as_deref(), Some("alpha"));
+
+        let beta = blocks
+            .iter()
+            .find(|b| b.id.as_deref() == Some("beta"))
+            .unwrap();
+        assert_eq!(beta.qualified_id.as_deref(), Some("beta"));
+
+        // Nested blocks get dotted qualified IDs
+        let http = alpha
+            .children
+            .iter()
+            .find(|c| c.id.as_deref() == Some("http"))
+            .unwrap();
+        assert_eq!(http.qualified_id.as_deref(), Some("alpha.http"));
+
+        let grpc = alpha
+            .children
+            .iter()
+            .find(|c| c.id.as_deref() == Some("grpc"))
+            .unwrap();
+        assert_eq!(grpc.qualified_id.as_deref(), Some("alpha.grpc"));
+
+        let https = beta
+            .children
+            .iter()
+            .find(|c| c.id.as_deref() == Some("https"))
+            .unwrap();
+        assert_eq!(https.qualified_id.as_deref(), Some("beta.https"));
     }
 
     #[test]

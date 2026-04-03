@@ -204,6 +204,26 @@ mod tests {
     }
 
     #[test]
+    fn different_kinds_same_id_is_error() {
+        // IDs are globally unique within a scope — block kind doesn't matter.
+        let doc = make_doc(vec![
+            make_block("service", Some("alpha"), false),
+            make_block("deployment", Some("alpha"), false),
+        ]);
+        let mut reg = IdRegistry::new();
+        let mut diags = DiagnosticBag::new();
+        reg.check_document(&doc, &mut diags);
+        assert!(diags.has_errors());
+        let primary = diags.diagnostics().iter().find(|d| {
+            d.code.as_deref() == Some("E030") && d.message.contains("duplicate id 'alpha'")
+        });
+        assert!(
+            primary.is_some(),
+            "expected an E030 'duplicate id' diagnostic for cross-kind collision"
+        );
+    }
+
+    #[test]
     fn blocks_without_ids_never_conflict() {
         // Blocks with no inline ID should not conflict with each other.
         let doc = make_doc(vec![

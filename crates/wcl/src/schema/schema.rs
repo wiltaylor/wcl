@@ -4,7 +4,7 @@ use crate::lang::diagnostic::DiagnosticBag;
 use crate::lang::span::Span;
 use indexmap::IndexMap;
 use regex::Regex;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::schema::types::{check_type, type_name};
 
@@ -471,7 +471,7 @@ impl SchemaRegistry {
         &self,
         items: &[DocItem],
         values: &IndexMap<String, Value>,
-        block_ids: &HashMap<String, Vec<String>>,
+        block_ids: &BlockIdIndex,
         symbol_sets: &SymbolSetRegistry,
         diagnostics: &mut DiagnosticBag,
     ) {
@@ -483,6 +483,7 @@ impl SchemaRegistry {
                         block,
                         block_values.as_ref(),
                         block_ids,
+                        None,
                         None,
                         &HashMap::new(),
                         symbol_sets,
@@ -556,12 +557,22 @@ impl SchemaRegistry {
         &self,
         block: &Block,
         block_values: Option<&IndexMap<String, Value>>,
-        block_ids: &HashMap<String, Vec<String>>,
+        block_ids: &BlockIdIndex,
         parent_kind: Option<&str>,
+        parent_qualified_id: Option<&str>,
         kind_depths: &HashMap<String, usize>,
         symbol_sets: &SymbolSetRegistry,
         diagnostics: &mut DiagnosticBag,
     ) {
+        // Compute this block's qualified ID for scoped ref resolution.
+        let block_qid = block
+            .inline_id
+            .as_ref()
+            .and_then(inline_id_to_string)
+            .map(|bare_id| match parent_qualified_id {
+                Some(pqid) => format!("{}.{}", pqid, bare_id),
+                None => bare_id,
+            });
         let raw_child = &block.kind.name;
         let child_kind = self
             .namespace_aliases
@@ -747,6 +758,7 @@ impl SchemaRegistry {
                                     &field.name,
                                     attr.span,
                                     block_ids,
+                                    block_qid.as_deref(),
                                     diagnostics,
                                 );
                             }
@@ -989,6 +1001,7 @@ impl SchemaRegistry {
                         child_values.as_ref(),
                         block_ids,
                         Some(&block.kind.name),
+                        block_qid.as_deref(),
                         &child_depths,
                         symbol_sets,
                         diagnostics,
@@ -1372,7 +1385,8 @@ fn validate_ref(
     target_kind: &str,
     field_name: &str,
     span: Span,
-    block_ids: &HashMap<String, Vec<String>>,
+    block_ids: &BlockIdIndex,
+    current_qualified_id: Option<&str>,
     diagnostics: &mut DiagnosticBag,
 ) {
     let ref_id = match value {
@@ -1381,9 +1395,13 @@ fn validate_ref(
         _ => None,
     };
     if let Some(ref_id) = ref_id {
-        let ids = block_ids.get(target_kind);
-        let exists = ids.is_some_and(|ids| ids.contains(&ref_id));
-        if !exists {
+        // Resolve the ref ID using scoped resolution:
+        // 1. Handle `../` relative prefix
+        // 2. Try as peer in current scope (prepend parent's qualified ID)
+        // 3. Try as absolute qualified ID
+        // 4. Try as bare ID in kind's ID list (original behavior)
+        let resolved = resolve_ref_id(&ref_id, current_qualified_id, block_ids, target_kind);
+        if !resolved {
             diagnostics.error_with_code(
                 format!(
                     "reference '{}' in field '{}' does not match any '{}' block ID",
@@ -1394,6 +1412,72 @@ fn validate_ref(
             );
         }
     }
+}
+
+/// Resolve a ref ID using scoped lookup.
+///
+/// Returns `true` if the ID resolves to a valid block.
+fn resolve_ref_id(
+    ref_id: &str,
+    current_qualified_id: Option<&str>,
+    block_ids: &BlockIdIndex,
+    target_kind: &str,
+) -> bool {
+    // Step 1: Handle `../` relative prefix.
+    if ref_id.starts_with("../") {
+        let mut scope_parts: Vec<&str> = current_qualified_id
+            .map(|q| q.split('.').collect())
+            .unwrap_or_default();
+        let mut rest = ref_id;
+        while rest.starts_with("../") {
+            rest = &rest[3..];
+            scope_parts.pop(); // go up one level
+        }
+        // Construct the absolute qualified ID.
+        let absolute = if scope_parts.is_empty() {
+            rest.to_string()
+        } else {
+            format!("{}.{}", scope_parts.join("."), rest)
+        };
+        // Check qualified ID set.
+        if block_ids.qualified.contains(&absolute) {
+            return true;
+        }
+        // Also try as bare ID in kind list.
+        if let Some(ids) = block_ids.by_kind.get(target_kind) {
+            if ids.contains(&absolute) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Step 2: Try as bare ID in kind's ID list (original behavior).
+    if let Some(ids) = block_ids.by_kind.get(target_kind) {
+        if ids.contains(&ref_id.to_string()) {
+            return true;
+        }
+    }
+
+    // Step 3: Try as peer in current scope (prepend parent's qualified path).
+    if let Some(qid) = current_qualified_id {
+        // Parent scope is the qualified_id with the last segment removed.
+        let parent_path = qid.rsplit_once('.').map(|(p, _)| p);
+        let peer_qid = match parent_path {
+            Some(p) => format!("{}.{}", p, ref_id),
+            None => ref_id.to_string(), // already at root level
+        };
+        if block_ids.qualified.contains(&peer_qid) {
+            return true;
+        }
+    }
+
+    // Step 4: Try as absolute qualified path.
+    if block_ids.qualified.contains(ref_id) {
+        return true;
+    }
+
+    false
 }
 
 /// Simple structural equality for Value (used by one_of check).
@@ -1409,29 +1493,55 @@ fn values_equal(a: &Value, b: &Value) -> bool {
     }
 }
 
-/// Collect all block IDs from the document, grouped by block kind.
-fn collect_block_ids(items: &[DocItem]) -> HashMap<String, Vec<String>> {
-    let mut result: HashMap<String, Vec<String>> = HashMap::new();
-    for item in items {
-        if let DocItem::Body(BodyItem::Block(block)) = item {
-            collect_block_ids_recursive(block, &mut result);
-        }
-    }
-    result
+/// Collected block IDs: kind-grouped bare IDs and a flat set of all qualified IDs.
+struct BlockIdIndex {
+    /// Maps block kind → list of bare IDs (for `@ref("kind")` validation).
+    by_kind: HashMap<String, Vec<String>>,
+    /// Set of all qualified IDs (e.g. `"alpha"`, `"alpha.http"`).
+    qualified: HashSet<String>,
 }
 
-fn collect_block_ids_recursive(block: &Block, result: &mut HashMap<String, Vec<String>>) {
-    if let Some(ref inline_id) = block.inline_id {
-        if let Some(id_str) = inline_id_to_string(inline_id) {
-            result
-                .entry(block.kind.name.clone())
-                .or_default()
-                .push(id_str);
+/// Collect all block IDs from the document.
+fn collect_block_ids(items: &[DocItem]) -> BlockIdIndex {
+    let mut by_kind: HashMap<String, Vec<String>> = HashMap::new();
+    let mut qualified = HashSet::new();
+    for item in items {
+        if let DocItem::Body(BodyItem::Block(block)) = item {
+            collect_block_ids_recursive(block, None, &mut by_kind, &mut qualified);
         }
     }
+    BlockIdIndex { by_kind, qualified }
+}
+
+fn collect_block_ids_recursive(
+    block: &Block,
+    parent_path: Option<&str>,
+    by_kind: &mut HashMap<String, Vec<String>>,
+    qualified: &mut HashSet<String>,
+) {
+    let child_path = if let Some(ref inline_id) = block.inline_id {
+        if let Some(id_str) = inline_id_to_string(inline_id) {
+            by_kind
+                .entry(block.kind.name.clone())
+                .or_default()
+                .push(id_str.clone());
+
+            let qid = match parent_path {
+                Some(p) => format!("{}.{}", p, id_str),
+                None => id_str,
+            };
+            qualified.insert(qid.clone());
+            Some(qid)
+        } else {
+            parent_path.map(|s| s.to_string())
+        }
+    } else {
+        parent_path.map(|s| s.to_string())
+    };
+
     for item in &block.body {
         if let BodyItem::Block(child) = item {
-            collect_block_ids_recursive(child, result);
+            collect_block_ids_recursive(child, child_path.as_deref(), by_kind, qualified);
         }
     }
 }

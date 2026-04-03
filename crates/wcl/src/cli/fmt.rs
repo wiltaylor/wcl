@@ -636,9 +636,16 @@ impl<'a> Formatter<'a> {
             Expr::Query(_, _) => {
                 self.output.push_str("query(...)");
             }
-            Expr::Ref(id, _) => {
-                self.output.push_str(&format!("ref({})", id.value));
-            }
+            Expr::Ref(target, _) => match target {
+                RefTarget::Bare(id) => {
+                    self.output.push_str(&format!("ref({})", id.value));
+                }
+                RefTarget::Path(s) => {
+                    self.output.push_str("ref(");
+                    self.format_string_lit(s);
+                    self.output.push(')');
+                }
+            },
             Expr::ImportRaw(path, _) => {
                 self.output.push_str("import_raw(");
                 self.format_string_lit(path);

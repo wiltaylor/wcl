@@ -849,30 +849,43 @@ impl Parser {
         }
     }
 
-    /// Parse `ref(identifier)` expression.
+    /// Parse `ref(target)` expression.
+    ///
+    /// Accepts bare identifiers (`ref(alpha)`) or string paths (`ref("alpha.http")`, `ref("../beta")`).
     pub(crate) fn parse_ref_expr(&mut self) -> Option<Expr> {
         let start_span = self.current_span();
         self.advance(); // consume `ref`
         if self.expect(&TokenKind::LParen).is_err() {
             return None;
         }
-        // ref takes an identifier literal
-        let id_lit = match self.peek_kind().clone() {
+        let target = match self.peek_kind().clone() {
             TokenKind::IdentifierLit(ref val) => {
                 let val = val.clone();
                 let span = self.current_span();
                 self.advance();
-                IdentifierLit { value: val, span }
+                RefTarget::Bare(IdentifierLit { value: val, span })
             }
             TokenKind::Ident(ref val) => {
                 let val = val.clone();
                 let span = self.current_span();
                 self.advance();
-                IdentifierLit { value: val, span }
+                RefTarget::Bare(IdentifierLit { value: val, span })
+            }
+            TokenKind::StringLit(ref val) => {
+                let val = val.clone();
+                let span = self.current_span();
+                self.advance();
+                RefTarget::Path(StringLit {
+                    parts: vec![StringPart::Literal(val)],
+                    heredoc: None,
+                    span,
+                })
             }
             _ => {
-                self.diagnostics
-                    .error("expected identifier in ref()", self.current_span());
+                self.diagnostics.error(
+                    "expected identifier or string path in ref()",
+                    self.current_span(),
+                );
                 return None;
             }
         };
@@ -880,7 +893,7 @@ impl Parser {
             return None;
         }
         let span = start_span.merge(self.prev_span());
-        Some(Expr::Ref(id_lit, span))
+        Some(Expr::Ref(target, span))
     }
 
     /// Parse `import_raw("path")` expression.
