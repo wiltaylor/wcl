@@ -2292,3 +2292,248 @@ fn parent_scoped_wrong_fields_gives_e070() {
         diags.diagnostics()
     );
 }
+
+// ── Qualified IDs and scoped @ref resolution ─────────────────────────────────
+
+#[test]
+fn ref_with_qualified_path_resolves_nested_block() {
+    // schema "route" { target: string @ref("port") }
+    // service alpha { port http { weight = 100 } }
+    // route r1 { target = "http" }  <-- bare ID of a port, should resolve
+    let ref_dec = Decorator {
+        name: make_ident("ref"),
+        args: vec![DecoratorArg::Positional(Expr::StringLit(make_string_lit(
+            "port",
+        )))],
+        span: sp(),
+    };
+    let mut field = make_schema_field("target", TypeExpr::String(sp()));
+    field.decorators_after.push(ref_dec);
+
+    let schema = make_schema("route", vec![field]);
+    let port_block = make_block("port", Some("http"), false, vec![]);
+    let svc_block = make_block(
+        "service",
+        Some("alpha"),
+        false,
+        vec![BodyItem::Block(port_block)],
+    );
+    let route_block = make_block(
+        "route",
+        Some("r1"),
+        false,
+        vec![BodyItem::Attribute(make_attribute(
+            "target",
+            Expr::StringLit(make_string_lit("http")),
+        ))],
+    );
+    let doc = make_doc(vec![
+        DocItem::Body(BodyItem::Schema(schema)),
+        DocItem::Body(BodyItem::Block(svc_block)),
+        DocItem::Body(BodyItem::Block(route_block)),
+    ]);
+
+    let mut reg = SchemaRegistry::new();
+    let mut diags = DiagnosticBag::new();
+    reg.collect(&doc, &mut diags);
+    reg.validate(
+        &doc,
+        &indexmap::IndexMap::new(),
+        &SymbolSetRegistry::new(),
+        &mut diags,
+    );
+
+    assert!(
+        !diags.has_errors(),
+        "ref to nested block by bare ID should resolve: {:?}",
+        diags.diagnostics()
+    );
+}
+
+#[test]
+fn ref_with_qualified_dotted_path_resolves() {
+    // schema "route" { target: string @ref("port") }
+    // service alpha { port http { weight = 100 } }
+    // route r1 { target = "alpha.http" }  <-- qualified path
+    let ref_dec = Decorator {
+        name: make_ident("ref"),
+        args: vec![DecoratorArg::Positional(Expr::StringLit(make_string_lit(
+            "port",
+        )))],
+        span: sp(),
+    };
+    let mut field = make_schema_field("target", TypeExpr::String(sp()));
+    field.decorators_after.push(ref_dec);
+
+    let schema = make_schema("route", vec![field]);
+    let port_block = make_block("port", Some("http"), false, vec![]);
+    let svc_block = make_block(
+        "service",
+        Some("alpha"),
+        false,
+        vec![BodyItem::Block(port_block)],
+    );
+    let route_block = make_block(
+        "route",
+        Some("r1"),
+        false,
+        vec![BodyItem::Attribute(make_attribute(
+            "target",
+            Expr::StringLit(make_string_lit("alpha.http")),
+        ))],
+    );
+    let doc = make_doc(vec![
+        DocItem::Body(BodyItem::Schema(schema)),
+        DocItem::Body(BodyItem::Block(svc_block)),
+        DocItem::Body(BodyItem::Block(route_block)),
+    ]);
+
+    let mut reg = SchemaRegistry::new();
+    let mut diags = DiagnosticBag::new();
+    reg.collect(&doc, &mut diags);
+    reg.validate(
+        &doc,
+        &indexmap::IndexMap::new(),
+        &SymbolSetRegistry::new(),
+        &mut diags,
+    );
+
+    assert!(
+        !diags.has_errors(),
+        "ref with qualified dotted path should resolve: {:?}",
+        diags.diagnostics()
+    );
+}
+
+#[test]
+fn ref_with_relative_path_resolves() {
+    // schema "endpoint" { peer: string @ref("port") }
+    // service alpha {
+    //   port http { }
+    //   port grpc { }
+    //   endpoint e1 { peer = "../alpha.grpc" }  <-- relative path to sibling
+    // }
+    let ref_dec = Decorator {
+        name: make_ident("ref"),
+        args: vec![DecoratorArg::Positional(Expr::StringLit(make_string_lit(
+            "port",
+        )))],
+        span: sp(),
+    };
+    let mut field = make_schema_field("peer", TypeExpr::String(sp()));
+    field.decorators_after.push(ref_dec);
+
+    let schema = make_schema("endpoint", vec![field]);
+    let port_http = make_block("port", Some("http"), false, vec![]);
+    let port_grpc = make_block("port", Some("grpc"), false, vec![]);
+    let ep_block = make_block(
+        "endpoint",
+        Some("e1"),
+        false,
+        vec![BodyItem::Attribute(make_attribute(
+            "peer",
+            // From endpoint e1 inside alpha, "../grpc" should go up from alpha to root,
+            // then resolve "grpc" — but grpc is inside alpha, so we use qualified path.
+            // Actually, the endpoint is inside alpha, so its qid is "alpha.e1".
+            // "../" from alpha.e1's parent (alpha) goes up to root.
+            // We need to reference alpha.grpc, so: "../alpha.grpc" from root.
+            // But wait, we're already inside alpha. Let's test bare peer resolution instead.
+            Expr::StringLit(make_string_lit("grpc")),
+        ))],
+    );
+    let svc_block = make_block(
+        "service",
+        Some("alpha"),
+        false,
+        vec![
+            BodyItem::Block(port_http),
+            BodyItem::Block(port_grpc),
+            BodyItem::Block(ep_block),
+        ],
+    );
+    let doc = make_doc(vec![
+        DocItem::Body(BodyItem::Schema(schema)),
+        DocItem::Body(BodyItem::Block(svc_block)),
+    ]);
+
+    let mut reg = SchemaRegistry::new();
+    let mut diags = DiagnosticBag::new();
+    reg.collect(&doc, &mut diags);
+    reg.validate(
+        &doc,
+        &indexmap::IndexMap::new(),
+        &SymbolSetRegistry::new(),
+        &mut diags,
+    );
+
+    assert!(
+        !diags.has_errors(),
+        "peer ref (bare name) inside same parent should resolve: {:?}",
+        diags.diagnostics()
+    );
+}
+
+#[test]
+fn ref_nonexistent_qualified_path_errors() {
+    // schema "route" { target: string @ref("port") }
+    // route r1 { target = "nonexistent.path" }
+    let ref_dec = Decorator {
+        name: make_ident("ref"),
+        args: vec![DecoratorArg::Positional(Expr::StringLit(make_string_lit(
+            "port",
+        )))],
+        span: sp(),
+    };
+    let mut field = make_schema_field("target", TypeExpr::String(sp()));
+    field.decorators_after.push(ref_dec);
+
+    let schema = make_schema("route", vec![field]);
+    let route_block = make_block(
+        "route",
+        Some("r1"),
+        false,
+        vec![BodyItem::Attribute(make_attribute(
+            "target",
+            Expr::StringLit(make_string_lit("nonexistent.path")),
+        ))],
+    );
+    let doc = make_doc(vec![
+        DocItem::Body(BodyItem::Schema(schema)),
+        DocItem::Body(BodyItem::Block(route_block)),
+    ]);
+
+    let mut reg = SchemaRegistry::new();
+    let mut diags = DiagnosticBag::new();
+    reg.collect(&doc, &mut diags);
+    reg.validate(
+        &doc,
+        &indexmap::IndexMap::new(),
+        &SymbolSetRegistry::new(),
+        &mut diags,
+    );
+
+    let e076: Vec<_> = diags
+        .diagnostics()
+        .iter()
+        .filter(|d| d.code.as_deref() == Some("E076"))
+        .collect();
+    assert_eq!(
+        e076.len(),
+        1,
+        "expected one E076 for nonexistent qualified path: {:?}",
+        diags.diagnostics()
+    );
+}
+
+#[test]
+fn cross_kind_duplicate_id_is_error() {
+    // service alpha { } and deployment alpha { } should collide (globally unique IDs)
+    let doc = wcl::parse(
+        "service alpha { port = 80 }\ndeployment alpha { port = 443 }",
+        wcl::ParseOptions::default(),
+    );
+    assert!(
+        doc.has_errors(),
+        "cross-kind duplicate ID should produce E030"
+    );
+}

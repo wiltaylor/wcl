@@ -190,16 +190,18 @@ schema "deployment" {
     service_id: string @ref("service")
 }
 
-service "api" { port = 8080 }
+service api { port = 8080 }
 
-deployment "d1" {
-    service_id = "api"      // valid: service "api" exists
+deployment d1 {
+    service_id = "api"      // valid: service api exists
 }
 
-deployment "d2" {
+deployment d2 {
     service_id = "missing"  // error E076: no service "missing" found
 }
 ```
+
+Resolution supports scoped lookup: bare IDs match by kind, qualified dotted paths (`"alpha.http"`) resolve from root, and relative paths (`"../beta"`) navigate up the block hierarchy. See [Cross-References with @ref](schemas.md#cross-references-with-ref) for details.
 
 ## @partial_requires(fields)
 

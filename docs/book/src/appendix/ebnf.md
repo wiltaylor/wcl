@@ -174,7 +174,7 @@ import_util_expr = "import_table" "(" STRING_LIT { "," import_table_arg } ")"
                  | "import_raw" "(" STRING_LIT ")" ;
 import_table_arg = STRING_LIT | IDENT "=" expression ;
 
-ref_expr        = "ref" "(" IDENTIFIER_LIT ")" ;
+ref_expr        = "ref" "(" ( IDENTIFIER_LIT | IDENT | STRING_LIT ) ")" ;
 
 lambda_expr     = lambda_params "=>" ( expression | block_expr ) ;
 lambda_params   = IDENT

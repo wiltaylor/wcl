@@ -174,6 +174,33 @@ pub struct IdentifierLit {
     pub span: Span,
 }
 
+/// Target of a `ref(...)` expression. Either a bare identifier (`ref(alpha)`)
+/// or a string path supporting dots and `../` (`ref("alpha.http")`, `ref("../beta")`).
+#[derive(Debug, Clone)]
+pub enum RefTarget {
+    /// Bare identifier: `ref(alpha)`
+    Bare(IdentifierLit),
+    /// String path: `ref("alpha.http")` or `ref("../beta")`
+    Path(StringLit),
+}
+
+impl RefTarget {
+    pub fn span(&self) -> Span {
+        match self {
+            RefTarget::Bare(id) => id.span,
+            RefTarget::Path(s) => s.span,
+        }
+    }
+
+    /// Get the string value of this ref target.
+    pub fn value(&self) -> &str {
+        match self {
+            RefTarget::Bare(id) => &id.value,
+            RefTarget::Path(s) => s.as_str(),
+        }
+    }
+}
+
 /// Provenance information for heredoc string literals.
 #[derive(Debug, Clone)]
 pub struct HeredocInfo {
@@ -188,6 +215,16 @@ pub struct StringLit {
     pub parts: Vec<StringPart>,
     pub heredoc: Option<HeredocInfo>,
     pub span: Span,
+}
+
+impl StringLit {
+    /// Return the literal value if the string has no interpolations.
+    pub fn as_str(&self) -> &str {
+        match self.parts.as_slice() {
+            [StringPart::Literal(s)] => s.as_str(),
+            _ => "",
+        }
+    }
 }
 
 /// A segment of a string literal.
@@ -766,8 +803,9 @@ pub enum Expr {
     BlockExpr(Vec<LetBinding>, Box<Expr>, Span),
     /// Query expression: `query(pipeline)`
     Query(QueryPipeline, Span),
-    /// `ref(identifier_lit)` — a cross-reference to another block by ID
-    Ref(IdentifierLit, Span),
+    /// `ref(target)` — a cross-reference to another block by ID.
+    /// Accepts bare identifiers (`ref(alpha)`) or string paths (`ref("alpha.http")`, `ref("../beta")`).
+    Ref(RefTarget, Span),
     /// `import_raw("path")` — import file contents as a raw string
     ImportRaw(StringLit, Span),
     /// `import_table("path", ...)` — import a CSV/TSV file as a table

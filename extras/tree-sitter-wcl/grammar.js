@@ -562,9 +562,9 @@ export default grammar({
     import_raw_expression: ($) =>
       seq("import_raw", "(", $.string_literal, ")"),
 
-    // Ref expression
+    // Ref expression — accepts bare identifiers or string paths for qualified/relative refs
     ref_expression: ($) =>
-      seq("ref", "(", $.identifier_literal, ")"),
+      seq("ref", "(", choice($.identifier_literal, field("ident", $.identifier), $.string_literal), ")"),
 
     // Literals
     integer_literal: ($) =>

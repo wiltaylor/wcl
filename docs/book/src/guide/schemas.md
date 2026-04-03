@@ -126,7 +126,54 @@ schema "deployment" {
 }
 ```
 
-When a `deployment` block has `service_id = "api"`, WCL verifies that a `service "api"` block exists in the document.
+When a `deployment` block has `service_id = "api"`, WCL verifies that a `service api` block exists in the document.
+
+### Qualified IDs
+
+Nested blocks receive **qualified IDs** formed by joining ancestor inline IDs with dots. For example:
+
+```wcl
+service alpha {
+    port http {
+        weight = 100
+    }
+}
+```
+
+Here `http` has the qualified ID `alpha.http`. Qualified IDs are globally unique across all block kinds within a scope — you cannot have `service alpha` and `deployment alpha` in the same document.
+
+### Scoped Resolution
+
+When a `@ref` field value is resolved, WCL tries multiple strategies:
+
+1. **Bare ID** — matches any block of the target kind by its inline ID.
+2. **Peer lookup** — if the reference is inside a block, bare names are also tried as peers (siblings in the same parent scope).
+3. **Qualified path** — dotted paths like `"alpha.http"` resolve from the root.
+4. **Relative path** — `"../beta"` navigates up one level from the current block's parent scope, then resolves `beta` there.
+
+### Ref Expressions
+
+The `ref()` expression resolves a block reference at evaluation time:
+
+```wcl
+service alpha {
+    port http { weight = 100 }
+    port grpc { weight = 50 }
+}
+
+// Bare ID
+let svc = ref(alpha)
+
+// Qualified path (string syntax for dots)
+let p = ref("alpha.http")
+
+// Relative path from inside a block
+service beta {
+    sibling_port = ref("../alpha.http")
+}
+```
+
+Namespaces (`namespace foo::bar`) do not affect qualified IDs — they only qualify block kind names via `::` syntax.
 
 ## ID Naming Conventions with @id_pattern
 

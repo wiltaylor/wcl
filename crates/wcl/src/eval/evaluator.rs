@@ -30,6 +30,9 @@ pub struct Evaluator {
     schema_names: HashSet<String>,
     /// Namespace aliases from `use` declarations
     namespace_aliases: NamespaceAliases,
+    /// Maps scope IDs to the qualified ID of the block that owns them.
+    /// Used to compute qualified IDs for nested blocks.
+    scope_qualified_ids: HashMap<ScopeId, String>,
 }
 
 impl Evaluator {
@@ -46,6 +49,7 @@ impl Evaluator {
             imported_paths: HashSet::new(),
             schema_names: HashSet::new(),
             namespace_aliases: NamespaceAliases::default(),
+            scope_qualified_ids: HashMap::new(),
         }
     }
 
@@ -62,6 +66,7 @@ impl Evaluator {
             imported_paths: HashSet::new(),
             schema_names: HashSet::new(),
             namespace_aliases: NamespaceAliases::default(),
+            scope_qualified_ids: HashMap::new(),
         }
     }
 
@@ -87,6 +92,7 @@ impl Evaluator {
             imported_paths: HashSet::new(),
             schema_names: HashSet::new(),
             namespace_aliases: NamespaceAliases::default(),
+            scope_qualified_ids: HashMap::new(),
         }
     }
 
@@ -607,8 +613,8 @@ impl Evaluator {
                     }
                 }
             }
-            Expr::Ref(id, _) => {
-                deps.insert(id.value.clone());
+            Expr::Ref(target, _) => {
+                deps.insert(target.value().to_string());
             }
             _ => {} // literals, etc.
         }
@@ -706,21 +712,20 @@ impl Evaluator {
                 self.eval_expr(final_expr, block_scope)
             }
             Expr::Query(pipeline, span) => self.eval_query(pipeline, *span, scope_id),
-            Expr::Ref(id, span) => {
-                // Resolve block reference by identifier — search for a BlockChild
-                // entry whose name matches and return its evaluated Value::BlockRef.
-                let id_str = &id.value;
-                if let Some((_, entry)) = self.scopes.resolve(scope_id, id_str) {
-                    if entry.kind == ScopeEntryKind::BlockChild {
-                        if let Some(ref val) = entry.value {
-                            return Ok(val.clone());
+            Expr::Ref(target, span) => {
+                let id_str = target.value();
+                // Simple bare ID: resolve as BlockChild in current/parent scopes.
+                if !id_str.contains('.') && !id_str.starts_with("../") {
+                    if let Some((_, entry)) = self.scopes.resolve(scope_id, id_str) {
+                        if entry.kind == ScopeEntryKind::BlockChild {
+                            if let Some(ref val) = entry.value {
+                                return Ok(val.clone());
+                            }
                         }
                     }
                 }
-                Err(
-                    Diagnostic::error(format!("ref: block with id '{}' not found", id_str), *span)
-                        .with_code("E053"),
-                )
+                // Qualified or relative path: delegate to path resolver.
+                self.resolve_ref_path(id_str, scope_id, *span)
             }
             Expr::ImportRaw(path, span) => {
                 let path_str = self.eval_string_to_string(path, scope_id)?;
@@ -1560,6 +1565,22 @@ impl Evaluator {
 
         let child_scope = self.block_scope_map.get(&(parent_scope, name)).copied();
 
+        // Compute qualified ID from the parent scope's qualified ID.
+        let parent_qid = self.scope_qualified_ids.get(&parent_scope).cloned();
+        let inline_id_str = block.inline_id.as_ref().and_then(|id| match id {
+            InlineId::Literal(lit) => Some(lit.value.clone()),
+            InlineId::Interpolated(_) => None, // dynamic IDs can't form qualified paths
+        });
+        let qualified_id = inline_id_str.as_ref().map(|id| match &parent_qid {
+            Some(pqid) => format!("{}.{}", pqid, id),
+            None => id.clone(),
+        });
+
+        // Record this block's qualified ID for its child scope so nested blocks can use it.
+        if let (Some(cs), Some(ref qid)) = (child_scope, &qualified_id) {
+            self.scope_qualified_ids.insert(cs, qid.clone());
+        }
+
         if let Some(child_scope) = child_scope {
             // Evaluate entries inside the child scope (topo-sorted)
             self.evaluate_block_scope(&block.body, child_scope);
@@ -1667,6 +1688,7 @@ impl Evaluator {
                 .cloned()
                 .unwrap_or_else(|| block.kind.name.clone()),
             id: inline_id,
+            qualified_id,
             attributes,
             children,
             decorators,
@@ -1801,6 +1823,81 @@ impl Evaluator {
     }
 
     // ------------------------------------------------------------------
+    // Qualified / relative ref resolution
+    // ------------------------------------------------------------------
+
+    /// Resolve a ref path that may contain dots or `../` segments.
+    ///
+    /// Resolution order:
+    /// 1. If the path starts with `../`, walk up scope parents and then resolve
+    ///    the remainder.
+    /// 2. If the path contains `.`, split into segments and walk through
+    ///    BlockChild entries by name.
+    /// 3. Fall back to bare-id lookup in current/parent scopes.
+    fn resolve_ref_path(
+        &mut self,
+        path: &str,
+        scope_id: ScopeId,
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        // Handle relative `../` prefix: walk up scope chain.
+        let (resolved_scope, remainder) = if path.starts_with("../") {
+            let mut current_scope = scope_id;
+            let mut rest = path;
+            while rest.starts_with("../") {
+                rest = &rest[3..];
+                // Walk up two scope levels: one for the child scope of the current block,
+                // and one for the parent block's scope.
+                for _ in 0..2 {
+                    if let Some(parent) = self.scopes.parent(current_scope) {
+                        current_scope = parent;
+                    }
+                }
+            }
+            (current_scope, rest)
+        } else {
+            (scope_id, path)
+        };
+
+        // Split into dotted segments and walk through BlockChild entries.
+        let segments: Vec<&str> = remainder.split('.').collect();
+        let mut current_scope = resolved_scope;
+
+        for (i, segment) in segments.iter().enumerate() {
+            if let Some((_, entry)) = self.scopes.resolve(current_scope, segment) {
+                if entry.kind == ScopeEntryKind::BlockChild {
+                    if let Some(ref val) = entry.value {
+                        if i == segments.len() - 1 {
+                            return Ok(val.clone());
+                        }
+                        // Navigate into this block's child scope for next segment.
+                        if let Some(&child_scope) = self
+                            .block_scope_map
+                            .get(&(current_scope, segment.to_string()))
+                        {
+                            current_scope = child_scope;
+                            continue;
+                        }
+                    }
+                }
+            }
+            return Err(Diagnostic::error(
+                format!(
+                    "ref: block with id '{}' not found (segment '{}' in path '{}')",
+                    path, segment, path
+                ),
+                span,
+            )
+            .with_code("E076"));
+        }
+
+        Err(
+            Diagnostic::error(format!("ref: block with id '{}' not found", path), span)
+                .with_code("E076"),
+        )
+    }
+
+    // ------------------------------------------------------------------
     // Query evaluation
     // ------------------------------------------------------------------
 
@@ -1834,6 +1931,7 @@ impl Evaluator {
                                 Some(BlockRef {
                                     kind: "__row".to_string(),
                                     id: None,
+                                    qualified_id: None,
                                     attributes: m.clone(),
                                     children: Vec::new(),
                                     decorators: Vec::new(),
@@ -1847,6 +1945,7 @@ impl Evaluator {
                     blocks.push(BlockRef {
                         kind: "table".to_string(),
                         id: Some(entry.name.clone()),
+                        qualified_id: None,
                         attributes: indexmap::IndexMap::new(),
                         children,
                         decorators: Vec::new(),
@@ -2963,10 +3062,10 @@ mod tests {
             mk_attr(
                 "target",
                 Expr::Ref(
-                    IdentifierLit {
+                    RefTarget::Bare(IdentifierLit {
                         value: "svc-auth".to_string(),
                         span: ds(),
-                    },
+                    }),
                     ds(),
                 ),
             ),
@@ -3005,10 +3104,10 @@ mod tests {
                 "auth_port",
                 Expr::MemberAccess(
                     Box::new(Expr::Ref(
-                        IdentifierLit {
+                        RefTarget::Bare(IdentifierLit {
                             value: "svc-auth".to_string(),
                             span: ds(),
-                        },
+                        }),
                         ds(),
                     )),
                     mk_ident("port"),
@@ -3032,10 +3131,10 @@ mod tests {
         let mut ev = Evaluator::new();
         let scope = ev.scopes.create_scope(ScopeKind::Module, None);
         let expr = Expr::Ref(
-            IdentifierLit {
+            RefTarget::Bare(IdentifierLit {
                 value: "nonexistent".to_string(),
                 span: ds(),
-            },
+            }),
             ds(),
         );
         let err = ev.eval_expr(&expr, scope).unwrap_err();

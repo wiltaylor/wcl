@@ -38,6 +38,9 @@ pub enum Value {
 pub struct BlockRef {
     pub kind: String,
     pub id: Option<String>,
+    /// Fully qualified dotted ID path (e.g. `"alpha.http.health"`).
+    /// Built from ancestor inline IDs joined by `.`.
+    pub qualified_id: Option<String>,
     pub attributes: IndexMap<String, Value>,
     pub children: Vec<BlockRef>,
     pub decorators: Vec<DecoratorValue>,

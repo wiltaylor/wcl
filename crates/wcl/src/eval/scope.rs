@@ -84,6 +84,11 @@ impl ScopeArena {
         &self.scopes[id.0 as usize]
     }
 
+    /// Return the parent scope ID, if any.
+    pub fn parent(&self, id: ScopeId) -> Option<ScopeId> {
+        self.scopes[id.0 as usize].parent
+    }
+
     pub fn get_mut(&mut self, id: ScopeId) -> &mut Scope {
         &mut self.scopes[id.0 as usize]
     }

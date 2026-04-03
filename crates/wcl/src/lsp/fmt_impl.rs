@@ -651,9 +651,14 @@ impl<'a> Fmt<'a> {
                 self.expr(e);
                 self.out.push(')');
             }
-            Expr::Ref(id, _) => {
-                self.out.push_str(&format!("ref({})", id.value));
-            }
+            Expr::Ref(target, _) => match target {
+                RefTarget::Bare(id) => {
+                    self.out.push_str(&format!("ref({})", id.value));
+                }
+                RefTarget::Path(s) => {
+                    self.out.push_str(&format!("ref(\"{}\")", s.as_str()));
+                }
+            },
             _ => {
                 self.out.push_str("/* expr */");
             }

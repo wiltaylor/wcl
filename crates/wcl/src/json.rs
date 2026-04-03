@@ -50,6 +50,9 @@ pub fn block_ref_to_json(br: &BlockRef) -> serde_json::Value {
     if let Some(id) = &br.id {
         obj.insert("id".to_string(), json!(id));
     }
+    if let Some(qid) = &br.qualified_id {
+        obj.insert("qualified_id".to_string(), json!(qid));
+    }
     if !br.attributes.is_empty() {
         let attrs: serde_json::Map<String, serde_json::Value> = br
             .attributes
@@ -182,6 +185,7 @@ mod tests {
         let br = BlockRef {
             kind: "server".to_string(),
             id: Some("main".to_string()),
+            qualified_id: None,
             attributes: IndexMap::new(),
             children: vec![],
             decorators: vec![],

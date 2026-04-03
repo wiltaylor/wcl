@@ -47,6 +47,7 @@ mod tests {
         let br = wcl::BlockRef {
             kind: "server".to_string(),
             id: Some("main".to_string()),
+            qualified_id: None,
             attributes: IndexMap::new(),
             children: vec![],
             decorators: vec![],
