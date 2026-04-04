@@ -757,6 +757,7 @@ jobs:
         run: |
           just pack set-version "${{ needs.version.outputs.version }}"
           cargo publish -p wcl_lang --no-verify --allow-dirty
+          cargo publish -p wcl_wdoc --no-verify --allow-dirty
           cargo publish -p wcl_lsp --no-verify --allow-dirty
           cargo publish -p wcl --no-verify --allow-dirty
 

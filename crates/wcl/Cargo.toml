@@ -13,6 +13,10 @@ readme = "README.md"
 name = "wcl"
 path = "src/bin/wcl.rs"
 
+[features]
+default = ["wdoc"]
+wdoc = ["dep:wcl_wdoc"]
+
 [dependencies]
 # Language library
 wcl_lang = { workspace = true }
@@ -28,7 +32,7 @@ toml = "1"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 # Wdoc
-wcl_wdoc = { workspace = true }
+wcl_wdoc = { workspace = true, optional = true }
 
 # LSP
 wcl_lsp = { workspace = true }

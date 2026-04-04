@@ -75,6 +75,7 @@ mod table;
 mod transform;
 mod validate;
 mod vars;
+#[cfg(feature = "wdoc")]
 mod wdoc;
 
 #[derive(Parser)]
@@ -235,6 +236,7 @@ enum Commands {
         action: TransformAction,
     },
     /// Build, validate, or serve wdoc documentation
+    #[cfg(feature = "wdoc")]
     Wdoc {
         #[command(subcommand)]
         action: WdocAction,
@@ -264,6 +266,7 @@ enum TransformAction {
     },
 }
 
+#[cfg(feature = "wdoc")]
 #[derive(Subcommand)]
 enum WdocAction {
     /// Build wdoc to HTML
@@ -433,6 +436,7 @@ pub fn main() {
                 set,
             } => table::run_update(&file, &table_name, &condition, &set),
         },
+        #[cfg(feature = "wdoc")]
         Commands::Wdoc { action } => match action {
             WdocAction::Build {
                 files,
