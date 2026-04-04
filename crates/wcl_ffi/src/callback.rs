@@ -9,9 +9,9 @@ pub type WclCallbackFn =
     unsafe extern "C" fn(ctx: *mut c_void, args_json: *const c_char) -> *mut c_char;
 
 /// Wrap a C callback as a `BuiltinFn` suitable for WCL's function registry.
-pub fn make_builtin_fn(callback: WclCallbackFn, ctx: *mut c_void) -> wcl::BuiltinFn {
+pub fn make_builtin_fn(callback: WclCallbackFn, ctx: *mut c_void) -> wcl_lang::BuiltinFn {
     let wrapper = CallbackWrapper::new(callback, ctx);
-    Arc::new(move |args: &[wcl::Value]| wrapper.call(args))
+    Arc::new(move |args: &[wcl_lang::Value]| wrapper.call(args))
 }
 
 struct CallbackWrapper {
@@ -28,7 +28,7 @@ impl CallbackWrapper {
         Self { callback, ctx }
     }
 
-    fn call(&self, args: &[wcl::Value]) -> Result<wcl::Value, String> {
+    fn call(&self, args: &[wcl_lang::Value]) -> Result<wcl_lang::Value, String> {
         let json_args: Vec<serde_json::Value> = args.iter().map(value_to_json).collect();
         let args_str =
             serde_json::to_string(&json_args).map_err(|e| format!("serialize args: {}", e))?;

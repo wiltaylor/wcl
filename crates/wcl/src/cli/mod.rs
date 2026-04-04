@@ -386,12 +386,10 @@ pub fn main() {
                 Ok(rt) => {
                     if let Some(addr) = tcp {
                         rt.block_on(async {
-                            crate::lsp::start_tcp(&addr)
-                                .await
-                                .map_err(|e| e.to_string())
+                            wcl_lsp::start_tcp(&addr).await.map_err(|e| e.to_string())
                         })
                     } else {
-                        rt.block_on(crate::lsp::start_stdio());
+                        rt.block_on(wcl_lsp::start_stdio());
                         Ok(())
                     }
                 }

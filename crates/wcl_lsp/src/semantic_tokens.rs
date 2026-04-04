@@ -1,10 +1,10 @@
-use crate::lang::ast;
-use crate::lang::lexer::{Token, TokenKind};
 use async_lsp::lsp_types::{
     SemanticToken, SemanticTokenModifier, SemanticTokenType, SemanticTokensLegend,
 };
 use ropey::Rope;
 use std::collections::HashSet;
+use wcl_lang::lang::ast;
+use wcl_lang::lang::lexer::{Token, TokenKind};
 
 pub const TOKEN_TYPES: &[SemanticTokenType] = &[
     SemanticTokenType::KEYWORD,   // 0
@@ -432,12 +432,12 @@ pub fn compute_semantic_tokens(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lang::span::FileId;
+    use wcl_lang::lang::span::FileId;
 
     fn classify(source: &str) -> Vec<(u32, u32)> {
         let file_id = FileId(0);
-        let tokens = crate::lang::lexer::lex(source, file_id).unwrap();
-        let (doc, _) = crate::lang::parse(source, file_id);
+        let tokens = wcl_lang::lang::lexer::lex(source, file_id).unwrap();
+        let (doc, _) = wcl_lang::lang::parse(source, file_id);
         let rope = Rope::from_str(source);
         let sem = compute_semantic_tokens(&tokens, &rope, Some(&doc));
         sem.iter()

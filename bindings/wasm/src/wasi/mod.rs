@@ -4,7 +4,7 @@ mod registry;
 use std::ffi::CStr;
 use std::os::raw::c_char;
 use std::path::PathBuf;
-use wcl::json::{block_ref_to_json, diagnostic_to_json, value_to_json, values_to_json};
+use wcl_lang::json::{block_ref_to_json, diagnostic_to_json, value_to_json, values_to_json};
 
 // ── Memory management ────────────────────────────────────────────────────
 
@@ -43,8 +43,8 @@ unsafe fn read_c_str<'a>(ptr: *const c_char) -> &'a str {
     }
 }
 
-fn build_parse_options(options_json: *const c_char) -> wcl::ParseOptions {
-    let mut opts = wcl::ParseOptions::default();
+fn build_parse_options(options_json: *const c_char) -> wcl_lang::ParseOptions {
+    let mut opts = wcl_lang::ParseOptions::default();
     let json_str = unsafe { read_c_str(options_json) };
     if json_str.is_empty() {
         return opts;
@@ -72,7 +72,7 @@ fn build_parse_options(options_json: *const c_char) -> wcl::ParseOptions {
     }
     if let Some(vars) = json.get("variables").and_then(|v| v.as_object()) {
         for (key, val) in vars {
-            if let Ok(wcl_val) = wcl::json::json_to_value(val) {
+            if let Ok(wcl_val) = wcl_lang::json::json_to_value(val) {
                 opts.variables.insert(key.clone(), wcl_val);
             }
         }
@@ -86,7 +86,7 @@ fn build_parse_options(options_json: *const c_char) -> wcl::ParseOptions {
 pub extern "C" fn wcl_wasm_parse(source: *const c_char, options_json: *const c_char) -> u32 {
     let source = unsafe { read_c_str(source) };
     let opts = build_parse_options(options_json);
-    let doc = wcl::parse(source, opts);
+    let doc = wcl_lang::parse(source, opts);
     registry::store(doc)
 }
 
@@ -109,7 +109,7 @@ pub extern "C" fn wcl_wasm_parse_with_functions(
         }
     }
 
-    let doc = wcl::parse(source, opts);
+    let doc = wcl_lang::parse(source, opts);
     registry::store(doc)
 }
 

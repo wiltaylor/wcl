@@ -3,6 +3,8 @@ resolver = "2"
 exclude = ["extras/tree-sitter-wcl", "examples/rust", "editors/zed"]
 members = [
     "crates/wcl",
+    "crates/wcl_lang",
+    "crates/wcl_lsp",
     "crates/wcl_ffi",
     "crates/wcl_wdoc",
     "bindings/wasm",
@@ -18,6 +20,8 @@ repository = "https://github.com/wiltaylor/wcl"
 [workspace.dependencies]
 # Internal crates
 wcl = { path = "crates/wcl", version = "0.0.0-local" }
+wcl_lang = { path = "crates/wcl_lang", version = "0.0.0-local" }
+wcl_lsp = { path = "crates/wcl_lsp", version = "0.0.0-local" }
 wcl_wdoc = { path = "crates/wcl_wdoc", version = "0.0.0-local" }
 
 # External deps

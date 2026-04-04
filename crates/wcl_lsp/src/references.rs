@@ -1,11 +1,11 @@
-use crate::eval::{ScopeId, ScopeKind};
-use crate::lang::ast::*;
 use async_lsp::lsp_types::Location;
 use ropey::Rope;
+use wcl_lang::eval::{ScopeId, ScopeKind};
+use wcl_lang::lang::ast::*;
 
-use crate::lsp::ast_utils::{find_node_at_offset, NodeAtOffset};
-use crate::lsp::convert::span_to_lsp_range;
-use crate::lsp::state::AnalysisResult;
+use crate::ast_utils::{find_node_at_offset, NodeAtOffset};
+use crate::convert::span_to_lsp_range;
+use crate::state::AnalysisResult;
 
 pub fn find_references(
     analysis: &AnalysisResult,
@@ -26,7 +26,7 @@ pub fn find_references(
 
     // Handle SchemaName: find all blocks whose kind matches this schema name
     if let NodeAtOffset::SchemaName(schema) = &node {
-        let schema_name = crate::schema::schema::string_lit_to_string(&schema.name);
+        let schema_name = wcl_lang::schema::schema::string_lit_to_string(&schema.name);
         let mut locations = Vec::new();
         if include_declaration {
             locations.push(Location {
@@ -83,7 +83,7 @@ fn find_scope_constraint(
     analysis: &AnalysisResult,
     name: &str,
     offset: usize,
-) -> Option<crate::lang::span::Span> {
+) -> Option<wcl_lang::lang::span::Span> {
     // First, find which scope the cursor is in by finding the deepest scope
     // whose entry spans contain the offset.
     let def_scope_id = find_def_scope_for_offset(analysis, name, offset)?;
@@ -141,7 +141,7 @@ fn find_def_scope_for_offset(
 
 /// Walk the AST to find the smallest enclosing Block span that contains
 /// the given byte offset.
-fn find_enclosing_block_span(doc: &Document, offset: usize) -> Option<crate::lang::span::Span> {
+fn find_enclosing_block_span(doc: &Document, offset: usize) -> Option<wcl_lang::lang::span::Span> {
     let mut result = None;
     for item in &doc.items {
         if let DocItem::Body(body_item) = item {
@@ -154,7 +154,7 @@ fn find_enclosing_block_span(doc: &Document, offset: usize) -> Option<crate::lan
 fn find_enclosing_block_in_body(
     item: &BodyItem,
     offset: usize,
-    result: &mut Option<crate::lang::span::Span>,
+    result: &mut Option<wcl_lang::lang::span::Span>,
 ) {
     match item {
         BodyItem::Block(block) => {
@@ -208,7 +208,7 @@ fn find_enclosing_block_in_body(
     }
 }
 
-fn find_def_span(analysis: &AnalysisResult, name: &str) -> Option<crate::lang::span::Span> {
+fn find_def_span(analysis: &AnalysisResult, name: &str) -> Option<wcl_lang::lang::span::Span> {
     for scope in analysis.scopes.all_scopes() {
         if let Some(entry) = scope.entries.get(name) {
             if entry.span.start != 0 || entry.span.end != 0 {
@@ -524,11 +524,11 @@ fn collect_in_expr(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lsp::analysis::analyze;
+    use crate::analysis::analyze;
     use async_lsp::lsp_types::Url;
 
     fn get_refs(source: &str, offset: usize, include_decl: bool) -> Vec<Location> {
-        let analysis = analyze(source, &crate::ParseOptions::default());
+        let analysis = analyze(source, &wcl_lang::ParseOptions::default());
         let rope = Rope::from_str(source);
         let uri = Url::parse("file:///test.wcl").unwrap();
         find_references(&analysis, offset, &rope, &uri, include_decl)

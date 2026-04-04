@@ -19,18 +19,22 @@ cargo fmt --check
 
 When making changes to WCL (especially AST, parser, schema, or language features), update ALL of these:
 
-### Core `wcl` crate (`crates/wcl/src/`)
+### Language library `wcl_lang` (`crates/wcl_lang/src/`)
 - `lang/ast.rs` — AST types
 - `lang/parser/mod.rs` — parser
 - `schema/schema.rs` — schema resolution + validation
 - `schema/decorator.rs` — built-in decorator registry (register new decorators here)
 - `schema/tests/integration.rs` — integration tests
-- `cli/fmt.rs` — CLI formatter
-- `lsp/fmt_impl.rs` — LSP formatter
-- `lsp/semantic_tokens.rs` — semantic token collection
-- `lsp/ast_utils.rs` — AST navigation for LSP
-- `lsp/symbols.rs` — document symbol provider
 - All `Schema { ... }` construction sites need new fields (grep `Schema {`)
+
+### LSP `wcl_lsp` (`crates/wcl_lsp/src/`)
+- `fmt_impl.rs` — LSP formatter
+- `semantic_tokens.rs` — semantic token collection
+- `ast_utils.rs` — AST navigation for LSP
+- `symbols.rs` — document symbol provider
+
+### CLI `wcl` (`crates/wcl/src/`)
+- `cli/fmt.rs` — CLI formatter
 
 ### Tree-sitter grammar (`extras/tree-sitter-wcl/`)
 - `grammar.js` — add/update grammar rules

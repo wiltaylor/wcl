@@ -1128,7 +1128,7 @@ fn resolve_fields(
 
 // ── Helper functions (pub(crate) so decorator.rs can reuse them) ──────────────
 
-pub(crate) fn string_lit_to_string(s: &StringLit) -> String {
+pub fn string_lit_to_string(s: &StringLit) -> String {
     s.parts
         .iter()
         .map(|p| match p {

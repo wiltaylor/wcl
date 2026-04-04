@@ -9,7 +9,7 @@ use convert::{js_to_value, value_to_js, values_to_js};
 use fs::JsFileSystem;
 
 /// Build a result object: `{ values, hasErrors, diagnostics }`
-fn build_result(doc: &wcl::Document) -> JsValue {
+fn build_result(doc: &wcl_lang::Document) -> JsValue {
     let obj = js_sys::Object::new();
 
     let values = values_to_js(&doc.values);
@@ -54,8 +54,8 @@ fn build_result(doc: &wcl::Document) -> JsValue {
 }
 
 /// Extract ParseOptions from a JS options object.
-fn build_parse_options(options: Option<JsValue>) -> Result<wcl::ParseOptions, JsValue> {
-    let mut opts = wcl::ParseOptions::default();
+fn build_parse_options(options: Option<JsValue>) -> Result<wcl_lang::ParseOptions, JsValue> {
+    let mut opts = wcl_lang::ParseOptions::default();
 
     let options = match options {
         Some(ref v) if !v.is_null() && !v.is_undefined() => v,
@@ -117,7 +117,7 @@ fn build_parse_options(options: Option<JsValue>) -> Result<wcl::ParseOptions, Js
         if v.is_object() && !v.is_null() && !v.is_undefined() {
             let obj = js_sys::Object::from(v);
             let keys = js_sys::Object::keys(&obj);
-            let mut mem_fs = wcl::InMemoryFs::new();
+            let mut mem_fs = wcl_lang::InMemoryFs::new();
             for i in 0..keys.length() {
                 let key = keys.get(i);
                 if let Some(path) = key.as_string() {
@@ -180,16 +180,17 @@ fn build_parse_options(options: Option<JsValue>) -> Result<wcl::ParseOptions, Js
                     if let Ok(func_val) = js_sys::Reflect::get(&obj, &key) {
                         if func_val.is_function() {
                             let func = js_sys::Function::from(func_val);
-                            let builtin: wcl::BuiltinFn = Arc::new(move |args: &[wcl::Value]| {
-                                let js_args = js_sys::Array::new();
-                                for arg in args {
-                                    js_args.push(&value_to_js(arg));
-                                }
-                                let result = func
-                                    .apply(&JsValue::NULL, &js_args)
-                                    .map_err(|e| format!("JS function error: {:?}", e))?;
-                                js_to_value(&result)
-                            });
+                            let builtin: wcl_lang::BuiltinFn =
+                                Arc::new(move |args: &[wcl_lang::Value]| {
+                                    let js_args = js_sys::Array::new();
+                                    for arg in args {
+                                        js_args.push(&value_to_js(arg));
+                                    }
+                                    let result = func
+                                        .apply(&JsValue::NULL, &js_args)
+                                        .map_err(|e| format!("JS function error: {:?}", e))?;
+                                    js_to_value(&result)
+                                });
                             opts.functions.functions.insert(name, builtin);
                         }
                     }
@@ -207,7 +208,7 @@ fn build_parse_options(options: Option<JsValue>) -> Result<wcl::ParseOptions, Js
 #[wasm_bindgen]
 pub fn parse(source: &str, options: Option<JsValue>) -> Result<JsValue, JsValue> {
     let opts = build_parse_options(options)?;
-    let doc = wcl::parse(source, opts);
+    let doc = wcl_lang::parse(source, opts);
     Ok(build_result(&doc))
 }
 
@@ -218,7 +219,7 @@ pub fn parse(source: &str, options: Option<JsValue>) -> Result<JsValue, JsValue>
 #[wasm_bindgen(js_name = "parseValues")]
 pub fn parse_values(source: &str, options: Option<JsValue>) -> Result<JsValue, JsValue> {
     let opts = build_parse_options(options)?;
-    let doc = wcl::parse(source, opts);
+    let doc = wcl_lang::parse(source, opts);
     if doc.has_errors() {
         let messages: Vec<String> = doc.errors().iter().map(|d| d.message.clone()).collect();
         return Err(JsValue::from_str(&messages.join("; ")));
@@ -232,7 +233,7 @@ pub fn parse_values(source: &str, options: Option<JsValue>) -> Result<JsValue, J
 #[wasm_bindgen]
 pub fn query(source: &str, query_str: &str, options: Option<JsValue>) -> Result<JsValue, JsValue> {
     let opts = build_parse_options(options)?;
-    let doc = wcl::parse(source, opts);
+    let doc = wcl_lang::parse(source, opts);
     if doc.has_errors() {
         let messages: Vec<String> = doc.errors().iter().map(|d| d.message.clone()).collect();
         return Err(JsValue::from_str(&messages.join("; ")));

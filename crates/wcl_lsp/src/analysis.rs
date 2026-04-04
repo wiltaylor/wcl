@@ -1,37 +1,37 @@
-use crate::eval::{
+use wcl_lang::eval::{
     builtin_signatures, ControlFlowExpander, Evaluator, ImportResolver, MacroExpander,
     MacroRegistry, PartialMerger, RealFileSystem, ScopeEntry, ScopeEntryKind, ScopeKind,
 };
-use crate::lang::diagnostic::DiagnosticBag;
-use crate::lang::span::SourceMap;
-use crate::schema::{DecoratorSchemaRegistry, IdRegistry, SchemaRegistry};
+use wcl_lang::lang::diagnostic::DiagnosticBag;
+use wcl_lang::lang::span::SourceMap;
+use wcl_lang::schema::{DecoratorSchemaRegistry, IdRegistry, SchemaRegistry};
 
-use crate::lsp::state::AnalysisResult;
+use crate::state::AnalysisResult;
 
 /// Run the full WCL pipeline, retaining intermediate products for LSP features.
 /// This mirrors `crate::parse()` but keeps tokens, scopes, and macro registry.
-pub fn analyze(source: &str, options: &crate::ParseOptions) -> AnalysisResult {
+pub fn analyze(source: &str, options: &wcl_lang::ParseOptions) -> AnalysisResult {
     let mut source_map = SourceMap::new();
     let file_id = source_map.add_file("<input>".to_string(), source.to_string());
     let mut all_diagnostics = Vec::new();
 
     // Lex (retain tokens for semantic tokens)
-    let tokens = match crate::lang::lexer::lex(source, file_id) {
+    let tokens = match wcl_lang::lang::lexer::lex(source, file_id) {
         Ok(tokens) => tokens,
         Err(lex_errors) => {
             all_diagnostics.extend(lex_errors);
             return AnalysisResult {
-                ast: crate::lang::ast::Document {
+                ast: wcl_lang::lang::ast::Document {
                     items: Vec::new(),
-                    trivia: crate::lang::Trivia::empty(),
-                    span: crate::lang::Span::new(file_id, 0, source.len()),
+                    trivia: wcl_lang::lang::Trivia::empty(),
+                    span: wcl_lang::lang::Span::new(file_id, 0, source.len()),
                 },
                 tokens: Vec::new(),
                 source_map,
                 file_id,
                 diagnostics: all_diagnostics,
                 values: indexmap::IndexMap::new(),
-                scopes: crate::eval::ScopeArena::new(),
+                scopes: wcl_lang::eval::ScopeArena::new(),
                 schemas: SchemaRegistry::new(),
                 macro_registry: MacroRegistry::new(),
                 function_signatures: builtin_signatures(),
@@ -40,7 +40,7 @@ pub fn analyze(source: &str, options: &crate::ParseOptions) -> AnalysisResult {
     };
 
     // Parse
-    let parser = crate::lang::parser::Parser::new(tokens.clone());
+    let parser = wcl_lang::lang::parser::Parser::new(tokens.clone());
     let (mut doc, parse_diags) = parser.parse_document();
     all_diagnostics.extend(parse_diags.into_diagnostics());
 
@@ -53,7 +53,7 @@ pub fn analyze(source: &str, options: &crate::ParseOptions) -> AnalysisResult {
     // Import resolution
     if options.allow_imports {
         let fs = RealFileSystem;
-        let library_config = crate::eval::LibraryConfig {
+        let library_config = wcl_lang::eval::LibraryConfig {
             extra_paths: options.lib_paths.clone(),
             no_default_paths: options.no_default_lib_paths,
         };
@@ -72,7 +72,7 @@ pub fn analyze(source: &str, options: &crate::ParseOptions) -> AnalysisResult {
     // Phase 3a: Resolve import_table() expressions into inline tables
     {
         let mut diag_bag = DiagnosticBag::new();
-        crate::eval::resolve_import_tables(
+        wcl_lang::eval::resolve_import_tables(
             &mut doc,
             &RealFileSystem,
             &options.root_dir,
@@ -84,7 +84,7 @@ pub fn analyze(source: &str, options: &crate::ParseOptions) -> AnalysisResult {
     // Phase 3b: Namespace resolution
     let namespace_aliases = {
         let mut diag_bag = DiagnosticBag::new();
-        let aliases = crate::eval::namespaces::resolve(&mut doc, &mut diag_bag);
+        let aliases = wcl_lang::eval::namespaces::resolve(&mut doc, &mut diag_bag);
         all_diagnostics.extend(diag_bag.into_diagnostics());
         aliases
     };
@@ -105,8 +105,9 @@ pub fn analyze(source: &str, options: &crate::ParseOptions) -> AnalysisResult {
     {
         let mut eval = pre_eval.borrow_mut();
         for item in &doc.items {
-            if let crate::lang::ast::DocItem::Body(crate::lang::ast::BodyItem::LetBinding(lb)) =
-                item
+            if let wcl_lang::lang::ast::DocItem::Body(wcl_lang::lang::ast::BodyItem::LetBinding(
+                lb,
+            )) = item
             {
                 if let Ok(val) = eval.eval_expr(&lb.value, pre_scope) {
                     eval.scopes_mut().add_entry(
@@ -129,10 +130,11 @@ pub fn analyze(source: &str, options: &crate::ParseOptions) -> AnalysisResult {
     {
         let mut eval = pre_eval.borrow_mut();
         for item in &doc.items {
-            if let crate::lang::ast::DocItem::Body(crate::lang::ast::BodyItem::Table(table)) = item
+            if let wcl_lang::lang::ast::DocItem::Body(wcl_lang::lang::ast::BodyItem::Table(table)) =
+                item
             {
                 let name = table.inline_id.as_ref().and_then(|id| match id {
-                    crate::lang::ast::InlineId::Literal(lit) => Some(lit.value.clone()),
+                    wcl_lang::lang::ast::InlineId::Literal(lit) => Some(lit.value.clone()),
                     _ => None,
                 });
                 if let Some(name) = name {
@@ -147,18 +149,18 @@ pub fn analyze(source: &str, options: &crate::ParseOptions) -> AnalysisResult {
                                     if let Ok(val) = eval.eval_expr(&row.cells[i], pre_scope) {
                                         map.insert(col_name.clone(), val);
                                     } else {
-                                        map.insert(col_name.clone(), crate::eval::Value::Null);
+                                        map.insert(col_name.clone(), wcl_lang::eval::Value::Null);
                                     }
                                 }
                             }
-                            rows.push(crate::eval::Value::Map(map));
+                            rows.push(wcl_lang::eval::Value::Map(map));
                         }
                         eval.scopes_mut().add_entry(
                             pre_scope,
                             ScopeEntry {
                                 name,
                                 kind: ScopeEntryKind::TableEntry,
-                                value: Some(crate::eval::Value::List(rows)),
+                                value: Some(wcl_lang::eval::Value::List(rows)),
                                 span: table.span,
                                 dependencies: std::collections::HashSet::new(),
                                 evaluated: true,
@@ -205,14 +207,14 @@ pub fn analyze(source: &str, options: &crate::ParseOptions) -> AnalysisResult {
     schemas.namespace_aliases = namespace_aliases.aliases;
     let mut diag_bag = DiagnosticBag::new();
     schemas.collect(&doc, &mut diag_bag);
-    let mut symbol_sets = crate::schema::SymbolSetRegistry::new();
+    let mut symbol_sets = wcl_lang::schema::SymbolSetRegistry::new();
     symbol_sets.collect(&doc, &mut diag_bag);
     schemas.validate(&doc, &values, &symbol_sets, &mut diag_bag);
     all_diagnostics.extend(diag_bag.into_diagnostics());
 
     // Table validation
     let mut diag_bag = DiagnosticBag::new();
-    crate::schema::table::validate_tables(&doc, &mut diag_bag);
+    wcl_lang::schema::table::validate_tables(&doc, &mut diag_bag);
     all_diagnostics.extend(diag_bag.into_diagnostics());
 
     // ID uniqueness
@@ -223,7 +225,7 @@ pub fn analyze(source: &str, options: &crate::ParseOptions) -> AnalysisResult {
 
     // Document validation
     let mut diag_bag = DiagnosticBag::new();
-    crate::schema::document::validate_document(
+    wcl_lang::schema::document::validate_document(
         &doc,
         &mut Evaluator::with_functions(&options.functions, None, None),
         &mut diag_bag,
@@ -235,8 +237,8 @@ pub fn analyze(source: &str, options: &crate::ParseOptions) -> AnalysisResult {
     function_signatures.extend(options.functions.signatures.clone());
     // Extract signatures from `declare` statements in the document
     for item in &doc.items {
-        if let crate::lang::ast::DocItem::FunctionDecl(decl) = item {
-            function_signatures.push(crate::eval::FunctionSignature {
+        if let wcl_lang::lang::ast::DocItem::FunctionDecl(decl) = item {
+            function_signatures.push(wcl_lang::eval::FunctionSignature {
                 name: decl.name.name.clone(),
                 params: decl
                     .params
@@ -267,44 +269,46 @@ pub fn analyze(source: &str, options: &crate::ParseOptions) -> AnalysisResult {
     }
 }
 
-fn type_expr_to_string(te: &crate::lang::ast::TypeExpr) -> String {
+fn type_expr_to_string(te: &wcl_lang::lang::ast::TypeExpr) -> String {
     match te {
-        crate::lang::ast::TypeExpr::String(_) => "string".into(),
-        crate::lang::ast::TypeExpr::I8(_) => "i8".into(),
-        crate::lang::ast::TypeExpr::U8(_) => "u8".into(),
-        crate::lang::ast::TypeExpr::I16(_) => "i16".into(),
-        crate::lang::ast::TypeExpr::U16(_) => "u16".into(),
-        crate::lang::ast::TypeExpr::I32(_) => "i32".into(),
-        crate::lang::ast::TypeExpr::U32(_) => "u32".into(),
-        crate::lang::ast::TypeExpr::I64(_) => "i64".into(),
-        crate::lang::ast::TypeExpr::U64(_) => "u64".into(),
-        crate::lang::ast::TypeExpr::I128(_) => "i128".into(),
-        crate::lang::ast::TypeExpr::U128(_) => "u128".into(),
-        crate::lang::ast::TypeExpr::F32(_) => "f32".into(),
-        crate::lang::ast::TypeExpr::F64(_) => "f64".into(),
-        crate::lang::ast::TypeExpr::Date(_) => "date".into(),
-        crate::lang::ast::TypeExpr::Duration(_) => "duration".into(),
-        crate::lang::ast::TypeExpr::Bool(_) => "bool".into(),
-        crate::lang::ast::TypeExpr::Null(_) => "null".into(),
-        crate::lang::ast::TypeExpr::Identifier(_) => "identifier".into(),
-        crate::lang::ast::TypeExpr::Any(_) => "any".into(),
-        crate::lang::ast::TypeExpr::List(inner, _) => {
+        wcl_lang::lang::ast::TypeExpr::String(_) => "string".into(),
+        wcl_lang::lang::ast::TypeExpr::I8(_) => "i8".into(),
+        wcl_lang::lang::ast::TypeExpr::U8(_) => "u8".into(),
+        wcl_lang::lang::ast::TypeExpr::I16(_) => "i16".into(),
+        wcl_lang::lang::ast::TypeExpr::U16(_) => "u16".into(),
+        wcl_lang::lang::ast::TypeExpr::I32(_) => "i32".into(),
+        wcl_lang::lang::ast::TypeExpr::U32(_) => "u32".into(),
+        wcl_lang::lang::ast::TypeExpr::I64(_) => "i64".into(),
+        wcl_lang::lang::ast::TypeExpr::U64(_) => "u64".into(),
+        wcl_lang::lang::ast::TypeExpr::I128(_) => "i128".into(),
+        wcl_lang::lang::ast::TypeExpr::U128(_) => "u128".into(),
+        wcl_lang::lang::ast::TypeExpr::F32(_) => "f32".into(),
+        wcl_lang::lang::ast::TypeExpr::F64(_) => "f64".into(),
+        wcl_lang::lang::ast::TypeExpr::Date(_) => "date".into(),
+        wcl_lang::lang::ast::TypeExpr::Duration(_) => "duration".into(),
+        wcl_lang::lang::ast::TypeExpr::Bool(_) => "bool".into(),
+        wcl_lang::lang::ast::TypeExpr::Null(_) => "null".into(),
+        wcl_lang::lang::ast::TypeExpr::Identifier(_) => "identifier".into(),
+        wcl_lang::lang::ast::TypeExpr::Any(_) => "any".into(),
+        wcl_lang::lang::ast::TypeExpr::List(inner, _) => {
             format!("list({})", type_expr_to_string(inner))
         }
-        crate::lang::ast::TypeExpr::Map(k, v, _) => format!(
+        wcl_lang::lang::ast::TypeExpr::Map(k, v, _) => format!(
             "map({}, {})",
             type_expr_to_string(k),
             type_expr_to_string(v)
         ),
-        crate::lang::ast::TypeExpr::Set(inner, _) => format!("set({})", type_expr_to_string(inner)),
-        crate::lang::ast::TypeExpr::Ref(_, _) => "ref".into(),
-        crate::lang::ast::TypeExpr::Union(types, _) => {
+        wcl_lang::lang::ast::TypeExpr::Set(inner, _) => {
+            format!("set({})", type_expr_to_string(inner))
+        }
+        wcl_lang::lang::ast::TypeExpr::Ref(_, _) => "ref".into(),
+        wcl_lang::lang::ast::TypeExpr::Union(types, _) => {
             let parts: Vec<String> = types.iter().map(type_expr_to_string).collect();
             format!("union({})", parts.join(", "))
         }
-        crate::lang::ast::TypeExpr::Symbol(_) => "symbol".into(),
-        crate::lang::ast::TypeExpr::StructType(ident, _) => ident.name.clone(),
-        crate::lang::ast::TypeExpr::Pattern(_) => "pattern".into(),
+        wcl_lang::lang::ast::TypeExpr::Symbol(_) => "symbol".into(),
+        wcl_lang::lang::ast::TypeExpr::StructType(ident, _) => ident.name.clone(),
+        wcl_lang::lang::ast::TypeExpr::Pattern(_) => "pattern".into(),
     }
 }
 
@@ -314,7 +318,7 @@ mod tests {
 
     #[test]
     fn test_analyze_simple() {
-        let result = analyze("config { port = 8080 }", &crate::ParseOptions::default());
+        let result = analyze("config { port = 8080 }", &wcl_lang::ParseOptions::default());
         assert!(!result.ast.items.is_empty());
         assert!(!result.tokens.is_empty());
         assert!(
@@ -326,7 +330,7 @@ mod tests {
 
     #[test]
     fn test_analyze_with_error() {
-        let result = analyze("config { port = }", &crate::ParseOptions::default());
+        let result = analyze("config { port = }", &wcl_lang::ParseOptions::default());
         assert!(result.diagnostics.iter().any(|d| d.is_error()));
     }
 
@@ -334,7 +338,7 @@ mod tests {
     fn test_analyze_retains_scopes() {
         let result = analyze(
             "let x = 42\nconfig { port = x }",
-            &crate::ParseOptions::default(),
+            &wcl_lang::ParseOptions::default(),
         );
         // Scopes should have at least one entry
         assert!(result.scopes.all_entries().count() > 0);
@@ -342,20 +346,20 @@ mod tests {
 
     #[test]
     fn test_analyze_retains_tokens() {
-        let result = analyze("let x = 42", &crate::ParseOptions::default());
+        let result = analyze("let x = 42", &wcl_lang::ParseOptions::default());
         assert!(!result.tokens.is_empty());
     }
 
     #[test]
     fn test_analyze_retains_values() {
-        let result = analyze("port = 8080", &crate::ParseOptions::default());
+        let result = analyze("port = 8080", &wcl_lang::ParseOptions::default());
         assert!(result.values.contains_key("port"));
     }
 
     #[test]
     fn test_analyze_lex_error_returns_partial() {
         // Source with an unterminated string should not panic
-        let result = analyze("name = \"unterminated", &crate::ParseOptions::default());
+        let result = analyze("name = \"unterminated", &wcl_lang::ParseOptions::default());
         assert!(result.diagnostics.iter().any(|d| d.is_error()));
     }
 }

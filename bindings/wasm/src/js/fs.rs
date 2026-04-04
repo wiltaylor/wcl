@@ -1,5 +1,5 @@
 use std::path::{Path, PathBuf};
-use wcl::FileSystem;
+use wcl_lang::FileSystem;
 
 /// Normalize a path by resolving `.` and `..` without touching the filesystem.
 fn normalize_path(path: &Path) -> PathBuf {

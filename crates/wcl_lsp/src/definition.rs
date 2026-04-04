@@ -1,12 +1,12 @@
 use std::path::Path;
 
-use crate::lang::ast;
 use async_lsp::lsp_types::{GotoDefinitionResponse, Location, Url};
 use ropey::Rope;
+use wcl_lang::lang::ast;
 
-use crate::lsp::ast_utils::{find_node_at_offset, NodeAtOffset};
-use crate::lsp::convert::span_to_lsp_range;
-use crate::lsp::state::AnalysisResult;
+use crate::ast_utils::{find_node_at_offset, NodeAtOffset};
+use crate::convert::span_to_lsp_range;
+use crate::state::AnalysisResult;
 
 pub fn goto_definition(
     analysis: &AnalysisResult,
@@ -84,10 +84,13 @@ pub fn goto_type_definition(
 }
 
 /// Walk AST to find a Schema whose name matches `target_name`, returning its name span.
-fn find_schema_in_ast(doc: &ast::Document, target_name: &str) -> Option<crate::lang::span::Span> {
+fn find_schema_in_ast(
+    doc: &ast::Document,
+    target_name: &str,
+) -> Option<wcl_lang::lang::span::Span> {
     for item in &doc.items {
         if let ast::DocItem::Body(ast::BodyItem::Schema(schema)) = item {
-            let name = crate::schema::schema::string_lit_to_string(&schema.name);
+            let name = wcl_lang::schema::schema::string_lit_to_string(&schema.name);
             if name == target_name {
                 return Some(schema.span);
             }
@@ -116,10 +119,10 @@ fn resolve_import_path(import: &ast::Import, current_uri: &Url) -> Option<GotoDe
 
     let resolved = if import.kind == ast::ImportKind::Library {
         // Search library paths
-        crate::eval::resolve_library_import(
+        wcl_lang::eval::resolve_library_import(
             &path_str,
-            &crate::eval::RealFileSystem,
-            &crate::eval::LibraryConfig::default(),
+            &wcl_lang::eval::RealFileSystem,
+            &wcl_lang::eval::LibraryConfig::default(),
         )?
     } else {
         let import_path = Path::new(&path_str);
@@ -140,7 +143,7 @@ fn resolve_import_path(import: &ast::Import, current_uri: &Url) -> Option<GotoDe
 }
 
 /// Recursively walk AST items to find a MacroDef with the given name.
-fn find_macro_def(items: &[ast::DocItem], name: &str) -> Option<crate::lang::span::Span> {
+fn find_macro_def(items: &[ast::DocItem], name: &str) -> Option<wcl_lang::lang::span::Span> {
     for item in items {
         if let ast::DocItem::Body(body_item) = item {
             if let Some(span) = find_macro_def_in_body(body_item, name) {
@@ -151,7 +154,7 @@ fn find_macro_def(items: &[ast::DocItem], name: &str) -> Option<crate::lang::spa
     None
 }
 
-fn find_macro_def_in_body(item: &ast::BodyItem, name: &str) -> Option<crate::lang::span::Span> {
+fn find_macro_def_in_body(item: &ast::BodyItem, name: &str) -> Option<wcl_lang::lang::span::Span> {
     match item {
         ast::BodyItem::MacroDef(md) if md.name.name == name => Some(md.span),
         ast::BodyItem::Block(block) => {
@@ -169,13 +172,13 @@ fn find_macro_def_in_body(item: &ast::BodyItem, name: &str) -> Option<crate::lan
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lsp::analysis::analyze;
+    use crate::analysis::analyze;
     use async_lsp::lsp_types::Url;
 
     #[test]
     fn test_goto_definition_let_binding() {
         let source = "let x = 42\nconfig { port = x }";
-        let analysis = analyze(source, &crate::ParseOptions::default());
+        let analysis = analyze(source, &wcl_lang::ParseOptions::default());
         let rope = Rope::from_str(source);
         let uri = Url::parse("file:///test.wcl").unwrap();
         // 'x' reference at offset 24 (in "port = x")
@@ -187,7 +190,7 @@ mod tests {
     #[test]
     fn test_goto_definition_none_for_literal() {
         let source = "config { port = 8080 }";
-        let analysis = analyze(source, &crate::ParseOptions::default());
+        let analysis = analyze(source, &wcl_lang::ParseOptions::default());
         let rope = Rope::from_str(source);
         let uri = Url::parse("file:///test.wcl").unwrap();
         // Offset at "8080" — no definition
@@ -199,7 +202,7 @@ mod tests {
     #[test]
     fn test_goto_definition_attribute() {
         let source = "server { host = \"localhost\" }";
-        let analysis = analyze(source, &crate::ParseOptions::default());
+        let analysis = analyze(source, &wcl_lang::ParseOptions::default());
         let rope = Rope::from_str(source);
         let uri = Url::parse("file:///test.wcl").unwrap();
         // Click on the attribute name "host"
@@ -218,7 +221,7 @@ mod tests {
     fn test_goto_definition_import_relative() {
         // Parse a source with an import — the parser produces an Import node
         let source = r#"import "./other.wcl""#;
-        let analysis = analyze(source, &crate::ParseOptions::default());
+        let analysis = analyze(source, &wcl_lang::ParseOptions::default());
         let rope = Rope::from_str(source);
         // Use a file URI with a directory so relative resolution works
         let uri = Url::parse("file:///home/user/project/main.wcl").unwrap();
@@ -239,7 +242,7 @@ mod tests {
     #[test]
     fn test_goto_definition_block_kind_returns_none() {
         let source = "server { port = 8080 }";
-        let analysis = analyze(source, &crate::ParseOptions::default());
+        let analysis = analyze(source, &wcl_lang::ParseOptions::default());
         let rope = Rope::from_str(source);
         let uri = Url::parse("file:///test.wcl").unwrap();
         // Click on the block kind "server" — should return None (it's not a reference)
@@ -251,7 +254,7 @@ mod tests {
     #[test]
     fn test_goto_type_definition_block_to_schema() {
         let source = "schema \"server\" {\n    port: i64\n}\nserver web { port = 8080 }";
-        let analysis = analyze(source, &crate::ParseOptions::default());
+        let analysis = analyze(source, &wcl_lang::ParseOptions::default());
         let rope = Rope::from_str(source);
         let uri = Url::parse("file:///test.wcl").unwrap();
         // Click on "server" block kind → should navigate to the schema
@@ -266,7 +269,7 @@ mod tests {
     #[test]
     fn test_goto_type_definition_no_schema() {
         let source = "server web { port = 8080 }";
-        let analysis = analyze(source, &crate::ParseOptions::default());
+        let analysis = analyze(source, &wcl_lang::ParseOptions::default());
         let rope = Rope::from_str(source);
         let uri = Url::parse("file:///test.wcl").unwrap();
         let offset = source.find("server").unwrap();

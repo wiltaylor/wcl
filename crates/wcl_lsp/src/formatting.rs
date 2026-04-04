@@ -1,15 +1,15 @@
-use crate::lang::span::FileId;
 use async_lsp::lsp_types::{Position, Range, TextEdit};
+use wcl_lang::lang::span::FileId;
 
 /// Format a WCL document and return a single TextEdit replacing the full document.
 pub fn format_document(source: &str) -> Option<Vec<TextEdit>> {
     let file_id = FileId(0);
-    let (doc, diags) = crate::lang::parse(source, file_id);
+    let (doc, diags) = wcl_lang::lang::parse(source, file_id);
     if diags.has_errors() {
         return None;
     }
 
-    let formatted = crate::lsp::fmt_impl::format_document(&doc);
+    let formatted = crate::fmt_impl::format_document(&doc);
     if formatted == source {
         return Some(Vec::new());
     }

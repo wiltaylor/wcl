@@ -1,0 +1,37 @@
+[package]
+name = "wcl_lang"
+version.workspace = true
+edition = "2021"
+license.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+repository.workspace = true
+description = "WCL (Wil's Configuration Language) — language library: parser, evaluator, schema, serde"
+
+[dependencies]
+# Core deps
+nom = { workspace = true }
+miette = { workspace = true }
+thiserror = { workspace = true }
+
+# Eval deps
+regex = { workspace = true }
+sha2 = { workspace = true }
+base64 = { workspace = true }
+glob = { workspace = true }
+
+# Shared deps
+indexmap = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Codec / format deps (used by transform module)
+serde_yaml_ng = "0.10"
+toml = "1"
+csv = "1"
+hcl-rs = "0.18"
+quick-xml = { version = "0.37", features = ["serialize"] }
+rmp-serde = "1"
+
+[dev-dependencies]
+serde_json = { workspace = true }

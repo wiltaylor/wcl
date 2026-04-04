@@ -1,4 +1,4 @@
-pub use wcl::json::{
+pub use wcl_lang::json::{
     block_ref_to_json, diagnostic_to_json, json_to_value, value_to_json, values_to_json,
 };
 
@@ -6,7 +6,7 @@ pub use wcl::json::{
 mod tests {
     use super::*;
     use indexmap::IndexMap;
-    use wcl::Value;
+    use wcl_lang::Value;
 
     #[test]
     fn test_value_roundtrip_primitives() {
@@ -44,14 +44,14 @@ mod tests {
 
     #[test]
     fn test_block_ref_to_json() {
-        let br = wcl::BlockRef {
+        let br = wcl_lang::BlockRef {
             kind: "server".to_string(),
             id: Some("main".to_string()),
             qualified_id: None,
             attributes: IndexMap::new(),
             children: vec![],
             decorators: vec![],
-            span: wcl::Span::dummy(),
+            span: wcl_lang::Span::dummy(),
         };
         let json = block_ref_to_json(&br);
         assert_eq!(json["kind"], "server");
