@@ -191,6 +191,7 @@ all-platforms: rust-release ffi-all go zig-all python wasm dotnet jvm ruby vscod
 # Publish Rust crates in dependency order
 rust-publish:
     cargo publish -p wcl_lang
+    cargo publish -p wcl_wdoc
     cargo publish -p wcl_lsp
     cargo publish -p wcl
 
