@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use wcl::json::{json_to_value, value_to_json};
+use wcl_lang::json::{json_to_value, value_to_json};
 
 extern "C" {
     fn host_call_function(
@@ -13,8 +13,8 @@ extern "C" {
 }
 
 #[allow(unused_unsafe)]
-pub fn make_builtin_fn(name: String) -> wcl::BuiltinFn {
-    Arc::new(move |args: &[wcl::Value]| {
+pub fn make_builtin_fn(name: String) -> wcl_lang::BuiltinFn {
+    Arc::new(move |args: &[wcl_lang::Value]| {
         let args_json: Vec<serde_json::Value> = args.iter().map(value_to_json).collect();
         let args_str = serde_json::Value::Array(args_json).to_string();
 
@@ -47,7 +47,7 @@ pub fn make_builtin_fn(name: String) -> wcl::BuiltinFn {
         }
 
         if result_ptr.is_null() || result_len == 0 {
-            return Ok(wcl::Value::Null);
+            return Ok(wcl_lang::Value::Null);
         }
 
         let bytes = unsafe { std::slice::from_raw_parts(result_ptr, result_len as usize) };

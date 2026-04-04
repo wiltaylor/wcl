@@ -1,6 +1,6 @@
 use js_sys::{Array, Object, Reflect, Set};
 use wasm_bindgen::JsValue;
-use wcl::Value;
+use wcl_lang::Value;
 
 /// Convert a WCL Value to a JsValue.
 pub fn value_to_js(value: &Value) -> JsValue {

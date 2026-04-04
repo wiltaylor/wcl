@@ -1,5 +1,5 @@
-use crate::lang::ast::*;
-use crate::lang::span::Span;
+use wcl_lang::lang::ast::*;
+use wcl_lang::lang::span::Span;
 
 /// Describes which AST node was found at a given byte offset.
 #[derive(Debug)]
@@ -474,11 +474,11 @@ fn find_in_expr<'a>(expr: &'a Expr, offset: usize) -> NodeAtOffset<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lang::span::FileId;
+    use wcl_lang::lang::span::FileId;
 
     fn parse_and_find(source: &str, offset: usize) -> String {
         let file = FileId(0);
-        let (doc, _) = crate::lang::parse(source, file);
+        let (doc, _) = wcl_lang::lang::parse(source, file);
         let node = find_node_at_offset(&doc, offset);
         match node {
             NodeAtOffset::IdentRef(i) => format!("IdentRef({})", i.name),

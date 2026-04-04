@@ -14,44 +14,29 @@ name = "wcl"
 path = "src/bin/wcl.rs"
 
 [dependencies]
-# Core deps
-nom = { workspace = true }
-miette = { workspace = true }
-thiserror = { workspace = true }
+# Language library
+wcl_lang = { workspace = true }
 
-# Eval deps
-regex = { workspace = true }
-sha2 = { workspace = true }
-base64 = { workspace = true }
-glob = { workspace = true }
-
-# Shared deps
+# Shared deps (used directly by CLI)
 indexmap = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
-# Codec / format deps
+# Codec deps (used by CLI convert/eval commands)
 serde_yaml_ng = "0.10"
 toml = "1"
-csv = "1"
-hcl-rs = "0.18"
-quick-xml = { version = "0.37", features = ["serialize"] }
-rmp-serde = "1"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 # Wdoc
 wcl_wdoc = { workspace = true }
 
-# LSP deps
-async-lsp = { workspace = true }
-futures = { workspace = true }
-tower = { workspace = true }
-tokio = { workspace = true }
-tokio-util = { workspace = true }
-ropey = { workspace = true }
+# LSP
+wcl_lsp = { workspace = true }
 
 # CLI deps
 clap = { workspace = true }
+tokio = { workspace = true }
+miette = { workspace = true }
 
 [dev-dependencies]
 criterion = { workspace = true }

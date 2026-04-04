@@ -1,6 +1,6 @@
 use async_lsp::lsp_types::{CompletionItem, CompletionItemKind};
 
-use crate::lsp::state::AnalysisResult;
+use crate::state::AnalysisResult;
 
 /// Built-in WCL keywords
 const KEYWORDS: &[&str] = &[
@@ -95,10 +95,11 @@ pub fn completions(analysis: &AnalysisResult, source: &str, offset: usize) -> Ve
             }
             // Add attribute macros from the registry
             for item in &analysis.ast.items {
-                if let crate::lang::ast::DocItem::Body(crate::lang::ast::BodyItem::MacroDef(md)) =
-                    item
+                if let wcl_lang::lang::ast::DocItem::Body(
+                    wcl_lang::lang::ast::BodyItem::MacroDef(md),
+                ) = item
                 {
-                    if md.kind == crate::lang::ast::MacroKind::Attribute {
+                    if md.kind == wcl_lang::lang::ast::MacroKind::Attribute {
                         items.push(CompletionItem {
                             label: md.name.name.clone(),
                             kind: Some(CompletionItemKind::PROPERTY),
@@ -121,7 +122,7 @@ pub fn completions(analysis: &AnalysisResult, source: &str, offset: usize) -> Ve
             }
             // Also add attribute names from scope entries
             for (_, entry) in analysis.scopes.all_entries() {
-                if entry.kind == crate::eval::ScopeEntryKind::Attribute {
+                if entry.kind == wcl_lang::eval::ScopeEntryKind::Attribute {
                     items.push(CompletionItem {
                         label: entry.name.clone(),
                         kind: Some(CompletionItemKind::PROPERTY),
@@ -137,12 +138,16 @@ pub fn completions(analysis: &AnalysisResult, source: &str, offset: usize) -> Ve
                 items.push(CompletionItem {
                     label: entry.name.clone(),
                     kind: Some(match entry.kind {
-                        crate::eval::ScopeEntryKind::LetBinding
-                        | crate::eval::ScopeEntryKind::ExportLet
-                        | crate::eval::ScopeEntryKind::IteratorVar => CompletionItemKind::VARIABLE,
-                        crate::eval::ScopeEntryKind::Attribute
-                        | crate::eval::ScopeEntryKind::TableEntry => CompletionItemKind::PROPERTY,
-                        crate::eval::ScopeEntryKind::BlockChild => CompletionItemKind::CLASS,
+                        wcl_lang::eval::ScopeEntryKind::LetBinding
+                        | wcl_lang::eval::ScopeEntryKind::ExportLet
+                        | wcl_lang::eval::ScopeEntryKind::IteratorVar => {
+                            CompletionItemKind::VARIABLE
+                        }
+                        wcl_lang::eval::ScopeEntryKind::Attribute
+                        | wcl_lang::eval::ScopeEntryKind::TableEntry => {
+                            CompletionItemKind::PROPERTY
+                        }
+                        wcl_lang::eval::ScopeEntryKind::BlockChild => CompletionItemKind::CLASS,
                     }),
                     ..Default::default()
                 });
@@ -162,12 +167,16 @@ pub fn completions(analysis: &AnalysisResult, source: &str, offset: usize) -> Ve
                 items.push(CompletionItem {
                     label: entry.name.clone(),
                     kind: Some(match entry.kind {
-                        crate::eval::ScopeEntryKind::LetBinding
-                        | crate::eval::ScopeEntryKind::ExportLet
-                        | crate::eval::ScopeEntryKind::IteratorVar => CompletionItemKind::VARIABLE,
-                        crate::eval::ScopeEntryKind::Attribute
-                        | crate::eval::ScopeEntryKind::TableEntry => CompletionItemKind::PROPERTY,
-                        crate::eval::ScopeEntryKind::BlockChild => CompletionItemKind::CLASS,
+                        wcl_lang::eval::ScopeEntryKind::LetBinding
+                        | wcl_lang::eval::ScopeEntryKind::ExportLet
+                        | wcl_lang::eval::ScopeEntryKind::IteratorVar => {
+                            CompletionItemKind::VARIABLE
+                        }
+                        wcl_lang::eval::ScopeEntryKind::Attribute
+                        | wcl_lang::eval::ScopeEntryKind::TableEntry => {
+                            CompletionItemKind::PROPERTY
+                        }
+                        wcl_lang::eval::ScopeEntryKind::BlockChild => CompletionItemKind::CLASS,
                     }),
                     ..Default::default()
                 });
@@ -384,11 +393,13 @@ fn is_in_string_or_comment(before: &str) -> bool {
 }
 
 fn collect_block_kinds(
-    doc: &crate::lang::ast::Document,
+    doc: &wcl_lang::lang::ast::Document,
     seen: &mut std::collections::HashSet<String>,
 ) {
     for item in &doc.items {
-        if let crate::lang::ast::DocItem::Body(crate::lang::ast::BodyItem::Block(block)) = item {
+        if let wcl_lang::lang::ast::DocItem::Body(wcl_lang::lang::ast::BodyItem::Block(block)) =
+            item
+        {
             seen.insert(block.kind.name.clone());
             collect_block_kinds_in_body(&block.body, seen);
         }
@@ -398,10 +409,10 @@ fn collect_block_kinds(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lsp::analysis::analyze;
+    use crate::analysis::analyze;
 
     fn get_completions(source: &str, offset: usize) -> Vec<CompletionItem> {
-        let analysis = analyze(source, &crate::ParseOptions::default());
+        let analysis = analyze(source, &wcl_lang::ParseOptions::default());
         completions(&analysis, source, offset)
     }
 
@@ -503,11 +514,11 @@ mod tests {
 }
 
 fn collect_block_kinds_in_body(
-    body: &[crate::lang::ast::BodyItem],
+    body: &[wcl_lang::lang::ast::BodyItem],
     seen: &mut std::collections::HashSet<String>,
 ) {
     for item in body {
-        if let crate::lang::ast::BodyItem::Block(block) = item {
+        if let wcl_lang::lang::ast::BodyItem::Block(block) = item {
             seen.insert(block.kind.name.clone());
             collect_block_kinds_in_body(&block.body, seen);
         }

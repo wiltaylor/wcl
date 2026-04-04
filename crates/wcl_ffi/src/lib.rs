@@ -50,12 +50,12 @@ unsafe fn c_str_to_str<'a>(ptr: *const c_char) -> &'a str {
     }
 }
 
-fn as_doc(ptr: *const WclDocument) -> &'static wcl::Document {
-    unsafe { &*(ptr as *const wcl::Document) }
+fn as_doc(ptr: *const WclDocument) -> &'static wcl_lang::Document {
+    unsafe { &*(ptr as *const wcl_lang::Document) }
 }
 
-fn build_parse_options(options_json: *const c_char) -> wcl::ParseOptions {
-    let mut opts = wcl::ParseOptions::default();
+fn build_parse_options(options_json: *const c_char) -> wcl_lang::ParseOptions {
+    let mut opts = wcl_lang::ParseOptions::default();
     let json_str = unsafe { c_str_to_str(options_json) };
     if json_str.is_empty() {
         return opts;
@@ -83,7 +83,7 @@ fn build_parse_options(options_json: *const c_char) -> wcl::ParseOptions {
     }
     if let Some(vars) = json.get("variables").and_then(|v| v.as_object()) {
         for (key, val) in vars {
-            if let Ok(wcl_val) = wcl::json::json_to_value(val) {
+            if let Ok(wcl_val) = wcl_lang::json::json_to_value(val) {
                 opts.variables.insert(key.clone(), wcl_val);
             }
         }
@@ -91,7 +91,7 @@ fn build_parse_options(options_json: *const c_char) -> wcl::ParseOptions {
     opts
 }
 
-fn doc_into_ptr(doc: wcl::Document) -> *mut WclDocument {
+fn doc_into_ptr(doc: wcl_lang::Document) -> *mut WclDocument {
     Box::into_raw(Box::new(doc)) as *mut WclDocument
 }
 
@@ -108,7 +108,7 @@ pub extern "C" fn wcl_ffi_parse(
 ) -> *mut WclDocument {
     let source = unsafe { c_str_to_str(source) };
     let opts = build_parse_options(options_json);
-    let doc = wcl::parse(source, opts);
+    let doc = wcl_lang::parse(source, opts);
     doc_into_ptr(doc)
 }
 
@@ -149,7 +149,7 @@ pub extern "C" fn wcl_ffi_parse_file(
         }
     }
 
-    let doc = wcl::parse(&source, opts);
+    let doc = wcl_lang::parse(&source, opts);
     doc_into_ptr(doc)
 }
 
@@ -171,7 +171,7 @@ pub extern "C" fn wcl_ffi_last_error() -> *mut c_char {
 pub extern "C" fn wcl_ffi_document_free(doc: *mut WclDocument) {
     if !doc.is_null() {
         unsafe {
-            drop(Box::from_raw(doc as *mut wcl::Document));
+            drop(Box::from_raw(doc as *mut wcl_lang::Document));
         }
     }
 }
@@ -294,7 +294,7 @@ pub extern "C" fn wcl_ffi_parse_with_functions(
         opts.functions.functions.insert(name, builtin);
     }
 
-    let doc = wcl::parse(source, opts);
+    let doc = wcl_lang::parse(source, opts);
     doc_into_ptr(doc)
 }
 
@@ -305,7 +305,7 @@ pub extern "C" fn wcl_ffi_parse_with_functions(
 /// Caller must free with `wcl_ffi_string_free`.
 #[no_mangle]
 pub extern "C" fn wcl_ffi_list_libraries() -> *mut c_char {
-    match wcl::library::list_libraries() {
+    match wcl_lang::library::list_libraries() {
         Ok(paths) => {
             let names: Vec<String> = paths
                 .iter()
@@ -330,7 +330,7 @@ pub extern "C" fn wcl_ffi_call_function(
     args_json: *const c_char,
 ) -> *mut c_char {
     clear_last_error();
-    let doc = unsafe { &*(doc as *const wcl::Document) };
+    let doc = unsafe { &*(doc as *const wcl_lang::Document) };
     let name = unsafe { CStr::from_ptr(name) }.to_str().unwrap_or("");
     let args_str = if args_json.is_null() {
         "[]"
@@ -340,7 +340,8 @@ pub extern "C" fn wcl_ffi_call_function(
             .unwrap_or("[]")
     };
 
-    let args: Vec<wcl::Value> = match serde_json::from_str::<Vec<serde_json::Value>>(args_str) {
+    let args: Vec<wcl_lang::Value> = match serde_json::from_str::<Vec<serde_json::Value>>(args_str)
+    {
         Ok(json_args) => {
             let mut vals = Vec::new();
             for jv in &json_args {
@@ -362,7 +363,7 @@ pub extern "C" fn wcl_ffi_call_function(
 
     match doc.call_function(name, &args) {
         Ok(result) => {
-            let json = wcl::json::value_to_json(&result);
+            let json = wcl_lang::json::value_to_json(&result);
             let s = serde_json::to_string(&json).unwrap_or_else(|_| "null".to_string());
             CString::new(s).unwrap().into_raw()
         }
@@ -377,7 +378,7 @@ pub extern "C" fn wcl_ffi_call_function(
 #[no_mangle]
 pub extern "C" fn wcl_ffi_list_functions(doc: *mut WclDocument) -> *mut c_char {
     clear_last_error();
-    let doc = unsafe { &*(doc as *const wcl::Document) };
+    let doc = unsafe { &*(doc as *const wcl_lang::Document) };
 
     let names = doc.exported_function_names();
     let mut entries = Vec::new();
@@ -386,7 +387,7 @@ pub extern "C" fn wcl_ffi_list_functions(doc: *mut WclDocument) -> *mut c_char {
             .values
             .get(*name)
             .and_then(|v| match v {
-                wcl::Value::Function(f) => Some(&f.params),
+                wcl_lang::Value::Function(f) => Some(&f.params),
                 _ => None,
             })
             .cloned()

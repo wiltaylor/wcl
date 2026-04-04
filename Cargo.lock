@@ -2426,32 +2426,19 @@ name = "wcl"
 version = "0.0.0-local"
 dependencies = [
  "assert_cmd",
- "async-lsp",
- "base64",
  "clap",
  "criterion",
- "csv",
- "futures",
- "glob",
- "hcl-rs",
  "indexmap",
  "miette",
- "nom",
  "predicates",
- "quick-xml",
- "regex",
- "rmp-serde",
- "ropey",
  "serde",
  "serde_json",
  "serde_yaml_ng",
- "sha2",
  "tempfile",
- "thiserror",
  "tokio",
- "tokio-util",
  "toml 1.1.1+spec-1.1.0",
- "tower",
+ "wcl_lang",
+ "wcl_lsp",
  "wcl_wdoc",
 ]
 
@@ -2462,7 +2449,44 @@ dependencies = [
  "cbindgen",
  "indexmap",
  "serde_json",
- "wcl",
+ "wcl_lang",
+]
+
+[[package]]
+name = "wcl_lang"
+version = "0.0.0-local"
+dependencies = [
+ "base64",
+ "csv",
+ "glob",
+ "hcl-rs",
+ "indexmap",
+ "miette",
+ "nom",
+ "quick-xml",
+ "regex",
+ "rmp-serde",
+ "serde",
+ "serde_json",
+ "serde_yaml_ng",
+ "sha2",
+ "thiserror",
+ "toml 1.1.1+spec-1.1.0",
+]
+
+[[package]]
+name = "wcl_lsp"
+version = "0.0.0-local"
+dependencies = [
+ "async-lsp",
+ "futures",
+ "indexmap",
+ "ropey",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+ "tower",
+ "wcl_lang",
 ]
 
 [[package]]
@@ -2475,7 +2499,7 @@ dependencies = [
  "serde_json",
  "wasm-bindgen",
  "wasm-bindgen-test",
- "wcl",
+ "wcl_lang",
 ]
 
 [[package]]

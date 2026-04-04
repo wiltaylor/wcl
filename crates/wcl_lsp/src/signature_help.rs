@@ -5,17 +5,17 @@ use async_lsp::lsp_types::{
 pub fn signature_help(
     source: &str,
     offset: usize,
-    analysis: Option<&crate::lsp::state::AnalysisResult>,
+    analysis: Option<&crate::state::AnalysisResult>,
 ) -> Option<SignatureHelp> {
     let before = &source[..offset.min(source.len())];
     let (fn_name, active_param) = find_call_context(before)?;
 
     // Try function signatures (builtins + custom) from analysis, or fallback to builtins
     let builtin_sigs;
-    let sigs: &[crate::eval::FunctionSignature] = if let Some(analysis) = analysis {
+    let sigs: &[wcl_lang::eval::FunctionSignature] = if let Some(analysis) = analysis {
         &analysis.function_signatures
     } else {
-        builtin_sigs = crate::eval::builtin_signatures();
+        builtin_sigs = wcl_lang::eval::builtin_signatures();
         &builtin_sigs
     };
     if let Some(sig) = sigs.iter().find(|s| s.name == fn_name) {
@@ -91,25 +91,25 @@ pub fn signature_help(
     None
 }
 
-fn type_expr_label(te: &crate::lang::ast::TypeExpr) -> String {
+fn type_expr_label(te: &wcl_lang::lang::ast::TypeExpr) -> String {
     match te {
-        crate::lang::ast::TypeExpr::String(_) => "string".to_string(),
-        crate::lang::ast::TypeExpr::I8(_) => "i8".to_string(),
-        crate::lang::ast::TypeExpr::U8(_) => "u8".to_string(),
-        crate::lang::ast::TypeExpr::I16(_) => "i16".to_string(),
-        crate::lang::ast::TypeExpr::U16(_) => "u16".to_string(),
-        crate::lang::ast::TypeExpr::I32(_) => "i32".to_string(),
-        crate::lang::ast::TypeExpr::U32(_) => "u32".to_string(),
-        crate::lang::ast::TypeExpr::I64(_) => "i64".to_string(),
-        crate::lang::ast::TypeExpr::U64(_) => "u64".to_string(),
-        crate::lang::ast::TypeExpr::I128(_) => "i128".to_string(),
-        crate::lang::ast::TypeExpr::U128(_) => "u128".to_string(),
-        crate::lang::ast::TypeExpr::F32(_) => "f32".to_string(),
-        crate::lang::ast::TypeExpr::F64(_) => "f64".to_string(),
-        crate::lang::ast::TypeExpr::Date(_) => "date".to_string(),
-        crate::lang::ast::TypeExpr::Duration(_) => "duration".to_string(),
-        crate::lang::ast::TypeExpr::Bool(_) => "bool".to_string(),
-        crate::lang::ast::TypeExpr::Any(_) => "any".to_string(),
+        wcl_lang::lang::ast::TypeExpr::String(_) => "string".to_string(),
+        wcl_lang::lang::ast::TypeExpr::I8(_) => "i8".to_string(),
+        wcl_lang::lang::ast::TypeExpr::U8(_) => "u8".to_string(),
+        wcl_lang::lang::ast::TypeExpr::I16(_) => "i16".to_string(),
+        wcl_lang::lang::ast::TypeExpr::U16(_) => "u16".to_string(),
+        wcl_lang::lang::ast::TypeExpr::I32(_) => "i32".to_string(),
+        wcl_lang::lang::ast::TypeExpr::U32(_) => "u32".to_string(),
+        wcl_lang::lang::ast::TypeExpr::I64(_) => "i64".to_string(),
+        wcl_lang::lang::ast::TypeExpr::U64(_) => "u64".to_string(),
+        wcl_lang::lang::ast::TypeExpr::I128(_) => "i128".to_string(),
+        wcl_lang::lang::ast::TypeExpr::U128(_) => "u128".to_string(),
+        wcl_lang::lang::ast::TypeExpr::F32(_) => "f32".to_string(),
+        wcl_lang::lang::ast::TypeExpr::F64(_) => "f64".to_string(),
+        wcl_lang::lang::ast::TypeExpr::Date(_) => "date".to_string(),
+        wcl_lang::lang::ast::TypeExpr::Duration(_) => "duration".to_string(),
+        wcl_lang::lang::ast::TypeExpr::Bool(_) => "bool".to_string(),
+        wcl_lang::lang::ast::TypeExpr::Any(_) => "any".to_string(),
         _ => "any".to_string(),
     }
 }
@@ -184,9 +184,9 @@ mod tests {
 
     #[test]
     fn test_signature_help_builtin_with_analysis() {
-        use crate::lsp::analysis::analyze;
+        use crate::analysis::analyze;
         let source = "let x = upper(";
-        let analysis = analyze(source, &crate::ParseOptions::default());
+        let analysis = analyze(source, &wcl_lang::ParseOptions::default());
         let offset = source.len();
         let help = signature_help(source, offset, Some(&analysis)).unwrap();
         assert!(help.signatures[0].label.contains("upper"));
@@ -194,10 +194,10 @@ mod tests {
 
     #[test]
     fn test_signature_help_with_macro() {
-        use crate::lsp::analysis::analyze;
+        use crate::analysis::analyze;
         // Macros are collected into macro_registry during analysis
         let source = "macro greet(name, greeting) { msg = greeting }\nlet x = greet(";
-        let analysis = analyze(source, &crate::ParseOptions::default());
+        let analysis = analyze(source, &wcl_lang::ParseOptions::default());
         let offset = source.len();
         let help = signature_help(source, offset, Some(&analysis));
         assert!(help.is_some(), "should find macro signature");

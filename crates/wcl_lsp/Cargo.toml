@@ -1,0 +1,24 @@
+[package]
+name = "wcl_lsp"
+version.workspace = true
+edition = "2021"
+license.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+repository.workspace = true
+description = "WCL Language Server Protocol implementation"
+
+[dependencies]
+wcl_lang = { workspace = true }
+
+# LSP deps
+async-lsp = { workspace = true }
+futures = { workspace = true }
+tower = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+ropey = { workspace = true }
+
+# Shared deps
+indexmap = { workspace = true }
+serde_json = { workspace = true }

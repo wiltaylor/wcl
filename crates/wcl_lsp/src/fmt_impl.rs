@@ -1,7 +1,7 @@
 // Minimal WCL formatter for LSP formatting support.
 // Mirrors wcl_cli/src/fmt.rs logic.
 
-use crate::lang::ast::*;
+use wcl_lang::lang::ast::*;
 
 pub fn format_document(doc: &Document) -> String {
     let mut output = String::new();
@@ -1036,8 +1036,8 @@ impl<'a> Fmt<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lang::span::Span;
-    use crate::lang::trivia::Trivia;
+    use wcl_lang::lang::span::Span;
+    use wcl_lang::lang::trivia::Trivia;
 
     fn dummy_span() -> Span {
         Span::dummy()
@@ -1086,7 +1086,7 @@ mod tests {
                 decorators: vec![],
                 name: make_ident("value"),
                 value: Expr::Ident(make_ident("x")),
-                assign_op: crate::lang::ast::AssignOp::Assign,
+                assign_op: wcl_lang::lang::ast::AssignOp::Assign,
                 trivia: dummy_trivia(),
                 span: dummy_span(),
             })]),

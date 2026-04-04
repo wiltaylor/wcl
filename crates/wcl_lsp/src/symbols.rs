@@ -1,8 +1,8 @@
-use crate::lang::ast::*;
 use async_lsp::lsp_types::{DocumentSymbol, SymbolKind};
 use ropey::Rope;
+use wcl_lang::lang::ast::*;
 
-use crate::lsp::convert::span_to_lsp_range;
+use crate::convert::span_to_lsp_range;
 
 #[allow(deprecated)] // DocumentSymbol::deprecated is deprecated in the struct but we need to set it
 pub fn document_symbols(doc: &Document, rope: &Rope) -> Vec<DocumentSymbol> {
@@ -256,11 +256,11 @@ fn body_item_symbol(item: &BodyItem, rope: &Rope) -> Option<DocumentSymbol> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lang::span::FileId;
+    use wcl_lang::lang::span::FileId;
 
     fn get_symbols(source: &str) -> Vec<DocumentSymbol> {
         let file_id = FileId(0);
-        let (doc, _) = crate::lang::parse(source, file_id);
+        let (doc, _) = wcl_lang::lang::parse(source, file_id);
         let rope = Rope::from_str(source);
         document_symbols(&doc, &rope)
     }

@@ -7,10 +7,10 @@ use async_lsp::{ClientSocket, LanguageServer, ResponseError};
 use futures::future::BoxFuture;
 use ropey::Rope;
 
-use crate::lsp::analysis::analyze;
-use crate::lsp::convert::lsp_position_to_offset;
-use crate::lsp::diagnostics::to_lsp_diagnostic;
-use crate::lsp::state::{DocumentState, WorldState};
+use crate::analysis::analyze;
+use crate::convert::lsp_position_to_offset;
+use crate::diagnostics::to_lsp_diagnostic;
+use crate::state::{DocumentState, WorldState};
 
 pub struct WclLanguageServer {
     pub client: ClientSocket,
@@ -107,7 +107,7 @@ impl LanguageServer for WclLanguageServer {
                     semantic_tokens_provider: Some(
                         SemanticTokensServerCapabilities::SemanticTokensOptions(
                             SemanticTokensOptions {
-                                legend: crate::lsp::semantic_tokens::legend(),
+                                legend: crate::semantic_tokens::legend(),
                                 full: Some(SemanticTokensFullOptions::Bool(true)),
                                 range: None,
                                 ..Default::default()
@@ -236,7 +236,7 @@ impl LanguageServer for WclLanguageServer {
                 let offset = lsp_position_to_offset(pos, &doc.rope);
                 doc.analysis
                     .as_ref()
-                    .and_then(|a| crate::lsp::hover::hover(a, offset, &doc.rope))
+                    .and_then(|a| crate::hover::hover(a, offset, &doc.rope))
             }
             None => {
                 let _ = self
@@ -266,9 +266,9 @@ impl LanguageServer for WclLanguageServer {
         let result = match self.state.documents.get(&uri) {
             Some(doc) => {
                 let offset = lsp_position_to_offset(pos, &doc.rope);
-                doc.analysis.as_ref().and_then(|a| {
-                    crate::lsp::definition::goto_definition(a, offset, &doc.rope, &uri)
-                })
+                doc.analysis
+                    .as_ref()
+                    .and_then(|a| crate::definition::goto_definition(a, offset, &doc.rope, &uri))
             }
             None => {
                 let _ = self
@@ -292,9 +292,7 @@ impl LanguageServer for WclLanguageServer {
 
         let result = match self.state.documents.get(&uri) {
             Some(doc) => doc.analysis.as_ref().map(|a| {
-                DocumentSymbolResponse::Nested(crate::lsp::symbols::document_symbols(
-                    &a.ast, &doc.rope,
-                ))
+                DocumentSymbolResponse::Nested(crate::symbols::document_symbols(&a.ast, &doc.rope))
             }),
             None => {
                 let _ = self
@@ -321,7 +319,7 @@ impl LanguageServer for WclLanguageServer {
             Some(doc) => {
                 let offset = lsp_position_to_offset(pos, &doc.rope);
                 doc.analysis.as_ref().map(|a| {
-                    CompletionResponse::Array(crate::lsp::completion::completions(
+                    CompletionResponse::Array(crate::completion::completions(
                         a,
                         &doc.source,
                         offset,
@@ -350,7 +348,7 @@ impl LanguageServer for WclLanguageServer {
 
         let result = match self.state.documents.get(&uri) {
             Some(doc) => doc.analysis.as_ref().map(|a| {
-                let tokens = crate::lsp::semantic_tokens::compute_semantic_tokens(
+                let tokens = crate::semantic_tokens::compute_semantic_tokens(
                     &a.tokens,
                     &doc.rope,
                     Some(&a.ast),
@@ -388,11 +386,7 @@ impl LanguageServer for WclLanguageServer {
         let result = match self.state.documents.get(&uri) {
             Some(doc) => {
                 let offset = lsp_position_to_offset(pos, &doc.rope);
-                crate::lsp::signature_help::signature_help(
-                    &doc.source,
-                    offset,
-                    doc.analysis.as_ref(),
-                )
+                crate::signature_help::signature_help(&doc.source, offset, doc.analysis.as_ref())
             }
             None => {
                 let _ = self
@@ -423,7 +417,7 @@ impl LanguageServer for WclLanguageServer {
                     .analysis
                     .as_ref()
                     .map(|a| {
-                        crate::lsp::references::find_references(
+                        crate::references::find_references(
                             a,
                             offset,
                             &doc.rope,
@@ -460,7 +454,7 @@ impl LanguageServer for WclLanguageServer {
                 let offset = lsp_position_to_offset(pos, &doc.rope);
                 doc.analysis
                     .as_ref()
-                    .and_then(|a| crate::lsp::rename::prepare_rename(a, offset, &doc.rope))
+                    .and_then(|a| crate::rename::prepare_rename(a, offset, &doc.rope))
                     .map(PrepareRenameResponse::Range)
             }
             None => None,
@@ -482,7 +476,7 @@ impl LanguageServer for WclLanguageServer {
                 let offset = lsp_position_to_offset(pos, &doc.rope);
                 doc.analysis
                     .as_ref()
-                    .and_then(|a| crate::lsp::rename::rename(a, offset, &new_name, &doc.rope, &uri))
+                    .and_then(|a| crate::rename::rename(a, offset, &new_name, &doc.rope, &uri))
             }
             None => None,
         };
@@ -505,7 +499,7 @@ impl LanguageServer for WclLanguageServer {
             Some(doc) => {
                 let offset = lsp_position_to_offset(pos, &doc.rope);
                 doc.analysis.as_ref().and_then(|a| {
-                    crate::lsp::definition::goto_type_definition(a, offset, &doc.rope, &uri)
+                    crate::definition::goto_type_definition(a, offset, &doc.rope, &uri)
                 })
             }
             None => None,
@@ -521,7 +515,7 @@ impl LanguageServer for WclLanguageServer {
         let uri = params.text_document.uri.clone();
 
         let result = match self.state.documents.get(&uri) {
-            Some(doc) => crate::lsp::formatting::format_document(&doc.source),
+            Some(doc) => crate::formatting::format_document(&doc.source),
             None => {
                 let _ = self
                     .client

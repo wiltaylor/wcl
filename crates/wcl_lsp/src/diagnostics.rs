@@ -1,11 +1,11 @@
-use crate::lang::diagnostic::{Diagnostic, Severity};
-use crate::lang::span::Span;
 use async_lsp::lsp_types::{
     self as lsp, DiagnosticRelatedInformation, DiagnosticSeverity, Location, NumberOrString,
 };
 use ropey::Rope;
+use wcl_lang::lang::diagnostic::{Diagnostic, Severity};
+use wcl_lang::lang::span::Span;
 
-use crate::lsp::convert::span_to_lsp_range;
+use crate::convert::span_to_lsp_range;
 
 /// Convert a WCL Diagnostic into an LSP Diagnostic.
 /// Returns None for diagnostics with dummy spans (synthetic/test spans).
@@ -77,8 +77,8 @@ fn is_dummy_span(span: Span) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lang::span::{FileId, Span};
     use async_lsp::lsp_types::Url;
+    use wcl_lang::lang::span::{FileId, Span};
 
     #[test]
     fn test_error_severity() {

@@ -4,7 +4,7 @@ use std::sync::Mutex;
 static REGISTRY: Mutex<Option<Registry>> = Mutex::new(None);
 
 struct Registry {
-    docs: HashMap<u32, wcl::Document>,
+    docs: HashMap<u32, wcl_lang::Document>,
     next_id: u32,
 }
 
@@ -20,7 +20,7 @@ where
     f(reg)
 }
 
-pub fn store(doc: wcl::Document) -> u32 {
+pub fn store(doc: wcl_lang::Document) -> u32 {
     with_registry(|reg| {
         let id = reg.next_id;
         reg.next_id = reg.next_id.wrapping_add(1);
@@ -34,7 +34,7 @@ pub fn store(doc: wcl::Document) -> u32 {
 
 pub fn with<F, R>(handle: u32, f: F) -> Option<R>
 where
-    F: FnOnce(&wcl::Document) -> R,
+    F: FnOnce(&wcl_lang::Document) -> R,
 {
     with_registry(|reg| reg.docs.get(&handle).map(f))
 }

@@ -1,11 +1,11 @@
-use crate::lang::ast::*;
-use crate::lang::trivia::CommentStyle;
 use async_lsp::lsp_types::{Hover, HoverContents, MarkupContent, MarkupKind};
 use ropey::Rope;
+use wcl_lang::lang::ast::*;
+use wcl_lang::lang::trivia::CommentStyle;
 
-use crate::lsp::ast_utils::{find_node_at_offset, NodeAtOffset};
-use crate::lsp::convert::span_to_lsp_range;
-use crate::lsp::state::AnalysisResult;
+use crate::ast_utils::{find_node_at_offset, NodeAtOffset};
+use crate::convert::span_to_lsp_range;
+use crate::state::AnalysisResult;
 
 pub fn hover(analysis: &AnalysisResult, offset: usize, rope: &Rope) -> Option<Hover> {
     let node = find_node_at_offset(&analysis.ast, offset);
@@ -37,12 +37,12 @@ fn hover_ident_ref(analysis: &AnalysisResult, ident: &Ident, rope: &Rope) -> Opt
                 .map(|v| format!("{}", v))
                 .unwrap_or_else(|| "<unevaluated>".to_string());
             let kind = match entry.kind {
-                crate::eval::ScopeEntryKind::LetBinding => "let",
-                crate::eval::ScopeEntryKind::ExportLet => "export let",
-                crate::eval::ScopeEntryKind::Attribute => "attribute",
-                crate::eval::ScopeEntryKind::BlockChild => "block",
-                crate::eval::ScopeEntryKind::TableEntry => "table",
-                crate::eval::ScopeEntryKind::IteratorVar => "iterator",
+                wcl_lang::eval::ScopeEntryKind::LetBinding => "let",
+                wcl_lang::eval::ScopeEntryKind::ExportLet => "export let",
+                wcl_lang::eval::ScopeEntryKind::Attribute => "attribute",
+                wcl_lang::eval::ScopeEntryKind::BlockChild => "block",
+                wcl_lang::eval::ScopeEntryKind::TableEntry => "table",
+                wcl_lang::eval::ScopeEntryKind::IteratorVar => "iterator",
             };
             let content = format!("```wcl\n{} {} = {}\n```", kind, ident.name, value_str);
             return Some(Hover {
@@ -353,7 +353,7 @@ fn hover_import(import: &Import, rope: &Rope) -> Option<Hover> {
     })
 }
 
-fn extract_doc_comments(trivia: &crate::lang::trivia::Trivia) -> String {
+fn extract_doc_comments(trivia: &wcl_lang::lang::trivia::Trivia) -> String {
     trivia
         .comments
         .iter()
@@ -371,10 +371,10 @@ fn extract_doc_comments(trivia: &crate::lang::trivia::Trivia) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lsp::analysis::analyze;
+    use crate::analysis::analyze;
 
     fn get_hover(source: &str, offset: usize) -> Option<Hover> {
-        let analysis = analyze(source, &crate::ParseOptions::default());
+        let analysis = analyze(source, &wcl_lang::ParseOptions::default());
         let rope = ropey::Rope::from_str(source);
         hover(&analysis, offset, &rope)
     }
@@ -447,15 +447,15 @@ mod tests {
     #[test]
     fn test_type_expr_str() {
         assert_eq!(
-            type_expr_str(&TypeExpr::String(crate::lang::Span::dummy())),
+            type_expr_str(&TypeExpr::String(wcl_lang::lang::Span::dummy())),
             "string"
         );
         assert_eq!(
-            type_expr_str(&TypeExpr::I64(crate::lang::Span::dummy())),
+            type_expr_str(&TypeExpr::I64(wcl_lang::lang::Span::dummy())),
             "i64"
         );
         assert_eq!(
-            type_expr_str(&TypeExpr::Any(crate::lang::Span::dummy())),
+            type_expr_str(&TypeExpr::Any(wcl_lang::lang::Span::dummy())),
             "any"
         );
     }
@@ -466,14 +466,14 @@ mod tests {
         let dec = Decorator {
             name: Ident {
                 name: "deprecated".to_string(),
-                span: crate::lang::Span::dummy(),
+                span: wcl_lang::lang::Span::dummy(),
             },
             args: vec![DecoratorArg::Positional(Expr::StringLit(StringLit {
                 parts: vec![StringPart::Literal("use v2".to_string())],
                 heredoc: None,
-                span: crate::lang::Span::dummy(),
+                span: wcl_lang::lang::Span::dummy(),
             }))],
-            span: crate::lang::Span::dummy(),
+            span: wcl_lang::lang::Span::dummy(),
         };
         let rope = ropey::Rope::from_str("@deprecated(\"use v2\")");
         let h = hover_decorator(&dec, &rope).unwrap();
@@ -496,9 +496,9 @@ mod tests {
             StringLit {
                 parts: vec![StringPart::Literal("my_schema".to_string())],
                 heredoc: None,
-                span: crate::lang::Span::dummy(),
+                span: wcl_lang::lang::Span::dummy(),
             },
-            crate::lang::Span::dummy(),
+            wcl_lang::lang::Span::dummy(),
         );
         assert_eq!(type_expr_str(&ref_type), "ref(\"my_schema\")");
     }
@@ -511,31 +511,31 @@ mod tests {
             kind: MacroKind::Function,
             name: Ident {
                 name: "greet".to_string(),
-                span: crate::lang::Span::dummy(),
+                span: wcl_lang::lang::Span::dummy(),
             },
             params: vec![
                 MacroParam {
                     name: Ident {
                         name: "name".to_string(),
-                        span: crate::lang::Span::dummy(),
+                        span: wcl_lang::lang::Span::dummy(),
                     },
-                    type_constraint: Some(TypeExpr::String(crate::lang::Span::dummy())),
+                    type_constraint: Some(TypeExpr::String(wcl_lang::lang::Span::dummy())),
                     default: None,
-                    span: crate::lang::Span::dummy(),
+                    span: wcl_lang::lang::Span::dummy(),
                 },
                 MacroParam {
                     name: Ident {
                         name: "count".to_string(),
-                        span: crate::lang::Span::dummy(),
+                        span: wcl_lang::lang::Span::dummy(),
                     },
-                    type_constraint: Some(TypeExpr::I64(crate::lang::Span::dummy())),
+                    type_constraint: Some(TypeExpr::I64(wcl_lang::lang::Span::dummy())),
                     default: None,
-                    span: crate::lang::Span::dummy(),
+                    span: wcl_lang::lang::Span::dummy(),
                 },
             ],
             body: MacroBody::Function(vec![]),
-            trivia: crate::lang::Trivia::empty(),
-            span: crate::lang::Span::dummy(),
+            trivia: wcl_lang::lang::Trivia::empty(),
+            span: wcl_lang::lang::Span::dummy(),
         };
         let rope = ropey::Rope::from_str("macro greet(name: string, count: i64) {}");
         let h = hover_macro_def(&md, &rope).unwrap();

@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 
-use crate::eval::{FunctionSignature, MacroRegistry, ScopeArena};
-use crate::lang::ast;
-use crate::lang::diagnostic::Diagnostic;
-use crate::lang::lexer::Token;
-use crate::lang::span::{FileId, SourceMap};
-use crate::schema::SchemaRegistry;
 use async_lsp::lsp_types::Url;
 use ropey::Rope;
+use wcl_lang::eval::{FunctionSignature, MacroRegistry, ScopeArena};
+use wcl_lang::lang::ast;
+use wcl_lang::lang::diagnostic::Diagnostic;
+use wcl_lang::lang::lexer::Token;
+use wcl_lang::lang::span::{FileId, SourceMap};
+use wcl_lang::schema::SchemaRegistry;
 
 pub struct DocumentState {
     pub uri: Url,
@@ -23,7 +23,7 @@ pub struct AnalysisResult {
     pub source_map: SourceMap,
     pub file_id: FileId,
     pub diagnostics: Vec<Diagnostic>,
-    pub values: indexmap::IndexMap<String, crate::eval::Value>,
+    pub values: indexmap::IndexMap<String, wcl_lang::eval::Value>,
     pub scopes: ScopeArena,
     pub schemas: SchemaRegistry,
     pub macro_registry: MacroRegistry,
@@ -32,7 +32,7 @@ pub struct AnalysisResult {
 
 pub struct WorldState {
     pub documents: HashMap<Url, DocumentState>,
-    pub default_options: crate::ParseOptions,
+    pub default_options: wcl_lang::ParseOptions,
 }
 
 impl Default for WorldState {
@@ -45,7 +45,7 @@ impl WorldState {
     pub fn new() -> Self {
         WorldState {
             documents: HashMap::new(),
-            default_options: crate::ParseOptions::default(),
+            default_options: wcl_lang::ParseOptions::default(),
         }
     }
 }
