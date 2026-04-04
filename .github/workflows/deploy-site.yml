@@ -21,13 +21,13 @@ jobs:
       - name: Check if deploy needed
         id: check
         run: |
-          TRAILER=$(git log -1 --format='%(trailers:key=push-docs,valueonly)')
-          if [[ "$TRAILER" == "true" ]]; then
-            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          CHANGED=$(git diff --name-only HEAD~1 HEAD -- site/ docs/ | head -1)
-          if [[ -n "$CHANGED" ]]; then
+          # Force deploy via commit trailers
+          PUSH_DOCS=$(git log -1 --format='%(trailers:key=push-docs,valueonly)')
+          PUSH_SITE=$(git log -1 --format='%(trailers:key=push-site,valueonly)')
+          IS_RELEASE=$(git log -1 --format='%(trailers:key=release,valueonly)')
+          IS_PRERELEASE=$(git log -1 --format='%(trailers:key=pre-release,valueonly)')
+
+          if [[ "$PUSH_DOCS" == "true" || "$PUSH_SITE" == "true" || "$IS_RELEASE" == "true" || "$IS_PRERELEASE" == "true" ]]; then
             echo "should_deploy=true" >> "$GITHUB_OUTPUT"
           else
             echo "should_deploy=false" >> "$GITHUB_OUTPUT"
