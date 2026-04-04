@@ -5,4 +5,4 @@ edition = "2021"
 publish = false
 
 [dependencies]
-wcl = "0.2.4-alpha"
+wcl = { path = "../../crates/wcl" }

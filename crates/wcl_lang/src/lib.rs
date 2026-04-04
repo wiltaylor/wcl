@@ -2,7 +2,7 @@
 //!
 //! Language library: parser, evaluator, schema validation, serde.
 //! This crate contains the core language pipeline without CLI or LSP.
-#![allow(clippy::result_large_err)]
+#![allow(clippy::result_large_err, clippy::large_enum_variant)]
 
 pub mod eval;
 pub mod lang;
