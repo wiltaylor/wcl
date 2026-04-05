@@ -153,6 +153,13 @@
 (block
   (identifier) @type)
 
+; ── Lazy imports ─────────────────────────────────────────────────────
+
+(lazy_modifier
+  "lazy" @keyword.import
+  (namespace_path
+    (identifier) @module))
+
 ; ── Namespaces ────────────────────────────────────────────────────────
 
 (namespace_declaration

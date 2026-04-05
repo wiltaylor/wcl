@@ -60,7 +60,14 @@ export default grammar({
 
     // Imports
     import_declaration: ($) =>
-      seq("import", optional("?"), choice($.string_literal, $.library_import)),
+      seq(
+        "import",
+        optional("?"),
+        choice($.string_literal, $.library_import),
+        optional($.lazy_modifier),
+      ),
+
+    lazy_modifier: ($) => seq("lazy", "(", $.namespace_path, ")"),
 
     library_import: ($) => seq("<", /[^>]+/, ">"),
 

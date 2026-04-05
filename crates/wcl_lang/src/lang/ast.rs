@@ -45,11 +45,16 @@ pub enum ImportKind {
 
 /// `import "./path/to/file.wcl"` or `import <name.wcl>`
 /// `import? "./optional.wcl"` — optional import (no error if missing)
+/// `import "./lib.wcl" lazy(ns)` — lazy import, only loaded if `ns` is referenced
 #[derive(Debug, Clone)]
 pub struct Import {
     pub path: StringLit,
     pub kind: ImportKind,
     pub optional: bool,
+    /// When present, the import is lazy-loaded and its contents are wrapped
+    /// in the given namespace. The file is only loaded if the namespace
+    /// (or a nested namespace under it) is referenced in the document.
+    pub lazy_namespace: Option<Vec<Ident>>,
     pub trivia: Trivia,
     pub span: Span,
 }

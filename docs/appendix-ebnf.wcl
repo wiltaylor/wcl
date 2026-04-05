@@ -58,7 +58,8 @@ page appendix_ebnf {
                                     | comment ;
 
                     (* ===== Import Directives (top-level only) ===== *)
-                    import_decl     = "import" ["?"] (STRING_LIT | library_import) ;
+                    import_decl     = "import" ["?"] (STRING_LIT | library_import) [lazy_modifier] ;
+                    lazy_modifier   = "lazy" "(" namespace_path ")" ;
                     library_import  = "<" IDENT { "." IDENT } ".wcl" ">" ;
 
                     (* ===== Namespaces ===== *)

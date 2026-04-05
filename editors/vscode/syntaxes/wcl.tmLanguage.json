@@ -242,7 +242,7 @@
         },
         {
           "name": "keyword.control.import.wcl",
-          "match": "\\b(import|export)\\b"
+          "match": "\\b(import|export|lazy)\\b"
         },
         {
           "name": "keyword.other.wcl",

@@ -1461,9 +1461,13 @@
     "named": true,
     "fields": {},
     "children": {
-      "multiple": false,
+      "multiple": true,
       "required": true,
       "types": [
+        {
+          "type": "lazy_modifier",
+          "named": true
+        },
         {
           "type": "library_import",
           "named": true
@@ -1801,6 +1805,21 @@
       "types": [
         {
           "type": "identifier",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "lazy_modifier",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "namespace_path",
           "named": true
         }
       ]
@@ -3509,6 +3528,10 @@
   {
     "type": "integer_literal",
     "named": true
+  },
+  {
+    "type": "lazy",
+    "named": false
   },
   {
     "type": "let",
