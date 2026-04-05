@@ -91,6 +91,11 @@ impl<'a> Formatter<'a> {
                 } else {
                     self.format_string_lit(&import.path);
                 }
+                if let Some(ref ns_path) = import.lazy_namespace {
+                    self.output.push_str(" lazy(");
+                    self.output.push_str(&join_path(ns_path));
+                    self.output.push(')');
+                }
                 self.output.push('\n');
             }
             DocItem::ExportLet(el) => {

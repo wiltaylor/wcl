@@ -28,8 +28,13 @@ fn doc_item_symbol(item: &DocItem, rope: &Rope) -> Option<DocumentSymbol> {
                     _ => None,
                 })
                 .collect::<String>();
+            let lazy_suffix = import
+                .lazy_namespace
+                .as_ref()
+                .map(|ns| format!(" lazy({})", wcl_lang::ast::join_path(ns)))
+                .unwrap_or_default();
             Some(DocumentSymbol {
-                name: format!("import \"{}\"", path),
+                name: format!("import \"{}\"{}", path, lazy_suffix),
                 detail: None,
                 kind: SymbolKind::PACKAGE,
                 tags: None,

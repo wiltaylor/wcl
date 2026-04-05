@@ -447,6 +447,50 @@ page guide_imports {
                 paragraph p34 {
                     content = bold("Security errors are always reported.") + " A path that would escape the project root, exceed the depth limit, or violate another security constraint produces an error even when <code>?</code> is present. Optional only suppresses \"file not found\" and \"no glob matches\"; it does not suppress policy violations."
                 }
+
+                heading h2_lazy {
+                    level = 2
+                    content = "Lazy Imports"
+                }
+
+                paragraph p35 {
+                    content = "A lazy import defers loading a file until its namespace is actually referenced in the document. This enables libraries that only load what is needed:"
+                }
+
+                code c19 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    import "./networking.wcl" lazy(net)
+
+                    // The file is only loaded because `net::service` is referenced:
+                    use net::{service, endpoint}
+
+                    service "my-api" {
+                        port = 8080
+                    }
+                    WCL
+                }
+
+                paragraph p36 {
+                    content = "The <code>lazy(namespace)</code> modifier follows the import path. The namespace path supports <code>::</code> segments for nested namespaces:"
+                }
+
+                code c20 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    import "./networking.wcl" lazy(infra::net)
+                    import <utils.wcl> lazy(utils)
+                    import? "./optional-lib.wcl" lazy(opt)
+                    WCL
+                }
+
+                paragraph p37 {
+                    content = "When a lazy import is loaded, all of its exported items are wrapped in the specified namespace. If the namespace is " + bold("never referenced") + " anywhere in the document — not in <code>use</code> declarations, block kinds, schema names, expressions, or any other qualified name — the file is never read from disk. This makes lazy imports ideal for large library ecosystems where each document only uses a fraction of available definitions."
+                }
+
+                paragraph p38 {
+                    content = "Lazy imports compose with optional imports (<code>import? \"path\" lazy(ns)</code>). All standard path rules, jail checking, and depth limits apply when the file is eventually loaded."
+                }
             }
         }
     }

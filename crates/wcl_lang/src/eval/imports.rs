@@ -1,6 +1,7 @@
 use crate::lang::ast::*;
 use crate::lang::diagnostic::{Diagnostic, DiagnosticBag};
 use crate::lang::span::{SourceMap, Span};
+use crate::lang::trivia::Trivia;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
@@ -447,6 +448,15 @@ fn resolve_single_import_table<FS: FileSystem + ?Sized>(
 ///
 /// Handles path resolution, jail checking, import-once semantics, depth limits,
 /// and recursive resolution of imports within imported files.
+/// A lazy import that was deferred during resolution.
+/// It will only be loaded if its namespace is referenced in the document.
+#[derive(Debug, Clone)]
+pub struct LazyImport {
+    pub import: Import,
+    pub current_file: PathBuf,
+    pub depth: u32,
+}
+
 pub struct ImportResolver<'a, FS: FileSystem + ?Sized> {
     fs: &'a FS,
     source_map: &'a mut SourceMap,
@@ -458,6 +468,8 @@ pub struct ImportResolver<'a, FS: FileSystem + ?Sized> {
     library_config: LibraryConfig,
     /// Directories containing resolved library files (used to relax jail checks).
     library_roots: HashSet<PathBuf>,
+    /// Lazy imports collected during resolution, to be loaded on demand.
+    lazy_imports: Vec<LazyImport>,
 }
 
 impl<'a, FS: FileSystem + ?Sized> ImportResolver<'a, FS> {
@@ -479,6 +491,7 @@ impl<'a, FS: FileSystem + ?Sized> ImportResolver<'a, FS> {
             diagnostics: DiagnosticBag::new(),
             library_config,
             library_roots: HashSet::new(),
+            lazy_imports: Vec::new(),
         }
     }
 
@@ -538,6 +551,17 @@ impl<'a, FS: FileSystem + ?Sized> ImportResolver<'a, FS> {
                 DocItem::Import(imp) => imp.clone(),
                 _ => unreachable!(),
             };
+
+            // Lazy imports: collect for deferred resolution, remove from doc
+            if import.lazy_namespace.is_some() {
+                doc.items.remove(idx);
+                self.lazy_imports.push(LazyImport {
+                    import,
+                    current_file: current_file.to_path_buf(),
+                    depth,
+                });
+                continue;
+            }
 
             let import_path_str = string_lit_to_plain(&import.path);
             let span = import.span;
@@ -821,6 +845,194 @@ impl<'a, FS: FileSystem + ?Sized> ImportResolver<'a, FS> {
         &self.loaded
     }
 
+    /// Return collected lazy imports.
+    pub fn lazy_imports(&self) -> &[LazyImport] {
+        &self.lazy_imports
+    }
+
+    /// Take the collected lazy imports out of the resolver.
+    pub fn take_lazy_imports(&mut self) -> Vec<LazyImport> {
+        std::mem::take(&mut self.lazy_imports)
+    }
+
+    /// Resolve lazy imports whose namespaces are referenced in the document.
+    ///
+    /// For each lazy import whose namespace (or a nested namespace) is referenced,
+    /// load the file, wrap its exported items in a `NamespaceDecl`, and insert
+    /// into `doc.items`.
+    pub fn resolve_lazy(
+        &mut self,
+        doc: &mut Document,
+        lazy_imports: &[LazyImport],
+        referenced: &HashSet<String>,
+    ) -> DiagnosticBag {
+        for lazy in lazy_imports {
+            let ns_path = lazy
+                .import
+                .lazy_namespace
+                .as_ref()
+                .expect("lazy import must have namespace");
+            let ns_str = join_path(ns_path);
+
+            // Skip if this namespace is not referenced
+            if !referenced.contains(&ns_str) {
+                continue;
+            }
+
+            let import = &lazy.import;
+            let import_path_str = string_lit_to_plain(&import.path);
+            let span = import.span;
+            let depth = lazy.depth;
+
+            // Check depth limit
+            if depth >= self.max_depth {
+                self.diagnostics.error_with_code(
+                    format!("import depth limit exceeded (max {})", self.max_depth),
+                    span,
+                    "E014",
+                );
+                continue;
+            }
+
+            // Resolve file path(s) — same logic as regular imports
+            let resolved_files: Vec<PathBuf> = if import.kind == ImportKind::Library {
+                match resolve_library_import(&import_path_str, self.fs, &self.library_config) {
+                    Some(p) => vec![p],
+                    None => {
+                        if !import.optional {
+                            self.diagnostics.error_with_code(
+                                format!("library '{}' not found in search paths", import_path_str),
+                                span,
+                                "E015",
+                            );
+                        }
+                        continue;
+                    }
+                }
+            } else if import_path_str.contains('*') {
+                let base_dir = lazy.current_file.parent().unwrap_or_else(|| Path::new("."));
+                let pattern = normalize_path(&base_dir.join(&import_path_str));
+                match self.fs.glob(&pattern) {
+                    Ok(mut paths) => {
+                        paths.retain(|p| p.extension().map(|e| e == "wcl").unwrap_or(false));
+                        if paths.is_empty() && !import.optional {
+                            self.diagnostics.error_with_code(
+                                format!("glob pattern '{}' matched no .wcl files", import_path_str),
+                                span,
+                                "E016",
+                            );
+                        }
+                        if paths.is_empty() {
+                            continue;
+                        }
+                        paths
+                    }
+                    Err(e) => {
+                        self.diagnostics.error_with_code(
+                            format!("glob error for '{}': {}", import_path_str, e),
+                            span,
+                            "E016",
+                        );
+                        continue;
+                    }
+                }
+            } else {
+                match self.resolve_path(&import_path_str, &lazy.current_file) {
+                    Ok(p) => vec![p],
+                    Err(diag) => {
+                        if !import.optional {
+                            self.diagnostics.add(diag);
+                        }
+                        continue;
+                    }
+                }
+            };
+
+            let current_in_library = self.is_within_library_root(&lazy.current_file);
+
+            let mut ns_items: Vec<DocItem> = Vec::new();
+            for resolved in resolved_files {
+                if import.kind == ImportKind::Library {
+                    if let Some(parent) = resolved.parent() {
+                        self.library_roots.insert(parent.to_path_buf());
+                    }
+                }
+
+                if import.kind != ImportKind::Library
+                    && !current_in_library
+                    && !self.is_within_library_root(&resolved)
+                {
+                    if let Err(diag) = self.check_jail(&resolved, span) {
+                        self.diagnostics.add(diag);
+                        continue;
+                    }
+                }
+
+                if self.loaded.contains(&resolved) {
+                    continue;
+                }
+                self.loaded.insert(resolved.clone());
+
+                let source = match self.fs.read_file(&resolved) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        if !import.optional {
+                            self.diagnostics.error_with_code(
+                                format!(
+                                    "cannot read imported file '{}': {}",
+                                    resolved.display(),
+                                    e
+                                ),
+                                span,
+                                "E010",
+                            );
+                        }
+                        continue;
+                    }
+                };
+
+                let file_id = self
+                    .source_map
+                    .add_file(resolved.to_string_lossy().into_owned(), source.clone());
+                let (mut imported_doc, parse_diags) = crate::lang::parse(&source, file_id);
+                self.diagnostics.merge(parse_diags);
+
+                let child_diags = self.resolve(&mut imported_doc, &resolved, depth + 1);
+                self.diagnostics.merge(child_diags);
+
+                // Collect mergeable items (same filter as regular imports)
+                for item in imported_doc.items {
+                    match &item {
+                        DocItem::Body(BodyItem::LetBinding(_)) => {}
+                        DocItem::Import(_) => {}
+                        DocItem::ExportLet(_)
+                        | DocItem::ReExport(_)
+                        | DocItem::Body(_)
+                        | DocItem::FunctionDecl(_)
+                        | DocItem::Namespace(_)
+                        | DocItem::Use(_) => {
+                            ns_items.push(item);
+                        }
+                    }
+                }
+            }
+
+            if !ns_items.is_empty() {
+                // Wrap all imported items in the lazy namespace
+                let ns_decl = NamespaceDecl {
+                    path: ns_path.clone(),
+                    items: ns_items,
+                    file_level: false,
+                    trivia: Trivia::default(),
+                    span,
+                };
+                doc.items.push(DocItem::Namespace(ns_decl));
+            }
+        }
+
+        std::mem::take(&mut self.diagnostics)
+    }
+
     /// Consume the resolver and return accumulated diagnostics.
     pub fn into_diagnostics(self) -> DiagnosticBag {
         self.diagnostics
@@ -840,6 +1052,267 @@ fn string_lit_to_plain(lit: &StringLit) -> String {
         }
     }
     result
+}
+
+/// Scan a document's AST for references to any of the given lazy namespace prefixes.
+///
+/// Returns the set of lazy namespace strings that are referenced anywhere in the
+/// document — in `use` declarations, block kinds, schema names, let bindings,
+/// decorator arguments, expressions, etc.
+pub fn find_lazy_namespace_references(
+    doc: &Document,
+    lazy_namespaces: &[String],
+) -> HashSet<String> {
+    let mut referenced = HashSet::new();
+    if lazy_namespaces.is_empty() {
+        return referenced;
+    }
+
+    for item in &doc.items {
+        scan_doc_item(item, lazy_namespaces, &mut referenced);
+    }
+    referenced
+}
+
+fn starts_with_lazy_ns<'a>(name: &str, lazy_namespaces: &'a [String]) -> Option<&'a str> {
+    for ns in lazy_namespaces {
+        if name == ns.as_str() || name.starts_with(&format!("{}::", ns)) {
+            return Some(ns.as_str());
+        }
+    }
+    None
+}
+
+fn check_name(name: &str, lazy_namespaces: &[String], referenced: &mut HashSet<String>) {
+    if let Some(ns) = starts_with_lazy_ns(name, lazy_namespaces) {
+        referenced.insert(ns.to_string());
+    }
+}
+
+fn check_string_lit(lit: &StringLit, lazy_namespaces: &[String], referenced: &mut HashSet<String>) {
+    let mut text = String::new();
+    for part in &lit.parts {
+        if let StringPart::Literal(s) = part {
+            text.push_str(s);
+        }
+    }
+    check_name(&text, lazy_namespaces, referenced);
+}
+
+fn scan_doc_item(item: &DocItem, lazy_namespaces: &[String], referenced: &mut HashSet<String>) {
+    match item {
+        DocItem::Use(use_decl) => {
+            // Check if the use path starts with a lazy namespace
+            if let Some(first) = use_decl.namespace_path.first() {
+                let full_path = join_path(&use_decl.namespace_path);
+                check_name(&full_path, lazy_namespaces, referenced);
+                check_name(&first.name, lazy_namespaces, referenced);
+            }
+        }
+        DocItem::Namespace(ns) => {
+            let ns_path = join_path(&ns.path);
+            check_name(&ns_path, lazy_namespaces, referenced);
+            for inner in &ns.items {
+                scan_doc_item(inner, lazy_namespaces, referenced);
+            }
+        }
+        DocItem::Body(body) => {
+            scan_body_item(body, lazy_namespaces, referenced);
+        }
+        DocItem::ExportLet(el) => {
+            check_name(&el.name.name, lazy_namespaces, referenced);
+            scan_expr(&el.value, lazy_namespaces, referenced);
+        }
+        DocItem::FunctionDecl(fd) => {
+            check_name(&fd.name.name, lazy_namespaces, referenced);
+        }
+        DocItem::ReExport(re) => {
+            check_name(&re.name.name, lazy_namespaces, referenced);
+        }
+        DocItem::Import(_) => {}
+    }
+}
+
+fn scan_body_item(item: &BodyItem, lazy_namespaces: &[String], referenced: &mut HashSet<String>) {
+    match item {
+        BodyItem::Block(b) => {
+            check_name(&b.kind.name, lazy_namespaces, referenced);
+            for dec in &b.decorators {
+                scan_decorator(dec, lazy_namespaces, referenced);
+            }
+            for child in &b.body {
+                scan_body_item(child, lazy_namespaces, referenced);
+            }
+        }
+        BodyItem::Schema(s) => {
+            check_string_lit(&s.name, lazy_namespaces, referenced);
+            for dec in &s.decorators {
+                scan_decorator(dec, lazy_namespaces, referenced);
+            }
+            for field in &s.fields {
+                for dec in &field.decorators_before {
+                    scan_decorator(dec, lazy_namespaces, referenced);
+                }
+                for dec in &field.decorators_after {
+                    scan_decorator(dec, lazy_namespaces, referenced);
+                }
+            }
+        }
+        BodyItem::DecoratorSchema(ds) => {
+            check_string_lit(&ds.name, lazy_namespaces, referenced);
+        }
+        BodyItem::LetBinding(lb) => {
+            check_name(&lb.name.name, lazy_namespaces, referenced);
+            scan_expr(&lb.value, lazy_namespaces, referenced);
+        }
+        BodyItem::Attribute(attr) => {
+            scan_expr(&attr.value, lazy_namespaces, referenced);
+            for dec in &attr.decorators {
+                scan_decorator(dec, lazy_namespaces, referenced);
+            }
+        }
+        BodyItem::MacroDef(m) => {
+            check_name(&m.name.name, lazy_namespaces, referenced);
+        }
+        BodyItem::MacroCall(mc) => {
+            check_name(&mc.name.name, lazy_namespaces, referenced);
+        }
+        BodyItem::Table(t) => {
+            for col in &t.columns {
+                check_name(&col.name.name, lazy_namespaces, referenced);
+            }
+        }
+        BodyItem::ForLoop(fl) => {
+            scan_expr(&fl.iterable, lazy_namespaces, referenced);
+            for child in &fl.body {
+                scan_body_item(child, lazy_namespaces, referenced);
+            }
+        }
+        BodyItem::Conditional(cond) => {
+            scan_conditional(cond, lazy_namespaces, referenced);
+        }
+        BodyItem::Validation(v) => {
+            for lb in &v.lets {
+                scan_expr(&lb.value, lazy_namespaces, referenced);
+            }
+            scan_expr(&v.check, lazy_namespaces, referenced);
+            scan_expr(&v.message, lazy_namespaces, referenced);
+        }
+        BodyItem::StructDef(s) => {
+            check_string_lit(&s.name, lazy_namespaces, referenced);
+        }
+        BodyItem::SymbolSetDecl(ss) => {
+            check_name(&ss.name.name, lazy_namespaces, referenced);
+        }
+    }
+}
+
+fn scan_decorator(dec: &Decorator, lazy_namespaces: &[String], referenced: &mut HashSet<String>) {
+    check_name(&dec.name.name, lazy_namespaces, referenced);
+    for arg in &dec.args {
+        match arg {
+            DecoratorArg::Positional(e) => scan_expr(e, lazy_namespaces, referenced),
+            DecoratorArg::Named(name, e) => {
+                check_name(&name.name, lazy_namespaces, referenced);
+                scan_expr(e, lazy_namespaces, referenced);
+            }
+        }
+    }
+}
+
+fn scan_conditional(
+    cond: &Conditional,
+    lazy_namespaces: &[String],
+    referenced: &mut HashSet<String>,
+) {
+    scan_expr(&cond.condition, lazy_namespaces, referenced);
+    for child in &cond.then_body {
+        scan_body_item(child, lazy_namespaces, referenced);
+    }
+    if let Some(ref else_branch) = cond.else_branch {
+        match else_branch {
+            ElseBranch::ElseIf(nested) => {
+                scan_conditional(nested, lazy_namespaces, referenced);
+            }
+            ElseBranch::Else(body, _, _) => {
+                for child in body {
+                    scan_body_item(child, lazy_namespaces, referenced);
+                }
+            }
+        }
+    }
+}
+
+fn scan_expr(expr: &Expr, lazy_namespaces: &[String], referenced: &mut HashSet<String>) {
+    match expr {
+        Expr::Ident(ident) => {
+            check_name(&ident.name, lazy_namespaces, referenced);
+        }
+        Expr::IdentifierLit(lit) => {
+            check_name(&lit.value, lazy_namespaces, referenced);
+        }
+        Expr::StringLit(lit) => {
+            check_string_lit(lit, lazy_namespaces, referenced);
+        }
+        Expr::BinaryOp(lhs, _, rhs, _) => {
+            scan_expr(lhs, lazy_namespaces, referenced);
+            scan_expr(rhs, lazy_namespaces, referenced);
+        }
+        Expr::UnaryOp(_, inner, _) => {
+            scan_expr(inner, lazy_namespaces, referenced);
+        }
+        Expr::FnCall(callee, args, _) => {
+            scan_expr(callee, lazy_namespaces, referenced);
+            for arg in args {
+                match arg {
+                    CallArg::Positional(e) => scan_expr(e, lazy_namespaces, referenced),
+                    CallArg::Named(name, e) => {
+                        check_name(&name.name, lazy_namespaces, referenced);
+                        scan_expr(e, lazy_namespaces, referenced);
+                    }
+                }
+            }
+        }
+        Expr::List(items, _) => {
+            for item in items {
+                scan_expr(item, lazy_namespaces, referenced);
+            }
+        }
+        Expr::Map(entries, _) => {
+            for (key, val) in entries {
+                if let MapKey::Ident(ident) = key {
+                    check_name(&ident.name, lazy_namespaces, referenced);
+                }
+                scan_expr(val, lazy_namespaces, referenced);
+            }
+        }
+        Expr::MemberAccess(base, _, _) => {
+            scan_expr(base, lazy_namespaces, referenced);
+        }
+        Expr::IndexAccess(base, idx, _) => {
+            scan_expr(base, lazy_namespaces, referenced);
+            scan_expr(idx, lazy_namespaces, referenced);
+        }
+        Expr::Ternary(cond, then_expr, else_expr, _) => {
+            scan_expr(cond, lazy_namespaces, referenced);
+            scan_expr(then_expr, lazy_namespaces, referenced);
+            scan_expr(else_expr, lazy_namespaces, referenced);
+        }
+        Expr::Lambda(_, body, _) => {
+            scan_expr(body, lazy_namespaces, referenced);
+        }
+        Expr::BlockExpr(lets, body, _) => {
+            for lb in lets {
+                scan_expr(&lb.value, lazy_namespaces, referenced);
+            }
+            scan_expr(body, lazy_namespaces, referenced);
+        }
+        Expr::Paren(inner, _) => {
+            scan_expr(inner, lazy_namespaces, referenced);
+        }
+        // Ref, Query, literals, ImportRaw, ImportTable — no namespace references
+        _ => {}
+    }
 }
 
 #[cfg(test)]
@@ -1770,5 +2243,146 @@ mod tests {
             assert_eq!(table.columns[1].name.name, "role");
             assert_eq!(table.rows.len(), 1);
         }
+    }
+
+    #[test]
+    fn find_lazy_refs_detects_use_decl() {
+        use crate::lang::span::{FileId, Span};
+        use crate::lang::trivia::Trivia;
+
+        let dummy = Span::new(FileId(0), 0, 0);
+        let doc = Document {
+            items: vec![DocItem::Use(UseDecl {
+                namespace_path: vec![Ident {
+                    name: "net".to_string(),
+                    span: dummy,
+                }],
+                targets: vec![UseTarget {
+                    name: Ident {
+                        name: "service".to_string(),
+                        span: dummy,
+                    },
+                    alias: None,
+                    span: dummy,
+                }],
+                trivia: Trivia::default(),
+                span: dummy,
+            })],
+            trivia: Trivia::default(),
+            span: dummy,
+        };
+
+        let lazy_ns = vec!["net".to_string(), "other".to_string()];
+        let refs = find_lazy_namespace_references(&doc, &lazy_ns);
+        assert!(refs.contains("net"));
+        assert!(!refs.contains("other"));
+    }
+
+    #[test]
+    fn find_lazy_refs_detects_block_kind() {
+        use crate::lang::span::{FileId, Span};
+        use crate::lang::trivia::Trivia;
+
+        let dummy = Span::new(FileId(0), 0, 0);
+        let doc = Document {
+            items: vec![DocItem::Body(BodyItem::Block(Block {
+                decorators: vec![],
+                partial: false,
+                kind: Ident {
+                    name: "net::service".to_string(),
+                    span: dummy,
+                },
+                inline_id: None,
+                arrow_target: None,
+                inline_args: vec![],
+                body: vec![],
+                text_content: None,
+                trivia: Trivia::default(),
+                span: dummy,
+            }))],
+            trivia: Trivia::default(),
+            span: dummy,
+        };
+
+        let lazy_ns = vec!["net".to_string()];
+        let refs = find_lazy_namespace_references(&doc, &lazy_ns);
+        assert!(refs.contains("net"));
+    }
+
+    #[test]
+    fn find_lazy_refs_empty_when_no_references() {
+        use crate::lang::span::{FileId, Span};
+        use crate::lang::trivia::Trivia;
+
+        let dummy = Span::new(FileId(0), 0, 0);
+        let doc = Document {
+            items: vec![DocItem::Body(BodyItem::Block(Block {
+                decorators: vec![],
+                partial: false,
+                kind: Ident {
+                    name: "config".to_string(),
+                    span: dummy,
+                },
+                inline_id: None,
+                arrow_target: None,
+                inline_args: vec![],
+                body: vec![],
+                text_content: None,
+                trivia: Trivia::default(),
+                span: dummy,
+            }))],
+            trivia: Trivia::default(),
+            span: dummy,
+        };
+
+        let lazy_ns = vec!["net".to_string()];
+        let refs = find_lazy_namespace_references(&doc, &lazy_ns);
+        assert!(refs.is_empty());
+    }
+
+    #[test]
+    fn lazy_imports_collected_during_resolve() {
+        use crate::lang::span::{FileId, Span};
+        use crate::lang::trivia::Trivia;
+
+        let dummy = Span::new(FileId(0), 0, 0);
+        let fs = InMemoryFs::new();
+        let mut sm = make_source_map();
+        let mut resolver = ImportResolver::new(
+            &fs,
+            &mut sm,
+            PathBuf::from("/project"),
+            32,
+            true,
+            LibraryConfig::default(),
+        );
+
+        let mut doc = Document {
+            items: vec![DocItem::Import(Import {
+                path: StringLit {
+                    parts: vec![StringPart::Literal("./lib.wcl".to_string())],
+                    heredoc: None,
+                    span: dummy,
+                },
+                kind: ImportKind::Relative,
+                optional: false,
+                lazy_namespace: Some(vec![Ident {
+                    name: "net".to_string(),
+                    span: dummy,
+                }]),
+                trivia: Trivia::default(),
+                span: dummy,
+            })],
+            trivia: Trivia::default(),
+            span: dummy,
+        };
+
+        let _diags = resolver.resolve(&mut doc, Path::new("/project/main.wcl"), 0);
+        // Lazy import should have been collected, not loaded
+        let lazy = resolver.take_lazy_imports();
+        assert_eq!(lazy.len(), 1);
+        assert!(lazy[0].import.lazy_namespace.is_some());
+        // Doc should have no items left (lazy import removed)
+        assert!(doc.items.is_empty());
     }
 }
