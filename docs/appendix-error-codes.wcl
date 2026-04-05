@@ -36,6 +36,7 @@ page appendix_error_codes {
                         { code = "E014", phase = "Import", description = "Max import depth exceeded" },
                         { code = "E015", phase = "Import", description = "Library not found in search paths" },
                         { code = "E016", phase = "Import", description = "Glob pattern matched no files (non-optional import)" },
+                        { code = "E017", phase = "Import", description = "Lazy import requires a namespace path" },
                         { code = "E020", phase = "Macro", description = "Undefined macro" },
                         { code = "E021", phase = "Macro", description = "Recursive macro expansion" },
                         { code = "E022", phase = "Macro", description = "Max expansion depth exceeded" },

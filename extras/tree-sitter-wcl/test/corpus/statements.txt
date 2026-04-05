@@ -21,6 +21,42 @@ import "utils.wcl"
   (import_declaration (string_literal (string_content))))
 
 ================
+Lazy import
+================
+
+import "networking.wcl" lazy(net)
+
+---
+
+(document
+  (import_declaration (string_literal (string_content))
+    (lazy_modifier (namespace_path (identifier)))))
+
+================
+Lazy import with nested namespace
+================
+
+import "lib.wcl" lazy(my::net)
+
+---
+
+(document
+  (import_declaration (string_literal (string_content))
+    (lazy_modifier (namespace_path (identifier) (identifier)))))
+
+================
+Optional lazy import
+================
+
+import? "optional.wcl" lazy(opt)
+
+---
+
+(document
+  (import_declaration (string_literal (string_content))
+    (lazy_modifier (namespace_path (identifier)))))
+
+================
 Export let
 ================
 
