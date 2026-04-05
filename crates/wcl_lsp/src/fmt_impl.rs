@@ -57,6 +57,11 @@ impl<'a> Fmt<'a> {
                 } else {
                     self.string_lit(&import.path);
                 }
+                if let Some(ref ns_path) = import.lazy_namespace {
+                    self.out.push_str(" lazy(");
+                    self.out.push_str(&join_path(ns_path));
+                    self.out.push(')');
+                }
                 self.out.push('\n');
             }
             DocItem::ExportLet(el) => {

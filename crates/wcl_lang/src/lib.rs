@@ -585,8 +585,28 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
             library_config,
         );
         let import_diags = resolver.resolve(&mut doc, &options.root_dir.join("<input>"), 0);
-        imported_paths = resolver.loaded_paths().clone();
         all_diagnostics.extend(import_diags.into_diagnostics());
+
+        // Phase 3-lazy: Resolve lazy imports whose namespaces are referenced
+        let lazy_imports = resolver.take_lazy_imports();
+        if !lazy_imports.is_empty() {
+            let lazy_ns_strings: Vec<String> = lazy_imports
+                .iter()
+                .filter_map(|li| {
+                    li.import
+                        .lazy_namespace
+                        .as_ref()
+                        .map(|path| ast::join_path(path))
+                })
+                .collect();
+            let referenced = crate::eval::find_lazy_namespace_references(&doc, &lazy_ns_strings);
+            if !referenced.is_empty() {
+                let lazy_diags = resolver.resolve_lazy(&mut doc, &lazy_imports, &referenced);
+                all_diagnostics.extend(lazy_diags.into_diagnostics());
+            }
+        }
+
+        imported_paths = resolver.loaded_paths().clone();
     }
 
     // Phase 3a: Resolve import_table() expressions into inline tables
@@ -4080,5 +4100,114 @@ EOF
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_lazy_import_loaded_when_referenced() {
+        let mut fs = InMemoryFs::new();
+        fs.add_file(
+            std::path::PathBuf::from("/project/lib.wcl"),
+            "schema \"service\" { port: i64 }".to_string(),
+        );
+        let opts = ParseOptions {
+            root_dir: std::path::PathBuf::from("/project"),
+            fs: Some(std::sync::Arc::new(fs)),
+            ..Default::default()
+        };
+        let source = r#"
+import "./lib.wcl" lazy(net)
+use net::{service}
+service "my-api" { port = 8080 }
+"#;
+        let doc = parse(source, opts);
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+    }
+
+    #[test]
+    fn test_lazy_import_not_loaded_when_unreferenced() {
+        // The file doesn't exist, but since it's lazy and unreferenced, no error
+        let fs = InMemoryFs::new();
+        let opts = ParseOptions {
+            root_dir: std::path::PathBuf::from("/project"),
+            fs: Some(std::sync::Arc::new(fs)),
+            ..Default::default()
+        };
+        let source = r#"
+import "./nonexistent.wcl" lazy(unused)
+config { port = 8080 }
+"#;
+        let doc = parse(source, opts);
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+    }
+
+    #[test]
+    fn test_lazy_import_with_nested_namespace() {
+        let mut fs = InMemoryFs::new();
+        fs.add_file(
+            std::path::PathBuf::from("/project/lib.wcl"),
+            "export let port = 9090".to_string(),
+        );
+        let opts = ParseOptions {
+            root_dir: std::path::PathBuf::from("/project"),
+            fs: Some(std::sync::Arc::new(fs)),
+            ..Default::default()
+        };
+        let source = r#"
+import "./lib.wcl" lazy(infra::net)
+use infra::net::{port}
+config { listen_port = port }
+"#;
+        let doc = parse(source, opts);
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+    }
+
+    #[test]
+    fn test_lazy_import_optional_missing_file() {
+        let fs = InMemoryFs::new();
+        let opts = ParseOptions {
+            root_dir: std::path::PathBuf::from("/project"),
+            fs: Some(std::sync::Arc::new(fs)),
+            ..Default::default()
+        };
+        // Optional lazy import: referenced but file missing — should not error
+        let source = r#"
+import? "./missing.wcl" lazy(opt)
+use opt::{thing}
+config { port = 8080 }
+"#;
+        let doc = parse(source, opts);
+        // The use declaration will fail since namespace doesn't exist,
+        // but the import itself should not produce an E010 error
+        let import_errors: Vec<_> = doc
+            .diagnostics
+            .iter()
+            .filter(|d| d.code.as_deref() == Some("E010"))
+            .collect();
+        assert!(
+            import_errors.is_empty(),
+            "should not have file-not-found error for optional lazy import"
+        );
+    }
+
+    #[test]
+    fn test_lazy_import_use_triggers_load() {
+        let mut fs = InMemoryFs::new();
+        fs.add_file(
+            std::path::PathBuf::from("/project/lib.wcl"),
+            "schema \"endpoint\" { path: string }".to_string(),
+        );
+        let opts = ParseOptions {
+            root_dir: std::path::PathBuf::from("/project"),
+            fs: Some(std::sync::Arc::new(fs)),
+            ..Default::default()
+        };
+        // `use net::endpoint` should trigger lazy loading
+        let source = r#"
+import "./lib.wcl" lazy(net)
+use net::{endpoint}
+endpoint "api" { path = "/api" }
+"#;
+        let doc = parse(source, opts);
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
     }
 }

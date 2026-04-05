@@ -340,16 +340,25 @@ impl Parser {
                         let end_span = self.current_span();
                         self.advance(); // consume `>`
                         let full_name = name_parts.join("");
-                        let span = start_span.merge(end_span);
+                        let path_span = start_span.merge(end_span);
                         let path = StringLit {
                             parts: vec![StringPart::Literal(full_name)],
                             heredoc: None,
-                            span,
+                            span: path_span,
                         };
+                        let lazy_namespace = self.parse_lazy_modifier();
+                        let span = start_span.merge(
+                            lazy_namespace
+                                .as_ref()
+                                .and_then(|ns| ns.last())
+                                .map(|i| i.span)
+                                .unwrap_or(end_span),
+                        );
                         return Some(Import {
                             path,
                             kind: ImportKind::Library,
                             optional,
+                            lazy_namespace,
                             trivia,
                             span,
                         });
@@ -366,14 +375,53 @@ impl Parser {
         }
 
         let path = self.parse_string_lit()?;
-        let span = start_span.merge(path.span);
+        let path_end = path.span;
+        let lazy_namespace = self.parse_lazy_modifier();
+        let span = start_span.merge(
+            lazy_namespace
+                .as_ref()
+                .and_then(|ns| ns.last())
+                .map(|i| i.span)
+                .unwrap_or(path_end),
+        );
         Some(Import {
             path,
             kind: ImportKind::Relative,
             optional,
+            lazy_namespace,
             trivia,
             span,
         })
+    }
+
+    /// Try to parse a `lazy(ns::path)` modifier after an import path.
+    /// Returns `None` if the next token is not `lazy`.
+    fn parse_lazy_modifier(&mut self) -> Option<Vec<Ident>> {
+        // Check for contextual keyword `lazy`
+        if !matches!(self.peek_kind(), TokenKind::Ident(ref s) if s == "lazy") {
+            return None;
+        }
+        self.advance(); // consume `lazy`
+
+        if !self.at(&TokenKind::LParen) {
+            self.diagnostics
+                .error("expected `(` after `lazy` in import", self.current_span());
+            return None;
+        }
+        self.advance(); // consume `(`
+
+        let ns_path = self.parse_namespace_path();
+
+        if !self.at(&TokenKind::RParen) {
+            self.diagnostics.error(
+                "expected `)` after lazy namespace path",
+                self.current_span(),
+            );
+            return ns_path;
+        }
+        self.advance(); // consume `)`
+
+        ns_path
     }
 
     /// Parse a `::` separated path: `ident (:: ident)*`
