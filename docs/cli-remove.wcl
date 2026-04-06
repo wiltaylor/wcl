@@ -16,7 +16,7 @@ page cli_remove {
                 }
 
                 paragraph p1 {
-                    content = "Remove a block or attribute from a WCL document."
+                    content = "Remove blocks or attributes selected by a query pipeline."
                 }
 
                 heading h2_usage {
@@ -26,7 +26,7 @@ page cli_remove {
 
                 code c1 {
                     language = "bash"
-                    content = "wcl remove <file> <path>"
+                    content = "wcl remove <file> '<selector>'\nwcl remove <file> '<selector> ~> .path'"
                 }
 
                 heading h2_description {
@@ -35,29 +35,7 @@ page cli_remove {
                 }
 
                 paragraph p2 {
-                    content = "<code>wcl remove</code> deletes a block or attribute identified by <code>&lt;path&gt;</code> from the given document. The file is modified in place. The surrounding content, including comments and blank lines adjacent to the removed item, is cleaned up."
-                }
-
-                heading h2_path_syntax {
-                    level = 2
-                    content = "Path Syntax"
-                }
-
-                paragraph p3 {
-                    content = "The path syntax determines whether a block or an attribute is removed."
-                }
-
-                data_table t1 {
-                    caption = "Path Syntax"
-                    rows = [
-                        { path = "service#svc-old", what_is_removed = "The entire service block with ID svc-old" },
-                        { path = "service#svc-api.debug", what_is_removed = "The debug attribute inside service#svc-api" },
-                        { path = "database#primary.port", what_is_removed = "The port attribute inside database#primary" }
-                    ]
-                }
-
-                paragraph p4 {
-                    content = "A path with no trailing <code>.attribute</code> removes the whole block. A path with a trailing <code>.attribute</code> removes only that attribute from the block."
+                    content = "<code>wcl remove</code> takes a single argument that contains a " + link("query pipeline", "guide_query_engine.html") + " selector. With just a selector, every matched block is deleted from the file. With a selector followed by <code>~&gt;</code> and a <code>.path</code>, only the named attribute is deleted from each matched block."
                 }
 
                 heading h2_examples {
@@ -65,31 +43,40 @@ page cli_remove {
                     content = "Examples"
                 }
 
-                paragraph p5 {
-                    content = "Remove an entire block:"
+                paragraph p3 {
+                    content = "Remove a block by inline id:"
                 }
 
                 code c2 {
                     language = "bash"
-                    content = "wcl remove config.wcl service#svc-old"
+                    content = "wcl remove config.wcl 'server | .id == \"old\"'"
                 }
 
-                paragraph p6 {
-                    content = "Remove a single attribute from a block:"
+                paragraph p4 {
+                    content = "Remove every block of a kind that matches a filter:"
                 }
 
                 code c3 {
                     language = "bash"
-                    content = "wcl remove config.wcl service#svc-api.debug"
+                    content = "wcl remove config.wcl 'server | .env == \"dev\"'"
                 }
 
-                paragraph p7 {
-                    content = "Remove a nested attribute:"
+                paragraph p5 {
+                    content = "Remove a single attribute from one block:"
                 }
 
                 code c4 {
                     language = "bash"
-                    content = "wcl remove config.wcl database#primary.tls.cert_path"
+                    content = "wcl remove config.wcl 'server | .id == \"web\" ~> .debug'"
+                }
+
+                paragraph p6 {
+                    content = "Remove a nested attribute:"
+                }
+
+                code c5 {
+                    language = "bash"
+                    content = "wcl remove config.wcl 'database | .id == \"primary\" ~> .tls.cert_path'"
                 }
 
                 heading h2_notes {
@@ -97,12 +84,12 @@ page cli_remove {
                     content = "Notes"
                 }
 
-                paragraph p8 {
+                paragraph p7 {
                     content = "<ul>" +
+                        "<li>If the selector matches no blocks, <code>wcl remove</code> exits with an error and the file is not modified.</li>" +
                         "<li>Removing a block removes all of its contents, including nested blocks and attributes.</li>" +
-                        "<li>If the path does not exist in the document, an error is reported and the file is not modified.</li>" +
                         "<li>The file is modified in place; no backup is created automatically.</li>" +
-                        "<li>To remove a partial block, all partial declarations sharing the same type and ID must be addressed individually.</li>" +
+                        "<li>To create a new block or attribute, use " + link("wcl add", "cli_add.html") + ". To update existing values, use " + link("wcl set", "cli_set.html") + ".</li>" +
                         "</ul>"
                 }
             }
