@@ -181,30 +181,6 @@ page editor_setup {
                         "</ol>"
                 }
 
-                heading h2_zed {
-                    level = 2
-                    content = "Zed"
-                }
-
-                paragraph p19 {
-                    content = "A Zed extension is located in <code>editors/zed/</code> in the repository. It provides tree-sitter-based syntax highlighting and LSP integration."
-                }
-
-                paragraph p20 {
-                    content = bold("Install from source:")
-                }
-
-                code c7 {
-                    language = "bash"
-                    content = <<-'BASH'
-                    ln -sfn "$(pwd)/editors/zed" ~/.local/share/zed/extensions/installed/wcl
-                    BASH
-                }
-
-                paragraph p21 {
-                    content = "Restart Zed after linking. The extension automatically starts <code>wcl lsp</code> when a <code>.wcl</code> file is opened. Make sure <code>wcl</code> is on your <code>PATH</code>."
-                }
-
                 heading h2_other {
                     level = 2
                     content = "Other Editors"
