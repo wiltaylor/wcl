@@ -1,11 +1,11 @@
-// Minimal WCL formatter for LSP formatting support.
-// Mirrors wcl_cli/src/fmt.rs logic.
+//! WCL AST formatter — shared by CLI and LSP.
 
-use wcl_lang::lang::ast::*;
+use crate::lang::ast::*;
 
+/// Format a parsed WCL document back to canonical text.
 pub fn format_document(doc: &Document) -> String {
     let mut output = String::new();
-    let mut f = Fmt {
+    let mut f = Formatter {
         out: &mut output,
         indent: 0,
     };
@@ -13,12 +13,12 @@ pub fn format_document(doc: &Document) -> String {
     output
 }
 
-struct Fmt<'a> {
+struct Formatter<'a> {
     out: &'a mut String,
     indent: usize,
 }
 
-impl<'a> Fmt<'a> {
+impl<'a> Formatter<'a> {
     fn indent(&mut self) {
         for _ in 0..self.indent {
             self.out.push_str("    ");
@@ -286,23 +286,20 @@ impl<'a> Fmt<'a> {
                 self.out.push_str(" {\n");
                 self.indent += 1;
                 for field in &schema.fields {
-                    self.indent();
-                    self.out.push_str(&format!("{} = ", field.name.name));
-                    self.type_expr(&field.type_expr);
-                    self.out.push('\n');
+                    self.schema_field(field);
                 }
                 for variant in &schema.variants {
                     self.out.push('\n');
+                    for dec in &variant.decorators {
+                        self.decorator(dec);
+                    }
                     self.indent();
                     self.out.push_str("variant ");
                     self.string_lit(&variant.tag_value);
                     self.out.push_str(" {\n");
                     self.indent += 1;
                     for field in &variant.fields {
-                        self.indent();
-                        self.out.push_str(&format!("{} = ", field.name.name));
-                        self.type_expr(&field.type_expr);
-                        self.out.push('\n');
+                        self.schema_field(field);
                     }
                     self.indent -= 1;
                     self.indent();
@@ -447,6 +444,9 @@ impl<'a> Fmt<'a> {
                 self.out.push_str(" {\n");
                 self.indent += 1;
                 for field in &s.fields {
+                    for dec in &field.decorators_before {
+                        self.decorator(dec);
+                    }
                     self.indent();
                     self.out.push_str(&format!("{} : ", field.name.name));
                     self.type_expr(&field.type_expr);
@@ -511,8 +511,27 @@ impl<'a> Fmt<'a> {
         }
     }
 
+    fn schema_field(&mut self, field: &SchemaField) {
+        for dec in &field.decorators_before {
+            self.decorator(dec);
+        }
+        self.indent();
+        self.out.push_str(&format!("{}: ", field.name.name));
+        self.type_expr(&field.type_expr);
+        for dec in &field.decorators_after {
+            self.out.push(' ');
+            self.decorator_inline(dec);
+        }
+        self.out.push('\n');
+    }
+
     fn decorator(&mut self, dec: &Decorator) {
         self.indent();
+        self.decorator_inline(dec);
+        self.out.push('\n');
+    }
+
+    fn decorator_inline(&mut self, dec: &Decorator) {
         self.out.push('@');
         self.out.push_str(&dec.name.name);
         if !dec.args.is_empty() {
@@ -531,7 +550,6 @@ impl<'a> Fmt<'a> {
             }
             self.out.push(')');
         }
-        self.out.push('\n');
     }
 
     fn expr(&mut self, expr: &Expr) {
@@ -656,16 +674,73 @@ impl<'a> Fmt<'a> {
                 self.expr(e);
                 self.out.push(')');
             }
+            Expr::Query(pipeline, _) => {
+                self.out.push_str("query(");
+                self.query_pipeline(pipeline);
+                self.out.push(')');
+            }
             Expr::Ref(target, _) => match target {
                 RefTarget::Bare(id) => {
                     self.out.push_str(&format!("ref({})", id.value));
                 }
                 RefTarget::Path(s) => {
-                    self.out.push_str(&format!("ref(\"{}\")", s.as_str()));
+                    self.out.push_str("ref(");
+                    self.string_lit(s);
+                    self.out.push(')');
                 }
             },
-            _ => {
-                self.out.push_str("/* expr */");
+            Expr::ImportRaw(path, _) => {
+                self.out.push_str("import_raw(");
+                self.string_lit(path);
+                self.out.push(')');
+            }
+            Expr::ImportTable(args, _) => {
+                self.out.push_str("import_table(");
+                self.string_lit(&args.path);
+                if let Some(ref sep) = args.separator {
+                    self.out.push_str(", separator = ");
+                    self.string_lit(sep);
+                }
+                if let Some(h) = args.headers {
+                    self.out
+                        .push_str(&format!(", headers = {}", if h { "true" } else { "false" }));
+                }
+                if let Some(ref cols) = args.columns {
+                    self.out.push_str(", columns = [");
+                    for (i, c) in cols.iter().enumerate() {
+                        if i > 0 {
+                            self.out.push_str(", ");
+                        }
+                        self.string_lit(c);
+                    }
+                    self.out.push(']');
+                }
+                self.out.push(')');
+            }
+            Expr::BlockExpr(lets, final_expr, _) => {
+                self.out.push_str("{\n");
+                self.indent += 1;
+                for lb in lets {
+                    self.indent();
+                    self.out.push_str(&format!("let {} = ", lb.name.name));
+                    self.expr(&lb.value);
+                    self.out.push('\n');
+                }
+                self.indent();
+                self.expr(final_expr);
+                self.out.push('\n');
+                self.indent -= 1;
+                self.indent();
+                self.out.push('}');
+            }
+            Expr::DateLit(s, _) => {
+                self.out.push_str(&format!("d\"{}\"", s));
+            }
+            Expr::DurationLit(s, _) => {
+                self.out.push_str(&format!("dur\"{}\"", s));
+            }
+            Expr::PatternLit(s, _) => {
+                self.out.push_str(&format!("/{}/", s));
             }
         }
     }
@@ -1002,38 +1077,100 @@ impl<'a> Fmt<'a> {
         }
     }
 
-    fn schema_field(&mut self, field: &SchemaField) {
-        for dec in &field.decorators_before {
-            self.decorator(dec);
+    fn query_pipeline(&mut self, pipeline: &QueryPipeline) {
+        self.query_selector(&pipeline.selector);
+        for filter in &pipeline.filters {
+            self.out.push_str(" | ");
+            self.query_filter(filter);
         }
-        self.indent();
-        self.out.push_str(&format!("{}: ", field.name.name));
-        self.type_expr(&field.type_expr);
-        for dec in &field.decorators_after {
-            self.out.push(' ');
-            self.decorator_inline(dec);
-        }
-        self.out.push('\n');
     }
 
-    fn decorator_inline(&mut self, dec: &Decorator) {
-        self.out.push('@');
-        self.out.push_str(&dec.name.name);
-        if !dec.args.is_empty() {
-            self.out.push('(');
-            for (i, arg) in dec.args.iter().enumerate() {
-                if i > 0 {
-                    self.out.push_str(", ");
-                }
-                match arg {
-                    DecoratorArg::Positional(e) => self.expr(e),
-                    DecoratorArg::Named(name, e) => {
-                        self.out.push_str(&format!("{} = ", name.name));
-                        self.expr(e);
+    fn query_selector(&mut self, selector: &QuerySelector) {
+        match selector {
+            QuerySelector::Kind(ident) => self.out.push_str(&ident.name),
+            QuerySelector::KindId(kind, id) => {
+                self.out.push_str(&kind.name);
+                self.out.push('#');
+                self.out.push_str(&id.value);
+            }
+            QuerySelector::Path(segments) => {
+                for (i, seg) in segments.iter().enumerate() {
+                    if i > 0 {
+                        self.out.push('.');
+                    }
+                    match seg {
+                        PathSegment::Ident(ident) => self.out.push_str(&ident.name),
                     }
                 }
             }
-            self.out.push(')');
+            QuerySelector::Recursive(ident) => {
+                self.out.push_str("..");
+                self.out.push_str(&ident.name);
+            }
+            QuerySelector::RecursiveId(kind, id) => {
+                self.out.push_str("..");
+                self.out.push_str(&kind.name);
+                self.out.push('#');
+                self.out.push_str(&id.value);
+            }
+            QuerySelector::Root => self.out.push('.'),
+            QuerySelector::Wildcard => self.out.push('*'),
+            QuerySelector::TableId(id) => {
+                self.out.push_str("table#");
+                self.out.push_str(&id.value);
+            }
+        }
+    }
+
+    fn query_filter(&mut self, filter: &QueryFilter) {
+        match filter {
+            QueryFilter::AttrComparison(attr, op, expr) => {
+                self.out.push('.');
+                self.out.push_str(&attr.name);
+                let op_str = match op {
+                    BinOp::Eq => " == ",
+                    BinOp::Neq => " != ",
+                    BinOp::Lt => " < ",
+                    BinOp::Gt => " > ",
+                    BinOp::Lte => " <= ",
+                    BinOp::Gte => " >= ",
+                    BinOp::Match => " =~ ",
+                    _ => " == ",
+                };
+                self.out.push_str(op_str);
+                self.expr(expr);
+            }
+            QueryFilter::Projection(attr) => {
+                self.out.push('.');
+                self.out.push_str(&attr.name);
+            }
+            QueryFilter::HasAttr(attr) => {
+                self.out.push_str("has(.");
+                self.out.push_str(&attr.name);
+                self.out.push(')');
+            }
+            QueryFilter::HasDecorator(dec) => {
+                self.out.push_str("has(@");
+                self.out.push_str(&dec.name);
+                self.out.push(')');
+            }
+            QueryFilter::DecoratorArgFilter(dec, param, op, expr) => {
+                self.out.push('@');
+                self.out.push_str(&dec.name);
+                self.out.push('.');
+                self.out.push_str(&param.name);
+                let op_str = match op {
+                    BinOp::Eq => " == ",
+                    BinOp::Neq => " != ",
+                    BinOp::Lt => " < ",
+                    BinOp::Gt => " > ",
+                    BinOp::Lte => " <= ",
+                    BinOp::Gte => " >= ",
+                    _ => " == ",
+                };
+                self.out.push_str(op_str);
+                self.expr(expr);
+            }
         }
     }
 }
@@ -1041,67 +1178,111 @@ impl<'a> Fmt<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use wcl_lang::lang::span::Span;
-    use wcl_lang::lang::trivia::Trivia;
+    use crate::lang::ast::*;
+    use crate::lang::span::Span;
+    use crate::lang::trivia::Trivia;
 
-    fn dummy_span() -> Span {
+    fn ds() -> Span {
         Span::dummy()
     }
 
-    fn dummy_trivia() -> Trivia {
+    fn dt() -> Trivia {
         Trivia::default()
     }
 
-    fn make_ident(name: &str) -> Ident {
+    fn ident(name: &str) -> Ident {
         Ident {
             name: name.to_string(),
-            span: dummy_span(),
+            span: ds(),
         }
     }
 
-    fn make_string_lit(s: &str) -> StringLit {
+    fn slit(s: &str) -> StringLit {
         StringLit {
             parts: vec![StringPart::Literal(s.to_string())],
             heredoc: None,
-            span: dummy_span(),
+            span: ds(),
         }
     }
 
     #[test]
-    fn test_format_function_macro() {
+    fn schema_fields_use_colon() {
+        let schema = Schema {
+            decorators: vec![],
+            name: slit("server"),
+            fields: vec![
+                SchemaField {
+                    decorators_before: vec![],
+                    name: ident("host"),
+                    type_expr: TypeExpr::String(ds()),
+                    decorators_after: vec![Decorator {
+                        name: ident("optional"),
+                        args: vec![],
+                        span: ds(),
+                    }],
+                    trivia: dt(),
+                    span: ds(),
+                },
+                SchemaField {
+                    decorators_before: vec![],
+                    name: ident("port"),
+                    type_expr: TypeExpr::I64(ds()),
+                    decorators_after: vec![],
+                    trivia: dt(),
+                    span: ds(),
+                },
+            ],
+            variants: vec![],
+            trivia: dt(),
+            span: ds(),
+        };
+        let doc = Document {
+            items: vec![DocItem::Body(BodyItem::Schema(schema))],
+            trivia: dt(),
+            span: ds(),
+        };
+        let result = format_document(&doc);
+        assert_eq!(
+            result,
+            "schema \"server\" {\n    host: string @optional\n    port: i64\n}\n\n"
+        );
+    }
+
+    #[test]
+    fn format_function_macro() {
         let macro_def = MacroDef {
             decorators: vec![],
             kind: MacroKind::Function,
-            name: make_ident("my_macro"),
+            name: ident("my_macro"),
             params: vec![
                 MacroParam {
-                    name: make_ident("x"),
-                    type_constraint: Some(TypeExpr::I64(dummy_span())),
+                    name: ident("x"),
+                    type_constraint: Some(TypeExpr::I64(ds())),
                     default: None,
-                    span: dummy_span(),
+                    span: ds(),
                 },
                 MacroParam {
-                    name: make_ident("y"),
+                    name: ident("y"),
                     type_constraint: None,
-                    default: Some(Expr::IntLit(42, dummy_span())),
-                    span: dummy_span(),
+                    default: Some(Expr::IntLit(42, ds())),
+                    span: ds(),
                 },
             ],
             body: MacroBody::Function(vec![BodyItem::Attribute(Attribute {
                 decorators: vec![],
-                name: make_ident("value"),
-                value: Expr::Ident(make_ident("x")),
-                assign_op: wcl_lang::lang::ast::AssignOp::Assign,
-                trivia: dummy_trivia(),
-                span: dummy_span(),
+                name: ident("value"),
+                value: Expr::Ident(ident("x")),
+                assign_op: AssignOp::Assign,
+                trivia: dt(),
+                span: ds(),
             })]),
-            trivia: dummy_trivia(),
-            span: dummy_span(),
+            trivia: dt(),
+            span: ds(),
         };
         let doc = Document {
             items: vec![DocItem::Body(BodyItem::MacroDef(macro_def))],
-            trivia: dummy_trivia(),
-            span: dummy_span(),
+            trivia: dt(),
+            span: ds(),
         };
         let result = format_document(&doc);
         assert_eq!(
@@ -1111,46 +1292,26 @@ mod tests {
     }
 
     #[test]
-    fn test_format_macro_call() {
-        let mc = MacroCall {
-            name: make_ident("my_macro"),
-            args: vec![
-                MacroCallArg::Positional(Expr::IntLit(1, dummy_span())),
-                MacroCallArg::Named(make_ident("y"), Expr::IntLit(2, dummy_span())),
-            ],
-            trivia: dummy_trivia(),
-            span: dummy_span(),
-        };
-        let doc = Document {
-            items: vec![DocItem::Body(BodyItem::MacroCall(mc))],
-            trivia: dummy_trivia(),
-            span: dummy_span(),
-        };
-        let result = format_document(&doc);
-        assert_eq!(result, "my_macro(1, y = 2)\n\n");
-    }
-
-    #[test]
-    fn test_format_decorator_schema() {
-        let ds = DecoratorSchema {
+    fn format_decorator_schema() {
+        let ds_node = DecoratorSchema {
             decorators: vec![],
-            name: make_string_lit("my_decorator"),
+            name: slit("my_decorator"),
             target: vec![DecoratorTarget::Block, DecoratorTarget::Attribute],
             fields: vec![SchemaField {
                 decorators_before: vec![],
-                name: make_ident("level"),
-                type_expr: TypeExpr::String(dummy_span()),
+                name: ident("level"),
+                type_expr: TypeExpr::String(ds()),
                 decorators_after: vec![],
-                trivia: dummy_trivia(),
-                span: dummy_span(),
+                trivia: dt(),
+                span: ds(),
             }],
-            trivia: dummy_trivia(),
-            span: dummy_span(),
+            trivia: dt(),
+            span: ds(),
         };
         let doc = Document {
-            items: vec![DocItem::Body(BodyItem::DecoratorSchema(ds))],
-            trivia: dummy_trivia(),
-            span: dummy_span(),
+            items: vec![DocItem::Body(BodyItem::DecoratorSchema(ds_node))],
+            trivia: dt(),
+            span: ds(),
         };
         let result = format_document(&doc);
         assert_eq!(
