@@ -16,7 +16,7 @@ page introduction {
                 }
 
                 paragraph p1 {
-                    content = "WCL (Wil's Configuration Language) is a statically-typed, block-structured configuration language designed for expressive, validated, and maintainable configuration. It combines schemas, decorators, macros, data tables, a query engine, partial declarations, and a full Language Server Protocol (LSP) implementation into a single cohesive system."
+                    content = "WCL (Wil's Configuration Language) is a statically-typed, block-structured configuration language designed for expressive, validated, and maintainable configuration. It combines schemas, decorators, macros, data tables, a query engine, partial declarations, a data transformation engine, a documentation format, and a full Language Server Protocol (LSP) implementation into a single cohesive system."
                 }
 
                 heading h2_what {
@@ -39,13 +39,24 @@ page introduction {
                         "<li>" + bold("Decorators") + ": attach metadata or behavior to blocks and attributes with <code>@decorator</code> syntax</li>" +
                         "<li>" + bold("Macros") + ": define reusable configuration fragments with function-style and attribute-style macros</li>" +
                         "<li>" + bold("Data tables") + ": declare tabular data inline and query it</li>" +
-                        "<li>" + bold("Partial declarations") + ": split a block definition across multiple files or sites with <code>@partial</code></li>" +
+                        "<li>" + bold("Transforms") + ": a declarative data transformation engine that converts between formats (JSON, YAML, CSV, XML, TOML, HCL, MessagePack, binary) using WCL expressions for field mapping and filtering</li>" +
+                        "<li>" + bold("Partial declarations") + ": split a block definition across multiple files or sites with the <code>partial</code> keyword</li>" +
                         "<li>" + bold("Query engine") + ": select and filter blocks using a path-based query syntax</li>" +
+                        "<li>" + bold("wdoc") + ": a document format built on WCL that references data in your configuration and supports advanced drawing of graphs, wireframe diagrams, and more</li>" +
                         "<li>" + bold("Full LSP") + ": diagnostics, hover, go-to-definition, completions, formatting, and more</li>" +
                         "</ul>"
                 }
 
-                heading h2_why {
+                heading h2_transforms {
+                    level = 2
+                    content = "Data Transformation"
+                }
+
+                paragraph p_transforms {
+                    content = "WCL includes a declarative " + link("transform engine", "guide_transforms.html") + " that goes beyond configuration. Transforms convert data between formats — JSON, YAML, CSV, XML, TOML, HCL, MessagePack, and custom binary formats — using WCL's expression language for field mapping, filtering, and stateful processing. The transform language works with any supported format, not just WCL files, making it a general-purpose data pipeline tool that happens to share WCL's expression syntax."
+                }
+
+heading h2_why {
                     level = 2
                     content = "Why WCL Instead of JSON, YAML, TOML, or HCL?"
                 }
@@ -53,20 +64,21 @@ page introduction {
                 data_table t1 {
                     caption = "Feature Comparison"
                     rows = [
-                        { feature = "Comments",           json = "No", yaml = "Yes", toml = "Yes", hcl = "Yes", wcl = "Yes (doc comments too)" },
-                        { feature = "Expressions",        json = "No", yaml = "No",  toml = "No",  hcl = "Yes", wcl = "Yes" },
-                        { feature = "Schemas / validation", json = "No", yaml = "No",  toml = "No",  hcl = "Partial", wcl = "Yes (first-class)" },
-                        { feature = "Macros / reuse",     json = "No", yaml = "Anchors", toml = "No", hcl = "Modules", wcl = "Yes" },
-                        { feature = "Decorators",         json = "No", yaml = "No",  toml = "No",  hcl = "No",  wcl = "Yes" },
-                        { feature = "Data tables",        json = "No", yaml = "No",  toml = "No",  hcl = "No",  wcl = "Yes" },
-                        { feature = "Query engine",       json = "No", yaml = "No",  toml = "No",  hcl = "No",  wcl = "Yes" },
-                        { feature = "LSP",                json = "No", yaml = "Limited", toml = "Limited", hcl = "Yes", wcl = "Yes" },
-                        { feature = "Static types",       json = "No", yaml = "No",  toml = "No",  hcl = "No",  wcl = "Yes" }
+                        { feature = "Comments",             json = "No",          xml = "Yes",     yaml = "Yes",    toml = "Yes", hcl = "Yes",     wcl = "Yes (doc comments too)" },
+                        { feature = "Expressions",          json = "No",          xml = "No",      yaml = "No",     toml = "No",  hcl = "Yes",     wcl = "Yes" },
+                        { feature = "Schemas / validation", json = "JSON Schema", xml = "XSD/DTD", yaml = "No",     toml = "No",  hcl = "No",      wcl = "Yes (first-class)" },
+                        { feature = "Macros / reuse",       json = "No",          xml = "No",      yaml = "Anchors", toml = "No", hcl = "Modules", wcl = "Yes" },
+                        { feature = "Decorators",           json = "No",          xml = "No",      yaml = "No",     toml = "No",  hcl = "No",      wcl = "Yes" },
+                        { feature = "Data tables",          json = "No",          xml = "No",      yaml = "No",     toml = "No",  hcl = "No",      wcl = "Yes" },
+                        { feature = "Query engine",         json = "No",          xml = "XPath",   yaml = "No",     toml = "No",  hcl = "No",      wcl = "Yes" },
+                        { feature = "LSP",                  json = "Limited",     xml = "Limited",  yaml = "Limited", toml = "Limited", hcl = "Yes", wcl = "Yes" },
+                        { feature = "Static types",         json = "No",          xml = "No",      yaml = "No",     toml = "No",  hcl = "No",      wcl = "Yes" },
+                        { feature = "Transforms",           json = "No",          xml = "XSLT",    yaml = "No",     toml = "No",  hcl = "No",      wcl = "Yes" }
                     ]
                 }
 
                 paragraph p4 {
-                    content = "JSON and TOML are simple but offer no reuse or validation. YAML is expressive but notorious for surprising parse behavior. HCL is powerful but tightly coupled to HashiCorp tooling. WCL is designed as a standalone, tool-agnostic configuration layer with a full validation and evaluation pipeline."
+                    content = "JSON and TOML are simple but offer no reuse or validation. YAML is expressive but notorious for surprising parse behavior. XML has mature schema and transformation support (XSD, XSLT) but is verbose and complex to author. HCL is powerful but tightly coupled to HashiCorp tooling. WCL is designed as a standalone, tool-agnostic configuration layer with a full validation and evaluation pipeline — combining first-class schemas, transforms, and a query engine in a human-friendly syntax."
                 }
 
                 heading h2_example {
