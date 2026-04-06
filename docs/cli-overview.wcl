@@ -52,7 +52,6 @@ page cli_overview {
                         { subcommand = "fmt", description = "Format a WCL document" },
                         { subcommand = "query", description = "Execute a query expression against a document" },
                         { subcommand = "inspect", description = "Inspect the AST, HIR, scopes, or dependency graph" },
-                        { subcommand = "convert", description = "Convert between WCL and other formats (JSON, YAML, TOML)" },
                         { subcommand = "set", description = "Set an attribute value by path" },
                         { subcommand = "add", description = "Add a new block to a document" },
                         { subcommand = "remove", description = "Remove a block or attribute by path" },

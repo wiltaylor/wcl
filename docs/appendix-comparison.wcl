@@ -45,7 +45,7 @@ page appendix_comparison {
                         { feature = "Validation blocks", json = "External", yaml = "No", toml = "No", hcl = "No", wcl = "Built-in \u2014 validation blocks with check and message" },
                         { feature = "LSP support", json = "Via plugins", yaml = "Via plugins", toml = "Via plugins", hcl = "Via plugins", wcl = "Yes \u2014 first-class wcl lsp with full feature set" },
                         { feature = "Formatting", json = "External (prettier)", yaml = "External", toml = "External", hcl = "External", wcl = "Yes \u2014 wcl fmt built-in" },
-                        { feature = "Bidirectional conversion", json = "\u2014", yaml = "Partial", toml = "Partial", hcl = "No", wcl = "Yes \u2014 wcl convert to/from JSON/YAML/TOML" }
+                        { feature = "Bidirectional conversion", json = "\u2014", yaml = "Partial", toml = "Partial", hcl = "No", wcl = "Yes \u2014 wcl transform with input/output codecs (JSON, YAML, TOML, CSV, XML)" }
                     ]
                 }
 

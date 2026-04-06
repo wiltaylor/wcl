@@ -1063,42 +1063,6 @@ fn fmt_check_returns_success_when_formatted() {
 }
 
 // ===========================================================================
-// CONVERT
-// ===========================================================================
-
-#[test]
-fn convert_wcl_to_json() {
-    let f = wcl_file("name = \"test\"\nport = 8080\n");
-    let output = Command::cargo_bin("wcl")
-        .unwrap()
-        .args(["convert", "--to", "json", f.path().to_str().unwrap()])
-        .output()
-        .expect("run convert");
-    assert!(output.status.success());
-    let json: serde_json::Value =
-        serde_json::from_str(&String::from_utf8_lossy(&output.stdout)).unwrap();
-    assert_eq!(json["name"], "test");
-    assert_eq!(json["port"], 8080);
-}
-
-#[test]
-fn convert_json_to_wcl() {
-    let mut f = NamedTempFile::with_suffix(".json").expect("tempfile");
-    f.write_all(b"{\"name\": \"test\", \"port\": 8080}")
-        .unwrap();
-    f.flush().unwrap();
-
-    wcl(&["convert", "--from", "json", f.path().to_str().unwrap()])
-        .success()
-        .stdout(
-            predicate::str::contains("name")
-                .and(predicate::str::contains("test"))
-                .and(predicate::str::contains("port"))
-                .and(predicate::str::contains("8080")),
-        );
-}
-
-// ===========================================================================
 // INSPECT
 // ===========================================================================
 
