@@ -1,0 +1,140 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, bold}
+use wdoc::draw::{diagram, card, avatar, input, button, text}
+
+page wdoc_example_wireframe {
+    section = "wcl_docs.wdoc.wdoc_example_wireframe"
+    title = "Example — UI Wireframe"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Example — UI Wireframe"
+                }
+
+                paragraph p1 {
+                    content = "A sign-in form composed entirely from built-in widgets. Widgets nest freely — the outer " + bold("card") + " acts as a container, and its children (an " + bold("avatar") + ", a " + bold("text") + " heading, two " + bold("input") + " fields, and three " + bold("button") + "s) are positioned in its local coordinate space. No primitive rects or circles are needed for this layout."
+                }
+
+                heading h2_render {
+                    level = 2
+                    content = "Result"
+                }
+
+                diagram signin {
+                    width = 400
+                    height = 420
+
+                    card form {
+                        x = 20
+                        y = 10
+                        width = 360
+                        height = 400
+
+                        avatar logo {
+                            x = 150
+                            y = 20
+                            width = 60
+                            height = 60
+                            initials = "W"
+                            color = "var(--color-link)"
+                        }
+
+                        text title {
+                            x = 30
+                            y = 90
+                            width = 300
+                            height = 28
+                            content = "Welcome back"
+                            font_size = 20
+                        }
+
+                        input email {
+                            x = 30
+                            y = 135
+                            width = 300
+                            height = 55
+                            label = "Email"
+                            placeholder = "you@example.com"
+                        }
+
+                        input password {
+                            x = 30
+                            y = 205
+                            width = 300
+                            height = 55
+                            label = "Password"
+                            placeholder = "********"
+                        }
+
+                        button signin {
+                            x = 30
+                            y = 285
+                            width = 300
+                            height = 40
+                            label = "Sign in"
+                            variant = "primary"
+                        }
+
+                        button github {
+                            x = 30
+                            y = 340
+                            width = 142
+                            height = 36
+                            label = "GitHub"
+                            variant = "outline"
+                        }
+                        button google {
+                            x = 188
+                            y = 340
+                            width = 142
+                            height = 36
+                            label = "Google"
+                            variant = "outline"
+                        }
+                    }
+                }
+
+                heading h2_walk {
+                    level = 2
+                    content = "Walk-through"
+                }
+
+                paragraph p_w1 {
+                    content = "<strong>1. Widgets are containers too.</strong> The <code>card</code> widget draws a rounded-corner frame and an optional title bar, but you can nest anything inside it. Its children render in the card's local coordinate space — so <code>x = 150</code> on the avatar is 150 pixels from the card's left edge, not the canvas's."
+                }
+
+                paragraph p_w2 {
+                    content = "<strong>2. Use semantic widgets, not primitive shapes.</strong> Every element here — avatar, input, button — is a built-in widget that handles its own drawing. The <code>input</code> widget renders both the label above and the field below with a placeholder. The <code>button</code> widget handles the primary/secondary/outline variants. This is how wireframes stay compact and consistent."
+                }
+
+                paragraph p_w3 {
+                    content = "<strong>3. Theme variables for dark-mode safety.</strong> The avatar's color uses <code>var(--color-link)</code> so it adapts between light and dark modes. Other widgets pick up theme colors automatically from their defaults. Only hard-code hex colors when you genuinely want an accent that doesn't follow the theme."
+                }
+
+                heading h2_source {
+                    level = 2
+                    content = "Source"
+                }
+
+                code src {
+                    language = "wcl"
+                    content = "import <wdoc.wcl>\nuse wdoc::draw::{diagram, card, avatar, input, button, text}\n\ndiagram signin {\n    width = 400\n    height = 420\n\n    card form {\n        x = 20\n        y = 10\n        width = 360\n        height = 400\n\n        avatar logo {\n            x = 150\n            y = 20\n            width = 60\n            height = 60\n            initials = \"W\"\n            color = \"var(--color-link)\"\n        }\n\n        text title {\n            x = 30\n            y = 90\n            width = 300\n            height = 28\n            content = \"Welcome back\"\n            font_size = 20\n        }\n\n        input email {\n            x = 30\n            y = 135\n            width = 300\n            height = 55\n            label = \"Email\"\n            placeholder = \"you@example.com\"\n        }\n\n        input password {\n            x = 30\n            y = 205\n            width = 300\n            height = 55\n            label = \"Password\"\n            placeholder = \"********\"\n        }\n\n        button signin {\n            x = 30\n            y = 285\n            width = 300\n            height = 40\n            label = \"Sign in\"\n            variant = \"primary\"\n        }\n\n        button github {\n            x = 30\n            y = 340\n            width = 142\n            height = 36\n            label = \"GitHub\"\n            variant = \"outline\"\n        }\n        button google {\n            x = 188\n            y = 340\n            width = 142\n            height = 36\n            label = \"Google\"\n            variant = \"outline\"\n        }\n    }\n}"
+                }
+
+                callout c_tip {
+                    icon = "lightbulb"
+                    header = "Clickable mockups"
+                    color = "#0d6efd"
+                    paragraph wp {
+                        content = "Any shape — including widgets — accepts an <code>href</code> attribute. Set it to another page in your wdoc site (or an external URL) and the SVG wraps the shape in an <code>&lt;a&gt;</code> element. That turns a wireframe into a clickable mockup that navigates between pages when you open the built site in a browser."
+                    }
+                }
+            }
+        }
+    }
+}

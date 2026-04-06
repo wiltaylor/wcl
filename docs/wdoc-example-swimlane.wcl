@@ -1,0 +1,300 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, bold}
+use wdoc::draw::{diagram, rect, text, connection}
+
+page wdoc_example_swimlane {
+    section = "wcl_docs.wdoc.wdoc_example_swimlane"
+    title = "Example — Swimlane Diagram"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Example — Swimlane Diagram"
+                }
+
+                paragraph p1 {
+                    content = "Swimlane diagrams aren't a built-in widget — they're assembled from anchored rectangles and connections. Each lane is a full-height strip anchored to the canvas edges; step boxes live inside the lanes with absolute positions; cross-lane connections show handoffs. This example walks an order through three lanes: Customer, System, and Warehouse."
+                }
+
+                heading h2_render {
+                    level = 2
+                    content = "Result"
+                }
+
+                diagram order_flow {
+                    width = 780
+                    height = 400
+
+                    // --- Lane backgrounds (anchored full-height strips) ---
+                    rect lane_customer {
+                        left = 0
+                        top = 40
+                        bottom = 0
+                        width = 240
+                        fill = "var(--color-code-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 1
+                    }
+                    rect lane_system {
+                        left = 250
+                        top = 40
+                        bottom = 0
+                        width = 260
+                        fill = "var(--color-nav-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 1
+                    }
+                    rect lane_warehouse {
+                        left = 520
+                        top = 40
+                        bottom = 0
+                        width = 260
+                        fill = "var(--color-code-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 1
+                    }
+
+                    // --- Lane headers ---
+                    rect hdr_customer {
+                        x = 0
+                        y = 0
+                        width = 240
+                        height = 40
+                        fill = "var(--color-link)"
+                        text t {
+                            content = "Customer"
+                            fill = "#fff"
+                            font_size = 15
+                        }
+                    }
+                    rect hdr_system {
+                        x = 250
+                        y = 0
+                        width = 260
+                        height = 40
+                        fill = "var(--color-link)"
+                        text t {
+                            content = "System"
+                            fill = "#fff"
+                            font_size = 15
+                        }
+                    }
+                    rect hdr_warehouse {
+                        x = 520
+                        y = 0
+                        width = 260
+                        height = 40
+                        fill = "var(--color-link)"
+                        text t {
+                            content = "Warehouse"
+                            fill = "#fff"
+                            font_size = 15
+                        }
+                    }
+
+                    // --- Customer lane ---
+                    rect c_order {
+                        x = 45
+                        y = 80
+                        width = 150
+                        height = 44
+                        rx = 6
+                        fill = "var(--color-bg)"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        text t { content = "Place Order" }
+                    }
+                    rect c_pay {
+                        x = 45
+                        y = 170
+                        width = 150
+                        height = 44
+                        rx = 6
+                        fill = "var(--color-bg)"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        text t { content = "Pay" }
+                    }
+                    rect c_receive {
+                        x = 45
+                        y = 320
+                        width = 150
+                        height = 44
+                        rx = 22
+                        fill = "var(--color-bg)"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        text t { content = "Receive Package" }
+                    }
+
+                    // --- System lane ---
+                    rect s_validate {
+                        x = 300
+                        y = 80
+                        width = 160
+                        height = 44
+                        rx = 6
+                        fill = "var(--color-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 2
+                        text t { content = "Validate Order" }
+                    }
+                    rect s_payment {
+                        x = 300
+                        y = 170
+                        width = 160
+                        height = 44
+                        rx = 6
+                        fill = "var(--color-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 2
+                        text t { content = "Process Payment" }
+                    }
+                    rect s_notify {
+                        x = 300
+                        y = 320
+                        width = 160
+                        height = 44
+                        rx = 6
+                        fill = "var(--color-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 2
+                        text t { content = "Send Notification" }
+                    }
+
+                    // --- Warehouse lane ---
+                    rect w_pick {
+                        x = 565
+                        y = 170
+                        width = 170
+                        height = 44
+                        rx = 6
+                        fill = "var(--color-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 2
+                        text t { content = "Pick & Pack" }
+                    }
+                    rect w_ship {
+                        x = 565
+                        y = 260
+                        width = 170
+                        height = 44
+                        rx = 6
+                        fill = "var(--color-bg)"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 2
+                        text t { content = "Ship" }
+                    }
+
+                    // --- In-lane flow ---
+                    connection f1 {
+                        from = "c_order"
+                        to = "c_pay"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        stroke_width = 2
+                    }
+                    connection f2 {
+                        from = "s_validate"
+                        to = "s_payment"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        stroke_width = 2
+                    }
+                    connection f3 {
+                        from = "w_pick"
+                        to = "w_ship"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        stroke_width = 2
+                    }
+
+                    // --- Cross-lane handoffs ---
+                    connection h1 {
+                        from = "c_order"
+                        to = "s_validate"
+                        direction = "to"
+                        from_anchor = "right"
+                        to_anchor = "left"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        label = "submit"
+                    }
+                    connection h2 {
+                        from = "s_payment"
+                        to = "w_pick"
+                        direction = "to"
+                        from_anchor = "right"
+                        to_anchor = "left"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        label = "fulfill"
+                    }
+                    connection h3 {
+                        from = "w_ship"
+                        to = "s_notify"
+                        direction = "to"
+                        from_anchor = "left"
+                        to_anchor = "right"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                        label = "shipped"
+                    }
+                    connection h4 {
+                        from = "s_notify"
+                        to = "c_receive"
+                        direction = "to"
+                        from_anchor = "left"
+                        to_anchor = "right"
+                        stroke = "var(--color-link)"
+                        stroke_width = 2
+                    }
+                }
+
+                heading h2_walk {
+                    level = 2
+                    content = "Walk-through"
+                }
+
+                paragraph p_w1 {
+                    content = "<strong>1. Anchored lanes.</strong> Each lane rectangle uses <code>left</code>, <code>top</code>, <code>bottom</code>, and a fixed <code>width</code>. That anchors it to the top (below the header), the bottom of the canvas, and a specific x-offset — so the lane stretches vertically regardless of how tall the diagram grows. Compare this to absolute placement: you can add more steps later and the lanes still reach the bottom."
+                }
+
+                paragraph p_w2 {
+                    content = "<strong>2. Step boxes are absolute.</strong> Inside each lane, steps use regular <code>x</code>/<code>y</code>/<code>width</code>/<code>height</code>. Their x-coordinate picks a column; their y-coordinate picks a row across lanes. Keeping step rows aligned across lanes is what makes the handoff flow visually coherent."
+                }
+
+                paragraph p_w3 {
+                    content = "<strong>3. Anchors drive handoffs.</strong> Cross-lane connections pin <code>from_anchor</code> and <code>to_anchor</code> to left/right edges so arrows always leave one lane and enter the next cleanly. In-lane arrows use the default " + bold("auto") + " anchor — they pick the facing sides on their own."
+                }
+
+                heading h2_source {
+                    level = 2
+                    content = "Source"
+                }
+
+                paragraph p_src1 {
+                    content = "Full source for the diagram above:"
+                }
+
+                code src {
+                    language = "wcl"
+                    content = "use wdoc::draw::{diagram, rect, connection}\n\ndiagram order_flow {\n    width = 780\n    height = 400\n\n    // Lane backgrounds — anchored strips\n    rect lane_customer {\n        left = 0\n        top = 40\n        bottom = 0\n        width = 240\n        fill = \"var(--color-code-bg)\"\n        stroke = \"var(--color-nav-border)\"\n    }\n    rect lane_system {\n        left = 250\n        top = 40\n        bottom = 0\n        width = 260\n        fill = \"var(--color-nav-bg)\"\n        stroke = \"var(--color-nav-border)\"\n    }\n    rect lane_warehouse {\n        left = 520\n        top = 40\n        bottom = 0\n        width = 260\n        fill = \"var(--color-code-bg)\"\n        stroke = \"var(--color-nav-border)\"\n    }\n\n    // Lane headers\n    rect hdr_customer {\n        x = 0\n        y = 0\n        width = 240\n        height = 40\n        fill = \"var(--color-link)\"\n        text t { content = \"Customer\", fill = \"#fff\", font_size = 15 }\n    }\n    // ... hdr_system and hdr_warehouse same pattern ...\n\n    // Customer-lane steps\n    rect c_order {\n        x = 45, y = 80, width = 150, height = 44, rx = 6\n        fill = \"var(--color-bg)\"\n        stroke = \"var(--color-link)\"\n        stroke_width = 2\n        text t { content = \"Place Order\" }\n    }\n    // ... more steps in each lane ...\n\n    // In-lane arrows: auto anchors\n    connection f1 {\n        from = \"c_order\"\n        to = \"c_pay\"\n        direction = \"to\"\n    }\n\n    // Cross-lane handoff: explicit side anchors\n    connection h1 {\n        from = \"c_order\"\n        to = \"s_validate\"\n        direction = \"to\"\n        from_anchor = \"right\"\n        to_anchor = \"left\"\n        stroke = \"var(--color-link)\"\n        label = \"submit\"\n    }\n}"
+                }
+
+                callout c_tip {
+                    icon = "lightbulb"
+                    header = "Horizontal swimlanes"
+                    color = "#0d6efd"
+                    paragraph wp {
+                        content = "For horizontal swimlanes, swap the anchoring: use <code>left</code>/<code>right</code>/<code>top</code>/<code>height</code> for lanes (stretching across the canvas horizontally) and progress time left-to-right inside each lane. The same shapes and connection rules apply — only the orientation changes."
+                    }
+                }
+            }
+        }
+    }
+}
