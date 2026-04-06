@@ -467,7 +467,7 @@ fn query_text_format() {
     let f = wcl_file("server web { port = 8080 }\n");
     wcl(&["query", f.path().to_str().unwrap(), "server"])
         .success()
-        .stdout(predicate::str::contains("port = 8080"));
+        .stdout(predicate::str::contains("\"port\": 8080"));
 }
 
 #[test]
