@@ -16,7 +16,7 @@ page functions_ref_query {
                 }
 
                 paragraph p1 {
-                    content = "WCL provides six functions for inspecting the document and its environment: <code>ref()</code> for resolving a block by ID, <code>query()</code> for selecting sets of blocks using a pipeline, <code>has()</code> for checking whether a block has a named attribute or child, <code>has_decorator()</code> for checking whether a block carries a decorator, <code>is_imported()</code> for testing whether a file was imported, and <code>has_schema()</code> for testing whether a schema is declared. These are the bridge between the functional expression layer and the block-oriented document model."
+                    content = "WCL provides functions for inspecting the document and its environment: <code>ref()</code> for resolving a block by ID, <code>has()</code> for checking whether a block has a named attribute or child, <code>has_decorator()</code> for checking whether a block carries a decorator, <code>is_imported()</code> for testing whether a file was imported, and <code>has_schema()</code> for testing whether a schema is declared. For selecting sets of blocks, use a bare query pipeline expression (e.g. <code>service | .port > 80</code>). These features are the bridge between the functional expression layer and the block-oriented document model."
                 }
 
                 paragraph p2 {
@@ -32,7 +32,7 @@ page functions_ref_query {
                     rows = [
                         ["Function", "Signature", "Description"],
                         ["ref", "ref(id: string) -> block", "Resolve a block by its ID; error if not found"],
-                        ["query", "query(pipeline) -> list", "Execute a query pipeline; return matching blocks"],
+                        ["query", "..pipeline -> list", "Execute a query pipeline; return matching blocks"],
                         ["has", "has(block, name: string) -> bool", "True if block has an attribute or child block named name"],
                         ["has_decorator", "has_decorator(block, name: string) -> bool", "True if block carries the decorator @name"],
                         ["is_imported", "is_imported(path: string) -> bool", "True if the given file path was imported"],
@@ -89,7 +89,7 @@ page functions_ref_query {
                 }
 
                 paragraph p5 {
-                    content = "<code>query(pipeline)</code> runs a query pipeline against the document and returns a list of matching blocks. The pipeline syntax is described fully in the Query Engine chapter."
+                    content = "A bare query pipeline expression runs against the document and evaluates to a list of matching blocks. Use <code>..kind</code>, <code>kind#id</code>, or <code>kind | filter...</code>. The pipeline syntax is described fully in the Query Engine chapter."
                 }
 
                 paragraph p6 {
@@ -99,8 +99,8 @@ page functions_ref_query {
                 code c3 {
                     language = "wcl"
                     content = <<-'WCL'
-                    let all_services = query(service)
-                    let all_workers  = query(worker)
+                    let all_services = ..service
+                    let all_workers  = ..worker
                     WCL
                 }
 
@@ -111,7 +111,7 @@ page functions_ref_query {
                 code c4 {
                     language = "wcl"
                     content = <<-'WCL'
-                    let prod_services = query(service | where env == "prod")
+                    let prod_services = (service | where env == "prod")
                     WCL
                 }
 
@@ -122,7 +122,7 @@ page functions_ref_query {
                 code c5 {
                     language = "wcl"
                     content = <<-'WCL'
-                    let names = query(service | where env == "prod" | select name)
+                    let names = (service | where env == "prod" | select name)
                     WCL
                 }
 
@@ -133,8 +133,8 @@ page functions_ref_query {
                 code c6 {
                     language = "wcl"
                     content = <<-'WCL'
-                    let ports = map(query(service), s => s.port)
-                    let total_replicas = sum(map(query(service), s => s.replicas))
+                    let ports = map(..service, s => s.port)
+                    let total_replicas = sum(map(..service, s => s.replicas))
                     WCL
                 }
 
@@ -145,7 +145,7 @@ page functions_ref_query {
                 code c7 {
                     language = "wcl"
                     content = <<-'WCL'
-                    for svc in query(service | where has(@public)) {
+                    for svc in (service | where has(@public)) {
                       ingress ingress-${svc.name} {
                         target: svc.name
                         port: svc.port
@@ -193,7 +193,7 @@ page functions_ref_query {
                 code c10 {
                     language = "wcl"
                     content = <<-'WCL'
-                    let tls_services = filter(query(service), s => has(s, "tls"))
+                    let tls_services = filter(..service, s => has(s, "tls"))
                     WCL
                 }
 
@@ -204,7 +204,7 @@ page functions_ref_query {
                 code c11 {
                     language = "wcl"
                     content = <<-'WCL'
-                    for svc in query(service) {
+                    for svc in ..service {
                       if has(svc, "port") {
                         health_check check-${svc.name} {
                           url: "http://${svc.name}:${svc.port}/health"
@@ -252,7 +252,7 @@ page functions_ref_query {
                 code c14 {
                     language = "wcl"
                     content = <<-'WCL'
-                    let public_services = filter(query(service), s => has_decorator(s, "public"))
+                    let public_services = filter(..service, s => has_decorator(s, "public"))
                     WCL
                 }
 
@@ -263,7 +263,7 @@ page functions_ref_query {
                 code c15 {
                     language = "wcl"
                     content = <<-'WCL'
-                    for svc in query(service) {
+                    for svc in ..service {
                       if has_decorator(svc, "public") {
                         ingress ingress-${svc.name} {
                           host: "${svc.name}.example.com"
@@ -349,15 +349,15 @@ page functions_ref_query {
                     content = <<-'WCL'
                     // All services that have a port attribute and are marked @public
                     let exposed = filter(
-                      query(service | where has(@public)),
+                      (service | where has(@public)),
                       s => has(s, "port")
                     )
 
                     // Generate a summary block
                     config fleet_summary {
-                      total_services: len(query(service))
-                      public_count: count(query(service), s => has_decorator(s, "public"))
-                      total_replicas: sum(map(query(service), s => s.replicas))
+                      total_services: len(..service)
+                      public_count: count(..service, s => has_decorator(s, "public"))
+                      total_replicas: sum(map(..service, s => s.replicas))
                       primary_db_host: ref("primary").host
                     }
                     WCL

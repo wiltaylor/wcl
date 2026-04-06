@@ -294,7 +294,7 @@ page dotnet_library {
                 }
 
                 paragraph p16 {
-                    content = "<code>Query()</code> accepts the same query syntax as the <code>wcl query</code> CLI command:"
+                    content = "<code>Query()</code> accepts the same query syntax as the WCL <code>query()</code> function:"
                 }
 
                 code c10 {

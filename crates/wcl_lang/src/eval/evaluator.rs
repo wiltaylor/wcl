@@ -33,6 +33,10 @@ pub struct Evaluator {
     /// Maps scope IDs to the qualified ID of the block that owns them.
     /// Used to compute qualified IDs for nested blocks.
     scope_qualified_ids: HashMap<ScopeId, String>,
+    /// Maps block kind -> entry names registered at module scope.
+    /// Used by `collect_deps` so that `query(kind | ...)` expressions
+    /// depend on every matching block (forcing them to be evaluated first).
+    module_blocks_by_kind: HashMap<String, Vec<String>>,
 }
 
 impl Evaluator {
@@ -50,6 +54,7 @@ impl Evaluator {
             schema_names: HashSet::new(),
             namespace_aliases: NamespaceAliases::default(),
             scope_qualified_ids: HashMap::new(),
+            module_blocks_by_kind: HashMap::new(),
         }
     }
 
@@ -67,6 +72,7 @@ impl Evaluator {
             schema_names: HashSet::new(),
             namespace_aliases: NamespaceAliases::default(),
             scope_qualified_ids: HashMap::new(),
+            module_blocks_by_kind: HashMap::new(),
         }
     }
 
@@ -93,6 +99,7 @@ impl Evaluator {
             schema_names: HashSet::new(),
             namespace_aliases: NamespaceAliases::default(),
             scope_qualified_ids: HashMap::new(),
+            module_blocks_by_kind: HashMap::new(),
         }
     }
 
@@ -181,6 +188,25 @@ impl Evaluator {
     // ------------------------------------------------------------------
 
     fn register_doc_items(&mut self, items: &[DocItem], scope_id: ScopeId) {
+        // Build a kind->names index for top-level blocks so that `query(kind | ...)`
+        // expressions can declare a dependency on every matching block.
+        for item in items {
+            if let DocItem::Body(BodyItem::Block(block)) = item {
+                let name = block
+                    .inline_id
+                    .as_ref()
+                    .map(|id| match id {
+                        InlineId::Literal(lit) => lit.value.clone(),
+                        InlineId::Interpolated(_) => "?interpolated?".to_string(),
+                    })
+                    .unwrap_or_else(|| format!("__block_{}", block.kind.name));
+                self.module_blocks_by_kind
+                    .entry(block.kind.name.clone())
+                    .or_default()
+                    .push(name);
+            }
+        }
+
         for item in items {
             match item {
                 DocItem::Body(body_item) => self.register_body_item(body_item, scope_id),
@@ -597,13 +623,24 @@ impl Evaluator {
                 self.collect_deps(e, deps);
             }
             Expr::Query(pipeline, _) => {
-                // Track selector dependencies (table/block names)
+                // Track selector dependencies (table/block names) so that
+                // queried items are evaluated before this expression runs.
                 match &pipeline.selector {
                     QuerySelector::TableId(id) => {
                         deps.insert(id.value.clone());
                     }
                     QuerySelector::KindId(_, id) => {
                         deps.insert(id.value.clone());
+                    }
+                    QuerySelector::Kind(kind)
+                    | QuerySelector::Recursive(kind)
+                    | QuerySelector::RecursiveId(kind, _) => {
+                        // Expand the kind into every matching top-level block name.
+                        if let Some(names) = self.module_blocks_by_kind.get(&kind.name) {
+                            for name in names {
+                                deps.insert(name.clone());
+                            }
+                        }
                     }
                     _ => {}
                 }

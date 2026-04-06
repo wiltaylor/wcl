@@ -225,7 +225,7 @@ page ref_pipeline {
                 }
 
                 paragraph p30 {
-                    content = "Expressions are evaluated in topological order (dependencies before dependents) within each scope. Query expressions (<code>query(...)</code>) are evaluated against the partially-resolved document. Ref expressions (<code>ref(id)</code>) are resolved to their target values."
+                    content = "Expressions are evaluated in topological order (dependencies before dependents) within each scope. Query pipeline expressions (e.g. <code>service | .port > 80</code>) are evaluated against the partially-resolved document. Ref expressions (<code>ref(id)</code>) are resolved to their target values."
                 }
 
                 paragraph p31 {

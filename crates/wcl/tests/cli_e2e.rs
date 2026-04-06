@@ -27,12 +27,12 @@ fn wcl(args: &[&str]) -> assert_cmd::assert::Assert {
     Command::cargo_bin("wcl").unwrap().args(args).assert()
 }
 
-/// Parse the stdout of a successful `wcl` invocation as JSON.
+/// Parse the stdout of a successful `wcl eval --format json` invocation.
 fn eval_json(content: &str) -> serde_json::Value {
     let f = wcl_file(content);
     let output = Command::cargo_bin("wcl")
         .unwrap()
-        .args(["eval", f.path().to_str().unwrap()])
+        .args(["eval", "--format", "json", f.path().to_str().unwrap()])
         .output()
         .expect("run wcl eval");
     assert!(
@@ -44,23 +44,17 @@ fn eval_json(content: &str) -> serde_json::Value {
     serde_json::from_str(stdout.trim()).expect("stdout should be valid JSON")
 }
 
-/// Parse the stdout of a successful `wcl query --format json` invocation.
-fn query_json(content: &str, query_str: &str) -> serde_json::Value {
+/// Evaluate an expression against a document and parse stdout as JSON.
+fn eval_expr_json(content: &str, expr: &str) -> serde_json::Value {
     let f = wcl_file(content);
     let output = Command::cargo_bin("wcl")
         .unwrap()
-        .args([
-            "query",
-            "--format",
-            "json",
-            f.path().to_str().unwrap(),
-            query_str,
-        ])
+        .args(["eval", "--format", "json", f.path().to_str().unwrap(), expr])
         .output()
-        .expect("run wcl query");
+        .expect("run wcl eval");
     assert!(
         output.status.success(),
-        "query failed: {}",
+        "eval failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -293,21 +287,21 @@ count = len(items)
 }
 
 #[test]
-fn eval_for_loop_with_query_count() {
-    // Verify for-loop expansion creates blocks that queries can find
-    let f = wcl_file(
+fn eval_for_loop_expands_blocks() {
+    // Verify for-loop expansion creates blocks visible in the evaluated doc
+    let json = eval_json(
         r#"
 let items = ["a", "b", "c"]
 for item in items {
-    node {
+    node ${item} {
         name = item
     }
 }
 "#,
     );
-    wcl(&["query", "--count", f.path().to_str().unwrap(), "node"])
-        .success()
-        .stdout(predicate::str::contains("3").trim());
+    assert!(json["node"].is_object());
+    assert_eq!(json["node"].as_object().unwrap().len(), 3);
+    assert_eq!(json["node"]["a"]["name"], "a");
 }
 
 #[test]
@@ -339,19 +333,46 @@ if debug {
 }
 
 #[test]
-fn eval_output_format_yaml() {
+fn eval_default_format_is_wcl() {
     let f = wcl_file("port = 8080\n");
-    wcl(&["eval", "--format", "yaml", f.path().to_str().unwrap()])
+    wcl(&["eval", f.path().to_str().unwrap()])
         .success()
-        .stdout(predicate::str::contains("port: 8080"));
+        .stdout(predicate::str::contains("port = 8080"));
 }
 
 #[test]
-fn eval_output_format_toml() {
+fn eval_unsupported_format_fails() {
     let f = wcl_file("port = 8080\n");
-    wcl(&["eval", "--format", "toml", f.path().to_str().unwrap()])
+    wcl(&["eval", "--format", "yaml", f.path().to_str().unwrap()])
+        .failure()
+        .stderr(predicate::str::contains("unsupported format"));
+}
+
+#[test]
+fn eval_expression_returns_value() {
+    let json = eval_expr_json("let services = [\"api\", \"web\"]\n", "services[0]");
+    assert_eq!(json, "api");
+}
+
+#[test]
+fn eval_expression_with_function_projection() {
+    let json = eval_expr_json(
+        r#"
+let nums = [1, 2, 3, 4]
+let summarize = (xs) => { total = sum(xs), count = len(xs) }
+"#,
+        "summarize(nums)",
+    );
+    assert_eq!(json["total"], 10);
+    assert_eq!(json["count"], 4);
+}
+
+#[test]
+fn eval_expression_wcl_format() {
+    let f = wcl_file("let n = 42\n");
+    wcl(&["eval", f.path().to_str().unwrap(), "n + 1"])
         .success()
-        .stdout(predicate::str::contains("port = 8080"));
+        .stdout(predicate::str::contains("43"));
 }
 
 #[test]
@@ -367,140 +388,6 @@ fn eval_nonexistent_file_fails() {
     wcl(&["eval", "/tmp/nonexistent_wcl_file_12345.wcl"])
         .failure()
         .stderr(predicate::str::contains("cannot read"));
-}
-
-// ===========================================================================
-// QUERY
-// ===========================================================================
-
-#[test]
-fn query_select_by_kind() {
-    let result = query_json(
-        r#"
-server web {
-    port = 8080
-}
-"#,
-        "server",
-    );
-    let arr = result.as_array().unwrap();
-    assert_eq!(arr.len(), 1);
-    assert_eq!(arr[0]["port"], 8080);
-}
-
-#[test]
-fn query_select_by_kind_and_id() {
-    let result = query_json(
-        r#"
-server svc-a {
-    port = 8080
-}
-server svc-b {
-    port = 9090
-}
-"#,
-        "server#svc-a",
-    );
-    let arr = result.as_array().unwrap();
-    assert_eq!(arr.len(), 1);
-    assert_eq!(arr[0]["port"], 8080);
-}
-
-#[test]
-fn query_filter_by_attribute() {
-    let result = query_json(
-        r#"
-server svc-a {
-    port = 8080
-}
-server svc-b {
-    port = 9090
-}
-"#,
-        "server | .port > 8080",
-    );
-    let arr = result.as_array().unwrap();
-    assert_eq!(arr.len(), 1);
-    assert_eq!(arr[0]["port"], 9090);
-}
-
-#[test]
-fn query_projection() {
-    let result = query_json(
-        r#"
-server svc-a {
-    port = 8080
-}
-server svc-b {
-    port = 9090
-}
-"#,
-        "server | .port",
-    );
-    let arr = result.as_array().unwrap();
-    assert!(arr.contains(&serde_json::json!(8080)));
-    assert!(arr.contains(&serde_json::json!(9090)));
-}
-
-#[test]
-fn query_count_flag() {
-    let f = wcl_file(
-        r#"
-server svc-a { port = 8080 }
-server svc-b { port = 9090 }
-"#,
-    );
-    wcl(&["query", "--count", f.path().to_str().unwrap(), "server"])
-        .success()
-        .stdout(predicate::str::contains("2").trim());
-}
-
-#[test]
-fn query_no_results_returns_empty() {
-    let result = query_json("server web { port = 8080 }\n", "database");
-    let arr = result.as_array().unwrap();
-    assert!(arr.is_empty());
-}
-
-#[test]
-fn query_text_format() {
-    let f = wcl_file("server web { port = 8080 }\n");
-    wcl(&["query", f.path().to_str().unwrap(), "server"])
-        .success()
-        .stdout(predicate::str::contains("\"port\": 8080"));
-}
-
-#[test]
-fn query_equality_filter() {
-    let result = query_json(
-        r#"
-server svc-a { env = "prod" }
-server svc-b { env = "dev" }
-"#,
-        r#"server | .env == "prod""#,
-    );
-    let arr = result.as_array().unwrap();
-    assert_eq!(arr.len(), 1);
-    assert_eq!(arr[0]["env"], "prod");
-}
-
-#[test]
-fn query_has_filter() {
-    let result = query_json(
-        r#"
-server svc-a {
-    port = 8080
-    tls = true
-}
-server svc-b {
-    port = 9090
-}
-"#,
-        "server | has(.tls)",
-    );
-    let arr = result.as_array().unwrap();
-    assert_eq!(arr.len(), 1);
-    assert_eq!(arr[0]["tls"], true);
 }
 
 // ===========================================================================
@@ -847,7 +734,7 @@ fn set_then_eval_reflects_change() {
     // Eval and verify
     let output = Command::cargo_bin("wcl")
         .unwrap()
-        .args(["eval", &path])
+        .args(["eval", "--format", "json", &path])
         .output()
         .expect("run eval");
     assert!(output.status.success());
@@ -872,7 +759,7 @@ fn add_then_eval_shows_new_block() {
     // Eval and verify both blocks exist
     let output = Command::cargo_bin("wcl")
         .unwrap()
-        .args(["eval", &path])
+        .args(["eval", "--format", "json", &path])
         .output()
         .expect("run eval");
     assert!(output.status.success());
@@ -909,7 +796,7 @@ server svc-old {
 
     let output = Command::cargo_bin("wcl")
         .unwrap()
-        .args(["eval", &path])
+        .args(["eval", "--format", "json", &path])
         .output()
         .expect("run eval");
     assert!(output.status.success());
@@ -940,7 +827,7 @@ fn remove_attr_then_eval_attr_gone() {
 
     let output = Command::cargo_bin("wcl")
         .unwrap()
-        .args(["eval", &path])
+        .args(["eval", "--format", "json", &path])
         .output()
         .expect("run eval");
     assert!(output.status.success());
@@ -1063,26 +950,6 @@ fn fmt_check_returns_success_when_formatted() {
 }
 
 // ===========================================================================
-// INSPECT
-// ===========================================================================
-
-#[test]
-fn inspect_ast_produces_output() {
-    let f = wcl_file("x = 1\n");
-    wcl(&["inspect", "--ast", f.path().to_str().unwrap()])
-        .success()
-        .stdout(predicate::str::is_empty().not());
-}
-
-#[test]
-fn inspect_scopes_shows_variables() {
-    let f = wcl_file("let x = 42\ny = x + 1\n");
-    wcl(&["inspect", "--scopes", f.path().to_str().unwrap()])
-        .success()
-        .stdout(predicate::str::contains("x"));
-}
-
-// ===========================================================================
 // Multi-step workflows
 // ===========================================================================
 
@@ -1109,7 +976,7 @@ fn workflow_add_set_eval() {
     // Eval and check both blocks
     let output = Command::cargo_bin("wcl")
         .unwrap()
-        .args(["eval", &path])
+        .args(["eval", "--format", "json", &path])
         .output()
         .expect("run eval");
     assert!(output.status.success());
@@ -1120,7 +987,7 @@ fn workflow_add_set_eval() {
 }
 
 #[test]
-fn workflow_set_validate_query() {
+fn workflow_set_validate_eval() {
     let f = wcl_file(
         r#"
 schema "server" {
@@ -1142,14 +1009,14 @@ server svc-api {
     // Should still validate
     wcl(&["validate", &path]).success();
 
-    // Query should reflect the new value
+    // Eval should reflect the new value
     let output = Command::cargo_bin("wcl")
         .unwrap()
-        .args(["query", "--format", "json", &path, "server | .port"])
+        .args(["eval", "--format", "json", &path])
         .output()
-        .expect("run query");
+        .expect("run eval");
     assert!(output.status.success());
     let json: serde_json::Value =
         serde_json::from_str(&String::from_utf8_lossy(&output.stdout)).unwrap();
-    assert!(json.as_array().unwrap().contains(&serde_json::json!(9090)));
+    assert_eq!(json["server"]["svc-api"]["port"], 9090);
 }

@@ -254,7 +254,7 @@ page jvm_library {
                 }
 
                 paragraph p13 {
-                    content = "<code>query()</code> accepts the same query syntax as the <code>wcl query</code> CLI command:"
+                    content = "<code>query()</code> accepts the same query syntax as the WCL <code>query()</code> function:"
                 }
 
                 code c9 {
@@ -266,8 +266,8 @@ page jvm_library {
                         server svc-debug { port = 3000, env = "dev" }
                     """)) {
                         var all = doc.query("server");
-                        var prod = doc.query("server | .env == \"prod\"");
-                        var ports = doc.query("server | .port");
+                        var prod = doc.("server | .env == \"prod\"");
+                        var ports = doc.("server | .port");
                         var api = doc.query("server#svc-api");
                     }
                     JAVA
@@ -525,7 +525,7 @@ page jvm_library {
                                 }
 
                                 // 2. Query for all server ports
-                                var ports = doc.query("server | .port");
+                                var ports = doc.("server | .port");
                                 System.out.println("All ports: " + ports);
 
                                 // 3. Iterate resolved blocks

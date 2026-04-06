@@ -39,7 +39,11 @@ fn resolve_path(sf: &SourceFile, fallback: &Path) -> String {
 }
 
 /// Compute the maximum line number across the primary span and all labels.
-fn max_line_number(source_map: &SourceMap, primary: Span, labels: &[crate::lang::diagnostic::Label]) -> u32 {
+fn max_line_number(
+    source_map: &SourceMap,
+    primary: Span,
+    labels: &[crate::lang::diagnostic::Label],
+) -> u32 {
     let mut max = source_map.line_col(primary.file, primary.start).0;
     for label in labels {
         if label.span != Span::dummy() {
@@ -71,15 +75,28 @@ fn render_span_block(
 
     // For multi-line spans, show only the first line with underline to EOL
     if let Some(line_text) = source_line(sf, line) {
-        out.push_str(&format!("{:>gutter$} | {}\n", line, line_text, gutter = gutter));
+        out.push_str(&format!(
+            "{:>gutter$} | {}\n",
+            line,
+            line_text,
+            gutter = gutter
+        ));
 
         let caret_start = col as usize - 1;
         let caret_len = if line == end_line {
             let len = end_col as usize - col as usize;
-            if len == 0 { 1 } else { len }
+            if len == 0 {
+                1
+            } else {
+                len
+            }
         } else {
             let len = line_text.len().saturating_sub(caret_start);
-            if len == 0 { 1 } else { len }
+            if len == 0 {
+                1
+            } else {
+                len
+            }
         };
 
         let spaces = " ".repeat(caret_start);
@@ -126,7 +143,12 @@ pub(crate) fn format_diagnostic(
     // Primary span block
     out.push('\n');
     out.push_str(&render_span_block(
-        source_map, fallback_path, span, "", gutter, true,
+        source_map,
+        fallback_path,
+        span,
+        "",
+        gutter,
+        true,
     ));
 
     // Secondary labels
@@ -137,7 +159,12 @@ pub(crate) fn format_diagnostic(
         let pad = " ".repeat(gutter);
         out.push_str(&format!("\n{pad} |\n"));
         out.push_str(&render_span_block(
-            source_map, fallback_path, label.span, &label.message, gutter, false,
+            source_map,
+            fallback_path,
+            label.span,
+            &label.message,
+            gutter,
+            false,
         ));
     }
 
@@ -157,9 +184,7 @@ mod add;
 mod docs;
 mod eval;
 mod fmt;
-mod inspect;
 mod path;
-mod query;
 mod remove;
 mod set;
 mod table;
@@ -209,47 +234,14 @@ enum Commands {
         #[arg(long)]
         check: bool,
     },
-    /// Query a WCL document
-    Query {
-        /// Input file
-        file: PathBuf,
-        /// Query expression
-        query: String,
-        /// Output format
-        #[arg(long, default_value = "text")]
-        format: String,
-        /// Count results only
-        #[arg(long)]
-        count: bool,
-        /// Search recursively in directory
-        #[arg(long)]
-        recursive: bool,
-        #[command(flatten)]
-        lib_args: LibraryArgs,
-    },
-    /// Inspect the AST or HIR of a WCL document
-    Inspect {
-        /// Input file
-        file: PathBuf,
-        /// Show raw AST
-        #[arg(long)]
-        ast: bool,
-        /// Show resolved HIR
-        #[arg(long)]
-        hir: bool,
-        /// Show scope tree
-        #[arg(long)]
-        scopes: bool,
-        /// Show dependency graph
-        #[arg(long)]
-        deps: bool,
-    },
-    /// Evaluate a WCL document and print resolved output
+    /// Evaluate a WCL document, optionally projecting via an expression
     Eval {
         /// Input file
         file: PathBuf,
-        /// Output format (json, yaml, toml)
-        #[arg(long, default_value = "json")]
+        /// Optional WCL expression to evaluate against the document
+        expression: Option<String>,
+        /// Output format (wcl, json)
+        #[arg(long, default_value = "wcl")]
         format: String,
         /// Set a variable (KEY=VALUE, may repeat)
         #[arg(long = "var", value_name = "KEY=VALUE")]
@@ -439,27 +431,13 @@ pub fn main() {
             lib_args,
         } => validate::run(&file, strict, schema.as_deref(), &vars, &lib_args),
         Commands::Fmt { file, write, check } => fmt::run(&file, write, check),
-        Commands::Query {
-            file,
-            query,
-            format,
-            count,
-            recursive,
-            lib_args,
-        } => query::run(&file, &query, &format, count, recursive, &lib_args),
-        Commands::Inspect {
-            file,
-            ast,
-            hir,
-            scopes,
-            deps,
-        } => inspect::run(&file, ast, hir, scopes, deps),
         Commands::Eval {
             file,
+            expression,
             format,
             vars,
             lib_args,
-        } => eval::run(&file, &format, &vars, &lib_args),
+        } => eval::run(&file, expression.as_deref(), &format, &vars, &lib_args),
         Commands::Lsp { tcp } => {
             let rt = tokio::runtime::Runtime::new()
                 .map_err(|e| format!("failed to create tokio runtime: {}", e));

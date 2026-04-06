@@ -16,7 +16,7 @@ page cli_overview {
                 }
 
                 paragraph p1 {
-                    content = "The <code>wcl</code> CLI provides tools for working with WCL documents — parsing, validating, evaluating, formatting, querying, and converting configuration files."
+                    content = "The <code>wcl</code> CLI provides tools for working with WCL documents — parsing, validating, evaluating, formatting, and transforming configuration files."
                 }
 
                 heading h2_installation {
@@ -48,10 +48,8 @@ page cli_overview {
                     caption = "Subcommands"
                     rows = [
                         { subcommand = "validate", description = "Parse and validate a WCL document through all pipeline phases" },
-                        { subcommand = "eval", description = "Evaluate a document and print the resolved output" },
+                        { subcommand = "eval", description = "Evaluate a document, optionally projecting through a WCL expression" },
                         { subcommand = "fmt", description = "Format a WCL document" },
-                        { subcommand = "query", description = "Execute a query expression against a document" },
-                        { subcommand = "inspect", description = "Inspect the AST, HIR, scopes, or dependency graph" },
                         { subcommand = "set", description = "Set an attribute value by path" },
                         { subcommand = "add", description = "Add a new block to a document" },
                         { subcommand = "remove", description = "Remove a block or attribute by path" },

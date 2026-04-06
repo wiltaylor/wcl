@@ -124,7 +124,7 @@ page if_else {
                 code c5 {
                     language = "wcl"
                     content = <<-'WCL'
-                    for svc in query(service) {
+                    for svc in ..service {
                       if has(svc, "port") {
                         ingress ingress-${svc.name} {
                           target: svc.name

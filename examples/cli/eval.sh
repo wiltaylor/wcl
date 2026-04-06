@@ -6,9 +6,13 @@ set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 CONFIG="$DIR/../config/app.wcl"
 
-echo "=== wcl eval (pretty JSON) ==="
+echo "=== wcl eval (default WCL output) ==="
 wcl eval "$CONFIG"
 
 echo ""
-echo "=== wcl eval (compact JSON via jq) ==="
-wcl eval "$CONFIG" | jq -c '.'
+echo "=== wcl eval --format json ==="
+wcl eval "$CONFIG" --format json
+
+echo ""
+echo "=== wcl eval --format json | jq -c ==="
+wcl eval "$CONFIG" --format json | jq -c '.'

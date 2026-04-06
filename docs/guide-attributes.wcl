@@ -263,7 +263,7 @@ page guide_attributes {
                         { value_kind = "Ternary", example = "debug ? \"verbose\" : \"quiet\"" },
                         { value_kind = "Function call", example = "upper(\"hello\")" },
                         { value_kind = "String interpolation", example = "\"http://" + D + "{host}:" + D + "{port}\"" },
-                        { value_kind = "Query", example = "query(service | .port)" },
+                        { value_kind = "Query", example = "(service | .port)" },
                         { value_kind = "Ref", example = "ref(svc-api)" },
                         { value_kind = "List", example = "[1, 2, 3]" },
                         { value_kind = "Map", example = "{ key: \"value\" }" }

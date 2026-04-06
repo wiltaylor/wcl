@@ -4437,12 +4437,12 @@ page cli_ref {
 
                 heading h2c {
                     level = 2
-                    content = icon("search") + " query"
+                    content = icon("search") + " eval with expressions"
                 }
-                paragraph p4 { content = "Query specific values using selectors:" }
+                paragraph p4 { content = "Evaluate and project the document with WCL expressions:" }
                 code c3 {
                     language = "bash"
-                    content = "# Get a specific value by path\nwcl query config.wcl \"server#api.port\"\n\n# Filter blocks by kind\nwcl query config.wcl \"server | .host\"\n\n# Count results\nwcl query config.wcl \"server\" --count\n\n# Output as JSON\nwcl query config.wcl \"database | .max_connections\" --format json"
+                    content = "# Print the whole document\nwcl eval config.wcl\n\n# Read a specific value\nwcl eval config.wcl \"services[0].port\"\n\n# Project via a helper function\nwcl eval config.wcl \"summary()\" --format json"
                 }
 
                 heading h2d {

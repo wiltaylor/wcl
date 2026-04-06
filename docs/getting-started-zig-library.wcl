@@ -234,7 +234,7 @@ page zig_library {
                 }
 
                 paragraph p11 {
-                    content = "<code>query()</code> accepts the same query syntax as the <code>wcl query</code> CLI command:"
+                    content = "<code>query()</code> accepts the same query syntax as the WCL <code>query()</code> function:"
                 }
 
                 code c8 {
@@ -257,7 +257,7 @@ page zig_library {
                     defer doc.deinit();
 
                     // Select all server ports
-                    var result = try doc.query(allocator, "server | .port");
+                    var result = try doc.(allocator, "server | .port");
                     defer result.deinit();
 
                     // The result is {"ok": <value>} — access via .object.get("ok")
@@ -487,7 +487,7 @@ page zig_library {
                         }
 
                         // 2. Query for all server ports
-                        var ports = try doc.query(allocator, "server | .port");
+                        var ports = try doc.(allocator, "server | .port");
                         defer ports.deinit();
                         const ok = ports.value.object.get("ok").?;
                         std.debug.print("All ports: ", .{});

@@ -204,7 +204,7 @@ page ref_evaluation {
                 code c5 {
                     language = "wcl"
                     content = <<-'WCL'
-                    let services = query(service | .port > 1024)
+                    let services = (service | .port > 1024)
                     WCL
                 }
 

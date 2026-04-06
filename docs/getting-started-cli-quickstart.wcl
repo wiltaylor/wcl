@@ -75,33 +75,38 @@ page cli_quickstart {
                     content = "wcl fmt config.wcl --check"
                 }
 
-                heading h2_query {
+                heading h2_eval {
                     level = 2
-                    content = "Query"
+                    content = "Evaluate and Project"
+                }
+
+                paragraph p6 {
+                    content = "<code>wcl eval</code> evaluates a document and prints the resolved output. Output is WCL by default; pass <code>--format json</code> for JSON."
                 }
 
                 code c6 {
                     language = "bash"
                     content = <<-'BASH'
-                    wcl query config.wcl "server | .port > 8000"
+                    # Evaluate the whole document
+                    wcl eval config.wcl
+
+                    # JSON output
+                    wcl eval config.wcl --format json
                     BASH
                 }
 
-                paragraph p6 {
-                    content = "Runs a query against the evaluated document and prints matching blocks as JSON. The query syntax selects blocks by type, filters by attribute values, and supports chaining. Some examples:"
+                paragraph p6b {
+                    content = "Pass a WCL expression as a second argument to project the document. The expression is evaluated in the document's scope and can reference any top-level binding or call any defined function."
                 }
 
                 code c7 {
                     language = "bash"
                     content = <<-'BASH'
-                    # All server blocks
-                    wcl query config.wcl "server"
+                    # Read a single value
+                    wcl eval config.wcl "services[0].port"
 
-                    # Server blocks where port is greater than 8000
-                    wcl query config.wcl "server | .port > 8000"
-
-                    # A specific block by ID
-                    wcl query config.wcl "server#web-prod"
+                    # Project via a helper function defined in the file
+                    wcl eval config.wcl "summary()" --format json
                     BASH
                 }
 
@@ -206,29 +211,6 @@ page cli_quickstart {
 
                 paragraph p12 {
                     content = "Removes the block with type <code>server</code> and ID <code>old-svc</code> from the file."
-                }
-
-                heading h2_inspect {
-                    level = 2
-                    content = "Inspect"
-                }
-
-                paragraph p13 {
-                    content = "Inspect internal representations for debugging or tooling development:"
-                }
-
-                code c13 {
-                    language = "bash"
-                    content = <<-'BASH'
-                    # Print the AST as pretty-printed text
-                    wcl inspect --ast config.wcl
-
-                    # Print the evaluated scope as JSON
-                    wcl inspect --scope config.wcl
-
-                    # Print all macros collected from the file
-                    wcl inspect --macros config.wcl
-                    BASH
                 }
 
             }

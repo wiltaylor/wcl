@@ -2,7 +2,6 @@ use assert_cmd::Command;
 use predicates::prelude::*;
 use std::io::Write;
 use tempfile::NamedTempFile;
-use tempfile::TempDir;
 
 // ── Helper: write a named temp file containing given content ─────────────────
 
@@ -103,37 +102,6 @@ fn validate_strict_flag_accepted() {
         .success();
 }
 
-// ── wcl query → output ───────────────────────────────────────────────────────
-
-#[test]
-fn query_returns_results_for_valid_query() {
-    let f = wcl_file("service { port = 8080 }\n");
-    Command::cargo_bin("wcl")
-        .unwrap()
-        .args(["query", f.path().to_str().unwrap(), "service"])
-        .assert()
-        .success();
-}
-
-#[test]
-fn query_subcommand_is_recognized_by_cli() {
-    // Even though the query fails at runtime, the CLI must not print
-    // "unknown subcommand" — the clap parser should accept "query".
-    let f = wcl_file("x = 1\n");
-    let output = Command::cargo_bin("wcl")
-        .unwrap()
-        .args(["query", f.path().to_str().unwrap(), "x"])
-        .output()
-        .expect("run wcl");
-
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    // Must not be a clap "unrecognised subcommand" error
-    assert!(
-        !stderr.contains("unrecognized subcommand"),
-        "CLI should recognise 'query' as a valid subcommand"
-    );
-}
-
 // ── wcl validate --schema ────────────────────────────────────────────────────
 
 #[test]
@@ -231,159 +199,10 @@ server {
 // ── Additional subcommand help checks ────────────────────────────────────────
 
 #[test]
-fn query_help_exits_successfully() {
-    Command::cargo_bin("wcl")
-        .unwrap()
-        .args(["query", "--help"])
-        .assert()
-        .success();
-}
-
-#[test]
 fn fmt_help_exits_successfully() {
     Command::cargo_bin("wcl")
         .unwrap()
         .args(["fmt", "--help"])
         .assert()
         .success();
-}
-
-// ── wcl inspect --scopes ─────────────────────────────────────────────────────
-
-#[test]
-fn inspect_scopes_produces_scope_tree() {
-    let f = wcl_file("config {\n    port = 8080\n}\n");
-    Command::cargo_bin("wcl")
-        .unwrap()
-        .args(["inspect", "--scopes", f.path().to_str().unwrap()])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("Scope Tree"));
-}
-
-#[test]
-fn inspect_scopes_shows_scope_entries() {
-    let f = wcl_file("let x = 42\nconfig {\n    port = x\n}\n");
-    Command::cargo_bin("wcl")
-        .unwrap()
-        .args(["inspect", "--scopes", f.path().to_str().unwrap()])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("Scope Tree").and(predicate::str::contains("Scope(")));
-}
-
-// ── wcl inspect --deps ───────────────────────────────────────────────────────
-
-#[test]
-fn inspect_deps_produces_dependency_graph() {
-    let f = wcl_file("let x = 1\nlet y = x + 1\n");
-    Command::cargo_bin("wcl")
-        .unwrap()
-        .args(["inspect", "--deps", f.path().to_str().unwrap()])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("Dependency Graph"));
-}
-
-// ── wcl query --recursive ────────────────────────────────────────────────────
-
-#[test]
-fn query_recursive_finds_files_in_directory() {
-    let dir = TempDir::new().expect("tempdir");
-
-    // Write two .wcl files into the directory
-    let file1 = dir.path().join("a.wcl");
-    std::fs::write(&file1, "service {\n    port = 8080\n}\n").expect("write a.wcl");
-
-    let file2 = dir.path().join("b.wcl");
-    std::fs::write(&file2, "service {\n    port = 9090\n}\n").expect("write b.wcl");
-
-    Command::cargo_bin("wcl")
-        .unwrap()
-        .args([
-            "query",
-            "--recursive",
-            dir.path().to_str().unwrap(),
-            "service",
-        ])
-        .assert()
-        .success();
-}
-
-#[test]
-fn query_recursive_aggregates_results() {
-    let dir = TempDir::new().expect("tempdir");
-
-    std::fs::write(dir.path().join("a.wcl"), "service {\n    port = 8080\n}\n")
-        .expect("write a.wcl");
-    std::fs::write(dir.path().join("b.wcl"), "service {\n    port = 9090\n}\n")
-        .expect("write b.wcl");
-
-    Command::cargo_bin("wcl")
-        .unwrap()
-        .args([
-            "query",
-            "--recursive",
-            "--count",
-            dir.path().to_str().unwrap(),
-            "service",
-        ])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("2"));
-}
-
-#[test]
-fn query_recursive_walks_subdirectories() {
-    let dir = TempDir::new().expect("tempdir");
-    let sub = dir.path().join("subdir");
-    std::fs::create_dir(&sub).expect("mkdir subdir");
-
-    std::fs::write(dir.path().join("a.wcl"), "service {\n    port = 1000\n}\n")
-        .expect("write a.wcl");
-    std::fs::write(sub.join("b.wcl"), "service {\n    port = 2000\n}\n").expect("write b.wcl");
-
-    Command::cargo_bin("wcl")
-        .unwrap()
-        .args([
-            "query",
-            "--recursive",
-            "--count",
-            dir.path().to_str().unwrap(),
-            "service",
-        ])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("2"));
-}
-
-#[test]
-fn query_recursive_on_single_file_works() {
-    let f = wcl_file("service {\n    port = 8080\n}\n");
-    Command::cargo_bin("wcl")
-        .unwrap()
-        .args([
-            "query",
-            "--recursive",
-            f.path().to_str().unwrap(),
-            "service",
-        ])
-        .assert()
-        .success();
-}
-
-#[test]
-fn query_recursive_empty_directory_fails() {
-    let dir = TempDir::new().expect("tempdir");
-    Command::cargo_bin("wcl")
-        .unwrap()
-        .args([
-            "query",
-            "--recursive",
-            dir.path().to_str().unwrap(),
-            "service",
-        ])
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains("no .wcl files"));
 }

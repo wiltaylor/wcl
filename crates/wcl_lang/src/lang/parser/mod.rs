@@ -99,7 +99,6 @@ impl Parser {
             TokenKind::Table => Some("table".into()),
             TokenKind::Import => Some("import".into()),
             TokenKind::Export => Some("export".into()),
-            TokenKind::Query => Some("query".into()),
             TokenKind::Ref => Some("ref".into()),
             TokenKind::For => Some("for".into()),
             TokenKind::In => Some("in".into()),
@@ -264,6 +263,14 @@ impl Parser {
     /// Parse a standalone query pipeline (consuming the parser).
     pub fn parse_query_standalone(mut self) -> (Option<QueryPipeline>, DiagnosticBag) {
         let result = self.parse_query_pipeline();
+        (result, self.diagnostics)
+    }
+
+    /// Parse a standalone expression (consuming the parser).
+    pub fn parse_expr_standalone(mut self) -> (Option<Expr>, DiagnosticBag) {
+        self.collect_trivia();
+        let result = self.parse_expr();
+        self.collect_trivia();
         (result, self.diagnostics)
     }
 

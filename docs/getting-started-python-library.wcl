@@ -266,7 +266,7 @@ page python_library {
                 }
 
                 paragraph p14 {
-                    content = "<code>doc.query()</code> accepts the same query syntax as the <code>wcl query</code> CLI command:"
+                    content = "<code>doc.query()</code> accepts the same query syntax as the WCL <code>query()</code> function:"
                 }
 
                 code c11 {
@@ -293,18 +293,18 @@ page python_library {
                     all_servers = doc.query("server")
 
                     # Filter by attribute
-                    prod = doc.query('server | .env == "prod"')
+                    prod = doc.('server | .env == "prod"')
 
                     # Project a single attribute
-                    ports = doc.query("server | .port")
+                    ports = doc.("server | .port")
                     print(ports)  # [8080, 9090, 3000]
 
                     # Filter and project
-                    prod_ports = doc.query('server | .env == "prod" | .port')
+                    prod_ports = doc.('server | .env == "prod" | .port')
                     print(prod_ports)  # [8080, 9090]
 
                     # Filter by comparison
-                    high_ports = doc.query("server | .port > 8500")
+                    high_ports = doc.("server | .port > 8500")
                     print(high_ports)  # [BlockRef for svc-admin, BlockRef for svc-debug]
                     PY
                 }
@@ -525,7 +525,7 @@ page python_library {
                         exit(1)
 
                     # 2. Query for all server ports
-                    ports = doc.query("server | .port")
+                    ports = doc.("server | .port")
                     print(f"All ports: {ports}")  # [8080, 9090]
 
                     # 3. Iterate resolved blocks

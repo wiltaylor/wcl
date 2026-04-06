@@ -16,7 +16,7 @@ page cli_eval {
                 }
 
                 paragraph p1 {
-                    content = "Evaluate a WCL document and print the fully resolved output."
+                    content = "Evaluate a WCL document and print the resolved output. Optionally project the result through a WCL expression."
                 }
 
                 heading h2_usage {
@@ -26,7 +26,7 @@ page cli_eval {
 
                 code c1 {
                     language = "bash"
-                    content = "wcl eval <file> [options]"
+                    content = "wcl eval <file> [expression] [options]"
                 }
 
                 heading h2_options {
@@ -35,10 +35,14 @@ page cli_eval {
                 }
 
                 data_table t1 {
-                    caption = "Options"
+                    caption = "Arguments and Options"
                     rows = [
-                        { flag = "--format <fmt>", description = "Output format: json, yaml, or toml (default: json)" },
-                        { flag = "--var KEY=VALUE", description = "Set an external variable (may be repeated)" }
+                        { flag = "<file>", description = "Input WCL file" },
+                        { flag = "[expression]", description = "Optional WCL expression to evaluate against the document" },
+                        { flag = "--format <fmt>", description = "Output format: wcl or json (default: wcl)" },
+                        { flag = "--var KEY=VALUE", description = "Set an external variable (may be repeated)" },
+                        { flag = "--lib-path <dir>", description = "Extra library search path (may be repeated)" },
+                        { flag = "--no-default-lib-paths", description = "Disable default XDG/system library search paths" }
                     ]
                 }
 
@@ -48,11 +52,15 @@ page cli_eval {
                 }
 
                 paragraph p2 {
-                    content = "<code>wcl eval</code> runs the full evaluation pipeline and serializes the resulting document to the requested format. All macros are expanded, all expressions evaluated, all imports merged, and all partial blocks resolved before output is produced."
+                    content = "<code>wcl eval</code> runs the full evaluation pipeline — macros expanded, expressions evaluated, imports merged, partial blocks resolved — and prints the final resolved document."
                 }
 
                 paragraph p3 {
-                    content = "The output represents the final, fully-resolved state of the document — suitable for consumption by tools that do not understand WCL natively."
+                    content = "When an <code>expression</code> is supplied, it is parsed as a WCL expression and evaluated in the document's scope. This lets you read specific values, call functions, and project the document into whatever shape you need. Define helper functions in the file (or a library) and call them as the expression to produce custom projections."
+                }
+
+                paragraph p4 {
+                    content = "Default output is WCL. Pass <code>--format json</code> for JSON output. For YAML, TOML, or other formats, pipe through " + link("wcl transform", "cli_transform.html") + "."
                 }
 
                 heading h2_examples {
@@ -60,8 +68,8 @@ page cli_eval {
                     content = "Examples"
                 }
 
-                paragraph p4 {
-                    content = "Evaluate and print as JSON (default):"
+                paragraph p5 {
+                    content = "Evaluate the whole document (WCL output):"
                 }
 
                 code c2 {
@@ -69,79 +77,62 @@ page cli_eval {
                     content = "wcl eval config.wcl"
                 }
 
-                paragraph p5 {
-                    content = "Evaluate and print as YAML:"
+                paragraph p6 {
+                    content = "Evaluate as JSON:"
                 }
 
                 code c3 {
                     language = "bash"
-                    content = "wcl eval config.wcl --format yaml"
+                    content = "wcl eval config.wcl --format json"
                 }
 
-                paragraph p6 {
-                    content = "Evaluate and print as TOML:"
+                paragraph p7 {
+                    content = "Read a single value via an expression:"
                 }
 
                 code c4 {
                     language = "bash"
-                    content = "wcl eval config.wcl --format toml"
-                }
-
-                paragraph p7 {
-                    content = "Override variables:"
-                }
-
-                code c5 {
-                    language = "bash"
-                    content = "wcl eval --var PORT=8080 --var DEBUG=true config.wcl"
+                    content = "wcl eval config.wcl 'services[0].port'"
                 }
 
                 paragraph p8 {
-                    content = "Pipe output to another tool:"
+                    content = "Project the document through a helper function defined in the file:"
+                }
+
+                code c5 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    // config.wcl
+                    let services = [
+                        { name = "api", port = 8080 },
+                        { name = "web", port = 8081 }
+                    ]
+
+                    let summary = () => map(services, (s) => s.name)
+                    WCL
                 }
 
                 code c6 {
                     language = "bash"
-                    content = "wcl eval config.wcl | jq '.service'"
-                }
-
-                heading h2_example_output {
-                    level = 2
-                    content = "Example Output"
+                    content = "wcl eval config.wcl 'summary()' --format json"
                 }
 
                 paragraph p9 {
-                    content = "Given:"
+                    content = "Override variables:"
                 }
 
                 code c7 {
-                    language = "wcl"
-                    content = <<-'WCL'
-                    let base_port = 8000
-
-                    service svc-api {
-                      port = base_port + 80
-                      host = "localhost"
-                    }
-                    WCL
+                    language = "bash"
+                    content = "wcl eval --var PORT=8080 --var DEBUG=true config.wcl"
                 }
 
                 paragraph p10 {
-                    content = "Running <code>wcl eval config.wcl</code> produces:"
+                    content = "Pipe JSON output to another tool:"
                 }
 
                 code c8 {
-                    language = "json"
-                    content = <<-'JSON'
-                    {
-                      "service": {
-                        "svc-api": {
-                          "port": 8080,
-                          "host": "localhost"
-                        }
-                      }
-                    }
-                    JSON
+                    language = "bash"
+                    content = "wcl eval config.wcl --format json | jq '.service'"
                 }
             }
         }

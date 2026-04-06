@@ -87,7 +87,7 @@ page functions_higher_order {
                 code c4 {
                     language = "wcl"
                     content = <<-'WCL'
-                    let services = query(service)
+                    let services = ..service
                     let names = map(services, s => s.name)    // ["web", "api", "worker"]
                     WCL
                 }
@@ -117,7 +117,7 @@ page functions_higher_order {
                 code c6 {
                     language = "wcl"
                     content = <<-'WCL'
-                    let prod_svcs = filter(query(service), s => s.env == "prod")
+                    let prod_svcs = filter(..service, s => s.env == "prod")
                     WCL
                 }
 
@@ -249,7 +249,7 @@ page functions_higher_order {
                     let is_prod = s => s.env == "prod"
                     let get_port = s => s.port
 
-                    let prod_services = filter(query(service), is_prod)
+                    let prod_services = filter(..service, is_prod)
                     let prod_ports    = map(prod_services, get_port)
                     WCL
                 }

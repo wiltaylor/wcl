@@ -48,7 +48,6 @@ pub enum TokenKind {
     Table,
     Import,
     Export,
-    Query,
     Ref,
     For,
     In,
@@ -1014,7 +1013,6 @@ impl<'a> Lexer<'a> {
             "table" => TokenKind::Table,
             "import" => TokenKind::Import,
             "export" => TokenKind::Export,
-            "query" => TokenKind::Query,
             "ref" => TokenKind::Ref,
             "for" => TokenKind::For,
             "in" => TokenKind::In,
@@ -1104,7 +1102,7 @@ mod tests {
 
     #[test]
     fn keywords() {
-        let src = "let partial macro schema table import export query ref for in if else when inject set remove self validation decorator_schema update symbol_set struct transform pipeline layout stream codec namespace use";
+        let src = "let partial macro schema table import export ref for in if else when inject set remove self validation decorator_schema update symbol_set struct transform pipeline layout stream codec namespace use";
         let ks = token_kinds_ok(src);
         assert_eq!(
             ks,
@@ -1116,7 +1114,6 @@ mod tests {
                 TokenKind::Table,
                 TokenKind::Import,
                 TokenKind::Export,
-                TokenKind::Query,
                 TokenKind::Ref,
                 TokenKind::For,
                 TokenKind::In,

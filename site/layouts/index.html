@@ -248,19 +248,19 @@ service "svc-api" {
 
       <div class="feature-row">
         <div class="feature-text">
-          <h3>Query your config</h3>
-          <p>Find blocks and attributes with selectors and filters. Search by type, ID, attribute values, or regex patterns. Output as text, JSON, CSV, or WCL.</p>
+          <h3>Evaluate and project</h3>
+          <p>Run the full pipeline and print resolved output, or pass a WCL expression to project into just the values you need. Output as WCL or JSON.</p>
         </div>
         <div class="feature-code">
-          <pre><code class="language-bash"># Find all services on port 8080
-wcl query config.wcl 'service | .port == 8080'
+          <pre><code class="language-bash"># Evaluate the whole document
+wcl eval config.wcl
 
-# Find blocks by ID
-wcl query config.wcl 'service#svc-api'
+# Read a single value via an expression
+wcl eval config.wcl \
+  'services[0].port'
 
-# Recursive search with regex
-wcl query config.wcl \
-  '..service | .name =~ ".*-api"' \
+# Project via a helper function
+wcl eval config.wcl 'summary()' \
   --format json</code></pre>
         </div>
       </div>
@@ -303,18 +303,15 @@ wcl transform run json-to-yaml -f convert.wcl --input data.json</code></pre>
 
       <div class="feature-row">
         <div class="feature-text">
-          <h3>Format and inspect</h3>
-          <p>Auto-format files to a consistent style or inspect the AST, scopes, and dependency graph for debugging.</p>
+          <h3>Format consistently</h3>
+          <p>Auto-format files to a consistent style, with an in-place mode and a CI-friendly check mode.</p>
         </div>
         <div class="feature-code">
           <pre><code class="language-bash"># Format in place
 wcl fmt config.wcl --write
 
 # Check formatting in CI
-wcl fmt config.wcl --check
-
-# Inspect the resolved document
-wcl inspect config.wcl --hir</code></pre>
+wcl fmt config.wcl --check</code></pre>
         </div>
       </div>
 

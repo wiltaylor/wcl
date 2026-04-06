@@ -2608,7 +2608,7 @@
         },
         {
           "type": "SYMBOL",
-          "name": "query_expression"
+          "name": "pipeline"
         },
         {
           "type": "SYMBOL",
@@ -2625,27 +2625,6 @@
         {
           "type": "SYMBOL",
           "name": "lambda_expression"
-        }
-      ]
-    },
-    "query_expression": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "STRING",
-          "value": "query"
-        },
-        {
-          "type": "STRING",
-          "value": "("
-        },
-        {
-          "type": "SYMBOL",
-          "name": "pipeline"
-        },
-        {
-          "type": "STRING",
-          "value": ")"
         }
       ]
     },
@@ -3663,6 +3642,24 @@
     [
       "_primary_expression",
       "lambda_parameters"
+    ],
+    [
+      "_primary_expression",
+      "selector"
+    ],
+    [
+      "_primary_expression",
+      "selector",
+      "lambda_parameters"
+    ],
+    [
+      "selector"
+    ],
+    [
+      "pipeline"
+    ],
+    [
+      "filter"
     ]
   ],
   "precedences": [],

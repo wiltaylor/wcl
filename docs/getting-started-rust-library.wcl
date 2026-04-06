@@ -274,17 +274,17 @@ page rust_library {
                     let all = doc.query("server").unwrap();
 
                     // Filter by attribute
-                    let prod = doc.query(r#"server | .env == "prod""#).unwrap();
+                    let prod = doc.(r#"server | .env == "prod""#).unwrap();
 
                     // Project a single attribute
-                    let ports = doc.query("server | .port").unwrap();
+                    let ports = doc.("server | .port").unwrap();
                     if let Value::List(port_list) = ports {
                         println!("ports: {:?}", port_list);
                         // [Int(8080), Int(9090), Int(3000)]
                     }
 
                     // Filter and project
-                    let prod_ports = doc.query(r#"server | .env == "prod" | .port"#).unwrap();
+                    let prod_ports = doc.(r#"server | .env == "prod" | .port"#).unwrap();
 
                     // Select by ID
                     let api = doc.query("server#svc-api").unwrap();
@@ -574,7 +574,7 @@ page rust_library {
                         }
 
                         // 2. Query for all server ports
-                        let ports = doc.query("server | .port").unwrap();
+                        let ports = doc.("server | .port").unwrap();
                         println!("All ports: {}", ports);
 
                         // 3. Iterate resolved blocks

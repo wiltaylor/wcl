@@ -217,7 +217,6 @@
 ; ── Query expressions ────────────────────────────────────────────────────
 
 [
-  "query"
   "has"
   "import_table"
   "import_raw"
