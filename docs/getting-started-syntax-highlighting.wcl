@@ -27,7 +27,7 @@ page syntax_highlighting {
                 data_table t1 {
                     rows = [
                         ["Package", "Format", "Unlocks"],
-                        ["Tree-sitter Highlight Queries", "<code>.scm</code>", "Neovim, Helix, Zed, GitHub"],
+                        ["Tree-sitter Highlight Queries", "<code>.scm</code>", "Neovim, Helix, GitHub"],
                         ["Sublime Syntax", "<code>.sublime-syntax</code>", "Sublime Text, Syntect, bat"],
                         ["TextMate Grammar", "<code>.tmLanguage.json</code>", "VS Code, Shiki, Monaco"],
                         ["highlight.js", "<code>.js</code>", "mdbook, any highlight.js site"],
@@ -122,24 +122,6 @@ page syntax_highlighting {
                     name = "wcl"
                     source = { path = "/path/to/extras/tree-sitter-wcl" }
                     TOML
-                }
-
-                heading h3_zed {
-                    level = 3
-                    content = "Zed"
-                }
-
-                paragraph p8 {
-                    content = "Zed supports tree-sitter grammars natively. Place the query files in an extension directory:"
-                }
-
-                code c5 {
-                    language = "text"
-                    content = <<-'TXT'
-                    languages/wcl/
-                      highlights.scm
-                      injections.scm
-                    TXT
                 }
 
                 heading h3_github {
