@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::process;
 
 use crate::lang::diagnostic::{Diagnostic, Severity};
-use crate::lang::span::SourceMap;
+use crate::lang::span::{SourceFile, SourceMap, Span};
 
 /// Shared library search path options
 #[derive(clap::Args, Clone, Debug, Default)]
@@ -23,13 +23,84 @@ impl LibraryArgs {
     }
 }
 
-/// Format a diagnostic with file location (line:col) when available.
+/// Return the text of the given 1-indexed line from a SourceFile.
+fn source_line(sf: &SourceFile, line: u32) -> Option<&str> {
+    sf.source.lines().nth(line as usize - 1)
+}
+
+/// Resolve the display path for a source file.
+fn resolve_path(sf: &SourceFile, fallback: &Path) -> String {
+    let p = sf.path.as_str();
+    if p.is_empty() || p == "<input>" {
+        fallback.display().to_string()
+    } else {
+        p.to_string()
+    }
+}
+
+/// Compute the maximum line number across the primary span and all labels.
+fn max_line_number(source_map: &SourceMap, primary: Span, labels: &[crate::lang::diagnostic::Label]) -> u32 {
+    let mut max = source_map.line_col(primary.file, primary.start).0;
+    for label in labels {
+        if label.span != Span::dummy() {
+            let (line, _) = source_map.line_col(label.span.file, label.span.start);
+            max = max.max(line);
+        }
+    }
+    max
+}
+
+/// Render a span block: location line, source line, and underline with optional message.
+fn render_span_block(
+    source_map: &SourceMap,
+    fallback_path: &Path,
+    span: Span,
+    underline_msg: &str,
+    gutter: usize,
+    is_primary: bool,
+) -> String {
+    let pad = " ".repeat(gutter);
+    let sf = source_map.get_file(span.file);
+    let path = resolve_path(sf, fallback_path);
+    let (line, col) = sf.line_col(span.start);
+    let (end_line, end_col) = sf.line_col(span.end);
+
+    let arrow = if is_primary { "-->" } else { ":::" };
+    let mut out = format!("{pad} {arrow} {path}:{line}:{col}\n");
+    out.push_str(&format!("{pad} |\n"));
+
+    // For multi-line spans, show only the first line with underline to EOL
+    if let Some(line_text) = source_line(sf, line) {
+        out.push_str(&format!("{:>gutter$} | {}\n", line, line_text, gutter = gutter));
+
+        let caret_start = col as usize - 1;
+        let caret_len = if line == end_line {
+            let len = end_col as usize - col as usize;
+            if len == 0 { 1 } else { len }
+        } else {
+            let len = line_text.len().saturating_sub(caret_start);
+            if len == 0 { 1 } else { len }
+        };
+
+        let spaces = " ".repeat(caret_start);
+        let carets = "^".repeat(caret_len);
+        if underline_msg.is_empty() {
+            out.push_str(&format!("{pad} | {spaces}{carets}"));
+        } else {
+            out.push_str(&format!("{pad} | {spaces}{carets} {underline_msg}"));
+        }
+    }
+
+    out
+}
+
+/// Format a diagnostic in rustc-style with source context.
 pub(crate) fn format_diagnostic(
     diag: &Diagnostic,
     source_map: &SourceMap,
     fallback_path: &Path,
 ) -> String {
-    let prefix = match diag.severity {
+    let severity_str = match diag.severity {
         Severity::Error => "error",
         Severity::Warning => "warning",
         Severity::Info => "info",
@@ -41,24 +112,45 @@ pub(crate) fn format_diagnostic(
         None => String::new(),
     };
 
-    let span = diag.span;
-    let is_dummy = span == crate::lang::span::Span::dummy();
+    let mut out = format!("{severity_str}{code_part}: {}", diag.message);
 
-    if is_dummy {
-        format!("{}{}: {}", prefix, code_part, diag.message)
-    } else {
-        let (line, col) = source_map.line_col(span.file, span.start);
-        let file_path = source_map.get_file(span.file).path.as_str();
-        let display_path = if file_path.is_empty() || file_path == "<input>" {
-            fallback_path.display().to_string()
-        } else {
-            file_path.to_string()
-        };
-        format!(
-            "{}:{}:{}: {}{}: {}",
-            display_path, line, col, prefix, code_part, diag.message
-        )
+    let span = diag.span;
+    if span == Span::dummy() {
+        return out;
     }
+
+    let gutter = max_line_number(source_map, span, &diag.labels)
+        .to_string()
+        .len();
+
+    // Primary span block
+    out.push('\n');
+    out.push_str(&render_span_block(
+        source_map, fallback_path, span, "", gutter, true,
+    ));
+
+    // Secondary labels
+    for label in &diag.labels {
+        if label.span == Span::dummy() {
+            continue;
+        }
+        let pad = " ".repeat(gutter);
+        out.push_str(&format!("\n{pad} |\n"));
+        out.push_str(&render_span_block(
+            source_map, fallback_path, label.span, &label.message, gutter, false,
+        ));
+    }
+
+    // Notes
+    if !diag.notes.is_empty() {
+        let pad = " ".repeat(gutter);
+        out.push_str(&format!("\n{pad} |"));
+        for note in &diag.notes {
+            out.push_str(&format!("\n{pad} = note: {note}"));
+        }
+    }
+
+    out
 }
 
 mod add;
