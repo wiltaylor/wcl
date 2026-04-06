@@ -782,6 +782,12 @@ impl Parser {
                     self.advance(); // consume op
                     let expr = self.parse_expr()?;
                     Some(QueryFilter::AttrComparison(attr_ident, op, expr))
+                } else if matches!(self.peek_kind(), TokenKind::Equals) {
+                    self.diagnostics.error(
+                        "use `==` for equality comparison in query filters, not `=`",
+                        self.current_span(),
+                    );
+                    None
                 } else {
                     Some(QueryFilter::Projection(attr_ident))
                 }

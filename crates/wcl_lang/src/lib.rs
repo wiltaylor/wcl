@@ -305,19 +305,13 @@ impl Document {
         });
         let mut attributes = indexmap::IndexMap::new();
 
-        // Prepend inline_id to args so @inline(0) captures it
-        let mut all_args: Vec<Value> = Vec::new();
-        if let Some(ref id_str) = id {
-            all_args.push(Value::Identifier(id_str.clone()));
-        }
         let evaluated_args: Vec<Value> = block
             .inline_args
             .iter()
             .filter_map(|e| evaluator.eval_expr(e, scope).ok())
             .collect();
-        all_args.extend(evaluated_args);
-        if !all_args.is_empty() {
-            attributes.insert("_args".to_string(), Value::List(all_args));
+        if !evaluated_args.is_empty() {
+            attributes.insert("_args".to_string(), Value::List(evaluated_args));
         }
         for body_item in &block.body {
             if let ast::BodyItem::Attribute(attr) = body_item {

@@ -39,16 +39,17 @@ pub fn parse_query(source: &str, file_id: FileId) -> Result<ast::QueryPipeline, 
     };
     let parser = parser::Parser::new(tokens);
     let (pipeline_opt, diags) = parser.parse_query_standalone();
+    if diags.has_errors() {
+        return Err(diags);
+    }
     match pipeline_opt {
         Some(pipeline) => Ok(pipeline),
         None => {
             let mut diags = diags;
-            if diags.is_empty() {
-                diags.error(
-                    "failed to parse query pipeline",
-                    Span::new(file_id, 0, source.len()),
-                );
-            }
+            diags.error(
+                "failed to parse query pipeline",
+                Span::new(file_id, 0, source.len()),
+            );
             Err(diags)
         }
     }

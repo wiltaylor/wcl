@@ -75,8 +75,12 @@ pub fn run(
                     print_wcl(&aggregated, 0);
                 }
                 _ => {
-                    // "text" or any other format
-                    println!("{}", aggregated);
+                    // "text" or any other format — pretty-print as JSON
+                    let json = value_to_json(&aggregated);
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&json).unwrap_or_default()
+                    );
                 }
             }
         }
@@ -124,8 +128,12 @@ pub fn run(
                 print_wcl(&result, 0);
             }
             _ => {
-                // "text" or any other format
-                println!("{}", result);
+                // "text" or any other format — pretty-print as JSON
+                let json = value_to_json(&result);
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&json).unwrap_or_default()
+                );
             }
         }
     }
