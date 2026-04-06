@@ -75,7 +75,7 @@ page cli_quickstart {
                     content = "wcl fmt config.wcl --check"
                 }
 
-                heading h2_eval {
+                heading h2_eval_project {
                     level = 2
                     content = "Evaluate and Project"
                 }
@@ -160,57 +160,65 @@ page cli_quickstart {
                 }
 
                 paragraph p9 {
-                    content = "Update a single attribute value in a WCL file:"
+                    content = "Update attribute values on blocks selected by a query pipeline. The argument is one quoted string of the form <code>&lt;selector&gt; ~&gt; .path = expression</code>:"
                 }
 
                 code c9 {
                     language = "bash"
                     content = <<-'BASH'
-                    wcl set config.wcl "server#web.port" "9090"
+                    # Update one block by inline id
+                    wcl set config.wcl 'server | .id == "web" ~> .port = 9090'
+
+                    # Update every prod server in one call
+                    wcl set config.wcl 'server | .env == "prod" ~> .replicas = 8'
                     BASH
                 }
 
                 paragraph p10 {
-                    content = "The path syntax is <code>type#id.attribute</code>. The file is updated in place."
+                    content = "If the attribute does not exist on a matched block, it is created. See " + link("wcl set", "cli_set.html") + " for more."
                 }
 
                 heading h2_add {
                     level = 2
-                    content = "Add a Block"
+                    content = "Add Something New"
+                }
+
+                paragraph p11 {
+                    content = "<code>wcl add</code> takes a WCL fragment. With no selector, it is appended to the top of the file. With a selector and <code>~&gt;</code>, it is inserted inside every matched block:"
                 }
 
                 code c10 {
                     language = "bash"
                     content = <<-'BASH'
-                    wcl add config.wcl "server new-svc"
-                    BASH
-                }
+                    # Top-level attribute
+                    wcl add config.wcl 'region = "us-east"'
 
-                paragraph p11 {
-                    content = "Appends a new empty block of the given type and ID to the file. You can also pipe in a block body:"
-                }
+                    # A brand-new top-level block
+                    wcl add config.wcl 'server web { port = 8080 host = "localhost" }'
 
-                code c11 {
-                    language = "bash"
-                    content = <<-'BASH'
-                    wcl add config.wcl "server new-svc" --body '{ port = 8081 }'
+                    # An attribute inside an existing block
+                    wcl add config.wcl 'server | .id == "web" ~> timeout = "30s"'
                     BASH
                 }
 
                 heading h2_remove {
                     level = 2
-                    content = "Remove a Block"
+                    content = "Remove a Block or Attribute"
+                }
+
+                paragraph p12 {
+                    content = "<code>wcl remove</code> takes a query pipeline. With just the selector, the whole matched block is deleted. Add <code>~&gt; .path</code> to delete just one attribute:"
                 }
 
                 code c12 {
                     language = "bash"
                     content = <<-'BASH'
-                    wcl remove config.wcl "server#old-svc"
-                    BASH
-                }
+                    # Remove a block
+                    wcl remove config.wcl 'server | .id == "old"'
 
-                paragraph p12 {
-                    content = "Removes the block with type <code>server</code> and ID <code>old-svc</code> from the file."
+                    # Remove an attribute
+                    wcl remove config.wcl 'server | .id == "web" ~> .debug'
+                    BASH
                 }
 
             }

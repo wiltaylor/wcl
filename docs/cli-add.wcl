@@ -16,7 +16,7 @@ page cli_add {
                 }
 
                 paragraph p1 {
-                    content = "Add a new block to a WCL document."
+                    content = "Add a new item to a WCL document \u2014 either at the top level or inside blocks matched by a query pipeline."
                 }
 
                 heading h2_usage {
@@ -26,19 +26,7 @@ page cli_add {
 
                 code c1 {
                     language = "bash"
-                    content = "wcl add <file> <block_spec> [options]"
-                }
-
-                heading h2_options {
-                    level = 2
-                    content = "Options"
-                }
-
-                data_table t1 {
-                    caption = "Options"
-                    rows = [
-                        { flag = "--file-auto", description = "Automatically determine the best placement for the new block" }
-                    ]
+                    content = "wcl add <file> '<wcl-fragment>'\nwcl add <file> '<selector> ~> <wcl-fragment>'"
                 }
 
                 heading h2_description {
@@ -47,25 +35,7 @@ page cli_add {
                 }
 
                 paragraph p2 {
-                    content = "<code>wcl add</code> appends a new empty block to the specified WCL document. The block is inserted and the file is written back in place. You can then use <code>wcl set</code> to populate attributes, or edit the file directly."
-                }
-
-                paragraph p3 {
-                    content = "The <code>&lt;block_spec&gt;</code> argument is a quoted string describing the block type and optional ID, matching WCL block declaration syntax."
-                }
-
-                heading h2_block_spec_syntax {
-                    level = 2
-                    content = "Block Spec Syntax"
-                }
-
-                data_table t2 {
-                    caption = "Block Spec Syntax"
-                    rows = [
-                        { spec = "\"service svc-new\"", result = "service svc-new { }" },
-                        { spec = "\"database primary\"", result = "database primary { }" },
-                        { spec = "\"config\"", result = "config { } (no ID)" }
-                    ]
+                    content = "The argument is a valid WCL fragment (a single attribute, let binding, or block). With no <code>~&gt;</code>, the fragment is appended to the top level of the file. With <code>~&gt;</code>, the left side is a " + link("query pipeline", "guide_query_engine.html") + " selector and the fragment is inserted inside every matched block."
                 }
 
                 heading h2_examples {
@@ -73,31 +43,40 @@ page cli_add {
                     content = "Examples"
                 }
 
-                paragraph p4 {
-                    content = "Add a new service block:"
+                paragraph p3 {
+                    content = "Add a top-level attribute:"
                 }
 
                 code c2 {
                     language = "bash"
-                    content = "wcl add config.wcl \"service svc-new\""
+                    content = "wcl add config.wcl 'region = \"us-east\"'"
                 }
 
-                paragraph p5 {
-                    content = "Add a database block with auto-placement:"
+                paragraph p4 {
+                    content = "Add a new top-level block:"
                 }
 
                 code c3 {
                     language = "bash"
-                    content = "wcl add config.wcl \"database replica\" --file-auto"
+                    content = "wcl add config.wcl 'server web { port = 8080 host = \"localhost\" }'"
                 }
 
-                paragraph p6 {
-                    content = "Add a block with a label (quoted string in spec):"
+                paragraph p5 {
+                    content = "Add an attribute inside an existing block selected by id:"
                 }
 
                 code c4 {
                     language = "bash"
-                    content = "wcl add config.wcl 'endpoint svc-api \"v2\"'"
+                    content = "wcl add config.wcl 'server | .id == \"web\" ~> timeout = \"30s\"'"
+                }
+
+                paragraph p6 {
+                    content = "Add a child block inside every matched block:"
+                }
+
+                code c5 {
+                    language = "bash"
+                    content = "wcl add config.wcl 'server | .env == \"prod\" ~> tls { enabled = true }'"
                 }
 
                 heading h2_notes {
@@ -107,10 +86,10 @@ page cli_add {
 
                 paragraph p7 {
                     content = "<ul>" +
-                        "<li>By default, the new block is appended at the end of the document.</li>" +
-                        "<li>With <code>--file-auto</code>, the CLI attempts to place the new block near existing blocks of the same type.</li>" +
-                        "<li>The new block is empty; use <code>wcl set</code> or direct editing to populate its attributes.</li>" +
-                        "<li>The block spec must be quoted in the shell to avoid splitting on spaces.</li>" +
+                        "<li>The fragment must be a single well-formed WCL body item. Use newlines (not commas) to separate attributes inside a block.</li>" +
+                        "<li>In the selector form, if the selector matches no blocks, the command exits with an error and the file is not modified.</li>" +
+                        "<li>If you just want to update an existing attribute value, " + link("wcl set", "cli_set.html") + " creates the attribute when missing and updates it when present.</li>" +
+                        "<li>The file is modified in place; no backup is created automatically.</li>" +
                         "</ul>"
                 }
             }

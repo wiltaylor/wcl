@@ -156,6 +156,24 @@ impl QueryEngine {
 
                 let mut matched = Vec::new();
                 for block in blocks {
+                    // `.id` is a virtual attribute that compares against the
+                    // block's inline ID rather than a real attribute named "id".
+                    if attr.name == "id" {
+                        let id_val = block
+                            .id
+                            .as_ref()
+                            .map(|s| Value::String(s.clone()))
+                            .unwrap_or(Value::Null);
+                        let matches = match op {
+                            BinOp::Eq => id_val == rhs_val,
+                            BinOp::Neq => id_val != rhs_val,
+                            _ => false,
+                        };
+                        if matches {
+                            matched.push(block.clone());
+                        }
+                        continue;
+                    }
                     if let Some(attr_val) = block.attributes.get(&attr.name) {
                         let matches = match op {
                             BinOp::Eq => *attr_val == rhs_val,

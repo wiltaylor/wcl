@@ -16,7 +16,7 @@ page cli_set {
                 }
 
                 paragraph p1 {
-                    content = "Set an attribute value by path in a WCL document."
+                    content = "Set attribute values on blocks selected by a query pipeline."
                 }
 
                 heading h2_usage {
@@ -26,7 +26,7 @@ page cli_set {
 
                 code c1 {
                     language = "bash"
-                    content = "wcl set <file> <path> <value>"
+                    content = "wcl set <file> '<selector> ~> <assignment>'"
                 }
 
                 heading h2_description {
@@ -35,33 +35,39 @@ page cli_set {
                 }
 
                 paragraph p2 {
-                    content = "<code>wcl set</code> edits a WCL document by locating the attribute identified by <code>&lt;path&gt;</code> and replacing its value with <code>&lt;value&gt;</code>. The modified document is written back to the file in place. Formatting and comments in the rest of the file are preserved."
+                    content = "<code>wcl set</code> takes a single argument that contains a " + link("query pipeline", "guide_query_engine.html") + " selector, the <code>~&gt;</code> separator, and an assignment of the form <code>.path = expression</code>. Every block matched by the selector is updated. The right-hand side of <code>=</code> is parsed as a WCL expression."
+                }
+
+                paragraph p2b {
+                    content = "If the named attribute does not exist on a matched block, it is created. Formatting and comments in unmodified parts of the file are preserved."
+                }
+
+                heading h2_selector {
+                    level = 2
+                    content = "Selector"
                 }
 
                 paragraph p3 {
-                    content = "The value is parsed as a WCL expression, so string values must be quoted."
-                }
-
-                heading h2_path_syntax {
-                    level = 2
-                    content = "Path Syntax"
-                }
-
-                paragraph p4 {
-                    content = "Paths use dot notation to navigate through the document structure:"
+                    content = "Anything you can write inside <code>wcl eval</code>'s expression argument: bare kind, <code>kind#id</code>, <code>..kind</code>, comparison filters, <code>has()</code>, regex match, etc. The synthetic <code>.id</code> attribute matches against a block's inline id."
                 }
 
                 data_table t1 {
-                    caption = "Path Syntax"
+                    caption = "Selector examples"
                     rows = [
-                        { path = "service#svc-api.port", meaning = "Attribute port inside block service with ID svc-api" },
-                        { path = "database#primary.host", meaning = "Attribute host inside block database with ID primary" },
-                        { path = "service#svc-api.tls.enabled", meaning = "Nested attribute access" }
+                        { selector = "server | .id == \"web\"", meaning = "The server block whose inline id is web" },
+                        { selector = "server | .env == \"prod\"", meaning = "Every server with attribute env equal to \"prod\"" },
+                        { selector = "server | .port > 8000", meaning = "Filter by attribute value" },
+                        { selector = "..service", meaning = "Every service block, including nested ones" }
                     ]
                 }
 
-                paragraph p5 {
-                    content = "The <code>type#id</code> portion identifies the block. The <code>.attribute</code> portion names the attribute within that block."
+                heading h2_assignment {
+                    level = 2
+                    content = "Assignment"
+                }
+
+                paragraph p4 {
+                    content = "The action after <code>~&gt;</code> is <code>.path = &lt;wcl-expression&gt;</code>. The path can walk into nested child blocks (e.g. <code>.tls.enabled</code>). The expression can be any WCL value: int, string, list, map, function call, etc."
                 }
 
                 heading h2_examples {
@@ -69,40 +75,49 @@ page cli_set {
                     content = "Examples"
                 }
 
-                paragraph p6 {
-                    content = "Set an integer value:"
+                paragraph p5 {
+                    content = "Update a port on the block whose id is <code>web</code>:"
                 }
 
                 code c2 {
                     language = "bash"
-                    content = "wcl set config.wcl service#svc-api.port 9090"
+                    content = "wcl set config.wcl 'server | .id == \"web\" ~> .port = 9090'"
                 }
 
-                paragraph p7 {
-                    content = "Set a string value:"
+                paragraph p6 {
+                    content = "Set a string attribute on every prod server in one call:"
                 }
 
                 code c3 {
                     language = "bash"
-                    content = "wcl set config.wcl service#svc-api.host '\"0.0.0.0\"'"
+                    content = "wcl set config.wcl 'server | .env == \"prod\" ~> .replicas = 8'"
                 }
 
-                paragraph p8 {
-                    content = "Set a boolean value:"
+                paragraph p7 {
+                    content = "Walk into a nested block:"
                 }
 
                 code c4 {
                     language = "bash"
-                    content = "wcl set config.wcl service#svc-api.tls.enabled true"
+                    content = "wcl set config.wcl 'server | .id == \"web\" ~> .tls.enabled = true'"
                 }
 
-                paragraph p9 {
+                paragraph p8 {
                     content = "Set a list value:"
                 }
 
                 code c5 {
                     language = "bash"
-                    content = "wcl set config.wcl service#svc-api.tags '[\"prod\", \"api\"]'"
+                    content = "wcl set config.wcl 'server | .id == \"web\" ~> .tags = [\"prod\", \"api\"]'"
+                }
+
+                paragraph p9 {
+                    content = "Create a new attribute that did not exist before (the line is inserted into the matched block, indented to match):"
+                }
+
+                code c6 {
+                    language = "bash"
+                    content = "wcl set config.wcl 'server | .id == \"web\" ~> .timeout = \"30s\"'"
                 }
 
                 heading h2_notes {
@@ -112,9 +127,10 @@ page cli_set {
 
                 paragraph p10 {
                     content = "<ul>" +
-                        "<li>The path must refer to an existing attribute. To add a new attribute, use <code>wcl add</code> or edit the file directly.</li>" +
-                        "<li>String values must include their quotes: use <code>'\"value\"'</code> in shell to pass a quoted string.</li>" +
+                        "<li>If the selector matches no blocks, <code>wcl set</code> exits with an error and the file is not modified.</li>" +
+                        "<li>If multiple blocks match, every one of them is updated.</li>" +
                         "<li>The file is modified in place; no backup is created automatically.</li>" +
+                        "<li>To create a brand-new block, use " + link("wcl add", "cli_add.html") + ". To remove a block or attribute, use " + link("wcl remove", "cli_remove.html") + ".</li>" +
                         "</ul>"
                 }
             }

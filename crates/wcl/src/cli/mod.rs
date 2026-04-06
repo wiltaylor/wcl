@@ -184,6 +184,7 @@ mod add;
 mod docs;
 mod eval;
 mod fmt;
+mod mutation;
 mod path;
 mod remove;
 mod set;
@@ -255,31 +256,32 @@ enum Commands {
         #[arg(long)]
         tcp: Option<String>,
     },
-    /// Set a value by path
+    /// Set an attribute on blocks matching a query pipeline
     Set {
         /// Input file
         file: PathBuf,
-        /// Path to the value (e.g. service#svc-api.port)
-        path: String,
-        /// New value
-        value: String,
+        /// '<selector> ~> .path = <expr>'
+        spec: String,
+        #[command(flatten)]
+        lib_args: LibraryArgs,
     },
-    /// Add a new block
+    /// Add a new top-level item or insert into blocks matching a selector
     Add {
         /// Input file
         file: PathBuf,
-        /// Block specification (e.g. "service svc-new")
-        block_spec: String,
-        /// Auto-determine file placement
-        #[arg(long)]
-        file_auto: bool,
+        /// '<wcl-fragment>' or '<selector> ~> <wcl-fragment>'
+        spec: String,
+        #[command(flatten)]
+        lib_args: LibraryArgs,
     },
-    /// Remove a block or attribute by path
+    /// Remove blocks or attributes matching a query pipeline
     Remove {
         /// Input file
         file: PathBuf,
-        /// Path to remove (e.g. service#svc-old, service#svc-api.debug)
-        path: String,
+        /// '<selector>' or '<selector> ~> .path'
+        spec: String,
+        #[command(flatten)]
+        lib_args: LibraryArgs,
     },
     /// Table row operations (insert, remove, update)
     Table {
@@ -455,13 +457,21 @@ pub fn main() {
                 Err(e) => Err(e),
             }
         }
-        Commands::Set { file, path, value } => set::run(&file, &path, &value),
+        Commands::Set {
+            file,
+            spec,
+            lib_args,
+        } => set::run(&file, &spec, &lib_args),
         Commands::Add {
             file,
-            block_spec,
-            file_auto,
-        } => add::run(&file, &block_spec, file_auto),
-        Commands::Remove { file, path } => remove::run(&file, &path),
+            spec,
+            lib_args,
+        } => add::run(&file, &spec, &lib_args),
+        Commands::Remove {
+            file,
+            spec,
+            lib_args,
+        } => remove::run(&file, &spec, &lib_args),
         Commands::Docs {
             files,
             output,

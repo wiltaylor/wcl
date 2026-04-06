@@ -395,7 +395,7 @@ fn eval_nonexistent_file_fails() {
 // ===========================================================================
 
 #[test]
-fn set_attribute_in_block_by_id() {
+fn set_attribute_by_id_filter() {
     let f = wcl_file(
         r#"server svc-api {
     port = 8080
@@ -405,36 +405,18 @@ fn set_attribute_in_block_by_id() {
     );
     let path = f.path().to_str().unwrap().to_string();
 
-    wcl(&["set", &path, "server#svc-api.port", "9090"])
+    wcl(&["set", &path, "server | .id == \"svc-api\" ~> .port = 9090"])
         .success()
         .stdout(predicate::str::contains("set"));
 
-    // Verify the file was updated
     let updated = std::fs::read_to_string(&path).unwrap();
-    assert!(updated.contains("9090"), "port should be updated to 9090");
-    assert!(!updated.contains("8080"), "old port 8080 should be gone");
-    // Other attributes should be untouched
+    assert!(updated.contains("9090"));
+    assert!(!updated.contains("8080"));
     assert!(updated.contains("localhost"));
 }
 
 #[test]
-fn set_attribute_in_block_by_kind() {
-    let f = wcl_file(
-        r#"config {
-    debug = false
-}
-"#,
-    );
-    let path = f.path().to_str().unwrap().to_string();
-
-    wcl(&["set", &path, "config.debug", "true"]).success();
-
-    let updated = std::fs::read_to_string(&path).unwrap();
-    assert!(updated.contains("true"), "debug should be set to true");
-}
-
-#[test]
-fn set_string_value() {
+fn set_string_value_by_id() {
     let f = wcl_file(
         r#"server svc-api {
     host = "old.example.com"
@@ -443,47 +425,61 @@ fn set_string_value() {
     );
     let path = f.path().to_str().unwrap().to_string();
 
-    wcl(&["set", &path, "server#svc-api.host", "\"new.example.com\""]).success();
+    wcl(&[
+        "set",
+        &path,
+        "server | .id == \"svc-api\" ~> .host = \"new.example.com\"",
+    ])
+    .success();
 
     let updated = std::fs::read_to_string(&path).unwrap();
     assert!(updated.contains("new.example.com"));
 }
 
 #[test]
-fn set_top_level_attribute() {
-    let f = wcl_file("version = 1\n");
+fn set_creates_missing_attribute() {
+    let f = wcl_file("server web { port = 8080 }\n");
     let path = f.path().to_str().unwrap().to_string();
 
-    wcl(&["set", &path, "version", "2"]).success();
+    wcl(&[
+        "set",
+        &path,
+        "server | .id == \"web\" ~> .timeout = \"30s\"",
+    ])
+    .success();
 
     let updated = std::fs::read_to_string(&path).unwrap();
-    assert!(updated.contains("2"));
+    assert!(updated.contains("timeout"));
+    assert!(updated.contains("\"30s\""));
 }
 
 #[test]
-fn set_nonexistent_attribute_fails() {
+fn set_no_match_fails() {
     let f = wcl_file("server web { port = 8080 }\n");
     wcl(&[
         "set",
         f.path().to_str().unwrap(),
-        "server#web.missing",
-        "42",
+        "database | .id == \"db\" ~> .port = 5432",
     ])
     .failure()
-    .stderr(predicate::str::contains("not found"));
+    .stderr(predicate::str::contains("matched no blocks"));
 }
 
 #[test]
-fn set_nonexistent_block_fails() {
-    let f = wcl_file("server web { port = 8080 }\n");
-    wcl(&[
-        "set",
-        f.path().to_str().unwrap(),
-        "database#db.port",
-        "5432",
-    ])
-    .failure()
-    .stderr(predicate::str::contains("not found"));
+fn set_multi_match_updates_all() {
+    let f = wcl_file(
+        r#"server a { port = 8080 env = "prod" }
+server b { port = 9090 env = "prod" }
+server c { port = 7070 env = "dev" }
+"#,
+    );
+    let path = f.path().to_str().unwrap().to_string();
+
+    wcl(&["set", &path, "server | .env == \"prod\" ~> .replicas = 4"]).success();
+
+    let updated = std::fs::read_to_string(&path).unwrap();
+    let count = updated.matches("replicas = 4").count();
+    assert_eq!(count, 2, "two prod servers should get replicas");
 }
 
 #[test]
@@ -498,12 +494,12 @@ fn set_preserves_other_content() {
     );
     let path = f.path().to_str().unwrap().to_string();
 
-    wcl(&["set", &path, "server#svc-api.port", "9090"]).success();
+    wcl(&["set", &path, "server | .id == \"svc-api\" ~> .port = 9090"]).success();
 
     let updated = std::fs::read_to_string(&path).unwrap();
-    assert!(updated.contains("localhost"), "host should be preserved");
-    assert!(updated.contains("debug"), "debug should be preserved");
-    assert!(updated.contains("9090"), "port should be updated");
+    assert!(updated.contains("localhost"));
+    assert!(updated.contains("debug"));
+    assert!(updated.contains("9090"));
 }
 
 #[test]
@@ -516,9 +512,8 @@ fn set_result_still_parses() {
     );
     let path = f.path().to_str().unwrap().to_string();
 
-    wcl(&["set", &path, "server#svc-api.port", "9090"]).success();
+    wcl(&["set", &path, "server | .id == \"svc-api\" ~> .port = 9090"]).success();
 
-    // The modified file should still be valid WCL
     wcl(&["validate", &path]).success();
 }
 
@@ -527,69 +522,95 @@ fn set_result_still_parses() {
 // ===========================================================================
 
 #[test]
-fn add_block_with_id() {
-    let f = wcl_file("server svc-api {\n    port = 8080\n}\n");
+fn add_top_level_attribute() {
+    let f = wcl_file("name = \"test\"\n");
     let path = f.path().to_str().unwrap().to_string();
 
-    wcl(&["add", &path, "server svc-new"])
+    wcl(&["add", &path, "region = \"us-east\""])
         .success()
         .stdout(predicate::str::contains("added"));
 
     let updated = std::fs::read_to_string(&path).unwrap();
-    assert!(updated.contains("svc-new"), "new block should be added");
-    assert!(updated.contains("svc-api"), "existing block should remain");
+    assert!(updated.contains("region = \"us-east\""));
+    assert!(updated.contains("name = \"test\""));
 }
 
 #[test]
-fn add_block_without_id() {
-    let f = wcl_file("x = 1\n");
+fn add_top_level_block() {
+    let f = wcl_file("name = \"test\"\n");
     let path = f.path().to_str().unwrap().to_string();
 
-    wcl(&["add", &path, "config"])
-        .success()
-        .stdout(predicate::str::contains("added config"));
+    wcl(&["add", &path, "server web {\n    port = 8080\n}"]).success();
 
     let updated = std::fs::read_to_string(&path).unwrap();
-    assert!(updated.contains("config {"), "new block should be added");
+    assert!(updated.contains("server web"));
+    assert!(updated.contains("port = 8080"));
+}
+
+#[test]
+fn add_attribute_to_matched_block() {
+    let f = wcl_file("server api {\n    port = 8080\n}\n");
+    let path = f.path().to_str().unwrap().to_string();
+
+    wcl(&[
+        "add",
+        &path,
+        "server | .id == \"api\" ~> host = \"localhost\"",
+    ])
+    .success();
+
+    let updated = std::fs::read_to_string(&path).unwrap();
+    assert!(updated.contains("host = \"localhost\""));
+    assert!(updated.contains("port = 8080"));
+}
+
+#[test]
+fn add_child_block_to_matched_block() {
+    let f = wcl_file("server api {\n    port = 8080\n}\n");
+    let path = f.path().to_str().unwrap().to_string();
+
+    wcl(&[
+        "add",
+        &path,
+        "server | .id == \"api\" ~> tls { enabled = true }",
+    ])
+    .success();
+
+    let updated = std::fs::read_to_string(&path).unwrap();
+    assert!(updated.contains("tls {"));
+    assert!(updated.contains("enabled = true"));
+}
+
+#[test]
+fn add_invalid_fragment_fails() {
+    let f = wcl_file("server api {\n    port = 8080\n}\n");
+    wcl(&[
+        "add",
+        f.path().to_str().unwrap(),
+        "this is not valid wcl @@@",
+    ])
+    .failure()
+    .stderr(predicate::str::contains("invalid WCL fragment").or(predicate::str::contains("error")));
 }
 
 #[test]
 fn add_result_still_parses() {
-    let f = wcl_file("server svc-api {\n    port = 8080\n}\n");
+    let f = wcl_file("server api {\n    port = 8080\n}\n");
     let path = f.path().to_str().unwrap().to_string();
 
-    wcl(&["add", &path, "service svc-new"]).success();
-
-    // The modified file should still be valid WCL
+    wcl(&[
+        "add",
+        &path,
+        "server | .id == \"api\" ~> host = \"localhost\"",
+    ])
+    .success();
     wcl(&["validate", &path]).success();
-}
-
-#[test]
-fn add_preserves_existing_content() {
-    let f = wcl_file(
-        r#"let x = 42
-server svc-api {
-    port = 8080
-}
-"#,
-    );
-    let path = f.path().to_str().unwrap().to_string();
-
-    wcl(&["add", &path, "database db-main"]).success();
-
-    let updated = std::fs::read_to_string(&path).unwrap();
-    assert!(
-        updated.contains("let x = 42"),
-        "let binding should be preserved"
-    );
-    assert!(updated.contains("svc-api"), "existing block should remain");
-    assert!(updated.contains("db-main"), "new block should be added");
 }
 
 #[test]
 fn add_to_invalid_file_fails() {
     let f = wcl_file("server { port = \n");
-    wcl(&["add", f.path().to_str().unwrap(), "config new"])
+    wcl(&["add", f.path().to_str().unwrap(), "x = 1"])
         .failure()
         .stderr(predicate::str::contains("error"));
 }
@@ -612,17 +633,14 @@ server svc-old {
     );
     let path = f.path().to_str().unwrap().to_string();
 
-    wcl(&["remove", &path, "server#svc-old"])
+    wcl(&["remove", &path, "server | .id == \"svc-old\""])
         .success()
         .stdout(predicate::str::contains("removed"));
 
     let updated = std::fs::read_to_string(&path).unwrap();
-    assert!(!updated.contains("svc-old"), "removed block should be gone");
-    assert!(updated.contains("svc-api"), "other block should remain");
-    assert!(
-        updated.contains("8080"),
-        "other block content should remain"
-    );
+    assert!(!updated.contains("svc-old"));
+    assert!(updated.contains("svc-api"));
+    assert!(updated.contains("8080"));
 }
 
 #[test]
@@ -637,17 +655,32 @@ fn remove_attribute_from_block() {
     );
     let path = f.path().to_str().unwrap().to_string();
 
-    wcl(&["remove", &path, "server#svc-api.debug"])
+    wcl(&["remove", &path, "server | .id == \"svc-api\" ~> .debug"])
         .success()
         .stdout(predicate::str::contains("removed"));
 
     let updated = std::fs::read_to_string(&path).unwrap();
-    assert!(
-        !updated.contains("debug"),
-        "debug attribute should be removed"
+    assert!(!updated.contains("debug"));
+    assert!(updated.contains("port"));
+    assert!(updated.contains("host"));
+}
+
+#[test]
+fn remove_multi_match_block() {
+    let f = wcl_file(
+        r#"server a { env = "dev" }
+server b { env = "prod" }
+server c { env = "dev" }
+"#,
     );
-    assert!(updated.contains("port"), "other attributes should remain");
-    assert!(updated.contains("host"), "other attributes should remain");
+    let path = f.path().to_str().unwrap().to_string();
+
+    wcl(&["remove", &path, "server | .env == \"dev\""]).success();
+
+    let updated = std::fs::read_to_string(&path).unwrap();
+    assert!(!updated.contains("server a"));
+    assert!(!updated.contains("server c"));
+    assert!(updated.contains("server b"));
 }
 
 #[test]
@@ -661,56 +694,20 @@ fn remove_result_still_parses() {
     );
     let path = f.path().to_str().unwrap().to_string();
 
-    wcl(&["remove", &path, "server#svc-api.debug"]).success();
-
+    wcl(&["remove", &path, "server | .id == \"svc-api\" ~> .debug"]).success();
     wcl(&["validate", &path]).success();
 }
 
 #[test]
-fn remove_nonexistent_path_fails() {
+fn remove_no_match_fails() {
     let f = wcl_file("server svc-api { port = 8080 }\n");
-    wcl(&["remove", f.path().to_str().unwrap(), "server#svc-missing"])
-        .failure()
-        .stderr(predicate::str::contains("not found"));
-}
-
-#[test]
-fn remove_top_level_attribute() {
-    let f = wcl_file(
-        r#"name = "hello"
-version = 42
-debug = false
-"#,
-    );
-    let path = f.path().to_str().unwrap().to_string();
-
-    wcl(&["remove", &path, "debug"]).success();
-
-    let updated = std::fs::read_to_string(&path).unwrap();
-    assert!(!updated.contains("debug"), "debug should be removed");
-    assert!(updated.contains("name"), "name should remain");
-    assert!(updated.contains("version"), "version should remain");
-}
-
-#[test]
-fn remove_block_by_kind() {
-    let f = wcl_file(
-        r#"name = "test"
-config {
-    debug = true
-}
-"#,
-    );
-    let path = f.path().to_str().unwrap().to_string();
-
-    wcl(&["remove", &path, "config"]).success();
-
-    let updated = std::fs::read_to_string(&path).unwrap();
-    assert!(
-        !updated.contains("config"),
-        "config block should be removed"
-    );
-    assert!(updated.contains("name"), "name attribute should remain");
+    wcl(&[
+        "remove",
+        f.path().to_str().unwrap(),
+        "server | .id == \"missing\"",
+    ])
+    .failure()
+    .stderr(predicate::str::contains("matched no blocks"));
 }
 
 // ===========================================================================
@@ -728,8 +725,7 @@ fn set_then_eval_reflects_change() {
     );
     let path = f.path().to_str().unwrap().to_string();
 
-    // Set port to 9090
-    wcl(&["set", &path, "server#svc-api.port", "9090"]).success();
+    wcl(&["set", &path, "server | .id == \"svc-api\" ~> .port = 9090"]).success();
 
     // Eval and verify
     let output = Command::cargo_bin("wcl")
@@ -753,8 +749,7 @@ fn add_then_eval_shows_new_block() {
     let f = wcl_file("server svc-api {\n    port = 8080\n}\n");
     let path = f.path().to_str().unwrap().to_string();
 
-    // Add a new block
-    wcl(&["add", &path, "server svc-new"]).success();
+    wcl(&["add", &path, "server svc-new {\n    port = 7070\n}"]).success();
 
     // Eval and verify both blocks exist
     let output = Command::cargo_bin("wcl")
@@ -792,7 +787,7 @@ server svc-old {
     );
     let path = f.path().to_str().unwrap().to_string();
 
-    wcl(&["remove", &path, "server#svc-old"]).success();
+    wcl(&["remove", &path, "server | .id == \"svc-old\""]).success();
 
     let output = Command::cargo_bin("wcl")
         .unwrap()
@@ -823,7 +818,7 @@ fn remove_attr_then_eval_attr_gone() {
     );
     let path = f.path().to_str().unwrap().to_string();
 
-    wcl(&["remove", &path, "server#svc-api.debug"]).success();
+    wcl(&["remove", &path, "server | .id == \"svc-api\" ~> .debug"]).success();
 
     let output = Command::cargo_bin("wcl")
         .unwrap()
@@ -958,17 +953,8 @@ fn workflow_add_set_eval() {
     let f = wcl_file("server svc-api {\n    port = 8080\n}\n");
     let path = f.path().to_str().unwrap().to_string();
 
-    // Add a new service
-    wcl(&["add", &path, "server svc-worker"]).success();
-
-    // Read the file to put the port inside svc-worker manually
-    // Since add creates an empty block, we need to add content to it
-    let mut content = std::fs::read_to_string(&path).unwrap();
-    content = content.replace(
-        "server svc-worker {\n}",
-        "server svc-worker {\n    port = 3000\n}",
-    );
-    std::fs::write(&path, &content).unwrap();
+    // Add a new service with a port
+    wcl(&["add", &path, "server svc-worker {\n    port = 3000\n}"]).success();
 
     // Validate the file
     wcl(&["validate", &path]).success();
@@ -1004,7 +990,7 @@ server svc-api {
     let path = f.path().to_str().unwrap().to_string();
 
     // Update the port
-    wcl(&["set", &path, "server#svc-api.port", "9090"]).success();
+    wcl(&["set", &path, "server | .id == \"svc-api\" ~> .port = 9090"]).success();
 
     // Should still validate
     wcl(&["validate", &path]).success();
