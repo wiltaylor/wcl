@@ -5,6 +5,7 @@
 #![allow(clippy::result_large_err, clippy::large_enum_variant)]
 
 pub mod eval;
+pub mod fmt;
 pub mod lang;
 pub mod schema;
 pub mod serde_impl;

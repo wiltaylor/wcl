@@ -1,10 +1,11 @@
-// ── Let bindings and expressions ──
 let environment = "production"
+
 let base_port = 8000
+
 let is_prod = environment == "production"
+
 let regions = ["us-east", "eu-west", "ap-south"]
 
-// ── Schemas with validation constraints ──
 schema "server" {
     host: string
     port: i64 @validate(min = 1, max = 65535)
@@ -21,7 +22,6 @@ schema "database" {
     ssl: bool @optional
 }
 
-// ── Blocks ──
 server api {
     host = "0.0.0.0"
     port = base_port + 80
@@ -35,7 +35,6 @@ server admin {
     workers = 2
 }
 
-// ── Control flow: for loop generating blocks ──
 for region in regions {
     server worker-${region} {
         host = "${region}.internal"
@@ -45,7 +44,6 @@ for region in regions {
     }
 }
 
-// ── Conditional blocks ──
 if is_prod {
     database primary {
         host = "db.internal"
@@ -63,7 +61,6 @@ if is_prod {
     }
 }
 
-// ── Decorators ──
 @deprecated("use redis cache instead")
 cache memcached {
     host = "memcached.internal"
@@ -76,31 +73,27 @@ cache redis {
     ttl = 300
 }
 
-// ── Data table ──
 table users {
-    name:  string
-    role:  string
-    admin: bool
-    | "alice" | "engineering" | true  |
-    | "bob"   | "marketing"  | false |
-    | "carol" | "engineering" | true  |
+    name : string
+    role : string
+    admin : bool
+
+    | "alice" | "engineering" | true |
+    | "bob" | "marketing" | false |
+    | "carol" | "engineering" | true |
 }
 
-// ── Nested blocks with maps and lists ──
 feature_flags {
     dark_mode = true
     beta_api = false
     max_upload_mb = 50
     allowed_origins = ["https://app.example.com", "https://admin.example.com"]
-    rate_limits = {
-        api = 1000
-        admin = 100
-    }
+    rate_limits = { api = 1000, admin = 100 }
 }
 
-// ── Validation block ──
 validation "port uniqueness" {
     let ports = query(server | .port)
     check = len(distinct(ports)) == len(ports)
     message = "All server ports must be unique"
 }
+

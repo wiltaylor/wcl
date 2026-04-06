@@ -4,7 +4,6 @@ pub mod completion;
 pub mod convert;
 pub mod definition;
 pub mod diagnostics;
-pub mod fmt_impl;
 pub mod formatting;
 pub mod hover;
 pub mod references;

@@ -9,7 +9,7 @@ pub fn format_document(source: &str) -> Option<Vec<TextEdit>> {
         return None;
     }
 
-    let formatted = crate::fmt_impl::format_document(&doc);
+    let formatted = wcl_lang::fmt::format_document(&doc);
     if formatted == source {
         return Some(Vec::new());
     }
