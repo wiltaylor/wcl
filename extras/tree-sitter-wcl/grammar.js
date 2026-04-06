@@ -25,6 +25,11 @@ export default grammar({
 
   conflicts: ($) => [
     [$._primary_expression, $.lambda_parameters],
+    [$._primary_expression, $.selector],
+    [$._primary_expression, $.selector, $.lambda_parameters],
+    [$.selector],
+    [$.pipeline],
+    [$.filter],
   ],
 
   rules: {
@@ -501,17 +506,14 @@ export default grammar({
         $.list_literal,
         $.map_literal,
         $.parenthesized_expression,
-        $.query_expression,
+        $.pipeline,
         $.import_table_expression,
         $.import_raw_expression,
         $.ref_expression,
         $.lambda_expression,
       ),
 
-    // Query expressions
-    query_expression: ($) =>
-      seq("query", "(", $.pipeline, ")"),
-
+    // Query pipelines are first-class expressions
     pipeline: ($) =>
       seq($.selector, repeat(seq("|", $.filter))),
 

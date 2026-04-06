@@ -88,7 +88,7 @@
           "named": true
         },
         {
-          "type": "query_expression",
+          "type": "pipeline",
           "named": true
         },
         {
@@ -211,7 +211,7 @@
           "named": true
         },
         {
-          "type": "query_expression",
+          "type": "pipeline",
           "named": true
         },
         {
@@ -510,7 +510,7 @@
           "named": true
         },
         {
-          "type": "query_expression",
+          "type": "pipeline",
           "named": true
         },
         {
@@ -644,7 +644,7 @@
           "named": true
         },
         {
-          "type": "query_expression",
+          "type": "pipeline",
           "named": true
         },
         {
@@ -1092,7 +1092,7 @@
           "named": true
         },
         {
-          "type": "query_expression",
+          "type": "pipeline",
           "named": true
         },
         {
@@ -1238,7 +1238,7 @@
           "named": true
         },
         {
-          "type": "query_expression",
+          "type": "pipeline",
           "named": true
         },
         {
@@ -1621,7 +1621,7 @@
           "named": true
         },
         {
-          "type": "query_expression",
+          "type": "pipeline",
           "named": true
         },
         {
@@ -2055,7 +2055,7 @@
           "named": true
         },
         {
-          "type": "query_expression",
+          "type": "pipeline",
           "named": true
         },
         {
@@ -2158,7 +2158,7 @@
           "named": true
         },
         {
-          "type": "query_expression",
+          "type": "pipeline",
           "named": true
         },
         {
@@ -2411,7 +2411,7 @@
           "named": true
         },
         {
-          "type": "query_expression",
+          "type": "pipeline",
           "named": true
         },
         {
@@ -2500,21 +2500,6 @@
         },
         {
           "type": "selector",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "query_expression",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "pipeline",
           "named": true
         }
       ]
@@ -2961,7 +2946,7 @@
           "named": true
         },
         {
-          "type": "query_expression",
+          "type": "pipeline",
           "named": true
         },
         {
@@ -3126,7 +3111,7 @@
           "named": true
         },
         {
-          "type": "query_expression",
+          "type": "pipeline",
           "named": true
         },
         {
@@ -3568,10 +3553,6 @@
   },
   {
     "type": "partial",
-    "named": false
-  },
-  {
-    "type": "query",
     "named": false
   },
   {

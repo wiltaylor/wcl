@@ -67,7 +67,7 @@ page functions_aggregate {
                 code c2 {
                     language = "wcl"
                     content = <<-'WCL'
-                    let all_replicas = map(query(service), s => s.replicas)
+                    let all_replicas = map(..service, s => s.replicas)
                     let replica_count = sum(all_replicas)
                     WCL
                 }
@@ -110,7 +110,7 @@ page functions_aggregate {
                 code c5 {
                     language = "wcl"
                     content = <<-'WCL'
-                    let counts = map(query(service), s => s.replicas)
+                    let counts = map(..service, s => s.replicas)
                     let max_replicas = max_of(counts)
                     WCL
                 }
@@ -140,7 +140,7 @@ page functions_aggregate {
                 code c7 {
                     language = "wcl"
                     content = <<-'WCL'
-                    let prod_count = count(query(service), s => s.env == "prod")
+                    let prod_count = count(..service, s => s.env == "prod")
                     WCL
                 }
 
@@ -158,7 +158,7 @@ page functions_aggregate {
                     content = <<-'WCL'
                     // Average port number across all production services
                     let prod_ports = map(
-                      filter(query(service), s => s.env == "prod"),
+                      filter(..service, s => s.env == "prod"),
                       s => s.port
                     )
                     let avg_port = avg(prod_ports)
@@ -169,7 +169,7 @@ page functions_aggregate {
                     language = "wcl"
                     content = <<-'WCL'
                     // Total memory requested across all workers with > 2 replicas
-                    let high_replica_workers = filter(query(worker), w => w.replicas > 2)
+                    let high_replica_workers = filter(..worker, w => w.replicas > 2)
                     let memory_values = map(high_replica_workers, w => w.memory_mb)
                     let total_memory = sum(memory_values)
                     WCL
@@ -188,7 +188,7 @@ page functions_aggregate {
                     language = "wcl"
                     content = <<-'WCL'
                     validate {
-                      let total = sum(map(query(service), s => s.replicas))
+                      let total = sum(map(..service, s => s.replicas))
                       assert total <= 50 : "Total replica count must not exceed 50"
                     }
                     WCL

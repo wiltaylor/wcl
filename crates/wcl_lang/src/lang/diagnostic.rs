@@ -142,6 +142,16 @@ impl DiagnosticBag {
     pub fn error_count(&self) -> usize {
         self.diagnostics.iter().filter(|d| d.is_error()).count()
     }
+
+    pub fn len(&self) -> usize {
+        self.diagnostics.len()
+    }
+
+    /// Truncate the diagnostic list to `len`. Used by parsers that need to
+    /// speculatively try a parse path and roll back on failure.
+    pub fn truncate(&mut self, len: usize) {
+        self.diagnostics.truncate(len);
+    }
 }
 
 #[cfg(test)]

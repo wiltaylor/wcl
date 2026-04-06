@@ -303,7 +303,6 @@ pub fn compute_semantic_tokens(
             | TokenKind::Table
             | TokenKind::Import
             | TokenKind::Export
-            | TokenKind::Query
             | TokenKind::Ref
             | TokenKind::For
             | TokenKind::In

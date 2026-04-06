@@ -301,10 +301,10 @@ page js_library {
                     query(source, "server");
 
                     // Filter by attribute
-                    query(source, 'server | .env == "prod"');
+                    (source, 'server | .env == "prod"');
 
                     // Filter and project
-                    query(source, 'server | .env == "prod" | .port');
+                    (source, 'server | .env == "prod" | .port');
                     // → [8080, 9090]
 
                     // Select by ID
@@ -524,7 +524,7 @@ page js_library {
                     }
 
                     // Query for all ports
-                    const ports = query(doc_source, "server | .port");
+                    const ports = (doc_source, "server | .port");
                     console.log("All ports:", ports);  // [8080, 9090]
 
                     // Custom functions

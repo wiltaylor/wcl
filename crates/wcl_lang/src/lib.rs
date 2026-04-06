@@ -6,6 +6,7 @@
 
 pub mod eval;
 pub mod fmt;
+pub mod fmt_value;
 pub mod lang;
 pub mod schema;
 pub mod serde_impl;
@@ -143,6 +144,45 @@ impl Document {
                 _ => None,
             })
             .collect()
+    }
+
+    /// Evaluate a standalone WCL expression against this document.
+    ///
+    /// The expression is parsed, then evaluated in a fresh module scope
+    /// seeded with this document's top-level evaluated values (so it can
+    /// reference blocks and let bindings by name).
+    pub fn eval_expression(&self, src: &str) -> Result<Value, String> {
+        let file_id = FileId(9998);
+        let expr = crate::lang::parse_expression(src, file_id).map_err(|diags| {
+            let messages: Vec<String> = diags
+                .into_diagnostics()
+                .into_iter()
+                .map(|d| d.message)
+                .collect();
+            format!("expression parse error: {}", messages.join("; "))
+        })?;
+
+        let mut evaluator = Evaluator::new();
+        let scope = evaluator.scopes_mut().create_scope(ScopeKind::Module, None);
+        let span = Span::new(file_id, 0, src.len());
+        for (name, value) in &self.values {
+            evaluator.scopes_mut().add_entry(
+                scope,
+                ScopeEntry {
+                    name: name.clone(),
+                    kind: ScopeEntryKind::LetBinding,
+                    value: Some(value.clone()),
+                    span,
+                    dependencies: Default::default(),
+                    evaluated: true,
+                    read_count: 0,
+                },
+            );
+        }
+
+        evaluator
+            .eval_expr(&expr, scope)
+            .map_err(|diag| format!("expression eval error: {}", diag.message))
     }
 
     /// Execute a query against this document.
@@ -2761,7 +2801,7 @@ table users {
     | "alice" | "admin"  |
     | "bob"   | "viewer" |
 }
-admins = query(table#users | .role == "admin" | .name)
+admins = table#users | .role == "admin" | .name
         "#;
         let doc = parse(source, ParseOptions::default());
         assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
@@ -2912,9 +2952,7 @@ server web 8080 "extra" {
             assert_eq!(br.get("port"), Some(&Value::Int(8080)));
             assert_eq!(
                 br.get("_args"),
-                Some(&Value::List(vec![
-                    Value::String("extra".to_string()),
-                ]))
+                Some(&Value::List(vec![Value::String("extra".to_string()),]))
             );
         } else {
             panic!("expected BlockRef, got {:?}", val);

@@ -71,7 +71,7 @@ page guide_validation_blocks {
                 }
 
                 paragraph p5 {
-                    content = "This means <code>query()</code> calls inside a validation block see the complete, merged, evaluated document."
+                    content = "This means query pipeline expressions inside a validation block see the complete, merged, evaluated document."
                 }
 
                 heading h2_warnings {
@@ -87,7 +87,7 @@ page guide_validation_blocks {
                     language = "wcl"
                     content = <<-'WCL'
                     validation "prefer-tls" @warning {
-                        let non_tls = query(service | !has(@tls))
+                        let non_tls = (service | !has(@tls))
                         check   = len(non_tls) == 0
                         message = "some services are not using TLS (non-fatal)"
                     }
@@ -107,7 +107,7 @@ page guide_validation_blocks {
                     language = "wcl"
                     content = <<-'WCL'
                     validation "unique-ports" @doc("Each service must listen on a distinct port") {
-                        let ports = query(service | .port)
+                        let ports = (service | .port)
                         check   = len(ports) == len(distinct(ports))
                         message = "duplicate port assignments detected"
                     }
@@ -127,8 +127,8 @@ page guide_validation_blocks {
                     language = "wcl"
                     content = <<-'WCL'
                     validation "prod-services-have-health-checks" {
-                        let prod         = query(service | .env == "production")
-                        let prod_with_hc = query(service | .env == "production" | has(.health_check))
+                        let prod         = (service | .env == "production")
+                        let prod_with_hc = (service | .env == "production" | has(.health_check))
                         check   = len(prod) == len(prod_with_hc)
                         message = "every production service must define a health_check block"
                     }
@@ -149,7 +149,7 @@ page guide_validation_blocks {
                     language = "wcl"
                     content = <<-'WCL'
                     validation "unique-service-ports" {
-                        let ports = query(service | .port)
+                        let ports = (service | .port)
                         check   = len(ports) == len(distinct(ports))
                         message = "each service must use a unique port number"
                     }
@@ -165,7 +165,7 @@ page guide_validation_blocks {
                     language = "wcl"
                     content = <<-'WCL'
                     validation "prod-tls-required" {
-                        let prod_no_tls = query(service | .env == "production" | !has(@tls))
+                        let prod_no_tls = (service | .env == "production" | !has(@tls))
                         check   = len(prod_no_tls) == 0
                         message = "all production services must be decorated with @tls"
                     }
@@ -181,8 +181,8 @@ page guide_validation_blocks {
                     language = "wcl"
                     content = <<-'WCL'
                     validation "gateway-references-valid-services" {
-                        let gateway_upstreams = query(gateway | .upstream)
-                        let service_names     = query(service | .name)
+                        let gateway_upstreams = (gateway | .upstream)
+                        let service_names     = (service | .name)
                         check   = every(gateway_upstreams, u => contains(service_names, u))
                         message = "gateway.upstream references a service that does not exist"
                     }
@@ -198,7 +198,7 @@ page guide_validation_blocks {
                     language = "wcl"
                     content = <<-'WCL'
                     validation "all-services-have-env" {
-                        let services = query(service)
+                        let services = ..service
                         check   = every(services, s => has(s.env))
                         message = "every service must declare an env attribute"
                     }
@@ -214,8 +214,8 @@ page guide_validation_blocks {
                     language = "wcl"
                     content = <<-'WCL'
                     validation "permission-roles-are-defined" {
-                        let perm_roles    = distinct(query(table."permissions" | .role))
-                        let defined_roles = query(table."roles" | .name)
+                        let perm_roles    = distinct((table."permissions" | .role))
+                        let defined_roles = (table."roles" | .name)
                         check   = every(perm_roles, r => contains(defined_roles, r))
                         message = "permissions table references a role not present in the roles table"
                     }
@@ -231,7 +231,7 @@ page guide_validation_blocks {
                     language = "wcl"
                     content = <<-'WCL'
                     validation "minimum-replica-count" @warning {
-                        let under_replicated = query(service | .env == "production" | .replicas < 2)
+                        let under_replicated = (service | .env == "production" | .replicas < 2)
                         check   = len(under_replicated) == 0
                         message = "production services should run at least 2 replicas"
                     }

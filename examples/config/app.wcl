@@ -92,7 +92,7 @@ feature_flags {
 }
 
 validation "port uniqueness" {
-    let ports = query(server | .port)
+    let ports = server | .port
     check = len(distinct(ports)) == len(ports)
     message = "All server ports must be unique"
 }

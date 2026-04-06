@@ -13,10 +13,8 @@ build-local:
 # Run CLI examples using the locally-built binary
 run-local-cli:
     PATH="$(pwd)/target/debug:$PATH" bash examples/cli/eval.sh
-    PATH="$(pwd)/target/debug:$PATH" bash examples/cli/query.sh
     PATH="$(pwd)/target/debug:$PATH" bash examples/cli/validate.sh
     PATH="$(pwd)/target/debug:$PATH" bash examples/cli/fmt.sh
-    PATH="$(pwd)/target/debug:$PATH" bash examples/cli/convert.sh
     PATH="$(pwd)/target/debug:$PATH" bash examples/cli/manipulate.sh
 
 # Run transform examples using the locally-built binary
@@ -62,10 +60,8 @@ wdoc-serve-local: build-local patch-local && unpatch-local
 # Run CLI examples (requires wcl in PATH)
 cli:
     bash examples/cli/eval.sh
-    bash examples/cli/query.sh
     bash examples/cli/validate.sh
     bash examples/cli/fmt.sh
-    bash examples/cli/convert.sh
     bash examples/cli/manipulate.sh
 
 # Run transform examples (requires wcl in PATH)

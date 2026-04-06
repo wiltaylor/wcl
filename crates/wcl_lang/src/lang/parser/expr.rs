@@ -8,6 +8,33 @@ use super::Parser;
 impl Parser {
     /// Entry point for expression parsing.
     pub(crate) fn parse_expr(&mut self) -> Option<Expr> {
+        // Bare query pipeline: if the tokens ahead form a query pipeline that
+        // is *unambiguous* (cannot also be parsed as a normal expression),
+        // produce an `Expr::Query` directly. Ambiguous case: a selector that
+        // is a bare identifier with no filters and no `#id` — that still
+        // parses as an `Expr::Ident`, so users add `| ...` filters or use
+        // `..kind` / `kind#id` / `table#id` when they want a query.
+        let saved_pos = self.pos;
+        let saved_diag_len = self.diagnostics.len();
+        if let Some(pipeline) = self.parse_query_pipeline() {
+            // Ambiguous selectors (those that also parse as normal
+            // expressions) require at least one `| filter` before we commit
+            // to the query interpretation. A bare `Kind(Ident)` is also an
+            // identifier reference, and a dotted `Path([a, b, …])` is also
+            // member access.
+            let ambiguous_without_filters = matches!(
+                pipeline.selector,
+                QuerySelector::Kind(_) | QuerySelector::Path(_)
+            );
+            let is_unambiguous = !pipeline.filters.is_empty() || !ambiguous_without_filters;
+            if is_unambiguous {
+                let span = pipeline.span;
+                return Some(Expr::Query(pipeline, span));
+            }
+        }
+        self.pos = saved_pos;
+        self.diagnostics.truncate(saved_diag_len);
+
         self.parse_ternary()
     }
 
@@ -197,7 +224,6 @@ impl Parser {
                     _ => self.parse_ident_or_lambda(),
                 }
             }
-            TokenKind::Query => self.parse_query_expr(),
             TokenKind::Ref => self.parse_ref_expr(),
             TokenKind::SelfKw => {
                 let span = self.current_span();
@@ -520,21 +546,6 @@ impl Parser {
         }
         let span = start_span.merge(self.prev_span());
         Some(Expr::BlockExpr(lets, Box::new(final_expr), span))
-    }
-
-    /// Parse query expression: `query(pipeline)`
-    pub(crate) fn parse_query_expr(&mut self) -> Option<Expr> {
-        let start_span = self.current_span();
-        self.advance(); // consume `query`
-        if self.expect(&TokenKind::LParen).is_err() {
-            return None;
-        }
-        let pipeline = self.parse_query_pipeline()?;
-        if self.expect(&TokenKind::RParen).is_err() {
-            return None;
-        }
-        let span = start_span.merge(self.prev_span());
-        Some(Expr::Query(pipeline, span))
     }
 
     /// Parse query pipeline: `selector [| filter]*`

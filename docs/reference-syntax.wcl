@@ -349,7 +349,7 @@ page ref_syntax {
                         { category = "Map", examples = "{ key: \"value\" }" },
                         { category = "Field access", examples = "obj.field" },
                         { category = "Index", examples = "list[0], map[\"key\"]" },
-                        { category = "Query", examples = "query(service | .port > 1024)" },
+                        { category = "Query", examples = "(service | .port > 1024)" },
                         { category = "Ref", examples = "ref(svc-api)" },
                         { category = "Lambda", examples = "x => x * 2, (a, b) => a + b" }
                     ]

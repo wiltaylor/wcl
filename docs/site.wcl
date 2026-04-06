@@ -71,7 +71,6 @@ doc wcl_docs {
         section libraries "Libraries" {}
         section namespaces "Namespaces" {}
         section partials "Partial Declarations" {}
-        section query_engine "Query Engine" {}
         section validation_blocks "Validation Blocks" {}
     }
 
@@ -80,8 +79,6 @@ doc wcl_docs {
         section cli_validate "validate" {}
         section cli_eval "eval" {}
         section cli_fmt "fmt" {}
-        section cli_query "query" {}
-        section cli_inspect "inspect" {}
         section cli_set "set" {}
         section cli_add "add" {}
         section cli_remove "remove" {}

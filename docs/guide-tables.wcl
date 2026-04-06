@@ -544,14 +544,14 @@ page guide_tables {
                 }
 
                 paragraph p36 {
-                    content = "Use <code>query()</code> to filter rows. The selector <code>table#id</code> targets a specific table; filters then match on column values:"
+                    content = "Use a query pipeline expression to filter rows. The selector <code>table#id</code> targets a specific table; filters then match on column values:"
                 }
 
                 code c22 {
                     language = "wcl"
                     content = <<-'WCL'
                     validation "no-admin-deletes-on-prod" {
-                        let dangerous = query(table#permissions | .role == "viewer" | .allow == true | .action == "delete")
+                        let dangerous = (table#permissions | .role == "viewer" | .allow == true | .action == "delete")
                         check   = len(dangerous) == 0
                         message = "viewers must not have delete permission"
                     }
@@ -606,7 +606,7 @@ page guide_tables {
                 code c24 {
                     language = "wcl"
                     content = <<-'WCL'
-                    let editor_allowed = query(table#perms_main | .role == "editor" | .allow == true | .action)
+                    let editor_allowed = (table#perms_main | .role == "editor" | .allow == true | .action)
                     WCL
                 }
 
@@ -617,7 +617,7 @@ page guide_tables {
                 code c25 {
                     language = "wcl"
                     content = <<-'WCL'
-                    let denied_count = len(query(table#perms_main | .allow == false))
+                    let denied_count = len((table#perms_main | .allow == false))
                     WCL
                 }
             }

@@ -37,7 +37,7 @@ page appendix_comparison {
                         { feature = "Expressions", json = "No", yaml = "No", toml = "No", hcl = "Limited (templates)", wcl = "Yes \u2014 full arithmetic, logic, ternary, regex, lambdas" },
                         { feature = "Macros", json = "No", yaml = "No", toml = "No", hcl = "No", wcl = "Yes \u2014 function macros and attribute macros" },
                         { feature = "Imports", json = "No", yaml = "No", toml = "No", hcl = "Handled by Terraform", wcl = "Yes \u2014 import \"file.wcl\" built-in" },
-                        { feature = "Query engine", json = "No (external: jq)", yaml = "No", toml = "No", hcl = "No", wcl = "Yes \u2014 built-in query(selector | filters)" },
+                        { feature = "Query engine", json = "No (external: jq)", yaml = "No", toml = "No", hcl = "No", wcl = "Yes \u2014 built-in (selector | filters)" },
                         { feature = "Tables", json = "Arrays of objects", yaml = "Sequences", toml = "Array of tables", hcl = "No", wcl = "Yes \u2014 typed column declarations with row syntax" },
                         { feature = "Control flow", json = "No", yaml = "No", toml = "No", hcl = "for_each (Terraform)", wcl = "Yes \u2014 for loops and if/else" },
                         { feature = "Partial declarations", json = "No", yaml = "No", toml = "No", hcl = "No", wcl = "Yes \u2014 partial blocks merged across files" },

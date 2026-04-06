@@ -55,6 +55,38 @@ pub fn parse_query(source: &str, file_id: FileId) -> Result<ast::QueryPipeline, 
     }
 }
 
+/// Parse a standalone WCL expression from a string.
+///
+/// Used by `wcl eval <file> <expression>` to parse the projection expression.
+pub fn parse_expression(source: &str, file_id: FileId) -> Result<ast::Expr, DiagnosticBag> {
+    let tokens = match lexer::lex(source, file_id) {
+        Ok(tokens) => tokens,
+        Err(lex_errors) => {
+            let mut diags = DiagnosticBag::new();
+            for d in lex_errors {
+                diags.add(d);
+            }
+            return Err(diags);
+        }
+    };
+    let parser = parser::Parser::new(tokens);
+    let (expr_opt, diags) = parser.parse_expr_standalone();
+    if diags.has_errors() {
+        return Err(diags);
+    }
+    match expr_opt {
+        Some(expr) => Ok(expr),
+        None => {
+            let mut diags = diags;
+            diags.error(
+                "failed to parse expression",
+                Span::new(file_id, 0, source.len()),
+            );
+            Err(diags)
+        }
+    }
+}
+
 /// Lex and parse WCL source text, returning the AST and accumulated diagnostics.
 pub fn parse(source: &str, file_id: FileId) -> (ast::Document, DiagnosticBag) {
     let mut diags = DiagnosticBag::new();
