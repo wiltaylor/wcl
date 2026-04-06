@@ -905,26 +905,33 @@ fn apply_inline_to_blockref(
             .collect();
 
         if !inline_fields.is_empty() {
-            // Extract _args list
+            // Build the full positional args: inline_id at index 0, then _args
+            let mut all_args: Vec<Value> = Vec::new();
+            if let Some(ref id_str) = br.id {
+                all_args.push(Value::Identifier(id_str.clone()));
+            }
             if let Some(Value::List(args)) = br.attributes.shift_remove("_args") {
-                for (field_name, idx) in &inline_fields {
-                    if let Some(val) = args.get(*idx) {
-                        br.attributes.insert(field_name.clone(), val.clone());
-                    }
+                all_args.extend(args);
+            }
+
+            for (field_name, idx) in &inline_fields {
+                if let Some(val) = all_args.get(*idx) {
+                    br.attributes.insert(field_name.clone(), val.clone());
                 }
-                // Remaining unmapped args go back as _args
-                let mapped_indices: std::collections::HashSet<usize> =
-                    inline_fields.iter().map(|(_, idx)| *idx).collect();
-                let remaining: Vec<Value> = args
-                    .into_iter()
-                    .enumerate()
-                    .filter(|(i, _)| !mapped_indices.contains(i))
-                    .map(|(_, v)| v)
-                    .collect();
-                if !remaining.is_empty() {
-                    br.attributes
-                        .insert("_args".to_string(), Value::List(remaining));
-                }
+            }
+            // Remaining unmapped args go back as _args (excluding index 0 if it was the id)
+            let mapped_indices: std::collections::HashSet<usize> =
+                inline_fields.iter().map(|(_, idx)| *idx).collect();
+            let id_index = if br.id.is_some() { 0 } else { usize::MAX };
+            let remaining: Vec<Value> = all_args
+                .into_iter()
+                .enumerate()
+                .filter(|(i, _)| !mapped_indices.contains(i) && *i != id_index)
+                .map(|(_, v)| v)
+                .collect();
+            if !remaining.is_empty() {
+                br.attributes
+                    .insert("_args".to_string(), Value::List(remaining));
             }
         }
     }
@@ -2840,7 +2847,6 @@ table services {
             assert_eq!(
                 br.get("_args"),
                 Some(&Value::List(vec![
-                    Value::Identifier("web".to_string()),
                     Value::Int(8080),
                     Value::String("prod".to_string()),
                 ]))
@@ -2912,7 +2918,6 @@ server web 8080 "extra" {
             assert_eq!(
                 br.get("_args"),
                 Some(&Value::List(vec![
-                    Value::Identifier("web".to_string()),
                     Value::String("extra".to_string()),
                 ]))
             );
