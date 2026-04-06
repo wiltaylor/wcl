@@ -1670,14 +1670,8 @@ impl Evaluator {
             InlineId::Interpolated(_) => "?interpolated?".to_string(),
         });
 
-        // Prepend inline_id to args so @inline(0) captures it
-        let mut all_args: Vec<Value> = Vec::new();
-        if let Some(ref id_str) = inline_id {
-            all_args.push(Value::Identifier(id_str.clone()));
-        }
-        all_args.extend(evaluated_args);
-        if !all_args.is_empty() {
-            attributes.insert("_args".to_string(), Value::List(all_args));
+        if !evaluated_args.is_empty() {
+            attributes.insert("_args".to_string(), Value::List(evaluated_args));
         }
 
         BlockRef {
