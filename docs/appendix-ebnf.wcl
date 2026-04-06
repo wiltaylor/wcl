@@ -52,6 +52,7 @@ page appendix_ebnf {
                                     | conditional
                                     | validation
                                     | schema
+                                    | struct_def
                                     | decorator_schema
                                     | symbol_set_decl
                                     | declare_stmt
@@ -76,11 +77,20 @@ page appendix_ebnf {
                     attribute       = { decorator } IDENT "=" expression ;
 
                     (* ===== Blocks ===== *)
-                    block           = { decorator } [ "partial" ] IDENT [ IDENTIFIER_LIT ]
+                    (* `kind` may be any identifier or one of the reserved block
+                       keywords: `transform`, `layout`, `pipeline`. *)
+                    block           = { decorator } [ "partial" ] block_kind [ inline_id ]
                                       { inline_arg } ( "{" body "}" | text_content ) ;
+                    block_kind      = IDENT | "transform" | "layout" | "pipeline" ;
+                    inline_id       = IDENTIFIER_LIT | interpolated_inline_id ;
+                    (* Interpolated inline ids interleave literal segments with
+                       `${ expression }` fragments, e.g. `worker-${region}`. *)
+                    interpolated_inline_id = { IDENT | IDENTIFIER_LIT | "-" | "${" expression "}" } ;
                     inline_arg      = INT_LIT | FLOAT_LIT | DATE_LIT | DURATION_LIT
                                     | STRING_LIT | BOOL_LIT | NULL_LIT
-                                    | symbol_lit | IDENT | list_literal ;
+                                    | IDENTIFIER_LIT | IDENT | symbol_lit
+                                    | list_literal | map_literal
+                                    | "(" expression ")" ;
                     text_content    = STRING_LIT | heredoc ;
 
                     (* ===== Let Bindings ===== *)
@@ -101,7 +111,12 @@ page appendix_ebnf {
                     (* ===== Schemas ===== *)
                     schema          = { decorator } "schema" STRING_LIT "{" { schema_field | schema_variant } "}" ;
                     schema_variant  = { decorator } "variant" STRING_LIT "{" { schema_field } "}" ;
-                    schema_field    = { decorator } IDENT "=" type_expr { decorator } ;
+                    schema_field    = { decorator } IDENT ":" type_expr { decorator } ;
+
+                    (* ===== Structs ===== *)
+                    (* Structs share the schema field grammar but use the `struct`
+                       keyword. They define named record types usable in type_expr. *)
+                    struct_def      = { decorator } "struct" STRING_LIT "{" { schema_field | schema_variant } "}" ;
 
                     (* ===== Decorator Schemas ===== *)
                     decorator_schema = { decorator } "decorator_schema" STRING_LIT
@@ -134,12 +149,17 @@ page appendix_ebnf {
 
                     (* ===== Transform Body (attribute macros) ===== *)
                     transform_body  = { transform_directive } ;
-                    transform_directive = inject_block | set_block | remove_block | when_block ;
+                    transform_directive = inject_block | set_block | remove_block
+                                        | when_block | update_block ;
                     inject_block    = "inject" "{" body "}" ;
                     set_block       = "set" "{" { attribute } "}" ;
                     remove_block    = "remove" "[" ident_list "]" ;
                     ident_list      = IDENT { "," IDENT } [ "," ] ;
                     when_block      = "when" expression "{" { transform_directive } "}" ;
+                    (* `update` narrows the transform target to a specific child
+                       block or table row so nested directives apply there. *)
+                    update_block    = "update" update_target "{" transform_body "}" ;
+                    update_target   = ( IDENT | "table" ) [ "#" IDENTIFIER_LIT | "[" INT_LIT "]" ] ;
 
                     (* ===== Declare Statements ===== *)
                     declare_stmt    = "declare" IDENT "(" [ declare_params ] ")" [ "->" type_expr ] ;
@@ -155,12 +175,13 @@ page appendix_ebnf {
                     type_expr       = "string" | "bool" | "null" | "identifier" | "symbol" | "any"
                                     | "i8" | "u8" | "i16" | "u16" | "i32" | "u32"
                                     | "i64" | "u64" | "i128" | "u128" | "f32" | "f64"
-                                    | "date" | "duration"
+                                    | "date" | "duration" | "pattern"
                                     | "list" "(" type_expr ")"
                                     | "map" "(" type_expr "," type_expr ")"
                                     | "set" "(" type_expr ")"
                                     | "ref" "(" STRING_LIT ")"
-                                    | "union" "(" type_expr { "," type_expr } ")" ;
+                                    | "union" "(" type_expr { "," type_expr } ")"
+                                    | IDENT ;  (* struct or symbol_set type reference *)
 
                     (* ===== Expressions ===== *)
                     expression      = ternary_expr ;
@@ -180,16 +201,25 @@ page appendix_ebnf {
                                     | IDENTIFIER_LIT | IDENT | symbol_lit
                                     | list_literal | map_literal
                                     | "(" expression ")"
-                                    | query_expr
+                                    | pipeline
                                     | import_util_expr
                                     | ref_expr
                                     | lambda_expr ;
 
-                    (* ===== Special Expressions ===== *)
-                    query_expr      = "query" "(" pipeline ")" ;
+                    (* ===== Query Pipelines (first-class expressions) =====
+                       A pipeline is parsed in expression position. The parser
+                       speculatively tries to read a pipeline first and commits
+                       only when the result is unambiguous \u2014 i.e. at least one
+                       `| filter` was consumed, or the selector is non-ambiguous
+                       (`..kind`, `kind#id`, `table#id`, `.`, or `*`). A bare
+                       `IDENT` without filters falls back to an identifier
+                       reference so `let x = foo` still parses as expected.
+                       The synthetic attribute `.id` in filters matches against
+                       a block's inline id. *)
                     pipeline        = selector { "|" filter } ;
                     selector        = [ ".." ] IDENT [ "#" IDENTIFIER_LIT ]
                                       { "." ( IDENT | STRING_LIT ) }
+                                    | "table" "#" IDENTIFIER_LIT
                                     | "." | "*" ;
                     filter          = "." IDENT [ ( "==" | "!=" | "<" | ">" | "<=" | ">="
                                       | "=~" ) expression ]
@@ -210,7 +240,7 @@ page appendix_ebnf {
 
                     (* ===== Collections ===== *)
                     list_literal    = "[" [ expression { "," expression } [ "," ] ] "]" ;
-                    map_literal     = "{" [ map_entry { map_entry } ] "}" ;
+                    map_literal     = "{" [ map_entry { "," map_entry } [ "," ] ] "}" ;
                     map_entry       = ( IDENT | STRING_LIT ) "=" expression ;
 
                     (* ===== Trivia ===== *)

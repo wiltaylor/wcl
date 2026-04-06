@@ -126,7 +126,7 @@ page guide_basic_syntax {
                     content = <<-'WCL'
                     // Service configuration
 
-                    service #api {
+                    service api {
                       name    = "api-gateway"
                       version = "2.1.0"
                       enabled = true
