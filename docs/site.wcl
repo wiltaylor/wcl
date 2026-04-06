@@ -82,7 +82,6 @@ doc wcl_docs {
         section cli_fmt "fmt" {}
         section cli_query "query" {}
         section cli_inspect "inspect" {}
-        section cli_convert "convert" {}
         section cli_set "set" {}
         section cli_add "add" {}
         section cli_remove "remove" {}

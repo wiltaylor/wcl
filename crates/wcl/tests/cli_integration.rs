@@ -103,72 +103,6 @@ fn validate_strict_flag_accepted() {
         .success();
 }
 
-// ── wcl convert --to json → JSON output ──────────────────────────────────────
-
-#[test]
-fn convert_to_json_simple_attribute() {
-    let f = wcl_file("port = 8080\n");
-    Command::cargo_bin("wcl")
-        .unwrap()
-        .args(["convert", "--to", "json", f.path().to_str().unwrap()])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("port").and(predicate::str::contains("8080")));
-}
-
-#[test]
-fn convert_to_json_produces_valid_json() {
-    let f = wcl_file("name = \"test\"\ncount = 3\n");
-    let output = Command::cargo_bin("wcl")
-        .unwrap()
-        .args(["convert", "--to", "json", f.path().to_str().unwrap()])
-        .output()
-        .expect("run wcl");
-
-    assert!(output.status.success(), "expected success exit");
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    // The output should be valid JSON — parse it to verify
-    let parsed: serde_json::Value =
-        serde_json::from_str(stdout.trim()).expect("output should be valid JSON");
-    assert!(parsed.is_object());
-}
-
-#[test]
-fn convert_to_json_block_produces_object_fields() {
-    let f = wcl_file("service {\n    port = 9000\n}\n");
-    let output = Command::cargo_bin("wcl")
-        .unwrap()
-        .args(["convert", "--to", "json", f.path().to_str().unwrap()])
-        .output()
-        .expect("run wcl");
-
-    assert!(output.status.success(), "expected success exit");
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    // Output must be parseable JSON
-    serde_json::from_str::<serde_json::Value>(stdout.trim()).expect("output should be valid JSON");
-}
-
-#[test]
-fn convert_unsupported_format_fails() {
-    let f = wcl_file("x = 1\n");
-    Command::cargo_bin("wcl")
-        .unwrap()
-        .args(["convert", "--to", "xml", f.path().to_str().unwrap()])
-        .assert()
-        .failure();
-}
-
-#[test]
-fn convert_no_flags_fails() {
-    let f = wcl_file("x = 1\n");
-    Command::cargo_bin("wcl")
-        .unwrap()
-        .args(["convert", f.path().to_str().unwrap()])
-        .assert()
-        .failure();
-}
-
 // ── wcl query → output ───────────────────────────────────────────────────────
 
 #[test]
@@ -295,15 +229,6 @@ server {
 }
 
 // ── Additional subcommand help checks ────────────────────────────────────────
-
-#[test]
-fn convert_help_exits_successfully() {
-    Command::cargo_bin("wcl")
-        .unwrap()
-        .args(["convert", "--help"])
-        .assert()
-        .success();
-}
 
 #[test]
 fn query_help_exits_successfully() {

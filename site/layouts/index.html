@@ -243,7 +243,7 @@ service "svc-api" {
 <section class="cli" id="cli">
   <div class="container section-card">
     <h2>Powerful CLI</h2>
-    <p class="cli-intro">The <code>wcl</code> command line tool lets you validate, query, convert, and modify configuration files without writing code.</p>
+    <p class="cli-intro">The <code>wcl</code> command line tool lets you validate, query, transform, and modify configuration files without writing code.</p>
     <div class="features-list">
 
       <div class="feature-row">
@@ -286,8 +286,8 @@ wcl remove config.wcl \
 
       <div class="feature-row">
         <div class="feature-text">
-          <h3>Validate and convert</h3>
-          <p>Run the full validation pipeline or export to JSON, YAML, and TOML. Convert from JSON back into WCL.</p>
+          <h3>Validate and export</h3>
+          <p>Run the full validation pipeline or export to JSON, YAML, and TOML. Use <code>wcl transform</code> for cross-format conversion.</p>
         </div>
         <div class="feature-code">
           <pre><code class="language-bash"># Validate with strict mode
@@ -296,9 +296,8 @@ wcl validate config.wcl --strict
 # Evaluate and export as JSON
 wcl eval config.wcl --format json
 
-# Convert between formats
-wcl convert config.wcl --to yaml
-wcl convert data.json --from json</code></pre>
+# Convert between formats with a transform
+wcl transform run json-to-yaml -f convert.wcl --input data.json</code></pre>
         </div>
       </div>
 

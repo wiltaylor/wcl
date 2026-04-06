@@ -154,7 +154,6 @@ pub(crate) fn format_diagnostic(
 }
 
 mod add;
-mod convert;
 mod docs;
 mod eval;
 mod fmt;
@@ -263,19 +262,6 @@ enum Commands {
         /// Listen on a TCP address instead of stdio (e.g. 127.0.0.1:9257)
         #[arg(long)]
         tcp: Option<String>,
-    },
-    /// Convert between WCL and other formats
-    Convert {
-        /// Input file
-        file: PathBuf,
-        /// Output format (json, yaml, toml)
-        #[arg(long)]
-        to: Option<String>,
-        /// Input format for conversion to WCL
-        #[arg(long)]
-        from: Option<String>,
-        #[command(flatten)]
-        lib_args: LibraryArgs,
     },
     /// Set a value by path
     Set {
@@ -491,12 +477,6 @@ pub fn main() {
                 Err(e) => Err(e),
             }
         }
-        Commands::Convert {
-            file,
-            to,
-            from,
-            lib_args,
-        } => convert::run(&file, to.as_deref(), from.as_deref(), &lib_args),
         Commands::Set { file, path, value } => set::run(&file, &path, &value),
         Commands::Add {
             file,

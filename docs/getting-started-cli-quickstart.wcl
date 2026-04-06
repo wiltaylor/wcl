@@ -107,29 +107,46 @@ page cli_quickstart {
 
                 heading h2_convert {
                     level = 2
-                    content = "Convert"
+                    content = "Convert Between Formats"
                 }
 
                 paragraph p7 {
-                    content = "Convert between WCL and other formats:"
+                    content = "Use <code>wcl transform</code> with input and output codecs to move data between JSON, YAML, TOML, CSV, and XML. Define a transform block that names the input/output codecs and maps fields:"
                 }
 
                 code c8 {
-                    language = "bash"
-                    content = <<-'BASH'
-                    # JSON to WCL
-                    wcl convert data.json --to wcl
+                    language = "wcl"
+                    content = <<-'WCL'
+                    // convert.wcl
+                    transform json-to-yaml {
+                        input  = "codec::json"
+                        output = "codec::yaml"
 
-                    # WCL to YAML
-                    wcl convert config.wcl --to yaml
-
-                    # WCL to JSON
-                    wcl convert config.wcl --to json
-                    BASH
+                        map {
+                            name = in.name
+                            port = in.port
+                        }
+                    }
+                    WCL
                 }
 
                 paragraph p8 {
-                    content = "Supported target formats: <code>wcl</code>, <code>json</code>, <code>yaml</code>, <code>toml</code>."
+                    content = "Then run it with <code>wcl transform run</code>:"
+                }
+
+                code c8b {
+                    language = "bash"
+                    content = <<-'BASH'
+                    # JSON → YAML (file to file)
+                    wcl transform run json-to-yaml -f convert.wcl --input data.json --output data.yaml
+
+                    # Stream via stdin/stdout
+                    cat data.json | wcl transform run json-to-yaml -f convert.wcl > data.yaml
+                    BASH
+                }
+
+                paragraph p8c {
+                    content = "See the " + link("wcl transform", "cli_transform.html") + " reference page for the full codec list, filtering with <code>@where</code>, and advanced mapping options."
                 }
 
                 heading h2_set {
@@ -214,19 +231,6 @@ page cli_quickstart {
                     BASH
                 }
 
-                heading h2_lsp {
-                    level = 2
-                    content = "Start the Language Server"
-                }
-
-                code c14 {
-                    language = "bash"
-                    content = "wcl lsp"
-                }
-
-                paragraph p14 {
-                    content = "Starts the WCL Language Server over stdio. This is normally invoked automatically by your editor extension or LSP client, not manually. See " + link("Editor Setup", "editor_setup.html") + " for configuration instructions."
-                }
             }
         }
     }

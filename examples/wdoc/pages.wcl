@@ -4455,16 +4455,6 @@ page cli_ref {
                     content = "# Format and print to stdout\nwcl fmt config.wcl\n\n# Format in-place\nwcl fmt config.wcl --write\n\n# Check formatting (CI-friendly, exit code only)\nwcl fmt config.wcl --check"
                 }
 
-                heading h2e {
-                    level = 2
-                    content = icon("arrow-left-right") + " convert"
-                }
-                paragraph p6 { content = "Convert between WCL and other configuration formats:" }
-                code c5 {
-                    language = "bash"
-                    content = "# WCL to JSON\nwcl convert config.wcl --to json\n\n# JSON to WCL\nwcl convert config.json --from json\n\n# YAML to WCL\nwcl convert config.yaml --from yaml"
-                }
-
                 heading h2f {
                     level = 2
                     content = icon("file-earmark-richtext") + " wdoc"

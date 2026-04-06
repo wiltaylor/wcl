@@ -702,13 +702,13 @@ fn extract_section(block: &BlockRef, parent_path: &str) -> Result<Section, Strin
         format!("{parent_path}.{short_id}")
     };
 
-    // _args[0] is the block ID, _args[1] is the display title (inline arg)
+    // _args[0] is the display title (inline arg after the block ID)
     let title = block
         .attributes
         .get("_args")
         .and_then(|v| match v {
             Value::List(list) => list
-                .get(1)
+                .first()
                 .and_then(|v| v.as_string())
                 .map(|s| s.to_string()),
             _ => None,
