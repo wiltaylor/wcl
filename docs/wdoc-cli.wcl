@@ -1,0 +1,96 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, data_table, callout}
+
+page wdoc_cli {
+    section = "wcl_docs.wdoc.wdoc_cli"
+    title = "wcl wdoc"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "wcl wdoc"
+                }
+
+                paragraph p1 {
+                    content = "The <code>wcl wdoc</code> subcommand has three actions: <code>build</code>, <code>validate</code>, and <code>serve</code>. All three accept one or more input WCL files (globs are fine because the shell expands them) and forward standard library-resolution flags via <code>LibraryArgs</code>."
+                }
+
+                heading h2_build {
+                    level = 2
+                    content = "wcl wdoc build"
+                }
+
+                paragraph p_build1 { content = "Render the input files to a static HTML site." }
+
+                code cb1 {
+                    language = "bash"
+                    content = "wcl wdoc build <FILES>... [--output DIR] [--var KEY=VALUE]..."
+                }
+
+                data_table tb {
+                    caption = "Build flags"
+                    rows = [
+                        { flag = "<FILES>...", description = "One or more WCL files defining doc, pages, and styles" },
+                        { flag = "--output <DIR>", description = "Output directory for HTML, CSS, and assets (default: wdoc-out)" },
+                        { flag = "--var KEY=VALUE", description = "Set an external variable (may repeat)" },
+                        { flag = "--lib-path <DIR>", description = "Extra library search path (may repeat)" },
+                        { flag = "--no-default-lib-paths", description = "Disable default XDG/system library search paths" }
+                    ]
+                }
+
+                paragraph p_build2 {
+                    content = "The build writes one HTML file per page, an <code>index.html</code> redirect, a generated <code>styles.css</code>, the highlight.js bundle for code blocks, and any image assets referenced from <code>image</code> blocks."
+                }
+
+                heading h2_validate {
+                    level = 2
+                    content = "wcl wdoc validate"
+                }
+
+                paragraph p_v1 { content = "Run the wdoc structural checks without writing any output. This is useful in CI." }
+
+                code cv1 {
+                    language = "bash"
+                    content = "wcl wdoc validate <FILES>... [--var KEY=VALUE]..."
+                }
+
+                paragraph p_v2 {
+                    content = "Validation surfaces three classes of problem: pages that reference unknown sections, split groups whose <code>size</code> percentages do not sum to ~100%, and <code>@style(\"name\")</code> decorators pointing at undefined styles. Schema-level errors (missing required fields, type mismatches) are reported by the normal WCL pipeline before wdoc validation runs."
+                }
+
+                heading h2_serve {
+                    level = 2
+                    content = "wcl wdoc serve"
+                }
+
+                paragraph p_s1 { content = "Build the site and serve it over HTTP with live reload. Source files are watched and a refresh is triggered on change." }
+
+                code cs1 {
+                    language = "bash"
+                    content = "wcl wdoc serve <FILES>... [--port 3000] [--open] [--var KEY=VALUE]..."
+                }
+
+                data_table ts {
+                    caption = "Serve flags"
+                    rows = [
+                        { flag = "<FILES>...", description = "Input WCL files (watched for changes)" },
+                        { flag = "--port <N>", description = "TCP port to listen on (default: 3000)" },
+                        { flag = "--open", description = "Open the default browser at startup" },
+                        { flag = "--var KEY=VALUE", description = "Set an external variable (may repeat)" }
+                    ]
+                }
+
+                callout warn {
+                    icon = "alert-triangle"
+                    header = "Feature flag"
+                    color = "#fd7e14"
+                    paragraph wp { content = "<code>wdoc</code> is a default Cargo feature of the <code>wcl</code> crate but can be disabled. If a custom build of <code>wcl</code> omits the <code>wdoc</code> feature, the subcommand is unavailable." }
+                }
+            }
+        }
+    }
+}

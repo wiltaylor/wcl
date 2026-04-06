@@ -254,8 +254,11 @@ pub fn parse_shape_kind(kind: &str) -> Option<ShapeKind> {
         "wdoc::draw::line" => Some(ShapeKind::Line),
         "wdoc::draw::path" => Some(ShapeKind::Path),
         "wdoc::draw::text" => Some(ShapeKind::Text),
-        // Widgets are treated as rects for layout (they have bounds and children)
-        k if crate::widgets::is_widget(k) => Some(ShapeKind::Rect),
+        // Anything else under `wdoc::draw::` (or a user namespace ending in `::draw::`)
+        // is treated as a composite shape: a rect-shaped container whose children are
+        // produced by a `@template("shape", ...)` function. The connection schema is
+        // handled separately by the dispatcher and never reaches this function.
+        k if k.starts_with("wdoc::draw::") && k != "wdoc::draw::diagram" => Some(ShapeKind::Rect),
         _ => None,
     }
 }

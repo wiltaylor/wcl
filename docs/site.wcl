@@ -88,6 +88,21 @@ doc wcl_docs {
         section cli_docs "docs" {}
     }
 
+    section wdoc "Wdoc & Drawing" {
+        section wdoc_overview "Overview" {}
+        section wdoc_cli "CLI Commands" {}
+        section wdoc_doc_structure "Document Structure" {}
+        section wdoc_layout "Layouts and Splits" {}
+        section wdoc_content "Content Elements" {}
+        section wdoc_styling "Styling" {}
+        section wdoc_drawing_overview "Drawing — Overview" {}
+        section wdoc_drawing_shapes "Drawing — Shapes" {}
+        section wdoc_drawing_connections "Drawing — Connections" {}
+        section wdoc_drawing_layouts "Drawing — Layouts" {}
+        section wdoc_drawing_widgets "Drawing — Widgets" {}
+        section wdoc_drawing_custom "Drawing — Custom Shapes" {}
+    }
+
     section reference "Language Reference" {
         section ref_syntax "Syntax" {}
         section ref_types "Type System" {}

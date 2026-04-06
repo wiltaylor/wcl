@@ -1,0 +1,87 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, bold}
+
+page wdoc_styling {
+    section = "wcl_docs.wdoc.wdoc_styling"
+    title = "Styling"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Styling"
+                }
+
+                paragraph p1 {
+                    content = "Wdoc ships with a sensible default theme — a light/dark stylesheet, syntax-highlighted code, and a sidebar nav. You override or extend it with " + bold("style") + " blocks at the top level of your WCL files, and apply named styles to individual blocks with " + bold("@style(\"name\")") + "."
+                }
+
+                heading h2_define {
+                    level = 2
+                    content = "Defining a style"
+                }
+
+                paragraph p_d1 {
+                    content = "A <code>style</code> block has an inline ID (the style name) and contains one nested block per content kind it targets. The body of each nested block is a bag of CSS properties — keys use snake_case and are converted to <code>kebab-case</code> in the generated CSS."
+                }
+
+                code cs1 {
+                    language = "wcl"
+                    content = "import <wdoc.wcl>\nuse wdoc::style\n\nstyle hero {\n    heading {\n        font_size    = \"2.5rem\"\n        text_align   = \"center\"\n        margin_bottom = \"1rem\"\n    }\n    paragraph {\n        text_align = \"center\"\n        font_size  = \"1.2rem\"\n    }\n}"
+                }
+
+                heading h2_apply {
+                    level = 2
+                    content = "Applying a style"
+                }
+
+                paragraph p_a1 {
+                    content = "Decorate a content block with <code>@style(\"name\")</code>. The decorator's argument must match a defined style; otherwise <code>wcl wdoc validate</code> reports an error."
+                }
+
+                code ca1 {
+                    language = "wcl"
+                    content = "@style(\"hero\")\nheading h1 { level = 1, content = \"Welcome\" }\n\n@style(\"hero\")\nparagraph p1 { content = \"A typed configuration language.\" }"
+                }
+
+                heading h2_default {
+                    level = 2
+                    content = "The default style"
+                }
+
+                paragraph p_def1 {
+                    content = "A style named <code>default</code> is applied implicitly to every content block of a matching kind, with no decorator required. This is the easiest way to set site-wide typography."
+                }
+
+                code cdef1 {
+                    language = "wcl"
+                    content = "style default {\n    heading   { font_family = \"'Segoe UI', sans-serif\" }\n    paragraph { line_height = \"1.7\" }\n}"
+                }
+
+                heading h2_vars {
+                    level = 2
+                    content = "Theme CSS variables"
+                }
+
+                paragraph p_v1 {
+                    content = "Wdoc emits a small palette of CSS variables that adapt to light and dark mode. Use them anywhere a CSS color is accepted — including shape <code>fill</code> and <code>stroke</code> attributes inside diagrams."
+                }
+
+                code cv1 {
+                    language = "css"
+                    content = "var(--color-text)        /* primary text color */\nvar(--color-link)        /* accent / link color */\nvar(--color-code-bg)     /* code background */\nvar(--color-nav-bg)      /* sidebar / surface */\nvar(--color-nav-border)  /* subtle borders */"
+                }
+
+                callout c_tip {
+                    icon = "lightbulb"
+                    header = "Why theme variables?"
+                    color = "#0d6efd"
+                    paragraph wp { content = "Hardcoding hex colors in shapes works, but they will look wrong in dark mode. Prefer the theme variables for any structural shape; reserve hex colors for genuine accent moments." }
+                }
+            }
+        }
+    }
+}

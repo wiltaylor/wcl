@@ -5,6 +5,11 @@
 //   use wdoc::{doc, page, section, style, layout, heading, paragraph, image, code, data_table, callout, bold, italic, link, icon}
 //   use wdoc::draw::{diagram, rect, circle, ellipse, line, path, text, connection, ...}
 
+// Helper used by shape template functions to read attributes with defaults.
+// Registered globally (outside the wdoc namespace) so widget lambda bodies can
+// reference it as bare `attr_or` without qualification.
+declare attr_or(block: any, key: string, default: any) -> any
+
 namespace wdoc {
 
     // --- Structural schemas ---
@@ -89,158 +94,60 @@ namespace wdoc {
 
     namespace draw {
 
-        @template("html", "wdoc::render_diagram")
+        // diagram has no @template — it's special-cased by the wdoc renderer so
+        // shape template dispatch can run with the full context.
         @open
         schema "diagram" {
             width: i32 @optional
             height: i32 @optional
         }
 
-        @template("shape", "shape_render_rect")
-        @open
-        schema "rect" { }
+        // Primitive shapes — handled directly by the renderer, no template fn.
+        @open schema "rect" { }
+        @open schema "circle" { }
+        @open schema "ellipse" { }
+        @open schema "line" { }
+        @open schema "path" { }
+        @open schema "text" { }
+        @open schema "connection" { }
 
-        @template("shape", "shape_render_circle")
-        @open
-        schema "circle" { }
+        // --- Composite widgets ---
+        // Each widget is bound to a `@template("shape", "fn")` function defined
+        // in WCL further down this file. The dispatcher calls the function with
+        // the widget's BlockRef and converts the returned list of shape
+        // descriptors into the widget's child shapes.
 
-        @template("shape", "shape_render_ellipse")
-        @open
-        schema "ellipse" { }
+        @template("shape", "wdoc::widget_phone")    @open schema "phone" { }
+        @template("shape", "wdoc::widget_browser")  @open schema "browser" { }
+        @template("shape", "wdoc::widget_button")   @open schema "button" { }
+        @template("shape", "wdoc::widget_input")    @open schema "input" { }
+        @template("shape", "wdoc::widget_card")     @open schema "card" { }
+        @template("shape", "wdoc::widget_avatar")   @open schema "avatar" { }
+        @template("shape", "wdoc::widget_toggle")   @open schema "toggle" { }
+        @template("shape", "wdoc::widget_badge")    @open schema "badge" { }
+        @template("shape", "wdoc::widget_navbar")   @open schema "navbar" { }
 
-        @template("shape", "shape_render_line")
-        @open
-        schema "line" { }
+        @template("shape", "wdoc::widget_flow_process")    @open schema "flow_process" { }
+        @template("shape", "wdoc::widget_flow_decision")   @open schema "flow_decision" { }
+        @template("shape", "wdoc::widget_flow_terminal")   @open schema "flow_terminal" { }
+        @template("shape", "wdoc::widget_flow_io")         @open schema "flow_io" { }
+        @template("shape", "wdoc::widget_flow_subprocess") @open schema "flow_subprocess" { }
 
-        @template("shape", "shape_render_path")
-        @open
-        schema "path" { }
+        @template("shape", "wdoc::widget_c4_person")    @open schema "c4_person" { }
+        @template("shape", "wdoc::widget_c4_system")    @open schema "c4_system" { }
+        @template("shape", "wdoc::widget_c4_container") @open schema "c4_container" { }
+        @template("shape", "wdoc::widget_c4_component") @open schema "c4_component" { }
+        @template("shape", "wdoc::widget_c4_boundary")  @open schema "c4_boundary" { }
 
-        @template("shape", "shape_render_text")
-        @open
-        schema "text" { }
+        @template("shape", "wdoc::widget_uml_class")   @open schema "uml_class" { }
+        @template("shape", "wdoc::widget_uml_actor")   @open schema "uml_actor" { }
+        @template("shape", "wdoc::widget_uml_package") @open schema "uml_package" { }
+        @template("shape", "wdoc::widget_uml_note")    @open schema "uml_note" { }
 
-        @template("shape", "shape_render_connection")
-        @open
-        schema "connection" { }
-
-        // --- UI Widget schemas (composite shapes) ---
-
-        @template("shape", "widget_render_phone")
-        @open
-        schema "phone" { }
-
-        @template("shape", "widget_render_browser")
-        @open
-        schema "browser" { }
-
-        @template("shape", "widget_render_button")
-        @open
-        schema "button" { }
-
-        @template("shape", "widget_render_input")
-        @open
-        schema "input" { }
-
-        @template("shape", "widget_render_card")
-        @open
-        schema "card" { }
-
-        @template("shape", "widget_render_avatar")
-        @open
-        schema "avatar" { }
-
-        @template("shape", "widget_render_toggle")
-        @open
-        schema "toggle" { }
-
-        @template("shape", "widget_render_badge")
-        @open
-        schema "badge" { }
-
-        @template("shape", "widget_render_navbar")
-        @open
-        schema "navbar" { }
-
-        // --- Flowchart shapes ---
-
-        @template("shape", "widget_render_flow_process")
-        @open
-        schema "flow_process" { }
-
-        @template("shape", "widget_render_flow_decision")
-        @open
-        schema "flow_decision" { }
-
-        @template("shape", "widget_render_flow_terminal")
-        @open
-        schema "flow_terminal" { }
-
-        @template("shape", "widget_render_flow_io")
-        @open
-        schema "flow_io" { }
-
-        @template("shape", "widget_render_flow_subprocess")
-        @open
-        schema "flow_subprocess" { }
-
-        // --- C4 diagram shapes ---
-
-        @template("shape", "widget_render_c4_person")
-        @open
-        schema "c4_person" { }
-
-        @template("shape", "widget_render_c4_system")
-        @open
-        schema "c4_system" { }
-
-        @template("shape", "widget_render_c4_container")
-        @open
-        schema "c4_container" { }
-
-        @template("shape", "widget_render_c4_component")
-        @open
-        schema "c4_component" { }
-
-        @template("shape", "widget_render_c4_boundary")
-        @open
-        schema "c4_boundary" { }
-
-        // --- UML shapes ---
-
-        @template("shape", "widget_render_uml_class")
-        @open
-        schema "uml_class" { }
-
-        @template("shape", "widget_render_uml_actor")
-        @open
-        schema "uml_actor" { }
-
-        @template("shape", "widget_render_uml_package")
-        @open
-        schema "uml_package" { }
-
-        @template("shape", "widget_render_uml_note")
-        @open
-        schema "uml_note" { }
-
-        // --- Network/infrastructure node shapes ---
-
-        @template("shape", "widget_render_node_server")
-        @open
-        schema "server" { }
-
-        @template("shape", "widget_render_node_database")
-        @open
-        schema "database" { }
-
-        @template("shape", "widget_render_node_cloud")
-        @open
-        schema "cloud" { }
-
-        @template("shape", "widget_render_node_user")
-        @open
-        schema "user" { }
+        @template("shape", "wdoc::widget_server")   @open schema "server" { }
+        @template("shape", "wdoc::widget_database") @open schema "database" { }
+        @template("shape", "wdoc::widget_cloud")    @open schema "cloud" { }
+        @template("shape", "wdoc::widget_user")     @open schema "user" { }
 
     }
 
@@ -266,6 +173,514 @@ namespace wdoc {
     declare render_image(block: any) -> string
     declare render_code(block: any) -> string
     declare render_table(block: any) -> string
-    declare render_diagram(block: any) -> string
+
+    // ----------------------------------------------------------------------
+    // Widget shape templates
+    // ----------------------------------------------------------------------
+    //
+    // Each widget below is a function that takes a block (the WCL block the
+    // user wrote in their diagram) and returns a list of "shape descriptors":
+    // maps with a `kind` field plus positioning and visual attributes. The
+    // wdoc renderer converts these descriptors into the widget's child shapes
+    // before resolving layout and emitting SVG.
+    //
+    // Recognized descriptor fields:
+    //   kind     — "rect" | "circle" | "ellipse" | "line" | "path" | "text"
+    //   x, y, width, height       — absolute placement (relative to widget)
+    //   top, bottom, left, right  — anchored placement
+    //   rx, ry, r                 — corner / radius
+    //   fill, stroke, stroke_width, stroke_dasharray, opacity
+    //   x1, y1, x2, y2 (line) | d (path) | content, font_size, anchor (text)
+    //   children                  — list of more descriptors (nested)
+    //
+    // Use `attr_or(block, "key", default)` to read user attributes safely.
+
+    // ----- UI widgets -----
+
+    export let widget_button = (b) => {
+        let w = attr_or(b, "width", 120)
+        let h = attr_or(b, "height", 38)
+        let label = attr_or(b, "label", "Button")
+        let variant = attr_or(b, "variant", "primary")
+        let fill = variant == "secondary" ? "var(--color-nav-bg)" : (variant == "outline" ? "none" : "var(--color-link)")
+        let stroke = variant == "secondary" ? "var(--color-nav-border)" : "var(--color-link)"
+        let text_fill = variant == "primary" ? "#fff" : (variant == "outline" ? "var(--color-link)" : "currentColor")
+        [
+            { kind = "rect", x = 0, y = 0, width = w, height = h, rx = 6,
+              fill = fill, stroke = stroke, stroke_width = 1.5 },
+            { kind = "text", x = 0, y = 0, width = w, height = h,
+              content = label, font_size = 13, fill = text_fill }
+        ]
+    }
+
+    export let widget_phone = (b) => {
+        let w = attr_or(b, "width", 220)
+        let h = attr_or(b, "height", 320)
+        let title = attr_or(b, "title", "App")
+        let status = attr_or(b, "status_text", "9:41")
+        let hdr_fill = attr_or(b, "header_fill", "var(--color-link)")
+        [
+            { kind = "rect", x = 0, y = 0, width = w, height = h, rx = 20,
+              fill = "var(--color-bg)", stroke = "var(--color-nav-border)", stroke_width = 3 },
+            { kind = "text", x = 20, y = 5, width = 60, height = 20,
+              content = status, font_size = 10, anchor = "start" },
+            { kind = "rect", x = 0, y = 30, width = w, height = 44, fill = hdr_fill },
+            { kind = "text", x = 0, y = 30, width = w, height = 44,
+              content = title, font_size = 16, fill = "#fff" },
+            { kind = "rect", x = 0, y = h - 50, width = w, height = 50,
+              fill = "var(--color-nav-bg)", stroke = "var(--color-nav-border)", stroke_width = 1 },
+            { kind = "rect", x = (w - 80) / 2, y = h - 12, width = 80, height = 4,
+              rx = 2, fill = "var(--color-nav-border)" }
+        ]
+    }
+
+    export let widget_browser = (b) => {
+        let w = attr_or(b, "width", 300)
+        let h = attr_or(b, "height", 200)
+        let url = attr_or(b, "url", "https://example.com")
+        let title = attr_or(b, "title", "Browser")
+        [
+            { kind = "rect", x = 0, y = 0, width = w, height = h, rx = 8,
+              fill = "var(--color-bg)", stroke = "var(--color-nav-border)", stroke_width = 2 },
+            { kind = "rect", x = 0, y = 0, width = w, height = 36, rx = 8,
+              fill = "var(--color-nav-bg)" },
+            { kind = "rect", x = 0, y = 28, width = w, height = 10, fill = "var(--color-nav-bg)" },
+            { kind = "circle", x = 10, y = 8, r = 6, fill = "#ff5f56" },
+            { kind = "circle", x = 28, y = 8, r = 6, fill = "#ffbd2e" },
+            { kind = "circle", x = 46, y = 8, r = 6, fill = "#27c93f" },
+            { kind = "rect", x = 66, y = 6, width = 140, height = 24, rx = 4,
+              fill = "var(--color-bg)", stroke = "var(--color-nav-border)", stroke_width = 1 },
+            { kind = "text", x = 66, y = 6, width = 140, height = 24, content = title, font_size = 10 },
+            { kind = "rect", x = 8, y = 42, width = w - 16, height = 26, rx = 4,
+              fill = "var(--color-code-bg)", stroke = "var(--color-nav-border)", stroke_width = 1 },
+            { kind = "text", x = 20, y = 42, width = w - 40, height = 26,
+              content = url, font_size = 11, anchor = "start", opacity = 0.6 }
+        ]
+    }
+
+    export let widget_input = (b) => {
+        let w = attr_or(b, "width", 200)
+        let h = attr_or(b, "height", 38)
+        let placeholder = attr_or(b, "placeholder", "")
+        let label = attr_or(b, "label", "")
+        let has_label = label != ""
+        let field_y = has_label ? 18 : 0
+        let field_h = has_label ? h - 18 : h
+        let label_part = has_label ? [{ kind = "text", x = 0, y = 0, width = w, height = 16,
+            content = label, font_size = 11, anchor = "start" }] : []
+        let placeholder_part = placeholder != "" ? [{ kind = "text", x = 10, y = field_y,
+            width = w - 20, height = field_h, content = placeholder, font_size = 12,
+            anchor = "start", opacity = 0.4 }] : []
+        let field = [{ kind = "rect", x = 0, y = field_y, width = w, height = field_h, rx = 6,
+            fill = "var(--color-code-bg)", stroke = "var(--color-nav-border)", stroke_width = 1 }]
+        concat(concat(label_part, field), placeholder_part)
+    }
+
+    export let widget_card = (b) => {
+        let w = attr_or(b, "width", 300)
+        let h = attr_or(b, "height", 200)
+        let title = attr_or(b, "title", "")
+        let frame = [{ kind = "rect", x = 0, y = 0, width = w, height = h, rx = 8,
+            fill = "var(--color-bg)", stroke = "var(--color-nav-border)", stroke_width = 1.5 }]
+        let header = title != "" ? [
+            { kind = "text", x = 12, y = 6, width = w - 24, height = 20,
+              content = title, font_size = 14, anchor = "start" },
+            { kind = "line", x1 = 0, y1 = 30, x2 = w, y2 = 30,
+              stroke = "var(--color-nav-border)", stroke_width = 1 }
+        ] : []
+        concat(frame, header)
+    }
+
+    export let widget_avatar = (b) => {
+        let w = attr_or(b, "width", 40)
+        let initials = attr_or(b, "initials", "?")
+        let color = attr_or(b, "color", "var(--color-link)")
+        let r = w / 2
+        [
+            { kind = "circle", x = 0, y = 0, r = r, fill = color },
+            { kind = "text", x = 0, y = 0, width = w, height = w,
+              content = initials, font_size = r, fill = "#fff" }
+        ]
+    }
+
+    export let widget_toggle = (b) => {
+        let w = attr_or(b, "width", 44)
+        let h = attr_or(b, "height", 24)
+        let on = attr_or(b, "on", "false") == "true"
+        let bg = on ? "var(--color-link)" : "var(--color-nav-border)"
+        let knob_x = on ? w - h + 2 : 2
+        [
+            { kind = "rect", x = 0, y = 0, width = w, height = h, rx = h / 2, fill = bg },
+            { kind = "circle", x = knob_x, y = 2, r = (h - 6) / 2, fill = "#fff" }
+        ]
+    }
+
+    export let widget_badge = (b) => {
+        let w = attr_or(b, "width", 60)
+        let h = attr_or(b, "height", 20)
+        let label = attr_or(b, "label", "badge")
+        let color = attr_or(b, "color", "var(--color-link)")
+        [
+            { kind = "rect", x = 0, y = 0, width = w, height = h, rx = h / 2,
+              fill = color, opacity = 0.15 },
+            { kind = "text", x = 0, y = 0, width = w, height = h,
+              content = label, font_size = 11, fill = color }
+        ]
+    }
+
+    export let widget_navbar = (b) => {
+        let w = attr_or(b, "width", 300)
+        let h = attr_or(b, "height", 44)
+        let items_str = attr_or(b, "items", "Home,Search,Profile")
+        let active = attr_or(b, "active_index", 0)
+        let items = split(",", items_str)
+        let n = len(items)
+        let item_w = w / n
+        let bg = [{ kind = "rect", x = 0, y = 0, width = w, height = h,
+            fill = "var(--color-nav-bg)", stroke = "var(--color-nav-border)", stroke_width = 1 }]
+        let entries = map(range(0, n), (i) => {
+            kind = "text",
+            x = i * item_w,
+            y = 0,
+            width = item_w,
+            height = h,
+            content = trim(items[i]),
+            font_size = 11,
+            fill = i == active ? "var(--color-link)" : "currentColor"
+        })
+        let active_underline = active >= 0 ? [{ kind = "rect", x = active * item_w, y = 0,
+            width = item_w, height = 3, fill = "var(--color-link)" }] : []
+        concat(concat(bg, active_underline), entries)
+    }
+
+    // ----- Flowchart shapes -----
+
+    export let widget_flow_process = (b) => {
+        let w = attr_or(b, "width", 150)
+        let h = attr_or(b, "height", 50)
+        let label = attr_or(b, "label", "Process")
+        let color = attr_or(b, "color", "var(--color-link)")
+        [
+            { kind = "rect", x = 0, y = 0, width = w, height = h, rx = 4,
+              fill = "var(--color-bg)", stroke = color, stroke_width = 2 },
+            { kind = "text", x = 0, y = 0, width = w, height = h,
+              content = label, font_size = 13 }
+        ]
+    }
+
+    export let widget_flow_decision = (b) => {
+        let w = attr_or(b, "width", 120)
+        let h = attr_or(b, "height", 80)
+        let label = attr_or(b, "label", "?")
+        let color = attr_or(b, "color", "var(--color-link)")
+        let cx = w / 2
+        let cy = h / 2
+        let d = "M " + to_string(cx) + " 0 L " + to_string(w) + " " + to_string(cy) + " L " + to_string(cx) + " " + to_string(h) + " L 0 " + to_string(cy) + " Z"
+        [
+            { kind = "path", x = 0, y = 0, width = w, height = h, d = d, fill = "var(--color-bg)", stroke = color, stroke_width = 2 },
+            { kind = "text", x = 0, y = 0, width = w, height = h, content = label, font_size = 12 }
+        ]
+    }
+
+    export let widget_flow_terminal = (b) => {
+        let w = attr_or(b, "width", 130)
+        let h = attr_or(b, "height", 40)
+        let label = attr_or(b, "label", "Start")
+        let color = attr_or(b, "color", "var(--color-link)")
+        [
+            { kind = "rect", x = 0, y = 0, width = w, height = h, rx = h / 2, fill = color },
+            { kind = "text", x = 0, y = 0, width = w, height = h,
+              content = label, font_size = 13, fill = "#fff" }
+        ]
+    }
+
+    export let widget_flow_io = (b) => {
+        let w = attr_or(b, "width", 150)
+        let h = attr_or(b, "height", 50)
+        let label = attr_or(b, "label", "I/O")
+        let color = attr_or(b, "color", "var(--color-link)")
+        let s = w * 0.15
+        let d = "M " + to_string(s) + " 0 L " + to_string(w) + " 0 L " + to_string(w - s) + " " + to_string(h) + " L 0 " + to_string(h) + " Z"
+        [
+            { kind = "path", x = 0, y = 0, width = w, height = h, d = d, fill = "var(--color-bg)", stroke = color, stroke_width = 2 },
+            { kind = "text", x = 0, y = 0, width = w, height = h, content = label, font_size = 12 }
+        ]
+    }
+
+    export let widget_flow_subprocess = (b) => {
+        let w = attr_or(b, "width", 160)
+        let h = attr_or(b, "height", 50)
+        let label = attr_or(b, "label", "Subprocess")
+        let color = attr_or(b, "color", "var(--color-link)")
+        [
+            { kind = "rect", x = 0, y = 0, width = w, height = h, rx = 4,
+              fill = "var(--color-bg)", stroke = color, stroke_width = 2 },
+            { kind = "line", x1 = 10, y1 = 0, x2 = 10, y2 = h, stroke = color, stroke_width = 1 },
+            { kind = "line", x1 = w - 10, y1 = 0, x2 = w - 10, y2 = h, stroke = color, stroke_width = 1 },
+            { kind = "text", x = 0, y = 0, width = w, height = h,
+              content = label, font_size = 13 }
+        ]
+    }
+
+    // ----- C4 architecture shapes -----
+
+    export let widget_c4_person = (b) => {
+        let w = attr_or(b, "width", 100)
+        let h = attr_or(b, "height", 130)
+        let name = attr_or(b, "label", "Person")
+        let desc = attr_or(b, "description", "")
+        let color = attr_or(b, "color", "var(--color-link)")
+        let hr = 18
+        let by = hr * 2 + 4
+        let base = [
+            { kind = "circle", x = w / 2 - hr, y = 0, r = hr, fill = color },
+            { kind = "rect", x = 0, y = by, width = w, height = h - by, rx = 4, fill = color },
+            { kind = "text", x = 0, y = by, width = w, height = 22,
+              content = name, font_size = 14, fill = "#fff" }
+        ]
+        let desc_part = desc != "" ? [{ kind = "text", x = 4, y = by + 22,
+            width = w - 8, height = 16, content = desc, font_size = 10,
+            fill = "#fff", opacity = 0.8 }] : []
+        concat(base, desc_part)
+    }
+
+    export let widget_c4_system = (b) => {
+        let w = attr_or(b, "width", 160)
+        let h = attr_or(b, "height", 90)
+        let name = attr_or(b, "label", "System")
+        let desc = attr_or(b, "description", "")
+        let color = attr_or(b, "color", "var(--color-link)")
+        let ext = attr_or(b, "external", "false") == "true"
+        let tag = ext ? "[External System]" : "[System]"
+        let dash = ext ? "5,3" : ""
+        let base = [
+            { kind = "rect", x = 0, y = 0, width = w, height = h, rx = 8,
+              fill = color, stroke_dasharray = dash },
+            { kind = "text", x = 0, y = 8, width = w, height = 22,
+              content = name, font_size = 15, fill = "#fff" },
+            { kind = "text", x = 0, y = 28, width = w, height = 14,
+              content = tag, font_size = 10, fill = "#fff", opacity = 0.7 }
+        ]
+        let desc_part = desc != "" ? [{ kind = "text", x = 6, y = 46,
+            width = w - 12, height = 16, content = desc, font_size = 10,
+            fill = "#fff", opacity = 0.85 }] : []
+        concat(base, desc_part)
+    }
+
+    export let widget_c4_container = (b) => {
+        let w = attr_or(b, "width", 160)
+        let h = attr_or(b, "height", 90)
+        let name = attr_or(b, "label", "Container")
+        let tech = attr_or(b, "technology", "")
+        let desc = attr_or(b, "description", "")
+        let color = attr_or(b, "color", "#438DD5")
+        let base = [
+            { kind = "rect", x = 0, y = 0, width = w, height = h, rx = 6, fill = color },
+            { kind = "text", x = 0, y = 8, width = w, height = 20,
+              content = name, font_size = 14, fill = "#fff" }
+        ]
+        let tech_part = tech != "" ? [{ kind = "text", x = 0, y = 26,
+            width = w, height = 14, content = "[" + tech + "]", font_size = 10,
+            fill = "#fff", opacity = 0.7 }] : []
+        let desc_part = desc != "" ? [{ kind = "text", x = 6, y = 44,
+            width = w - 12, height = 16, content = desc, font_size = 10,
+            fill = "#fff", opacity = 0.85 }] : []
+        concat(concat(base, tech_part), desc_part)
+    }
+
+    export let widget_c4_component = (b) => {
+        let w = attr_or(b, "width", 140)
+        let h = attr_or(b, "height", 70)
+        let name = attr_or(b, "label", "Component")
+        let tech = attr_or(b, "technology", "")
+        let color = attr_or(b, "color", "#85BBF0")
+        let base = [
+            { kind = "rect", x = 0, y = 0, width = w, height = h, rx = 4, fill = color },
+            { kind = "text", x = 0, y = 6, width = w, height = 18,
+              content = name, font_size = 13, fill = "#fff" }
+        ]
+        let tech_part = tech != "" ? [{ kind = "text", x = 0, y = 24,
+            width = w, height = 14, content = "[" + tech + "]", font_size = 9,
+            fill = "#fff", opacity = 0.7 }] : []
+        concat(base, tech_part)
+    }
+
+    export let widget_c4_boundary = (b) => {
+        let w = attr_or(b, "width", 200)
+        let h = attr_or(b, "height", 120)
+        let name = attr_or(b, "label", "Boundary")
+        let color = attr_or(b, "color", "var(--color-nav-border)")
+        [
+            { kind = "rect", x = 0, y = 0, width = w, height = h, rx = 4,
+              fill = "none", stroke = color, stroke_width = 2, stroke_dasharray = "8,4" },
+            { kind = "text", x = 8, y = 4, width = w - 16, height = 18,
+              content = name, font_size = 12, anchor = "start" }
+        ]
+    }
+
+    // ----- UML shapes -----
+
+    export let widget_uml_class = (b) => {
+        let w = attr_or(b, "width", 180)
+        let h = attr_or(b, "height", 160)
+        let name = attr_or(b, "label", "ClassName")
+        let stereotype = attr_or(b, "stereotype", "")
+        let fields_str = attr_or(b, "fields", "")
+        let methods_str = attr_or(b, "methods", "")
+        let color = attr_or(b, "color", "var(--color-link)")
+        let has_st = stereotype != ""
+        let hdr_h = has_st ? 40 : 28
+        let fields = fields_str != "" ? split("|", fields_str) : []
+        let methods = methods_str != "" ? split("|", methods_str) : []
+        let nf = len(fields)
+        let nm = len(methods)
+        let field_h = (nf * 16) > 16 ? nf * 16 : 16
+        let frame = [
+            { kind = "rect", x = 0, y = 0, width = w, height = h,
+              fill = "var(--color-bg)", stroke = color, stroke_width = 2 },
+            { kind = "rect", x = 0, y = 0, width = w, height = hdr_h, fill = color }
+        ]
+        let stereo_part = has_st ? [{ kind = "text", x = 0, y = 4, width = w, height = 14,
+            content = "<<" + stereotype + ">>", font_size = 9, fill = "#fff", opacity = 0.8 }] : []
+        let name_y = has_st ? 18 : 4
+        let name_part = [{ kind = "text", x = 0, y = name_y, width = w, height = 20,
+            content = name, font_size = 14, fill = "#fff" }]
+        let sep1 = [{ kind = "line", x1 = 0, y1 = hdr_h, x2 = w, y2 = hdr_h, stroke = color, stroke_width = 1 }]
+        let field_lines = map(range(0, nf), (i) => {
+            kind = "text", x = 8, y = hdr_h + 4 + i * 16, width = w - 16, height = 14,
+            content = trim(fields[i]), font_size = 11, anchor = "start"
+        })
+        let my_start = hdr_h + field_h + 4
+        let sep2 = [{ kind = "line", x1 = 0, y1 = my_start, x2 = w, y2 = my_start, stroke = color, stroke_width = 1 }]
+        let method_lines = map(range(0, nm), (i) => {
+            kind = "text", x = 8, y = my_start + 4 + i * 16, width = w - 16, height = 14,
+            content = trim(methods[i]), font_size = 11, anchor = "start"
+        })
+        concat(concat(concat(concat(concat(concat(frame, stereo_part), name_part), sep1), field_lines), sep2), method_lines)
+    }
+
+    export let widget_uml_actor = (b) => {
+        let w = attr_or(b, "width", 60)
+        let h = attr_or(b, "height", 100)
+        let name = attr_or(b, "label", "Actor")
+        let color = attr_or(b, "color", "currentColor")
+        let cx = w / 2
+        let hr = h * 0.12
+        let bt = hr * 2 + 2
+        let bm = h * 0.5
+        let ay = bt + (bm - bt) * 0.3
+        let ly = h * 0.78
+        [
+            { kind = "circle", x = cx - hr, y = 0, r = hr,
+              fill = "none", stroke = color, stroke_width = 2 },
+            { kind = "line", x1 = cx, y1 = bt, x2 = cx, y2 = bm, stroke = color, stroke_width = 2 },
+            { kind = "line", x1 = cx - w * 0.3, y1 = ay, x2 = cx + w * 0.3, y2 = ay,
+              stroke = color, stroke_width = 2 },
+            { kind = "line", x1 = cx, y1 = bm, x2 = cx - w * 0.25, y2 = ly,
+              stroke = color, stroke_width = 2 },
+            { kind = "line", x1 = cx, y1 = bm, x2 = cx + w * 0.25, y2 = ly,
+              stroke = color, stroke_width = 2 },
+            { kind = "text", x = 0, y = h * 0.82, width = w, height = h * 0.18,
+              content = name, font_size = 11 }
+        ]
+    }
+
+    export let widget_uml_package = (b) => {
+        let w = attr_or(b, "width", 200)
+        let h = attr_or(b, "height", 130)
+        let name = attr_or(b, "label", "Package")
+        let color = attr_or(b, "color", "var(--color-link)")
+        let tw = w * 0.4
+        [
+            { kind = "rect", x = 0, y = 0, width = tw, height = 20,
+              fill = "var(--color-bg)", stroke = color, stroke_width = 1.5 },
+            { kind = "text", x = 0, y = 0, width = tw, height = 20, content = name, font_size = 11 },
+            { kind = "rect", x = 0, y = 19, width = w, height = h - 19,
+              fill = "var(--color-bg)", stroke = color, stroke_width = 1.5 }
+        ]
+    }
+
+    export let widget_uml_note = (b) => {
+        let w = attr_or(b, "width", 200)
+        let h = attr_or(b, "height", 80)
+        let label = attr_or(b, "label", "Note")
+        let color = attr_or(b, "color", "var(--color-nav-border)")
+        let fold = 15
+        let body_d = "M 0 0 L " + to_string(w - fold) + " 0 L " + to_string(w) + " " + to_string(fold) + " L " + to_string(w) + " " + to_string(h) + " L 0 " + to_string(h) + " Z"
+        let corner_d = "M " + to_string(w - fold) + " 0 L " + to_string(w - fold) + " " + to_string(fold) + " L " + to_string(w) + " " + to_string(fold)
+        [
+            { kind = "path", x = 0, y = 0, width = w, height = h, d = body_d, fill = "var(--color-code-bg)", stroke = color, stroke_width = 1.5 },
+            { kind = "path", x = 0, y = 0, width = w, height = h, d = corner_d, fill = "none", stroke = color, stroke_width = 1 },
+            { kind = "text", x = 8, y = 8, width = w - 16, height = h - 16, content = label, font_size = 11, anchor = "start" }
+        ]
+    }
+
+    // ----- Network / infrastructure nodes -----
+
+    export let widget_server = (b) => {
+        let w = attr_or(b, "width", 90)
+        let h = attr_or(b, "height", 110)
+        let name = attr_or(b, "label", "Server")
+        let color = attr_or(b, "color", "var(--color-link)")
+        let rh = h * 0.6
+        [
+            { kind = "rect", x = 0, y = 0, width = w, height = rh, rx = 4,
+              fill = "var(--color-code-bg)", stroke = color, stroke_width = 2 },
+            { kind = "rect", x = 6, y = 6, width = w - 12, height = rh * 0.25, rx = 2,
+              fill = "var(--color-nav-bg)", stroke = color, stroke_width = 1 },
+            { kind = "rect", x = 6, y = 6 + rh * 0.32, width = w - 12, height = rh * 0.25, rx = 2,
+              fill = "var(--color-nav-bg)", stroke = color, stroke_width = 1 },
+            { kind = "circle", x = w - 18, y = 8, r = 3, fill = "#28a745" },
+            { kind = "circle", x = w - 18, y = 8 + rh * 0.32, r = 3, fill = "#28a745" },
+            { kind = "text", x = 0, y = rh + 4, width = w, height = h - rh - 4,
+              content = name, font_size = 12 }
+        ]
+    }
+
+    export let widget_database = (b) => {
+        let w = attr_or(b, "width", 100)
+        let h = attr_or(b, "height", 120)
+        let name = attr_or(b, "label", "Database")
+        let color = attr_or(b, "color", "var(--color-link)")
+        let eh = h * 0.15
+        let bh = h * 0.55
+        let body_d = "M 0 " + to_string(eh) + " L 0 " + to_string(bh) + " Q 0 " + to_string(bh + eh) + " " + to_string(w / 2) + " " + to_string(bh + eh) + " Q " + to_string(w) + " " + to_string(bh + eh) + " " + to_string(w) + " " + to_string(bh) + " L " + to_string(w) + " " + to_string(eh)
+        let top_d = "M 0 " + to_string(eh) + " Q 0 0 " + to_string(w / 2) + " 0 Q " + to_string(w) + " 0 " + to_string(w) + " " + to_string(eh) + " Q " + to_string(w) + " " + to_string(eh * 2) + " " + to_string(w / 2) + " " + to_string(eh * 2) + " Q 0 " + to_string(eh * 2) + " 0 " + to_string(eh)
+        [
+            { kind = "path", x = 0, y = 0, width = w, height = h, d = body_d, fill = "var(--color-code-bg)", stroke = color, stroke_width = 2 },
+            { kind = "path", x = 0, y = 0, width = w, height = h, d = top_d, fill = "var(--color-nav-bg)", stroke = color, stroke_width = 2 },
+            { kind = "text", x = 0, y = bh + eh + 4, width = w, height = h - bh - eh - 4, content = name, font_size = 12 }
+        ]
+    }
+
+    export let widget_cloud = (b) => {
+        let w = attr_or(b, "width", 130)
+        let h = attr_or(b, "height", 90)
+        let name = attr_or(b, "label", "Cloud")
+        let color = attr_or(b, "color", "var(--color-link)")
+        let ch = h * 0.7
+        let d = "M " + to_string(w * 0.2) + " " + to_string(ch * 0.8) + " Q 0 " + to_string(ch * 0.8) + " 0 " + to_string(ch * 0.5) + " Q 0 " + to_string(ch * 0.1) + " " + to_string(w * 0.25) + " 0 Q " + to_string(w * 0.4) + " 0 " + to_string(w * 0.5) + " " + to_string(ch * 0.05) + " Q " + to_string(w * 0.6) + " 0 " + to_string(w) + " " + to_string(ch * 0.1) + " Q " + to_string(w * 1.05) + " " + to_string(ch * 0.6) + " " + to_string(w * 0.8) + " " + to_string(ch * 0.8) + " Z"
+        [
+            { kind = "path", x = 0, y = 0, width = w, height = h, d = d, fill = "var(--color-code-bg)", stroke = color, stroke_width = 2 },
+            { kind = "text", x = 0, y = ch * 0.2, width = w, height = ch * 0.5, content = name, font_size = 13 }
+        ]
+    }
+
+    export let widget_user = (b) => {
+        let w = attr_or(b, "width", 80)
+        let h = attr_or(b, "height", 100)
+        let name = attr_or(b, "label", "User")
+        let color = attr_or(b, "color", "var(--color-link)")
+        let ih = h * 0.65
+        let hr = ih * 0.22
+        let cx = w / 2
+        [
+            { kind = "circle", x = cx - hr, y = 0, r = hr, fill = color },
+            { kind = "rect", x = cx - w * 0.35, y = hr * 2 + 4,
+              width = w * 0.7, height = ih - hr * 2 - 4, rx = w * 0.15, fill = color },
+            { kind = "text", x = 0, y = ih + 4, width = w, height = h - ih - 4,
+              content = name, font_size = 12 }
+        ]
+    }
 
 }

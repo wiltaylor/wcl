@@ -1,0 +1,151 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, data_table, callout, bold}
+
+page wdoc_drawing_custom {
+    section = "wcl_docs.wdoc.wdoc_drawing_custom"
+    title = "Drawing — Custom Shapes"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Drawing — Custom Shapes"
+                }
+
+                paragraph p1 {
+                    content = "Every built-in widget — phone, browser, the C4 person, the database cylinder — is just a WCL function that takes a block and returns a list of primitive shapes. You can write your own the same way: declare a schema, decorate it with " + bold("@template(\"shape\", \"...\")") + ", and write the function in WCL. The wdoc renderer dispatches your function whenever it sees a block of that kind inside a diagram and splices the returned shapes into the drawing tree."
+                }
+
+                heading h2_anatomy {
+                    level = 2
+                    content = "Anatomy of a shape template"
+                }
+
+                paragraph p_an1 {
+                    content = "A shape template function takes one argument — the block the user wrote — and returns a " + bold("list of shape descriptors") + ". A shape descriptor is a map literal with a " + bold("kind") + " field naming a primitive (rect, circle, ellipse, line, path, text) plus positioning and visual attributes. The dispatcher converts each descriptor into a shape node and uses them as the children of the widget container."
+                }
+
+                code c_min {
+                    language = "wcl"
+                    content = "import <wdoc.wcl>\nuse wdoc::draw::diagram\n\nnamespace my {\n\n    @template(\"shape\", \"my::sticker\")\n    @open\n    schema \"sticker\" { }\n\n    export let sticker = (b) => {\n        let w = attr_or(b, \"width\", 100)\n        let h = attr_or(b, \"height\", 100)\n        let label = attr_or(b, \"label\", \"!\")\n        [\n            { kind = \"circle\", x = 0, y = 0, r = w / 2, fill = \"#ff5f56\" },\n            { kind = \"text\", x = 0, y = 0, width = w, height = h,\n              content = label, font_size = 24, fill = \"#fff\" }\n        ]\n    }\n\n}"
+                }
+
+                paragraph p_an2 {
+                    content = "Use the schema in any diagram. The dispatcher matches the block's kind (<code>my::sticker</code>) against the schemas it has loaded, finds your <code>@template(\"shape\", ...)</code> decorator, and calls the function."
+                }
+
+                code c_use {
+                    language = "wcl"
+                    content = "use my::sticker\n\ndiagram demo {\n    width = 300\n    height = 150\n    sticker s1 {\n        x = 30\n        y = 25\n        width = 100\n        height = 100\n        label = \"NEW\"\n    }\n}"
+                }
+
+                heading h2_descriptor {
+                    level = 2
+                    content = "Shape descriptor fields"
+                }
+
+                paragraph p_desc1 {
+                    content = "Every descriptor needs a " + bold("kind") + ". The other fields are optional — the dispatcher ignores anything it doesn't recognise, so it's safe to add data your own logic uses but the renderer doesn't."
+                }
+
+                data_table tbl_fields {
+                    caption = "Recognized descriptor fields"
+                    rows = [
+                        { field = "kind",             description = "Primitive: rect, circle, ellipse, line, path, text" },
+                        { field = "x, y, width, height", description = "Absolute placement (relative to the widget's container)" },
+                        { field = "top, bottom, left, right", description = "Anchored placement; stretches between opposing anchors" },
+                        { field = "rx, ry",           description = "Corner radius (rect) or x/y radius (ellipse)" },
+                        { field = "r",                description = "Radius (circle)" },
+                        { field = "fill, stroke, stroke_width, stroke_dasharray, opacity", description = "Visual styling" },
+                        { field = "x1, y1, x2, y2",   description = "Endpoints (line shapes)" },
+                        { field = "d",                description = "SVG path data (path shapes)" },
+                        { field = "content, font_size, anchor", description = "Text shapes" },
+                        { field = "children",         description = "List of more descriptors, nested under this one" }
+                    ]
+                }
+
+                heading h2_attr_or {
+                    level = 2
+                    content = "Reading user attributes"
+                }
+
+                paragraph p_attr1 {
+                    content = "Use the global helper " + bold("attr_or(block, key, default)") + " to read attributes from the user's block with a fallback. Bare member access like <code>b.width</code> errors if the attribute is missing — <code>attr_or</code> returns the default in that case, which is what you almost always want for optional widget attributes."
+                }
+
+                code c_attr {
+                    language = "wcl"
+                    content = "let w = attr_or(b, \"width\", 200)        // 200 if user didn't set width\nlet color = attr_or(b, \"color\", \"var(--color-link)\")\nlet badge = attr_or(b, \"label\", \"NEW\")"
+                }
+
+                heading h2_dynamic {
+                    level = 2
+                    content = "Dynamic shape lists"
+                }
+
+                paragraph p_dyn1 {
+                    content = "Because the function returns a regular WCL list, you can build it with the standard collection helpers. Use ternary expressions to add or skip optional pieces, " + bold("concat") + " to glue lists together, and " + bold("map") + " over " + bold("range") + " to generate one descriptor per item in a dynamic input."
+                }
+
+                code c_dyn {
+                    language = "wcl"
+                    content = "// Tag bar — one rounded rect per comma-separated tag\nexport let tag_bar = (b) => {\n    let h = attr_or(b, \"height\", 24)\n    let tags = split(\",\", attr_or(b, \"tags\", \"alpha,beta\"))\n    let tag_w = 60\n    let gap = 6\n    map(range(0, len(tags)), (i) => {\n        kind = \"rect\",\n        x = i * (tag_w + gap),\n        y = 0,\n        width = tag_w,\n        height = h,\n        rx = h / 2,\n        fill = \"var(--color-link)\",\n        opacity = 0.15\n    })\n}"
+                }
+
+                heading h2_paths {
+                    level = 2
+                    content = "Building SVG paths"
+                }
+
+                paragraph p_path1 {
+                    content = "For complex shapes, build the SVG <code>d</code> attribute as a string. Compute it in a let binding before the descriptor list — multi-line string concatenation can be brittle inside a map literal."
+                }
+
+                code c_path {
+                    language = "wcl"
+                    content = "export let chevron = (b) => {\n    let w = attr_or(b, \"width\", 80)\n    let h = attr_or(b, \"height\", 40)\n    let s = w * 0.2\n    let d = \"M \" + to_string(s) + \" 0 L \" + to_string(w) + \" 0 L \" + to_string(w - s) + \" \" + to_string(h) + \" L 0 \" + to_string(h) + \" Z\"\n    [\n        { kind = \"path\", x = 0, y = 0, width = w, height = h, d = d,\n          fill = \"var(--color-link)\", stroke = \"var(--color-link)\", stroke_width = 2 }\n    ]\n}"
+                }
+
+                heading h2_pkg {
+                    level = 2
+                    content = "Packaging custom shapes as a library"
+                }
+
+                paragraph p_pkg1 {
+                    content = "Group your shape templates in their own WCL file under a namespace and import it from your wdoc files. Place the file on your library search path (or use a relative <code>import</code>) and consume the schemas via <code>use</code>:"
+                }
+
+                code c_pkg {
+                    language = "wcl"
+                    content = "// my-shapes.wcl\nimport <wdoc.wcl>\n\nnamespace my {\n    @template(\"shape\", \"my::sticker\")\n    @open\n    schema \"sticker\" { }\n\n    export let sticker = (b) => {\n        let w = attr_or(b, \"width\", 100)\n        let h = attr_or(b, \"height\", 100)\n        [{ kind = \"rect\", x = 0, y = 0, width = w, height = h, rx = 8,\n           fill = \"var(--color-link)\" }]\n    }\n}"
+                }
+
+                code c_pkg2 {
+                    language = "wcl"
+                    content = "// my-doc.wcl\nimport <wdoc.wcl>\nimport \"./my-shapes.wcl\"\nuse wdoc::draw::diagram\nuse my::sticker\n\n// ... use `sticker` blocks inside diagrams"
+                }
+
+                callout c_note {
+                    icon = "info"
+                    header = "Two requirements for the function to be found"
+                    color = "#0d6efd"
+                    paragraph wp1 {
+                        content = "It must be declared as <code>export let</code> (plain <code>let</code> bindings stay in scope-local namespaces and aren't visible to the dispatcher), and the name in the <code>@template(\"shape\", \"...\")</code> decorator must match the function's qualified name exactly — including any namespace prefix."
+                    }
+                }
+
+                heading h2_built_in {
+                    level = 2
+                    content = "Reading the built-ins for inspiration"
+                }
+
+                paragraph p_bi1 {
+                    content = "Every built-in widget is implemented this way. The full set lives in <code>crates/wcl_wdoc/src/wdoc.wcl</code> in the WCL repo — opening it is the fastest way to see how the more elaborate shapes (database, UML class, navbar, C4 person) are assembled. Each one is just an exported lambda."
+                }
+            }
+        }
+    }
+}

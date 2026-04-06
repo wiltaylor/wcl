@@ -1,0 +1,76 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, bold, link}
+
+page wdoc_overview {
+    section = "wcl_docs.wdoc.wdoc_overview"
+    title = "Wdoc — Overview"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Wdoc — Overview"
+                }
+
+                paragraph p1 {
+                    content = "<code>wdoc</code> is a documentation format built on WCL. You author a site as a set of WCL files: a top-level " + bold("doc") + " block defines the section outline, " + bold("page") + " blocks bind content to sections, and " + bold("layout") + " blocks describe the structure of each page. The " + bold("wcl wdoc") + " CLI builds the site to static HTML with inline SVG diagrams, syntax-highlighted code, and a generated navigation tree."
+                }
+
+                paragraph p2 {
+                    content = "These docs you are reading are themselves built with wdoc. The system is shipped as part of the <code>wcl</code> binary — no separate install."
+                }
+
+                callout c_when {
+                    icon = "info"
+                    header = "When to use wdoc"
+                    color = "#0d6efd"
+                    paragraph w1 { content = "Reach for wdoc when you want a small static site or reference manual that lives next to a WCL project, sharing its types and helper functions, and you want diagrams as data rather than as opaque image files." }
+                }
+
+                heading h2_quick {
+                    level = 2
+                    content = "A minimal site"
+                }
+
+                paragraph p3 {
+                    content = "A wdoc site is two things: a " + bold("doc") + " (with sections) and one or more " + bold("page") + " blocks pointing into that outline. Both can live in one file or be split across many — globs make this easy."
+                }
+
+                code c1 {
+                    language = "wcl"
+                    content = "// site.wcl\nimport <wdoc.wcl>\nuse wdoc::{doc, section, page, layout, heading, paragraph}\n\ndoc my_site {\n    title = \"My Project\"\n    version = \"0.1.0\"\n\n    section intro \"Introduction\" {}\n    section guide \"Guide\" {\n        section install \"Installation\" {}\n    }\n}\n\npage home {\n    section = \"my_site.intro\"\n    title = \"Welcome\"\n    layout {\n        heading h1 { level = 1, content = \"Welcome\" }\n        paragraph p1 { content = \"This is my project.\" }\n    }\n}"
+                }
+
+                heading h2_workflow {
+                    level = 2
+                    content = "Build, validate, serve"
+                }
+
+                paragraph p4 {
+                    content = "Three commands cover the entire workflow. See " + link("CLI Commands", "wdoc_cli.html") + " for full flag reference."
+                }
+
+                code c2 {
+                    language = "bash"
+                    content = "# Validate structure (no output written)\nwcl wdoc validate site.wcl\n\n# Build to static HTML\nwcl wdoc build site.wcl --output ./build\n\n# Live-reloading dev server\nwcl wdoc serve site.wcl --port 3000 --open"
+                }
+
+                heading h2_tour {
+                    level = 2
+                    content = "What you can put in a page"
+                }
+
+                paragraph p5 {
+                    content = "Pages are built from " + bold("content elements") + " (headings, paragraphs, code blocks, images, tables, callouts) arranged inside a " + bold("layout") + " of horizontal/vertical splits. Pages can also embed " + bold("diagrams") + " — vector drawings made of shapes, connections, and composite widgets like flowchart nodes, C4 components, or UI mockups."
+                }
+
+                paragraph p6 {
+                    content = "Where to go next: " + link("Document Structure", "wdoc_doc_structure.html") + ", " + link("Layouts and Splits", "wdoc_layout.html") + ", " + link("Content Elements", "wdoc_content.html") + ", " + link("Drawing Overview", "wdoc_drawing_overview.html") + "."
+                }
+            }
+        }
+    }
+}

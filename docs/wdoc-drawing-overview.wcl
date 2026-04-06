@@ -1,0 +1,99 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, data_table, callout, bold, link}
+
+page wdoc_drawing_overview {
+    section = "wcl_docs.wdoc.wdoc_drawing_overview"
+    title = "Drawing — Overview"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Drawing — Overview"
+                }
+
+                paragraph p1 {
+                    content = "Wdoc's drawing system lets you embed vector diagrams directly in pages. Diagrams are written as nested WCL blocks, evaluated through the normal pipeline (so you can use variables, loops, and helper functions to generate them), and rendered as inline SVG. There is no separate file format and nothing to compile out-of-band."
+                }
+
+                heading h2_diagram {
+                    level = 2
+                    content = "The diagram block"
+                }
+
+                paragraph p_d1 {
+                    content = "Every drawing lives inside a <code>diagram</code> block from <code>wdoc::draw</code>. Children are " + bold("shapes") + " (rect, circle, text, …) and " + bold("connections") + " between shapes by ID."
+                }
+
+                code cd1 {
+                    language = "wcl"
+                    content = "import <wdoc.wcl>\nuse wdoc::{page, layout}\nuse wdoc::draw::{diagram, rect, text, connection}\n\ndiagram example {\n    width  = 400\n    height = 200\n\n    rect a {\n        x = 30, y = 60, width = 120, height = 50\n        fill = \"var(--color-code-bg)\"\n        stroke = \"var(--color-link)\"\n        text t { content = \"A\" }\n    }\n    rect b {\n        x = 250, y = 60, width = 120, height = 50\n        fill = \"var(--color-code-bg)\"\n        stroke = \"var(--color-link)\"\n        text t { content = \"B\" }\n    }\n    connection a_b { from = \"a\", to = \"b\", direction = \"to\" }\n}"
+                }
+
+                heading h2_diag_attrs {
+                    level = 2
+                    content = "Diagram attributes"
+                }
+
+                data_table tbl_diag {
+                    caption = "diagram attributes"
+                    rows = [
+                        { attr = "width",   description = "Canvas width in SVG units" },
+                        { attr = "height",  description = "Canvas height in SVG units" },
+                        { attr = "align",   description = "Layout algorithm for unpositioned children: none, flow, stack, center, layered, force, radial, grid" },
+                        { attr = "gap",     description = "Spacing used by the layout engine" },
+                        { attr = "padding", description = "Inner padding around the canvas" },
+                        { attr = "root",    description = "Root node ID for tree-based layouts (radial)" }
+                    ]
+                }
+
+                heading h2_pos {
+                    level = 2
+                    content = "Positioning shapes"
+                }
+
+                paragraph p_pos1 {
+                    content = "Shapes accept either " + bold("absolute") + " coordinates (<code>x</code>, <code>y</code>, <code>width</code>, <code>height</code>) or " + bold("anchored") + " offsets (<code>top</code>, <code>bottom</code>, <code>left</code>, <code>right</code>) measured from the parent's edges. Anchored shapes stretch between opposing anchors, which is useful for full-bleed regions like a header that hugs the top edge."
+                }
+
+                paragraph p_pos2 {
+                    content = "If a shape provides neither absolute nor anchored coordinates, it is laid out by the parent's <code>align</code> algorithm. See " + link("Drawing — Layouts", "wdoc_drawing_layouts.html") + " for the full set."
+                }
+
+                code cpos {
+                    language = "wcl"
+                    content = "diagram anchored {\n    width = 400, height = 200\n\n    rect outer {\n        // Stretches to fill the canvas\n        top = 0, left = 0, right = 0, bottom = 0\n        fill = \"var(--color-nav-bg)\"\n        stroke = \"var(--color-nav-border)\"\n    }\n    rect header {\n        // Anchored to the top, fixed height\n        top = 0, left = 0, right = 0, height = 40\n        fill = \"var(--color-link)\"\n    }\n}"
+                }
+
+                heading h2_styling {
+                    level = 2
+                    content = "Styling attributes"
+                }
+
+                data_table tbl_style {
+                    caption = "Common visual attributes"
+                    rows = [
+                        { attr = "fill",             description = "Fill color (CSS color or var(--color-*))" },
+                        { attr = "stroke",           description = "Stroke / outline color" },
+                        { attr = "stroke_width",     description = "Stroke width" },
+                        { attr = "stroke_dasharray", description = "Dash pattern, e.g. \"8,4\"" },
+                        { attr = "rx",               description = "Corner radius (rect) or x-radius (ellipse)" },
+                        { attr = "ry",               description = "Corner / y-radius" },
+                        { attr = "r",                description = "Radius (circle)" },
+                        { attr = "opacity",          description = "Opacity 0..1" }
+                    ]
+                }
+
+                callout c_tip {
+                    icon = "lightbulb"
+                    header = "Theme-aware diagrams"
+                    color = "#0d6efd"
+                    paragraph wp { content = "Use the theme CSS variables for fills and strokes (<code>var(--color-link)</code>, <code>var(--color-code-bg)</code>, …) so diagrams look right in both light and dark mode without duplicating definitions." }
+                }
+            }
+        }
+    }
+}
