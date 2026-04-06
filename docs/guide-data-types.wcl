@@ -108,12 +108,32 @@ page guide_data_types {
                     WCL
                 }
 
-                heading h3_i64 {
+                heading h3_integers {
                     level = 3
-                    content = "i64"
+                    content = "Integers"
                 }
 
                 paragraph p7 {
+                    content = "WCL has signed and unsigned integer types at 8, 16, 32, 64, and 128 bit widths. <code>i64</code> is the default \u2014 untyped integer literals are inferred as <code>i64</code>. Narrower types widen to wider ones in arithmetic and schema validation."
+                }
+
+                data_table t_ints {
+                    caption = "Integer Types"
+                    rows = [
+                        { type = "i8", signed = "Yes", width = "8-bit", range = "\u2212128 .. 127" },
+                        { type = "u8", signed = "No", width = "8-bit", range = "0 .. 255" },
+                        { type = "i16", signed = "Yes", width = "16-bit", range = "\u221232,768 .. 32,767" },
+                        { type = "u16", signed = "No", width = "16-bit", range = "0 .. 65,535" },
+                        { type = "i32", signed = "Yes", width = "32-bit", range = "\u00b12.1 \u00d7 10\u2079" },
+                        { type = "u32", signed = "No", width = "32-bit", range = "0 .. 4.3 \u00d7 10\u2079" },
+                        { type = "i64", signed = "Yes", width = "64-bit", range = "\u00b19.2 \u00d7 10\u00b9\u2078 (default)" },
+                        { type = "u64", signed = "No", width = "64-bit", range = "0 .. 1.8 \u00d7 10\u00b9\u2079" },
+                        { type = "i128", signed = "Yes", width = "128-bit", range = "\u00b11.7 \u00d7 10\u00b3\u2078" },
+                        { type = "u128", signed = "No", width = "128-bit", range = "0 .. 3.4 \u00d7 10\u00b3\u2078" }
+                    ]
+                }
+
+                paragraph p7b {
                     content = "Integer literals support several bases and underscore separators for readability:"
                 }
 
@@ -129,12 +149,24 @@ page guide_data_types {
                     WCL
                 }
 
-                heading h3_f64 {
+                heading h3_floats {
                     level = 3
-                    content = "f64"
+                    content = "Floats"
                 }
 
                 paragraph p8 {
+                    content = "WCL has two IEEE 754 floating-point types: <code>f32</code> (32-bit, ~7 decimal digits) and <code>f64</code> (64-bit, ~15 decimal digits). <code>f64</code> is the default \u2014 untyped float literals are inferred as <code>f64</code>."
+                }
+
+                data_table t_floats {
+                    caption = "Float Types"
+                    rows = [
+                        { type = "f32", width = "32-bit", precision = "~7 decimal digits", range = "\u00b13.4 \u00d7 10\u00b3\u2078" },
+                        { type = "f64", width = "64-bit", precision = "~15 decimal digits (default)", range = "\u00b11.8 \u00d7 10\u00b3\u2070\u2078" }
+                    ]
+                }
+
+                paragraph p8b {
                     content = "Floating-point literals support decimal and scientific notation:"
                 }
 
