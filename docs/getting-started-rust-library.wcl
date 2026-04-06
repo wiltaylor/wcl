@@ -16,7 +16,7 @@ page rust_library {
                 }
 
                 paragraph p1 {
-                    content = "WCL can be embedded directly into Rust programs. The <code>wcl</code> facade crate provides the full parsing pipeline, evaluated values, queries, and serde deserialization."
+                    content = "WCL can be embedded directly into Rust programs. The <code>wcl_lang</code> crate provides the full parsing pipeline, evaluated values, queries, and serde deserialization."
                 }
 
                 heading h2_dep {
@@ -25,19 +25,16 @@ page rust_library {
                 }
 
                 paragraph p2 {
-                    content = "Add <code>wcl</code> as a path dependency (or git dependency) in your <code>Cargo.toml</code>:"
+                    content = "Add <code>wcl_lang</code> to your <code>Cargo.toml</code>:"
                 }
 
                 code c1 {
                     language = "toml"
-                    content = <<-'TOML'
-                    [dependencies]
-                    wcl = { path = "../wcl" }
-                    TOML
+                    content = "cargo add wcl_lang@" + version
                 }
 
                 paragraph p3 {
-                    content = "The <code>wcl</code> crate re-exports everything you need."
+                    content = "The <code>wcl_lang</code> crate is the language library containing the parser, evaluator, schema system, and serde integration. The <code>wcl</code> crate is the CLI binary and re-exports <code>wcl_lang</code> for convenience, but <code>wcl_lang</code> is the correct dependency for library usage."
                 }
 
                 heading h2_parse_string {
@@ -46,13 +43,13 @@ page rust_library {
                 }
 
                 paragraph p4 {
-                    content = "Use <code>wcl::parse()</code> to run the full 11-phase pipeline and get a <code>Document</code>:"
+                    content = "Use <code>wcl_lang::parse()</code> to run the full 11-phase pipeline and get a <code>Document</code>:"
                 }
 
                 code c2 {
                     language = "rust"
                     content = <<-'RUST'
-                    use wcl::{parse, ParseOptions};
+                    use wcl_lang::{parse, ParseOptions};
 
                     let source = r#"
                         server web-prod {
@@ -87,7 +84,7 @@ page rust_library {
                 code c3 {
                     language = "rust"
                     content = <<-'RUST'
-                    use wcl::{parse, ParseOptions};
+                    use wcl_lang::{parse, ParseOptions};
                     use std::path::PathBuf;
 
                     let path = PathBuf::from("config/main.wcl");
@@ -115,7 +112,7 @@ page rust_library {
                 code c4 {
                     language = "rust"
                     content = <<-'RUST'
-                    use wcl::{parse, ParseOptions, Value};
+                    use wcl_lang::{parse, ParseOptions, Value};
 
                     let doc = parse(r#"
                         name = "my-app"
@@ -153,7 +150,7 @@ page rust_library {
                 code c5 {
                     language = "rust"
                     content = <<-'RUST'
-                    use wcl::{parse, ParseOptions, Value};
+                    use wcl_lang::{parse, ParseOptions, Value};
 
                     let doc = parse(r#"
                         server web-prod {
@@ -202,8 +199,8 @@ page rust_library {
                 code c6 {
                     language = "rust"
                     content = <<-'RUST'
-                    use wcl::{parse, ParseOptions};
-                    use wcl::eval::value::Value;
+                    use wcl_lang::{parse, ParseOptions};
+                    use wcl_lang::eval::value::Value;
 
                     let doc = parse(r#"
                         table users {
@@ -254,7 +251,7 @@ page rust_library {
                 code c8 {
                     language = "rust"
                     content = <<-'RUST'
-                    use wcl::{parse, ParseOptions, Value};
+                    use wcl_lang::{parse, ParseOptions, Value};
 
                     let doc = parse(r#"
                         server svc-api {
@@ -311,7 +308,7 @@ page rust_library {
                 code c9 {
                     language = "rust"
                     content = <<-'RUST'
-                    use wcl::from_str;
+                    use wcl_lang::from_str;
                     use serde::Deserialize;
 
                     #[derive(Deserialize, Debug)]
@@ -343,7 +340,7 @@ page rust_library {
                 code c10 {
                     language = "rust"
                     content = <<-'RUST'
-                    use wcl::{from_value, Value};
+                    use wcl_lang::{from_value, Value};
                     use serde::Deserialize;
 
                     #[derive(Deserialize, Debug)]
@@ -374,7 +371,7 @@ page rust_library {
                 code c11 {
                     language = "rust"
                     content = <<-'RUST'
-                    use wcl::{parse, ParseOptions, FunctionRegistry, FunctionSignature, Value};
+                    use wcl_lang::{parse, ParseOptions, FunctionRegistry, FunctionSignature, Value};
                     use std::sync::Arc;
 
                     let mut opts = ParseOptions::default();
@@ -410,7 +407,7 @@ page rust_library {
                 code c12 {
                     language = "rust"
                     content = <<-'RUST'
-                    use wcl::{FunctionRegistry, FunctionSignature, Value};
+                    use wcl_lang::{FunctionRegistry, FunctionSignature, Value};
                     use std::sync::Arc;
 
                     let mut registry = FunctionRegistry::new();
@@ -438,7 +435,7 @@ page rust_library {
                 }
 
                 paragraph p15 {
-                    content = "Create <code>.wcl</code> library files manually and place them in <code>~/.local/share/wcl/lib/</code>. Use <code>wcl::library::list_libraries()</code> to list installed libraries. See the Libraries guide for details."
+                    content = "Create <code>.wcl</code> library files manually and place them in <code>~/.local/share/wcl/lib/</code>. Use <code>wcl_lang::library::list_libraries()</code> to list installed libraries. See the Libraries guide for details."
                 }
 
                 heading h2_parse_options {
@@ -453,7 +450,7 @@ page rust_library {
                 code c13 {
                     language = "rust"
                     content = <<-'RUST'
-                    use wcl::{ParseOptions, ConflictMode};
+                    use wcl_lang::{ParseOptions, ConflictMode};
                     use std::path::PathBuf;
 
                     let options = ParseOptions {
@@ -492,7 +489,7 @@ page rust_library {
                 code c14 {
                     language = "rust"
                     content = <<-'RUST'
-                    use wcl::ParseOptions;
+                    use wcl_lang::ParseOptions;
 
                     let options = ParseOptions {
                         allow_imports: false,
@@ -513,7 +510,7 @@ page rust_library {
                 code c15 {
                     language = "rust"
                     content = <<-'RUST'
-                    use wcl::{parse, ParseOptions};
+                    use wcl_lang::{parse, ParseOptions};
 
                     let doc = parse(r#"
                         server web {
@@ -545,7 +542,7 @@ page rust_library {
                 code c16 {
                     language = "rust"
                     content = <<-'RUST'
-                    use wcl::{parse, ParseOptions, Value};
+                    use wcl_lang::{parse, ParseOptions, Value};
                     use std::path::PathBuf;
 
                     fn main() {

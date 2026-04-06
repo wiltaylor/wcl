@@ -21,21 +21,7 @@ page installation {
                 }
 
                 paragraph p1 {
-                    content = "WCL requires a Rust toolchain. If you do not have Rust installed, get it from " + link("rustup.rs", "https://rustup.rs") + ":"
-                }
-
-                code c1 {
-                    language = "bash"
-                    content = "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
-                }
-
-                paragraph p2 {
-                    content = "After installation, ensure <code>cargo</code> and <code>rustc</code> are on your <code>PATH</code>:"
-                }
-
-                code c2 {
-                    language = "bash"
-                    content = "rustc --version\ncargo --version"
+                    content = "WCL requires the latest version of Rust installed. If you do not have Rust installed, see " + link("rustup.rs", "https://rustup.rs/") + " for installation instructions."
                 }
 
                 heading h2_install {
@@ -44,16 +30,34 @@ page installation {
                 }
 
                 paragraph p3 {
-                    content = "From the root of the WCL repository, install the <code>wcl</code> binary directly to <code>~/.cargo/bin/</code>:"
+                    content = "Install the current version (" + bold(version) + ") from " + link("crates.io", "https://crates.io/crates/wcl") + ":"
                 }
 
                 code c3 {
                     language = "bash"
-                    content = "cargo install --path crates/wcl"
+                    content = "cargo install wcl@" + version
                 }
 
                 paragraph p4 {
                     content = "Cargo will build the binary in release mode and place it at <code>~/.cargo/bin/wcl</code>. As long as <code>~/.cargo/bin</code> is on your <code>PATH</code> (the default after running <code>rustup</code>), the <code>wcl</code> command is immediately available."
+                }
+
+                heading h2_source_install {
+                    level = 2
+                    content = "Installing from Source"
+                }
+
+                paragraph p_source_install {
+                    content = "To build and install the CLI from a local checkout of the repository:"
+                }
+
+                code c_source_install {
+                    language = "bash"
+                    content = "just dev::install"
+                }
+
+                paragraph p_source_install2 {
+                    content = "This builds the binary in release mode and installs it to <code>~/.cargo/bin/wcl</code>."
                 }
 
                 heading h2_build {
@@ -62,34 +66,66 @@ page installation {
                 }
 
                 paragraph p5 {
-                    content = "To build the entire workspace without installing:"
+                    content = "WCL uses " + link("just", "https://github.com/casey/just") + " as its command runner. To build everything (Rust crates, FFI, WASM, and bindings):"
                 }
 
                 code c4 {
                     language = "bash"
-                    content = "cargo build --workspace"
+                    content = "just build::all"
                 }
 
-                paragraph p6 {
-                    content = "The debug binary will be at <code>target/debug/wcl</code>. For a release build:"
+                paragraph p5a {
+                    content = "To run the full test suite (Rust, tree-sitter, Go bindings, and more):"
                 }
 
-                code c5 {
+                code c4a {
                     language = "bash"
-                    content = "cargo build --workspace --release"
+                    content = "just test::all"
                 }
 
-                paragraph p7 {
-                    content = "The release binary will be at <code>target/release/wcl</code>."
+                paragraph p5b {
+                    content = "To build all distributable packages:"
                 }
 
-                paragraph p8 {
-                    content = "To run the full test suite:"
-                }
-
-                code c6 {
+                code c4b {
                     language = "bash"
-                    content = "cargo test --workspace"
+                    content = "just pack::all"
+                }
+
+                paragraph p5c {
+                    content = "You can list all available recipes with <code>just --list --list-submodules</code>."
+                }
+
+                heading h2_website {
+                    level = 2
+                    content = "Serving the Website and Docs"
+                }
+
+                paragraph p_web {
+                    content = "To serve the main WCL website locally (Hugo dev server with docs at <code>/docs/</code>):"
+                }
+
+                code c_web {
+                    language = "bash"
+                    content = "just docs::web-serve"
+                }
+
+                paragraph p_docs {
+                    content = "To serve just the documentation pages with live reload:"
+                }
+
+                code c_docs {
+                    language = "bash"
+                    content = "just docs::wdoc-serve"
+                }
+
+                paragraph p_docs_local {
+                    content = "If you are working on the WCL binary itself and want the docs to use your locally-built version:"
+                }
+
+                code c_docs_local {
+                    language = "bash"
+                    content = "just docs::wdoc-serve-local"
                 }
 
                 heading h2_verify {
@@ -108,7 +144,7 @@ page installation {
 
                 code c8 {
                     language = "text"
-                    content = "wcl 0.1.0"
+                    content = "wcl " + version
                 }
 
                 heading h2_uninstall {

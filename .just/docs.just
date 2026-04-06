@@ -1,22 +1,25 @@
 set working-directory := '..'
 
+# WCL version: set via CI/CD or fall back to latest git tag
+wcl_version := env('WCL_VERSION', `git describe --tags --abbrev=0 --match 'v*' --exclude '*/v*' 2>/dev/null || echo "0.0.0-local"`)
+
 # Build the documentation site
 wdoc-build:
-    wcl wdoc build docs/*.wcl --output docs/build
+    wcl wdoc build docs/*.wcl --output docs/build --var version="{{wcl_version}}"
 
 # Serve the documentation site locally with live reload
 wdoc-serve:
-    wcl wdoc serve docs/*.wcl --port 3000
+    wcl wdoc serve docs/*.wcl --port 3000 --var version="{{wcl_version}}"
 
 # Build the documentation site using locally-built binary
 wdoc-build-local:
     cargo build --quiet -p wcl
-    ./target/debug/wcl wdoc build docs/*.wcl --output docs/build
+    ./target/debug/wcl wdoc build docs/*.wcl --output docs/build --var version="{{wcl_version}}"
 
 # Serve the documentation site using locally-built binary
 wdoc-serve-local:
     cargo build --quiet -p wcl
-    ./target/debug/wcl wdoc serve docs/*.wcl --port 3000
+    ./target/debug/wcl wdoc serve docs/*.wcl --port 3000 --var version="{{wcl_version}}"
 
 # Build full website (Hugo + wdoc merged)
 web-build: wdoc-build

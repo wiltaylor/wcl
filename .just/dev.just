@@ -26,11 +26,11 @@ bench-crate crate:
 
 # Build and install the CLI locally
 install:
-    cargo install --path crates/wcl_cli
+    cargo install --path crates/wcl
 
 # Uninstall the CLI
 uninstall:
-    cargo uninstall wcl_cli
+    cargo uninstall wcl
 
 # Run the CLI
 run *args:
