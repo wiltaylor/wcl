@@ -423,11 +423,8 @@ impl SchemaRegistry {
             let symbol_set = get_decorator_string_arg(&field.decorators_before, "symbol_set")
                 .or_else(|| get_decorator_string_arg(&field.decorators_after, "symbol_set"));
 
-            let embedded_lang =
-                get_decorator_string_arg(&field.decorators_before, "embedded_lsp")
-                    .or_else(|| {
-                        get_decorator_string_arg(&field.decorators_after, "embedded_lsp")
-                    });
+            let embedded_lang = get_decorator_string_arg(&field.decorators_before, "embedded_lsp")
+                .or_else(|| get_decorator_string_arg(&field.decorators_after, "embedded_lsp"));
             if let Some(ref lang) = embedded_lang {
                 if !matches!(field.type_expr, TypeExpr::String(_)) {
                     diagnostics.error_with_code(
