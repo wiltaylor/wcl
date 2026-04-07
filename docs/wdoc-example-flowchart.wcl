@@ -1,0 +1,178 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, bold}
+use wdoc::draw::{diagram, flow_terminal, flow_io, flow_process, flow_decision, flow_subprocess, connection}
+
+page wdoc_example_flowchart {
+    section = "wcl_docs.wdoc.wdoc_example_flowchart"
+    title = "Example — Flowchart"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Example — Flowchart"
+                }
+
+                paragraph p1 {
+                    content = "A worked example of a data-processing flowchart using the built-in flowchart widgets and the " + bold("layered") + " layout engine. The layout algorithm reads the connection list and arranges the nodes automatically — you only provide the sizes and the edges."
+                }
+
+                heading h2_render {
+                    level = 2
+                    content = "Result"
+                }
+
+                diagram validation_flow {
+                    width = 700
+                    height = 480
+                    align = "layered"
+                    gap = 40
+
+                    flow_terminal start {
+                        width = 130
+                        height = 40
+                        label = "Start"
+                    }
+
+                    flow_io read_input {
+                        width = 150
+                        height = 50
+                        label = "Read Input"
+                    }
+
+                    flow_process validate {
+                        width = 150
+                        height = 50
+                        label = "Validate Data"
+                    }
+
+                    flow_decision is_valid {
+                        width = 120
+                        height = 80
+                        label = "Valid?"
+                    }
+
+                    flow_subprocess process {
+                        width = 160
+                        height = 50
+                        label = "Process Record"
+                    }
+
+                    flow_process log_error {
+                        width = 140
+                        height = 50
+                        label = "Log Error"
+                        color = "#d32f2f"
+                    }
+
+                    flow_io write_output {
+                        width = 150
+                        height = 50
+                        label = "Write Output"
+                    }
+
+                    flow_terminal done {
+                        width = 130
+                        height = 40
+                        label = "End"
+                        color = "#28a745"
+                    }
+
+                    connection e1 {
+                        from = "start"
+                        to = "read_input"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        stroke_width = 2
+                    }
+                    connection e2 {
+                        from = "read_input"
+                        to = "validate"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        stroke_width = 2
+                    }
+                    connection e3 {
+                        from = "validate"
+                        to = "is_valid"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        stroke_width = 2
+                    }
+                    connection e4 {
+                        from = "is_valid"
+                        to = "process"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        stroke_width = 2
+                        label = "Yes"
+                    }
+                    connection e5 {
+                        from = "is_valid"
+                        to = "log_error"
+                        direction = "to"
+                        stroke = "#d32f2f"
+                        stroke_width = 2
+                        label = "No"
+                    }
+                    connection e6 {
+                        from = "process"
+                        to = "write_output"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        stroke_width = 2
+                    }
+                    connection e7 {
+                        from = "write_output"
+                        to = "done"
+                        direction = "to"
+                        stroke = "var(--color-text)"
+                        stroke_width = 2
+                    }
+                    connection e8 {
+                        from = "log_error"
+                        to = "done"
+                        direction = "to"
+                        stroke = "#d32f2f"
+                        stroke_width = 1
+                        stroke_dasharray = "5,3"
+                    }
+                }
+
+                heading h2_walk {
+                    level = 2
+                    content = "Walk-through"
+                }
+
+                paragraph p_w1 {
+                    content = "Three things are worth pointing out:"
+                }
+
+                paragraph p_w2 {
+                    content = "<strong>1. The shapes are semantic, not geometric.</strong> <code>flow_terminal</code> for start/end (stadium), <code>flow_process</code> for a step (rectangle), <code>flow_decision</code> for a branch (diamond), <code>flow_io</code> for I/O (parallelogram), <code>flow_subprocess</code> for a nested routine (double-bordered rect). Picking the right shape communicates intent before the reader has read a single label."
+                }
+
+                paragraph p_w3 {
+                    content = "<strong>2. No coordinates.</strong> Every node declares <code>width</code>/<code>height</code> but no <code>x</code>/<code>y</code>. <code>align = \"layered\"</code> runs a Sugiyama-style layout on the connection graph, bucketing nodes into layers by edge direction and centering them in each band."
+                }
+
+                paragraph p_w4 {
+                    content = "<strong>3. The error path is styled.</strong> The Yes branch uses the default text color; the No branch uses red strokes and the error's final edge is dashed. Labels on the decision's outgoing edges make the branch explicit."
+                }
+
+                heading h2_source {
+                    level = 2
+                    content = "Source"
+                }
+
+                code src {
+                    language = "wcl"
+                    content = "import <wdoc.wcl>\nuse wdoc::{page, layout}\nuse wdoc::draw::{diagram, flow_terminal, flow_io, flow_process, flow_decision, flow_subprocess, connection}\n\ndiagram validation_flow {\n    width = 700\n    height = 480\n    align = \"layered\"\n    gap = 40\n\n    flow_terminal start {\n        width = 130\n        height = 40\n        label = \"Start\"\n    }\n    flow_io read_input {\n        width = 150\n        height = 50\n        label = \"Read Input\"\n    }\n    flow_process validate {\n        width = 150\n        height = 50\n        label = \"Validate Data\"\n    }\n    flow_decision is_valid {\n        width = 120\n        height = 80\n        label = \"Valid?\"\n    }\n    flow_subprocess process {\n        width = 160\n        height = 50\n        label = \"Process Record\"\n    }\n    flow_process log_error {\n        width = 140\n        height = 50\n        label = \"Log Error\"\n        color = \"#d32f2f\"\n    }\n    flow_io write_output {\n        width = 150\n        height = 50\n        label = \"Write Output\"\n    }\n    flow_terminal done {\n        width = 130\n        height = 40\n        label = \"End\"\n        color = \"#28a745\"\n    }\n\n    connection e1 { from = \"start\"\n        to = \"read_input\"\n        direction = \"to\" }\n    connection e2 { from = \"read_input\"\n        to = \"validate\"\n        direction = \"to\" }\n    connection e3 { from = \"validate\"\n        to = \"is_valid\"\n        direction = \"to\" }\n    connection e4 { from = \"is_valid\"\n        to = \"process\"\n        direction = \"to\"\n        label = \"Yes\" }\n    connection e5 { from = \"is_valid\"\n        to = \"log_error\"\n        direction = \"to\"\n        label = \"No\"\n        stroke = \"#d32f2f\" }\n    connection e6 { from = \"process\"\n        to = \"write_output\"\n        direction = \"to\" }\n    connection e7 { from = \"write_output\"\n        to = \"done\"\n        direction = \"to\" }\n    connection e8 { from = \"log_error\"\n        to = \"done\"\n        direction = \"to\"\n        stroke = \"#d32f2f\"\n        stroke_dasharray = \"5,3\" }\n}"
+                }
+            }
+        }
+    }
+}

@@ -101,6 +101,9 @@ doc wcl_docs {
         section wdoc_drawing_layouts "Drawing — Layouts" {}
         section wdoc_drawing_widgets "Drawing — Widgets" {}
         section wdoc_drawing_custom "Drawing — Custom Shapes" {}
+        section wdoc_example_flowchart "Example — Flowchart" {}
+        section wdoc_example_swimlane "Example — Swimlane Diagram" {}
+        section wdoc_example_wireframe "Example — UI Wireframe" {}
     }
 
     section reference "Language Reference" {
