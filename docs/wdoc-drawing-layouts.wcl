@@ -1,0 +1,95 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, bold}
+
+page wdoc_drawing_layouts {
+    section = "wcl_docs.wdoc.wdoc_drawing_layouts"
+    title = "Drawing — Layouts"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Drawing — Layouts"
+                }
+
+                paragraph p1 {
+                    content = "Diagrams (and any container shape) can lay out their unpositioned children automatically by setting an <code>align</code> attribute. This is the alternative to placing every shape with absolute coordinates — useful for graphs, dashboards, and lists where you care about relationships and not pixels."
+                }
+
+                paragraph p2 {
+                    content = "Eight algorithms are supported. Three are simple (<code>flow</code>, <code>stack</code>, <code>center</code>) and operate only on children that have no explicit position. Four are graph-aware (<code>layered</code>, <code>force</code>, <code>radial</code>, <code>grid</code>) and operate on all children, using the diagram's connection list to compute positions. <code>none</code> (the default) leaves you in charge of positioning."
+                }
+
+                heading h2_simple {
+                    level = 2
+                    content = "stack, flow, center"
+                }
+
+                paragraph p_s1 {
+                    content = bold("stack") + " arranges children top-to-bottom, each spanning the full parent width, separated by <code>gap</code>. " + bold("flow") + " is a horizontal wrap layout — children flow left-to-right and wrap to a new row when they exceed the parent width. " + bold("center") + " centers each unpositioned child inside the parent."
+                }
+
+                code cs1 {
+                    language = "wcl"
+                    content = "diagram menu {\n    width = 300, height = 220\n    align = \"stack\"\n    gap   = 10\n\n    rect item1 { height = 40, fill = \"var(--color-nav-bg)\", text t { content = \"Home\" } }\n    rect item2 { height = 40, fill = \"var(--color-nav-bg)\", text t { content = \"Docs\" } }\n    rect item3 { height = 40, fill = \"var(--color-nav-bg)\", text t { content = \"Settings\" } }\n}"
+                }
+
+                heading h2_layered {
+                    level = 2
+                    content = "layered"
+                }
+
+                paragraph p_l1 {
+                    content = "<code>align = \"layered\"</code> performs a Sugiyama-style hierarchical layout for directed graphs: nodes are bucketed into layers based on the connections between them, then arranged in left-to-right (or top-to-bottom) bands. This is the right choice for flowcharts and any DAG with a clear flow direction."
+                }
+
+                code cl1 {
+                    language = "wcl"
+                    content = "diagram pipeline {\n    width = 700, height = 220\n    align = \"layered\"\n    gap   = 60\n\n    rect a { width = 100, height = 50, text t { content = \"Parse\" } }\n    rect b { width = 100, height = 50, text t { content = \"Eval\" } }\n    rect c { width = 100, height = 50, text t { content = \"Validate\" } }\n    rect d { width = 100, height = 50, text t { content = \"Render\" } }\n\n    connection e1 { from = \"a\", to = \"b\", direction = \"to\" }\n    connection e2 { from = \"b\", to = \"c\", direction = \"to\" }\n    connection e3 { from = \"c\", to = \"d\", direction = \"to\" }\n}"
+                }
+
+                heading h2_force {
+                    level = 2
+                    content = "force"
+                }
+
+                paragraph p_f1 {
+                    content = "<code>align = \"force\"</code> runs a force-directed simulation: connected nodes attract, all nodes repel, and the layout settles into a balanced arrangement. Use it for network and topology diagrams where there is no clear hierarchy."
+                }
+
+                heading h2_radial {
+                    level = 2
+                    content = "radial"
+                }
+
+                paragraph p_r1 {
+                    content = "<code>align = \"radial\"</code> draws a tree as concentric rings around a central node. The center is chosen by the <code>root</code> attribute on the diagram (the ID of the root shape). Best for org charts, file trees, and dependency graphs with a clear root."
+                }
+
+                code cr1 {
+                    language = "wcl"
+                    content = "diagram org {\n    width = 600, height = 400\n    align = \"radial\"\n    root  = \"ceo\"\n\n    circle ceo  { r = 30, fill = \"var(--color-link)\", text t { content = \"CEO\" } }\n    circle eng  { r = 25, text t { content = \"Eng\" } }\n    circle sale { r = 25, text t { content = \"Sales\" } }\n    circle ops  { r = 25, text t { content = \"Ops\" } }\n\n    connection r1 { from = \"ceo\", to = \"eng\",  direction = \"to\" }\n    connection r2 { from = \"ceo\", to = \"sale\", direction = \"to\" }\n    connection r3 { from = \"ceo\", to = \"ops\",  direction = \"to\" }\n}"
+                }
+
+                heading h2_grid {
+                    level = 2
+                    content = "grid"
+                }
+
+                paragraph p_g1 {
+                    content = "<code>align = \"grid\"</code> arranges children in a regular grid. Pass <code>columns</code> in the diagram options to control the column count; the layout fills row by row."
+                }
+
+                callout c_tip {
+                    icon = "lightbulb"
+                    header = "Mixing positioned and auto-laid children"
+                    color = "#0d6efd"
+                    paragraph wp { content = "Simple layouts (stack/flow/center) only touch children with no explicit coordinates, so you can pin a few shapes manually and let the rest flow around them. Graph layouts (layered/force/radial/grid) take over all children — pin nothing if you use one of those." }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,90 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, data_table, callout}
+
+page wdoc_drawing_connections {
+    section = "wcl_docs.wdoc.wdoc_drawing_connections"
+    title = "Drawing — Connections"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Drawing — Connections"
+                }
+
+                paragraph p1 {
+                    content = "A <code>connection</code> draws an arrow or line between two shapes referenced by ID. Connections live as siblings of the shapes they connect, inside the same <code>diagram</code> block. The renderer resolves <code>from</code>/<code>to</code> against the shape map (including dotted IDs for nested shapes, e.g. <code>group.child</code>) and computes anchor points automatically."
+                }
+
+                heading h2_attrs {
+                    level = 2
+                    content = "Connection attributes"
+                }
+
+                data_table tbl {
+                    caption = "connection attributes"
+                    rows = [
+                        { attr = "from",        description = "Source shape ID (required)" },
+                        { attr = "to",          description = "Target shape ID (required)" },
+                        { attr = "direction",   description = "Arrow direction: to (→), from (←), both (↔), none" },
+                        { attr = "from_anchor", description = "Source attach point: top, bottom, left, right, center, auto (default)" },
+                        { attr = "to_anchor",   description = "Target attach point (same set)" },
+                        { attr = "curve",       description = "straight (default) or bezier" },
+                        { attr = "label",       description = "Optional text drawn on the line" },
+                        { attr = "stroke",      description = "Line color (defaults to currentColor)" },
+                        { attr = "stroke_width",     description = "Line thickness" },
+                        { attr = "stroke_dasharray", description = "Dash pattern, e.g. \"5,3\"" }
+                    ]
+                }
+
+                heading h2_basic {
+                    level = 2
+                    content = "Basic arrows"
+                }
+
+                code cb1 {
+                    language = "wcl"
+                    content = "diagram conn_demo {\n    width = 600, height = 200\n\n    rect a { x = 30,  y = 30, width = 120, height = 60, fill = \"var(--color-code-bg)\", stroke = \"var(--color-link)\"\n        text t { content = \"Source\" } }\n    rect b { x = 240, y = 30, width = 120, height = 60, fill = \"var(--color-code-bg)\", stroke = \"var(--color-link)\"\n        text t { content = \"Target\" } }\n    rect c { x = 450, y = 30, width = 120, height = 60, fill = \"var(--color-code-bg)\", stroke = \"var(--color-link)\"\n        text t { content = \"Both\" } }\n\n    connection ab { from = \"a\", to = \"b\", direction = \"to\",   label = \"one-way\" }\n    connection bc { from = \"b\", to = \"c\", direction = \"both\", label = \"bidirectional\" }\n}"
+                }
+
+                heading h2_anchor {
+                    level = 2
+                    content = "Anchored attach points"
+                }
+
+                paragraph p_a1 {
+                    content = "By default, connections use <code>auto</code> anchors and pick the side of each shape that faces the other. For deliberate routing — e.g. always exit the right edge — set <code>from_anchor</code> and <code>to_anchor</code> explicitly."
+                }
+
+                code ca1 {
+                    language = "wcl"
+                    content = "connection edge {\n    from = \"a\", to = \"b\"\n    direction   = \"to\"\n    from_anchor = \"right\"\n    to_anchor   = \"left\"\n    label       = \"flows into\"\n}"
+                }
+
+                heading h2_curve {
+                    level = 2
+                    content = "Bezier curves"
+                }
+
+                paragraph p_cv1 {
+                    content = "Set <code>curve = \"bezier\"</code> for a smooth cubic curve. The control points are derived from the chosen anchors, so a horizontal connection (right→left anchors) curves cleanly between two boxes side by side."
+                }
+
+                code ccv1 {
+                    language = "wcl"
+                    content = "connection smooth {\n    from = \"a\", to = \"b\"\n    direction = \"to\"\n    curve     = \"bezier\"\n    label     = \"bezier\"\n}"
+                }
+
+                callout c_tip {
+                    icon = "lightbulb"
+                    header = "Nested shape IDs"
+                    color = "#0d6efd"
+                    paragraph wp { content = "If a shape lives inside another (e.g. a rect inside a <code>c4_boundary</code>), reference it with the dotted path: <code>boundary_id.child_id</code>. The build_shape_map walks the tree and exposes both the bare child IDs and their qualified paths." }
+                }
+            }
+        }
+    }
+}

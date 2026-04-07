@@ -1,0 +1,106 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, data_table}
+
+page wdoc_drawing_shapes {
+    section = "wcl_docs.wdoc.wdoc_drawing_shapes"
+    title = "Drawing — Shapes"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Drawing — Shapes"
+                }
+
+                paragraph p1 {
+                    content = "Six primitive shapes are provided in <code>wdoc::draw</code>. They map onto the SVG elements of the same names. All accept the common positioning and styling attributes described in the Drawing Overview; this page focuses on the attributes that are specific to each kind."
+                }
+
+                heading h2_rect {
+                    level = 2
+                    content = "rect"
+                }
+
+                paragraph p_r1 { content = "Axis-aligned rectangle. Use <code>rx</code> / <code>ry</code> for rounded corners. A nested <code>text</code> child is centered automatically." }
+
+                code cr1 {
+                    language = "wcl"
+                    content = "rect box {\n    x = 20, y = 20, width = 160, height = 60\n    rx = 8\n    fill = \"var(--color-code-bg)\"\n    stroke = \"var(--color-link)\"\n    stroke_width = 2\n    text t { content = \"Hello\" }\n}"
+                }
+
+                heading h2_circle {
+                    level = 2
+                    content = "circle"
+                }
+
+                paragraph p_c1 { content = "Circle with radius <code>r</code>. The shape's bounding box is computed from <code>r</code>; <code>x</code>/<code>y</code> position the top-left of that box." }
+
+                code cc1 {
+                    language = "wcl"
+                    content = "circle dot {\n    x = 100, y = 100\n    r = 40\n    fill = \"var(--color-link)\"\n    text t { content = \"Node\", fill = \"#fff\" }\n}"
+                }
+
+                heading h2_ellipse {
+                    level = 2
+                    content = "ellipse"
+                }
+
+                paragraph p_e1 { content = "Ellipse with separate <code>rx</code> and <code>ry</code> radii." }
+
+                code ce1 {
+                    language = "wcl"
+                    content = "ellipse oval {\n    x = 50, y = 50\n    rx = 80, ry = 40\n    fill = \"var(--color-nav-bg)\"\n    stroke = \"var(--color-nav-border)\"\n}"
+                }
+
+                heading h2_line {
+                    level = 2
+                    content = "line"
+                }
+
+                paragraph p_l1 { content = "Straight line segment between (<code>x1</code>, <code>y1</code>) and (<code>x2</code>, <code>y2</code>). Use <code>stroke_dasharray</code> for dashed lines." }
+
+                code cl1 {
+                    language = "wcl"
+                    content = "line divider {\n    x1 = 0, y1 = 100\n    x2 = 400, y2 = 100\n    stroke = \"var(--color-text)\"\n    stroke_width = 2\n    stroke_dasharray = \"8,4\"\n}"
+                }
+
+                heading h2_path {
+                    level = 2
+                    content = "path"
+                }
+
+                paragraph p_p1 { content = "Arbitrary SVG path. The <code>d</code> attribute is passed through to the rendered <code>&lt;path&gt;</code> element." }
+
+                code cp1 {
+                    language = "wcl"
+                    content = "path arrow {\n    d = \"M 10 10 L 100 10 L 90 0 M 100 10 L 90 20\"\n    fill = \"none\"\n    stroke = \"var(--color-link)\"\n    stroke_width = 2\n}"
+                }
+
+                heading h2_text {
+                    level = 2
+                    content = "text"
+                }
+
+                paragraph p_t1 { content = "A text label. As a child of another shape with no explicit position or size, it fills the parent's inner box and is centered — this is the typical pattern for labelling rects, circles, and widgets." }
+
+                data_table tbl_text {
+                    caption = "text-specific attributes"
+                    rows = [
+                        { attr = "content",   description = "The text to render" },
+                        { attr = "font_size", description = "Font size in SVG units (default 14)" },
+                        { attr = "anchor",    description = "Horizontal alignment: start, middle (default), end" },
+                        { attr = "fill",      description = "Text color (defaults to currentColor)" }
+                    ]
+                }
+
+                code ct1 {
+                    language = "wcl"
+                    content = "// Standalone label\ntext label {\n    x = 50, y = 100, width = 200, height = 30\n    content = \"Section heading\"\n    font_size = 16\n    anchor = \"start\"\n}"
+                }
+            }
+        }
+    }
+}

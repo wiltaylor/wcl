@@ -1,0 +1,77 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, bold}
+
+page wdoc_doc_structure {
+    section = "wcl_docs.wdoc.wdoc_doc_structure"
+    title = "Document Structure"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Document Structure"
+                }
+
+                paragraph p1 {
+                    content = "A wdoc site is built from three top-level block kinds: " + bold("doc") + ", " + bold("section") + ", and " + bold("page") + ". The " + bold("doc") + " block is the root — it carries metadata and contains the section outline. " + bold("page") + " blocks live anywhere in the file(s) and bind themselves to a section by qualified ID."
+                }
+
+                heading h2_doc {
+                    level = 2
+                    content = "The doc block"
+                }
+
+                paragraph p_d1 {
+                    content = "Exactly one <code>doc</code> block defines the site. Its inline ID becomes the root namespace for section paths."
+                }
+
+                code cd1 {
+                    language = "wcl"
+                    content = "import <wdoc.wcl>\nuse wdoc::{doc, section}\n\ndoc my_site {\n    title = \"My Project\"\n    version = \"1.2.0\"   // optional\n    author = \"Team\"     // optional\n\n    section intro \"Introduction\" {}\n    section guide \"User Guide\" {\n        section install \"Installation\" {}\n        section config  \"Configuration\" {}\n    }\n}"
+                }
+
+                heading h2_sections {
+                    level = 2
+                    content = "Sections and qualified IDs"
+                }
+
+                paragraph p_s1 {
+                    content = "Sections form a tree. They have a string title and contain child sections — that is all. They do not hold content directly. The qualified ID of a section is the dotted path of inline IDs from the doc downward, e.g. <code>my_site.guide.install</code>. Pages reference sections by this path."
+                }
+
+                paragraph p_s2 {
+                    content = "Sections may be split across files: define the doc and outline in <code>site.wcl</code>, and put pages in <code>pages/*.wcl</code>. Build with a glob:"
+                }
+
+                code cs2 {
+                    language = "bash"
+                    content = "wcl wdoc build site.wcl pages/*.wcl --output ./build"
+                }
+
+                heading h2_page {
+                    level = 2
+                    content = "The page block"
+                }
+
+                paragraph p_pg1 {
+                    content = "A <code>page</code> block has two required attributes: <code>section</code> (the qualified ID it belongs to) and <code>title</code>. Its body holds a single <code>layout</code> block that arranges content. Many pages can attach to the same section — they appear in the order the parser sees them."
+                }
+
+                code cpg1 {
+                    language = "wcl"
+                    content = "page install_page {\n    section = \"my_site.guide.install\"\n    title = \"Installing the CLI\"\n\n    layout {\n        heading h1 { level = 1, content = \"Installation\" }\n        paragraph p1 { content = \"Run the install script:\" }\n        code c1 {\n            language = \"bash\"\n            content = \"curl -sSf https://example.com/install.sh | sh\"\n        }\n    }\n}"
+                }
+
+                callout c_validate {
+                    icon = "check-circle"
+                    header = "Validation"
+                    color = "#28a745"
+                    paragraph w1 { content = "If a page references a section that does not exist, <code>wcl wdoc validate</code> reports the error along with the list of available section paths." }
+                }
+            }
+        }
+    }
+}

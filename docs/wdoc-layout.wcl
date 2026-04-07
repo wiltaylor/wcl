@@ -1,0 +1,87 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, callout, bold}
+
+page wdoc_layout {
+    section = "wcl_docs.wdoc.wdoc_layout"
+    title = "Layouts and Splits"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Layouts and Splits"
+                }
+
+                paragraph p1 {
+                    content = "Inside a page, the " + bold("layout") + " block defines how content is arranged. The layout language is small: it has " + bold("vsplit") + " and " + bold("hsplit") + " containers, " + bold("split") + " panes with a percentage " + bold("size") + ", and content blocks that go directly inside splits (or directly inside the layout for a single-column page)."
+                }
+
+                heading h2_simple {
+                    level = 2
+                    content = "Single-column layout"
+                }
+
+                paragraph p_sc1 {
+                    content = "The simplest layout is just content blocks inside a layout — no splits needed. Most reference pages in this manual use this form."
+                }
+
+                code csc {
+                    language = "wcl"
+                    content = "layout {\n    heading h1 { level = 1, content = \"Title\" }\n    paragraph p1 { content = \"A single column of content.\" }\n}"
+                }
+
+                heading h2_vsplit {
+                    level = 2
+                    content = "vsplit and split"
+                }
+
+                paragraph p_v1 {
+                    content = "<code>vsplit</code> stacks one or more <code>split</code> children top-to-bottom. Each <code>split</code> declares a <code>size</code> as a percentage of its parent group. Sizes within a split group should sum to 100%; the validator emits a warning otherwise."
+                }
+
+                code cv1 {
+                    language = "wcl"
+                    content = "layout {\n    vsplit v1 {\n        split top {\n            size = 30\n            heading h1 { level = 1, content = \"Header\" }\n        }\n        split bottom {\n            size = 70\n            paragraph p1 { content = \"Body content here.\" }\n        }\n    }\n}"
+                }
+
+                heading h2_hsplit {
+                    level = 2
+                    content = "hsplit"
+                }
+
+                paragraph p_h1 {
+                    content = "<code>hsplit</code> arranges its splits side-by-side. Useful for two-column pages such as a code sample alongside its explanation."
+                }
+
+                code ch1 {
+                    language = "wcl"
+                    content = "layout {\n    hsplit row {\n        split left {\n            size = 50\n            paragraph p1 { content = \"Explanation on the left.\" }\n        }\n        split right {\n            size = 50\n            code c1 { language = \"wcl\", content = \"server api {}\" }\n        }\n    }\n}"
+                }
+
+                heading h2_nest {
+                    level = 2
+                    content = "Nesting splits"
+                }
+
+                paragraph p_n1 {
+                    content = "Splits nest freely. A <code>vsplit</code> can contain a <code>split</code> whose body holds an <code>hsplit</code>, and so on. Use this for grid-like dashboards or side-by-side comparisons under a shared header."
+                }
+
+                code cn1 {
+                    language = "wcl"
+                    content = "layout {\n    vsplit outer {\n        split header { size = 20\n            heading h1 { level = 1, content = \"Comparison\" }\n        }\n        split body { size = 80\n            hsplit row {\n                split left  { size = 50, code l { language = \"json\", content = \"{}\" } }\n                split right { size = 50, code r { language = \"wcl\",  content = \"\" } }\n            }\n        }\n    }\n}"
+                }
+
+                callout c_tip {
+                    icon = "lightbulb"
+                    header = "Sizes are not enforced"
+                    color = "#0d6efd"
+                    paragraph w1 { content = "The wdoc validator only warns about sizes that do not sum to 100% — it does not stop the build. The browser still lays the splits out using the percentages you provided, so a typo here will produce a visibly skewed page." }
+                }
+            }
+        }
+    }
+}

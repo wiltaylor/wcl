@@ -1,0 +1,146 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, data_table, callout, bold, link}
+
+page wdoc_drawing_widgets {
+    section = "wcl_docs.wdoc.wdoc_drawing_widgets"
+    title = "Drawing — Widgets"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Drawing — Widgets"
+                }
+
+                paragraph p1 {
+                    content = "Widgets are " + bold("composite shapes") + " — pre-built clusters of primitives that render as a recognisable thing (a phone frame, a database cylinder, a UML class box). They live in <code>wdoc::draw</code> alongside the primitives, accept the usual positioning attributes (<code>x</code>, <code>y</code>, <code>width</code>, <code>height</code>), and add a few widget-specific attributes for content. The renderer treats them as rectangles for layout purposes, so they participate in <code>align</code> algorithms exactly like a <code>rect</code>."
+                }
+
+                heading h2_ui {
+                    level = 2
+                    content = "UI mockups"
+                }
+
+                paragraph p_ui1 { content = "For wireframes and product mockups." }
+
+                data_table tbl_ui {
+                    caption = "UI widgets"
+                    rows = [
+                        { widget = "phone",   attrs = "title, header_fill" },
+                        { widget = "browser", attrs = "title, url" },
+                        { widget = "button",  attrs = "label, variant (primary, secondary, outline)" },
+                        { widget = "input",   attrs = "label, placeholder" },
+                        { widget = "card",    attrs = "(container — children render inside)" },
+                        { widget = "avatar",  attrs = "label" },
+                        { widget = "toggle",  attrs = "on (\"true\" / \"false\")" },
+                        { widget = "badge",   attrs = "label, color" },
+                        { widget = "navbar",  attrs = "title" }
+                    ]
+                }
+
+                code cui1 {
+                    language = "wcl"
+                    content = "diagram mockup {\n    width = 600, height = 360\n\n    phone p1 {\n        x = 20, y = 20, width = 220, height = 320\n        title = \"My App\"\n    }\n    browser b1 {\n        x = 280, y = 20, width = 300, height = 200\n        title = \"Dashboard\"\n        url   = \"https://app.example.com\"\n    }\n    button btn {\n        x = 280, y = 240, width = 120, height = 38\n        label = \"Sign in\"\n        variant = \"primary\"\n    }\n}"
+                }
+
+                heading h2_flow {
+                    level = 2
+                    content = "Flowchart shapes"
+                }
+
+                data_table tbl_flow {
+                    caption = "Flowchart widgets"
+                    rows = [
+                        { widget = "flow_terminal",   description = "Rounded oval — start / end" },
+                        { widget = "flow_process",    description = "Process box" },
+                        { widget = "flow_decision",   description = "Diamond decision node" },
+                        { widget = "flow_io",         description = "Parallelogram input / output" },
+                        { widget = "flow_subprocess", description = "Subprocess box (double border)" }
+                    ]
+                }
+
+                paragraph p_flow1 {
+                    content = "Each flowchart widget accepts a <code>label</code>, plus an optional <code>color</code>. Combine them with <code>align = \"layered\"</code> for an automatically routed flowchart."
+                }
+
+                code cflow {
+                    language = "wcl"
+                    content = "diagram pipeline {\n    width = 700, height = 320\n    align = \"layered\"\n    gap   = 50\n\n    flow_terminal start { width = 120, height = 40, label = \"Start\", color = \"#28a745\" }\n    flow_process  step  { width = 150, height = 50, label = \"Process input\" }\n    flow_decision ok    { width = 120, height = 80, label = \"Valid?\" }\n    flow_process  err   { width = 140, height = 50, label = \"Log error\", color = \"#d32f2f\" }\n    flow_terminal done  { width = 120, height = 40, label = \"End\", color = \"#28a745\" }\n\n    connection e1 { from = \"start\", to = \"step\", direction = \"to\" }\n    connection e2 { from = \"step\",  to = \"ok\",   direction = \"to\" }\n    connection e3 { from = \"ok\",    to = \"done\", direction = \"to\", label = \"Yes\" }\n    connection e4 { from = \"ok\",    to = \"err\",  direction = \"to\", label = \"No\" }\n    connection e5 { from = \"err\",   to = \"done\", direction = \"to\" }\n}"
+                }
+
+                heading h2_c4 {
+                    level = 2
+                    content = "C4 architecture shapes"
+                }
+
+                data_table tbl_c4 {
+                    caption = "C4 widgets"
+                    rows = [
+                        { widget = "c4_person",    attrs = "label, description" },
+                        { widget = "c4_system",    attrs = "label, description, external (\"true\" / \"false\")" },
+                        { widget = "c4_container", attrs = "label, description, technology" },
+                        { widget = "c4_component", attrs = "label, description" },
+                        { widget = "c4_boundary",  attrs = "label (container, children render inside)" }
+                    ]
+                }
+
+                code cc4 {
+                    language = "wcl"
+                    content = "diagram c4_context {\n    width = 700, height = 280\n\n    c4_person customer {\n        x = 50, y = 90, width = 100, height = 110\n        label = \"Customer\"\n        description = \"Uses the app\"\n    }\n    c4_system app {\n        x = 270, y = 80, width = 160, height = 90\n        label = \"My App\"\n        description = \"Core platform\"\n    }\n    c4_system payments {\n        x = 530, y = 80, width = 150, height = 90\n        label = \"Payments\"\n        description = \"Processes payments\"\n        external = \"true\"\n    }\n\n    connection u_app { from = \"customer\", to = \"app\",      direction = \"to\", label = \"Uses\" }\n    connection a_pay { from = \"app\",      to = \"payments\", direction = \"to\", label = \"Charges via\" }\n}"
+                }
+
+                heading h2_uml {
+                    level = 2
+                    content = "UML shapes"
+                }
+
+                data_table tbl_uml {
+                    caption = "UML widgets"
+                    rows = [
+                        { widget = "uml_class",   attrs = "label, stereotype, fields, methods (pipe-separated lists)" },
+                        { widget = "uml_actor",   attrs = "label" },
+                        { widget = "uml_package", attrs = "label" },
+                        { widget = "uml_note",    attrs = "label" }
+                    ]
+                }
+
+                code cuml {
+                    language = "wcl"
+                    content = "uml_class user {\n    x = 30, y = 20, width = 180, height = 160\n    label   = \"User\"\n    fields  = \"- id: i64|- name: String|- email: String\"\n    methods = \"+ login()|+ toString(): String\"\n}"
+                }
+
+                heading h2_net {
+                    level = 2
+                    content = "Network and infrastructure"
+                }
+
+                data_table tbl_net {
+                    caption = "Network widgets"
+                    rows = [
+                        { widget = "server",   description = "Server / VM rack icon (label)" },
+                        { widget = "database", description = "Database cylinder (label)" },
+                        { widget = "cloud",    description = "Cloud / managed service (label)" },
+                        { widget = "user",     description = "User / actor for network diagrams (label)" }
+                    ]
+                }
+
+                code cnet {
+                    language = "wcl"
+                    content = "diagram topology {\n    width = 600, height = 280\n\n    user   users   { x = 20,  y = 100, width = 80,  height = 100, label = \"Users\" }\n    cloud  cdn     { x = 130, y = 30,  width = 130, height = 90,  label = \"CDN\" }\n    server lb      { x = 130, y = 150, width = 90,  height = 100, label = \"LB\" }\n    server web     { x = 290, y = 100, width = 90,  height = 110, label = \"Web\" }\n    database db    { x = 450, y = 90,  width = 100, height = 120, label = \"Postgres\" }\n\n    connection u_lb  { from = \"users\", to = \"lb\",  direction = \"to\" }\n    connection lb_w  { from = \"lb\",    to = \"web\", direction = \"to\" }\n    connection w_db  { from = \"web\",   to = \"db\",  direction = \"both\" }\n    connection u_cdn { from = \"users\", to = \"cdn\", direction = \"to\" }\n}"
+                }
+
+                callout c_note {
+                    icon = "info"
+                    header = "Widgets are just WCL functions"
+                    color = "#0d6efd"
+                    paragraph wp {
+                        content = "Every widget on this page is implemented as an exported WCL function in <code>wdoc.wcl</code> that returns a list of primitive shape descriptors. The same mechanism is open to user code — see " + link("Custom Shapes", "wdoc_drawing_custom.html") + " for the recipe. You can also mix widgets and primitives freely in the same diagram; connections work between them with no special rules."
+                    }
+                }
+            }
+        }
+    }
+}

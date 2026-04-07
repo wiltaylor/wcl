@@ -1,0 +1,134 @@
+import <wdoc.wcl>
+use wdoc::{page, layout, heading, paragraph, code, data_table, callout, bold, italic, link, icon}
+
+page wdoc_content {
+    section = "wcl_docs.wdoc.wdoc_content"
+    title = "Content Elements"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Content Elements"
+                }
+
+                paragraph p1 {
+                    content = "Content elements are the leaf blocks that go inside a layout (or a split). Each one is a schema in <code>wdoc.wcl</code> with a <code>@template(\"html\", ...)</code> renderer. Below is the full set."
+                }
+
+                heading h2_heading {
+                    level = 2
+                    content = "heading"
+                }
+
+                paragraph p_h1 {
+                    content = "Renders an <code>&lt;h1&gt;</code>–<code>&lt;h6&gt;</code>. The <code>level</code> attribute (1–6) controls the HTML tag and default styling."
+                }
+
+                code ch1 {
+                    language = "wcl"
+                    content = "heading h1 { level = 1, content = \"Page title\" }\nheading h2 { level = 2, content = \"A subsection\" }"
+                }
+
+                heading h2_paragraph {
+                    level = 2
+                    content = "paragraph"
+                }
+
+                paragraph p_p1 {
+                    content = "A single paragraph of text. The <code>content</code> attribute is a string and may contain inline HTML — including the output of inline formatting helpers (see below)."
+                }
+
+                code cp1 {
+                    language = "wcl"
+                    content = "paragraph p1 {\n    content = \"WCL is a typed configuration language with \" + bold(\"schemas\") + \" and \" + italic(\"expressions\") + \".\"\n}"
+                }
+
+                heading h2_inline {
+                    level = 2
+                    content = "Inline formatting helpers"
+                }
+
+                paragraph p_i1 {
+                    content = "Four helper functions are provided in the <code>wdoc</code> namespace and are commonly imported via <code>use wdoc::{bold, italic, link, icon}</code>. They return HTML strings that you concatenate into <code>content</code>."
+                }
+
+                data_table tbl_inline {
+                    caption = "Inline helpers"
+                    rows = [
+                        { fn = "bold(text)",                      result = "<strong>text</strong>" },
+                        { fn = "italic(text)",                    result = "<em>text</em>" },
+                        { fn = "link(text, url)",                 result = "<a href=\"url\">text</a>" },
+                        { fn = "icon(name, size, color)",         result = "Bootstrap icon, sized and colored" }
+                    ]
+                }
+
+                heading h2_code {
+                    level = 2
+                    content = "code"
+                }
+
+                paragraph p_c1 {
+                    content = "A fenced code block with optional language for syntax highlighting (highlight.js). Use a heredoc string for multi-line content."
+                }
+
+                code cc1 {
+                    language = "wcl"
+                    content = "code example {\n    language = \"bash\"\n    content = \"wcl eval config.wcl --format json\"\n}"
+                }
+
+                heading h2_image {
+                    level = 2
+                    content = "image"
+                }
+
+                paragraph p_im1 {
+                    content = "Embeds an image. <code>src</code> is a path resolved relative to the input file's directory; the build copies the file into the output. <code>alt</code>, <code>width</code>, and <code>height</code> are optional."
+                }
+
+                code cim1 {
+                    language = "wcl"
+                    content = "image diagram {\n    src   = \"images/architecture.png\"\n    alt   = \"System architecture overview\"\n    width = \"600px\"\n}"
+                }
+
+                heading h2_table {
+                    level = 2
+                    content = "data_table"
+                }
+
+                paragraph p_t1 {
+                    content = "Renders a <code>&lt;table&gt;</code>. The rows come from a <code>rows</code> attribute holding a list of structs — column order follows insertion order in the first row, and column headers are derived from the struct field names. <code>caption</code> is optional."
+                }
+
+                code ct1 {
+                    language = "wcl"
+                    content = "data_table flags {\n    caption = \"Build flags\"\n    rows = [\n        { flag = \"--output\", description = \"Output directory\" },\n        { flag = \"--var\",    description = \"Set a variable\" }\n    ]\n}"
+                }
+
+                heading h2_callout {
+                    level = 2
+                    content = "callout"
+                }
+
+                paragraph p_co1 {
+                    content = "A boxed admonition, useful for tips, warnings, and notes. It accepts an optional <code>icon</code> (Bootstrap icon name), <code>header</code>, and <code>color</code>, and contains other content blocks (typically paragraphs) as children."
+                }
+
+                code cco1 {
+                    language = "wcl"
+                    content = "callout note {\n    icon = \"info\"\n    header = \"Note\"\n    color = \"#0d6efd\"\n    paragraph p { content = \"Children of a callout render inside the box.\" }\n}"
+                }
+
+                callout demo {
+                    icon = "info"
+                    header = "Live example"
+                    color = "#0d6efd"
+                    paragraph wp1 { content = "This very box is a callout. Its inner paragraph is a child block." }
+                }
+            }
+        }
+    }
+}

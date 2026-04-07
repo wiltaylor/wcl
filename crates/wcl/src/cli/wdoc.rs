@@ -285,11 +285,42 @@ fn register_template_builtins(reg: &mut FunctionRegistry) {
         mk("wdoc::render_table", "Render a table element"),
     );
 
+    // Note: there is no `wdoc::render_diagram` builtin. Diagram rendering needs
+    // access to the template dispatch context (so that shape templates can be
+    // resolved), so it is special-cased in `extract_layout_children` and never
+    // goes through the html template path.
+
+    // attr_or(block, "key", default) — read an attribute from a BlockRef or Map
+    // with a fallback. Used by shape template functions to handle optional widget
+    // attributes without erroring on missing keys.
     reg.register(
-        "wdoc::render_diagram",
-        std::sync::Arc::new(|args: &[Value]| Ok(Value::String(render_diagram_html(args))))
-            as BuiltinFn,
-        mk("wdoc::render_diagram", "Render a diagram as inline SVG"),
+        "attr_or",
+        std::sync::Arc::new(|args: &[Value]| {
+            if args.len() != 3 {
+                return Err("attr_or() expects 3 arguments (block, key, default)".into());
+            }
+            let key = args[1]
+                .as_string()
+                .ok_or("attr_or() second argument must be a string")?;
+            let val = match &args[0] {
+                Value::BlockRef(br) => br.attributes.get(key).cloned(),
+                Value::Map(m) => m.get(key).cloned(),
+                _ => None,
+            };
+            Ok(val
+                .filter(|v| !matches!(v, Value::Null))
+                .unwrap_or_else(|| args[2].clone()))
+        }) as BuiltinFn,
+        FunctionSignature {
+            name: "attr_or".into(),
+            params: vec![
+                "block: any".into(),
+                "key: string".into(),
+                "default: any".into(),
+            ],
+            return_type: "any".into(),
+            doc: "Read an attribute from a block or map, returning a default if missing".into(),
+        },
     );
 }
 
@@ -412,6 +443,10 @@ fn render_callout_html(block: &BlockRef, ctx: &ExtractCtx) -> String {
         match child_block.kind.as_str() {
             // Skip known non-content attributes
             "wdoc::layout" | "wdoc::section" | "wdoc::page" | "wdoc::doc" | "wdoc::style" => {}
+            "wdoc::draw::diagram" => {
+                html.push_str(&render_diagram_with_ctx(child_block, ctx));
+                html.push('\n');
+            }
             _kind => {
                 if let Ok(child_html) = ctx.render_block(child_block) {
                     html.push_str(&child_html);
@@ -425,15 +460,11 @@ fn render_callout_html(block: &BlockRef, ctx: &ExtractCtx) -> String {
     html
 }
 
-/// Render a `wdoc_diagram` block to inline SVG.
-/// Converts WCL Value tree → ShapeNode tree, then calls shapes::render_diagram_svg.
-fn render_diagram_html(args: &[Value]) -> String {
+/// Render a `wdoc::draw::diagram` block to inline SVG. Walks the diagram's child
+/// blocks, dispatching shape templates via `ctx`, and feeds the resulting
+/// `ShapeNode` tree to `shapes::render_diagram_svg`.
+fn render_diagram_with_ctx(br: &BlockRef, ctx: &ExtractCtx) -> String {
     use wcl_wdoc::shapes::*;
-
-    let br = match args.first() {
-        Some(Value::BlockRef(br)) => br,
-        _ => return "<div class=\"wdoc-diagram\">(invalid diagram)</div>".to_string(),
-    };
 
     let str_attrs = value_map_to_string_map_lossy(&br.attributes);
 
@@ -446,14 +477,13 @@ fn render_diagram_html(args: &[Value]) -> String {
     let mut shapes = Vec::new();
     let mut connections = Vec::new();
 
-    // Walk child blocks from both attributes and children
     for val in br.attributes.values() {
         if let Value::BlockRef(child) = val {
-            collect_shape_or_connection(child, &mut shapes, &mut connections);
+            collect_shape_or_connection(child, &mut shapes, &mut connections, ctx);
         }
     }
     for child in &br.children {
-        collect_shape_or_connection(child, &mut shapes, &mut connections);
+        collect_shape_or_connection(child, &mut shapes, &mut connections, ctx);
     }
 
     let mut diagram = Diagram {
@@ -474,6 +504,7 @@ fn collect_shape_or_connection(
     br: &BlockRef,
     shapes: &mut Vec<wcl_wdoc::shapes::ShapeNode>,
     connections: &mut Vec<wcl_wdoc::shapes::Connection>,
+    ctx: &ExtractCtx,
 ) {
     use wcl_wdoc::shapes::*;
 
@@ -495,30 +526,39 @@ fn collect_shape_or_connection(
     if let Some(kind) = parse_shape_kind(&br.kind) {
         let mut a = value_map_to_string_map_lossy(&br.attributes);
 
-        // For widgets, get template-generated children (shape primitives)
-        let mut children = if wcl_wdoc::widgets::is_widget(&br.kind) {
-            let w = a
-                .get("width")
-                .and_then(|s| s.parse::<f64>().ok())
-                .unwrap_or(200.0);
-            let h = a
-                .get("height")
-                .and_then(|s| s.parse::<f64>().ok())
-                .unwrap_or(100.0);
-            wcl_wdoc::widgets::build_widget(&br.kind, w, h, &a)
+        // Composite shape: any block whose schema declares @template("shape", "fn").
+        // Call the function and convert its returned shape descriptors into the
+        // widget container's children.
+        let is_composite = ctx
+            .template_map
+            .contains_key(&("shape".to_string(), br.kind.clone()));
+
+        let mut children: Vec<ShapeNode> = if is_composite {
+            match dispatch_shape_template(br, ctx) {
+                Ok(child_shapes) => child_shapes,
+                Err(e) => {
+                    eprintln!(
+                        "wdoc: warning: shape template for '{}' failed: {e}",
+                        br.kind
+                    );
+                    Vec::new()
+                }
+            }
         } else {
             Vec::new()
         };
 
-        // Also collect any user-defined child shapes from the block
+        // Also collect any user-defined child shapes from the block. Composite
+        // shapes can still nest hand-written primitives alongside their
+        // template-generated children.
         let mut child_connections = Vec::new();
         for val in br.attributes.values() {
             if let Value::BlockRef(child_br) = val {
-                collect_shape_or_connection(child_br, &mut children, &mut child_connections);
+                collect_shape_or_connection(child_br, &mut children, &mut child_connections, ctx);
             }
         }
         for child_br in &br.children {
-            collect_shape_or_connection(child_br, &mut children, &mut child_connections);
+            collect_shape_or_connection(child_br, &mut children, &mut child_connections, ctx);
         }
 
         let pf =
@@ -535,8 +575,10 @@ fn collect_shape_or_connection(
         let nleft = pf(&a, "left");
         let nright = pf(&a, "right");
 
-        // Widgets are invisible containers — their template provides all visuals
-        if wcl_wdoc::widgets::is_widget(&br.kind) {
+        // Composite shape containers are invisible — the template provides all
+        // visuals. Default fill/stroke to none so the wrapping rect doesn't
+        // double up on the template's drawing.
+        if is_composite {
             a.entry("fill".to_string())
                 .or_insert_with(|| "none".to_string());
             a.entry("stroke".to_string())
@@ -561,6 +603,162 @@ fn collect_shape_or_connection(
             gap,
             padding: pad,
         });
+    }
+}
+
+/// Look up a `@template("shape", "fn")` function for `br.kind` and call it.
+/// The function receives the BlockRef as its single argument and must return a
+/// list of "shape descriptor" values (maps describing primitive shapes).
+fn dispatch_shape_template(
+    br: &BlockRef,
+    ctx: &ExtractCtx,
+) -> Result<Vec<wcl_wdoc::shapes::ShapeNode>, String> {
+    let fn_name = ctx
+        .template_map
+        .get(&("shape".to_string(), br.kind.clone()))
+        .ok_or_else(|| format!("no @template(\"shape\", ...) on schema '{}'", br.kind))?;
+
+    let func = ctx
+        .template_fns
+        .get(fn_name)
+        .ok_or_else(|| format!("shape template function '{fn_name}' not registered"))?;
+
+    let arg = Value::BlockRef(br.clone());
+    let result = match func {
+        TemplateFn::Lambda(fv) => crate::call_lambda(fv, &[arg], &ctx.builtins)?,
+        TemplateFn::Builtin(f) => f(&[arg])?,
+    };
+
+    let descriptors = match result {
+        Value::List(items) => items,
+        Value::Map(_) => vec![result],
+        Value::Null => vec![],
+        other => {
+            return Err(format!(
+                "shape template '{fn_name}' must return a list of shape maps, got {}",
+                other.type_name()
+            ))
+        }
+    };
+
+    let mut shapes = Vec::new();
+    for desc in &descriptors {
+        if let Some(node) = descriptor_to_shape_node(desc) {
+            shapes.push(node);
+        }
+    }
+    Ok(shapes)
+}
+
+/// Convert a shape descriptor `Value::Map` (returned from a WCL shape template)
+/// into a `ShapeNode`. Recognized fields: kind, x, y, width, height, top, bottom,
+/// left, right, align, gap, padding, children (list of more descriptors), and
+/// arbitrary visual attributes (fill, stroke, rx, content, font_size, ...).
+fn descriptor_to_shape_node(val: &Value) -> Option<wcl_wdoc::shapes::ShapeNode> {
+    use wcl_wdoc::shapes::*;
+
+    let map = match val {
+        Value::Map(m) => m,
+        _ => return None,
+    };
+
+    let kind_str = map.get("kind").and_then(|v| v.as_string())?;
+    // Accept short names ("rect") or fully-qualified ("wdoc::draw::rect").
+    let qualified = if kind_str.contains("::") {
+        kind_str.to_string()
+    } else {
+        format!("wdoc::draw::{kind_str}")
+    };
+    let kind = parse_shape_kind(&qualified)?;
+
+    let pf = |k: &str| map.get(k).and_then(value_as_f64);
+    let nx = pf("x");
+    let ny = pf("y");
+    let nw = pf("width");
+    let nh = pf("height");
+    let ntop = pf("top");
+    let nbot = pf("bottom");
+    let nleft = pf("left");
+    let nright = pf("right");
+    let gap = pf("gap").unwrap_or(0.0);
+    let padding = pf("padding").unwrap_or(0.0);
+
+    let align_str = map
+        .get("align")
+        .and_then(|v| v.as_string())
+        .unwrap_or("none");
+    let align = parse_alignment_str(align_str);
+
+    let mut attrs = IndexMap::new();
+    for (k, v) in map {
+        // Skip structural fields — they become ShapeNode fields, not SVG attrs.
+        if matches!(
+            k.as_str(),
+            "kind"
+                | "x"
+                | "y"
+                | "width"
+                | "height"
+                | "top"
+                | "bottom"
+                | "left"
+                | "right"
+                | "gap"
+                | "padding"
+                | "align"
+                | "children"
+                | "id"
+        ) {
+            continue;
+        }
+        let s = match v {
+            Value::String(s) => s.clone(),
+            Value::Int(i) => i.to_string(),
+            Value::Float(f) => f.to_string(),
+            Value::Bool(b) => b.to_string(),
+            Value::Null => continue,
+            _ => continue,
+        };
+        attrs.insert(k.clone(), s);
+    }
+
+    let mut children = Vec::new();
+    if let Some(Value::List(items)) = map.get("children") {
+        for item in items {
+            if let Some(child) = descriptor_to_shape_node(item) {
+                children.push(child);
+            }
+        }
+    }
+
+    let id = map.get("id").and_then(|v| v.as_string()).map(String::from);
+
+    Some(ShapeNode {
+        kind,
+        id,
+        x: nx,
+        y: ny,
+        width: nw,
+        height: nh,
+        top: ntop,
+        bottom: nbot,
+        left: nleft,
+        right: nright,
+        resolved: Bounds::default(),
+        attrs,
+        children,
+        align,
+        gap,
+        padding,
+    })
+}
+
+fn value_as_f64(v: &Value) -> Option<f64> {
+    match v {
+        Value::Int(i) => Some(*i as f64),
+        Value::Float(f) => Some(*f),
+        Value::String(s) => s.parse().ok(),
+        _ => None,
     }
 }
 
@@ -799,6 +997,18 @@ fn extract_layout_children(block: &BlockRef, ctx: &ExtractCtx) -> Vec<LayoutItem
                 let html = render_callout_html(child, ctx);
                 items.push(LayoutItem::Content(ContentBlock {
                     kind: "wdoc::callout".to_string(),
+                    id: child.id.clone(),
+                    rendered_html: html,
+                    style: get_style_decorator(child),
+                }));
+            }
+            // Diagram — needs ctx so shape templates can be dispatched.
+            // Cannot go through the html template path because templates can't
+            // see ctx.
+            "wdoc::draw::diagram" => {
+                let html = render_diagram_with_ctx(child, ctx);
+                items.push(LayoutItem::Content(ContentBlock {
+                    kind: "wdoc::draw::diagram".to_string(),
                     id: child.id.clone(),
                     rendered_html: html,
                     style: get_style_decorator(child),

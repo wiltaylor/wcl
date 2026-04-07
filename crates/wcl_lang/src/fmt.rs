@@ -1178,7 +1178,6 @@ impl<'a> Formatter<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lang::ast::*;
     use crate::lang::span::Span;
     use crate::lang::trivia::Trivia;
 
