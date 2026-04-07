@@ -34,6 +34,7 @@ page editor_setup {
                         "<li>Signature help for macro and built-in function calls</li>" +
                         "<li>Find references</li>" +
                         "<li>Document formatting (<code>wcl fmt</code> integration)</li>" +
+                        "<li>Embedded language support via <code>@embedded_lsp</code> — forwards hover, completion, diagnostics, semantic tokens, and code actions inside string fields to a configured child LSP server (see " + bold("Embedded Language Servers") + " below)</li>" +
                         "</ul>"
                 }
 
@@ -197,6 +198,133 @@ page editor_setup {
 
                 paragraph p23 {
                     content = "Refer to your editor's LSP documentation for how to register a custom language server with that command."
+                }
+
+                heading h2_embedded {
+                    level = 2
+                    content = "Embedded Language Servers"
+                }
+
+                paragraph p_emb1 {
+                    content = "When a schema uses the <code>@embedded_lsp(\"lang\")</code> decorator (see " + link("Built-in Decorators", "guide-decorators-builtin") + "), the WCL language server can forward editor requests inside that string field to an external LSP for <code>lang</code>. Requests currently forwarded: diagnostics, hover, completion, semantic tokens, code actions, and <code>workspace/executeCommand</code> callbacks for those actions."
+                }
+
+                paragraph p_emb2 {
+                    content = "The decorator only names a language — it never specifies a command. The command is supplied by the " + bold("LSP client") + " via <code>initializationOptions</code> when it launches <code>wcl lsp</code>. This means opening a <code>.wcl</code> file can never auto-spawn an arbitrary binary named inside the file. Only stdio transports are supported."
+                }
+
+                paragraph p_emb3 {
+                    content = "The init-options shape is a map from language id to command + args:"
+                }
+
+                code c_emb_schema {
+                    language = "json"
+                    content = <<-'JSON'
+                    {
+                      "embeddedLsp": {
+                        "python": {
+                          "command": "pyright-langserver",
+                          "args": ["--stdio"]
+                        },
+                        "lua": {
+                          "command": "lua-language-server",
+                          "args": []
+                        }
+                      }
+                    }
+                    JSON
+                }
+
+                paragraph p_emb4 {
+                    content = "If no mapping exists for a given language, the feature silently no-ops for that field — the WCL document still loads and validates normally."
+                }
+
+                heading h3_emb_vscode {
+                    level = 3
+                    content = "VS Code"
+                }
+
+                paragraph p_emb_vsc {
+                    content = "Add the mapping to your workspace or user <code>settings.json</code>. The bundled extension forwards <code>wcl.embeddedLsp</code> into the server's initialization options:"
+                }
+
+                code c_emb_vsc {
+                    language = "json"
+                    content = <<-'JSON'
+                    {
+                      "wcl.embeddedLsp": {
+                        "python": { "command": "pyright-langserver", "args": ["--stdio"] },
+                        "bash":   { "command": "bash-language-server", "args": ["start"] }
+                      }
+                    }
+                    JSON
+                }
+
+                heading h3_emb_nvim {
+                    level = 3
+                    content = "Neovim"
+                }
+
+                paragraph p_emb_nv {
+                    content = "Pass the mapping via <code>init_options</code> when starting the client:"
+                }
+
+                code c_emb_nv {
+                    language = "lua"
+                    content = <<-'LUA'
+                    vim.lsp.start({
+                        name = "wcl",
+                        cmd = { "wcl", "lsp" },
+                        root_dir = vim.fs.dirname(vim.fs.find({ ".git" }, { upward = true })[1]),
+                        init_options = {
+                            embeddedLsp = {
+                                python = { command = "pyright-langserver", args = { "--stdio" } },
+                                lua    = { command = "lua-language-server", args = {} },
+                            },
+                        },
+                    })
+                    LUA
+                }
+
+                heading h3_emb_helix {
+                    level = 3
+                    content = "Helix"
+                }
+
+                paragraph p_emb_hx {
+                    content = "In <code>languages.toml</code>, set <code>config</code> on the language-server entry — Helix passes it as <code>initializationOptions</code>:"
+                }
+
+                code c_emb_hx {
+                    language = "toml"
+                    content = <<-'TOML'
+                    [language-server.wcl-lsp]
+                    command = "wcl"
+                    args = ["lsp"]
+
+                    [language-server.wcl-lsp.config.embeddedLsp.python]
+                    command = "pyright-langserver"
+                    args = ["--stdio"]
+
+                    [language-server.wcl-lsp.config.embeddedLsp.lua]
+                    command = "lua-language-server"
+                    args = []
+                    TOML
+                }
+
+                heading h3_emb_caveats {
+                    level = 3
+                    content = "Caveats"
+                }
+
+                paragraph p_emb_caveats {
+                    content = "<ul>" +
+                        "<li>String interpolation is not supported inside an <code>@embedded_lsp</code> value. Interpolated regions are skipped with a warning diagnostic.</li>" +
+                        "<li>Escape sequences in the string are shipped to the child server literally, so positions reported by the child map back to WCL exactly.</li>" +
+                        "<li>Only stdio transports are supported. TCP-based LSP servers cannot be used.</li>" +
+                        "<li>Semantic token types advertised by the child that are not in WCL's legend are dropped when merged into the WCL token stream.</li>" +
+                        "<li>Child servers are spawned lazily on first use, one per language, and shared across all WCL documents for the lifetime of the WCL LSP session. If a child fails to spawn or crashes, that language is disabled until the WCL LSP restarts.</li>" +
+                        "</ul>"
                 }
             }
         }

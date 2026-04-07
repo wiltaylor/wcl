@@ -364,6 +364,19 @@ impl DecoratorSchemaRegistry {
             span: Span::dummy(),
         });
         self.insert(ResolvedDecoratorSchema {
+            name: "embedded_lsp".to_string(),
+            targets: vec![DecoratorTarget::Attribute],
+            params: vec![DecoratorParam {
+                name: "language".to_string(),
+                type_expr: TypeExpr::String(Span::dummy()),
+                required: true,
+                default: None,
+                span: Span::dummy(),
+            }],
+            constraints: vec![],
+            span: Span::dummy(),
+        });
+        self.insert(ResolvedDecoratorSchema {
             name: "table_index".to_string(),
             targets: vec![DecoratorTarget::Table],
             params: vec![
