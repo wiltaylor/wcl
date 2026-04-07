@@ -158,6 +158,9 @@ pub struct ResolvedField {
     pub text: bool,
     pub inline_index: Option<usize>,
     pub symbol_set: Option<String>,
+    /// From `@embedded_lsp("lang")` — declares the string value/text-body as
+    /// source code in another language, to be forwarded to an external LSP.
+    pub embedded_lang: Option<String>,
     pub span: Span,
 }
 
@@ -420,6 +423,31 @@ impl SchemaRegistry {
             let symbol_set = get_decorator_string_arg(&field.decorators_before, "symbol_set")
                 .or_else(|| get_decorator_string_arg(&field.decorators_after, "symbol_set"));
 
+            let embedded_lang =
+                get_decorator_string_arg(&field.decorators_before, "embedded_lsp")
+                    .or_else(|| {
+                        get_decorator_string_arg(&field.decorators_after, "embedded_lsp")
+                    });
+            if let Some(ref lang) = embedded_lang {
+                if !matches!(field.type_expr, TypeExpr::String(_)) {
+                    diagnostics.error_with_code(
+                        format!(
+                            "@embedded_lsp may only be applied to string fields (field '{}')",
+                            field.name.name
+                        ),
+                        field.span,
+                        "E104",
+                    );
+                }
+                if lang.trim().is_empty() {
+                    diagnostics.error_with_code(
+                        "@embedded_lsp language must be a non-empty string".to_string(),
+                        field.span,
+                        "E104",
+                    );
+                }
+            }
+
             fields.push(ResolvedField {
                 name: field.name.name.clone(),
                 doc: field_doc,
@@ -432,6 +460,7 @@ impl SchemaRegistry {
                 text: is_text,
                 inline_index,
                 symbol_set,
+                embedded_lang,
                 span: field.span,
             });
         }
@@ -1108,6 +1137,28 @@ fn resolve_fields(
         let symbol_set = get_decorator_string_arg(&field.decorators_before, "symbol_set")
             .or_else(|| get_decorator_string_arg(&field.decorators_after, "symbol_set"));
 
+        let embedded_lang = get_decorator_string_arg(&field.decorators_before, "embedded_lsp")
+            .or_else(|| get_decorator_string_arg(&field.decorators_after, "embedded_lsp"));
+        if let Some(ref lang) = embedded_lang {
+            if !matches!(field.type_expr, TypeExpr::String(_)) {
+                diagnostics.error_with_code(
+                    format!(
+                        "@embedded_lsp may only be applied to string fields (field '{}')",
+                        field.name.name
+                    ),
+                    field.span,
+                    "E104",
+                );
+            }
+            if lang.trim().is_empty() {
+                diagnostics.error_with_code(
+                    "@embedded_lsp language must be a non-empty string".to_string(),
+                    field.span,
+                    "E104",
+                );
+            }
+        }
+
         result.push(ResolvedField {
             name: field.name.name.clone(),
             doc: field_doc,
@@ -1120,6 +1171,7 @@ fn resolve_fields(
             text: is_text,
             inline_index,
             symbol_set,
+            embedded_lang,
             span: field.span,
         });
     }
@@ -2577,5 +2629,117 @@ mod tests {
             .filter(|d| d.code.as_deref() == Some("E096"))
             .collect();
         assert_eq!(e096.len(), 1);
+    }
+
+    // ── @embedded_lsp tests ──────────────────────────────────────────────
+
+    fn make_embedded_lsp_decorator(lang: &str) -> Decorator {
+        Decorator {
+            name: make_ident("embedded_lsp"),
+            args: vec![DecoratorArg::Positional(Expr::StringLit(make_string_lit(
+                lang,
+            )))],
+            span: dummy_span(),
+        }
+    }
+
+    fn field_with_before_decorators(
+        name: &str,
+        type_expr: TypeExpr,
+        decorators: Vec<Decorator>,
+    ) -> SchemaField {
+        SchemaField {
+            decorators_before: decorators,
+            name: make_ident(name),
+            type_expr,
+            decorators_after: vec![],
+            trivia: Trivia::default(),
+            span: dummy_span(),
+        }
+    }
+
+    #[test]
+    fn embedded_lsp_on_string_attribute() {
+        let field = field_with_before_decorators(
+            "body",
+            TypeExpr::String(dummy_span()),
+            vec![make_embedded_lsp_decorator("python")],
+        );
+        let schema = make_schema("script", vec![field]);
+        let doc = make_document(vec![DocItem::Body(BodyItem::Schema(schema))]);
+        let mut reg = SchemaRegistry::new();
+        let mut diags = DiagnosticBag::new();
+        reg.collect(&doc, &mut diags);
+        assert!(!diags.has_errors(), "{:?}", diags.diagnostics());
+        let s = reg.get_schema("script", None).unwrap();
+        assert_eq!(s.fields[0].embedded_lang.as_deref(), Some("python"));
+    }
+
+    #[test]
+    fn embedded_lsp_on_text_field() {
+        let field = SchemaField {
+            decorators_before: vec![],
+            name: make_ident("content"),
+            type_expr: TypeExpr::String(dummy_span()),
+            decorators_after: vec![
+                Decorator {
+                    name: make_ident("text"),
+                    args: vec![],
+                    span: dummy_span(),
+                },
+                make_embedded_lsp_decorator("lua"),
+            ],
+            trivia: Trivia::default(),
+            span: dummy_span(),
+        };
+        let schema = make_schema("snippet", vec![field]);
+        let doc = make_document(vec![DocItem::Body(BodyItem::Schema(schema))]);
+        let mut reg = SchemaRegistry::new();
+        let mut diags = DiagnosticBag::new();
+        reg.collect(&doc, &mut diags);
+        assert!(!diags.has_errors(), "{:?}", diags.diagnostics());
+        let s = reg.get_schema("snippet", None).unwrap();
+        assert_eq!(s.text_field.as_deref(), Some("content"));
+        assert_eq!(s.fields[0].embedded_lang.as_deref(), Some("lua"));
+    }
+
+    #[test]
+    fn embedded_lsp_on_non_string_field_errors_e104() {
+        let field = field_with_before_decorators(
+            "count",
+            TypeExpr::I64(dummy_span()),
+            vec![make_embedded_lsp_decorator("python")],
+        );
+        let schema = make_schema("bad", vec![field]);
+        let doc = make_document(vec![DocItem::Body(BodyItem::Schema(schema))]);
+        let mut reg = SchemaRegistry::new();
+        let mut diags = DiagnosticBag::new();
+        reg.collect(&doc, &mut diags);
+        let e104: Vec<_> = diags
+            .diagnostics()
+            .iter()
+            .filter(|d| d.code.as_deref() == Some("E104"))
+            .collect();
+        assert_eq!(e104.len(), 1);
+    }
+
+    #[test]
+    fn embedded_lsp_empty_language_errors_e104() {
+        let field = field_with_before_decorators(
+            "body",
+            TypeExpr::String(dummy_span()),
+            vec![make_embedded_lsp_decorator("")],
+        );
+        let schema = make_schema("bad", vec![field]);
+        let doc = make_document(vec![DocItem::Body(BodyItem::Schema(schema))]);
+        let mut reg = SchemaRegistry::new();
+        let mut diags = DiagnosticBag::new();
+        reg.collect(&doc, &mut diags);
+        let e104: Vec<_> = diags
+            .diagnostics()
+            .iter()
+            .filter(|d| d.code.as_deref() == Some("E104"))
+            .collect();
+        assert_eq!(e104.len(), 1);
     }
 }

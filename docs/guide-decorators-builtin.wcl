@@ -48,6 +48,7 @@ page decorators_builtin {
                         ["@symbol_set(name)", "schema fields", "name: string", "Constrains a symbol-typed field to members of the named symbol set"],
                         ["@inline(N)", "schema fields", "N: int", "Maps positional inline arg at index N to this named field"],
                         ["@text", "schema fields", "none", "Marks a content: string field as the text block target"],
+                        ["@embedded_lsp(language)", "schema fields (string)", "language: string", "Forwards LSP requests inside the string value to a client-configured child LSP server"],
                         ["@merge_strategy(s)", "partial blocks", "s: string", "Controls how partial merges resolve conflicts"]
                     ]
                 }
@@ -728,6 +729,54 @@ page decorators_builtin {
                         ["Error", "Condition"],
                         ["E093", "Block uses text block syntax but its schema has no @text field"],
                         ["E094", "@text field validation errors (wrong name or type)"]
+                    ]
+                }
+
+                heading h2_embedded_lsp {
+                    level = 2
+                    content = "@embedded_lsp(language)"
+                }
+
+                paragraph p_elsp1 {
+                    content = "Declares that a string attribute (or a <code>@text</code> field) contains source code in another language. When the WCL language server is configured with a matching child LSP server for that language, hover, completion, diagnostics, semantic tokens, and code actions inside the string are forwarded to the child server and surfaced in the WCL document."
+                }
+
+                paragraph p_elsp2 {
+                    content = "The decorator only names a language identifier — never a command or binary. The LSP client (for example a VS Code workspace setting) supplies a <code>language → { command, args }</code> mapping via <code>initializationOptions.embeddedLsp</code>. If no mapping exists for a given language, the feature silently no-ops for that field; opening a WCL file will never spawn a process named inside the file itself. See " + link("Editor Setup → Embedded Language Servers", "getting-started-editor-setup") + " for per-editor configuration examples."
+                }
+
+                code c_elsp1 {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    schema "job" {
+                        name: string
+                        script: string @embedded_lsp("python")
+                    }
+
+                    schema "snippet" {
+                        content: string @text @embedded_lsp("lua")
+                    }
+
+                    job backup {
+                        name = "nightly"
+                        script = "import os\nprint(os.listdir('.'))"
+                    }
+
+                    snippet greet <<-LUA
+                    local name = "world"
+                    print("hello " .. name)
+                    LUA
+                    WCL
+                }
+
+                paragraph p_elsp3 {
+                    content = "Caveats: string interpolation is not supported inside an <code>@embedded_lsp</code> value (interpolated regions are skipped with a warning). Escape sequences are passed through to the child server literally, so positions reported by the child map back to WCL exactly. Only stdio transports are supported — not TCP."
+                }
+
+                data_table t_elsp {
+                    rows = [
+                        ["Error", "Condition"],
+                        ["E104", "@embedded_lsp applied to a non-string field, or language is empty"]
                     ]
                 }
 
