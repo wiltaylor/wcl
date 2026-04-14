@@ -75,3 +75,62 @@ server old-svc {
     (identifier_literal)
     (block_body
       (attribute (identifier) (expression (integer_literal))))))
+
+================
+Braceless block with text content
+================
+
+h1 "Hello World"
+
+---
+
+(document
+  (block (identifier) (string_literal (string_content))))
+
+================
+Braceless block with id and text content
+================
+
+h1 myh1 "Hello"
+
+---
+
+(document
+  (block
+    (identifier)
+    (identifier)
+    (string_literal (string_content))))
+
+================
+Braceless bookmark block
+================
+
+section intro
+
+---
+
+(document
+  (block (identifier) (identifier)))
+
+================
+Braceless blocks followed by braced sibling
+================
+
+h1 "Title"
+h2 "Subtitle"
+p "text"
+server main {
+  port = 80
+}
+
+---
+
+(document
+  (block (identifier) (string_literal (string_content)))
+  (block (identifier) (string_literal (string_content)))
+  (block (identifier) (string_literal (string_content)))
+  (block
+    (identifier)
+    (inline_arg (identifier))
+    (block_body
+      (attribute (identifier) (expression (integer_literal))))))

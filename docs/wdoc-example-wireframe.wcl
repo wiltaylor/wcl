@@ -1,5 +1,5 @@
 import <wdoc.wcl>
-use wdoc::{page, layout, heading, paragraph, code, callout, bold}
+use wdoc::{page, layout, h1, h2, paragraph, code, callout, bold}
 use wdoc::draw::{diagram, card, avatar, input, button, text}
 
 page wdoc_example_wireframe {
@@ -11,19 +11,13 @@ page wdoc_example_wireframe {
             split s1 {
                 size = 100
 
-                heading h1 {
-                    level = 1
-                    content = "Example — UI Wireframe"
-                }
+                h1 "Example — UI Wireframe"
 
                 paragraph p1 {
                     content = "A sign-in form composed entirely from built-in widgets. Widgets nest freely — the outer " + bold("card") + " acts as a container, and its children (an " + bold("avatar") + ", a " + bold("text") + " heading, two " + bold("input") + " fields, and three " + bold("button") + "s) are positioned in its local coordinate space. No primitive rects or circles are needed for this layout."
                 }
 
-                heading h2_render {
-                    level = 2
-                    content = "Result"
-                }
+                h2 "Result"
 
                 diagram signin {
                     width = 400
@@ -99,10 +93,7 @@ page wdoc_example_wireframe {
                     }
                 }
 
-                heading h2_walk {
-                    level = 2
-                    content = "Walk-through"
-                }
+                h2 walk "Walk-through"
 
                 paragraph p_w1 {
                     content = "<strong>1. Widgets are containers too.</strong> The <code>card</code> widget draws a rounded-corner frame and an optional title bar, but you can nest anything inside it. Its children render in the card's local coordinate space — so <code>x = 150</code> on the avatar is 150 pixels from the card's left edge, not the canvas's."
@@ -116,10 +107,7 @@ page wdoc_example_wireframe {
                     content = "<strong>3. Theme variables for dark-mode safety.</strong> The avatar's color uses <code>var(--color-link)</code> so it adapts between light and dark modes. Other widgets pick up theme colors automatically from their defaults. Only hard-code hex colors when you genuinely want an accent that doesn't follow the theme."
                 }
 
-                heading h2_source {
-                    level = 2
-                    content = "Source"
-                }
+                h2 source "Source"
 
                 code src {
                     language = "wcl"

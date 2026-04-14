@@ -30,6 +30,8 @@ export default grammar({
     [$.selector],
     [$.pipeline],
     [$.filter],
+    [$.block],
+    [$.block, $.inline_arg],
   ],
 
   rules: {
@@ -110,14 +112,39 @@ export default grammar({
       seq(repeat($.decorator), $.identifier, "=", $.expression),
 
     // Blocks
+    //
+    // Three surface forms:
+    //   1. `kind id? args* { body }`  — standard braced block
+    //   2. `kind id? "text"`          — braceless text-content shorthand
+    //   3. `kind id`                  — braceless bookmark (id only)
     block: ($) =>
       seq(
         repeat($.decorator),
         optional("partial"),
         $.identifier,
-        optional($.identifier_literal),
-        repeat($.inline_arg),
-        $.block_body,
+        choice(
+          // Form 1: braced (with optional id and args). Dynamic precedence
+          // prefers this when a `{` is actually reachable.
+          prec.dynamic(
+            -1,
+            seq(
+              optional($.identifier_literal),
+              repeat($.inline_arg),
+              $.block_body,
+            ),
+          ),
+          // Form 2: braceless text-content — `kind id? "string"`
+          // (id may be a plain identifier or a hyphenated identifier_literal)
+          prec.dynamic(
+            1,
+            seq(
+              optional(choice($.identifier_literal, $.identifier)),
+              $.string_literal,
+            ),
+          ),
+          // Form 3: braceless bookmark — just `kind id`
+          prec.dynamic(1, choice($.identifier_literal, $.identifier)),
+        ),
       ),
 
     inline_arg: ($) =>

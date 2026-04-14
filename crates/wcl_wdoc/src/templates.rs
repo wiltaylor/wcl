@@ -24,8 +24,14 @@ pub fn render_heading(attrs: &IndexMap<String, String>) -> String {
     let level = attrs
         .get("level")
         .and_then(|s| s.parse::<u8>().ok())
-        .unwrap_or(1)
-        .clamp(1, 6);
+        .unwrap_or(1);
+    render_heading_at(level, attrs)
+}
+
+/// Render a heading at a fixed level. Used by `h1`..`h6` schemas which carry
+/// only a `content` field (the level is implied by the schema name).
+pub fn render_heading_at(level: u8, attrs: &IndexMap<String, String>) -> String {
+    let level = level.clamp(1, 6);
     let content = attrs.get("content").map(|s| s.as_str()).unwrap_or("");
     let slug = slugify(content);
     format!("<h{level} id=\"{slug}\" class=\"wdoc-heading\">{content}</h{level}>")

@@ -245,6 +245,28 @@ fn register_template_builtins(reg: &mut FunctionRegistry) {
         mk("wdoc::render_heading", "Render a heading element"),
     );
 
+    // Per-level heading shorthands (h1..h6 schemas).
+    macro_rules! register_h {
+        ($name:literal, $level:literal) => {
+            reg.register(
+                concat!("wdoc::render_h", stringify!($level)),
+                std::sync::Arc::new(|args: &[Value]| {
+                    let attrs = value_map_to_string_map(args.first())?;
+                    Ok(Value::String(wcl_wdoc::templates::render_heading_at(
+                        $level, &attrs,
+                    )))
+                }) as BuiltinFn,
+                mk($name, "Render a heading at a fixed level"),
+            );
+        };
+    }
+    register_h!("wdoc::render_h1", 1);
+    register_h!("wdoc::render_h2", 2);
+    register_h!("wdoc::render_h3", 3);
+    register_h!("wdoc::render_h4", 4);
+    register_h!("wdoc::render_h5", 5);
+    register_h!("wdoc::render_h6", 6);
+
     reg.register(
         "wdoc::render_paragraph",
         std::sync::Arc::new(|args: &[Value]| {

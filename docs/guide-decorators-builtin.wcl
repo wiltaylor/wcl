@@ -686,7 +686,7 @@ page decorators_builtin {
                 }
 
                 paragraph p41 {
-                    content = "When a schema has a <code>@text</code> field, blocks of that type can use text block syntax — a heredoc or string literal in place of a <code>{ body }</code>:"
+                    content = "When a schema has a <code>@text</code> field, blocks of that type can use text block syntax — a heredoc or string literal in place of a <code>{ body }</code>. The body braces are optional in this form, so <code>kind \"value\"</code> and <code>kind id \"value\"</code> are both valid (see " + link("Braceless Blocks", "guide-blocks.html") + ")."
                 }
 
                 code c26 {

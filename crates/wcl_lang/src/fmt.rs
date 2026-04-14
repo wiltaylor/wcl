@@ -183,6 +183,12 @@ impl<'a> Formatter<'a> {
                     self.out.push(' ');
                     self.string_lit(tc);
                     self.out.push('\n');
+                } else if block.body.is_empty()
+                    && (block.inline_id.is_some() || !block.inline_args.is_empty())
+                {
+                    // Braceless form: preserve author intent when there's no body and
+                    // we already emitted an inline_id or at least one inline_arg.
+                    self.out.push('\n');
                 } else {
                     self.out.push_str(" {\n");
                     self.indent += 1;

@@ -79,8 +79,13 @@ page appendix_ebnf {
                     (* ===== Blocks ===== *)
                     (* `kind` may be any identifier or one of the reserved block
                        keywords: `transform`, `layout`, `pipeline`. *)
+                    (* A block body may be a braced body, a text content literal,
+                       or omitted entirely (braceless form). The braceless form
+                       requires either an `inline_id` or at least one `inline_arg`
+                       so a bare `kind` by itself remains an error. *)
                     block           = { decorator } [ "partial" ] block_kind [ inline_id ]
-                                      { inline_arg } ( "{" body "}" | text_content ) ;
+                                      { inline_arg }
+                                      ( "{" body "}" | text_content | (* braceless *) ) ;
                     block_kind      = IDENT | "transform" | "layout" | "pipeline" ;
                     inline_id       = IDENTIFIER_LIT | interpolated_inline_id ;
                     (* Interpolated inline ids interleave literal segments with
