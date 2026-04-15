@@ -185,6 +185,12 @@ pub fn analyze(source: &str, options: &wcl_lang::ParseOptions) -> AnalysisResult
     merger.merge(&mut doc);
     all_diagnostics.extend(merger.into_diagnostics().into_diagnostics());
 
+    // Phase 6a: Auto-id assignment. Must mirror the main pipeline in
+    // `wcl_lang::parse` — otherwise anonymous sibling blocks collide, the
+    // second sibling is silently dropped, and any interpolation dependency
+    // it carries gets mis-reported as an unused variable.
+    wcl_lang::eval::auto_id::assign_auto_ids(&mut doc, &namespace_aliases);
+
     // Scope construction + evaluation (retain scopes)
     let mut evaluator = Evaluator::with_functions(
         &options.functions,
