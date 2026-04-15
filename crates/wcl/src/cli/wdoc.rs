@@ -1223,6 +1223,26 @@ pub fn run_build(
     Ok(())
 }
 
+/// Install the embedded wdoc standard library (`wdoc.wcl`) into the user's
+/// library directory so editors, LSP, and `wcl validate` can resolve
+/// `import <wdoc.wcl>` without the `wdoc` subcommand's temp-dir bootstrap.
+pub fn run_install_library(force: bool) -> Result<(), String> {
+    let lib_dir = wcl_lang::library::user_library_dir();
+    std::fs::create_dir_all(&lib_dir)
+        .map_err(|e| format!("failed to create library dir {}: {e}", lib_dir.display()))?;
+    let target = lib_dir.join("wdoc.wcl");
+    if target.exists() && !force {
+        return Err(format!(
+            "{} already exists (use --force to overwrite)",
+            target.display()
+        ));
+    }
+    std::fs::write(&target, wcl_wdoc::library::WDOC_LIBRARY_WCL)
+        .map_err(|e| format!("failed to write {}: {e}", target.display()))?;
+    println!("installed wdoc library to {}", target.display());
+    Ok(())
+}
+
 pub fn run_validate(
     files: &[PathBuf],
     vars: &[String],
