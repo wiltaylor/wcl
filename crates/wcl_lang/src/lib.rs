@@ -775,6 +775,11 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
     merger.merge(&mut doc);
     all_diagnostics.extend(merger.into_diagnostics().into_diagnostics());
 
+    // Phase 6a: Assign auto-ids to anonymous blocks whose schema opts in
+    // via `@auto_id`. Runs before scope construction so every downstream
+    // consumer sees the minted id as a real `inline_id`.
+    crate::eval::auto_id::assign_auto_ids(&mut doc, &namespace_aliases);
+
     // Phase 7: Scope construction + Expression evaluation
     // Wrap the Arc in a newtype so we can pass it as Box<dyn FileSystem>
     struct ArcFs(Arc<dyn FileSystem>);

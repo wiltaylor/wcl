@@ -41,6 +41,7 @@ page decorators_builtin {
                         ["@partial_requires", "partial blocks", "fields: list of strings", "Declares expected merge dependencies"],
                         ["@merge_order(n)", "partial blocks", "n: int", "Explicit ordering for partial merges"],
                         ["@open", "schemas", "none", "Allows extra attributes not declared in the schema"],
+                        ["@auto_id", "schemas", "none", "Auto-generates <code>{kind}_{n}</code> inline ids for anonymous sibling blocks so they don't collide"],
                         ["@child(kind, ...)", "schemas", "kind: string, min/max/max_depth: int (optional)", "Per-child cardinality and depth constraints"],
                         ["@tagged(field)", "schemas", "field: string", "Names the discriminator field for tagged variant schemas"],
                         ["@children(kinds)", "schemas", "kinds: list of strings", "Restricts which child blocks/tables may appear inside"],
@@ -276,6 +277,39 @@ page decorators_builtin {
 
                 paragraph p15 {
                     content = "The <code>rule</code> argument is a string identifying the warning to suppress."
+                }
+
+                heading h2_auto_id {
+                    level = 2
+                    content = "@auto_id"
+                }
+
+                paragraph p_auto_id_1 {
+                    content = "Applied to a schema. When a block of that schema has no inline ID, one is generated automatically as <code>{kind}_{n}</code>, where <code>n</code> is a 1-based counter per parent scope and per kind."
+                }
+
+                paragraph p_auto_id_2 {
+                    content = "Without this decorator, two sibling blocks of the same kind with no inline ID collide — only the first survives. <code>@auto_id</code> opts a schema into fallback id generation so anonymous siblings stay distinct. Blocks that supply their own id keep it unchanged; the counter only advances for auto-assigned ids."
+                }
+
+                code c_auto_id {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    @auto_id
+                    schema "p" { content: string @text }
+
+                    p "first"           // inline_id auto-assigned → p_1
+                    p mine "second"     // user-supplied id preserved
+                    p "third"           // auto-assigned → p_2
+                    WCL
+                }
+
+                paragraph p_auto_id_3 {
+                    content = "Auto-generated ids enter the same namespace as user-supplied ids, so they're still subject to the E030 duplicate-id check. The generated format <code>{kind}_{n}</code> is predictable — avoid writing your own ids in that shape to prevent collisions."
+                }
+
+                paragraph p_auto_id_4 {
+                    content = "Used extensively by the wdoc standard library on content schemas (<code>h1</code>–<code>h6</code>, <code>p</code>, <code>paragraph</code>, <code>code</code>, <code>callout</code>, <code>image</code>, <code>data_table</code>) so document authors can write many sibling elements without inventing throwaway ids."
                 }
 
                 heading h2_id_pattern {

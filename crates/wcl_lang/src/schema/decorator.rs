@@ -229,6 +229,13 @@ impl DecoratorSchemaRegistry {
             span: Span::dummy(),
         });
         self.insert(ResolvedDecoratorSchema {
+            name: "auto_id".to_string(),
+            targets: vec![DecoratorTarget::Schema],
+            params: vec![],
+            constraints: vec![],
+            span: Span::dummy(),
+        });
+        self.insert(ResolvedDecoratorSchema {
             name: "warning".to_string(),
             targets: vec![DecoratorTarget::Block],
             params: vec![],

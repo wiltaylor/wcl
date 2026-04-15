@@ -1,6 +1,7 @@
 //! WCL Eval — Evaluation, imports, macros, merge, query, built-in functions
 #![allow(clippy::result_large_err)]
 
+pub mod auto_id;
 pub mod control_flow;
 pub mod evaluator;
 pub mod functions;
