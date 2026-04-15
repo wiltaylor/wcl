@@ -9,9 +9,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::eval::NamespaceAliases;
-use crate::lang::ast::{
-    BodyItem, DocItem, Document, ElseBranch, IdentifierLit, InlineId, Schema, StringPart,
-};
+use crate::lang::ast::{BodyItem, DocItem, Document, IdentifierLit, InlineId, Schema, StringPart};
 
 /// Walk the document and assign `{kind}_{n}` inline IDs to anonymous blocks
 /// whose kind is in the opt-in set. Counters are per `(parent scope, kind)`.
@@ -25,9 +23,23 @@ pub fn assign_auto_ids(doc: &mut Document, aliases: &NamespaceAliases) {
         return;
     }
     let mut counters: HashMap<String, u32> = HashMap::new();
+    let taken = collect_taken_doc_ids(&doc.items);
     for item in &mut doc.items {
-        visit_doc_item(item, &schemas, aliases, &mut counters);
+        visit_doc_item(item, &schemas, aliases, &mut counters, &taken);
     }
+}
+
+/// Collect top-level inline ids visible from the document root.
+fn collect_taken_doc_ids(items: &[DocItem]) -> HashSet<String> {
+    let mut set = HashSet::new();
+    for item in items {
+        if let DocItem::Body(BodyItem::Block(b)) = item {
+            if let Some(InlineId::Literal(lit)) = &b.inline_id {
+                set.insert(lit.value.clone());
+            }
+        }
+    }
+    set
 }
 
 /// Resolve a block kind through the alias map. `p` → `wdoc::p` when
@@ -96,15 +108,17 @@ fn visit_doc_item(
     schemas: &HashSet<String>,
     aliases: &NamespaceAliases,
     counters: &mut HashMap<String, u32>,
+    taken: &HashSet<String>,
 ) {
     match item {
-        DocItem::Body(body) => visit_body_item(body, schemas, aliases, counters),
+        DocItem::Body(body) => visit_body_item(body, schemas, aliases, counters, taken),
         DocItem::Namespace(ns) => {
             // Namespaces reset the counter namespace — a `p` directly under a
             // namespace shouldn't share numbering with a `p` elsewhere.
             let mut ns_counters: HashMap<String, u32> = HashMap::new();
+            let ns_taken = collect_taken_doc_ids(&ns.items);
             for child in &mut ns.items {
-                visit_doc_item(child, schemas, aliases, &mut ns_counters);
+                visit_doc_item(child, schemas, aliases, &mut ns_counters, &ns_taken);
             }
         }
         _ => {}
@@ -116,6 +130,7 @@ fn visit_body_item(
     schemas: &HashSet<String>,
     aliases: &NamespaceAliases,
     counters: &mut HashMap<String, u32>,
+    taken: &HashSet<String>,
 ) {
     match item {
         BodyItem::Block(block) => {
@@ -125,59 +140,54 @@ fn visit_body_item(
                 && (schemas.contains(&resolved) || schemas.contains(&short_kind))
             {
                 // Counter is keyed by the resolved kind so different aliases
-                // of the same schema share numbering.
-                let n = counters.entry(resolved.clone()).or_insert(0);
-                *n += 1;
-                // The visible id uses the short kind name so `p "x"` → `p_1`,
-                // not `wdoc::p_1` (which wouldn't be a valid identifier anyway).
-                let id = format!("{}_{}", short_kind, *n);
+                // of the same schema share numbering. Skip over numbers that
+                // are already in use by an explicit id (including auto-ids
+                // minted on a prior pass, which makes retry expansion safe).
+                let id = loop {
+                    let n = counters.entry(resolved.clone()).or_insert(0);
+                    *n += 1;
+                    let candidate = format!("{}_{}", short_kind, *n);
+                    if !taken.contains(&candidate) {
+                        break candidate;
+                    }
+                };
                 block.inline_id = Some(InlineId::Literal(IdentifierLit {
                     value: id,
                     span: block.span,
                 }));
             }
             // Recurse into children with a fresh counter scope — nested blocks
-            // get their own numbering.
+            // get their own numbering. Re-scan taken ids for the child body so
+            // nested auto-ids can't collide with user-written siblings.
             let mut child_counters: HashMap<String, u32> = HashMap::new();
+            let child_taken = collect_taken_ids(&block.body);
             for child in &mut block.body {
-                visit_body_item(child, schemas, aliases, &mut child_counters);
+                visit_body_item(child, schemas, aliases, &mut child_counters, &child_taken);
             }
         }
-        BodyItem::ForLoop(fl) => {
-            for child in &mut fl.body {
-                visit_body_item(child, schemas, aliases, counters);
-            }
-        }
-        BodyItem::Conditional(cond) => {
-            for child in &mut cond.then_body {
-                visit_body_item(child, schemas, aliases, counters);
-            }
-            visit_else_branch(&mut cond.else_branch, schemas, aliases, counters);
-        }
+        // Skip ForLoop and Conditional bodies entirely. If these are still
+        // present after Phase 5, they'll be expanded in Phase 7a; running
+        // auto-id over the unexpanded *template* body would stamp the same
+        // id onto every clone and trigger E030. Auto-id runs again after
+        // the retry expansion when the clones exist as independent blocks.
+        BodyItem::ForLoop(_) | BodyItem::Conditional(_) => {}
         _ => {}
     }
 }
 
-fn visit_else_branch(
-    branch: &mut Option<ElseBranch>,
-    schemas: &HashSet<String>,
-    aliases: &NamespaceAliases,
-    counters: &mut HashMap<String, u32>,
-) {
-    match branch {
-        Some(ElseBranch::ElseIf(next)) => {
-            for child in &mut next.then_body {
-                visit_body_item(child, schemas, aliases, counters);
-            }
-            visit_else_branch(&mut next.else_branch, schemas, aliases, counters);
-        }
-        Some(ElseBranch::Else(body, _, _)) => {
-            for child in body {
-                visit_body_item(child, schemas, aliases, counters);
+/// Collect all inline ids present in a body slice. Used to avoid minting
+/// a fresh auto-id that collides with a user-written or previously-minted
+/// id when auto-id runs a second time (after the for-loop retry pass).
+fn collect_taken_ids(body: &[BodyItem]) -> HashSet<String> {
+    let mut set = HashSet::new();
+    for item in body {
+        if let BodyItem::Block(b) = item {
+            if let Some(InlineId::Literal(lit)) = &b.inline_id {
+                set.insert(lit.value.clone());
             }
         }
-        None => {}
     }
+    set
 }
 
 #[cfg(test)]
@@ -246,6 +256,76 @@ mod tests {
             collisions.len() <= 1,
             "expected at most one entry for colliding anonymous blocks, got {:?}",
             collisions
+        );
+    }
+
+    #[test]
+    fn for_loop_over_block_query_expands_at_retry() {
+        let values = eval_ok(
+            r#"
+@auto_id
+schema "marker" { content: string @text }
+
+schema "foo" {
+    id: identifier @inline(0)
+    port: i64
+}
+
+foo alpha { port = 80 }
+foo beta  { port = 81 }
+
+for x in (..foo) {
+    marker "${x.id}:${x.port}"
+}
+"#,
+        );
+        let m1 = values.get("marker_1").expect("marker_1");
+        let m2 = values.get("marker_2").expect("marker_2");
+        let content = |v: &crate::Value| match v {
+            crate::Value::BlockRef(br) => match br.attributes.get("content") {
+                Some(crate::Value::String(s)) => s.clone(),
+                _ => "<no content>".into(),
+            },
+            _ => "<not a block>".into(),
+        };
+        let contents = [content(m1), content(m2)];
+        assert!(
+            contents.iter().any(|s| s == "alpha:80"),
+            "got {:?}",
+            contents
+        );
+        assert!(
+            contents.iter().any(|s| s == "beta:81"),
+            "got {:?}",
+            contents
+        );
+    }
+
+    #[test]
+    fn unresolved_for_loop_iterable_emits_e105() {
+        use crate::{parse, ParseOptions};
+        // A bare-name iterable that doesn't exist as a let binding, table,
+        // or block. Phase 5 leaves it alone (tolerates missing); retry
+        // runs in strict mode and emits E105.
+        let src = r#"
+@auto_id
+schema "marker" { content: string @text }
+for x in not_a_real_name {
+    marker "${x.id}"
+}
+"#;
+        let doc = parse(src, ParseOptions::default());
+        let has_e105 = doc
+            .diagnostics
+            .iter()
+            .any(|d| d.code.as_deref() == Some("E105"));
+        assert!(
+            has_e105,
+            "expected E105 diagnostic, got: {:?}",
+            doc.diagnostics
+                .iter()
+                .map(|d| &d.message)
+                .collect::<Vec<_>>()
         );
     }
 

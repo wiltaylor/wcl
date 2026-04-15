@@ -147,19 +147,32 @@ page for_loops {
                 }
 
                 paragraph p6 {
-                    content = "Query results are lists of blocks, so they can be used directly as the loop source:"
+                    content = "Query results are lists of blocks, so they can be used directly as the loop source. The iterator variable is bound to each matching block, and " + bold("<code>x.id</code>, <code>x.kind</code>, and <code>x.<attribute></code>") + " all resolve inside the loop body:"
                 }
 
                 code c7 {
                     language = "wcl"
                     content = <<-'WCL'
-                    for svc in (service | where has(@public)) {
-                      ingress ingress-${svc.name} {
-                        target: svc.name
-                        port: svc.port
-                      }
+                    schema "service" {
+                      id: identifier @inline(0)
+                      port: i64
+                    }
+
+                    service web   { port = 80 }
+                    service api   { port = 443 }
+
+                    for svc in (..service) {
+                      p "Host ${svc.id} on port ${svc.port}"
                     }
                     WCL
+                }
+
+                paragraph p6b {
+                    content = "Block-query iterables are evaluated " + bold("after") + " blocks are resolved — the for-loop is kept in the AST through Phase 5 and expanded in a retry pass once every block's attributes are known. That means you can declare the blocks and the loop in any order and reference attributes on the iterator variable directly. Filters and projections on the query work the same as in any other query expression; see " + link("Query Functions", "guide-functions-ref-query.html") + "."
+                }
+
+                paragraph p6c {
+                    content = "If a name inside the iterable still can't be resolved after block evaluation (e.g. a typo'd identifier or a query that references an undefined alias), the compiler emits " + bold("E105: for-loop iterable could not be resolved") + "."
                 }
 
                 heading h2_interpolation {

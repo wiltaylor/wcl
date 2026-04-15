@@ -89,6 +89,7 @@ page appendix_error_codes {
                         { code = "E102", phase = "Parse", description = "Duplicate symbol_set name" },
                         { code = "E103", phase = "Parse", description = "Duplicate symbol within a symbol_set" },
                         { code = "E104", phase = "Schema", description = "@embedded_lsp applied to non-string field or empty language" },
+                        { code = "E105", phase = "Control flow", description = "For-loop iterable could not be resolved (undefined reference, or still unresolved after block evaluation)" },
                         { code = "E120", phase = "Namespace", description = "use target not found in namespace" },
                         { code = "E121", phase = "Namespace", description = "Namespace not found in use or qualified access" },
                         { code = "E123", phase = "Namespace", description = "File-level namespace must appear before other items" }

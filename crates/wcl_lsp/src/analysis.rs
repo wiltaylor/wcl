@@ -94,8 +94,10 @@ pub fn analyze(source: &str, options: &wcl_lang::ParseOptions) -> AnalysisResult
     expander.expand(&mut doc);
     all_diagnostics.extend(expander.into_diagnostics().into_diagnostics());
 
-    // Control flow expansion
-    let mut cf_expander = ControlFlowExpander::new(options.max_loop_depth, options.max_iterations);
+    // Control flow expansion (tolerant — defers block-query iterables
+    // to the retry pass after evaluation, matching wcl_lang::parse).
+    let mut cf_expander = ControlFlowExpander::new(options.max_loop_depth, options.max_iterations)
+        .with_tolerate_missing(true);
     let pre_eval =
         std::cell::RefCell::new(Evaluator::with_functions(&options.functions, None, None));
     let pre_scope = pre_eval
@@ -192,13 +194,47 @@ pub fn analyze(source: &str, options: &wcl_lang::ParseOptions) -> AnalysisResult
     wcl_lang::eval::auto_id::assign_auto_ids(&mut doc, &namespace_aliases);
 
     // Scope construction + evaluation (retain scopes)
-    let mut evaluator = Evaluator::with_functions(
-        &options.functions,
-        Some(Box::new(RealFileSystem)),
-        Some(options.root_dir.clone()),
-    );
-    let values = evaluator.evaluate(&doc);
-    let (scopes, eval_diags) = evaluator.into_parts();
+    let build_evaluator = || {
+        Evaluator::with_functions(
+            &options.functions,
+            Some(Box::new(RealFileSystem)),
+            Some(options.root_dir.clone()),
+        )
+    };
+    let mut evaluator = build_evaluator();
+    let mut values = evaluator.evaluate(&doc);
+
+    // Phase 7a retry — mirrors wcl_lang::parse. If any ForLoops were
+    // deferred (block-query iterables), re-expand with the real
+    // evaluator and re-run phases 6, 6a, 7 on the mutated document.
+    let (scopes, eval_diags) = if wcl_lang::eval::control_flow::has_remaining_for_loops(&doc) {
+        let module_scope = evaluator
+            .module_scope_id()
+            .expect("evaluator.evaluate() sets module_scope_id");
+        let eval_cell = std::cell::RefCell::new(evaluator);
+        let mut retry_expander =
+            ControlFlowExpander::new(options.max_loop_depth, options.max_iterations);
+        retry_expander.expand(&mut doc, &|expr| {
+            eval_cell
+                .borrow_mut()
+                .eval_expr(expr, module_scope)
+                .map_err(|d| d.message)
+        });
+        all_diagnostics.extend(retry_expander.into_diagnostics().into_diagnostics());
+        let (_, retry_eval_diags) = eval_cell.into_inner().into_parts();
+        all_diagnostics.extend(retry_eval_diags.into_diagnostics());
+
+        let mut merger2 = PartialMerger::new(options.merge_conflict_mode);
+        merger2.merge(&mut doc);
+        all_diagnostics.extend(merger2.into_diagnostics().into_diagnostics());
+        wcl_lang::eval::auto_id::assign_auto_ids(&mut doc, &namespace_aliases);
+
+        let mut new_evaluator = build_evaluator();
+        values = new_evaluator.evaluate(&doc);
+        new_evaluator.into_parts()
+    } else {
+        evaluator.into_parts()
+    };
     all_diagnostics.extend(eval_diags.into_diagnostics());
 
     // Decorator validation

@@ -37,6 +37,10 @@ pub struct Evaluator {
     /// Used by `collect_deps` so that `query(kind | ...)` expressions
     /// depend on every matching block (forcing them to be evaluated first).
     module_blocks_by_kind: HashMap<String, Vec<String>>,
+    /// The module-level scope id created by `evaluate()`. Exposed so the
+    /// pipeline can use this evaluator's `eval_expr` as a callback during
+    /// the post-evaluation control-flow retry pass.
+    module_scope_id: Option<ScopeId>,
 }
 
 impl Evaluator {
@@ -55,6 +59,7 @@ impl Evaluator {
             namespace_aliases: NamespaceAliases::default(),
             scope_qualified_ids: HashMap::new(),
             module_blocks_by_kind: HashMap::new(),
+            module_scope_id: None,
         }
     }
 
@@ -73,6 +78,7 @@ impl Evaluator {
             namespace_aliases: NamespaceAliases::default(),
             scope_qualified_ids: HashMap::new(),
             module_blocks_by_kind: HashMap::new(),
+            module_scope_id: None,
         }
     }
 
@@ -100,6 +106,7 @@ impl Evaluator {
             namespace_aliases: NamespaceAliases::default(),
             scope_qualified_ids: HashMap::new(),
             module_blocks_by_kind: HashMap::new(),
+            module_scope_id: None,
         }
     }
 
@@ -137,6 +144,7 @@ impl Evaluator {
     /// (key, Value) pairs representing the resolved content.
     pub fn evaluate(&mut self, doc: &Document) -> IndexMap<String, Value> {
         let module_scope = self.scopes.create_scope(ScopeKind::Module, None);
+        self.module_scope_id = Some(module_scope);
 
         // Phase 1: Register all names in scope (let bindings, attributes, blocks)
         self.register_doc_items(&doc.items, module_scope);
@@ -2048,6 +2056,12 @@ impl Evaluator {
     /// Provide read access to the scope arena.
     pub fn scopes(&self) -> &ScopeArena {
         &self.scopes
+    }
+
+    /// The module-level scope id created during `evaluate()`. Returns
+    /// `None` if `evaluate` hasn't been called on this evaluator yet.
+    pub fn module_scope_id(&self) -> Option<ScopeId> {
+        self.module_scope_id
     }
 
     /// Provide mutable access to the scope arena (used by the facade crate and query engine).
