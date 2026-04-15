@@ -582,9 +582,9 @@ impl Document {
 /// 5. Control flow expansion
 /// 6. Partial merge
 /// 7. Scope construction + Expression evaluation
-/// 7a. Control flow retry — re-expands for-loops whose iterable couldn't
-///     be resolved at Phase 5 (typically `for x in (..foo)` block
-///     queries). If any expansion happens, Phases 6 and 7 run again.
+///    - 7a. Control flow retry — re-expands for-loops whose iterable
+///      couldn't be resolved at Phase 5 (typically `for x in (..foo)`
+///      block queries). If any expansion happens, Phases 6 and 7 run again.
 /// 8. Decorator validation
 /// 9. Schema validation
 /// 10. ID uniqueness check
