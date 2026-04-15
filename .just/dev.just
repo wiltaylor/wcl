@@ -46,16 +46,26 @@ validate file:
 to-json file:
     cargo run --bin wcl -- convert {{file}} --to json
 
-# Install the VS Code extension via symlink
+# Install the VS Code extension via symlink.
+# The target directory name must match `<publisher>.<name>-<version>` from
+# package.json — otherwise VS Code silently ignores the extension.
 install-vscode:
+    #!/usr/bin/env bash
+    set -euo pipefail
     cd editors/vscode && npm install
-    ln -sfn "$(pwd)/editors/vscode" "${HOME}/.vscode/extensions/wil.wcl-0.1.0"
-    @echo "VS Code extension installed. Restart VS Code to activate."
+    cd ../..
+    version=$(node -p "require('./editors/vscode/package.json').version")
+    dir="${HOME}/.vscode/extensions/wil.wcl-${version}"
+    ln -sfn "$(pwd)/editors/vscode" "${dir}"
+    echo "VS Code extension installed at ${dir}. Restart VS Code to activate."
 
 # Uninstall the VS Code extension
 uninstall-vscode:
-    rm -f "${HOME}/.vscode/extensions/wil.wcl-0.1.0"
-    @echo "VS Code extension removed. Restart VS Code."
+    #!/usr/bin/env bash
+    set -euo pipefail
+    version=$(node -p "require('./editors/vscode/package.json').version")
+    rm -f "${HOME}/.vscode/extensions/wil.wcl-${version}"
+    echo "VS Code extension removed. Restart VS Code."
 
 # Clean build artifacts
 clean:
