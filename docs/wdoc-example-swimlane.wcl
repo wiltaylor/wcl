@@ -1,5 +1,5 @@
 import <wdoc.wcl>
-use wdoc::{page, layout, heading, paragraph, code, callout, bold}
+use wdoc::{page, layout, h1, h2, p, paragraph, code, callout, bold}
 use wdoc::draw::{diagram, rect, text, connection}
 
 page wdoc_example_swimlane {
@@ -11,19 +11,11 @@ page wdoc_example_swimlane {
             split s1 {
                 size = 100
 
-                heading h1 {
-                    level = 1
-                    content = "Example — Swimlane Diagram"
-                }
+                h1 "Example — Swimlane Diagram"
 
-                paragraph p1 {
-                    content = "Swimlane diagrams aren't a built-in widget — they're assembled from anchored rectangles and connections. Each lane is a full-height strip anchored to the canvas edges; step boxes live inside the lanes with absolute positions; cross-lane connections show handoffs. This example walks an order through three lanes: Customer, System, and Warehouse."
-                }
+                p "Swimlane diagrams aren't a built-in widget — they're assembled from anchored rectangles and connections. Each lane is a full-height strip anchored to the canvas edges; step boxes live inside the lanes with absolute positions; cross-lane connections show handoffs. This example walks an order through three lanes: Customer, System, and Warehouse."
 
-                heading h2_render {
-                    level = 2
-                    content = "Result"
-                }
+                h2 "Result"
 
                 diagram order_flow {
                     width = 780
@@ -255,10 +247,7 @@ page wdoc_example_swimlane {
                     }
                 }
 
-                heading h2_walk {
-                    level = 2
-                    content = "Walk-through"
-                }
+                h2 walk "Walk-through"
 
                 paragraph p_w1 {
                     content = "<strong>1. Anchored lanes.</strong> Each lane rectangle uses <code>left</code>, <code>top</code>, <code>bottom</code>, and a fixed <code>width</code>. That anchors it to the top (below the header), the bottom of the canvas, and a specific x-offset — so the lane stretches vertically regardless of how tall the diagram grows. Compare this to absolute placement: you can add more steps later and the lanes still reach the bottom."
@@ -272,14 +261,9 @@ page wdoc_example_swimlane {
                     content = "<strong>3. Anchors drive handoffs.</strong> Cross-lane connections pin <code>from_anchor</code> and <code>to_anchor</code> to left/right edges so arrows always leave one lane and enter the next cleanly. In-lane arrows use the default " + bold("auto") + " anchor — they pick the facing sides on their own."
                 }
 
-                heading h2_source {
-                    level = 2
-                    content = "Source"
-                }
+                h2 source "Source"
 
-                paragraph p_src1 {
-                    content = "Full source for the diagram above:"
-                }
+                p "Full source for the diagram above:"
 
                 code src {
                     language = "wcl"

@@ -136,6 +136,32 @@ page guide_blocks {
                     content = "Any args not mapped by <code>@inline</code> remain in <code>_args</code>."
                 }
 
+                heading h3_braceless {
+                    level = 3
+                    content = "Braceless Blocks"
+                }
+
+                paragraph p9b_1 {
+                    content = "The block body braces are optional when the block has either an inline ID or at least one inline argument and no child items. This makes short, single-payload blocks read more naturally:"
+                }
+
+                code c_braceless {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    // `@text` on a `content: string` field lets you write the
+                    // payload as a bare string with no braces.
+                    schema "h1" { content: string @text }
+
+                    h1 "Hello World"         // no body, no id
+                    h1 greeting "Hello"      // `greeting` is the inline id
+                    section intro            // bookmark: just a kind + id
+                    WCL
+                }
+
+                paragraph p9b_2 {
+                    content = "A braceless block must have an inline id or an inline argument — a bare <code>kind</code> alone is still a parse error. The formatter preserves the braceless form on round-trip; it will not add braces to a block that was written without them."
+                }
+
                 heading h3_decorators {
                     level = 3
                     content = "Decorators"

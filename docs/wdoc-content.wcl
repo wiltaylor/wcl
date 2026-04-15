@@ -33,6 +33,15 @@ page wdoc_content {
                     content = "heading h1 { level = 1, content = \"Page title\" }\nheading h2 { level = 2, content = \"A subsection\" }"
                 }
 
+                paragraph p_h2 {
+                    content = "wdoc also provides per-level shorthand schemas <code>h1</code>–<code>h6</code> that use the braceless block form. The text becomes the heading content, and an optional inline id becomes the anchor:"
+                }
+
+                code ch1_short {
+                    language = "wcl"
+                    content = "h1 \"Page title\"\nh2 intro \"A subsection\"   // anchor id = intro"
+                }
+
                 heading h2_paragraph {
                     level = 2
                     content = "paragraph"
@@ -45,6 +54,15 @@ page wdoc_content {
                 code cp1 {
                     language = "wcl"
                     content = "paragraph p1 {\n    content = \"WCL is a typed configuration language with \" + bold(\"schemas\") + \" and \" + italic(\"expressions\") + \".\"\n}"
+                }
+
+                paragraph p_p_short {
+                    content = "Use the <code>p</code> shorthand for the common case of a one-line paragraph:"
+                }
+
+                code cp1_short {
+                    language = "wcl"
+                    content = "p \"WCL is a typed configuration language with schemas and expressions.\""
                 }
 
                 heading h2_inline {

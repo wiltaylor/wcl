@@ -1,5 +1,5 @@
 import <wdoc.wcl>
-use wdoc::{page, layout, heading, paragraph, code, callout, bold}
+use wdoc::{page, layout, h1, h2, p, paragraph, code, callout, bold}
 use wdoc::draw::{diagram, flow_terminal, flow_io, flow_process, flow_decision, flow_subprocess, connection}
 
 page wdoc_example_flowchart {
@@ -11,19 +11,13 @@ page wdoc_example_flowchart {
             split s1 {
                 size = 100
 
-                heading h1 {
-                    level = 1
-                    content = "Example — Flowchart"
-                }
+                h1 "Example — Flowchart"
 
                 paragraph p1 {
                     content = "A worked example of a data-processing flowchart using the built-in flowchart widgets and the " + bold("layered") + " layout engine. The layout algorithm reads the connection list and arranges the nodes automatically — you only provide the sizes and the edges."
                 }
 
-                heading h2_render {
-                    level = 2
-                    content = "Result"
-                }
+                h2 "Result"
 
                 diagram validation_flow {
                     width = 700
@@ -142,14 +136,9 @@ page wdoc_example_flowchart {
                     }
                 }
 
-                heading h2_walk {
-                    level = 2
-                    content = "Walk-through"
-                }
+                h2 walk "Walk-through"
 
-                paragraph p_w1 {
-                    content = "Three things are worth pointing out:"
-                }
+                p "Three things are worth pointing out:"
 
                 paragraph p_w2 {
                     content = "<strong>1. The shapes are semantic, not geometric.</strong> <code>flow_terminal</code> for start/end (stadium), <code>flow_process</code> for a step (rectangle), <code>flow_decision</code> for a branch (diamond), <code>flow_io</code> for I/O (parallelogram), <code>flow_subprocess</code> for a nested routine (double-bordered rect). Picking the right shape communicates intent before the reader has read a single label."
@@ -163,10 +152,7 @@ page wdoc_example_flowchart {
                     content = "<strong>3. The error path is styled.</strong> The Yes branch uses the default text color; the No branch uses red strokes and the error's final edge is dashed. Labels on the decision's outgoing edges make the branch explicit."
                 }
 
-                heading h2_source {
-                    level = 2
-                    content = "Source"
-                }
+                h2 source "Source"
 
                 code src {
                     language = "wcl"

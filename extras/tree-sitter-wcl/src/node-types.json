@@ -325,6 +325,10 @@
         {
           "type": "inline_arg",
           "named": true
+        },
+        {
+          "type": "string_literal",
+          "named": true
         }
       ]
     }

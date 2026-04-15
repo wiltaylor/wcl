@@ -1079,7 +1079,7 @@ impl Parser {
                 let s = self.parse_string_lit()?;
                 (vec![], Some(s), vec![])
             } else if matches!(self.peek_kind(), TokenKind::StringLit(_)) {
-                // Lookahead: if string is followed by { or another primary-expr-start token, it's an inline arg
+                // Lookahead: if string is followed by another primary-expr-start token, it's an inline arg
                 let mut j = self.pos + 1;
                 while j < self.tokens.len() && matches!(self.tokens[j].kind, TokenKind::Newline) {
                     j += 1;
@@ -1087,44 +1087,40 @@ impl Parser {
                 let next_is_inline_arg_context =
                     j < self.tokens.len() && Self::is_inline_arg_start(&self.tokens[j].kind);
                 if next_is_inline_arg_context {
-                    // It's an inline arg — parse inline args then body
+                    // It's an inline arg — parse inline args then optional body
                     let args = self.parse_inline_args();
                     self.skip_newlines();
-                    if self.expect(&TokenKind::LBrace).is_err() {
-                        return None;
-                    }
-                    let body = self.parse_body_items();
-                    if self.expect(&TokenKind::RBrace).is_err() {
-                        return None;
-                    }
+                    let body = self.parse_optional_brace_body()?;
                     (body, None, args)
                 } else {
-                    // It's text content
+                    // It's text content (sole string after the kind/id). Schemas opt in to
+                    // this via the `@text` decorator on a `content: string` field, which gives
+                    // exactly the `kind "Text"` shorthand we want. Braces are optional.
                     let s = self.parse_string_lit()?;
-                    (vec![], Some(s), vec![])
+                    self.skip_newlines();
+                    let body = self.parse_optional_brace_body()?;
+                    (body, Some(s), vec![])
                 }
             } else if Self::is_primary_expr_start_not_brace(self.peek_kind()) {
                 // Non-string primary expression start (int, float, bool, null, list, paren, ident)
                 let args = self.parse_inline_args();
                 self.skip_newlines();
-                if self.expect(&TokenKind::LBrace).is_err() {
-                    return None;
-                }
-                let body = self.parse_body_items();
-                if self.expect(&TokenKind::RBrace).is_err() {
-                    return None;
-                }
+                let body = self.parse_optional_brace_body()?;
                 (body, None, args)
             } else {
                 self.skip_newlines();
-                if self.expect(&TokenKind::LBrace).is_err() {
-                    return None;
+                // No inline args. Allow braceless form if we already consumed an inline_id
+                // (e.g. `service alpha` as a bare bookmark). Otherwise braces are required.
+                if matches!(self.peek_kind(), TokenKind::LBrace) {
+                    let body = self.parse_optional_brace_body()?;
+                    (body, None, vec![])
+                } else if inline_id.is_some() {
+                    (vec![], None, vec![])
+                } else {
+                    // Force the standard "expected `{`" error
+                    self.expect(&TokenKind::LBrace).ok()?;
+                    unreachable!()
                 }
-                let body = self.parse_body_items();
-                if self.expect(&TokenKind::RBrace).is_err() {
-                    return None;
-                }
-                (body, None, vec![])
             };
 
         let span = start_span.merge(self.prev_span());
@@ -1140,6 +1136,21 @@ impl Parser {
             trivia,
             span,
         })
+    }
+
+    /// Parse an optional `{ body }` block. If `{` is the current token, parses
+    /// the brace-delimited body and consumes the closing `}`. Otherwise returns
+    /// an empty body (the braceless form). Returns `None` only on a parse error
+    /// inside the braces.
+    fn parse_optional_brace_body(&mut self) -> Option<Vec<BodyItem>> {
+        if matches!(self.peek_kind(), TokenKind::LBrace) {
+            self.expect(&TokenKind::LBrace).ok()?;
+            let body = self.parse_body_items();
+            self.expect(&TokenKind::RBrace).ok()?;
+            Some(body)
+        } else {
+            Some(vec![])
+        }
     }
 
     fn parse_inline_id(&mut self) -> Option<InlineId> {
