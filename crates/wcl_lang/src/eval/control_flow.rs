@@ -15,6 +15,12 @@ pub struct ControlFlowExpander {
     max_iterations: u32,
     total_iterations: u32,
     diagnostics: DiagnosticBag,
+    /// When true, for-loop iterables that fail to evaluate because a
+    /// referenced name is missing are left in the AST as unexpanded
+    /// ForLoops rather than producing a diagnostic. The later "retry"
+    /// pass (after block evaluation) runs with this disabled and
+    /// promotes any remaining failures to a real error (E105).
+    tolerate_missing: bool,
 }
 
 impl ControlFlowExpander {
@@ -24,7 +30,14 @@ impl ControlFlowExpander {
             max_iterations,
             total_iterations: 0,
             diagnostics: DiagnosticBag::new(),
+            tolerate_missing: false,
         }
+    }
+
+    /// Set the tolerance mode for missing-name iterable errors.
+    pub fn with_tolerate_missing(mut self, tolerate: bool) -> Self {
+        self.tolerate_missing = tolerate;
+        self
     }
 
     /// Expand all for loops and if/else conditionals in the document.
@@ -100,13 +113,29 @@ impl ControlFlowExpander {
         eval_expr: &dyn Fn(&Expr) -> Result<Value, String>,
         depth: u32,
     ) -> Vec<BodyItem> {
+        // When in tolerant mode, defer any iterable that references a
+        // block query (`..foo`, `foo#id`, `table#id`, etc.). These can't
+        // be evaluated at Phase 5 because blocks don't exist in scope
+        // yet, and even if the pre-evaluator succeeds it would see an
+        // empty block set and return an empty list — silently dropping
+        // the loop body. The retry pass runs with blocks available.
+        if self.tolerate_missing && iterable_references_query(&for_loop.iterable) {
+            return vec![BodyItem::ForLoop(for_loop.clone())];
+        }
+
         // Evaluate the iterable expression
         let iterable_value = match eval_expr(&for_loop.iterable) {
             Ok(v) => v,
             Err(e) => {
-                self.diagnostics.error(
-                    format!("error evaluating for loop iterable: {}", e),
+                if self.tolerate_missing && is_missing_name_error(&e) {
+                    // Leave the ForLoop intact for the retry pass to
+                    // re-attempt once blocks have been evaluated.
+                    return vec![BodyItem::ForLoop(for_loop.clone())];
+                }
+                self.diagnostics.error_with_code(
+                    format!("for loop iterable could not be resolved: {}", e),
                     for_loop.span,
+                    "E105",
                 );
                 return vec![];
             }
@@ -364,13 +393,42 @@ fn substitute_in_expr(
             // unevaluatable MemberAccess(Map(...), field) in the AST.
             if let Expr::Ident(ident) = obj.as_ref() {
                 if ident.name == iterator_name {
-                    if let Value::Map(map) = value {
-                        if let Some(field_val) = map.get(&field.name) {
-                            if let Some(replacement) = value_to_expr(field_val, *span) {
-                                *expr = replacement;
-                                return;
+                    match value {
+                        Value::Map(map) => {
+                            if let Some(field_val) = map.get(&field.name) {
+                                if let Some(replacement) = value_to_expr(field_val, *span) {
+                                    *expr = replacement;
+                                    return;
+                                }
                             }
                         }
+                        Value::BlockRef(br) => {
+                            // Support `x.id`, `x.kind`, and `x.<attribute>` when
+                            // the iterator value is a block reference (e.g. from
+                            // a `for x in (..foo)` query iterable).
+                            if field.name == "id" {
+                                if let Some(id) = &br.id {
+                                    *expr = Expr::IdentifierLit(IdentifierLit {
+                                        value: id.clone(),
+                                        span: *span,
+                                    });
+                                    return;
+                                }
+                            } else if field.name == "kind" {
+                                *expr = Expr::StringLit(StringLit {
+                                    parts: vec![StringPart::Literal(br.kind.clone())],
+                                    heredoc: None,
+                                    span: *span,
+                                });
+                                return;
+                            } else if let Some(field_val) = br.attributes.get(&field.name) {
+                                if let Some(replacement) = value_to_expr(field_val, *span) {
+                                    *expr = replacement;
+                                    return;
+                                }
+                            }
+                        }
+                        _ => {}
                     }
                 }
             }
@@ -478,6 +536,67 @@ fn try_resolve_interpolated_id(id: &mut Option<InlineId>) {
 }
 
 /// Convert a `Value` to an `Expr` for substitution purposes.
+/// Return true if any `ForLoop` body item is still present in the document
+/// after the first control-flow expansion pass. Walks blocks recursively.
+/// Used by the pipeline to decide whether a retry pass is needed.
+pub fn has_remaining_for_loops(doc: &Document) -> bool {
+    fn walk_body(items: &[BodyItem]) -> bool {
+        items.iter().any(|item| match item {
+            BodyItem::ForLoop(_) | BodyItem::Conditional(_) => true,
+            BodyItem::Block(b) => walk_body(&b.body),
+            _ => false,
+        })
+    }
+    fn walk_doc(items: &[DocItem]) -> bool {
+        items.iter().any(|item| match item {
+            DocItem::Body(body) => walk_body(std::slice::from_ref(body)),
+            DocItem::Namespace(ns) => walk_doc(&ns.items),
+            _ => false,
+        })
+    }
+    walk_doc(&doc.items)
+}
+
+/// Return true if the expression tree contains any `Expr::Query` node.
+/// Used by Phase 5 (tolerant mode) to defer for-loops whose iterable is
+/// a block query, since those can only be resolved after Phase 7.
+fn iterable_references_query(expr: &Expr) -> bool {
+    match expr {
+        Expr::Query(_, _) => true,
+        Expr::Paren(inner, _) => iterable_references_query(inner),
+        Expr::BinaryOp(a, _, b, _) => iterable_references_query(a) || iterable_references_query(b),
+        Expr::UnaryOp(_, a, _) => iterable_references_query(a),
+        Expr::Ternary(a, b, c, _) => {
+            iterable_references_query(a)
+                || iterable_references_query(b)
+                || iterable_references_query(c)
+        }
+        Expr::MemberAccess(a, _, _) => iterable_references_query(a),
+        Expr::IndexAccess(a, b, _) => iterable_references_query(a) || iterable_references_query(b),
+        Expr::FnCall(callee, args, _) => {
+            iterable_references_query(callee)
+                || args.iter().any(|a| match a {
+                    CallArg::Positional(e) => iterable_references_query(e),
+                    CallArg::Named(_, e) => iterable_references_query(e),
+                })
+        }
+        Expr::List(items, _) => items.iter().any(iterable_references_query),
+        Expr::Map(entries, _) => entries.iter().any(|(_, v)| iterable_references_query(v)),
+        _ => false,
+    }
+}
+
+/// Return true for the set of `eval_expr` error messages that the
+/// pre-evaluator produces when a name is not yet in scope. Matches the
+/// phrasing used by `eval_ident` (`evaluator.rs`) for both the "unknown"
+/// and "not yet evaluated" cases.
+fn is_missing_name_error(msg: &str) -> bool {
+    msg.contains("undefined reference")
+        || msg.contains("has not been evaluated")
+        || msg.contains("not found in namespace")
+        || msg.contains("unknown identifier")
+}
+
 pub(crate) fn value_to_expr(value: &Value, span: Span) -> Option<Expr> {
     match value {
         Value::String(s) => Some(Expr::StringLit(StringLit {
@@ -787,6 +906,98 @@ mod tests {
         let result = expander.expand_for_loop(&for_loop, &eval, 0);
         assert!(result.is_empty());
         assert!(expander.diagnostics.has_errors());
+    }
+
+    #[test]
+    fn tolerate_missing_keeps_query_for_loop_unexpanded() {
+        let mut expander = ControlFlowExpander::new(32, 10000).with_tolerate_missing(true);
+        let pipeline = QueryPipeline {
+            selector: QuerySelector::Recursive(make_ident("foo")),
+            filters: vec![],
+            span: dummy_span(),
+        };
+        let for_loop = ForLoop {
+            iterator: make_ident("x"),
+            index: None,
+            iterable: Expr::Query(pipeline, dummy_span()),
+            body: vec![],
+            trivia: Trivia::empty(),
+            span: dummy_span(),
+        };
+        let eval = |_: &Expr| -> Result<Value, String> { Ok(Value::List(vec![])) };
+        let result = expander.expand_for_loop(&for_loop, &eval, 0);
+        assert_eq!(result.len(), 1, "query iterable should be left intact");
+        assert!(matches!(result[0], BodyItem::ForLoop(_)));
+        assert!(!expander.diagnostics.has_errors());
+    }
+
+    #[test]
+    fn strict_mode_on_missing_iterable_errors_with_e105() {
+        let mut expander = ControlFlowExpander::new(32, 10000); // tolerate = false by default
+        let for_loop = ForLoop {
+            iterator: make_ident("x"),
+            index: None,
+            iterable: Expr::Ident(make_ident("unknown")),
+            body: vec![],
+            trivia: Trivia::empty(),
+            span: dummy_span(),
+        };
+        let eval =
+            |_: &Expr| -> Result<Value, String> { Err("undefined reference 'unknown'".into()) };
+        let _ = expander.expand_for_loop(&for_loop, &eval, 0);
+        assert!(expander.diagnostics.has_errors());
+        let diags = expander.diagnostics.into_diagnostics();
+        assert!(diags.iter().any(|d| d.code.as_deref() == Some("E105")));
+    }
+
+    #[test]
+    fn blockref_member_access_substitutes_through_id() {
+        use crate::eval::value::BlockRef;
+        let mut expr = Expr::MemberAccess(
+            Box::new(Expr::Ident(make_ident("x"))),
+            make_ident("id"),
+            dummy_span(),
+        );
+        let br = BlockRef {
+            kind: "foo".to_string(),
+            id: Some("alpha".to_string()),
+            qualified_id: Some("alpha".to_string()),
+            attributes: indexmap::IndexMap::new(),
+            children: vec![],
+            decorators: vec![],
+            span: dummy_span(),
+        };
+        substitute_in_expr(&mut expr, "x", &Value::BlockRef(br), None, 0);
+        match expr {
+            Expr::IdentifierLit(lit) => assert_eq!(lit.value, "alpha"),
+            other => panic!("expected IdentifierLit(alpha), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn blockref_member_access_substitutes_attribute() {
+        use crate::eval::value::BlockRef;
+        let mut expr = Expr::MemberAccess(
+            Box::new(Expr::Ident(make_ident("x"))),
+            make_ident("port"),
+            dummy_span(),
+        );
+        let mut attrs = indexmap::IndexMap::new();
+        attrs.insert("port".to_string(), Value::Int(80));
+        let br = BlockRef {
+            kind: "foo".to_string(),
+            id: None,
+            qualified_id: None,
+            attributes: attrs,
+            children: vec![],
+            decorators: vec![],
+            span: dummy_span(),
+        };
+        substitute_in_expr(&mut expr, "x", &Value::BlockRef(br), None, 0);
+        match expr {
+            Expr::IntLit(80, _) => {}
+            other => panic!("expected IntLit(80), got {:?}", other),
+        }
     }
 
     #[test]

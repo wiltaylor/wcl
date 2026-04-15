@@ -582,6 +582,9 @@ impl Document {
 /// 5. Control flow expansion
 /// 6. Partial merge
 /// 7. Scope construction + Expression evaluation
+/// 7a. Control flow retry — re-expands for-loops whose iterable couldn't
+///     be resolved at Phase 5 (typically `for x in (..foo)` block
+///     queries). If any expansion happens, Phases 6 and 7 run again.
 /// 8. Decorator validation
 /// 9. Schema validation
 /// 10. ID uniqueness check
@@ -665,7 +668,11 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
     all_diagnostics.extend(expander.into_diagnostics().into_diagnostics());
 
     // Phase 5: Control flow expansion
-    let mut cf_expander = ControlFlowExpander::new(options.max_loop_depth, options.max_iterations);
+    // Tolerate missing-name iterable errors on this first pass — ForLoops
+    // whose iterable depends on blocks (e.g. `for x in (..foo)`) are left
+    // in the AST and re-attempted after Phase 7 in the retry pass below.
+    let mut cf_expander = ControlFlowExpander::new(options.max_loop_depth, options.max_iterations)
+        .with_tolerate_missing(true);
     // Use a lightweight pre-evaluator for control flow condition/iterable expressions.
     // This only handles literal expressions; variables defined via `let` are not
     // available until Phase 7. We wrap the evaluator in a RefCell because
@@ -822,17 +829,63 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
         })
         .collect();
 
-    let mut evaluator = Evaluator::with_functions(
-        &options.functions,
-        Some(Box::new(ArcFs(fs))),
-        Some(options.root_dir.clone()),
-    );
-    evaluator.set_variables(options.variables.clone());
-    evaluator.set_imported_paths(imported_paths);
-    evaluator.set_schema_names(schema_names);
-    evaluator.set_namespace_aliases(namespace_aliases.clone());
-    let values = evaluator.evaluate(&doc);
-    all_diagnostics.extend(evaluator.into_diagnostics().into_diagnostics());
+    // Wrap the per-run evaluator construction in a closure so Phase 7a
+    // can reinstantiate it if the control-flow retry mutates the AST.
+    let imported_paths_captured = imported_paths.clone();
+    let schema_names_captured = schema_names.clone();
+    let build_evaluator = || {
+        let mut ev = Evaluator::with_functions(
+            &options.functions,
+            Some(Box::new(ArcFs(fs.clone()))),
+            Some(options.root_dir.clone()),
+        );
+        ev.set_variables(options.variables.clone());
+        ev.set_imported_paths(imported_paths_captured.clone());
+        ev.set_schema_names(schema_names_captured.clone());
+        ev.set_namespace_aliases(namespace_aliases.clone());
+        ev
+    };
+
+    let mut evaluator = build_evaluator();
+    let mut values = evaluator.evaluate(&doc);
+
+    // Phase 7a: retry control-flow expansion for ForLoops whose iterables
+    // depend on blocks (e.g. `for x in (..foo)`). Phase 5 left them in
+    // the AST; now that blocks are evaluated, try again with the real
+    // evaluator as the callback. If expansion adds new body items,
+    // re-run Phases 6, 6a, and 7 on the mutated doc.
+    if crate::eval::control_flow::has_remaining_for_loops(&doc) {
+        let module_scope = evaluator
+            .module_scope_id()
+            .expect("evaluator.evaluate() should set module_scope_id");
+        let eval_cell = std::cell::RefCell::new(evaluator);
+        let mut retry_expander =
+            ControlFlowExpander::new(options.max_loop_depth, options.max_iterations);
+        retry_expander.expand(&mut doc, &|expr| {
+            eval_cell
+                .borrow_mut()
+                .eval_expr(expr, module_scope)
+                .map_err(|d| d.message)
+        });
+        all_diagnostics.extend(retry_expander.into_diagnostics().into_diagnostics());
+        // Drain the old evaluator's diagnostics (accumulated during the
+        // retry's eval_expr callbacks) before discarding it.
+        let retry_eval_diags = eval_cell.into_inner().into_diagnostics();
+        all_diagnostics.extend(retry_eval_diags.into_diagnostics());
+
+        // Re-run Phase 6 (partial merge), 6a (auto-id), 7 (evaluation)
+        // against the expanded AST.
+        let mut merger = PartialMerger::new(options.merge_conflict_mode);
+        merger.merge(&mut doc);
+        all_diagnostics.extend(merger.into_diagnostics().into_diagnostics());
+        crate::eval::auto_id::assign_auto_ids(&mut doc, &namespace_aliases);
+
+        let mut new_evaluator = build_evaluator();
+        values = new_evaluator.evaluate(&doc);
+        all_diagnostics.extend(new_evaluator.into_diagnostics().into_diagnostics());
+    } else {
+        all_diagnostics.extend(evaluator.into_diagnostics().into_diagnostics());
+    }
 
     // Phase 8: Decorator validation
     let mut decorator_schemas = DecoratorSchemaRegistry::new();
@@ -849,7 +902,6 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
     schemas.collect(&doc, &mut diag_bag);
 
     // Phase 9a: @inline(N) mapping — remap _args entries to named attributes
-    let mut values = values;
     apply_inline_mappings(&schemas, &mut values);
 
     // Phase 9a2: Symbol set collection
