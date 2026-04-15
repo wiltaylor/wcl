@@ -383,6 +383,13 @@ enum WdocAction {
         #[command(flatten)]
         lib_args: LibraryArgs,
     },
+    /// Install the wdoc standard library into the user library directory so
+    /// editors, LSP, and `wcl validate` can resolve `import <wdoc.wcl>`.
+    InstallLibrary {
+        /// Overwrite an existing installation
+        #[arg(long)]
+        force: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -516,6 +523,7 @@ pub fn main() {
                 vars,
                 lib_args,
             } => wdoc::run_serve(&files, port, open, &vars, &lib_args),
+            WdocAction::InstallLibrary { force } => wdoc::run_install_library(force),
         },
         Commands::Transform { action } => match action {
             TransformAction::Run {
