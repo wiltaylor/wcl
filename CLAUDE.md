@@ -54,6 +54,22 @@ When making changes to WCL (especially AST, parser, schema, or language features
 - `docs/appendix-ebnf.wcl` — update EBNF grammar rules
 
 ### Bindings (`bindings/`)
-- python, wasm, go, dotnet — usually NO changes needed (they consume evaluated JSON, not AST)
+- python, wasm, go, dotnet, jvm, ruby, zig — usually NO changes needed (they consume evaluated JSON, not AST)
 - **EXCEPTION**: When adding new `Value` variants, `bindings/wasm/src/js/convert.rs` (`value_to_js`) has an exhaustive match on `Value` that MUST be updated
 - Only update if adding new FFI exports or changing the evaluated output shape
+
+### Claude Code skill (`.claude/skills/wcl/`)
+When the language, CLI, wdoc format, or bindings change, update the matching reference file. See `.claude/skills/wcl/reference/sync.md` for the full source → reference map. Quick map:
+
+- `crates/wcl_lang/src/schema/decorator.rs` → `reference/schemas-and-decorators.md`
+- `crates/wcl_lang/src/eval/functions.rs` → `reference/builtin-functions.md`
+- `crates/wcl_lang/src/lang/ast.rs` / parser → `reference/syntax.md`
+- `docs/appendix-error-codes.wcl` → `reference/error-codes.md`
+- `crates/wcl/src/cli/*.rs` → `reference/cli.md`
+- `crates/wcl_wdoc/src/wdoc.wcl` → `reference/wdoc.md` and/or `reference/wdoc-drawings.md`
+- `crates/wcl_wdoc/src/shapes.rs` / `graph_layout.rs` → `reference/wdoc-drawings.md`
+- `bindings/{python,wasm,go,dotnet,jvm,ruby,zig}/**` → `reference/bindings/<lang>.md`
+- `crates/wcl_ffi/**` → `reference/bindings/c.md`
+- `crates/wcl_lang/src/lib.rs` public API → `reference/bindings/rust.md`
+
+Keep `SKILL.md` short — add new reference files rather than growing the entry point.
