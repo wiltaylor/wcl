@@ -93,7 +93,7 @@ page wdoc_example_wireframe {
                     }
                 }
 
-                h2 walk "Walk-through"
+                h2 "Walk-through"
 
                 paragraph p_w1 {
                     content = "<strong>1. Widgets are containers too.</strong> The <code>card</code> widget draws a rounded-corner frame and an optional title bar, but you can nest anything inside it. Its children render in the card's local coordinate space — so <code>x = 150</code> on the avatar is 150 pixels from the card's left edge, not the canvas's."
@@ -107,7 +107,7 @@ page wdoc_example_wireframe {
                     content = "<strong>3. Theme variables for dark-mode safety.</strong> The avatar's color uses <code>var(--color-link)</code> so it adapts between light and dark modes. Other widgets pick up theme colors automatically from their defaults. Only hard-code hex colors when you genuinely want an accent that doesn't follow the theme."
                 }
 
-                h2 source "Source"
+                h2 "Source"
 
                 code src {
                     language = "wcl"

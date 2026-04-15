@@ -162,6 +162,10 @@ page guide_blocks {
                     content = "A braceless block must have an inline id or an inline argument — a bare <code>kind</code> alone is still a parse error. The formatter preserves the braceless form on round-trip; it will not add braces to a block that was written without them."
                 }
 
+                paragraph p9b_3 {
+                    content = "Two anonymous sibling blocks of the same kind normally collide in the scope map — only the first survives. Schemas that routinely appear as many siblings (content elements, headings, etc.) should opt in to " + link("@auto_id", "guide-decorators-builtin.html#auto_id") + " so each anonymous block gets a unique generated id. The wdoc standard library already sets this on <code>h1</code>–<code>h6</code>, <code>p</code>, <code>paragraph</code>, and other content schemas."
+                }
+
                 heading h3_decorators {
                     level = 3
                     content = "Decorators"

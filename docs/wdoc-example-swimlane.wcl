@@ -247,7 +247,7 @@ page wdoc_example_swimlane {
                     }
                 }
 
-                h2 walk "Walk-through"
+                h2 "Walk-through"
 
                 paragraph p_w1 {
                     content = "<strong>1. Anchored lanes.</strong> Each lane rectangle uses <code>left</code>, <code>top</code>, <code>bottom</code>, and a fixed <code>width</code>. That anchors it to the top (below the header), the bottom of the canvas, and a specific x-offset — so the lane stretches vertically regardless of how tall the diagram grows. Compare this to absolute placement: you can add more steps later and the lanes still reach the bottom."
@@ -261,7 +261,7 @@ page wdoc_example_swimlane {
                     content = "<strong>3. Anchors drive handoffs.</strong> Cross-lane connections pin <code>from_anchor</code> and <code>to_anchor</code> to left/right edges so arrows always leave one lane and enter the next cleanly. In-lane arrows use the default " + bold("auto") + " anchor — they pick the facing sides on their own."
                 }
 
-                h2 source "Source"
+                h2 "Source"
 
                 p "Full source for the diagram above:"
 

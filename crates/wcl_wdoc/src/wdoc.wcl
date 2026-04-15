@@ -48,7 +48,7 @@ namespace wdoc {
     // --- Content element schemas ---
 
     @template("html", "wdoc::render_heading")
-    @open
+    @auto_id @open
     schema "heading" {
         level: i32
         content: string
@@ -56,24 +56,26 @@ namespace wdoc {
 
     // Per-level heading shorthands. Schemas use `@text` so users can write
     // `h1 "Title"` (and `h1 myh1 "Title"` to also assign an anchor id).
-    @template("html", "wdoc::render_h1") @open schema "h1" { content: string @text }
-    @template("html", "wdoc::render_h2") @open schema "h2" { content: string @text }
-    @template("html", "wdoc::render_h3") @open schema "h3" { content: string @text }
-    @template("html", "wdoc::render_h4") @open schema "h4" { content: string @text }
-    @template("html", "wdoc::render_h5") @open schema "h5" { content: string @text }
-    @template("html", "wdoc::render_h6") @open schema "h6" { content: string @text }
+    // `@auto_id` prevents sibling h1/h2/... blocks from colliding when no
+    // explicit id is given.
+    @template("html", "wdoc::render_h1") @auto_id @open schema "h1" { content: string @text }
+    @template("html", "wdoc::render_h2") @auto_id @open schema "h2" { content: string @text }
+    @template("html", "wdoc::render_h3") @auto_id @open schema "h3" { content: string @text }
+    @template("html", "wdoc::render_h4") @auto_id @open schema "h4" { content: string @text }
+    @template("html", "wdoc::render_h5") @auto_id @open schema "h5" { content: string @text }
+    @template("html", "wdoc::render_h6") @auto_id @open schema "h6" { content: string @text }
 
     @template("html", "wdoc::render_paragraph")
-    @open
+    @auto_id @open
     schema "paragraph" {
         content: string
     }
 
     // Paragraph shorthand: `p "body text"`.
-    @template("html", "wdoc::render_paragraph") @open schema "p" { content: string @text }
+    @template("html", "wdoc::render_paragraph") @auto_id @open schema "p" { content: string @text }
 
     @template("html", "wdoc::render_image")
-    @open
+    @auto_id @open
     schema "image" {
         src: string
         alt: string @optional
@@ -82,20 +84,20 @@ namespace wdoc {
     }
 
     @template("html", "wdoc::render_code")
-    @open
+    @auto_id @open
     schema "code" {
         language: string @optional
         content: string
     }
 
     @template("html", "wdoc::render_table")
-    @open
+    @auto_id @open
     schema "data_table" {
         caption: string @optional
     }
 
     @template("html", "wdoc::render_callout")
-    @open
+    @auto_id @open
     schema "callout" {
         icon: string @optional
         header: string @optional

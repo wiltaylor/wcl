@@ -136,7 +136,7 @@ page wdoc_example_flowchart {
                     }
                 }
 
-                h2 walk "Walk-through"
+                h2 "Walk-through"
 
                 p "Three things are worth pointing out:"
 
@@ -152,7 +152,7 @@ page wdoc_example_flowchart {
                     content = "<strong>3. The error path is styled.</strong> The Yes branch uses the default text color; the No branch uses red strokes and the error's final edge is dashed. Labels on the decision's outgoing edges make the branch explicit."
                 }
 
-                h2 source "Source"
+                h2 "Source"
 
                 code src {
                     language = "wcl"
