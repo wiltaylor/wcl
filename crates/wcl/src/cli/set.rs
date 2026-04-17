@@ -1,7 +1,8 @@
 use std::path::Path;
 
 use crate::cli::mutation::{
-    block_inline_id, build_span_to_block, line_indent, parse_assignment, run_selector, split_spec,
+    build_span_to_block, line_indent, load_parsed, parse_assignment, run_selector, split_spec,
+    walk_path_blocks,
 };
 use crate::cli::LibraryArgs;
 use crate::lang::ast::{Block, BodyItem};
@@ -15,20 +16,7 @@ pub fn run(file: &Path, spec: &str, lib_args: &LibraryArgs) -> Result<(), String
         action.ok_or_else(|| "missing '~> .path = value' assignment in spec".to_string())?;
     let (path, rhs) = parse_assignment(action)?;
 
-    // Parse + evaluate the document so we can run the selector against
-    // BlockRefs and (later) match by id/attribute values.
-    let mut options = crate::ParseOptions {
-        root_dir: file.parent().unwrap_or(Path::new(".")).to_path_buf(),
-        ..Default::default()
-    };
-    lib_args.apply(&mut options);
-    let doc = crate::parse(&source, options);
-    if doc.ast.items.is_empty() && doc.has_errors() {
-        for d in doc.errors() {
-            eprintln!("{}", super::format_diagnostic(d, &doc.source_map, file));
-        }
-        return Err(format!("parse errors in {}", file.display()));
-    }
+    let doc = load_parsed(file, &source, lib_args)?;
 
     // Run the selector against the evaluated document.
     let matches = run_selector(&doc, selector_str)?;
@@ -58,20 +46,7 @@ pub fn run(file: &Path, spec: &str, lib_args: &LibraryArgs) -> Result<(), String
             )
         })?;
 
-        // Walk path through nested child blocks for all but the last segment
-        let mut current = ast_block;
-        for seg in &path.segments[..path.segments.len() - 1] {
-            current = find_child_block(current, &seg.name, seg.id.as_deref()).ok_or_else(|| {
-                format!(
-                    "nested block '{}' not found in {}{}",
-                    seg.name,
-                    current.kind.name,
-                    block_inline_id(current)
-                        .map(|s| format!("#{}", s))
-                        .unwrap_or_default()
-                )
-            })?;
-        }
+        let current = walk_path_blocks(ast_block, &path)?;
 
         let final_seg = path.last();
         // Find existing attribute
@@ -114,20 +89,6 @@ pub fn run(file: &Path, spec: &str, lib_args: &LibraryArgs) -> Result<(), String
         action
     );
     Ok(())
-}
-
-fn find_child_block<'a>(parent: &'a Block, kind: &str, id: Option<&str>) -> Option<&'a Block> {
-    parent.body.iter().find_map(|bi| match bi {
-        BodyItem::Block(b) if b.kind.name == kind && match_id(b, id) => Some(b),
-        _ => None,
-    })
-}
-
-fn match_id(block: &Block, id: Option<&str>) -> bool {
-    match id {
-        Some(target) => block_inline_id(block) == Some(target),
-        None => true,
-    }
 }
 
 /// Compute the indentation that should be used for items inside `block`.

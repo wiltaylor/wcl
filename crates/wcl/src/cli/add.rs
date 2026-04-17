@@ -1,6 +1,8 @@
 use std::path::Path;
 
-use crate::cli::mutation::{build_span_to_block, line_indent, run_selector, split_spec};
+use crate::cli::mutation::{
+    build_span_to_block, line_indent, load_parsed, run_selector, split_spec,
+};
 use crate::cli::LibraryArgs;
 use crate::lang::ast::{Block, BodyItem};
 
@@ -60,18 +62,7 @@ fn insert_into_matches(
 ) -> Result<(), String> {
     validate_fragment_as_body_item(fragment)?;
 
-    let mut options = crate::ParseOptions {
-        root_dir: file.parent().unwrap_or(Path::new(".")).to_path_buf(),
-        ..Default::default()
-    };
-    lib_args.apply(&mut options);
-    let doc = crate::parse(source, options);
-    if doc.ast.items.is_empty() && doc.has_errors() {
-        for d in doc.errors() {
-            eprintln!("{}", super::format_diagnostic(d, &doc.source_map, file));
-        }
-        return Err(format!("parse errors in {}", file.display()));
-    }
+    let doc = load_parsed(file, source, lib_args)?;
 
     let matches = run_selector(&doc, selector_str)?;
     let span_to_block = build_span_to_block(&doc.ast);

@@ -106,7 +106,7 @@ pub fn parse(source: &str, file_id: FileId) -> (ast::Document, DiagnosticBag) {
         }
     };
     let parser = parser::Parser::new(tokens);
-    let (doc, parser_diags) = parser.parse_document();
+    let (doc, parser_diags, _tokens) = parser.parse_document();
     diags.merge(parser_diags);
     (doc, diags)
 }

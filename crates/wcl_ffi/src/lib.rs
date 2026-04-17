@@ -54,17 +54,19 @@ fn as_doc(ptr: *const WclDocument) -> &'static wcl_lang::Document {
     unsafe { &*(ptr as *const wcl_lang::Document) }
 }
 
-fn build_parse_options(options_json: *const c_char) -> wcl_lang::ParseOptions {
+fn build_parse_options(options_json: *const c_char) -> (wcl_lang::ParseOptions, bool) {
     let mut opts = wcl_lang::ParseOptions::default();
     let json_str = unsafe { c_str_to_str(options_json) };
     if json_str.is_empty() {
-        return opts;
+        return (opts, false);
     }
     let Ok(json) = serde_json::from_str::<serde_json::Value>(json_str) else {
-        return opts;
+        return (opts, false);
     };
+    let mut has_root_dir = false;
     if let Some(s) = json.get("rootDir").and_then(|v| v.as_str()) {
         opts.root_dir = PathBuf::from(s);
+        has_root_dir = true;
     }
     if let Some(b) = json.get("allowImports").and_then(|v| v.as_bool()) {
         opts.allow_imports = b;
@@ -88,7 +90,7 @@ fn build_parse_options(options_json: *const c_char) -> wcl_lang::ParseOptions {
             }
         }
     }
-    opts
+    (opts, has_root_dir)
 }
 
 fn doc_into_ptr(doc: wcl_lang::Document) -> *mut WclDocument {
@@ -107,7 +109,7 @@ pub extern "C" fn wcl_ffi_parse(
     options_json: *const c_char,
 ) -> *mut WclDocument {
     let source = unsafe { c_str_to_str(source) };
-    let opts = build_parse_options(options_json);
+    let (opts, _) = build_parse_options(options_json);
     let doc = wcl_lang::parse(source, opts);
     doc_into_ptr(doc)
 }
@@ -134,14 +136,7 @@ pub extern "C" fn wcl_ffi_parse_file(
         }
     };
 
-    let mut opts = build_parse_options(options_json);
-
-    let json_str = unsafe { c_str_to_str(options_json) };
-    let has_root_dir = !json_str.is_empty()
-        && serde_json::from_str::<serde_json::Value>(json_str)
-            .ok()
-            .and_then(|j| j.get("rootDir").cloned())
-            .is_some();
+    let (mut opts, has_root_dir) = build_parse_options(options_json);
 
     if !has_root_dir {
         if let Some(parent) = file_path.parent() {
@@ -284,7 +279,7 @@ pub extern "C" fn wcl_ffi_parse_with_functions(
     func_count: usize,
 ) -> *mut WclDocument {
     let source = unsafe { c_str_to_str(source) };
-    let mut opts = build_parse_options(options_json);
+    let (mut opts, _) = build_parse_options(options_json);
 
     for i in 0..func_count {
         let name = unsafe { c_str_to_str(*func_names.add(i)) }.to_string();

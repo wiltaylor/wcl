@@ -1,11 +1,12 @@
 use std::path::Path;
 
 use crate::cli::mutation::{
-    block_inline_id, build_span_to_block, parse_path_only, run_selector, split_spec, AssignmentPath,
+    block_inline_id, build_span_to_block, load_parsed, parse_path_only, run_selector, split_spec,
+    walk_path_blocks,
 };
 use crate::cli::path::{attr_full_span, block_full_span};
 use crate::cli::LibraryArgs;
-use crate::lang::ast::{Block, BodyItem};
+use crate::lang::ast::BodyItem;
 
 pub fn run(file: &Path, spec: &str, lib_args: &LibraryArgs) -> Result<(), String> {
     let source = std::fs::read_to_string(file)
@@ -17,19 +18,7 @@ pub fn run(file: &Path, spec: &str, lib_args: &LibraryArgs) -> Result<(), String
         None => None,
     };
 
-    // Parse + evaluate so the selector can run
-    let mut options = crate::ParseOptions {
-        root_dir: file.parent().unwrap_or(Path::new(".")).to_path_buf(),
-        ..Default::default()
-    };
-    lib_args.apply(&mut options);
-    let doc = crate::parse(&source, options);
-    if doc.ast.items.is_empty() && doc.has_errors() {
-        for d in doc.errors() {
-            eprintln!("{}", super::format_diagnostic(d, &doc.source_map, file));
-        }
-        return Err(format!("parse errors in {}", file.display()));
-    }
+    let doc = load_parsed(file, &source, lib_args)?;
 
     let matches = run_selector(&doc, selector_str)?;
     if matches.is_empty() {
@@ -104,29 +93,4 @@ pub fn run(file: &Path, spec: &str, lib_args: &LibraryArgs) -> Result<(), String
         file.display()
     );
     Ok(())
-}
-
-fn walk_path_blocks<'a>(start: &'a Block, path: &AssignmentPath) -> Result<&'a Block, String> {
-    let mut current = start;
-    for seg in &path.segments[..path.segments.len() - 1] {
-        current = current
-            .body
-            .iter()
-            .find_map(|bi| match bi {
-                BodyItem::Block(b)
-                    if b.kind.name == seg.name
-                        && (seg.id.is_none() || block_inline_id(b) == seg.id.as_deref()) =>
-                {
-                    Some(b)
-                }
-                _ => None,
-            })
-            .ok_or_else(|| {
-                format!(
-                    "nested block '{}' not found in {}",
-                    seg.name, current.kind.name
-                )
-            })?;
-    }
-    Ok(current)
 }

@@ -465,7 +465,8 @@ pub struct ImportResolver<'a, FS: FileSystem + ?Sized> {
     allow_imports: bool,
     loaded: HashSet<PathBuf>,
     diagnostics: DiagnosticBag,
-    library_config: LibraryConfig,
+    /// Library search paths computed once from `LibraryConfig` at construction.
+    library_paths: Vec<PathBuf>,
     /// Directories containing resolved library files (used to relax jail checks).
     library_roots: HashSet<PathBuf>,
     /// Lazy imports collected during resolution, to be loaded on demand.
@@ -481,6 +482,7 @@ impl<'a, FS: FileSystem + ?Sized> ImportResolver<'a, FS> {
         allow_imports: bool,
         library_config: LibraryConfig,
     ) -> Self {
+        let library_paths = library_search_paths(&library_config);
         ImportResolver {
             fs,
             source_map,
@@ -489,10 +491,21 @@ impl<'a, FS: FileSystem + ?Sized> ImportResolver<'a, FS> {
             allow_imports,
             loaded: HashSet::new(),
             diagnostics: DiagnosticBag::new(),
-            library_config,
+            library_paths,
             library_roots: HashSet::new(),
             lazy_imports: Vec::new(),
         }
+    }
+
+    /// Resolve a library name using this resolver's cached search paths.
+    fn resolve_library(&self, name: &str) -> Option<PathBuf> {
+        for dir in &self.library_paths {
+            let candidate = dir.join(name);
+            if self.fs.exists(&candidate) {
+                return Some(candidate);
+            }
+        }
+        None
     }
 
     /// Check if a path is within any known library root directory.
@@ -579,7 +592,7 @@ impl<'a, FS: FileSystem + ?Sized> ImportResolver<'a, FS> {
             // Determine which files to import (glob expansion or single file)
             let resolved_files: Vec<PathBuf> = if import.kind == ImportKind::Library {
                 // Library imports: no glob support
-                match resolve_library_import(&import_path_str, self.fs, &self.library_config) {
+                match self.resolve_library(&import_path_str) {
                     Some(p) => vec![p],
                     None => {
                         if !import.optional {
@@ -700,24 +713,24 @@ impl<'a, FS: FileSystem + ?Sized> ImportResolver<'a, FS> {
                 self.diagnostics.merge(child_diags);
 
                 // E035: Check re-exports reference defined names in the imported file
+                let defined_names: HashSet<&str> = imported_doc
+                    .items
+                    .iter()
+                    .filter_map(|mi| match mi {
+                        DocItem::ExportLet(el) => Some(el.name.name.as_str()),
+                        DocItem::Body(BodyItem::LetBinding(lb)) => Some(lb.name.name.as_str()),
+                        DocItem::Body(BodyItem::Block(b)) => {
+                            b.inline_id.as_ref().and_then(|id| match id {
+                                InlineId::Literal(lit) => Some(lit.value.as_str()),
+                                _ => None,
+                            })
+                        }
+                        _ => None,
+                    })
+                    .collect();
                 for item in &imported_doc.items {
                     if let DocItem::ReExport(re_export) = item {
-                        let name_exists = imported_doc.items.iter().any(|mi| match mi {
-                            DocItem::ExportLet(el) => el.name.name == re_export.name.name,
-                            DocItem::Body(BodyItem::LetBinding(lb)) => {
-                                lb.name.name == re_export.name.name
-                            }
-                            DocItem::Body(BodyItem::Block(b)) => b
-                                .inline_id
-                                .as_ref()
-                                .map(|id| match id {
-                                    InlineId::Literal(lit) => lit.value == re_export.name.name,
-                                    _ => false,
-                                })
-                                .unwrap_or(false),
-                            _ => false,
-                        });
-                        if !name_exists {
+                        if !defined_names.contains(re_export.name.name.as_str()) {
                             self.diagnostics.error_with_code(
                                 format!("re-export of undefined name '{}'", re_export.name.name),
                                 re_export.span,
@@ -896,7 +909,7 @@ impl<'a, FS: FileSystem + ?Sized> ImportResolver<'a, FS> {
 
             // Resolve file path(s) — same logic as regular imports
             let resolved_files: Vec<PathBuf> = if import.kind == ImportKind::Library {
-                match resolve_library_import(&import_path_str, self.fs, &self.library_config) {
+                match self.resolve_library(&import_path_str) {
                     Some(p) => vec![p],
                     None => {
                         if !import.optional {
