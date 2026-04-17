@@ -15,7 +15,9 @@
 //!     segment := ident ( '#' ident )?
 
 use std::collections::HashMap;
+use std::path::Path;
 
+use crate::cli::LibraryArgs;
 use crate::eval::{BlockRef, Evaluator, QueryEngine, ScopeId, ScopeKind, Value};
 use crate::lang::ast::{Block, BodyItem, DocItem, Document, InlineId};
 use crate::lang::Span;
@@ -244,6 +246,61 @@ fn collect_block_refs_from_value(value: &Value, out: &mut Vec<BlockRef>) {
         }
         _ => {}
     }
+}
+
+/// Parse `source` using the file's parent directory as the root, apply library
+/// args, and return the resulting `Document`. On parse failure prints
+/// diagnostics to stderr and returns an error string identifying `file`.
+pub fn load_parsed(
+    file: &Path,
+    source: &str,
+    lib_args: &LibraryArgs,
+) -> Result<crate::Document, String> {
+    let mut options = crate::ParseOptions {
+        root_dir: file.parent().unwrap_or(Path::new(".")).to_path_buf(),
+        ..Default::default()
+    };
+    lib_args.apply(&mut options);
+    let doc = crate::parse(source, options);
+    if doc.ast.items.is_empty() && doc.has_errors() {
+        for d in doc.errors() {
+            eprintln!("{}", super::format_diagnostic(d, &doc.source_map, file));
+        }
+        return Err(format!("parse errors in {}", file.display()));
+    }
+    Ok(doc)
+}
+
+/// Walk from `start` through all segments in `path` except the last, returning
+/// the block at the penultimate segment. Used by `set` and `remove` before
+/// operating on the final path segment (an attribute or final block).
+pub fn walk_path_blocks<'a>(start: &'a Block, path: &AssignmentPath) -> Result<&'a Block, String> {
+    let mut current = start;
+    for seg in &path.segments[..path.segments.len() - 1] {
+        current = current
+            .body
+            .iter()
+            .find_map(|bi| match bi {
+                BodyItem::Block(b)
+                    if b.kind.name == seg.name
+                        && (seg.id.is_none() || block_inline_id(b) == seg.id.as_deref()) =>
+                {
+                    Some(b)
+                }
+                _ => None,
+            })
+            .ok_or_else(|| {
+                format!(
+                    "nested block '{}' not found in {}{}",
+                    seg.name,
+                    current.kind.name,
+                    block_inline_id(current)
+                        .map(|s| format!("#{}", s))
+                        .unwrap_or_default()
+                )
+            })?;
+    }
+    Ok(current)
 }
 
 /// Indentation string (run of spaces/tabs) for the line containing `byte_offset`.

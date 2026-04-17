@@ -39,9 +39,9 @@ pub fn analyze(source: &str, options: &wcl_lang::ParseOptions) -> AnalysisResult
         }
     };
 
-    // Parse
-    let parser = wcl_lang::lang::parser::Parser::new(tokens.clone());
-    let (mut doc, parse_diags) = parser.parse_document();
+    // Parse (reclaim tokens afterwards for semantic tokens, avoiding a clone).
+    let parser = wcl_lang::lang::parser::Parser::new(tokens);
+    let (mut doc, parse_diags, tokens) = parser.parse_document();
     all_diagnostics.extend(parse_diags.into_diagnostics());
 
     // Macro collection

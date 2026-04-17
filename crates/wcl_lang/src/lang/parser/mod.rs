@@ -232,7 +232,10 @@ impl Parser {
 
     // ── Main entry point ──────────────────────────────────────────────────
 
-    pub fn parse_document(mut self) -> (Document, DiagnosticBag) {
+    /// Parse a full document. Returns the AST, diagnostics, and the input
+    /// tokens (returned so callers that need them afterwards — e.g. LSP
+    /// semantic tokens — don't need to clone them before parsing).
+    pub fn parse_document(mut self) -> (Document, DiagnosticBag, Vec<Token>) {
         let start_span = self.current_span();
         let trivia = self.collect_trivia();
         let mut items = Vec::new();
@@ -257,7 +260,7 @@ impl Parser {
             trivia,
             span,
         };
-        (doc, self.diagnostics)
+        (doc, self.diagnostics, self.tokens)
     }
 
     /// Parse a standalone query pipeline (consuming the parser).
@@ -2945,7 +2948,8 @@ mod tests {
             }]
         });
         let parser = Parser::new(tokens);
-        parser.parse_document()
+        let (doc, diags, _) = parser.parse_document();
+        (doc, diags)
     }
 
     #[test]
