@@ -225,6 +225,7 @@ impl Parser {
                 }
             }
             TokenKind::Ref => self.parse_ref_expr(),
+            TokenKind::Hash => self.parse_ref_shorthand(),
             TokenKind::SelfKw => {
                 let span = self.current_span();
                 self.advance();
@@ -910,7 +911,45 @@ impl Parser {
             return None;
         }
         let span = start_span.merge(self.prev_span());
-        Some(Expr::Ref(target, span))
+        Some(Expr::Ref(target, RefStyle::Long, span))
+    }
+
+    /// Parse `#name` shorthand for `ref(name)`.
+    ///
+    /// Only accepts a bare identifier operand. String operands such as
+    /// `#"alpha.http"` or `#"../beta"` are rejected with a hint to use the
+    /// long `ref("...")` form.
+    pub(crate) fn parse_ref_shorthand(&mut self) -> Option<Expr> {
+        let start_span = self.current_span();
+        self.advance(); // consume `#`
+        let target = match self.peek_kind().clone() {
+            TokenKind::IdentifierLit(ref val) => {
+                let val = val.clone();
+                let span = self.current_span();
+                self.advance();
+                RefTarget::Bare(IdentifierLit { value: val, span })
+            }
+            TokenKind::Ident(ref val) => {
+                let val = val.clone();
+                let span = self.current_span();
+                self.advance();
+                RefTarget::Bare(IdentifierLit { value: val, span })
+            }
+            TokenKind::StringLit(_) | TokenKind::Heredoc { .. } => {
+                self.diagnostics.error(
+                    "string operand not allowed after '#'; use ref(\"...\") for qualified or relative paths",
+                    self.current_span(),
+                );
+                return None;
+            }
+            _ => {
+                self.diagnostics
+                    .error("expected identifier after '#'", self.current_span());
+                return None;
+            }
+        };
+        let span = start_span.merge(self.prev_span());
+        Some(Expr::Ref(target, RefStyle::Short, span))
     }
 
     /// Parse `import_raw("path")` expression.

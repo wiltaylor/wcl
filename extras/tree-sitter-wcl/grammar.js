@@ -537,6 +537,7 @@ export default grammar({
         $.import_table_expression,
         $.import_raw_expression,
         $.ref_expression,
+        $.ref_shorthand,
         $.lambda_expression,
       ),
 
@@ -601,6 +602,11 @@ export default grammar({
     // Ref expression — accepts bare identifiers or string paths for qualified/relative refs
     ref_expression: ($) =>
       seq("ref", "(", choice($.identifier_literal, field("ident", $.identifier), $.string_literal), ")"),
+
+    // Ref shorthand — `#name` is equivalent to `ref(name)`. Bare identifier only;
+    // for qualified or relative paths use the long `ref("...")` form.
+    ref_shorthand: ($) =>
+      seq("#", choice($.identifier_literal, field("ident", $.identifier))),
 
     // Literals
     integer_literal: ($) =>

@@ -251,9 +251,12 @@ Query expressions run at evaluation time and return lists of blocks or values:
 ref(alpha)            # bare ID
 ref("alpha.http")     # qualified path
 ref("../alpha")       # relative, from inside a block
+#alpha                # shorthand, equivalent to ref(alpha) — bare IDs only
 ```
 
-A ref resolves to the target block value. In schemas, use `@ref("schema_name")` to cross-reference a specific kind.
+A ref resolves to the target block value. `#name` is a shorthand for `ref(name)`; the two forms parse to the same AST and resolve identically. The shorthand only accepts a bare identifier — for qualified or relative paths use the long form. The formatter preserves whichever form you wrote.
+
+In schemas, use `@ref("schema_name")` to cross-reference a specific kind.
 
 ## Tables
 

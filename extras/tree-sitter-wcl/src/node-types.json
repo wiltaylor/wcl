@@ -96,6 +96,10 @@
           "named": true
         },
         {
+          "type": "ref_shorthand",
+          "named": true
+        },
+        {
           "type": "string_literal",
           "named": true
         },
@@ -216,6 +220,10 @@
         },
         {
           "type": "ref_expression",
+          "named": true
+        },
+        {
+          "type": "ref_shorthand",
           "named": true
         },
         {
@@ -522,6 +530,10 @@
           "named": true
         },
         {
+          "type": "ref_shorthand",
+          "named": true
+        },
+        {
           "type": "string_literal",
           "named": true
         },
@@ -653,6 +665,10 @@
         },
         {
           "type": "ref_expression",
+          "named": true
+        },
+        {
+          "type": "ref_shorthand",
           "named": true
         },
         {
@@ -1104,6 +1120,10 @@
           "named": true
         },
         {
+          "type": "ref_shorthand",
+          "named": true
+        },
+        {
           "type": "string_literal",
           "named": true
         },
@@ -1247,6 +1267,10 @@
         },
         {
           "type": "ref_expression",
+          "named": true
+        },
+        {
+          "type": "ref_shorthand",
           "named": true
         },
         {
@@ -1630,6 +1654,10 @@
         },
         {
           "type": "ref_expression",
+          "named": true
+        },
+        {
+          "type": "ref_shorthand",
           "named": true
         },
         {
@@ -2067,6 +2095,10 @@
           "named": true
         },
         {
+          "type": "ref_shorthand",
+          "named": true
+        },
+        {
           "type": "string_literal",
           "named": true
         },
@@ -2167,6 +2199,10 @@
         },
         {
           "type": "ref_expression",
+          "named": true
+        },
+        {
+          "type": "ref_shorthand",
           "named": true
         },
         {
@@ -2423,6 +2459,10 @@
           "named": true
         },
         {
+          "type": "ref_shorthand",
+          "named": true
+        },
+        {
           "type": "string_literal",
           "named": true
         },
@@ -2534,6 +2574,32 @@
         },
         {
           "type": "string_literal",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "ref_shorthand",
+    "named": true,
+    "fields": {
+      "ident": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "identifier_literal",
           "named": true
         }
       ]
@@ -2958,6 +3024,10 @@
           "named": true
         },
         {
+          "type": "ref_shorthand",
+          "named": true
+        },
+        {
           "type": "string_literal",
           "named": true
         },
@@ -3120,6 +3190,10 @@
         },
         {
           "type": "ref_expression",
+          "named": true
+        },
+        {
+          "type": "ref_shorthand",
           "named": true
         },
         {

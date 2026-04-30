@@ -83,6 +83,30 @@ page functions_ref_query {
                     WCL
                 }
 
+                heading h3_ref_shorthand {
+                    level = 3
+                    content = "Shorthand: #name"
+                }
+
+                paragraph p_ref_short {
+                    content = "<code>#name</code> is a shorthand for <code>ref(name)</code>. The two forms parse to the same AST and resolve identically. Only bare identifiers are supported — for qualified or relative paths, keep the long form (<code>ref(\"alpha.http\")</code>, <code>ref(\"../beta\")</code>). The formatter preserves whichever form you wrote."
+                }
+
+                code c_ref_short {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    database primary {
+                      host: "db.internal"
+                      port: 5432
+                    }
+
+                    service api {
+                      db_host: #primary.host       // same as ref(primary).host
+                      db_port: #primary.port
+                    }
+                    WCL
+                }
+
                 heading h2_query {
                     level = 2
                     content = "query"

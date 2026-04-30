@@ -685,11 +685,15 @@ impl<'a> Formatter<'a> {
                 self.query_pipeline(pipeline);
                 self.out.push(')');
             }
-            Expr::Ref(target, _) => match target {
-                RefTarget::Bare(id) => {
+            Expr::Ref(target, style, _) => match (target, style) {
+                (RefTarget::Bare(id), RefStyle::Short) => {
+                    self.out.push('#');
+                    self.out.push_str(&id.value);
+                }
+                (RefTarget::Bare(id), RefStyle::Long) => {
                     self.out.push_str(&format!("ref({})", id.value));
                 }
-                RefTarget::Path(s) => {
+                (RefTarget::Path(s), _) => {
                     self.out.push_str("ref(");
                     self.string_lit(s);
                     self.out.push(')');
@@ -1293,6 +1297,31 @@ mod tests {
         assert_eq!(
             result,
             "macro my_macro(x: i64, y = 42) {\n    value = x\n}\n\n"
+        );
+    }
+
+    #[test]
+    fn format_ref_shorthand_preserved() {
+        // Parse a source containing both forms and confirm the formatter
+        // emits each in its original surface form.
+        use crate::lang::FileId;
+        let src = "result_long = ref(alpha)\nresult_short = #alpha\n";
+        let (doc, diags) = crate::lang::parse(src, FileId(0));
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
+        let formatted = format_document(&doc);
+        assert!(
+            formatted.contains("result_long = ref(alpha)"),
+            "missing long form in: {}",
+            formatted
+        );
+        assert!(
+            formatted.contains("result_short = #alpha"),
+            "missing shorthand in: {}",
+            formatted
         );
     }
 
