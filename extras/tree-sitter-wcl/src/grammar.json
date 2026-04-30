@@ -2689,6 +2689,10 @@
         },
         {
           "type": "SYMBOL",
+          "name": "ref_shorthand"
+        },
+        {
+          "type": "SYMBOL",
           "name": "lambda_expression"
         }
       ]
@@ -3078,6 +3082,32 @@
         {
           "type": "STRING",
           "value": ")"
+        }
+      ]
+    },
+    "ref_shorthand": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "#"
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "identifier_literal"
+            },
+            {
+              "type": "FIELD",
+              "name": "ident",
+              "content": {
+                "type": "SYMBOL",
+                "name": "identifier"
+              }
+            }
+          ]
         }
       ]
     },

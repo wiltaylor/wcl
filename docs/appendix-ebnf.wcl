@@ -209,6 +209,7 @@ page appendix_ebnf {
                                     | pipeline
                                     | import_util_expr
                                     | ref_expr
+                                    | ref_shorthand
                                     | lambda_expr ;
 
                     (* ===== Query Pipelines (first-class expressions) =====
@@ -237,6 +238,7 @@ page appendix_ebnf {
                     import_table_arg = STRING_LIT | IDENT "=" expression ;
 
                     ref_expr        = "ref" "(" ( IDENTIFIER_LIT | IDENT | STRING_LIT ) ")" ;
+                    ref_shorthand   = "#" ( IDENTIFIER_LIT | IDENT ) ;
 
                     lambda_expr     = lambda_params "=>" ( expression | block_expr ) ;
                     lambda_params   = IDENT

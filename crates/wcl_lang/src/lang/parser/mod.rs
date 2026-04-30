@@ -3108,6 +3108,119 @@ mod tests {
     }
 
     #[test]
+    fn test_ref_long_form() {
+        let (doc, diags) = parse("result = ref(alpha)");
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
+        match &doc.items[0] {
+            DocItem::Body(BodyItem::Attribute(attr)) => match &attr.value {
+                Expr::Ref(RefTarget::Bare(id), RefStyle::Long, _) => {
+                    assert_eq!(id.value, "alpha");
+                }
+                other => panic!("expected Ref(Bare, Long), got {:?}", other),
+            },
+            other => panic!("expected Attribute, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ref_shorthand_bare() {
+        let (doc, diags) = parse("result = #alpha");
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
+        match &doc.items[0] {
+            DocItem::Body(BodyItem::Attribute(attr)) => match &attr.value {
+                Expr::Ref(RefTarget::Bare(id), RefStyle::Short, _) => {
+                    assert_eq!(id.value, "alpha");
+                }
+                other => panic!("expected Ref(Bare, Short), got {:?}", other),
+            },
+            other => panic!("expected Attribute, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ref_shorthand_with_member_access() {
+        let (doc, diags) = parse("result = #primary.host");
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
+        match &doc.items[0] {
+            DocItem::Body(BodyItem::Attribute(attr)) => match &attr.value {
+                Expr::MemberAccess(lhs, member, _) => {
+                    assert_eq!(member.name, "host");
+                    match lhs.as_ref() {
+                        Expr::Ref(RefTarget::Bare(id), RefStyle::Short, _) => {
+                            assert_eq!(id.value, "primary");
+                        }
+                        other => panic!("expected shorthand ref on lhs, got {:?}", other),
+                    }
+                }
+                other => panic!("expected MemberAccess, got {:?}", other),
+            },
+            other => panic!("expected Attribute, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ref_shorthand_in_list() {
+        let (doc, diags) = parse("items = [#a, #b]");
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
+        match &doc.items[0] {
+            DocItem::Body(BodyItem::Attribute(attr)) => match &attr.value {
+                Expr::List(items, _) => {
+                    assert_eq!(items.len(), 2);
+                    for (expected, item) in ["a", "b"].iter().zip(items.iter()) {
+                        match item {
+                            Expr::Ref(RefTarget::Bare(id), RefStyle::Short, _) => {
+                                assert_eq!(&id.value, expected);
+                            }
+                            other => panic!("expected shorthand ref, got {:?}", other),
+                        }
+                    }
+                }
+                other => panic!("expected List, got {:?}", other),
+            },
+            other => panic!("expected Attribute, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ref_shorthand_rejects_string_operand() {
+        let (_, diags) = parse(r#"result = #"alpha.http""#);
+        assert!(diags.has_errors(), "expected an error for #\"...\"");
+        let msg = diags
+            .diagnostics()
+            .iter()
+            .map(|d| d.message.clone())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            msg.contains("ref(\"...\")"),
+            "expected hint about ref(\"...\"), got: {}",
+            msg
+        );
+    }
+
+    #[test]
+    fn test_ref_shorthand_rejects_int_operand() {
+        let (_, diags) = parse("result = #42");
+        assert!(diags.has_errors(), "expected an error for #42");
+    }
+
+    #[test]
     fn test_nested_blocks() {
         let src = r#"
 server {

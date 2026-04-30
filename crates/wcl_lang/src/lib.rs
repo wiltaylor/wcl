@@ -1129,6 +1129,21 @@ mod tests {
     }
 
     #[test]
+    fn test_ref_shorthand_equivalent_to_long_form() {
+        let src = r#"
+            service web { port = 8080 }
+            long_form = ref(web).port
+            shorthand = #web.port
+        "#;
+        let doc = parse(src, ParseOptions::default());
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+        let long = doc.values.get("long_form").cloned();
+        let short = doc.values.get("shorthand").cloned();
+        assert_eq!(long, Some(Value::Int(8080)));
+        assert_eq!(long, short);
+    }
+
+    #[test]
     fn test_query_string_parse_error() {
         let doc = parse("config { port = 8080 }", ParseOptions::default());
         // An empty query string should fail to parse

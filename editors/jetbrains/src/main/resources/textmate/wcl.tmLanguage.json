@@ -263,6 +263,10 @@
         {
           "name": "support.type.builtin.wcl",
           "match": "\\b(list|map|set|union|ref)\\b(?=\\s*\\()"
+        },
+        {
+          "name": "support.type.builtin.wcl",
+          "match": "#(?=[a-zA-Z_])"
         }
       ]
     },

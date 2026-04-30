@@ -189,6 +189,16 @@ pub enum RefTarget {
     Path(StringLit),
 }
 
+/// Surface syntax used to write a `ref(...)` expression. Preserved so the
+/// formatter can round-trip the user's choice.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RefStyle {
+    /// `ref(name)` or `ref("path")` — the long form.
+    Long,
+    /// `#name` — bare-identifier shorthand. Only valid with `RefTarget::Bare`.
+    Short,
+}
+
 impl RefTarget {
     pub fn span(&self) -> Span {
         match self {
@@ -810,7 +820,8 @@ pub enum Expr {
     Query(QueryPipeline, Span),
     /// `ref(target)` — a cross-reference to another block by ID.
     /// Accepts bare identifiers (`ref(alpha)`) or string paths (`ref("alpha.http")`, `ref("../beta")`).
-    Ref(RefTarget, Span),
+    /// `RefStyle` records whether the source used `ref(...)` or the `#name` shorthand.
+    Ref(RefTarget, RefStyle, Span),
     /// `import_raw("path")` — import file contents as a raw string
     ImportRaw(StringLit, Span),
     /// `import_table("path", ...)` — import a CSV/TSV file as a table
@@ -844,7 +855,7 @@ impl Expr {
             | Expr::Lambda(_, _, s)
             | Expr::BlockExpr(_, _, s)
             | Expr::Query(_, s)
-            | Expr::Ref(_, s)
+            | Expr::Ref(_, _, s)
             | Expr::ImportRaw(_, s)
             | Expr::ImportTable(_, s)
             | Expr::Paren(_, s)

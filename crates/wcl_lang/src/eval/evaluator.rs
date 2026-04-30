@@ -658,7 +658,7 @@ impl Evaluator {
                     }
                 }
             }
-            Expr::Ref(target, _) => {
+            Expr::Ref(target, _, _) => {
                 deps.insert(target.value().to_string());
             }
             _ => {} // literals, etc.
@@ -757,7 +757,7 @@ impl Evaluator {
                 self.eval_expr(final_expr, block_scope)
             }
             Expr::Query(pipeline, span) => self.eval_query(pipeline, *span, scope_id),
-            Expr::Ref(target, span) => {
+            Expr::Ref(target, _, span) => {
                 let id_str = target.value();
                 // Simple bare ID: resolve as BlockChild in current/parent scopes.
                 if !id_str.contains('.') && !id_str.starts_with("../") {
@@ -3111,6 +3111,7 @@ mod tests {
                         value: "svc-auth".to_string(),
                         span: ds(),
                     }),
+                    RefStyle::Long,
                     ds(),
                 ),
             ),
@@ -3153,6 +3154,7 @@ mod tests {
                             value: "svc-auth".to_string(),
                             span: ds(),
                         }),
+                        RefStyle::Long,
                         ds(),
                     )),
                     mk_ident("port"),
@@ -3180,6 +3182,7 @@ mod tests {
                 value: "nonexistent".to_string(),
                 span: ds(),
             }),
+            RefStyle::Long,
             ds(),
         );
         let err = ev.eval_expr(&expr, scope).unwrap_err();

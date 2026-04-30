@@ -147,6 +147,32 @@ db = ref(mydb)
     (ref_expression (identifier)))))
 
 ================
+Ref shorthand
+================
+
+db = #primary
+
+---
+
+(document
+  (attribute (identifier) (expression
+    (ref_shorthand (identifier)))))
+
+================
+Ref shorthand with member access
+================
+
+host = #primary.host
+
+---
+
+(document
+  (attribute (identifier) (expression
+    (member_expression
+      (ref_shorthand (identifier))
+      (identifier)))))
+
+================
 Import table expression
 ================
 

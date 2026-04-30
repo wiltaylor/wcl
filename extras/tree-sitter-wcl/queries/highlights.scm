@@ -125,6 +125,9 @@
   "ref"
 ] @type.builtin
 
+; `#` in `#name` shorthand — same color as the `ref` keyword.
+(ref_shorthand "#" @type.builtin)
+
 ; ── Identifiers ───────────────────────────────────────────────────────────
 
 (identifier_literal) @string.special
