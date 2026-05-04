@@ -912,9 +912,6 @@ fn render_connection_svg(conn: &Connection, shape_map: &HashMap<String, Bounds>,
         None => return,
     };
 
-    let (x1, y1) = from_bounds.anchor_pos(conn.from_anchor, to_bounds);
-    let (x2, y2) = to_bounds.anchor_pos(conn.to_anchor, from_bounds);
-
     let ms = match conn.direction {
         Direction::From | Direction::Both => " marker-start=\"url(#wdoc-arrow)\"",
         _ => "",
@@ -933,14 +930,48 @@ fn render_connection_svg(conn: &Connection, shape_map: &HashMap<String, Bounds>,
 
     match conn.curve {
         CurveStyle::Straight => {
-            write!(
-                svg,
-                "<line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\"\
-                 {stroke_default}{style}{ms}{me}/>"
-            )
-            .unwrap();
+            if conn.from_anchor == AnchorPoint::Auto && conn.to_anchor == AnchorPoint::Auto {
+                let (x1, y1) = from_bounds.anchor_pos(AnchorPoint::Auto, to_bounds);
+                let (x2, y2) = to_bounds.anchor_pos(AnchorPoint::Auto, from_bounds);
+                let obstacles: Vec<Bounds> = shape_map
+                    .iter()
+                    .filter(|(id, b)| {
+                        id.as_str() != conn.from_id
+                            && id.as_str() != conn.to_id
+                            && !bounds_contains_point(b, x1, y1)
+                            && !bounds_contains_point(b, x2, y2)
+                    })
+                    .map(|(_, b)| *b)
+                    .collect();
+                if let Some(points) = route_orthogonal(from_bounds, to_bounds, &obstacles) {
+                    let d = path_data(&points);
+                    write!(
+                        svg,
+                        "<path d=\"{d}\" fill=\"none\"{stroke_default}{style}{ms}{me}/>"
+                    )
+                    .unwrap();
+                } else {
+                    write!(
+                        svg,
+                        "<line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\"\
+                         {stroke_default}{style}{ms}{me}/>"
+                    )
+                    .unwrap();
+                }
+            } else {
+                let (x1, y1) = from_bounds.anchor_pos(conn.from_anchor, to_bounds);
+                let (x2, y2) = to_bounds.anchor_pos(conn.to_anchor, from_bounds);
+                write!(
+                    svg,
+                    "<line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\"\
+                     {stroke_default}{style}{ms}{me}/>"
+                )
+                .unwrap();
+            }
         }
         CurveStyle::Bezier => {
+            let (x1, y1) = from_bounds.anchor_pos(conn.from_anchor, to_bounds);
+            let (x2, y2) = to_bounds.anchor_pos(conn.to_anchor, from_bounds);
             let dx = (x2 - x1).abs() / 2.0;
             let dy = (y2 - y1).abs() / 2.0;
             let (c1x, c1y) = ctrl_point(x1, y1, conn.from_anchor, dx, dy);
@@ -955,6 +986,8 @@ fn render_connection_svg(conn: &Connection, shape_map: &HashMap<String, Bounds>,
     }
 
     if let Some(label) = &conn.label {
+        let (x1, y1) = from_bounds.anchor_pos(conn.from_anchor, to_bounds);
+        let (x2, y2) = to_bounds.anchor_pos(conn.to_anchor, from_bounds);
         let mx = (x1 + x2) / 2.0;
         let my = (y1 + y2) / 2.0 - 10.0;
         write!(
@@ -964,6 +997,270 @@ fn render_connection_svg(conn: &Connection, shape_map: &HashMap<String, Bounds>,
         )
         .unwrap();
     }
+}
+
+fn route_orthogonal(from: &Bounds, to: &Bounds, obstacles: &[Bounds]) -> Option<Vec<(f64, f64)>> {
+    let start = from.anchor_pos(AnchorPoint::Auto, to);
+    let end = to.anchor_pos(AnchorPoint::Auto, from);
+    if direct_auto_line_is_clean(start, end, obstacles) {
+        return None;
+    }
+
+    let margin = 8.0;
+    let mut candidates = Vec::new();
+
+    let mut x_lanes = route_x_lanes(from, to, margin);
+    let mut y_lanes = route_y_lanes(from, to, margin);
+    for b in obstacles {
+        x_lanes.push(b.x - margin);
+        x_lanes.push(b.x + b.width + margin);
+        y_lanes.push(b.y - margin);
+        y_lanes.push(b.y + b.height + margin);
+    }
+
+    for mid_x in x_lanes {
+        candidates.push(build_hv_route(from, to, mid_x));
+    }
+    for mid_y in y_lanes {
+        candidates.push(build_vh_route(from, to, mid_y));
+    }
+
+    candidates
+        .into_iter()
+        .filter(|points| {
+            route_exits_endpoint_bounds(points, from, to)
+                && !path_intersects_obstacle(points, obstacles)
+        })
+        .min_by(|a, b| {
+            route_score(a)
+                .partial_cmp(&route_score(b))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+}
+
+fn route_x_lanes(from: &Bounds, to: &Bounds, margin: f64) -> Vec<f64> {
+    let from_left = from.x;
+    let from_right = from.x + from.width;
+    let to_left = to.x;
+    let to_right = to.x + to.width;
+    let mut lanes = Vec::new();
+
+    if from_right + margin <= to_left - margin {
+        lanes.push((from_right + to_left) / 2.0);
+    } else if to_right + margin <= from_left - margin {
+        lanes.push((to_right + from_left) / 2.0);
+    }
+
+    lanes.push(from_left.min(to_left) - margin);
+    lanes.push(from_right.max(to_right) + margin);
+    lanes
+}
+
+fn route_y_lanes(from: &Bounds, to: &Bounds, margin: f64) -> Vec<f64> {
+    let from_top = from.y;
+    let from_bottom = from.y + from.height;
+    let to_top = to.y;
+    let to_bottom = to.y + to.height;
+    let mut lanes = Vec::new();
+
+    if from_bottom + margin <= to_top - margin {
+        lanes.push((from_bottom + to_top) / 2.0);
+    } else if to_bottom + margin <= from_top - margin {
+        lanes.push((to_bottom + from_top) / 2.0);
+    }
+
+    lanes.push(from_top.min(to_top) - margin);
+    lanes.push(from_bottom.max(to_bottom) + margin);
+    lanes
+}
+
+fn direct_auto_line_is_clean(start: (f64, f64), end: (f64, f64), obstacles: &[Bounds]) -> bool {
+    let aligned = (start.0 - end.0).abs() < 0.001 || (start.1 - end.1).abs() < 0.001;
+    aligned && !path_intersects_obstacle(&[start, end], obstacles)
+}
+
+fn build_hv_route(from: &Bounds, to: &Bounds, mid_x: f64) -> Vec<(f64, f64)> {
+    let fc = bounds_center(from);
+    let tc = bounds_center(to);
+    let from_anchor = horizontal_anchor(nonzero_delta(mid_x - fc.0, tc.0 - fc.0));
+    let to_anchor = if nonzero_delta(tc.0 - mid_x, tc.0 - fc.0) >= 0.0 {
+        AnchorPoint::Left
+    } else {
+        AnchorPoint::Right
+    };
+    let start = from.anchor_pos(from_anchor, to);
+    let end = to.anchor_pos(to_anchor, from);
+    simplify_points(vec![start, (mid_x, start.1), (mid_x, end.1), end])
+}
+
+fn build_vh_route(from: &Bounds, to: &Bounds, mid_y: f64) -> Vec<(f64, f64)> {
+    let fc = bounds_center(from);
+    let tc = bounds_center(to);
+    let from_anchor = vertical_anchor(nonzero_delta(mid_y - fc.1, tc.1 - fc.1));
+    let to_anchor = if nonzero_delta(tc.1 - mid_y, tc.1 - fc.1) >= 0.0 {
+        AnchorPoint::Top
+    } else {
+        AnchorPoint::Bottom
+    };
+    let start = from.anchor_pos(from_anchor, to);
+    let end = to.anchor_pos(to_anchor, from);
+    simplify_points(vec![start, (start.0, mid_y), (end.0, mid_y), end])
+}
+
+fn bounds_center(bounds: &Bounds) -> (f64, f64) {
+    (
+        bounds.x + bounds.width / 2.0,
+        bounds.y + bounds.height / 2.0,
+    )
+}
+
+fn horizontal_anchor(delta: f64) -> AnchorPoint {
+    if delta >= 0.0 {
+        AnchorPoint::Right
+    } else {
+        AnchorPoint::Left
+    }
+}
+
+fn vertical_anchor(delta: f64) -> AnchorPoint {
+    if delta >= 0.0 {
+        AnchorPoint::Bottom
+    } else {
+        AnchorPoint::Top
+    }
+}
+
+fn nonzero_delta(delta: f64, fallback: f64) -> f64 {
+    if delta.abs() < f64::EPSILON {
+        fallback
+    } else {
+        delta
+    }
+}
+
+fn simplify_points(points: Vec<(f64, f64)>) -> Vec<(f64, f64)> {
+    let mut simplified = Vec::new();
+    for point in points {
+        if simplified
+            .last()
+            .map(|last: &(f64, f64)| {
+                (last.0 - point.0).abs() < 0.001 && (last.1 - point.1).abs() < 0.001
+            })
+            .unwrap_or(false)
+        {
+            continue;
+        }
+        simplified.push(point);
+    }
+    simplified
+}
+
+fn route_score(points: &[(f64, f64)]) -> f64 {
+    let length: f64 = points
+        .windows(2)
+        .map(|segment| (segment[1].0 - segment[0].0).abs() + (segment[1].1 - segment[0].1).abs())
+        .sum();
+    let bends = points.len().saturating_sub(2) as f64;
+    length + bends * 20.0
+}
+
+fn path_data(points: &[(f64, f64)]) -> String {
+    let mut d = String::new();
+    for (idx, (x, y)) in points.iter().enumerate() {
+        if idx == 0 {
+            write!(d, "M {x} {y}").unwrap();
+        } else {
+            write!(d, " L {x} {y}").unwrap();
+        }
+    }
+    d
+}
+
+fn path_intersects_obstacle(points: &[(f64, f64)], obstacles: &[Bounds]) -> bool {
+    points.windows(2).any(|segment| {
+        obstacles
+            .iter()
+            .any(|b| segment_intersects_bounds(segment[0], segment[1], b))
+    })
+}
+
+fn route_exits_endpoint_bounds(points: &[(f64, f64)], from: &Bounds, to: &Bounds) -> bool {
+    if points.len() < 2 {
+        return false;
+    }
+
+    let first = points[0];
+    let second = points[1];
+    let penultimate = points[points.len() - 2];
+    let last = points[points.len() - 1];
+
+    leg_exits_bounds(from, first, second) && leg_enters_bounds(to, penultimate, last)
+}
+
+fn leg_exits_bounds(bounds: &Bounds, edge: (f64, f64), next: (f64, f64)) -> bool {
+    if nearly_eq(edge.0, next.0) {
+        if nearly_eq(edge.1, bounds.y) {
+            return next.1 <= bounds.y;
+        }
+        if nearly_eq(edge.1, bounds.y + bounds.height) {
+            return next.1 >= bounds.y + bounds.height;
+        }
+    }
+
+    if nearly_eq(edge.1, next.1) {
+        if nearly_eq(edge.0, bounds.x) {
+            return next.0 <= bounds.x;
+        }
+        if nearly_eq(edge.0, bounds.x + bounds.width) {
+            return next.0 >= bounds.x + bounds.width;
+        }
+    }
+
+    false
+}
+
+fn leg_enters_bounds(bounds: &Bounds, prev: (f64, f64), edge: (f64, f64)) -> bool {
+    leg_exits_bounds(bounds, edge, prev)
+}
+
+fn segment_intersects_bounds(a: (f64, f64), b: (f64, f64), bounds: &Bounds) -> bool {
+    let (mut t0, mut t1) = (0.0, 1.0);
+    let dx = b.0 - a.0;
+    let dy = b.1 - a.1;
+    for (p, q) in [
+        (-dx, a.0 - bounds.x),
+        (dx, bounds.x + bounds.width - a.0),
+        (-dy, a.1 - bounds.y),
+        (dy, bounds.y + bounds.height - a.1),
+    ] {
+        if p == 0.0 {
+            if q < 0.0 {
+                return false;
+            }
+        } else {
+            let r = q / p;
+            if p < 0.0 {
+                if r > t1 {
+                    return false;
+                }
+                t0 = f64::max(t0, r);
+            } else {
+                if r < t0 {
+                    return false;
+                }
+                t1 = f64::min(t1, r);
+            }
+        }
+    }
+    true
+}
+
+fn bounds_contains_point(bounds: &Bounds, x: f64, y: f64) -> bool {
+    x >= bounds.x && x <= bounds.x + bounds.width && y >= bounds.y && y <= bounds.y + bounds.height
+}
+
+fn nearly_eq(a: f64, b: f64) -> bool {
+    (a - b).abs() < 0.001
 }
 
 fn ctrl_point(x: f64, y: f64, anchor: AnchorPoint, dx: f64, dy: f64) -> (f64, f64) {
@@ -1398,5 +1695,186 @@ mod tests {
         let container = &diagram.shapes[0];
         assert!(container.resolved.width >= 120.0);
         assert!(container.resolved.height >= 90.0);
+    }
+
+    #[test]
+    fn straight_auto_connection_routes_around_obstacle() {
+        let mut shape_map = HashMap::new();
+        shape_map.insert(
+            "a".to_string(),
+            Bounds {
+                x: 0.0,
+                y: 40.0,
+                width: 40.0,
+                height: 40.0,
+            },
+        );
+        shape_map.insert(
+            "b".to_string(),
+            Bounds {
+                x: 160.0,
+                y: 40.0,
+                width: 40.0,
+                height: 40.0,
+            },
+        );
+        shape_map.insert(
+            "mid".to_string(),
+            Bounds {
+                x: 80.0,
+                y: 40.0,
+                width: 40.0,
+                height: 40.0,
+            },
+        );
+        let mut svg = String::new();
+        render_connection_svg(&connection("a", "b"), &shape_map, &mut svg);
+
+        assert!(svg.contains("<path"));
+        assert!(!svg.contains("<line"));
+    }
+
+    #[test]
+    fn routed_auto_connection_uses_target_side_matching_final_segment() {
+        let from = Bounds {
+            x: 0.0,
+            y: 80.0,
+            width: 40.0,
+            height: 40.0,
+        };
+        let to = Bounds {
+            x: 160.0,
+            y: 80.0,
+            width: 40.0,
+            height: 40.0,
+        };
+        let obstacle = Bounds {
+            x: 80.0,
+            y: 80.0,
+            width: 40.0,
+            height: 40.0,
+        };
+
+        let points = route_orthogonal(&from, &to, &[obstacle]).expect("expected routed path");
+        assert_eq!(points.last().copied(), Some((180.0, 80.0)));
+    }
+
+    #[test]
+    fn straight_auto_connection_without_obstacle_keeps_line_rendering() {
+        let mut shape_map = HashMap::new();
+        shape_map.insert(
+            "a".to_string(),
+            Bounds {
+                x: 0.0,
+                y: 40.0,
+                width: 40.0,
+                height: 40.0,
+            },
+        );
+        shape_map.insert(
+            "b".to_string(),
+            Bounds {
+                x: 160.0,
+                y: 40.0,
+                width: 40.0,
+                height: 40.0,
+            },
+        );
+        let mut svg = String::new();
+        render_connection_svg(&connection("a", "b"), &shape_map, &mut svg);
+
+        assert!(svg.contains("<line"));
+        assert!(!svg.contains("<path"));
+    }
+
+    #[test]
+    fn diagonal_auto_connection_without_obstacle_uses_elbow() {
+        let mut shape_map = HashMap::new();
+        shape_map.insert(
+            "a".to_string(),
+            Bounds {
+                x: 100.0,
+                y: 40.0,
+                width: 80.0,
+                height: 40.0,
+            },
+        );
+        shape_map.insert(
+            "b".to_string(),
+            Bounds {
+                x: 20.0,
+                y: 160.0,
+                width: 80.0,
+                height: 40.0,
+            },
+        );
+        let mut svg = String::new();
+        render_connection_svg(&connection("a", "b"), &shape_map, &mut svg);
+
+        assert!(svg.contains("<path"));
+        assert!(!svg.contains("<line"));
+    }
+
+    #[test]
+    fn diagonal_auto_connection_exits_endpoint_bounds_before_turning() {
+        let from = Bounds {
+            x: 510.0,
+            y: 485.0,
+            width: 190.0,
+            height: 55.0,
+        };
+        let to = Bounds {
+            x: 385.0,
+            y: 603.0,
+            width: 190.0,
+            height: 55.0,
+        };
+
+        let points = route_orthogonal(&from, &to, &[]).expect("expected elbow path");
+
+        assert!(route_exits_endpoint_bounds(&points, &from, &to));
+        assert_eq!(points.first().copied(), Some((605.0, 540.0)));
+        assert_eq!(points.last().copied(), Some((480.0, 603.0)));
+        assert!(points[1].1 >= from.y + from.height);
+        assert!(points[points.len() - 2].1 <= to.y);
+    }
+
+    #[test]
+    fn explicit_anchor_connection_preserves_line_rendering() {
+        let mut shape_map = HashMap::new();
+        shape_map.insert(
+            "a".to_string(),
+            Bounds {
+                x: 0.0,
+                y: 40.0,
+                width: 40.0,
+                height: 40.0,
+            },
+        );
+        shape_map.insert(
+            "b".to_string(),
+            Bounds {
+                x: 160.0,
+                y: 40.0,
+                width: 40.0,
+                height: 40.0,
+            },
+        );
+        shape_map.insert(
+            "mid".to_string(),
+            Bounds {
+                x: 80.0,
+                y: 40.0,
+                width: 40.0,
+                height: 40.0,
+            },
+        );
+        let mut conn = connection("a", "b");
+        conn.from_anchor = AnchorPoint::Right;
+        conn.to_anchor = AnchorPoint::Left;
+        let mut svg = String::new();
+        render_connection_svg(&conn, &shape_map, &mut svg);
+
+        assert!(svg.contains("<line"));
     }
 }

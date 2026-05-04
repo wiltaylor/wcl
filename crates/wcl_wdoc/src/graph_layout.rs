@@ -46,31 +46,12 @@ pub fn layout_layered(
         }
     }
 
-    // Assign layers via longest-path from sources (nodes with no incoming edges)
-    let mut layer: Vec<usize> = vec![0; n];
-    let mut queue: VecDeque<usize> = VecDeque::new();
-    let mut in_degree: Vec<usize> = incoming.iter().map(|v| v.len()).collect();
-
-    for (i, &deg) in in_degree.iter().enumerate() {
-        if deg == 0 {
-            queue.push_back(i);
-        }
-    }
-    // If no sources (cycle), start from node 0
-    if queue.is_empty() {
-        queue.push_back(0);
-        layer[0] = 0;
-    }
-
-    while let Some(node) = queue.pop_front() {
-        for &next in &outgoing[node] {
-            layer[next] = layer[next].max(layer[node] + 1);
-            in_degree[next] = in_degree[next].saturating_sub(1);
-            if in_degree[next] == 0 {
-                queue.push_back(next);
-            }
-        }
-    }
+    let components = connected_components(&incoming, &outgoing);
+    let component_rank = component_ranks(children, &components, &incoming, &outgoing);
+    let isolated: Vec<bool> = (0..n)
+        .map(|i| incoming[i].is_empty() && outgoing[i].is_empty())
+        .collect();
+    let layer = assign_layers(children, &incoming, &outgoing, &component_rank, &isolated);
 
     let max_layer = layer.iter().copied().max().unwrap_or(0);
 
@@ -80,31 +61,15 @@ pub fn layout_layered(
         layers[l].push(i);
     }
 
-    // Barycenter ordering within each layer (minimize crossings)
-    for l in 1..=max_layer {
-        let mut positions: Vec<(usize, f64)> = layers[l]
-            .iter()
-            .map(|&node| {
-                let parents: Vec<f64> = incoming[node]
-                    .iter()
-                    .filter_map(|&p| {
-                        layers[layer[p]]
-                            .iter()
-                            .position(|&x| x == p)
-                            .map(|pos| pos as f64)
-                    })
-                    .collect();
-                let bary = if parents.is_empty() {
-                    0.0
-                } else {
-                    parents.iter().sum::<f64>() / parents.len() as f64
-                };
-                (node, bary)
-            })
-            .collect();
-        positions.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
-        layers[l] = positions.into_iter().map(|(node, _)| node).collect();
-    }
+    order_layers(
+        children,
+        &mut layers,
+        &layer,
+        &incoming,
+        &outgoing,
+        &component_rank,
+        &isolated,
+    );
 
     if horizontal {
         layout_layered_horizontal(children, &layers, parent, gap);
@@ -404,6 +369,247 @@ pub fn layout_grid(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+fn node_sort_key(children: &[ShapeNode], node: usize) -> (String, usize) {
+    (children[node].id.clone().unwrap_or_default(), node)
+}
+
+fn connected_components(incoming: &[Vec<usize>], outgoing: &[Vec<usize>]) -> Vec<usize> {
+    let n = incoming.len();
+    let mut component = vec![usize::MAX; n];
+    let mut comp_id = 0;
+
+    for start in 0..n {
+        if component[start] != usize::MAX {
+            continue;
+        }
+        let mut queue = VecDeque::new();
+        queue.push_back(start);
+        component[start] = comp_id;
+
+        while let Some(node) = queue.pop_front() {
+            for &next in outgoing[node].iter().chain(incoming[node].iter()) {
+                if component[next] == usize::MAX {
+                    component[next] = comp_id;
+                    queue.push_back(next);
+                }
+            }
+        }
+        comp_id += 1;
+    }
+
+    component
+}
+
+fn component_ranks(
+    children: &[ShapeNode],
+    components: &[usize],
+    incoming: &[Vec<usize>],
+    outgoing: &[Vec<usize>],
+) -> Vec<usize> {
+    let comp_count = components.iter().copied().max().map(|c| c + 1).unwrap_or(0);
+    let mut comp_nodes: Vec<Vec<usize>> = vec![Vec::new(); comp_count];
+    for (node, &comp) in components.iter().enumerate() {
+        comp_nodes[comp].push(node);
+    }
+
+    let mut ordered: Vec<(usize, bool, String)> = comp_nodes
+        .iter()
+        .enumerate()
+        .map(|(comp, nodes)| {
+            let connected = nodes
+                .iter()
+                .any(|&node| !incoming[node].is_empty() || !outgoing[node].is_empty());
+            let min_id = nodes
+                .iter()
+                .map(|&node| children[node].id.clone().unwrap_or_default())
+                .min()
+                .unwrap_or_default();
+            (comp, connected, min_id)
+        })
+        .collect();
+
+    ordered.sort_by(|a, b| {
+        b.1.cmp(&a.1)
+            .then_with(|| a.2.cmp(&b.2))
+            .then_with(|| a.0.cmp(&b.0))
+    });
+
+    let mut rank = vec![0; comp_count];
+    for (order, (comp, _, _)) in ordered.into_iter().enumerate() {
+        rank[comp] = order;
+    }
+    components.iter().map(|&comp| rank[comp]).collect()
+}
+
+fn assign_layers(
+    children: &[ShapeNode],
+    incoming: &[Vec<usize>],
+    outgoing: &[Vec<usize>],
+    component_rank: &[usize],
+    isolated: &[bool],
+) -> Vec<usize> {
+    let n = children.len();
+    let mut layer: Vec<usize> = vec![0; n];
+    let mut in_degree: Vec<usize> = incoming.iter().map(|v| v.len()).collect();
+    let mut ready: Vec<usize> = (0..n).filter(|&i| in_degree[i] == 0).collect();
+    sort_ready(children, &mut ready, component_rank, isolated);
+    let mut visited = vec![false; n];
+
+    while let Some(node) = ready.first().copied() {
+        ready.remove(0);
+        if visited[node] {
+            continue;
+        }
+        visited[node] = true;
+        for &next in &outgoing[node] {
+            layer[next] = layer[next].max(layer[node] + 1);
+            in_degree[next] = in_degree[next].saturating_sub(1);
+            if in_degree[next] == 0 {
+                ready.push(next);
+                sort_ready(children, &mut ready, component_rank, isolated);
+            }
+        }
+    }
+
+    for node in 0..n {
+        if !visited[node] {
+            layer[node] = incoming[node]
+                .iter()
+                .map(|&p| layer[p] + 1)
+                .max()
+                .unwrap_or(0);
+        }
+    }
+
+    layer
+}
+
+fn sort_ready(
+    children: &[ShapeNode],
+    ready: &mut [usize],
+    component_rank: &[usize],
+    isolated: &[bool],
+) {
+    ready.sort_by(|&a, &b| {
+        isolated[a]
+            .cmp(&isolated[b])
+            .then_with(|| component_rank[a].cmp(&component_rank[b]))
+            .then_with(|| node_sort_key(children, a).cmp(&node_sort_key(children, b)))
+    });
+}
+
+fn order_layers(
+    children: &[ShapeNode],
+    layers: &mut [Vec<usize>],
+    layer: &[usize],
+    incoming: &[Vec<usize>],
+    outgoing: &[Vec<usize>],
+    component_rank: &[usize],
+    isolated: &[bool],
+) {
+    for rank in layers.iter_mut() {
+        rank.sort_by(|&a, &b| base_order(children, a, b, component_rank, isolated));
+    }
+
+    for _ in 0..4 {
+        for l in 1..layers.len() {
+            sort_layer_by_neighbors(
+                children,
+                layers,
+                layer,
+                l,
+                incoming,
+                component_rank,
+                isolated,
+                true,
+            );
+        }
+        for l in (0..layers.len().saturating_sub(1)).rev() {
+            sort_layer_by_neighbors(
+                children,
+                layers,
+                layer,
+                l,
+                outgoing,
+                component_rank,
+                isolated,
+                false,
+            );
+        }
+    }
+}
+
+fn base_order(
+    children: &[ShapeNode],
+    a: usize,
+    b: usize,
+    component_rank: &[usize],
+    isolated: &[bool],
+) -> std::cmp::Ordering {
+    isolated[a]
+        .cmp(&isolated[b])
+        .then_with(|| component_rank[a].cmp(&component_rank[b]))
+        .then_with(|| node_sort_key(children, a).cmp(&node_sort_key(children, b)))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn sort_layer_by_neighbors(
+    children: &[ShapeNode],
+    layers: &mut [Vec<usize>],
+    layer: &[usize],
+    current_layer: usize,
+    neighbors: &[Vec<usize>],
+    component_rank: &[usize],
+    isolated: &[bool],
+    use_previous: bool,
+) {
+    let positions = layer_positions(layers);
+    let mut ranked: Vec<(usize, Option<f64>)> = layers[current_layer]
+        .iter()
+        .map(|&node| {
+            let adjacent: Vec<f64> = neighbors[node]
+                .iter()
+                .filter(|&&n| {
+                    if use_previous {
+                        layer[n] + 1 == layer[node]
+                    } else {
+                        layer[n] == layer[node] + 1
+                    }
+                })
+                .filter_map(|n| positions.get(n).copied().map(|p| p as f64))
+                .collect();
+            let bary = if adjacent.is_empty() {
+                None
+            } else {
+                Some(adjacent.iter().sum::<f64>() / adjacent.len() as f64)
+            };
+            (node, bary)
+        })
+        .collect();
+
+    ranked.sort_by(|a, b| match (a.1, b.1) {
+        (Some(ba), Some(bb)) => ba
+            .partial_cmp(&bb)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| base_order(children, a.0, b.0, component_rank, isolated)),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => base_order(children, a.0, b.0, component_rank, isolated),
+    });
+
+    layers[current_layer] = ranked.into_iter().map(|(node, _)| node).collect();
+}
+
+fn layer_positions(layers: &[Vec<usize>]) -> HashMap<usize, usize> {
+    let mut positions = HashMap::new();
+    for layer in layers {
+        for (pos, &node) in layer.iter().enumerate() {
+            positions.insert(node, pos);
+        }
+    }
+    positions
+}
 
 #[derive(Debug)]
 struct WrappedLine {
@@ -795,6 +1001,46 @@ mod tests {
         assert_eq!(nodes[1].resolved.width, 80.0);
         assert!(!overlaps(&nodes[0], &nodes[1]));
         assert!(nodes[0].resolved.y < nodes[1].resolved.y);
+    }
+
+    #[test]
+    fn test_layered_orders_rank_by_topology_not_declaration() {
+        let mut nodes = vec![
+            make_node("s2", 40.0, 30.0),
+            make_node("s1", 40.0, 30.0),
+            make_node("t2", 40.0, 30.0),
+            make_node("t1", 40.0, 30.0),
+        ];
+        let conns = vec![make_conn("s1", "t1"), make_conn("s2", "t2")];
+        let parent = Bounds {
+            x: 0.0,
+            y: 0.0,
+            width: 300.0,
+            height: 180.0,
+        };
+        layout_layered(&mut nodes, &conns, &parent, 20.0, &IndexMap::new());
+
+        assert!(nodes[1].resolved.x < nodes[0].resolved.x);
+        assert!(nodes[3].resolved.x < nodes[2].resolved.x);
+    }
+
+    #[test]
+    fn test_layered_places_isolated_nodes_after_connected_components() {
+        let mut nodes = vec![
+            make_node("z_iso", 40.0, 30.0),
+            make_node("a", 40.0, 30.0),
+            make_node("b", 40.0, 30.0),
+        ];
+        let conns = vec![make_conn("a", "b")];
+        let parent = Bounds {
+            x: 0.0,
+            y: 0.0,
+            width: 300.0,
+            height: 180.0,
+        };
+        layout_layered(&mut nodes, &conns, &parent, 20.0, &IndexMap::new());
+
+        assert!(nodes[1].resolved.x < nodes[0].resolved.x);
     }
 
     #[test]
