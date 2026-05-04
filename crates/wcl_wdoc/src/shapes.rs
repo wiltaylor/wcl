@@ -281,7 +281,12 @@ fn resolve_children(
 ) {
     // First pass: resolve anchored/absolute children
     for child in children.iter_mut() {
-        resolve_bounds(child, parent);
+        let bounds_parent = if is_layout_decoration(child) {
+            decoration_parent_bounds(parent)
+        } else {
+            *parent
+        };
+        resolve_bounds(child, &bounds_parent);
         apply_intrinsic_container_size(child);
     }
 
@@ -334,11 +339,12 @@ fn resolve_children(
 
     // Recurse into children
     for child in children.iter_mut() {
+        let insets = child_content_insets(child);
         let mut inner = Bounds {
-            x: 0.0,
-            y: 0.0,
-            width: (child.resolved.width - child.padding * 2.0).max(0.0),
-            height: (child.resolved.height - child.padding * 2.0).max(0.0),
+            x: insets.left,
+            y: insets.top,
+            width: (child.resolved.width - insets.left - insets.right).max(0.0),
+            height: (child.resolved.height - insets.top - insets.bottom).max(0.0),
         };
         let child_scope_path = match (scope_path.is_empty(), child.id.as_deref()) {
             (_, None) => scope_path.to_string(),
@@ -357,8 +363,11 @@ fn resolve_children(
         apply_post_layout_container_size(child);
         if child.align == Alignment::Layered {
             expand_container_to_fit_layered_children(child);
-            inner.width = (child.resolved.width - child.padding * 2.0).max(0.0);
-            inner.height = (child.resolved.height - child.padding * 2.0).max(0.0);
+            let insets = child_content_insets(child);
+            inner.x = insets.left;
+            inner.y = insets.top;
+            inner.width = (child.resolved.width - insets.left - insets.right).max(0.0);
+            inner.height = (child.resolved.height - insets.top - insets.bottom).max(0.0);
         }
         if has_explicit_width(child) && has_explicit_height(child) {
             clamp_children_to_parent(&mut child.children, &inner);
@@ -371,6 +380,62 @@ fn is_layout_decoration(node: &ShapeNode) -> bool {
         .get(LAYOUT_DECORATION_ATTR)
         .map(|v| v == "true")
         .unwrap_or(false)
+}
+
+#[derive(Clone, Copy)]
+struct Insets {
+    left: f64,
+    top: f64,
+    right: f64,
+    bottom: f64,
+}
+
+fn child_content_insets(node: &ShapeNode) -> Insets {
+    let mut insets = Insets {
+        left: node.padding,
+        top: node.padding,
+        right: node.padding,
+        bottom: node.padding,
+    };
+
+    if node.padding == 0.0
+        && node.align != Alignment::None
+        && node.children.iter().any(is_layout_decoration)
+    {
+        insets.left = 16.0;
+        insets.right = 16.0;
+        insets.bottom = 16.0;
+        insets.top = decoration_header_inset(node).unwrap_or(16.0);
+    }
+
+    insets
+}
+
+fn decoration_header_inset(node: &ShapeNode) -> Option<f64> {
+    let mut inset: Option<f64> = None;
+    for child in node.children.iter().filter(|child| {
+        is_layout_decoration(child) && !is_full_container_decoration(child, node.resolved)
+    }) {
+        let bottom = child.resolved.y + child.resolved.height + 6.0;
+        inset = Some(inset.map_or(bottom, |current| current.max(bottom)));
+    }
+    inset
+}
+
+fn is_full_container_decoration(child: &ShapeNode, container: Bounds) -> bool {
+    nearly_eq(child.resolved.x, 0.0)
+        && nearly_eq(child.resolved.y, 0.0)
+        && nearly_eq(child.resolved.width, container.width)
+        && nearly_eq(child.resolved.height, container.height)
+}
+
+fn decoration_parent_bounds(parent: &Bounds) -> Bounds {
+    Bounds {
+        x: 0.0,
+        y: 0.0,
+        width: parent.width + parent.x * 2.0,
+        height: parent.height + parent.y * 2.0,
+    }
 }
 
 fn layout_graph_subset(
@@ -496,17 +561,18 @@ fn apply_post_layout_container_size(node: &mut ShapeNode) {
     }
 
     if let Some(bounds) = children_bounds(&node.children) {
+        let insets = child_content_insets(node);
         if needs_width {
             node.resolved.width = node
                 .resolved
                 .width
-                .max(bounds.x + bounds.width + node.padding * 2.0);
+                .max(bounds.x.max(insets.left) + bounds.width + insets.right);
         }
         if needs_height {
             node.resolved.height = node
                 .resolved
                 .height
-                .max(bounds.y + bounds.height + node.padding * 2.0);
+                .max(bounds.y.max(insets.top) + bounds.height + insets.bottom);
         }
     }
 }
@@ -518,8 +584,9 @@ fn expand_container_to_fit_layered_children(node: &mut ShapeNode) {
 
     let old_width = node.resolved.width;
     let old_height = node.resolved.height;
-    let needed_width = bounds.x.max(0.0) + bounds.width + node.padding * 2.0;
-    let needed_height = bounds.y.max(0.0) + bounds.height + node.padding * 2.0;
+    let insets = child_content_insets(node);
+    let needed_width = bounds.x.max(insets.left) + bounds.width + insets.right;
+    let needed_height = bounds.y.max(insets.top) + bounds.height + insets.bottom;
 
     node.resolved.width = node.resolved.width.max(needed_width);
     node.resolved.height = node.resolved.height.max(needed_height);
@@ -644,13 +711,27 @@ fn has_explicit_height(node: &ShapeNode) -> bool {
 }
 
 fn resolve_bounds(node: &mut ShapeNode, parent: &Bounds) {
-    let (mut rx, mut rw) = resolve_axis(node.x, node.width, node.left, node.right, parent.width);
-    let (mut ry, mut rh) = resolve_axis(node.y, node.height, node.top, node.bottom, parent.height);
+    let (mut rx, mut rw) = resolve_axis(
+        node.x,
+        node.width,
+        node.left,
+        node.right,
+        parent.x,
+        parent.width,
+    );
+    let (mut ry, mut rh) = resolve_axis(
+        node.y,
+        node.height,
+        node.top,
+        node.bottom,
+        parent.y,
+        parent.height,
+    );
 
     // Text shapes with no explicit position/size fill their parent's inner space
     if node.kind == ShapeKind::Text && rw == 0.0 && rh == 0.0 {
-        rx = 0.0;
-        ry = 0.0;
+        rx = parent.x;
+        ry = parent.y;
         rw = parent.width;
         rh = parent.height;
     }
@@ -694,16 +775,20 @@ fn resolve_axis(
     size: Option<f64>,
     near: Option<f64>,
     far: Option<f64>,
+    parent_origin: f64,
     parent_size: f64,
 ) -> (f64, f64) {
     match (pos, size, near, far) {
-        (Some(p), Some(s), _, _) => (p, s),
-        (Some(p), None, _, _) => (p, 0.0),
-        (_, _, Some(n), Some(f)) => (n, size.unwrap_or((parent_size - n - f).max(0.0))),
-        (_, Some(s), Some(n), None) => (n, s),
-        (_, Some(s), None, Some(f)) => ((parent_size - f - s).max(0.0), s),
-        (_, Some(s), None, None) => (0.0, s),
-        _ => (0.0, 0.0),
+        (Some(p), Some(s), _, _) => (parent_origin + p, s),
+        (Some(p), None, _, _) => (parent_origin + p, 0.0),
+        (_, _, Some(n), Some(f)) => (
+            parent_origin + n,
+            size.unwrap_or((parent_size - n - f).max(0.0)),
+        ),
+        (_, Some(s), Some(n), None) => (parent_origin + n, s),
+        (_, Some(s), None, Some(f)) => (parent_origin + (parent_size - f - s).max(0.0), s),
+        (_, Some(s), None, None) => (parent_origin, s),
+        _ => (parent_origin, 0.0),
     }
 }
 
@@ -771,8 +856,8 @@ fn build_shape_map(shapes: &[ShapeNode], ox: f64, oy: f64) -> HashMap<String, Bo
             map.insert(id.clone(), abs);
             let child_map = build_shape_map(
                 &shape.children,
-                ox + shape.resolved.x + shape.padding,
-                oy + shape.resolved.y + shape.padding,
+                ox + shape.resolved.x,
+                oy + shape.resolved.y,
             );
             for (cid, bounds) in child_map {
                 map.insert(format!("{id}.{cid}"), bounds);
@@ -887,8 +972,8 @@ fn render_shape_svg(node: &ShapeNode, svg: &mut String) {
 
     // Render children in a translated group
     if !node.children.is_empty() {
-        let gx = b.x + node.padding;
-        let gy = b.y + node.padding;
+        let gx = b.x;
+        let gy = b.y;
         write!(svg, "<g transform=\"translate({gx},{gy})\">").unwrap();
         for child in &node.children {
             render_shape_svg(child, svg);
@@ -1346,7 +1431,7 @@ mod tests {
     #[test]
     fn test_resolve_axis_absolute() {
         assert_eq!(
-            resolve_axis(Some(10.0), Some(100.0), None, None, 500.0),
+            resolve_axis(Some(10.0), Some(100.0), None, None, 0.0, 500.0),
             (10.0, 100.0)
         );
     }
@@ -1354,7 +1439,7 @@ mod tests {
     #[test]
     fn test_resolve_axis_anchored_both() {
         assert_eq!(
-            resolve_axis(None, None, Some(20.0), Some(30.0), 500.0),
+            resolve_axis(None, None, Some(20.0), Some(30.0), 0.0, 500.0),
             (20.0, 450.0)
         );
     }
@@ -1362,7 +1447,7 @@ mod tests {
     #[test]
     fn test_resolve_axis_anchored_near_with_size() {
         assert_eq!(
-            resolve_axis(None, Some(100.0), Some(20.0), None, 500.0),
+            resolve_axis(None, Some(100.0), Some(20.0), None, 0.0, 500.0),
             (20.0, 100.0)
         );
     }
@@ -1370,7 +1455,7 @@ mod tests {
     #[test]
     fn test_resolve_axis_anchored_far_with_size() {
         assert_eq!(
-            resolve_axis(None, Some(100.0), None, Some(30.0), 500.0),
+            resolve_axis(None, Some(100.0), None, Some(30.0), 0.0, 500.0),
             (370.0, 100.0)
         );
     }
@@ -1499,11 +1584,11 @@ mod tests {
         render_diagram_svg(&mut diagram);
 
         let children = &diagram.shapes[0].children;
-        assert_eq!(children[0].resolved.x, 0.0);
-        assert_eq!(children[0].resolved.y, 0.0);
+        assert_eq!(children[0].resolved.x, 5.0);
+        assert_eq!(children[0].resolved.y, 5.0);
         assert_eq!(children[0].resolved.width, 90.0);
-        assert_eq!(children[1].resolved.x, 0.0);
-        assert_eq!(children[1].resolved.y, 30.0);
+        assert_eq!(children[1].resolved.x, 5.0);
+        assert_eq!(children[1].resolved.y, 35.0);
         assert_eq!(children[1].resolved.width, 90.0);
     }
 
@@ -1591,6 +1676,110 @@ mod tests {
             assert!(child.resolved.y >= 0.0);
             assert!(child.resolved.x + child.resolved.width <= boundary.resolved.width);
             assert!(child.resolved.y + child.resolved.height <= boundary.resolved.height);
+        }
+    }
+
+    #[test]
+    fn nested_layered_layout_respects_boundary_padding_on_all_sides() {
+        let mut frame = shape("frame", 140.0, 140.0);
+        frame.x = Some(0.0);
+        frame.y = Some(0.0);
+        frame
+            .attrs
+            .insert(LAYOUT_DECORATION_ATTR.to_string(), "true".to_string());
+
+        let mut boundary = shape("boundary", 140.0, 140.0);
+        boundary.x = Some(20.0);
+        boundary.y = Some(20.0);
+        boundary.align = Alignment::Layered;
+        boundary.gap = 80.0;
+        boundary.padding = 16.0;
+        boundary.children = vec![frame, shape("a", 70.0, 30.0), shape("b", 70.0, 30.0)];
+
+        let mut diagram = Diagram {
+            width: 220.0,
+            height: 220.0,
+            shapes: vec![boundary],
+            connections: vec![connection("boundary.a", "boundary.b")],
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+        };
+
+        render_diagram_svg(&mut diagram);
+
+        let boundary = &diagram.shapes[0];
+        let frame = &boundary.children[0];
+        assert_eq!(frame.resolved.x, 0.0);
+        assert_eq!(frame.resolved.y, 0.0);
+
+        for child in boundary
+            .children
+            .iter()
+            .filter(|c| !is_layout_decoration(c))
+        {
+            assert!(child.resolved.x >= boundary.padding);
+            assert!(child.resolved.y >= boundary.padding);
+            assert!(
+                child.resolved.x + child.resolved.width
+                    <= boundary.resolved.width - boundary.padding
+            );
+            assert!(
+                child.resolved.y + child.resolved.height
+                    <= boundary.resolved.height - boundary.padding
+            );
+        }
+    }
+
+    #[test]
+    fn decorated_layered_boundary_reserves_header_without_explicit_padding() {
+        let mut frame = shape("frame", 180.0, 150.0);
+        frame.x = Some(0.0);
+        frame.y = Some(0.0);
+        frame
+            .attrs
+            .insert(LAYOUT_DECORATION_ATTR.to_string(), "true".to_string());
+
+        let mut label = shape("label", 160.0, 18.0);
+        label.kind = ShapeKind::Text;
+        label.x = Some(8.0);
+        label.y = Some(4.0);
+        label
+            .attrs
+            .insert(LAYOUT_DECORATION_ATTR.to_string(), "true".to_string());
+
+        let mut boundary = shape("boundary", 180.0, 150.0);
+        boundary.x = Some(20.0);
+        boundary.y = Some(20.0);
+        boundary.align = Alignment::Layered;
+        boundary.gap = 40.0;
+        boundary.children = vec![frame, label, shape("a", 80.0, 30.0), shape("b", 80.0, 30.0)];
+
+        let mut diagram = Diagram {
+            width: 240.0,
+            height: 220.0,
+            shapes: vec![boundary],
+            connections: vec![connection("boundary.a", "boundary.b")],
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+        };
+
+        render_diagram_svg(&mut diagram);
+
+        let boundary = &diagram.shapes[0];
+        let label_bottom = boundary.children[1].resolved.y + boundary.children[1].resolved.height;
+        for child in boundary
+            .children
+            .iter()
+            .filter(|c| !is_layout_decoration(c))
+        {
+            assert!(child.resolved.x >= 16.0);
+            assert!(child.resolved.y >= label_bottom + 6.0);
+            assert!(child.resolved.x + child.resolved.width <= boundary.resolved.width - 16.0);
+            assert!(child.resolved.y + child.resolved.height <= boundary.resolved.height - 16.0);
         }
     }
 
