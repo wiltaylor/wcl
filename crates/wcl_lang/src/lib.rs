@@ -1216,6 +1216,54 @@ for sys in (..System) {
     }
 
     #[test]
+    fn map_lambda_can_access_block_id() {
+        let src = r#"
+System sys1 {}
+
+Application app1 {
+    system = sys1
+    name = "App One"
+}
+
+for sys in (..System) {
+    group {
+        apps = filter((..Application), app => app.system.id == sys.id)
+        mapped = map(apps, app => { id = app.id, name = app.name })
+    }
+}
+        "#;
+        let doc = parse(src, ParseOptions::default());
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+
+        let group = doc
+            .values
+            .values()
+            .find_map(|value| match value {
+                Value::BlockRef(br) if br.kind == "group" => Some(br),
+                _ => None,
+            })
+            .expect("group block should be generated");
+
+        let mapped = group
+            .attributes
+            .get("mapped")
+            .expect("mapped attribute should exist");
+        match mapped {
+            Value::List(items) => {
+                assert_eq!(items.len(), 1);
+                match &items[0] {
+                    Value::Map(app) => {
+                        assert_eq!(app.get("id"), Some(&Value::Identifier("app1".to_string())));
+                        assert_eq!(app.get("name"), Some(&Value::String("App One".to_string())));
+                    }
+                    other => panic!("expected mapped app object, got {:?}", other),
+                }
+            }
+            other => panic!("expected mapped list, got {:?}", other),
+        }
+    }
+
+    #[test]
     fn block_ref_virtual_members_and_equality_work_in_expressions() {
         let src = r#"
 service alpha {
