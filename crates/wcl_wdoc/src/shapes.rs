@@ -334,7 +334,7 @@ fn resolve_children(
 
     // Recurse into children
     for child in children.iter_mut() {
-        let inner = Bounds {
+        let mut inner = Bounds {
             x: 0.0,
             y: 0.0,
             width: (child.resolved.width - child.padding * 2.0).max(0.0),
@@ -355,6 +355,11 @@ fn resolve_children(
             &child.attrs,
         );
         apply_post_layout_container_size(child);
+        if child.align == Alignment::Layered {
+            expand_container_to_fit_layered_children(child);
+            inner.width = (child.resolved.width - child.padding * 2.0).max(0.0);
+            inner.height = (child.resolved.height - child.padding * 2.0).max(0.0);
+        }
         if has_explicit_width(child) && has_explicit_height(child) {
             clamp_children_to_parent(&mut child.children, &inner);
         }
@@ -506,6 +511,24 @@ fn apply_post_layout_container_size(node: &mut ShapeNode) {
     }
 }
 
+fn expand_container_to_fit_layered_children(node: &mut ShapeNode) {
+    let Some(bounds) = children_bounds_without_decoration(&node.children) else {
+        return;
+    };
+
+    let old_width = node.resolved.width;
+    let old_height = node.resolved.height;
+    let needed_width = bounds.x.max(0.0) + bounds.width + node.padding * 2.0;
+    let needed_height = bounds.y.max(0.0) + bounds.height + node.padding * 2.0;
+
+    node.resolved.width = node.resolved.width.max(needed_width);
+    node.resolved.height = node.resolved.height.max(needed_height);
+
+    if node.resolved.width != old_width || node.resolved.height != old_height {
+        resize_full_container_decorations(&mut node.children, old_width, old_height, node.resolved);
+    }
+}
+
 fn input_children_bounds(children: &[ShapeNode]) -> Option<Bounds> {
     let mut resolved = Vec::with_capacity(children.len());
     for child in children {
@@ -544,6 +567,47 @@ fn children_bounds(children: &[ShapeNode]) -> Option<Bounds> {
         width: (max_x - min_x).max(0.0),
         height: (max_y - min_y).max(0.0),
     })
+}
+
+fn children_bounds_without_decoration(children: &[ShapeNode]) -> Option<Bounds> {
+    let mut min_x = f64::MAX;
+    let mut min_y = f64::MAX;
+    let mut max_x = f64::MIN;
+    let mut max_y = f64::MIN;
+    let mut found = false;
+
+    for child in children.iter().filter(|c| !is_layout_decoration(c)) {
+        found = true;
+        min_x = min_x.min(child.resolved.x);
+        min_y = min_y.min(child.resolved.y);
+        max_x = max_x.max(child.resolved.x + child.resolved.width);
+        max_y = max_y.max(child.resolved.y + child.resolved.height);
+    }
+
+    found.then_some(Bounds {
+        x: min_x,
+        y: min_y,
+        width: (max_x - min_x).max(0.0),
+        height: (max_y - min_y).max(0.0),
+    })
+}
+
+fn resize_full_container_decorations(
+    children: &mut [ShapeNode],
+    old_width: f64,
+    old_height: f64,
+    new_bounds: Bounds,
+) {
+    for child in children.iter_mut().filter(|c| is_layout_decoration(c)) {
+        if child.resolved.x == 0.0
+            && child.resolved.y == 0.0
+            && child.resolved.width == old_width
+            && child.resolved.height == old_height
+        {
+            child.resolved.width = new_bounds.width;
+            child.resolved.height = new_bounds.height;
+        }
+    }
 }
 
 fn clamp_children_to_parent(children: &mut [ShapeNode], parent: &Bounds) {
@@ -975,6 +1039,13 @@ mod tests {
         }
     }
 
+    fn overlaps(a: &ShapeNode, b: &ShapeNode) -> bool {
+        a.resolved.x < b.resolved.x + b.resolved.width
+            && a.resolved.x + a.resolved.width > b.resolved.x
+            && a.resolved.y < b.resolved.y + b.resolved.height
+            && a.resolved.y + a.resolved.height > b.resolved.y
+    }
+
     #[test]
     fn test_resolve_axis_absolute() {
         assert_eq!(
@@ -1221,6 +1292,50 @@ mod tests {
         for child in &boundary.children {
             assert!(child.resolved.x >= 0.0);
             assert!(child.resolved.y >= 0.0);
+            assert!(child.resolved.x + child.resolved.width <= boundary.resolved.width);
+            assert!(child.resolved.y + child.resolved.height <= boundary.resolved.height);
+        }
+    }
+
+    #[test]
+    fn nested_layered_layout_wraps_wide_rank_and_expands_boundary_height() {
+        let mut boundary = shape("boundary", 120.0, 80.0);
+        boundary.x = Some(20.0);
+        boundary.y = Some(20.0);
+        boundary.align = Alignment::Layered;
+        boundary.gap = 20.0;
+        boundary.children = vec![
+            shape("a", 80.0, 40.0),
+            shape("b", 80.0, 40.0),
+            shape("c", 80.0, 40.0),
+            shape("d", 80.0, 40.0),
+        ];
+
+        let mut diagram = Diagram {
+            width: 240.0,
+            height: 300.0,
+            shapes: vec![boundary],
+            connections: vec![
+                connection("boundary.a", "boundary.d"),
+                connection("boundary.b", "boundary.d"),
+                connection("boundary.c", "boundary.d"),
+            ],
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+        };
+
+        render_diagram_svg(&mut diagram);
+
+        let boundary = &diagram.shapes[0];
+        let children = &boundary.children;
+        assert!(boundary.resolved.height > 80.0);
+        assert_eq!(children[0].resolved.width, 80.0);
+        assert_eq!(children[1].resolved.width, 80.0);
+        assert!(!overlaps(&children[0], &children[1]));
+        assert!(!overlaps(&children[1], &children[2]));
+        for child in children {
             assert!(child.resolved.x + child.resolved.width <= boundary.resolved.width);
             assert!(child.resolved.y + child.resolved.height <= boundary.resolved.height);
         }
