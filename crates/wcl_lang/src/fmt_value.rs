@@ -33,6 +33,9 @@ pub fn value_to_json(val: &Value) -> serde_json::Value {
 
 pub fn blockref_to_json(br: &BlockRef) -> serde_json::Value {
     let mut obj = serde_json::Map::new();
+    if let Some(id) = &br.id {
+        obj.insert("id".to_string(), serde_json::Value::String(id.clone()));
+    }
     for (k, v) in &br.attributes {
         obj.insert(k.clone(), value_to_json(v));
     }
@@ -53,6 +56,31 @@ pub fn value_to_wcl(val: &Value) -> String {
         out.push('\n');
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use indexmap::IndexMap;
+
+    #[test]
+    fn blockref_to_json_preserves_id_with_attributes() {
+        let mut attributes = IndexMap::new();
+        attributes.insert("name".to_string(), Value::String("WAD".to_string()));
+        let block = BlockRef {
+            kind: "system".to_string(),
+            id: Some("wad".to_string()),
+            qualified_id: Some("wad".to_string()),
+            attributes,
+            children: vec![],
+            decorators: vec![],
+            span: crate::Span::dummy(),
+        };
+
+        let json = blockref_to_json(&block);
+        assert_eq!(json["id"], "wad");
+        assert_eq!(json["name"], "WAD");
+    }
 }
 
 fn write_value(out: &mut String, val: &Value, indent: usize) {

@@ -115,6 +115,23 @@ server web-prod {
 }
 
 #[test]
+fn eval_direct_ref_preserves_id_in_json() {
+    let json = eval_json(
+        r#"
+system wad {
+    name = "WAD"
+}
+
+app main {
+    system = wad
+}
+"#,
+    );
+    assert_eq!(json["app"]["main"]["system"]["id"], "wad");
+    assert_eq!(json["app"]["main"]["system"]["name"], "WAD");
+}
+
+#[test]
 fn eval_let_bindings_not_in_output() {
     let json = eval_json("let x = 42\nresult = x + 1\n");
     assert!(json.get("x").is_none(), "let bindings should be erased");
