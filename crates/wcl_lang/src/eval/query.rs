@@ -1,5 +1,6 @@
 use crate::lang::ast::*;
 
+use crate::eval::value::values_equal_for_expr;
 use crate::eval::value::*;
 
 /// The query engine executes query pipelines against a set of block references.
@@ -176,8 +177,8 @@ impl QueryEngine {
                     }
                     if let Some(attr_val) = block.attributes.get(&attr.name) {
                         let matches = match op {
-                            BinOp::Eq => query_values_equal(attr_val, &rhs_val),
-                            BinOp::Neq => !query_values_equal(attr_val, &rhs_val),
+                            BinOp::Eq => values_equal_for_expr(attr_val, &rhs_val),
+                            BinOp::Neq => !values_equal_for_expr(attr_val, &rhs_val),
                             BinOp::Lt => value_compare(attr_val, &rhs_val)
                                 .is_some_and(|o| o == std::cmp::Ordering::Less),
                             BinOp::Gt => value_compare(attr_val, &rhs_val)
@@ -227,8 +228,8 @@ impl QueryEngine {
                         if d.name == dec.name {
                             if let Some(arg_val) = d.args.get(&param.name) {
                                 let matches = match op {
-                                    BinOp::Eq => query_values_equal(arg_val, &rhs_val),
-                                    BinOp::Neq => !query_values_equal(arg_val, &rhs_val),
+                                    BinOp::Eq => values_equal_for_expr(arg_val, &rhs_val),
+                                    BinOp::Neq => !values_equal_for_expr(arg_val, &rhs_val),
                                     BinOp::Lt => {
                                         value_compare(arg_val, &rhs_val)
                                             == Some(std::cmp::Ordering::Less)
@@ -282,19 +283,6 @@ fn value_compare(a: &Value, b: &Value) -> Option<std::cmp::Ordering> {
         (Value::Float(x), Value::Int(y)) => x.partial_cmp(&(*y as f64)),
         (Value::String(x), Value::String(y)) => Some(x.cmp(y)),
         _ => None,
-    }
-}
-
-fn query_values_equal(a: &Value, b: &Value) -> bool {
-    match (a, b) {
-        (Value::BlockRef(left), Value::BlockRef(right)) => {
-            left.kind == right.kind && left.id == right.id
-        }
-        (Value::BlockRef(block), Value::Identifier(id))
-        | (Value::BlockRef(block), Value::String(id))
-        | (Value::Identifier(id), Value::BlockRef(block))
-        | (Value::String(id), Value::BlockRef(block)) => block.id.as_deref() == Some(id),
-        _ => a == b,
     }
 }
 

@@ -278,6 +278,19 @@ impl PartialEq for Value {
     }
 }
 
+pub(crate) fn values_equal_for_expr(a: &Value, b: &Value) -> bool {
+    match (a, b) {
+        (Value::BlockRef(left), Value::BlockRef(right)) => {
+            left.kind == right.kind && left.id == right.id
+        }
+        (Value::BlockRef(block), Value::Identifier(id))
+        | (Value::BlockRef(block), Value::String(id))
+        | (Value::Identifier(id), Value::BlockRef(block))
+        | (Value::String(id), Value::BlockRef(block)) => block.id.as_deref() == Some(id),
+        _ => a == b,
+    }
+}
+
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
