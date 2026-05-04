@@ -9,6 +9,8 @@ use std::fmt::Write;
 use indexmap::IndexMap;
 
 const LAYOUT_DECORATION_ATTR: &str = "_wdoc_layout_decoration";
+const ROUTE_MARGIN: f64 = 8.0;
+const ROUTE_TERMINAL_MIN: f64 = 16.0;
 
 // ---------------------------------------------------------------------------
 // Data model
@@ -1091,16 +1093,15 @@ fn route_orthogonal(from: &Bounds, to: &Bounds, obstacles: &[Bounds]) -> Option<
         return None;
     }
 
-    let margin = 8.0;
     let mut candidates = Vec::new();
 
-    let mut x_lanes = route_x_lanes(from, to, margin);
-    let mut y_lanes = route_y_lanes(from, to, margin);
+    let mut x_lanes = route_x_lanes(from, to, ROUTE_MARGIN);
+    let mut y_lanes = route_y_lanes(from, to, ROUTE_MARGIN);
     for b in obstacles {
-        x_lanes.push(b.x - margin);
-        x_lanes.push(b.x + b.width + margin);
-        y_lanes.push(b.y - margin);
-        y_lanes.push(b.y + b.height + margin);
+        x_lanes.push(b.x - ROUTE_MARGIN);
+        x_lanes.push(b.x + b.width + ROUTE_MARGIN);
+        y_lanes.push(b.y - ROUTE_MARGIN);
+        y_lanes.push(b.y + b.height + ROUTE_MARGIN);
     }
 
     for mid_x in x_lanes {
@@ -1114,6 +1115,7 @@ fn route_orthogonal(from: &Bounds, to: &Bounds, obstacles: &[Bounds]) -> Option<
         .into_iter()
         .filter(|points| {
             route_exits_endpoint_bounds(points, from, to)
+                && route_has_visible_terminal_segments(points, ROUTE_TERMINAL_MIN)
                 && !path_intersects_obstacle(points, obstacles)
         })
         .min_by(|a, b| {
@@ -1136,8 +1138,8 @@ fn route_x_lanes(from: &Bounds, to: &Bounds, margin: f64) -> Vec<f64> {
         lanes.push((to_right + from_left) / 2.0);
     }
 
-    lanes.push(from_left.min(to_left) - margin);
-    lanes.push(from_right.max(to_right) + margin);
+    lanes.push(from_left.min(to_left) - ROUTE_TERMINAL_MIN);
+    lanes.push(from_right.max(to_right) + ROUTE_TERMINAL_MIN);
     lanes
 }
 
@@ -1154,8 +1156,8 @@ fn route_y_lanes(from: &Bounds, to: &Bounds, margin: f64) -> Vec<f64> {
         lanes.push((to_bottom + from_top) / 2.0);
     }
 
-    lanes.push(from_top.min(to_top) - margin);
-    lanes.push(from_bottom.max(to_bottom) + margin);
+    lanes.push(from_top.min(to_top) - ROUTE_TERMINAL_MIN);
+    lanes.push(from_bottom.max(to_bottom) + ROUTE_TERMINAL_MIN);
     lanes
 }
 
@@ -1243,10 +1245,14 @@ fn simplify_points(points: Vec<(f64, f64)>) -> Vec<(f64, f64)> {
 fn route_score(points: &[(f64, f64)]) -> f64 {
     let length: f64 = points
         .windows(2)
-        .map(|segment| (segment[1].0 - segment[0].0).abs() + (segment[1].1 - segment[0].1).abs())
+        .map(|segment| segment_length(segment[0], segment[1]))
         .sum();
     let bends = points.len().saturating_sub(2) as f64;
     length + bends * 20.0
+}
+
+fn segment_length(a: (f64, f64), b: (f64, f64)) -> f64 {
+    (b.0 - a.0).abs() + (b.1 - a.1).abs()
 }
 
 fn path_data(points: &[(f64, f64)]) -> String {
@@ -1280,6 +1286,15 @@ fn route_exits_endpoint_bounds(points: &[(f64, f64)], from: &Bounds, to: &Bounds
     let last = points[points.len() - 1];
 
     leg_exits_bounds(from, first, second) && leg_enters_bounds(to, penultimate, last)
+}
+
+fn route_has_visible_terminal_segments(points: &[(f64, f64)], min_len: f64) -> bool {
+    if points.len() < 4 {
+        return true;
+    }
+
+    segment_length(points[0], points[1]) >= min_len
+        && segment_length(points[points.len() - 2], points[points.len() - 1]) >= min_len
 }
 
 fn leg_exits_bounds(bounds: &Bounds, edge: (f64, f64), next: (f64, f64)) -> bool {
@@ -1946,6 +1961,68 @@ mod tests {
 
         let points = route_orthogonal(&from, &to, &[obstacle]).expect("expected routed path");
         assert_eq!(points.last().copied(), Some((180.0, 80.0)));
+    }
+
+    #[test]
+    fn routed_auto_connection_keeps_visible_segment_before_target_marker() {
+        let from = Bounds {
+            x: 636.0,
+            y: 37.0,
+            width: 190.0,
+            height: 55.0,
+        };
+        let to = Bounds {
+            x: 636.0,
+            y: 610.0,
+            width: 190.0,
+            height: 55.0,
+        };
+        let obstacle = Bounds {
+            x: 636.0,
+            y: 135.0,
+            width: 190.0,
+            height: 55.0,
+        };
+
+        let points = route_orthogonal(&from, &to, &[obstacle]).expect("expected routed path");
+        let approach = segment_length(points[points.len() - 2], points[points.len() - 1]);
+
+        assert!(route_has_visible_terminal_segments(
+            &points,
+            ROUTE_TERMINAL_MIN
+        ));
+        assert!(approach >= ROUTE_TERMINAL_MIN);
+    }
+
+    #[test]
+    fn routed_auto_connection_keeps_visible_segment_after_source_marker() {
+        let from = Bounds {
+            x: 636.0,
+            y: 610.0,
+            width: 190.0,
+            height: 55.0,
+        };
+        let to = Bounds {
+            x: 636.0,
+            y: 37.0,
+            width: 190.0,
+            height: 55.0,
+        };
+        let obstacle = Bounds {
+            x: 636.0,
+            y: 500.0,
+            width: 190.0,
+            height: 55.0,
+        };
+
+        let points = route_orthogonal(&from, &to, &[obstacle]).expect("expected routed path");
+        let departure = segment_length(points[0], points[1]);
+
+        assert!(route_has_visible_terminal_segments(
+            &points,
+            ROUTE_TERMINAL_MIN
+        ));
+        assert!(departure >= ROUTE_TERMINAL_MIN);
     }
 
     #[test]
