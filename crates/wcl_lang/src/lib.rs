@@ -1129,6 +1129,47 @@ mod tests {
     }
 
     #[test]
+    fn nested_query_loop_filter_can_use_outer_iterator() {
+        let src = r#"
+System sys1 {}
+
+Application app1 {
+    system = sys1
+}
+
+for sys in (..System) {
+    for comp in (..Application | .system == sys) {
+        result {
+            system = sys.id
+            app = comp.id
+        }
+    }
+}
+        "#;
+        let doc = parse(src, ParseOptions::default());
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+
+        let results: Vec<_> = doc
+            .values
+            .values()
+            .filter_map(|value| match value {
+                Value::BlockRef(br) if br.kind == "result" => Some(br),
+                _ => None,
+            })
+            .collect();
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(
+            results[0].attributes.get("system"),
+            Some(&Value::Identifier("sys1".to_string())),
+        );
+        assert_eq!(
+            results[0].attributes.get("app"),
+            Some(&Value::Identifier("app1".to_string())),
+        );
+    }
+
+    #[test]
     fn test_ref_shorthand_equivalent_to_long_form() {
         let src = r#"
             service web { port = 8080 }
