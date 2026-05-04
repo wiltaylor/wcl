@@ -17,7 +17,7 @@ pub fn layout_layered(
     children: &mut [ShapeNode],
     connections: &[Connection],
     parent: &Bounds,
-    gap: f64,
+    _gap: f64,
     options: &IndexMap<String, String>,
 ) {
     let horizontal = options.get("direction").map(|s| s.as_str()) == Some("horizontal");
@@ -106,17 +106,28 @@ pub fn layout_layered(
         layers[l] = positions.into_iter().map(|(node, _)| node).collect();
     }
 
-    // Assign positions
-    let num_layers = (max_layer + 1) as f64;
-    let (main_size, cross_size) = if horizontal {
-        (parent.width, parent.height)
+    // Assign positions. Layer coordinates are computed against the span available
+    // for whole node bounds, not just top-left origins.
+    let max_main_node = children
+        .iter()
+        .map(|c| {
+            if horizontal {
+                c.resolved.width
+            } else {
+                c.resolved.height
+            }
+        })
+        .fold(0.0, f64::max);
+    let (main_origin, cross_origin, main_size, cross_size) = if horizontal {
+        (parent.x, parent.y, parent.width, parent.height)
     } else {
-        (parent.height, parent.width)
+        (parent.y, parent.x, parent.height, parent.width)
     };
-    let layer_spacing = if num_layers > 1.0 {
-        (main_size - gap) / num_layers
+    let main_span = (main_size - max_main_node).max(0.0);
+    let layer_spacing = if max_layer > 0 {
+        main_span / max_layer as f64
     } else {
-        main_size
+        0.0
     };
 
     for (l, layer_nodes) in layers.iter().enumerate() {
@@ -128,10 +139,14 @@ pub fn layout_layered(
         };
 
         for (order, &node_idx) in layer_nodes.iter().enumerate() {
-            let main_pos = parent.y + l as f64 * layer_spacing + gap / 2.0;
-            let cross_pos = parent.x
-                + order as f64 * node_spacing
-                + (node_spacing - children[node_idx].resolved.width) / 2.0;
+            let cross_node_size = if horizontal {
+                children[node_idx].resolved.height
+            } else {
+                children[node_idx].resolved.width
+            };
+            let main_pos = main_origin + l as f64 * layer_spacing;
+            let cross_pos =
+                cross_origin + order as f64 * node_spacing + (node_spacing - cross_node_size) / 2.0;
 
             if horizontal {
                 children[node_idx].resolved.x = main_pos;
@@ -142,6 +157,8 @@ pub fn layout_layered(
             }
         }
     }
+
+    fit_children_to_parent(children, parent);
 }
 
 // ---------------------------------------------------------------------------
@@ -261,6 +278,8 @@ pub fn layout_force(
         children[i].resolved.x = (pos[i].0 - min_x) * scale + offset_x - w / 2.0;
         children[i].resolved.y = (pos[i].1 - min_y) * scale + offset_y - h / 2.0;
     }
+
+    fit_children_to_parent(children, parent);
 }
 
 // ---------------------------------------------------------------------------
@@ -373,6 +392,8 @@ pub fn layout_radial(
             }
         }
     }
+
+    fit_children_to_parent(children, parent);
 }
 
 // ---------------------------------------------------------------------------
@@ -424,6 +445,8 @@ pub fn layout_grid(
         child.resolved.x = offset_x + col as f64 * cell_w + (max_w - child.resolved.width) / 2.0;
         child.resolved.y = offset_y + row as f64 * cell_h + (max_h - child.resolved.height) / 2.0;
     }
+
+    fit_children_to_parent(children, parent);
 }
 
 // ---------------------------------------------------------------------------
@@ -442,6 +465,83 @@ fn bounding_box(positions: &[(f64, f64)]) -> (f64, f64, f64, f64) {
         max_y = max_y.max(y);
     }
     (min_x, max_x, min_y, max_y)
+}
+
+fn fit_children_to_parent(children: &mut [ShapeNode], parent: &Bounds) {
+    if children.is_empty() {
+        return;
+    }
+
+    let Some(bounds) = children_bounds(children) else {
+        return;
+    };
+
+    let dx = if bounds.x < parent.x {
+        parent.x - bounds.x
+    } else if bounds.x + bounds.width > parent.x + parent.width {
+        parent.x + parent.width - bounds.width - bounds.x
+    } else {
+        0.0
+    };
+    let dy = if bounds.y < parent.y {
+        parent.y - bounds.y
+    } else if bounds.y + bounds.height > parent.y + parent.height {
+        parent.y + parent.height - bounds.height - bounds.y
+    } else {
+        0.0
+    };
+
+    for child in children.iter_mut() {
+        child.resolved.x += dx;
+        child.resolved.y += dy;
+        clamp_child_to_parent(child, parent);
+    }
+}
+
+fn children_bounds(children: &[ShapeNode]) -> Option<Bounds> {
+    let mut min_x = f64::MAX;
+    let mut min_y = f64::MAX;
+    let mut max_x = f64::MIN;
+    let mut max_y = f64::MIN;
+    let mut found = false;
+
+    for child in children {
+        found = true;
+        min_x = min_x.min(child.resolved.x);
+        min_y = min_y.min(child.resolved.y);
+        max_x = max_x.max(child.resolved.x + child.resolved.width);
+        max_y = max_y.max(child.resolved.y + child.resolved.height);
+    }
+
+    found.then_some(Bounds {
+        x: min_x,
+        y: min_y,
+        width: (max_x - min_x).max(0.0),
+        height: (max_y - min_y).max(0.0),
+    })
+}
+
+fn clamp_child_to_parent(child: &mut ShapeNode, parent: &Bounds) {
+    child.resolved.x = clamp_origin(
+        child.resolved.x,
+        child.resolved.width,
+        parent.x,
+        parent.width,
+    );
+    child.resolved.y = clamp_origin(
+        child.resolved.y,
+        child.resolved.height,
+        parent.y,
+        parent.height,
+    );
+}
+
+fn clamp_origin(origin: f64, size: f64, parent_origin: f64, parent_size: f64) -> f64 {
+    if size >= parent_size {
+        parent_origin
+    } else {
+        origin.clamp(parent_origin, parent_origin + parent_size - size)
+    }
 }
 
 #[cfg(test)]
@@ -510,6 +610,30 @@ mod tests {
     }
 
     #[test]
+    fn test_layered_keeps_node_bounds_inside_parent() {
+        let mut nodes = vec![
+            make_node("a", 80.0, 40.0),
+            make_node("b", 80.0, 40.0),
+            make_node("c", 80.0, 40.0),
+        ];
+        let conns = vec![make_conn("a", "b"), make_conn("b", "c")];
+        let parent = Bounds {
+            x: 20.0,
+            y: 30.0,
+            width: 160.0,
+            height: 120.0,
+        };
+        layout_layered(&mut nodes, &conns, &parent, 40.0, &IndexMap::new());
+
+        for node in nodes {
+            assert!(node.resolved.x >= parent.x);
+            assert!(node.resolved.y >= parent.y);
+            assert!(node.resolved.x + node.resolved.width <= parent.x + parent.width);
+            assert!(node.resolved.y + node.resolved.height <= parent.y + parent.height);
+        }
+    }
+
+    #[test]
     fn test_force_separates_nodes() {
         let mut nodes = vec![make_node("a", 40.0, 40.0), make_node("b", 40.0, 40.0)];
         let conns = vec![make_conn("a", "b")];
@@ -575,5 +699,26 @@ mod tests {
         assert!(nodes[0].resolved.x < nodes[1].resolved.x);
         assert!((nodes[0].resolved.y - nodes[1].resolved.y).abs() < 1.0);
         assert!(nodes[0].resolved.y < nodes[2].resolved.y);
+    }
+
+    #[test]
+    fn test_grid_clamps_oversized_grid_inside_parent() {
+        let mut nodes = vec![make_node("a", 80.0, 40.0), make_node("b", 80.0, 40.0)];
+        let parent = Bounds {
+            x: 10.0,
+            y: 10.0,
+            width: 120.0,
+            height: 60.0,
+        };
+        let mut opts = IndexMap::new();
+        opts.insert("columns".to_string(), "2".to_string());
+        layout_grid(&mut nodes, &[], &parent, 40.0, &opts);
+
+        for node in nodes {
+            assert!(node.resolved.x >= parent.x);
+            assert!(node.resolved.y >= parent.y);
+            assert!(node.resolved.x + node.resolved.width <= parent.x + parent.width);
+            assert!(node.resolved.y + node.resolved.height <= parent.y + parent.height);
+        }
     }
 }
