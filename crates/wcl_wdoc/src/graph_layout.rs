@@ -17,7 +17,7 @@ pub fn layout_layered(
     children: &mut [ShapeNode],
     connections: &[Connection],
     parent: &Bounds,
-    _gap: f64,
+    gap: f64,
     options: &IndexMap<String, String>,
 ) {
     let horizontal = options.get("direction").map(|s| s.as_str()) == Some("horizontal");
@@ -106,59 +106,11 @@ pub fn layout_layered(
         layers[l] = positions.into_iter().map(|(node, _)| node).collect();
     }
 
-    // Assign positions. Layer coordinates are computed against the span available
-    // for whole node bounds, not just top-left origins.
-    let max_main_node = children
-        .iter()
-        .map(|c| {
-            if horizontal {
-                c.resolved.width
-            } else {
-                c.resolved.height
-            }
-        })
-        .fold(0.0, f64::max);
-    let (main_origin, cross_origin, main_size, cross_size) = if horizontal {
-        (parent.x, parent.y, parent.width, parent.height)
+    if horizontal {
+        layout_layered_horizontal(children, &layers, parent, gap);
     } else {
-        (parent.y, parent.x, parent.height, parent.width)
-    };
-    let main_span = (main_size - max_main_node).max(0.0);
-    let layer_spacing = if max_layer > 0 {
-        main_span / max_layer as f64
-    } else {
-        0.0
-    };
-
-    for (l, layer_nodes) in layers.iter().enumerate() {
-        let count = layer_nodes.len() as f64;
-        let node_spacing = if count > 0.0 {
-            cross_size / count
-        } else {
-            cross_size
-        };
-
-        for (order, &node_idx) in layer_nodes.iter().enumerate() {
-            let cross_node_size = if horizontal {
-                children[node_idx].resolved.height
-            } else {
-                children[node_idx].resolved.width
-            };
-            let main_pos = main_origin + l as f64 * layer_spacing;
-            let cross_pos =
-                cross_origin + order as f64 * node_spacing + (node_spacing - cross_node_size) / 2.0;
-
-            if horizontal {
-                children[node_idx].resolved.x = main_pos;
-                children[node_idx].resolved.y = cross_pos;
-            } else {
-                children[node_idx].resolved.x = cross_pos;
-                children[node_idx].resolved.y = main_pos;
-            }
-        }
+        layout_layered_vertical(children, &layers, parent, gap);
     }
-
-    fit_children_to_parent(children, parent);
 }
 
 // ---------------------------------------------------------------------------
@@ -453,6 +405,189 @@ pub fn layout_grid(
 // Helpers
 // ---------------------------------------------------------------------------
 
+#[derive(Debug)]
+struct WrappedLine {
+    nodes: Vec<usize>,
+    main_size: f64,
+    cross_size: f64,
+}
+
+fn layout_layered_vertical(
+    children: &mut [ShapeNode],
+    layers: &[Vec<usize>],
+    parent: &Bounds,
+    gap: f64,
+) {
+    let layer_rows: Vec<Vec<WrappedLine>> = layers
+        .iter()
+        .map(|layer_nodes| wrap_layer_rows(children, layer_nodes, parent.width, gap))
+        .collect();
+    let layer_heights: Vec<f64> = layer_rows
+        .iter()
+        .map(|rows| layer_group_cross_size(rows, gap))
+        .collect();
+    let layer_gap = fit_gap(parent.height, &layer_heights, gap);
+
+    let mut y = parent.y;
+    for (layer_idx, rows) in layer_rows.into_iter().enumerate() {
+        if rows.is_empty() {
+            continue;
+        }
+        for row in rows {
+            let mut x = if row.main_size <= parent.width {
+                parent.x + (parent.width - row.main_size) / 2.0
+            } else {
+                parent.x
+            };
+            for node_idx in row.nodes {
+                children[node_idx].resolved.x = x;
+                children[node_idx].resolved.y =
+                    y + (row.cross_size - children[node_idx].resolved.height) / 2.0;
+                x += children[node_idx].resolved.width + gap;
+            }
+            y += row.cross_size + gap;
+        }
+        y -= gap;
+        if layer_idx + 1 < layer_heights.len() {
+            y += layer_gap;
+        }
+    }
+}
+
+fn layout_layered_horizontal(
+    children: &mut [ShapeNode],
+    layers: &[Vec<usize>],
+    parent: &Bounds,
+    gap: f64,
+) {
+    let layer_columns: Vec<Vec<WrappedLine>> = layers
+        .iter()
+        .map(|layer_nodes| wrap_layer_columns(children, layer_nodes, parent.height, gap))
+        .collect();
+    let layer_widths: Vec<f64> = layer_columns
+        .iter()
+        .map(|columns| layer_group_cross_size(columns, gap))
+        .collect();
+    let layer_gap = fit_gap(parent.width, &layer_widths, gap);
+
+    let mut x = parent.x;
+    for (layer_idx, columns) in layer_columns.into_iter().enumerate() {
+        if columns.is_empty() {
+            continue;
+        }
+        for column in columns {
+            let mut y = if column.main_size <= parent.height {
+                parent.y + (parent.height - column.main_size) / 2.0
+            } else {
+                parent.y
+            };
+            for node_idx in column.nodes {
+                children[node_idx].resolved.x =
+                    x + (column.cross_size - children[node_idx].resolved.width) / 2.0;
+                children[node_idx].resolved.y = y;
+                y += children[node_idx].resolved.height + gap;
+            }
+            x += column.cross_size + gap;
+        }
+        x -= gap;
+        if layer_idx + 1 < layer_widths.len() {
+            x += layer_gap;
+        }
+    }
+}
+
+fn layer_group_cross_size(lines: &[WrappedLine], gap: f64) -> f64 {
+    let line_sizes: f64 = lines.iter().map(|line| line.cross_size).sum();
+    let gaps = lines.len().saturating_sub(1) as f64 * gap;
+    line_sizes + gaps
+}
+
+fn fit_gap(available: f64, group_sizes: &[f64], requested_gap: f64) -> f64 {
+    if group_sizes.len() <= 1 {
+        return 0.0;
+    }
+    let total_groups: f64 = group_sizes.iter().sum();
+    let max_gap =
+        ((available - total_groups) / group_sizes.len().saturating_sub(1) as f64).max(0.0);
+    requested_gap.min(max_gap)
+}
+
+fn wrap_layer_rows(
+    children: &[ShapeNode],
+    layer_nodes: &[usize],
+    available_width: f64,
+    gap: f64,
+) -> Vec<WrappedLine> {
+    wrap_layer(layer_nodes, gap, available_width, |node_idx| {
+        (
+            children[node_idx].resolved.width,
+            children[node_idx].resolved.height,
+        )
+    })
+}
+
+fn wrap_layer_columns(
+    children: &[ShapeNode],
+    layer_nodes: &[usize],
+    available_height: f64,
+    gap: f64,
+) -> Vec<WrappedLine> {
+    wrap_layer(layer_nodes, gap, available_height, |node_idx| {
+        (
+            children[node_idx].resolved.height,
+            children[node_idx].resolved.width,
+        )
+    })
+}
+
+fn wrap_layer<F>(
+    layer_nodes: &[usize],
+    gap: f64,
+    available_main: f64,
+    size_of: F,
+) -> Vec<WrappedLine>
+where
+    F: Fn(usize) -> (f64, f64),
+{
+    let mut lines = Vec::new();
+    let mut current = WrappedLine {
+        nodes: Vec::new(),
+        main_size: 0.0,
+        cross_size: 0.0,
+    };
+
+    for &node_idx in layer_nodes {
+        let (node_main, node_cross) = size_of(node_idx);
+        let next_main = if current.nodes.is_empty() {
+            node_main
+        } else {
+            current.main_size + gap + node_main
+        };
+
+        if !current.nodes.is_empty() && next_main > available_main {
+            lines.push(current);
+            current = WrappedLine {
+                nodes: Vec::new(),
+                main_size: 0.0,
+                cross_size: 0.0,
+            };
+        }
+
+        if !current.nodes.is_empty() {
+            current.main_size += gap;
+        }
+        current.nodes.push(node_idx);
+        current.main_size += node_main;
+        current.cross_size = current.cross_size.max(node_cross);
+    }
+
+    if !current.nodes.is_empty() {
+        lines.push(current);
+    }
+
+    lines
+}
+
 fn bounding_box(positions: &[(f64, f64)]) -> (f64, f64, f64, f64) {
     let mut min_x = f64::MAX;
     let mut max_x = f64::MIN;
@@ -588,6 +723,13 @@ mod tests {
         }
     }
 
+    fn overlaps(a: &ShapeNode, b: &ShapeNode) -> bool {
+        a.resolved.x < b.resolved.x + b.resolved.width
+            && a.resolved.x + a.resolved.width > b.resolved.x
+            && a.resolved.y < b.resolved.y + b.resolved.height
+            && a.resolved.y + a.resolved.height > b.resolved.y
+    }
+
     #[test]
     fn test_layered_linear() {
         let mut nodes = vec![
@@ -631,6 +773,53 @@ mod tests {
             assert!(node.resolved.x + node.resolved.width <= parent.x + parent.width);
             assert!(node.resolved.y + node.resolved.height <= parent.y + parent.height);
         }
+    }
+
+    #[test]
+    fn test_layered_wraps_wide_rank_without_overlap() {
+        let mut nodes = vec![
+            make_node("a", 80.0, 40.0),
+            make_node("b", 80.0, 40.0),
+            make_node("c", 80.0, 40.0),
+        ];
+        let conns = vec![make_conn("a", "c"), make_conn("b", "c")];
+        let parent = Bounds {
+            x: 0.0,
+            y: 0.0,
+            width: 120.0,
+            height: 240.0,
+        };
+        layout_layered(&mut nodes, &conns, &parent, 20.0, &IndexMap::new());
+
+        assert_eq!(nodes[0].resolved.width, 80.0);
+        assert_eq!(nodes[1].resolved.width, 80.0);
+        assert!(!overlaps(&nodes[0], &nodes[1]));
+        assert!(nodes[0].resolved.y < nodes[1].resolved.y);
+    }
+
+    #[test]
+    fn test_layered_horizontal_wraps_tall_rank_without_overlap() {
+        let mut nodes = vec![
+            make_node("a", 40.0, 80.0),
+            make_node("b", 40.0, 80.0),
+            make_node("c", 40.0, 80.0),
+        ];
+        let conns = vec![make_conn("a", "c"), make_conn("b", "c")];
+        let parent = Bounds {
+            x: 0.0,
+            y: 0.0,
+            width: 240.0,
+            height: 120.0,
+        };
+        let opts = [("direction".to_string(), "horizontal".to_string())]
+            .into_iter()
+            .collect();
+        layout_layered(&mut nodes, &conns, &parent, 20.0, &opts);
+
+        assert_eq!(nodes[0].resolved.height, 80.0);
+        assert_eq!(nodes[1].resolved.height, 80.0);
+        assert!(!overlaps(&nodes[0], &nodes[1]));
+        assert!(nodes[0].resolved.x < nodes[1].resolved.x);
     }
 
     #[test]
