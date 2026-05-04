@@ -8,6 +8,8 @@ use std::fmt::Write;
 
 use indexmap::IndexMap;
 
+const LAYOUT_DECORATION_ATTR: &str = "_wdoc_layout_decoration";
+
 // ---------------------------------------------------------------------------
 // Data model
 // ---------------------------------------------------------------------------
@@ -164,6 +166,7 @@ pub fn render_diagram_svg(diagram: &mut Diagram) -> String {
         &mut diagram.shapes,
         &diagram.connections,
         &inner,
+        "",
         diagram.align,
         diagram.gap,
         &diagram.options,
@@ -271,6 +274,7 @@ fn resolve_children(
     children: &mut [ShapeNode],
     connections: &[Connection],
     parent: &Bounds,
+    scope_path: &str,
     align: Alignment,
     gap: f64,
     options: &IndexMap<String, String>,
@@ -284,30 +288,47 @@ fn resolve_children(
     let unpositioned: Vec<usize> = children
         .iter()
         .enumerate()
-        .filter(|(_, c)| c.x.is_none() && c.y.is_none() && c.top.is_none() && c.left.is_none())
+        .filter(|(_, c)| {
+            !is_layout_decoration(c)
+                && c.x.is_none()
+                && c.y.is_none()
+                && c.top.is_none()
+                && c.left.is_none()
+        })
         .map(|(i, _)| i)
         .collect();
 
-    if !unpositioned.is_empty() {
-        match align {
-            Alignment::Stack => layout_stack(children, &unpositioned, parent, gap),
-            Alignment::Flow => layout_flow(children, &unpositioned, parent, gap),
-            Alignment::Center => layout_center(children, &unpositioned, parent),
-            // Graph-aware layouts operate on ALL children (not just unpositioned)
-            Alignment::Layered => {
-                crate::graph_layout::layout_layered(children, connections, parent, gap, options)
+    let layoutable: Vec<usize> = children
+        .iter()
+        .enumerate()
+        .filter(|(_, c)| !is_layout_decoration(c))
+        .map(|(i, _)| i)
+        .collect();
+
+    match align {
+        Alignment::Stack | Alignment::Flow | Alignment::Center if !unpositioned.is_empty() => {
+            match align {
+                Alignment::Stack => layout_stack(children, &unpositioned, parent, gap),
+                Alignment::Flow => layout_flow(children, &unpositioned, parent, gap),
+                Alignment::Center => layout_center(children, &unpositioned, parent),
+                _ => {}
             }
-            Alignment::Force => {
-                crate::graph_layout::layout_force(children, connections, parent, gap, options)
-            }
-            Alignment::Radial => {
-                crate::graph_layout::layout_radial(children, connections, parent, gap, options)
-            }
-            Alignment::Grid => {
-                crate::graph_layout::layout_grid(children, connections, parent, gap, options)
-            }
-            Alignment::None => {}
         }
+        Alignment::Layered | Alignment::Force | Alignment::Radial | Alignment::Grid
+            if !layoutable.is_empty() =>
+        {
+            layout_graph_subset(
+                children,
+                &layoutable,
+                connections,
+                parent,
+                scope_path,
+                align,
+                gap,
+                options,
+            );
+        }
+        _ => {}
     }
 
     // Recurse into children
@@ -318,15 +339,118 @@ fn resolve_children(
             width: (child.resolved.width - child.padding * 2.0).max(0.0),
             height: (child.resolved.height - child.padding * 2.0).max(0.0),
         };
+        let child_scope_path = match (scope_path.is_empty(), child.id.as_deref()) {
+            (_, None) => scope_path.to_string(),
+            (true, Some(id)) => id.to_string(),
+            (false, Some(id)) => format!("{scope_path}.{id}"),
+        };
         resolve_children(
             &mut child.children,
             connections,
             &inner,
+            &child_scope_path,
             child.align,
             child.gap,
-            &IndexMap::new(),
+            &child.attrs,
         );
     }
+}
+
+fn is_layout_decoration(node: &ShapeNode) -> bool {
+    node.attrs
+        .get(LAYOUT_DECORATION_ATTR)
+        .map(|v| v == "true")
+        .unwrap_or(false)
+}
+
+fn layout_graph_subset(
+    children: &mut [ShapeNode],
+    indices: &[usize],
+    connections: &[Connection],
+    parent: &Bounds,
+    scope_path: &str,
+    align: Alignment,
+    gap: f64,
+    options: &IndexMap<String, String>,
+) {
+    let mut layout_children: Vec<ShapeNode> =
+        indices.iter().map(|&i| children[i].clone()).collect();
+    let local_connections = localize_connections(&layout_children, connections, scope_path);
+
+    match align {
+        Alignment::Layered => crate::graph_layout::layout_layered(
+            &mut layout_children,
+            &local_connections,
+            parent,
+            gap,
+            options,
+        ),
+        Alignment::Force => crate::graph_layout::layout_force(
+            &mut layout_children,
+            &local_connections,
+            parent,
+            gap,
+            options,
+        ),
+        Alignment::Radial => crate::graph_layout::layout_radial(
+            &mut layout_children,
+            &local_connections,
+            parent,
+            gap,
+            options,
+        ),
+        Alignment::Grid => crate::graph_layout::layout_grid(
+            &mut layout_children,
+            &local_connections,
+            parent,
+            gap,
+            options,
+        ),
+        _ => {}
+    }
+
+    for (layout_child, &original_idx) in layout_children.into_iter().zip(indices) {
+        children[original_idx].resolved = layout_child.resolved;
+    }
+}
+
+fn localize_connections(
+    children: &[ShapeNode],
+    connections: &[Connection],
+    scope_path: &str,
+) -> Vec<Connection> {
+    connections
+        .iter()
+        .filter_map(|conn| {
+            let from_id = localize_endpoint(&conn.from_id, children, scope_path)?;
+            let to_id = localize_endpoint(&conn.to_id, children, scope_path)?;
+            let mut local = conn.clone();
+            local.from_id = from_id;
+            local.to_id = to_id;
+            Some(local)
+        })
+        .collect()
+}
+
+fn localize_endpoint(endpoint: &str, children: &[ShapeNode], scope_path: &str) -> Option<String> {
+    let endpoint = if !scope_path.is_empty() {
+        endpoint
+            .strip_prefix(scope_path)
+            .and_then(|rest| rest.strip_prefix('.'))
+            .unwrap_or(endpoint)
+    } else {
+        endpoint
+    };
+
+    if endpoint.contains('.') {
+        return None;
+    }
+
+    children
+        .iter()
+        .filter_map(|child| child.id.as_deref())
+        .find(|id| *id == endpoint)
+        .map(str::to_string)
 }
 
 fn resolve_bounds(node: &mut ShapeNode, parent: &Bounds) {
@@ -691,6 +815,40 @@ fn attr_f64(attrs: &IndexMap<String, String>, key: &str) -> Option<f64> {
 mod tests {
     use super::*;
 
+    fn shape(id: &str, width: f64, height: f64) -> ShapeNode {
+        ShapeNode {
+            kind: ShapeKind::Rect,
+            id: Some(id.to_string()),
+            x: None,
+            y: None,
+            width: Some(width),
+            height: Some(height),
+            top: None,
+            bottom: None,
+            left: None,
+            right: None,
+            resolved: Bounds::default(),
+            attrs: IndexMap::new(),
+            children: vec![],
+            align: Alignment::None,
+            gap: 0.0,
+            padding: 0.0,
+        }
+    }
+
+    fn connection(from: &str, to: &str) -> Connection {
+        Connection {
+            from_id: from.to_string(),
+            to_id: to.to_string(),
+            direction: Direction::To,
+            from_anchor: AnchorPoint::Auto,
+            to_anchor: AnchorPoint::Auto,
+            label: None,
+            curve: CurveStyle::Straight,
+            attrs: IndexMap::new(),
+        }
+    }
+
     #[test]
     fn test_resolve_axis_absolute() {
         assert_eq!(
@@ -772,5 +930,112 @@ mod tests {
         assert!(svg.contains("x=\"10\""));
         assert!(svg.contains("fill=\"#ccc\""));
         assert!(svg.contains("wdoc-diagram"));
+    }
+
+    #[test]
+    fn nested_grid_layout_ignores_template_decoration() {
+        let mut frame = shape("frame", 200.0, 120.0);
+        frame.x = Some(0.0);
+        frame.y = Some(0.0);
+        frame
+            .attrs
+            .insert(LAYOUT_DECORATION_ATTR.to_string(), "true".to_string());
+
+        let mut label = shape("label", 180.0, 20.0);
+        label.x = Some(10.0);
+        label.y = Some(4.0);
+        label
+            .attrs
+            .insert(LAYOUT_DECORATION_ATTR.to_string(), "true".to_string());
+
+        let mut boundary = shape("boundary", 200.0, 120.0);
+        boundary.x = Some(10.0);
+        boundary.y = Some(20.0);
+        boundary.align = Alignment::Grid;
+        boundary.gap = 10.0;
+        boundary
+            .attrs
+            .insert("columns".to_string(), "2".to_string());
+        boundary.children = vec![frame, label, shape("a", 30.0, 20.0), shape("b", 30.0, 20.0)];
+
+        let mut diagram = Diagram {
+            width: 240.0,
+            height: 180.0,
+            shapes: vec![boundary],
+            connections: vec![],
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+        };
+
+        render_diagram_svg(&mut diagram);
+
+        let children = &diagram.shapes[0].children;
+        assert_eq!(children[0].resolved.x, 0.0);
+        assert_eq!(children[0].resolved.y, 0.0);
+        assert_eq!(children[1].resolved.x, 10.0);
+        assert_eq!(children[1].resolved.y, 4.0);
+        assert!(children[2].resolved.x > 0.0);
+        assert!(children[3].resolved.x > children[2].resolved.x);
+        assert_eq!(children[2].resolved.y, children[3].resolved.y);
+    }
+
+    #[test]
+    fn nested_stack_layout_positions_unanchored_children_in_container() {
+        let mut container = shape("container", 100.0, 100.0);
+        container.x = Some(20.0);
+        container.y = Some(30.0);
+        container.align = Alignment::Stack;
+        container.gap = 10.0;
+        container.padding = 5.0;
+        container.children = vec![shape("a", 0.0, 20.0), shape("b", 0.0, 20.0)];
+
+        let mut diagram = Diagram {
+            width: 200.0,
+            height: 200.0,
+            shapes: vec![container],
+            connections: vec![],
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+        };
+
+        render_diagram_svg(&mut diagram);
+
+        let children = &diagram.shapes[0].children;
+        assert_eq!(children[0].resolved.x, 0.0);
+        assert_eq!(children[0].resolved.y, 0.0);
+        assert_eq!(children[0].resolved.width, 90.0);
+        assert_eq!(children[1].resolved.x, 0.0);
+        assert_eq!(children[1].resolved.y, 30.0);
+        assert_eq!(children[1].resolved.width, 90.0);
+    }
+
+    #[test]
+    fn nested_graph_layout_uses_dotted_connection_ids() {
+        let mut boundary = shape("boundary", 240.0, 180.0);
+        boundary.x = Some(10.0);
+        boundary.y = Some(10.0);
+        boundary.align = Alignment::Layered;
+        boundary.gap = 30.0;
+        boundary.children = vec![shape("a", 40.0, 20.0), shape("b", 40.0, 20.0)];
+
+        let mut diagram = Diagram {
+            width: 300.0,
+            height: 240.0,
+            shapes: vec![boundary],
+            connections: vec![connection("boundary.a", "boundary.b")],
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+        };
+
+        render_diagram_svg(&mut diagram);
+
+        let children = &diagram.shapes[0].children;
+        assert!(children[0].resolved.y < children[1].resolved.y);
     }
 }

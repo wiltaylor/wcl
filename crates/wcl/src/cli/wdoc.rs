@@ -557,7 +557,14 @@ fn collect_shape_or_connection(
 
         let mut children: Vec<ShapeNode> = if is_composite {
             match dispatch_shape_template(br, ctx) {
-                Ok(child_shapes) => child_shapes,
+                Ok(mut child_shapes) => {
+                    for child in &mut child_shapes {
+                        child
+                            .attrs
+                            .insert("_wdoc_layout_decoration".to_string(), "true".to_string());
+                    }
+                    child_shapes
+                }
                 Err(e) => {
                     eprintln!(
                         "wdoc: warning: shape template for '{}' failed: {e}",
@@ -582,6 +589,7 @@ fn collect_shape_or_connection(
         for child_br in &br.children {
             collect_shape_or_connection(child_br, &mut children, &mut child_connections, ctx);
         }
+        connections.extend(child_connections);
 
         let pf =
             |m: &IndexMap<String, String>, k: &str| m.get(k).and_then(|s| s.parse::<f64>().ok());
