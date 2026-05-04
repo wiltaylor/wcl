@@ -967,8 +967,8 @@ impl Evaluator {
             }
             BinOp::Div => self.eval_div(&l, &r, span),
             BinOp::Mod => self.eval_mod(&l, &r, span),
-            BinOp::Eq => Ok(Value::Bool(l == r)),
-            BinOp::Neq => Ok(Value::Bool(l != r)),
+            BinOp::Eq => Ok(Value::Bool(values_equal_for_expr(&l, &r))),
+            BinOp::Neq => Ok(Value::Bool(!values_equal_for_expr(&l, &r))),
             BinOp::Lt | BinOp::Gt | BinOp::Lte | BinOp::Gte => {
                 self.eval_comparison(&l, op, &r, span)
             }
@@ -1178,10 +1178,18 @@ impl Evaluator {
                 Diagnostic::error(format!("key '{}' not found in map", field), span)
                     .with_code("E054")
             }),
-            Value::BlockRef(br) => br.attributes.get(field).cloned().ok_or_else(|| {
-                Diagnostic::error(format!("attribute '{}' not found in block", field), span)
-                    .with_code("E054")
-            }),
+            Value::BlockRef(br) => match field {
+                "id" => Ok(br
+                    .id
+                    .as_ref()
+                    .map(|id| Value::Identifier(id.clone()))
+                    .unwrap_or(Value::Null)),
+                "kind" => Ok(Value::String(br.kind.clone())),
+                _ => br.attributes.get(field).cloned().ok_or_else(|| {
+                    Diagnostic::error(format!("attribute '{}' not found in block", field), span)
+                        .with_code("E054")
+                }),
+            },
             _ => Err(Diagnostic::error(
                 format!("cannot access member on {}", val.type_name()),
                 span,

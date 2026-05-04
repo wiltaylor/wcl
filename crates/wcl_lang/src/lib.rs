@@ -1170,6 +1170,82 @@ for sys in (..System) {
     }
 
     #[test]
+    fn lambda_filter_can_group_by_outer_loop_block_ref() {
+        let src = r#"
+System sys1 {}
+
+Application app1 {
+    system = sys1
+}
+
+for sys in (..System) {
+    group {
+        apps = filter((..Application), app => app.system.id == sys.id)
+    }
+}
+        "#;
+        let doc = parse(src, ParseOptions::default());
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+
+        let group = doc
+            .values
+            .values()
+            .find_map(|value| match value {
+                Value::BlockRef(br) if br.kind == "group" => Some(br),
+                _ => None,
+            })
+            .expect("group block should be generated");
+
+        let apps = group
+            .attributes
+            .get("apps")
+            .expect("apps attribute should exist");
+        match apps {
+            Value::List(items) => {
+                assert_eq!(items.len(), 1);
+                match &items[0] {
+                    Value::BlockRef(app) => {
+                        assert_eq!(app.kind, "Application");
+                        assert_eq!(app.id.as_deref(), Some("app1"));
+                    }
+                    other => panic!("expected app BlockRef, got {:?}", other),
+                }
+            }
+            other => panic!("expected apps list, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn block_ref_virtual_members_and_equality_work_in_expressions() {
+        let src = r#"
+service alpha {
+    port = 8080
+}
+
+service_id = #alpha.id
+service_kind = #alpha.kind
+same_ref = #alpha == alpha
+same_id = #alpha == alpha.id
+different_id = #alpha != beta
+service beta {}
+        "#;
+        let doc = parse(src, ParseOptions::default());
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+
+        assert_eq!(
+            doc.values.get("service_id"),
+            Some(&Value::Identifier("alpha".to_string())),
+        );
+        assert_eq!(
+            doc.values.get("service_kind"),
+            Some(&Value::String("service".to_string())),
+        );
+        assert_eq!(doc.values.get("same_ref"), Some(&Value::Bool(true)));
+        assert_eq!(doc.values.get("same_id"), Some(&Value::Bool(true)));
+        assert_eq!(doc.values.get("different_id"), Some(&Value::Bool(true)));
+    }
+
+    #[test]
     fn test_ref_shorthand_equivalent_to_long_form() {
         let src = r#"
             service web { port = 8080 }
