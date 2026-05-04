@@ -331,9 +331,64 @@ fn substitute_value_in_body_item(
                 substitute_in_expr(expr, iterator_name, value, index_name, index);
             }
         }
+        BodyItem::ForLoop(for_loop) => {
+            substitute_in_expr(
+                &mut for_loop.iterable,
+                iterator_name,
+                value,
+                index_name,
+                index,
+            );
+            for child in &mut for_loop.body {
+                substitute_value_in_body_item(child, iterator_name, value, index_name, index);
+            }
+        }
+        BodyItem::Conditional(cond) => {
+            substitute_in_expr(&mut cond.condition, iterator_name, value, index_name, index);
+            for child in &mut cond.then_body {
+                substitute_value_in_body_item(child, iterator_name, value, index_name, index);
+            }
+            substitute_in_else_branch(
+                &mut cond.else_branch,
+                iterator_name,
+                value,
+                index_name,
+                index,
+            );
+        }
         _ => {
             // Other body items: no substitution needed at this level
         }
+    }
+}
+
+fn substitute_in_else_branch(
+    else_branch: &mut Option<ElseBranch>,
+    iterator_name: &str,
+    value: &Value,
+    index_name: Option<&String>,
+    index: usize,
+) {
+    match else_branch {
+        Some(ElseBranch::ElseIf(cond)) => {
+            substitute_in_expr(&mut cond.condition, iterator_name, value, index_name, index);
+            for child in &mut cond.then_body {
+                substitute_value_in_body_item(child, iterator_name, value, index_name, index);
+            }
+            substitute_in_else_branch(
+                &mut cond.else_branch,
+                iterator_name,
+                value,
+                index_name,
+                index,
+            );
+        }
+        Some(ElseBranch::Else(body, _, _)) => {
+            for child in body {
+                substitute_value_in_body_item(child, iterator_name, value, index_name, index);
+            }
+        }
+        None => {}
     }
 }
 
@@ -368,6 +423,13 @@ fn substitute_in_expr(
             if ident.name == iterator_name {
                 if let Some(replacement) = value_to_expr(value, ident.span) {
                     *expr = replacement;
+                } else if let Value::BlockRef(br) = value {
+                    if let Some(id) = &br.id {
+                        *expr = Expr::IdentifierLit(IdentifierLit {
+                            value: id.clone(),
+                            span: ident.span,
+                        });
+                    }
                 }
             } else if let Some(idx_name) = index_name {
                 if ident.name == *idx_name {
@@ -473,6 +535,17 @@ fn substitute_in_expr(
         }
         Expr::Lambda(_, body, _) => {
             substitute_in_expr(body, iterator_name, value, index_name, index);
+        }
+        Expr::Query(pipeline, _) => {
+            for filter in &mut pipeline.filters {
+                match filter {
+                    QueryFilter::AttrComparison(_, _, rhs)
+                    | QueryFilter::DecoratorArgFilter(_, _, _, rhs) => {
+                        substitute_in_expr(rhs, iterator_name, value, index_name, index);
+                    }
+                    _ => {}
+                }
+            }
         }
         _ => {
             // Literals and other leaf expressions: nothing to substitute
@@ -997,6 +1070,40 @@ mod tests {
         match expr {
             Expr::IntLit(80, _) => {}
             other => panic!("expected IntLit(80), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn query_filter_rhs_substitutes_loop_variable() {
+        let mut expr = Expr::Query(
+            QueryPipeline {
+                selector: QuerySelector::Recursive(make_ident("Application")),
+                filters: vec![QueryFilter::AttrComparison(
+                    make_ident("system"),
+                    BinOp::Eq,
+                    Expr::Ident(make_ident("sys")),
+                )],
+                span: dummy_span(),
+            },
+            dummy_span(),
+        );
+
+        substitute_in_expr(
+            &mut expr,
+            "sys",
+            &Value::Identifier("sys1".to_string()),
+            None,
+            0,
+        );
+
+        match expr {
+            Expr::Query(pipeline, _) => match &pipeline.filters[0] {
+                QueryFilter::AttrComparison(_, _, Expr::IdentifierLit(lit)) => {
+                    assert_eq!(lit.value, "sys1");
+                }
+                other => panic!("expected substituted query filter RHS, got {:?}", other),
+            },
+            other => panic!("expected query expression, got {:?}", other),
         }
     }
 
