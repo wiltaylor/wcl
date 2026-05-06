@@ -79,6 +79,29 @@ page wdoc_drawing_shapes {
                     content = "path arrow {\n    d = \"M 10 10 L 100 10 L 90 0 M 100 10 L 90 20\"\n    fill = \"none\"\n    stroke = \"var(--color-link)\"\n    stroke_width = 2\n}"
                 }
 
+                heading h2_group {
+                    level = 2
+                    content = "group"
+                }
+
+                paragraph p_g1 { content = "A non-visual SVG <code>&lt;g&gt;</code> container for grouping child shapes. Use it to make a background, label, and interaction attributes behave as one control." }
+
+                code cg1 {
+                    language = "wcl"
+                    content = "diagram button_preview {\n    width = 180\n    height = 70\n    css = <<-'CSS'\n      .ui-button:hover .ui-button-bg { fill: #81A1C1; stroke: #81A1C1; }\n      .ui-button:active .ui-button-bg { fill: #4C566A; stroke: #4C566A; }\n    CSS\n\n    group button {\n        x = 20, y = 16, width = 140, height = 38\n        class = \"ui-button\"\n        cursor = \"pointer\"\n        pointer_events = \"all\"\n\n        rect bg {\n            x = 0, y = 0, width = 140, height = 38\n            rx = 6\n            class = \"ui-button-bg\"\n            fill = \"#5E81AC\"\n            stroke = \"#5E81AC\"\n        }\n\n        text label {\n            x = 0, y = 0, width = 140, height = 38\n            content = \"Preview\"\n            fill = \"#fff\"\n            font_weight = \"600\"\n        }\n    }\n}"
+                }
+
+                data_table tbl_safe_attrs {
+                    caption = "safe SVG passthrough attributes"
+                    rows = [
+                        { attr = "class",          description = "SVG class attribute for scoped diagram CSS selectors" },
+                        { attr = "style",          description = "Inline SVG style attribute" },
+                        { attr = "cursor",         description = "SVG cursor attribute, for example pointer" },
+                        { attr = "pointer_events", description = "Rendered as pointer-events" },
+                        { attr = "css",            description = "Diagram-level scoped CSS emitted inside the SVG" }
+                    ]
+                }
+
                 heading h2_text {
                     level = 2
                     content = "text"
@@ -89,16 +112,22 @@ page wdoc_drawing_shapes {
                 data_table tbl_text {
                     caption = "text-specific attributes"
                     rows = [
-                        { attr = "content",   description = "The text to render" },
-                        { attr = "font_size", description = "Font size in SVG units (default 14)" },
-                        { attr = "anchor",    description = "Horizontal alignment: start, middle (default), end" },
-                        { attr = "fill",      description = "Text color (defaults to currentColor)" }
+                        { attr = "content",          description = "The text to render. Newlines render as multiple SVG tspans." },
+                        { attr = "font_size",        description = "Font size in SVG units (default 14)" },
+                        { attr = "font_family",      description = "SVG font-family, for example Inter, system-ui, sans-serif" },
+                        { attr = "font_weight",      description = "SVG font-weight, for example 400, 600, or bold" },
+                        { attr = "font_style",       description = "SVG font-style, for example normal or italic" },
+                        { attr = "line_height",      description = "Line-height multiplier for multi-line text layout (default 1.2)" },
+                        { attr = "text_decoration",  description = "SVG text-decoration, for example underline" },
+                        { attr = "letter_spacing",   description = "SVG letter-spacing, for example 0.02em" },
+                        { attr = "anchor",           description = "Horizontal alignment: start, middle (default), end" },
+                        { attr = "fill",             description = "Text color (defaults to currentColor)" }
                     ]
                 }
 
                 code ct1 {
                     language = "wcl"
-                    content = "// Standalone label\ntext label {\n    x = 50, y = 100, width = 200, height = 30\n    content = \"Section heading\"\n    font_size = 16\n    anchor = \"start\"\n}"
+                    content = "// Standalone label\ntext label {\n    x = 50, y = 100, width = 240, height = 50\n    content = \"Section heading\\nToken preview\"\n    font_size = 16\n    font_family = \"Inter, system-ui, sans-serif\"\n    font_weight = \"600\"\n    font_style = \"italic\"\n    line_height = 1.5\n    text_decoration = \"underline\"\n    letter_spacing = \"0.02em\"\n    anchor = \"start\"\n}"
                 }
             }
         }

@@ -5,6 +5,7 @@
 
 use std::collections::HashMap;
 use std::fmt::Write;
+use std::hash::{DefaultHasher, Hash, Hasher};
 
 use indexmap::IndexMap;
 
@@ -24,6 +25,7 @@ pub enum ShapeKind {
     Line,
     Path,
     Text,
+    Group,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -141,6 +143,7 @@ pub struct Connection {
 
 /// A complete diagram ready to render.
 pub struct Diagram {
+    pub id: Option<String>,
     pub width: f64,
     pub height: f64,
     pub shapes: Vec<ShapeNode>,
@@ -179,14 +182,40 @@ pub fn render_diagram_svg(diagram: &mut Diagram) -> String {
 
     // Phase 3: render SVG
     let mut svg = String::new();
-    write!(
-        svg,
-        "<div class=\"wdoc-diagram\">\
-         <svg xmlns=\"http://www.w3.org/2000/svg\" \
-         width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">",
-        diagram.width, diagram.height, diagram.width, diagram.height
-    )
-    .unwrap();
+    let scoped_css = diagram.options.get("css").and_then(|css| {
+        let css = css.trim();
+        if css.is_empty() {
+            None
+        } else {
+            let scope_id = diagram_scope_id(diagram, css);
+            Some((scope_id.clone(), scope_svg_css(css, &scope_id)))
+        }
+    });
+
+    if let Some((scope_id, _)) = &scoped_css {
+        let scope_id = svg_escape_attr(scope_id);
+        write!(
+            svg,
+            "<div class=\"wdoc-diagram\">\
+             <svg xmlns=\"http://www.w3.org/2000/svg\" id=\"{scope_id}\" \
+             width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">",
+            diagram.width, diagram.height, diagram.width, diagram.height
+        )
+        .unwrap();
+    } else {
+        write!(
+            svg,
+            "<div class=\"wdoc-diagram\">\
+             <svg xmlns=\"http://www.w3.org/2000/svg\" \
+             width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">",
+            diagram.width, diagram.height, diagram.width, diagram.height
+        )
+        .unwrap();
+    }
+
+    if let Some((_, css)) = &scoped_css {
+        write!(svg, "<style>{}</style>", svg_escape_text(css)).unwrap();
+    }
 
     // Arrow marker defs
     if diagram
@@ -259,6 +288,7 @@ pub fn parse_shape_kind(kind: &str) -> Option<ShapeKind> {
         "wdoc::draw::line" => Some(ShapeKind::Line),
         "wdoc::draw::path" => Some(ShapeKind::Path),
         "wdoc::draw::text" => Some(ShapeKind::Text),
+        "wdoc::draw::group" => Some(ShapeKind::Group),
         // Anything else under `wdoc::draw::` (or a user namespace ending in `::draw::`)
         // is treated as a composite shape: a rect-shaped container whose children are
         // produced by a `@template("shape", ...)` function. The connection schema is
@@ -887,9 +917,11 @@ fn render_shape_svg(node: &ShapeNode, svg: &mut String) {
     // Wrap in <a> if shape has an href attribute (clickable)
     let href = node.attrs.get("href");
     if let Some(url) = href {
+        let url = svg_escape_attr(url);
         write!(svg, "<a href=\"{url}\" target=\"_top\">").unwrap();
     }
 
+    let mut rendered_children = false;
     match node.kind {
         ShapeKind::Rect => {
             let rx = node.attrs.get("rx").map(|s| s.as_str()).unwrap_or("0");
@@ -944,6 +976,13 @@ fn render_shape_svg(node: &ShapeNode, svg: &mut String) {
                 .get("font_size")
                 .map(|s| s.as_str())
                 .unwrap_or("14");
+            let font_size_for_layout = parse_svg_number(font_size).unwrap_or(14.0);
+            let line_height = node
+                .attrs
+                .get("line_height")
+                .and_then(|s| s.parse::<f64>().ok())
+                .unwrap_or(1.2);
+            let line_step = font_size_for_layout * line_height;
             let anchor = node
                 .attrs
                 .get("anchor")
@@ -962,18 +1001,49 @@ fn render_shape_svg(node: &ShapeNode, svg: &mut String) {
             } else {
                 " fill=\"currentColor\""
             };
+            let font_size_attr = svg_escape_attr(font_size);
+            let anchor_attr = svg_escape_attr(anchor);
+            let lines: Vec<&str> = content.split('\n').collect();
             write!(
                 svg,
-                "<text x=\"{tx}\" y=\"{ty}\" font-size=\"{font_size}\" \
-                 text-anchor=\"{anchor}\" dominant-baseline=\"central\"\
-                 {fill_default}{style}>{content}</text>"
+                "<text x=\"{tx}\" y=\"{ty}\" font-size=\"{font_size_attr}\" \
+                 text-anchor=\"{anchor_attr}\" dominant-baseline=\"central\"\
+                 {fill_default}{style}>"
             )
             .unwrap();
+            if lines.len() <= 1 {
+                svg.push_str(&svg_escape_text(content));
+            } else {
+                let first_y = ty - ((lines.len() - 1) as f64 * line_step / 2.0);
+                for (idx, line) in lines.iter().enumerate() {
+                    let escaped = svg_escape_text(line);
+                    if idx == 0 {
+                        write!(svg, "<tspan x=\"{tx}\" y=\"{first_y}\">{escaped}</tspan>").unwrap();
+                    } else {
+                        write!(
+                            svg,
+                            "<tspan x=\"{tx}\" dy=\"{line_step}\">{escaped}</tspan>"
+                        )
+                        .unwrap();
+                    }
+                }
+            }
+            svg.push_str("</text>");
+        }
+        ShapeKind::Group => {
+            let gx = b.x;
+            let gy = b.y;
+            write!(svg, "<g transform=\"translate({gx},{gy})\"{style}>").unwrap();
+            for child in &node.children {
+                render_shape_svg(child, svg);
+            }
+            svg.push_str("</g>");
+            rendered_children = true;
         }
     }
 
     // Render children in a translated group
-    if !node.children.is_empty() {
+    if !rendered_children && !node.children.is_empty() {
         let gx = b.x;
         let gy = b.y;
         write!(svg, "<g transform=\"translate({gx},{gy})\">").unwrap();
@@ -1381,17 +1451,158 @@ fn svg_style_attrs(attrs: &IndexMap<String, String>) -> String {
         "stroke_width",
         "stroke_dasharray",
         "opacity",
+        "class",
+        "style",
+        "cursor",
+        "pointer_events",
+        "font_family",
+        "font_weight",
+        "font_style",
+        "text_decoration",
+        "letter_spacing",
     ] {
         if let Some(val) = attrs.get(*name) {
             let svg_name = name.replace('_', "-");
-            write!(s, " {svg_name}=\"{val}\"").unwrap();
+            let escaped = svg_escape_attr(val);
+            write!(s, " {svg_name}=\"{escaped}\"").unwrap();
         }
     }
     s
 }
 
+fn diagram_scope_id(diagram: &Diagram, css: &str) -> String {
+    if let Some(id) = diagram.id.as_deref().filter(|id| !id.trim().is_empty()) {
+        return format!("wdoc-diagram-{}", sanitize_svg_id_fragment(id));
+    }
+
+    let mut hasher = DefaultHasher::new();
+    diagram.width.to_bits().hash(&mut hasher);
+    diagram.height.to_bits().hash(&mut hasher);
+    css.hash(&mut hasher);
+    format!("wdoc-diagram-{:x}", hasher.finish())
+}
+
+fn sanitize_svg_id_fragment(value: &str) -> String {
+    let mut out = String::new();
+    let mut last_dash = false;
+    for ch in value.chars() {
+        let next = if ch.is_ascii_alphanumeric() {
+            last_dash = false;
+            Some(ch.to_ascii_lowercase())
+        } else if ch == '-' || ch == '_' || ch.is_whitespace() {
+            if last_dash {
+                None
+            } else {
+                last_dash = true;
+                Some('-')
+            }
+        } else {
+            None
+        };
+        if let Some(ch) = next {
+            out.push(ch);
+        }
+    }
+    let trimmed = out.trim_matches('-');
+    if trimmed.is_empty() {
+        "unnamed".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn scope_svg_css(css: &str, scope_id: &str) -> String {
+    scope_css_block(css, scope_id)
+}
+
+fn scope_css_block(css: &str, scope_id: &str) -> String {
+    let mut out = String::new();
+    let mut pos = 0;
+
+    while let Some(open_rel) = css[pos..].find('{') {
+        let open = pos + open_rel;
+        let selector = css[pos..open].trim();
+        let Some(close) = find_matching_brace(css, open) else {
+            break;
+        };
+        let body = &css[open + 1..close];
+
+        if selector.starts_with("@media") || selector.starts_with("@supports") {
+            let scoped = scope_css_block(body, scope_id);
+            if !scoped.trim().is_empty() {
+                write!(out, "{selector}{{{scoped}}}").unwrap();
+            }
+        } else if !selector.starts_with('@') {
+            let scoped_selector = scope_selector_list(selector, scope_id);
+            if !scoped_selector.is_empty() {
+                write!(out, "{scoped_selector}{{{body}}}").unwrap();
+            }
+        }
+
+        pos = close + 1;
+    }
+
+    out
+}
+
+fn find_matching_brace(css: &str, open: usize) -> Option<usize> {
+    let bytes = css.as_bytes();
+    let mut depth = 0usize;
+    let mut idx = open;
+    while idx < bytes.len() {
+        match bytes[idx] {
+            b'{' => depth += 1,
+            b'}' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return Some(idx);
+                }
+            }
+            _ => {}
+        }
+        idx += 1;
+    }
+    None
+}
+
+fn scope_selector_list(selector: &str, scope_id: &str) -> String {
+    selector
+        .split(',')
+        .map(str::trim)
+        .filter(|sel| !sel.is_empty())
+        .map(|sel| {
+            if sel == ":root" {
+                format!("#{scope_id}")
+            } else if sel.starts_with(&format!("#{scope_id}"))
+                || sel.starts_with(&format!("svg#{scope_id}"))
+            {
+                sel.to_string()
+            } else {
+                format!("#{scope_id} {sel}")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 fn attr_f64(attrs: &IndexMap<String, String>, key: &str) -> Option<f64> {
     attrs.get(key).and_then(|s| s.parse().ok())
+}
+
+fn parse_svg_number(value: &str) -> Option<f64> {
+    value.trim().parse().ok()
+}
+
+fn svg_escape_text(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+fn svg_escape_attr(s: &str) -> String {
+    svg_escape_text(s)
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
 }
 
 // ---------------------------------------------------------------------------
@@ -1434,6 +1645,16 @@ mod tests {
             curve: CurveStyle::Straight,
             attrs: IndexMap::new(),
         }
+    }
+
+    fn text_shape(content: &str, width: f64, height: f64) -> ShapeNode {
+        let mut node = shape("label", width, height);
+        node.kind = ShapeKind::Text;
+        node.x = Some(0.0);
+        node.y = Some(0.0);
+        node.attrs
+            .insert("content".to_string(), content.to_string());
+        node
     }
 
     fn overlaps(a: &ShapeNode, b: &ShapeNode) -> bool {
@@ -1493,6 +1714,7 @@ mod tests {
     #[test]
     fn test_simple_diagram() {
         let mut diagram = Diagram {
+            id: None,
             width: 400.0,
             height: 200.0,
             padding: 0.0,
@@ -1527,6 +1749,270 @@ mod tests {
     }
 
     #[test]
+    fn text_shape_emits_rich_typography_attributes() {
+        let mut text = text_shape("Quoted text", 200.0, 40.0);
+        text.attrs.insert("font_size".to_string(), "14".to_string());
+        text.attrs.insert(
+            "font_family".to_string(),
+            "Inter, system-ui, sans-serif".to_string(),
+        );
+        text.attrs
+            .insert("font_weight".to_string(), "600".to_string());
+        text.attrs
+            .insert("font_style".to_string(), "italic".to_string());
+        text.attrs
+            .insert("text_decoration".to_string(), "underline".to_string());
+        text.attrs
+            .insert("letter_spacing".to_string(), "0.02em".to_string());
+
+        let mut diagram = Diagram {
+            id: None,
+            width: 200.0,
+            height: 40.0,
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+            shapes: vec![text],
+            connections: vec![],
+        };
+
+        let svg = render_diagram_svg(&mut diagram);
+        assert!(svg.contains("font-size=\"14\""));
+        assert!(svg.contains("font-family=\"Inter, system-ui, sans-serif\""));
+        assert!(svg.contains("font-weight=\"600\""));
+        assert!(svg.contains("font-style=\"italic\""));
+        assert!(svg.contains("text-decoration=\"underline\""));
+        assert!(svg.contains("letter-spacing=\"0.02em\""));
+    }
+
+    #[test]
+    fn multiline_text_uses_tspans_and_line_height() {
+        let mut text = text_shape("One\nTwo\nThree", 160.0, 80.0);
+        text.attrs.insert("font_size".to_string(), "10".to_string());
+        text.attrs
+            .insert("line_height".to_string(), "1.5".to_string());
+
+        let mut diagram = Diagram {
+            id: None,
+            width: 160.0,
+            height: 80.0,
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+            shapes: vec![text],
+            connections: vec![],
+        };
+
+        let svg = render_diagram_svg(&mut diagram);
+        assert!(svg.contains("<tspan x=\"80\" y=\"25\">One</tspan>"));
+        assert!(svg.contains("<tspan x=\"80\" dy=\"15\">Two</tspan>"));
+        assert!(svg.contains("<tspan x=\"80\" dy=\"15\">Three</tspan>"));
+    }
+
+    #[test]
+    fn single_line_text_remains_centered_without_tspans() {
+        let mut diagram = Diagram {
+            id: None,
+            width: 120.0,
+            height: 30.0,
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+            shapes: vec![text_shape("Centered", 120.0, 30.0)],
+            connections: vec![],
+        };
+
+        let svg = render_diagram_svg(&mut diagram);
+        assert!(svg.contains("<text x=\"60\" y=\"15\""));
+        assert!(svg.contains("text-anchor=\"middle\""));
+        assert!(svg.contains(">Centered</text>"));
+        assert!(!svg.contains("<tspan"));
+    }
+
+    #[test]
+    fn text_content_and_attributes_are_svg_escaped() {
+        let mut text = text_shape("A < B & \"C\"", 120.0, 30.0);
+        text.attrs
+            .insert("font_family".to_string(), "\"Inter\" & sans".to_string());
+
+        let mut diagram = Diagram {
+            id: None,
+            width: 120.0,
+            height: 30.0,
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+            shapes: vec![text],
+            connections: vec![],
+        };
+
+        let svg = render_diagram_svg(&mut diagram);
+        assert!(svg.contains("font-family=\"&quot;Inter&quot; &amp; sans\""));
+        assert!(svg.contains(">A &lt; B &amp; \"C\"</text>"));
+    }
+
+    #[test]
+    fn group_renders_as_translated_svg_group_with_children() {
+        let mut group = shape("control", 120.0, 36.0);
+        group.kind = ShapeKind::Group;
+        group.x = Some(10.0);
+        group.y = Some(20.0);
+
+        let mut bg = shape("bg", 120.0, 36.0);
+        bg.attrs.insert("fill".to_string(), "#88c0d0".to_string());
+        let label = text_shape("Save", 120.0, 36.0);
+        group.children = vec![bg, label];
+
+        let mut diagram = Diagram {
+            id: None,
+            width: 160.0,
+            height: 80.0,
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+            shapes: vec![group],
+            connections: vec![],
+        };
+
+        let svg = render_diagram_svg(&mut diagram);
+        assert!(svg.contains("<g transform=\"translate(10,20)\">"));
+        assert!(svg.contains("<rect x=\"0\" y=\"0\" width=\"120\" height=\"36\""));
+        assert!(svg.contains(">Save</text>"));
+        assert!(svg.contains("</g>"));
+    }
+
+    #[test]
+    fn group_can_wrap_background_and_label_as_interactive_control() {
+        let mut group = shape("button", 120.0, 36.0);
+        group.kind = ShapeKind::Group;
+        group.x = Some(10.0);
+        group.y = Some(20.0);
+        group
+            .attrs
+            .insert("href".to_string(), "#clicked".to_string());
+        group
+            .attrs
+            .insert("class".to_string(), "ui-button".to_string());
+        group
+            .attrs
+            .insert("cursor".to_string(), "pointer".to_string());
+        group
+            .attrs
+            .insert("pointer_events".to_string(), "all".to_string());
+
+        let mut bg = shape("bg", 120.0, 36.0);
+        bg.attrs
+            .insert("class".to_string(), "ui-button-bg".to_string());
+        bg.attrs.insert("fill".to_string(), "#5e81ac".to_string());
+        group.children = vec![bg, text_shape("Save", 120.0, 36.0)];
+
+        let mut diagram = Diagram {
+            id: None,
+            width: 160.0,
+            height: 80.0,
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+            shapes: vec![group],
+            connections: vec![],
+        };
+
+        let svg = render_diagram_svg(&mut diagram);
+        assert!(svg.contains("<a href=\"#clicked\" target=\"_top\"><g"));
+        assert!(svg.contains("class=\"ui-button\""));
+        assert!(svg.contains("cursor=\"pointer\""));
+        assert!(svg.contains("pointer-events=\"all\""));
+        assert!(svg.contains("class=\"ui-button-bg\""));
+        assert!(svg.contains("</g></a>"));
+    }
+
+    #[test]
+    fn safe_svg_attrs_render_on_existing_primitives() {
+        let mut rect = shape("box", 100.0, 40.0);
+        rect.attrs.insert("fill".to_string(), "#ccc".to_string());
+        rect.attrs.insert("class".to_string(), "card".to_string());
+        rect.attrs
+            .insert("style".to_string(), "filter:url(#shadow)".to_string());
+        rect.attrs
+            .insert("cursor".to_string(), "pointer".to_string());
+        rect.attrs
+            .insert("pointer_events".to_string(), "bounding-box".to_string());
+
+        let mut diagram = Diagram {
+            id: None,
+            width: 120.0,
+            height: 60.0,
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+            shapes: vec![rect],
+            connections: vec![],
+        };
+
+        let svg = render_diagram_svg(&mut diagram);
+        assert!(svg.contains("fill=\"#ccc\""));
+        assert!(svg.contains("class=\"card\""));
+        assert!(svg.contains("style=\"filter:url(#shadow)\""));
+        assert!(svg.contains("cursor=\"pointer\""));
+        assert!(svg.contains("pointer-events=\"bounding-box\""));
+    }
+
+    #[test]
+    fn diagram_css_is_scoped_inside_svg() {
+        let mut options = IndexMap::new();
+        options.insert(
+            "css".to_string(),
+            ".ui-button:hover .ui-button-bg { fill: #81A1C1; stroke: #81A1C1; }\n\
+             .ui-button:active .ui-button-bg { fill: #4C566A; stroke: #4C566A; }"
+                .to_string(),
+        );
+
+        let mut diagram = Diagram {
+            id: Some("button_preview".to_string()),
+            width: 160.0,
+            height: 80.0,
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options,
+            shapes: vec![shape("box", 100.0, 40.0)],
+            connections: vec![],
+        };
+
+        let svg = render_diagram_svg(&mut diagram);
+        assert!(svg.contains("id=\"wdoc-diagram-button-preview\""));
+        assert!(svg.contains("<style>"));
+        assert!(svg.contains("#wdoc-diagram-button-preview .ui-button:hover .ui-button-bg"));
+        assert!(svg.contains("#wdoc-diagram-button-preview .ui-button:active .ui-button-bg"));
+    }
+
+    #[test]
+    fn diagram_without_css_does_not_emit_svg_scope_or_style() {
+        let mut diagram = Diagram {
+            id: Some("plain".to_string()),
+            width: 120.0,
+            height: 60.0,
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+            shapes: vec![shape("box", 100.0, 40.0)],
+            connections: vec![],
+        };
+
+        let svg = render_diagram_svg(&mut diagram);
+        assert!(!svg.contains("id=\"wdoc-diagram-plain\""));
+        assert!(!svg.contains("<style>"));
+    }
+
+    #[test]
     fn nested_grid_layout_ignores_template_decoration() {
         let mut frame = shape("frame", 200.0, 120.0);
         frame.x = Some(0.0);
@@ -1553,6 +2039,7 @@ mod tests {
         boundary.children = vec![frame, label, shape("a", 30.0, 20.0), shape("b", 30.0, 20.0)];
 
         let mut diagram = Diagram {
+            id: None,
             width: 240.0,
             height: 180.0,
             shapes: vec![boundary],
@@ -1586,6 +2073,7 @@ mod tests {
         container.children = vec![shape("a", 0.0, 20.0), shape("b", 0.0, 20.0)];
 
         let mut diagram = Diagram {
+            id: None,
             width: 200.0,
             height: 200.0,
             shapes: vec![container],
@@ -1617,6 +2105,7 @@ mod tests {
         boundary.children = vec![shape("a", 40.0, 20.0), shape("b", 40.0, 20.0)];
 
         let mut diagram = Diagram {
+            id: None,
             width: 300.0,
             height: 240.0,
             shapes: vec![boundary],
@@ -1636,6 +2125,7 @@ mod tests {
     #[test]
     fn top_level_layered_layout_respects_diagram_padding() {
         let mut diagram = Diagram {
+            id: None,
             width: 240.0,
             height: 180.0,
             shapes: vec![shape("a", 100.0, 60.0), shape("b", 100.0, 60.0)],
@@ -1670,6 +2160,7 @@ mod tests {
         ];
 
         let mut diagram = Diagram {
+            id: None,
             width: 200.0,
             height: 200.0,
             shapes: vec![boundary],
@@ -1712,6 +2203,7 @@ mod tests {
         boundary.children = vec![frame, shape("a", 70.0, 30.0), shape("b", 70.0, 30.0)];
 
         let mut diagram = Diagram {
+            id: None,
             width: 220.0,
             height: 220.0,
             shapes: vec![boundary],
@@ -1772,6 +2264,7 @@ mod tests {
         boundary.children = vec![frame, label, shape("a", 80.0, 30.0), shape("b", 80.0, 30.0)];
 
         let mut diagram = Diagram {
+            id: None,
             width: 240.0,
             height: 220.0,
             shapes: vec![boundary],
@@ -1813,6 +2306,7 @@ mod tests {
         ];
 
         let mut diagram = Diagram {
+            id: None,
             width: 240.0,
             height: 300.0,
             shapes: vec![boundary],
@@ -1854,6 +2348,7 @@ mod tests {
         container.children = vec![child];
 
         let mut diagram = Diagram {
+            id: None,
             width: 120.0,
             height: 120.0,
             shapes: vec![container],
@@ -1884,6 +2379,7 @@ mod tests {
         container.children = vec![child];
 
         let mut diagram = Diagram {
+            id: None,
             width: 200.0,
             height: 200.0,
             shapes: vec![container],

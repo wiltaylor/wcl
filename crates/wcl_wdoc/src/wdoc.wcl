@@ -123,6 +123,7 @@ namespace wdoc {
         @open schema "line" { }
         @open schema "path" { }
         @open schema "text" { }
+        @open schema "group" { }
         @open schema "connection" { }
 
         // --- Composite widgets ---
@@ -205,12 +206,15 @@ namespace wdoc {
     // before resolving layout and emitting SVG.
     //
     // Recognized descriptor fields:
-    //   kind     — "rect" | "circle" | "ellipse" | "line" | "path" | "text"
+    //   kind     — "rect" | "circle" | "ellipse" | "line" | "path" | "text" | "group"
     //   x, y, width, height       — absolute placement (relative to widget)
     //   top, bottom, left, right  — anchored placement
     //   rx, ry, r                 — corner / radius
     //   fill, stroke, stroke_width, stroke_dasharray, opacity
-    //   x1, y1, x2, y2 (line) | d (path) | content, font_size, anchor (text)
+    //   class, style, cursor, pointer_events
+    //   x1, y1, x2, y2 (line) | d (path)
+    //   content, font_size, anchor, font_family, font_weight, font_style,
+    //   line_height, text_decoration, letter_spacing (text)
     //   children                  — list of more descriptors (nested)
     //
     // Use `attr_or(block, "key", default)` to read user attributes safely.

@@ -509,6 +509,7 @@ fn render_diagram_with_ctx(br: &BlockRef, ctx: &ExtractCtx) -> String {
     }
 
     let mut diagram = Diagram {
+        id: br.id.clone(),
         width: diagram_w,
         height: diagram_h,
         shapes,
@@ -846,6 +847,101 @@ impl ExtractCtx {
             .ok_or_else(|| format!("template function '{fn_name}' not found for '{kind}'"))?;
 
         call_template(func, block, &self.builtins)
+    }
+}
+
+#[cfg(test)]
+mod wdoc_draw_tests {
+    use super::*;
+    use crate::Span;
+
+    fn block(
+        kind: &str,
+        id: Option<&str>,
+        attributes: IndexMap<String, Value>,
+        children: Vec<BlockRef>,
+    ) -> BlockRef {
+        BlockRef {
+            kind: kind.to_string(),
+            id: id.map(str::to_string),
+            qualified_id: id.map(str::to_string),
+            attributes,
+            children,
+            decorators: vec![],
+            span: Span::dummy(),
+        }
+    }
+
+    fn string_attr(attrs: &mut IndexMap<String, Value>, key: &str, value: &str) {
+        attrs.insert(key.to_string(), Value::String(value.to_string()));
+    }
+
+    fn int_attr(attrs: &mut IndexMap<String, Value>, key: &str, value: i64) {
+        attrs.insert(key.to_string(), Value::Int(value));
+    }
+
+    #[test]
+    fn diagram_css_and_group_flow_through_cli_extraction() {
+        let mut rect_attrs = IndexMap::new();
+        int_attr(&mut rect_attrs, "x", 0);
+        int_attr(&mut rect_attrs, "y", 0);
+        int_attr(&mut rect_attrs, "width", 120);
+        int_attr(&mut rect_attrs, "height", 36);
+        string_attr(&mut rect_attrs, "class", "ui-button-bg");
+        string_attr(&mut rect_attrs, "fill", "#5E81AC");
+
+        let mut text_attrs = IndexMap::new();
+        int_attr(&mut text_attrs, "x", 0);
+        int_attr(&mut text_attrs, "y", 0);
+        int_attr(&mut text_attrs, "width", 120);
+        int_attr(&mut text_attrs, "height", 36);
+        string_attr(&mut text_attrs, "content", "Preview");
+
+        let mut group_attrs = IndexMap::new();
+        int_attr(&mut group_attrs, "x", 20);
+        int_attr(&mut group_attrs, "y", 16);
+        int_attr(&mut group_attrs, "width", 120);
+        int_attr(&mut group_attrs, "height", 36);
+        string_attr(&mut group_attrs, "class", "ui-button");
+        string_attr(&mut group_attrs, "cursor", "pointer");
+        string_attr(&mut group_attrs, "pointer_events", "all");
+
+        let group = block(
+            "wdoc::draw::group",
+            Some("button"),
+            group_attrs,
+            vec![
+                block("wdoc::draw::rect", Some("bg"), rect_attrs, vec![]),
+                block("wdoc::draw::text", Some("label"), text_attrs, vec![]),
+            ],
+        );
+
+        let mut diagram_attrs = IndexMap::new();
+        int_attr(&mut diagram_attrs, "width", 180);
+        int_attr(&mut diagram_attrs, "height", 70);
+        string_attr(
+            &mut diagram_attrs,
+            "css",
+            ".ui-button:hover .ui-button-bg { fill: #81A1C1; }",
+        );
+        let diagram = block(
+            "wdoc::draw::diagram",
+            Some("button_preview"),
+            diagram_attrs,
+            vec![group],
+        );
+
+        let ctx = ExtractCtx {
+            template_map: HashMap::new(),
+            template_fns: HashMap::new(),
+            builtins: HashMap::new(),
+        };
+
+        let html = render_diagram_with_ctx(&diagram, &ctx);
+        assert!(html.contains("id=\"wdoc-diagram-button-preview\""));
+        assert!(html.contains("<g transform=\"translate(20,16)\" class=\"ui-button\""));
+        assert!(html.contains("pointer-events=\"all\""));
+        assert!(html.contains("#wdoc-diagram-button-preview .ui-button:hover .ui-button-bg"));
     }
 }
 
