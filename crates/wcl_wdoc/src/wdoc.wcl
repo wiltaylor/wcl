@@ -10,6 +10,11 @@
 // reference it as bare `attr_or` without qualification.
 declare attr_or(block: any, key: string, default: any) -> any
 
+// Core helper for recursive templates. Returns direct child BlockRefs, optionally
+// filtered by exact block kind, e.g. children(item, "UiMenuItem").
+declare children(block: any) -> list
+declare children(block: any, kind: string) -> list
+
 namespace wdoc {
 
     // --- Structural schemas ---

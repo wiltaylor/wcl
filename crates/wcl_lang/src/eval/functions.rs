@@ -428,6 +428,12 @@ pub fn builtin_signatures() -> Vec<FunctionSignature> {
             doc: "Check if key exists".into(),
         },
         FunctionSignature {
+            name: "children".into(),
+            params: vec!["block".into(), "kind: string".into()],
+            return_type: "list".into(),
+            doc: "Return direct child blocks, optionally filtered by kind".into(),
+        },
+        FunctionSignature {
             name: "has_decorator".into(),
             params: vec!["block".into(), "name: string".into()],
             return_type: "bool".into(),
@@ -548,6 +554,7 @@ pub fn builtin_registry() -> HashMap<String, BuiltinFn> {
 
     // Reference and Query Functions (Section 14.9)
     m.insert("has".into(), wrap_builtin(fn_has));
+    m.insert("children".into(), wrap_builtin(fn_children));
     m.insert("has_decorator".into(), wrap_builtin(fn_has_decorator));
 
     // Date/Duration constructors (Section 14.8)
@@ -1536,6 +1543,36 @@ fn fn_has(args: &[Value]) -> Result<Value, String> {
     Ok(Value::Bool(has_attr || has_child))
 }
 
+fn fn_children(args: &[Value]) -> Result<Value, String> {
+    if args.is_empty() || args.len() > 2 {
+        return Err("children expects 1 or 2 arguments".into());
+    }
+
+    let block_ref = match &args[0] {
+        Value::BlockRef(br) => br,
+        other => {
+            return Err(format!(
+                "children: argument 1 must be block_ref, got {}",
+                other.type_name()
+            ))
+        }
+    };
+
+    let kind = match args.get(1) {
+        Some(value) => Some(get_string(value, 2, "children")?),
+        None => None,
+    };
+
+    let children = block_ref
+        .children
+        .iter()
+        .filter(|child| kind.map(|kind| child.kind == kind).unwrap_or(true))
+        .cloned()
+        .map(Value::BlockRef)
+        .collect();
+    Ok(Value::List(children))
+}
+
 fn fn_has_decorator(args: &[Value]) -> Result<Value, String> {
     expect_args(args, 2, "has_decorator")?;
     let block_ref = match &args[0] {
@@ -2271,6 +2308,7 @@ mod tests {
             "to_bool",
             "type_of",
             "has",
+            "children",
             "has_decorator",
             "date",
             "duration",
@@ -2421,6 +2459,48 @@ mod tests {
 
     // --- Reference and Query Functions ---
 
+    fn block_ref(
+        kind: &str,
+        id: Option<&str>,
+        children: Vec<crate::eval::value::BlockRef>,
+    ) -> crate::eval::value::BlockRef {
+        crate::eval::value::BlockRef {
+            kind: kind.to_string(),
+            id: id.map(str::to_string),
+            qualified_id: id.map(str::to_string),
+            attributes: IndexMap::new(),
+            children,
+            decorators: vec![],
+            span: crate::lang::Span::dummy(),
+        }
+    }
+
+    fn block_ids(value: Value) -> Vec<String> {
+        match value {
+            Value::List(items) => items
+                .into_iter()
+                .map(|item| match item {
+                    Value::BlockRef(block) => block.id.unwrap_or_default(),
+                    other => panic!("expected block ref, got {other:?}"),
+                })
+                .collect(),
+            other => panic!("expected list, got {other:?}"),
+        }
+    }
+
+    fn block_kinds(value: Value) -> Vec<String> {
+        match value {
+            Value::List(items) => items
+                .into_iter()
+                .map(|item| match item {
+                    Value::BlockRef(block) => block.kind,
+                    other => panic!("expected block ref, got {other:?}"),
+                })
+                .collect(),
+            other => panic!("expected list, got {other:?}"),
+        }
+    }
+
     #[test]
     fn test_has_attribute_present() {
         let mut attrs = IndexMap::new();
@@ -2471,6 +2551,59 @@ mod tests {
     fn test_has_wrong_arg_type() {
         assert!(fn_has(&[s("not a block"), s("attr")]).is_err());
         assert!(fn_has(&[i(42), s("attr")]).is_err());
+    }
+
+    #[test]
+    fn test_children_returns_direct_child_blocks_in_order() {
+        let first = block_ref("UiMenuItem", Some("first"), vec![]);
+        let second = block_ref("UiDivider", Some("divider"), vec![]);
+        let br = Value::BlockRef(block_ref(
+            "UiMenu",
+            Some("menu"),
+            vec![first.clone(), second.clone()],
+        ));
+
+        let result = fn_children(&[br]).unwrap();
+        assert_eq!(block_ids(result.clone()), vec!["first", "divider"]);
+        assert_eq!(block_kinds(result), vec!["UiMenuItem", "UiDivider"]);
+    }
+
+    #[test]
+    fn test_children_filters_by_exact_kind() {
+        let first = block_ref("UiMenuItem", Some("first"), vec![]);
+        let second = block_ref("UiDivider", Some("divider"), vec![]);
+        let third = block_ref("UiMenuItem", Some("third"), vec![]);
+        let br = Value::BlockRef(block_ref(
+            "UiMenu",
+            Some("menu"),
+            vec![first.clone(), second, third.clone()],
+        ));
+
+        let result = fn_children(&[br, s("UiMenuItem")]).unwrap();
+        assert_eq!(block_ids(result), vec!["first", "third"]);
+    }
+
+    #[test]
+    fn test_children_returns_only_direct_children() {
+        let grandchild = block_ref("UiMenuItem", Some("grandchild"), vec![]);
+        let child = block_ref("UiMenuItem", Some("child"), vec![grandchild]);
+        let br = Value::BlockRef(block_ref("UiMenu", Some("menu"), vec![child.clone()]));
+
+        let result = fn_children(&[br]).unwrap();
+        assert_eq!(block_ids(result), vec!["child"]);
+    }
+
+    #[test]
+    fn test_children_rejects_wrong_arg_type_and_arity() {
+        assert!(fn_children(&[]).is_err());
+        assert!(fn_children(&[s("not a block")]).is_err());
+        assert!(fn_children(&[Value::BlockRef(block_ref("UiMenu", None, vec![])), i(1)]).is_err());
+        assert!(fn_children(&[
+            Value::BlockRef(block_ref("UiMenu", None, vec![])),
+            s("UiMenuItem"),
+            s("extra"),
+        ])
+        .is_err());
     }
 
     #[test]

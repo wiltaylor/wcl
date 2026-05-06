@@ -81,6 +81,20 @@ page wdoc_drawing_custom {
                     content = "let w = attr_or(b, \"width\", 200)        // 200 if user didn't set width\nlet color = attr_or(b, \"color\", \"var(--color-link)\")\nlet badge = attr_or(b, \"label\", \"NEW\")"
                 }
 
+                heading h2_children {
+                    level = 2
+                    content = "Reading child blocks"
+                }
+
+                paragraph p_children {
+                    content = "Use the core helper " + bold("children(block)") + " to read direct child blocks from the user's block. Pass a kind string, such as " + bold("children(block, \"UiMenuItem\")") + ", to filter child blocks before mapping or recursively rendering them."
+                }
+
+                code c_children {
+                    language = "wcl"
+                    content = "export let menu_item_labels = (b) =>\n    map(children(b, \"UiMenuItem\"), item => item.label)"
+                }
+
                 heading h2_dynamic {
                     level = 2
                     content = "Dynamic shape lists"

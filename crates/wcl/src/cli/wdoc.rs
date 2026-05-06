@@ -881,6 +881,53 @@ mod wdoc_draw_tests {
     }
 
     #[test]
+    fn wdoc_template_lambda_can_read_filtered_children() {
+        let functions = wdoc_functions();
+        let doc = crate::parse(
+            r#"
+            export let menu_labels = (b) =>
+                join("|", map(children(b, "UiMenuItem"), item => item.label))
+            "#,
+            crate::ParseOptions {
+                functions: functions.clone(),
+                ..Default::default()
+            },
+        );
+        assert!(
+            !doc.has_errors(),
+            "unexpected diagnostics: {:?}",
+            doc.diagnostics
+        );
+
+        let func = match doc.values.get("menu_labels") {
+            Some(Value::Function(func)) => func,
+            other => panic!("expected menu_labels function, got {other:?}"),
+        };
+
+        let mut file_attrs = IndexMap::new();
+        string_attr(&mut file_attrs, "label", "File");
+        let mut divider_attrs = IndexMap::new();
+        string_attr(&mut divider_attrs, "label", "-");
+        let mut edit_attrs = IndexMap::new();
+        string_attr(&mut edit_attrs, "label", "Edit");
+
+        let menu = block(
+            "UiMenu",
+            Some("main"),
+            IndexMap::new(),
+            vec![
+                block("UiMenuItem", Some("file"), file_attrs, vec![]),
+                block("UiDivider", Some("divider"), divider_attrs, vec![]),
+                block("UiMenuItem", Some("edit"), edit_attrs, vec![]),
+            ],
+        );
+
+        let rendered =
+            crate::call_lambda(func, &[Value::BlockRef(menu)], &functions.functions).unwrap();
+        assert_eq!(rendered, Value::String("File|Edit".to_string()));
+    }
+
+    #[test]
     fn diagram_css_and_group_flow_through_cli_extraction() {
         let mut rect_attrs = IndexMap::new();
         int_attr(&mut rect_attrs, "x", 0);
