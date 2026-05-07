@@ -39,10 +39,12 @@ pub async fn serve(
     open_browser: bool,
 ) -> Result<(), String> {
     let build_fn = Arc::new(build_fn);
-    let asset_dir_refs: Vec<&std::path::Path> = asset_dirs.iter().map(|p| p.as_path()).collect();
 
     // Initial build
     let initial = build_fn().map_err(|e| format!("initial build failed: {e}"))?;
+    let initial_asset_dirs = combined_asset_dirs(&asset_dirs, &initial.watch_paths);
+    let asset_dir_refs: Vec<&std::path::Path> =
+        initial_asset_dirs.iter().map(|p| p.as_path()).collect();
     crate::render::render_document(&initial.document, &output_dir, &asset_dir_refs)?;
     eprintln!("wdoc: built to {}", output_dir.display());
 
@@ -94,8 +96,9 @@ pub async fn serve(
                         eprintln!("wdoc: watch error: {e}");
                     }
 
+                    let render_asset_dirs = combined_asset_dirs(&asset_dirs, &build.watch_paths);
                     let arefs: Vec<&std::path::Path> =
-                        asset_dirs.iter().map(|p| p.as_path()).collect();
+                        render_asset_dirs.iter().map(|p| p.as_path()).collect();
                     if let Err(e) =
                         crate::render::render_document(&build.document, &output_dir_watch, &arefs)
                     {
@@ -145,6 +148,20 @@ fn combined_watch_paths(root_paths: &[PathBuf], build_paths: &[PathBuf]) -> Hash
         .chain(build_paths.iter())
         .filter(|p| !p.as_os_str().is_empty())
         .cloned()
+        .collect()
+}
+
+fn combined_asset_dirs(root_dirs: &[PathBuf], build_paths: &[PathBuf]) -> Vec<PathBuf> {
+    root_dirs
+        .iter()
+        .cloned()
+        .chain(
+            build_paths
+                .iter()
+                .filter_map(|path| path.parent().map(PathBuf::from)),
+        )
+        .collect::<HashSet<_>>()
+        .into_iter()
         .collect()
 }
 

@@ -1416,10 +1416,12 @@ pub fn run_build(
     vars: &[String],
     lib_args: &LibraryArgs,
 ) -> Result<(), String> {
-    let doc = parse_and_extract(files, vars, lib_args)?;
+    let extracted = parse_and_extract_with_watch(files, vars, lib_args)?;
+    let doc = extracted.document;
     let asset_dirs: Vec<&Path> = files
         .iter()
         .filter_map(|f| f.parent())
+        .chain(extracted.watch_paths.iter().filter_map(|f| f.parent()))
         .collect::<std::collections::HashSet<_>>()
         .into_iter()
         .collect();

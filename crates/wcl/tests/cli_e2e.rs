@@ -968,19 +968,26 @@ fn fmt_check_returns_success_when_formatted() {
 #[test]
 fn wdoc_build_renders_drawing_image_and_copies_asset() {
     let dir = tempdir().expect("tempdir");
-    let images_dir = dir.path().join("images");
+    let pages_dir = dir.path().join("pages");
+    let images_dir = pages_dir.join("images/deep");
     std::fs::create_dir_all(&images_dir).expect("create images dir");
     std::fs::write(images_dir.join("hero.png"), [0x89, b'P', b'N', b'G']).expect("write image");
 
-    let source = r#"
+    let site = r#"
 import <wdoc.wcl>
-use wdoc::{doc, page, section, layout}
-use wdoc::draw::{diagram, image}
+import "./pages/page.wcl"
+use wdoc::{doc, section}
 
 doc my_docs {
     title = "Image Docs"
     section overview "Overview" {}
 }
+"#;
+
+    let page = r#"
+import <wdoc.wcl>
+use wdoc::{page, layout}
+use wdoc::draw::{diagram, image}
 
 page home {
     section = "my_docs.overview"
@@ -996,7 +1003,7 @@ page home {
                 y = 10
                 width = 160
                 height = 90
-                src = "images/hero.png"
+                src = "images/deep/hero.png"
                 alt = "Hero image"
                 fit = "cover"
                 rx = 6
@@ -1007,7 +1014,8 @@ page home {
 }
 "#;
     let input = dir.path().join("site.wcl");
-    std::fs::write(&input, source).expect("write wdoc file");
+    std::fs::write(&input, site).expect("write wdoc file");
+    std::fs::write(pages_dir.join("page.wcl"), page).expect("write page file");
     let output = dir.path().join("out");
 
     Command::cargo_bin("wcl")
@@ -1023,10 +1031,10 @@ page home {
         .success();
 
     let html = std::fs::read_to_string(output.join("home.html")).expect("read rendered page");
-    assert!(html.contains("<image href=\"images/hero.png\""));
+    assert!(html.contains("<image href=\"images/deep/hero.png\""));
     assert!(html.contains("preserveAspectRatio=\"xMidYMid slice\""));
     assert!(html.contains("role=\"img\" aria-label=\"Hero image\""));
-    assert!(output.join("images/hero.png").exists());
+    assert!(output.join("images/deep/hero.png").exists());
 }
 
 // ===========================================================================
