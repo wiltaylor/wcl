@@ -424,6 +424,9 @@ impl<'a> Formatter<'a> {
             }
             BodyItem::SymbolSetDecl(decl) => {
                 self.indent();
+                if decl.partial {
+                    self.out.push_str("partial ");
+                }
                 self.out
                     .push_str(&format!("symbol_set {} {{\n", decl.name.name));
                 self.indent += 1;

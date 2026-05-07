@@ -649,6 +649,7 @@ export default grammar({
     // Symbol sets
     symbol_set_declaration: ($) =>
       seq(
+        optional("partial"),
         "symbol_set",
         field("name", $.identifier),
         "{",

@@ -44,6 +44,21 @@ symbol_set status {
     (symbol_set_member (symbol_literal))))
 
 ================
+Partial symbol set declaration
+================
+
+partial symbol_set status {
+  :active
+}
+
+---
+
+(document
+  (symbol_set_declaration
+    name: (identifier)
+    (symbol_set_member (symbol_literal))))
+
+================
 Symbol set with value mappings
 ================
 

@@ -3222,6 +3222,115 @@ server web 8080 "extra" {
     }
 
     #[test]
+    fn test_partial_symbol_set_parses() {
+        let (ast_doc, diags) = crate::lang::parse("partial symbol_set x { :a }", FileId(0));
+        assert!(!diags.has_errors(), "errors: {:?}", diags.diagnostics());
+        match &ast_doc.items[0] {
+            ast::DocItem::Body(ast::BodyItem::SymbolSetDecl(decl)) => {
+                assert!(decl.partial);
+                assert_eq!(decl.name.name, "x");
+                assert_eq!(decl.members[0].name, "a");
+            }
+            other => panic!("expected symbol_set, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_partial_symbol_set_formats() {
+        let (ast_doc, diags) = crate::lang::parse("partial symbol_set colors { :red }", FileId(0));
+        assert!(!diags.has_errors(), "errors: {:?}", diags.diagnostics());
+        assert_eq!(
+            crate::fmt::format_document(&ast_doc),
+            "partial symbol_set colors {\n    :red\n}\n\n"
+        );
+    }
+
+    #[test]
+    fn test_partial_symbol_set_fragments_merge() {
+        let src = r#"
+partial symbol_set status { :ok }
+partial symbol_set status { :error }
+schema "job" {
+    status: symbol @symbol_set("status")
+}
+job x {
+    status = :error
+}
+"#;
+        let doc = parse(src, ParseOptions::default());
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+        assert!(doc.symbol_sets.contains("status", "ok"));
+        assert!(doc.symbol_sets.contains("status", "error"));
+    }
+
+    #[test]
+    fn test_partial_symbol_set_fragments_merge_across_import() {
+        let mut fs = InMemoryFs::new();
+        fs.add_file(
+            std::path::PathBuf::from("/project/imported.wcl"),
+            "partial symbol_set status { :imported }",
+        );
+        let opts = ParseOptions {
+            root_dir: std::path::PathBuf::from("/project"),
+            fs: Some(Arc::new(fs)),
+            ..ParseOptions::default()
+        };
+        let src = r#"
+import "./imported.wcl"
+partial symbol_set status { :local }
+schema "job" {
+    status: symbol @symbol_set("status")
+}
+job x {
+    status = :imported
+}
+"#;
+        let doc = parse(src, opts);
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+        assert!(doc.symbol_sets.contains("status", "imported"));
+        assert!(doc.symbol_sets.contains("status", "local"));
+    }
+
+    #[test]
+    fn test_partial_symbol_set_merges_after_namespace_qualification() {
+        let src = r#"
+namespace ns {
+    partial symbol_set status { :ok }
+    partial symbol_set status { :error }
+}
+"#;
+        let doc = parse(src, ParseOptions::default());
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+        assert!(doc.symbol_sets.contains("ns::status", "ok"));
+        assert!(doc.symbol_sets.contains("ns::status", "error"));
+        assert!(!doc.symbol_sets.set_exists("status"));
+    }
+
+    #[test]
+    fn test_partial_symbol_set_duplicate_member_e103() {
+        let src = "partial symbol_set x { :a }\npartial symbol_set x { :a }";
+        let doc = parse(src, ParseOptions::default());
+        let e103: Vec<_> = doc
+            .diagnostics
+            .iter()
+            .filter(|d| d.code.as_deref() == Some("E103"))
+            .collect();
+        assert_eq!(e103.len(), 1, "expected E103: {:?}", doc.diagnostics);
+    }
+
+    #[test]
+    fn test_partial_symbol_set_mixed_non_partial_e102() {
+        let src = "partial symbol_set x { :a }\nsymbol_set x { :b }";
+        let doc = parse(src, ParseOptions::default());
+        let e102: Vec<_> = doc
+            .diagnostics
+            .iter()
+            .filter(|d| d.code.as_deref() == Some("E102"))
+            .collect();
+        assert_eq!(e102.len(), 1, "expected E102: {:?}", doc.diagnostics);
+    }
+
+    #[test]
     fn test_symbol_set_valid_usage() {
         let src = r#"
 symbol_set http_method { :GET :POST }
@@ -3343,6 +3452,27 @@ thing "x" {
         let src = r#"
 symbol_set multi {
     :zero_or_one = "0..1"
+    :one = "1"
+    :many
+}
+"#;
+        let doc = parse(src, ParseOptions::default());
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+        assert_eq!(
+            doc.symbol_sets.serialize_symbol("multi", "zero_or_one"),
+            "0..1"
+        );
+        assert_eq!(doc.symbol_sets.serialize_symbol("multi", "one"), "1");
+        assert_eq!(doc.symbol_sets.serialize_symbol("multi", "many"), "many");
+    }
+
+    #[test]
+    fn test_partial_symbol_set_value_mapping_across_fragments() {
+        let src = r#"
+partial symbol_set multi {
+    :zero_or_one = "0..1"
+}
+partial symbol_set multi {
     :one = "1"
     :many
 }

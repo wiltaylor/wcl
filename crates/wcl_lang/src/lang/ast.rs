@@ -453,9 +453,10 @@ pub enum DecoratorTarget {
 
 // ===== Symbol Sets =====
 
-/// `symbol_set name { :sym1 :sym2 = "value" ... }`
+/// `[partial] symbol_set name { :sym1 :sym2 = "value" ... }`
 #[derive(Debug, Clone)]
 pub struct SymbolSetDecl {
+    pub partial: bool,
     pub name: Ident,
     pub members: Vec<SymbolMember>,
     pub trivia: Trivia,

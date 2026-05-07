@@ -1876,6 +1876,7 @@ fn symbol_value_equality() {
 fn symbol_set_collection_and_validation() {
     // Test symbol_set registry directly
     let decl = SymbolSetDecl {
+        partial: false,
         name: make_ident("http_method"),
         members: vec![
             SymbolMember {
@@ -1915,6 +1916,7 @@ fn symbol_set_collection_and_validation() {
 #[test]
 fn symbol_set_duplicate_name_e102() {
     let decl1 = SymbolSetDecl {
+        partial: false,
         name: make_ident("colors"),
         members: vec![SymbolMember {
             name: "red".into(),
@@ -1925,6 +1927,7 @@ fn symbol_set_duplicate_name_e102() {
         span: sp(),
     };
     let decl2 = SymbolSetDecl {
+        partial: false,
         name: make_ident("colors"),
         members: vec![SymbolMember {
             name: "blue".into(),
@@ -1957,6 +1960,7 @@ fn symbol_set_duplicate_name_e102() {
 #[test]
 fn symbol_set_duplicate_member_e103() {
     let decl = SymbolSetDecl {
+        partial: false,
         name: make_ident("colors"),
         members: vec![
             SymbolMember {
@@ -2005,6 +2009,7 @@ fn symbol_set_all_accepts_any() {
 #[test]
 fn symbol_set_value_mapping() {
     let decl = SymbolSetDecl {
+        partial: false,
         name: make_ident("multiplicity"),
         members: vec![
             SymbolMember {

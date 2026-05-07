@@ -33,20 +33,62 @@ impl SymbolSetRegistry {
 
     /// Collect symbol_set declarations from the document AST.
     pub fn collect(&mut self, doc: &Document, diagnostics: &mut DiagnosticBag) {
+        let mut declarations: IndexMap<String, Vec<&SymbolSetDecl>> = IndexMap::new();
         for item in &doc.items {
             if let DocItem::Body(BodyItem::SymbolSetDecl(decl)) = item {
-                let name = decl.name.name.clone();
-                if self.sets.contains_key(&name) {
-                    diagnostics.error_with_code(
-                        format!("duplicate symbol_set name '{}'", name),
-                        decl.span,
-                        "E102",
-                    );
-                    continue;
+                declarations
+                    .entry(decl.name.name.clone())
+                    .or_default()
+                    .push(decl);
+            }
+        }
+
+        for (name, decls) in declarations {
+            if self.sets.contains_key(&name) {
+                diagnostics.error_with_code(
+                    format!("duplicate symbol_set name '{}'", name),
+                    decls[0].span,
+                    "E102",
+                );
+                continue;
+            }
+
+            let has_partial = decls.iter().any(|decl| decl.partial);
+            let has_non_partial = decls.iter().any(|decl| !decl.partial);
+            let decls_to_collect: Vec<&SymbolSetDecl> = if has_partial && has_non_partial {
+                let err_span = decls
+                    .iter()
+                    .find(|decl| decl.partial != decls[0].partial)
+                    .map(|decl| decl.span)
+                    .unwrap_or(decls[0].span);
+                diagnostics.error_with_code(
+                    format!(
+                        "symbol_set '{}' declared as both partial and non-partial",
+                        name
+                    ),
+                    err_span,
+                    "E102",
+                );
+                vec![decls[0]]
+            } else if has_non_partial && decls.len() > 1 {
+                diagnostics.error_with_code(
+                    format!("duplicate symbol_set name '{}'", name),
+                    decls[1].span,
+                    "E102",
+                );
+                vec![decls[0]]
+            } else {
+                decls
+            };
+
+            let mut members = Vec::new();
+            let mut value_map = HashMap::new();
+            let mut seen_members = HashMap::new();
+            let mut span = decls_to_collect[0].span;
+            for decl in decls_to_collect {
+                if span.file == decl.span.file {
+                    span = span.merge(decl.span);
                 }
-                let mut members = Vec::new();
-                let mut value_map = HashMap::new();
-                let mut seen_members = HashMap::new();
                 for member in &decl.members {
                     if let Some(prev_span) = seen_members.get(&member.name) {
                         diagnostics.error_with_code(
@@ -68,15 +110,16 @@ impl SymbolSetRegistry {
                         value_map.insert(member.name.clone(), s);
                     }
                 }
-                self.sets.insert(
-                    name,
-                    SymbolSetInfo {
-                        members,
-                        value_map,
-                        span: decl.span,
-                    },
-                );
             }
+
+            self.sets.insert(
+                name,
+                SymbolSetInfo {
+                    members,
+                    value_map,
+                    span,
+                },
+            );
         }
     }
 

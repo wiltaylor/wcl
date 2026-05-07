@@ -764,7 +764,7 @@ impl Parser {
                 Some(BodyItem::LetBinding(binding))
             }
             TokenKind::Partial => {
-                // Peek next: table, let, or block
+                // Peek next: table, let, symbol_set, or block
                 let mut i = self.pos + 1;
                 while i < self.tokens.len() && matches!(self.tokens[i].kind, TokenKind::Newline) {
                     i += 1;
@@ -778,6 +778,13 @@ impl Parser {
                     let mut binding = self.parse_let_binding(decorators, trivia)?;
                     binding.partial = true;
                     Some(BodyItem::LetBinding(binding))
+                } else if i < self.tokens.len()
+                    && matches!(self.tokens[i].kind, TokenKind::SymbolSet)
+                {
+                    self.advance(); // consume `partial`
+                    self.skip_newlines();
+                    let s = self.parse_symbol_set_decl(trivia, true)?;
+                    Some(BodyItem::SymbolSetDecl(s))
                 } else {
                     let block = self.parse_block(decorators, trivia, true)?;
                     Some(BodyItem::Block(block))
@@ -808,7 +815,7 @@ impl Parser {
                 Some(BodyItem::Table(t))
             }
             TokenKind::SymbolSet => {
-                let s = self.parse_symbol_set_decl(trivia)?;
+                let s = self.parse_symbol_set_decl(trivia, false)?;
                 Some(BodyItem::SymbolSetDecl(s))
             }
             TokenKind::Validation => {
@@ -2653,7 +2660,7 @@ impl Parser {
 
     // ── Symbol Set ────────────────────────────────────────────────────────
 
-    fn parse_symbol_set_decl(&mut self, trivia: Trivia) -> Option<SymbolSetDecl> {
+    fn parse_symbol_set_decl(&mut self, trivia: Trivia, partial: bool) -> Option<SymbolSetDecl> {
         let start_span = self.current_span();
         self.advance(); // consume `symbol_set`
         self.skip_newlines();
@@ -2711,6 +2718,7 @@ impl Parser {
 
         let end_span = self.prev_span();
         Some(SymbolSetDecl {
+            partial,
             name,
             members,
             trivia,
