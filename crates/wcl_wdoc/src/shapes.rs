@@ -25,6 +25,7 @@ pub enum ShapeKind {
     Line,
     Path,
     Text,
+    Image,
     Group,
 }
 
@@ -288,6 +289,7 @@ pub fn parse_shape_kind(kind: &str) -> Option<ShapeKind> {
         "wdoc::draw::line" => Some(ShapeKind::Line),
         "wdoc::draw::path" => Some(ShapeKind::Path),
         "wdoc::draw::text" => Some(ShapeKind::Text),
+        "wdoc::draw::image" => Some(ShapeKind::Image),
         "wdoc::draw::group" => Some(ShapeKind::Group),
         // Anything else under `wdoc::draw::` (or a user namespace ending in `::draw::`)
         // is treated as a composite shape: a rect-shaped container whose children are
@@ -1030,6 +1032,7 @@ fn render_shape_svg(node: &ShapeNode, svg: &mut String) {
             }
             svg.push_str("</text>");
         }
+        ShapeKind::Image => render_image_shape_svg(node, svg),
         ShapeKind::Group => {
             let gx = b.x;
             let gy = b.y;
@@ -1056,6 +1059,79 @@ fn render_shape_svg(node: &ShapeNode, svg: &mut String) {
     // Close <a> wrapper if shape was clickable
     if href.is_some() {
         svg.push_str("</a>");
+    }
+}
+
+fn render_image_shape_svg(node: &ShapeNode, svg: &mut String) {
+    let b = &node.resolved;
+    let style = svg_image_attrs(&node.attrs);
+    let src = node.attrs.get("src").map(|s| s.as_str()).unwrap_or("");
+    let fit = node
+        .attrs
+        .get("fit")
+        .map(|s| s.as_str())
+        .unwrap_or("contain");
+    let clip_id = svg_generated_id("wdoc-image-clip", node);
+    let rx = node.attrs.get("rx").map(|s| s.as_str()).unwrap_or("0");
+    let ry = node.attrs.get("ry").map(|s| s.as_str()).unwrap_or(rx);
+    let src = svg_escape_attr(src);
+
+    write!(
+        svg,
+        "<defs><clipPath id=\"{clip_id}\">\
+         <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"{rx}\" ry=\"{ry}\"/>\
+         </clipPath></defs>",
+        b.x, b.y, b.width, b.height
+    )
+    .unwrap();
+
+    let aria = node
+        .attrs
+        .get("alt")
+        .map(|alt| {
+            let alt = svg_escape_attr(alt);
+            format!(" role=\"img\" aria-label=\"{alt}\"")
+        })
+        .unwrap_or_default();
+
+    if !aria.is_empty() {
+        write!(svg, "<g{aria}>").unwrap();
+    }
+
+    if fit == "tile" {
+        let pattern_id = svg_generated_id("wdoc-image-pattern", node);
+        let tile_width = attr_f64(&node.attrs, "tile_width").unwrap_or(b.width);
+        let tile_height = attr_f64(&node.attrs, "tile_height").unwrap_or(b.height);
+        write!(
+            svg,
+            "<defs><pattern id=\"{pattern_id}\" patternUnits=\"userSpaceOnUse\" \
+             x=\"{}\" y=\"{}\" width=\"{tile_width}\" height=\"{tile_height}\">\
+             <image href=\"{src}\" x=\"{}\" y=\"{}\" width=\"{tile_width}\" height=\"{tile_height}\" \
+             preserveAspectRatio=\"xMidYMid meet\"/>\
+             </pattern></defs>\
+             <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" \
+             clip-path=\"url(#{clip_id})\" fill=\"url(#{pattern_id})\"{style}/>",
+            b.x, b.y, b.x, b.y, b.x, b.y, b.width, b.height
+        )
+        .unwrap();
+    } else {
+        let preserve_aspect_ratio = match fit {
+            "cover" => "xMidYMid slice",
+            "fill" => "none",
+            _ => "xMidYMid meet",
+        };
+        write!(
+            svg,
+            "<image href=\"{src}\" x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" \
+             preserveAspectRatio=\"{preserve_aspect_ratio}\" \
+             clip-path=\"url(#{clip_id})\"{style}/>",
+            b.x, b.y, b.width, b.height
+        )
+        .unwrap();
+    }
+
+    if !aria.is_empty() {
+        svg.push_str("</g>");
     }
 }
 
@@ -1470,6 +1546,33 @@ fn svg_style_attrs(attrs: &IndexMap<String, String>) -> String {
     s
 }
 
+fn svg_image_attrs(attrs: &IndexMap<String, String>) -> String {
+    let mut s = String::new();
+    for name in &["opacity", "class", "style", "cursor", "pointer_events"] {
+        if let Some(val) = attrs.get(*name) {
+            let svg_name = name.replace('_', "-");
+            let escaped = svg_escape_attr(val);
+            write!(s, " {svg_name}=\"{escaped}\"").unwrap();
+        }
+    }
+    s
+}
+
+fn svg_generated_id(prefix: &str, node: &ShapeNode) -> String {
+    let mut hasher = DefaultHasher::new();
+    format!("{:?}", node.kind).hash(&mut hasher);
+    node.id.hash(&mut hasher);
+    node.resolved.x.to_bits().hash(&mut hasher);
+    node.resolved.y.to_bits().hash(&mut hasher);
+    node.resolved.width.to_bits().hash(&mut hasher);
+    node.resolved.height.to_bits().hash(&mut hasher);
+    for (key, value) in &node.attrs {
+        key.hash(&mut hasher);
+        value.hash(&mut hasher);
+    }
+    format!("{prefix}-{:x}", hasher.finish())
+}
+
 fn diagram_scope_id(diagram: &Diagram, css: &str) -> String {
     if let Some(id) = diagram.id.as_deref().filter(|id| !id.trim().is_empty()) {
         return format!("wdoc-diagram-{}", sanitize_svg_id_fragment(id));
@@ -1654,6 +1757,13 @@ mod tests {
         node.y = Some(0.0);
         node.attrs
             .insert("content".to_string(), content.to_string());
+        node
+    }
+
+    fn image_shape(src: &str, width: f64, height: f64) -> ShapeNode {
+        let mut node = shape("hero", width, height);
+        node.kind = ShapeKind::Image;
+        node.attrs.insert("src".to_string(), src.to_string());
         node
     }
 
@@ -1856,6 +1966,97 @@ mod tests {
     }
 
     #[test]
+    fn image_fit_modes_emit_svg_image_aspect_ratio() {
+        for (fit, expected) in [
+            ("contain", "xMidYMid meet"),
+            ("cover", "xMidYMid slice"),
+            ("fill", "none"),
+            ("unknown", "xMidYMid meet"),
+        ] {
+            let mut image = image_shape("images/hero.png", 160.0, 90.0);
+            image.attrs.insert("fit".to_string(), fit.to_string());
+            let mut diagram = Diagram {
+                id: None,
+                width: 160.0,
+                height: 90.0,
+                padding: 0.0,
+                align: Alignment::None,
+                gap: 0.0,
+                options: IndexMap::new(),
+                shapes: vec![image],
+                connections: vec![],
+            };
+
+            let svg = render_diagram_svg(&mut diagram);
+            assert!(svg.contains("<image href=\"images/hero.png\""));
+            assert!(svg.contains(&format!("preserveAspectRatio=\"{expected}\"")));
+            assert!(svg.contains("<clipPath id=\"wdoc-image-clip-"));
+            assert!(svg.contains("clip-path=\"url(#wdoc-image-clip-"));
+        }
+    }
+
+    #[test]
+    fn image_rounded_clip_and_alt_are_emitted() {
+        let mut image = image_shape("images/hero.png", 160.0, 90.0);
+        image
+            .attrs
+            .insert("alt".to_string(), "Hero image".to_string());
+        image.attrs.insert("rx".to_string(), "6".to_string());
+        image.attrs.insert("ry".to_string(), "4".to_string());
+        image
+            .attrs
+            .insert("opacity".to_string(), "0.75".to_string());
+
+        let mut diagram = Diagram {
+            id: None,
+            width: 160.0,
+            height: 90.0,
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+            shapes: vec![image],
+            connections: vec![],
+        };
+
+        let svg = render_diagram_svg(&mut diagram);
+        assert!(svg.contains("<g role=\"img\" aria-label=\"Hero image\">"));
+        assert!(svg.contains("rx=\"6\" ry=\"4\""));
+        assert!(svg.contains("opacity=\"0.75\""));
+    }
+
+    #[test]
+    fn tiled_image_uses_pattern_and_tile_size() {
+        let mut image = image_shape("images/tile.svg", 120.0, 80.0);
+        image.attrs.insert("fit".to_string(), "tile".to_string());
+        image
+            .attrs
+            .insert("tile_width".to_string(), "24".to_string());
+        image
+            .attrs
+            .insert("tile_height".to_string(), "18".to_string());
+
+        let mut diagram = Diagram {
+            id: None,
+            width: 120.0,
+            height: 80.0,
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+            shapes: vec![image],
+            connections: vec![],
+        };
+
+        let svg = render_diagram_svg(&mut diagram);
+        assert!(svg.contains("<pattern id=\"wdoc-image-pattern-"));
+        assert!(svg.contains("patternUnits=\"userSpaceOnUse\""));
+        assert!(svg.contains("width=\"24\" height=\"18\""));
+        assert!(svg.contains("<image href=\"images/tile.svg\""));
+        assert!(svg.contains("fill=\"url(#wdoc-image-pattern-"));
+    }
+
+    #[test]
     fn group_renders_as_translated_svg_group_with_children() {
         let mut group = shape("control", 120.0, 36.0);
         group.kind = ShapeKind::Group;
@@ -1884,6 +2085,31 @@ mod tests {
         assert!(svg.contains("<rect x=\"0\" y=\"0\" width=\"120\" height=\"36\""));
         assert!(svg.contains(">Save</text>"));
         assert!(svg.contains("</g>"));
+    }
+
+    #[test]
+    fn image_nested_in_group_uses_group_transform() {
+        let mut group = shape("media", 160.0, 90.0);
+        group.kind = ShapeKind::Group;
+        group.x = Some(20.0);
+        group.y = Some(10.0);
+        group.children = vec![image_shape("images/hero.webp", 160.0, 90.0)];
+
+        let mut diagram = Diagram {
+            id: None,
+            width: 200.0,
+            height: 120.0,
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+            shapes: vec![group],
+            connections: vec![],
+        };
+
+        let svg = render_diagram_svg(&mut diagram);
+        assert!(svg.contains("<g transform=\"translate(20,10)\">"));
+        assert!(svg.contains("<image href=\"images/hero.webp\""));
     }
 
     #[test]

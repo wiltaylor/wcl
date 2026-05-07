@@ -3,7 +3,7 @@
 // Usage:
 //   import <wdoc.wcl>
 //   use wdoc::{doc, page, section, style, layout, heading, paragraph, image, code, data_table, callout, bold, italic, link, icon}
-//   use wdoc::draw::{diagram, rect, circle, ellipse, line, path, text, connection, ...}
+//   use wdoc::draw::{diagram, rect, circle, ellipse, line, path, text, image, connection, ...}
 
 // Helper used by shape template functions to read attributes with defaults.
 // Registered globally (outside the wdoc namespace) so widget lambda bodies can
@@ -128,6 +128,17 @@ namespace wdoc {
         @open schema "line" { }
         @open schema "path" { }
         @open schema "text" { }
+        @open
+        schema "image" {
+            src: string
+            fit: string @optional @default("contain")
+            alt: string @optional
+            opacity: f64 @optional
+            rx: f64 @optional
+            ry: f64 @optional
+            tile_width: f64 @optional
+            tile_height: f64 @optional
+        }
         @open schema "group" { }
         @open schema "connection" { }
 

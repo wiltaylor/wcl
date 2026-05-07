@@ -990,6 +990,41 @@ mod wdoc_draw_tests {
         assert!(html.contains("pointer-events=\"all\""));
         assert!(html.contains("#wdoc-diagram-button-preview .ui-button:hover .ui-button-bg"));
     }
+
+    #[test]
+    fn diagram_image_flows_through_cli_extraction() {
+        let mut image_attrs = IndexMap::new();
+        int_attr(&mut image_attrs, "x", 20);
+        int_attr(&mut image_attrs, "y", 10);
+        int_attr(&mut image_attrs, "width", 160);
+        int_attr(&mut image_attrs, "height", 90);
+        string_attr(&mut image_attrs, "src", "images/hero.png");
+        string_attr(&mut image_attrs, "fit", "cover");
+        string_attr(&mut image_attrs, "alt", "Hero image");
+
+        let image = block("wdoc::draw::image", Some("hero"), image_attrs, vec![]);
+
+        let mut diagram_attrs = IndexMap::new();
+        int_attr(&mut diagram_attrs, "width", 200);
+        int_attr(&mut diagram_attrs, "height", 120);
+        let diagram = block(
+            "wdoc::draw::diagram",
+            Some("image_preview"),
+            diagram_attrs,
+            vec![image],
+        );
+
+        let ctx = ExtractCtx {
+            template_map: HashMap::new(),
+            template_fns: HashMap::new(),
+            builtins: HashMap::new(),
+        };
+
+        let html = render_diagram_with_ctx(&diagram, &ctx);
+        assert!(html.contains("<image href=\"images/hero.png\""));
+        assert!(html.contains("preserveAspectRatio=\"xMidYMid slice\""));
+        assert!(html.contains("role=\"img\" aria-label=\"Hero image\""));
+    }
 }
 
 /// Iterate all child BlockRefs from a parent — checks both `children` and `attributes`

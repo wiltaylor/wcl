@@ -7,7 +7,7 @@
 use assert_cmd::Command;
 use predicates::prelude::*;
 use std::io::Write;
-use tempfile::NamedTempFile;
+use tempfile::{tempdir, NamedTempFile};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -959,6 +959,74 @@ fn fmt_check_returns_success_when_formatted() {
 
     wcl(&["fmt", "--write", &path]).success();
     wcl(&["fmt", "--check", &path]).success();
+}
+
+// ===========================================================================
+// WDOC
+// ===========================================================================
+
+#[test]
+fn wdoc_build_renders_drawing_image_and_copies_asset() {
+    let dir = tempdir().expect("tempdir");
+    let images_dir = dir.path().join("images");
+    std::fs::create_dir_all(&images_dir).expect("create images dir");
+    std::fs::write(images_dir.join("hero.png"), [0x89, b'P', b'N', b'G']).expect("write image");
+
+    let source = r#"
+import <wdoc.wcl>
+use wdoc::{doc, page, section, layout}
+use wdoc::draw::{diagram, image}
+
+doc my_docs {
+    title = "Image Docs"
+    section overview "Overview" {}
+}
+
+page home {
+    section = "my_docs.overview"
+    title = "Home"
+
+    layout {
+        diagram hero_diagram {
+            width = 200
+            height = 120
+
+            image hero {
+                x = 20
+                y = 10
+                width = 160
+                height = 90
+                src = "images/hero.png"
+                alt = "Hero image"
+                fit = "cover"
+                rx = 6
+                ry = 6
+            }
+        }
+    }
+}
+"#;
+    let input = dir.path().join("site.wcl");
+    std::fs::write(&input, source).expect("write wdoc file");
+    let output = dir.path().join("out");
+
+    Command::cargo_bin("wcl")
+        .unwrap()
+        .args([
+            "wdoc",
+            "build",
+            input.to_str().unwrap(),
+            "--output",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let html = std::fs::read_to_string(output.join("home.html")).expect("read rendered page");
+    assert!(html.contains("<image href=\"images/hero.png\""));
+    assert!(html.contains("preserveAspectRatio=\"xMidYMid slice\""));
+    assert!(html.contains("role=\"img\" aria-label=\"Hero image\""));
+    assert!(output.join("images/hero.png").exists());
 }
 
 // ===========================================================================
