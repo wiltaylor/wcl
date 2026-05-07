@@ -41,6 +41,7 @@ pub use crate::serde_impl::{
     to_string_pretty as value_to_string_pretty, Error as SerdeError,
 };
 
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -129,6 +130,8 @@ pub struct Document {
     pub struct_registry: StructRegistry,
     /// Layout definition registry
     pub layout_registry: crate::schema::LayoutRegistry,
+    /// Files loaded through WCL import resolution.
+    pub imported_paths: HashSet<PathBuf>,
 }
 
 impl Document {
@@ -953,6 +956,7 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
         symbol_sets,
         struct_registry,
         layout_registry,
+        imported_paths,
     }
 }
 
@@ -3388,6 +3392,51 @@ symbol_set multi {
         // Both schemas should be imported
         assert!(doc.schemas.schemas.contains_key("a"));
         assert!(doc.schemas.schemas.contains_key("b"));
+    }
+
+    #[test]
+    fn test_imported_paths_tracks_loaded_imports() {
+        let mut fs = InMemoryFs::new();
+        fs.add_file(
+            std::path::PathBuf::from("/project/auth.wcl"),
+            "schema \"auth\" { token: string }",
+        );
+        let opts = ParseOptions {
+            root_dir: std::path::PathBuf::from("/project"),
+            fs: Some(Arc::new(fs)),
+            ..ParseOptions::default()
+        };
+        let doc = parse("import \"./auth.wcl\"", opts);
+        assert!(!doc.has_errors(), "errors: {:?}", doc.errors());
+        assert!(doc
+            .imported_paths
+            .contains(&std::path::PathBuf::from("/project/auth.wcl")));
+    }
+
+    #[test]
+    fn test_imported_paths_tracks_glob_imports() {
+        let mut fs = InMemoryFs::new();
+        fs.add_file(
+            std::path::PathBuf::from("/project/schemas/a.wcl"),
+            "schema \"a\" { name: string }",
+        );
+        fs.add_file(
+            std::path::PathBuf::from("/project/schemas/b.wcl"),
+            "schema \"b\" { port: i64 }",
+        );
+        let opts = ParseOptions {
+            root_dir: std::path::PathBuf::from("/project"),
+            fs: Some(Arc::new(fs)),
+            ..ParseOptions::default()
+        };
+        let doc = parse("import \"./schemas/*.wcl\"", opts);
+        assert!(!doc.has_errors(), "errors: {:?}", doc.errors());
+        assert!(doc
+            .imported_paths
+            .contains(&std::path::PathBuf::from("/project/schemas/a.wcl")));
+        assert!(doc
+            .imported_paths
+            .contains(&std::path::PathBuf::from("/project/schemas/b.wcl")));
     }
 
     #[test]

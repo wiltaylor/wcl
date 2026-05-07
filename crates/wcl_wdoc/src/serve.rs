@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -12,6 +13,13 @@ use tower_http::services::ServeDir;
 
 use crate::model::WdocDocument;
 
+/// Result of a wdoc serve build, including the document and any extra source
+/// paths discovered during parsing that should be watched for rebuilds.
+pub struct ServeBuild {
+    pub document: WdocDocument,
+    pub watch_paths: Vec<PathBuf>,
+}
+
 #[derive(Clone)]
 struct ServeState {
     reload_rx: watch::Receiver<u64>,
@@ -20,9 +28,10 @@ struct ServeState {
 /// Start a dev server with live reload.
 ///
 /// `build_fn` is called to produce the document (re-called on file changes).
-/// `watch_paths` are the source files/directories to watch.
+/// `watch_paths` are the root source files/directories to watch. Additional
+/// paths may be returned from each build.
 pub async fn serve(
-    build_fn: impl Fn() -> Result<WdocDocument, String> + Send + Sync + 'static,
+    build_fn: impl Fn() -> Result<ServeBuild, String> + Send + Sync + 'static,
     watch_paths: Vec<PathBuf>,
     asset_dirs: Vec<PathBuf>,
     output_dir: PathBuf,
@@ -33,8 +42,8 @@ pub async fn serve(
     let asset_dir_refs: Vec<&std::path::Path> = asset_dirs.iter().map(|p| p.as_path()).collect();
 
     // Initial build
-    let doc = build_fn().map_err(|e| format!("initial build failed: {e}"))?;
-    crate::render::render_document(&doc, &output_dir, &asset_dir_refs)?;
+    let initial = build_fn().map_err(|e| format!("initial build failed: {e}"))?;
+    crate::render::render_document(&initial.document, &output_dir, &asset_dir_refs)?;
     eprintln!("wdoc: built to {}", output_dir.display());
 
     // Reload signal
@@ -64,29 +73,34 @@ pub async fn serve(
         })
         .map_err(|e| format!("failed to create file watcher: {e}"))?;
 
-    for path in &watch_paths {
-        watcher
-            .watch(path, RecursiveMode::NonRecursive)
-            .map_err(|e| format!("failed to watch {}: {e}", path.display()))?;
-    }
+    let mut watched_paths = HashSet::new();
+    let desired_paths = combined_watch_paths(&watch_paths, &initial.watch_paths);
+    sync_watch_paths(&mut watcher, &mut watched_paths, &desired_paths)?;
 
     // Rebuild task
     let reload_tx = Arc::new(reload_tx);
     tokio::spawn(async move {
         let mut generation: u64 = 0;
         while notify_rx.recv().await.is_some() {
-            // Debounce — wait for writes to settle
-            tokio::time::sleep(Duration::from_millis(500)).await;
-            while notify_rx.try_recv().is_ok() {}
+            wait_for_quiet(&mut notify_rx, Duration::from_secs(1)).await;
 
             eprintln!("wdoc: rebuilding...");
             match build_fn_watch() {
-                Ok(doc) => {
+                Ok(build) => {
+                    let desired_paths = combined_watch_paths(&watch_paths, &build.watch_paths);
+                    if let Err(e) =
+                        sync_watch_paths(&mut watcher, &mut watched_paths, &desired_paths)
+                    {
+                        eprintln!("wdoc: watch error: {e}");
+                    }
+
                     let arefs: Vec<&std::path::Path> =
                         asset_dirs.iter().map(|p| p.as_path()).collect();
-                    if let Err(e) = crate::render::render_document(&doc, &output_dir_watch, &arefs)
+                    if let Err(e) =
+                        crate::render::render_document(&build.document, &output_dir_watch, &arefs)
                     {
                         eprintln!("wdoc: render error: {e}");
+                        cooldown_after_build(&mut notify_rx).await;
                         continue;
                     }
                     generation += 1;
@@ -95,6 +109,7 @@ pub async fn serve(
                 }
                 Err(e) => eprintln!("wdoc: build error: {e}"),
             }
+            cooldown_after_build(&mut notify_rx).await;
         }
         // Keep watcher alive
         drop(watcher);
@@ -122,6 +137,62 @@ pub async fn serve(
         .map_err(|e| format!("server error: {e}"))?;
 
     Ok(())
+}
+
+fn combined_watch_paths(root_paths: &[PathBuf], build_paths: &[PathBuf]) -> HashSet<PathBuf> {
+    root_paths
+        .iter()
+        .chain(build_paths.iter())
+        .filter(|p| !p.as_os_str().is_empty())
+        .cloned()
+        .collect()
+}
+
+fn sync_watch_paths(
+    watcher: &mut RecommendedWatcher,
+    watched_paths: &mut HashSet<PathBuf>,
+    desired_paths: &HashSet<PathBuf>,
+) -> Result<(), String> {
+    let stale_paths: Vec<PathBuf> = watched_paths.difference(desired_paths).cloned().collect();
+    for path in stale_paths {
+        watcher
+            .unwatch(&path)
+            .map_err(|e| format!("failed to unwatch {}: {e}", path.display()))?;
+        watched_paths.remove(&path);
+    }
+
+    let new_paths: Vec<PathBuf> = desired_paths.difference(watched_paths).cloned().collect();
+    for path in new_paths {
+        watcher
+            .watch(&path, RecursiveMode::NonRecursive)
+            .map_err(|e| format!("failed to watch {}: {e}", path.display()))?;
+        watched_paths.insert(path);
+    }
+
+    Ok(())
+}
+
+async fn wait_for_quiet(notify_rx: &mut tokio::sync::mpsc::Receiver<()>, quiet: Duration) {
+    loop {
+        tokio::select! {
+            _ = tokio::time::sleep(quiet) => break,
+            event = notify_rx.recv() => {
+                if event.is_none() {
+                    break;
+                }
+            }
+        }
+    }
+    drain_events(notify_rx);
+}
+
+async fn cooldown_after_build(notify_rx: &mut tokio::sync::mpsc::Receiver<()>) {
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    drain_events(notify_rx);
+}
+
+fn drain_events(notify_rx: &mut tokio::sync::mpsc::Receiver<()>) {
+    while notify_rx.try_recv().is_ok() {}
 }
 
 async fn sse_handler(

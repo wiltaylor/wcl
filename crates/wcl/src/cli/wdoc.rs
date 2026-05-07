@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use indexmap::IndexMap;
@@ -1276,6 +1276,11 @@ fn extract_style(block: &BlockRef) -> WdocStyle {
 // CLI entry points
 // ---------------------------------------------------------------------------
 
+struct ExtractedWdoc {
+    document: WdocDocument,
+    watch_paths: HashSet<PathBuf>,
+}
+
 fn setup_lib_dir() -> Result<PathBuf, String> {
     let lib_dir = std::env::temp_dir().join(format!("wdoc-lib-{}", std::process::id()));
     std::fs::create_dir_all(&lib_dir).map_err(|e| format!("failed to create wdoc lib dir: {e}"))?;
@@ -1292,12 +1297,21 @@ fn parse_and_extract(
     vars: &[String],
     lib_args: &LibraryArgs,
 ) -> Result<WdocDocument, String> {
+    parse_and_extract_with_watch(files, vars, lib_args).map(|extracted| extracted.document)
+}
+
+fn parse_and_extract_with_watch(
+    files: &[PathBuf],
+    vars: &[String],
+    lib_args: &LibraryArgs,
+) -> Result<ExtractedWdoc, String> {
     let variables = parse_var_args(vars)?;
     let functions = wdoc_functions();
     let lib_dir = setup_lib_dir()?;
 
     let mut all_values = IndexMap::new();
     let mut last_doc: Option<crate::Document> = None;
+    let mut watch_paths = HashSet::new();
 
     for file in files {
         let source = std::fs::read_to_string(file)
@@ -1324,6 +1338,12 @@ fn parse_and_extract(
             return Err(msg);
         }
 
+        watch_paths.extend(
+            doc.imported_paths
+                .iter()
+                .filter(|path| !path.starts_with(&lib_dir))
+                .cloned(),
+        );
         all_values.extend(doc.values.clone());
         last_doc = Some(doc);
     }
@@ -1349,7 +1369,10 @@ fn parse_and_extract(
     // Clean up temp lib dir
     let _ = std::fs::remove_dir_all(&lib_dir);
 
-    Ok(wdoc_doc)
+    Ok(ExtractedWdoc {
+        document: wdoc_doc,
+        watch_paths,
+    })
 }
 
 pub fn run_build(
@@ -1432,7 +1455,13 @@ pub fn run_serve(
         .into_iter()
         .collect();
 
-    let build_fn = move || parse_and_extract(&files, &vars, &lib_args);
+    let build_fn = move || {
+        let extracted = parse_and_extract_with_watch(&files, &vars, &lib_args)?;
+        Ok(wcl_wdoc::serve::ServeBuild {
+            document: extracted.document,
+            watch_paths: extracted.watch_paths.into_iter().collect(),
+        })
+    };
 
     let rt = tokio::runtime::Runtime::new()
         .map_err(|e| format!("failed to create tokio runtime: {e}"))?;
