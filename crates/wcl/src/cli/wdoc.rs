@@ -222,6 +222,35 @@ fn wdoc_functions() -> FunctionRegistry {
         ),
     );
 
+    let measure_text = std::sync::Arc::new(|args: &[Value]| {
+        if args.len() != 1 {
+            return Err("measure_text() expects 1 argument (text attributes or text block)".into());
+        }
+        let attrs = value_map_to_string_map(args.first())?;
+        let metrics = wcl_wdoc::shapes::measure_text_attrs(&attrs);
+        let mut map = IndexMap::new();
+        map.insert("width".to_string(), Value::Float(metrics.width));
+        map.insert("height".to_string(), Value::Float(metrics.height));
+        map.insert("baseline".to_string(), Value::Float(metrics.baseline));
+        Ok(Value::Map(map))
+    }) as BuiltinFn;
+    let measure_sig = |name: &str| FunctionSignature {
+        name: name.into(),
+        params: vec!["text: any".into()],
+        return_type: "map".into(),
+        doc: "Measure text using WDoc's deterministic fallback metrics".into(),
+    };
+    reg.register(
+        "measure_text",
+        measure_text.clone(),
+        measure_sig("measure_text"),
+    );
+    reg.register(
+        "wdoc::measure_text",
+        measure_text,
+        measure_sig("wdoc::measure_text"),
+    );
+
     // Template rendering functions — receive Value::Map, return HTML string
     register_template_builtins(&mut reg);
 
@@ -878,6 +907,74 @@ mod wdoc_draw_tests {
 
     fn int_attr(attrs: &mut IndexMap<String, Value>, key: &str, value: i64) {
         attrs.insert(key.to_string(), Value::Int(value));
+    }
+
+    #[test]
+    fn measure_text_builtin_accepts_map_and_block_ref() {
+        let functions = wdoc_functions();
+        let measure = functions
+            .functions
+            .get("measure_text")
+            .expect("measure_text should be registered");
+
+        let mut attrs = IndexMap::new();
+        string_attr(&mut attrs, "content", "Inline text");
+        int_attr(&mut attrs, "font_size", 14);
+
+        let map_result = measure(&[Value::Map(attrs.clone())]).unwrap();
+        let block_result = measure(&[Value::BlockRef(block(
+            "wdoc::draw::text",
+            Some("label"),
+            attrs,
+            vec![],
+        ))])
+        .unwrap();
+
+        let Value::Map(map_metrics) = map_result else {
+            panic!("measure_text should return a map");
+        };
+        let Value::Map(block_metrics) = block_result else {
+            panic!("measure_text should return a map");
+        };
+        assert_eq!(
+            map_metrics.get("width").unwrap().as_float(),
+            block_metrics.get("width").unwrap().as_float()
+        );
+        assert!(map_metrics.get("height").unwrap().as_float().unwrap() > 0.0);
+        assert!(map_metrics.get("baseline").unwrap().as_float().unwrap() > 0.0);
+
+        assert!(functions.functions.contains_key("wdoc::measure_text"));
+    }
+
+    #[test]
+    fn measure_text_can_drive_inline_drawing_position_expression() {
+        let functions = wdoc_functions();
+        let doc = crate::parse(
+            r#"
+            text label {
+                content = "Inline text"
+                font_size = 14
+            }
+
+            export let icon_x = 20 + measure_text(label).width + 8
+            "#,
+            crate::ParseOptions {
+                functions,
+                ..Default::default()
+            },
+        );
+        assert!(
+            !doc.has_errors(),
+            "unexpected diagnostics: {:?}",
+            doc.diagnostics
+        );
+
+        let icon_x = match doc.values.get("icon_x") {
+            Some(Value::Float(v)) => *v,
+            Some(Value::Int(v)) => *v as f64,
+            other => panic!("expected icon_x to evaluate to a number, got {other:?}"),
+        };
+        assert!(icon_x > 28.0);
     }
 
     #[test]

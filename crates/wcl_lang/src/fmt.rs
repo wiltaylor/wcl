@@ -71,6 +71,9 @@ impl<'a> Formatter<'a> {
                 self.expr(&el.value);
                 self.out.push('\n');
             }
+            DocItem::ExportMacro(md) => {
+                self.macro_def(md, true);
+            }
             DocItem::ReExport(re) => {
                 self.indent();
                 self.out.push_str(&format!("export {}\n", re.name.name));
@@ -340,36 +343,7 @@ impl<'a> Formatter<'a> {
                 self.out.push_str("}\n");
             }
             BodyItem::MacroDef(md) => {
-                for dec in &md.decorators {
-                    self.decorator(dec);
-                }
-                self.indent();
-                match md.kind {
-                    MacroKind::Function => {
-                        self.out.push_str(&format!("macro {}(", md.name.name));
-                    }
-                    MacroKind::Attribute => {
-                        self.out.push_str(&format!("macro @{}(", md.name.name));
-                    }
-                }
-                self.macro_params(&md.params);
-                self.out.push_str(") {\n");
-                self.indent += 1;
-                match &md.body {
-                    MacroBody::Function(items) => {
-                        for child in items {
-                            self.body_item(child);
-                        }
-                    }
-                    MacroBody::Attribute(directives) => {
-                        for directive in directives {
-                            self.transform_directive(directive);
-                        }
-                    }
-                }
-                self.indent -= 1;
-                self.indent();
-                self.out.push_str("}\n");
+                self.macro_def(md, false);
             }
             BodyItem::MacroCall(mc) => {
                 self.indent();
@@ -915,6 +889,45 @@ impl<'a> Formatter<'a> {
         }
     }
 
+    fn macro_def(&mut self, md: &MacroDef, exported: bool) {
+        for dec in &md.decorators {
+            self.decorator(dec);
+        }
+        self.indent();
+        if exported {
+            self.out.push_str("export ");
+        }
+        if md.partial {
+            self.out.push_str("partial ");
+        }
+        match md.kind {
+            MacroKind::Function => {
+                self.out.push_str(&format!("macro {}(", md.name.name));
+            }
+            MacroKind::Attribute => {
+                self.out.push_str(&format!("macro @{}(", md.name.name));
+            }
+        }
+        self.macro_params(&md.params);
+        self.out.push_str(") {\n");
+        self.indent += 1;
+        match &md.body {
+            MacroBody::Function(items) => {
+                for child in items {
+                    self.body_item(child);
+                }
+            }
+            MacroBody::Attribute(directives) => {
+                for directive in directives {
+                    self.transform_directive(directive);
+                }
+            }
+        }
+        self.indent -= 1;
+        self.indent();
+        self.out.push_str("}\n");
+    }
+
     fn transform_directive(&mut self, directive: &TransformDirective) {
         match directive {
             TransformDirective::Inject(inject) => {
@@ -1264,6 +1277,7 @@ mod tests {
     fn format_function_macro() {
         let macro_def = MacroDef {
             decorators: vec![],
+            partial: false,
             kind: MacroKind::Function,
             name: ident("my_macro"),
             params: vec![
@@ -1300,6 +1314,114 @@ mod tests {
         assert_eq!(
             result,
             "macro my_macro(x: i64, y = 42) {\n    value = x\n}\n\n"
+        );
+    }
+
+    #[test]
+    fn format_partial_function_macro() {
+        let macro_def = MacroDef {
+            decorators: vec![],
+            partial: true,
+            kind: MacroKind::Function,
+            name: ident("render_examples"),
+            params: vec![MacroParam {
+                name: ident("component"),
+                type_constraint: None,
+                default: None,
+                span: ds(),
+            }],
+            body: MacroBody::Function(vec![BodyItem::Attribute(Attribute {
+                decorators: vec![],
+                name: ident("value"),
+                value: Expr::Ident(ident("component")),
+                assign_op: AssignOp::Assign,
+                trivia: dt(),
+                span: ds(),
+            })]),
+            trivia: dt(),
+            span: ds(),
+        };
+        let doc = Document {
+            items: vec![DocItem::Body(BodyItem::MacroDef(macro_def))],
+            trivia: dt(),
+            span: ds(),
+        };
+        let result = format_document(&doc);
+        assert_eq!(
+            result,
+            "partial macro render_examples(component) {\n    value = component\n}\n\n"
+        );
+    }
+
+    #[test]
+    fn format_export_macro() {
+        let macro_def = MacroDef {
+            decorators: vec![],
+            partial: false,
+            kind: MacroKind::Function,
+            name: ident("render_button"),
+            params: vec![MacroParam {
+                name: ident("label"),
+                type_constraint: None,
+                default: None,
+                span: ds(),
+            }],
+            body: MacroBody::Function(vec![BodyItem::Attribute(Attribute {
+                decorators: vec![],
+                name: ident("content"),
+                value: Expr::Ident(ident("label")),
+                assign_op: AssignOp::Assign,
+                trivia: dt(),
+                span: ds(),
+            })]),
+            trivia: dt(),
+            span: ds(),
+        };
+        let doc = Document {
+            items: vec![DocItem::ExportMacro(macro_def)],
+            trivia: dt(),
+            span: ds(),
+        };
+        let result = format_document(&doc);
+        assert_eq!(
+            result,
+            "export macro render_button(label) {\n    content = label\n}\n\n"
+        );
+    }
+
+    #[test]
+    fn format_export_partial_macro() {
+        let macro_def = MacroDef {
+            decorators: vec![],
+            partial: true,
+            kind: MacroKind::Function,
+            name: ident("render_button"),
+            params: vec![MacroParam {
+                name: ident("label"),
+                type_constraint: None,
+                default: None,
+                span: ds(),
+            }],
+            body: MacroBody::Function(vec![BodyItem::Attribute(Attribute {
+                decorators: vec![],
+                name: ident("content"),
+                value: Expr::Ident(ident("label")),
+                assign_op: AssignOp::Assign,
+                trivia: dt(),
+                span: ds(),
+            })]),
+            trivia: dt(),
+            span: ds(),
+        };
+        let doc = Document {
+            items: vec![DocItem::ExportMacro(macro_def)],
+            trivia: dt(),
+            span: ds(),
+        };
+        let result = format_document(&doc);
+        assert_eq!(
+            result,
+            "export partial macro render_button(label) {\n    content = label\n}\n\n"
         );
     }
 

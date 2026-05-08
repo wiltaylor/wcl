@@ -155,9 +155,75 @@ pub struct Diagram {
     pub options: IndexMap<String, String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TextMetrics {
+    pub width: f64,
+    pub height: f64,
+    pub baseline: f64,
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
+
+/// Measure rendered text using WDoc's deterministic fallback metrics.
+///
+/// This intentionally does not depend on platform fonts or browser APIs. It is
+/// stable across machines and approximate rather than exact.
+pub fn measure_text_attrs(attrs: &IndexMap<String, String>) -> TextMetrics {
+    let content = attrs.get("content").map(|s| s.as_str()).unwrap_or("");
+    let font_size = attrs
+        .get("font_size")
+        .and_then(|s| parse_svg_number(s))
+        .unwrap_or(14.0);
+    let line_height = attrs
+        .get("line_height")
+        .and_then(|s| s.parse::<f64>().ok())
+        .unwrap_or(1.2);
+    let letter_spacing = attrs
+        .get("letter_spacing")
+        .map(|s| parse_css_length(s, font_size))
+        .unwrap_or(0.0);
+    let wrap_width = attrs
+        .get("max_width")
+        .or_else(|| attrs.get("width"))
+        .and_then(|s| parse_svg_number(s))
+        .filter(|w| *w > 0.0);
+
+    let mut lines = Vec::new();
+    for segment in content.split('\n') {
+        if let Some(max_width) = wrap_width {
+            wrap_text_segment(
+                segment,
+                max_width,
+                font_size,
+                letter_spacing,
+                attrs,
+                &mut lines,
+            );
+        } else {
+            lines.push(measure_line_width(
+                segment,
+                font_size,
+                letter_spacing,
+                attrs,
+            ));
+        }
+    }
+    if lines.is_empty() {
+        lines.push(0.0);
+    }
+
+    let line_step = font_size * line_height;
+    let height = line_step * lines.len() as f64;
+    let baseline = ((line_step - font_size).max(0.0) / 2.0) + font_size * 0.8;
+
+    TextMetrics {
+        width: lines.into_iter().fold(0.0, f64::max),
+        height,
+        baseline,
+    }
+}
 
 /// Resolve layout and render a diagram to an inline SVG string.
 pub fn render_diagram_svg(diagram: &mut Diagram) -> String {
@@ -745,6 +811,15 @@ fn has_explicit_height(node: &ShapeNode) -> bool {
 }
 
 fn resolve_bounds(node: &mut ShapeNode, parent: &Bounds) {
+    let explicit_width = has_explicit_width(node);
+    let explicit_height = has_explicit_height(node);
+    let has_position = node.x.is_some()
+        || node.y.is_some()
+        || node.top.is_some()
+        || node.bottom.is_some()
+        || node.left.is_some()
+        || node.right.is_some();
+
     let (mut rx, mut rw) = resolve_axis(
         node.x,
         node.width,
@@ -762,12 +837,25 @@ fn resolve_bounds(node: &mut ShapeNode, parent: &Bounds) {
         parent.height,
     );
 
-    // Text shapes with no explicit position/size fill their parent's inner space
-    if node.kind == ShapeKind::Text && rw == 0.0 && rh == 0.0 {
+    // Legacy text labels with no positioning or size fill their parent.
+    // Positioned text can omit width/height and use its natural measured size.
+    if node.kind == ShapeKind::Text && !has_position && !explicit_width && !explicit_height {
         rx = parent.x;
         ry = parent.y;
         rw = parent.width;
         rh = parent.height;
+    } else if node.kind == ShapeKind::Text && (!explicit_width || !explicit_height) {
+        let mut measure_attrs = node.attrs.clone();
+        if explicit_width && rw > 0.0 {
+            measure_attrs.insert("width".to_string(), rw.to_string());
+        }
+        let metrics = measure_text_attrs(&measure_attrs);
+        if !explicit_width {
+            rw = metrics.width;
+        }
+        if !explicit_height {
+            rh = metrics.height;
+        }
     }
 
     // Circle/ellipse: derive size from r/rx/ry attributes
@@ -1688,6 +1776,162 @@ fn scope_selector_list(selector: &str, scope_id: &str) -> String {
         .join(", ")
 }
 
+fn wrap_text_segment(
+    segment: &str,
+    max_width: f64,
+    font_size: f64,
+    letter_spacing: f64,
+    attrs: &IndexMap<String, String>,
+    lines: &mut Vec<f64>,
+) {
+    if segment.is_empty() {
+        lines.push(0.0);
+        return;
+    }
+
+    let mut current = String::new();
+    for word in segment.split_whitespace() {
+        let candidate = if current.is_empty() {
+            word.to_string()
+        } else {
+            format!("{current} {word}")
+        };
+        if measure_line_width(&candidate, font_size, letter_spacing, attrs) <= max_width {
+            current = candidate;
+            continue;
+        }
+
+        if !current.is_empty() {
+            lines.push(measure_line_width(
+                &current,
+                font_size,
+                letter_spacing,
+                attrs,
+            ));
+            current.clear();
+        }
+
+        if measure_line_width(word, font_size, letter_spacing, attrs) <= max_width {
+            current.push_str(word);
+        } else {
+            current = push_wrapped_word(word, max_width, font_size, letter_spacing, attrs, lines);
+        }
+    }
+
+    if !current.is_empty() {
+        lines.push(measure_line_width(
+            &current,
+            font_size,
+            letter_spacing,
+            attrs,
+        ));
+    }
+}
+
+fn push_wrapped_word(
+    word: &str,
+    max_width: f64,
+    font_size: f64,
+    letter_spacing: f64,
+    attrs: &IndexMap<String, String>,
+    lines: &mut Vec<f64>,
+) -> String {
+    let mut current = String::new();
+    for ch in word.chars() {
+        let candidate = format!("{current}{ch}");
+        if current.is_empty()
+            || measure_line_width(&candidate, font_size, letter_spacing, attrs) <= max_width
+        {
+            current = candidate;
+        } else {
+            lines.push(measure_line_width(
+                &current,
+                font_size,
+                letter_spacing,
+                attrs,
+            ));
+            current.clear();
+            current.push(ch);
+        }
+    }
+    current
+}
+
+fn measure_line_width(
+    line: &str,
+    font_size: f64,
+    letter_spacing: f64,
+    attrs: &IndexMap<String, String>,
+) -> f64 {
+    let mut width = 0.0;
+    let mut count = 0usize;
+    for ch in line.chars() {
+        width += char_advance_factor(ch) * font_size;
+        count += 1;
+    }
+    if count > 1 {
+        width += letter_spacing * (count - 1) as f64;
+    }
+    width * font_style_width_factor(attrs)
+}
+
+fn char_advance_factor(ch: char) -> f64 {
+    if ch.is_whitespace() {
+        0.33
+    } else if matches!(
+        ch,
+        'i' | 'j' | 'l' | 'I' | '!' | '|' | '.' | ',' | ':' | ';' | '\''
+    ) {
+        0.28
+    } else if matches!(ch, 'f' | 'r' | 't' | '(' | ')' | '[' | ']' | '{' | '}') {
+        0.38
+    } else if matches!(ch, 'm' | 'w' | 'M' | 'W' | '@' | '#' | '%' | '&') {
+        0.88
+    } else if ch.is_ascii_digit() {
+        0.56
+    } else if ch.is_ascii() {
+        0.54
+    } else {
+        1.0
+    }
+}
+
+fn font_style_width_factor(attrs: &IndexMap<String, String>) -> f64 {
+    let mut factor = 1.0;
+    if attrs
+        .get("font_style")
+        .map(|s| s.eq_ignore_ascii_case("italic") || s.eq_ignore_ascii_case("oblique"))
+        .unwrap_or(false)
+    {
+        factor += 0.02;
+    }
+    if attrs
+        .get("font_weight")
+        .and_then(|s| s.parse::<u16>().ok())
+        .map(|w| w >= 600)
+        .unwrap_or_else(|| {
+            attrs
+                .get("font_weight")
+                .map(|s| s.eq_ignore_ascii_case("bold"))
+                .unwrap_or(false)
+        })
+    {
+        factor += 0.03;
+    }
+    factor
+}
+
+fn parse_css_length(value: &str, font_size: f64) -> f64 {
+    let trimmed = value.trim();
+    if let Some(em) = trimmed.strip_suffix("em") {
+        em.trim().parse::<f64>().unwrap_or(0.0) * font_size
+    } else if let Some(px) = trimmed.strip_suffix("px") {
+        px.trim().parse::<f64>().unwrap_or(0.0)
+    } else {
+        trimmed.parse::<f64>().unwrap_or(0.0)
+    }
+}
+
 fn attr_f64(attrs: &IndexMap<String, String>, key: &str) -> Option<f64> {
     attrs.get(key).and_then(|s| s.parse().ok())
 }
@@ -1894,6 +2138,91 @@ mod tests {
         assert!(svg.contains("font-style=\"italic\""));
         assert!(svg.contains("text-decoration=\"underline\""));
         assert!(svg.contains("letter-spacing=\"0.02em\""));
+    }
+
+    #[test]
+    fn measure_text_attrs_returns_deterministic_metrics() {
+        let attrs: IndexMap<String, String> = [
+            ("content".to_string(), "Inline text".to_string()),
+            ("font_size".to_string(), "14".to_string()),
+            ("font_weight".to_string(), "400".to_string()),
+            ("font_style".to_string(), "normal".to_string()),
+            ("letter_spacing".to_string(), "0".to_string()),
+        ]
+        .into_iter()
+        .collect();
+
+        let metrics = measure_text_attrs(&attrs);
+        assert!(metrics.width > 50.0);
+        assert!(metrics.width < 90.0);
+        assert_eq!(metrics.height, 16.8);
+        assert_eq!(metrics.baseline, 12.600000000000001);
+    }
+
+    #[test]
+    fn measure_text_attrs_wraps_to_width_constraint() {
+        let attrs: IndexMap<String, String> = [
+            ("content".to_string(), "Inline text wraps".to_string()),
+            ("font_size".to_string(), "14".to_string()),
+            ("width".to_string(), "58".to_string()),
+        ]
+        .into_iter()
+        .collect();
+
+        let metrics = measure_text_attrs(&attrs);
+        assert!(metrics.width <= 58.0);
+        assert!(metrics.height > 16.8);
+    }
+
+    #[test]
+    fn positioned_text_without_size_uses_natural_bounds() {
+        let mut text = text_shape("Inline", 0.0, 0.0);
+        text.width = None;
+        text.height = None;
+        text.attrs.insert("font_size".to_string(), "14".to_string());
+
+        let mut diagram = Diagram {
+            id: None,
+            width: 200.0,
+            height: 80.0,
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+            shapes: vec![text],
+            connections: vec![],
+        };
+
+        render_diagram_svg(&mut diagram);
+        assert_eq!(diagram.shapes[0].resolved.x, 0.0);
+        assert_eq!(diagram.shapes[0].resolved.y, 0.0);
+        assert!(diagram.shapes[0].resolved.width > 0.0);
+        assert_eq!(diagram.shapes[0].resolved.height, 16.8);
+    }
+
+    #[test]
+    fn unpositioned_unsized_text_preserves_parent_fill_behavior() {
+        let mut text = text_shape("Centered", 0.0, 0.0);
+        text.x = None;
+        text.y = None;
+        text.width = None;
+        text.height = None;
+
+        let mut diagram = Diagram {
+            id: None,
+            width: 220.0,
+            height: 90.0,
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+            shapes: vec![text],
+            connections: vec![],
+        };
+
+        render_diagram_svg(&mut diagram);
+        assert_eq!(diagram.shapes[0].resolved.width, 220.0);
+        assert_eq!(diagram.shapes[0].resolved.height, 90.0);
     }
 
     #[test]

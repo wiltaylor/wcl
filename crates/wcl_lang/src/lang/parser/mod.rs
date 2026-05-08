@@ -605,30 +605,55 @@ impl Parser {
         self.advance(); // consume `export`
         self.skip_newlines();
 
-        if matches!(self.peek_kind(), TokenKind::Let) {
-            // export let name = expr
-            self.advance(); // consume `let`
-            self.skip_newlines();
-            let name = self.expect_ident().ok()?;
-            self.skip_newlines();
-            if self.expect(&TokenKind::Equals).is_err() {
-                return None;
+        match self.peek_kind() {
+            TokenKind::Let => {
+                // export let name = expr
+                self.advance(); // consume `let`
+                self.skip_newlines();
+                let name = self.expect_ident().ok()?;
+                self.skip_newlines();
+                if self.expect(&TokenKind::Equals).is_err() {
+                    return None;
+                }
+                self.skip_newlines();
+                let value = self.parse_expr()?;
+                let span = start_span.merge(value.span());
+                Some(DocItem::ExportLet(ExportLet {
+                    decorators,
+                    name,
+                    value,
+                    trivia,
+                    span,
+                }))
             }
-            self.skip_newlines();
-            let value = self.parse_expr()?;
-            let span = start_span.merge(value.span());
-            Some(DocItem::ExportLet(ExportLet {
-                decorators,
-                name,
-                value,
-                trivia,
-                span,
-            }))
-        } else {
-            // export name (re-export)
-            let name = self.expect_ident().ok()?;
-            let span = start_span.merge(name.span);
-            Some(DocItem::ReExport(ReExport { name, trivia, span }))
+            TokenKind::Macro => {
+                let mut def = self.parse_macro_def(decorators, trivia, false)?;
+                def.span = start_span.merge(def.span);
+                Some(DocItem::ExportMacro(def))
+            }
+            TokenKind::Partial => {
+                let mut i = self.pos + 1;
+                while i < self.tokens.len() && matches!(self.tokens[i].kind, TokenKind::Newline) {
+                    i += 1;
+                }
+                if i < self.tokens.len() && matches!(self.tokens[i].kind, TokenKind::Macro) {
+                    self.advance(); // consume `partial`
+                    self.skip_newlines();
+                    let mut def = self.parse_macro_def(decorators, trivia, true)?;
+                    def.span = start_span.merge(def.span);
+                    Some(DocItem::ExportMacro(def))
+                } else {
+                    let name = self.expect_ident().ok()?;
+                    let span = start_span.merge(name.span);
+                    Some(DocItem::ReExport(ReExport { name, trivia, span }))
+                }
+            }
+            _ => {
+                // export name (re-export)
+                let name = self.expect_ident().ok()?;
+                let span = start_span.merge(name.span);
+                Some(DocItem::ReExport(ReExport { name, trivia, span }))
+            }
         }
     }
 
@@ -785,13 +810,18 @@ impl Parser {
                     self.skip_newlines();
                     let s = self.parse_symbol_set_decl(trivia, true)?;
                     Some(BodyItem::SymbolSetDecl(s))
+                } else if i < self.tokens.len() && matches!(self.tokens[i].kind, TokenKind::Macro) {
+                    self.advance(); // consume `partial`
+                    self.skip_newlines();
+                    let m = self.parse_macro_def(decorators, trivia, true)?;
+                    Some(BodyItem::MacroDef(m))
                 } else {
                     let block = self.parse_block(decorators, trivia, true)?;
                     Some(BodyItem::Block(block))
                 }
             }
             TokenKind::Macro => {
-                let m = self.parse_macro_def(decorators, trivia)?;
+                let m = self.parse_macro_def(decorators, trivia, false)?;
                 Some(BodyItem::MacroDef(m))
             }
             TokenKind::For => {
@@ -1927,7 +1957,12 @@ impl Parser {
 
     // ── Macros ────────────────────────────────────────────────────────────
 
-    fn parse_macro_def(&mut self, decorators: Vec<Decorator>, trivia: Trivia) -> Option<MacroDef> {
+    fn parse_macro_def(
+        &mut self,
+        decorators: Vec<Decorator>,
+        trivia: Trivia,
+        partial: bool,
+    ) -> Option<MacroDef> {
         let start_span = self.current_span();
         self.advance(); // consume `macro`
         self.skip_newlines();
@@ -1962,6 +1997,7 @@ impl Parser {
         let span = start_span.merge(self.prev_span());
         Some(MacroDef {
             decorators,
+            partial,
             kind,
             name,
             params,
@@ -2985,6 +3021,45 @@ mod tests {
                 }
             }
             other => panic!("expected Attribute, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_partial_macro() {
+        let (doc, diags) = parse("partial macro render(label) {\n  title = label\n}");
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
+        assert_eq!(doc.items.len(), 1);
+        match &doc.items[0] {
+            DocItem::Body(BodyItem::MacroDef(def)) => {
+                assert!(def.partial);
+                assert_eq!(def.name.name, "render");
+                assert_eq!(def.params.len(), 1);
+                assert_eq!(def.params[0].name.name, "label");
+            }
+            other => panic!("expected partial macro, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_export_partial_macro() {
+        let (doc, diags) = parse("export partial macro render(label) {\n  title = label\n}");
+        assert!(
+            !diags.has_errors(),
+            "diagnostics: {:?}",
+            diags.diagnostics()
+        );
+        assert_eq!(doc.items.len(), 1);
+        match &doc.items[0] {
+            DocItem::ExportMacro(def) => {
+                assert!(def.partial);
+                assert_eq!(def.name.name, "render");
+                assert_eq!(def.params.len(), 1);
+            }
+            other => panic!("expected exported partial macro, got {:?}", other),
         }
     }
 

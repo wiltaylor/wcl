@@ -108,6 +108,7 @@ page wdoc_drawing_shapes {
                 }
 
                 paragraph p_t1 { content = "A text label. As a child of another shape with no explicit position or size, it fills the parent's inner box and is centered — this is the typical pattern for labelling rects, circles, and widgets." }
+                paragraph p_t2 { content = "For inline layout, positioned text can omit <code>width</code> and <code>height</code>. WDoc resolves a natural size with <code>measure_text(...)</code>, returning <code>width</code>, <code>height</code>, and <code>baseline</code>. The fallback measurement is deterministic and approximate because it does not use browser font metrics." }
 
                 data_table tbl_text {
                     caption = "text-specific attributes"
@@ -128,6 +129,11 @@ page wdoc_drawing_shapes {
                 code ct1 {
                     language = "wcl"
                     content = "// Standalone label\ntext label {\n    x = 50, y = 100, width = 240, height = 50\n    content = \"Section heading\\nToken preview\"\n    font_size = 16\n    font_family = \"Inter, system-ui, sans-serif\"\n    font_weight = \"600\"\n    font_style = \"italic\"\n    line_height = 1.5\n    text_decoration = \"underline\"\n    letter_spacing = \"0.02em\"\n    anchor = \"start\"\n}"
+                }
+
+                code ct2 {
+                    language = "wcl"
+                    content = "let label_size = measure_text({\n    content = \"Inline text\"\n    font_family = \"Inter, system-ui, sans-serif\"\n    font_size = 14\n    font_weight = \"400\"\n    font_style = \"normal\"\n    letter_spacing = \"0\"\n})\n\ntext label {\n    x = 20\n    y = 20\n    content = \"Inline text\"\n    font_size = 14\n}\n\nimage icon {\n    x = 20 + label_size.width + 8\n    y = 18\n    width = 16\n    height = 16\n    src = \"assets/icon.png\"\n}"
                 }
             }
         }

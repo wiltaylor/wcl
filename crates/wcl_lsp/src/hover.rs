@@ -508,6 +508,7 @@ mod tests {
         // Test hover_macro_def directly with a constructed MacroDef
         let md = MacroDef {
             decorators: vec![],
+            partial: false,
             kind: MacroKind::Function,
             name: Ident {
                 name: "greet".to_string(),

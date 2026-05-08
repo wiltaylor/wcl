@@ -54,6 +54,16 @@ fn doc_item_symbol(item: &DocItem, rope: &Rope) -> Option<DocumentSymbol> {
             selection_range: span_to_lsp_range(el.name.span, rope),
             children: None,
         }),
+        DocItem::ExportMacro(m) => Some(DocumentSymbol {
+            name: m.name.name.clone(),
+            detail: Some("export macro".to_string()),
+            kind: SymbolKind::FUNCTION,
+            tags: None,
+            deprecated: None,
+            range: span_to_lsp_range(m.span, rope),
+            selection_range: span_to_lsp_range(m.name.span, rope),
+            children: None,
+        }),
         DocItem::ReExport(re) => Some(DocumentSymbol {
             name: re.name.name.clone(),
             detail: Some("export".to_string()),

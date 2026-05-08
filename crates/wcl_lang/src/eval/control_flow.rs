@@ -1,6 +1,7 @@
 use crate::lang::ast::*;
 use crate::lang::diagnostic::DiagnosticBag;
 use crate::lang::span::Span;
+use std::collections::HashMap;
 
 use crate::eval::value::Value;
 
@@ -21,6 +22,7 @@ pub struct ControlFlowExpander {
     /// pass (after block evaluation) runs with this disabled and
     /// promotes any remaining failures to a real error (E105).
     tolerate_missing: bool,
+    local_scopes: Vec<HashMap<String, Value>>,
 }
 
 impl ControlFlowExpander {
@@ -31,6 +33,7 @@ impl ControlFlowExpander {
             total_iterations: 0,
             diagnostics: DiagnosticBag::new(),
             tolerate_missing: false,
+            local_scopes: Vec::new(),
         }
     }
 
@@ -50,6 +53,8 @@ impl ControlFlowExpander {
         doc: &mut Document,
         eval_expr: &dyn Fn(&Expr) -> Result<Value, String>,
     ) {
+        self.local_scopes.clear();
+        self.local_scopes.push(HashMap::new());
         let original_items = std::mem::take(&mut doc.items);
         let mut new_items: Vec<DocItem> = Vec::new();
 
@@ -68,6 +73,7 @@ impl ControlFlowExpander {
         }
 
         doc.items = new_items;
+        self.local_scopes.pop();
     }
 
     /// Expand a single body item, returning the list of items it expands to.
@@ -92,18 +98,39 @@ impl ControlFlowExpander {
         match item {
             BodyItem::ForLoop(for_loop) => self.expand_for_loop(&for_loop, eval_expr, depth),
             BodyItem::Conditional(cond) => self.expand_conditional(&cond, eval_expr, depth),
+            BodyItem::LetBinding(lb) => {
+                let expr = self.expr_with_local_bindings(&lb.value);
+                if let Ok(value) = eval_expr(&expr) {
+                    if let Some(scope) = self.local_scopes.last_mut() {
+                        scope.insert(lb.name.name.clone(), value);
+                    }
+                }
+                vec![BodyItem::LetBinding(lb)]
+            }
             BodyItem::Block(mut block) => {
                 // Recurse into block body
                 let original_body = std::mem::take(&mut block.body);
                 let mut new_body = Vec::new();
+                self.local_scopes.push(HashMap::new());
                 for child in original_body {
                     new_body.extend(self.expand_single_item(child, eval_expr, depth));
                 }
+                self.local_scopes.pop();
                 block.body = new_body;
                 vec![BodyItem::Block(block)]
             }
             other => vec![other],
         }
+    }
+
+    fn expr_with_local_bindings(&self, expr: &Expr) -> Expr {
+        let mut expr = expr.clone();
+        for scope in self.local_scopes.iter().rev() {
+            for (name, value) in scope {
+                substitute_in_expr(&mut expr, name, value, None, 0);
+            }
+        }
+        expr
     }
 
     /// Expand a for loop by evaluating the iterable and replicating the body.
@@ -124,7 +151,8 @@ impl ControlFlowExpander {
         }
 
         // Evaluate the iterable expression
-        let iterable_value = match eval_expr(&for_loop.iterable) {
+        let iterable_expr = self.expr_with_local_bindings(&for_loop.iterable);
+        let iterable_value = match eval_expr(&iterable_expr) {
             Ok(v) => v,
             Err(e) => {
                 if self.tolerate_missing && is_missing_name_error(&e) {
@@ -224,9 +252,13 @@ impl ControlFlowExpander {
         depth: u32,
     ) -> Vec<BodyItem> {
         // Evaluate the condition
-        let condition_value = match eval_expr(&cond.condition) {
+        let condition_expr = self.expr_with_local_bindings(&cond.condition);
+        let condition_value = match eval_expr(&condition_expr) {
             Ok(v) => v,
             Err(e) => {
+                if self.tolerate_missing && is_missing_name_error(&e) {
+                    return vec![BodyItem::Conditional(cond.clone())];
+                }
                 self.diagnostics
                     .error(format!("error evaluating if condition: {}", e), cond.span);
                 return vec![];
@@ -832,6 +864,71 @@ mod tests {
             BodyItem::Attribute(attr) => assert_eq!(attr.name.name, "else_attr"),
             _ => panic!("expected attribute"),
         }
+    }
+
+    #[test]
+    fn expand_conditional_uses_block_local_let() {
+        let mut expander = ControlFlowExpander::new(32, 10000);
+        let mut doc = Document {
+            items: vec![DocItem::Body(BodyItem::Block(Block {
+                decorators: vec![],
+                partial: false,
+                kind: make_ident("container"),
+                inline_id: Some(InlineId::Literal(IdentifierLit {
+                    value: "page".to_string(),
+                    span: dummy_span(),
+                })),
+                arrow_target: None,
+                inline_args: vec![],
+                body: vec![
+                    BodyItem::LetBinding(LetBinding {
+                        decorators: vec![],
+                        partial: false,
+                        name: make_ident("show"),
+                        value: Expr::BoolLit(true, dummy_span()),
+                        trivia: Trivia::empty(),
+                        span: dummy_span(),
+                    }),
+                    BodyItem::Conditional(Conditional {
+                        condition: Expr::Ident(make_ident("show")),
+                        then_body: vec![BodyItem::Attribute(Attribute {
+                            decorators: vec![],
+                            name: make_ident("visible"),
+                            value: Expr::BoolLit(true, dummy_span()),
+                            assign_op: crate::lang::ast::AssignOp::Assign,
+                            trivia: Trivia::empty(),
+                            span: dummy_span(),
+                        })],
+                        else_branch: None,
+                        trivia: Trivia::empty(),
+                        span: dummy_span(),
+                    }),
+                ],
+                text_content: None,
+                trivia: Trivia::empty(),
+                span: dummy_span(),
+            }))],
+            trivia: Trivia::empty(),
+            span: dummy_span(),
+        };
+
+        let eval = |expr: &Expr| -> Result<Value, String> {
+            match expr {
+                Expr::BoolLit(b, _) => Ok(Value::Bool(*b)),
+                _ => Err("unsupported".to_string()),
+            }
+        };
+
+        expander.expand(&mut doc, &eval);
+
+        let DocItem::Body(BodyItem::Block(block)) = &doc.items[0] else {
+            panic!("expected block");
+        };
+        assert_eq!(block.body.len(), 2);
+        assert!(matches!(
+            &block.body[1],
+            BodyItem::Attribute(attr) if attr.name.name == "visible"
+        ));
     }
 
     #[test]

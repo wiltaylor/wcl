@@ -304,6 +304,14 @@ fn collect_name_refs(
                 }
                 collect_in_expr(&el.value, name, uri, rope, out);
             }
+            DocItem::ExportMacro(m) => {
+                if m.name.name == name {
+                    out.push(Location {
+                        uri: uri.clone(),
+                        range: span_to_lsp_range(m.name.span, rope),
+                    });
+                }
+            }
             DocItem::ReExport(re) => {
                 if re.name.name == name {
                     out.push(Location {
@@ -340,6 +348,14 @@ fn collect_in_doc_item(
                 });
             }
             collect_in_expr(&el.value, name, uri, rope, out);
+        }
+        DocItem::ExportMacro(m) => {
+            if m.name.name == name {
+                out.push(Location {
+                    uri: uri.clone(),
+                    range: span_to_lsp_range(m.name.span, rope),
+                });
+            }
         }
         DocItem::ReExport(re) => {
             if re.name.name == name {

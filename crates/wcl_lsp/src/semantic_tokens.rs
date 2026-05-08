@@ -81,6 +81,9 @@ impl AstContext {
                     self.let_names.insert(el.name.span.start);
                     self.collect_expr(&el.value);
                 }
+                ast::DocItem::ExportMacro(m) => {
+                    self.fn_call_names.insert(m.name.span.start);
+                }
                 ast::DocItem::Namespace(ns) => {
                     for seg in &ns.path {
                         self.namespace_names.insert(seg.span.start);
@@ -88,6 +91,9 @@ impl AstContext {
                     for inner in &ns.items {
                         match inner {
                             ast::DocItem::Body(body_item) => self.collect_body(body_item),
+                            ast::DocItem::ExportMacro(m) => {
+                                self.fn_call_names.insert(m.name.span.start);
+                            }
                             ast::DocItem::Namespace(_) | ast::DocItem::Use(_) => {
                                 // Nested namespaces/use — handled recursively by collect_from_doc
                             }

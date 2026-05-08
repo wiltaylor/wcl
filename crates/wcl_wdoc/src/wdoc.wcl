@@ -9,6 +9,7 @@
 // Registered globally (outside the wdoc namespace) so widget lambda bodies can
 // reference it as bare `attr_or` without qualification.
 declare attr_or(block: any, key: string, default: any) -> any
+declare measure_text(text: any) -> map(string, any)
 
 // Core helper for recursive templates. Returns direct child BlockRefs, optionally
 // filtered by exact block kind, e.g. children(item, "UiMenuItem").
@@ -195,6 +196,7 @@ namespace wdoc {
     declare italic(text: string) -> string
     declare link(text: string, url: string) -> string
     declare icon(name: string, size: string, color: string) -> string
+    declare measure_text(text: any) -> map(string, any)
 
     // --- Template rendering functions ---
 

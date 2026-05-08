@@ -1037,6 +1037,217 @@ page home {
     assert!(output.join("images/deep/hero.png").exists());
 }
 
+#[test]
+fn wdoc_build_expands_imported_macro_inside_diagram_body() {
+    let dir = tempdir().expect("tempdir");
+    let pages_dir = dir.path().join("pages");
+    std::fs::create_dir_all(&pages_dir).expect("create pages dir");
+
+    let site = r#"
+import <wdoc.wcl>
+import "./pages/page.wcl"
+use wdoc::{doc, section}
+
+doc my_docs {
+    title = "Macro Docs"
+    section overview "Overview" {}
+}
+"#;
+
+    let renderers = r##"
+import <wdoc.wcl>
+use wdoc::draw::{group, rect, text}
+
+export macro action_button(label_text, xpos) {
+    group button {
+        x = xpos
+        y = 20
+        width = 120
+        height = 36
+
+        rect bg {
+            x = 0
+            y = 0
+            width = 120
+            height = 36
+            rx = 6
+            fill = "#5E81AC"
+        }
+
+        text caption {
+            x = 0
+            y = 0
+            width = 120
+            height = 36
+            content = label_text
+            fill = "#fff"
+        }
+    }
+}
+"##;
+
+    let page = r#"
+import <wdoc.wcl>
+import "./renderers.wcl"
+use wdoc::{page, layout}
+use wdoc::draw::{diagram}
+
+page home {
+    section = "my_docs.overview"
+    title = "Home"
+
+    layout {
+        let button_text = "Preview"
+
+        diagram macro_diagram {
+            width = 180
+            height = 80
+
+            action_button(button_text, 30)
+        }
+    }
+}
+"#;
+    let input = dir.path().join("site.wcl");
+    std::fs::write(&input, site).expect("write site file");
+    std::fs::write(pages_dir.join("renderers.wcl"), renderers).expect("write renderer file");
+    std::fs::write(pages_dir.join("page.wcl"), page).expect("write page file");
+    let output = dir.path().join("out");
+
+    Command::cargo_bin("wcl")
+        .unwrap()
+        .args([
+            "wdoc",
+            "build",
+            input.to_str().unwrap(),
+            "--output",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let html = std::fs::read_to_string(output.join("home.html")).expect("read rendered page");
+    assert!(html.contains("<g transform=\"translate(30,20)\""));
+    assert!(html.contains(">Preview</text>"));
+    assert!(html.contains("fill=\"#5E81AC\""));
+}
+
+#[test]
+fn wdoc_build_expands_imported_partial_macros_inside_diagram_body() {
+    let dir = tempdir().expect("tempdir");
+    let pages_dir = dir.path().join("pages");
+    std::fs::create_dir_all(&pages_dir).expect("create pages dir");
+
+    let site = r#"
+import <wdoc.wcl>
+import "./pages/page.wcl"
+use wdoc::{doc, section}
+
+doc my_docs {
+    title = "Partial Macro Docs"
+    section overview "Overview" {}
+}
+"#;
+
+    let renderer_a = r##"
+import <wdoc.wcl>
+use wdoc::draw::{rect, text}
+
+export partial macro render_example(label_text) {
+    if label_text == "Preview" {
+        rect first {
+            x = 10
+            y = 12
+            width = 70
+            height = 30
+            fill = "#BF616A"
+        }
+
+        text first_label {
+            x = 16
+            y = 18
+            width = 60
+            height = 20
+            content = label_text
+            fill = "#fff"
+        }
+    }
+}
+"##;
+
+    let renderer_b = r##"
+import <wdoc.wcl>
+use wdoc::draw::{rect, text}
+
+export partial macro render_example(label_text) {
+    rect second {
+        x = 90
+        y = 12
+        width = 70
+        height = 30
+        fill = "#A3BE8C"
+    }
+
+    text second_label {
+        x = 96
+        y = 18
+        width = 60
+        height = 20
+        content = label_text
+        fill = "#111"
+    }
+}
+"##;
+
+    let page = r#"
+import <wdoc.wcl>
+import "./renderer_a.wcl"
+import "./renderer_b.wcl"
+use wdoc::{page, layout}
+use wdoc::draw::{diagram}
+
+page home {
+    section = "my_docs.overview"
+    title = "Home"
+
+    layout {
+        let button_text = "Preview"
+
+        diagram macro_diagram {
+            width = 180
+            height = 70
+
+            render_example(button_text)
+        }
+    }
+}
+"#;
+    let input = dir.path().join("site.wcl");
+    std::fs::write(&input, site).expect("write site file");
+    std::fs::write(pages_dir.join("renderer_a.wcl"), renderer_a).expect("write renderer a file");
+    std::fs::write(pages_dir.join("renderer_b.wcl"), renderer_b).expect("write renderer b file");
+    std::fs::write(pages_dir.join("page.wcl"), page).expect("write page file");
+    let output = dir.path().join("out");
+
+    Command::cargo_bin("wcl")
+        .unwrap()
+        .args([
+            "wdoc",
+            "build",
+            input.to_str().unwrap(),
+            "--output",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let html = std::fs::read_to_string(output.join("home.html")).expect("read rendered page");
+    let first = html.find("fill=\"#BF616A\"").expect("first fragment");
+    let second = html.find("fill=\"#A3BE8C\"").expect("second fragment");
+    assert!(first < second);
+    assert!(html.matches(">Preview</text>").count() >= 2);
+}
+
 // ===========================================================================
 // Multi-step workflows
 // ===========================================================================

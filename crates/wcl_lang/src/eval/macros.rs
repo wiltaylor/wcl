@@ -1,4 +1,5 @@
 use crate::eval::value::Value;
+use crate::eval::NamespaceAliases;
 use crate::lang::ast::*;
 use crate::lang::diagnostic::DiagnosticBag;
 use crate::lang::span::Span;
@@ -12,6 +13,8 @@ use std::collections::HashMap;
 pub struct MacroRegistry {
     /// Function macros keyed by name.
     pub function_macros: HashMap<String, MacroDef>,
+    /// Partial function macro fragments keyed by name, in source/import order.
+    pub partial_function_macros: HashMap<String, Vec<MacroDef>>,
     /// Attribute macros keyed by name (without the `@` prefix).
     pub attribute_macros: HashMap<String, MacroDef>,
 }
@@ -31,44 +34,11 @@ impl MacroRegistry {
 
         for item in doc.items.drain(..) {
             match item {
-                DocItem::Body(BodyItem::MacroDef(ref def)) => {
-                    let name = def.name.name.clone();
-                    let span = def.span;
-
-                    match def.kind {
-                        MacroKind::Function => {
-                            if let std::collections::hash_map::Entry::Vacant(e) =
-                                self.function_macros.entry(name.clone())
-                            {
-                                if let DocItem::Body(BodyItem::MacroDef(def)) = item {
-                                    e.insert(def);
-                                }
-                                continue;
-                            } else {
-                                diagnostics.error(
-                                    format!("duplicate function macro definition: '{}'", name),
-                                    span,
-                                );
-                            }
-                        }
-                        MacroKind::Attribute => {
-                            if let std::collections::hash_map::Entry::Vacant(e) =
-                                self.attribute_macros.entry(name.clone())
-                            {
-                                if let DocItem::Body(BodyItem::MacroDef(def)) = item {
-                                    e.insert(def);
-                                }
-                                continue;
-                            } else {
-                                diagnostics.error(
-                                    format!("duplicate attribute macro definition: '@{}'", name),
-                                    span,
-                                );
-                            }
-                        }
-                    }
-                    // If we got here, it was a duplicate — retain the item for error reporting
-                    // but the original is already registered so we just drop the duplicate
+                DocItem::Body(BodyItem::MacroDef(def)) => {
+                    let _ = self.collect_macro_def(def, diagnostics);
+                }
+                DocItem::ExportMacro(def) => {
+                    let _ = self.collect_macro_def(def, diagnostics);
                 }
                 _ => {
                     retained_items.push(item);
@@ -79,9 +49,96 @@ impl MacroRegistry {
         doc.items = retained_items;
     }
 
+    fn collect_macro_def(
+        &mut self,
+        def: MacroDef,
+        diagnostics: &mut DiagnosticBag,
+    ) -> Result<(), MacroDef> {
+        let name = def.name.name.clone();
+        let span = def.span;
+
+        match def.kind {
+            MacroKind::Function if def.partial => {
+                if self.function_macros.contains_key(&name) {
+                    diagnostics.error(
+                        format!(
+                            "cannot mix partial and non-partial macro definitions for '{}'",
+                            name
+                        ),
+                        span,
+                    );
+                    return Err(def);
+                }
+                if let Some(existing) = self
+                    .partial_function_macros
+                    .get(&name)
+                    .and_then(|v| v.first())
+                {
+                    if !macro_signature_matches(existing, &def) {
+                        diagnostics.error(
+                            format!("partial macro signature mismatch for '{}'", name),
+                            span,
+                        );
+                        return Err(def);
+                    }
+                }
+                self.partial_function_macros
+                    .entry(name)
+                    .or_default()
+                    .push(def);
+                Ok(())
+            }
+            MacroKind::Function => {
+                if self.partial_function_macros.contains_key(&name) {
+                    diagnostics.error(
+                        format!(
+                            "cannot mix partial and non-partial macro definitions for '{}'",
+                            name
+                        ),
+                        span,
+                    );
+                    return Err(def);
+                }
+                if let std::collections::hash_map::Entry::Vacant(e) =
+                    self.function_macros.entry(name.clone())
+                {
+                    e.insert(def);
+                    Ok(())
+                } else {
+                    diagnostics.error(
+                        format!("duplicate function macro definition: '{}'", name),
+                        span,
+                    );
+                    Err(def)
+                }
+            }
+            MacroKind::Attribute => {
+                if def.partial {
+                    diagnostics.error(
+                        format!("partial attribute macro '@{}' is not supported", name),
+                        span,
+                    );
+                    return Err(def);
+                }
+                if let std::collections::hash_map::Entry::Vacant(e) =
+                    self.attribute_macros.entry(name.clone())
+                {
+                    e.insert(def);
+                    Ok(())
+                } else {
+                    diagnostics.error(
+                        format!("duplicate attribute macro definition: '@{}'", name),
+                        span,
+                    );
+                    Err(def)
+                }
+            }
+        }
+    }
+
     /// Check whether a function macro with the given name is registered.
     pub fn has_function_macro(&self, name: &str) -> bool {
-        self.function_macros.contains_key(name)
+        self.function_macros.contains_key(name) || self.partial_function_macros.contains_key(name)
     }
 
     /// Check whether an attribute macro with the given name is registered.
@@ -90,22 +147,123 @@ impl MacroRegistry {
     }
 }
 
+fn macro_signature_matches(a: &MacroDef, b: &MacroDef) -> bool {
+    macro_signature_key(a) == macro_signature_key(b)
+}
+
+fn macro_signature_key(def: &MacroDef) -> Vec<(String, Option<String>, Option<String>)> {
+    def.params
+        .iter()
+        .map(|param| {
+            (
+                param.name.name.clone(),
+                param.type_constraint.as_ref().map(type_expr_key),
+                param.default.as_ref().map(expr_key),
+            )
+        })
+        .collect()
+}
+
+fn type_expr_key(type_expr: &TypeExpr) -> String {
+    match type_expr {
+        TypeExpr::String(_) => "string".to_string(),
+        TypeExpr::I8(_) => "i8".to_string(),
+        TypeExpr::U8(_) => "u8".to_string(),
+        TypeExpr::I16(_) => "i16".to_string(),
+        TypeExpr::U16(_) => "u16".to_string(),
+        TypeExpr::I32(_) => "i32".to_string(),
+        TypeExpr::U32(_) => "u32".to_string(),
+        TypeExpr::I64(_) => "i64".to_string(),
+        TypeExpr::U64(_) => "u64".to_string(),
+        TypeExpr::I128(_) => "i128".to_string(),
+        TypeExpr::U128(_) => "u128".to_string(),
+        TypeExpr::F32(_) => "f32".to_string(),
+        TypeExpr::F64(_) => "f64".to_string(),
+        TypeExpr::Date(_) => "date".to_string(),
+        TypeExpr::Duration(_) => "duration".to_string(),
+        TypeExpr::Bool(_) => "bool".to_string(),
+        TypeExpr::Null(_) => "null".to_string(),
+        TypeExpr::Any(_) => "any".to_string(),
+        TypeExpr::Identifier(_) => "identifier".to_string(),
+        TypeExpr::List(inner, _) => format!("list({})", type_expr_key(inner)),
+        TypeExpr::Map(k, v, _) => format!("map({}, {})", type_expr_key(k), type_expr_key(v)),
+        TypeExpr::Set(inner, _) => format!("set({})", type_expr_key(inner)),
+        TypeExpr::Ref(path, _) => format!("ref({})", string_lit_key(path)),
+        TypeExpr::Union(types, _) => {
+            let parts: Vec<String> = types.iter().map(type_expr_key).collect();
+            format!("union({})", parts.join(", "))
+        }
+        TypeExpr::Symbol(_) => "symbol".to_string(),
+        TypeExpr::StructType(ident, _) => ident.name.clone(),
+        TypeExpr::Pattern(_) => "pattern".to_string(),
+    }
+}
+
+fn expr_key(expr: &Expr) -> String {
+    use crate::fmt::format_document;
+    use crate::lang::trivia::Trivia;
+
+    let doc = Document {
+        items: vec![DocItem::Body(BodyItem::Attribute(Attribute {
+            decorators: vec![],
+            name: Ident {
+                name: "__default".to_string(),
+                span: Span::dummy(),
+            },
+            value: expr.clone(),
+            assign_op: AssignOp::Assign,
+            trivia: Trivia::default(),
+            span: Span::dummy(),
+        }))],
+        trivia: Trivia::default(),
+        span: Span::dummy(),
+    };
+    format_document(&doc)
+        .trim()
+        .strip_prefix("__default = ")
+        .unwrap_or("")
+        .to_string()
+}
+
+fn string_lit_key(lit: &StringLit) -> String {
+    lit.parts
+        .iter()
+        .map(|part| match part {
+            StringPart::Literal(s) => s.clone(),
+            StringPart::Interpolation(expr) => format!("${{{}}}", expr_key(expr)),
+        })
+        .collect::<Vec<_>>()
+        .join("")
+}
+
 /// Expands macro calls in a WCL document.
 ///
 /// Iterates until no macro calls remain (fixed-point expansion), with a
 /// configurable depth limit to prevent infinite expansion from recursive macros.
 pub struct MacroExpander<'a> {
     registry: &'a MacroRegistry,
+    namespace_aliases: NamespaceAliases,
     expansion_stack: Vec<String>,
+    next_hygiene_id: u64,
     max_depth: u32,
     diagnostics: DiagnosticBag,
 }
 
 impl<'a> MacroExpander<'a> {
     pub fn new(registry: &'a MacroRegistry, max_depth: u32) -> Self {
+        Self::with_namespace_aliases(registry, NamespaceAliases::default(), max_depth)
+    }
+
+    pub fn with_namespace_aliases(
+        registry: &'a MacroRegistry,
+        namespace_aliases: NamespaceAliases,
+        max_depth: u32,
+    ) -> Self {
         MacroExpander {
             registry,
+            namespace_aliases,
             expansion_stack: Vec::new(),
+            next_hygiene_id: 0,
             max_depth,
             diagnostics: DiagnosticBag::new(),
         }
@@ -230,21 +388,24 @@ impl<'a> MacroExpander<'a> {
     /// Returns `None` if the macro is not found or recursion is detected.
     fn expand_function_macro(&mut self, call: &MacroCall) -> Option<Vec<BodyItem>> {
         let name = &call.name.name;
+        let resolved_name = self.resolve_function_macro_name(name);
 
-        let def = match self.registry.function_macros.get(name) {
-            Some(def) => def,
-            None => {
+        let defs: Vec<MacroDef> =
+            if let Some(def) = self.registry.function_macros.get(&resolved_name) {
+                vec![def.clone()]
+            } else if let Some(defs) = self.registry.partial_function_macros.get(&resolved_name) {
+                defs.clone()
+            } else {
                 self.diagnostics.error_with_code(
                     format!("undefined macro: '{}'", name),
                     call.span,
                     "E020",
                 );
                 return None;
-            }
-        };
+            };
 
         // Check for recursion
-        if self.expansion_stack.contains(name) {
+        if self.expansion_stack.contains(&resolved_name) {
             self.diagnostics.error_with_code(
                 format!(
                     "recursive macro expansion detected: '{}' (stack: {})",
@@ -270,33 +431,61 @@ impl<'a> MacroExpander<'a> {
             return None;
         }
 
-        // Bind parameters
-        let param_bindings = match self.bind_params(&def.params, &call.args, call.span) {
-            Ok(bindings) => bindings,
-            Err(()) => return None,
-        };
+        self.expansion_stack.push(resolved_name.clone());
+        let mut expanded = Vec::new();
+        for (fragment_idx, def) in defs.iter().enumerate() {
+            let param_bindings = match self.bind_params(&def.params, &call.args, call.span) {
+                Ok(bindings) => bindings,
+                Err(()) => {
+                    self.expansion_stack.pop();
+                    return None;
+                }
+            };
 
-        // Clone and substitute
-        let body = match &def.body {
-            MacroBody::Function(items) => items.clone(),
-            MacroBody::Attribute(_) => {
-                self.diagnostics.error_with_code(
-                    format!("cannot call attribute macro '{}' as a function macro", name),
-                    call.span,
-                    "E023",
-                );
-                return None;
+            let mut body = match &def.body {
+                MacroBody::Function(items) => items.clone(),
+                MacroBody::Attribute(_) => {
+                    self.diagnostics.error_with_code(
+                        format!("cannot call attribute macro '{}' as a function macro", name),
+                        call.span,
+                        "E023",
+                    );
+                    self.expansion_stack.pop();
+                    return None;
+                }
+            };
+
+            if def.partial {
+                self.apply_local_let_hygiene(&mut body, &resolved_name, fragment_idx);
             }
-        };
-
-        let expanded = self.substitute_params(&body, &param_bindings);
-
-        self.expansion_stack.push(name.clone());
+            let fragment = self.substitute_params(&body, &param_bindings);
+            expanded.extend(fragment);
+        }
         // The expanded items may contain further macro calls, which will be
         // handled by the next iteration of the fixed-point loop.
         self.expansion_stack.pop();
 
         Some(expanded)
+    }
+
+    fn resolve_function_macro_name(&self, name: &str) -> String {
+        if self.registry.function_macros.contains_key(name)
+            || self.registry.partial_function_macros.contains_key(name)
+        {
+            return name.to_string();
+        }
+        self.namespace_aliases
+            .aliases
+            .get(name)
+            .filter(|qualified| {
+                self.registry.function_macros.contains_key(*qualified)
+                    || self
+                        .registry
+                        .partial_function_macros
+                        .contains_key(*qualified)
+            })
+            .cloned()
+            .unwrap_or_else(|| name.to_string())
     }
 
     /// Apply any attribute macros found in a block's decorators.
@@ -1242,6 +1431,30 @@ impl<'a> MacroExpander<'a> {
         }
     }
 
+    fn apply_local_let_hygiene(
+        &mut self,
+        body: &mut [BodyItem],
+        macro_name: &str,
+        fragment_idx: usize,
+    ) {
+        let mut names = Vec::new();
+        collect_local_let_names(body, &mut names);
+        if names.is_empty() {
+            return;
+        }
+
+        let id = self.next_hygiene_id;
+        self.next_hygiene_id += 1;
+        let safe_macro = macro_name.replace("::", "_").replace('-', "_");
+        let mut renames = HashMap::new();
+        for name in names {
+            renames.entry(name.clone()).or_insert_with(|| {
+                format!("__wcl_partial_macro_{safe_macro}_{fragment_idx}_{id}_{name}")
+            });
+        }
+        rename_local_lets_in_body(body, &renames);
+    }
+
     /// Substitute macro parameters in a list of body items.
     ///
     /// Deep clones the body items, replacing `Ident` references that match
@@ -1272,6 +1485,10 @@ impl<'a> MacroExpander<'a> {
                     .iter()
                     .map(|e| self.substitute_expr(e, params))
                     .collect();
+                new_block.inline_id = block
+                    .inline_id
+                    .as_ref()
+                    .map(|id| self.substitute_inline_id(id, params));
                 // Substitute in text content
                 if let Some(ref tc) = block.text_content {
                     new_block.text_content = Some(self.substitute_string_lit(tc, params));
@@ -1337,6 +1554,23 @@ impl<'a> MacroExpander<'a> {
             ElseBranch::Else(body, trivia, span) => {
                 ElseBranch::Else(self.substitute_params(body, params), trivia.clone(), *span)
             }
+        }
+    }
+
+    fn substitute_inline_id(&self, id: &InlineId, params: &HashMap<String, Expr>) -> InlineId {
+        match id {
+            InlineId::Literal(_) => id.clone(),
+            InlineId::Interpolated(parts) => InlineId::Interpolated(
+                parts
+                    .iter()
+                    .map(|part| match part {
+                        StringPart::Literal(s) => StringPart::Literal(s.clone()),
+                        StringPart::Interpolation(expr) => {
+                            StringPart::Interpolation(Box::new(self.substitute_expr(expr, params)))
+                        }
+                    })
+                    .collect(),
+            ),
         }
     }
 
@@ -1457,6 +1691,181 @@ impl<'a> MacroExpander<'a> {
     }
 }
 
+fn collect_local_let_names(items: &[BodyItem], names: &mut Vec<String>) {
+    for item in items {
+        match item {
+            BodyItem::LetBinding(lb) => names.push(lb.name.name.clone()),
+            BodyItem::Block(block) => collect_local_let_names(&block.body, names),
+            BodyItem::ForLoop(for_loop) => collect_local_let_names(&for_loop.body, names),
+            BodyItem::Conditional(cond) => {
+                collect_local_let_names(&cond.then_body, names);
+                collect_local_let_names_in_else(&cond.else_branch, names);
+            }
+            _ => {}
+        }
+    }
+}
+
+fn collect_local_let_names_in_else(branch: &Option<ElseBranch>, names: &mut Vec<String>) {
+    match branch {
+        Some(ElseBranch::ElseIf(cond)) => {
+            collect_local_let_names(&cond.then_body, names);
+            collect_local_let_names_in_else(&cond.else_branch, names);
+        }
+        Some(ElseBranch::Else(body, _, _)) => collect_local_let_names(body, names),
+        None => {}
+    }
+}
+
+fn rename_local_lets_in_body(items: &mut [BodyItem], renames: &HashMap<String, String>) {
+    for item in items {
+        match item {
+            BodyItem::Attribute(attr) => rename_expr_idents(&mut attr.value, renames),
+            BodyItem::Block(block) => {
+                for arg in &mut block.inline_args {
+                    rename_expr_idents(arg, renames);
+                }
+                if let Some(text) = &mut block.text_content {
+                    rename_string_lit_idents(text, renames);
+                }
+                rename_local_lets_in_body(&mut block.body, renames);
+            }
+            BodyItem::LetBinding(lb) => {
+                rename_expr_idents(&mut lb.value, renames);
+                if let Some(new_name) = renames.get(&lb.name.name) {
+                    lb.name.name = new_name.clone();
+                }
+            }
+            BodyItem::MacroCall(call) => {
+                for arg in &mut call.args {
+                    match arg {
+                        MacroCallArg::Positional(expr) => rename_expr_idents(expr, renames),
+                        MacroCallArg::Named(_, expr) => rename_expr_idents(expr, renames),
+                    }
+                }
+            }
+            BodyItem::ForLoop(for_loop) => {
+                rename_expr_idents(&mut for_loop.iterable, renames);
+                rename_local_lets_in_body(&mut for_loop.body, renames);
+            }
+            BodyItem::Conditional(cond) => {
+                rename_expr_idents(&mut cond.condition, renames);
+                rename_local_lets_in_body(&mut cond.then_body, renames);
+                rename_local_lets_in_else(&mut cond.else_branch, renames);
+            }
+            BodyItem::Table(table) => {
+                for row in &mut table.rows {
+                    for cell in &mut row.cells {
+                        rename_expr_idents(cell, renames);
+                    }
+                }
+                if let Some(expr) = &mut table.import_expr {
+                    rename_expr_idents(expr, renames);
+                }
+            }
+            BodyItem::Validation(validation) => {
+                for lb in &mut validation.lets {
+                    rename_expr_idents(&mut lb.value, renames);
+                    if let Some(new_name) = renames.get(&lb.name.name) {
+                        lb.name.name = new_name.clone();
+                    }
+                }
+                rename_expr_idents(&mut validation.check, renames);
+                rename_expr_idents(&mut validation.message, renames);
+            }
+            _ => {}
+        }
+    }
+}
+
+fn rename_local_lets_in_else(branch: &mut Option<ElseBranch>, renames: &HashMap<String, String>) {
+    match branch {
+        Some(ElseBranch::ElseIf(cond)) => {
+            rename_expr_idents(&mut cond.condition, renames);
+            rename_local_lets_in_body(&mut cond.then_body, renames);
+            rename_local_lets_in_else(&mut cond.else_branch, renames);
+        }
+        Some(ElseBranch::Else(body, _, _)) => rename_local_lets_in_body(body, renames),
+        None => {}
+    }
+}
+
+fn rename_expr_idents(expr: &mut Expr, renames: &HashMap<String, String>) {
+    match expr {
+        Expr::Ident(ident) => {
+            if let Some(new_name) = renames.get(&ident.name) {
+                ident.name = new_name.clone();
+            }
+        }
+        Expr::StringLit(lit) => rename_string_lit_idents(lit, renames),
+        Expr::List(items, _) => {
+            for item in items {
+                rename_expr_idents(item, renames);
+            }
+        }
+        Expr::Map(entries, _) => {
+            for (_, value) in entries {
+                rename_expr_idents(value, renames);
+            }
+        }
+        Expr::BinaryOp(lhs, _, rhs, _) => {
+            rename_expr_idents(lhs, renames);
+            rename_expr_idents(rhs, renames);
+        }
+        Expr::UnaryOp(_, operand, _) => rename_expr_idents(operand, renames),
+        Expr::Ternary(cond, then_expr, else_expr, _) => {
+            rename_expr_idents(cond, renames);
+            rename_expr_idents(then_expr, renames);
+            rename_expr_idents(else_expr, renames);
+        }
+        Expr::MemberAccess(obj, _, _) => rename_expr_idents(obj, renames),
+        Expr::IndexAccess(obj, idx, _) => {
+            rename_expr_idents(obj, renames);
+            rename_expr_idents(idx, renames);
+        }
+        Expr::FnCall(callee, args, _) => {
+            rename_expr_idents(callee, renames);
+            for arg in args {
+                match arg {
+                    CallArg::Positional(expr) => rename_expr_idents(expr, renames),
+                    CallArg::Named(_, expr) => rename_expr_idents(expr, renames),
+                }
+            }
+        }
+        Expr::Lambda(params, body, _) => {
+            let filtered: HashMap<String, String> = renames
+                .iter()
+                .filter(|(name, _)| !params.iter().any(|param| param.name == **name))
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
+            rename_expr_idents(body, &filtered);
+        }
+        Expr::BlockExpr(lets, body, _) => {
+            for lb in lets {
+                rename_expr_idents(&mut lb.value, renames);
+            }
+            rename_expr_idents(body, renames);
+        }
+        Expr::Paren(inner, _) => rename_expr_idents(inner, renames),
+        Expr::ImportRaw(path, _) => rename_string_lit_idents(path, renames),
+        Expr::ImportTable(args, _) => {
+            rename_string_lit_idents(&mut args.path, renames);
+            if let Some(separator) = &mut args.separator {
+                rename_string_lit_idents(separator, renames);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn rename_string_lit_idents(lit: &mut StringLit, renames: &HashMap<String, String>) {
+    for part in &mut lit.parts {
+        if let StringPart::Interpolation(expr) = part {
+            rename_expr_idents(expr, renames);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1477,6 +1886,7 @@ mod tests {
     fn make_simple_macro_def(name: &str, params: Vec<&str>) -> MacroDef {
         MacroDef {
             decorators: vec![],
+            partial: false,
             kind: MacroKind::Function,
             name: make_ident(name),
             params: params
@@ -1504,6 +1914,7 @@ mod tests {
     fn make_attr_macro_def(name: &str) -> MacroDef {
         MacroDef {
             decorators: vec![],
+            partial: false,
             kind: MacroKind::Attribute,
             name: make_ident(name),
             params: vec![],
@@ -1653,6 +2064,7 @@ mod tests {
     ) -> MacroDef {
         MacroDef {
             decorators: vec![],
+            partial: false,
             kind: MacroKind::Attribute,
             name: make_ident(name),
             params: vec![],
@@ -2743,6 +3155,7 @@ mod tests {
         let mut registry = MacroRegistry::new();
         let macro_def = MacroDef {
             decorators: vec![],
+            partial: false,
             kind: MacroKind::Attribute,
             name: make_ident("secure"),
             params: vec![],

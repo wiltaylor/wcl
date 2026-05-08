@@ -27,6 +27,7 @@ pub struct Document {
 pub enum DocItem {
     Import(Import),
     ExportLet(ExportLet),
+    ExportMacro(MacroDef),
     ReExport(ReExport),
     Body(BodyItem),
     FunctionDecl(FunctionDecl),
@@ -478,6 +479,7 @@ pub struct SymbolMember {
 #[derive(Debug, Clone)]
 pub struct MacroDef {
     pub decorators: Vec<Decorator>,
+    pub partial: bool,
     pub kind: MacroKind,
     pub name: Ident,
     pub params: Vec<MacroParam>,

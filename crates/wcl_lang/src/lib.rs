@@ -600,13 +600,7 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
     let (mut doc, parse_diags) = crate::lang::parse(source, file_id);
     all_diagnostics.extend(parse_diags.into_diagnostics());
 
-    // Phase 2: Macro collection
-    let mut macro_registry = MacroRegistry::new();
-    let mut diag_bag = DiagnosticBag::new();
-    macro_registry.collect(&mut doc, &mut diag_bag);
-    all_diagnostics.extend(diag_bag.into_diagnostics());
-
-    // Phase 3: Import resolution
+    // Phase 2: Import resolution
     let fs: Arc<dyn FileSystem> = options
         .fs
         .clone()
@@ -650,14 +644,14 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
         imported_paths = resolver.loaded_paths().clone();
     }
 
-    // Phase 3a: Resolve import_table() expressions into inline tables
+    // Phase 2a: Resolve import_table() expressions into inline tables
     {
         let mut diag_bag = crate::lang::diagnostic::DiagnosticBag::new();
         crate::eval::resolve_import_tables(&mut doc, fs.as_ref(), &options.root_dir, &mut diag_bag);
         all_diagnostics.extend(diag_bag.into_diagnostics());
     }
 
-    // Phase 3b: Namespace resolution — qualify names, flatten namespace wrappers
+    // Phase 2b: Namespace resolution — qualify names, flatten namespace wrappers
     let namespace_aliases = {
         let mut diag_bag = crate::lang::diagnostic::DiagnosticBag::new();
         let aliases = crate::eval::namespaces::resolve(&mut doc, &mut diag_bag);
@@ -665,8 +659,19 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
         aliases
     };
 
+    // Phase 3: Macro collection, after imports and namespace flattening so
+    // imported and namespaced macros are visible at expansion time.
+    let mut macro_registry = MacroRegistry::new();
+    let mut diag_bag = DiagnosticBag::new();
+    macro_registry.collect(&mut doc, &mut diag_bag);
+    all_diagnostics.extend(diag_bag.into_diagnostics());
+
     // Phase 4: Macro expansion
-    let mut expander = MacroExpander::new(&macro_registry, options.max_macro_depth);
+    let mut expander = MacroExpander::with_namespace_aliases(
+        &macro_registry,
+        namespace_aliases.clone(),
+        options.max_macro_depth,
+    );
     expander.expand(&mut doc);
     all_diagnostics.extend(expander.into_diagnostics().into_diagnostics());
 
@@ -780,6 +785,27 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
     });
     all_diagnostics.extend(cf_expander.into_diagnostics().into_diagnostics());
 
+    // Expand any macro calls that were produced or preserved by control-flow
+    // expansion, then run tolerant control-flow once more for macro-emitted
+    // if/for items.
+    let mut post_cf_macro_expander = MacroExpander::with_namespace_aliases(
+        &macro_registry,
+        namespace_aliases.clone(),
+        options.max_macro_depth,
+    );
+    post_cf_macro_expander.expand(&mut doc);
+    all_diagnostics.extend(post_cf_macro_expander.into_diagnostics().into_diagnostics());
+    let mut post_macro_cf_expander =
+        ControlFlowExpander::new(options.max_loop_depth, options.max_iterations)
+            .with_tolerate_missing(true);
+    post_macro_cf_expander.expand(&mut doc, &|expr| {
+        pre_eval
+            .borrow_mut()
+            .eval_expr(expr, pre_scope)
+            .map_err(|d| d.message)
+    });
+    all_diagnostics.extend(post_macro_cf_expander.into_diagnostics().into_diagnostics());
+
     // Phase 6: Partial merge
     let mut merger = PartialMerger::new(options.merge_conflict_mode);
     merger.merge(&mut doc);
@@ -871,6 +897,25 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
                 .map_err(|d| d.message)
         });
         all_diagnostics.extend(retry_expander.into_diagnostics().into_diagnostics());
+
+        let mut retry_macro_expander = MacroExpander::with_namespace_aliases(
+            &macro_registry,
+            namespace_aliases.clone(),
+            options.max_macro_depth,
+        );
+        retry_macro_expander.expand(&mut doc);
+        all_diagnostics.extend(retry_macro_expander.into_diagnostics().into_diagnostics());
+
+        let mut retry_post_macro_cf =
+            ControlFlowExpander::new(options.max_loop_depth, options.max_iterations);
+        retry_post_macro_cf.expand(&mut doc, &|expr| {
+            eval_cell
+                .borrow_mut()
+                .eval_expr(expr, module_scope)
+                .map_err(|d| d.message)
+        });
+        all_diagnostics.extend(retry_post_macro_cf.into_diagnostics().into_diagnostics());
+
         // Drain the old evaluator's diagnostics (accumulated during the
         // retry's eval_expr callbacks) before discarding it.
         let retry_eval_diags = eval_cell.into_inner().into_diagnostics();
@@ -4663,5 +4708,275 @@ endpoint "api" { path = "/api" }
 "#;
         let doc = parse(source, opts);
         assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+    }
+
+    #[test]
+    fn imported_export_macro_expands_inside_nested_block_body() {
+        let mut fs = InMemoryFs::new();
+        fs.add_file(
+            std::path::PathBuf::from("/project/renderers.wcl"),
+            r#"
+export macro button(label) {
+    rect button {
+        text caption {
+            content = label
+        }
+    }
+}
+"#,
+        );
+        let opts = ParseOptions {
+            root_dir: std::path::PathBuf::from("/project"),
+            fs: Some(std::sync::Arc::new(fs)),
+            ..Default::default()
+        };
+        let source = r#"
+import "./renderers.wcl"
+let cta_label = "Save"
+diagram screen {
+    button(cta_label)
+}
+"#;
+        let doc = parse(source, opts);
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+
+        let Value::BlockRef(diagram) = doc.values.get("screen").expect("screen block") else {
+            panic!("expected screen block ref");
+        };
+        let rect = diagram
+            .children
+            .iter()
+            .find(|child| child.kind == "rect" && child.id.as_deref() == Some("button"))
+            .expect("macro-emitted rect");
+        let text = rect
+            .children
+            .iter()
+            .find(|child| child.kind == "text" && child.id.as_deref() == Some("caption"))
+            .expect("macro-emitted text");
+        assert_eq!(
+            text.attributes.get("content").and_then(Value::as_string),
+            Some("Save")
+        );
+    }
+
+    #[test]
+    fn imported_namespaced_macro_expands_via_use_alias() {
+        let mut fs = InMemoryFs::new();
+        fs.add_file(
+            std::path::PathBuf::from("/project/ui.wcl"),
+            r#"
+namespace ui {
+    export macro badge(label) {
+        text badge {
+            content = label
+        }
+    }
+}
+"#,
+        );
+        let opts = ParseOptions {
+            root_dir: std::path::PathBuf::from("/project"),
+            fs: Some(std::sync::Arc::new(fs)),
+            ..Default::default()
+        };
+        let source = r#"
+import "./ui.wcl"
+use ui::{badge}
+diagram screen {
+    badge("New")
+}
+"#;
+        let doc = parse(source, opts);
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+
+        let Value::BlockRef(diagram) = doc.values.get("screen").expect("screen block") else {
+            panic!("expected screen block ref");
+        };
+        let text = diagram
+            .children
+            .iter()
+            .find(|child| child.kind == "text" && child.id.as_deref() == Some("badge"))
+            .expect("macro-emitted text");
+        assert_eq!(
+            text.attributes.get("content").and_then(Value::as_string),
+            Some("New")
+        );
+    }
+
+    #[test]
+    fn imported_partial_macro_fragments_expand_in_import_order() {
+        let mut fs = InMemoryFs::new();
+        fs.add_file(
+            std::path::PathBuf::from("/project/a.wcl"),
+            r#"
+partial macro render_examples(label_text) {
+    example first {
+        label = label_text
+    }
+}
+"#,
+        );
+        fs.add_file(
+            std::path::PathBuf::from("/project/b.wcl"),
+            r#"
+partial macro render_examples(label_text) {
+    example second {
+        label = label_text
+    }
+}
+"#,
+        );
+        let opts = ParseOptions {
+            root_dir: std::path::PathBuf::from("/project"),
+            fs: Some(std::sync::Arc::new(fs)),
+            ..Default::default()
+        };
+        let doc = parse(
+            r#"
+import "./a.wcl"
+import "./b.wcl"
+let shared_label = "Shared"
+container page {
+    render_examples(shared_label)
+}
+"#,
+            opts,
+        );
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+
+        let Value::BlockRef(container) = doc.values.get("page").expect("page block") else {
+            panic!("expected page block");
+        };
+        let ids: Vec<_> = container
+            .children
+            .iter()
+            .map(|child| child.id.as_deref().unwrap_or(""))
+            .collect();
+        assert_eq!(ids, vec!["first", "second"]);
+        assert!(container.children.iter().all(|child| {
+            child.attributes.get("label").and_then(Value::as_string) == Some("Shared")
+        }));
+    }
+
+    #[test]
+    fn partial_macro_rejects_mixed_regular_macro() {
+        let doc = parse(
+            r#"
+partial macro hook(x) { a {} }
+macro hook(x) { b {} }
+root { hook(1) }
+"#,
+            ParseOptions::default(),
+        );
+        assert!(
+            doc.diagnostics.iter().any(|d| d
+                .message
+                .contains("cannot mix partial and non-partial macro definitions")),
+            "expected mixed partial/non-partial diagnostic, got {:?}",
+            doc.diagnostics
+        );
+    }
+
+    #[test]
+    fn partial_macro_rejects_signature_mismatch() {
+        let doc = parse(
+            r#"
+partial macro hook(x) { a {} }
+partial macro hook(y) { b {} }
+root { hook(1) }
+"#,
+            ParseOptions::default(),
+        );
+        assert!(
+            doc.diagnostics
+                .iter()
+                .any(|d| d.message.contains("partial macro signature mismatch")),
+            "expected signature mismatch diagnostic, got {:?}",
+            doc.diagnostics
+        );
+    }
+
+    #[test]
+    fn partial_macro_local_lets_are_hygienic_across_fragments() {
+        let doc = parse(
+            r#"
+partial macro hook(prefix) {
+    let local = prefix + "-a"
+    item a { value = local }
+}
+
+partial macro hook(prefix) {
+    let local = prefix + "-b"
+    item b { value = local }
+}
+
+let local = "caller"
+container page {
+    hook("x")
+    after = local
+}
+"#,
+            ParseOptions::default(),
+        );
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+
+        let Value::BlockRef(container) = doc.values.get("page").expect("page block") else {
+            panic!("expected page block");
+        };
+        let a = container
+            .children
+            .iter()
+            .find(|child| child.id.as_deref() == Some("a"))
+            .expect("item a");
+        let b = container
+            .children
+            .iter()
+            .find(|child| child.id.as_deref() == Some("b"))
+            .expect("item b");
+        assert_eq!(
+            a.attributes.get("value").and_then(Value::as_string),
+            Some("x-a")
+        );
+        assert_eq!(
+            b.attributes.get("value").and_then(Value::as_string),
+            Some("x-b")
+        );
+        assert_eq!(
+            container.attributes.get("after").and_then(Value::as_string),
+            Some("caller")
+        );
+    }
+
+    #[test]
+    fn normal_macro_call_inside_source_for_expands_at_call_site() {
+        let doc = parse(
+            r#"
+let names = ["a", "b"]
+
+macro emit(name) {
+    item item-${name} {
+        value = name
+    }
+}
+
+container page {
+    for name in names {
+        emit(name)
+    }
+}
+"#,
+            ParseOptions::default(),
+        );
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+
+        let Value::BlockRef(container) = doc.values.get("page").expect("page block") else {
+            panic!("expected page block");
+        };
+        let ids: Vec<_> = container
+            .children
+            .iter()
+            .map(|child| child.id.as_deref().unwrap_or(""))
+            .collect();
+        assert_eq!(ids, vec!["item-a", "item-b"]);
     }
 }

@@ -718,6 +718,7 @@ impl<'a, FS: FileSystem + ?Sized> ImportResolver<'a, FS> {
                     .iter()
                     .filter_map(|mi| match mi {
                         DocItem::ExportLet(el) => Some(el.name.name.as_str()),
+                        DocItem::ExportMacro(m) => Some(m.name.name.as_str()),
                         DocItem::Body(BodyItem::LetBinding(lb)) => Some(lb.name.name.as_str()),
                         DocItem::Body(BodyItem::Block(b)) => {
                             b.inline_id.as_ref().and_then(|id| match id {
@@ -746,6 +747,7 @@ impl<'a, FS: FileSystem + ?Sized> ImportResolver<'a, FS> {
                         DocItem::Body(BodyItem::LetBinding(_)) => {}
                         DocItem::Import(_) => {}
                         DocItem::ExportLet(_)
+                        | DocItem::ExportMacro(_)
                         | DocItem::ReExport(_)
                         | DocItem::Body(_)
                         | DocItem::FunctionDecl(_)
@@ -1019,6 +1021,7 @@ impl<'a, FS: FileSystem + ?Sized> ImportResolver<'a, FS> {
                         DocItem::Body(BodyItem::LetBinding(_)) => {}
                         DocItem::Import(_) => {}
                         DocItem::ExportLet(_)
+                        | DocItem::ExportMacro(_)
                         | DocItem::ReExport(_)
                         | DocItem::Body(_)
                         | DocItem::FunctionDecl(_)
@@ -1136,6 +1139,10 @@ fn scan_doc_item(item: &DocItem, lazy_namespaces: &[String], referenced: &mut Ha
             check_name(&el.name.name, lazy_namespaces, referenced);
             scan_expr(&el.value, lazy_namespaces, referenced);
         }
+        DocItem::ExportMacro(m) => {
+            check_name(&m.name.name, lazy_namespaces, referenced);
+            scan_macro_body(&m.body, lazy_namespaces, referenced);
+        }
         DocItem::FunctionDecl(fd) => {
             check_name(&fd.name.name, lazy_namespaces, referenced);
         }
@@ -1216,6 +1223,14 @@ fn scan_body_item(item: &BodyItem, lazy_namespaces: &[String], referenced: &mut 
         }
         BodyItem::SymbolSetDecl(ss) => {
             check_name(&ss.name.name, lazy_namespaces, referenced);
+        }
+    }
+}
+
+fn scan_macro_body(body: &MacroBody, lazy_namespaces: &[String], referenced: &mut HashSet<String>) {
+    if let MacroBody::Function(items) = body {
+        for item in items {
+            scan_body_item(item, lazy_namespaces, referenced);
         }
     }
 }

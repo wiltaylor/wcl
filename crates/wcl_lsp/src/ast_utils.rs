@@ -69,6 +69,20 @@ fn find_in_doc_item<'a>(item: &'a DocItem, offset: usize) -> NodeAtOffset<'a> {
                 }
             }
         }
+        DocItem::ExportMacro(m) => {
+            if contains(m.span, offset) {
+                if offset < m.name.span.start {
+                    return NodeAtOffset::Keyword(Span {
+                        start: m.span.start,
+                        end: m.name.span.start,
+                        file: m.span.file,
+                    });
+                }
+                if contains(m.name.span, offset) {
+                    return NodeAtOffset::IdentRef(&m.name);
+                }
+            }
+        }
         DocItem::ReExport(re) => {
             if contains(re.name.span, offset) {
                 return NodeAtOffset::IdentRef(&re.name);

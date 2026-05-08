@@ -174,6 +174,7 @@ fn doc_item_name(item: &DocItem) -> Option<String> {
     match item {
         DocItem::Body(body) => body_item_name(body),
         DocItem::ExportLet(el) => Some(el.name.name.clone()),
+        DocItem::ExportMacro(m) => Some(m.name.name.clone()),
         DocItem::FunctionDecl(fd) => Some(fd.name.name.clone()),
         DocItem::ReExport(re) => Some(re.name.name.clone()),
         _ => None,
@@ -214,6 +215,9 @@ fn qualify_doc_item(item: &mut DocItem, ns: &str) {
         DocItem::ExportLet(el) => {
             el.name.name = format!("{}::{}", ns, el.name.name);
         }
+        DocItem::ExportMacro(m) => {
+            m.name.name = format!("{}::{}", ns, m.name.name);
+        }
         DocItem::FunctionDecl(fd) => {
             fd.name.name = format!("{}::{}", ns, fd.name.name);
         }
@@ -253,10 +257,14 @@ fn qualify_body_item(item: &mut BodyItem, ns: &str) {
         }
         BodyItem::Table(_)
         | BodyItem::Attribute(_)
-        | BodyItem::MacroCall(_)
         | BodyItem::ForLoop(_)
         | BodyItem::Conditional(_)
         | BodyItem::Validation(_) => {}
+        BodyItem::MacroCall(call) => {
+            if !call.name.name.contains("::") {
+                call.name.name = format!("{}::{}", ns, call.name.name);
+            }
+        }
     }
 }
 
