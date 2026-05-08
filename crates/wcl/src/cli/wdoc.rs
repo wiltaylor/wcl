@@ -528,13 +528,16 @@ fn render_diagram_with_ctx(br: &BlockRef, ctx: &ExtractCtx) -> String {
     let mut shapes = Vec::new();
     let mut connections = Vec::new();
 
+    let mut source_order = 0;
     for val in br.attributes.values() {
         if let Value::BlockRef(child) = val {
-            collect_shape_or_connection(child, &mut shapes, &mut connections, ctx);
+            collect_shape_or_connection(child, &mut shapes, &mut connections, ctx, source_order);
+            source_order += 1;
         }
     }
     for child in &br.children {
-        collect_shape_or_connection(child, &mut shapes, &mut connections, ctx);
+        collect_shape_or_connection(child, &mut shapes, &mut connections, ctx, source_order);
+        source_order += 1;
     }
 
     let mut diagram = Diagram {
@@ -557,6 +560,7 @@ fn collect_shape_or_connection(
     shapes: &mut Vec<wcl_wdoc::shapes::ShapeNode>,
     connections: &mut Vec<wcl_wdoc::shapes::Connection>,
     ctx: &ExtractCtx,
+    source_order: usize,
 ) {
     use wcl_wdoc::shapes::*;
 
@@ -570,6 +574,11 @@ fn collect_shape_or_connection(
             to_anchor: parse_anchor_str(a.get("to_anchor").map(|s| s.as_str()).unwrap_or("")),
             label: a.get("label").cloned(),
             curve: parse_curve_str(a.get("curve").map(|s| s.as_str()).unwrap_or("")),
+            z_index: a
+                .get("z_index")
+                .and_then(|s| s.parse::<f64>().ok())
+                .unwrap_or(0.0),
+            source_order,
             attrs: a,
         });
         return;
@@ -611,13 +620,28 @@ fn collect_shape_or_connection(
         // shapes can still nest hand-written primitives alongside their
         // template-generated children.
         let mut child_connections = Vec::new();
+        let mut child_source_order = children.len();
         for val in br.attributes.values() {
             if let Value::BlockRef(child_br) = val {
-                collect_shape_or_connection(child_br, &mut children, &mut child_connections, ctx);
+                collect_shape_or_connection(
+                    child_br,
+                    &mut children,
+                    &mut child_connections,
+                    ctx,
+                    child_source_order,
+                );
+                child_source_order += 1;
             }
         }
         for child_br in &br.children {
-            collect_shape_or_connection(child_br, &mut children, &mut child_connections, ctx);
+            collect_shape_or_connection(
+                child_br,
+                &mut children,
+                &mut child_connections,
+                ctx,
+                child_source_order,
+            );
+            child_source_order += 1;
         }
         connections.extend(child_connections);
 
@@ -634,6 +658,7 @@ fn collect_shape_or_connection(
         let nbot = pf(&a, "bottom");
         let nleft = pf(&a, "left");
         let nright = pf(&a, "right");
+        let z_index = pf(&a, "z_index").unwrap_or(0.0);
 
         // Composite shape containers are invisible — the template provides all
         // visuals. Default fill/stroke to none so the wrapping rect doesn't
@@ -662,6 +687,8 @@ fn collect_shape_or_connection(
             align,
             gap,
             padding: pad,
+            z_index,
+            source_order,
         });
     }
 }
@@ -702,8 +729,8 @@ fn dispatch_shape_template(
     };
 
     let mut shapes = Vec::new();
-    for desc in &descriptors {
-        if let Some(node) = descriptor_to_shape_node(desc) {
+    for (idx, desc) in descriptors.iter().enumerate() {
+        if let Some(node) = descriptor_to_shape_node_with_order(desc, idx) {
             shapes.push(node);
         }
     }
@@ -714,7 +741,10 @@ fn dispatch_shape_template(
 /// into a `ShapeNode`. Recognized fields: kind, x, y, width, height, top, bottom,
 /// left, right, align, gap, padding, children (list of more descriptors), and
 /// arbitrary visual attributes (fill, stroke, rx, content, font_size, ...).
-fn descriptor_to_shape_node(val: &Value) -> Option<wcl_wdoc::shapes::ShapeNode> {
+fn descriptor_to_shape_node_with_order(
+    val: &Value,
+    source_order: usize,
+) -> Option<wcl_wdoc::shapes::ShapeNode> {
     use wcl_wdoc::shapes::*;
 
     let map = match val {
@@ -742,6 +772,7 @@ fn descriptor_to_shape_node(val: &Value) -> Option<wcl_wdoc::shapes::ShapeNode> 
     let nright = pf("right");
     let gap = pf("gap").unwrap_or(0.0);
     let padding = pf("padding").unwrap_or(0.0);
+    let z_index = pf("z_index").unwrap_or(0.0);
 
     let align_str = map
         .get("align")
@@ -765,6 +796,7 @@ fn descriptor_to_shape_node(val: &Value) -> Option<wcl_wdoc::shapes::ShapeNode> 
                 | "right"
                 | "gap"
                 | "padding"
+                | "z_index"
                 | "align"
                 | "children"
                 | "id"
@@ -784,8 +816,8 @@ fn descriptor_to_shape_node(val: &Value) -> Option<wcl_wdoc::shapes::ShapeNode> 
 
     let mut children = Vec::new();
     if let Some(Value::List(items)) = map.get("children") {
-        for item in items {
-            if let Some(child) = descriptor_to_shape_node(item) {
+        for (idx, item) in items.iter().enumerate() {
+            if let Some(child) = descriptor_to_shape_node_with_order(item, idx) {
                 children.push(child);
             }
         }
@@ -810,6 +842,8 @@ fn descriptor_to_shape_node(val: &Value) -> Option<wcl_wdoc::shapes::ShapeNode> 
         align,
         gap,
         padding,
+        z_index,
+        source_order,
     })
 }
 
@@ -1086,6 +1120,93 @@ mod wdoc_draw_tests {
         assert!(html.contains("<g transform=\"translate(20,16)\" class=\"ui-button\""));
         assert!(html.contains("pointer-events=\"all\""));
         assert!(html.contains("#wdoc-diagram-button-preview .ui-button:hover .ui-button-bg"));
+    }
+
+    #[test]
+    fn diagram_z_index_flows_through_cli_extraction() {
+        let mut back_attrs = IndexMap::new();
+        int_attr(&mut back_attrs, "x", 0);
+        int_attr(&mut back_attrs, "y", 0);
+        int_attr(&mut back_attrs, "width", 40);
+        int_attr(&mut back_attrs, "height", 40);
+        int_attr(&mut back_attrs, "z_index", 10);
+        string_attr(&mut back_attrs, "fill", "red");
+
+        let mut front_attrs = IndexMap::new();
+        int_attr(&mut front_attrs, "x", 0);
+        int_attr(&mut front_attrs, "y", 0);
+        int_attr(&mut front_attrs, "width", 40);
+        int_attr(&mut front_attrs, "height", 40);
+        int_attr(&mut front_attrs, "z_index", -1);
+        string_attr(&mut front_attrs, "fill", "blue");
+
+        let mut diagram_attrs = IndexMap::new();
+        int_attr(&mut diagram_attrs, "width", 80);
+        int_attr(&mut diagram_attrs, "height", 80);
+        let diagram = block(
+            "wdoc::draw::diagram",
+            Some("z_preview"),
+            diagram_attrs,
+            vec![
+                block("wdoc::draw::rect", Some("red"), back_attrs, vec![]),
+                block("wdoc::draw::rect", Some("blue"), front_attrs, vec![]),
+            ],
+        );
+
+        let ctx = ExtractCtx {
+            template_map: HashMap::new(),
+            template_fns: HashMap::new(),
+            builtins: HashMap::new(),
+        };
+
+        let html = render_diagram_with_ctx(&diagram, &ctx);
+        assert!(html.find("fill=\"blue\"").unwrap() < html.find("fill=\"red\"").unwrap());
+        assert!(!html.contains("z-index"));
+        assert!(!html.contains("z_index"));
+    }
+
+    #[test]
+    fn descriptor_z_index_is_structural_and_sorts_composite_children() {
+        let mut high = IndexMap::new();
+        high.insert("kind".to_string(), Value::String("rect".to_string()));
+        high.insert("width".to_string(), Value::Int(40));
+        high.insert("height".to_string(), Value::Int(40));
+        high.insert("z_index".to_string(), Value::Int(2));
+        high.insert("fill".to_string(), Value::String("red".to_string()));
+
+        let mut low = IndexMap::new();
+        low.insert("kind".to_string(), Value::String("rect".to_string()));
+        low.insert("width".to_string(), Value::Int(40));
+        low.insert("height".to_string(), Value::Int(40));
+        low.insert("z_index".to_string(), Value::Int(-1));
+        low.insert("fill".to_string(), Value::String("blue".to_string()));
+
+        let mut group = IndexMap::new();
+        group.insert("kind".to_string(), Value::String("group".to_string()));
+        group.insert("width".to_string(), Value::Int(40));
+        group.insert("height".to_string(), Value::Int(40));
+        group.insert(
+            "children".to_string(),
+            Value::List(vec![Value::Map(high), Value::Map(low)]),
+        );
+
+        let mut diagram = wcl_wdoc::shapes::Diagram {
+            id: None,
+            width: 80.0,
+            height: 80.0,
+            padding: 0.0,
+            align: wcl_wdoc::shapes::Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+            shapes: vec![
+                descriptor_to_shape_node_with_order(&Value::Map(group), 0).expect("descriptor")
+            ],
+            connections: vec![],
+        };
+
+        let svg = wcl_wdoc::shapes::render_diagram_svg(&mut diagram);
+        assert!(svg.find("fill=\"blue\"").unwrap() < svg.find("fill=\"red\"").unwrap());
+        assert!(!svg.contains("z_index"));
     }
 
     #[test]

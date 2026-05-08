@@ -83,7 +83,8 @@ page wdoc_drawing_overview {
                         { attr = "rx",               description = "Corner radius (rect) or x-radius (ellipse)" },
                         { attr = "ry",               description = "Corner / y-radius" },
                         { attr = "r",                description = "Radius (circle)" },
-                        { attr = "opacity",          description = "Opacity 0..1" }
+                        { attr = "opacity",          description = "Opacity 0..1" },
+                        { attr = "z_index",          description = "Paint order among siblings; higher values render later and appear above lower values" }
                     ]
                 }
 

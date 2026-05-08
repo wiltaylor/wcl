@@ -127,6 +127,8 @@ pub struct ShapeNode {
     pub align: Alignment,
     pub gap: f64,
     pub padding: f64,
+    pub z_index: f64,
+    pub source_order: usize,
 }
 
 /// A connection between two shapes.
@@ -140,6 +142,8 @@ pub struct Connection {
     pub label: Option<String>,
     pub curve: CurveStyle,
     pub attrs: IndexMap<String, String>,
+    pub z_index: f64,
+    pub source_order: usize,
 }
 
 /// A complete diagram ready to render.
@@ -293,18 +297,71 @@ pub fn render_diagram_svg(diagram: &mut Diagram) -> String {
         svg.push_str(ARROW_DEFS);
     }
 
-    // Render shapes
-    for shape in &diagram.shapes {
-        render_shape_svg(shape, &mut svg);
-    }
-
-    // Render connections
-    for conn in &diagram.connections {
-        render_connection_svg(conn, &shape_map, &mut svg);
-    }
+    render_diagram_items_svg(&diagram.shapes, &diagram.connections, &shape_map, &mut svg);
 
     svg.push_str("</svg></div>");
     svg
+}
+
+#[derive(Clone, Copy)]
+enum RenderItemRef<'a> {
+    Shape(&'a ShapeNode),
+    Connection(&'a Connection),
+}
+
+impl RenderItemRef<'_> {
+    fn z_index(&self) -> f64 {
+        match self {
+            RenderItemRef::Shape(shape) => shape.z_index,
+            RenderItemRef::Connection(conn) => conn.z_index,
+        }
+    }
+
+    fn source_order(&self) -> usize {
+        match self {
+            RenderItemRef::Shape(shape) => shape.source_order,
+            RenderItemRef::Connection(conn) => conn.source_order,
+        }
+    }
+}
+
+fn render_diagram_items_svg(
+    shapes: &[ShapeNode],
+    connections: &[Connection],
+    shape_map: &HashMap<String, Bounds>,
+    svg: &mut String,
+) {
+    let mut items: Vec<RenderItemRef<'_>> = Vec::with_capacity(shapes.len() + connections.len());
+    items.extend(shapes.iter().map(RenderItemRef::Shape));
+    items.extend(connections.iter().map(RenderItemRef::Connection));
+    sort_render_items(&mut items);
+    for item in items {
+        match item {
+            RenderItemRef::Shape(shape) => render_shape_svg(shape, svg),
+            RenderItemRef::Connection(conn) => render_connection_svg(conn, shape_map, svg),
+        }
+    }
+}
+
+fn render_child_shapes_svg(children: &[ShapeNode], svg: &mut String) {
+    let mut items: Vec<_> = children.iter().enumerate().collect();
+    items.sort_by(|(a_idx, a), (b_idx, b)| {
+        a.z_index
+            .total_cmp(&b.z_index)
+            .then_with(|| a.source_order.cmp(&b.source_order))
+            .then_with(|| a_idx.cmp(b_idx))
+    });
+    for (_, child) in items {
+        render_shape_svg(child, svg);
+    }
+}
+
+fn sort_render_items(items: &mut [RenderItemRef<'_>]) {
+    items.sort_by(|a, b| {
+        a.z_index()
+            .total_cmp(&b.z_index())
+            .then_with(|| a.source_order().cmp(&b.source_order()))
+    });
 }
 
 pub fn parse_alignment_str(s: &str) -> Alignment {
@@ -1125,9 +1182,7 @@ fn render_shape_svg(node: &ShapeNode, svg: &mut String) {
             let gx = b.x;
             let gy = b.y;
             write!(svg, "<g transform=\"translate({gx},{gy})\"{style}>").unwrap();
-            for child in &node.children {
-                render_shape_svg(child, svg);
-            }
+            render_child_shapes_svg(&node.children, svg);
             svg.push_str("</g>");
             rendered_children = true;
         }
@@ -1138,9 +1193,7 @@ fn render_shape_svg(node: &ShapeNode, svg: &mut String) {
         let gx = b.x;
         let gy = b.y;
         write!(svg, "<g transform=\"translate({gx},{gy})\">").unwrap();
-        for child in &node.children {
-            render_shape_svg(child, svg);
-        }
+        render_child_shapes_svg(&node.children, svg);
         svg.push_str("</g>");
     }
 
@@ -1978,6 +2031,8 @@ mod tests {
             align: Alignment::None,
             gap: 0.0,
             padding: 0.0,
+            z_index: 0.0,
+            source_order: 0,
         }
     }
 
@@ -1991,6 +2046,8 @@ mod tests {
             label: None,
             curve: CurveStyle::Straight,
             attrs: IndexMap::new(),
+            z_index: 0.0,
+            source_order: 0,
         }
     }
 
@@ -2009,6 +2066,12 @@ mod tests {
         node.kind = ShapeKind::Image;
         node.attrs.insert("src".to_string(), src.to_string());
         node
+    }
+
+    fn index_of(haystack: &str, needle: &str) -> usize {
+        haystack
+            .find(needle)
+            .unwrap_or_else(|| panic!("expected to find {needle:?} in {haystack}"))
     }
 
     fn overlaps(a: &ShapeNode, b: &ShapeNode) -> bool {
@@ -2092,6 +2155,8 @@ mod tests {
                 align: Alignment::None,
                 gap: 0.0,
                 padding: 0.0,
+                z_index: 0.0,
+                source_order: 0,
             }],
             connections: vec![],
         };
@@ -2439,6 +2504,165 @@ mod tests {
         let svg = render_diagram_svg(&mut diagram);
         assert!(svg.contains("<g transform=\"translate(20,10)\">"));
         assert!(svg.contains("<image href=\"images/hero.webp\""));
+    }
+
+    #[test]
+    fn top_level_shapes_render_by_z_index_then_source_order() {
+        let mut low = shape("low", 20.0, 20.0);
+        low.attrs.insert("fill".to_string(), "blue".to_string());
+        low.z_index = -1.0;
+        let mut same_a = shape("same-a", 20.0, 20.0);
+        same_a.attrs.insert("fill".to_string(), "green".to_string());
+        let mut same_b = shape("same-b", 20.0, 20.0);
+        same_b
+            .attrs
+            .insert("fill".to_string(), "yellow".to_string());
+        let mut high = shape("high", 20.0, 20.0);
+        high.attrs.insert("fill".to_string(), "red".to_string());
+        high.z_index = 10.0;
+
+        let mut diagram = Diagram {
+            id: None,
+            width: 100.0,
+            height: 100.0,
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+            shapes: vec![high, same_a, low, same_b],
+            connections: vec![],
+        };
+
+        let svg = render_diagram_svg(&mut diagram);
+        let blue = index_of(&svg, "fill=\"blue\"");
+        let green = index_of(&svg, "fill=\"green\"");
+        let yellow = index_of(&svg, "fill=\"yellow\"");
+        let red = index_of(&svg, "fill=\"red\"");
+        assert!(blue < green);
+        assert!(green < yellow);
+        assert!(yellow < red);
+    }
+
+    #[test]
+    fn group_z_index_moves_entire_subtree_and_children_sort_locally() {
+        let mut background = shape("background", 20.0, 20.0);
+        background
+            .attrs
+            .insert("fill".to_string(), "background".to_string());
+        background.z_index = 1.0;
+
+        let mut group = shape("group", 20.0, 20.0);
+        group.kind = ShapeKind::Group;
+        group.z_index = 5.0;
+        let mut top_child = shape("top-child", 20.0, 20.0);
+        top_child
+            .attrs
+            .insert("fill".to_string(), "top-child".to_string());
+        top_child.z_index = 2.0;
+        let mut bottom_child = shape("bottom-child", 20.0, 20.0);
+        bottom_child
+            .attrs
+            .insert("fill".to_string(), "bottom-child".to_string());
+        bottom_child.z_index = -2.0;
+        group.children = vec![top_child, bottom_child];
+
+        let mut diagram = Diagram {
+            id: None,
+            width: 100.0,
+            height: 100.0,
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+            shapes: vec![group, background],
+            connections: vec![],
+        };
+
+        let svg = render_diagram_svg(&mut diagram);
+        let background = index_of(&svg, "fill=\"background\"");
+        let group_start = index_of(&svg, "<g transform=");
+        let bottom_child = index_of(&svg, "fill=\"bottom-child\"");
+        let top_child = index_of(&svg, "fill=\"top-child\"");
+        assert!(background < group_start);
+        assert!(group_start < bottom_child);
+        assert!(bottom_child < top_child);
+    }
+
+    #[test]
+    fn diagram_connections_interleave_with_shapes_by_z_index() {
+        let mut a = shape("a", 20.0, 20.0);
+        a.x = Some(0.0);
+        a.y = Some(0.0);
+        a.attrs.insert("fill".to_string(), "blue".to_string());
+        let mut b = shape("b", 20.0, 20.0);
+        b.x = Some(60.0);
+        b.y = Some(0.0);
+        b.attrs.insert("fill".to_string(), "red".to_string());
+        b.z_index = 10.0;
+
+        let mut conn = connection("a", "b");
+        conn.direction = Direction::None;
+        conn.z_index = 5.0;
+        conn.attrs
+            .insert("stroke".to_string(), "purple".to_string());
+
+        let mut diagram = Diagram {
+            id: None,
+            width: 100.0,
+            height: 40.0,
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+            shapes: vec![b, a],
+            connections: vec![conn],
+        };
+
+        let svg = render_diagram_svg(&mut diagram);
+        let blue = index_of(&svg, "fill=\"blue\"");
+        let purple = index_of(&svg, "stroke=\"purple\"");
+        let red = index_of(&svg, "fill=\"red\"");
+        assert!(blue < purple);
+        assert!(purple < red);
+    }
+
+    #[test]
+    fn diagram_connections_preserve_source_order_ties_with_shapes() {
+        let mut a = shape("a", 20.0, 20.0);
+        a.x = Some(0.0);
+        a.y = Some(0.0);
+        a.attrs.insert("fill".to_string(), "blue".to_string());
+        a.source_order = 0;
+        let mut b = shape("b", 20.0, 20.0);
+        b.x = Some(60.0);
+        b.y = Some(0.0);
+        b.attrs.insert("fill".to_string(), "red".to_string());
+        b.source_order = 2;
+
+        let mut conn = connection("a", "b");
+        conn.direction = Direction::None;
+        conn.source_order = 1;
+        conn.attrs
+            .insert("stroke".to_string(), "purple".to_string());
+
+        let mut diagram = Diagram {
+            id: None,
+            width: 100.0,
+            height: 40.0,
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+            shapes: vec![b, a],
+            connections: vec![conn],
+        };
+
+        let svg = render_diagram_svg(&mut diagram);
+        let blue = index_of(&svg, "fill=\"blue\"");
+        let purple = index_of(&svg, "stroke=\"purple\"");
+        let red = index_of(&svg, "fill=\"red\"");
+        assert!(blue < purple);
+        assert!(purple < red);
     }
 
     #[test]

@@ -913,6 +913,8 @@ mod tests {
             align: Alignment::None,
             gap: 0.0,
             padding: 0.0,
+            z_index: 0.0,
+            source_order: 0,
         }
     }
 
@@ -926,6 +928,8 @@ mod tests {
             label: None,
             curve: CurveStyle::Straight,
             attrs: IndexMap::new(),
+            z_index: 0.0,
+            source_order: 0,
         }
     }
 

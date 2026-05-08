@@ -227,6 +227,7 @@ namespace wdoc {
     //   kind     — "rect" | "circle" | "ellipse" | "line" | "path" | "text" | "group"
     //   x, y, width, height       — absolute placement (relative to widget)
     //   top, bottom, left, right  — anchored placement
+    //   z_index                   — sibling paint order, higher renders later
     //   rx, ry, r                 — corner / radius
     //   fill, stroke, stroke_width, stroke_dasharray, opacity
     //   class, style, cursor, pointer_events
