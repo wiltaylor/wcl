@@ -353,7 +353,7 @@ fn substitute_value_in_body_item(
             for arg in &mut call.args {
                 match arg {
                     MacroCallArg::Positional(expr) | MacroCallArg::Named(_, expr) => {
-                        substitute_in_expr(expr, iterator_name, value, index_name, index);
+                        substitute_in_macro_arg_expr(expr, iterator_name, value, index_name, index);
                     }
                 }
             }
@@ -445,6 +445,67 @@ fn substitute_in_string_parts(
         if let StringPart::Interpolation(expr) = part {
             substitute_in_expr(expr, iterator_name, value, index_name, index);
         }
+    }
+}
+
+fn substitute_in_macro_arg_expr(
+    expr: &mut Expr,
+    iterator_name: &str,
+    value: &Value,
+    index_name: Option<&String>,
+    index: usize,
+) {
+    if let Expr::Ident(ident) = expr {
+        if ident.name == iterator_name {
+            if let Some(replacement) = macro_arg_value_to_expr(value, ident.span) {
+                *expr = replacement;
+                return;
+            }
+        }
+    }
+    substitute_in_expr(expr, iterator_name, value, index_name, index);
+}
+
+fn macro_arg_value_to_expr(value: &Value, span: Span) -> Option<Expr> {
+    if let Value::BlockRef(block) = value {
+        let mut entries = Vec::new();
+        entries.push((
+            MapKey::Ident(Ident {
+                name: "kind".to_string(),
+                span,
+            }),
+            Expr::StringLit(StringLit {
+                parts: vec![StringPart::Literal(block.kind.clone())],
+                heredoc: None,
+                span,
+            }),
+        ));
+        if let Some(id) = &block.id {
+            entries.push((
+                MapKey::Ident(Ident {
+                    name: "id".to_string(),
+                    span,
+                }),
+                Expr::IdentifierLit(IdentifierLit {
+                    value: id.clone(),
+                    span,
+                }),
+            ));
+        }
+        for (name, attr_value) in &block.attributes {
+            if let Some(expr) = value_to_expr(attr_value, span) {
+                entries.push((
+                    MapKey::Ident(Ident {
+                        name: name.clone(),
+                        span,
+                    }),
+                    expr,
+                ));
+            }
+        }
+        Some(Expr::Map(entries, span))
+    } else {
+        value_to_expr(value, span)
     }
 }
 

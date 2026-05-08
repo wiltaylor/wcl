@@ -5018,4 +5018,163 @@ container page {
             Some("red")
         );
     }
+
+    #[test]
+    fn glob_imported_partial_macro_keeps_call_site_params_in_nested_page_documents() {
+        let mut fs = InMemoryFs::new();
+        fs.add_file(
+            std::path::PathBuf::from("/project/pages/page.wcl"),
+            r#"
+for component in components {
+    page p-${component.id} {
+        preview_height = example_preview_height
+
+        diagram demo {
+            wad_render_ui_component_examples(
+                component,
+                example_preview_height,
+                ui_component_example_element_models
+            )
+        }
+    }
+}
+"#,
+        );
+        fs.add_file(
+            std::path::PathBuf::from("/project/controls/button.wcl"),
+            r#"
+partial macro wad_render_ui_component_examples(component, example_preview_height, ui_component_example_element_models) {
+    if to_string(component.id) == "ds_button" {
+        let labels = map(ui_component_example_element_models, item => item.id)
+
+        for example_element in filter(
+            ui_component_example_element_models,
+            item => item.component == to_string(component.id)
+        ) {
+            rect example-${component.id}-${example_element.id} {
+                x = example_element.x
+                height = example_preview_height - 40
+                label = to_string(component.label) + " " + to_string(labels[0])
+            }
+        }
+    }
+}
+"#,
+        );
+
+        let doc = parse(
+            r#"
+schema "before_import" { name: string }
+before_import alpha { name = "before" }
+
+import "./pages/page.wcl"
+import "./controls/*.wcl"
+
+let components = [{ id = "ds_button", label = "Button" }]
+let example_preview_height = 50
+let ui_component_example_element_models = [
+    { id = "first", component = "ds_button", x = 1 },
+    { id = "skip", component = "other", x = 20 },
+]
+
+schema "after_import" { name: string }
+after_import omega { name = "after" }
+
+container root {}
+"#,
+            ParseOptions {
+                root_dir: std::path::PathBuf::from("/project"),
+                fs: Some(Arc::new(fs)),
+                ..ParseOptions::default()
+            },
+        );
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+
+        let Value::BlockRef(page) = doc.values.get("p-ds_button").expect("generated page") else {
+            panic!("expected generated page block");
+        };
+        let diagram = page
+            .children
+            .iter()
+            .find(|child| child.kind == "diagram" && child.id.as_deref() == Some("demo"))
+            .expect("diagram");
+        let rect = diagram
+            .children
+            .iter()
+            .find(|child| {
+                child.kind == "rect"
+                    && child.attributes.get("label").and_then(Value::as_string)
+                        == Some("Button first")
+            })
+            .expect("partial macro rect");
+        assert_eq!(
+            rect.attributes.get("height").and_then(Value::as_int),
+            Some(10)
+        );
+        assert_eq!(
+            rect.attributes.get("label").and_then(Value::as_string),
+            Some("Button first")
+        );
+    }
+
+    #[test]
+    fn partial_macro_call_inside_query_for_preserves_block_ref_argument_members() {
+        let doc = parse(
+            r#"
+schema "UiComponent" {
+    label: string
+}
+
+UiComponent ds_button {
+    label = "Button"
+}
+
+let example_preview_height = 50
+let ui_component_example_element_models = [{ id = "first", component = "ds_button" }]
+
+partial macro wad_render_ui_component_examples(component, example_preview_height, ui_component_example_element_models) {
+    if to_string(component.id) == "ds_button" {
+        for example_element in filter(
+            ui_component_example_element_models,
+            item => item.component == to_string(component.id)
+        ) {
+            rect r-${example_element.id} {
+                height = example_preview_height - 40
+                label = component.label
+            }
+        }
+    }
+}
+
+container page {
+    for component in (..UiComponent) {
+        wad_render_ui_component_examples(
+            component,
+            example_preview_height,
+            ui_component_example_element_models
+        )
+    }
+}
+"#,
+            ParseOptions::default(),
+        );
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+
+        let Value::BlockRef(container) = doc.values.get("page").expect("page block") else {
+            panic!("expected page block");
+        };
+        let rect = container
+            .children
+            .iter()
+            .find(|child| child.kind == "rect" && child.id.as_deref() == Some("r-first"))
+            .expect("partial macro rect");
+        assert_eq!(
+            rect.attributes.get("height").and_then(Value::as_int),
+            Some(10)
+        );
+        assert_eq!(
+            rect.attributes.get("label").and_then(Value::as_string),
+            Some("Button")
+        );
+    }
 }

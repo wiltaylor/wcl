@@ -1324,6 +1324,219 @@ partial macro render(component, items) {
     assert!(html.contains("fill=\"red\""));
 }
 
+#[test]
+fn wdoc_build_keeps_partial_macro_params_bound_in_globbed_nested_documents() {
+    let dir = tempdir().expect("tempdir");
+    let pages_dir = dir.path().join("pages");
+    let controls_dir = dir.path().join("controls");
+    std::fs::create_dir_all(&pages_dir).expect("create pages dir");
+    std::fs::create_dir_all(&controls_dir).expect("create controls dir");
+
+    let site = r#"
+import <wdoc.wcl>
+use wdoc::{doc, page, section, layout}
+use wdoc::draw::{diagram, rect, text}
+
+schema "before_import" { name: string }
+before_import alpha { name = "before" }
+
+import "./pages/page.wcl"
+import "./controls/*.wcl"
+
+let components = [{ id = "ds_button", label = "Button" }]
+let example_preview_height = 50
+let ui_component_example_element_models = [
+    { id = "first", component = "ds_button", x = 1 },
+    { id = "skip", component = "other", x = 20 },
+]
+
+schema "after_import" { name: string }
+after_import omega { name = "after" }
+
+doc d {
+    title = "D"
+    section s "S" {}
+}
+"#;
+
+    let page = r#"
+for component in components {
+    page p-${component.id} {
+        section = "d.s"
+        title = "P"
+
+        layout {
+            diagram demo {
+                width = 90
+                height = example_preview_height
+
+                wad_render_ui_component_examples(
+                    component,
+                    example_preview_height,
+                    ui_component_example_element_models
+                )
+            }
+        }
+    }
+}
+"#;
+
+    let control = r#"
+partial macro wad_render_ui_component_examples(component, example_preview_height, ui_component_example_element_models) {
+    if to_string(component.id) == "ds_button" {
+        let labels = map(ui_component_example_element_models, item => item.id)
+
+        for example_element in filter(
+            ui_component_example_element_models,
+            item => item.component == to_string(component.id)
+        ) {
+            rect example-${component.id}-${example_element.id} {
+                x = example_element.x
+                y = 1
+                width = 10
+                height = example_preview_height - 40
+                fill = "red"
+            }
+
+            text label-${example_element.id} {
+                x = 1
+                y = 20
+                content = to_string(component.label) + " " + to_string(labels[0])
+                font_size = 10
+            }
+        }
+    }
+}
+"#;
+
+    let input = dir.path().join("main.wcl");
+    std::fs::write(&input, site).expect("write site file");
+    std::fs::write(pages_dir.join("page.wcl"), page).expect("write page file");
+    std::fs::write(controls_dir.join("button.wcl"), control).expect("write control file");
+    let output = dir.path().join("out");
+
+    Command::cargo_bin("wcl")
+        .unwrap()
+        .args([
+            "wdoc",
+            "build",
+            input.to_str().unwrap(),
+            "--output",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let html = std::fs::read_to_string(output.join("p-ds_button.html")).expect("read page");
+    assert!(html.contains("<rect"));
+    assert!(html.contains("fill=\"red\""));
+    assert!(html.contains(">Button first</text>"));
+}
+
+#[test]
+fn wdoc_build_preserves_block_ref_partial_macro_args_from_query_loops() {
+    let dir = tempdir().expect("tempdir");
+    let pages_dir = dir.path().join("pages");
+    let controls_dir = dir.path().join("controls");
+    std::fs::create_dir_all(&pages_dir).expect("create pages dir");
+    std::fs::create_dir_all(&controls_dir).expect("create controls dir");
+
+    let site = r#"
+import <wdoc.wcl>
+use wdoc::{doc, page, section, layout}
+use wdoc::draw::{diagram, rect, text}
+
+import "./pages/page.wcl"
+import "./controls/*.wcl"
+
+schema "UiComponent" {
+    label: string
+}
+
+UiComponent ds_button {
+    label = "Button"
+}
+
+let example_preview_height = 50
+let ui_component_example_element_models = [{ id = "first", component = "ds_button" }]
+
+doc d {
+    title = "D"
+    section s "S" {}
+}
+"#;
+
+    let page = r#"
+for component in (..UiComponent) {
+    page p-${component.id} {
+        section = "d.s"
+        title = "P"
+
+        layout {
+            diagram demo {
+                width = 90
+                height = example_preview_height
+
+                wad_render_ui_component_examples(
+                    component,
+                    example_preview_height,
+                    ui_component_example_element_models
+                )
+            }
+        }
+    }
+}
+"#;
+
+    let control = r#"
+partial macro wad_render_ui_component_examples(component, example_preview_height, ui_component_example_element_models) {
+    if to_string(component.id) == "ds_button" {
+        for example_element in filter(
+            ui_component_example_element_models,
+            item => item.component == to_string(component.id)
+        ) {
+            rect r-${example_element.id} {
+                x = 1
+                y = 1
+                width = 10
+                height = example_preview_height - 40
+                fill = "red"
+            }
+
+            text label-${example_element.id} {
+                x = 1
+                y = 20
+                content = component.label
+                font_size = 10
+            }
+        }
+    }
+}
+"#;
+
+    let input = dir.path().join("main.wcl");
+    std::fs::write(&input, site).expect("write site file");
+    std::fs::write(pages_dir.join("page.wcl"), page).expect("write page file");
+    std::fs::write(controls_dir.join("button.wcl"), control).expect("write control file");
+    let output = dir.path().join("out");
+
+    Command::cargo_bin("wcl")
+        .unwrap()
+        .args([
+            "wdoc",
+            "build",
+            input.to_str().unwrap(),
+            "--output",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let html = std::fs::read_to_string(output.join("p-ds_button.html")).expect("read page");
+    assert!(html.contains("fill=\"red\""));
+    assert!(html.contains(">Button</text>"));
+}
+
 // ===========================================================================
 // Multi-step workflows
 // ===========================================================================
