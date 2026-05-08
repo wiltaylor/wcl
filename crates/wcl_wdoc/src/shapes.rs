@@ -253,6 +253,13 @@ pub fn render_diagram_svg(diagram: &mut Diagram) -> String {
 
     // Phase 3: render SVG
     let mut svg = String::new();
+    let class_attr = diagram
+        .options
+        .get("class")
+        .map(|class| class.trim())
+        .filter(|class| !class.is_empty())
+        .map(|class| format!(" class=\"{}\"", svg_escape_attr(class)))
+        .unwrap_or_default();
     let scoped_css = diagram.options.get("css").and_then(|css| {
         let css = css.trim();
         if css.is_empty() {
@@ -268,7 +275,7 @@ pub fn render_diagram_svg(diagram: &mut Diagram) -> String {
         write!(
             svg,
             "<div class=\"wdoc-diagram\">\
-             <svg xmlns=\"http://www.w3.org/2000/svg\" id=\"{scope_id}\" \
+             <svg xmlns=\"http://www.w3.org/2000/svg\" id=\"{scope_id}\"{class_attr} \
              width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">",
             diagram.width, diagram.height, diagram.width, diagram.height
         )
@@ -277,7 +284,7 @@ pub fn render_diagram_svg(diagram: &mut Diagram) -> String {
         write!(
             svg,
             "<div class=\"wdoc-diagram\">\
-             <svg xmlns=\"http://www.w3.org/2000/svg\" \
+             <svg xmlns=\"http://www.w3.org/2000/svg\"{class_attr} \
              width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">",
             diagram.width, diagram.height, diagram.width, diagram.height
         )
@@ -1756,10 +1763,14 @@ fn sanitize_svg_id_fragment(value: &str) -> String {
 }
 
 fn scope_svg_css(css: &str, scope_id: &str) -> String {
-    scope_css_block(css, scope_id)
+    scope_css_to_selector(css, &format!("#{scope_id}"))
 }
 
-fn scope_css_block(css: &str, scope_id: &str) -> String {
+pub fn scope_css_to_selector(css: &str, root_selector: &str) -> String {
+    scope_css_block(css, root_selector)
+}
+
+fn scope_css_block(css: &str, root_selector: &str) -> String {
     let mut out = String::new();
     let mut pos = 0;
 
@@ -1772,12 +1783,12 @@ fn scope_css_block(css: &str, scope_id: &str) -> String {
         let body = &css[open + 1..close];
 
         if selector.starts_with("@media") || selector.starts_with("@supports") {
-            let scoped = scope_css_block(body, scope_id);
+            let scoped = scope_css_block(body, root_selector);
             if !scoped.trim().is_empty() {
                 write!(out, "{selector}{{{scoped}}}").unwrap();
             }
         } else if !selector.starts_with('@') {
-            let scoped_selector = scope_selector_list(selector, scope_id);
+            let scoped_selector = scope_selector_list(selector, root_selector);
             if !scoped_selector.is_empty() {
                 write!(out, "{scoped_selector}{{{body}}}").unwrap();
             }
@@ -1809,20 +1820,22 @@ fn find_matching_brace(css: &str, open: usize) -> Option<usize> {
     None
 }
 
-fn scope_selector_list(selector: &str, scope_id: &str) -> String {
+fn scope_selector_list(selector: &str, root_selector: &str) -> String {
     selector
         .split(',')
         .map(str::trim)
         .filter(|sel| !sel.is_empty())
         .map(|sel| {
             if sel == ":root" {
-                format!("#{scope_id}")
-            } else if sel.starts_with(&format!("#{scope_id}"))
-                || sel.starts_with(&format!("svg#{scope_id}"))
+                root_selector.to_string()
+            } else if sel.starts_with(root_selector)
+                || root_selector
+                    .strip_prefix('#')
+                    .is_some_and(|id| sel.starts_with(&format!("svg#{id}")))
             {
                 sel.to_string()
             } else {
-                format!("#{scope_id} {sel}")
+                format!("{root_selector} {sel}")
             }
         })
         .collect::<Vec<_>>()

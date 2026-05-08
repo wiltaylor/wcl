@@ -1038,6 +1038,82 @@ page home {
 }
 
 #[test]
+fn wdoc_build_registers_design_system_diagram_css_once() {
+    let dir = tempdir().expect("tempdir");
+    let site = r#"
+import <wdoc.wcl>
+use wdoc::{doc, section, page, layout}
+use wdoc::draw::{diagram, rect}
+
+doc my_docs {
+    title = "Design Docs"
+    section overview "Overview" {}
+}
+
+page home {
+    section = "my_docs.overview"
+    title = "Home"
+
+    layout {
+        diagram first {
+            width = 80
+            height = 40
+            design_system = "wad_interface"
+            css = ".ui-button-bg { fill: red; }"
+
+            rect bg {
+                x = 0
+                y = 0
+                width = 40
+                height = 20
+                class = "ui-button-bg"
+            }
+        }
+
+        diagram second {
+            width = 80
+            height = 40
+            design_system = "wad_interface"
+            css = ".ui-button-bg { fill: red; }"
+
+            rect bg {
+                x = 0
+                y = 0
+                width = 40
+                height = 20
+                class = "ui-button-bg"
+            }
+        }
+    }
+}
+"#;
+    let input = dir.path().join("site.wcl");
+    std::fs::write(&input, site).expect("write wdoc file");
+    let output = dir.path().join("out");
+
+    Command::cargo_bin("wcl")
+        .unwrap()
+        .args([
+            "wdoc",
+            "build",
+            input.to_str().unwrap(),
+            "--output",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let html = std::fs::read_to_string(output.join("home.html")).expect("read rendered page");
+    let css = std::fs::read_to_string(output.join("styles.css")).expect("read styles");
+    assert_eq!(html.matches("class=\"wad-ds-wad_interface\"").count(), 2);
+    assert!(!html.contains("<style>"));
+    assert_eq!(
+        css.matches(".wad-ds-wad_interface .ui-button-bg").count(),
+        1
+    );
+}
+
+#[test]
 fn wdoc_build_expands_imported_macro_inside_diagram_body() {
     let dir = tempdir().expect("tempdir");
     let pages_dir = dir.path().join("pages");

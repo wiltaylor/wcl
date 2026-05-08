@@ -1,5 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::cell::RefCell;
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 use indexmap::IndexMap;
 
@@ -517,7 +519,20 @@ fn render_callout_html(block: &BlockRef, ctx: &ExtractCtx) -> String {
 fn render_diagram_with_ctx(br: &BlockRef, ctx: &ExtractCtx) -> String {
     use wcl_wdoc::shapes::*;
 
-    let str_attrs = value_map_to_string_map_lossy(&br.attributes);
+    let mut str_attrs = value_map_to_string_map_lossy(&br.attributes);
+    if let Some(scope) = str_attrs
+        .get("design_system")
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+    {
+        let scope_class = design_system_class(&scope);
+        if let Some(css) = str_attrs.get("css") {
+            ctx.css_registry.borrow_mut().register(&scope_class, css);
+        }
+        append_class_attr(&mut str_attrs, &scope_class);
+        str_attrs.shift_remove("css");
+    }
 
     let diagram_w = val_f64(br.attributes.get("width")).unwrap_or(600.0);
     let diagram_h = val_f64(br.attributes.get("height")).unwrap_or(400.0);
@@ -553,6 +568,55 @@ fn render_diagram_with_ctx(br: &BlockRef, ctx: &ExtractCtx) -> String {
     };
 
     render_diagram_svg(&mut diagram)
+}
+
+fn design_system_class(scope: &str) -> String {
+    let mut out = String::new();
+    let mut last_dash = false;
+    for ch in scope.chars() {
+        let next = if ch.is_ascii_alphanumeric() {
+            last_dash = false;
+            Some(ch.to_ascii_lowercase())
+        } else if ch == '_' {
+            last_dash = false;
+            Some('_')
+        } else if ch == '-' || ch.is_whitespace() {
+            if last_dash {
+                None
+            } else {
+                last_dash = true;
+                Some('-')
+            }
+        } else {
+            None
+        };
+        if let Some(ch) = next {
+            out.push(ch);
+        }
+    }
+    let suffix = out.trim_matches('-');
+    let suffix = if suffix.is_empty() { "unnamed" } else { suffix };
+    if suffix.starts_with("wad-ds-") {
+        suffix.to_string()
+    } else {
+        format!("wad-ds-{suffix}")
+    }
+}
+
+fn append_class_attr(attrs: &mut IndexMap<String, String>, class_name: &str) {
+    match attrs.get_mut("class") {
+        Some(existing) => {
+            if !existing.split_whitespace().any(|class| class == class_name) {
+                if !existing.trim().is_empty() {
+                    existing.push(' ');
+                }
+                existing.push_str(class_name);
+            }
+        }
+        None => {
+            attrs.insert("class".to_string(), class_name.to_string());
+        }
+    }
 }
 
 fn collect_shape_or_connection(
@@ -894,6 +958,7 @@ struct ExtractCtx {
     template_map: HashMap<(String, String), String>,
     template_fns: HashMap<String, TemplateFn>,
     builtins: HashMap<String, BuiltinFn>,
+    css_registry: Rc<RefCell<DiagramCssRegistry>>,
 }
 
 impl ExtractCtx {
@@ -910,6 +975,37 @@ impl ExtractCtx {
             .ok_or_else(|| format!("template function '{fn_name}' not found for '{kind}'"))?;
 
         call_template(func, block, &self.builtins)
+    }
+}
+
+#[derive(Default)]
+struct DiagramCssRegistry {
+    css_by_scope: BTreeMap<String, BTreeSet<String>>,
+}
+
+impl DiagramCssRegistry {
+    fn register(&mut self, scope_class: &str, css: &str) {
+        let css = css.trim();
+        if css.is_empty() {
+            return;
+        }
+        let scoped = wcl_wdoc::shapes::scope_css_to_selector(css, &format!(".{scope_class}"));
+        self.css_by_scope
+            .entry(scope_class.to_string())
+            .or_default()
+            .insert(scoped);
+    }
+
+    fn render_css(&self) -> String {
+        let mut blocks = Vec::new();
+        for set in self.css_by_scope.values() {
+            for css in set {
+                if !css.trim().is_empty() {
+                    blocks.push(css.trim());
+                }
+            }
+        }
+        blocks.join("\n")
     }
 }
 
@@ -937,6 +1033,15 @@ mod wdoc_draw_tests {
 
     fn string_attr(attrs: &mut IndexMap<String, Value>, key: &str, value: &str) {
         attrs.insert(key.to_string(), Value::String(value.to_string()));
+    }
+
+    fn empty_ctx() -> ExtractCtx {
+        ExtractCtx {
+            template_map: HashMap::new(),
+            template_fns: HashMap::new(),
+            builtins: HashMap::new(),
+            css_registry: Rc::new(RefCell::new(DiagramCssRegistry::default())),
+        }
     }
 
     fn int_attr(attrs: &mut IndexMap<String, Value>, key: &str, value: i64) {
@@ -1109,17 +1214,56 @@ mod wdoc_draw_tests {
             vec![group],
         );
 
-        let ctx = ExtractCtx {
-            template_map: HashMap::new(),
-            template_fns: HashMap::new(),
-            builtins: HashMap::new(),
-        };
+        let ctx = empty_ctx();
 
         let html = render_diagram_with_ctx(&diagram, &ctx);
         assert!(html.contains("id=\"wdoc-diagram-button-preview\""));
         assert!(html.contains("<g transform=\"translate(20,16)\" class=\"ui-button\""));
         assert!(html.contains("pointer-events=\"all\""));
         assert!(html.contains("#wdoc-diagram-button-preview .ui-button:hover .ui-button-bg"));
+    }
+
+    #[test]
+    fn design_system_diagram_css_is_registered_once() {
+        let mut rect_attrs = IndexMap::new();
+        int_attr(&mut rect_attrs, "x", 0);
+        int_attr(&mut rect_attrs, "y", 0);
+        int_attr(&mut rect_attrs, "width", 40);
+        int_attr(&mut rect_attrs, "height", 20);
+        string_attr(&mut rect_attrs, "class", "ui-button-bg");
+
+        let mut diagram_attrs = IndexMap::new();
+        int_attr(&mut diagram_attrs, "width", 80);
+        int_attr(&mut diagram_attrs, "height", 40);
+        string_attr(&mut diagram_attrs, "design_system", "wad_interface");
+        string_attr(
+            &mut diagram_attrs,
+            "css",
+            ".ui-button:hover .ui-button-bg { fill: #81A1C1; }",
+        );
+
+        let diagram = block(
+            "wdoc::draw::diagram",
+            Some("button_preview"),
+            diagram_attrs,
+            vec![block("wdoc::draw::rect", Some("bg"), rect_attrs, vec![])],
+        );
+        let ctx = empty_ctx();
+
+        let first = render_diagram_with_ctx(&diagram, &ctx);
+        let second = render_diagram_with_ctx(&diagram, &ctx);
+        let css = ctx.css_registry.borrow().render_css();
+
+        assert!(first.contains("class=\"wad-ds-wad_interface\""));
+        assert!(second.contains("class=\"wad-ds-wad_interface\""));
+        assert!(!first.contains("<style>"));
+        assert!(!second.contains("<style>"));
+        assert!(css.contains(".wad-ds-wad_interface .ui-button:hover .ui-button-bg"));
+        assert_eq!(
+            css.matches(".wad-ds-wad_interface .ui-button:hover .ui-button-bg")
+                .count(),
+            1
+        );
     }
 
     #[test]
@@ -1153,11 +1297,7 @@ mod wdoc_draw_tests {
             ],
         );
 
-        let ctx = ExtractCtx {
-            template_map: HashMap::new(),
-            template_fns: HashMap::new(),
-            builtins: HashMap::new(),
-        };
+        let ctx = empty_ctx();
 
         let html = render_diagram_with_ctx(&diagram, &ctx);
         assert!(html.find("fill=\"blue\"").unwrap() < html.find("fill=\"red\"").unwrap());
@@ -1232,11 +1372,7 @@ mod wdoc_draw_tests {
             vec![image],
         );
 
-        let ctx = ExtractCtx {
-            template_map: HashMap::new(),
-            template_fns: HashMap::new(),
-            builtins: HashMap::new(),
-        };
+        let ctx = empty_ctx();
 
         let html = render_diagram_with_ctx(&diagram, &ctx);
         assert!(html.contains("<image href=\"images/hero.png\""));
@@ -1315,6 +1451,7 @@ fn extract(values: &IndexMap<String, Value>, ctx: &ExtractCtx) -> Result<WdocDoc
         sections,
         pages,
         styles,
+        extra_css: ctx.css_registry.borrow().render_css(),
     })
 }
 
@@ -1611,6 +1748,7 @@ fn parse_and_extract_with_watch(
         template_map,
         template_fns,
         builtins,
+        css_registry: Rc::new(RefCell::new(DiagramCssRegistry::default())),
     };
 
     let wdoc_doc = extract(&all_values, &ctx)?;

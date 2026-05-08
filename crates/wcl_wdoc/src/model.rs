@@ -10,6 +10,7 @@ pub struct WdocDocument {
     pub sections: Vec<Section>,
     pub pages: Vec<Page>,
     pub styles: Vec<WdocStyle>,
+    pub extra_css: String,
 }
 
 /// A section in the document outline. Ordering matches declaration order.

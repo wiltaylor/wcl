@@ -23,6 +23,12 @@ pub fn render_document(
     let mut css = assets::BASE_CSS.to_string();
     css.push('\n');
     css.push_str(&assets::generate_style_css(&doc.styles));
+    let extra_css = doc.extra_css.trim();
+    if !extra_css.is_empty() {
+        css.push('\n');
+        css.push_str(extra_css);
+        css.push('\n');
+    }
 
     fs::write(output.join("styles.css"), &css)
         .map_err(|e| format!("failed to write styles.css: {e}"))?;
@@ -261,6 +267,7 @@ mod tests {
                 },
             }],
             styles: vec![],
+            extra_css: String::new(),
         }
     }
 
@@ -280,6 +287,23 @@ mod tests {
         render_document(&doc, &output, &[source.as_path()]).expect("render");
 
         assert!(output.join("assets/deep/hero.png").exists());
+    }
+
+    #[test]
+    fn render_document_writes_extra_css_to_shared_stylesheet() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let output = temp.path().join("out");
+        let mut doc = doc_with_html(
+            r#"<div class="wdoc-diagram"><svg class="wad-ds-wad_interface"></svg></div>"#,
+        );
+        doc.extra_css = ".wad-ds-wad_interface .button{fill:red;}".to_string();
+
+        render_document(&doc, &output, &[]).expect("render");
+
+        let css = std::fs::read_to_string(output.join("styles.css")).expect("styles.css");
+        let html = std::fs::read_to_string(output.join("home.html")).expect("home.html");
+        assert!(css.contains(".wad-ds-wad_interface .button{fill:red;}"));
+        assert!(html.contains("class=\"wad-ds-wad_interface\""));
     }
 
     #[test]
