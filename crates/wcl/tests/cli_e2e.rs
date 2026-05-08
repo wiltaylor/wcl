@@ -1282,6 +1282,96 @@ css_fragment wad_interface_tokens_duplicate {
 }
 
 #[test]
+fn wdoc_build_registers_imported_font_asset_and_global_css() {
+    let dir = tempdir().expect("tempdir");
+    let theme_dir = dir.path().join("theme");
+    std::fs::create_dir_all(theme_dir.join("fonts")).expect("create theme font dir");
+    std::fs::write(theme_dir.join("fonts/Inter-Regular.woff2"), [0, 1, 2, 3]).expect("write font");
+
+    let site = r#"
+import <wdoc.wcl>
+import "./theme/fonts.wcl"
+use wdoc::{doc, section, page, layout}
+use wdoc::draw::{diagram, text}
+
+doc my_docs {
+    title = "Design Docs"
+    section overview "Overview" {}
+}
+
+page home {
+    section = "my_docs.overview"
+    title = "Home"
+
+    layout {
+        diagram first {
+            width = 160
+            height = 60
+
+            text label {
+                x = 8
+                y = 24
+                content = "Hello"
+                font_family = "\"Inter\", system-ui, sans-serif"
+                font_size = 14
+            }
+        }
+    }
+}
+"#;
+    let fonts = r#"
+import <wdoc.wcl>
+use wdoc::{font_asset, global_css}
+
+font_asset inter_regular {
+    family = "Inter"
+    src = "fonts/Inter-Regular.woff2"
+    weight = "400"
+    style = "normal"
+    display = "swap"
+}
+
+font_asset inter_regular_duplicate {
+    family = "Inter"
+    src = "fonts/Inter-Regular.woff2"
+    weight = "400"
+    style = "normal"
+    display = "swap"
+}
+
+global_css app_fonts {
+    css = ":root { --font-body: \"Inter\", system-ui, sans-serif; }"
+}
+"#;
+    let input = dir.path().join("site.wcl");
+    std::fs::write(&input, site).expect("write wdoc file");
+    std::fs::write(theme_dir.join("fonts.wcl"), fonts).expect("write fonts file");
+    let output = dir.path().join("out");
+
+    Command::cargo_bin("wcl")
+        .unwrap()
+        .args([
+            "wdoc",
+            "build",
+            input.to_str().unwrap(),
+            "--output",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let html = std::fs::read_to_string(output.join("home.html")).expect("read rendered page");
+    let css = std::fs::read_to_string(output.join("styles.css")).expect("read styles");
+    assert_eq!(css.matches("@font-face").count(), 1);
+    assert!(css.contains("font-family: \"Inter\";"));
+    assert!(css.contains("src: url(\"fonts/Inter-Regular.woff2\") format(\"woff2\");"));
+    assert!(css.contains(":root { --font-body: \"Inter\", system-ui, sans-serif; }"));
+    assert!(!css.contains(".wad-ds-wad_interface :root"));
+    assert!(html.contains("font-family=\"&quot;Inter&quot;, system-ui, sans-serif\""));
+    assert!(output.join("fonts/Inter-Regular.woff2").exists());
+}
+
+#[test]
 fn wdoc_build_expands_imported_macro_inside_diagram_body() {
     let dir = tempdir().expect("tempdir");
     let pages_dir = dir.path().join("pages");

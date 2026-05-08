@@ -30,6 +30,12 @@ pub fn render_document(
         css.push('\n');
     }
 
+    let asset_extensions = [
+        "png", "jpg", "jpeg", "gif", "svg", "webp", "ico", "woff2", "woff", "ttf", "otf", "eot",
+    ];
+    let mut referenced_assets = HashSet::new();
+    collect_referenced_css_assets(&css, &asset_extensions, &mut referenced_assets);
+
     fs::write(output.join("styles.css"), &css)
         .map_err(|e| format!("failed to write styles.css: {e}"))?;
 
@@ -57,9 +63,6 @@ pub fn render_document(
         crate::library::WCL_HIGHLIGHTJS_GRAMMAR,
     )
     .map_err(|e| format!("failed to write wcl-grammar.js: {e}"))?;
-
-    let asset_extensions = ["png", "jpg", "jpeg", "gif", "svg", "webp", "ico"];
-    let mut referenced_assets = HashSet::new();
 
     // Render each page
     for p in &doc.pages {
@@ -157,6 +160,32 @@ fn collect_referenced_image_assets(html: &str, extensions: &[&str], out: &mut Ha
             rest = &after[value_end + 1..];
         }
     }
+}
+
+fn collect_referenced_css_assets(css: &str, extensions: &[&str], out: &mut HashSet<PathBuf>) {
+    let mut rest = css;
+    while let Some(idx) = rest.find("url(") {
+        let after = &rest[idx + 4..];
+        let Some(value_end) = after.find(')') else {
+            break;
+        };
+        let value = strip_css_url_quotes(after[..value_end].trim());
+        if let Some(asset_ref) = local_asset_ref_path(value, extensions) {
+            out.insert(asset_ref);
+        }
+        rest = &after[value_end + 1..];
+    }
+}
+
+fn strip_css_url_quotes(value: &str) -> &str {
+    if value.len() >= 2 {
+        let first = value.as_bytes()[0];
+        let last = value.as_bytes()[value.len() - 1];
+        if (first == b'"' && last == b'"') || (first == b'\'' && last == b'\'') {
+            return &value[1..value.len() - 1];
+        }
+    }
+    value
 }
 
 fn copy_referenced_assets(
@@ -307,6 +336,25 @@ mod tests {
     }
 
     #[test]
+    fn render_document_copies_font_asset_referenced_from_css() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let source = temp.path().join("source");
+        let output = temp.path().join("out");
+        std::fs::create_dir_all(source.join("fonts")).expect("create fonts dir");
+        std::fs::write(source.join("fonts/Inter-Regular.woff2"), [0, 1, 2, 3]).expect("write font");
+
+        let mut doc = doc_with_html("<p>Fonts</p>");
+        doc.extra_css =
+            "@font-face { src: url(\"fonts/Inter-Regular.woff2\") format(\"woff2\"); }".to_string();
+
+        render_document(&doc, &output, &[source.as_path()]).expect("render");
+
+        let css = std::fs::read_to_string(output.join("styles.css")).expect("styles.css");
+        assert!(css.contains("url(\"fonts/Inter-Regular.woff2\")"));
+        assert!(output.join("fonts/Inter-Regular.woff2").exists());
+    }
+
+    #[test]
     fn referenced_asset_collection_ignores_remote_and_unsafe_paths() {
         let mut refs = HashSet::new();
         collect_referenced_image_assets(
@@ -317,5 +365,19 @@ mod tests {
 
         assert!(refs.contains(&PathBuf::from("images/ok.webp")));
         assert_eq!(refs.len(), 1);
+    }
+
+    #[test]
+    fn css_asset_collection_ignores_remote_and_unsafe_paths() {
+        let mut refs = HashSet::new();
+        collect_referenced_css_assets(
+            r#"@font-face{src:url("fonts/Inter.woff2")} .x{background:url(https://example.com/a.png)} .y{background:url('../secret.ttf')} .z{background:url(icons/a.svg?cache=1)}"#,
+            &["woff2", "ttf", "svg"],
+            &mut refs,
+        );
+
+        assert!(refs.contains(&PathBuf::from("fonts/Inter.woff2")));
+        assert!(refs.contains(&PathBuf::from("icons/a.svg")));
+        assert_eq!(refs.len(), 2);
     }
 }

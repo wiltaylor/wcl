@@ -116,6 +116,21 @@ namespace wdoc {
         css: string
     }
 
+    // Raw global CSS emitted once into the shared WDoc stylesheet.
+    schema "global_css" {
+        css: string
+    }
+
+    // First-class font asset declaration. The referenced font file is copied
+    // to the build output when the generated @font-face rule is emitted.
+    schema "font_asset" {
+        family: string
+        src: string
+        weight: string @optional
+        style: string @optional
+        display: string @optional
+    }
+
     // --- Diagram and shape schemas ---
 
     namespace draw {

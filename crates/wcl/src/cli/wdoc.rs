@@ -1055,6 +1055,8 @@ impl ExtractCtx {
 #[derive(Default)]
 struct DiagramCssRegistry {
     css_by_scope: BTreeMap<String, BTreeSet<String>>,
+    global_css: BTreeSet<String>,
+    font_faces: BTreeSet<String>,
 }
 
 impl DiagramCssRegistry {
@@ -1070,8 +1072,32 @@ impl DiagramCssRegistry {
             .insert(scoped);
     }
 
+    fn register_global(&mut self, css: &str) {
+        let css = css.trim();
+        if !css.is_empty() {
+            self.global_css.insert(css.to_string());
+        }
+    }
+
+    fn register_font_face(&mut self, css: &str) {
+        let css = css.trim();
+        if !css.is_empty() {
+            self.font_faces.insert(css.to_string());
+        }
+    }
+
     fn render_css(&self) -> String {
         let mut blocks = Vec::new();
+        for css in &self.font_faces {
+            if !css.trim().is_empty() {
+                blocks.push(css.trim());
+            }
+        }
+        for css in &self.global_css {
+            if !css.trim().is_empty() {
+                blocks.push(css.trim());
+            }
+        }
         for set in self.css_by_scope.values() {
             for css in set {
                 if !css.trim().is_empty() {
@@ -1112,23 +1138,149 @@ fn register_css_fragment(block: &BlockRef, ctx: &ExtractCtx) -> Result<(), Strin
     Ok(())
 }
 
-fn register_css_fragments_in_block(block: &BlockRef, ctx: &ExtractCtx) -> Result<(), String> {
-    if block.kind == "wdoc::css_fragment" {
-        register_css_fragment(block, ctx)?;
+fn register_global_css(block: &BlockRef, ctx: &ExtractCtx) -> Result<(), String> {
+    let css = block
+        .attributes
+        .get("css")
+        .and_then(|v| v.as_string())
+        .ok_or_else(|| {
+            format!(
+                "global_css '{}' missing 'css' attribute",
+                block.id.as_deref().unwrap_or("(anonymous)")
+            )
+        })?;
+
+    ctx.css_registry.borrow_mut().register_global(css);
+    Ok(())
+}
+
+fn register_font_asset(block: &BlockRef, ctx: &ExtractCtx) -> Result<(), String> {
+    let family = block
+        .attributes
+        .get("family")
+        .and_then(|v| v.as_string())
+        .map(str::trim)
+        .filter(|family| !family.is_empty())
+        .ok_or_else(|| {
+            format!(
+                "font_asset '{}' missing non-empty 'family' attribute",
+                block.id.as_deref().unwrap_or("(anonymous)")
+            )
+        })?;
+    let src = block
+        .attributes
+        .get("src")
+        .and_then(|v| v.as_string())
+        .map(str::trim)
+        .filter(|src| !src.is_empty())
+        .ok_or_else(|| {
+            format!(
+                "font_asset '{}' missing non-empty 'src' attribute",
+                block.id.as_deref().unwrap_or("(anonymous)")
+            )
+        })?;
+
+    if is_remote_or_data_url(src) {
+        eprintln!(
+            "wdoc: warning: font_asset '{}' uses a remote/data src and was skipped",
+            block.id.as_deref().unwrap_or("(anonymous)")
+        );
+        return Ok(());
+    }
+
+    let Some(format) = font_format_for_src(src) else {
+        eprintln!(
+            "wdoc: warning: font_asset '{}' uses unsupported font extension in '{}'",
+            block.id.as_deref().unwrap_or("(anonymous)"),
+            src
+        );
+        return Ok(());
+    };
+
+    let weight = block
+        .attributes
+        .get("weight")
+        .and_then(|v| v.as_string())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("400");
+    let style = block
+        .attributes
+        .get("style")
+        .and_then(|v| v.as_string())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("normal");
+    let display = block
+        .attributes
+        .get("display")
+        .and_then(|v| v.as_string())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("swap");
+
+    let css = format!(
+        "@font-face {{\n  font-family: \"{}\";\n  src: url(\"{}\") format(\"{}\");\n  font-weight: {};\n  font-style: {};\n  font-display: {};\n}}",
+        css_string_escape(family),
+        css_string_escape(src),
+        css_string_escape(format),
+        css_declaration_value(weight),
+        css_declaration_value(style),
+        css_declaration_value(display)
+    );
+
+    ctx.css_registry.borrow_mut().register_font_face(&css);
+    Ok(())
+}
+
+fn is_remote_or_data_url(src: &str) -> bool {
+    src.starts_with("http://")
+        || src.starts_with("https://")
+        || src.starts_with("data:")
+        || src.starts_with("//")
+}
+
+fn font_format_for_src(src: &str) -> Option<&'static str> {
+    let path = src.split(['?', '#']).next().unwrap_or(src);
+    let ext = Path::new(path).extension()?.to_str()?;
+    match ext.to_ascii_lowercase().as_str() {
+        "woff2" => Some("woff2"),
+        "woff" => Some("woff"),
+        "ttf" => Some("truetype"),
+        "otf" => Some("opentype"),
+        "eot" => Some("embedded-opentype"),
+        _ => None,
+    }
+}
+
+fn css_string_escape(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+fn css_declaration_value(value: &str) -> String {
+    value
+        .chars()
+        .filter(|ch| !matches!(ch, ';' | '{' | '}' | '<' | '>'))
+        .collect::<String>()
+}
+
+fn register_css_assets_in_block(block: &BlockRef, ctx: &ExtractCtx) -> Result<(), String> {
+    match block.kind.as_str() {
+        "wdoc::css_fragment" => register_css_fragment(block, ctx)?,
+        "wdoc::global_css" => register_global_css(block, ctx)?,
+        "wdoc::font_asset" => register_font_asset(block, ctx)?,
+        _ => {}
     }
     for child in all_child_blocks(block) {
-        register_css_fragments_in_block(child, ctx)?;
+        register_css_assets_in_block(child, ctx)?;
     }
     Ok(())
 }
 
-fn register_css_fragments(
-    values: &IndexMap<String, Value>,
-    ctx: &ExtractCtx,
-) -> Result<(), String> {
+fn register_css_assets(values: &IndexMap<String, Value>, ctx: &ExtractCtx) -> Result<(), String> {
     for value in values.values() {
         if let Value::BlockRef(block) = value {
-            register_css_fragments_in_block(block, ctx)?;
+            register_css_assets_in_block(block, ctx)?;
         }
     }
     Ok(())
@@ -1428,6 +1580,57 @@ mod wdoc_draw_tests {
     }
 
     #[test]
+    fn font_asset_and_global_css_register_extra_css_once() {
+        let mut doc_attrs = IndexMap::new();
+        string_attr(&mut doc_attrs, "title", "Docs");
+        let doc = block("wdoc::doc", Some("docs"), doc_attrs, vec![]);
+
+        let mut font_attrs = IndexMap::new();
+        string_attr(&mut font_attrs, "family", "Inter");
+        string_attr(&mut font_attrs, "src", "fonts/Inter-Regular.woff2");
+        string_attr(&mut font_attrs, "weight", "400");
+        string_attr(&mut font_attrs, "style", "normal");
+        string_attr(&mut font_attrs, "display", "swap");
+        let font = block(
+            "wdoc::font_asset",
+            Some("inter_regular"),
+            font_attrs,
+            vec![],
+        );
+
+        let mut global_attrs = IndexMap::new();
+        string_attr(
+            &mut global_attrs,
+            "css",
+            ":root { --font-body: \"Inter\", system-ui, sans-serif; }",
+        );
+        let global = block("wdoc::global_css", Some("app_fonts"), global_attrs, vec![]);
+
+        let mut values = IndexMap::new();
+        values.insert("docs".to_string(), Value::BlockRef(doc));
+        values.insert("font".to_string(), Value::BlockRef(font.clone()));
+        values.insert("font_duplicate".to_string(), Value::BlockRef(font));
+        values.insert("global".to_string(), Value::BlockRef(global));
+        let ctx = empty_ctx();
+
+        let document = extract(&values, &ctx).expect("extract");
+
+        assert!(document.extra_css.contains("@font-face"));
+        assert!(document.extra_css.contains("font-family: \"Inter\";"));
+        assert!(document
+            .extra_css
+            .contains("src: url(\"fonts/Inter-Regular.woff2\") format(\"woff2\");"));
+        assert!(document.extra_css.contains("font-weight: 400;"));
+        assert!(document.extra_css.contains("font-style: normal;"));
+        assert!(document.extra_css.contains("font-display: swap;"));
+        assert_eq!(document.extra_css.matches("@font-face").count(), 1);
+        assert!(document
+            .extra_css
+            .contains(":root { --font-body: \"Inter\""));
+        assert!(!document.extra_css.contains(".wad-ds-"));
+    }
+
+    #[test]
     fn diagram_z_index_flows_through_cli_extraction() {
         let mut back_attrs = IndexMap::new();
         int_attr(&mut back_attrs, "x", 0);
@@ -1637,7 +1840,7 @@ fn extract(values: &IndexMap<String, Value>, ctx: &ExtractCtx) -> Result<WdocDoc
     let mut pages = Vec::new();
     let mut styles = Vec::new();
 
-    register_css_fragments(values, ctx)?;
+    register_css_assets(values, ctx)?;
 
     for value in values.values() {
         if let Value::BlockRef(block) = value {
