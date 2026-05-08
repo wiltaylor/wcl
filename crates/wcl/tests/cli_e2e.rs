@@ -1114,6 +1114,99 @@ page home {
 }
 
 #[test]
+fn wdoc_build_registers_imported_css_fragment_once() {
+    let dir = tempdir().expect("tempdir");
+    let fragments_dir = dir.path().join("fragments");
+    std::fs::create_dir_all(&fragments_dir).expect("create fragments dir");
+
+    let site = r#"
+import <wdoc.wcl>
+import "./fragments/css.wcl"
+use wdoc::{doc, section, page, layout}
+use wdoc::draw::{diagram, rect}
+
+doc my_docs {
+    title = "Design Docs"
+    section overview "Overview" {}
+}
+
+page home {
+    section = "my_docs.overview"
+    title = "Home"
+
+    layout {
+        diagram first {
+            width = 80
+            height = 40
+            design_system = "wad_interface"
+
+            rect bg {
+                x = 0
+                y = 0
+                width = 40
+                height = 20
+                class = "token-swatch"
+            }
+        }
+
+        diagram second {
+            width = 80
+            height = 40
+            design_system = "wad_interface"
+
+            rect bg {
+                x = 0
+                y = 0
+                width = 40
+                height = 20
+                class = "token-swatch"
+            }
+        }
+    }
+}
+"#;
+    let css_fragment = r#"
+import <wdoc.wcl>
+use wdoc::{css_fragment}
+
+css_fragment wad_interface_tokens {
+    scope = "wad_interface"
+    css = ".token-swatch { fill: var(--wad-token-frost); }"
+}
+
+css_fragment wad_interface_tokens_duplicate {
+    scope = "wad_interface"
+    css = ".token-swatch { fill: var(--wad-token-frost); }"
+}
+"#;
+    let input = dir.path().join("site.wcl");
+    std::fs::write(&input, site).expect("write wdoc file");
+    std::fs::write(fragments_dir.join("css.wcl"), css_fragment).expect("write fragment file");
+    let output = dir.path().join("out");
+
+    Command::cargo_bin("wcl")
+        .unwrap()
+        .args([
+            "wdoc",
+            "build",
+            input.to_str().unwrap(),
+            "--output",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let html = std::fs::read_to_string(output.join("home.html")).expect("read rendered page");
+    let css = std::fs::read_to_string(output.join("styles.css")).expect("read styles");
+    assert_eq!(html.matches("class=\"wad-ds-wad_interface\"").count(), 2);
+    assert!(!html.contains("<style>"));
+    assert_eq!(
+        css.matches(".wad-ds-wad_interface .token-swatch").count(),
+        1
+    );
+}
+
+#[test]
 fn wdoc_build_expands_imported_macro_inside_diagram_body() {
     let dir = tempdir().expect("tempdir");
     let pages_dir = dir.path().join("pages");

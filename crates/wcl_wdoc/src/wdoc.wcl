@@ -110,6 +110,12 @@ namespace wdoc {
         color: string @optional
     }
 
+    // Reusable scoped CSS emitted once into the shared WDoc stylesheet.
+    schema "css_fragment" {
+        scope: string
+        css: string
+    }
+
     // --- Diagram and shape schemas ---
 
     namespace draw {

@@ -1009,6 +1009,57 @@ impl DiagramCssRegistry {
     }
 }
 
+fn register_css_fragment(block: &BlockRef, ctx: &ExtractCtx) -> Result<(), String> {
+    let scope = block
+        .attributes
+        .get("scope")
+        .and_then(|v| v.as_string())
+        .map(str::trim)
+        .filter(|scope| !scope.is_empty())
+        .ok_or_else(|| {
+            format!(
+                "css_fragment '{}' missing non-empty 'scope' attribute",
+                block.id.as_deref().unwrap_or("(anonymous)")
+            )
+        })?;
+    let css = block
+        .attributes
+        .get("css")
+        .and_then(|v| v.as_string())
+        .ok_or_else(|| {
+            format!(
+                "css_fragment '{}' missing 'css' attribute",
+                block.id.as_deref().unwrap_or("(anonymous)")
+            )
+        })?;
+
+    let scope_class = design_system_class(scope);
+    ctx.css_registry.borrow_mut().register(&scope_class, css);
+    Ok(())
+}
+
+fn register_css_fragments_in_block(block: &BlockRef, ctx: &ExtractCtx) -> Result<(), String> {
+    if block.kind == "wdoc::css_fragment" {
+        register_css_fragment(block, ctx)?;
+    }
+    for child in all_child_blocks(block) {
+        register_css_fragments_in_block(child, ctx)?;
+    }
+    Ok(())
+}
+
+fn register_css_fragments(
+    values: &IndexMap<String, Value>,
+    ctx: &ExtractCtx,
+) -> Result<(), String> {
+    for value in values.values() {
+        if let Value::BlockRef(block) = value {
+            register_css_fragments_in_block(block, ctx)?;
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod wdoc_draw_tests {
     use super::*;
@@ -1267,6 +1318,41 @@ mod wdoc_draw_tests {
     }
 
     #[test]
+    fn css_fragment_registers_scoped_extra_css() {
+        let mut doc_attrs = IndexMap::new();
+        string_attr(&mut doc_attrs, "title", "Docs");
+        let doc = block("wdoc::doc", Some("docs"), doc_attrs, vec![]);
+
+        let mut fragment_attrs = IndexMap::new();
+        string_attr(&mut fragment_attrs, "scope", "wad_interface");
+        string_attr(
+            &mut fragment_attrs,
+            "css",
+            ".token-swatch { fill: var(--wad-token-frost); }",
+        );
+        let fragment = block("wdoc::css_fragment", Some("tokens"), fragment_attrs, vec![]);
+
+        let mut values = IndexMap::new();
+        values.insert("docs".to_string(), Value::BlockRef(doc));
+        values.insert("tokens".to_string(), Value::BlockRef(fragment.clone()));
+        values.insert("tokens_duplicate".to_string(), Value::BlockRef(fragment));
+        let ctx = empty_ctx();
+
+        let document = extract(&values, &ctx).expect("extract");
+
+        assert!(document
+            .extra_css
+            .contains(".wad-ds-wad_interface .token-swatch"));
+        assert_eq!(
+            document
+                .extra_css
+                .matches(".wad-ds-wad_interface .token-swatch")
+                .count(),
+            1
+        );
+    }
+
+    #[test]
     fn diagram_z_index_flows_through_cli_extraction() {
         let mut back_attrs = IndexMap::new();
         int_attr(&mut back_attrs, "x", 0);
@@ -1400,6 +1486,8 @@ fn extract(values: &IndexMap<String, Value>, ctx: &ExtractCtx) -> Result<WdocDoc
     let mut wdoc_block = None;
     let mut pages = Vec::new();
     let mut styles = Vec::new();
+
+    register_css_fragments(values, ctx)?;
 
     for value in values.values() {
         if let Value::BlockRef(block) = value {
