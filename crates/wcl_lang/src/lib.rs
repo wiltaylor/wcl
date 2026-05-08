@@ -777,12 +777,11 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
             );
         }
     }
-    cf_expander.expand(&mut doc, &|expr| {
-        pre_eval
-            .borrow_mut()
-            .eval_expr(expr, pre_scope)
-            .map_err(|d| d.message)
+    let mut control_flow_captures: indexmap::IndexMap<String, Value> = indexmap::IndexMap::new();
+    cf_expander.expand_with_captures(&mut doc, &|expr, captures| {
+        eval_with_captures(&pre_eval, pre_scope, expr, &control_flow_captures, captures)
     });
+    merge_control_flow_captures(&mut control_flow_captures, cf_expander.captures());
     all_diagnostics.extend(cf_expander.into_diagnostics().into_diagnostics());
 
     // Expand any macro calls that were produced or preserved by control-flow
@@ -798,12 +797,14 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
     let mut post_macro_cf_expander =
         ControlFlowExpander::new(options.max_loop_depth, options.max_iterations)
             .with_tolerate_missing(true);
-    post_macro_cf_expander.expand(&mut doc, &|expr| {
-        pre_eval
-            .borrow_mut()
-            .eval_expr(expr, pre_scope)
-            .map_err(|d| d.message)
+    post_macro_cf_expander.set_next_capture_id(control_flow_captures.len() as u64);
+    post_macro_cf_expander.expand_with_captures(&mut doc, &|expr, captures| {
+        eval_with_captures(&pre_eval, pre_scope, expr, &control_flow_captures, captures)
     });
+    merge_control_flow_captures(
+        &mut control_flow_captures,
+        post_macro_cf_expander.captures(),
+    );
     all_diagnostics.extend(post_macro_cf_expander.into_diagnostics().into_diagnostics());
 
     // Phase 6: Partial merge
@@ -862,20 +863,24 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
     // can reinstantiate it if the control-flow retry mutates the AST.
     let imported_paths_captured = imported_paths.clone();
     let schema_names_captured = schema_names.clone();
-    let build_evaluator = || {
+    let build_evaluator = |captures: &indexmap::IndexMap<String, Value>| {
         let mut ev = Evaluator::with_functions(
             &options.functions,
             Some(Box::new(ArcFs(fs.clone()))),
             Some(options.root_dir.clone()),
         );
-        ev.set_variables(options.variables.clone());
+        let mut variables = options.variables.clone();
+        for (name, value) in captures {
+            variables.insert(name.clone(), value.clone());
+        }
+        ev.set_variables(variables);
         ev.set_imported_paths(imported_paths_captured.clone());
         ev.set_schema_names(schema_names_captured.clone());
         ev.set_namespace_aliases(namespace_aliases.clone());
         ev
     };
 
-    let mut evaluator = build_evaluator();
+    let mut evaluator = build_evaluator(&control_flow_captures);
     let mut values = evaluator.evaluate(&doc);
 
     // Phase 7a: retry control-flow expansion for ForLoops whose iterables
@@ -890,12 +895,17 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
         let eval_cell = std::cell::RefCell::new(evaluator);
         let mut retry_expander =
             ControlFlowExpander::new(options.max_loop_depth, options.max_iterations);
-        retry_expander.expand(&mut doc, &|expr| {
-            eval_cell
-                .borrow_mut()
-                .eval_expr(expr, module_scope)
-                .map_err(|d| d.message)
+        retry_expander.set_next_capture_id(control_flow_captures.len() as u64);
+        retry_expander.expand_with_captures(&mut doc, &|expr, captures| {
+            eval_with_captures(
+                &eval_cell,
+                module_scope,
+                expr,
+                &control_flow_captures,
+                captures,
+            )
         });
+        merge_control_flow_captures(&mut control_flow_captures, retry_expander.captures());
         all_diagnostics.extend(retry_expander.into_diagnostics().into_diagnostics());
 
         let mut retry_macro_expander = MacroExpander::with_namespace_aliases(
@@ -908,12 +918,17 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
 
         let mut retry_post_macro_cf =
             ControlFlowExpander::new(options.max_loop_depth, options.max_iterations);
-        retry_post_macro_cf.expand(&mut doc, &|expr| {
-            eval_cell
-                .borrow_mut()
-                .eval_expr(expr, module_scope)
-                .map_err(|d| d.message)
+        retry_post_macro_cf.set_next_capture_id(control_flow_captures.len() as u64);
+        retry_post_macro_cf.expand_with_captures(&mut doc, &|expr, captures| {
+            eval_with_captures(
+                &eval_cell,
+                module_scope,
+                expr,
+                &control_flow_captures,
+                captures,
+            )
         });
+        merge_control_flow_captures(&mut control_flow_captures, retry_post_macro_cf.captures());
         all_diagnostics.extend(retry_post_macro_cf.into_diagnostics().into_diagnostics());
 
         // Drain the old evaluator's diagnostics (accumulated during the
@@ -928,7 +943,7 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
         all_diagnostics.extend(merger.into_diagnostics().into_diagnostics());
         crate::eval::auto_id::assign_auto_ids(&mut doc, &namespace_aliases);
 
-        let mut new_evaluator = build_evaluator();
+        let mut new_evaluator = build_evaluator(&control_flow_captures);
         values = new_evaluator.evaluate(&doc);
         all_diagnostics.extend(new_evaluator.into_diagnostics().into_diagnostics());
     } else {
@@ -1002,6 +1017,54 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
         struct_registry,
         layout_registry,
         imported_paths,
+    }
+}
+
+fn eval_with_captures(
+    evaluator: &std::cell::RefCell<Evaluator>,
+    scope: crate::eval::value::ScopeId,
+    expr: &ast::Expr,
+    base_captures: &indexmap::IndexMap<String, Value>,
+    captures: &std::collections::HashMap<String, Value>,
+) -> Result<Value, String> {
+    let mut eval = evaluator.borrow_mut();
+    for (name, value) in base_captures {
+        eval.scopes_mut().add_entry(
+            scope,
+            ScopeEntry {
+                name: name.clone(),
+                kind: ScopeEntryKind::LetBinding,
+                value: Some(value.clone()),
+                span: Span::dummy(),
+                dependencies: std::collections::HashSet::new(),
+                evaluated: true,
+                read_count: 0,
+            },
+        );
+    }
+    for (name, value) in captures {
+        eval.scopes_mut().add_entry(
+            scope,
+            ScopeEntry {
+                name: name.clone(),
+                kind: ScopeEntryKind::LetBinding,
+                value: Some(value.clone()),
+                span: Span::dummy(),
+                dependencies: std::collections::HashSet::new(),
+                evaluated: true,
+                read_count: 0,
+            },
+        );
+    }
+    eval.eval_expr(expr, scope).map_err(|d| d.message)
+}
+
+fn merge_control_flow_captures(
+    target: &mut indexmap::IndexMap<String, Value>,
+    captures: &std::collections::HashMap<String, Value>,
+) {
+    for (name, value) in captures {
+        target.insert(name.clone(), value.clone());
     }
 }
 
@@ -4978,6 +5041,171 @@ container page {
             .map(|child| child.id.as_deref().unwrap_or(""))
             .collect();
         assert_eq!(ids, vec!["item-a", "item-b"]);
+    }
+
+    #[test]
+    fn nested_control_flow_keeps_unrepresentable_outer_loop_value_bound() {
+        let mut functions = FunctionRegistry::new();
+        functions.register(
+            "make_items",
+            Arc::new(|_| {
+                let mut item = indexmap::IndexMap::new();
+                item.insert("id".to_string(), Value::String("a".to_string()));
+                item.insert("enabled".to_string(), Value::Bool(true));
+                item.insert("width".to_string(), Value::Int(2));
+                item.insert(
+                    "opaque".to_string(),
+                    Value::Set(vec![Value::String("capture-only".to_string())]),
+                );
+                Ok(Value::List(vec![Value::Map(item)]))
+            }),
+            FunctionSignature {
+                name: "make_items".into(),
+                params: vec![],
+                return_type: "list(any)".into(),
+                doc: "Test helper".into(),
+            },
+        );
+        functions.register(
+            "item_id",
+            Arc::new(|args| match args.first() {
+                Some(Value::Map(item)) => item
+                    .get("id")
+                    .and_then(Value::as_string)
+                    .map(|id| Value::String(id.to_string()))
+                    .ok_or_else(|| "missing id".to_string()),
+                other => Err(format!("expected map, got {:?}", other)),
+            }),
+            FunctionSignature {
+                name: "item_id".into(),
+                params: vec!["item: any".into()],
+                return_type: "string".into(),
+                doc: "Test helper".into(),
+            },
+        );
+
+        let doc = parse(
+            r#"
+let items = make_items()
+
+container page {
+    for item in items {
+        if item.enabled {
+            for x in range(0, item.width) {
+                if item_id(item) == "a" {
+                    probe node-${item.id}-${x} {
+                        value = item_id(item)
+                    }
+                }
+            }
+        }
+    }
+}
+"#,
+            ParseOptions {
+                functions,
+                ..ParseOptions::default()
+            },
+        );
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+
+        let Value::BlockRef(container) = doc.values.get("page").expect("page block") else {
+            panic!("expected page block");
+        };
+        let ids: Vec<_> = container
+            .children
+            .iter()
+            .map(|child| child.id.as_deref().unwrap_or(""))
+            .collect();
+        assert_eq!(ids, vec!["node-a-0", "node-a-1"]);
+        for child in &container.children {
+            assert_eq!(
+                child.attributes.get("value").and_then(Value::as_string),
+                Some("a")
+            );
+        }
+    }
+
+    #[test]
+    fn partial_macro_nested_control_flow_keeps_outer_loop_value_bound() {
+        let mut functions = FunctionRegistry::new();
+        functions.register(
+            "make_items",
+            Arc::new(|_| {
+                let mut item = indexmap::IndexMap::new();
+                item.insert("id".to_string(), Value::String("a".to_string()));
+                item.insert("enabled".to_string(), Value::Bool(true));
+                item.insert("width".to_string(), Value::Int(1));
+                item.insert(
+                    "opaque".to_string(),
+                    Value::Set(vec![Value::String("capture-only".to_string())]),
+                );
+                Ok(Value::List(vec![Value::Map(item)]))
+            }),
+            FunctionSignature {
+                name: "make_items".into(),
+                params: vec![],
+                return_type: "list(any)".into(),
+                doc: "Test helper".into(),
+            },
+        );
+        functions.register(
+            "item_id",
+            Arc::new(|args| match args.first() {
+                Some(Value::Map(item)) => item
+                    .get("id")
+                    .and_then(Value::as_string)
+                    .map(|id| Value::String(id.to_string()))
+                    .ok_or_else(|| "missing id".to_string()),
+                other => Err(format!("expected map, got {:?}", other)),
+            }),
+            FunctionSignature {
+                name: "item_id".into(),
+                params: vec!["item: any".into()],
+                return_type: "string".into(),
+                doc: "Test helper".into(),
+            },
+        );
+
+        let doc = parse(
+            r#"
+let items = make_items()
+
+partial macro render(elements) {
+    for item in elements {
+        if item.enabled {
+            for x in range(0, item.width) {
+                probe node-${item.id}-${x} {
+                    value = item_id(item)
+                }
+            }
+        }
+    }
+}
+
+container page {
+    render(items)
+}
+"#,
+            ParseOptions {
+                functions,
+                ..ParseOptions::default()
+            },
+        );
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+
+        let Value::BlockRef(container) = doc.values.get("page").expect("page block") else {
+            panic!("expected page block");
+        };
+        let probe = container
+            .children
+            .iter()
+            .find(|child| child.id.as_deref() == Some("node-a-0"))
+            .expect("probe");
+        assert_eq!(
+            probe.attributes.get("value").and_then(Value::as_string),
+            Some("a")
+        );
     }
 
     #[test]

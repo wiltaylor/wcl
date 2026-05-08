@@ -23,6 +23,8 @@ pub struct ControlFlowExpander {
     /// promotes any remaining failures to a real error (E105).
     tolerate_missing: bool,
     local_scopes: Vec<HashMap<String, Value>>,
+    captures: HashMap<String, Value>,
+    next_capture_id: u64,
 }
 
 impl ControlFlowExpander {
@@ -34,6 +36,8 @@ impl ControlFlowExpander {
             diagnostics: DiagnosticBag::new(),
             tolerate_missing: false,
             local_scopes: Vec::new(),
+            captures: HashMap::new(),
+            next_capture_id: 0,
         }
     }
 
@@ -52,6 +56,14 @@ impl ControlFlowExpander {
         &mut self,
         doc: &mut Document,
         eval_expr: &dyn Fn(&Expr) -> Result<Value, String>,
+    ) {
+        self.expand_with_captures(doc, &|expr, _captures| eval_expr(expr));
+    }
+
+    pub fn expand_with_captures(
+        &mut self,
+        doc: &mut Document,
+        eval_expr: &dyn Fn(&Expr, &HashMap<String, Value>) -> Result<Value, String>,
     ) {
         self.local_scopes.clear();
         self.local_scopes.push(HashMap::new());
@@ -76,11 +88,19 @@ impl ControlFlowExpander {
         self.local_scopes.pop();
     }
 
+    pub fn captures(&self) -> &HashMap<String, Value> {
+        &self.captures
+    }
+
+    pub fn set_next_capture_id(&mut self, next_capture_id: u64) {
+        self.next_capture_id = next_capture_id;
+    }
+
     /// Expand a single body item, returning the list of items it expands to.
     fn expand_single_item(
         &mut self,
         item: BodyItem,
-        eval_expr: &dyn Fn(&Expr) -> Result<Value, String>,
+        eval_expr: &dyn Fn(&Expr, &HashMap<String, Value>) -> Result<Value, String>,
         depth: u32,
     ) -> Vec<BodyItem> {
         if depth > self.max_depth {
@@ -96,11 +116,15 @@ impl ControlFlowExpander {
         }
 
         match item {
-            BodyItem::ForLoop(for_loop) => self.expand_for_loop(&for_loop, eval_expr, depth),
-            BodyItem::Conditional(cond) => self.expand_conditional(&cond, eval_expr, depth),
+            BodyItem::ForLoop(for_loop) => {
+                self.expand_for_loop_with_captures(&for_loop, eval_expr, depth)
+            }
+            BodyItem::Conditional(cond) => {
+                self.expand_conditional_with_captures(&cond, eval_expr, depth)
+            }
             BodyItem::LetBinding(lb) => {
                 let expr = self.expr_with_local_bindings(&lb.value);
-                if let Ok(value) = eval_expr(&expr) {
+                if let Ok(value) = eval_expr(&expr, &self.captures) {
                     if let Some(scope) = self.local_scopes.last_mut() {
                         scope.insert(lb.name.name.clone(), value);
                     }
@@ -123,21 +147,47 @@ impl ControlFlowExpander {
         }
     }
 
-    fn expr_with_local_bindings(&self, expr: &Expr) -> Expr {
+    fn expr_with_local_bindings(&mut self, expr: &Expr) -> Expr {
         let mut expr = expr.clone();
-        for scope in self.local_scopes.iter().rev() {
-            for (name, value) in scope {
-                substitute_in_expr(&mut expr, name, value, None, 0);
-            }
+        let bindings: Vec<(String, Value)> = self
+            .local_scopes
+            .iter()
+            .rev()
+            .flat_map(|scope| {
+                scope
+                    .iter()
+                    .map(|(name, value)| (name.clone(), value.clone()))
+            })
+            .collect();
+        for (name, value) in bindings {
+            substitute_in_expr(
+                &mut expr,
+                &name,
+                &value,
+                None,
+                0,
+                &mut self.captures,
+                &mut self.next_capture_id,
+            );
         }
         expr
     }
 
     /// Expand a for loop by evaluating the iterable and replicating the body.
+    #[cfg(test)]
     fn expand_for_loop(
         &mut self,
         for_loop: &ForLoop,
         eval_expr: &dyn Fn(&Expr) -> Result<Value, String>,
+        depth: u32,
+    ) -> Vec<BodyItem> {
+        self.expand_for_loop_with_captures(for_loop, &|expr, _captures| eval_expr(expr), depth)
+    }
+
+    fn expand_for_loop_with_captures(
+        &mut self,
+        for_loop: &ForLoop,
+        eval_expr: &dyn Fn(&Expr, &HashMap<String, Value>) -> Result<Value, String>,
         depth: u32,
     ) -> Vec<BodyItem> {
         // When in tolerant mode, defer any iterable that references a
@@ -152,7 +202,7 @@ impl ControlFlowExpander {
 
         // Evaluate the iterable expression
         let iterable_expr = self.expr_with_local_bindings(&for_loop.iterable);
-        let iterable_value = match eval_expr(&iterable_expr) {
+        let iterable_value = match eval_expr(&iterable_expr, &self.captures) {
             Ok(v) => v,
             Err(e) => {
                 if self.tolerate_missing && is_missing_name_error(&e) {
@@ -233,6 +283,8 @@ impl ControlFlowExpander {
                     &element,
                     index_name,
                     idx,
+                    &mut self.captures,
+                    &mut self.next_capture_id,
                 );
                 // Recursively expand any nested control flow
                 let expanded = self.expand_single_item(cloned, eval_expr, depth + 1);
@@ -245,15 +297,25 @@ impl ControlFlowExpander {
 
     /// Expand a conditional by evaluating the condition and returning the
     /// matching branch's body.
+    #[cfg(test)]
     fn expand_conditional(
         &mut self,
         cond: &Conditional,
         eval_expr: &dyn Fn(&Expr) -> Result<Value, String>,
         depth: u32,
     ) -> Vec<BodyItem> {
+        self.expand_conditional_with_captures(cond, &|expr, _captures| eval_expr(expr), depth)
+    }
+
+    fn expand_conditional_with_captures(
+        &mut self,
+        cond: &Conditional,
+        eval_expr: &dyn Fn(&Expr, &HashMap<String, Value>) -> Result<Value, String>,
+        depth: u32,
+    ) -> Vec<BodyItem> {
         // Evaluate the condition
         let condition_expr = self.expr_with_local_bindings(&cond.condition);
-        let condition_value = match eval_expr(&condition_expr) {
+        let condition_value = match eval_expr(&condition_expr, &self.captures) {
             Ok(v) => v,
             Err(e) => {
                 if self.tolerate_missing && is_missing_name_error(&e) {
@@ -292,7 +354,7 @@ impl ControlFlowExpander {
             // Expand the else branch (if any)
             match &cond.else_branch {
                 Some(ElseBranch::ElseIf(else_cond)) => {
-                    self.expand_conditional(else_cond, eval_expr, depth)
+                    self.expand_conditional_with_captures(else_cond, eval_expr, depth)
                 }
                 Some(ElseBranch::Else(body, _, _)) => {
                     let mut result = Vec::new();
@@ -322,54 +384,136 @@ fn substitute_value_in_body_item(
     value: &Value,
     index_name: Option<&String>,
     index: usize,
+    captures: &mut HashMap<String, Value>,
+    next_capture_id: &mut u64,
 ) {
     match item {
         BodyItem::Block(block) => {
             // Substitute in inline ID if it's interpolated
             if let Some(InlineId::Interpolated(parts)) = &mut block.inline_id {
-                substitute_in_string_parts(parts, iterator_name, value, index_name, index);
+                substitute_in_string_parts(
+                    parts,
+                    iterator_name,
+                    value,
+                    index_name,
+                    index,
+                    captures,
+                    next_capture_id,
+                );
             }
             try_resolve_interpolated_id(&mut block.inline_id);
             // Substitute in inline args
             for arg in &mut block.inline_args {
-                substitute_in_expr(arg, iterator_name, value, index_name, index);
+                substitute_in_expr(
+                    arg,
+                    iterator_name,
+                    value,
+                    index_name,
+                    index,
+                    captures,
+                    next_capture_id,
+                );
             }
             // Substitute in text content
             if let Some(ref mut tc) = block.text_content {
-                substitute_in_string_parts(&mut tc.parts, iterator_name, value, index_name, index);
+                substitute_in_string_parts(
+                    &mut tc.parts,
+                    iterator_name,
+                    value,
+                    index_name,
+                    index,
+                    captures,
+                    next_capture_id,
+                );
             }
             // Recurse into block body
             for child in &mut block.body {
-                substitute_value_in_body_item(child, iterator_name, value, index_name, index);
+                substitute_value_in_body_item(
+                    child,
+                    iterator_name,
+                    value,
+                    index_name,
+                    index,
+                    captures,
+                    next_capture_id,
+                );
             }
         }
         BodyItem::Attribute(attr) => {
-            substitute_in_expr(&mut attr.value, iterator_name, value, index_name, index);
+            substitute_in_expr(
+                &mut attr.value,
+                iterator_name,
+                value,
+                index_name,
+                index,
+                captures,
+                next_capture_id,
+            );
         }
         BodyItem::LetBinding(lb) => {
-            substitute_in_expr(&mut lb.value, iterator_name, value, index_name, index);
+            substitute_in_expr(
+                &mut lb.value,
+                iterator_name,
+                value,
+                index_name,
+                index,
+                captures,
+                next_capture_id,
+            );
         }
         BodyItem::MacroCall(call) => {
             for arg in &mut call.args {
                 match arg {
                     MacroCallArg::Positional(expr) | MacroCallArg::Named(_, expr) => {
-                        substitute_in_macro_arg_expr(expr, iterator_name, value, index_name, index);
+                        substitute_in_macro_arg_expr(
+                            expr,
+                            iterator_name,
+                            value,
+                            index_name,
+                            index,
+                            captures,
+                            next_capture_id,
+                        );
                     }
                 }
             }
         }
         BodyItem::Table(table) => {
             if let Some(InlineId::Interpolated(parts)) = &mut table.inline_id {
-                substitute_in_string_parts(parts, iterator_name, value, index_name, index);
+                substitute_in_string_parts(
+                    parts,
+                    iterator_name,
+                    value,
+                    index_name,
+                    index,
+                    captures,
+                    next_capture_id,
+                );
             }
             try_resolve_interpolated_id(&mut table.inline_id);
             for row in &mut table.rows {
                 for cell in &mut row.cells {
-                    substitute_in_expr(cell, iterator_name, value, index_name, index);
+                    substitute_in_expr(
+                        cell,
+                        iterator_name,
+                        value,
+                        index_name,
+                        index,
+                        captures,
+                        next_capture_id,
+                    );
                 }
             }
             if let Some(ref mut expr) = table.import_expr {
-                substitute_in_expr(expr, iterator_name, value, index_name, index);
+                substitute_in_expr(
+                    expr,
+                    iterator_name,
+                    value,
+                    index_name,
+                    index,
+                    captures,
+                    next_capture_id,
+                );
             }
         }
         BodyItem::ForLoop(for_loop) => {
@@ -379,15 +523,41 @@ fn substitute_value_in_body_item(
                 value,
                 index_name,
                 index,
+                captures,
+                next_capture_id,
             );
             for child in &mut for_loop.body {
-                substitute_value_in_body_item(child, iterator_name, value, index_name, index);
+                substitute_value_in_body_item(
+                    child,
+                    iterator_name,
+                    value,
+                    index_name,
+                    index,
+                    captures,
+                    next_capture_id,
+                );
             }
         }
         BodyItem::Conditional(cond) => {
-            substitute_in_expr(&mut cond.condition, iterator_name, value, index_name, index);
+            substitute_in_expr(
+                &mut cond.condition,
+                iterator_name,
+                value,
+                index_name,
+                index,
+                captures,
+                next_capture_id,
+            );
             for child in &mut cond.then_body {
-                substitute_value_in_body_item(child, iterator_name, value, index_name, index);
+                substitute_value_in_body_item(
+                    child,
+                    iterator_name,
+                    value,
+                    index_name,
+                    index,
+                    captures,
+                    next_capture_id,
+                );
             }
             substitute_in_else_branch(
                 &mut cond.else_branch,
@@ -395,6 +565,8 @@ fn substitute_value_in_body_item(
                 value,
                 index_name,
                 index,
+                captures,
+                next_capture_id,
             );
         }
         _ => {
@@ -409,12 +581,30 @@ fn substitute_in_else_branch(
     value: &Value,
     index_name: Option<&String>,
     index: usize,
+    captures: &mut HashMap<String, Value>,
+    next_capture_id: &mut u64,
 ) {
     match else_branch {
         Some(ElseBranch::ElseIf(cond)) => {
-            substitute_in_expr(&mut cond.condition, iterator_name, value, index_name, index);
+            substitute_in_expr(
+                &mut cond.condition,
+                iterator_name,
+                value,
+                index_name,
+                index,
+                captures,
+                next_capture_id,
+            );
             for child in &mut cond.then_body {
-                substitute_value_in_body_item(child, iterator_name, value, index_name, index);
+                substitute_value_in_body_item(
+                    child,
+                    iterator_name,
+                    value,
+                    index_name,
+                    index,
+                    captures,
+                    next_capture_id,
+                );
             }
             substitute_in_else_branch(
                 &mut cond.else_branch,
@@ -422,11 +612,21 @@ fn substitute_in_else_branch(
                 value,
                 index_name,
                 index,
+                captures,
+                next_capture_id,
             );
         }
         Some(ElseBranch::Else(body, _, _)) => {
             for child in body {
-                substitute_value_in_body_item(child, iterator_name, value, index_name, index);
+                substitute_value_in_body_item(
+                    child,
+                    iterator_name,
+                    value,
+                    index_name,
+                    index,
+                    captures,
+                    next_capture_id,
+                );
             }
         }
         None => {}
@@ -440,10 +640,20 @@ fn substitute_in_string_parts(
     value: &Value,
     index_name: Option<&String>,
     index: usize,
+    captures: &mut HashMap<String, Value>,
+    next_capture_id: &mut u64,
 ) {
     for part in parts.iter_mut() {
         if let StringPart::Interpolation(expr) = part {
-            substitute_in_expr(expr, iterator_name, value, index_name, index);
+            substitute_in_expr(
+                expr,
+                iterator_name,
+                value,
+                index_name,
+                index,
+                captures,
+                next_capture_id,
+            );
         }
     }
 }
@@ -454,6 +664,8 @@ fn substitute_in_macro_arg_expr(
     value: &Value,
     index_name: Option<&String>,
     index: usize,
+    captures: &mut HashMap<String, Value>,
+    next_capture_id: &mut u64,
 ) {
     if let Expr::Ident(ident) = expr {
         if ident.name == iterator_name {
@@ -463,7 +675,15 @@ fn substitute_in_macro_arg_expr(
             }
         }
     }
-    substitute_in_expr(expr, iterator_name, value, index_name, index);
+    substitute_in_expr(
+        expr,
+        iterator_name,
+        value,
+        index_name,
+        index,
+        captures,
+        next_capture_id,
+    );
 }
 
 fn macro_arg_value_to_expr(value: &Value, span: Span) -> Option<Expr> {
@@ -519,19 +739,16 @@ fn substitute_in_expr(
     value: &Value,
     index_name: Option<&String>,
     index: usize,
+    captures: &mut HashMap<String, Value>,
+    next_capture_id: &mut u64,
 ) {
     match expr {
         Expr::Ident(ident) => {
             if ident.name == iterator_name {
                 if let Some(replacement) = value_to_expr(value, ident.span) {
                     *expr = replacement;
-                } else if let Value::BlockRef(br) = value {
-                    if let Some(id) = &br.id {
-                        *expr = Expr::IdentifierLit(IdentifierLit {
-                            value: id.clone(),
-                            span: ident.span,
-                        });
-                    }
+                } else {
+                    *expr = capture_value_expr(value, ident.span, captures, next_capture_id);
                 }
             } else if let Some(idx_name) = index_name {
                 if ident.name == *idx_name {
@@ -540,16 +757,64 @@ fn substitute_in_expr(
             }
         }
         Expr::BinaryOp(lhs, _, rhs, _) => {
-            substitute_in_expr(lhs, iterator_name, value, index_name, index);
-            substitute_in_expr(rhs, iterator_name, value, index_name, index);
+            substitute_in_expr(
+                lhs,
+                iterator_name,
+                value,
+                index_name,
+                index,
+                captures,
+                next_capture_id,
+            );
+            substitute_in_expr(
+                rhs,
+                iterator_name,
+                value,
+                index_name,
+                index,
+                captures,
+                next_capture_id,
+            );
         }
         Expr::UnaryOp(_, operand, _) => {
-            substitute_in_expr(operand, iterator_name, value, index_name, index);
+            substitute_in_expr(
+                operand,
+                iterator_name,
+                value,
+                index_name,
+                index,
+                captures,
+                next_capture_id,
+            );
         }
         Expr::Ternary(cond, then_e, else_e, _) => {
-            substitute_in_expr(cond, iterator_name, value, index_name, index);
-            substitute_in_expr(then_e, iterator_name, value, index_name, index);
-            substitute_in_expr(else_e, iterator_name, value, index_name, index);
+            substitute_in_expr(
+                cond,
+                iterator_name,
+                value,
+                index_name,
+                index,
+                captures,
+                next_capture_id,
+            );
+            substitute_in_expr(
+                then_e,
+                iterator_name,
+                value,
+                index_name,
+                index,
+                captures,
+                next_capture_id,
+            );
+            substitute_in_expr(
+                else_e,
+                iterator_name,
+                value,
+                index_name,
+                index,
+                captures,
+                next_capture_id,
+            );
         }
         Expr::MemberAccess(obj, field, span) => {
             // Check if this is `iterator_name.field` — if so, and the iterator
@@ -596,54 +861,150 @@ fn substitute_in_expr(
                     }
                 }
             }
-            substitute_in_expr(obj, iterator_name, value, index_name, index);
+            substitute_in_expr(
+                obj,
+                iterator_name,
+                value,
+                index_name,
+                index,
+                captures,
+                next_capture_id,
+            );
         }
         Expr::IndexAccess(obj, idx_expr, _) => {
-            substitute_in_expr(obj, iterator_name, value, index_name, index);
-            substitute_in_expr(idx_expr, iterator_name, value, index_name, index);
+            substitute_in_expr(
+                obj,
+                iterator_name,
+                value,
+                index_name,
+                index,
+                captures,
+                next_capture_id,
+            );
+            substitute_in_expr(
+                idx_expr,
+                iterator_name,
+                value,
+                index_name,
+                index,
+                captures,
+                next_capture_id,
+            );
         }
         Expr::FnCall(callee, args, _) => {
-            substitute_in_expr(callee, iterator_name, value, index_name, index);
+            substitute_in_expr(
+                callee,
+                iterator_name,
+                value,
+                index_name,
+                index,
+                captures,
+                next_capture_id,
+            );
             for arg in args {
                 match arg {
                     CallArg::Positional(e) => {
-                        substitute_in_expr(e, iterator_name, value, index_name, index);
+                        substitute_in_expr(
+                            e,
+                            iterator_name,
+                            value,
+                            index_name,
+                            index,
+                            captures,
+                            next_capture_id,
+                        );
                     }
                     CallArg::Named(_, e) => {
-                        substitute_in_expr(e, iterator_name, value, index_name, index);
+                        substitute_in_expr(
+                            e,
+                            iterator_name,
+                            value,
+                            index_name,
+                            index,
+                            captures,
+                            next_capture_id,
+                        );
                     }
                 }
             }
         }
         Expr::List(items, _) => {
             for item in items {
-                substitute_in_expr(item, iterator_name, value, index_name, index);
+                substitute_in_expr(
+                    item,
+                    iterator_name,
+                    value,
+                    index_name,
+                    index,
+                    captures,
+                    next_capture_id,
+                );
             }
         }
         Expr::Map(entries, _) => {
             for (_, v) in entries {
-                substitute_in_expr(v, iterator_name, value, index_name, index);
+                substitute_in_expr(
+                    v,
+                    iterator_name,
+                    value,
+                    index_name,
+                    index,
+                    captures,
+                    next_capture_id,
+                );
             }
         }
         Expr::StringLit(string_lit) => {
             for part in &mut string_lit.parts {
                 if let StringPart::Interpolation(inner) = part {
-                    substitute_in_expr(inner, iterator_name, value, index_name, index);
+                    substitute_in_expr(
+                        inner,
+                        iterator_name,
+                        value,
+                        index_name,
+                        index,
+                        captures,
+                        next_capture_id,
+                    );
                 }
             }
         }
         Expr::Paren(inner, _) => {
-            substitute_in_expr(inner, iterator_name, value, index_name, index);
+            substitute_in_expr(
+                inner,
+                iterator_name,
+                value,
+                index_name,
+                index,
+                captures,
+                next_capture_id,
+            );
         }
         Expr::Lambda(_, body, _) => {
-            substitute_in_expr(body, iterator_name, value, index_name, index);
+            substitute_in_expr(
+                body,
+                iterator_name,
+                value,
+                index_name,
+                index,
+                captures,
+                next_capture_id,
+            );
         }
         Expr::Query(pipeline, _) => {
             for filter in &mut pipeline.filters {
                 match filter {
                     QueryFilter::AttrComparison(_, _, rhs)
                     | QueryFilter::DecoratorArgFilter(_, _, _, rhs) => {
-                        substitute_in_expr(rhs, iterator_name, value, index_name, index);
+                        substitute_in_expr(
+                            rhs,
+                            iterator_name,
+                            value,
+                            index_name,
+                            index,
+                            captures,
+                            next_capture_id,
+                        );
                     }
                     _ => {}
                 }
@@ -653,6 +1014,39 @@ fn substitute_in_expr(
             // Literals and other leaf expressions: nothing to substitute
         }
     }
+}
+
+fn capture_value_expr(
+    value: &Value,
+    span: Span,
+    captures: &mut HashMap<String, Value>,
+    next_capture_id: &mut u64,
+) -> Expr {
+    let name = format!("__wcl_cf_capture_{}", *next_capture_id);
+    *next_capture_id += 1;
+    captures.insert(name.clone(), value.clone());
+    Expr::Ident(Ident { name, span })
+}
+
+#[cfg(test)]
+fn substitute_in_expr_without_captures(
+    expr: &mut Expr,
+    iterator_name: &str,
+    value: &Value,
+    index_name: Option<&String>,
+    index: usize,
+) {
+    let mut captures = HashMap::new();
+    let mut next_capture_id = 0;
+    substitute_in_expr(
+        expr,
+        iterator_name,
+        value,
+        index_name,
+        index,
+        &mut captures,
+        &mut next_capture_id,
+    );
 }
 
 /// Try to collapse an `InlineId::Interpolated` into `InlineId::Literal`
@@ -787,6 +1181,10 @@ pub(crate) fn value_to_expr(value: &Value, span: Span) -> Option<Expr> {
             value: s.clone(),
             span,
         })),
+        Value::Symbol(s) => Some(Expr::SymbolLit(s.clone(), span)),
+        Value::Date(s) => Some(Expr::DateLit(s.clone(), span)),
+        Value::Duration(s) => Some(Expr::DurationLit(s.clone(), span)),
+        Value::Pattern(s) => Some(Expr::PatternLit(s.clone(), span)),
         Value::List(items) => {
             let exprs: Vec<Expr> = items
                 .iter()
@@ -1207,7 +1605,7 @@ mod tests {
             decorators: vec![],
             span: dummy_span(),
         };
-        substitute_in_expr(&mut expr, "x", &Value::BlockRef(br), None, 0);
+        substitute_in_expr_without_captures(&mut expr, "x", &Value::BlockRef(br), None, 0);
         match expr {
             Expr::IdentifierLit(lit) => assert_eq!(lit.value, "alpha"),
             other => panic!("expected IdentifierLit(alpha), got {:?}", other),
@@ -1233,7 +1631,7 @@ mod tests {
             decorators: vec![],
             span: dummy_span(),
         };
-        substitute_in_expr(&mut expr, "x", &Value::BlockRef(br), None, 0);
+        substitute_in_expr_without_captures(&mut expr, "x", &Value::BlockRef(br), None, 0);
         match expr {
             Expr::IntLit(80, _) => {}
             other => panic!("expected IntLit(80), got {:?}", other),
@@ -1261,6 +1659,8 @@ mod tests {
             &Value::Identifier("sys1".to_string()),
             None,
             0,
+            &mut HashMap::new(),
+            &mut 0,
         );
 
         match expr {
