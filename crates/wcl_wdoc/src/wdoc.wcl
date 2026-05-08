@@ -136,6 +136,16 @@ namespace wdoc {
         @open schema "path" { }
         @open schema "text" { }
         @open
+        schema "inline_svg" {
+            src: string @optional
+            content: string @optional
+            stroke: string @optional
+            fill: string @optional
+            stroke_width: f64 @optional
+            class: string @optional
+            opacity: f64 @optional
+        }
+        @open
         schema "image" {
             src: string
             fit: string @optional @default("contain")

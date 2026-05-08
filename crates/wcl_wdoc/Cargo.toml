@@ -10,6 +10,7 @@ description = "WCL documentation format — build structured docs with WCL, rend
 
 [dependencies]
 indexmap = { workspace = true }
+quick-xml = "0.37"
 thiserror = { workspace = true }
 tokio = { workspace = true }
 

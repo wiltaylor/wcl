@@ -8,6 +8,8 @@ use std::fmt::Write;
 use std::hash::{DefaultHasher, Hash, Hasher};
 
 use indexmap::IndexMap;
+use quick_xml::events::{BytesStart, Event};
+use quick_xml::Reader;
 
 const LAYOUT_DECORATION_ATTR: &str = "_wdoc_layout_decoration";
 const ROUTE_MARGIN: f64 = 8.0;
@@ -25,6 +27,7 @@ pub enum ShapeKind {
     Line,
     Path,
     Text,
+    InlineSvg,
     Image,
     Group,
 }
@@ -419,6 +422,7 @@ pub fn parse_shape_kind(kind: &str) -> Option<ShapeKind> {
         "wdoc::draw::line" => Some(ShapeKind::Line),
         "wdoc::draw::path" => Some(ShapeKind::Path),
         "wdoc::draw::text" => Some(ShapeKind::Text),
+        "wdoc::draw::inline_svg" => Some(ShapeKind::InlineSvg),
         "wdoc::draw::image" => Some(ShapeKind::Image),
         "wdoc::draw::group" => Some(ShapeKind::Group),
         // Anything else under `wdoc::draw::` (or a user namespace ending in `::draw::`)
@@ -1184,6 +1188,7 @@ fn render_shape_svg(node: &ShapeNode, svg: &mut String) {
             }
             svg.push_str("</text>");
         }
+        ShapeKind::InlineSvg => render_inline_svg_shape_svg(node, svg),
         ShapeKind::Image => render_image_shape_svg(node, svg),
         ShapeKind::Group => {
             let gx = b.x;
@@ -1208,6 +1213,40 @@ fn render_shape_svg(node: &ShapeNode, svg: &mut String) {
     if href.is_some() {
         svg.push_str("</a>");
     }
+}
+
+fn render_inline_svg_shape_svg(node: &ShapeNode, svg: &mut String) {
+    let b = &node.resolved;
+    let style = svg_style_attrs(&node.attrs);
+    let content = node
+        .attrs
+        .get("content")
+        .or_else(|| node.attrs.get("_wdoc_inline_svg_content"))
+        .map(|s| s.as_str())
+        .unwrap_or("");
+    let sanitized = sanitize_inline_svg(content).unwrap_or_default();
+    let view_box = svg_root_view_box(content)
+        .unwrap_or_else(|| format!("0 0 {} {}", b.width.max(0.0), b.height.max(0.0)));
+    let (min_x, min_y, vb_width, vb_height) =
+        parse_view_box(&view_box).unwrap_or((0.0, 0.0, b.width.max(1.0), b.height.max(1.0)));
+    let scale_x = if vb_width == 0.0 {
+        1.0
+    } else {
+        b.width / vb_width
+    };
+    let scale_y = if vb_height == 0.0 {
+        1.0
+    } else {
+        b.height / vb_height
+    };
+    write!(
+        svg,
+        "<g transform=\"translate({},{}) scale({},{}) translate({},{})\"{style}>",
+        b.x, b.y, scale_x, scale_y, -min_x, -min_y
+    )
+    .unwrap();
+    svg.push_str(&sanitized);
+    svg.push_str("</g>");
 }
 
 fn render_image_shape_svg(node: &ShapeNode, svg: &mut String) {
@@ -1706,6 +1745,240 @@ fn svg_image_attrs(attrs: &IndexMap<String, String>) -> String {
     s
 }
 
+pub fn sanitize_inline_svg(source: &str) -> Result<String, String> {
+    let mut reader = Reader::from_str(source);
+    reader.config_mut().trim_text(false);
+    let mut out = String::new();
+    let mut stack: Vec<Option<String>> = Vec::new();
+    let mut skip_depth = 0usize;
+
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(event)) => {
+                let name = svg_event_name(event.name().as_ref());
+                if skip_depth > 0 {
+                    skip_depth += 1;
+                    continue;
+                }
+                if !is_allowed_svg_element(&name) {
+                    skip_depth = 1;
+                    continue;
+                }
+                if name == "svg" {
+                    stack.push(None);
+                    continue;
+                }
+                write_sanitized_svg_start(&mut out, &name, &event, &reader, false);
+                stack.push(Some(name));
+            }
+            Ok(Event::Empty(event)) => {
+                let name = svg_event_name(event.name().as_ref());
+                if skip_depth > 0 || !is_allowed_svg_element(&name) || name == "svg" {
+                    continue;
+                }
+                write_sanitized_svg_start(&mut out, &name, &event, &reader, true);
+            }
+            Ok(Event::End(_)) => {
+                if skip_depth > 0 {
+                    skip_depth -= 1;
+                    continue;
+                }
+                if let Some(Some(name)) = stack.pop() {
+                    write!(out, "</{name}>").unwrap();
+                } else {
+                    stack.pop();
+                }
+            }
+            Ok(Event::Text(text)) => {
+                if skip_depth == 0 {
+                    let text = text.unescape().map_err(|e| e.to_string())?;
+                    out.push_str(&svg_escape_text(&text));
+                }
+            }
+            Ok(Event::CData(text)) => {
+                if skip_depth == 0 {
+                    let text = String::from_utf8_lossy(text.as_ref());
+                    out.push_str(&svg_escape_text(&text));
+                }
+            }
+            Ok(Event::Eof) => break,
+            Ok(_) => {}
+            Err(err) => return Err(format!("invalid SVG: {err}")),
+        }
+    }
+
+    Ok(out)
+}
+
+fn write_sanitized_svg_start(
+    out: &mut String,
+    name: &str,
+    event: &BytesStart<'_>,
+    reader: &Reader<&[u8]>,
+    empty: bool,
+) {
+    write!(out, "<{name}").unwrap();
+    for attr in event.attributes().with_checks(false).flatten() {
+        let attr_name = svg_event_name(attr.key.as_ref()).replace('_', "-");
+        if !is_allowed_svg_attr(&attr_name) {
+            continue;
+        }
+        let Ok(value) = attr.decode_and_unescape_value(reader.decoder()) else {
+            continue;
+        };
+        if !is_safe_svg_attr_value(&attr_name, &value) {
+            continue;
+        }
+        let value = svg_escape_attr(&value);
+        write!(out, " {attr_name}=\"{value}\"").unwrap();
+    }
+    if empty {
+        out.push_str("/>");
+    } else {
+        out.push('>');
+    }
+}
+
+fn svg_root_view_box(source: &str) -> Option<String> {
+    let mut reader = Reader::from_str(source);
+    reader.config_mut().trim_text(true);
+    loop {
+        match reader.read_event().ok()? {
+            Event::Start(event) | Event::Empty(event) => {
+                if svg_event_name(event.name().as_ref()) != "svg" {
+                    continue;
+                }
+                let mut width = None;
+                let mut height = None;
+                for attr in event.attributes().with_checks(false).flatten() {
+                    let name = svg_event_name(attr.key.as_ref());
+                    let Ok(value) = attr.decode_and_unescape_value(reader.decoder()) else {
+                        continue;
+                    };
+                    match name.as_str() {
+                        "viewBox" | "viewbox" => return Some(value.to_string()),
+                        "width" => width = parse_svg_number(value.trim_end_matches("px")),
+                        "height" => height = parse_svg_number(value.trim_end_matches("px")),
+                        _ => {}
+                    }
+                }
+                if let (Some(width), Some(height)) = (width, height) {
+                    return Some(format!("0 0 {width} {height}"));
+                }
+                return None;
+            }
+            Event::Eof => return None,
+            _ => {}
+        }
+    }
+}
+
+fn svg_event_name(name: &[u8]) -> String {
+    let full = String::from_utf8_lossy(name);
+    full.rsplit(':').next().unwrap_or(&full).to_string()
+}
+
+fn is_allowed_svg_element(name: &str) -> bool {
+    matches!(
+        name,
+        "svg"
+            | "g"
+            | "path"
+            | "rect"
+            | "circle"
+            | "ellipse"
+            | "line"
+            | "polyline"
+            | "polygon"
+            | "text"
+            | "tspan"
+            | "defs"
+            | "clipPath"
+            | "mask"
+            | "linearGradient"
+            | "radialGradient"
+            | "stop"
+            | "title"
+            | "desc"
+            | "use"
+    )
+}
+
+fn is_allowed_svg_attr(name: &str) -> bool {
+    !name.starts_with("on")
+        && matches!(
+            name,
+            "id" | "class"
+                | "d"
+                | "x"
+                | "y"
+                | "x1"
+                | "y1"
+                | "x2"
+                | "y2"
+                | "cx"
+                | "cy"
+                | "r"
+                | "rx"
+                | "ry"
+                | "width"
+                | "height"
+                | "viewBox"
+                | "viewbox"
+                | "fill"
+                | "stroke"
+                | "stroke-width"
+                | "stroke-linecap"
+                | "stroke-linejoin"
+                | "stroke-miterlimit"
+                | "stroke-dasharray"
+                | "stroke-dashoffset"
+                | "opacity"
+                | "fill-opacity"
+                | "stroke-opacity"
+                | "fill-rule"
+                | "clip-rule"
+                | "transform"
+                | "clip-path"
+                | "mask"
+                | "points"
+                | "offset"
+                | "stop-color"
+                | "stop-opacity"
+                | "gradientUnits"
+                | "gradientTransform"
+                | "spreadMethod"
+                | "href"
+                | "xlink:href"
+                | "font-family"
+                | "font-size"
+                | "font-weight"
+                | "font-style"
+                | "text-anchor"
+                | "dominant-baseline"
+                | "letter-spacing"
+        )
+}
+
+fn is_safe_svg_attr_value(name: &str, value: &str) -> bool {
+    let value = value.trim();
+    let lower = value.to_ascii_lowercase();
+    if lower.contains("javascript:") || lower.contains("data:") || lower.contains("<script") {
+        return false;
+    }
+    if matches!(name, "href" | "xlink:href") {
+        return value.starts_with('#');
+    }
+    if lower.contains("url(") {
+        let Some(start) = lower.find("url(") else {
+            return true;
+        };
+        let rest = lower[start + 4..].trim_start();
+        return rest.starts_with('#') || rest.starts_with("'#") || rest.starts_with("\"#");
+    }
+    true
+}
+
 fn svg_generated_id(prefix: &str, node: &ShapeNode) -> String {
     let mut hasher = DefaultHasher::new();
     format!("{:?}", node.kind).hash(&mut hasher);
@@ -2006,6 +2279,19 @@ fn parse_svg_number(value: &str) -> Option<f64> {
     value.trim().parse().ok()
 }
 
+fn parse_view_box(value: &str) -> Option<(f64, f64, f64, f64)> {
+    let nums: Vec<f64> = value
+        .split(|ch: char| ch.is_ascii_whitespace() || ch == ',')
+        .filter(|part| !part.is_empty())
+        .filter_map(|part| part.parse::<f64>().ok())
+        .collect();
+    if nums.len() == 4 {
+        Some((nums[0], nums[1], nums[2], nums[3]))
+    } else {
+        None
+    }
+}
+
 fn svg_escape_text(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -2078,6 +2364,14 @@ mod tests {
         let mut node = shape("hero", width, height);
         node.kind = ShapeKind::Image;
         node.attrs.insert("src".to_string(), src.to_string());
+        node
+    }
+
+    fn inline_svg_shape(content: &str, width: f64, height: f64) -> ShapeNode {
+        let mut node = shape("icon", width, height);
+        node.kind = ShapeKind::InlineSvg;
+        node.attrs
+            .insert("content".to_string(), content.to_string());
         node
     }
 
@@ -2400,6 +2694,53 @@ mod tests {
             assert!(svg.contains("<clipPath id=\"wdoc-image-clip-"));
             assert!(svg.contains("clip-path=\"url(#wdoc-image-clip-"));
         }
+    }
+
+    #[test]
+    fn inline_svg_embeds_sanitized_content() {
+        let mut icon = inline_svg_shape(
+            r##"<svg viewBox="0 0 24 24" onload="bad()">
+                <script>alert(1)</script>
+                <foreignObject><div>bad</div></foreignObject>
+                <path class="mark" onclick="bad()" d="M1 2L3 4" fill="url(#grad)" href="https://example.com/x"/>
+                <a href="javascript:alert(1)"><rect width="10" height="10"/></a>
+              </svg>"##,
+            48.0,
+            48.0,
+        );
+        icon.x = Some(10.0);
+        icon.y = Some(12.0);
+        icon.attrs.insert("x".to_string(), "10".to_string());
+        icon.attrs.insert("y".to_string(), "12".to_string());
+        icon.attrs
+            .insert("class".to_string(), "brand-icon".to_string());
+        icon.attrs
+            .insert("fill".to_string(), "currentColor".to_string());
+
+        let mut diagram = Diagram {
+            id: None,
+            width: 80.0,
+            height: 80.0,
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+            shapes: vec![icon],
+            connections: vec![],
+        };
+
+        let svg = render_diagram_svg(&mut diagram);
+        assert!(svg.contains("class=\"brand-icon\""));
+        assert!(svg.contains("fill=\"currentColor\""));
+        assert!(svg.contains("transform=\"translate(10,12) scale(2,2) translate(-0,-0)\""));
+        assert!(svg.contains("<path class=\"mark\" d=\"M1 2L3 4\" fill=\"url(#grad)\""));
+        assert!(!svg.contains("<script"));
+        assert!(!svg.contains("foreignObject"));
+        assert!(!svg.contains("onclick"));
+        assert!(!svg.contains("onload"));
+        assert!(!svg.contains("https://example.com"));
+        assert!(!svg.contains("javascript:"));
+        assert!(!svg.contains("<a "));
     }
 
     #[test]

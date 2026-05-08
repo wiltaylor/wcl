@@ -1038,6 +1038,81 @@ page home {
 }
 
 #[test]
+fn wdoc_build_embeds_local_inline_svg_from_import_dir() {
+    let dir = tempdir().expect("tempdir");
+    let pages_dir = dir.path().join("pages");
+    let icons_dir = pages_dir.join("icons");
+    std::fs::create_dir_all(&icons_dir).expect("create icons dir");
+    std::fs::write(
+        icons_dir.join("logo.svg"),
+        r#"<svg viewBox="0 0 10 10"><script>alert(1)</script><path class="logo-path" onclick="bad()" d="M0 0L10 10"/></svg>"#,
+    )
+    .expect("write svg");
+
+    let site = r#"
+import <wdoc.wcl>
+import "./pages/page.wcl"
+use wdoc::{doc, section}
+
+doc my_docs {
+    title = "Inline SVG Docs"
+    section overview "Overview" {}
+}
+"#;
+
+    let page = r#"
+import <wdoc.wcl>
+use wdoc::{page, layout}
+use wdoc::draw::{diagram, inline_svg}
+
+page home {
+    section = "my_docs.overview"
+    title = "Home"
+
+    layout {
+        diagram logo_diagram {
+            width = 80
+            height = 80
+
+            inline_svg logo {
+                x = 10
+                y = 12
+                width = 40
+                height = 40
+                src = "icons/logo.svg"
+                class = "brand-logo"
+                fill = "currentColor"
+            }
+        }
+    }
+}
+"#;
+    let input = dir.path().join("site.wcl");
+    std::fs::write(&input, site).expect("write wdoc file");
+    std::fs::write(pages_dir.join("page.wcl"), page).expect("write page file");
+    let output = dir.path().join("out");
+
+    Command::cargo_bin("wcl")
+        .unwrap()
+        .args([
+            "wdoc",
+            "build",
+            input.to_str().unwrap(),
+            "--output",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let html = std::fs::read_to_string(output.join("home.html")).expect("read rendered page");
+    assert!(html.contains("class=\"brand-logo\""));
+    assert!(html.contains("<path class=\"logo-path\" d=\"M0 0L10 10\""));
+    assert!(html.contains("fill=\"currentColor\""));
+    assert!(!html.contains("alert(1)"));
+    assert!(!html.contains("onclick"));
+}
+
+#[test]
 fn wdoc_build_registers_design_system_diagram_css_once() {
     let dir = tempdir().expect("tempdir");
     let site = r#"

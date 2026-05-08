@@ -724,6 +724,10 @@ fn collect_shape_or_connection(
         let nright = pf(&a, "right");
         let z_index = pf(&a, "z_index").unwrap_or(0.0);
 
+        if kind == ShapeKind::InlineSvg {
+            hydrate_inline_svg_attrs(&mut a, ctx);
+        }
+
         // Composite shape containers are invisible — the template provides all
         // visuals. Default fill/stroke to none so the wrapping rect doesn't
         // double up on the template's drawing.
@@ -755,6 +759,75 @@ fn collect_shape_or_connection(
             source_order,
         });
     }
+}
+
+fn hydrate_inline_svg_attrs(attrs: &mut IndexMap<String, String>, ctx: &ExtractCtx) {
+    if attrs.contains_key("content") || attrs.contains_key("_wdoc_inline_svg_content") {
+        return;
+    }
+    let Some(src) = attrs
+        .get("src")
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+    else {
+        return;
+    };
+    match read_local_inline_svg(&src, &ctx.svg_search_dirs) {
+        Ok(content) => {
+            attrs.insert("_wdoc_inline_svg_content".to_string(), content);
+        }
+        Err(err) => {
+            eprintln!("wdoc: warning: inline_svg src '{src}' could not be loaded: {err}");
+        }
+    }
+}
+
+fn read_local_inline_svg(src: &str, search_dirs: &[PathBuf]) -> Result<String, String> {
+    let lower = src.to_ascii_lowercase();
+    if lower.starts_with("http://") || lower.starts_with("https://") || lower.starts_with("data:") {
+        return Err("remote and data URLs are not supported".to_string());
+    }
+    if Path::new(src)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_none_or(|ext| !ext.eq_ignore_ascii_case("svg"))
+    {
+        return Err("only .svg files can be embedded".to_string());
+    }
+
+    let canonical_dirs: Vec<PathBuf> = search_dirs
+        .iter()
+        .filter_map(|dir| dir.canonicalize().ok())
+        .collect();
+    if canonical_dirs.is_empty() {
+        return Err("no source directories are available for SVG lookup".to_string());
+    }
+
+    let src_path = Path::new(src);
+    if src_path.is_absolute() {
+        let canonical = src_path
+            .canonicalize()
+            .map_err(|_| "file was not found in WDoc source directories".to_string())?;
+        if !canonical_dirs.iter().any(|dir| canonical.starts_with(dir)) {
+            return Err("path escapes the WDoc source directory".to_string());
+        }
+        return std::fs::read_to_string(&canonical)
+            .map_err(|e| format!("failed to read {}: {e}", canonical.display()));
+    }
+
+    for dir in &canonical_dirs {
+        let candidate = dir.join(src_path);
+        let Ok(canonical) = candidate.canonicalize() else {
+            continue;
+        };
+        if !canonical.starts_with(dir) {
+            return Err("path escapes the WDoc source directory".to_string());
+        }
+        return std::fs::read_to_string(&canonical)
+            .map_err(|e| format!("failed to read {}: {e}", canonical.display()));
+    }
+
+    Err("file was not found in WDoc source directories".to_string())
 }
 
 /// Look up a `@template("shape", "fn")` function for `br.kind` and call it.
@@ -959,6 +1032,7 @@ struct ExtractCtx {
     template_fns: HashMap<String, TemplateFn>,
     builtins: HashMap<String, BuiltinFn>,
     css_registry: Rc<RefCell<DiagramCssRegistry>>,
+    svg_search_dirs: Vec<PathBuf>,
 }
 
 impl ExtractCtx {
@@ -1092,6 +1166,7 @@ mod wdoc_draw_tests {
             template_fns: HashMap::new(),
             builtins: HashMap::new(),
             css_registry: Rc::new(RefCell::new(DiagramCssRegistry::default())),
+            svg_search_dirs: Vec::new(),
         }
     }
 
@@ -1436,6 +1511,47 @@ mod wdoc_draw_tests {
     }
 
     #[test]
+    fn descriptor_inline_svg_renders_sanitized_content() {
+        let mut descriptor = IndexMap::new();
+        descriptor.insert("kind".to_string(), Value::String("inline_svg".to_string()));
+        descriptor.insert("x".to_string(), Value::Int(0));
+        descriptor.insert("y".to_string(), Value::Int(0));
+        descriptor.insert("width".to_string(), Value::Int(24));
+        descriptor.insert("height".to_string(), Value::Int(24));
+        descriptor.insert(
+            "class".to_string(),
+            Value::String("generated-icon".to_string()),
+        );
+        descriptor.insert(
+            "content".to_string(),
+            Value::String(
+                r#"<svg viewBox="0 0 24 24"><path d="M0 0L24 24" onclick="bad()"/></svg>"#
+                    .to_string(),
+            ),
+        );
+
+        let mut diagram = wcl_wdoc::shapes::Diagram {
+            id: None,
+            width: 24.0,
+            height: 24.0,
+            padding: 0.0,
+            align: wcl_wdoc::shapes::Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+            shapes: vec![
+                descriptor_to_shape_node_with_order(&Value::Map(descriptor), 0)
+                    .expect("descriptor"),
+            ],
+            connections: vec![],
+        };
+
+        let svg = wcl_wdoc::shapes::render_diagram_svg(&mut diagram);
+        assert!(svg.contains("class=\"generated-icon\""));
+        assert!(svg.contains("<path d=\"M0 0L24 24\""));
+        assert!(!svg.contains("onclick"));
+    }
+
+    #[test]
     fn diagram_image_flows_through_cli_extraction() {
         let mut image_attrs = IndexMap::new();
         int_attr(&mut image_attrs, "x", 20);
@@ -1464,6 +1580,40 @@ mod wdoc_draw_tests {
         assert!(html.contains("<image href=\"images/hero.png\""));
         assert!(html.contains("preserveAspectRatio=\"xMidYMid slice\""));
         assert!(html.contains("role=\"img\" aria-label=\"Hero image\""));
+    }
+
+    #[test]
+    fn diagram_inline_svg_flows_through_cli_extraction() {
+        let mut inline_attrs = IndexMap::new();
+        int_attr(&mut inline_attrs, "x", 5);
+        int_attr(&mut inline_attrs, "y", 6);
+        int_attr(&mut inline_attrs, "width", 24);
+        int_attr(&mut inline_attrs, "height", 24);
+        string_attr(&mut inline_attrs, "class", "inline-mark");
+        string_attr(
+            &mut inline_attrs,
+            "content",
+            r#"<svg viewBox="0 0 24 24"><path d="M1 1L2 2"/></svg>"#,
+        );
+
+        let inline_svg = block("wdoc::draw::inline_svg", Some("mark"), inline_attrs, vec![]);
+
+        let mut diagram_attrs = IndexMap::new();
+        int_attr(&mut diagram_attrs, "width", 50);
+        int_attr(&mut diagram_attrs, "height", 50);
+        let diagram = block(
+            "wdoc::draw::diagram",
+            Some("inline_svg_preview"),
+            diagram_attrs,
+            vec![inline_svg],
+        );
+
+        let ctx = empty_ctx();
+
+        let html = render_diagram_with_ctx(&diagram, &ctx);
+        assert!(html.contains("class=\"inline-mark\""));
+        assert!(html.contains("<path d=\"M1 1L2 2\""));
+        assert!(html.contains("transform=\"translate(5,6) scale(1,1) translate(-0,-0)\""));
     }
 }
 
@@ -1832,11 +1982,13 @@ fn parse_and_extract_with_watch(
     let template_map = collect_template_map(&doc);
     let builtins: HashMap<String, BuiltinFn> = functions.functions;
     let template_fns = collect_template_fns(&doc, &builtins);
+    let svg_search_dirs = wdoc_source_dirs(files, &doc.imported_paths, &lib_dir);
     let ctx = ExtractCtx {
         template_map,
         template_fns,
         builtins,
         css_registry: Rc::new(RefCell::new(DiagramCssRegistry::default())),
+        svg_search_dirs,
     };
 
     let wdoc_doc = extract(&all_values, &ctx)?;
@@ -1896,6 +2048,34 @@ pub fn run_install_library(force: bool) -> Result<(), String> {
         .map_err(|e| format!("failed to write {}: {e}", target.display()))?;
     println!("installed wdoc library to {}", target.display());
     Ok(())
+}
+
+fn wdoc_source_dirs(
+    files: &[PathBuf],
+    imported_paths: &HashSet<PathBuf>,
+    lib_dir: &Path,
+) -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    let mut seen = HashSet::new();
+    for dir in files.iter().filter_map(|file| file.parent()) {
+        let dir = dir.to_path_buf();
+        if seen.insert(dir.clone()) {
+            dirs.push(dir);
+        }
+    }
+    let mut imported_dirs: Vec<PathBuf> = imported_paths
+        .iter()
+        .filter(|path| !path.starts_with(lib_dir))
+        .filter_map(|path| path.parent().map(Path::to_path_buf))
+        .collect();
+    imported_dirs.sort();
+    imported_dirs.dedup();
+    for dir in imported_dirs {
+        if seen.insert(dir.clone()) {
+            dirs.push(dir);
+        }
+    }
+    dirs
 }
 
 pub fn run_validate(
