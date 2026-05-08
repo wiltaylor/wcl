@@ -4979,4 +4979,43 @@ container page {
             .collect();
         assert_eq!(ids, vec!["item-a", "item-b"]);
     }
+
+    #[test]
+    fn partial_macro_call_inside_source_for_binds_iterator_args_before_macro_body_control_flow() {
+        let doc = parse(
+            r#"
+let components = [{ id = "a" }]
+let items = [{ id = "i", component = "a" }]
+
+partial macro render(component, items) {
+    for item in filter(items, item => item.component == component.id) {
+        rect r-${item.id} {
+            fill = "red"
+        }
+    }
+}
+
+container page {
+    for component in components {
+        render(component, items)
+    }
+}
+"#,
+            ParseOptions::default(),
+        );
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+
+        let Value::BlockRef(container) = doc.values.get("page").expect("page block") else {
+            panic!("expected page block");
+        };
+        let rect = container
+            .children
+            .iter()
+            .find(|child| child.kind == "rect" && child.id.as_deref() == Some("r-i"))
+            .expect("macro-emitted rect");
+        assert_eq!(
+            rect.attributes.get("fill").and_then(Value::as_string),
+            Some("red")
+        );
+    }
 }

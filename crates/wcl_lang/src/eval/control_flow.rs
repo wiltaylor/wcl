@@ -349,6 +349,15 @@ fn substitute_value_in_body_item(
         BodyItem::LetBinding(lb) => {
             substitute_in_expr(&mut lb.value, iterator_name, value, index_name, index);
         }
+        BodyItem::MacroCall(call) => {
+            for arg in &mut call.args {
+                match arg {
+                    MacroCallArg::Positional(expr) | MacroCallArg::Named(_, expr) => {
+                        substitute_in_expr(expr, iterator_name, value, index_name, index);
+                    }
+                }
+            }
+        }
         BodyItem::Table(table) => {
             if let Some(InlineId::Interpolated(parts)) = &mut table.inline_id {
                 substitute_in_string_parts(parts, iterator_name, value, index_name, index);

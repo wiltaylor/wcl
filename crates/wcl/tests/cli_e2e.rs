@@ -1248,6 +1248,82 @@ page home {
     assert!(html.matches(">Preview</text>").count() >= 2);
 }
 
+#[test]
+fn wdoc_build_binds_for_iterator_args_for_imported_partial_macro_body_loops() {
+    let dir = tempdir().expect("tempdir");
+
+    let site = r#"
+import <wdoc.wcl>
+use wdoc::{doc, page, section, layout}
+use wdoc::draw::{diagram, rect}
+
+import "./page.wcl"
+import "./control.wcl"
+
+let components = [{ id = "a" }]
+let items = [{ id = "i", component = "a" }]
+
+doc d {
+    title = "D"
+    section s "S" {}
+}
+"#;
+
+    let page = r#"
+for component in components {
+    page p-${component.id} {
+        section = "d.s"
+        title = "P"
+
+        layout {
+            diagram demo {
+                width = 50
+                height = 50
+
+                render(component, items)
+            }
+        }
+    }
+}
+"#;
+
+    let control = r#"
+partial macro render(component, items) {
+    for item in filter(items, item => item.component == component.id) {
+        rect r-${item.id} {
+            x = 1
+            y = 1
+            width = 10
+            height = 10
+            fill = "red"
+        }
+    }
+}
+"#;
+
+    let input = dir.path().join("main.wcl");
+    std::fs::write(&input, site).expect("write site file");
+    std::fs::write(dir.path().join("page.wcl"), page).expect("write page file");
+    std::fs::write(dir.path().join("control.wcl"), control).expect("write control file");
+    let output = dir.path().join("out");
+
+    Command::cargo_bin("wcl")
+        .unwrap()
+        .args([
+            "wdoc",
+            "build",
+            input.to_str().unwrap(),
+            "--output",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let html = std::fs::read_to_string(output.join("p-a.html")).expect("read rendered page");
+    assert!(html.contains("<rect"));
+    assert!(html.contains("fill=\"red\""));
+}
+
 // ===========================================================================
 // Multi-step workflows
 // ===========================================================================
