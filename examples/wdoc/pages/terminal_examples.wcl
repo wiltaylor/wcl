@@ -78,14 +78,16 @@ page terminal_examples {
                             row = 5
                             col = 2
                             cols = 42
-                            items = "File,Run,View,Help"
-                            menu_targets = "file_menu,run_menu,view_menu,help_menu"
-                            close_targets = "file_menu,run_menu,view_menu,help_menu"
-                            disabled_items = "Help"
+                            close_targets = "file_menu,run_menu,view_menu,help_menu,build_menu,test_menu"
                             foreground_fill = "#d7e0ff"
                             background_fill = "#111827"
                             hover_background_fill = "#38bdf8"
                             hover_foreground_fill = "#06121f"
+
+                            menu_item file_item { label = "File" target = "file_menu" }
+                            menu_item run_item { label = "Run" target = "run_menu" }
+                            menu_item view_item { label = "View" target = "view_menu" }
+                            menu_item help_item { label = "Help" disabled = "true" }
                         }
 
                         terminal_menu file_menu {
@@ -93,18 +95,18 @@ page terminal_examples {
                             col = 2
                             rows = 4
                             cols = 18
-                            items = "New,Open,Save,Quit"
+                            leave_close_targets = "file_menu"
                             class = "term_menubar_menu"
                             foreground_fill = "#d7e0ff"
                             background_fill = "#111827"
                             hover_background_fill = "#38bdf8"
                             hover_foreground_fill = "#06121f"
 
-                            event close_on_leave {
-                                trigger = "mouse_leave"
-                                state = "shown"
-                                mode = "remove"
-                            }
+                            menu_item new_item { label = "New" }
+                            menu_item open_item { label = "Open" }
+                            menu_item save_item { label = "Save" }
+                            menu_item quit_item { label = "Quit" }
+
                         }
 
                         terminal_menu run_menu {
@@ -112,18 +114,58 @@ page terminal_examples {
                             col = 9
                             rows = 4
                             cols = 18
-                            items = "Build,Test,Format,Deploy"
+                            close_targets = "build_menu,test_menu"
+                            leave_close_targets = "run_menu,build_menu,test_menu"
+                            leave_guard_targets = "run_menu,build_menu,test_menu"
                             class = "term_menubar_menu"
                             foreground_fill = "#d7e0ff"
                             background_fill = "#111827"
                             hover_background_fill = "#38bdf8"
                             hover_foreground_fill = "#06121f"
 
-                            event close_on_leave {
-                                trigger = "mouse_leave"
-                                state = "shown"
-                                mode = "remove"
-                            }
+                            menu_item build_item { label = "Build" target = "build_menu" }
+                            menu_item test_item { label = "Test" target = "test_menu" }
+                            menu_item format_item { label = "Format" }
+                            menu_item deploy_item { label = "Deploy" disabled = "true" }
+
+                        }
+
+                        terminal_menu build_menu {
+                            row = 6
+                            col = 27
+                            rows = 3
+                            cols = 18
+                            leave_close_targets = "run_menu,build_menu,test_menu"
+                            leave_guard_targets = "run_menu,build_menu,test_menu"
+                            class = "term_menubar_menu"
+                            foreground_fill = "#d7e0ff"
+                            background_fill = "#111827"
+                            hover_background_fill = "#38bdf8"
+                            hover_foreground_fill = "#06121f"
+
+                            menu_item debug_item { label = "Debug" }
+                            menu_item release_item { label = "Release" }
+                            menu_item docs_item { label = "Docs" }
+
+                        }
+
+                        terminal_menu test_menu {
+                            row = 7
+                            col = 27
+                            rows = 3
+                            cols = 18
+                            leave_close_targets = "run_menu,build_menu,test_menu"
+                            leave_guard_targets = "run_menu,build_menu,test_menu"
+                            class = "term_menubar_menu"
+                            foreground_fill = "#d7e0ff"
+                            background_fill = "#111827"
+                            hover_background_fill = "#38bdf8"
+                            hover_foreground_fill = "#06121f"
+
+                            menu_item unit_item { label = "Unit" }
+                            menu_item integration_item { label = "Integration" }
+                            menu_item snapshot_item { label = "Snapshot" }
+
                         }
 
                         terminal_menu view_menu {
@@ -131,18 +173,17 @@ page terminal_examples {
                             col = 14
                             rows = 3
                             cols = 18
-                            items = "Problems,Output,Terminal"
+                            leave_close_targets = "view_menu"
                             class = "term_menubar_menu"
                             foreground_fill = "#d7e0ff"
                             background_fill = "#111827"
                             hover_background_fill = "#38bdf8"
                             hover_foreground_fill = "#06121f"
 
-                            event close_on_leave {
-                                trigger = "mouse_leave"
-                                state = "shown"
-                                mode = "remove"
-                            }
+                            menu_item problems_item { label = "Problems" }
+                            menu_item output_item { label = "Output" }
+                            menu_item terminal_item { label = "Terminal" }
+
                         }
 
                         terminal_box task_panel {
@@ -160,11 +201,14 @@ page terminal_examples {
                             col = 4
                             rows = 3
                             cols = 30
-                            items = "Build docs,Run tests,Deploy preview"
                             foreground_fill = "#d7e0ff"
                             background_fill = "#111827"
                             hover_background_fill = "#38bdf8"
                             hover_foreground_fill = "#06121f"
+
+                            menu_item build_docs_item { label = "Build docs" }
+                            menu_item run_tests_item { label = "Run tests" }
+                            menu_item deploy_preview_item { label = "Deploy preview" }
                         }
 
                         terminal_text hint {
@@ -184,7 +228,7 @@ page terminal_examples {
 
                 code basic_code {
                     language = "wcl"
-                    content = "diagram terminal_capture {\n    width = 780\n    height = 380\n\n    terminal shell {\n        x = 20\n        y = 18\n        rows = 18\n        cols = 86\n        font_size = 13\n        background_fill = \"#08111f\"\n        foreground_fill = \"#d7e0ff\"\n        content = \"$ cargo test\\n\\u001b[32mPASS\\u001b[0m terminal::ansi\"\n\n        terminal_menubar app_menu {\n            row = 5\n            col = 2\n            cols = 42\n            items = \"File,Run,View,Help\"\n            menu_targets = \"file_menu,run_menu,view_menu,help_menu\"\n            close_targets = \"file_menu,run_menu,view_menu,help_menu\"\n            disabled_items = \"Help\"\n        }\n\n        terminal_menu file_menu { row = 6, col = 2, rows = 4, cols = 18, items = \"New,Open,Save,Quit\", class = \"term_menubar_menu\" }\n        terminal_menu run_menu  { row = 6, col = 9, rows = 4, cols = 18, items = \"Build,Test,Format,Deploy\", class = \"term_menubar_menu\" }\n        terminal_menu view_menu { row = 6, col = 14, rows = 3, cols = 18, items = \"Problems,Output,Terminal\", class = \"term_menubar_menu\" }\n    }\n}"
+                    content = "diagram terminal_capture {\n    width = 780\n    height = 380\n\n    terminal shell {\n        x = 20\n        y = 18\n        rows = 18\n        cols = 86\n        font_size = 13\n        background_fill = \"#08111f\"\n        foreground_fill = \"#d7e0ff\"\n        content = \"$ cargo test\\n\\u001b[32mPASS\\u001b[0m terminal::ansi\"\n\n        terminal_menubar app_menu {\n            row = 5\n            col = 2\n            cols = 42\n            close_targets = \"file_menu,run_menu,view_menu,build_menu,test_menu\"\n            menu_item file_item { label = \"File\" target = \"file_menu\" }\n            menu_item run_item { label = \"Run\" target = \"run_menu\" }\n            menu_item view_item { label = \"View\" target = \"view_menu\" }\n            menu_item help_item { label = \"Help\" disabled = \"true\" }\n        }\n\n        terminal_menu run_menu {\n            row = 6\n            col = 9\n            rows = 4\n            cols = 18\n            close_targets = \"build_menu,test_menu\"\n            leave_close_targets = \"run_menu,build_menu,test_menu\"\n            leave_guard_targets = \"run_menu,build_menu,test_menu\"\n            class = \"term_menubar_menu\"\n            menu_item build_item { label = \"Build\" target = \"build_menu\" }\n            menu_item test_item { label = \"Test\" target = \"test_menu\" }\n            menu_item format_item { label = \"Format\" }\n            menu_item deploy_item { label = \"Deploy\" disabled = \"true\" }\n        }\n\n        terminal_menu build_menu {\n            row = 6\n            col = 27\n            rows = 3\n            cols = 18\n            leave_close_targets = \"run_menu,build_menu,test_menu\"\n            leave_guard_targets = \"run_menu,build_menu,test_menu\"\n            class = \"term_menubar_menu\"\n            menu_item debug_item { label = \"Debug\" }\n            menu_item release_item { label = \"Release\" }\n            menu_item docs_item { label = \"Docs\" }\n        }\n\n        terminal_menu test_menu {\n            row = 7\n            col = 27\n            rows = 3\n            cols = 18\n            leave_close_targets = \"run_menu,build_menu,test_menu\"\n            leave_guard_targets = \"run_menu,build_menu,test_menu\"\n            class = \"term_menubar_menu\"\n            menu_item unit_item { label = \"Unit\" }\n            menu_item integration_item { label = \"Integration\" }\n            menu_item snapshot_item { label = \"Snapshot\" }\n        }\n    }\n}"
                 }
             }
         }
@@ -228,18 +272,18 @@ page terminal_examples {
                             col = 42
                             rows = 4
                             cols = 22
-                            items = "Copy line,Copy command,Inspect,Clear"
+                            leave_close_targets = "menu"
                             class = "term_popup_menu"
                             foreground_fill = "#e5e7eb"
                             background_fill = "#111827"
                             hover_background_fill = "#60a5fa"
                             hover_foreground_fill = "#07111f"
 
-                            event close_on_leave {
-                                trigger = "mouse_leave"
-                                state = "shown"
-                                mode = "remove"
-                            }
+                            menu_item copy_line_item { label = "Copy line" }
+                            menu_item copy_command_item { label = "Copy command" }
+                            menu_item inspect_item { label = "Inspect" }
+                            menu_item clear_item { label = "Clear" }
+
                         }
                     }
                 }

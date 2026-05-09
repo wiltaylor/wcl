@@ -1169,6 +1169,10 @@ fn descriptor_events(map: &IndexMap<String, Value>) -> Vec<crate::shapes::Diagra
                 Value::String(s) => s.parse().ok(),
                 _ => None,
             });
+            let guard_targets = event
+                .get("guard_targets")
+                .and_then(|v| v.as_string())
+                .map(str::to_string);
             Some(crate::shapes::DiagramEvent {
                 name: event
                     .get("name")
@@ -1181,6 +1185,7 @@ fn descriptor_events(map: &IndexMap<String, Value>) -> Vec<crate::shapes::Diagra
                 mode,
                 duration_ms,
                 prevent_default,
+                guard_targets,
             })
         })
         .collect()
@@ -1394,6 +1399,11 @@ fn collect_diagram_events(block: &BlockRef) -> Vec<crate::shapes::DiagramEvent> 
                     Value::String(s) => s.parse().ok(),
                     _ => None,
                 });
+            let guard_targets = child
+                .attributes
+                .get("guard_targets")
+                .and_then(|v| v.as_string())
+                .map(str::to_string);
             Some(crate::shapes::DiagramEvent {
                 name: child.id.clone(),
                 trigger,
@@ -1403,6 +1413,7 @@ fn collect_diagram_events(block: &BlockRef) -> Vec<crate::shapes::DiagramEvent> 
                 mode,
                 duration_ms,
                 prevent_default,
+                guard_targets,
             })
         })
         .collect()

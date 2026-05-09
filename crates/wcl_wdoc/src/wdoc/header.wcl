@@ -203,29 +203,25 @@ namespace wdoc {
             row: i32
             col: i32
             cols: i32 @optional
-            items: string
-            selected_index: i32 @optional
-            menu_targets: string @optional
             close_targets: string @optional
-            disabled_items: string @optional
         }
         @parent(["wdoc::draw::terminal"]) @open schema "terminal_menu" {
             row: i32
             col: i32
             rows: i32 @optional
             cols: i32 @optional
-            items: string
-            selected_index: i32 @optional
-            disabled_items: string @optional
+            close_targets: string @optional
+            leave_close_targets: string @optional
+            leave_guard_targets: string @optional
         }
         @parent(["wdoc::draw::terminal"]) @open schema "terminal_context_menu" {
             row: i32
             col: i32
             rows: i32 @optional
             cols: i32 @optional
-            items: string
-            selected_index: i32 @optional
-            disabled_items: string @optional
+            close_targets: string @optional
+            leave_close_targets: string @optional
+            leave_guard_targets: string @optional
         }
         @parent(["wdoc::draw::terminal"]) @open schema "terminal_cursor" {
             row: i32
@@ -299,6 +295,7 @@ namespace wdoc {
             mode: string @optional
             duration_ms: i32 @optional
             prevent_default: bool @optional
+            guard_targets: string @optional
         }
 
         // --- Composite widgets ---
@@ -322,7 +319,13 @@ namespace wdoc {
         @template("shape", "wdoc::widget_inline_image") @open schema "inline_image" { }
         @template("shape", "wdoc::widget_menubar")  @open schema "menubar" { }
         @template("shape", "wdoc::widget_context_menu") @open schema "context_menu" { }
-        @parent(["wdoc::draw::menubar", "wdoc::draw::context_menu"])
+        @parent([
+            "wdoc::draw::menubar",
+            "wdoc::draw::context_menu",
+            "wdoc::draw::terminal_menubar",
+            "wdoc::draw::terminal_menu",
+            "wdoc::draw::terminal_context_menu"
+        ])
         @open schema "menu_item" { }
         @template("shape", "wdoc::widget_badge")    @open schema "badge" { }
         @template("shape", "wdoc::widget_navbar")   @open schema "navbar" { }

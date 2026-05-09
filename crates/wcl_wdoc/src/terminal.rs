@@ -116,6 +116,15 @@ struct TermRun {
     style: TermStyle,
 }
 
+#[derive(Debug, Clone)]
+struct TerminalMenuItem {
+    id: Option<String>,
+    label: String,
+    target: Option<String>,
+    close_targets: Option<Vec<String>>,
+    disabled: bool,
+}
+
 pub(crate) fn intrinsic_size(attrs: &indexmap::IndexMap<String, String>) -> (f64, f64) {
     let metrics = TerminalMetrics::from_attrs(attrs, None, None);
     (metrics.width, metrics.height)
@@ -247,7 +256,8 @@ fn render_box(child: &ShapeNode, metrics: &TerminalMetrics, foreground: &str, sv
         .unwrap_or(foreground);
     let title = child.attrs.get("title").map(|s| s.as_str()).unwrap_or("");
     let bounds = grid_bounds(metrics, row, col, rows, cols);
-    let menu_node = node_with_extra_class(child, "wdoc-terminal-menu");
+    let mut menu_node = node_with_extra_class(child, "wdoc-terminal-menu");
+    add_terminal_leave_close_events(&mut menu_node);
     let attrs = node_attrs(&menu_node, bounds);
     write!(svg, "<g{}>", attrs).unwrap();
     if let Some(fill) = fill {
@@ -352,22 +362,25 @@ fn render_menu(
 ) {
     let row = attr_usize(&child.attrs, "row").unwrap_or(0);
     let col = attr_usize(&child.attrs, "col").unwrap_or(0);
-    let items = child
-        .attrs
-        .get("items")
-        .map(|s| split_items(s))
-        .unwrap_or_else(|| vec!["Open".to_string(), "Close".to_string()]);
-    let disabled_items = child
-        .attrs
-        .get("disabled_items")
-        .map(|s| split_items(s))
-        .unwrap_or_default();
+    let items = terminal_menu_items(child);
     let cols = attr_usize(&child.attrs, "cols")
-        .unwrap_or_else(|| items.iter().map(|item| item.width()).max().unwrap_or(1) + 2)
+        .unwrap_or_else(|| {
+            items
+                .iter()
+                .map(|item| item.label.width() + if item.target.is_some() { 4 } else { 2 })
+                .max()
+                .unwrap_or(1)
+        })
         .max(1);
     let rows = attr_usize(&child.attrs, "rows")
         .unwrap_or(items.len())
         .max(1);
+    let default_close_targets = child.attrs.get("close_targets").map(|s| split_items(s));
+    let sibling_targets: Vec<String> = items
+        .iter()
+        .filter_map(|item| item.target.clone())
+        .filter(|target| !target.is_empty())
+        .collect();
     let fg = child
         .attrs
         .get("foreground_fill")
@@ -397,14 +410,20 @@ fn render_menu(
     write!(svg, "<g{}>", attrs).unwrap();
     write_rect(svg, bounds, bg, 0.0);
     for (idx, item) in items.into_iter().take(rows).enumerate() {
-        let disabled = item_in_list(&item, &disabled_items);
+        let close_targets = item
+            .close_targets
+            .as_ref()
+            .or(default_close_targets.as_ref())
+            .unwrap_or(&sibling_targets);
         let item_bounds = grid_bounds(metrics, row + idx, col, 1, cols);
-        let item_id = child
-            .id
-            .as_deref()
-            .map(|id| format!("{id}_item_{idx}"))
-            .unwrap_or_else(|| format!("terminal_menu_item_{idx}"));
-        let item_class = if disabled {
+        let item_id = item.id.clone().unwrap_or_else(|| {
+            child
+                .id
+                .as_deref()
+                .map(|id| format!("{id}_item_{idx}"))
+                .unwrap_or_else(|| format!("terminal_menu_item_{idx}"))
+        });
+        let item_class = if item.disabled {
             "wdoc-terminal-menu-item wdoc-terminal-menu-item-disabled"
         } else {
             "wdoc-terminal-menu-item"
@@ -414,14 +433,19 @@ fn render_menu(
             item_class,
             item_bounds,
             idx,
-            disabled,
-            None,
-            &[],
+            item.disabled,
+            item.target.as_deref(),
+            close_targets,
         );
         write!(svg, "<g{}>", node_attrs(&item_node, item_bounds)).unwrap();
         write_rect(svg, item_bounds, bg, 0.0);
         write_rect_with_class(svg, item_bounds, hover_bg, "wdoc-terminal-menu-item-bg");
-        let label = format!(" {}", truncate_cells(&item, cols.saturating_sub(1)));
+        let label_cols = if item.target.is_some() {
+            cols.saturating_sub(3)
+        } else {
+            cols.saturating_sub(1)
+        };
+        let label = format!(" {}", truncate_cells(&item.label, label_cols));
         write_text(
             svg,
             metrics,
@@ -442,6 +466,28 @@ fn render_menu(
             None,
             &TermStyle::default_with_class("wdoc-terminal-menu-item-label-hover"),
         );
+        if item.target.is_some() && cols > 0 {
+            write_text(
+                svg,
+                metrics,
+                row + idx,
+                col + cols - 1,
+                ">",
+                fg,
+                None,
+                &TermStyle::default(),
+            );
+            write_text(
+                svg,
+                metrics,
+                row + idx,
+                col + cols - 1,
+                ">",
+                hover_fg,
+                None,
+                &TermStyle::default_with_class("wdoc-terminal-menu-item-label-hover"),
+            );
+        }
         svg.push_str("</g>");
     }
     svg.push_str("</g>");
@@ -456,35 +502,22 @@ fn render_menubar(
 ) {
     let row = attr_usize(&child.attrs, "row").unwrap_or(0);
     let col = attr_usize(&child.attrs, "col").unwrap_or(0);
-    let items = child
-        .attrs
-        .get("items")
-        .map(|s| split_items(s))
-        .unwrap_or_else(|| vec!["File".to_string(), "Edit".to_string()]);
-    let targets = child
-        .attrs
-        .get("menu_targets")
-        .map(|s| split_items(s))
-        .unwrap_or_default();
-    let close_targets = child
-        .attrs
-        .get("close_targets")
-        .map(|s| split_items(s))
-        .unwrap_or_else(|| targets.clone());
-    let disabled_items = child
-        .attrs
-        .get("disabled_items")
-        .map(|s| split_items(s))
-        .unwrap_or_default();
+    let items = terminal_menu_items(child);
     let cols = attr_usize(&child.attrs, "cols")
         .unwrap_or_else(|| {
             items
                 .iter()
-                .map(|item| item.width() + 2)
+                .map(|item| item.label.width() + 2)
                 .sum::<usize>()
                 .max(1)
         })
         .max(1);
+    let default_close_targets = child.attrs.get("close_targets").map(|s| split_items(s));
+    let sibling_targets: Vec<String> = items
+        .iter()
+        .filter_map(|item| item.target.clone())
+        .filter(|target| !target.is_empty())
+        .collect();
     let fg = child
         .attrs
         .get("foreground_fill")
@@ -518,36 +551,41 @@ fn render_menubar(
         if current_col >= col + cols {
             break;
         }
-        let disabled = item_in_list(&item, &disabled_items);
-        let item_cols = (item.width() + 2).min(col + cols - current_col);
+        let close_targets = item
+            .close_targets
+            .as_ref()
+            .or(default_close_targets.as_ref())
+            .unwrap_or(&sibling_targets);
+        let item_cols = (item.label.width() + 2).min(col + cols - current_col);
         let item_bounds = grid_bounds(metrics, row, current_col, 1, item_cols);
-        let item_id = child
-            .id
-            .as_deref()
-            .map(|id| format!("{id}_item_{idx}"))
-            .unwrap_or_else(|| format!("terminal_menubar_item_{idx}"));
-        let item_class = if disabled {
+        let item_id = item.id.clone().unwrap_or_else(|| {
+            child
+                .id
+                .as_deref()
+                .map(|id| format!("{id}_item_{idx}"))
+                .unwrap_or_else(|| format!("terminal_menubar_item_{idx}"))
+        });
+        let item_class = if item.disabled {
             "wdoc-terminal-menu-item wdoc-terminal-menu-item-disabled"
         } else {
             "wdoc-terminal-menu-item"
         };
-        let target = targets
-            .get(idx)
-            .map(|s| s.as_str())
-            .filter(|s| !s.is_empty());
         let item_node = synthetic_terminal_item_node(
             &item_id,
             item_class,
             item_bounds,
             idx,
-            disabled,
-            target,
-            &close_targets,
+            item.disabled,
+            item.target.as_deref(),
+            close_targets,
         );
         write!(svg, "<g{}>", node_attrs(&item_node, item_bounds)).unwrap();
         write_rect(svg, item_bounds, bg, 0.0);
         write_rect_with_class(svg, item_bounds, hover_bg, "wdoc-terminal-menu-item-bg");
-        let label = format!(" {} ", truncate_cells(&item, item_cols.saturating_sub(2)));
+        let label = format!(
+            " {} ",
+            truncate_cells(&item.label, item_cols.saturating_sub(2))
+        );
         write_text(
             svg,
             metrics,
@@ -1105,6 +1143,7 @@ fn synthetic_terminal_item_node(
             mode: Some("while".to_string()),
             duration_ms: None,
             prevent_default: None,
+            guard_targets: None,
         });
         for target in close_targets {
             if Some(target.as_str()) == open_target || target.is_empty() {
@@ -1119,6 +1158,7 @@ fn synthetic_terminal_item_node(
                 mode: Some("remove".to_string()),
                 duration_ms: None,
                 prevent_default: None,
+                guard_targets: None,
             });
         }
         if let Some(target) = open_target {
@@ -1131,6 +1171,7 @@ fn synthetic_terminal_item_node(
                 mode: Some("add".to_string()),
                 duration_ms: None,
                 prevent_default: None,
+                guard_targets: None,
             });
         }
     }
@@ -1154,6 +1195,37 @@ fn synthetic_terminal_item_node(
         padding: 0.0,
         z_index: 0.0,
         source_order,
+    }
+}
+
+fn add_terminal_leave_close_events(node: &mut ShapeNode) {
+    let Some(close_targets) = node
+        .attrs
+        .get("leave_close_targets")
+        .map(|s| split_items(s))
+    else {
+        return;
+    };
+    if close_targets.is_empty() {
+        return;
+    }
+    let guard_targets = node
+        .attrs
+        .get("leave_guard_targets")
+        .cloned()
+        .unwrap_or_else(|| close_targets.join(","));
+    for target in close_targets {
+        node.events.push(DiagramEvent {
+            name: None,
+            trigger: "mouse_leave".to_string(),
+            state: "shown".to_string(),
+            target: Some(target),
+            button: None,
+            mode: Some("remove".to_string()),
+            duration_ms: None,
+            prevent_default: None,
+            guard_targets: Some(guard_targets.clone()),
+        });
     }
 }
 
@@ -1244,13 +1316,14 @@ fn events_data(events: &[DiagramEvent]) -> String {
     events
         .iter()
         .map(|event| {
-            [
+            let duration_ms = event.duration_ms.unwrap_or(0).to_string();
+            let mut fields = vec![
                 event.trigger.as_str(),
                 event.state.as_str(),
                 event.target.as_deref().unwrap_or("self"),
                 event.mode.as_deref().unwrap_or(""),
                 event.button.as_deref().unwrap_or("left"),
-                &event.duration_ms.unwrap_or(0).to_string(),
+                duration_ms.as_str(),
                 if event
                     .prevent_default
                     .unwrap_or(event.trigger == "right_click")
@@ -1259,11 +1332,15 @@ fn events_data(events: &[DiagramEvent]) -> String {
                 } else {
                     "false"
                 },
-            ]
-            .into_iter()
-            .map(escape_data)
-            .collect::<Vec<_>>()
-            .join("|")
+            ];
+            if let Some(guard_targets) = event.guard_targets.as_deref() {
+                fields.push(guard_targets);
+            }
+            fields
+                .into_iter()
+                .map(escape_data)
+                .collect::<Vec<_>>()
+                .join("|")
         })
         .collect::<Vec<_>>()
         .join(";")
@@ -1279,6 +1356,43 @@ fn escape_data(value: &str) -> String {
         .replace('~', "\\t")
 }
 
+fn terminal_menu_items(node: &ShapeNode) -> Vec<TerminalMenuItem> {
+    node.children
+        .iter()
+        .filter(|child| child.kind == ShapeKind::MenuItem)
+        .map(|child| {
+            let label = child
+                .attrs
+                .get("label")
+                .map(|label| label.trim())
+                .filter(|label| !label.is_empty())
+                .unwrap_or("Item")
+                .to_string();
+            let target = child
+                .attrs
+                .get("target")
+                .map(|target| target.trim())
+                .filter(|target| !target.is_empty())
+                .map(str::to_string);
+            let close_targets = child
+                .attrs
+                .get("close_targets")
+                .map(|value| split_items(value));
+            let disabled = child
+                .attrs
+                .get("disabled")
+                .is_some_and(|value| value.eq_ignore_ascii_case("true"));
+            TerminalMenuItem {
+                id: child.id.clone(),
+                label,
+                target,
+                close_targets,
+                disabled,
+            }
+        })
+        .collect()
+}
+
 fn split_items(value: &str) -> Vec<String> {
     value
         .split(',')
@@ -1286,10 +1400,6 @@ fn split_items(value: &str) -> Vec<String> {
         .filter(|item| !item.is_empty())
         .map(str::to_string)
         .collect()
-}
-
-fn item_in_list(item: &str, list: &[String]) -> bool {
-    list.iter().any(|entry| entry.eq_ignore_ascii_case(item))
 }
 
 fn truncate_cells(value: &str, max: usize) -> String {
@@ -1388,7 +1498,14 @@ mod tests {
         let mut menu_attrs = IndexMap::new();
         menu_attrs.insert("row".to_string(), "2".to_string());
         menu_attrs.insert("col".to_string(), "2".to_string());
-        menu_attrs.insert("items".to_string(), "Build,Test".to_string());
+        menu_attrs.insert("rows".to_string(), "2".to_string());
+        menu_attrs.insert("cols".to_string(), "12".to_string());
+        let mut build_attrs = IndexMap::new();
+        build_attrs.insert("label".to_string(), "Build".to_string());
+        build_attrs.insert("target".to_string(), "build_menu".to_string());
+        let mut test_attrs = IndexMap::new();
+        test_attrs.insert("label".to_string(), "Test".to_string());
+        test_attrs.insert("disabled".to_string(), "true".to_string());
         let child = ShapeNode {
             kind: ShapeKind::TerminalMenu,
             id: Some("menu".to_string()),
@@ -1411,8 +1528,52 @@ mod tests {
                 mode: Some("toggle".to_string()),
                 duration_ms: None,
                 prevent_default: None,
+                guard_targets: None,
             }],
-            children: vec![],
+            children: vec![
+                ShapeNode {
+                    kind: ShapeKind::MenuItem,
+                    id: Some("build_item".to_string()),
+                    x: None,
+                    y: None,
+                    width: None,
+                    height: None,
+                    top: None,
+                    bottom: None,
+                    left: None,
+                    right: None,
+                    resolved: Bounds::default(),
+                    attrs: build_attrs,
+                    events: vec![],
+                    children: vec![],
+                    align: crate::shapes::Alignment::None,
+                    gap: 0.0,
+                    padding: 0.0,
+                    z_index: 0.0,
+                    source_order: 0,
+                },
+                ShapeNode {
+                    kind: ShapeKind::MenuItem,
+                    id: Some("test_item".to_string()),
+                    x: None,
+                    y: None,
+                    width: None,
+                    height: None,
+                    top: None,
+                    bottom: None,
+                    left: None,
+                    right: None,
+                    resolved: Bounds::default(),
+                    attrs: test_attrs,
+                    events: vec![],
+                    children: vec![],
+                    align: crate::shapes::Alignment::None,
+                    gap: 0.0,
+                    padding: 0.0,
+                    z_index: 1.0,
+                    source_order: 1,
+                },
+            ],
             align: crate::shapes::Alignment::None,
             gap: 0.0,
             padding: 0.0,
@@ -1452,7 +1613,97 @@ mod tests {
         assert!(svg.contains("fill=\"#0dbc79\""));
         assert!(svg.contains(">ok</text>"));
         assert!(svg.contains("Test"));
+        assert!(svg.contains("&gt;</text>"));
+        assert!(svg.contains("build_menu"));
+        assert!(svg.contains("wdoc-terminal-menu-item-disabled"));
         assert!(svg.contains("data-wdoc-events=\"click|shown|self|toggle|left|0|false\""));
         assert!(svg.contains("wdoc-terminal-menu-item-label-hover"));
+    }
+
+    #[test]
+    fn terminal_menu_item_blocks_open_targets_and_close_sibling_targets() {
+        let metrics = TerminalMetrics::from_attrs(&IndexMap::new(), Some(240.0), Some(120.0));
+        let mut attrs = IndexMap::new();
+        attrs.insert("row".to_string(), "1".to_string());
+        attrs.insert("col".to_string(), "1".to_string());
+        attrs.insert("rows".to_string(), "2".to_string());
+        attrs.insert("cols".to_string(), "12".to_string());
+        let mut build_attrs = IndexMap::new();
+        build_attrs.insert("label".to_string(), "Build".to_string());
+        build_attrs.insert("target".to_string(), "build_menu".to_string());
+        let mut format_attrs = IndexMap::new();
+        format_attrs.insert("label".to_string(), "Format".to_string());
+        let menu = ShapeNode {
+            kind: ShapeKind::TerminalMenu,
+            id: Some("run_menu".to_string()),
+            x: None,
+            y: None,
+            width: None,
+            height: None,
+            top: None,
+            bottom: None,
+            left: None,
+            right: None,
+            resolved: Bounds::default(),
+            attrs,
+            events: vec![],
+            children: vec![
+                ShapeNode {
+                    kind: ShapeKind::MenuItem,
+                    id: Some("build_item".to_string()),
+                    x: None,
+                    y: None,
+                    width: None,
+                    height: None,
+                    top: None,
+                    bottom: None,
+                    left: None,
+                    right: None,
+                    resolved: Bounds::default(),
+                    attrs: build_attrs,
+                    events: vec![],
+                    children: vec![],
+                    align: crate::shapes::Alignment::None,
+                    gap: 0.0,
+                    padding: 0.0,
+                    z_index: 0.0,
+                    source_order: 0,
+                },
+                ShapeNode {
+                    kind: ShapeKind::MenuItem,
+                    id: Some("format_item".to_string()),
+                    x: None,
+                    y: None,
+                    width: None,
+                    height: None,
+                    top: None,
+                    bottom: None,
+                    left: None,
+                    right: None,
+                    resolved: Bounds::default(),
+                    attrs: format_attrs,
+                    events: vec![],
+                    children: vec![],
+                    align: crate::shapes::Alignment::None,
+                    gap: 0.0,
+                    padding: 0.0,
+                    z_index: 0.0,
+                    source_order: 1,
+                },
+            ],
+            align: crate::shapes::Alignment::None,
+            gap: 0.0,
+            padding: 0.0,
+            z_index: 0.0,
+            source_order: 0,
+        };
+        let mut svg = String::new();
+        render_menu(&menu, &metrics, "#d7e0ff", "#08111f", &mut svg);
+
+        assert!(svg.contains("Build"));
+        assert!(svg.contains("Format"));
+        assert!(svg.contains("&gt;</text>"));
+        assert!(svg.contains("build_menu|add"));
+        assert!(svg.contains("build_menu|remove"));
     }
 }
