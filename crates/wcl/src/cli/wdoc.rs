@@ -83,108 +83,256 @@ fn collect_template_helpers(doc: &crate::Document) -> HashMap<String, FunctionVa
         .collect()
 }
 
+#[derive(Clone, Debug)]
+struct MarkupRule {
+    name: String,
+    func: FunctionValue,
+    parts: Vec<MarkupPatternPart>,
+    priority: i64,
+    order: usize,
+}
+
+#[derive(Clone, Debug)]
+enum MarkupPatternPart {
+    Literal(String),
+    Capture(String),
+}
+
+fn collect_markup_rules(
+    doc: &crate::Document,
+    helpers: &HashMap<String, FunctionValue>,
+) -> Result<Vec<MarkupRule>, String> {
+    let mut rules = Vec::new();
+    for (order, (name, value)) in doc.values.iter().enumerate() {
+        let Value::Function(_) = value else {
+            continue;
+        };
+        let Some(func) = helpers.get(name) else {
+            continue;
+        };
+        let Some(dec) = func.decorators.iter().find(|d| d.name == "markup") else {
+            continue;
+        };
+        let pattern = dec
+            .args
+            .get("pattern")
+            .or_else(|| dec.args.get("_0"))
+            .and_then(Value::as_string)
+            .ok_or_else(|| format!("@markup on '{name}' requires a string pattern"))?;
+        let priority = dec.args.get("priority").and_then(value_as_i64).unwrap_or(0);
+        let parts = compile_markup_pattern(pattern)
+            .map_err(|err| format!("invalid @markup pattern on '{name}': {err}"))?;
+        validate_markup_pattern(name, func, &parts)?;
+        rules.push(MarkupRule {
+            name: name.clone(),
+            func: func.clone(),
+            parts,
+            priority,
+            order,
+        });
+    }
+    rules.sort_by(|a, b| {
+        b.priority
+            .cmp(&a.priority)
+            .then_with(|| b.literal_prefix_len().cmp(&a.literal_prefix_len()))
+            .then_with(|| a.order.cmp(&b.order))
+    });
+    Ok(rules)
+}
+
+impl MarkupRule {
+    fn literal_prefix_len(&self) -> usize {
+        match self.parts.first() {
+            Some(MarkupPatternPart::Literal(lit)) => lit.len(),
+            _ => 0,
+        }
+    }
+}
+
+fn value_as_i64(value: &Value) -> Option<i64> {
+    match value {
+        Value::Int(n) => Some(*n),
+        _ => None,
+    }
+}
+
+fn compile_markup_pattern(pattern: &str) -> Result<Vec<MarkupPatternPart>, String> {
+    let mut parts = Vec::new();
+    let mut literal = String::new();
+    let mut chars = pattern.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch != '{' {
+            literal.push(ch);
+            continue;
+        }
+        if !literal.is_empty() {
+            parts.push(MarkupPatternPart::Literal(std::mem::take(&mut literal)));
+        }
+        let mut name = String::new();
+        let mut closed = false;
+        for inner in chars.by_ref() {
+            if inner == '}' {
+                closed = true;
+                break;
+            }
+            name.push(inner);
+        }
+        if !closed {
+            return Err("unterminated capture".into());
+        }
+        if name.is_empty() {
+            return Err("empty capture name".into());
+        }
+        if !name.chars().all(|c| c == '_' || c.is_ascii_alphanumeric())
+            || name.chars().next().is_some_and(|c| c.is_ascii_digit())
+        {
+            return Err(format!("invalid capture name '{name}'"));
+        }
+        parts.push(MarkupPatternPart::Capture(name));
+    }
+    if !literal.is_empty() {
+        parts.push(MarkupPatternPart::Literal(literal));
+    }
+    if !parts
+        .iter()
+        .any(|part| matches!(part, MarkupPatternPart::Capture(_)))
+    {
+        return Err("pattern must include at least one capture".into());
+    }
+    if parts.windows(2).any(|window| {
+        matches!(
+            window,
+            [MarkupPatternPart::Capture(_), MarkupPatternPart::Capture(_)]
+        )
+    }) {
+        return Err("adjacent captures need a literal delimiter".into());
+    }
+    Ok(parts)
+}
+
+fn validate_markup_pattern(
+    name: &str,
+    func: &FunctionValue,
+    parts: &[MarkupPatternPart],
+) -> Result<(), String> {
+    let captures: HashSet<&str> = parts
+        .iter()
+        .filter_map(|part| match part {
+            MarkupPatternPart::Capture(capture) => Some(capture.as_str()),
+            _ => None,
+        })
+        .collect();
+    for capture in &captures {
+        if !func.params.iter().any(|param| param == capture) {
+            return Err(format!(
+                "@markup on '{name}' captures '{{{capture}}}', but the lambda has no matching parameter"
+            ));
+        }
+    }
+    for param in &func.params {
+        if !captures.contains(param.as_str()) {
+            return Err(format!(
+                "@markup on '{name}' is missing capture '{{{param}}}' for lambda parameter"
+            ));
+        }
+    }
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // WCL custom functions (inline formatting + template rendering)
 // ---------------------------------------------------------------------------
 
 fn wdoc_functions() -> FunctionRegistry {
     let mut reg = FunctionRegistry::new();
-    let mk = |name: &str, params: Vec<&str>, doc: &str| FunctionSignature {
-        name: name.into(),
-        params: params.into_iter().map(|s| s.to_string()).collect(),
-        return_type: "string".into(),
-        doc: doc.into(),
+    let inline_string = |tag: &'static str, fn_name: &'static str| -> BuiltinFn {
+        std::sync::Arc::new(move |args: &[Value]| {
+            let text = args
+                .first()
+                .and_then(|v| v.as_string())
+                .ok_or_else(|| format!("{fn_name}() expects a string argument"))?;
+            Ok(Value::String(format!(
+                "<{tag}>{}</{tag}>",
+                html_escape(text)
+            )))
+        }) as BuiltinFn
     };
 
-    // Inline formatting (qualified under wdoc:: namespace)
+    reg.register(
+        "bold",
+        inline_string("strong", "bold"),
+        FunctionSignature {
+            name: "bold".into(),
+            params: vec!["text: string".into()],
+            return_type: "string".into(),
+            doc: "Wrap text in <strong> tags".into(),
+        },
+    );
     reg.register(
         "wdoc::bold",
-        std::sync::Arc::new(|args: &[Value]| {
-            let t = args
-                .first()
-                .and_then(|v| v.as_string())
-                .ok_or("bold() expects a string argument")?;
-            Ok(Value::String(format!("<strong>{t}</strong>")))
-        }) as BuiltinFn,
-        mk(
-            "wdoc::bold",
-            vec!["text: string"],
-            "Wrap text in <strong> tags",
-        ),
+        inline_string("strong", "bold"),
+        FunctionSignature {
+            name: "wdoc::bold".into(),
+            params: vec!["text: string".into()],
+            return_type: "string".into(),
+            doc: "Wrap text in <strong> tags".into(),
+        },
     );
-
+    reg.register(
+        "italic",
+        inline_string("em", "italic"),
+        FunctionSignature {
+            name: "italic".into(),
+            params: vec!["text: string".into()],
+            return_type: "string".into(),
+            doc: "Wrap text in <em> tags".into(),
+        },
+    );
     reg.register(
         "wdoc::italic",
-        std::sync::Arc::new(|args: &[Value]| {
-            let t = args
-                .first()
-                .and_then(|v| v.as_string())
-                .ok_or("italic() expects a string argument")?;
-            Ok(Value::String(format!("<em>{t}</em>")))
-        }) as BuiltinFn,
-        mk(
-            "wdoc::italic",
-            vec!["text: string"],
-            "Wrap text in <em> tags",
-        ),
+        inline_string("em", "italic"),
+        FunctionSignature {
+            name: "wdoc::italic".into(),
+            params: vec!["text: string".into()],
+            return_type: "string".into(),
+            doc: "Wrap text in <em> tags".into(),
+        },
     );
-
+    let link_fn = std::sync::Arc::new(|args: &[Value]| {
+        if args.len() != 2 {
+            return Err("link() expects 2 arguments (text, url)".into());
+        }
+        let text = args[0]
+            .as_string()
+            .ok_or("link() first argument must be a string")?;
+        let url = args[1]
+            .as_string()
+            .ok_or("link() second argument must be a string")?;
+        Ok(Value::String(format!(
+            "<a href=\"{}\">{}</a>",
+            html_escape(url),
+            html_escape(text)
+        )))
+    }) as BuiltinFn;
+    reg.register(
+        "link",
+        link_fn.clone(),
+        FunctionSignature {
+            name: "link".into(),
+            params: vec!["text: string".into(), "url: string".into()],
+            return_type: "string".into(),
+            doc: "Create an <a> link".into(),
+        },
+    );
     reg.register(
         "wdoc::link",
-        std::sync::Arc::new(|args: &[Value]| {
-            if args.len() != 2 {
-                return Err("link() expects 2 arguments (text, url)".into());
-            }
-            let text = args[0]
-                .as_string()
-                .ok_or("link() first argument must be a string")?;
-            let url = args[1]
-                .as_string()
-                .ok_or("link() second argument must be a string")?;
-            Ok(Value::String(format!("<a href=\"{url}\">{text}</a>")))
-        }) as BuiltinFn,
-        mk(
-            "wdoc::link",
-            vec!["text: string", "url: string"],
-            "Create an <a> link",
-        ),
-    );
-
-    reg.register(
-        "wdoc::icon",
-        std::sync::Arc::new(|args: &[Value]| {
-            let name = args
-                .first()
-                .and_then(|v| v.as_string())
-                .ok_or("icon() expects a string argument (icon name)")?;
-            // Optional second arg: size (e.g. "1.5em", "24px")
-            let size = args.get(1).and_then(|v| v.as_string());
-            // Optional third arg: color (e.g. "red", "#ff0000", "var(--color-link)")
-            let color = args.get(2).and_then(|v| v.as_string());
-
-            let mut style = String::new();
-            if let Some(s) = size {
-                style.push_str(&format!("font-size:{s};"));
-            }
-            if let Some(c) = color {
-                style.push_str(&format!("color:{c};"));
-            }
-
-            let style_attr = if style.is_empty() {
-                String::new()
-            } else {
-                format!(" style=\"{style}\"")
-            };
-
-            Ok(Value::String(format!(
-                "<i class=\"bi bi-{name}\"{style_attr}></i>"
-            )))
-        }) as BuiltinFn,
-        mk(
-            "wdoc::icon",
-            vec!["name: string", "size: string", "color: string"],
-            "Insert a Bootstrap Icon (optional size and color)",
-        ),
+        link_fn,
+        FunctionSignature {
+            name: "wdoc::link".into(),
+            params: vec!["text: string".into(), "url: string".into()],
+            return_type: "string".into(),
+            doc: "Create an <a> link".into(),
+        },
     );
 
     let measure_text = std::sync::Arc::new(|args: &[Value]| {
@@ -285,6 +433,25 @@ fn register_renderer_helpers(reg: &mut FunctionRegistry) {
             params: vec!["block: any".into()],
             return_type: "string".into(),
             doc: "Render a block's child content with the current WDoc renderer context".into(),
+        },
+    );
+
+    reg.register(
+        "wdoc::render_markup",
+        std::sync::Arc::new(|args: &[Value]| {
+            if args.len() != 1 {
+                return Err("wdoc::render_markup() expects 1 argument".into());
+            }
+            let text = args[0]
+                .as_string()
+                .ok_or("wdoc::render_markup() argument must be a string")?;
+            wdoc_render_markup(text).map(Value::String)
+        }) as BuiltinFn,
+        FunctionSignature {
+            name: "wdoc::render_markup".into(),
+            params: vec!["text: string".into()],
+            return_type: "string".into(),
+            doc: "Render WDoc text markup using @markup formatter lambdas".into(),
         },
     );
 
@@ -1447,6 +1614,7 @@ fn val_f64(v: Option<&Value>) -> Option<f64> {
 struct ExtractCtx {
     template_map: HashMap<(String, String), String>,
     template_helpers: HashMap<String, FunctionValue>,
+    markup_rules: Vec<MarkupRule>,
     builtins: HashMap<String, BuiltinFn>,
     css_registry: Rc<RefCell<DiagramCssRegistry>>,
     diagram_classes: Rc<RefCell<IndexMap<String, wcl_wdoc::shapes::DiagramClass>>>,
@@ -1769,6 +1937,7 @@ mod wdoc_draw_tests {
         ExtractCtx {
             template_map: HashMap::new(),
             template_helpers: HashMap::new(),
+            markup_rules: Vec::new(),
             builtins: HashMap::new(),
             css_registry: Rc::new(RefCell::new(DiagramCssRegistry::default())),
             diagram_classes: Rc::new(RefCell::new(IndexMap::new())),
@@ -1797,6 +1966,7 @@ mod wdoc_draw_tests {
             template_name.to_string(),
         );
         ctx.template_helpers = collect_template_helpers(&doc);
+        ctx.markup_rules = collect_markup_rules(&doc, &ctx.template_helpers).unwrap();
         ctx.builtins = functions.functions;
         ctx
     }
@@ -1816,9 +1986,12 @@ mod wdoc_draw_tests {
             doc.diagnostics
         );
 
+        let template_helpers = collect_template_helpers(&doc);
+        let markup_rules = collect_markup_rules(&doc, &template_helpers).unwrap();
         ExtractCtx {
             template_map: collect_template_map(&doc),
-            template_helpers: collect_template_helpers(&doc),
+            template_helpers,
+            markup_rules,
             builtins: functions.functions,
             css_registry: Rc::new(RefCell::new(DiagramCssRegistry::default())),
             diagram_classes: Rc::new(RefCell::new(IndexMap::new())),
@@ -1828,6 +2001,91 @@ mod wdoc_draw_tests {
 
     fn int_attr(attrs: &mut IndexMap<String, Value>, key: &str, value: i64) {
         attrs.insert(key.to_string(), Value::Int(value));
+    }
+
+    #[test]
+    fn paragraph_renders_builtin_markup() {
+        let ctx = wdoc_library_ctx();
+        let mut attrs = IndexMap::new();
+        string_attr(
+            &mut attrs,
+            "content",
+            "Use **schemas**, _expressions_, `code`, [imports](guide-imports.html), and :github:",
+        );
+        let html = ctx
+            .render_block(&block("wdoc::paragraph", None, attrs, vec![]))
+            .unwrap();
+        assert!(html.contains("<strong>schemas</strong>"));
+        assert!(html.contains("<em>expressions</em>"));
+        assert!(html.contains("<code>code</code>"));
+        assert!(html.contains("<a href=\"guide-imports.html\">imports</a>"));
+        assert!(html.contains("<i class=\"bi bi-github\"></i>"));
+    }
+
+    #[test]
+    fn paragraph_renders_custom_markup() {
+        let functions = wdoc_functions();
+        let source = format!(
+            "{}\nnamespace wdoc {{\n@markup(\"=={{text}}==\")\nexport let mark = text => \"<mark>\" + wdoc::html_escape(text) + \"</mark>\"\n}}\n",
+            WDOC_LIBRARY_WCL
+        );
+        let doc = crate::parse(
+            &source,
+            crate::ParseOptions {
+                functions: functions.clone(),
+                ..Default::default()
+            },
+        );
+        assert!(
+            !doc.has_errors(),
+            "unexpected diagnostics: {:?}",
+            doc.diagnostics
+        );
+        let template_helpers = collect_template_helpers(&doc);
+        let ctx = ExtractCtx {
+            template_map: collect_template_map(&doc),
+            markup_rules: collect_markup_rules(&doc, &template_helpers).unwrap(),
+            template_helpers,
+            builtins: functions.functions,
+            css_registry: Rc::new(RefCell::new(DiagramCssRegistry::default())),
+            diagram_classes: Rc::new(RefCell::new(IndexMap::new())),
+            svg_search_dirs: Vec::new(),
+        };
+        let mut attrs = IndexMap::new();
+        string_attr(&mut attrs, "content", "This is ==marked== text");
+        let html = ctx
+            .render_block(&block("wdoc::paragraph", None, attrs, vec![]))
+            .unwrap();
+        assert!(html.contains("<mark>marked</mark>"));
+    }
+
+    #[test]
+    fn markup_backslash_escape_keeps_literal_text() {
+        let ctx = wdoc_library_ctx();
+        let mut attrs = IndexMap::new();
+        string_attr(&mut attrs, "content", "\\**not bold**");
+        let html = ctx
+            .render_block(&block("wdoc::paragraph", None, attrs, vec![]))
+            .unwrap();
+        assert!(html.contains("**not bold**"));
+        assert!(!html.contains("<strong>not bold</strong>"));
+    }
+
+    #[test]
+    fn markup_does_not_rewrite_existing_html_tags() {
+        let ctx = wdoc_library_ctx();
+        let mut attrs = IndexMap::new();
+        string_attr(
+            &mut attrs,
+            "content",
+            "<i class=\"bi bi-shield-check\" style=\"font-size:1.1em;color:#28a745;\"></i> **Typed schemas**",
+        );
+        let html = ctx
+            .render_block(&block("wdoc::paragraph", None, attrs, vec![]))
+            .unwrap();
+        assert!(html.contains("style=\"font-size:1.1em;color:#28a745;\""));
+        assert!(!html.contains("bi-1.1em;color"));
+        assert!(html.contains("<strong>Typed schemas</strong>"));
     }
 
     #[test]
@@ -3001,6 +3259,115 @@ fn wdoc_render_children(value: &Value) -> Result<String, String> {
     })
 }
 
+fn wdoc_render_markup(text: &str) -> Result<String, String> {
+    CURRENT_WDOC_CTX.with(|stack| {
+        let Some(ctx_ptr) = stack.borrow().last().copied() else {
+            return Err("wdoc::render_markup() requires an active WDoc render context".into());
+        };
+        // The pointer is pushed by `ExtractCtx::render_block` and popped after
+        // the template call returns, so it remains valid for this synchronous
+        // helper invocation.
+        let ctx = unsafe { &*ctx_ptr };
+        render_markup_string(text, ctx)
+    })
+}
+
+fn render_markup_string(text: &str, ctx: &ExtractCtx) -> Result<String, String> {
+    let mut out = String::new();
+    let mut pos = 0;
+    while pos < text.len() {
+        let rest = &text[pos..];
+        if rest.starts_with('<') {
+            if let Some(end) = rest.find('>') {
+                out.push_str(&rest[..=end]);
+                pos += end + 1;
+                continue;
+            }
+        }
+        if let Some(stripped) = rest.strip_prefix('\\') {
+            if let Some(ch) = stripped.chars().next() {
+                out.push(ch);
+                pos += 1 + ch.len_utf8();
+                continue;
+            }
+        }
+
+        let mut matched = false;
+        for rule in &ctx.markup_rules {
+            let Some((end, captures)) = match_markup_rule(rule, text, pos) else {
+                continue;
+            };
+            let args = rule
+                .func
+                .params
+                .iter()
+                .map(|param| {
+                    captures
+                        .get(param)
+                        .cloned()
+                        .map(Value::String)
+                        .unwrap_or(Value::Null)
+                })
+                .collect::<Vec<_>>();
+            let value = crate::call_lambda_with_env(
+                &rule.func,
+                &args,
+                &ctx.builtins,
+                &ctx.template_helpers,
+            )
+            .map_err(|err| format!("in @markup formatter '{}': {err}", rule.name))?;
+            out.push_str(&value_to_string(&value));
+            pos = end;
+            matched = true;
+            break;
+        }
+        if matched {
+            continue;
+        }
+
+        let ch = rest.chars().next().expect("non-empty string slice");
+        out.push(ch);
+        pos += ch.len_utf8();
+    }
+    Ok(out)
+}
+
+fn match_markup_rule(
+    rule: &MarkupRule,
+    text: &str,
+    start: usize,
+) -> Option<(usize, HashMap<String, String>)> {
+    let mut pos = start;
+    let mut captures = HashMap::new();
+    for (idx, part) in rule.parts.iter().enumerate() {
+        match part {
+            MarkupPatternPart::Literal(lit) => {
+                if !text[pos..].starts_with(lit) {
+                    return None;
+                }
+                pos += lit.len();
+            }
+            MarkupPatternPart::Capture(name) => {
+                let next_lit = rule.parts[idx + 1..].iter().find_map(|part| match part {
+                    MarkupPatternPart::Literal(lit) if !lit.is_empty() => Some(lit.as_str()),
+                    _ => None,
+                });
+                let end = if let Some(next_lit) = next_lit {
+                    pos + text[pos..].find(next_lit)?
+                } else {
+                    text.len()
+                };
+                if end == pos {
+                    return None;
+                }
+                captures.insert(name.clone(), text[pos..end].to_string());
+                pos = end;
+            }
+        }
+    }
+    Some((pos, captures))
+}
+
 fn render_child_content(block: &BlockRef, ctx: &ExtractCtx) -> String {
     let mut html = String::new();
     for child in all_child_blocks(block) {
@@ -3361,10 +3728,12 @@ fn parse_and_extract_with_watch(
     let template_map = collect_template_map(&doc);
     let builtins: HashMap<String, BuiltinFn> = functions.functions;
     let template_helpers = collect_template_helpers(&doc);
+    let markup_rules = collect_markup_rules(&doc, &template_helpers)?;
     let svg_search_dirs = wdoc_source_dirs(files, &doc.imported_paths, &lib_dir);
     let ctx = ExtractCtx {
         template_map,
         template_helpers,
+        markup_rules,
         builtins,
         css_registry: Rc::new(RefCell::new(DiagramCssRegistry::default())),
         diagram_classes: Rc::new(RefCell::new(collect_diagram_classes(&all_values))),

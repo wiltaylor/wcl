@@ -2,7 +2,7 @@
 //
 // Usage:
 //   import <wdoc.wcl>
-//   use wdoc::{doc, page, section, style, layout, heading, paragraph, image, code, data_table, callout, bold, italic, link, icon}
+//   use wdoc::{doc, page, section, style, layout, heading, paragraph, image, code, data_table, callout, bold, italic, link, icon, icon_styled}
 //   use wdoc::draw::{diagram, rect, circle, ellipse, line, path, text, image, connection, ...}
 
 // Helper used by shape template functions to read attributes with defaults.
@@ -292,13 +292,29 @@ namespace wdoc {
 
     // --- Inline formatting functions ---
 
-    declare bold(text: string) -> string
-    declare italic(text: string) -> string
-    declare link(text: string, url: string) -> string
-    declare icon(name: string, size: string, color: string) -> string
+    @markup("**{text}**")
+    export let bold = text => "<strong>" + wdoc::html_escape(text) + "</strong>"
+
+    @markup("_{text}_")
+    export let italic = text => "<em>" + wdoc::html_escape(text) + "</em>"
+
+    @markup("`{text}`")
+    export let code_span = text => "<code>" + wdoc::html_escape(text) + "</code>"
+
+    @markup("[{text}]({url})")
+    export let link = (text, url) => "<a href=\"" + wdoc::html_escape(url) + "\">" + wdoc::html_escape(text) + "</a>"
+
+    @markup(":{name}:")
+    export let icon_markup = name => wdoc::icon(name)
+
+    export let icon = name => "<i class=\"bi bi-" + wdoc::html_escape(name) + "\"></i>"
+
+    export let icon_styled = (name, size, color) => "<i class=\"bi bi-" + wdoc::html_escape(name) + "\" style=\"font-size:" + wdoc::html_escape(size) + ";color:" + wdoc::html_escape(color) + ";\"></i>"
+
     declare measure_text(text: any) -> map(string, any)
     declare html_escape(value: any) -> string
     declare slugify(value: any) -> string
+    declare render_markup(text: string) -> string
     declare render_children(block: any) -> string
     declare table_rows(block: any) -> map(string, any)
 
@@ -307,7 +323,7 @@ namespace wdoc {
     export let render_heading_at = (b, level) => {
         let content = attr_or(b, "content", "")
         let id = wdoc::slugify(content)
-        "<h" + to_string(level) + " id=\"" + id + "\" class=\"wdoc-heading\">" + content + "</h" + to_string(level) + ">"
+        "<h" + to_string(level) + " id=\"" + id + "\" class=\"wdoc-heading\">" + wdoc::render_markup(content) + "</h" + to_string(level) + ">"
     }
 
     export let render_heading = (b) => {
@@ -325,8 +341,9 @@ namespace wdoc {
 
     export let render_paragraph = (b) => {
         let content = attr_or(b, "content", "")
-        let has_block = contains(content, "<ul") || contains(content, "<ol") || contains(content, "<table") || contains(content, "<div")
-        has_block ? "<div class=\"wdoc-paragraph\">" + content + "</div>" : "<p class=\"wdoc-paragraph\">" + content + "</p>"
+        let rendered = wdoc::render_markup(content)
+        let has_block = contains(rendered, "<ul") || contains(rendered, "<ol") || contains(rendered, "<table") || contains(rendered, "<div")
+        has_block ? "<div class=\"wdoc-paragraph\">" + rendered + "</div>" : "<p class=\"wdoc-paragraph\">" + rendered + "</p>"
     }
 
     export let render_image = (b) => {
@@ -351,10 +368,10 @@ namespace wdoc {
         let tbl = wdoc::table_rows(b)
         tbl.empty ? "<p class=\"wdoc-paragraph\"><em>(empty table)</em></p>" : (
             "<table class=\"wdoc-table\">\n" +
-            (tbl.caption != "" ? "<caption>" + tbl.caption + "</caption>\n" : "") +
-            (len(tbl.headers) > 0 ? "<thead><tr>" + join("", map(tbl.headers, (header) => "<th>" + header + "</th>")) + "</tr></thead>\n" : "") +
+            (tbl.caption != "" ? "<caption>" + wdoc::render_markup(tbl.caption) + "</caption>\n" : "") +
+            (len(tbl.headers) > 0 ? "<thead><tr>" + join("", map(tbl.headers, (header) => "<th>" + wdoc::render_markup(header) + "</th>")) + "</tr></thead>\n" : "") +
             "<tbody>\n" +
-            join("", map(tbl.rows, (row) => "<tr>" + join("", map(row, (cell) => "<td>" + cell + "</td>")) + "</tr>\n")) +
+            join("", map(tbl.rows, (row) => "<tr>" + join("", map(row, (cell) => "<td>" + wdoc::render_markup(cell) + "</td>")) + "</tr>\n")) +
             "</tbody>\n</table>"
         )
     }
@@ -364,7 +381,7 @@ namespace wdoc {
         let header = attr_or(b, "header", "")
         let icon = attr_or(b, "icon", "")
         let icon_html = icon != "" ? "<i class=\"bi bi-" + wdoc::html_escape(icon) + "\"></i> " : ""
-        let header_html = (header != "" || icon != "") ? "<div class=\"wdoc-callout-header\" style=\"color:" + color + ";\">" + icon_html + header + "</div>" : ""
+        let header_html = (header != "" || icon != "") ? "<div class=\"wdoc-callout-header\" style=\"color:" + color + ";\">" + icon_html + wdoc::render_markup(header) + "</div>" : ""
         "<div class=\"wdoc-callout\" style=\"border-left-color:" + color + ";\">" + header_html + "<div class=\"wdoc-callout-body\">" + wdoc::render_children(b) + "</div></div>"
     }
 

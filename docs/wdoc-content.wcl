@@ -1,5 +1,5 @@
 import <wdoc.wcl>
-use wdoc::{page, layout, heading, paragraph, code, data_table, callout, bold, italic, link, icon}
+use wdoc::{page, layout, heading, paragraph, code, data_table, callout, bold, italic, link, icon, icon_styled}
 
 page wdoc_content {
     section = "wcl_docs.wdoc.wdoc_content"
@@ -71,7 +71,7 @@ page wdoc_content {
                 }
 
                 paragraph p_i1 {
-                    content = "Four helper functions are provided in the <code>wdoc</code> namespace and are commonly imported via <code>use wdoc::{bold, italic, link, icon}</code>. They return HTML strings that you concatenate into <code>content</code>."
+                    content = "Inline helper functions are provided in the <code>wdoc</code> namespace and are commonly imported via <code>use wdoc::{bold, italic, link, icon, icon_styled}</code>. They return HTML strings that you concatenate into <code>content</code>."
                 }
 
                 data_table tbl_inline {
@@ -80,7 +80,8 @@ page wdoc_content {
                         { fn = "bold(text)",                      result = "<strong>text</strong>" },
                         { fn = "italic(text)",                    result = "<em>text</em>" },
                         { fn = "link(text, url)",                 result = "<a href=\"url\">text</a>" },
-                        { fn = "icon(name, size, color)",         result = "Bootstrap icon, sized and colored" }
+                        { fn = "icon(name)",                      result = "Bootstrap icon" },
+                        { fn = "icon_styled(name, size, color)",  result = "Bootstrap icon, sized and colored" }
                     ]
                 }
 

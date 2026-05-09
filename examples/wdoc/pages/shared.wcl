@@ -1,7 +1,7 @@
 // Pages for the WCL documentation example
 
 import <wdoc.wcl>
-use wdoc::{doc, page, section, style, layout, heading, paragraph, image, code, data_table, callout, bold, italic, link, icon}
+use wdoc::{doc, page, section, style, layout, heading, paragraph, image, code, data_table, callout, bold, italic, link, icon, icon_styled}
 use wdoc::draw::{diagram, rect, circle, ellipse, line, path, text, group, connection, phone, browser, button, input, card, avatar, toggle, checkbox, radio, button_group, textbox, dropdown, inline_image, menubar, context_menu, badge, navbar, flow_process, flow_decision, flow_terminal, flow_io, flow_subprocess, c4_person, c4_system, c4_container, c4_component, c4_boundary, uml_class, uml_actor, uml_package, uml_note, server, database, cloud, user}
 use custom_shapes::{task_node, mini_flow}
 

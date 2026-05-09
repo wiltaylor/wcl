@@ -75,6 +75,8 @@ pub struct FunctionValue {
     pub params: Vec<String>,
     pub body: FunctionBody,
     pub closure_scope: Option<ScopeId>,
+    /// Decorators applied to the let/export-let binding that produced this function.
+    pub decorators: Vec<DecoratorValue>,
     /// Attributes from decorators on the let binding (e.g. @stateful, @accumulator)
     pub lambda_attrs: LambdaAttrs,
     /// Type annotations for parameters (if provided)
@@ -385,6 +387,7 @@ mod tests {
             params: vec![],
             body: FunctionBody::Builtin("len".into()),
             closure_scope: None,
+            decorators: Vec::new(),
             lambda_attrs: LambdaAttrs::default(),
             param_types: vec![],
             return_type: None,

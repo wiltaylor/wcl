@@ -487,7 +487,8 @@ impl Evaluator {
                 DocItem::Body(BodyItem::LetBinding(lb)) if lb.name.name == name => {
                     let val = self.eval_expr(&lb.value, scope_id);
                     match val {
-                        Ok(v) => {
+                        Ok(mut v) => {
+                            self.attach_function_decorators(&mut v, &lb.decorators, scope_id);
                             if let Some((_, entry)) = self.scopes.resolve_mut(scope_id, name) {
                                 entry.value = Some(v);
                                 entry.evaluated = true;
@@ -500,7 +501,8 @@ impl Evaluator {
                 DocItem::ExportLet(el) if el.name.name == name => {
                     let val = self.eval_expr(&el.value, scope_id);
                     match val {
-                        Ok(v) => {
+                        Ok(mut v) => {
+                            self.attach_function_decorators(&mut v, &el.decorators, scope_id);
                             if let Some((_, entry)) = self.scopes.resolve_mut(scope_id, name) {
                                 entry.value = Some(v);
                                 entry.evaluated = true;
@@ -578,7 +580,13 @@ impl Evaluator {
     fn collect_deps(&self, expr: &Expr, deps: &mut HashSet<String>) {
         match expr {
             Expr::Ident(id) => {
-                deps.insert(id.name.clone());
+                deps.insert(
+                    self.namespace_aliases
+                        .aliases
+                        .get(&id.name)
+                        .cloned()
+                        .unwrap_or_else(|| id.name.clone()),
+                );
             }
             Expr::BinaryOp(l, _, r, _) => {
                 self.collect_deps(l, deps);
@@ -741,6 +749,7 @@ impl Evaluator {
                 params: params.iter().map(|p| p.name.clone()).collect(),
                 body: FunctionBody::UserDefined(body.clone()),
                 closure_scope: Some(scope_id),
+                decorators: Vec::new(),
                 lambda_attrs: LambdaAttrs::default(),
                 param_types: vec![],
                 return_type: None,
@@ -1759,6 +1768,42 @@ impl Evaluator {
             decorators,
             span: block.span,
         }
+    }
+
+    fn attach_function_decorators(
+        &mut self,
+        value: &mut Value,
+        decorators: &[Decorator],
+        scope_id: ScopeId,
+    ) {
+        let Value::Function(func) = value else {
+            return;
+        };
+
+        func.decorators = decorators
+            .iter()
+            .map(|d| {
+                let mut args = IndexMap::new();
+                for (i, arg) in d.args.iter().enumerate() {
+                    match arg {
+                        DecoratorArg::Positional(expr) => {
+                            if let Ok(val) = self.eval_expr(expr, scope_id) {
+                                args.insert(format!("_{}", i), val);
+                            }
+                        }
+                        DecoratorArg::Named(name, expr) => {
+                            if let Ok(val) = self.eval_expr(expr, scope_id) {
+                                args.insert(name.name.clone(), val);
+                            }
+                        }
+                    }
+                }
+                DecoratorValue {
+                    name: d.name.name.clone(),
+                    args,
+                }
+            })
+            .collect();
     }
 
     /// Evaluate all entries in a block scope (attributes, let-bindings, child blocks).
@@ -3014,6 +3059,7 @@ mod tests {
                         ds(),
                     ))),
                     closure_scope: Some(scope),
+                    decorators: Vec::new(),
                     lambda_attrs: crate::eval::value::LambdaAttrs::default(),
                     param_types: vec![],
                     return_type: None,
@@ -3043,6 +3089,7 @@ mod tests {
                 ds(),
             ))),
             closure_scope: None,
+            decorators: Vec::new(),
             lambda_attrs: crate::eval::value::LambdaAttrs::default(),
             param_types: vec![],
             return_type: None,

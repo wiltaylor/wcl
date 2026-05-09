@@ -1930,12 +1930,17 @@ impl Parser {
     }
 
     fn parse_decorator_target(&mut self) -> Option<DecoratorTarget> {
+        if matches!(self.peek_kind(), TokenKind::Let) {
+            self.advance();
+            return Some(DecoratorTarget::Let);
+        }
         if let TokenKind::Ident(ref name) = self.peek_kind().clone() {
             let result = match name.as_str() {
                 "block" => Some(DecoratorTarget::Block),
                 "attribute" => Some(DecoratorTarget::Attribute),
                 "table" => Some(DecoratorTarget::Table),
                 "schema" => Some(DecoratorTarget::Schema),
+                "let" => Some(DecoratorTarget::Let),
                 other => {
                     self.diagnostics.error(
                         format!("unknown decorator target: {}", other),
@@ -1948,7 +1953,7 @@ impl Parser {
             result
         } else {
             self.diagnostics.error(
-                "expected decorator target (block, attribute, table, schema)",
+                "expected decorator target (block, attribute, table, schema, let)",
                 self.current_span(),
             );
             None

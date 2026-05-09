@@ -408,6 +408,28 @@ impl DecoratorSchemaRegistry {
             constraints: vec![],
             span: Span::dummy(),
         });
+        self.insert(ResolvedDecoratorSchema {
+            name: "markup".to_string(),
+            targets: vec![DecoratorTarget::Let],
+            params: vec![
+                DecoratorParam {
+                    name: "pattern".to_string(),
+                    type_expr: TypeExpr::String(Span::dummy()),
+                    required: true,
+                    default: None,
+                    span: Span::dummy(),
+                },
+                DecoratorParam {
+                    name: "priority".to_string(),
+                    type_expr: TypeExpr::I64(Span::dummy()),
+                    required: false,
+                    default: Some(Value::Int(0)),
+                    span: Span::dummy(),
+                },
+            ],
+            constraints: vec![],
+            span: Span::dummy(),
+        });
     }
 
     fn insert(&mut self, schema: ResolvedDecoratorSchema) {
@@ -472,8 +494,15 @@ impl DecoratorSchemaRegistry {
 
     fn validate_items(&self, items: &[DocItem], diagnostics: &mut DiagnosticBag) {
         for item in items {
-            if let DocItem::Body(body_item) = item {
-                self.validate_body_item(body_item, diagnostics);
+            match item {
+                DocItem::Body(body_item) => self.validate_body_item(body_item, diagnostics),
+                DocItem::ExportLet(export) => {
+                    for dec in &export.decorators {
+                        self.validate_decorator(dec, DecoratorTarget::Let, diagnostics);
+                    }
+                }
+                DocItem::Namespace(ns) => self.validate_items(&ns.items, diagnostics),
+                _ => {}
             }
         }
     }
@@ -496,6 +525,11 @@ impl DecoratorSchemaRegistry {
             BodyItem::Table(table) => {
                 for dec in &table.decorators {
                     self.validate_decorator(dec, DecoratorTarget::Table, diagnostics);
+                }
+            }
+            BodyItem::LetBinding(binding) => {
+                for dec in &binding.decorators {
+                    self.validate_decorator(dec, DecoratorTarget::Let, diagnostics);
                 }
             }
             _ => {}
