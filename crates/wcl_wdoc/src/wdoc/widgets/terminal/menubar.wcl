@@ -19,6 +19,7 @@
             cursor = item.disabled ? "default" : "pointer",
             pointer_events = item.disabled ? "none" : "all",
             _wdoc_runtime = "true",
+            _wdoc_terminal_grid_group = "true",
             events = events,
             children = [
                 { kind = "terminal_surface", id = item_id + "_bg", row = row, col = item_col, cols = item_cols, background_fill = background_fill, _wdoc_runtime = "true" },
@@ -59,6 +60,7 @@
                 cols = cols,
                 class = menu_class,
                 _wdoc_runtime = "true",
+                _wdoc_terminal_grid_group = "true",
                 children = concat([
                     { kind = "terminal_surface", id = to_string(b.id) + "_surface", row = row, col = col, cols = cols, background_fill = background_fill, _wdoc_runtime = "true" }
                 ], item_shapes)

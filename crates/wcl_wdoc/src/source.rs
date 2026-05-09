@@ -2519,6 +2519,282 @@ mod wdoc_draw_tests {
     }
 
     #[test]
+    fn terminal_widget_classes_theme_all_controls_and_animate_root_groups() {
+        let ctx = wdoc_library_ctx();
+
+        let terminal_classes = [
+            (
+                "term_button_theme",
+                [
+                    ("background_fill", "#0f766e"),
+                    ("hover_background_fill", "#164e63"),
+                    ("label_fill", "#f8fafc"),
+                ]
+                .as_slice(),
+            ),
+            (
+                "term_textbox_theme",
+                [
+                    ("background_fill", "#111827"),
+                    ("placeholder_fill", "#c084fc"),
+                    ("accent_fill", "#f59e0b"),
+                ]
+                .as_slice(),
+            ),
+            (
+                "term_checkbox_theme",
+                [
+                    ("background_fill", "#020617"),
+                    ("hover_background_fill", "#334155"),
+                    ("label_fill", "#fef3c7"),
+                    ("accent_fill", "#22c55e"),
+                ]
+                .as_slice(),
+            ),
+            (
+                "term_radio_theme",
+                [("label_fill", "#bfdbfe"), ("muted_fill", "#94a3b8")].as_slice(),
+            ),
+            (
+                "term_dropdown_theme",
+                [
+                    ("background_fill", "#172554"),
+                    ("foreground_fill", "#e0f2fe"),
+                    ("hover_background_fill", "#38bdf8"),
+                    ("hover_foreground_fill", "#06121f"),
+                ]
+                .as_slice(),
+            ),
+            (
+                "term_menu_theme",
+                [
+                    ("background_fill", "#1e1b4b"),
+                    ("foreground_fill", "#ddd6fe"),
+                    ("hover_background_fill", "#a78bfa"),
+                    ("hover_foreground_fill", "#111827"),
+                ]
+                .as_slice(),
+            ),
+        ];
+        for (name, attrs) in terminal_classes {
+            let mut class_attrs = IndexMap::new();
+            for (key, value) in attrs {
+                string_attr(&mut class_attrs, key, value);
+            }
+            let class = block("class", Some(name), class_attrs, vec![]);
+            ctx.diagram_classes
+                .borrow_mut()
+                .extend(collect_diagram_classes(&IndexMap::from([(
+                    name.to_string(),
+                    Value::BlockRef(class),
+                )])));
+        }
+
+        let mut anim_attrs = IndexMap::new();
+        int_attr(&mut anim_attrs, "duration_ms", 500);
+        string_attr(&mut anim_attrs, "direction", "alternate");
+        string_attr(&mut anim_attrs, "iteration_count", "infinite");
+        string_attr(&mut anim_attrs, "fill_mode", "both");
+        let mut from_attrs = IndexMap::new();
+        int_attr(&mut from_attrs, "offset", 0);
+        int_attr(&mut from_attrs, "x", 28);
+        int_attr(&mut from_attrs, "y", 30);
+        int_attr(&mut from_attrs, "width", 56);
+        int_attr(&mut from_attrs, "height", 18);
+        let mut to_attrs = IndexMap::new();
+        int_attr(&mut to_attrs, "offset", 100);
+        int_attr(&mut to_attrs, "x", 42);
+        int_attr(&mut to_attrs, "y", 30);
+        int_attr(&mut to_attrs, "width", 56);
+        int_attr(&mut to_attrs, "height", 18);
+        let mut state_attrs = IndexMap::new();
+        string_attr(&mut state_attrs, "animation", "grid_slide");
+        let animated_class = block(
+            "class",
+            Some("term_animated_button"),
+            IndexMap::from([
+                (
+                    "background_fill".to_string(),
+                    Value::String("#14532d".to_string()),
+                ),
+                (
+                    "label_fill".to_string(),
+                    Value::String("#ffffff".to_string()),
+                ),
+            ]),
+            vec![
+                block(
+                    "animation",
+                    Some("grid_slide"),
+                    anim_attrs,
+                    vec![
+                        block("keyframe", Some("start"), from_attrs, vec![]),
+                        block("keyframe", Some("end"), to_attrs, vec![]),
+                    ],
+                ),
+                block("state", Some("hovered"), state_attrs, vec![]),
+            ],
+        );
+        ctx.diagram_classes
+            .borrow_mut()
+            .extend(collect_diagram_classes(&IndexMap::from([(
+                "term_animated_button".to_string(),
+                Value::BlockRef(animated_class),
+            )])));
+
+        let mut button_attrs = IndexMap::new();
+        int_attr(&mut button_attrs, "row", 1);
+        int_attr(&mut button_attrs, "col", 2);
+        int_attr(&mut button_attrs, "cols", 7);
+        string_attr(&mut button_attrs, "label", "Go");
+        string_attr(&mut button_attrs, "class", "term_animated_button");
+
+        let mut plain_button_attrs = IndexMap::new();
+        int_attr(&mut plain_button_attrs, "row", 2);
+        int_attr(&mut plain_button_attrs, "col", 2);
+        string_attr(&mut plain_button_attrs, "label", "Ship");
+        string_attr(&mut plain_button_attrs, "class", "term_button_theme");
+
+        let mut textbox_attrs = IndexMap::new();
+        int_attr(&mut textbox_attrs, "row", 3);
+        int_attr(&mut textbox_attrs, "col", 2);
+        int_attr(&mut textbox_attrs, "cols", 16);
+        string_attr(&mut textbox_attrs, "placeholder", "filter");
+        string_attr(&mut textbox_attrs, "class", "term_textbox_theme");
+        int_attr(&mut textbox_attrs, "cursor_col", 2);
+
+        let mut checkbox_attrs = IndexMap::new();
+        int_attr(&mut checkbox_attrs, "row", 5);
+        int_attr(&mut checkbox_attrs, "col", 2);
+        string_attr(&mut checkbox_attrs, "label", "Dry run");
+        string_attr(&mut checkbox_attrs, "checked", "true");
+        string_attr(&mut checkbox_attrs, "class", "term_checkbox_theme");
+
+        let mut radio_attrs = IndexMap::new();
+        int_attr(&mut radio_attrs, "row", 6);
+        int_attr(&mut radio_attrs, "col", 2);
+        string_attr(&mut radio_attrs, "label", "Stage");
+        string_attr(&mut radio_attrs, "class", "term_radio_theme");
+
+        let mut dropdown_attrs = IndexMap::new();
+        int_attr(&mut dropdown_attrs, "row", 7);
+        int_attr(&mut dropdown_attrs, "col", 2);
+        int_attr(&mut dropdown_attrs, "cols", 12);
+        string_attr(&mut dropdown_attrs, "value", "prod");
+        string_attr(&mut dropdown_attrs, "class", "term_dropdown_theme");
+        let mut prod_attrs = IndexMap::new();
+        string_attr(&mut prod_attrs, "label", "prod");
+
+        let mut menu_attrs = IndexMap::new();
+        int_attr(&mut menu_attrs, "row", 9);
+        int_attr(&mut menu_attrs, "col", 2);
+        int_attr(&mut menu_attrs, "cols", 12);
+        string_attr(&mut menu_attrs, "class", "term_menu_theme");
+        let mut build_attrs = IndexMap::new();
+        string_attr(&mut build_attrs, "label", "Build");
+
+        let mut terminal_attrs = IndexMap::new();
+        int_attr(&mut terminal_attrs, "rows", 13);
+        int_attr(&mut terminal_attrs, "cols", 32);
+        let terminal = block(
+            "wdoc::draw::terminal",
+            Some("term"),
+            terminal_attrs,
+            vec![
+                block(
+                    "wdoc::draw::terminal_button",
+                    Some("animated"),
+                    button_attrs,
+                    vec![],
+                ),
+                block(
+                    "wdoc::draw::terminal_button",
+                    Some("plain"),
+                    plain_button_attrs,
+                    vec![],
+                ),
+                block(
+                    "wdoc::draw::terminal_textbox",
+                    Some("filter"),
+                    textbox_attrs,
+                    vec![],
+                ),
+                block(
+                    "wdoc::draw::terminal_checkbox",
+                    Some("dry"),
+                    checkbox_attrs,
+                    vec![],
+                ),
+                block(
+                    "wdoc::draw::terminal_radio",
+                    Some("stage"),
+                    radio_attrs,
+                    vec![],
+                ),
+                block(
+                    "wdoc::draw::terminal_dropdown",
+                    Some("env"),
+                    dropdown_attrs,
+                    vec![block(
+                        "wdoc::draw::menu_item",
+                        Some("prod"),
+                        prod_attrs,
+                        vec![],
+                    )],
+                ),
+                block(
+                    "wdoc::draw::terminal_menu",
+                    Some("task_menu"),
+                    menu_attrs,
+                    vec![block(
+                        "wdoc::draw::menu_item",
+                        Some("build"),
+                        build_attrs,
+                        vec![],
+                    )],
+                ),
+            ],
+        );
+
+        let mut diagram_attrs = IndexMap::new();
+        int_attr(&mut diagram_attrs, "width", 360);
+        int_attr(&mut diagram_attrs, "height", 260);
+        let diagram = block(
+            "wdoc::draw::diagram",
+            Some("terminal_class_theme"),
+            diagram_attrs,
+            vec![terminal],
+        );
+
+        let html = render_diagram_with_ctx(&diagram, &ctx);
+        assert!(html.contains("data-wdoc-id=\"animated\""));
+        assert!(html.contains("class=\"term_animated_button wdoc-terminal-control\""));
+        assert!(html.contains("data-wdoc-terminal-grid-group=\"true\""));
+        assert!(html.contains("data-wdoc-state-animation=\"hovered:grid_slide\""));
+        assert!(html.contains("grid_slide|500|0|ease|infinite|alternate|both|"));
+        assert!(html.contains("fill=\"#14532d\""));
+        assert!(html.contains("fill=\"#0f766e\""));
+        assert!(html.contains("fill=\"#164e63\""));
+        assert!(html.contains("fill=\"#f8fafc\""));
+        assert!(html.contains("fill=\"#111827\""));
+        assert!(html.contains("fill=\"#c084fc\""));
+        assert!(html.contains("fill=\"#f59e0b\""));
+        assert!(html.contains("fill=\"#020617\""));
+        assert!(html.contains("fill=\"#334155\""));
+        assert!(html.contains("fill=\"#fef3c7\""));
+        assert!(html.contains("fill=\"#22c55e\""));
+        assert!(html.contains("fill=\"#bfdbfe\""));
+        assert!(html.contains("fill=\"#94a3b8\""));
+        assert!(html.contains("fill=\"#172554\""));
+        assert!(html.contains("fill=\"#e0f2fe\""));
+        assert!(html.contains("fill=\"#38bdf8\""));
+        assert!(html.contains("fill=\"#06121f\""));
+        assert!(html.contains("fill=\"#1e1b4b\""));
+        assert!(html.contains("fill=\"#ddd6fe\""));
+        assert!(html.contains("fill=\"#a78bfa\""));
+    }
+
+    #[test]
     fn measure_text_builtin_accepts_map_and_block_ref() {
         let functions = wdoc_functions();
         let measure = functions

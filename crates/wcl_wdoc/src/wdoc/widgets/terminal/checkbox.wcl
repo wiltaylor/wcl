@@ -5,27 +5,33 @@
         let checked = attr_or(b, "checked", "false") == "true"
         let disabled = attr_or(b, "disabled", "false") == "true"
         let cols = attr_or(b, "cols", 16)
-        let fg = attr_or(b, "foreground_fill", "#d7e0ff")
+        let fg = attr_or(b, "foreground_fill", attr_or(b, "label_fill", "#d7e0ff"))
         let accent = attr_or(b, "accent_fill", "#38bdf8")
         let muted = attr_or(b, "muted_fill", "#64748b")
+        let bg = attr_or(b, "background_fill", "transparent")
+        let hover_bg = attr_or(b, "hover_background_fill", "#1f2937")
         let base_class = attr_or(b, "class", "wdoc-widget-terminal_checkbox")
         let control_class = disabled ? "wdoc-terminal-control wdoc-terminal-control-disabled" : "wdoc-terminal-control"
         let events = disabled ? [] : [{ trigger = "hover", state = "hovered", mode = "while" }]
         [
             {
-                kind = "terminal_surface",
-                id = to_string(b.id) + "_surface",
+                kind = "group",
+                id = to_string(b.id),
                 row = row,
                 col = col,
+                rows = 1,
                 cols = cols,
-                background_fill = attr_or(b, "background_fill", "transparent"),
-                hover_background_fill = attr_or(b, "hover_background_fill", "#1f2937"),
                 class = base_class + " " + control_class,
                 cursor = disabled ? "default" : "pointer",
                 pointer_events = disabled ? "none" : "all",
-                events = events
-            },
-            { kind = "terminal_text", id = to_string(b.id) + "_mark", row = row, col = col, content = checked ? "[x]" : "[ ]", foreground_fill = checked ? accent : muted, _wdoc_runtime = "true", pointer_events = "none" },
-            { kind = "terminal_text", id = to_string(b.id) + "_label", row = row, col = col + 3, cols = cols - 3, content = " " + label, foreground_fill = fg, _wdoc_runtime = "true", pointer_events = "none" }
+                _wdoc_runtime = "true",
+                _wdoc_terminal_grid_group = "true",
+                events = events,
+                children = [
+                    { kind = "terminal_surface", id = to_string(b.id) + "_surface", row = row, col = col, cols = cols, background_fill = bg, hover_background_fill = hover_bg, _wdoc_runtime = "true" },
+                    { kind = "terminal_text", id = to_string(b.id) + "_mark", row = row, col = col, content = checked ? "[x]" : "[ ]", foreground_fill = checked ? accent : muted, _wdoc_runtime = "true", pointer_events = "none" },
+                    { kind = "terminal_text", id = to_string(b.id) + "_label", row = row, col = col + 3, cols = cols - 3, content = " " + label, foreground_fill = fg, _wdoc_runtime = "true", pointer_events = "none" }
+                ]
+            }
         ]
     }

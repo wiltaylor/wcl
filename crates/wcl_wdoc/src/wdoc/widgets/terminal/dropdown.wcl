@@ -35,28 +35,41 @@
         let item_shapes = map(range(0, len(items)), i => wdoc::terminal_menu_item_shape(b, items[i], i, row + 1, col, cols, fg, bg, hover_fg, hover_bg, [], [], [menu_id]))
         [
             {
-                kind = "terminal_surface",
-                id = to_string(b.id) + "_surface",
+                kind = "group",
+                id = to_string(b.id),
                 row = row,
                 col = col,
+                rows = 1,
                 cols = cols,
-                background_fill = bg,
-                hover_background_fill = hover_bg,
                 class = base_class + " " + control_class,
                 cursor = disabled ? "default" : "pointer",
                 pointer_events = disabled ? "none" : "all",
-                events = events
-            },
-            {
-                kind = "terminal_text",
-                id = to_string(b.id) + "_label",
-                row = row,
-                col = col,
-                cols = cols,
-                content = " " + selected + " v",
-                foreground_fill = shown_fill,
                 _wdoc_runtime = "true",
-                pointer_events = "none"
+                _wdoc_terminal_grid_group = "true",
+                events = events,
+                children = [
+                    {
+                        kind = "terminal_surface",
+                        id = to_string(b.id) + "_surface",
+                        row = row,
+                        col = col,
+                        cols = cols,
+                        background_fill = bg,
+                        hover_background_fill = hover_bg,
+                        _wdoc_runtime = "true"
+                    },
+                    {
+                        kind = "terminal_text",
+                        id = to_string(b.id) + "_label",
+                        row = row,
+                        col = col,
+                        cols = cols,
+                        content = " " + selected + " v",
+                        foreground_fill = shown_fill,
+                        _wdoc_runtime = "true",
+                        pointer_events = "none"
+                    }
+                ]
             },
             {
                 kind = "group",
@@ -67,6 +80,7 @@
                 cols = cols,
                 class = menu_class,
                 _wdoc_runtime = "true",
+                _wdoc_terminal_grid_group = "true",
                 children = concat([
                     { kind = "terminal_surface", id = menu_id + "_surface", row = row + 1, col = col, rows = len(item_blocks) > 0 ? len(item_blocks) : 1, cols = cols, background_fill = bg, _wdoc_runtime = "true" }
                 ], item_shapes)

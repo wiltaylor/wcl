@@ -56,6 +56,7 @@
             cursor = item.disabled ? "default" : "pointer",
             pointer_events = item.disabled ? "none" : "all",
             _wdoc_runtime = "true",
+            _wdoc_terminal_grid_group = "true",
             events = wdoc::terminal_menu_item_events(item, sibling_targets, default_close_targets, click_close_targets),
             children = concat([
                 { kind = "terminal_surface", id = item_id + "_bg", row = row + i, col = col, cols = cols, background_fill = background_fill, _wdoc_runtime = "true" },
@@ -96,6 +97,7 @@
                 cols = cols,
                 class = menu_class,
                 _wdoc_runtime = "true",
+                _wdoc_terminal_grid_group = "true",
                 events = leave_events,
                 children = concat([
                     { kind = "terminal_surface", id = to_string(b.id) + "_surface", row = row, col = col, rows = rows, cols = cols, background_fill = background_fill, _wdoc_runtime = "true" }

@@ -1001,6 +1001,13 @@ fn node_attrs(node: &ShapeNode, b: Bounds) -> String {
     if let Some(value) = node.attrs.get("_wdoc_animations") {
         write!(out, " data-wdoc-animations=\"{}\"", escape_attr(value)).unwrap();
     }
+    if node
+        .attrs
+        .get("_wdoc_terminal_grid_group")
+        .is_some_and(|value| value == "true")
+    {
+        write!(out, " data-wdoc-terminal-grid-group=\"true\"").unwrap();
+    }
     out
 }
 
