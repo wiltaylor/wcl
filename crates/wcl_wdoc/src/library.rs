@@ -17,6 +17,8 @@ pub const HIGHLIGHTJS_THEME_DARK_CSS: &str =
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::WDOC_LIBRARY_WCL;
 
     #[test]
@@ -38,6 +40,29 @@ mod tests {
             assert!(
                 WDOC_LIBRARY_WCL.contains(&format!("widget_{widget}")),
                 "missing template for {widget}"
+            );
+        }
+    }
+
+    #[test]
+    fn widget_manifest_uses_categories() {
+        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("src")
+            .join("wdoc");
+        let manifest = std::fs::read_to_string(manifest_dir.join("manifest.txt"))
+            .expect("manifest should be readable");
+
+        for path in [
+            "widgets/ui/button.wcl",
+            "widgets/flowchart/flow_process.wcl",
+            "widgets/c4/c4_person.wcl",
+            "widgets/uml/uml_class.wcl",
+            "widgets/infra/server.wcl",
+        ] {
+            assert!(manifest.contains(path), "missing categorized path {path}");
+            assert!(
+                manifest_dir.join(path).is_file(),
+                "categorized widget file should exist: {path}"
             );
         }
     }
