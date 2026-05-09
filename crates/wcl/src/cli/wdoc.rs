@@ -79,7 +79,7 @@ fn extract_string_expr(expr: &ast::Expr) -> Option<String> {
     }
 }
 
-/// Collect callable template functions from doc values (Value::Function) and builtins.
+/// Collect callable HTML template functions from doc values (Value::Function) and builtins.
 fn collect_template_fns(
     doc: &crate::Document,
     builtins: &HashMap<String, BuiltinFn>,
@@ -940,19 +940,17 @@ fn dispatch_shape_template(br: &BlockRef, ctx: &ExtractCtx) -> Result<ShapeTempl
         .get(&("shape".to_string(), br.kind.clone()))
         .ok_or_else(|| format!("no @template(\"shape\", ...) on schema '{}'", br.kind))?;
 
-    let func = ctx
-        .template_fns
-        .get(fn_name)
-        .ok_or_else(|| format!("shape template function '{fn_name}' not registered"))?;
+    let func = ctx.template_helpers.get(fn_name).ok_or_else(|| {
+        if ctx.builtins.contains_key(fn_name) {
+            format!("shape template function '{fn_name}' must be an exported WCL function")
+        } else {
+            format!("shape template function '{fn_name}' not registered")
+        }
+    })?;
 
     let themed_block = apply_widget_theme_class_attrs(br, ctx);
     let arg = Value::BlockRef(themed_block);
-    let result = match func {
-        TemplateFn::Lambda(fv) => {
-            crate::call_lambda_with_env(fv, &[arg], &ctx.builtins, &ctx.template_helpers)?
-        }
-        TemplateFn::Builtin(f) => f(&[arg])?,
-    };
+    let result = crate::call_lambda_with_env(func, &[arg], &ctx.builtins, &ctx.template_helpers)?;
 
     let descriptors = match result {
         Value::List(items) => items,
@@ -1815,6 +1813,7 @@ fn register_css_assets(values: &IndexMap<String, Value>, ctx: &ExtractCtx) -> Re
 mod wdoc_draw_tests {
     use super::*;
     use crate::Span;
+    use wcl_wdoc::library::WDOC_LIBRARY_WCL;
 
     fn block(
         kind: &str,
@@ -1849,19 +1848,89 @@ mod wdoc_draw_tests {
         }
     }
 
-    fn custom_shape_ctx(kind: &str, template_name: &str, template: BuiltinFn) -> ExtractCtx {
+    fn custom_shape_ctx(source: &str, kind: &str, template_name: &str) -> ExtractCtx {
+        let functions = wdoc_functions();
+        let doc = crate::parse(
+            source,
+            crate::ParseOptions {
+                functions: functions.clone(),
+                ..Default::default()
+            },
+        );
+        assert!(
+            !doc.has_errors(),
+            "unexpected diagnostics: {:?}",
+            doc.diagnostics
+        );
+
         let mut ctx = empty_ctx();
         ctx.template_map.insert(
             ("shape".to_string(), kind.to_string()),
             template_name.to_string(),
         );
-        ctx.template_fns
-            .insert(template_name.to_string(), TemplateFn::Builtin(template));
+        ctx.template_fns = collect_template_fns(&doc, &functions.functions);
+        ctx.template_helpers = collect_template_helpers(&doc);
+        ctx.builtins = functions.functions;
         ctx
     }
 
     fn int_attr(attrs: &mut IndexMap<String, Value>, key: &str, value: i64) {
         attrs.insert(key.to_string(), Value::Int(value));
+    }
+
+    #[test]
+    fn bundled_shape_templates_resolve_to_wcl_lambdas() {
+        let functions = wdoc_functions();
+        let doc = crate::parse(
+            WDOC_LIBRARY_WCL,
+            crate::ParseOptions {
+                functions: functions.clone(),
+                ..Default::default()
+            },
+        );
+        assert!(
+            !doc.has_errors(),
+            "unexpected diagnostics: {:?}",
+            doc.diagnostics
+        );
+
+        let template_map = collect_template_map(&doc);
+        let helpers = collect_template_helpers(&doc);
+        let mut checked = 0;
+        for ((format, schema), fn_name) in template_map {
+            if format != "shape" {
+                continue;
+            }
+            checked += 1;
+            assert!(
+                helpers.contains_key(&fn_name),
+                "shape template for {schema} must resolve to exported WCL function {fn_name}"
+            );
+        }
+        assert!(checked > 0, "expected bundled shape templates");
+    }
+
+    #[test]
+    fn shape_templates_do_not_fall_back_to_rust_builtins() {
+        let template = std::sync::Arc::new(|_args: &[Value]| Ok(Value::Null)) as BuiltinFn;
+        let mut ctx = empty_ctx();
+        ctx.template_map.insert(
+            ("shape".to_string(), "my::legacy".to_string()),
+            "legacy_shape_template".to_string(),
+        );
+        ctx.builtins
+            .insert("legacy_shape_template".to_string(), template);
+
+        let err = match dispatch_shape_template(
+            &block("my::legacy", Some("legacy"), IndexMap::new(), vec![]),
+            &ctx,
+        ) {
+            Ok(_) => panic!("expected rust builtin shape template to fail"),
+            Err(err) => err,
+        };
+        assert!(err.contains(
+            "shape template function 'legacy_shape_template' must be an exported WCL function"
+        ));
     }
 
     #[test]
@@ -1987,27 +2056,22 @@ mod wdoc_draw_tests {
 
     #[test]
     fn widget_theme_properties_flow_into_template_without_svg_leakage() {
-        let template = std::sync::Arc::new(|args: &[Value]| {
-            let block = match args.first() {
-                Some(Value::BlockRef(block)) => block,
-                _ => return Err("expected block ref".to_string()),
-            };
-            let fill = block
-                .attributes
-                .get("background_fill")
-                .and_then(Value::as_string)
-                .unwrap_or("#cccccc");
-            let mut bg = IndexMap::new();
-            bg.insert("kind".to_string(), Value::String("rect".to_string()));
-            bg.insert("x".to_string(), Value::Int(0));
-            bg.insert("y".to_string(), Value::Int(0));
-            bg.insert("width".to_string(), Value::Int(80));
-            bg.insert("height".to_string(), Value::Int(30));
-            bg.insert("fill".to_string(), Value::String(fill.to_string()));
-            Ok(Value::List(vec![Value::Map(bg)]))
-        }) as BuiltinFn;
-
-        let ctx = custom_shape_ctx("wdoc::draw::button", "test_button_template", template);
+        let ctx = custom_shape_ctx(
+            r##"
+            export let test_button_template = (b) => [
+                {
+                    kind = "rect",
+                    x = 0,
+                    y = 0,
+                    width = 80,
+                    height = 30,
+                    fill = attr_or(b, "background_fill", "#cccccc")
+                }
+            ]
+            "##,
+            "wdoc::draw::button",
+            "test_button_template",
+        );
         let mut class = wcl_wdoc::shapes::DiagramClass {
             name: "wdoc-widget-button".to_string(),
             attrs: IndexMap::new(),
@@ -2387,17 +2451,22 @@ mod wdoc_draw_tests {
 
     #[test]
     fn user_defined_shape_template_is_graph_node() {
-        let template = std::sync::Arc::new(|_args: &[Value]| {
-            let mut bg = IndexMap::new();
-            bg.insert("kind".to_string(), Value::String("rect".to_string()));
-            bg.insert("x".to_string(), Value::Int(0));
-            bg.insert("y".to_string(), Value::Int(0));
-            bg.insert("width".to_string(), Value::Int(100));
-            bg.insert("height".to_string(), Value::Int(40));
-            bg.insert("fill".to_string(), Value::String("#bada55".to_string()));
-            Ok(Value::List(vec![Value::Map(bg)]))
-        }) as BuiltinFn;
-        let ctx = custom_shape_ctx("my::task", "my::task_template", template);
+        let ctx = custom_shape_ctx(
+            r##"
+            export let my_task_template = (_b) => [
+                {
+                    kind = "rect",
+                    x = 0,
+                    y = 0,
+                    width = 100,
+                    height = 40,
+                    fill = "#bada55"
+                }
+            ]
+            "##,
+            "my::task",
+            "my_task_template",
+        );
 
         let mut a_attrs = IndexMap::new();
         int_attr(&mut a_attrs, "width", 100);
@@ -2470,34 +2539,34 @@ mod wdoc_draw_tests {
 
     #[test]
     fn template_connection_descriptors_are_scoped_to_instance() {
-        let template = std::sync::Arc::new(|_args: &[Value]| {
-            let mut a = IndexMap::new();
-            a.insert("kind".to_string(), Value::String("rect".to_string()));
-            a.insert("id".to_string(), Value::String("start".to_string()));
-            a.insert("width".to_string(), Value::Int(80));
-            a.insert("height".to_string(), Value::Int(30));
-            a.insert("layout_role".to_string(), Value::String("node".to_string()));
-
-            let mut b = IndexMap::new();
-            b.insert("kind".to_string(), Value::String("rect".to_string()));
-            b.insert("id".to_string(), Value::String("end".to_string()));
-            b.insert("width".to_string(), Value::Int(80));
-            b.insert("height".to_string(), Value::Int(30));
-            b.insert("layout_role".to_string(), Value::String("node".to_string()));
-
-            let mut edge = IndexMap::new();
-            edge.insert("kind".to_string(), Value::String("connection".to_string()));
-            edge.insert("from".to_string(), Value::String("start".to_string()));
-            edge.insert("to".to_string(), Value::String("end".to_string()));
-            edge.insert("direction".to_string(), Value::String("to".to_string()));
-
-            Ok(Value::List(vec![
-                Value::Map(a),
-                Value::Map(b),
-                Value::Map(edge),
-            ]))
-        }) as BuiltinFn;
-        let ctx = custom_shape_ctx("my::flow_box", "my::flow_box_template", template);
+        let ctx = custom_shape_ctx(
+            r##"
+            export let my_flow_box_template = (_b) => [
+                {
+                    kind = "rect",
+                    id = "start",
+                    width = 80,
+                    height = 32,
+                    layout_role = "node"
+                },
+                {
+                    kind = "rect",
+                    id = "end",
+                    width = 80,
+                    height = 32,
+                    layout_role = "node"
+                },
+                {
+                    kind = "connection",
+                    from = "start",
+                    to = "end",
+                    direction = "to"
+                }
+            ]
+            "##,
+            "my::flow_box",
+            "my_flow_box_template",
+        );
 
         let mut flow_attrs = IndexMap::new();
         int_attr(&mut flow_attrs, "width", 180);
