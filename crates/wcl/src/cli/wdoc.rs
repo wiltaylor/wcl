@@ -649,7 +649,12 @@ fn collect_shape_or_connection(
         return;
     }
 
-    if is_draw_event_block(br) || is_draw_class_block(br) || is_draw_state_block(br) {
+    if is_draw_event_block(br)
+        || is_draw_class_block(br)
+        || is_draw_state_block(br)
+        || is_draw_animation_block(br)
+        || is_draw_keyframe_block(br)
+    {
         return;
     }
 
@@ -697,7 +702,10 @@ fn collect_shape_or_connection(
         let mut child_source_order = children.len();
         for val in br.attributes.values() {
             if let Value::BlockRef(child_br) = val {
-                if is_draw_event_block(child_br) {
+                if is_draw_event_block(child_br)
+                    || is_draw_animation_block(child_br)
+                    || is_draw_keyframe_block(child_br)
+                {
                     continue;
                 }
                 collect_shape_or_connection(
@@ -711,7 +719,10 @@ fn collect_shape_or_connection(
             }
         }
         for child_br in &br.children {
-            if is_draw_event_block(child_br) {
+            if is_draw_event_block(child_br)
+                || is_draw_animation_block(child_br)
+                || is_draw_keyframe_block(child_br)
+            {
                 continue;
             }
             collect_shape_or_connection(
@@ -1175,6 +1186,7 @@ fn collect_diagram_classes_in_block(
         };
         let mut attrs = value_map_to_string_map_lossy(&block.attributes);
         let mut states = IndexMap::new();
+        let mut animations = IndexMap::new();
         for child in all_child_blocks(block) {
             if is_draw_state_block(child) {
                 if let Some(state_name) = child.id.clone() {
@@ -1186,15 +1198,21 @@ fn collect_diagram_classes_in_block(
                         },
                     );
                 }
+            } else if is_draw_animation_block(child) {
+                if let Some(animation) = parse_diagram_animation(child) {
+                    animations.insert(animation.name.clone(), animation);
+                }
             }
         }
         attrs.shift_remove("state");
+        attrs.shift_remove("animation");
         classes.insert(
             name.clone(),
             wcl_wdoc::shapes::DiagramClass {
                 name,
                 attrs,
                 states,
+                animations,
             },
         );
         return;
@@ -1254,6 +1272,73 @@ fn collect_diagram_events(block: &BlockRef) -> Vec<wcl_wdoc::shapes::DiagramEven
         .collect()
 }
 
+fn parse_diagram_animation(block: &BlockRef) -> Option<wcl_wdoc::shapes::DiagramAnimation> {
+    let name = block.id.clone()?;
+    let attrs = &block.attributes;
+    let mut keyframes = all_child_blocks(block)
+        .into_iter()
+        .filter(|child| is_draw_keyframe_block(child))
+        .filter_map(parse_diagram_keyframe)
+        .collect::<Vec<_>>();
+    keyframes.sort_by(|a, b| a.offset.total_cmp(&b.offset));
+    if keyframes.is_empty() {
+        return None;
+    }
+    Some(wcl_wdoc::shapes::DiagramAnimation {
+        name,
+        duration_ms: value_as_i32(attrs.get("duration_ms")).unwrap_or(1000),
+        delay_ms: value_as_i32(attrs.get("delay_ms")).unwrap_or(0),
+        timing_function: value_as_string(attrs.get("timing_function"))
+            .unwrap_or("ease")
+            .to_string(),
+        iteration_count: value_as_string(attrs.get("iteration_count"))
+            .unwrap_or("1")
+            .to_string(),
+        direction: value_as_string(attrs.get("direction"))
+            .unwrap_or("normal")
+            .to_string(),
+        fill_mode: value_as_string(attrs.get("fill_mode"))
+            .unwrap_or("none")
+            .to_string(),
+        keyframes,
+    })
+}
+
+fn parse_diagram_keyframe(block: &BlockRef) -> Option<wcl_wdoc::shapes::DiagramKeyframe> {
+    let offset = block
+        .attributes
+        .get("offset")
+        .and_then(value_as_f64)
+        .or_else(|| {
+            block.id.as_deref().and_then(|id| match id {
+                "from" => Some(0.0),
+                "to" => Some(100.0),
+                other => other.parse::<f64>().ok(),
+            })
+        })
+        .filter(|offset| (0.0..=100.0).contains(offset))?;
+    Some(wcl_wdoc::shapes::DiagramKeyframe {
+        offset,
+        x: block.attributes.get("x").and_then(value_as_f64),
+        y: block.attributes.get("y").and_then(value_as_f64),
+        width: block.attributes.get("width").and_then(value_as_f64),
+        height: block.attributes.get("height").and_then(value_as_f64),
+    })
+}
+
+fn value_as_i32(v: Option<&Value>) -> Option<i32> {
+    v.and_then(|value| match value {
+        Value::Int(i) => Some(*i as i32),
+        Value::Float(f) => Some(*f as i32),
+        Value::String(s) => s.parse().ok(),
+        _ => None,
+    })
+}
+
+fn value_as_string(v: Option<&Value>) -> Option<&str> {
+    v.and_then(|value| value.as_string())
+}
+
 fn is_draw_class_block(block: &BlockRef) -> bool {
     matches!(
         block.kind.as_str(),
@@ -1265,6 +1350,20 @@ fn is_draw_state_block(block: &BlockRef) -> bool {
     matches!(
         block.kind.as_str(),
         "wdoc::draw::state" | "draw::state" | "state"
+    )
+}
+
+fn is_draw_animation_block(block: &BlockRef) -> bool {
+    matches!(
+        block.kind.as_str(),
+        "wdoc::draw::animation" | "draw::animation" | "animation"
+    )
+}
+
+fn is_draw_keyframe_block(block: &BlockRef) -> bool {
+    matches!(
+        block.kind.as_str(),
+        "wdoc::draw::keyframe" | "draw::keyframe" | "keyframe"
     )
 }
 
@@ -2154,6 +2253,92 @@ mod wdoc_draw_tests {
         assert!(html.contains("data-wdoc-events=\"hover|hovered|self||left|0|false\""));
         assert!(html.contains("data-wdoc-state-z=\"hovered:20\""));
         assert!(!html.contains("<event"));
+    }
+
+    #[test]
+    fn diagram_class_animations_flow_through_cli_extraction() {
+        let mut anim_attrs = IndexMap::new();
+        int_attr(&mut anim_attrs, "duration_ms", 750);
+        string_attr(&mut anim_attrs, "iteration_count", "infinite");
+        string_attr(&mut anim_attrs, "direction", "alternate");
+        string_attr(&mut anim_attrs, "fill_mode", "both");
+
+        let mut from_attrs = IndexMap::new();
+        int_attr(&mut from_attrs, "x", 10);
+        int_attr(&mut from_attrs, "y", 10);
+        int_attr(&mut from_attrs, "width", 40);
+        int_attr(&mut from_attrs, "height", 30);
+
+        let mut to_attrs = IndexMap::new();
+        int_attr(&mut to_attrs, "x", 90);
+        int_attr(&mut to_attrs, "y", 30);
+        int_attr(&mut to_attrs, "width", 50);
+        int_attr(&mut to_attrs, "height", 35);
+
+        let animation = block(
+            "animation",
+            Some("slide"),
+            anim_attrs,
+            vec![
+                block("keyframe", Some("0"), from_attrs, vec![]),
+                block("keyframe", Some("100"), to_attrs, vec![]),
+            ],
+        );
+
+        let mut state_attrs = IndexMap::new();
+        string_attr(&mut state_attrs, "animation", "slide");
+        let card_class = block(
+            "class",
+            Some("card"),
+            IndexMap::new(),
+            vec![
+                animation,
+                block("state", Some("active"), state_attrs, vec![]),
+            ],
+        );
+
+        let mut event_attrs = IndexMap::new();
+        string_attr(&mut event_attrs, "trigger", "click");
+        string_attr(&mut event_attrs, "state", "active");
+        string_attr(&mut event_attrs, "mode", "toggle");
+
+        let mut rect_attrs = IndexMap::new();
+        int_attr(&mut rect_attrs, "x", 10);
+        int_attr(&mut rect_attrs, "y", 10);
+        int_attr(&mut rect_attrs, "width", 40);
+        int_attr(&mut rect_attrs, "height", 30);
+        string_attr(&mut rect_attrs, "class", "card");
+        let rect = block(
+            "wdoc::draw::rect",
+            Some("task"),
+            rect_attrs,
+            vec![block("event", Some("start"), event_attrs, vec![])],
+        );
+
+        let mut diagram_attrs = IndexMap::new();
+        int_attr(&mut diagram_attrs, "width", 160);
+        int_attr(&mut diagram_attrs, "height", 80);
+        let diagram = block(
+            "wdoc::draw::diagram",
+            Some("animation_preview"),
+            diagram_attrs,
+            vec![rect],
+        );
+
+        let ctx = empty_ctx();
+        ctx.diagram_classes
+            .borrow_mut()
+            .extend(collect_diagram_classes(&IndexMap::from([(
+                "card".to_string(),
+                Value::BlockRef(card_class),
+            )])));
+
+        let html = render_diagram_with_ctx(&diagram, &ctx);
+        assert!(html.contains("data-wdoc-state-animation=\"active:slide\""));
+        assert!(html.contains("slide|750|0|ease|infinite|alternate|both|"));
+        assert!(html.contains("data-wdoc-events=\"click|active|self|toggle|left|0|false\""));
+        assert!(!html.contains("<animation"));
+        assert!(!html.contains("<keyframe"));
     }
 
     #[test]

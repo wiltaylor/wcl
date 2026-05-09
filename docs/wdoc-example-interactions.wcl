@@ -52,6 +52,39 @@ class demo_stack_card {
     }
 }
 
+class demo_moving_token {
+    fill = "#2563eb"
+    stroke = "#94a3b8"
+    stroke_width = 1
+    cursor = "pointer"
+
+    animation slide {
+        duration_ms = 900
+        timing_function = "ease-in-out"
+        fill_mode = "forwards"
+
+        keyframe k0 {
+            offset = 0
+            x = 54
+            y = 54
+            width = 70
+            height = 44
+        }
+
+        keyframe k100 {
+            offset = 100
+            x = 290
+            y = 92
+            width = 96
+            height = 54
+        }
+    }
+
+    state active {
+        animation = "slide"
+    }
+}
+
 page wdoc_example_interactions {
     section = "wcl_docs.wdoc.wdoc_example_interactions"
     title = "Example — Diagram Interactions"
@@ -64,7 +97,7 @@ page wdoc_example_interactions {
                 h1 "Example — Diagram Interactions"
 
                 paragraph p1 {
-                    content = "This example uses document-level drawing classes plus shape events. Hover a card to apply a temporary state, click a card to toggle selection, and hover the first card to reveal the detail panel. The lower diagram shows runtime " + bold("z_index") + " changes: the hovered card moves to the front and returns to its original order when the pointer leaves."
+                    content = "This example uses document-level drawing classes plus shape events. Hover a card to apply a temporary state, click a card to toggle selection, and hover the first card to reveal the detail panel. The lower diagrams show runtime " + bold("z_index") + " changes and keyframe movement started by state."
                 }
 
                 h2 "Hover, click, and reveal"
@@ -256,6 +289,51 @@ page wdoc_example_interactions {
                             width = 150
                             height = 86
                             content = "Gamma" }
+                    }
+                }
+
+                h2 "Keyframe animation"
+
+                paragraph p4 {
+                    content = "Click the moving shape to start a one-off keyframe animation. Its connector endpoint follows the animated bounds."
+                }
+
+                diagram animation_demo {
+                    width = 500
+                    height = 210
+
+                    rect anchor {
+                        x = 400
+                        y = 76
+                        width = 64
+                        height = 64
+                        rx = 8
+                        fill = "#f8fafc"
+                        stroke = "#94a3b8"
+                    }
+
+                    rect moving {
+                        x = 54
+                        y = 54
+                        width = 70
+                        height = 44
+                        rx = 8
+                        class = "demo_moving_token"
+
+                        event start_slide {
+                            trigger = "click"
+                            state = "active"
+                            mode = "pulse"
+                            duration_ms = 1000
+                        }
+                    }
+
+                    connection edge {
+                        from = "moving"
+                        to = "anchor"
+                        direction = "to"
+                        stroke = "#2563eb"
+                        stroke_width = 2
                     }
                 }
 

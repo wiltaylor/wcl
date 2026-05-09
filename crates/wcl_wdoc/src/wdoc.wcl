@@ -175,6 +175,8 @@ namespace wdoc {
         @open schema "connection" { }
         @open schema "class" { }
         @parent(["wdoc::draw::class"]) @open schema "state" { }
+        @parent(["wdoc::draw::class"]) @open schema "animation" { }
+        @parent(["wdoc::draw::animation"]) @open schema "keyframe" { }
         @parent([
             "wdoc::draw::rect",
             "wdoc::draw::circle",

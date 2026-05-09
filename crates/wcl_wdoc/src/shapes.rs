@@ -171,12 +171,34 @@ pub struct DiagramClass {
     pub name: String,
     pub attrs: IndexMap<String, String>,
     pub states: IndexMap<String, DiagramState>,
+    pub animations: IndexMap<String, DiagramAnimation>,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct DiagramState {
     pub name: String,
     pub attrs: IndexMap<String, String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct DiagramAnimation {
+    pub name: String,
+    pub duration_ms: i32,
+    pub delay_ms: i32,
+    pub timing_function: String,
+    pub iteration_count: String,
+    pub direction: String,
+    pub fill_mode: String,
+    pub keyframes: Vec<DiagramKeyframe>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct DiagramKeyframe {
+    pub offset: f64,
+    pub x: Option<f64>,
+    pub y: Option<f64>,
+    pub width: Option<f64>,
+    pub height: Option<f64>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -418,6 +440,29 @@ fn apply_classes_to_shape(shape: &mut ShapeNode, classes: &IndexMap<String, Diag
                     .attrs
                     .insert("_wdoc_state_z".to_string(), state_z_entries.join(","));
             }
+            let state_animation_entries = class
+                .states
+                .values()
+                .filter_map(|state| {
+                    let animation = state.attrs.get("animation")?;
+                    class
+                        .animations
+                        .contains_key(animation)
+                        .then(|| format!("{}:{}", state.name, animation))
+                })
+                .collect::<Vec<_>>();
+            if !state_animation_entries.is_empty() {
+                shape.attrs.insert(
+                    "_wdoc_state_animation".to_string(),
+                    state_animation_entries.join(","),
+                );
+            }
+            if !class.animations.is_empty() {
+                shape.attrs.insert(
+                    "_wdoc_animations".to_string(),
+                    diagram_animations_data(&class.animations),
+                );
+            }
         }
     }
     for child in &mut shape.children {
@@ -557,11 +602,14 @@ fn state_class_name(state: &str) -> String {
 }
 
 fn diagram_has_events(diagram: &Diagram) -> bool {
-    diagram.shapes.iter().any(shape_has_events)
+    diagram.shapes.iter().any(shape_needs_runtime)
 }
 
-fn shape_has_events(shape: &ShapeNode) -> bool {
-    !shape.events.is_empty() || shape.children.iter().any(shape_has_events)
+fn shape_needs_runtime(shape: &ShapeNode) -> bool {
+    !shape.events.is_empty()
+        || shape.attrs.contains_key("_wdoc_state_z")
+        || shape.attrs.contains_key("_wdoc_state_animation")
+        || shape.children.iter().any(shape_needs_runtime)
 }
 
 fn mark_runtime_shapes(shapes: &mut [ShapeNode]) {
@@ -1627,6 +1675,7 @@ fn render_connection_svg(conn: &Connection, shape_map: &HashMap<String, Bounds>,
     } else {
         " stroke=\"currentColor\""
     };
+    let runtime_attrs = connection_runtime_attrs(conn);
 
     match conn.curve {
         CurveStyle::Straight => {
@@ -1637,7 +1686,7 @@ fn render_connection_svg(conn: &Connection, shape_map: &HashMap<String, Bounds>,
                     write!(
                         svg,
                         "<line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\"\
-                         {stroke_default}{style}{ms}{me}/>"
+                         {stroke_default}{style}{runtime_attrs}{ms}{me}/>"
                     )
                     .unwrap();
                     return;
@@ -1656,14 +1705,14 @@ fn render_connection_svg(conn: &Connection, shape_map: &HashMap<String, Bounds>,
                     let d = path_data(&points);
                     write!(
                         svg,
-                        "<path d=\"{d}\" fill=\"none\"{stroke_default}{style}{ms}{me}/>"
+                        "<path d=\"{d}\" fill=\"none\"{stroke_default}{style}{runtime_attrs}{ms}{me}/>"
                     )
                     .unwrap();
                 } else {
                     write!(
                         svg,
                         "<line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\"\
-                         {stroke_default}{style}{ms}{me}/>"
+                         {stroke_default}{style}{runtime_attrs}{ms}{me}/>"
                     )
                     .unwrap();
                 }
@@ -1673,7 +1722,7 @@ fn render_connection_svg(conn: &Connection, shape_map: &HashMap<String, Bounds>,
                 write!(
                     svg,
                     "<line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\"\
-                     {stroke_default}{style}{ms}{me}/>"
+                     {stroke_default}{style}{runtime_attrs}{ms}{me}/>"
                 )
                 .unwrap();
             }
@@ -1688,7 +1737,7 @@ fn render_connection_svg(conn: &Connection, shape_map: &HashMap<String, Bounds>,
             write!(
                 svg,
                 "<path d=\"M {x1} {y1} C {c1x} {c1y}, {c2x} {c2y}, {x2} {y2}\" \
-                 fill=\"none\"{stroke_default}{style}{ms}{me}/>"
+                 fill=\"none\"{stroke_default}{style}{runtime_attrs}{ms}{me}/>"
             )
             .unwrap();
         }
@@ -1705,6 +1754,31 @@ fn render_connection_svg(conn: &Connection, shape_map: &HashMap<String, Bounds>,
              dominant-baseline=\"auto\" font-size=\"12\" fill=\"currentColor\">{label}</text>"
         )
         .unwrap();
+    }
+}
+
+fn connection_runtime_attrs(conn: &Connection) -> String {
+    format!(
+        " data-wdoc-conn-from=\"{}\" data-wdoc-conn-to=\"{}\" data-wdoc-conn-curve=\"{}\" data-wdoc-conn-from-anchor=\"{}\" data-wdoc-conn-to-anchor=\"{}\"",
+        svg_escape_attr(&conn.from_id),
+        svg_escape_attr(&conn.to_id),
+        match conn.curve {
+            CurveStyle::Bezier => "bezier",
+            CurveStyle::Straight => "straight",
+        },
+        anchor_name(conn.from_anchor),
+        anchor_name(conn.to_anchor),
+    )
+}
+
+fn anchor_name(anchor: AnchorPoint) -> &'static str {
+    match anchor {
+        AnchorPoint::Top => "top",
+        AnchorPoint::Bottom => "bottom",
+        AnchorPoint::Left => "left",
+        AnchorPoint::Right => "right",
+        AnchorPoint::Center => "center",
+        AnchorPoint::Auto => "auto",
     }
 }
 
@@ -2105,6 +2179,28 @@ fn append_shape_runtime_attrs(node: &ShapeNode, out: &mut String) {
     if !state_z.is_empty() {
         write!(out, " data-wdoc-state-z=\"{}\"", svg_escape_attr(&state_z)).unwrap();
     }
+    if let Some(state_animation) = node.attrs.get("_wdoc_state_animation") {
+        write!(
+            out,
+            " data-wdoc-state-animation=\"{}\"",
+            svg_escape_attr(state_animation)
+        )
+        .unwrap();
+    }
+    if let Some(animations) = node.attrs.get("_wdoc_animations") {
+        write!(
+            out,
+            " data-wdoc-animations=\"{}\"",
+            svg_escape_attr(animations)
+        )
+        .unwrap();
+    }
+    write!(
+        out,
+        " data-wdoc-x=\"{}\" data-wdoc-y=\"{}\" data-wdoc-width=\"{}\" data-wdoc-height=\"{}\"",
+        node.resolved.x, node.resolved.y, node.resolved.width, node.resolved.height
+    )
+    .unwrap();
 }
 
 fn state_z_json_for_shape(node: &ShapeNode) -> String {
@@ -2140,6 +2236,46 @@ fn diagram_events_json(events: &[DiagramEvent]) -> String {
         .join(";")
 }
 
+fn diagram_animations_data(animations: &IndexMap<String, DiagramAnimation>) -> String {
+    animations
+        .values()
+        .map(|animation| {
+            let duration_ms = animation.duration_ms.to_string();
+            let delay_ms = animation.delay_ms.to_string();
+            let keyframes = animation
+                .keyframes
+                .iter()
+                .map(|frame| {
+                    [
+                        frame.offset.to_string(),
+                        frame.x.map(|v| v.to_string()).unwrap_or_default(),
+                        frame.y.map(|v| v.to_string()).unwrap_or_default(),
+                        frame.width.map(|v| v.to_string()).unwrap_or_default(),
+                        frame.height.map(|v| v.to_string()).unwrap_or_default(),
+                    ]
+                    .join(",")
+                })
+                .collect::<Vec<_>>()
+                .join("~");
+            [
+                animation.name.as_str(),
+                duration_ms.as_str(),
+                delay_ms.as_str(),
+                animation.timing_function.as_str(),
+                animation.iteration_count.as_str(),
+                animation.direction.as_str(),
+                animation.fill_mode.as_str(),
+                keyframes.as_str(),
+            ]
+            .into_iter()
+            .map(runtime_field_escape)
+            .collect::<Vec<_>>()
+            .join("|")
+        })
+        .collect::<Vec<_>>()
+        .join(";")
+}
+
 fn runtime_field_escape(value: &str) -> String {
     value
         .replace('\\', "\\\\")
@@ -2152,6 +2288,9 @@ fn diagram_runtime_js() -> String {
 if(window.__wdocDiagramRuntimeInit){var s0=document.currentScript;if(s0&&s0.parentNode)window.__wdocDiagramRuntimeInit(s0.parentNode);return;}
 function unesc(s){return (s||'').replace(/\\s/g,';').replace(/\\p/g,'|').replace(/\\\\/g,'\\');}
 function parseEvents(el){return (el.getAttribute('data-wdoc-events')||'').split(';').filter(Boolean).map(function(row){var p=row.split('|').map(unesc);return{trigger:p[0],state:p[1],target:p[2]||'self',mode:p[3],button:p[4]||'left',duration:parseInt(p[5]||'0',10)||0,prevent:p[6]==='true'};});}
+function parseStateAnimations(el){var out={};(el.getAttribute('data-wdoc-state-animation')||'').split(',').filter(Boolean).forEach(function(pair){var i=pair.indexOf(':');if(i>0)out[pair.slice(0,i)]=pair.slice(i+1);});return out;}
+function parseAnimations(el){var out={};(el.getAttribute('data-wdoc-animations')||'').split(';').filter(Boolean).forEach(function(row){var p=row.split('|').map(unesc),k=(p[7]||'').split('~').filter(Boolean).map(function(f){var q=f.split(',');return{offset:parseFloat(q[0])||0,x:num(q[1]),y:num(q[2]),width:num(q[3]),height:num(q[4])};}).sort(function(a,b){return a.offset-b.offset;});out[p[0]]={name:p[0],duration:parseInt(p[1]||'1000',10)||1000,delay:parseInt(p[2]||'0',10)||0,timing:p[3]||'ease',iteration:p[4]||'1',direction:p[5]||'normal',fill:p[6]||'none',keyframes:k};});return out;}
+function num(v){return v===''||v==null?null:parseFloat(v);}
 function defaultMode(trigger){if(trigger==='hover'||trigger==='mouse_down')return'while';if(trigger==='click')return'toggle';return'pulse';}
 function eventName(trigger,leaving){if(trigger==='hover')return leaving?'mouseleave':'mouseenter';if(trigger==='double_click')return'dblclick';if(trigger==='mouse_down')return leaving?'mouseup':'mousedown';if(trigger==='mouse_leave')return'mouseleave';if(trigger==='right_click')return'contextmenu';return trigger;}
 function buttonOk(e,want){var b={left:0,middle:1,right:2}[want||'left'];return e.button===b;}
@@ -2161,8 +2300,17 @@ function target(svg,source,name){if(!name||name==='self')return source;return sv
 function zMap(el){var out={};(el.getAttribute('data-wdoc-state-z')||'').split(',').forEach(function(pair){var i=pair.indexOf(':');if(i>0)out[pair.slice(0,i)]=parseFloat(pair.slice(i+1));});return out;}
 function reorder(parent){Array.prototype.slice.call(parent.children).filter(function(el){return el.hasAttribute('data-wdoc-id');}).sort(function(a,b){return (parseFloat(a.getAttribute('data-wdoc-z-current')||a.getAttribute('data-wdoc-z-base')||'0')-parseFloat(b.getAttribute('data-wdoc-z-current')||b.getAttribute('data-wdoc-z-base')||'0'))||((parseInt(a.getAttribute('data-wdoc-order')||'0',10))-(parseInt(b.getAttribute('data-wdoc-order')||'0',10)));}).forEach(function(el){parent.appendChild(el);});}
 function updateZ(el){var map=zMap(el),z=parseFloat(el.getAttribute('data-wdoc-z-base')||'0');Object.keys(map).forEach(function(state){if(el.classList.contains(stateClass(state)))z=map[state];});el.setAttribute('data-wdoc-z-current',String(z));if(el.parentNode)reorder(el.parentNode);}
-function add(el,state){el.classList.add(stateClass(state));updateZ(el);}
-function remove(el,state){el.classList.remove(stateClass(state));updateZ(el);}
+function add(el,state){el.classList.add(stateClass(state));updateZ(el);startStateAnimation(el,state);}
+function remove(el,state){el.classList.remove(stateClass(state));updateZ(el);stopStateAnimation(el,state);}
+function baseBox(el){return{x:parseFloat(el.getAttribute('data-wdoc-x')||'0'),y:parseFloat(el.getAttribute('data-wdoc-y')||'0'),width:parseFloat(el.getAttribute('data-wdoc-width')||'0'),height:parseFloat(el.getAttribute('data-wdoc-height')||'0')};}
+function setBox(el,b){el.__wdocBox=b;var tag=el.tagName.toLowerCase();if(tag==='g'){el.setAttribute('transform','translate('+b.x+','+b.y+')');}else if(tag==='circle'){el.setAttribute('cx',b.x+b.width/2);el.setAttribute('cy',b.y+b.height/2);el.setAttribute('r',Math.max(b.width,b.height)/2);}else if(tag==='ellipse'){el.setAttribute('cx',b.x+b.width/2);el.setAttribute('cy',b.y+b.height/2);el.setAttribute('rx',b.width/2);el.setAttribute('ry',b.height/2);}else if(tag==='text'){el.setAttribute('x',b.x+b.width/2);el.setAttribute('y',b.y+b.height/2);}else{if(el.hasAttribute('x'))el.setAttribute('x',b.x);if(el.hasAttribute('y'))el.setAttribute('y',b.y);if(el.hasAttribute('width'))el.setAttribute('width',b.width);if(el.hasAttribute('height'))el.setAttribute('height',b.height);}updateConnections(el.closest('svg'));}
+function boxFor(svg,id){var el=svg.querySelector('[data-wdoc-id="'+attrEscape(id)+'"]');if(!el)return null;return el.__wdocBox||baseBox(el);}
+function anchor(b,a,o){var cx=b.x+b.width/2,cy=b.y+b.height/2,ox=o?o.x+o.width/2:cx,oy=o?o.y+o.height/2:cy,dx=ox-cx,dy=oy-cy;if(a==='top')return{x:cx,y:b.y};if(a==='bottom')return{x:cx,y:b.y+b.height};if(a==='left')return{x:b.x,y:cy};if(a==='right')return{x:b.x+b.width,y:cy};if(a==='center')return{x:cx,y:cy};return Math.abs(dx)>Math.abs(dy)?(dx>0?{x:b.x+b.width,y:cy}:{x:b.x,y:cy}):(dy>0?{x:cx,y:b.y+b.height}:{x:cx,y:b.y});}
+function updateConnections(svg){if(!svg)return;Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-conn-from]'),function(c){var fb=boxFor(svg,c.getAttribute('data-wdoc-conn-from')),tb=boxFor(svg,c.getAttribute('data-wdoc-conn-to'));if(!fb||!tb)return;var a=anchor(fb,c.getAttribute('data-wdoc-conn-from-anchor'),tb),b=anchor(tb,c.getAttribute('data-wdoc-conn-to-anchor'),fb);if(c.tagName.toLowerCase()==='line'){c.setAttribute('x1',a.x);c.setAttribute('y1',a.y);c.setAttribute('x2',b.x);c.setAttribute('y2',b.y);}else if(c.getAttribute('data-wdoc-conn-curve')==='bezier'){var dx=Math.abs(b.x-a.x)/2;c.setAttribute('d','M '+a.x+' '+a.y+' C '+(a.x+dx)+' '+a.y+', '+(b.x-dx)+' '+b.y+', '+b.x+' '+b.y);}else{c.setAttribute('d','M '+a.x+' '+a.y+' L '+b.x+' '+b.y);}});}
+function ease(t,fn){if(fn==='linear')return t;if(fn==='ease-in')return t*t;if(fn==='ease-out')return 1-Math.pow(1-t,2);if(fn==='ease-in-out')return t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;return t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;}
+function frameValue(frames,p,prop,base){var prev=frames[0],next=frames[frames.length-1];frames.forEach(function(f){if(f.offset<=p)prev=f;if(f.offset>=p&&next.offset<p)next=f;});for(var i=0;i<frames.length;i++){if(frames[i].offset>=p){next=frames[i];break;}}var a=prev[prop];if(a==null)a=base[prop];var b=next[prop];if(b==null)b=a;if(next.offset===prev.offset)return b;var t=(p-prev.offset)/(next.offset-prev.offset);return a+(b-a)*t;}
+function startStateAnimation(el,state){var map=parseStateAnimations(el),name=map[state];if(!name)return;var anim=parseAnimations(el)[name];if(!anim||!anim.keyframes.length)return;if(el.__wdocAnim)cancelAnimationFrame(el.__wdocAnim.raf);var base=baseBox(el),start=performance.now()+anim.delay,loops=anim.iteration==='infinite'?Infinity:Math.max(1,parseFloat(anim.iteration)||1);function tick(now){if(now<start){el.__wdocAnim={raf:requestAnimationFrame(tick)};return;}var elapsed=now-start,idx=Math.floor(elapsed/anim.duration),done=idx>=loops,raw=done?1:(elapsed%anim.duration)/anim.duration;if(anim.direction==='reverse'||(anim.direction==='alternate'&&idx%2===1))raw=1-raw;var pct=ease(raw,anim.timing)*100;var b={x:frameValue(anim.keyframes,pct,'x',base),y:frameValue(anim.keyframes,pct,'y',base),width:frameValue(anim.keyframes,pct,'width',base),height:frameValue(anim.keyframes,pct,'height',base)};setBox(el,b);if(done){if(anim.fill!=='forwards'&&anim.fill!=='both')setBox(el,base);return;}el.__wdocAnim={raf:requestAnimationFrame(tick)};}el.__wdocAnim={raf:requestAnimationFrame(tick)};}
+function stopStateAnimation(el,state){var map=parseStateAnimations(el);if(!map[state]||!el.__wdocAnim)return;cancelAnimationFrame(el.__wdocAnim.raf);el.__wdocAnim=null;setBox(el,baseBox(el));}
 function init(root){(root||document).querySelectorAll('svg').forEach(function(svg){Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-id]'),function(el,i){if(el.__wdocBound)return;el.__wdocBound=true;if(!el.hasAttribute('data-wdoc-order'))el.setAttribute('data-wdoc-order',String(i));parseEvents(el).forEach(function(cfg){var mode=cfg.mode||defaultMode(cfg.trigger),down=eventName(cfg.trigger,false),up=eventName(cfg.trigger,true);el.addEventListener(down,function(e){if(cfg.trigger==='mouse_down'&&!buttonOk(e,cfg.button))return;if(cfg.prevent)e.preventDefault();var t=target(svg,el,cfg.target);if(!t)return;if(mode==='toggle')t.classList.contains(stateClass(cfg.state))?remove(t,cfg.state):add(t,cfg.state);else if(mode==='remove')remove(t,cfg.state);else if(mode==='pulse'){add(t,cfg.state);setTimeout(function(){remove(t,cfg.state);},cfg.duration||180);}else add(t,cfg.state);});if(mode==='while'&&(cfg.trigger==='hover'||cfg.trigger==='mouse_down'))el.addEventListener(up,function(){var t=target(svg,el,cfg.target);if(t)remove(t,cfg.state);});});});});}
 window.__wdocDiagramRuntimeInit=init;var s=document.currentScript;if(s&&s.parentNode)init(s.parentNode);if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){init(document);});else init(document);
 })();"#.to_string()
@@ -3551,6 +3699,7 @@ mod tests {
             name: "card".to_string(),
             attrs: IndexMap::new(),
             states: IndexMap::new(),
+            animations: IndexMap::new(),
         };
         class.attrs.insert("fill".to_string(), "#fff".to_string());
         class
@@ -3622,6 +3771,73 @@ mod tests {
         assert!(svg.contains("data-wdoc-events=\"click|selected|self|toggle|left|0|false\""));
         assert!(svg.contains("<script>"));
         assert!(svg.contains("wdoc-state-"));
+    }
+
+    #[test]
+    fn state_animation_emits_runtime_metadata_and_script() {
+        let mut animation = DiagramAnimation {
+            name: "slide".to_string(),
+            duration_ms: 800,
+            delay_ms: 25,
+            timing_function: "ease-in-out".to_string(),
+            iteration_count: "infinite".to_string(),
+            direction: "alternate".to_string(),
+            fill_mode: "both".to_string(),
+            keyframes: Vec::new(),
+        };
+        animation.keyframes.push(DiagramKeyframe {
+            offset: 0.0,
+            x: Some(10.0),
+            y: Some(10.0),
+            width: Some(100.0),
+            height: Some(40.0),
+        });
+        animation.keyframes.push(DiagramKeyframe {
+            offset: 100.0,
+            x: Some(80.0),
+            y: Some(20.0),
+            width: Some(120.0),
+            height: Some(50.0),
+        });
+
+        let mut state = DiagramState {
+            name: "active".to_string(),
+            attrs: IndexMap::new(),
+        };
+        state
+            .attrs
+            .insert("animation".to_string(), "slide".to_string());
+
+        let class = DiagramClass {
+            name: "card".to_string(),
+            attrs: IndexMap::new(),
+            states: IndexMap::from([("active".to_string(), state)]),
+            animations: IndexMap::from([("slide".to_string(), animation)]),
+        };
+
+        let mut rect = shape("task", 100.0, 40.0);
+        rect.attrs.insert("class".to_string(), "card".to_string());
+
+        let mut diagram = Diagram {
+            id: Some("animation".to_string()),
+            width: 180.0,
+            height: 90.0,
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+            classes: IndexMap::from([("card".to_string(), class)]),
+            shapes: vec![rect],
+            connections: vec![],
+        };
+
+        let svg = render_diagram_svg(&mut diagram);
+        assert!(svg.contains("data-wdoc-state-animation=\"active:slide\""));
+        assert!(svg
+            .contains("data-wdoc-animations=\"slide|800|25|ease-in-out|infinite|alternate|both|"));
+        assert!(svg.contains("data-wdoc-x=\"0\""));
+        assert!(svg.contains("<script>"));
+        assert!(svg.contains("startStateAnimation"));
     }
 
     #[test]

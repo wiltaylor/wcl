@@ -1,0 +1,257 @@
+import "./shared.wcl"
+
+class ex_anim_token {
+    fill = color_link
+    stroke = color_code_border
+    stroke_width = 1.5
+    cursor = "pointer"
+
+    animation slide_once {
+        duration_ms = 900
+        timing_function = "ease-in-out"
+        iteration_count = 1
+        fill_mode = "forwards"
+
+        keyframe start {
+            offset = 0
+            x = 56
+            y = 66
+            width = 72
+            height = 44
+        }
+
+        keyframe middle {
+            offset = 55
+            x = 210
+            y = 38
+            width = 92
+            height = 54
+        }
+
+        keyframe end {
+            offset = 100
+            x = 350
+            y = 104
+            width = 110
+            height = 60
+        }
+    }
+
+    state active {
+        animation = "slide_once"
+    }
+}
+
+class ex_anim_loop {
+    fill = color_success
+    stroke = color_code_border
+    stroke_width = 1.5
+    cursor = "pointer"
+
+    animation breathe {
+        duration_ms = 1100
+        timing_function = "ease-in-out"
+        iteration_count = "infinite"
+        direction = "alternate"
+        fill_mode = "both"
+
+        keyframe small {
+            offset = 0
+            x = 64
+            y = 54
+            width = 76
+            height = 44
+        }
+
+        keyframe large {
+            offset = 100
+            x = 54
+            y = 44
+            width = 96
+            height = 64
+        }
+    }
+
+    state looping {
+        animation = "breathe"
+    }
+}
+
+page animation_examples {
+    section = "my_docs.diagrams.animation_examples"
+    title = "Keyframe Animations"
+
+    layout {
+        vsplit v_anim1 {
+            split s_anim1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = icon("play") + " Keyframe Animations"
+                }
+
+                paragraph p1 {
+                    content = "Class-level animations define percent keyframes. Shape events apply states, and states can start an animation."
+                }
+
+                heading h2 {
+                    level = 2
+                    content = "One-off movement with connected endpoints"
+                }
+
+                paragraph p2 {
+                    content = "Click the blue shape. Its bounds animate across the diagram and the connector endpoint follows the moving shape."
+                }
+
+                diagram one_off_animation {
+                    width = 560
+                    height = 230
+
+                    rect target {
+                        x = 468
+                        y = 88
+                        width = 58
+                        height = 58
+                        rx = 8
+                        fill = color_code_bg
+                        stroke = color_code_border
+                    }
+
+                    text target_label {
+                        x = 458
+                        y = 152
+                        width = 78
+                        height = 24
+                        content = "Target"
+                        font_size = 12
+                    }
+
+                    rect moving {
+                        x = 56
+                        y = 66
+                        width = 72
+                        height = 44
+                        rx = 8
+                        class = "ex_anim_token"
+
+                        event start_slide {
+                            trigger = "click"
+                            state = "active"
+                            mode = "pulse"
+                            duration_ms = 1100
+                        }
+                    }
+
+                    text moving_label {
+                        x = 48
+                        y = 116
+                        width = 88
+                        height = 24
+                        content = "Click"
+                        font_size = 12
+                    }
+
+                    connection follow_edge {
+                        from = "moving"
+                        to = "target"
+                        direction = "to"
+                        stroke = color_link
+                        stroke_width = 2
+                    }
+                }
+
+                heading h3 {
+                    level = 2
+                    content = "Looping while hovered"
+                }
+
+                paragraph p3 {
+                    content = "Hover the green shape to start an infinite alternate animation. Leaving the shape removes the state and resets the bounds."
+                }
+
+                diagram loop_animation {
+                    width = 360
+                    height = 170
+
+                    rect pulse {
+                        x = 64
+                        y = 54
+                        width = 76
+                        height = 44
+                        rx = 8
+                        class = "ex_anim_loop"
+
+                        event hover_loop {
+                            trigger = "hover"
+                            state = "looping"
+                            mode = "while"
+                        }
+                    }
+
+                    text label {
+                        x = 178
+                        y = 62
+                        width = 120
+                        height = 32
+                        content = "Hover to loop"
+                        anchor = "start"
+                        font_size = 13
+                    }
+                }
+
+                heading h4 {
+                    level = 2
+                    content = "Source"
+                }
+
+                code src {
+                    language = "wcl"
+                    content = <<-'WCL'
+class moving_token {
+    animation slide_once {
+        duration_ms = 900
+        timing_function = "ease-in-out"
+        iteration_count = 1
+        fill_mode = "forwards"
+
+        keyframe start {
+            offset = 0
+            x = 56
+            y = 66
+            width = 72
+            height = 44
+        }
+
+        keyframe end {
+            offset = 100
+            x = 350
+            y = 104
+            width = 110
+            height = 60
+        }
+    }
+
+    state active {
+        animation = "slide_once"
+    }
+}
+
+diagram one_off_animation {
+    rect moving {
+        class = "moving_token"
+
+        event start_slide {
+            trigger = "click"
+            state = "active"
+            mode = "pulse"
+            duration_ms = 1100
+        }
+    }
+}
+WCL
+                }
+            }
+        }
+    }
+}

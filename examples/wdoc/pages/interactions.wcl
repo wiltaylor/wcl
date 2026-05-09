@@ -52,6 +52,40 @@ class ex_stack_card {
     }
 }
 
+class ex_moving_token {
+    fill = color_link
+    stroke = color_code_border
+    stroke_width = 1
+    cursor = "pointer"
+
+    animation slide {
+        duration_ms = 900
+        timing_function = "ease-in-out"
+        iteration_count = 1
+        fill_mode = "forwards"
+
+        keyframe k0 {
+            offset = 0
+            x = 54
+            y = 54
+            width = 70
+            height = 44
+        }
+
+        keyframe k100 {
+            offset = 100
+            x = 290
+            y = 92
+            width = 96
+            height = 54
+        }
+    }
+
+    state active {
+        animation = "slide"
+    }
+}
+
 page interactions {
     section = "my_docs.diagrams.interactions"
     title = "Diagram Interactions"
@@ -267,6 +301,51 @@ page interactions {
                     }
                 }
 
+                heading h5 {
+                    level = 2
+                    content = "Keyframe animation"
+                }
+                paragraph p4 { content = "Click the moving shape to start a one-off keyframe animation. The connector endpoint follows the animated bounds." }
+
+                diagram animation_demo {
+                    width = 500
+                    height = 210
+
+                    rect anchor {
+                        x = 400
+                        y = 76
+                        width = 64
+                        height = 64
+                        rx = 8
+                        fill = color_code_bg
+                        stroke = color_code_border
+                    }
+
+                    rect moving {
+                        x = 54
+                        y = 54
+                        width = 70
+                        height = 44
+                        rx = 8
+                        class = "ex_moving_token"
+
+                        event start_slide {
+                            trigger = "click"
+                            state = "active"
+                            mode = "pulse"
+                            duration_ms = 1000
+                        }
+                    }
+
+                    connection edge {
+                        from = "moving"
+                        to = "anchor"
+                        direction = "to"
+                        stroke = color_link
+                        stroke_width = 2
+                    }
+                }
+
                 heading h4 {
                     level = 2
                     content = "Source"
@@ -321,6 +400,37 @@ diagram state_demo {
             state = "shown"
             mode = "while"
         }
+    }
+}
+
+class moving_token {
+    animation slide {
+        duration_ms = 900
+        timing_function = "ease-in-out"
+        fill_mode = "forwards"
+
+        keyframe k0 { offset = 0
+                     x = 54
+                     y = 54
+                     width = 70
+                     height = 44 }
+        keyframe k100 { offset = 100
+                       x = 290
+                       y = 92
+                       width = 96
+                       height = 54 }
+    }
+
+    state active { animation = "slide" }
+}
+
+diagram animation_demo {
+    rect moving {
+        class = "moving_token"
+        event start_slide { trigger = "click"
+                            state = "active"
+                            mode = "pulse"
+                            duration_ms = 1000 }
     }
 }
 WCL

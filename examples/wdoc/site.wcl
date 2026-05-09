@@ -33,6 +33,7 @@ doc my_docs {
         section swimlane_diagrams "Swim Lane Diagrams" {}
         section wireframes "UI Wireframes" {}
         section interactions "Diagram Interactions" {}
+        section animation_examples "Keyframe Animations" {}
         section flowchart_examples "Flowchart Shapes" {}
         section c4_examples "C4 Architecture" {}
         section uml_examples "UML Shapes" {}
