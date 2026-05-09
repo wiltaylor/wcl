@@ -13,6 +13,10 @@ use quick_xml::Reader;
 
 const LAYOUT_DECORATION_ATTR: &str = "_wdoc_layout_decoration";
 const CONNECTION_ROUTE_ATTR: &str = "_wdoc_route";
+const CONTENT_INSET_LEFT_ATTR: &str = "_wdoc_content_left";
+const CONTENT_INSET_TOP_ATTR: &str = "_wdoc_content_top";
+const CONTENT_INSET_RIGHT_ATTR: &str = "_wdoc_content_right";
+const CONTENT_INSET_BOTTOM_ATTR: &str = "_wdoc_content_bottom";
 const CONNECTION_ROUTE_DIRECT: &str = "direct";
 const ROUTE_MARGIN: f64 = 8.0;
 const ROUTE_TERMINAL_MIN: f64 = 16.0;
@@ -796,9 +800,19 @@ fn resolve_children(
                 _ => {}
             }
         }
-        Alignment::Layered | Alignment::Force | Alignment::Radial | Alignment::Grid
-            if !layoutable.is_empty() =>
-        {
+        Alignment::Grid if !unpositioned.is_empty() => {
+            layout_graph_subset(
+                children,
+                &unpositioned,
+                connections,
+                parent,
+                scope_path,
+                align,
+                gap,
+                options,
+            );
+        }
+        Alignment::Layered | Alignment::Force | Alignment::Radial if !layoutable.is_empty() => {
             layout_graph_subset(
                 children,
                 &layoutable,
@@ -874,8 +888,14 @@ fn child_content_insets(node: &ShapeNode) -> Insets {
         bottom: node.padding,
     };
 
+    insets.left += attr_f64(&node.attrs, CONTENT_INSET_LEFT_ATTR).unwrap_or(0.0);
+    insets.top += attr_f64(&node.attrs, CONTENT_INSET_TOP_ATTR).unwrap_or(0.0);
+    insets.right += attr_f64(&node.attrs, CONTENT_INSET_RIGHT_ATTR).unwrap_or(0.0);
+    insets.bottom += attr_f64(&node.attrs, CONTENT_INSET_BOTTOM_ATTR).unwrap_or(0.0);
+
     if node.padding == 0.0
         && node.align != Alignment::None
+        && !has_explicit_content_insets(node)
         && node.children.iter().any(is_layout_decoration)
     {
         insets.left = 16.0;
@@ -885,6 +905,13 @@ fn child_content_insets(node: &ShapeNode) -> Insets {
     }
 
     insets
+}
+
+fn has_explicit_content_insets(node: &ShapeNode) -> bool {
+    node.attrs.contains_key(CONTENT_INSET_LEFT_ATTR)
+        || node.attrs.contains_key(CONTENT_INSET_TOP_ATTR)
+        || node.attrs.contains_key(CONTENT_INSET_RIGHT_ATTR)
+        || node.attrs.contains_key(CONTENT_INSET_BOTTOM_ATTR)
 }
 
 fn decoration_header_inset(node: &ShapeNode) -> Option<f64> {
@@ -3939,6 +3966,78 @@ mod tests {
         assert!(children[2].resolved.x > 0.0);
         assert!(children[3].resolved.x > children[2].resolved.x);
         assert_eq!(children[2].resolved.y, children[3].resolved.y);
+    }
+
+    #[test]
+    fn nested_grid_layout_preserves_explicitly_positioned_children() {
+        let mut pinned = shape("pinned", 30.0, 20.0);
+        pinned.x = Some(150.0);
+        pinned.y = Some(90.0);
+
+        let mut container = shape("container", 220.0, 140.0);
+        container.align = Alignment::Grid;
+        container.gap = 10.0;
+        container
+            .attrs
+            .insert("columns".to_string(), "2".to_string());
+        container.children = vec![shape("a", 30.0, 20.0), pinned, shape("b", 30.0, 20.0)];
+
+        let mut diagram = Diagram {
+            id: None,
+            width: 240.0,
+            height: 160.0,
+            shapes: vec![container],
+            connections: vec![],
+            classes: IndexMap::new(),
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+        };
+
+        render_diagram_svg(&mut diagram);
+
+        let children = &diagram.shapes[0].children;
+        assert_eq!(children[1].resolved.x, 150.0);
+        assert_eq!(children[1].resolved.y, 90.0);
+        assert_ne!(children[0].resolved.x, 0.0);
+        assert!(children[2].resolved.x > children[0].resolved.x);
+    }
+
+    #[test]
+    fn nested_stack_layout_respects_widget_content_insets_and_padding() {
+        let mut container = shape("container", 200.0, 180.0);
+        container.align = Alignment::Stack;
+        container.gap = 8.0;
+        container.padding = 12.0;
+        container
+            .attrs
+            .insert(CONTENT_INSET_TOP_ATTR.to_string(), "36".to_string());
+        container
+            .attrs
+            .insert(CONTENT_INSET_BOTTOM_ATTR.to_string(), "20".to_string());
+        container.children = vec![shape("a", 0.0, 24.0), shape("b", 0.0, 24.0)];
+
+        let mut diagram = Diagram {
+            id: None,
+            width: 240.0,
+            height: 220.0,
+            shapes: vec![container],
+            connections: vec![],
+            classes: IndexMap::new(),
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+        };
+
+        render_diagram_svg(&mut diagram);
+
+        let children = &diagram.shapes[0].children;
+        assert_eq!(children[0].resolved.x, 12.0);
+        assert_eq!(children[0].resolved.y, 48.0);
+        assert_eq!(children[0].resolved.width, 176.0);
+        assert_eq!(children[1].resolved.y, 80.0);
     }
 
     #[test]

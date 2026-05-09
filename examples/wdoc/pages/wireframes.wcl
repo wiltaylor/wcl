@@ -462,6 +462,391 @@ page wireframes {
             }
         }
 
+        // --- Layout-aware UI mocks ---
+        vsplit v_wf_layout_intro {
+            split s_wf_layout_intro {
+                size = 100
+
+                heading hwf_layout_intro {
+                    level = 2
+                    content = "Layout-aware UI mockups"
+                }
+                paragraph pwf_layout_intro { content = "Container widgets can now use " + bold("stack") + ", " + bold("grid") + ", " + bold("flow") + ", and edge anchors for child controls. Omit <code>x</code>/<code>y</code> when a child should be placed by layout; add absolute coordinates or anchors when a control needs to be pinned." }
+            }
+        }
+
+        // --- Stack layout inside a card and phone ---
+        vsplit v_wf_stack {
+            split s_wf_stack {
+                size = 100
+
+                heading hwf_stack {
+                    level = 3
+                    content = "Stack layout: forms and settings"
+                }
+
+                diagram stack_ui {
+                    width = 760
+                    height = 390
+
+                    card account_form {
+                        x = 20
+                        y = 20
+                        width = 330
+                        height = 340
+                        title = "Account"
+                        align = "stack"
+                        gap = 12
+                        padding = 18
+
+                        input name {
+                            height = 55
+                            label = "Name"
+                            placeholder = "Jane Doe"
+                        }
+                        input email {
+                            height = 55
+                            label = "Email"
+                            placeholder = "jane@example.com"
+                        }
+                        input team {
+                            height = 55
+                            label = "Team"
+                            placeholder = "Platform"
+                        }
+                        group actions {
+                            left = 18
+                            right = 18
+                            bottom = 18
+                            height = 40
+                            align = "grid"
+                            columns = 2
+                            gap = 24
+
+                            button cancel {
+                                width = 120
+                                height = 40
+                                label = "Cancel"
+                                variant = "outline"
+                            }
+                            button save {
+                                width = 120
+                                height = 40
+                                label = "Save"
+                                variant = "primary"
+                            }
+                        }
+                    }
+
+                    phone settings_screen {
+                        x = 390
+                        y = 20
+                        width = 240
+                        height = 340
+                        title = "Settings"
+                        align = "stack"
+                        gap = 12
+                        padding = 16
+
+                        toggle notifications {
+                            width = 44
+                            height = 24
+                            on = "true"
+                        }
+                        button profile {
+                            height = 34
+                            label = "Profile"
+                            variant = "secondary"
+                        }
+                        button billing {
+                            height = 34
+                            label = "Billing"
+                            variant = "secondary"
+                        }
+                        button logout {
+                            height = 34
+                            label = "Log out"
+                            variant = "outline"
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- Grid layout for dashboard tiles ---
+        vsplit v_wf_grid {
+            split s_wf_grid {
+                size = 100
+
+                heading hwf_grid {
+                    level = 3
+                    content = "Grid layout: dashboard tiles"
+                }
+                paragraph pwf_grid { content = "Grid places only unpositioned children. The help button in the dashboard below is anchored to the card edge and is not moved by the grid." }
+
+                diagram dashboard_grid {
+                    width = 760
+                    height = 360
+
+                    browser dashboard {
+                        x = 20
+                        y = 20
+                        width = 700
+                        height = 310
+                        title = "Dashboard"
+                        url = "https://app.example.com"
+                        align = "grid"
+                        columns = 3
+                        gap = 16
+                        padding = 18
+
+                        card stat_revenue {
+                            width = 170
+                            height = 90
+                            title = "Revenue"
+                            text value {
+                                x = 16
+                                y = 42
+                                width = 120
+                                height = 24
+                                content = "$284K"
+                                font_size = 22
+                                anchor = "start"
+                            }
+                        }
+                        card stat_users {
+                            width = 170
+                            height = 90
+                            title = "Users"
+                            text value {
+                                x = 16
+                                y = 42
+                                width = 120
+                                height = 24
+                                content = "12,847"
+                                font_size = 22
+                                anchor = "start"
+                            }
+                        }
+                        card stat_uptime {
+                            width = 170
+                            height = 90
+                            title = "Uptime"
+                            text value {
+                                x = 16
+                                y = 42
+                                width = 120
+                                height = 24
+                                content = "99.9%"
+                                font_size = 22
+                                anchor = "start"
+                            }
+                        }
+                        card stat_tasks {
+                            width = 170
+                            height = 90
+                            title = "Tasks"
+                            text value {
+                                x = 16
+                                y = 42
+                                width = 120
+                                height = 24
+                                content = "42"
+                                font_size = 22
+                                anchor = "start"
+                            }
+                        }
+                        card stat_errors {
+                            width = 170
+                            height = 90
+                            title = "Errors"
+                            text value {
+                                x = 16
+                                y = 42
+                                width = 120
+                                height = 24
+                                content = "3"
+                                font_size = 22
+                                anchor = "start"
+                            }
+                        }
+                        button help {
+                            right = 18
+                            bottom = 18
+                            width = 92
+                            height = 34
+                            label = "Help"
+                            variant = "outline"
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- Flow layout for tags and actions ---
+        vsplit v_wf_flow {
+            split s_wf_flow {
+                size = 100
+
+                heading hwf_flow {
+                    level = 3
+                    content = "Flow layout: chips and action rows"
+                }
+
+                diagram flow_ui {
+                    width = 760
+                    height = 260
+
+                    card filters {
+                        x = 20
+                        y = 20
+                        width = 700
+                        height = 200
+                        title = "Filters"
+                        align = "flow"
+                        gap = 10
+                        padding = 18
+
+                        badge all {
+                            width = 64
+                            height = 26
+                            label = "All"
+                            color = color_link
+                        }
+                        badge active {
+                            width = 86
+                            height = 26
+                            label = "Active"
+                            color = color_success
+                        }
+                        badge blocked {
+                            width = 92
+                            height = 26
+                            label = "Blocked"
+                            color = color_danger
+                        }
+                        badge pending {
+                            width = 94
+                            height = 26
+                            label = "Pending"
+                            color = "#e6a700"
+                        }
+                        button export_btn {
+                            width = 104
+                            height = 34
+                            label = "Export"
+                            variant = "secondary"
+                        }
+                        button invite {
+                            width = 116
+                            height = 34
+                            label = "Invite"
+                            variant = "primary"
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- Anchored and mixed placement ---
+        vsplit v_wf_anchor {
+            split s_wf_anchor {
+                size = 100
+
+                heading hwf_anchor {
+                    level = 3
+                    content = "Anchored and mixed placement"
+                }
+                paragraph pwf_anchor { content = "Anchors are useful for sticky bars and floating controls. The cards are stacked automatically, while the footer actions and notification badge are pinned." }
+
+                diagram anchored_ui {
+                    width = 760
+                    height = 360
+
+                    card panel {
+                        x = 20
+                        y = 20
+                        width = 330
+                        height = 300
+                        title = "Project"
+                        align = "stack"
+                        gap = 12
+                        padding = 18
+
+                        badge status {
+                            right = 18
+                            top = 42
+                            width = 86
+                            height = 24
+                            label = "Live"
+                            color = color_success
+                        }
+                        input title {
+                            height = 55
+                            label = "Title"
+                            placeholder = "Launch plan"
+                        }
+                        input owner {
+                            height = 55
+                            label = "Owner"
+                            placeholder = "Alex"
+                        }
+                        group actions {
+                            left = 18
+                            right = 18
+                            bottom = 18
+                            height = 38
+                            align = "grid"
+                            columns = 2
+                            gap = 24
+
+                            button cancel {
+                                width = 120
+                                height = 38
+                                label = "Cancel"
+                                variant = "outline"
+                            }
+                            button save {
+                                width = 120
+                                height = 38
+                                label = "Save"
+                                variant = "primary"
+                            }
+                        }
+                    }
+
+                    browser report {
+                        x = 390
+                        y = 20
+                        width = 330
+                        height = 300
+                        title = "Report"
+                        url = "app.example.com/report"
+                        align = "stack"
+                        gap = 10
+                        padding = 16
+
+                        card summary {
+                            height = 72
+                            title = "Summary"
+                        }
+                        card activity {
+                            height = 72
+                            title = "Activity"
+                        }
+                        navbar footer {
+                            left = 16
+                            right = 16
+                            bottom = 16
+                            height = 40
+                            items = "Home,Reports,Settings"
+                            active_index = 1
+                        }
+                    }
+                }
+            }
+        }
+
         // --- Clickable interactive diagram ---
         vsplit v_wf6 {
             split s_wf6 {

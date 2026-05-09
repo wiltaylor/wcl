@@ -763,6 +763,7 @@ fn collect_shape_or_connection(
                 .or_insert_with(|| "none".to_string());
             a.entry("stroke".to_string())
                 .or_insert_with(|| "none".to_string());
+            apply_builtin_widget_content_insets(&mut a, br);
         }
 
         shapes.push(ShapeNode {
@@ -786,6 +787,48 @@ fn collect_shape_or_connection(
             z_index,
             source_order,
         });
+    }
+}
+
+fn apply_builtin_widget_content_insets(attrs: &mut IndexMap<String, String>, br: &BlockRef) {
+    let kind = br.kind.rsplit("::").next().unwrap_or(br.kind.as_str());
+    match kind {
+        "card" => {
+            if br
+                .attributes
+                .get("title")
+                .and_then(|v| v.as_string())
+                .is_some_and(|title| !title.is_empty())
+            {
+                insert_default_content_inset(attrs, "top", 36.0);
+            }
+        }
+        "phone" => {
+            insert_default_content_inset(attrs, "top", 74.0);
+            insert_default_content_inset(attrs, "bottom", 50.0);
+        }
+        "browser" => {
+            insert_default_content_inset(attrs, "top", 72.0);
+        }
+        _ => {}
+    }
+}
+
+fn insert_default_content_inset(attrs: &mut IndexMap<String, String>, edge: &str, value: f64) {
+    let public_key = format!("content_{edge}");
+    let private_key = format!("_wdoc_content_{edge}");
+    let value = attrs
+        .get(&public_key)
+        .cloned()
+        .unwrap_or_else(|| format_number(value));
+    attrs.entry(private_key).or_insert(value);
+}
+
+fn format_number(value: f64) -> String {
+    if value.fract() == 0.0 {
+        (value as i64).to_string()
+    } else {
+        value.to_string()
     }
 }
 
@@ -1697,6 +1740,39 @@ mod wdoc_draw_tests {
 
     fn int_attr(attrs: &mut IndexMap<String, Value>, key: &str, value: i64) {
         attrs.insert(key.to_string(), Value::Int(value));
+    }
+
+    #[test]
+    fn builtin_widget_content_insets_are_added_to_composite_container_attrs() {
+        let mut attrs = IndexMap::new();
+        let mut block_attrs = IndexMap::new();
+        string_attr(&mut block_attrs, "title", "Profile");
+        let card = block("wdoc::draw::card", Some("panel"), block_attrs, vec![]);
+
+        apply_builtin_widget_content_insets(&mut attrs, &card);
+
+        assert_eq!(
+            attrs.get("_wdoc_content_top").map(String::as_str),
+            Some("36")
+        );
+    }
+
+    #[test]
+    fn explicit_widget_content_insets_override_defaults() {
+        let mut attrs = IndexMap::new();
+        attrs.insert("content_top".to_string(), "96".to_string());
+        let phone = block("wdoc::draw::phone", Some("screen"), IndexMap::new(), vec![]);
+
+        apply_builtin_widget_content_insets(&mut attrs, &phone);
+
+        assert_eq!(
+            attrs.get("_wdoc_content_top").map(String::as_str),
+            Some("96")
+        );
+        assert_eq!(
+            attrs.get("_wdoc_content_bottom").map(String::as_str),
+            Some("50")
+        );
     }
 
     #[test]

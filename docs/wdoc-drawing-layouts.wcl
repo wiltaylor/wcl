@@ -80,14 +80,14 @@ page wdoc_drawing_layouts {
                 }
 
                 paragraph p_g1 {
-                    content = "<code>align = \"grid\"</code> arranges children in a regular grid. Pass <code>columns</code> in the diagram options to control the column count; the layout fills row by row."
+                    content = "<code>align = \"grid\"</code> arranges unpositioned children in a regular grid. Pass <code>columns</code> in the diagram options to control the column count; the layout fills row by row. Children with explicit <code>x</code>/<code>y</code> or edge anchors keep their manual placement, which makes grid useful inside UI containers where one control still needs to be pinned."
                 }
 
                 callout c_tip {
                     icon = "lightbulb"
                     header = "Mixing positioned and auto-laid children"
                     color = "#0d6efd"
-                    paragraph wp { content = "Simple layouts (stack/flow/center) only touch children with no explicit coordinates, so you can pin a few shapes manually and let the rest flow around them. Graph layouts (layered/force/radial/grid) take over all children — pin nothing if you use one of those." }
+                    paragraph wp { content = "Simple layouts (stack/flow/center) and <code>grid</code> only touch children with no explicit coordinates, so you can pin a few shapes manually and let the rest flow around them. Graph layouts (<code>layered</code>, <code>force</code>, and <code>radial</code>) take over all children — pin nothing if you use one of those." }
                 }
             }
         }

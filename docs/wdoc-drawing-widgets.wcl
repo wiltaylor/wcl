@@ -24,7 +24,7 @@ page wdoc_drawing_widgets {
                     content = "UI mockups"
                 }
 
-                paragraph p_ui1 { content = "For wireframes and product mockups." }
+                paragraph p_ui1 { content = "For wireframes and product mockups. Container-style widgets such as <code>card</code>, <code>phone</code>, and <code>browser</code> work with the normal drawing layout attributes: use <code>align</code>, <code>gap</code>, and <code>padding</code> for auto-placed children, or keep using <code>x</code>/<code>y</code> and edge anchors for controls that need exact placement." }
 
                 data_table tbl_ui {
                     caption = "UI widgets"
@@ -43,7 +43,7 @@ page wdoc_drawing_widgets {
 
                 code cui1 {
                     language = "wcl"
-                    content = "diagram mockup {\n    width = 600, height = 360\n\n    phone p1 {\n        x = 20, y = 20, width = 220, height = 320\n        title = \"My App\"\n    }\n    browser b1 {\n        x = 280, y = 20, width = 300, height = 200\n        title = \"Dashboard\"\n        url   = \"https://app.example.com\"\n    }\n    button btn {\n        x = 280, y = 240, width = 120, height = 38\n        label = \"Sign in\"\n        variant = \"primary\"\n    }\n}"
+                    content = "diagram mockup {\n    width = 600, height = 360\n\n    card form {\n        x = 20, y = 20, width = 240, height = 300\n        title = \"Sign in\"\n        align = \"stack\"\n        gap = 12\n        padding = 18\n\n        input email { height = 55, label = \"Email\" }\n        input password { height = 55, label = \"Password\" }\n        button submit { height = 38, label = \"Continue\", variant = \"primary\" }\n        button help {\n            right = 18, bottom = 18, width = 90, height = 32\n            label = \"Help\"\n            variant = \"outline\"\n        }\n    }\n\n    browser b1 {\n        x = 300, y = 20, width = 280, height = 200\n        title = \"Dashboard\"\n        url = \"https://app.example.com\"\n    }\n}"
                 }
 
                 heading h2_flow {
