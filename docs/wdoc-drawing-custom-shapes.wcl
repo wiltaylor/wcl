@@ -1,5 +1,47 @@
 import <wdoc.wcl>
 use wdoc::{page, layout, heading, paragraph, code, data_table, callout, bold}
+use wdoc::draw::{diagram, rect, connection}
+use custom_examples::{task_node, mini_flow}
+
+namespace custom_examples {
+    @template("shape", "custom_examples::task_node_template")
+    @open
+    schema "task_node" { }
+
+    export let task_node_template = (b) => {
+        let w = attr_or(b, "width", 130)
+        let h = attr_or(b, "height", 46)
+        let label = attr_or(b, "label", "Task")
+        let fill = attr_or(b, "fill", "var(--color-code-bg)")
+        [
+            { kind = "rect", x = 0, y = 0, width = w, height = h, rx = 7,
+              fill = fill, stroke = "var(--color-link)", stroke_width = 1.5 },
+            { kind = "text", x = 0, y = 0, width = w, height = h,
+              content = label, font_size = 13 }
+        ]
+    }
+
+    @template("shape", "custom_examples::mini_flow_template")
+    @open
+    schema "mini_flow" { }
+
+    export let mini_flow_template = (b) => [
+        { kind = "rect", id = "start", width = 96, height = 34, rx = 7,
+          layout_role = "node", fill = "var(--color-code-bg)",
+          stroke = "var(--color-link)", stroke_width = 1.5,
+          children = [{ kind = "text", content = "Start", font_size = 12 }] },
+        { kind = "rect", id = "review", width = 96, height = 34, rx = 7,
+          layout_role = "node", fill = "var(--color-code-bg)",
+          stroke = "var(--color-link)", stroke_width = 1.5,
+          children = [{ kind = "text", content = "Review", font_size = 12 }] },
+        { kind = "rect", id = "done", width = 96, height = 34, rx = 7,
+          layout_role = "node", fill = "var(--color-code-bg)",
+          stroke = "#28a745", stroke_width = 1.5,
+          children = [{ kind = "text", content = "Done", font_size = 12 }] },
+        { kind = "connection", from = "start", to = "review", direction = "to" },
+        { kind = "connection", from = "review", to = "done", direction = "to" }
+    ]
+}
 
 page wdoc_drawing_custom {
     section = "wcl_docs.wdoc.wdoc_drawing_custom"
@@ -25,7 +67,7 @@ page wdoc_drawing_custom {
                 }
 
                 paragraph p_an1 {
-                    content = "A shape template function takes one argument — the block the user wrote — and returns a " + bold("list of shape descriptors") + ". A shape descriptor is a map literal with a " + bold("kind") + " field naming a primitive (rect, circle, ellipse, line, path, text) plus positioning and visual attributes. The dispatcher converts each descriptor into a shape node and uses them as the children of the widget container."
+                    content = "A shape template function takes one argument — the block the user wrote — and returns a " + bold("list of shape descriptors") + ". A shape descriptor is a map literal with a " + bold("kind") + " field naming a primitive (rect, circle, ellipse, line, path, text) or a connection, plus positioning and visual attributes. The dispatcher converts shape descriptors into child shape nodes of the widget container."
                 }
 
                 code c_min {
@@ -54,17 +96,192 @@ page wdoc_drawing_custom {
                 data_table tbl_fields {
                     caption = "Recognized descriptor fields"
                     rows = [
-                        { field = "kind",             description = "Primitive: rect, circle, ellipse, line, path, text" },
+                        { field = "kind",             description = "Primitive: rect, circle, ellipse, line, path, text, group, image, inline_svg; or connection" },
+                        { field = "id",               description = "Shape ID for layout and connection endpoints" },
                         { field = "x, y, width, height", description = "Absolute placement (relative to the widget's container)" },
                         { field = "top, bottom, left, right", description = "Anchored placement; stretches between opposing anchors" },
+                        { field = "align, gap, padding", description = "Layout controls for the descriptor's own children" },
+                        { field = "layout_role",      description = "Set to node when a template-generated child should participate in parent layout" },
                         { field = "rx, ry",           description = "Corner radius (rect) or x/y radius (ellipse)" },
                         { field = "r",                description = "Radius (circle)" },
                         { field = "fill, stroke, stroke_width, stroke_dasharray, opacity", description = "Visual styling" },
                         { field = "x1, y1, x2, y2",   description = "Endpoints (line shapes)" },
                         { field = "d",                description = "SVG path data (path shapes)" },
                         { field = "content, font_size, anchor", description = "Text shapes" },
+                        { field = "from, to, direction, label", description = "Connection fields when kind is connection" },
                         { field = "children",         description = "List of more descriptors, nested under this one" }
                     ]
+                }
+
+                heading h2_flow {
+                    level = 2
+                    content = "Flow layout inside custom shapes"
+                }
+
+                paragraph p_flow {
+                    content = "Custom shapes can contain their own link-driven flow. Use <code>align = \"layered\"</code> on the custom shape instance, return child descriptors with IDs, mark generated layout nodes with <code>layout_role = \"node\"</code>, and return <code>connection</code> descriptors between those IDs. Connection endpoints are scoped to each custom shape instance automatically."
+                }
+
+                code c_flow {
+                    language = "wcl"
+                    content = "namespace my {\n    @template(\"shape\", \"my::mini_flow\")\n    @open\n    schema \"mini_flow\" { }\n\n    export let mini_flow = (b) => [\n        { kind = \"rect\", id = \"start\", width = 90, height = 32,\n          layout_role = \"node\", fill = \"var(--color-code-bg)\",\n          children = [{ kind = \"text\", content = \"Start\" }] },\n        { kind = \"rect\", id = \"done\", width = 90, height = 32,\n          layout_role = \"node\", fill = \"var(--color-code-bg)\",\n          children = [{ kind = \"text\", content = \"Done\" }] },\n        { kind = \"connection\", from = \"start\", to = \"done\", direction = \"to\" }\n    ]\n}\n\ndiagram demo {\n    width = 260\n    height = 180\n\n    mini_flow flow {\n        x = 20\n        y = 20\n        width = 220\n        height = 140\n        align = \"layered\"\n        gap = 30\n    }\n}"
+                }
+
+                heading h2_linked_custom {
+                    level = 2
+                    content = "Example: custom shapes as linked nodes"
+                }
+
+                paragraph p_linked_custom {
+                    content = "A user-defined custom shape can be linked like a built-in flowchart widget. The diagram-level <code>connection</code> blocks reference the custom shape IDs, and <code>align = \"layered\"</code> lays the nodes out from those links."
+                }
+
+                diagram custom_linked_nodes {
+                    width = 620
+                    height = 240
+                    align = "layered"
+                    gap = 55
+
+                    task_node draft {
+                        width = 130
+                        height = 46
+                        label = "Draft"
+                    }
+                    task_node review {
+                        width = 130
+                        height = 46
+                        label = "Review"
+                    }
+                    task_node approve {
+                        width = 130
+                        height = 46
+                        label = "Approve"
+                    }
+                    task_node publish {
+                        width = 130
+                        height = 46
+                        label = "Publish"
+                        fill = "#e8f5e9"
+                    }
+
+                    connection c1 {
+                        from = "draft"
+                        to = "review"
+                        direction = "to"
+                    }
+                    connection c2 {
+                        from = "review"
+                        to = "approve"
+                        direction = "to"
+                    }
+                    connection c3 {
+                        from = "approve"
+                        to = "publish"
+                        direction = "to"
+                    }
+                }
+
+                code c_linked_custom {
+                    language = "wcl"
+                    content = "diagram custom_linked_nodes {\n    width = 620\n    height = 240\n    align = \"layered\"\n    gap = 55\n\n    task_node draft   { width = 130, height = 46, label = \"Draft\" }\n    task_node review  { width = 130, height = 46, label = \"Review\" }\n    task_node approve { width = 130, height = 46, label = \"Approve\" }\n    task_node publish { width = 130, height = 46, label = \"Publish\", fill = \"#e8f5e9\" }\n\n    connection c1 { from = \"draft\",   to = \"review\",  direction = \"to\" }\n    connection c2 { from = \"review\",  to = \"approve\", direction = \"to\" }\n    connection c3 { from = \"approve\", to = \"publish\", direction = \"to\" }\n}"
+                }
+
+                heading h2_nested_links {
+                    level = 2
+                    content = "Example: nested local links"
+                }
+
+                paragraph p_nested_links {
+                    content = "Connections written inside a container are scoped to that container. The local endpoints <code>from = \"intake\"</code> and <code>to = \"triage\"</code> resolve as <code>lane.intake</code> and <code>lane.triage</code>, so the nested <code>align = \"layered\"</code> layout can read them without manually writing dotted IDs."
+                }
+
+                diagram nested_local_links {
+                    width = 520
+                    height = 300
+
+                    rect lane {
+                        x = 40
+                        y = 30
+                        width = 440
+                        height = 230
+                        rx = 10
+                        fill = "none"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 1.5
+                        align = "layered"
+                        gap = 45
+                        padding = 18
+
+                        task_node intake {
+                            width = 120
+                            height = 42
+                            label = "Intake"
+                        }
+                        task_node triage {
+                            width = 120
+                            height = 42
+                            label = "Triage"
+                        }
+                        task_node resolve {
+                            width = 120
+                            height = 42
+                            label = "Resolve"
+                            fill = "#e8f5e9"
+                        }
+
+                        connection local1 {
+                            from = "intake"
+                            to = "triage"
+                            direction = "to"
+                        }
+                        connection local2 {
+                            from = "triage"
+                            to = "resolve"
+                            direction = "to"
+                        }
+                    }
+                }
+
+                code c_nested_links {
+                    language = "wcl"
+                    content = "rect lane {\n    x = 40, y = 30, width = 440, height = 230\n    rx = 10\n    fill = \"none\"\n    stroke = \"var(--color-nav-border)\"\n    align = \"layered\"\n    gap = 45\n    padding = 18\n\n    task_node intake  { width = 120, height = 42, label = \"Intake\" }\n    task_node triage  { width = 120, height = 42, label = \"Triage\" }\n    task_node resolve { width = 120, height = 42, label = \"Resolve\" }\n\n    connection local1 { from = \"intake\", to = \"triage\", direction = \"to\" }\n    connection local2 { from = \"triage\", to = \"resolve\", direction = \"to\" }\n}"
+                }
+
+                heading h2_generated_links {
+                    level = 2
+                    content = "Example: template-generated links"
+                }
+
+                paragraph p_generated_links {
+                    content = "A template can generate its own internal flow by returning <code>connection</code> descriptors. Generated visual pieces stay out of layout by default, so mark generated flow nodes with <code>layout_role = \"node\"</code> when the parent shape's layout should move them."
+                }
+
+                diagram generated_internal_flow {
+                    width = 540
+                    height = 260
+
+                    mini_flow flow_a {
+                        x = 40
+                        y = 30
+                        width = 200
+                        height = 190
+                        align = "layered"
+                        gap = 34
+                    }
+
+                    mini_flow flow_b {
+                        x = 300
+                        y = 30
+                        width = 200
+                        height = 190
+                        align = "layered"
+                        gap = 34
+                    }
+                }
+
+                code c_generated_links {
+                    language = "wcl"
+                    content = "export let mini_flow_template = (b) => [\n    { kind = \"rect\", id = \"start\", width = 96, height = 34,\n      layout_role = \"node\", children = [{ kind = \"text\", content = \"Start\" }] },\n    { kind = \"rect\", id = \"review\", width = 96, height = 34,\n      layout_role = \"node\", children = [{ kind = \"text\", content = \"Review\" }] },\n    { kind = \"rect\", id = \"done\", width = 96, height = 34,\n      layout_role = \"node\", children = [{ kind = \"text\", content = \"Done\" }] },\n    { kind = \"connection\", from = \"start\", to = \"review\", direction = \"to\" },\n    { kind = \"connection\", from = \"review\", to = \"done\", direction = \"to\" }\n]\n\nmini_flow flow_a {\n    x = 40, y = 30, width = 200, height = 190\n    align = \"layered\"\n    gap = 34\n}"
                 }
 
                 heading h2_attr_or {

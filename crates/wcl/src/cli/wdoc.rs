@@ -653,25 +653,30 @@ fn collect_shape_or_connection(
         return;
     }
 
-    if let Some(kind) = parse_shape_kind(&br.kind) {
+    let is_composite = ctx
+        .template_map
+        .contains_key(&("shape".to_string(), br.kind.clone()));
+
+    let kind = parse_shape_kind(&br.kind).or_else(|| {
+        // User-defined @template("shape", ...) schemas are composite shape
+        // containers even when they do not live under wdoc::draw::*.
+        is_composite.then_some(ShapeKind::Rect)
+    });
+
+    if let Some(kind) = kind {
         let mut a = value_map_to_string_map_lossy(&br.attributes);
 
         // Composite shape: any block whose schema declares @template("shape", "fn").
         // Call the function and convert its returned shape descriptors into the
         // widget container's children.
-        let is_composite = ctx
-            .template_map
-            .contains_key(&("shape".to_string(), br.kind.clone()));
-
         let mut children: Vec<ShapeNode> = if is_composite {
             match dispatch_shape_template(br, ctx) {
-                Ok(mut child_shapes) => {
-                    for child in &mut child_shapes {
-                        child
-                            .attrs
-                            .insert("_wdoc_layout_decoration".to_string(), "true".to_string());
+                Ok(mut result) => {
+                    for child in &mut result.shapes {
+                        mark_template_layout_decoration(child);
                     }
-                    child_shapes
+                    connections.extend(scope_connections(result.connections, br.id.as_deref()));
+                    result.shapes
                 }
                 Err(e) => {
                     eprintln!(
@@ -718,7 +723,7 @@ fn collect_shape_or_connection(
             );
             child_source_order += 1;
         }
-        connections.extend(child_connections);
+        connections.extend(scope_connections(child_connections, br.id.as_deref()));
 
         let pf =
             |m: &IndexMap<String, String>, k: &str| m.get(k).and_then(|s| s.parse::<f64>().ok());
@@ -842,13 +847,15 @@ fn read_local_inline_svg(src: &str, search_dirs: &[PathBuf]) -> Result<String, S
     Err("file was not found in WDoc source directories".to_string())
 }
 
+struct ShapeTemplateResult {
+    shapes: Vec<wcl_wdoc::shapes::ShapeNode>,
+    connections: Vec<wcl_wdoc::shapes::Connection>,
+}
+
 /// Look up a `@template("shape", "fn")` function for `br.kind` and call it.
 /// The function receives the BlockRef as its single argument and must return a
 /// list of "shape descriptor" values (maps describing primitive shapes).
-fn dispatch_shape_template(
-    br: &BlockRef,
-    ctx: &ExtractCtx,
-) -> Result<Vec<wcl_wdoc::shapes::ShapeNode>, String> {
+fn dispatch_shape_template(br: &BlockRef, ctx: &ExtractCtx) -> Result<ShapeTemplateResult, String> {
     let fn_name = ctx
         .template_map
         .get(&("shape".to_string(), br.kind.clone()))
@@ -877,23 +884,42 @@ fn dispatch_shape_template(
         }
     };
 
-    let mut shapes = Vec::new();
+    let mut result = ShapeTemplateResult {
+        shapes: Vec::new(),
+        connections: Vec::new(),
+    };
     for (idx, desc) in descriptors.iter().enumerate() {
-        if let Some(node) = descriptor_to_shape_node_with_order(desc, idx) {
-            shapes.push(node);
+        if let Some(conn) = descriptor_to_connection_with_order(desc, idx) {
+            result.connections.push(conn);
+        } else if let Some((node, connections)) =
+            descriptor_to_shape_node_and_connections(desc, idx)
+        {
+            result.shapes.push(node);
+            result.connections.extend(connections);
         }
     }
-    Ok(shapes)
+    Ok(result)
 }
 
 /// Convert a shape descriptor `Value::Map` (returned from a WCL shape template)
 /// into a `ShapeNode`. Recognized fields: kind, x, y, width, height, top, bottom,
 /// left, right, align, gap, padding, children (list of more descriptors), and
 /// arbitrary visual attributes (fill, stroke, rx, content, font_size, ...).
+#[cfg(test)]
 fn descriptor_to_shape_node_with_order(
     val: &Value,
     source_order: usize,
 ) -> Option<wcl_wdoc::shapes::ShapeNode> {
+    descriptor_to_shape_node_and_connections(val, source_order).map(|(node, _)| node)
+}
+
+fn descriptor_to_shape_node_and_connections(
+    val: &Value,
+    source_order: usize,
+) -> Option<(
+    wcl_wdoc::shapes::ShapeNode,
+    Vec<wcl_wdoc::shapes::Connection>,
+)> {
     use wcl_wdoc::shapes::*;
 
     let map = match val {
@@ -949,6 +975,7 @@ fn descriptor_to_shape_node_with_order(
                 | "align"
                 | "children"
                 | "id"
+                | "layout_role"
         ) {
             continue;
         }
@@ -962,21 +989,34 @@ fn descriptor_to_shape_node_with_order(
         };
         attrs.insert(k.clone(), s);
     }
+    if map
+        .get("layout_role")
+        .and_then(|v| v.as_string())
+        .is_some_and(|role| role == "node")
+    {
+        attrs.insert("_wdoc_layout_role".to_string(), "node".to_string());
+    }
 
     let mut children = Vec::new();
+    let mut connections = Vec::new();
     if let Some(Value::List(items)) = map.get("children") {
         for (idx, item) in items.iter().enumerate() {
-            if let Some(child) = descriptor_to_shape_node_with_order(item, idx) {
+            if let Some(conn) = descriptor_to_connection_with_order(item, idx) {
+                connections.push(conn);
+            } else if let Some((child, child_connections)) =
+                descriptor_to_shape_node_and_connections(item, idx)
+            {
                 children.push(child);
+                connections.extend(child_connections);
             }
         }
     }
 
     let id = map.get("id").and_then(|v| v.as_string()).map(String::from);
 
-    Some(ShapeNode {
+    let node = ShapeNode {
         kind,
-        id,
+        id: id.clone(),
         x: nx,
         y: ny,
         width: nw,
@@ -994,7 +1034,93 @@ fn descriptor_to_shape_node_with_order(
         padding,
         z_index,
         source_order,
+    };
+
+    Some((node, scope_connections(connections, id.as_deref())))
+}
+
+fn descriptor_to_connection_with_order(
+    val: &Value,
+    source_order: usize,
+) -> Option<wcl_wdoc::shapes::Connection> {
+    use wcl_wdoc::shapes::*;
+
+    let map = match val {
+        Value::Map(m) => m,
+        _ => return None,
+    };
+    let kind = map.get("kind").and_then(|v| v.as_string())?;
+    if kind != "connection" && kind != "wdoc::draw::connection" {
+        return None;
+    }
+
+    let mut attrs = IndexMap::new();
+    for (k, v) in map {
+        if k == "kind" {
+            continue;
+        }
+        let s = match v {
+            Value::String(s) => s.clone(),
+            Value::Int(i) => i.to_string(),
+            Value::Float(f) => f.to_string(),
+            Value::Bool(b) => b.to_string(),
+            Value::Null => continue,
+            _ => continue,
+        };
+        attrs.insert(k.clone(), s);
+    }
+
+    Some(Connection {
+        from_id: attrs.get("from").cloned().unwrap_or_default(),
+        to_id: attrs.get("to").cloned().unwrap_or_default(),
+        direction: parse_direction_str(attrs.get("direction").map(|s| s.as_str()).unwrap_or("")),
+        from_anchor: parse_anchor_str(attrs.get("from_anchor").map(|s| s.as_str()).unwrap_or("")),
+        to_anchor: parse_anchor_str(attrs.get("to_anchor").map(|s| s.as_str()).unwrap_or("")),
+        label: attrs.get("label").cloned(),
+        curve: parse_curve_str(attrs.get("curve").map(|s| s.as_str()).unwrap_or("")),
+        z_index: attrs
+            .get("z_index")
+            .and_then(|s| s.parse::<f64>().ok())
+            .unwrap_or(0.0),
+        source_order,
+        attrs,
     })
+}
+
+fn mark_template_layout_decoration(node: &mut wcl_wdoc::shapes::ShapeNode) {
+    let role = node.attrs.shift_remove("_wdoc_layout_role");
+    if role.as_deref() != Some("node") {
+        node.attrs
+            .insert("_wdoc_layout_decoration".to_string(), "true".to_string());
+    }
+    for child in &mut node.children {
+        mark_template_layout_decoration(child);
+    }
+}
+
+fn scope_connections(
+    connections: Vec<wcl_wdoc::shapes::Connection>,
+    scope: Option<&str>,
+) -> Vec<wcl_wdoc::shapes::Connection> {
+    let Some(scope) = scope.filter(|scope| !scope.is_empty()) else {
+        return connections;
+    };
+    connections
+        .into_iter()
+        .map(|mut conn| {
+            conn.from_id = scope_connection_endpoint(&conn.from_id, scope);
+            conn.to_id = scope_connection_endpoint(&conn.to_id, scope);
+            conn
+        })
+        .collect()
+}
+
+fn scope_connection_endpoint(endpoint: &str, scope: &str) -> String {
+    if endpoint.is_empty() || endpoint == scope || endpoint.starts_with(&format!("{scope}.")) {
+        endpoint.to_string()
+    } else {
+        format!("{scope}.{endpoint}")
+    }
 }
 
 fn value_as_f64(v: &Value) -> Option<f64> {
@@ -1459,6 +1585,17 @@ mod wdoc_draw_tests {
         }
     }
 
+    fn custom_shape_ctx(kind: &str, template_name: &str, template: BuiltinFn) -> ExtractCtx {
+        let mut ctx = empty_ctx();
+        ctx.template_map.insert(
+            ("shape".to_string(), kind.to_string()),
+            template_name.to_string(),
+        );
+        ctx.template_fns
+            .insert(template_name.to_string(), TemplateFn::Builtin(template));
+        ctx
+    }
+
     fn int_attr(attrs: &mut IndexMap<String, Value>, key: &str, value: i64) {
         attrs.insert(key.to_string(), Value::Int(value));
     }
@@ -1804,6 +1941,155 @@ mod wdoc_draw_tests {
         assert!(html.find("fill=\"blue\"").unwrap() < html.find("fill=\"red\"").unwrap());
         assert!(!html.contains("z-index"));
         assert!(!html.contains("z_index"));
+    }
+
+    #[test]
+    fn user_defined_shape_template_is_graph_node() {
+        let template = std::sync::Arc::new(|_args: &[Value]| {
+            let mut bg = IndexMap::new();
+            bg.insert("kind".to_string(), Value::String("rect".to_string()));
+            bg.insert("x".to_string(), Value::Int(0));
+            bg.insert("y".to_string(), Value::Int(0));
+            bg.insert("width".to_string(), Value::Int(100));
+            bg.insert("height".to_string(), Value::Int(40));
+            bg.insert("fill".to_string(), Value::String("#bada55".to_string()));
+            Ok(Value::List(vec![Value::Map(bg)]))
+        }) as BuiltinFn;
+        let ctx = custom_shape_ctx("my::task", "my::task_template", template);
+
+        let mut a_attrs = IndexMap::new();
+        int_attr(&mut a_attrs, "width", 100);
+        int_attr(&mut a_attrs, "height", 40);
+        let mut b_attrs = IndexMap::new();
+        int_attr(&mut b_attrs, "width", 100);
+        int_attr(&mut b_attrs, "height", 40);
+        let mut conn_attrs = IndexMap::new();
+        string_attr(&mut conn_attrs, "from", "a");
+        string_attr(&mut conn_attrs, "to", "b");
+        string_attr(&mut conn_attrs, "direction", "to");
+        let mut diagram_attrs = IndexMap::new();
+        int_attr(&mut diagram_attrs, "width", 240);
+        int_attr(&mut diagram_attrs, "height", 160);
+        string_attr(&mut diagram_attrs, "align", "layered");
+
+        let diagram = block(
+            "wdoc::draw::diagram",
+            Some("custom_flow"),
+            diagram_attrs,
+            vec![
+                block("my::task", Some("a"), a_attrs, vec![]),
+                block("my::task", Some("b"), b_attrs, vec![]),
+                block("wdoc::draw::connection", Some("ab"), conn_attrs, vec![]),
+            ],
+        );
+
+        let html = render_diagram_with_ctx(&diagram, &ctx);
+        assert_eq!(html.matches("fill=\"#bada55\"").count(), 2);
+        assert!(html.contains("marker-end=\"url(#wdoc-arrow)\""));
+    }
+
+    #[test]
+    fn nested_connection_blocks_are_scoped_to_parent_shape() {
+        let mut a_attrs = IndexMap::new();
+        int_attr(&mut a_attrs, "width", 80);
+        int_attr(&mut a_attrs, "height", 30);
+        let mut b_attrs = IndexMap::new();
+        int_attr(&mut b_attrs, "width", 80);
+        int_attr(&mut b_attrs, "height", 30);
+        let mut conn_attrs = IndexMap::new();
+        string_attr(&mut conn_attrs, "from", "a");
+        string_attr(&mut conn_attrs, "to", "b");
+        string_attr(&mut conn_attrs, "direction", "to");
+        let mut group_attrs = IndexMap::new();
+        int_attr(&mut group_attrs, "width", 180);
+        int_attr(&mut group_attrs, "height", 140);
+        string_attr(&mut group_attrs, "align", "layered");
+
+        let group = block(
+            "wdoc::draw::group",
+            Some("phase"),
+            group_attrs,
+            vec![
+                block("wdoc::draw::rect", Some("a"), a_attrs, vec![]),
+                block("wdoc::draw::rect", Some("b"), b_attrs, vec![]),
+                block("wdoc::draw::connection", Some("ab"), conn_attrs, vec![]),
+            ],
+        );
+
+        let ctx = empty_ctx();
+        let mut shapes = Vec::new();
+        let mut connections = Vec::new();
+        collect_shape_or_connection(&group, &mut shapes, &mut connections, &ctx, 0);
+
+        assert_eq!(connections.len(), 1);
+        assert_eq!(connections[0].from_id, "phase.a");
+        assert_eq!(connections[0].to_id, "phase.b");
+    }
+
+    #[test]
+    fn template_connection_descriptors_are_scoped_to_instance() {
+        let template = std::sync::Arc::new(|_args: &[Value]| {
+            let mut a = IndexMap::new();
+            a.insert("kind".to_string(), Value::String("rect".to_string()));
+            a.insert("id".to_string(), Value::String("start".to_string()));
+            a.insert("width".to_string(), Value::Int(80));
+            a.insert("height".to_string(), Value::Int(30));
+            a.insert("layout_role".to_string(), Value::String("node".to_string()));
+
+            let mut b = IndexMap::new();
+            b.insert("kind".to_string(), Value::String("rect".to_string()));
+            b.insert("id".to_string(), Value::String("end".to_string()));
+            b.insert("width".to_string(), Value::Int(80));
+            b.insert("height".to_string(), Value::Int(30));
+            b.insert("layout_role".to_string(), Value::String("node".to_string()));
+
+            let mut edge = IndexMap::new();
+            edge.insert("kind".to_string(), Value::String("connection".to_string()));
+            edge.insert("from".to_string(), Value::String("start".to_string()));
+            edge.insert("to".to_string(), Value::String("end".to_string()));
+            edge.insert("direction".to_string(), Value::String("to".to_string()));
+
+            Ok(Value::List(vec![
+                Value::Map(a),
+                Value::Map(b),
+                Value::Map(edge),
+            ]))
+        }) as BuiltinFn;
+        let ctx = custom_shape_ctx("my::flow_box", "my::flow_box_template", template);
+
+        let mut flow_attrs = IndexMap::new();
+        int_attr(&mut flow_attrs, "width", 180);
+        int_attr(&mut flow_attrs, "height", 120);
+        string_attr(&mut flow_attrs, "align", "layered");
+        let flow = block("my::flow_box", Some("flow"), flow_attrs, vec![]);
+
+        let mut shapes = Vec::new();
+        let mut connections = Vec::new();
+        collect_shape_or_connection(&flow, &mut shapes, &mut connections, &ctx, 0);
+
+        assert_eq!(connections.len(), 1);
+        assert_eq!(connections[0].from_id, "flow.start");
+        assert_eq!(connections[0].to_id, "flow.end");
+        assert_eq!(shapes[0].children.len(), 2);
+        assert!(!shapes[0].children[0]
+            .attrs
+            .contains_key("_wdoc_layout_decoration"));
+
+        let mut diagram = wcl_wdoc::shapes::Diagram {
+            id: None,
+            width: 220.0,
+            height: 160.0,
+            padding: 0.0,
+            align: wcl_wdoc::shapes::Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+            shapes,
+            connections,
+            classes: IndexMap::new(),
+        };
+        wcl_wdoc::shapes::render_diagram_svg(&mut diagram);
+        let flow_children = &diagram.shapes[0].children;
+        assert!(flow_children[0].resolved.y < flow_children[1].resolved.y);
     }
 
     #[test]

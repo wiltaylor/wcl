@@ -3,9 +3,51 @@
 import <wdoc.wcl>
 use wdoc::{doc, page, section, style, layout, heading, paragraph, image, code, data_table, callout, bold, italic, link, icon}
 use wdoc::draw::{diagram, rect, circle, ellipse, line, path, text, group, connection, phone, browser, button, input, card, avatar, toggle, badge, navbar, flow_process, flow_decision, flow_terminal, flow_io, flow_subprocess, c4_person, c4_system, c4_container, c4_component, c4_boundary, uml_class, uml_actor, uml_package, uml_note, server, database, cloud, user}
+use custom_shapes::{task_node, mini_flow}
 
 // Helper: literal dollar sign for code examples containing ${...}
 let D = "$"
+
+// Custom shape examples used by the diagram examples page.
+namespace custom_shapes {
+    @template("shape", "custom_shapes::task_node_template")
+    @open
+    schema "task_node" { }
+
+    export let task_node_template = (b) => {
+        let w = attr_or(b, "width", 130)
+        let h = attr_or(b, "height", 46)
+        let label = attr_or(b, "label", "Task")
+        let fill = attr_or(b, "fill", "var(--color-code-bg)")
+        [
+            { kind = "rect", x = 0, y = 0, width = w, height = h, rx = 7,
+              fill = fill, stroke = "var(--color-link)", stroke_width = 1.5 },
+            { kind = "text", x = 0, y = 0, width = w, height = h,
+              content = label, font_size = 13 }
+        ]
+    }
+
+    @template("shape", "custom_shapes::mini_flow_template")
+    @open
+    schema "mini_flow" { }
+
+    export let mini_flow_template = (b) => [
+        { kind = "rect", id = "start", width = 96, height = 34, rx = 7,
+          layout_role = "node", fill = "var(--color-code-bg)",
+          stroke = "var(--color-link)", stroke_width = 1.5,
+          children = [{ kind = "text", content = "Start", font_size = 12 }] },
+        { kind = "rect", id = "review", width = 96, height = 34, rx = 7,
+          layout_role = "node", fill = "var(--color-code-bg)",
+          stroke = "var(--color-link)", stroke_width = 1.5,
+          children = [{ kind = "text", content = "Review", font_size = 12 }] },
+        { kind = "rect", id = "done", width = 96, height = 34, rx = 7,
+          layout_role = "node", fill = "var(--color-nav-bg)",
+          stroke = "#28a745", stroke_width = 1.5,
+          children = [{ kind = "text", content = "Done", font_size = 12 }] },
+        { kind = "connection", from = "start", to = "review", direction = "to" },
+        { kind = "connection", from = "review", to = "done", direction = "to" }
+    ]
+}
 
 // ── Overview page ──
 
@@ -961,7 +1003,182 @@ page diagram_examples {
             }
         }
 
-        // --- Example 6: Force-directed layout ---
+        // --- Example 6: Custom shapes as graph nodes ---
+        vsplit v_diag_custom1 {
+            split s_diag_custom1 {
+                size = 100
+
+                heading hd_custom1 {
+                    level = 2
+                    content = "Custom Shapes in Layered Layout"
+                }
+                paragraph pd_custom1 {
+                    content = "Custom shapes declared with " + bold("@template(\"shape\", ...)") + " can be linked and laid out exactly like built-in shapes. The connections reference the custom shape block IDs."
+                }
+
+                diagram custom_shape_nodes {
+                    width = 700
+                    height = 260
+                    align = "layered"
+                    gap = 55
+
+                    task_node draft {
+                        width = 130
+                        height = 46
+                        label = "Draft"
+                    }
+                    task_node review {
+                        width = 130
+                        height = 46
+                        label = "Review"
+                    }
+                    task_node approve {
+                        width = 130
+                        height = 46
+                        label = "Approve"
+                    }
+                    task_node publish {
+                        width = 130
+                        height = 46
+                        label = "Publish"
+                        fill = "#e8f5e9"
+                    }
+
+                    connection custom_c1 {
+                        from = "draft"
+                        to = "review"
+                        direction = "to"
+                    }
+                    connection custom_c2 {
+                        from = "review"
+                        to = "approve"
+                        direction = "to"
+                    }
+                    connection custom_c3 {
+                        from = "approve"
+                        to = "publish"
+                        direction = "to"
+                    }
+                }
+
+                code custom_shape_nodes_src {
+                    language = "wcl"
+                    content = "namespace custom_shapes {\n    @template(\"shape\", \"custom_shapes::task_node_template\")\n    @open\n    schema \"task_node\" { }\n\n    export let task_node_template = (b) => [\n        { kind = \"rect\", x = 0, y = 0, width = attr_or(b, \"width\", 130), height = attr_or(b, \"height\", 46), rx = 7,\n          fill = attr_or(b, \"fill\", \"var(--color-code-bg)\"), stroke = \"var(--color-link)\", stroke_width = 1.5 },\n        { kind = \"text\", x = 0, y = 0, width = attr_or(b, \"width\", 130), height = attr_or(b, \"height\", 46),\n          content = attr_or(b, \"label\", \"Task\"), font_size = 13 }\n    ]\n}\n\ndiagram custom_shape_nodes {\n    width = 700\n    height = 260\n    align = \"layered\"\n    gap = 55\n\n    task_node draft { width = 130, height = 46, label = \"Draft\" }\n    task_node review { width = 130, height = 46, label = \"Review\" }\n    task_node approve { width = 130, height = 46, label = \"Approve\" }\n    task_node publish { width = 130, height = 46, label = \"Publish\" }\n\n    connection custom_c1 { from = \"draft\", to = \"review\", direction = \"to\" }\n    connection custom_c2 { from = \"review\", to = \"approve\", direction = \"to\" }\n    connection custom_c3 { from = \"approve\", to = \"publish\", direction = \"to\" }\n}"
+                }
+            }
+        }
+
+        // --- Example 7: Nested local connections ---
+        vsplit v_diag_custom2 {
+            split s_diag_custom2 {
+                size = 100
+
+                heading hd_custom2 {
+                    level = 2
+                    content = "Nested Layered Layout with Local Links"
+                }
+                paragraph pd_custom2 {
+                    content = "Connections inside a container are scoped to that container. Local endpoints like " + bold("from = \"intake\"") + " resolve under the parent shape, so nested layered layouts can be written without dotted IDs."
+                }
+
+                diagram nested_custom_links {
+                    width = 700
+                    height = 310
+
+                    rect lane {
+                        x = 70
+                        y = 30
+                        width = 560
+                        height = 230
+                        rx = 10
+                        fill = "none"
+                        stroke = "var(--color-nav-border)"
+                        stroke_width = 1.5
+                        align = "layered"
+                        gap = 45
+                        padding = 18
+
+                        task_node intake {
+                            width = 120
+                            height = 42
+                            label = "Intake"
+                        }
+                        task_node triage {
+                            width = 120
+                            height = 42
+                            label = "Triage"
+                        }
+                        task_node resolve {
+                            width = 120
+                            height = 42
+                            label = "Resolve"
+                            fill = "#e8f5e9"
+                        }
+
+                        connection local1 {
+                            from = "intake"
+                            to = "triage"
+                            direction = "to"
+                        }
+                        connection local2 {
+                            from = "triage"
+                            to = "resolve"
+                            direction = "to"
+                        }
+                    }
+                }
+
+                code nested_custom_links_src {
+                    language = "wcl"
+                    content = "rect lane {\n    x = 70, y = 30, width = 560, height = 230\n    rx = 10\n    fill = \"none\"\n    stroke = \"var(--color-nav-border)\"\n    align = \"layered\"\n    gap = 45\n    padding = 18\n\n    task_node intake { width = 120, height = 42, label = \"Intake\" }\n    task_node triage { width = 120, height = 42, label = \"Triage\" }\n    task_node resolve { width = 120, height = 42, label = \"Resolve\" }\n\n    connection local1 { from = \"intake\", to = \"triage\", direction = \"to\" }\n    connection local2 { from = \"triage\", to = \"resolve\", direction = \"to\" }\n}"
+                }
+            }
+        }
+
+        // --- Example 8: Template-generated links ---
+        vsplit v_diag_custom3 {
+            split s_diag_custom3 {
+                size = 100
+
+                heading hd_custom3 {
+                    level = 2
+                    content = "Template-Generated Links"
+                }
+                paragraph pd_custom3 {
+                    content = "Templates can return " + bold("connection") + " descriptors for internal flow. Generated nodes opt into parent layout with " + bold("layout_role = \"node\"") + "; generated decoration stays out of layout by default."
+                }
+
+                diagram generated_custom_links {
+                    width = 700
+                    height = 280
+
+                    mini_flow flow_a {
+                        x = 90
+                        y = 30
+                        width = 210
+                        height = 200
+                        align = "layered"
+                        gap = 34
+                    }
+
+                    mini_flow flow_b {
+                        x = 400
+                        y = 30
+                        width = 210
+                        height = 200
+                        align = "layered"
+                        gap = 34
+                    }
+                }
+
+                code generated_custom_links_src {
+                    language = "wcl"
+                    content = "export let mini_flow_template = (b) => [\n    { kind = \"rect\", id = \"start\", width = 96, height = 34,\n      layout_role = \"node\", children = [{ kind = \"text\", content = \"Start\" }] },\n    { kind = \"rect\", id = \"review\", width = 96, height = 34,\n      layout_role = \"node\", children = [{ kind = \"text\", content = \"Review\" }] },\n    { kind = \"rect\", id = \"done\", width = 96, height = 34,\n      layout_role = \"node\", children = [{ kind = \"text\", content = \"Done\" }] },\n    { kind = \"connection\", from = \"start\", to = \"review\", direction = \"to\" },\n    { kind = \"connection\", from = \"review\", to = \"done\", direction = \"to\" }\n]\n\nmini_flow flow_a {\n    x = 90, y = 30, width = 210, height = 200\n    align = \"layered\"\n    gap = 34\n}"
+                }
+            }
+        }
+
+        // --- Example 9: Force-directed layout ---
         vsplit v_diag7 {
             split s_diag7 {
                 size = 100
@@ -1058,7 +1275,7 @@ page diagram_examples {
             }
         }
 
-        // --- Example 7: Radial layout ---
+        // --- Example 10: Radial layout ---
         vsplit v_diag8 {
             split s_diag8 {
                 size = 100
@@ -1158,7 +1375,7 @@ page diagram_examples {
             }
         }
 
-        // --- Example 8: Grid layout ---
+        // --- Example 11: Grid layout ---
         vsplit v_diag9 {
             split s_diag9 {
                 size = 100
