@@ -110,12 +110,15 @@ struct TermRun {
 
 pub(crate) fn intrinsic_size(attrs: &indexmap::IndexMap<String, String>) -> (f64, f64) {
     let metrics = TerminalMetrics::from_attrs(attrs, None, None);
-    (metrics.width, metrics.height)
+    let chrome_height = terminal_chrome_height(attrs);
+    (metrics.width, metrics.height + chrome_height)
 }
 
 pub(crate) fn render_terminal_svg(node: &ShapeNode, svg: &mut String) {
     let b = node.resolved;
-    let metrics = TerminalMetrics::from_attrs(&node.attrs, Some(b.width), Some(b.height));
+    let chrome_height = terminal_chrome_height(&node.attrs).min(b.height.max(0.0));
+    let body_height = (b.height - chrome_height).max(1.0);
+    let metrics = TerminalMetrics::from_attrs(&node.attrs, Some(b.width), Some(body_height));
     let background = node
         .attrs
         .get("background_fill")
@@ -135,42 +138,98 @@ pub(crate) fn render_terminal_svg(node: &ShapeNode, svg: &mut String) {
         .unwrap_or("\"JetBrainsMono Nerd Font\", \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Noto Color Emoji\", monospace");
     let rx = node.attrs.get("rx").map(|s| s.as_str()).unwrap_or("8");
     let ry = node.attrs.get("ry").map(|s| s.as_str()).unwrap_or(rx);
-    let clip_id = format!(
-        "wdoc-terminal-clip-{}",
-        node.id
-            .as_deref()
-            .map(sanitize_id)
-            .unwrap_or_else(|| format!("{:x}", hash_bounds(b)))
-    );
+    let id_suffix = node
+        .id
+        .as_deref()
+        .map(sanitize_id)
+        .unwrap_or_else(|| format!("{:x}", hash_bounds(b)));
+    let window_clip_id = format!("wdoc-terminal-window-clip-{id_suffix}");
+    let body_clip_id = format!("wdoc-terminal-clip-{id_suffix}");
+    let has_chrome = chrome_height > 0.0;
+    let title = node
+        .attrs
+        .get("title")
+        .map(|s| s.as_str())
+        .unwrap_or("Terminal");
+    let chrome_fill = node
+        .attrs
+        .get("chrome_fill")
+        .map(|s| s.as_str())
+        .unwrap_or("#111827");
+    let chrome_foreground = node
+        .attrs
+        .get("chrome_foreground_fill")
+        .map(|s| s.as_str())
+        .unwrap_or("#cbd5e1");
+    let chrome_border = node
+        .attrs
+        .get("chrome_border_fill")
+        .or_else(|| node.attrs.get("stroke"))
+        .map(|s| s.as_str())
+        .unwrap_or("#334155");
+    let title_font_size = (metrics.font_size * 0.92).min((chrome_height * 0.48).max(8.0));
+    let title_y = chrome_height / 2.0 + title_font_size * 0.35;
     let root_attrs = node_attrs(node, b);
 
     write!(
         svg,
-        "<g transform=\"translate({},{})\"{}><defs><clipPath id=\"{}\"><rect x=\"0\" y=\"0\" width=\"{}\" height=\"{}\" rx=\"{}\" ry=\"{}\"/></clipPath></defs>",
+        "<g transform=\"translate({},{})\"{}><defs><clipPath id=\"{}\"><rect x=\"0\" y=\"0\" width=\"{}\" height=\"{}\" rx=\"{}\" ry=\"{}\"/></clipPath><clipPath id=\"{}\"><rect x=\"0\" y=\"0\" width=\"{}\" height=\"{}\"/></clipPath></defs>",
         b.x,
         b.y,
         root_attrs,
-        escape_attr(&clip_id),
-        b.width,
-        b.height,
-        escape_attr(rx),
-        escape_attr(ry)
-    )
-    .unwrap();
-    write!(
-        svg,
-        "<rect x=\"0\" y=\"0\" width=\"{}\" height=\"{}\" rx=\"{}\" ry=\"{}\" fill=\"{}\"/>",
+        escape_attr(&window_clip_id),
         b.width,
         b.height,
         escape_attr(rx),
         escape_attr(ry),
-        escape_attr(background)
+        escape_attr(&body_clip_id),
+        b.width,
+        body_height
     )
     .unwrap();
+
+    if has_chrome {
+        write!(
+            svg,
+            "<g clip-path=\"url(#{})\"><rect x=\"0\" y=\"0\" width=\"{}\" height=\"{}\" fill=\"{}\"/><rect x=\"0\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"{}\"/><text x=\"14\" y=\"{}\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\" style=\"white-space:pre\" pointer-events=\"none\">{}</text></g><rect x=\"0.5\" y=\"0.5\" width=\"{}\" height=\"{}\" rx=\"{}\" ry=\"{}\" fill=\"none\" stroke=\"{}\"/>",
+            escape_attr(&window_clip_id),
+            b.width,
+            chrome_height,
+            escape_attr(chrome_fill),
+            chrome_height,
+            b.width,
+            body_height,
+            escape_attr(background),
+            title_y,
+            escape_attr(font_family),
+            title_font_size,
+            escape_attr(chrome_foreground),
+            escape_text(title),
+            (b.width - 1.0).max(0.0),
+            (b.height - 1.0).max(0.0),
+            escape_attr(rx),
+            escape_attr(ry),
+            escape_attr(chrome_border)
+        )
+        .unwrap();
+    } else {
+        write!(
+            svg,
+            "<rect x=\"0\" y=\"0\" width=\"{}\" height=\"{}\" rx=\"{}\" ry=\"{}\" fill=\"{}\"/>",
+            b.width,
+            b.height,
+            escape_attr(rx),
+            escape_attr(ry),
+            escape_attr(background)
+        )
+        .unwrap();
+    }
     write!(
         svg,
-        "<g clip-path=\"url(#{})\" font-family=\"{}\" font-size=\"{}\" style=\"white-space:pre\">",
-        escape_attr(&clip_id),
+        "<g clip-path=\"url(#{})\"><g transform=\"translate(0,{})\"><g clip-path=\"url(#{})\" font-family=\"{}\" font-size=\"{}\" style=\"white-space:pre\">",
+        escape_attr(&window_clip_id),
+        chrome_height,
+        escape_attr(&body_clip_id),
         escape_attr(font_family),
         metrics.font_size
     )
@@ -180,7 +239,14 @@ pub(crate) fn render_terminal_svg(node: &ShapeNode, svg: &mut String) {
     render_ansi_runs(content, 0, 0, &metrics, foreground, background, svg);
     render_terminal_children(&node.children, &metrics, foreground, background, svg);
 
-    svg.push_str("</g></g>");
+    svg.push_str("</g></g></g></g>");
+}
+
+fn terminal_chrome_height(attrs: &indexmap::IndexMap<String, String>) -> f64 {
+    if attrs.get("chrome").map(|s| s.as_str()) == Some("none") {
+        return 0.0;
+    }
+    attr_f64(attrs, "chrome_height").unwrap_or(28.0).max(0.0)
 }
 
 fn render_terminal_children(
@@ -1185,6 +1251,116 @@ mod tests {
         assert!(runs
             .iter()
             .any(|run| run.text.contains('界') && run.cells >= run.text.width()));
+    }
+
+    #[test]
+    fn terminal_svg_renders_window_chrome_by_default() {
+        let mut attrs = IndexMap::new();
+        attrs.insert("rows".to_string(), "6".to_string());
+        attrs.insert("cols".to_string(), "24".to_string());
+        attrs.insert("content".to_string(), "ok".to_string());
+        attrs.insert("title".to_string(), "wdoc serve".to_string());
+        attrs.insert("chrome_fill".to_string(), "#101827".to_string());
+        attrs.insert("chrome_foreground_fill".to_string(), "#e2e8f0".to_string());
+        attrs.insert("chrome_border_fill".to_string(), "#475569".to_string());
+        attrs.insert("font_size".to_string(), "12".to_string());
+
+        let terminal = ShapeNode {
+            kind: ShapeKind::Terminal,
+            id: Some("term".to_string()),
+            x: None,
+            y: None,
+            width: Some(240.0),
+            height: Some(148.0),
+            top: None,
+            bottom: None,
+            left: None,
+            right: None,
+            resolved: Bounds {
+                x: 10.0,
+                y: 20.0,
+                width: 240.0,
+                height: 148.0,
+            },
+            attrs,
+            events: vec![],
+            children: vec![],
+            align: crate::shapes::Alignment::None,
+            gap: 0.0,
+            padding: 0.0,
+            z_index: 0.0,
+            source_order: 0,
+        };
+
+        let mut svg = String::new();
+        render_terminal_svg(&terminal, &mut svg);
+        assert!(svg.contains("wdoc-terminal-window-clip-term"));
+        assert!(svg.contains("fill=\"#101827\""));
+        assert!(svg.contains("fill=\"#e2e8f0\""));
+        assert!(svg.contains("stroke=\"#475569\""));
+        assert!(svg.contains(">wdoc serve</text>"));
+        assert!(svg.contains("translate(0,28)"));
+        assert!(svg.contains(">ok</text>"));
+    }
+
+    #[test]
+    fn terminal_chrome_can_be_disabled() {
+        let mut attrs = IndexMap::new();
+        attrs.insert("rows".to_string(), "6".to_string());
+        attrs.insert("cols".to_string(), "24".to_string());
+        attrs.insert("content".to_string(), "ok".to_string());
+        attrs.insert("chrome".to_string(), "none".to_string());
+
+        let terminal = ShapeNode {
+            kind: ShapeKind::Terminal,
+            id: Some("term".to_string()),
+            x: None,
+            y: None,
+            width: Some(240.0),
+            height: Some(120.0),
+            top: None,
+            bottom: None,
+            left: None,
+            right: None,
+            resolved: Bounds {
+                x: 10.0,
+                y: 20.0,
+                width: 240.0,
+                height: 120.0,
+            },
+            attrs,
+            events: vec![],
+            children: vec![],
+            align: crate::shapes::Alignment::None,
+            gap: 0.0,
+            padding: 0.0,
+            z_index: 0.0,
+            source_order: 0,
+        };
+
+        let mut svg = String::new();
+        render_terminal_svg(&terminal, &mut svg);
+        assert!(!svg.contains(">Terminal</text>"));
+        assert!(svg.contains("translate(0,0)"));
+        assert!(svg.contains(">ok</text>"));
+    }
+
+    #[test]
+    fn terminal_intrinsic_size_includes_default_chrome() {
+        let mut attrs = IndexMap::new();
+        attrs.insert("rows".to_string(), "2".to_string());
+        attrs.insert("cols".to_string(), "10".to_string());
+        attrs.insert("font_size".to_string(), "10".to_string());
+        attrs.insert("cell_width".to_string(), "6".to_string());
+        attrs.insert("cell_height".to_string(), "12".to_string());
+        attrs.insert("padding".to_string(), "2".to_string());
+
+        let (_, height) = intrinsic_size(&attrs);
+        assert_eq!(height, 56.0);
+
+        attrs.insert("chrome".to_string(), "none".to_string());
+        let (_, plain_height) = intrinsic_size(&attrs);
+        assert_eq!(plain_height, 28.0);
     }
 
     #[test]

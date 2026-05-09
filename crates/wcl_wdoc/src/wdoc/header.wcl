@@ -177,6 +177,12 @@ namespace wdoc {
             rows: i32 @optional
             cols: i32 @optional
             content: string @optional
+            chrome: string @optional
+            title: string @optional
+            chrome_height: f64 @optional
+            chrome_fill: string @optional
+            chrome_foreground_fill: string @optional
+            chrome_border_fill: string @optional
             background_fill: string @optional
             foreground_fill: string @optional
         }

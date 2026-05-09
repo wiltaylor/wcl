@@ -161,7 +161,7 @@ page terminal_examples {
                 }
 
                 paragraph p1 {
-                    content = "Terminal blocks render fixed row and column grids with a bundled JetBrainsMono Nerd Font. They support ANSI SGR formatting for terminal captures and can host row/column TUI widgets."
+                    content = "Terminal blocks render fixed row and column grids with a bundled JetBrainsMono Nerd Font. They support ANSI SGR formatting for terminal captures and can host row/column TUI widgets. A mock terminal window is shown by default; set chrome = \"none\" for raw terminal blocks."
                 }
             }
         }
@@ -186,6 +186,7 @@ page terminal_examples {
                     terminal shell {
                         x = 20
                         y = 18
+                        title = "wcl_wdoc tests"
                         rows = 18
                         cols = 86
                         font_size = 13
@@ -424,7 +425,7 @@ page terminal_examples {
 
                 code basic_code {
                     language = "wcl"
-                    content = "diagram terminal_capture {\n    width = 780\n    height = 380\n\n    terminal shell {\n        x = 20\n        y = 18\n        rows = 18\n        cols = 86\n        font_size = 13\n        background_fill = \"#08111f\"\n        foreground_fill = \"#d7e0ff\"\n\n        terminal_textbox filter_input {\n            row = 11\n            col = 43\n            rows = 2\n            cols = 34\n            value = \"deploy --env prod\"\n            cursor_col = 17\n            accent_fill = \"#38bdf8\"\n        }\n\n        terminal_checkbox dry_run {\n            row = 14\n            col = 43\n            label = \"Dry run\"\n            checked = \"true\"\n            accent_fill = \"#22c55e\"\n        }\n\n        terminal_radio target_prod {\n            row = 15\n            col = 43\n            label = \"Production\"\n            selected = \"true\"\n        }\n\n        terminal_dropdown deploy_env {\n            row = 14\n            col = 62\n            cols = 15\n            value = \"prod\"\n            menu_item dev_item { label = \"dev\" }\n            menu_item stage_item { label = \"stage\" }\n            menu_item prod_item { label = \"prod\" }\n        }\n\n        terminal_button deploy_button {\n            row = 16\n            col = 43\n            cols = 15\n            label = \"Deploy\"\n            accent_fill = \"#22c55e\"\n        }\n    }\n}"
+                    content = "diagram terminal_capture {\n    width = 780\n    height = 380\n\n    terminal shell {\n        x = 20\n        y = 18\n        title = \"wcl_wdoc tests\"\n        rows = 18\n        cols = 86\n        font_size = 13\n        background_fill = \"#08111f\"\n        foreground_fill = \"#d7e0ff\"\n\n        terminal_textbox filter_input {\n            row = 11\n            col = 43\n            rows = 2\n            cols = 34\n            value = \"deploy --env prod\"\n            cursor_col = 17\n            accent_fill = \"#38bdf8\"\n        }\n\n        terminal_checkbox dry_run {\n            row = 14\n            col = 43\n            label = \"Dry run\"\n            checked = \"true\"\n            accent_fill = \"#22c55e\"\n        }\n\n        terminal_radio target_prod {\n            row = 15\n            col = 43\n            label = \"Production\"\n            selected = \"true\"\n        }\n\n        terminal_dropdown deploy_env {\n            row = 14\n            col = 62\n            cols = 15\n            value = \"prod\"\n            menu_item dev_item { label = \"dev\" }\n            menu_item stage_item { label = \"stage\" }\n            menu_item prod_item { label = \"prod\" }\n        }\n\n        terminal_button deploy_button {\n            row = 16\n            col = 43\n            cols = 15\n            label = \"Deploy\"\n            accent_fill = \"#22c55e\"\n        }\n    }\n\n    terminal raw_output {\n        chrome = \"none\"\n        rows = 8\n        cols = 48\n    }\n}"
                 }
             }
         }
@@ -444,11 +445,12 @@ page terminal_examples {
 
                 diagram terminal_theme_animation {
                     width = 620
-                    height = 310
+                    height = 340
 
                     terminal themed_shell {
                         x = 20
                         y = 18
+                        title = "theme-demo"
                         rows = 14
                         cols = 58
                         font_size = 13
@@ -529,7 +531,7 @@ page terminal_examples {
 
                 code terminal_theme_animation_code {
                     language = "wcl"
-                    content = "class term_ocean_theme {\n    background_fill = \"#0e7490\"\n    label_fill = \"#ecfeff\"\n    accent_fill = \"#67e8f9\"\n    hover_background_fill = \"#22d3ee\"\n    hover_foreground_fill = \"#083344\"\n}\n\nclass term_example_slide {\n    background_fill = \"#22c55e\"\n    label_fill = \"#052e16\"\n    hover_background_fill = \"#86efac\"\n\n    animation slide_by_cells {\n        duration_ms = 800\n        timing_function = \"ease-in-out\"\n        iteration_count = \"infinite\"\n        direction = \"alternate\"\n        fill_mode = \"both\"\n\n        keyframe start { offset = 0\n                         x = 52\n                         y = 156\n                         width = 120\n                         height = 18 }\n        keyframe end { offset = 100\n                       x = 92\n                       y = 156\n                       width = 120\n                       height = 18 }\n    }\n\n    state hovered { animation = \"slide_by_cells\" }\n}\n\ndiagram terminal_theme_animation {\n    terminal themed_shell {\n        rows = 14\n        cols = 58\n        cell_width = 10\n        cell_height = 18\n\n        terminal_textbox themed_search {\n            row = 4\n            col = 4\n            cols = 28\n            class = \"term_ocean_theme\"\n            placeholder = \"search docs\"\n        }\n\n        terminal_button animated_ship {\n            row = 8\n            col = 4\n            cols = 12\n            class = \"term_example_slide\"\n            label = \"Ship\"\n        }\n    }\n}"
+                    content = "class term_ocean_theme {\n    background_fill = \"#0e7490\"\n    label_fill = \"#ecfeff\"\n    accent_fill = \"#67e8f9\"\n    hover_background_fill = \"#22d3ee\"\n    hover_foreground_fill = \"#083344\"\n}\n\nclass term_example_slide {\n    background_fill = \"#22c55e\"\n    label_fill = \"#052e16\"\n    hover_background_fill = \"#86efac\"\n\n    animation slide_by_cells {\n        duration_ms = 800\n        timing_function = \"ease-in-out\"\n        iteration_count = \"infinite\"\n        direction = \"alternate\"\n        fill_mode = \"both\"\n\n        keyframe start { offset = 0\n                         x = 52\n                         y = 156\n                         width = 120\n                         height = 18 }\n        keyframe end { offset = 100\n                       x = 92\n                       y = 156\n                       width = 120\n                       height = 18 }\n    }\n\n    state hovered { animation = \"slide_by_cells\" }\n}\n\ndiagram terminal_theme_animation {\n    terminal themed_shell {\n        title = \"theme-demo\"\n        rows = 14\n        cols = 58\n        cell_width = 10\n        cell_height = 18\n\n        terminal_textbox themed_search {\n            row = 4\n            col = 4\n            cols = 28\n            class = \"term_ocean_theme\"\n            placeholder = \"search docs\"\n        }\n\n        terminal_button animated_ship {\n            row = 8\n            col = 4\n            cols = 12\n            class = \"term_example_slide\"\n            label = \"Ship\"\n        }\n    }\n}"
                 }
             }
         }
@@ -549,11 +551,12 @@ page terminal_examples {
 
                 diagram terminal_context {
                     width = 680
-                    height = 250
+                    height = 280
 
                     terminal session {
                         x = 20
                         y = 20
+                        title = "wdoc serve"
                         rows = 11
                         cols = 74
                         font_size = 13
