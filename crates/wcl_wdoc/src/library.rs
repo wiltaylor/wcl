@@ -1,5 +1,5 @@
 /// The standard wdoc library WCL source.
-pub const WDOC_LIBRARY_WCL: &str = include_str!("wdoc.wcl");
+pub const WDOC_LIBRARY_WCL: &str = include_str!(concat!(env!("OUT_DIR"), "/wdoc.wcl"));
 
 /// The WCL highlight.js grammar.
 pub const WCL_HIGHLIGHTJS_GRAMMAR: &str = include_str!("../../../extras/highlightjs/wcl.js");

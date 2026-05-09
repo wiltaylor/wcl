@@ -1,0 +1,24 @@
+    export let widget_server = (b) => {
+        let w = attr_or(b, "width", 90)
+        let h = attr_or(b, "height", 110)
+        let name = attr_or(b, "label", "Server")
+        let color = attr_or(b, "color", "var(--color-link)")
+        let surface_fill = attr_or(b, "surface_fill", "var(--color-code-bg)")
+        let row_fill = attr_or(b, "row_fill", "var(--color-nav-bg)")
+        let border_stroke = attr_or(b, "border_stroke", color)
+        let label_fill = attr_or(b, "label_fill", "currentColor")
+        let indicator_fill = attr_or(b, "indicator_fill", "#28a745")
+        let rh = h * 0.6
+        [
+            { kind = "rect", x = 0, y = 0, width = w, height = rh, rx = 4,
+              fill = surface_fill, stroke = border_stroke, stroke_width = 2 },
+            { kind = "rect", x = 6, y = 6, width = w - 12, height = rh * 0.25, rx = 2,
+              fill = row_fill, stroke = border_stroke, stroke_width = 1 },
+            { kind = "rect", x = 6, y = 6 + rh * 0.32, width = w - 12, height = rh * 0.25, rx = 2,
+              fill = row_fill, stroke = border_stroke, stroke_width = 1 },
+            { kind = "circle", x = w - 18, y = 8, r = 3, fill = indicator_fill },
+            { kind = "circle", x = w - 18, y = 8 + rh * 0.32, r = 3, fill = indicator_fill },
+            { kind = "text", x = 0, y = rh + 4, width = w, height = h - rh - 4,
+              content = name, font_size = 12, fill = label_fill }
+        ]
+    }

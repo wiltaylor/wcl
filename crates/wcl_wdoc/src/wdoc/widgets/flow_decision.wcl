@@ -1,0 +1,17 @@
+    export let widget_flow_decision = (b) => {
+        let w = attr_or(b, "width", 120)
+        let h = attr_or(b, "height", 80)
+        let label = attr_or(b, "label", "?")
+        let color = attr_or(b, "color", "var(--color-link)")
+        let surface_fill = attr_or(b, "surface_fill", "var(--color-bg)")
+        let border_stroke = attr_or(b, "border_stroke", color)
+        let label_fill = attr_or(b, "label_fill", "currentColor")
+        let border_width = attr_or(b, "border_width", 2)
+        let cx = w / 2
+        let cy = h / 2
+        let d = "M " + to_string(cx) + " 0 L " + to_string(w) + " " + to_string(cy) + " L " + to_string(cx) + " " + to_string(h) + " L 0 " + to_string(cy) + " Z"
+        [
+            { kind = "path", x = 0, y = 0, width = w, height = h, d = d, fill = surface_fill, stroke = border_stroke, stroke_width = border_width },
+            { kind = "text", x = 0, y = 0, width = w, height = h, content = label, font_size = 12, fill = label_fill }
+        ]
+    }

@@ -1,0 +1,23 @@
+    export let widget_input = (b) => {
+        let w = attr_or(b, "width", 200)
+        let h = attr_or(b, "height", 38)
+        let placeholder = attr_or(b, "placeholder", "")
+        let label = attr_or(b, "label", "")
+        let has_label = label != ""
+        let field_y = has_label ? 18 : 0
+        let field_h = has_label ? h - 18 : h
+        let label_fill = attr_or(b, "label_fill", "currentColor")
+        let placeholder_fill = attr_or(b, "placeholder_fill", "currentColor")
+        let field_fill = attr_or(b, "field_fill", attr_or(b, "surface_fill", "var(--color-code-bg)"))
+        let border_stroke = attr_or(b, "border_stroke", "var(--color-nav-border)")
+        let radius = attr_or(b, "radius", 6)
+        let border_width = attr_or(b, "border_width", 1)
+        let label_part = has_label ? [{ kind = "text", x = 0, y = 0, width = w, height = 16,
+            content = label, font_size = 11, anchor = "start", fill = label_fill }] : []
+        let placeholder_part = placeholder != "" ? [{ kind = "text", x = 10, y = field_y,
+            width = w - 20, height = field_h, content = placeholder, font_size = 12,
+            anchor = "start", fill = placeholder_fill, opacity = attr_or(b, "placeholder_opacity", 0.4) }] : []
+        let field = [{ kind = "rect", x = 0, y = field_y, width = w, height = field_h, rx = radius,
+            fill = field_fill, stroke = border_stroke, stroke_width = border_width }]
+        concat(concat(label_part, field), placeholder_part)
+    }

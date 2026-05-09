@@ -1,0 +1,27 @@
+    export let widget_phone = (b) => {
+        let w = attr_or(b, "width", 220)
+        let h = attr_or(b, "height", 320)
+        let title = attr_or(b, "title", "App")
+        let status = attr_or(b, "status_text", "9:41")
+        let hdr_fill = attr_or(b, "header_fill", "var(--color-link)")
+        let surface_fill = attr_or(b, "surface_fill", "var(--color-bg)")
+        let border_stroke = attr_or(b, "border_stroke", "var(--color-nav-border)")
+        let border_width = attr_or(b, "border_width", 3)
+        let radius = attr_or(b, "radius", 20)
+        let header_label_fill = attr_or(b, "header_label_fill", "#fff")
+        let footer_fill = attr_or(b, "footer_fill", "var(--color-nav-bg)")
+        let indicator_fill = attr_or(b, "indicator_fill", "var(--color-nav-border)")
+        [
+            { kind = "rect", x = 0, y = 0, width = w, height = h, rx = radius,
+              fill = surface_fill, stroke = border_stroke, stroke_width = border_width },
+            { kind = "text", x = 20, y = 5, width = 60, height = 20,
+              content = status, font_size = 10, anchor = "start" },
+            { kind = "rect", x = 0, y = 30, width = w, height = 44, fill = hdr_fill },
+            { kind = "text", x = 0, y = 30, width = w, height = 44,
+              content = title, font_size = 16, fill = header_label_fill },
+            { kind = "rect", x = 0, y = h - 50, width = w, height = 50,
+              fill = footer_fill, stroke = border_stroke, stroke_width = 1 },
+            { kind = "rect", x = (w - 80) / 2, y = h - 12, width = 80, height = 4,
+              rx = 2, fill = indicator_fill }
+        ]
+    }

@@ -1,0 +1,328 @@
+// wdoc standard library — common document elements and template functions
+//
+// Usage:
+//   import <wdoc.wcl>
+//   use wdoc::{doc, page, section, style, layout, heading, paragraph, image, code, data_table, callout, bold, italic, link, icon}
+//   use wdoc::draw::{diagram, rect, circle, ellipse, line, path, text, image, connection, ...}
+
+// Helper used by shape template functions to read attributes with defaults.
+// Registered globally (outside the wdoc namespace) so widget lambda bodies can
+// reference it as bare `attr_or` without qualification.
+declare attr_or(block: any, key: string, default: any) -> any
+declare measure_text(text: any) -> map(string, any)
+
+// Core helper for recursive templates. Returns direct child BlockRefs, optionally
+// filtered by exact block kind, e.g. children(item, "UiMenuItem").
+declare children(block: any) -> list(any)
+declare children(block: any, kind: string) -> list(any)
+
+namespace wdoc {
+
+    // --- Structural schemas ---
+
+    @open
+    schema "doc" {
+        title: string
+        version: string @optional
+        author: string @optional
+    }
+
+    @open
+    schema "page" {
+        section: string
+        title: string
+    }
+
+    @open
+    schema "section" { }
+
+    @open
+    schema "style" { }
+
+    // Style child schemas — same names as content schemas but scoped to style blocks.
+    // Inside a style block, these are CSS property containers, not content elements.
+    @parent(["wdoc::style"]) @open schema "heading" { }
+    @parent(["wdoc::style"]) @open schema "paragraph" { }
+    @parent(["wdoc::style"]) @open schema "image" { }
+    @parent(["wdoc::style"]) @open schema "code" { }
+    @parent(["wdoc::style"]) @open schema "data_table" { }
+    @parent(["wdoc::style"]) @open schema "callout" { }
+
+    @open
+    schema "layout" { }
+
+    // --- Content element schemas ---
+
+    @template("html", "wdoc::render_heading")
+    @auto_id @open
+    schema "heading" {
+        level: i32
+        content: string
+    }
+
+    // Per-level heading shorthands. Schemas use `@text` so users can write
+    // `h1 "Title"` (and `h1 myh1 "Title"` to also assign an anchor id).
+    // `@auto_id` prevents sibling h1/h2/... blocks from colliding when no
+    // explicit id is given.
+    @template("html", "wdoc::render_h1") @auto_id @open schema "h1" { content: string @text }
+    @template("html", "wdoc::render_h2") @auto_id @open schema "h2" { content: string @text }
+    @template("html", "wdoc::render_h3") @auto_id @open schema "h3" { content: string @text }
+    @template("html", "wdoc::render_h4") @auto_id @open schema "h4" { content: string @text }
+    @template("html", "wdoc::render_h5") @auto_id @open schema "h5" { content: string @text }
+    @template("html", "wdoc::render_h6") @auto_id @open schema "h6" { content: string @text }
+
+    @template("html", "wdoc::render_paragraph")
+    @auto_id @open
+    schema "paragraph" {
+        content: string
+    }
+
+    // Paragraph shorthand: `p "body text"`.
+    @template("html", "wdoc::render_paragraph") @auto_id @open schema "p" { content: string @text }
+
+    @template("html", "wdoc::render_image")
+    @auto_id @open
+    schema "image" {
+        src: string
+        alt: string @optional
+        width: string @optional
+        height: string @optional
+    }
+
+    @template("html", "wdoc::render_code")
+    @auto_id @open
+    schema "code" {
+        language: string @optional
+        content: string
+    }
+
+    @template("html", "wdoc::render_table")
+    @auto_id @open
+    schema "data_table" {
+        caption: string @optional
+    }
+
+    @template("html", "wdoc::render_callout")
+    @auto_id @open
+    schema "callout" {
+        icon: string @optional
+        header: string @optional
+        color: string @optional
+    }
+
+    // Reusable scoped CSS emitted once into the shared WDoc stylesheet.
+    schema "css_fragment" {
+        scope: string
+        css: string
+    }
+
+    // Raw global CSS emitted once into the shared WDoc stylesheet.
+    schema "global_css" {
+        css: string
+    }
+
+    // First-class font asset declaration. The referenced font file is copied
+    // to the build output when the generated @font-face rule is emitted.
+    schema "font_asset" {
+        family: string
+        src: string
+        weight: string @optional
+        style: string @optional
+        display: string @optional
+    }
+
+    // --- Diagram and shape schemas ---
+
+    namespace draw {
+
+        // diagram has no @template — it's special-cased by the wdoc renderer so
+        // shape template dispatch can run with the full context.
+        @open
+        schema "diagram" {
+            width: i32 @optional
+            height: i32 @optional
+        }
+
+        // Primitive shapes — handled directly by the renderer, no template fn.
+        @open schema "rect" { }
+        @open schema "circle" { }
+        @open schema "ellipse" { }
+        @open schema "line" { }
+        @open schema "path" { }
+        @open schema "text" { }
+        @open
+        schema "inline_svg" {
+            src: string @optional
+            content: string @optional
+            stroke: string @optional
+            fill: string @optional
+            stroke_width: f64 @optional
+            class: string @optional
+            opacity: f64 @optional
+        }
+        @open
+        schema "image" {
+            src: string
+            fit: string @optional @default("contain")
+            alt: string @optional
+            opacity: f64 @optional
+            rx: f64 @optional
+            ry: f64 @optional
+            tile_width: f64 @optional
+            tile_height: f64 @optional
+        }
+        @open schema "group" { }
+        @open schema "connection" { }
+        @open schema "class" { }
+        @parent(["wdoc::draw::class"]) @open schema "state" { }
+        @parent(["wdoc::draw::class"]) @open schema "animation" { }
+        @parent(["wdoc::draw::animation"]) @open schema "keyframe" { }
+        @parent([
+            "wdoc::draw::rect",
+            "wdoc::draw::circle",
+            "wdoc::draw::ellipse",
+            "wdoc::draw::line",
+            "wdoc::draw::path",
+            "wdoc::draw::text",
+            "wdoc::draw::inline_svg",
+            "wdoc::draw::image",
+            "wdoc::draw::group",
+            "wdoc::draw::phone",
+            "wdoc::draw::browser",
+            "wdoc::draw::button",
+            "wdoc::draw::input",
+            "wdoc::draw::card",
+            "wdoc::draw::avatar",
+            "wdoc::draw::toggle",
+            "wdoc::draw::badge",
+            "wdoc::draw::navbar",
+            "wdoc::draw::flow_process",
+            "wdoc::draw::flow_decision",
+            "wdoc::draw::flow_terminal",
+            "wdoc::draw::flow_io",
+            "wdoc::draw::flow_subprocess",
+            "wdoc::draw::c4_person",
+            "wdoc::draw::c4_system",
+            "wdoc::draw::c4_container",
+            "wdoc::draw::c4_component",
+            "wdoc::draw::c4_boundary",
+            "wdoc::draw::uml_class",
+            "wdoc::draw::uml_actor",
+            "wdoc::draw::uml_package",
+            "wdoc::draw::uml_note",
+            "wdoc::draw::server",
+            "wdoc::draw::database",
+            "wdoc::draw::cloud",
+            "wdoc::draw::user"
+        ])
+        @open schema "event" {
+            trigger: string
+            state: string
+            target: string @optional
+            button: string @optional
+            mode: string @optional
+            duration_ms: i32 @optional
+            prevent_default: bool @optional
+        }
+
+        // --- Composite widgets ---
+        // Each widget is bound to a `@template("shape", "fn")` function defined
+        // in WCL further down this file. The dispatcher calls the function with
+        // the widget's BlockRef and converts the returned list of shape
+        // descriptors into the widget's child shapes.
+
+        @template("shape", "wdoc::widget_phone")    @open schema "phone" { }
+        @template("shape", "wdoc::widget_browser")  @open schema "browser" { }
+        @template("shape", "wdoc::widget_button")   @open schema "button" { }
+        @template("shape", "wdoc::widget_input")    @open schema "input" { }
+        @template("shape", "wdoc::widget_card")     @open schema "card" { }
+        @template("shape", "wdoc::widget_avatar")   @open schema "avatar" { }
+        @template("shape", "wdoc::widget_toggle")   @open schema "toggle" { }
+        @template("shape", "wdoc::widget_badge")    @open schema "badge" { }
+        @template("shape", "wdoc::widget_navbar")   @open schema "navbar" { }
+
+        @template("shape", "wdoc::widget_flow_process")    @open schema "flow_process" { }
+        @template("shape", "wdoc::widget_flow_decision")   @open schema "flow_decision" { }
+        @template("shape", "wdoc::widget_flow_terminal")   @open schema "flow_terminal" { }
+        @template("shape", "wdoc::widget_flow_io")         @open schema "flow_io" { }
+        @template("shape", "wdoc::widget_flow_subprocess") @open schema "flow_subprocess" { }
+
+        @template("shape", "wdoc::widget_c4_person")    @open schema "c4_person" { }
+        @template("shape", "wdoc::widget_c4_system")    @open schema "c4_system" { }
+        @template("shape", "wdoc::widget_c4_container") @open schema "c4_container" { }
+        @template("shape", "wdoc::widget_c4_component") @open schema "c4_component" { }
+        @template("shape", "wdoc::widget_c4_boundary")  @open schema "c4_boundary" { }
+
+        @template("shape", "wdoc::widget_uml_class")   @open schema "uml_class" { }
+        @template("shape", "wdoc::widget_uml_actor")   @open schema "uml_actor" { }
+        @template("shape", "wdoc::widget_uml_package") @open schema "uml_package" { }
+        @template("shape", "wdoc::widget_uml_note")    @open schema "uml_note" { }
+
+        @template("shape", "wdoc::widget_server")   @open schema "server" { }
+        @template("shape", "wdoc::widget_database") @open schema "database" { }
+        @template("shape", "wdoc::widget_cloud")    @open schema "cloud" { }
+        @template("shape", "wdoc::widget_user")     @open schema "user" { }
+
+    }
+
+    // --- Decorator schemas ---
+
+    decorator_schema "style" {
+        target = [block]
+        name: string
+    }
+
+    // --- Inline formatting functions ---
+
+    declare bold(text: string) -> string
+    declare italic(text: string) -> string
+    declare link(text: string, url: string) -> string
+    declare icon(name: string, size: string, color: string) -> string
+    declare measure_text(text: any) -> map(string, any)
+
+    // --- Template rendering functions ---
+
+    declare render_callout(block: any) -> string
+    declare render_heading(block: any) -> string
+    declare render_h1(block: any) -> string
+    declare render_h2(block: any) -> string
+    declare render_h3(block: any) -> string
+    declare render_h4(block: any) -> string
+    declare render_h5(block: any) -> string
+    declare render_h6(block: any) -> string
+    declare render_paragraph(block: any) -> string
+    declare render_image(block: any) -> string
+    declare render_code(block: any) -> string
+    declare render_table(block: any) -> string
+
+    // ----------------------------------------------------------------------
+    // Widget shape templates
+    // ----------------------------------------------------------------------
+    //
+    // Each widget below is a function that takes a block (the WCL block the
+    // user wrote in their diagram) and returns a list of "shape descriptors":
+    // maps with a `kind` field plus positioning and visual attributes. The
+    // wdoc renderer converts these descriptors into the widget's child shapes
+    // before resolving layout and emitting SVG.
+    //
+    // Recognized descriptor fields:
+    //   kind     — "rect" | "circle" | "ellipse" | "line" | "path" | "text" |
+    //              "inline_svg" | "image" | "group" | "connection"
+    //   id       — shape ID for layout and connection endpoints
+    //   x, y, width, height       — absolute placement (relative to widget)
+    //   top, bottom, left, right  — anchored placement
+    //   align, gap, padding       — layout for nested children
+    //   layout_role               — "node" opts template children into parent layout
+    //   z_index                   — sibling paint order, higher renders later
+    //   rx, ry, r                 — corner / radius
+    //   fill, stroke, stroke_width, stroke_dasharray, opacity
+    //   class, style, cursor, pointer_events
+    //   x1, y1, x2, y2 (line) | d (path)
+    //   from, to, direction, label, curve, from_anchor, to_anchor (connection)
+    //   content, font_size, anchor, font_family, font_weight, font_style,
+    //   line_height, text_decoration, letter_spacing (text)
+    //   children                  — list of more descriptors (nested)
+    //
+    // Use `attr_or(block, "key", default)` to read user attributes safely.
+
+    // ----- UI widgets -----

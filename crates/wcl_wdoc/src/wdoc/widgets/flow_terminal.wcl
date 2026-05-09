@@ -1,0 +1,13 @@
+    export let widget_flow_terminal = (b) => {
+        let w = attr_or(b, "width", 130)
+        let h = attr_or(b, "height", 40)
+        let label = attr_or(b, "label", "Start")
+        let color = attr_or(b, "color", "var(--color-link)")
+        let bg_fill = attr_or(b, "background_fill", color)
+        let label_fill = attr_or(b, "label_fill", "#fff")
+        [
+            { kind = "rect", x = 0, y = 0, width = w, height = h, rx = h / 2, fill = bg_fill },
+            { kind = "text", x = 0, y = 0, width = w, height = h,
+              content = label, font_size = 13, fill = label_fill }
+        ]
+    }

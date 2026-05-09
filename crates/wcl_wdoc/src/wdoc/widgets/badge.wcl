@@ -1,0 +1,15 @@
+    export let widget_badge = (b) => {
+        let w = attr_or(b, "width", 60)
+        let h = attr_or(b, "height", 20)
+        let label = attr_or(b, "label", "badge")
+        let color = attr_or(b, "color", "var(--color-link)")
+        let bg_fill = attr_or(b, "background_fill", color)
+        let label_fill = attr_or(b, "label_fill", color)
+        let bg_opacity = attr_or(b, "background_opacity", 0.15)
+        [
+            { kind = "rect", x = 0, y = 0, width = w, height = h, rx = h / 2,
+              fill = bg_fill, opacity = bg_opacity },
+            { kind = "text", x = 0, y = 0, width = w, height = h,
+              content = label, font_size = 11, fill = label_fill }
+        ]
+    }
