@@ -332,12 +332,17 @@ namespace wdoc {
         let h = attr_or(b, "height", 38)
         let label = attr_or(b, "label", "Button")
         let variant = attr_or(b, "variant", "primary")
-        let fill = variant == "secondary" ? "var(--color-nav-bg)" : (variant == "outline" ? "none" : "var(--color-link)")
-        let stroke = variant == "secondary" ? "var(--color-nav-border)" : "var(--color-link)"
-        let text_fill = variant == "primary" ? "#fff" : (variant == "outline" ? "var(--color-link)" : "currentColor")
+        let default_fill = variant == "secondary" ? "var(--color-nav-bg)" : (variant == "outline" ? "none" : "var(--color-link)")
+        let default_stroke = variant == "secondary" ? "var(--color-nav-border)" : "var(--color-link)"
+        let default_text_fill = variant == "primary" ? "#fff" : (variant == "outline" ? "var(--color-link)" : "currentColor")
+        let fill = attr_or(b, "background_fill", default_fill)
+        let stroke = attr_or(b, "border_stroke", default_stroke)
+        let text_fill = attr_or(b, "label_fill", default_text_fill)
+        let radius = attr_or(b, "radius", 6)
+        let border_width = attr_or(b, "border_width", 1.5)
         [
-            { kind = "rect", x = 0, y = 0, width = w, height = h, rx = 6,
-              fill = fill, stroke = stroke, stroke_width = 1.5 },
+            { kind = "rect", x = 0, y = 0, width = w, height = h, rx = radius,
+              fill = fill, stroke = stroke, stroke_width = border_width },
             { kind = "text", x = 0, y = 0, width = w, height = h,
               content = label, font_size = 13, fill = text_fill }
         ]
@@ -349,18 +354,25 @@ namespace wdoc {
         let title = attr_or(b, "title", "App")
         let status = attr_or(b, "status_text", "9:41")
         let hdr_fill = attr_or(b, "header_fill", "var(--color-link)")
+        let surface_fill = attr_or(b, "surface_fill", "var(--color-bg)")
+        let border_stroke = attr_or(b, "border_stroke", "var(--color-nav-border)")
+        let border_width = attr_or(b, "border_width", 3)
+        let radius = attr_or(b, "radius", 20)
+        let header_label_fill = attr_or(b, "header_label_fill", "#fff")
+        let footer_fill = attr_or(b, "footer_fill", "var(--color-nav-bg)")
+        let indicator_fill = attr_or(b, "indicator_fill", "var(--color-nav-border)")
         [
-            { kind = "rect", x = 0, y = 0, width = w, height = h, rx = 20,
-              fill = "var(--color-bg)", stroke = "var(--color-nav-border)", stroke_width = 3 },
+            { kind = "rect", x = 0, y = 0, width = w, height = h, rx = radius,
+              fill = surface_fill, stroke = border_stroke, stroke_width = border_width },
             { kind = "text", x = 20, y = 5, width = 60, height = 20,
               content = status, font_size = 10, anchor = "start" },
             { kind = "rect", x = 0, y = 30, width = w, height = 44, fill = hdr_fill },
             { kind = "text", x = 0, y = 30, width = w, height = 44,
-              content = title, font_size = 16, fill = "#fff" },
+              content = title, font_size = 16, fill = header_label_fill },
             { kind = "rect", x = 0, y = h - 50, width = w, height = 50,
-              fill = "var(--color-nav-bg)", stroke = "var(--color-nav-border)", stroke_width = 1 },
+              fill = footer_fill, stroke = border_stroke, stroke_width = 1 },
             { kind = "rect", x = (w - 80) / 2, y = h - 12, width = 80, height = 4,
-              rx = 2, fill = "var(--color-nav-border)" }
+              rx = 2, fill = indicator_fill }
         ]
     }
 
@@ -369,22 +381,30 @@ namespace wdoc {
         let h = attr_or(b, "height", 200)
         let url = attr_or(b, "url", "https://example.com")
         let title = attr_or(b, "title", "Browser")
+        let surface_fill = attr_or(b, "surface_fill", "var(--color-bg)")
+        let border_stroke = attr_or(b, "border_stroke", "var(--color-nav-border)")
+        let chrome_fill = attr_or(b, "chrome_fill", "var(--color-nav-bg)")
+        let address_fill = attr_or(b, "address_fill", "var(--color-code-bg)")
+        let address_stroke = attr_or(b, "address_stroke", border_stroke)
+        let title_fill = attr_or(b, "title_fill", "currentColor")
+        let url_fill = attr_or(b, "url_fill", "currentColor")
+        let radius = attr_or(b, "radius", 8)
         [
-            { kind = "rect", x = 0, y = 0, width = w, height = h, rx = 8,
-              fill = "var(--color-bg)", stroke = "var(--color-nav-border)", stroke_width = 2 },
-            { kind = "rect", x = 0, y = 0, width = w, height = 36, rx = 8,
-              fill = "var(--color-nav-bg)" },
-            { kind = "rect", x = 0, y = 28, width = w, height = 10, fill = "var(--color-nav-bg)" },
-            { kind = "circle", x = 10, y = 8, r = 6, fill = "#ff5f56" },
-            { kind = "circle", x = 28, y = 8, r = 6, fill = "#ffbd2e" },
-            { kind = "circle", x = 46, y = 8, r = 6, fill = "#27c93f" },
+            { kind = "rect", x = 0, y = 0, width = w, height = h, rx = radius,
+              fill = surface_fill, stroke = border_stroke, stroke_width = 2 },
+            { kind = "rect", x = 0, y = 0, width = w, height = 36, rx = radius,
+              fill = chrome_fill },
+            { kind = "rect", x = 0, y = 28, width = w, height = 10, fill = chrome_fill },
+            { kind = "circle", x = 10, y = 8, r = 6, fill = attr_or(b, "close_fill", "#ff5f56") },
+            { kind = "circle", x = 28, y = 8, r = 6, fill = attr_or(b, "minimize_fill", "#ffbd2e") },
+            { kind = "circle", x = 46, y = 8, r = 6, fill = attr_or(b, "maximize_fill", "#27c93f") },
             { kind = "rect", x = 66, y = 6, width = 140, height = 24, rx = 4,
-              fill = "var(--color-bg)", stroke = "var(--color-nav-border)", stroke_width = 1 },
-            { kind = "text", x = 66, y = 6, width = 140, height = 24, content = title, font_size = 10 },
+              fill = surface_fill, stroke = border_stroke, stroke_width = 1 },
+            { kind = "text", x = 66, y = 6, width = 140, height = 24, content = title, font_size = 10, fill = title_fill },
             { kind = "rect", x = 8, y = 42, width = w - 16, height = 26, rx = 4,
-              fill = "var(--color-code-bg)", stroke = "var(--color-nav-border)", stroke_width = 1 },
+              fill = address_fill, stroke = address_stroke, stroke_width = 1 },
             { kind = "text", x = 20, y = 42, width = w - 40, height = 26,
-              content = url, font_size = 11, anchor = "start", opacity = 0.6 }
+              content = url, font_size = 11, anchor = "start", fill = url_fill, opacity = 0.6 }
         ]
     }
 
@@ -396,13 +416,19 @@ namespace wdoc {
         let has_label = label != ""
         let field_y = has_label ? 18 : 0
         let field_h = has_label ? h - 18 : h
+        let label_fill = attr_or(b, "label_fill", "currentColor")
+        let placeholder_fill = attr_or(b, "placeholder_fill", "currentColor")
+        let field_fill = attr_or(b, "field_fill", attr_or(b, "surface_fill", "var(--color-code-bg)"))
+        let border_stroke = attr_or(b, "border_stroke", "var(--color-nav-border)")
+        let radius = attr_or(b, "radius", 6)
+        let border_width = attr_or(b, "border_width", 1)
         let label_part = has_label ? [{ kind = "text", x = 0, y = 0, width = w, height = 16,
-            content = label, font_size = 11, anchor = "start" }] : []
+            content = label, font_size = 11, anchor = "start", fill = label_fill }] : []
         let placeholder_part = placeholder != "" ? [{ kind = "text", x = 10, y = field_y,
             width = w - 20, height = field_h, content = placeholder, font_size = 12,
-            anchor = "start", opacity = 0.4 }] : []
-        let field = [{ kind = "rect", x = 0, y = field_y, width = w, height = field_h, rx = 6,
-            fill = "var(--color-code-bg)", stroke = "var(--color-nav-border)", stroke_width = 1 }]
+            anchor = "start", fill = placeholder_fill, opacity = attr_or(b, "placeholder_opacity", 0.4) }] : []
+        let field = [{ kind = "rect", x = 0, y = field_y, width = w, height = field_h, rx = radius,
+            fill = field_fill, stroke = border_stroke, stroke_width = border_width }]
         concat(concat(label_part, field), placeholder_part)
     }
 
@@ -410,13 +436,19 @@ namespace wdoc {
         let w = attr_or(b, "width", 300)
         let h = attr_or(b, "height", 200)
         let title = attr_or(b, "title", "")
-        let frame = [{ kind = "rect", x = 0, y = 0, width = w, height = h, rx = 8,
-            fill = "var(--color-bg)", stroke = "var(--color-nav-border)", stroke_width = 1.5 }]
+        let surface_fill = attr_or(b, "surface_fill", "var(--color-bg)")
+        let border_stroke = attr_or(b, "border_stroke", "var(--color-nav-border)")
+        let title_fill = attr_or(b, "title_fill", "currentColor")
+        let separator_stroke = attr_or(b, "separator_stroke", border_stroke)
+        let radius = attr_or(b, "radius", 8)
+        let border_width = attr_or(b, "border_width", 1.5)
+        let frame = [{ kind = "rect", x = 0, y = 0, width = w, height = h, rx = radius,
+            fill = surface_fill, stroke = border_stroke, stroke_width = border_width }]
         let header = title != "" ? [
             { kind = "text", x = 12, y = 6, width = w - 24, height = 20,
-              content = title, font_size = 14, anchor = "start" },
+              content = title, font_size = 14, anchor = "start", fill = title_fill },
             { kind = "line", x1 = 0, y1 = 30, x2 = w, y2 = 30,
-              stroke = "var(--color-nav-border)", stroke_width = 1 }
+              stroke = separator_stroke, stroke_width = 1 }
         ] : []
         concat(frame, header)
     }
@@ -425,11 +457,13 @@ namespace wdoc {
         let w = attr_or(b, "width", 40)
         let initials = attr_or(b, "initials", "?")
         let color = attr_or(b, "color", "var(--color-link)")
+        let bg_fill = attr_or(b, "background_fill", color)
+        let label_fill = attr_or(b, "label_fill", "#fff")
         let r = w / 2
         [
-            { kind = "circle", x = 0, y = 0, r = r, fill = color },
+            { kind = "circle", x = 0, y = 0, r = r, fill = bg_fill },
             { kind = "text", x = 0, y = 0, width = w, height = w,
-              content = initials, font_size = r, fill = "#fff" }
+              content = initials, font_size = r, fill = label_fill }
         ]
     }
 
@@ -437,11 +471,12 @@ namespace wdoc {
         let w = attr_or(b, "width", 44)
         let h = attr_or(b, "height", 24)
         let on = attr_or(b, "on", "false") == "true"
-        let bg = on ? "var(--color-link)" : "var(--color-nav-border)"
+        let bg = on ? attr_or(b, "on_fill", "var(--color-link)") : attr_or(b, "off_fill", "var(--color-nav-border)")
+        let knob_fill = attr_or(b, "knob_fill", "#fff")
         let knob_x = on ? w - h + 2 : 2
         [
             { kind = "rect", x = 0, y = 0, width = w, height = h, rx = h / 2, fill = bg },
-            { kind = "circle", x = knob_x, y = 2, r = (h - 6) / 2, fill = "#fff" }
+            { kind = "circle", x = knob_x, y = 2, r = (h - 6) / 2, fill = knob_fill }
         ]
     }
 
@@ -450,11 +485,14 @@ namespace wdoc {
         let h = attr_or(b, "height", 20)
         let label = attr_or(b, "label", "badge")
         let color = attr_or(b, "color", "var(--color-link)")
+        let bg_fill = attr_or(b, "background_fill", color)
+        let label_fill = attr_or(b, "label_fill", color)
+        let bg_opacity = attr_or(b, "background_opacity", 0.15)
         [
             { kind = "rect", x = 0, y = 0, width = w, height = h, rx = h / 2,
-              fill = color, opacity = 0.15 },
+              fill = bg_fill, opacity = bg_opacity },
             { kind = "text", x = 0, y = 0, width = w, height = h,
-              content = label, font_size = 11, fill = color }
+              content = label, font_size = 11, fill = label_fill }
         ]
     }
 
@@ -466,8 +504,13 @@ namespace wdoc {
         let items = split(",", items_str)
         let n = len(items)
         let item_w = w / n
+        let bg_fill = attr_or(b, "background_fill", "var(--color-nav-bg)")
+        let border_stroke = attr_or(b, "border_stroke", "var(--color-nav-border)")
+        let active_fill = attr_or(b, "active_fill", "var(--color-link)")
+        let label_fill = attr_or(b, "label_fill", "currentColor")
+        let active_indicator_fill = attr_or(b, "active_indicator_fill", active_fill)
         let bg = [{ kind = "rect", x = 0, y = 0, width = w, height = h,
-            fill = "var(--color-nav-bg)", stroke = "var(--color-nav-border)", stroke_width = 1 }]
+            fill = bg_fill, stroke = border_stroke, stroke_width = 1 }]
         let entries = map(range(0, n), (i) => {
             kind = "text",
             x = i * item_w,
@@ -476,10 +519,10 @@ namespace wdoc {
             height = h,
             content = trim(items[i]),
             font_size = 11,
-            fill = i == active ? "var(--color-link)" : "currentColor"
+            fill = i == active ? active_fill : label_fill
         })
         let active_underline = active >= 0 ? [{ kind = "rect", x = active * item_w, y = 0,
-            width = item_w, height = 3, fill = "var(--color-link)" }] : []
+            width = item_w, height = 3, fill = active_indicator_fill }] : []
         concat(concat(bg, active_underline), entries)
     }
 
@@ -490,11 +533,16 @@ namespace wdoc {
         let h = attr_or(b, "height", 50)
         let label = attr_or(b, "label", "Process")
         let color = attr_or(b, "color", "var(--color-link)")
+        let surface_fill = attr_or(b, "surface_fill", "var(--color-bg)")
+        let border_stroke = attr_or(b, "border_stroke", color)
+        let label_fill = attr_or(b, "label_fill", "currentColor")
+        let radius = attr_or(b, "radius", 4)
+        let border_width = attr_or(b, "border_width", 2)
         [
-            { kind = "rect", x = 0, y = 0, width = w, height = h, rx = 4,
-              fill = "var(--color-bg)", stroke = color, stroke_width = 2 },
+            { kind = "rect", x = 0, y = 0, width = w, height = h, rx = radius,
+              fill = surface_fill, stroke = border_stroke, stroke_width = border_width },
             { kind = "text", x = 0, y = 0, width = w, height = h,
-              content = label, font_size = 13 }
+              content = label, font_size = 13, fill = label_fill }
         ]
     }
 
@@ -503,12 +551,16 @@ namespace wdoc {
         let h = attr_or(b, "height", 80)
         let label = attr_or(b, "label", "?")
         let color = attr_or(b, "color", "var(--color-link)")
+        let surface_fill = attr_or(b, "surface_fill", "var(--color-bg)")
+        let border_stroke = attr_or(b, "border_stroke", color)
+        let label_fill = attr_or(b, "label_fill", "currentColor")
+        let border_width = attr_or(b, "border_width", 2)
         let cx = w / 2
         let cy = h / 2
         let d = "M " + to_string(cx) + " 0 L " + to_string(w) + " " + to_string(cy) + " L " + to_string(cx) + " " + to_string(h) + " L 0 " + to_string(cy) + " Z"
         [
-            { kind = "path", x = 0, y = 0, width = w, height = h, d = d, fill = "var(--color-bg)", stroke = color, stroke_width = 2 },
-            { kind = "text", x = 0, y = 0, width = w, height = h, content = label, font_size = 12 }
+            { kind = "path", x = 0, y = 0, width = w, height = h, d = d, fill = surface_fill, stroke = border_stroke, stroke_width = border_width },
+            { kind = "text", x = 0, y = 0, width = w, height = h, content = label, font_size = 12, fill = label_fill }
         ]
     }
 
@@ -517,10 +569,12 @@ namespace wdoc {
         let h = attr_or(b, "height", 40)
         let label = attr_or(b, "label", "Start")
         let color = attr_or(b, "color", "var(--color-link)")
+        let bg_fill = attr_or(b, "background_fill", color)
+        let label_fill = attr_or(b, "label_fill", "#fff")
         [
-            { kind = "rect", x = 0, y = 0, width = w, height = h, rx = h / 2, fill = color },
+            { kind = "rect", x = 0, y = 0, width = w, height = h, rx = h / 2, fill = bg_fill },
             { kind = "text", x = 0, y = 0, width = w, height = h,
-              content = label, font_size = 13, fill = "#fff" }
+              content = label, font_size = 13, fill = label_fill }
         ]
     }
 
@@ -529,11 +583,15 @@ namespace wdoc {
         let h = attr_or(b, "height", 50)
         let label = attr_or(b, "label", "I/O")
         let color = attr_or(b, "color", "var(--color-link)")
+        let surface_fill = attr_or(b, "surface_fill", "var(--color-bg)")
+        let border_stroke = attr_or(b, "border_stroke", color)
+        let label_fill = attr_or(b, "label_fill", "currentColor")
+        let border_width = attr_or(b, "border_width", 2)
         let s = w * 0.15
         let d = "M " + to_string(s) + " 0 L " + to_string(w) + " 0 L " + to_string(w - s) + " " + to_string(h) + " L 0 " + to_string(h) + " Z"
         [
-            { kind = "path", x = 0, y = 0, width = w, height = h, d = d, fill = "var(--color-bg)", stroke = color, stroke_width = 2 },
-            { kind = "text", x = 0, y = 0, width = w, height = h, content = label, font_size = 12 }
+            { kind = "path", x = 0, y = 0, width = w, height = h, d = d, fill = surface_fill, stroke = border_stroke, stroke_width = border_width },
+            { kind = "text", x = 0, y = 0, width = w, height = h, content = label, font_size = 12, fill = label_fill }
         ]
     }
 
@@ -542,13 +600,19 @@ namespace wdoc {
         let h = attr_or(b, "height", 50)
         let label = attr_or(b, "label", "Subprocess")
         let color = attr_or(b, "color", "var(--color-link)")
+        let surface_fill = attr_or(b, "surface_fill", "var(--color-bg)")
+        let border_stroke = attr_or(b, "border_stroke", color)
+        let label_fill = attr_or(b, "label_fill", "currentColor")
+        let radius = attr_or(b, "radius", 4)
+        let border_width = attr_or(b, "border_width", 2)
+        let separator_stroke = attr_or(b, "separator_stroke", border_stroke)
         [
-            { kind = "rect", x = 0, y = 0, width = w, height = h, rx = 4,
-              fill = "var(--color-bg)", stroke = color, stroke_width = 2 },
-            { kind = "line", x1 = 10, y1 = 0, x2 = 10, y2 = h, stroke = color, stroke_width = 1 },
-            { kind = "line", x1 = w - 10, y1 = 0, x2 = w - 10, y2 = h, stroke = color, stroke_width = 1 },
+            { kind = "rect", x = 0, y = 0, width = w, height = h, rx = radius,
+              fill = surface_fill, stroke = border_stroke, stroke_width = border_width },
+            { kind = "line", x1 = 10, y1 = 0, x2 = 10, y2 = h, stroke = separator_stroke, stroke_width = 1 },
+            { kind = "line", x1 = w - 10, y1 = 0, x2 = w - 10, y2 = h, stroke = separator_stroke, stroke_width = 1 },
             { kind = "text", x = 0, y = 0, width = w, height = h,
-              content = label, font_size = 13 }
+              content = label, font_size = 13, fill = label_fill }
         ]
     }
 
@@ -560,17 +624,20 @@ namespace wdoc {
         let name = attr_or(b, "label", "Person")
         let desc = attr_or(b, "description", "")
         let color = attr_or(b, "color", "var(--color-link)")
+        let bg_fill = attr_or(b, "background_fill", color)
+        let label_fill = attr_or(b, "label_fill", "#fff")
+        let muted_fill = attr_or(b, "muted_fill", label_fill)
         let hr = 18
         let by = hr * 2 + 4
         let base = [
-            { kind = "circle", x = w / 2 - hr, y = 0, r = hr, fill = color },
-            { kind = "rect", x = 0, y = by, width = w, height = h - by, rx = 4, fill = color },
+            { kind = "circle", x = w / 2 - hr, y = 0, r = hr, fill = bg_fill },
+            { kind = "rect", x = 0, y = by, width = w, height = h - by, rx = 4, fill = bg_fill },
             { kind = "text", x = 0, y = by, width = w, height = 22,
-              content = name, font_size = 14, fill = "#fff" }
+              content = name, font_size = 14, fill = label_fill }
         ]
         let desc_part = desc != "" ? [{ kind = "text", x = 4, y = by + 22,
             width = w - 8, height = 16, content = desc, font_size = 10,
-            fill = "#fff", opacity = 0.8 }] : []
+            fill = muted_fill, opacity = 0.8 }] : []
         concat(base, desc_part)
     }
 
@@ -581,19 +648,23 @@ namespace wdoc {
         let desc = attr_or(b, "description", "")
         let color = attr_or(b, "color", "var(--color-link)")
         let ext = attr_or(b, "external", "false") == "true"
+        let bg_fill = attr_or(b, "background_fill", color)
+        let label_fill = attr_or(b, "label_fill", "#fff")
+        let muted_fill = attr_or(b, "muted_fill", label_fill)
+        let border_stroke = attr_or(b, "border_stroke", bg_fill)
         let tag = ext ? "[External System]" : "[System]"
         let dash = ext ? "5,3" : ""
         let base = [
             { kind = "rect", x = 0, y = 0, width = w, height = h, rx = 8,
-              fill = color, stroke_dasharray = dash },
+              fill = bg_fill, stroke = border_stroke, stroke_dasharray = dash },
             { kind = "text", x = 0, y = 8, width = w, height = 22,
-              content = name, font_size = 15, fill = "#fff" },
+              content = name, font_size = 15, fill = label_fill },
             { kind = "text", x = 0, y = 28, width = w, height = 14,
-              content = tag, font_size = 10, fill = "#fff", opacity = 0.7 }
+              content = tag, font_size = 10, fill = muted_fill, opacity = 0.7 }
         ]
         let desc_part = desc != "" ? [{ kind = "text", x = 6, y = 46,
             width = w - 12, height = 16, content = desc, font_size = 10,
-            fill = "#fff", opacity = 0.85 }] : []
+            fill = muted_fill, opacity = 0.85 }] : []
         concat(base, desc_part)
     }
 
@@ -604,17 +675,20 @@ namespace wdoc {
         let tech = attr_or(b, "technology", "")
         let desc = attr_or(b, "description", "")
         let color = attr_or(b, "color", "#438DD5")
+        let bg_fill = attr_or(b, "background_fill", color)
+        let label_fill = attr_or(b, "label_fill", "#fff")
+        let muted_fill = attr_or(b, "muted_fill", label_fill)
         let base = [
-            { kind = "rect", x = 0, y = 0, width = w, height = h, rx = 6, fill = color },
+            { kind = "rect", x = 0, y = 0, width = w, height = h, rx = 6, fill = bg_fill },
             { kind = "text", x = 0, y = 8, width = w, height = 20,
-              content = name, font_size = 14, fill = "#fff" }
+              content = name, font_size = 14, fill = label_fill }
         ]
         let tech_part = tech != "" ? [{ kind = "text", x = 0, y = 26,
             width = w, height = 14, content = "[" + tech + "]", font_size = 10,
-            fill = "#fff", opacity = 0.7 }] : []
+            fill = muted_fill, opacity = 0.7 }] : []
         let desc_part = desc != "" ? [{ kind = "text", x = 6, y = 44,
             width = w - 12, height = 16, content = desc, font_size = 10,
-            fill = "#fff", opacity = 0.85 }] : []
+            fill = muted_fill, opacity = 0.85 }] : []
         concat(concat(base, tech_part), desc_part)
     }
 
@@ -624,14 +698,17 @@ namespace wdoc {
         let name = attr_or(b, "label", "Component")
         let tech = attr_or(b, "technology", "")
         let color = attr_or(b, "color", "#85BBF0")
+        let bg_fill = attr_or(b, "background_fill", color)
+        let label_fill = attr_or(b, "label_fill", "#fff")
+        let muted_fill = attr_or(b, "muted_fill", label_fill)
         let base = [
-            { kind = "rect", x = 0, y = 0, width = w, height = h, rx = 4, fill = color },
+            { kind = "rect", x = 0, y = 0, width = w, height = h, rx = 4, fill = bg_fill },
             { kind = "text", x = 0, y = 6, width = w, height = 18,
-              content = name, font_size = 13, fill = "#fff" }
+              content = name, font_size = 13, fill = label_fill }
         ]
         let tech_part = tech != "" ? [{ kind = "text", x = 0, y = 24,
             width = w, height = 14, content = "[" + tech + "]", font_size = 9,
-            fill = "#fff", opacity = 0.7 }] : []
+            fill = muted_fill, opacity = 0.7 }] : []
         concat(base, tech_part)
     }
 
@@ -640,11 +717,13 @@ namespace wdoc {
         let h = attr_or(b, "height", 120)
         let name = attr_or(b, "label", "Boundary")
         let color = attr_or(b, "color", "var(--color-nav-border)")
+        let border_stroke = attr_or(b, "border_stroke", color)
+        let label_fill = attr_or(b, "label_fill", "currentColor")
         [
             { kind = "rect", x = 0, y = 0, width = w, height = h, rx = 4,
-              fill = "none", stroke = color, stroke_width = 2, stroke_dasharray = "8,4" },
+              fill = attr_or(b, "surface_fill", "none"), stroke = border_stroke, stroke_width = 2, stroke_dasharray = "8,4" },
             { kind = "text", x = 8, y = 4, width = w - 16, height = 18,
-              content = name, font_size = 12, anchor = "start" }
+              content = name, font_size = 12, anchor = "start", fill = label_fill }
         ]
     }
 
@@ -658,6 +737,13 @@ namespace wdoc {
         let fields_str = attr_or(b, "fields", "")
         let methods_str = attr_or(b, "methods", "")
         let color = attr_or(b, "color", "var(--color-link)")
+        let surface_fill = attr_or(b, "surface_fill", "var(--color-bg)")
+        let header_fill = attr_or(b, "header_fill", color)
+        let border_stroke = attr_or(b, "border_stroke", color)
+        let header_label_fill = attr_or(b, "header_label_fill", "#fff")
+        let text_fill = attr_or(b, "text_fill", "currentColor")
+        let muted_fill = attr_or(b, "muted_fill", header_label_fill)
+        let separator_stroke = attr_or(b, "separator_stroke", border_stroke)
         let has_st = stereotype != ""
         let hdr_h = has_st ? 40 : 28
         let fields = fields_str != "" ? split("|", fields_str) : []
@@ -667,24 +753,24 @@ namespace wdoc {
         let field_h = (nf * 16) > 16 ? nf * 16 : 16
         let frame = [
             { kind = "rect", x = 0, y = 0, width = w, height = h,
-              fill = "var(--color-bg)", stroke = color, stroke_width = 2 },
-            { kind = "rect", x = 0, y = 0, width = w, height = hdr_h, fill = color }
+              fill = surface_fill, stroke = border_stroke, stroke_width = 2 },
+            { kind = "rect", x = 0, y = 0, width = w, height = hdr_h, fill = header_fill }
         ]
         let stereo_part = has_st ? [{ kind = "text", x = 0, y = 4, width = w, height = 14,
-            content = "<<" + stereotype + ">>", font_size = 9, fill = "#fff", opacity = 0.8 }] : []
+            content = "<<" + stereotype + ">>", font_size = 9, fill = muted_fill, opacity = 0.8 }] : []
         let name_y = has_st ? 18 : 4
         let name_part = [{ kind = "text", x = 0, y = name_y, width = w, height = 20,
-            content = name, font_size = 14, fill = "#fff" }]
-        let sep1 = [{ kind = "line", x1 = 0, y1 = hdr_h, x2 = w, y2 = hdr_h, stroke = color, stroke_width = 1 }]
+            content = name, font_size = 14, fill = header_label_fill }]
+        let sep1 = [{ kind = "line", x1 = 0, y1 = hdr_h, x2 = w, y2 = hdr_h, stroke = separator_stroke, stroke_width = 1 }]
         let field_lines = map(range(0, nf), (i) => {
             kind = "text", x = 8, y = hdr_h + 4 + i * 16, width = w - 16, height = 14,
-            content = trim(fields[i]), font_size = 11, anchor = "start"
+            content = trim(fields[i]), font_size = 11, anchor = "start", fill = text_fill
         })
         let my_start = hdr_h + field_h + 4
-        let sep2 = [{ kind = "line", x1 = 0, y1 = my_start, x2 = w, y2 = my_start, stroke = color, stroke_width = 1 }]
+        let sep2 = [{ kind = "line", x1 = 0, y1 = my_start, x2 = w, y2 = my_start, stroke = separator_stroke, stroke_width = 1 }]
         let method_lines = map(range(0, nm), (i) => {
             kind = "text", x = 8, y = my_start + 4 + i * 16, width = w - 16, height = 14,
-            content = trim(methods[i]), font_size = 11, anchor = "start"
+            content = trim(methods[i]), font_size = 11, anchor = "start", fill = text_fill
         })
         concat(concat(concat(concat(concat(concat(frame, stereo_part), name_part), sep1), field_lines), sep2), method_lines)
     }
@@ -694,6 +780,8 @@ namespace wdoc {
         let h = attr_or(b, "height", 100)
         let name = attr_or(b, "label", "Actor")
         let color = attr_or(b, "color", "currentColor")
+        let stroke = attr_or(b, "border_stroke", color)
+        let label_fill = attr_or(b, "label_fill", "currentColor")
         let cx = w / 2
         let hr = h * 0.12
         let bt = hr * 2 + 2
@@ -702,16 +790,16 @@ namespace wdoc {
         let ly = h * 0.78
         [
             { kind = "circle", x = cx - hr, y = 0, r = hr,
-              fill = "none", stroke = color, stroke_width = 2 },
-            { kind = "line", x1 = cx, y1 = bt, x2 = cx, y2 = bm, stroke = color, stroke_width = 2 },
+              fill = "none", stroke = stroke, stroke_width = 2 },
+            { kind = "line", x1 = cx, y1 = bt, x2 = cx, y2 = bm, stroke = stroke, stroke_width = 2 },
             { kind = "line", x1 = cx - w * 0.3, y1 = ay, x2 = cx + w * 0.3, y2 = ay,
-              stroke = color, stroke_width = 2 },
+              stroke = stroke, stroke_width = 2 },
             { kind = "line", x1 = cx, y1 = bm, x2 = cx - w * 0.25, y2 = ly,
-              stroke = color, stroke_width = 2 },
+              stroke = stroke, stroke_width = 2 },
             { kind = "line", x1 = cx, y1 = bm, x2 = cx + w * 0.25, y2 = ly,
-              stroke = color, stroke_width = 2 },
+              stroke = stroke, stroke_width = 2 },
             { kind = "text", x = 0, y = h * 0.82, width = w, height = h * 0.18,
-              content = name, font_size = 11 }
+              content = name, font_size = 11, fill = label_fill }
         ]
     }
 
@@ -720,13 +808,16 @@ namespace wdoc {
         let h = attr_or(b, "height", 130)
         let name = attr_or(b, "label", "Package")
         let color = attr_or(b, "color", "var(--color-link)")
+        let surface_fill = attr_or(b, "surface_fill", "var(--color-bg)")
+        let border_stroke = attr_or(b, "border_stroke", color)
+        let label_fill = attr_or(b, "label_fill", "currentColor")
         let tw = w * 0.4
         [
             { kind = "rect", x = 0, y = 0, width = tw, height = 20,
-              fill = "var(--color-bg)", stroke = color, stroke_width = 1.5 },
-            { kind = "text", x = 0, y = 0, width = tw, height = 20, content = name, font_size = 11 },
+              fill = surface_fill, stroke = border_stroke, stroke_width = 1.5 },
+            { kind = "text", x = 0, y = 0, width = tw, height = 20, content = name, font_size = 11, fill = label_fill },
             { kind = "rect", x = 0, y = 19, width = w, height = h - 19,
-              fill = "var(--color-bg)", stroke = color, stroke_width = 1.5 }
+              fill = surface_fill, stroke = border_stroke, stroke_width = 1.5 }
         ]
     }
 
@@ -735,13 +826,16 @@ namespace wdoc {
         let h = attr_or(b, "height", 80)
         let label = attr_or(b, "label", "Note")
         let color = attr_or(b, "color", "var(--color-nav-border)")
+        let surface_fill = attr_or(b, "surface_fill", "var(--color-code-bg)")
+        let border_stroke = attr_or(b, "border_stroke", color)
+        let label_fill = attr_or(b, "label_fill", "currentColor")
         let fold = 15
         let body_d = "M 0 0 L " + to_string(w - fold) + " 0 L " + to_string(w) + " " + to_string(fold) + " L " + to_string(w) + " " + to_string(h) + " L 0 " + to_string(h) + " Z"
         let corner_d = "M " + to_string(w - fold) + " 0 L " + to_string(w - fold) + " " + to_string(fold) + " L " + to_string(w) + " " + to_string(fold)
         [
-            { kind = "path", x = 0, y = 0, width = w, height = h, d = body_d, fill = "var(--color-code-bg)", stroke = color, stroke_width = 1.5 },
-            { kind = "path", x = 0, y = 0, width = w, height = h, d = corner_d, fill = "none", stroke = color, stroke_width = 1 },
-            { kind = "text", x = 8, y = 8, width = w - 16, height = h - 16, content = label, font_size = 11, anchor = "start" }
+            { kind = "path", x = 0, y = 0, width = w, height = h, d = body_d, fill = surface_fill, stroke = border_stroke, stroke_width = 1.5 },
+            { kind = "path", x = 0, y = 0, width = w, height = h, d = corner_d, fill = "none", stroke = border_stroke, stroke_width = 1 },
+            { kind = "text", x = 8, y = 8, width = w - 16, height = h - 16, content = label, font_size = 11, anchor = "start", fill = label_fill }
         ]
     }
 
@@ -752,18 +846,23 @@ namespace wdoc {
         let h = attr_or(b, "height", 110)
         let name = attr_or(b, "label", "Server")
         let color = attr_or(b, "color", "var(--color-link)")
+        let surface_fill = attr_or(b, "surface_fill", "var(--color-code-bg)")
+        let row_fill = attr_or(b, "row_fill", "var(--color-nav-bg)")
+        let border_stroke = attr_or(b, "border_stroke", color)
+        let label_fill = attr_or(b, "label_fill", "currentColor")
+        let indicator_fill = attr_or(b, "indicator_fill", "#28a745")
         let rh = h * 0.6
         [
             { kind = "rect", x = 0, y = 0, width = w, height = rh, rx = 4,
-              fill = "var(--color-code-bg)", stroke = color, stroke_width = 2 },
+              fill = surface_fill, stroke = border_stroke, stroke_width = 2 },
             { kind = "rect", x = 6, y = 6, width = w - 12, height = rh * 0.25, rx = 2,
-              fill = "var(--color-nav-bg)", stroke = color, stroke_width = 1 },
+              fill = row_fill, stroke = border_stroke, stroke_width = 1 },
             { kind = "rect", x = 6, y = 6 + rh * 0.32, width = w - 12, height = rh * 0.25, rx = 2,
-              fill = "var(--color-nav-bg)", stroke = color, stroke_width = 1 },
-            { kind = "circle", x = w - 18, y = 8, r = 3, fill = "#28a745" },
-            { kind = "circle", x = w - 18, y = 8 + rh * 0.32, r = 3, fill = "#28a745" },
+              fill = row_fill, stroke = border_stroke, stroke_width = 1 },
+            { kind = "circle", x = w - 18, y = 8, r = 3, fill = indicator_fill },
+            { kind = "circle", x = w - 18, y = 8 + rh * 0.32, r = 3, fill = indicator_fill },
             { kind = "text", x = 0, y = rh + 4, width = w, height = h - rh - 4,
-              content = name, font_size = 12 }
+              content = name, font_size = 12, fill = label_fill }
         ]
     }
 
@@ -772,14 +871,18 @@ namespace wdoc {
         let h = attr_or(b, "height", 120)
         let name = attr_or(b, "label", "Database")
         let color = attr_or(b, "color", "var(--color-link)")
+        let surface_fill = attr_or(b, "surface_fill", "var(--color-code-bg)")
+        let top_fill = attr_or(b, "top_fill", "var(--color-nav-bg)")
+        let border_stroke = attr_or(b, "border_stroke", color)
+        let label_fill = attr_or(b, "label_fill", "currentColor")
         let eh = h * 0.15
         let bh = h * 0.55
         let body_d = "M 0 " + to_string(eh) + " L 0 " + to_string(bh) + " Q 0 " + to_string(bh + eh) + " " + to_string(w / 2) + " " + to_string(bh + eh) + " Q " + to_string(w) + " " + to_string(bh + eh) + " " + to_string(w) + " " + to_string(bh) + " L " + to_string(w) + " " + to_string(eh)
         let top_d = "M 0 " + to_string(eh) + " Q 0 0 " + to_string(w / 2) + " 0 Q " + to_string(w) + " 0 " + to_string(w) + " " + to_string(eh) + " Q " + to_string(w) + " " + to_string(eh * 2) + " " + to_string(w / 2) + " " + to_string(eh * 2) + " Q 0 " + to_string(eh * 2) + " 0 " + to_string(eh)
         [
-            { kind = "path", x = 0, y = 0, width = w, height = h, d = body_d, fill = "var(--color-code-bg)", stroke = color, stroke_width = 2 },
-            { kind = "path", x = 0, y = 0, width = w, height = h, d = top_d, fill = "var(--color-nav-bg)", stroke = color, stroke_width = 2 },
-            { kind = "text", x = 0, y = bh + eh + 4, width = w, height = h - bh - eh - 4, content = name, font_size = 12 }
+            { kind = "path", x = 0, y = 0, width = w, height = h, d = body_d, fill = surface_fill, stroke = border_stroke, stroke_width = 2 },
+            { kind = "path", x = 0, y = 0, width = w, height = h, d = top_d, fill = top_fill, stroke = border_stroke, stroke_width = 2 },
+            { kind = "text", x = 0, y = bh + eh + 4, width = w, height = h - bh - eh - 4, content = name, font_size = 12, fill = label_fill }
         ]
     }
 
@@ -788,11 +891,14 @@ namespace wdoc {
         let h = attr_or(b, "height", 90)
         let name = attr_or(b, "label", "Cloud")
         let color = attr_or(b, "color", "var(--color-link)")
+        let surface_fill = attr_or(b, "surface_fill", "var(--color-code-bg)")
+        let border_stroke = attr_or(b, "border_stroke", color)
+        let label_fill = attr_or(b, "label_fill", "currentColor")
         let ch = h * 0.7
         let d = "M " + to_string(w * 0.2) + " " + to_string(ch * 0.8) + " Q 0 " + to_string(ch * 0.8) + " 0 " + to_string(ch * 0.5) + " Q 0 " + to_string(ch * 0.1) + " " + to_string(w * 0.25) + " 0 Q " + to_string(w * 0.4) + " 0 " + to_string(w * 0.5) + " " + to_string(ch * 0.05) + " Q " + to_string(w * 0.6) + " 0 " + to_string(w) + " " + to_string(ch * 0.1) + " Q " + to_string(w * 1.05) + " " + to_string(ch * 0.6) + " " + to_string(w * 0.8) + " " + to_string(ch * 0.8) + " Z"
         [
-            { kind = "path", x = 0, y = 0, width = w, height = h, d = d, fill = "var(--color-code-bg)", stroke = color, stroke_width = 2 },
-            { kind = "text", x = 0, y = ch * 0.2, width = w, height = ch * 0.5, content = name, font_size = 13 }
+            { kind = "path", x = 0, y = 0, width = w, height = h, d = d, fill = surface_fill, stroke = border_stroke, stroke_width = 2 },
+            { kind = "text", x = 0, y = ch * 0.2, width = w, height = ch * 0.5, content = name, font_size = 13, fill = label_fill }
         ]
     }
 
@@ -801,15 +907,17 @@ namespace wdoc {
         let h = attr_or(b, "height", 100)
         let name = attr_or(b, "label", "User")
         let color = attr_or(b, "color", "var(--color-link)")
+        let bg_fill = attr_or(b, "background_fill", color)
+        let label_fill = attr_or(b, "label_fill", "currentColor")
         let ih = h * 0.65
         let hr = ih * 0.22
         let cx = w / 2
         [
-            { kind = "circle", x = cx - hr, y = 0, r = hr, fill = color },
+            { kind = "circle", x = cx - hr, y = 0, r = hr, fill = bg_fill },
             { kind = "rect", x = cx - w * 0.35, y = hr * 2 + 4,
-              width = w * 0.7, height = ih - hr * 2 - 4, rx = w * 0.15, fill = color },
+              width = w * 0.7, height = ih - hr * 2 - 4, rx = w * 0.15, fill = bg_fill },
             { kind = "text", x = 0, y = ih + 4, width = w, height = h - ih - 4,
-              content = name, font_size = 12 }
+              content = name, font_size = 12, fill = label_fill }
         ]
     }
 

@@ -46,6 +46,20 @@ page wdoc_drawing_widgets {
                     content = "diagram mockup {\n    width = 600, height = 360\n\n    card form {\n        x = 20, y = 20, width = 240, height = 300\n        title = \"Sign in\"\n        align = \"stack\"\n        gap = 12\n        padding = 18\n\n        input email { height = 55, label = \"Email\" }\n        input password { height = 55, label = \"Password\" }\n        button submit { height = 38, label = \"Continue\", variant = \"primary\" }\n        button help {\n            right = 18, bottom = 18, width = 90, height = 32\n            label = \"Help\"\n            variant = \"outline\"\n        }\n    }\n\n    browser b1 {\n        x = 300, y = 20, width = 280, height = 200\n        title = \"Dashboard\"\n        url = \"https://app.example.com\"\n    }\n}"
                 }
 
+                heading h2_theme {
+                    level = 2
+                    content = "Widget theme properties"
+                }
+
+                paragraph p_theme {
+                    content = "Built-in widgets expose their visual parts as attributes such as <code>background_fill</code>, <code>surface_fill</code>, <code>border_stroke</code>, <code>label_fill</code>, <code>header_fill</code>, <code>knob_fill</code>, and <code>separator_stroke</code>. You can set those attributes directly on a widget, or define them in a drawing class. If a widget has no <code>class</code>, the renderer looks for a default class named <code>wdoc-widget-</code> plus the widget kind, for example <code>wdoc-widget-button</code>. If <code>class</code> is set, that class replaces the default theme class. Direct widget attributes always win over class defaults."
+                }
+
+                code ctheme {
+                    language = "wcl"
+                    content = "class wdoc-widget-button {\n    background_fill = \"#0f766e\"\n    border_stroke = \"#0f766e\"\n    label_fill = \"#ffffff\"\n    radius = 8\n}\n\nclass brand_button {\n    background_fill = \"#7c3aed\"\n    border_stroke = \"#6d28d9\"\n    label_fill = \"#ffffff\"\n}\n\ndiagram themed_controls {\n    width = 360\n    height = 140\n\n    button default_submit {\n        x = 20, y = 24, width = 140, height = 38\n        label = \"Default class\"\n    }\n\n    button custom_submit {\n        x = 190, y = 24, width = 140, height = 38\n        class = \"brand_button\"\n        label = \"Replacement\"\n    }\n\n    button danger {\n        x = 105, y = 82, width = 140, height = 38\n        class = \"brand_button\"\n        label = \"Override\"\n        background_fill = \"#b91c1c\"\n        border_stroke = \"#b91c1c\"\n    }\n}"
+                }
+
                 heading h2_flow {
                     level = 2
                     content = "Flowchart shapes"

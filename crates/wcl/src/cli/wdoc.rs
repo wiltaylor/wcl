@@ -763,6 +763,7 @@ fn collect_shape_or_connection(
                 .or_insert_with(|| "none".to_string());
             a.entry("stroke".to_string())
                 .or_insert_with(|| "none".to_string());
+            assign_default_widget_class(&mut a, br);
             apply_builtin_widget_content_insets(&mut a, br);
         }
 
@@ -812,6 +813,18 @@ fn apply_builtin_widget_content_insets(attrs: &mut IndexMap<String, String>, br:
         }
         _ => {}
     }
+}
+
+fn assign_default_widget_class(attrs: &mut IndexMap<String, String>, br: &BlockRef) {
+    if attrs
+        .get("class")
+        .is_some_and(|class_name| !class_name.trim().is_empty())
+    {
+        return;
+    }
+
+    let kind = br.kind.rsplit("::").next().unwrap_or(br.kind.as_str());
+    attrs.insert("class".to_string(), format!("wdoc-widget-{kind}"));
 }
 
 fn insert_default_content_inset(attrs: &mut IndexMap<String, String>, edge: &str, value: f64) {
@@ -920,7 +933,8 @@ fn dispatch_shape_template(br: &BlockRef, ctx: &ExtractCtx) -> Result<ShapeTempl
         .get(fn_name)
         .ok_or_else(|| format!("shape template function '{fn_name}' not registered"))?;
 
-    let arg = Value::BlockRef(br.clone());
+    let themed_block = apply_widget_theme_class_attrs(br, ctx);
+    let arg = Value::BlockRef(themed_block);
     let result = match func {
         TemplateFn::Lambda(fv) => crate::call_lambda(fv, &[arg], &ctx.builtins)?,
         TemplateFn::Builtin(f) => f(&[arg])?,
@@ -953,6 +967,44 @@ fn dispatch_shape_template(br: &BlockRef, ctx: &ExtractCtx) -> Result<ShapeTempl
         }
     }
     Ok(result)
+}
+
+fn apply_widget_theme_class_attrs(br: &BlockRef, ctx: &ExtractCtx) -> BlockRef {
+    let mut themed = br.clone();
+    let class_names = widget_theme_class_names(br);
+    if class_names.is_empty() {
+        return themed;
+    }
+
+    let classes = ctx.diagram_classes.borrow();
+    for class_name in class_names {
+        let Some(class) = classes.get(&class_name) else {
+            continue;
+        };
+        for (key, value) in &class.attrs {
+            themed
+                .attributes
+                .entry(key.clone())
+                .or_insert_with(|| Value::String(value.clone()));
+        }
+    }
+    themed
+}
+
+fn widget_theme_class_names(br: &BlockRef) -> Vec<String> {
+    if let Some(class_attr) = br.attributes.get("class").and_then(|v| v.as_string()) {
+        let names = class_attr
+            .split_whitespace()
+            .filter(|name| !name.is_empty())
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        if !names.is_empty() {
+            return names;
+        }
+    }
+
+    let kind = br.kind.rsplit("::").next().unwrap_or(br.kind.as_str());
+    vec![format!("wdoc-widget-{kind}")]
 }
 
 /// Convert a shape descriptor `Value::Map` (returned from a WCL shape template)
@@ -1773,6 +1825,151 @@ mod wdoc_draw_tests {
             attrs.get("_wdoc_content_bottom").map(String::as_str),
             Some("50")
         );
+    }
+
+    #[test]
+    fn widget_theme_uses_default_class_when_widget_class_is_unset() {
+        let button = block(
+            "wdoc::draw::button",
+            Some("submit"),
+            IndexMap::new(),
+            vec![],
+        );
+        let mut class = wcl_wdoc::shapes::DiagramClass {
+            name: "wdoc-widget-button".to_string(),
+            attrs: IndexMap::new(),
+            states: IndexMap::new(),
+            animations: IndexMap::new(),
+        };
+        class
+            .attrs
+            .insert("background_fill".to_string(), "#0f766e".to_string());
+
+        let ctx = empty_ctx();
+        ctx.diagram_classes
+            .borrow_mut()
+            .insert(class.name.clone(), class);
+
+        let themed = apply_widget_theme_class_attrs(&button, &ctx);
+        assert_eq!(
+            themed
+                .attributes
+                .get("background_fill")
+                .and_then(Value::as_string),
+            Some("#0f766e")
+        );
+    }
+
+    #[test]
+    fn widget_theme_uses_replacement_class_and_explicit_attrs_win() {
+        let mut button_attrs = IndexMap::new();
+        string_attr(&mut button_attrs, "class", "brand_button");
+        string_attr(&mut button_attrs, "background_fill", "#b91c1c");
+        let button = block("wdoc::draw::button", Some("delete"), button_attrs, vec![]);
+
+        let mut default_class = wcl_wdoc::shapes::DiagramClass {
+            name: "wdoc-widget-button".to_string(),
+            attrs: IndexMap::new(),
+            states: IndexMap::new(),
+            animations: IndexMap::new(),
+        };
+        default_class
+            .attrs
+            .insert("background_fill".to_string(), "#0f766e".to_string());
+
+        let mut brand_class = wcl_wdoc::shapes::DiagramClass {
+            name: "brand_button".to_string(),
+            attrs: IndexMap::new(),
+            states: IndexMap::new(),
+            animations: IndexMap::new(),
+        };
+        brand_class
+            .attrs
+            .insert("background_fill".to_string(), "#2563eb".to_string());
+        brand_class
+            .attrs
+            .insert("label_fill".to_string(), "#ffffff".to_string());
+
+        let ctx = empty_ctx();
+        ctx.diagram_classes
+            .borrow_mut()
+            .insert(default_class.name.clone(), default_class);
+        ctx.diagram_classes
+            .borrow_mut()
+            .insert(brand_class.name.clone(), brand_class);
+
+        let themed = apply_widget_theme_class_attrs(&button, &ctx);
+        assert_eq!(
+            themed
+                .attributes
+                .get("background_fill")
+                .and_then(Value::as_string),
+            Some("#b91c1c")
+        );
+        assert_eq!(
+            themed
+                .attributes
+                .get("label_fill")
+                .and_then(Value::as_string),
+            Some("#ffffff")
+        );
+    }
+
+    #[test]
+    fn widget_theme_properties_flow_into_template_without_svg_leakage() {
+        let template = std::sync::Arc::new(|args: &[Value]| {
+            let block = match args.first() {
+                Some(Value::BlockRef(block)) => block,
+                _ => return Err("expected block ref".to_string()),
+            };
+            let fill = block
+                .attributes
+                .get("background_fill")
+                .and_then(Value::as_string)
+                .unwrap_or("#cccccc");
+            let mut bg = IndexMap::new();
+            bg.insert("kind".to_string(), Value::String("rect".to_string()));
+            bg.insert("x".to_string(), Value::Int(0));
+            bg.insert("y".to_string(), Value::Int(0));
+            bg.insert("width".to_string(), Value::Int(80));
+            bg.insert("height".to_string(), Value::Int(30));
+            bg.insert("fill".to_string(), Value::String(fill.to_string()));
+            Ok(Value::List(vec![Value::Map(bg)]))
+        }) as BuiltinFn;
+
+        let ctx = custom_shape_ctx("wdoc::draw::button", "test_button_template", template);
+        let mut class = wcl_wdoc::shapes::DiagramClass {
+            name: "wdoc-widget-button".to_string(),
+            attrs: IndexMap::new(),
+            states: IndexMap::new(),
+            animations: IndexMap::new(),
+        };
+        class
+            .attrs
+            .insert("background_fill".to_string(), "#0f766e".to_string());
+        ctx.diagram_classes
+            .borrow_mut()
+            .insert(class.name.clone(), class);
+
+        let mut diagram_attrs = IndexMap::new();
+        int_attr(&mut diagram_attrs, "width", 120);
+        int_attr(&mut diagram_attrs, "height", 60);
+        let diagram = block(
+            "wdoc::draw::diagram",
+            Some("themed_widget"),
+            diagram_attrs,
+            vec![block(
+                "wdoc::draw::button",
+                Some("submit"),
+                IndexMap::new(),
+                vec![],
+            )],
+        );
+
+        let html = render_diagram_with_ctx(&diagram, &ctx);
+        assert!(html.contains("fill=\"#0f766e\""));
+        assert!(html.contains("class=\"wdoc-widget-button\""));
+        assert!(!html.contains("background_fill"));
     }
 
     #[test]

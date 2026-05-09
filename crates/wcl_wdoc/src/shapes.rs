@@ -423,6 +423,9 @@ fn apply_classes_to_shape(shape: &mut ShapeNode, classes: &IndexMap<String, Diag
                     }
                     continue;
                 }
+                if !is_supported_class_property(key) {
+                    continue;
+                }
                 let (svg_key, svg_value) = class_attr_to_svg_attr_value(key, value);
                 shape.attrs.entry(svg_key).or_insert(svg_value);
             }

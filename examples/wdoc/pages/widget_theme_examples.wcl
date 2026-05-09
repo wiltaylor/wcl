@@ -1,0 +1,249 @@
+import "./shared.wcl"
+
+// ── Widget Theme Examples page ──
+
+class wdoc-widget-button {
+    background_fill = "#0f766e"
+    border_stroke = "#0f766e"
+    label_fill = "#ffffff"
+    radius = 8
+}
+
+class wdoc-widget-toggle {
+    on_fill = "#16a34a"
+    off_fill = "#475569"
+    knob_fill = "#ffffff"
+}
+
+class wdoc-widget-flow_process {
+    surface_fill = "#ecfeff"
+    border_stroke = "#0891b2"
+    label_fill = "#164e63"
+    radius = 8
+}
+
+class brand_button {
+    background_fill = "#7c3aed"
+    border_stroke = "#6d28d9"
+    label_fill = "#ffffff"
+    radius = 10
+}
+
+class quiet_input {
+    field_fill = "#f8fafc"
+    border_stroke = "#94a3b8"
+    label_fill = "#334155"
+    placeholder_fill = "#64748b"
+    radius = 7
+}
+
+class architecture_node {
+    background_fill = "#1d4ed8"
+    border_stroke = "#1e40af"
+    label_fill = "#ffffff"
+    muted_fill = "#dbeafe"
+}
+
+class uml_theme {
+    surface_fill = "#fff7ed"
+    header_fill = "#c2410c"
+    border_stroke = "#9a3412"
+    header_label_fill = "#ffffff"
+    text_fill = "#431407"
+    separator_stroke = "#9a3412"
+}
+
+class server_theme {
+    surface_fill = "#f1f5f9"
+    row_fill = "#e2e8f0"
+    border_stroke = "#475569"
+    label_fill = "#0f172a"
+    indicator_fill = "#22c55e"
+}
+
+page widget_theme_examples {
+    section = "my_docs.diagrams.widget_theme_examples"
+    title = "Widget Theme Properties"
+
+    layout {
+        vsplit v_widget_theme {
+            split s_widget_theme {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Widget Theme Properties"
+                }
+
+                paragraph p1 {
+                    content = "Built-in drawing widgets can be themed with class properties. A widget without an explicit class uses its default <code>wdoc-widget-*</code> class when one is defined. A widget with <code>class</code> uses that replacement class, and direct widget attributes override class defaults."
+                }
+
+                heading h2_ui {
+                    level = 2
+                    content = "UI controls"
+                }
+
+                diagram ui_widget_themes {
+                    width = 760
+                    height = 260
+
+                    card form {
+                        x = 24
+                        y = 24
+                        width = 250
+                        height = 190
+                        title = "Default themed controls"
+                        align = "stack"
+                        gap = 12
+                        padding = 18
+
+                        input email {
+                            class = "quiet_input"
+                            height = 54
+                            label = "Email"
+                            placeholder = "name@example.com"
+                        }
+
+                        button submit {
+                            height = 38
+                            label = "Continue"
+                        }
+
+                        toggle notifications {
+                            width = 48
+                            height = 26
+                            on = "true"
+                        }
+                    }
+
+                    button branded {
+                        x = 340
+                        y = 42
+                        width = 160
+                        height = 42
+                        class = "brand_button"
+                        label = "Brand action"
+                    }
+
+                    button override {
+                        x = 340
+                        y = 104
+                        width = 160
+                        height = 42
+                        class = "brand_button"
+                        label = "Danger"
+                        background_fill = color_danger
+                        border_stroke = color_danger
+                    }
+
+                    badge status {
+                        x = 340
+                        y = 170
+                        width = 110
+                        height = 26
+                        label = "overridden"
+                        background_fill = "#f97316"
+                        label_fill = "#9a3412"
+                        background_opacity = 0.18
+                    }
+
+                    navbar nav {
+                        x = 520
+                        y = 42
+                        width = 210
+                        height = 48
+                        items = "Home,Docs,Team"
+                        active_index = 1
+                        background_fill = "#f8fafc"
+                        border_stroke = "#cbd5e1"
+                        active_fill = "#7c3aed"
+                    }
+                }
+
+                heading h2_diagrams {
+                    level = 2
+                    content = "Diagram families"
+                }
+
+                diagram family_widget_themes {
+                    width = 760
+                    height = 330
+
+                    flow_process process {
+                        x = 30
+                        y = 36
+                        width = 160
+                        height = 58
+                        label = "Default process"
+                    }
+
+                    c4_system api {
+                        x = 240
+                        y = 24
+                        width = 170
+                        height = 92
+                        class = "architecture_node"
+                        label = "API"
+                        description = "Themed class"
+                    }
+
+                    uml_class model {
+                        x = 460
+                        y = 24
+                        width = 210
+                        height = 150
+                        class = "uml_theme"
+                        label = "Invoice"
+                        fields = "- id: Uuid|- total: Money"
+                        methods = "+ settle()"
+                    }
+
+                    server app_server {
+                        x = 80
+                        y = 170
+                        width = 100
+                        height = 120
+                        class = "server_theme"
+                        label = "App"
+                    }
+
+                    database db {
+                        x = 270
+                        y = 170
+                        width = 120
+                        height = 125
+                        surface_fill = "#eef2ff"
+                        top_fill = "#c7d2fe"
+                        border_stroke = "#4f46e5"
+                        label_fill = "#312e81"
+                        label = "Primary DB"
+                    }
+
+                    cloud queue {
+                        x = 490
+                        y = 190
+                        width = 150
+                        height = 90
+                        surface_fill = "#f0fdf4"
+                        border_stroke = "#16a34a"
+                        label_fill = "#14532d"
+                        label = "Queue"
+                    }
+
+                    connection c1 {
+                        from = "process"
+                        to = "api"
+                        direction = "to"
+                    }
+
+                    connection c2 {
+                        from = "api"
+                        to = "model"
+                        direction = "to"
+                    }
+                }
+            }
+        }
+    }
+}

@@ -82,6 +82,20 @@ page wdoc_styling {
                     paragraph wp { content = "Hardcoding hex colors in shapes works, but they will look wrong in dark mode. Prefer the theme variables for any structural shape; reserve hex colors for genuine accent moments." }
                 }
 
+                heading h2_widget_theme {
+                    level = 2
+                    content = "Widget theme classes"
+                }
+
+                paragraph p_widget_theme {
+                    content = "Drawing widgets use <code>draw::class</code> blocks as property bundles for their exposed parts. A widget without an explicit <code>class</code> uses a default class named <code>wdoc-widget-</code> plus its kind. Setting <code>class</code> on the widget chooses a replacement bundle. Direct attributes on the widget override either class."
+                }
+
+                code c_widget_theme {
+                    language = "wcl"
+                    content = "class wdoc-widget-toggle {\n    on_fill = \"#16a34a\"\n    off_fill = \"#94a3b8\"\n    knob_fill = \"#ffffff\"\n}\n\nclass quiet_input {\n    field_fill = \"var(--color-code-bg)\"\n    border_stroke = \"var(--color-nav-border)\"\n    label_fill = \"currentColor\"\n    placeholder_fill = \"currentColor\"\n}\n\ndiagram controls {\n    width = 300\n    height = 120\n\n    toggle enabled {\n        x = 20, y = 20\n        on = \"true\"\n    }\n\n    input email {\n        x = 90, y = 12, width = 180, height = 56\n        class = \"quiet_input\"\n        label = \"Email\"\n        placeholder = \"name@example.com\"\n    }\n}"
+                }
+
                 callout c_css_deprecated {
                     icon = "exclamation-triangle"
                     header = "Diagram CSS compatibility"
