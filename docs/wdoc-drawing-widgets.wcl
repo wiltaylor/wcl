@@ -33,6 +33,14 @@ page wdoc_drawing_widgets {
                         { widget = "browser", attrs = "title, url" },
                         { widget = "button",  attrs = "label, variant (primary, secondary, outline)" },
                         { widget = "input",   attrs = "label, placeholder" },
+                        { widget = "checkbox", attrs = "label, checked, disabled" },
+                        { widget = "radio", attrs = "label, selected, disabled" },
+                        { widget = "button_group", attrs = "items, active_index" },
+                        { widget = "textbox", attrs = "label, placeholder, value, rows" },
+                        { widget = "dropdown", attrs = "label, value, placeholder, items, open" },
+                        { widget = "inline_image", attrs = "src, fit, caption" },
+                        { widget = "menubar", attrs = "items, active_index" },
+                        { widget = "context_menu", attrs = "items" },
                         { widget = "card",    attrs = "(container — children render inside)" },
                         { widget = "avatar",  attrs = "label" },
                         { widget = "toggle",  attrs = "on (\"true\" / \"false\")" },
@@ -44,6 +52,11 @@ page wdoc_drawing_widgets {
                 code cui1 {
                     language = "wcl"
                     content = "diagram mockup {\n    width = 600, height = 360\n\n    card form {\n        x = 20, y = 20, width = 240, height = 300\n        title = \"Sign in\"\n        align = \"stack\"\n        gap = 12\n        padding = 18\n\n        input email { height = 55, label = \"Email\" }\n        input password { height = 55, label = \"Password\" }\n        button submit { height = 38, label = \"Continue\", variant = \"primary\" }\n        button help {\n            right = 18, bottom = 18, width = 90, height = 32\n            label = \"Help\"\n            variant = \"outline\"\n        }\n    }\n\n    browser b1 {\n        x = 300, y = 20, width = 280, height = 200\n        title = \"Dashboard\"\n        url = \"https://app.example.com\"\n    }\n}"
+                }
+
+                code cui_menu {
+                    language = "wcl"
+                    content = "class popup_menu {\n    opacity = 0\n    visible = false\n    pointer_events = \"none\"\n    state shown {\n        opacity = 1\n        visible = true\n        pointer_events = \"all\"\n    }\n}\n\ndiagram menu_example {\n    width = 520, height = 180\n\n    menubar app_menu {\n        x = 20, y = 20, width = 260, height = 34\n        items = \"File,Edit,View\"\n        event open_menu {\n            trigger = \"click\"\n            target = \"file_menu\"\n            state = \"shown\"\n            mode = \"toggle\"\n        }\n    }\n\n    button row {\n        x = 20, y = 92, width = 140, height = 36\n        label = \"Right click\"\n        event open_context {\n            trigger = \"right_click\"\n            target = \"row_menu\"\n            state = \"shown\"\n            mode = \"toggle\"\n        }\n    }\n\n    context_menu file_menu { x = 20, y = 58, width = 150, items = \"New,Open,Save\", class = \"popup_menu\" }\n    context_menu row_menu { x = 180, y = 84, width = 150, items = \"Open,Duplicate,Delete\", class = \"popup_menu\" }\n}"
                 }
 
                 heading h2_theme {

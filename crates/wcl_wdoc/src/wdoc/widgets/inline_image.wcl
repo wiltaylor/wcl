@@ -1,0 +1,32 @@
+    export let widget_inline_image = (b) => {
+        let w = attr_or(b, "width", 160)
+        let h = attr_or(b, "height", 100)
+        let src = attr_or(b, "src", "")
+        let caption = attr_or(b, "caption", "")
+        let image_h = caption != "" ? h - 22 : h
+        let fit = attr_or(b, "fit", "cover")
+        let surface_fill = attr_or(b, "surface_fill", "var(--color-code-bg)")
+        let border_stroke = attr_or(b, "border_stroke", "var(--color-nav-border)")
+        let label_fill = attr_or(b, "label_fill", "currentColor")
+        let radius = attr_or(b, "radius", 6)
+        let border_width = attr_or(b, "border_width", 1)
+        let media = src != "" ? [
+            { kind = "image", x = 0, y = 0, width = w, height = image_h, src = src,
+              fit = fit, rx = radius }
+        ] : [
+            { kind = "rect", x = 0, y = 0, width = w, height = image_h, rx = radius,
+              fill = surface_fill, stroke = border_stroke, stroke_width = border_width },
+            { kind = "line", x1 = 14, y1 = image_h - 14, x2 = w * 0.42, y2 = image_h * 0.56,
+              stroke = border_stroke, stroke_width = 1.5 },
+            { kind = "line", x1 = w * 0.42, y1 = image_h * 0.56, x2 = w * 0.62, y2 = image_h - 26,
+              stroke = border_stroke, stroke_width = 1.5 },
+            { kind = "line", x1 = w * 0.62, y1 = image_h - 26, x2 = w - 14, y2 = image_h - 14,
+              stroke = border_stroke, stroke_width = 1.5 },
+            { kind = "circle", x = w - 36, y = 14, r = 6, fill = border_stroke, opacity = 0.55 }
+        ]
+        let caption_part = caption != "" ? [
+            { kind = "text", x = 0, y = image_h + 4, width = w, height = 18,
+              content = caption, font_size = 11, fill = label_fill }
+        ] : []
+        concat(media, caption_part)
+    }

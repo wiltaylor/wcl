@@ -14,3 +14,31 @@ pub const HIGHLIGHTJS_THEME_LIGHT_CSS: &str =
 /// highlight.js GitHub dark theme CSS (minified).
 pub const HIGHLIGHTJS_THEME_DARK_CSS: &str =
     include_str!("../../../extras/highlightjs/github-dark.min.css");
+
+#[cfg(test)]
+mod tests {
+    use super::WDOC_LIBRARY_WCL;
+
+    #[test]
+    fn wireframe_widget_schemas_are_bundled() {
+        for widget in [
+            "checkbox",
+            "radio",
+            "button_group",
+            "textbox",
+            "dropdown",
+            "inline_image",
+            "menubar",
+            "context_menu",
+        ] {
+            assert!(
+                WDOC_LIBRARY_WCL.contains(&format!("schema \"{widget}\"")),
+                "missing schema for {widget}"
+            );
+            assert!(
+                WDOC_LIBRARY_WCL.contains(&format!("widget_{widget}")),
+                "missing template for {widget}"
+            );
+        }
+    }
+}

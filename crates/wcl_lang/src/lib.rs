@@ -22,11 +22,11 @@ pub use crate::lang::{
 };
 
 pub use crate::eval::{
-    builtin_signatures, call_lambda, BlockRef, BuiltinFn, ConflictMode, ControlFlowExpander,
-    DecoratorValue, Evaluator, FileSystem, FunctionRegistry, FunctionSignature, FunctionValue,
-    ImportResolver, InMemoryFs, LibraryConfig, MacroExpander, MacroRegistry, PartialMerger,
-    QueryEngine, RealFileSystem, Scope, ScopeArena, ScopeEntry, ScopeEntryKind, ScopeId, ScopeKind,
-    Value,
+    builtin_signatures, call_lambda, call_lambda_with_env, BlockRef, BuiltinFn, ConflictMode,
+    ControlFlowExpander, DecoratorValue, Evaluator, FileSystem, FunctionRegistry,
+    FunctionSignature, FunctionValue, ImportResolver, InMemoryFs, LibraryConfig, MacroExpander,
+    MacroRegistry, PartialMerger, QueryEngine, RealFileSystem, Scope, ScopeArena, ScopeEntry,
+    ScopeEntryKind, ScopeId, ScopeKind, Value,
 };
 
 pub use crate::schema::type_name;
@@ -508,70 +508,20 @@ impl Document {
             }
         };
 
-        // Validate argument count
-        if args.len() != func.params.len() {
-            return Err(format!(
-                "function '{}' expects {} argument(s), got {}",
-                name,
-                func.params.len(),
-                args.len()
-            ));
-        }
-
-        // Create a temporary evaluator and evaluate the function body
-        let mut evaluator = crate::eval::evaluator::Evaluator::new();
-        let scope_id = evaluator
-            .scopes_mut()
-            .create_scope(crate::eval::scope::ScopeKind::Lambda, None);
-
-        // Bind parameters
-        for (i, param_name) in func.params.iter().enumerate() {
-            evaluator.scopes_mut().add_entry(
-                scope_id,
-                crate::eval::scope::ScopeEntry {
-                    name: param_name.clone(),
-                    kind: crate::eval::scope::ScopeEntryKind::LetBinding,
-                    value: Some(args[i].clone()),
-                    span: crate::lang::span::Span::dummy(),
-                    dependencies: std::collections::HashSet::new(),
-                    evaluated: true,
-                    read_count: 0,
-                },
-            );
-        }
-
-        // Evaluate the function body
-        match &func.body {
-            crate::eval::value::FunctionBody::UserDefined(expr) => evaluator
-                .eval_expr(expr, scope_id)
-                .map_err(|d| d.message.clone()),
-            crate::eval::value::FunctionBody::BlockExpr(lets, final_expr) => {
-                // Evaluate let bindings first
-                for (let_name, let_expr) in lets {
-                    let val = evaluator
-                        .eval_expr(let_expr, scope_id)
-                        .map_err(|d| d.message.clone())?;
-                    evaluator.scopes_mut().add_entry(
-                        scope_id,
-                        crate::eval::scope::ScopeEntry {
-                            name: let_name.clone(),
-                            kind: crate::eval::scope::ScopeEntryKind::LetBinding,
-                            value: Some(val),
-                            span: crate::lang::span::Span::dummy(),
-                            dependencies: std::collections::HashSet::new(),
-                            evaluated: true,
-                            read_count: 0,
-                        },
-                    );
-                }
-                evaluator
-                    .eval_expr(final_expr, scope_id)
-                    .map_err(|d| d.message.clone())
-            }
-            crate::eval::value::FunctionBody::Builtin(name) => {
-                Err(format!("cannot call builtin function '{}' directly", name))
-            }
-        }
+        let helpers = self
+            .values
+            .iter()
+            .filter_map(|(name, value)| match value {
+                Value::Function(func) => Some((name.clone(), func.clone())),
+                _ => None,
+            })
+            .collect();
+        crate::eval::evaluator::call_lambda_with_env(
+            func,
+            args,
+            &std::collections::HashMap::new(),
+            &helpers,
+        )
     }
 }
 
@@ -4391,6 +4341,23 @@ endpoint e1 {
     }
 
     #[test]
+    fn test_call_exported_function_can_call_helper() {
+        let source = r#"
+            export let inc = x => x + 1
+            export let double_inc = x => inc(x) * 2
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        assert!(
+            !has_errors(&doc.diagnostics),
+            "errors: {:?}",
+            error_diags(&doc.diagnostics)
+        );
+
+        let result = doc.call_function("double_inc", &[Value::Int(20)]).unwrap();
+        assert_eq!(result, Value::Int(42));
+    }
+
+    #[test]
     fn test_call_function_wrong_args() {
         let source = r#"
             export let add = (a, b) => a + b
@@ -4398,7 +4365,7 @@ endpoint e1 {
         let doc = parse(source, ParseOptions::default());
         let result = doc.call_function("add", &[Value::Int(1)]);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("expects 2 argument(s), got 1"));
+        assert!(result.unwrap_err().contains("expected 2 arguments, got 1"));
     }
 
     #[test]

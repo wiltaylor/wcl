@@ -194,6 +194,14 @@ namespace wdoc {
             "wdoc::draw::card",
             "wdoc::draw::avatar",
             "wdoc::draw::toggle",
+            "wdoc::draw::checkbox",
+            "wdoc::draw::radio",
+            "wdoc::draw::button_group",
+            "wdoc::draw::textbox",
+            "wdoc::draw::dropdown",
+            "wdoc::draw::inline_image",
+            "wdoc::draw::menubar",
+            "wdoc::draw::context_menu",
             "wdoc::draw::badge",
             "wdoc::draw::navbar",
             "wdoc::draw::flow_process",
@@ -238,6 +246,16 @@ namespace wdoc {
         @template("shape", "wdoc::widget_card")     @open schema "card" { }
         @template("shape", "wdoc::widget_avatar")   @open schema "avatar" { }
         @template("shape", "wdoc::widget_toggle")   @open schema "toggle" { }
+        @template("shape", "wdoc::widget_checkbox") @open schema "checkbox" { }
+        @template("shape", "wdoc::widget_radio")    @open schema "radio" { }
+        @template("shape", "wdoc::widget_button_group") @open schema "button_group" { }
+        @template("shape", "wdoc::widget_textbox")  @open schema "textbox" { }
+        @template("shape", "wdoc::widget_dropdown") @open schema "dropdown" { }
+        @template("shape", "wdoc::widget_inline_image") @open schema "inline_image" { }
+        @template("shape", "wdoc::widget_menubar")  @open schema "menubar" { }
+        @template("shape", "wdoc::widget_context_menu") @open schema "context_menu" { }
+        @parent(["wdoc::draw::menubar", "wdoc::draw::context_menu"])
+        @open schema "menu_item" { }
         @template("shape", "wdoc::widget_badge")    @open schema "badge" { }
         @template("shape", "wdoc::widget_navbar")   @open schema "navbar" { }
 

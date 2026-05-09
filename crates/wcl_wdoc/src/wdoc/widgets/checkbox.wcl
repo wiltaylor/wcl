@@ -1,0 +1,31 @@
+    export let widget_checkbox = (b) => {
+        let w = attr_or(b, "width", 140)
+        let h = attr_or(b, "height", 24)
+        let label = attr_or(b, "label", "Checkbox")
+        let checked = attr_or(b, "checked", "false") == "true"
+        let disabled = attr_or(b, "disabled", "false") == "true"
+        let box_size = attr_or(b, "box_size", 16)
+        let y = (h - box_size) / 2
+        let field_fill = attr_or(b, "field_fill", attr_or(b, "surface_fill", "var(--color-code-bg)"))
+        let border_stroke = attr_or(b, "border_stroke", "var(--color-nav-border)")
+        let active_fill = attr_or(b, "active_fill", "var(--color-link)")
+        let check_fill = attr_or(b, "check_fill", "#fff")
+        let label_fill = attr_or(b, "label_fill", "currentColor")
+        let radius = attr_or(b, "radius", 4)
+        let border_width = attr_or(b, "border_width", 1.5)
+        let opacity = disabled ? attr_or(b, "disabled_opacity", 0.45) : attr_or(b, "opacity", 1)
+        let box_fill = checked ? active_fill : field_fill
+        let box_stroke = checked ? active_fill : border_stroke
+        let mark = checked ? [
+            { kind = "line", x1 = 4, y1 = y + 8, x2 = 7, y2 = y + 11,
+              stroke = check_fill, stroke_width = 2 },
+            { kind = "line", x1 = 7, y1 = y + 11, x2 = 12, y2 = y + 5,
+              stroke = check_fill, stroke_width = 2 }
+        ] : []
+        concat([
+            { kind = "rect", x = 0, y = y, width = box_size, height = box_size, rx = radius,
+              fill = box_fill, stroke = box_stroke, stroke_width = border_width, opacity = opacity },
+            { kind = "text", x = box_size + 8, y = 0, width = w - box_size - 8, height = h,
+              content = label, font_size = 12, anchor = "start", fill = label_fill, opacity = opacity }
+        ], mark)
+    }

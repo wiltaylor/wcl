@@ -6,6 +6,14 @@ widgets/input.wcl
 widgets/card.wcl
 widgets/avatar.wcl
 widgets/toggle.wcl
+widgets/checkbox.wcl
+widgets/radio.wcl
+widgets/button_group.wcl
+widgets/textbox.wcl
+widgets/dropdown.wcl
+widgets/inline_image.wcl
+widgets/menubar.wcl
+widgets/context_menu.wcl
 widgets/badge.wcl
 widgets/navbar.wcl
 widgets/flow_process.wcl

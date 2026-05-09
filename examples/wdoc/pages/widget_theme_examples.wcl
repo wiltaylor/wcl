@@ -15,6 +15,27 @@ class wdoc-widget-toggle {
     knob_fill = "#ffffff"
 }
 
+class wdoc-widget-checkbox {
+    active_fill = "#0f766e"
+    border_stroke = "#0f766e"
+    label_fill = "#134e4a"
+    radius = 5
+}
+
+class wdoc-widget-radio {
+    active_fill = "#7c3aed"
+    border_stroke = "#7c3aed"
+    label_fill = "#3b0764"
+}
+
+class wdoc-widget-button_group {
+    background_fill = "#f8fafc"
+    active_fill = "#0f766e"
+    border_stroke = "#94a3b8"
+    active_label_fill = "#ffffff"
+    radius = 8
+}
+
 class wdoc-widget-flow_process {
     surface_fill = "#ecfeff"
     border_stroke = "#0891b2"
@@ -86,7 +107,7 @@ page widget_theme_examples {
 
                 diagram ui_widget_themes {
                     width = 760
-                    height = 260
+                    height = 310
 
                     card form {
                         x = 24
@@ -158,6 +179,33 @@ page widget_theme_examples {
                         background_fill = "#f8fafc"
                         border_stroke = "#cbd5e1"
                         active_fill = "#7c3aed"
+                    }
+
+                    checkbox themed_checkbox {
+                        x = 520
+                        y = 116
+                        width = 180
+                        height = 24
+                        label = "Default checkbox"
+                        checked = "true"
+                    }
+
+                    radio themed_radio {
+                        x = 520
+                        y = 150
+                        width = 180
+                        height = 24
+                        label = "Default radio"
+                        selected = "true"
+                    }
+
+                    button_group themed_group {
+                        x = 520
+                        y = 188
+                        width = 210
+                        height = 34
+                        items = "Small,Medium,Large"
+                        active_index = 1
                     }
                 }
 

@@ -2,6 +2,21 @@ import "./shared.wcl"
 
 // ── UI Wireframes page ──
 
+class wf_popup_menu {
+    opacity = 0
+    visible = false
+    pointer_events = "none"
+    transition = "opacity 120ms ease"
+    z_index = 20
+
+    state shown {
+        opacity = 1
+        visible = true
+        pointer_events = "all"
+        z_index = 30
+    }
+}
+
 page wireframes {
     section = "my_docs.diagrams.wireframes"
     title = "UI Wireframes"
@@ -222,6 +237,184 @@ page wireframes {
                         height = 40
                         items = "Feed,Search,Profile,More"
                         active_index = 2
+                    }
+                }
+            }
+        }
+
+        // --- Form controls and menus ---
+        vsplit v_wf_controls {
+            split s_wf_controls {
+                size = 100
+
+                heading hwf_controls {
+                    level = 2
+                    content = "Form Controls and Menus"
+                }
+                paragraph pwf_controls { content = "Wireframe controls share the same widget theme attributes as buttons and inputs. Menus use normal diagram events: click a menubar, or right-click another control, to toggle a targeted menu state." }
+
+                diagram form_controls {
+                    width = 760
+                    height = 380
+
+                    card settings_panel {
+                        x = 24
+                        y = 24
+                        width = 300
+                        height = 320
+                        title = "Preferences"
+
+                        checkbox email_updates {
+                            x = 22
+                            y = 54
+                            width = 180
+                            height = 24
+                            label = "Email updates"
+                            checked = "true"
+                        }
+
+                        checkbox beta_access {
+                            x = 22
+                            y = 86
+                            width = 180
+                            height = 24
+                            label = "Beta access"
+                            checked = "false"
+                        }
+
+                        radio plan_free {
+                            x = 22
+                            y = 126
+                            width = 120
+                            height = 24
+                            label = "Free"
+                        }
+
+                        radio plan_pro {
+                            x = 148
+                            y = 126
+                            width = 120
+                            height = 24
+                            label = "Pro"
+                            selected = "true"
+                        }
+
+                        button_group billing_period {
+                            x = 22
+                            y = 168
+                            width = 250
+                            height = 34
+                            items = "Monthly,Annual"
+                            active_index = 1
+                        }
+
+                        dropdown timezone {
+                            x = 22
+                            y = 222
+                            width = 250
+                            height = 56
+                            label = "Timezone"
+                            value = "Australia/Brisbane"
+                            items = "Australia/Brisbane,UTC,America/New_York"
+                        }
+                    }
+
+                    textbox notes {
+                        x = 360
+                        y = 78
+                        width = 180
+                        height = 112
+                        label = "Notes"
+                        placeholder = "Add internal notes..."
+                        rows = 4
+                    }
+
+                    inline_image preview {
+                        x = 568
+                        y = 78
+                        width = 150
+                        height = 112
+                        caption = "Image placeholder"
+                    }
+
+                    menubar top_menu {
+                        x = 360
+                        y = 24
+                        width = 358
+                        height = 34
+                        menu_targets = "file_menu,edit_menu,view_menu"
+                        active_index = 0
+
+                        menu_item file_item { label = "File" target = "file_menu" }
+                        menu_item edit_item { label = "Edit" target = "edit_menu" }
+                        menu_item view_item { label = "View" target = "view_menu" }
+                        menu_item help_item { label = "Help" disabled = "true" }
+                    }
+
+                    button target_button {
+                        x = 360
+                        y = 226
+                        width = 180
+                        height = 38
+                        label = "Right click me"
+                        variant = "secondary"
+
+                        event open_context_menu {
+                            trigger = "right_click"
+                            target = "row_menu"
+                            state = "shown"
+                            mode = "toggle"
+                        }
+                    }
+
+                    context_menu file_menu {
+                        x = 360
+                        y = 62
+                        width = 150
+                        close_targets = "export_menu"
+                        class = "wf_popup_menu"
+
+                        menu_item new_item { label = "New" }
+                        menu_item open_item { label = "Open" }
+                        menu_item save_item { label = "Save" disabled = "true" }
+                        menu_item export_item {
+                            label = "Export"
+                            target = "export_menu"
+                            close_targets = "export_menu"
+                        }
+                    }
+
+                    context_menu edit_menu {
+                        x = 450
+                        y = 62
+                        width = 150
+                        items = "Undo,Redo,Cut,Copy"
+                        disabled_items = "Redo"
+                        class = "wf_popup_menu"
+                    }
+
+                    context_menu view_menu {
+                        x = 540
+                        y = 62
+                        width = 150
+                        items = "Zoom in,Zoom out,Reset"
+                        class = "wf_popup_menu"
+                    }
+
+                    context_menu export_menu {
+                        x = 512
+                        y = 146
+                        width = 150
+                        items = "PDF,PNG,HTML"
+                        class = "wf_popup_menu"
+                    }
+
+                    context_menu row_menu {
+                        x = 560
+                        y = 214
+                        width = 160
+                        items = "Open details,Duplicate,Delete"
+                        class = "wf_popup_menu"
                     }
                 }
             }

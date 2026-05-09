@@ -447,6 +447,11 @@ fn apply_classes_to_shape(shape: &mut ShapeNode, classes: &IndexMap<String, Diag
                     .attrs
                     .insert("_wdoc_state_z".to_string(), state_z_entries.join(","));
             }
+            if !class.states.is_empty() {
+                shape
+                    .attrs
+                    .insert("_wdoc_runtime".to_string(), "true".to_string());
+            }
             let state_animation_entries = class
                 .states
                 .values()
@@ -479,6 +484,14 @@ fn apply_classes_to_shape(shape: &mut ShapeNode, classes: &IndexMap<String, Diag
 
 fn diagram_generated_css(diagram: &Diagram) -> String {
     let mut css = String::new();
+    if diagram_has_class(&diagram.shapes, "wdoc-menu-item") {
+        css.push_str(
+            ".wdoc-menu-item .wdoc-menu-item-bg { opacity: 0; transition: opacity 120ms ease; }\n",
+        );
+        css.push_str(".wdoc-menu-item.wdoc-state-hovered .wdoc-menu-item-bg { opacity: 1; }\n");
+        css.push_str(".wdoc-menu-item-disabled { opacity: .45; cursor: default; }\n");
+        css.push_str(".wdoc-menu-item-disabled .wdoc-menu-item-bg { opacity: 0 !important; }\n");
+    }
     for class in diagram.classes.values() {
         if !class.attrs.is_empty() {
             let decls = class_attrs_to_css_decls(&class.attrs, false);
@@ -500,6 +513,16 @@ fn diagram_generated_css(diagram: &Diagram) -> String {
         }
     }
     css
+}
+
+fn diagram_has_class(shapes: &[ShapeNode], class_name: &str) -> bool {
+    shapes.iter().any(|shape| {
+        shape
+            .attrs
+            .get("class")
+            .is_some_and(|classes| classes.split_whitespace().any(|class| class == class_name))
+            || diagram_has_class(&shape.children, class_name)
+    })
 }
 
 fn class_attrs_to_css_decls(attrs: &IndexMap<String, String>, include_z: bool) -> String {
@@ -1429,6 +1452,27 @@ const ARROW_DEFS: &str = r#"<defs>
 fn render_shape_svg(node: &ShapeNode, svg: &mut String) {
     let b = &node.resolved;
     let style = svg_node_attrs(node, &node.attrs);
+
+    if node
+        .attrs
+        .get("_wdoc_composite")
+        .is_some_and(|value| value == "true")
+        && !node.children.is_empty()
+    {
+        if let Some(url) = node.attrs.get("href") {
+            let url = svg_escape_attr(url);
+            write!(svg, "<a href=\"{url}\" target=\"_top\">").unwrap();
+        }
+        let gx = b.x;
+        let gy = b.y;
+        write!(svg, "<g transform=\"translate({gx},{gy})\"{style}>").unwrap();
+        render_child_shapes_svg(&node.children, svg);
+        svg.push_str("</g>");
+        if node.attrs.contains_key("href") {
+            svg.push_str("</a>");
+        }
+        return;
+    }
 
     // Wrap in <a> if shape has an href attribute (clickable)
     let href = node.attrs.get("href");
@@ -3801,6 +3845,59 @@ mod tests {
         assert!(svg.contains("data-wdoc-events=\"click|selected|self|toggle|left|0|false\""));
         assert!(svg.contains("<script>"));
         assert!(svg.contains("wdoc-state-"));
+    }
+
+    #[test]
+    fn right_click_events_prevent_default_and_target_stateful_shapes() {
+        let mut menu_class = DiagramClass {
+            name: "popup_menu".to_string(),
+            attrs: IndexMap::new(),
+            states: IndexMap::new(),
+            animations: IndexMap::new(),
+        };
+        menu_class
+            .attrs
+            .insert("visible".to_string(), "false".to_string());
+        let mut shown = DiagramState {
+            name: "shown".to_string(),
+            attrs: IndexMap::new(),
+        };
+        shown
+            .attrs
+            .insert("visible".to_string(), "true".to_string());
+        menu_class.states.insert("shown".to_string(), shown);
+
+        let mut source = shape("button", 100.0, 40.0);
+        source.events.push(DiagramEvent {
+            trigger: "right_click".to_string(),
+            target: Some("menu".to_string()),
+            state: "shown".to_string(),
+            mode: Some("toggle".to_string()),
+            ..Default::default()
+        });
+
+        let mut menu = shape("menu", 120.0, 80.0);
+        menu.x = Some(120.0);
+        menu.attrs
+            .insert("class".to_string(), "popup_menu".to_string());
+
+        let mut diagram = Diagram {
+            id: Some("menu".to_string()),
+            width: 280.0,
+            height: 120.0,
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+            classes: IndexMap::from([("popup_menu".to_string(), menu_class)]),
+            shapes: vec![source, menu],
+            connections: vec![],
+        };
+
+        let svg = render_diagram_svg(&mut diagram);
+        assert!(svg.contains("data-wdoc-events=\"right_click|shown|menu|toggle|left|0|true\""));
+        assert!(svg.contains("data-wdoc-id=\"menu\""));
+        assert!(svg.contains("contextmenu"));
     }
 
     #[test]

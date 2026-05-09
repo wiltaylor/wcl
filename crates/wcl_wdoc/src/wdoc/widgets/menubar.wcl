@@ -1,0 +1,63 @@
+    export let widget_menubar_item = (b, i, item_w, h, active, active_fill, label_fill, active_label_fill, radius, items, targets, disabled_items, item_blocks, has_blocks) => {
+        let item = has_blocks ? item_blocks[i] : b
+        let label = has_blocks ? attr_or(item, "label", "Item") : trim(items[i])
+        let target = has_blocks ? attr_or(item, "target", "") : (len(targets) > i ? trim(targets[i]) : "")
+        let disabled = has_blocks ? attr_or(item, "disabled", "false") == "true" : contains(disabled_items, label)
+        let close_events = map(targets, (menu_id) => {
+            trigger = "click",
+            target = trim(menu_id),
+            state = "shown",
+            mode = "remove"
+        })
+        let open_event = target != "" ? [{ trigger = "click", target = target, state = "shown", mode = "add" }] : []
+        let events = disabled ? [] : concat(concat([{ trigger = "hover", state = "hovered", mode = "while" }], close_events), open_event)
+        {
+            kind = "group",
+            id = "item_" + label,
+            x = i * item_w,
+            y = 0,
+            width = item_w,
+            height = h,
+            class = disabled ? "wdoc-menu-item wdoc-menu-item-disabled" : "wdoc-menu-item",
+            pointer_events = disabled ? "none" : "all",
+            cursor = disabled ? "default" : "pointer",
+            events = events,
+            children = [
+                { kind = "rect", x = 3, y = 4, width = item_w - 6, height = h - 8,
+                  rx = radius, fill = active_fill, class = "wdoc-menu-item-bg" },
+                { kind = "text", x = 0, y = 0, width = item_w, height = h,
+                  content = label, font_size = 12,
+                  fill = i == active ? active_label_fill : label_fill,
+                  pointer_events = "none" }
+            ]
+        }
+    }
+
+    export let widget_menubar = (b) => {
+        let w = attr_or(b, "width", 320)
+        let h = attr_or(b, "height", 34)
+        let items_str = attr_or(b, "items", "File,Edit,View,Help")
+        let target_str = attr_or(b, "menu_targets", "")
+        let targets = target_str != "" ? split(",", target_str) : []
+        let disabled_str = attr_or(b, "disabled_items", "")
+        let disabled_items = disabled_str != "" ? split(",", disabled_str) : []
+        let item_blocks = children(b, "wdoc::draw::menu_item")
+        let has_blocks = len(item_blocks) > 0
+        let active = attr_or(b, "active_index", -1)
+        let items = split(",", items_str)
+        let n = has_blocks ? len(item_blocks) : len(items)
+        let item_w = w / n
+        let bg_fill = attr_or(b, "background_fill", "var(--color-nav-bg)")
+        let border_stroke = attr_or(b, "border_stroke", "var(--color-nav-border)")
+        let active_fill = attr_or(b, "active_fill", "var(--color-nav-active)")
+        let label_fill = attr_or(b, "label_fill", "currentColor")
+        let active_label_fill = attr_or(b, "active_label_fill", label_fill)
+        let radius = attr_or(b, "radius", 6)
+        let active_bg = active >= 0 ? [{ kind = "rect", x = active * item_w, y = 4,
+            width = item_w, height = h - 8, rx = radius, fill = active_fill }] : []
+        let item_rows = map(range(0, n), (i) => wdoc::widget_menubar_item(b, i, item_w, h, active, active_fill, label_fill, active_label_fill, radius, items, targets, disabled_items, item_blocks, has_blocks))
+        concat(concat([
+            { kind = "rect", x = 0, y = 0, width = w, height = h, rx = radius,
+              fill = bg_fill, stroke = border_stroke, stroke_width = 1 }
+        ], active_bg), item_rows)
+    }

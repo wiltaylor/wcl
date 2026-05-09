@@ -1,0 +1,24 @@
+    export let widget_radio = (b) => {
+        let w = attr_or(b, "width", 140)
+        let h = attr_or(b, "height", 24)
+        let label = attr_or(b, "label", "Radio")
+        let selected = attr_or(b, "selected", "false") == "true"
+        let disabled = attr_or(b, "disabled", "false") == "true"
+        let size = attr_or(b, "size", 16)
+        let y = (h - size) / 2
+        let field_fill = attr_or(b, "field_fill", attr_or(b, "surface_fill", "var(--color-code-bg)"))
+        let border_stroke = attr_or(b, "border_stroke", "var(--color-nav-border)")
+        let active_fill = attr_or(b, "active_fill", "var(--color-link)")
+        let label_fill = attr_or(b, "label_fill", "currentColor")
+        let border_width = attr_or(b, "border_width", 1.5)
+        let opacity = disabled ? attr_or(b, "disabled_opacity", 0.45) : attr_or(b, "opacity", 1)
+        let dot = selected ? [{ kind = "circle", x = 4, y = y + 4, r = 4,
+            fill = active_fill, opacity = opacity }] : []
+        concat([
+            { kind = "circle", x = 0, y = y, r = size / 2, fill = field_fill,
+              stroke = selected ? active_fill : border_stroke, stroke_width = border_width,
+              opacity = opacity },
+            { kind = "text", x = size + 8, y = 0, width = w - size - 8, height = h,
+              content = label, font_size = 12, anchor = "start", fill = label_fill, opacity = opacity }
+        ], dot)
+    }

@@ -1,0 +1,32 @@
+    export let widget_textbox = (b) => {
+        let w = attr_or(b, "width", 220)
+        let h = attr_or(b, "height", 92)
+        let label = attr_or(b, "label", "")
+        let value = attr_or(b, "value", "")
+        let placeholder = attr_or(b, "placeholder", "Type here")
+        let rows = attr_or(b, "rows", 3)
+        let has_label = label != ""
+        let field_y = has_label ? 18 : 0
+        let field_h = has_label ? h - 18 : h
+        let shown_text = value != "" ? value : placeholder
+        let shown_fill = value != "" ? attr_or(b, "value_fill", "currentColor") : attr_or(b, "placeholder_fill", "currentColor")
+        let shown_opacity = value != "" ? 1 : attr_or(b, "placeholder_opacity", 0.4)
+        let label_fill = attr_or(b, "label_fill", "currentColor")
+        let field_fill = attr_or(b, "field_fill", attr_or(b, "surface_fill", "var(--color-code-bg)"))
+        let border_stroke = attr_or(b, "border_stroke", "var(--color-nav-border)")
+        let radius = attr_or(b, "radius", 6)
+        let border_width = attr_or(b, "border_width", 1)
+        let label_part = has_label ? [{ kind = "text", x = 0, y = 0, width = w, height = 16,
+            content = label, font_size = 11, anchor = "start", fill = label_fill }] : []
+        concat(concat(label_part, [
+            { kind = "rect", x = 0, y = field_y, width = w, height = field_h, rx = radius,
+              fill = field_fill, stroke = border_stroke, stroke_width = border_width }
+        ]), [
+            { kind = "text", x = 10, y = field_y + 8, width = w - 20, height = field_h - 16,
+              content = shown_text, font_size = 12, anchor = "start", fill = shown_fill,
+              opacity = shown_opacity, line_height = 1.3, max_width = w - 20 },
+            { kind = "text", x = w - 36, y = h - 20, width = 26, height = 14,
+              content = "rows", font_size = 9, fill = attr_or(b, "meta_fill", "currentColor"),
+              opacity = 0.35 }
+        ])
+    }

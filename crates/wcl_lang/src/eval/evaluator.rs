@@ -41,6 +41,8 @@ pub struct Evaluator {
     /// pipeline can use this evaluator's `eval_expr` as a callback during
     /// the post-evaluation control-flow retry pass.
     module_scope_id: Option<ScopeId>,
+    call_depth: usize,
+    max_call_depth: usize,
 }
 
 impl Evaluator {
@@ -60,6 +62,8 @@ impl Evaluator {
             scope_qualified_ids: HashMap::new(),
             module_blocks_by_kind: HashMap::new(),
             module_scope_id: None,
+            call_depth: 0,
+            max_call_depth: 64,
         }
     }
 
@@ -79,6 +83,8 @@ impl Evaluator {
             scope_qualified_ids: HashMap::new(),
             module_blocks_by_kind: HashMap::new(),
             module_scope_id: None,
+            call_depth: 0,
+            max_call_depth: 64,
         }
     }
 
@@ -107,6 +113,8 @@ impl Evaluator {
             scope_qualified_ids: HashMap::new(),
             module_blocks_by_kind: HashMap::new(),
             module_scope_id: None,
+            call_depth: 0,
+            max_call_depth: 64,
         }
     }
 
@@ -1380,6 +1388,13 @@ impl Evaluator {
         args: &[Value],
         span: Span,
     ) -> Result<Value, Diagnostic> {
+        if self.call_depth >= self.max_call_depth {
+            return Err(Diagnostic::error(
+                "function call depth exceeded while calling user function",
+                span,
+            )
+            .with_code("E052"));
+        }
         if args.len() != func.params.len() {
             return Err(Diagnostic::error(
                 format!(
@@ -1392,6 +1407,7 @@ impl Evaluator {
             .with_code("E052"));
         }
 
+        self.call_depth += 1;
         let parent_scope = func.closure_scope.unwrap_or(ScopeId(0));
         let call_scope = self
             .scopes
@@ -1412,7 +1428,7 @@ impl Evaluator {
             );
         }
 
-        match &func.body {
+        let result = (|| match &func.body {
             FunctionBody::UserDefined(expr) => self.eval_expr(expr, call_scope),
             FunctionBody::BlockExpr(lets, final_expr) => {
                 for (name, expr) in lets {
@@ -1445,7 +1461,9 @@ impl Evaluator {
                     ))
                 }
             }
-        }
+        })();
+        self.call_depth -= 1;
+        result
     }
 
     // ------------------------------------------------------------------
@@ -2106,6 +2124,17 @@ pub fn call_lambda(
     args: &[Value],
     builtins: &HashMap<String, BuiltinFn>,
 ) -> Result<Value, String> {
+    call_lambda_with_env(func, args, builtins, &HashMap::new())
+}
+
+/// Call a `FunctionValue` with access to both Rust builtins and WCL helper
+/// functions that were evaluated in an earlier document pass.
+pub fn call_lambda_with_env(
+    func: &FunctionValue,
+    args: &[Value],
+    builtins: &HashMap<String, BuiltinFn>,
+    helpers: &HashMap<String, FunctionValue>,
+) -> Result<Value, String> {
     if args.len() != func.params.len() {
         return Err(format!(
             "expected {} arguments, got {}",
@@ -2128,14 +2157,17 @@ pub fn call_lambda(
             for (name, f) in builtins {
                 eval.register_function(name.clone(), f.clone());
             }
-            let scope = eval.scopes_mut().create_scope(ScopeKind::Lambda, None);
-            for (param, arg) in func.params.iter().zip(args.iter()) {
+
+            let helper_scope = eval.scopes_mut().create_scope(ScopeKind::Lambda, None);
+            for (name, helper) in helpers {
+                let mut helper = helper.clone();
+                helper.closure_scope = Some(helper_scope);
                 eval.scopes_mut().add_entry(
-                    scope,
+                    helper_scope,
                     ScopeEntry {
-                        name: param.clone(),
+                        name: name.clone(),
                         kind: ScopeEntryKind::LetBinding,
-                        value: Some(arg.clone()),
+                        value: Some(Value::Function(helper)),
                         span: Span::dummy(),
                         dependencies: Default::default(),
                         evaluated: true,
@@ -2143,30 +2175,11 @@ pub fn call_lambda(
                     },
                 );
             }
-            match &func.body {
-                FunctionBody::UserDefined(expr) => {
-                    eval.eval_expr(expr, scope).map_err(|d| d.message)
-                }
-                FunctionBody::BlockExpr(lets, final_expr) => {
-                    for (name, expr) in lets {
-                        let val = eval.eval_expr(expr, scope).map_err(|d| d.message)?;
-                        eval.scopes_mut().add_entry(
-                            scope,
-                            ScopeEntry {
-                                name: name.clone(),
-                                kind: ScopeEntryKind::LetBinding,
-                                value: Some(val),
-                                span: Span::dummy(),
-                                dependencies: Default::default(),
-                                evaluated: true,
-                                read_count: 0,
-                            },
-                        );
-                    }
-                    eval.eval_expr(final_expr, scope).map_err(|d| d.message)
-                }
-                _ => unreachable!(),
-            }
+
+            let mut func = func.clone();
+            func.closure_scope = Some(helper_scope);
+            eval.call_user_fn(&func, args, Span::dummy())
+                .map_err(|d| d.message)
         }
     }
 }
@@ -3033,6 +3046,27 @@ mod tests {
             ds(),
         );
         assert_eq!(ev.eval_expr(&expr, scope).unwrap(), Value::Int(6));
+    }
+
+    #[test]
+    fn call_lambda_with_env_recursion_is_guarded() {
+        let func = FunctionValue {
+            params: vec!["x".to_string()],
+            body: FunctionBody::UserDefined(Box::new(Expr::FnCall(
+                Box::new(Expr::Ident(mk_ident("loop"))),
+                vec![CallArg::Positional(Expr::Ident(mk_ident("x")))],
+                ds(),
+            ))),
+            closure_scope: None,
+            lambda_attrs: crate::eval::value::LambdaAttrs::default(),
+            param_types: vec![],
+            return_type: None,
+        };
+        let helpers = HashMap::from([("loop".to_string(), func.clone())]);
+
+        let err =
+            call_lambda_with_env(&func, &[Value::Int(1)], &HashMap::new(), &helpers).unwrap_err();
+        assert!(err.contains("function call depth exceeded"));
     }
 
     // ── Null literal ─────────────────────────────────────────────────

@@ -102,16 +102,27 @@ fn collect_template_fns(
     fns
 }
 
+fn collect_template_helpers(doc: &crate::Document) -> HashMap<String, FunctionValue> {
+    doc.values
+        .iter()
+        .filter_map(|(name, value)| match value {
+            Value::Function(func) => Some((name.clone(), func.clone())),
+            _ => None,
+        })
+        .collect()
+}
+
 /// Call a template function with block attributes as a Value::Map.
 fn call_template(
     func: &TemplateFn,
     block: &BlockRef,
     builtins: &HashMap<String, BuiltinFn>,
+    helpers: &HashMap<String, FunctionValue>,
 ) -> Result<String, String> {
     // Pass the full BlockRef so template functions can access children
     let arg = Value::BlockRef(block.clone());
     let result = match func {
-        TemplateFn::Lambda(fv) => crate::call_lambda(fv, &[arg], builtins)?,
+        TemplateFn::Lambda(fv) => crate::call_lambda_with_env(fv, &[arg], builtins, helpers)?,
         TemplateFn::Builtin(f) => f(&[arg])?,
     };
     match result {
@@ -763,6 +774,7 @@ fn collect_shape_or_connection(
                 .or_insert_with(|| "none".to_string());
             a.entry("stroke".to_string())
                 .or_insert_with(|| "none".to_string());
+            a.insert("_wdoc_composite".to_string(), "true".to_string());
             assign_default_widget_class(&mut a, br);
             apply_builtin_widget_content_insets(&mut a, br);
         }
@@ -936,7 +948,9 @@ fn dispatch_shape_template(br: &BlockRef, ctx: &ExtractCtx) -> Result<ShapeTempl
     let themed_block = apply_widget_theme_class_attrs(br, ctx);
     let arg = Value::BlockRef(themed_block);
     let result = match func {
-        TemplateFn::Lambda(fv) => crate::call_lambda(fv, &[arg], &ctx.builtins)?,
+        TemplateFn::Lambda(fv) => {
+            crate::call_lambda_with_env(fv, &[arg], &ctx.builtins, &ctx.template_helpers)?
+        }
         TemplateFn::Builtin(f) => f(&[arg])?,
     };
 
@@ -1080,6 +1094,7 @@ fn descriptor_to_shape_node_and_connections(
                 | "z_index"
                 | "align"
                 | "children"
+                | "events"
                 | "id"
                 | "layout_role"
         ) {
@@ -1119,6 +1134,7 @@ fn descriptor_to_shape_node_and_connections(
     }
 
     let id = map.get("id").and_then(|v| v.as_string()).map(String::from);
+    let events = descriptor_events(map);
 
     let node = ShapeNode {
         kind,
@@ -1133,7 +1149,7 @@ fn descriptor_to_shape_node_and_connections(
         right: nright,
         resolved: Bounds::default(),
         attrs,
-        events: Vec::new(),
+        events,
         children,
         align,
         gap,
@@ -1143,6 +1159,58 @@ fn descriptor_to_shape_node_and_connections(
     };
 
     Some((node, scope_connections(connections, id.as_deref())))
+}
+
+fn descriptor_events(map: &IndexMap<String, Value>) -> Vec<wcl_wdoc::shapes::DiagramEvent> {
+    let Some(Value::List(items)) = map.get("events") else {
+        return Vec::new();
+    };
+    items
+        .iter()
+        .filter_map(|item| {
+            let Value::Map(event) = item else {
+                return None;
+            };
+            let trigger = event.get("trigger")?.as_string()?.to_string();
+            let state = event.get("state")?.as_string()?.to_string();
+            let target = event
+                .get("target")
+                .and_then(|v| v.as_string())
+                .map(str::to_string);
+            let button = event
+                .get("button")
+                .and_then(|v| v.as_string())
+                .map(str::to_string);
+            let mode = event
+                .get("mode")
+                .and_then(|v| v.as_string())
+                .map(str::to_string);
+            let duration_ms = event.get("duration_ms").and_then(|v| match v {
+                Value::Int(i) => Some(*i as i32),
+                Value::Float(f) => Some(*f as i32),
+                Value::String(s) => s.parse().ok(),
+                _ => None,
+            });
+            let prevent_default = event.get("prevent_default").and_then(|v| match v {
+                Value::Bool(b) => Some(*b),
+                Value::String(s) => s.parse().ok(),
+                _ => None,
+            });
+            Some(wcl_wdoc::shapes::DiagramEvent {
+                name: event
+                    .get("name")
+                    .and_then(|v| v.as_string())
+                    .map(str::to_string),
+                trigger,
+                state,
+                target,
+                button,
+                mode,
+                duration_ms,
+                prevent_default,
+            })
+        })
+        .collect()
 }
 
 fn descriptor_to_connection_with_order(
@@ -1485,6 +1553,7 @@ fn val_f64(v: Option<&Value>) -> Option<f64> {
 struct ExtractCtx {
     template_map: HashMap<(String, String), String>,
     template_fns: HashMap<String, TemplateFn>,
+    template_helpers: HashMap<String, FunctionValue>,
     builtins: HashMap<String, BuiltinFn>,
     css_registry: Rc<RefCell<DiagramCssRegistry>>,
     diagram_classes: Rc<RefCell<IndexMap<String, wcl_wdoc::shapes::DiagramClass>>>,
@@ -1504,7 +1573,7 @@ impl ExtractCtx {
             .get(fn_name)
             .ok_or_else(|| format!("template function '{fn_name}' not found for '{kind}'"))?;
 
-        call_template(func, block, &self.builtins)
+        call_template(func, block, &self.builtins, &self.template_helpers)
     }
 }
 
@@ -1772,6 +1841,7 @@ mod wdoc_draw_tests {
         ExtractCtx {
             template_map: HashMap::new(),
             template_fns: HashMap::new(),
+            template_helpers: HashMap::new(),
             builtins: HashMap::new(),
             css_registry: Rc::new(RefCell::new(DiagramCssRegistry::default())),
             diagram_classes: Rc::new(RefCell::new(IndexMap::new())),
@@ -2465,6 +2535,28 @@ mod wdoc_draw_tests {
     }
 
     #[test]
+    fn descriptor_events_flow_into_template_shapes() {
+        let mut event = IndexMap::new();
+        string_attr(&mut event, "trigger", "hover");
+        string_attr(&mut event, "state", "hovered");
+        string_attr(&mut event, "mode", "while");
+
+        let mut descriptor = IndexMap::new();
+        string_attr(&mut descriptor, "kind", "group");
+        string_attr(&mut descriptor, "id", "item");
+        descriptor.insert("events".to_string(), Value::List(vec![Value::Map(event)]));
+
+        let node = descriptor_to_shape_node_with_order(&Value::Map(descriptor), 0)
+            .expect("descriptor should become shape");
+
+        assert_eq!(node.events.len(), 1);
+        assert_eq!(node.events[0].trigger, "hover");
+        assert_eq!(node.events[0].state, "hovered");
+        assert_eq!(node.events[0].mode.as_deref(), Some("while"));
+        assert!(!node.attrs.contains_key("events"));
+    }
+
+    #[test]
     fn diagram_classes_and_events_flow_through_cli_extraction() {
         let mut class_attrs = IndexMap::new();
         string_attr(&mut class_attrs, "fill", "#ffffff");
@@ -3132,10 +3224,12 @@ fn parse_and_extract_with_watch(
     let template_map = collect_template_map(&doc);
     let builtins: HashMap<String, BuiltinFn> = functions.functions;
     let template_fns = collect_template_fns(&doc, &builtins);
+    let template_helpers = collect_template_helpers(&doc);
     let svg_search_dirs = wdoc_source_dirs(files, &doc.imported_paths, &lib_dir);
     let ctx = ExtractCtx {
         template_map,
         template_fns,
+        template_helpers,
         builtins,
         css_registry: Rc::new(RefCell::new(DiagramCssRegistry::default())),
         diagram_classes: Rc::new(RefCell::new(collect_diagram_classes(&all_values))),
