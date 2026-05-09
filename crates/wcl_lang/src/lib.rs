@@ -22,7 +22,7 @@ pub use crate::lang::{
 };
 
 pub use crate::eval::{
-    builtin_signatures, call_lambda, call_lambda_with_env, BlockRef, BuiltinFn, ConflictMode,
+    builtin_signatures, call_lambda_with_env, BlockRef, BuiltinFn, ConflictMode,
     ControlFlowExpander, DecoratorValue, Evaluator, FileSystem, FunctionRegistry,
     FunctionSignature, FunctionValue, ImportResolver, InMemoryFs, LibraryConfig, MacroExpander,
     MacroRegistry, PartialMerger, QueryEngine, RealFileSystem, Scope, ScopeArena, ScopeEntry,

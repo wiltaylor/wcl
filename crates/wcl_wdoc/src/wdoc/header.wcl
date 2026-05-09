@@ -297,21 +297,76 @@ namespace wdoc {
     declare link(text: string, url: string) -> string
     declare icon(name: string, size: string, color: string) -> string
     declare measure_text(text: any) -> map(string, any)
+    declare html_escape(value: any) -> string
+    declare slugify(value: any) -> string
+    declare render_children(block: any) -> string
+    declare table_rows(block: any) -> map(string, any)
 
     // --- Template rendering functions ---
 
-    declare render_callout(block: any) -> string
-    declare render_heading(block: any) -> string
-    declare render_h1(block: any) -> string
-    declare render_h2(block: any) -> string
-    declare render_h3(block: any) -> string
-    declare render_h4(block: any) -> string
-    declare render_h5(block: any) -> string
-    declare render_h6(block: any) -> string
-    declare render_paragraph(block: any) -> string
-    declare render_image(block: any) -> string
-    declare render_code(block: any) -> string
-    declare render_table(block: any) -> string
+    export let render_heading_at = (b, level) => {
+        let content = attr_or(b, "content", "")
+        let id = wdoc::slugify(content)
+        "<h" + to_string(level) + " id=\"" + id + "\" class=\"wdoc-heading\">" + content + "</h" + to_string(level) + ">"
+    }
+
+    export let render_heading = (b) => {
+        let level = attr_or(b, "level", 1)
+        let safe_level = level < 1 ? 1 : (level > 6 ? 6 : level)
+        wdoc::render_heading_at(b, safe_level)
+    }
+
+    export let render_h1 = (b) => wdoc::render_heading_at(b, 1)
+    export let render_h2 = (b) => wdoc::render_heading_at(b, 2)
+    export let render_h3 = (b) => wdoc::render_heading_at(b, 3)
+    export let render_h4 = (b) => wdoc::render_heading_at(b, 4)
+    export let render_h5 = (b) => wdoc::render_heading_at(b, 5)
+    export let render_h6 = (b) => wdoc::render_heading_at(b, 6)
+
+    export let render_paragraph = (b) => {
+        let content = attr_or(b, "content", "")
+        let has_block = contains(content, "<ul") || contains(content, "<ol") || contains(content, "<table") || contains(content, "<div")
+        has_block ? "<div class=\"wdoc-paragraph\">" + content + "</div>" : "<p class=\"wdoc-paragraph\">" + content + "</p>"
+    }
+
+    export let render_image = (b) => {
+        let src = attr_or(b, "src", "")
+        let alt = attr_or(b, "alt", "")
+        let width = attr_or(b, "width", "")
+        let height = attr_or(b, "height", "")
+        let alt_attr = alt != "" ? " alt=\"" + wdoc::html_escape(alt) + "\"" : ""
+        let width_attr = width != "" ? " width=\"" + wdoc::html_escape(width) + "\"" : ""
+        let height_attr = height != "" ? " height=\"" + wdoc::html_escape(height) + "\"" : ""
+        "<img src=\"" + wdoc::html_escape(src) + "\"" + alt_attr + width_attr + height_attr + " class=\"wdoc-image\">"
+    }
+
+    export let render_code = (b) => {
+        let content = attr_or(b, "content", "")
+        let language = attr_or(b, "language", "")
+        let lang_attr = language != "" ? " class=\"language-" + wdoc::html_escape(language) + "\"" : ""
+        "<pre class=\"wdoc-code\"><code" + lang_attr + ">" + wdoc::html_escape(content) + "</code></pre>"
+    }
+
+    export let render_table = (b) => {
+        let tbl = wdoc::table_rows(b)
+        tbl.empty ? "<p class=\"wdoc-paragraph\"><em>(empty table)</em></p>" : (
+            "<table class=\"wdoc-table\">\n" +
+            (tbl.caption != "" ? "<caption>" + tbl.caption + "</caption>\n" : "") +
+            (len(tbl.headers) > 0 ? "<thead><tr>" + join("", map(tbl.headers, (header) => "<th>" + header + "</th>")) + "</tr></thead>\n" : "") +
+            "<tbody>\n" +
+            join("", map(tbl.rows, (row) => "<tr>" + join("", map(row, (cell) => "<td>" + cell + "</td>")) + "</tr>\n")) +
+            "</tbody>\n</table>"
+        )
+    }
+
+    export let render_callout = (b) => {
+        let color = attr_or(b, "color", "var(--color-nav-border)")
+        let header = attr_or(b, "header", "")
+        let icon = attr_or(b, "icon", "")
+        let icon_html = icon != "" ? "<i class=\"bi bi-" + wdoc::html_escape(icon) + "\"></i> " : ""
+        let header_html = (header != "" || icon != "") ? "<div class=\"wdoc-callout-header\" style=\"color:" + color + ";\">" + icon_html + header + "</div>" : ""
+        "<div class=\"wdoc-callout\" style=\"border-left-color:" + color + ";\">" + header_html + "<div class=\"wdoc-callout-body\">" + wdoc::render_children(b) + "</div></div>"
+    }
 
     // ----------------------------------------------------------------------
     // Widget shape templates

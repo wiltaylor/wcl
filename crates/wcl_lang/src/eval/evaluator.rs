@@ -2112,21 +2112,6 @@ impl Default for Evaluator {
 // Free-standing helpers
 // =====================================================================
 
-/// Call a `FunctionValue` with the given arguments using a temporary evaluator.
-///
-/// This allows calling WCL lambdas (exported via `export let`) from Rust code
-/// after the main evaluation phase has completed. Template lambdas should be
-/// self-contained (no closure captures from the original scope).
-///
-/// For `FunctionBody::Builtin`, the function is looked up in `builtins`.
-pub fn call_lambda(
-    func: &FunctionValue,
-    args: &[Value],
-    builtins: &HashMap<String, BuiltinFn>,
-) -> Result<Value, String> {
-    call_lambda_with_env(func, args, builtins, &HashMap::new())
-}
-
 /// Call a `FunctionValue` with access to both Rust builtins and WCL helper
 /// functions that were evaluated in an earlier document pass.
 pub fn call_lambda_with_env(

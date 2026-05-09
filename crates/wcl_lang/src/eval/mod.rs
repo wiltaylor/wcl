@@ -14,7 +14,7 @@ pub mod scope;
 pub mod value;
 
 pub use control_flow::ControlFlowExpander;
-pub use evaluator::{call_lambda, call_lambda_with_env, parse_table, Evaluator};
+pub use evaluator::{call_lambda_with_env, parse_table, Evaluator};
 pub use functions::{builtin_signatures, BuiltinFn, FunctionRegistry, FunctionSignature};
 pub use imports::{
     find_lazy_namespace_references, library_search_paths, resolve_import_tables,

@@ -15,12 +15,6 @@ use wcl_wdoc::model::*;
 // Template function dispatch
 // ---------------------------------------------------------------------------
 
-/// A callable template: either a WCL lambda or a Rust builtin.
-enum TemplateFn {
-    Lambda(FunctionValue),
-    Builtin(BuiltinFn),
-}
-
 /// Map from (format, schema_name) → function_name, built from AST @template decorators.
 fn collect_template_map(doc: &crate::Document) -> HashMap<(String, String), String> {
     let mut map = HashMap::new();
@@ -79,29 +73,6 @@ fn extract_string_expr(expr: &ast::Expr) -> Option<String> {
     }
 }
 
-/// Collect callable HTML template functions from doc values (Value::Function) and builtins.
-fn collect_template_fns(
-    doc: &crate::Document,
-    builtins: &HashMap<String, BuiltinFn>,
-) -> HashMap<String, TemplateFn> {
-    let mut fns = HashMap::new();
-
-    // User-defined functions from evaluated values take priority
-    for (name, value) in &doc.values {
-        if let Value::Function(func) = value {
-            fns.insert(name.clone(), TemplateFn::Lambda(func.clone()));
-        }
-    }
-
-    // Builtins as fallback
-    for (name, f) in builtins {
-        fns.entry(name.clone())
-            .or_insert_with(|| TemplateFn::Builtin(f.clone()));
-    }
-
-    fns
-}
-
 fn collect_template_helpers(doc: &crate::Document) -> HashMap<String, FunctionValue> {
     doc.values
         .iter()
@@ -110,25 +81,6 @@ fn collect_template_helpers(doc: &crate::Document) -> HashMap<String, FunctionVa
             _ => None,
         })
         .collect()
-}
-
-/// Call a template function with block attributes as a Value::Map.
-fn call_template(
-    func: &TemplateFn,
-    block: &BlockRef,
-    builtins: &HashMap<String, BuiltinFn>,
-    helpers: &HashMap<String, FunctionValue>,
-) -> Result<String, String> {
-    // Pass the full BlockRef so template functions can access children
-    let arg = Value::BlockRef(block.clone());
-    let result = match func {
-        TemplateFn::Lambda(fv) => crate::call_lambda_with_env(fv, &[arg], builtins, helpers)?,
-        TemplateFn::Builtin(f) => f(&[arg])?,
-    };
-    match result {
-        Value::String(s) => Ok(s),
-        other => Ok(format!("{other}")),
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -264,95 +216,77 @@ fn wdoc_functions() -> FunctionRegistry {
         measure_sig("wdoc::measure_text"),
     );
 
-    // Template rendering functions — receive Value::Map, return HTML string
-    register_template_builtins(&mut reg);
+    register_renderer_helpers(&mut reg);
 
     reg
 }
 
-fn register_template_builtins(reg: &mut FunctionRegistry) {
-    let mk = |name: &str, doc: &str| FunctionSignature {
-        name: name.into(),
-        params: vec!["block: map".into()],
-        return_type: "string".into(),
-        doc: doc.into(),
-    };
-
+fn register_renderer_helpers(reg: &mut FunctionRegistry) {
     reg.register(
-        "wdoc::render_heading",
+        "wdoc::html_escape",
         std::sync::Arc::new(|args: &[Value]| {
-            let attrs = value_map_to_string_map(args.first())?;
-            Ok(Value::String(wcl_wdoc::templates::render_heading(&attrs)))
+            if args.len() != 1 {
+                return Err("wdoc::html_escape() expects 1 argument".into());
+            }
+            Ok(Value::String(html_escape(&value_to_string(&args[0]))))
         }) as BuiltinFn,
-        mk("wdoc::render_heading", "Render a heading element"),
-    );
-
-    // Per-level heading shorthands (h1..h6 schemas).
-    macro_rules! register_h {
-        ($name:literal, $level:literal) => {
-            reg.register(
-                concat!("wdoc::render_h", stringify!($level)),
-                std::sync::Arc::new(|args: &[Value]| {
-                    let attrs = value_map_to_string_map(args.first())?;
-                    Ok(Value::String(wcl_wdoc::templates::render_heading_at(
-                        $level, &attrs,
-                    )))
-                }) as BuiltinFn,
-                mk($name, "Render a heading at a fixed level"),
-            );
-        };
-    }
-    register_h!("wdoc::render_h1", 1);
-    register_h!("wdoc::render_h2", 2);
-    register_h!("wdoc::render_h3", 3);
-    register_h!("wdoc::render_h4", 4);
-    register_h!("wdoc::render_h5", 5);
-    register_h!("wdoc::render_h6", 6);
-
-    reg.register(
-        "wdoc::render_paragraph",
-        std::sync::Arc::new(|args: &[Value]| {
-            let attrs = value_map_to_string_map(args.first())?;
-            Ok(Value::String(wcl_wdoc::templates::render_paragraph(&attrs)))
-        }) as BuiltinFn,
-        mk("wdoc::render_paragraph", "Render a paragraph element"),
+        FunctionSignature {
+            name: "wdoc::html_escape".into(),
+            params: vec!["value: any".into()],
+            return_type: "string".into(),
+            doc: "Escape text for HTML text or attribute contexts".into(),
+        },
     );
 
     reg.register(
-        "wdoc::render_image",
+        "wdoc::slugify",
         std::sync::Arc::new(|args: &[Value]| {
-            let attrs = value_map_to_string_map(args.first())?;
-            Ok(Value::String(wcl_wdoc::templates::render_image(&attrs)))
+            if args.len() != 1 {
+                return Err("wdoc::slugify() expects 1 argument".into());
+            }
+            Ok(Value::String(wcl_wdoc::templates::slugify(
+                &value_to_string(&args[0]),
+            )))
         }) as BuiltinFn,
-        mk("wdoc::render_image", "Render an image element"),
+        FunctionSignature {
+            name: "wdoc::slugify".into(),
+            params: vec!["value: any".into()],
+            return_type: "string".into(),
+            doc: "Generate a URL-safe slug from text".into(),
+        },
     );
 
     reg.register(
-        "wdoc::render_code",
+        "wdoc::table_rows",
         std::sync::Arc::new(|args: &[Value]| {
-            let attrs = value_map_to_string_map(args.first())?;
-            Ok(Value::String(wcl_wdoc::templates::render_code(&attrs)))
+            if args.len() != 1 {
+                return Err("wdoc::table_rows() expects 1 argument".into());
+            }
+            Ok(wdoc_table_rows(&args[0]))
         }) as BuiltinFn,
-        mk("wdoc::render_code", "Render a code block"),
+        FunctionSignature {
+            name: "wdoc::table_rows".into(),
+            params: vec!["block: any".into()],
+            return_type: "map".into(),
+            doc: "Extract headers and cell rows from a WDoc data_table block".into(),
+        },
     );
 
     reg.register(
-        "wdoc::render_table",
+        "wdoc::render_children",
         std::sync::Arc::new(|args: &[Value]| {
-            let attrs = match args.first() {
-                Some(Value::Map(m)) => m,
-                Some(Value::BlockRef(br)) => &br.attributes,
-                _ => return Err("wdoc_render_table expects a map argument".into()),
-            };
-            Ok(Value::String(render_table_html(attrs)))
+            if args.len() != 1 {
+                return Err("wdoc::render_children() expects 1 argument".into());
+            }
+            wdoc_render_children(&args[0]).map(Value::String)
         }) as BuiltinFn,
-        mk("wdoc::render_table", "Render a table element"),
+        FunctionSignature {
+            name: "wdoc::render_children".into(),
+            params: vec!["block: any".into()],
+            return_type: "string".into(),
+            doc: "Render a block's child content with the current WDoc renderer context".into(),
+        },
     );
-
-    // Note: there is no `wdoc::render_diagram` builtin. Diagram rendering needs
-    // access to the template dispatch context (so that shape templates can be
-    // resolved), so it is special-cased in `extract_layout_children` and never
-    // goes through the html template path.
 
     // attr_or(block, "key", default) — read an attribute from a BlockRef or Map
     // with a fallback. Used by shape template functions to handle optional widget
@@ -410,118 +344,80 @@ fn value_map_to_string_map(val: Option<&Value>) -> Result<IndexMap<String, Strin
     Ok(result)
 }
 
-/// Render a `wdoc_table` block to an HTML `<table>`.
-/// Finds the first `Value::List` attribute (the table data) and builds HTML rows.
-fn render_table_html(attrs: &IndexMap<String, Value>) -> String {
-    use std::fmt::Write;
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
 
-    let caption = attrs.get("caption").and_then(|v| v.as_string());
+fn value_to_string(value: &Value) -> String {
+    match value {
+        Value::String(s) => s.clone(),
+        Value::Int(i) => i.to_string(),
+        Value::BigInt(i) => i.to_string(),
+        Value::Float(f) => f.to_string(),
+        Value::Bool(b) => b.to_string(),
+        Value::Null => String::new(),
+        other => format!("{other}"),
+    }
+}
 
-    // Find the first List attribute — that's the table data
-    let rows: Option<&Vec<Value>> = attrs.values().find_map(|v| match v {
+fn wdoc_table_rows(value: &Value) -> Value {
+    let attrs = match value {
+        Value::BlockRef(br) => &br.attributes,
+        Value::Map(map) => map,
+        _ => return table_rows_result(String::new(), true, Vec::new(), Vec::new()),
+    };
+    let caption = attrs
+        .get("caption")
+        .and_then(|v| v.as_string())
+        .unwrap_or("")
+        .to_string();
+    let rows = attrs.values().find_map(|v| match v {
         Value::List(list) => Some(list),
         _ => None,
     });
-
-    let rows = match rows {
-        Some(r) if !r.is_empty() => r,
-        _ => return "<p class=\"wdoc-paragraph\"><em>(empty table)</em></p>".to_string(),
+    let Some(rows) = rows.filter(|rows| !rows.is_empty()) else {
+        return table_rows_result(caption, true, Vec::new(), Vec::new());
     };
 
-    let mut html = String::from("<table class=\"wdoc-table\">\n");
-
-    if let Some(cap) = caption {
-        writeln!(html, "<caption>{cap}</caption>").unwrap();
-    }
-
-    // Extract headers from the first row's keys
-    if let Value::Map(first_row) = &rows[0] {
-        html.push_str("<thead><tr>");
-        for key in first_row.keys() {
-            write!(html, "<th>{key}</th>").unwrap();
-        }
-        html.push_str("</tr></thead>\n");
-    }
-
-    // Render body rows
-    html.push_str("<tbody>\n");
-    for row in rows {
-        if let Value::Map(map) = row {
-            html.push_str("<tr>");
-            for val in map.values() {
-                let cell = match val {
-                    Value::String(s) => s.clone(),
-                    Value::Int(i) => i.to_string(),
-                    Value::Float(f) => f.to_string(),
-                    Value::Bool(b) => b.to_string(),
-                    Value::Null => String::new(),
-                    other => format!("{other}"),
-                };
-                write!(html, "<td>{cell}</td>").unwrap();
-            }
-            html.push_str("</tr>\n");
-        }
-    }
-    html.push_str("</tbody>\n</table>");
-    html
+    let headers = match &rows[0] {
+        Value::Map(row) => row.keys().cloned().collect(),
+        _ => Vec::new(),
+    };
+    let body_rows = rows
+        .iter()
+        .filter_map(|row| match row {
+            Value::Map(map) => Some(map.values().map(value_to_string).collect()),
+            _ => None,
+        })
+        .collect();
+    table_rows_result(caption, false, headers, body_rows)
 }
 
-/// Render a `callout` block — colored container with icon, header, and nested content.
-fn render_callout_html(block: &BlockRef, ctx: &ExtractCtx) -> String {
-    use std::fmt::Write;
-
-    let color = block
-        .attributes
-        .get("color")
-        .and_then(|v| v.as_string())
-        .unwrap_or("var(--color-nav-border)");
-    let header = block.attributes.get("header").and_then(|v| v.as_string());
-    let icon = block.attributes.get("icon").and_then(|v| v.as_string());
-
-    let mut html = String::new();
-    write!(
-        html,
-        "<div class=\"wdoc-callout\" style=\"border-left-color:{color};\">"
-    )
-    .unwrap();
-
-    // Header with optional icon
-    if header.is_some() || icon.is_some() {
-        write!(
-            html,
-            "<div class=\"wdoc-callout-header\" style=\"color:{color};\">"
-        )
-        .unwrap();
-        if let Some(ic) = icon {
-            write!(html, "<i class=\"bi bi-{ic}\"></i> ").unwrap();
-        }
-        if let Some(hdr) = header {
-            html.push_str(hdr);
-        }
-        html.push_str("</div>");
-    }
-
-    // Body: render child content blocks
-    html.push_str("<div class=\"wdoc-callout-body\">");
-    for child_block in all_child_blocks(block) {
-        match child_block.kind.as_str() {
-            // Skip known non-content attributes
-            "wdoc::layout" | "wdoc::section" | "wdoc::page" | "wdoc::doc" | "wdoc::style" => {}
-            "wdoc::draw::diagram" => {
-                html.push_str(&render_diagram_with_ctx(child_block, ctx));
-                html.push('\n');
-            }
-            _kind => {
-                if let Ok(child_html) = ctx.render_block(child_block) {
-                    html.push_str(&child_html);
-                    html.push('\n');
-                }
-            }
-        }
-    }
-    html.push_str("</div></div>");
-
-    html
+fn table_rows_result(
+    caption: String,
+    empty: bool,
+    headers: Vec<String>,
+    rows: Vec<Vec<String>>,
+) -> Value {
+    let mut result = IndexMap::new();
+    result.insert("caption".to_string(), Value::String(caption));
+    result.insert("empty".to_string(), Value::Bool(empty));
+    result.insert(
+        "headers".to_string(),
+        Value::List(headers.into_iter().map(Value::String).collect()),
+    );
+    result.insert(
+        "rows".to_string(),
+        Value::List(
+            rows.into_iter()
+                .map(|row| Value::List(row.into_iter().map(Value::String).collect()))
+                .collect(),
+        ),
+    );
+    Value::Map(result)
 }
 
 /// Render a `wdoc::draw::diagram` block to inline SVG. Walks the diagram's child
@@ -1550,7 +1446,6 @@ fn val_f64(v: Option<&Value>) -> Option<f64> {
 
 struct ExtractCtx {
     template_map: HashMap<(String, String), String>,
-    template_fns: HashMap<String, TemplateFn>,
     template_helpers: HashMap<String, FunctionValue>,
     builtins: HashMap<String, BuiltinFn>,
     css_registry: Rc<RefCell<DiagramCssRegistry>>,
@@ -1566,13 +1461,47 @@ impl ExtractCtx {
             .get(&("html".to_string(), kind.clone()))
             .ok_or_else(|| format!("no @template(\"html\", ...) found for block kind '{kind}'"))?;
 
-        let func = self
-            .template_fns
-            .get(fn_name)
-            .ok_or_else(|| format!("template function '{fn_name}' not found for '{kind}'"))?;
+        let func = self.template_helpers.get(fn_name).ok_or_else(|| {
+            if self.builtins.contains_key(fn_name) {
+                format!("template function '{fn_name}' must be an exported WCL function")
+            } else {
+                format!("template function '{fn_name}' not found for '{kind}'")
+            }
+        })?;
 
-        call_template(func, block, &self.builtins, &self.template_helpers)
+        let _guard = enter_current_wdoc_ctx(self);
+        let result = crate::call_lambda_with_env(
+            func,
+            &[Value::BlockRef(block.clone())],
+            &self.builtins,
+            &self.template_helpers,
+        )?;
+        match result {
+            Value::String(s) => Ok(s),
+            other => Ok(format!("{other}")),
+        }
     }
+}
+
+thread_local! {
+    static CURRENT_WDOC_CTX: RefCell<Vec<*const ExtractCtx>> = const { RefCell::new(Vec::new()) };
+}
+
+struct CurrentWdocCtxGuard;
+
+impl Drop for CurrentWdocCtxGuard {
+    fn drop(&mut self) {
+        CURRENT_WDOC_CTX.with(|stack| {
+            stack.borrow_mut().pop();
+        });
+    }
+}
+
+fn enter_current_wdoc_ctx(ctx: &ExtractCtx) -> CurrentWdocCtxGuard {
+    CURRENT_WDOC_CTX.with(|stack| {
+        stack.borrow_mut().push(ctx as *const ExtractCtx);
+    });
+    CurrentWdocCtxGuard
 }
 
 #[derive(Default)]
@@ -1839,7 +1768,6 @@ mod wdoc_draw_tests {
     fn empty_ctx() -> ExtractCtx {
         ExtractCtx {
             template_map: HashMap::new(),
-            template_fns: HashMap::new(),
             template_helpers: HashMap::new(),
             builtins: HashMap::new(),
             css_registry: Rc::new(RefCell::new(DiagramCssRegistry::default())),
@@ -1868,10 +1796,34 @@ mod wdoc_draw_tests {
             ("shape".to_string(), kind.to_string()),
             template_name.to_string(),
         );
-        ctx.template_fns = collect_template_fns(&doc, &functions.functions);
         ctx.template_helpers = collect_template_helpers(&doc);
         ctx.builtins = functions.functions;
         ctx
+    }
+
+    fn wdoc_library_ctx() -> ExtractCtx {
+        let functions = wdoc_functions();
+        let doc = crate::parse(
+            WDOC_LIBRARY_WCL,
+            crate::ParseOptions {
+                functions: functions.clone(),
+                ..Default::default()
+            },
+        );
+        assert!(
+            !doc.has_errors(),
+            "unexpected diagnostics: {:?}",
+            doc.diagnostics
+        );
+
+        ExtractCtx {
+            template_map: collect_template_map(&doc),
+            template_helpers: collect_template_helpers(&doc),
+            builtins: functions.functions,
+            css_registry: Rc::new(RefCell::new(DiagramCssRegistry::default())),
+            diagram_classes: Rc::new(RefCell::new(IndexMap::new())),
+            svg_search_dirs: Vec::new(),
+        }
     }
 
     fn int_attr(attrs: &mut IndexMap<String, Value>, key: &str, value: i64) {
@@ -1879,7 +1831,7 @@ mod wdoc_draw_tests {
     }
 
     #[test]
-    fn bundled_shape_templates_resolve_to_wcl_lambdas() {
+    fn bundled_templates_resolve_to_wcl_lambdas() {
         let functions = wdoc_functions();
         let doc = crate::parse(
             WDOC_LIBRARY_WCL,
@@ -1898,16 +1850,13 @@ mod wdoc_draw_tests {
         let helpers = collect_template_helpers(&doc);
         let mut checked = 0;
         for ((format, schema), fn_name) in template_map {
-            if format != "shape" {
-                continue;
-            }
             checked += 1;
             assert!(
                 helpers.contains_key(&fn_name),
-                "shape template for {schema} must resolve to exported WCL function {fn_name}"
+                "{format} template for {schema} must resolve to exported WCL function {fn_name}"
             );
         }
-        assert!(checked > 0, "expected bundled shape templates");
+        assert!(checked > 0, "expected bundled templates");
     }
 
     #[test]
@@ -1931,6 +1880,94 @@ mod wdoc_draw_tests {
         assert!(err.contains(
             "shape template function 'legacy_shape_template' must be an exported WCL function"
         ));
+    }
+
+    #[test]
+    fn html_templates_do_not_fall_back_to_rust_builtins() {
+        let template =
+            std::sync::Arc::new(|_args: &[Value]| Ok(Value::String("legacy".into()))) as BuiltinFn;
+        let mut ctx = empty_ctx();
+        ctx.template_map.insert(
+            ("html".to_string(), "my::legacy".to_string()),
+            "legacy_html_template".to_string(),
+        );
+        ctx.builtins
+            .insert("legacy_html_template".to_string(), template);
+
+        let err = ctx
+            .render_block(&block(
+                "my::legacy",
+                Some("legacy"),
+                IndexMap::new(),
+                vec![],
+            ))
+            .unwrap_err();
+        assert!(err
+            .contains("template function 'legacy_html_template' must be an exported WCL function"));
+    }
+
+    #[test]
+    fn wcl_html_templates_render_standard_content() {
+        let ctx = wdoc_library_ctx();
+
+        let mut heading_attrs = IndexMap::new();
+        int_attr(&mut heading_attrs, "level", 2);
+        string_attr(&mut heading_attrs, "content", "Hello World");
+        assert_eq!(
+            ctx.render_block(&block("wdoc::heading", Some("h"), heading_attrs, vec![]))
+                .unwrap(),
+            "<h2 id=\"hello-world\" class=\"wdoc-heading\">Hello World</h2>"
+        );
+
+        let mut paragraph_attrs = IndexMap::new();
+        string_attr(&mut paragraph_attrs, "content", "<div>Block</div>");
+        assert_eq!(
+            ctx.render_block(&block(
+                "wdoc::paragraph",
+                Some("p"),
+                paragraph_attrs,
+                vec![]
+            ))
+            .unwrap(),
+            "<div class=\"wdoc-paragraph\"><div>Block</div></div>"
+        );
+
+        let mut code_attrs = IndexMap::new();
+        string_attr(&mut code_attrs, "language", "html");
+        string_attr(&mut code_attrs, "content", "<div>hi</div>");
+        let code_html = ctx
+            .render_block(&block("wdoc::code", Some("c"), code_attrs, vec![]))
+            .unwrap();
+        assert!(code_html.contains("language-html"));
+        assert!(code_html.contains("&lt;div&gt;hi&lt;/div&gt;"));
+
+        let mut row = IndexMap::new();
+        string_attr(&mut row, "Name", "Ada");
+        int_attr(&mut row, "Age", 37);
+        let mut table_attrs = IndexMap::new();
+        string_attr(&mut table_attrs, "caption", "People");
+        table_attrs.insert("rows".to_string(), Value::List(vec![Value::Map(row)]));
+        let table_html = ctx
+            .render_block(&block("wdoc::data_table", Some("tbl"), table_attrs, vec![]))
+            .unwrap();
+        assert!(table_html.contains("<caption>People</caption>"));
+        assert!(table_html.contains("<th>Name</th><th>Age</th>"));
+        assert!(table_html.contains("<td>Ada</td><td>37</td>"));
+
+        let mut child_attrs = IndexMap::new();
+        string_attr(&mut child_attrs, "content", "Nested");
+        let mut callout_attrs = IndexMap::new();
+        string_attr(&mut callout_attrs, "header", "Note");
+        let callout_html = ctx
+            .render_block(&block(
+                "wdoc::callout",
+                Some("call"),
+                callout_attrs,
+                vec![block("wdoc::paragraph", Some("child"), child_attrs, vec![])],
+            ))
+            .unwrap();
+        assert!(callout_html.contains("wdoc-callout-header"));
+        assert!(callout_html.contains("<p class=\"wdoc-paragraph\">Nested</p>"));
     }
 
     #[test]
@@ -2216,8 +2253,13 @@ mod wdoc_draw_tests {
             ],
         );
 
-        let rendered =
-            crate::call_lambda(func, &[Value::BlockRef(menu)], &functions.functions).unwrap();
+        let rendered = crate::call_lambda_with_env(
+            func,
+            &[Value::BlockRef(menu)],
+            &functions.functions,
+            &HashMap::new(),
+        )
+        .unwrap();
         assert_eq!(rendered, Value::String("File|Edit".to_string()));
     }
 
@@ -2943,6 +2985,42 @@ fn all_child_blocks(block: &BlockRef) -> Vec<&BlockRef> {
     result
 }
 
+fn wdoc_render_children(value: &Value) -> Result<String, String> {
+    let Value::BlockRef(block) = value else {
+        return Err("wdoc::render_children() expects a block argument".into());
+    };
+    CURRENT_WDOC_CTX.with(|stack| {
+        let Some(ctx_ptr) = stack.borrow().last().copied() else {
+            return Err("wdoc::render_children() requires an active WDoc render context".into());
+        };
+        // The pointer is pushed by `ExtractCtx::render_block` and popped after
+        // the template call returns, so it remains valid for this synchronous
+        // helper invocation.
+        let ctx = unsafe { &*ctx_ptr };
+        Ok(render_child_content(block, ctx))
+    })
+}
+
+fn render_child_content(block: &BlockRef, ctx: &ExtractCtx) -> String {
+    let mut html = String::new();
+    for child in all_child_blocks(block) {
+        match child.kind.as_str() {
+            "wdoc::layout" | "wdoc::section" | "wdoc::page" | "wdoc::doc" | "wdoc::style" => {}
+            "wdoc::draw::diagram" => {
+                html.push_str(&render_diagram_with_ctx(child, ctx));
+                html.push('\n');
+            }
+            _ => {
+                if let Ok(child_html) = ctx.render_block(child) {
+                    html.push_str(&child_html);
+                    html.push('\n');
+                }
+            }
+        }
+    }
+    html
+}
+
 fn extract(values: &IndexMap<String, Value>, ctx: &ExtractCtx) -> Result<WdocDocument, String> {
     let mut wdoc_block = None;
     let mut pages = Vec::new();
@@ -3104,16 +3182,6 @@ fn extract_layout_children(block: &BlockRef, ctx: &ExtractCtx) -> Vec<LayoutItem
             // Known structural blocks are not content
             "wdoc::layout" | "wdoc::section" | "wdoc::page" | "wdoc::doc" | "wdoc::style"
             | "split" => {}
-            // Callout — container with header + nested content blocks
-            "wdoc::callout" => {
-                let html = render_callout_html(child, ctx);
-                items.push(LayoutItem::Content(ContentBlock {
-                    kind: "wdoc::callout".to_string(),
-                    id: child.id.clone(),
-                    rendered_html: html,
-                    style: get_style_decorator(child),
-                }));
-            }
             // Diagram — needs ctx so shape templates can be dispatched.
             // Cannot go through the html template path because templates can't
             // see ctx.
@@ -3292,12 +3360,10 @@ fn parse_and_extract_with_watch(
     // Build template dispatch context
     let template_map = collect_template_map(&doc);
     let builtins: HashMap<String, BuiltinFn> = functions.functions;
-    let template_fns = collect_template_fns(&doc, &builtins);
     let template_helpers = collect_template_helpers(&doc);
     let svg_search_dirs = wdoc_source_dirs(files, &doc.imported_paths, &lib_dir);
     let ctx = ExtractCtx {
         template_map,
-        template_fns,
         template_helpers,
         builtins,
         css_registry: Rc::new(RefCell::new(DiagramCssRegistry::default())),

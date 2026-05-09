@@ -1,8 +1,8 @@
 //! Pure HTML rendering functions for standard wdoc content elements.
 //!
-//! These functions are wrapped as `BuiltinFn` in the CLI handler and called
-//! via template function dispatch. They have no dependency on wcl types —
-//! they operate on plain strings and maps.
+//! The bundled WDoc library now implements content templates in WCL. These
+//! functions remain as renderer-side utilities and regression coverage for the
+//! same plain-string HTML behavior.
 
 use std::fmt::Write;
 
