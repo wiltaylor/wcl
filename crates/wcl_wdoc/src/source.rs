@@ -2048,6 +2048,24 @@ mod wdoc_draw_tests {
 
         let template_map = collect_template_map(&doc);
         let helpers = collect_template_helpers(&doc);
+        assert_eq!(
+            template_map
+                .get(&(
+                    "shape".to_string(),
+                    "wdoc::draw::terminal_button".to_string()
+                ))
+                .map(String::as_str),
+            Some("wdoc::terminal_widget_button")
+        );
+        assert_eq!(
+            template_map
+                .get(&(
+                    "shape".to_string(),
+                    "wdoc::draw::terminal_dropdown".to_string()
+                ))
+                .map(String::as_str),
+            Some("wdoc::terminal_widget_dropdown")
+        );
         let mut checked = 0;
         for ((format, schema), fn_name) in template_map {
             checked += 1;
@@ -2341,6 +2359,93 @@ mod wdoc_draw_tests {
         assert!(html.contains("fill=\"#0f766e\""));
         assert!(html.contains("class=\"wdoc-widget-button\""));
         assert!(!html.contains("background_fill"));
+    }
+
+    #[test]
+    fn terminal_widget_templates_render_primitives_and_use_classes() {
+        let ctx = wdoc_library_ctx();
+        let mut class_attrs = IndexMap::new();
+        string_attr(&mut class_attrs, "background_fill", "#0f766e");
+        string_attr(&mut class_attrs, "hover_background_fill", "#164e63");
+        string_attr(&mut class_attrs, "foreground_fill", "#ffffff");
+        let button_class = block(
+            "class",
+            Some("brand_terminal"),
+            class_attrs,
+            vec![block("state", Some("hovered"), IndexMap::new(), vec![])],
+        );
+        ctx.diagram_classes
+            .borrow_mut()
+            .extend(collect_diagram_classes(&IndexMap::from([(
+                "brand_terminal".to_string(),
+                Value::BlockRef(button_class),
+            )])));
+
+        let mut button_attrs = IndexMap::new();
+        int_attr(&mut button_attrs, "row", 1);
+        int_attr(&mut button_attrs, "col", 2);
+        int_attr(&mut button_attrs, "cols", 14);
+        string_attr(&mut button_attrs, "label", "Deploy");
+        string_attr(&mut button_attrs, "class", "brand_terminal");
+
+        let mut dropdown_attrs = IndexMap::new();
+        int_attr(&mut dropdown_attrs, "row", 3);
+        int_attr(&mut dropdown_attrs, "col", 2);
+        int_attr(&mut dropdown_attrs, "cols", 12);
+        string_attr(&mut dropdown_attrs, "value", "prod");
+
+        let mut dev_attrs = IndexMap::new();
+        string_attr(&mut dev_attrs, "label", "dev");
+        let mut prod_attrs = IndexMap::new();
+        string_attr(&mut prod_attrs, "label", "prod");
+
+        let mut terminal_attrs = IndexMap::new();
+        int_attr(&mut terminal_attrs, "rows", 8);
+        int_attr(&mut terminal_attrs, "cols", 32);
+        let terminal = block(
+            "wdoc::draw::terminal",
+            Some("term"),
+            terminal_attrs,
+            vec![
+                block(
+                    "wdoc::draw::terminal_button",
+                    Some("deploy"),
+                    button_attrs,
+                    vec![],
+                ),
+                block(
+                    "wdoc::draw::terminal_dropdown",
+                    Some("env"),
+                    dropdown_attrs,
+                    vec![
+                        block("wdoc::draw::menu_item", Some("dev"), dev_attrs, vec![]),
+                        block("wdoc::draw::menu_item", Some("prod"), prod_attrs, vec![]),
+                    ],
+                ),
+            ],
+        );
+
+        let mut diagram_attrs = IndexMap::new();
+        int_attr(&mut diagram_attrs, "width", 360);
+        int_attr(&mut diagram_attrs, "height", 180);
+        let diagram = block(
+            "wdoc::draw::diagram",
+            Some("terminal_widgets"),
+            diagram_attrs,
+            vec![terminal],
+        );
+
+        let html = render_diagram_with_ctx(&diagram, &ctx);
+        assert!(html.contains("brand_terminal wdoc-terminal-control"));
+        assert!(html.contains("data-wdoc-id=\"deploy_surface\""));
+        assert!(html.contains("data-wdoc-id=\"deploy_label\""));
+        assert!(html.contains("fill=\"#0f766e\""));
+        assert!(html.contains("fill=\"#164e63\""));
+        assert!(html.contains("[ Deploy ]"));
+        assert!(html.contains("click|shown|env_menu|toggle"));
+        assert!(html.contains("data-wdoc-id=\"env_menu\""));
+        assert!(html.contains("wdoc-terminal-dropdown-menu"));
+        assert!(html.contains("wdoc-terminal-menu"));
     }
 
     #[test]

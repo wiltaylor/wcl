@@ -228,27 +228,38 @@ namespace wdoc {
             col: i32
             mode: string @optional
         }
+        @parent(["wdoc::draw::terminal"]) @open schema "terminal_surface" {
+            row: i32
+            col: i32
+            rows: i32 @optional
+            cols: i32
+        }
+        @template("shape", "wdoc::terminal_widget_button")
         @parent(["wdoc::draw::terminal"]) @open schema "terminal_button" {
             row: i32
             col: i32
             cols: i32 @optional
         }
+        @template("shape", "wdoc::terminal_widget_textbox")
         @parent(["wdoc::draw::terminal"]) @open schema "terminal_textbox" {
             row: i32
             col: i32
             rows: i32 @optional
             cols: i32 @optional
         }
+        @template("shape", "wdoc::terminal_widget_checkbox")
         @parent(["wdoc::draw::terminal"]) @open schema "terminal_checkbox" {
             row: i32
             col: i32
             cols: i32 @optional
         }
+        @template("shape", "wdoc::terminal_widget_radio")
         @parent(["wdoc::draw::terminal"]) @open schema "terminal_radio" {
             row: i32
             col: i32
             cols: i32 @optional
         }
+        @template("shape", "wdoc::terminal_widget_dropdown")
         @parent(["wdoc::draw::terminal"]) @open schema "terminal_dropdown" {
             row: i32
             col: i32
@@ -277,6 +288,7 @@ namespace wdoc {
             "wdoc::draw::terminal_menu",
             "wdoc::draw::terminal_context_menu",
             "wdoc::draw::terminal_cursor",
+            "wdoc::draw::terminal_surface",
             "wdoc::draw::terminal_button",
             "wdoc::draw::terminal_textbox",
             "wdoc::draw::terminal_checkbox",

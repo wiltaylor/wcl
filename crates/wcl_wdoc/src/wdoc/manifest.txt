@@ -16,6 +16,11 @@ widgets/ui/menubar.wcl
 widgets/ui/context_menu.wcl
 widgets/ui/badge.wcl
 widgets/ui/navbar.wcl
+widgets/terminal/button.wcl
+widgets/terminal/textbox.wcl
+widgets/terminal/checkbox.wcl
+widgets/terminal/radio.wcl
+widgets/terminal/dropdown.wcl
 widgets/flowchart/flow_process.wcl
 widgets/flowchart/flow_decision.wcl
 widgets/flowchart/flow_terminal.wcl

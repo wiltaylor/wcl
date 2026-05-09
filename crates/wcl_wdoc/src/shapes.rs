@@ -44,11 +44,7 @@ pub enum ShapeKind {
     TerminalMenu,
     TerminalContextMenu,
     TerminalCursor,
-    TerminalButton,
-    TerminalTextbox,
-    TerminalCheckbox,
-    TerminalRadio,
-    TerminalDropdown,
+    TerminalSurface,
     MenuItem,
 }
 
@@ -618,6 +614,12 @@ fn is_supported_class_property(key: &str) -> bool {
             | "letter_spacing"
             | "background_fill"
             | "foreground_fill"
+            | "hover_background_fill"
+            | "hover_foreground_fill"
+            | "accent_fill"
+            | "muted_fill"
+            | "label_fill"
+            | "placeholder_fill"
             | "selected_background_fill"
             | "selected_foreground_fill"
             | "cell_width"
@@ -792,11 +794,7 @@ pub fn parse_shape_kind(kind: &str) -> Option<ShapeKind> {
         "wdoc::draw::terminal_menu" => Some(ShapeKind::TerminalMenu),
         "wdoc::draw::terminal_context_menu" => Some(ShapeKind::TerminalContextMenu),
         "wdoc::draw::terminal_cursor" => Some(ShapeKind::TerminalCursor),
-        "wdoc::draw::terminal_button" => Some(ShapeKind::TerminalButton),
-        "wdoc::draw::terminal_textbox" => Some(ShapeKind::TerminalTextbox),
-        "wdoc::draw::terminal_checkbox" => Some(ShapeKind::TerminalCheckbox),
-        "wdoc::draw::terminal_radio" => Some(ShapeKind::TerminalRadio),
-        "wdoc::draw::terminal_dropdown" => Some(ShapeKind::TerminalDropdown),
+        "wdoc::draw::terminal_surface" => Some(ShapeKind::TerminalSurface),
         "wdoc::draw::menu_item" => Some(ShapeKind::MenuItem),
         // Anything else under `wdoc::draw::` (or a user namespace ending in `::draw::`)
         // is treated as a composite shape: a rect-shaped container whose children are
@@ -1656,11 +1654,7 @@ fn render_shape_svg(node: &ShapeNode, svg: &mut String) {
         | ShapeKind::TerminalMenu
         | ShapeKind::TerminalContextMenu
         | ShapeKind::TerminalCursor
-        | ShapeKind::TerminalButton
-        | ShapeKind::TerminalTextbox
-        | ShapeKind::TerminalCheckbox
-        | ShapeKind::TerminalRadio
-        | ShapeKind::TerminalDropdown
+        | ShapeKind::TerminalSurface
         | ShapeKind::MenuItem => {}
     }
 

@@ -2,7 +2,7 @@
 
 import <wdoc.wcl>
 use wdoc::{doc, page, section, style, layout, heading, paragraph, image, code, data_table, callout, bold, italic, link, icon, icon_styled}
-use wdoc::draw::{diagram, rect, circle, ellipse, line, path, text, group, connection, terminal, terminal_text, terminal_box, terminal_rule, terminal_menubar, terminal_menu, terminal_context_menu, terminal_cursor, terminal_button, terminal_textbox, terminal_checkbox, terminal_radio, terminal_dropdown, phone, browser, button, input, card, avatar, toggle, checkbox, radio, button_group, textbox, dropdown, inline_image, menubar, context_menu, menu_item, badge, navbar, flow_process, flow_decision, flow_terminal, flow_io, flow_subprocess, c4_person, c4_system, c4_container, c4_component, c4_boundary, uml_class, uml_actor, uml_package, uml_note, server, database, cloud, user}
+use wdoc::draw::{diagram, rect, circle, ellipse, line, path, text, group, connection, terminal, terminal_text, terminal_box, terminal_rule, terminal_menubar, terminal_menu, terminal_context_menu, terminal_cursor, terminal_surface, terminal_button, terminal_textbox, terminal_checkbox, terminal_radio, terminal_dropdown, phone, browser, button, input, card, avatar, toggle, checkbox, radio, button_group, textbox, dropdown, inline_image, menubar, context_menu, menu_item, badge, navbar, flow_process, flow_decision, flow_terminal, flow_io, flow_subprocess, c4_person, c4_system, c4_container, c4_component, c4_boundary, uml_class, uml_actor, uml_package, uml_note, server, database, cloud, user}
 use custom_shapes::{task_node, mini_flow}
 
 // Helper: literal dollar sign for code examples containing ${...}

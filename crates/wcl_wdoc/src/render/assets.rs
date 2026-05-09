@@ -224,6 +224,12 @@ h6.wdoc-heading { font-size: 0.9rem; }
 .wdoc-terminal-menu-item.wdoc-state-hovered .wdoc-terminal-menu-item-label-hover {
     opacity: 1;
 }
+.wdoc-terminal-menu[visibility="hidden"]:not(.wdoc-state-shown) .wdoc-terminal-menu-item,
+.wdoc-terminal-menu[pointer-events="none"]:not(.wdoc-state-shown) .wdoc-terminal-menu-item,
+.wdoc-terminal-dropdown-menu:not(.wdoc-state-shown) .wdoc-terminal-menu-item {
+    pointer-events: none !important;
+    cursor: default !important;
+}
 .wdoc-terminal-menu-item-disabled {
     opacity: .45;
 }

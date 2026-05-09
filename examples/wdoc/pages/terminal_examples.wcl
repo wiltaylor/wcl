@@ -72,7 +72,7 @@ page terminal_examples {
                         background_fill = "#08111f"
                         foreground_fill = "#d7e0ff"
                         rx = 10
-                        content = "$ cargo test -p wcl_wdoc\n\u001b[32mPASS\u001b[0m terminal::ansi_parser_supports_sgr_colors_and_styles\n\u001b[32mPASS\u001b[0m terminal::terminal_svg_renders_ansi_and_tui_children\n\u001b[33mWARN\u001b[0m docs examples include generated terminal assets\n\nUse the menu bar or arrows to pick a task:"
+                        content = "$ cargo test -p wcl_wdoc\n\u001b[32mPASS\u001b[0m terminal::ansi_parser_supports_sgr_colors_and_styles\n\u001b[32mPASS\u001b[0m terminal::terminal_svg_renders_ansi_and_tui_children\n\u001b[33mWARN\u001b[0m docs examples include generated terminal assets"
 
                         terminal_menubar app_menu {
                             row = 5
