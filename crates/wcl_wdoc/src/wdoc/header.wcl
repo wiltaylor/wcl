@@ -292,6 +292,8 @@ namespace wdoc {
 
     // --- Inline formatting functions ---
 
+    export let html_escape = value => replace(replace(replace(replace(to_string(value), "&", "&amp;"), "<", "&lt;"), ">", "&gt;"), "\"", "&quot;")
+
     @markup("**{text}**")
     export let bold = text => "<strong>" + wdoc::html_escape(text) + "</strong>"
 
@@ -312,7 +314,6 @@ namespace wdoc {
     export let icon_styled = (name, size, color) => "<i class=\"bi bi-" + wdoc::html_escape(name) + "\" style=\"font-size:" + wdoc::html_escape(size) + ";color:" + wdoc::html_escape(color) + ";\"></i>"
 
     declare measure_text(text: any) -> map(string, any)
-    declare html_escape(value: any) -> string
     declare slugify(value: any) -> string
     declare render_markup(text: string) -> string
     declare render_children(block: any) -> string

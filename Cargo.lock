@@ -2516,6 +2516,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tower-http",
+ "wcl_lang",
 ]
 
 [[package]]

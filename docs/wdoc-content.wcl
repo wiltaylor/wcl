@@ -71,7 +71,7 @@ page wdoc_content {
                 }
 
                 paragraph p_i1 {
-                    content = "Inline helper functions are provided in the <code>wdoc</code> namespace and are commonly imported via <code>use wdoc::{bold, italic, link, icon, icon_styled}</code>. They return HTML strings that you concatenate into <code>content</code>."
+                    content = "Inline helper lambdas are provided in the <code>wdoc</code> namespace and are commonly imported via <code>use wdoc::{bold, italic, link, icon, icon_styled}</code>. They return HTML strings that you concatenate into <code>content</code>."
                 }
 
                 data_table tbl_inline {

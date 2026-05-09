@@ -9,6 +9,7 @@ repository.workspace = true
 description = "WCL documentation format — build structured docs with WCL, render to HTML"
 
 [dependencies]
+wcl_lang = { workspace = true }
 indexmap = { workspace = true }
 quick-xml = "0.37"
 thiserror = { workspace = true }
