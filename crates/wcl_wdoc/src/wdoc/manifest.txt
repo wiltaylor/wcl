@@ -20,6 +20,8 @@ widgets/terminal/button.wcl
 widgets/terminal/textbox.wcl
 widgets/terminal/checkbox.wcl
 widgets/terminal/radio.wcl
+widgets/terminal/menu.wcl
+widgets/terminal/menubar.wcl
 widgets/terminal/dropdown.wcl
 widgets/flowchart/flow_process.wcl
 widgets/flowchart/flow_decision.wcl

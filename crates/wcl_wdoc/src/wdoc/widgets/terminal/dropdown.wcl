@@ -4,7 +4,7 @@
         label = attr_or(item, "label", "Item"),
         target = attr_or(item, "target", ""),
         close_targets = attr_or(item, "close_targets", ""),
-        disabled = attr_or(item, "disabled", "false")
+        disabled = attr_or(item, "disabled", "false") == "true"
     }
 
     export let terminal_widget_dropdown = (b) => {
@@ -22,6 +22,7 @@
         let muted = attr_or(b, "muted_fill", "#94a3b8")
         let bg = attr_or(b, "background_fill", "#111827")
         let hover_bg = attr_or(b, "hover_background_fill", "#38bdf8")
+        let hover_fg = attr_or(b, "hover_foreground_fill", "#06121f")
         let shown_fill = value == "" && selected_index < 0 ? muted : fg
         let base_class = attr_or(b, "class", "wdoc-widget-terminal_dropdown")
         let control_class = disabled ? "wdoc-terminal-control wdoc-terminal-control-disabled" : "wdoc-terminal-control"
@@ -30,6 +31,8 @@
             { trigger = "click", target = menu_id, state = "shown", mode = "toggle" }
         ]
         let menu_class = attr_or(b, "open", "false") == "true" ? "wdoc-terminal-dropdown-menu wdoc-state-shown" : "wdoc-terminal-dropdown-menu"
+        let items = map(item_blocks, item => wdoc::terminal_widget_dropdown_item(item))
+        let item_shapes = map(range(0, len(items)), i => wdoc::terminal_menu_item_shape(b, items[i], i, row + 1, col, cols, fg, bg, hover_fg, hover_bg, [], [], [menu_id]))
         [
             {
                 kind = "terminal_surface",
@@ -56,17 +59,17 @@
                 pointer_events = "none"
             },
             {
-                kind = "terminal_menu",
+                kind = "group",
                 id = menu_id,
                 row = row + 1,
                 col = col,
                 rows = len(item_blocks) > 0 ? len(item_blocks) : 1,
                 cols = cols,
-                background_fill = bg,
-                hover_background_fill = hover_bg,
                 class = menu_class,
                 _wdoc_runtime = "true",
-                children = map(item_blocks, item => wdoc::terminal_widget_dropdown_item(item))
+                children = concat([
+                    { kind = "terminal_surface", id = menu_id + "_surface", row = row + 1, col = col, rows = len(item_blocks) > 0 ? len(item_blocks) : 1, cols = cols, background_fill = bg, _wdoc_runtime = "true" }
+                ], item_shapes)
             }
         ]
     }

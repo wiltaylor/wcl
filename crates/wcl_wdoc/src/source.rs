@@ -2394,6 +2394,43 @@ mod wdoc_draw_tests {
         int_attr(&mut dropdown_attrs, "cols", 12);
         string_attr(&mut dropdown_attrs, "value", "prod");
 
+        let mut menubar_attrs = IndexMap::new();
+        int_attr(&mut menubar_attrs, "row", 0);
+        int_attr(&mut menubar_attrs, "col", 0);
+        int_attr(&mut menubar_attrs, "cols", 28);
+
+        let mut run_menu_attrs = IndexMap::new();
+        int_attr(&mut run_menu_attrs, "row", 1);
+        int_attr(&mut run_menu_attrs, "col", 0);
+        int_attr(&mut run_menu_attrs, "rows", 2);
+        int_attr(&mut run_menu_attrs, "cols", 12);
+        string_attr(
+            &mut run_menu_attrs,
+            "leave_close_targets",
+            "run_menu,build_menu,test_menu",
+        );
+        string_attr(
+            &mut run_menu_attrs,
+            "leave_guard_targets",
+            "run_menu,build_menu,test_menu",
+        );
+
+        let mut file_attrs = IndexMap::new();
+        string_attr(&mut file_attrs, "label", "File");
+        string_attr(&mut file_attrs, "target", "run_menu");
+        let mut run_attrs = IndexMap::new();
+        string_attr(&mut run_attrs, "label", "Run");
+        string_attr(&mut run_attrs, "target", "test_menu");
+        let mut help_attrs = IndexMap::new();
+        string_attr(&mut help_attrs, "label", "Help");
+        string_attr(&mut help_attrs, "disabled", "true");
+
+        let mut build_attrs = IndexMap::new();
+        string_attr(&mut build_attrs, "label", "Build");
+        string_attr(&mut build_attrs, "target", "build_menu");
+        let mut format_attrs = IndexMap::new();
+        string_attr(&mut format_attrs, "label", "Format");
+
         let mut dev_attrs = IndexMap::new();
         string_attr(&mut dev_attrs, "label", "dev");
         let mut prod_attrs = IndexMap::new();
@@ -2407,6 +2444,30 @@ mod wdoc_draw_tests {
             Some("term"),
             terminal_attrs,
             vec![
+                block(
+                    "wdoc::draw::terminal_menubar",
+                    Some("mainbar"),
+                    menubar_attrs,
+                    vec![
+                        block("wdoc::draw::menu_item", Some("file"), file_attrs, vec![]),
+                        block("wdoc::draw::menu_item", Some("run"), run_attrs, vec![]),
+                        block("wdoc::draw::menu_item", Some("help"), help_attrs, vec![]),
+                    ],
+                ),
+                block(
+                    "wdoc::draw::terminal_menu",
+                    Some("run_menu"),
+                    run_menu_attrs,
+                    vec![
+                        block("wdoc::draw::menu_item", Some("build"), build_attrs, vec![]),
+                        block(
+                            "wdoc::draw::menu_item",
+                            Some("format"),
+                            format_attrs,
+                            vec![],
+                        ),
+                    ],
+                ),
                 block(
                     "wdoc::draw::terminal_button",
                     Some("deploy"),
@@ -2446,6 +2507,15 @@ mod wdoc_draw_tests {
         assert!(html.contains("data-wdoc-id=\"env_menu\""));
         assert!(html.contains("wdoc-terminal-dropdown-menu"));
         assert!(html.contains("wdoc-terminal-menu"));
+        assert!(html.contains("data-wdoc-id=\"mainbar_item_0\""));
+        assert!(html.contains("data-wdoc-id=\"run_menu_item_0\""));
+        assert!(html.contains("wdoc-terminal-menu-item-disabled"));
+        assert!(html.contains("hover|shown|run_menu|add"));
+        assert!(html.contains("hover|shown|test_menu|remove"));
+        assert!(html.contains("click|shown|run_menu|remove"));
+        assert!(html.contains("mouse_leave|shown|run_menu|remove"));
+        assert!(html.contains("|run_menu,build_menu,test_menu"));
+        assert!(html.contains("&gt;</text>"));
     }
 
     #[test]

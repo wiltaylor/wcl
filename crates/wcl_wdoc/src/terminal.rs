@@ -99,14 +99,6 @@ impl Default for TermStyle {
     }
 }
 
-impl TermStyle {
-    fn default_with_class(class_name: &str) -> Self {
-        let mut style = Self::default();
-        style.css_class = Some(class_name.to_string());
-        style
-    }
-}
-
 #[derive(Debug, Clone)]
 struct TermRun {
     row: usize,
@@ -114,15 +106,6 @@ struct TermRun {
     cells: usize,
     text: String,
     style: TermStyle,
-}
-
-#[derive(Debug, Clone)]
-struct TerminalMenuItem {
-    id: Option<String>,
-    label: String,
-    target: Option<String>,
-    close_targets: Option<Vec<String>>,
-    disabled: bool,
 }
 
 pub(crate) fn intrinsic_size(attrs: &indexmap::IndexMap<String, String>) -> (f64, f64) {
@@ -265,10 +248,7 @@ fn render_terminal_child(
         }
         ShapeKind::TerminalBox => render_box(child, metrics, foreground, svg),
         ShapeKind::TerminalRule => render_rule(child, metrics, foreground, svg),
-        ShapeKind::TerminalMenubar => render_menubar(child, metrics, foreground, background, svg),
-        ShapeKind::TerminalMenu | ShapeKind::TerminalContextMenu => {
-            render_menu(child, metrics, foreground, background, svg)
-        }
+        ShapeKind::Group => render_terminal_group(child, metrics, foreground, background, svg),
         ShapeKind::TerminalCursor => render_cursor(child, metrics, foreground, svg),
         ShapeKind::TerminalSurface => render_surface(child, metrics, background, svg),
         _ => render_terminal_container_or_children(child, metrics, foreground, background, svg),
@@ -282,23 +262,27 @@ fn render_terminal_container_or_children(
     background: &str,
     svg: &mut String,
 ) {
-    if child
-        .attrs
-        .get("_wdoc_composite")
-        .is_some_and(|value| value == "true")
-    {
-        if let (Some(row), Some(col)) = (
-            attr_usize(&child.attrs, "row"),
-            attr_usize(&child.attrs, "col"),
-        ) {
-            let rows = attr_usize(&child.attrs, "rows").unwrap_or(1).max(1);
-            let cols = attr_usize(&child.attrs, "cols").unwrap_or(1).max(1);
-            let bounds = grid_bounds(metrics, row, col, rows, cols);
-            write!(svg, "<g{}>", node_attrs(child, bounds)).unwrap();
-            render_terminal_children(&child.children, metrics, foreground, background, svg);
-            svg.push_str("</g>");
-            return;
-        }
+    render_terminal_children(&child.children, metrics, foreground, background, svg);
+}
+
+fn render_terminal_group(
+    child: &ShapeNode,
+    metrics: &TerminalMetrics,
+    foreground: &str,
+    background: &str,
+    svg: &mut String,
+) {
+    if let (Some(row), Some(col)) = (
+        attr_usize(&child.attrs, "row"),
+        attr_usize(&child.attrs, "col"),
+    ) {
+        let rows = attr_usize(&child.attrs, "rows").unwrap_or(1).max(1);
+        let cols = attr_usize(&child.attrs, "cols").unwrap_or(1).max(1);
+        let bounds = grid_bounds(metrics, row, col, rows, cols);
+        write!(svg, "<g{}>", node_attrs(child, bounds)).unwrap();
+        render_terminal_children(&child.children, metrics, foreground, background, svg);
+        svg.push_str("</g>");
+        return;
     }
     render_terminal_children(&child.children, metrics, foreground, background, svg);
 }
@@ -352,9 +336,7 @@ fn render_box(child: &ShapeNode, metrics: &TerminalMetrics, foreground: &str, sv
         .unwrap_or(foreground);
     let title = child.attrs.get("title").map(|s| s.as_str()).unwrap_or("");
     let bounds = grid_bounds(metrics, row, col, rows, cols);
-    let mut menu_node = node_with_extra_class(child, "wdoc-terminal-menu");
-    add_terminal_leave_close_events(&mut menu_node);
-    let attrs = node_attrs(&menu_node, bounds);
+    let attrs = node_attrs(child, bounds);
     write!(svg, "<g{}>", attrs).unwrap();
     if let Some(fill) = fill {
         write_rect(svg, bounds, fill, 0.0);
@@ -445,288 +427,6 @@ fn render_rule(child: &ShapeNode, metrics: &TerminalMetrics, foreground: &str, s
             None,
             &TermStyle::default(),
         );
-    }
-    svg.push_str("</g>");
-}
-
-fn render_menu(
-    child: &ShapeNode,
-    metrics: &TerminalMetrics,
-    foreground: &str,
-    background: &str,
-    svg: &mut String,
-) {
-    let row = attr_usize(&child.attrs, "row").unwrap_or(0);
-    let col = attr_usize(&child.attrs, "col").unwrap_or(0);
-    let items = terminal_menu_items(child);
-    let cols = attr_usize(&child.attrs, "cols")
-        .unwrap_or_else(|| {
-            items
-                .iter()
-                .map(|item| item.label.width() + if item.target.is_some() { 4 } else { 2 })
-                .max()
-                .unwrap_or(1)
-        })
-        .max(1);
-    let rows = attr_usize(&child.attrs, "rows")
-        .unwrap_or(items.len())
-        .max(1);
-    let default_close_targets = child.attrs.get("close_targets").map(|s| split_items(s));
-    let sibling_targets: Vec<String> = items
-        .iter()
-        .filter_map(|item| item.target.clone())
-        .filter(|target| !target.is_empty())
-        .collect();
-    let mut click_close_targets = Vec::new();
-    if let Some(id) = child.id.as_deref() {
-        push_unique_target(&mut click_close_targets, id);
-    }
-    if let Some(targets) = child.attrs.get("leave_close_targets") {
-        for target in split_items(targets) {
-            push_unique_target(&mut click_close_targets, &target);
-        }
-    }
-    if let Some(targets) = default_close_targets.as_ref() {
-        for target in targets {
-            push_unique_target(&mut click_close_targets, target);
-        }
-    }
-    for target in &sibling_targets {
-        push_unique_target(&mut click_close_targets, target);
-    }
-    let fg = child
-        .attrs
-        .get("foreground_fill")
-        .or_else(|| child.attrs.get("fill"))
-        .map(|s| s.as_str())
-        .unwrap_or(foreground);
-    let bg = child
-        .attrs
-        .get("background_fill")
-        .map(|s| s.as_str())
-        .unwrap_or(background);
-    let hover_fg = child
-        .attrs
-        .get("hover_foreground_fill")
-        .or_else(|| child.attrs.get("selected_foreground_fill"))
-        .map(|s| s.as_str())
-        .unwrap_or(background);
-    let hover_bg = child
-        .attrs
-        .get("hover_background_fill")
-        .or_else(|| child.attrs.get("selected_background_fill"))
-        .map(|s| s.as_str())
-        .unwrap_or(foreground);
-    let bounds = grid_bounds(metrics, row, col, rows, cols);
-    let menu_node = node_with_extra_class(child, "wdoc-terminal-menu");
-    let attrs = node_attrs(&menu_node, bounds);
-    write!(svg, "<g{}>", attrs).unwrap();
-    write_rect(svg, bounds, bg, 0.0);
-    for (idx, item) in items.into_iter().take(rows).enumerate() {
-        let close_targets = item
-            .close_targets
-            .as_ref()
-            .or(default_close_targets.as_ref())
-            .unwrap_or(&sibling_targets);
-        let mut item_click_close_targets = click_close_targets.clone();
-        if let Some(target) = item.target.as_deref() {
-            push_unique_target(&mut item_click_close_targets, target);
-        }
-        let item_bounds = grid_bounds(metrics, row + idx, col, 1, cols);
-        let item_id = item.id.clone().unwrap_or_else(|| {
-            child
-                .id
-                .as_deref()
-                .map(|id| format!("{id}_item_{idx}"))
-                .unwrap_or_else(|| format!("terminal_menu_item_{idx}"))
-        });
-        let item_class = if item.disabled {
-            "wdoc-terminal-menu-item wdoc-terminal-menu-item-disabled"
-        } else {
-            "wdoc-terminal-menu-item"
-        };
-        let item_node = synthetic_terminal_item_node(
-            &item_id,
-            item_class,
-            item_bounds,
-            idx,
-            item.disabled,
-            item.target.as_deref(),
-            close_targets,
-            &item_click_close_targets,
-        );
-        write!(svg, "<g{}>", node_attrs(&item_node, item_bounds)).unwrap();
-        write_rect(svg, item_bounds, bg, 0.0);
-        write_rect_with_class(svg, item_bounds, hover_bg, "wdoc-terminal-menu-item-bg");
-        let label_cols = if item.target.is_some() {
-            cols.saturating_sub(3)
-        } else {
-            cols.saturating_sub(1)
-        };
-        let label = format!(" {}", truncate_cells(&item.label, label_cols));
-        write_text(
-            svg,
-            metrics,
-            row + idx,
-            col,
-            &format!("{label:<width$}", width = cols),
-            fg,
-            None,
-            &TermStyle::default(),
-        );
-        write_text(
-            svg,
-            metrics,
-            row + idx,
-            col,
-            &format!("{label:<width$}", width = cols),
-            hover_fg,
-            None,
-            &TermStyle::default_with_class("wdoc-terminal-menu-item-label-hover"),
-        );
-        if item.target.is_some() && cols > 0 {
-            write_text(
-                svg,
-                metrics,
-                row + idx,
-                col + cols - 1,
-                ">",
-                fg,
-                None,
-                &TermStyle::default(),
-            );
-            write_text(
-                svg,
-                metrics,
-                row + idx,
-                col + cols - 1,
-                ">",
-                hover_fg,
-                None,
-                &TermStyle::default_with_class("wdoc-terminal-menu-item-label-hover"),
-            );
-        }
-        svg.push_str("</g>");
-    }
-    svg.push_str("</g>");
-}
-
-fn render_menubar(
-    child: &ShapeNode,
-    metrics: &TerminalMetrics,
-    foreground: &str,
-    background: &str,
-    svg: &mut String,
-) {
-    let row = attr_usize(&child.attrs, "row").unwrap_or(0);
-    let col = attr_usize(&child.attrs, "col").unwrap_or(0);
-    let items = terminal_menu_items(child);
-    let cols = attr_usize(&child.attrs, "cols")
-        .unwrap_or_else(|| {
-            items
-                .iter()
-                .map(|item| item.label.width() + 2)
-                .sum::<usize>()
-                .max(1)
-        })
-        .max(1);
-    let default_close_targets = child.attrs.get("close_targets").map(|s| split_items(s));
-    let sibling_targets: Vec<String> = items
-        .iter()
-        .filter_map(|item| item.target.clone())
-        .filter(|target| !target.is_empty())
-        .collect();
-    let fg = child
-        .attrs
-        .get("foreground_fill")
-        .or_else(|| child.attrs.get("fill"))
-        .map(|s| s.as_str())
-        .unwrap_or(foreground);
-    let bg = child
-        .attrs
-        .get("background_fill")
-        .map(|s| s.as_str())
-        .unwrap_or(background);
-    let hover_fg = child
-        .attrs
-        .get("hover_foreground_fill")
-        .or_else(|| child.attrs.get("selected_foreground_fill"))
-        .map(|s| s.as_str())
-        .unwrap_or(background);
-    let hover_bg = child
-        .attrs
-        .get("hover_background_fill")
-        .or_else(|| child.attrs.get("selected_background_fill"))
-        .map(|s| s.as_str())
-        .unwrap_or(foreground);
-    let bounds = grid_bounds(metrics, row, col, 1, cols);
-    let menu_node = node_with_extra_class(child, "wdoc-terminal-menu");
-    let attrs = node_attrs(&menu_node, bounds);
-    write!(svg, "<g{}>", attrs).unwrap();
-    write_rect(svg, bounds, bg, 0.0);
-    let mut current_col = col;
-    for (idx, item) in items.into_iter().enumerate() {
-        if current_col >= col + cols {
-            break;
-        }
-        let close_targets = item
-            .close_targets
-            .as_ref()
-            .or(default_close_targets.as_ref())
-            .unwrap_or(&sibling_targets);
-        let item_cols = (item.label.width() + 2).min(col + cols - current_col);
-        let item_bounds = grid_bounds(metrics, row, current_col, 1, item_cols);
-        let item_id = item.id.clone().unwrap_or_else(|| {
-            child
-                .id
-                .as_deref()
-                .map(|id| format!("{id}_item_{idx}"))
-                .unwrap_or_else(|| format!("terminal_menubar_item_{idx}"))
-        });
-        let item_class = if item.disabled {
-            "wdoc-terminal-menu-item wdoc-terminal-menu-item-disabled"
-        } else {
-            "wdoc-terminal-menu-item"
-        };
-        let item_node = synthetic_terminal_item_node(
-            &item_id,
-            item_class,
-            item_bounds,
-            idx,
-            item.disabled,
-            item.target.as_deref(),
-            close_targets,
-            &[],
-        );
-        write!(svg, "<g{}>", node_attrs(&item_node, item_bounds)).unwrap();
-        write_rect(svg, item_bounds, bg, 0.0);
-        write_rect_with_class(svg, item_bounds, hover_bg, "wdoc-terminal-menu-item-bg");
-        let label = format!(
-            " {} ",
-            truncate_cells(&item.label, item_cols.saturating_sub(2))
-        );
-        write_text(
-            svg,
-            metrics,
-            row,
-            current_col,
-            &format!("{label:<width$}", width = item_cols),
-            fg,
-            None,
-            &TermStyle::default(),
-        );
-        write_text(
-            svg,
-            metrics,
-            row,
-            current_col,
-            &format!("{label:<width$}", width = item_cols),
-            hover_fg,
-            None,
-            &TermStyle::default_with_class("wdoc-terminal-menu-item-label-hover"),
-        );
-        svg.push_str("</g>");
-        current_col += item_cols;
     }
     svg.push_str("</g>");
 }
@@ -1240,159 +940,6 @@ fn grid_bounds(
     }
 }
 
-fn synthetic_terminal_item_node(
-    id: &str,
-    class_name: &str,
-    bounds: Bounds,
-    source_order: usize,
-    disabled: bool,
-    open_target: Option<&str>,
-    close_targets: &[String],
-    click_close_targets: &[String],
-) -> ShapeNode {
-    let mut attrs = indexmap::IndexMap::new();
-    attrs.insert("class".to_string(), class_name.to_string());
-    attrs.insert(
-        "cursor".to_string(),
-        if disabled { "default" } else { "pointer" }.to_string(),
-    );
-    attrs.insert(
-        "pointer_events".to_string(),
-        if disabled { "none" } else { "all" }.to_string(),
-    );
-    attrs.insert("_wdoc_runtime".to_string(), "true".to_string());
-    let mut events = Vec::new();
-    if !disabled {
-        events.push(DiagramEvent {
-            name: None,
-            trigger: "hover".to_string(),
-            state: "hovered".to_string(),
-            target: None,
-            button: None,
-            mode: Some("while".to_string()),
-            duration_ms: None,
-            prevent_default: None,
-            guard_targets: None,
-        });
-        for target in close_targets {
-            if Some(target.as_str()) == open_target || target.is_empty() {
-                continue;
-            }
-            events.push(DiagramEvent {
-                name: None,
-                trigger: "hover".to_string(),
-                state: "shown".to_string(),
-                target: Some(target.clone()),
-                button: None,
-                mode: Some("remove".to_string()),
-                duration_ms: None,
-                prevent_default: None,
-                guard_targets: None,
-            });
-        }
-        if let Some(target) = open_target {
-            events.push(DiagramEvent {
-                name: None,
-                trigger: "hover".to_string(),
-                state: "shown".to_string(),
-                target: Some(target.to_string()),
-                button: None,
-                mode: Some("add".to_string()),
-                duration_ms: None,
-                prevent_default: None,
-                guard_targets: None,
-            });
-        }
-        for target in click_close_targets {
-            if target.is_empty() {
-                continue;
-            }
-            events.push(DiagramEvent {
-                name: None,
-                trigger: "click".to_string(),
-                state: "shown".to_string(),
-                target: Some(target.clone()),
-                button: None,
-                mode: Some("remove".to_string()),
-                duration_ms: None,
-                prevent_default: None,
-                guard_targets: None,
-            });
-        }
-    }
-    ShapeNode {
-        kind: ShapeKind::Group,
-        id: Some(id.to_string()),
-        x: Some(bounds.x),
-        y: Some(bounds.y),
-        width: Some(bounds.width),
-        height: Some(bounds.height),
-        top: None,
-        bottom: None,
-        left: None,
-        right: None,
-        resolved: bounds,
-        attrs,
-        events,
-        children: Vec::new(),
-        align: crate::shapes::Alignment::None,
-        gap: 0.0,
-        padding: 0.0,
-        z_index: 0.0,
-        source_order,
-    }
-}
-
-fn add_terminal_leave_close_events(node: &mut ShapeNode) {
-    let Some(close_targets) = node
-        .attrs
-        .get("leave_close_targets")
-        .map(|s| split_items(s))
-    else {
-        return;
-    };
-    if close_targets.is_empty() {
-        return;
-    }
-    let guard_targets = node
-        .attrs
-        .get("leave_guard_targets")
-        .cloned()
-        .unwrap_or_else(|| close_targets.join(","));
-    for target in close_targets {
-        node.events.push(DiagramEvent {
-            name: None,
-            trigger: "mouse_leave".to_string(),
-            state: "shown".to_string(),
-            target: Some(target),
-            button: None,
-            mode: Some("remove".to_string()),
-            duration_ms: None,
-            prevent_default: None,
-            guard_targets: Some(guard_targets.clone()),
-        });
-    }
-}
-
-fn node_with_extra_class(node: &ShapeNode, class_name: &str) -> ShapeNode {
-    let mut node = node.clone();
-    match node.attrs.get_mut("class") {
-        Some(existing) => {
-            if !existing.split_whitespace().any(|class| class == class_name) {
-                if !existing.trim().is_empty() {
-                    existing.push(' ');
-                }
-                existing.push_str(class_name);
-            }
-        }
-        None => {
-            node.attrs
-                .insert("class".to_string(), class_name.to_string());
-        }
-    }
-    node
-}
-
 fn node_attrs(node: &ShapeNode, b: Bounds) -> String {
     let mut out = String::new();
     for name in [
@@ -1496,63 +1043,6 @@ fn escape_data(value: &str) -> String {
         .replace('\\', "\\\\")
         .replace('|', "\\p")
         .replace(';', "\\s")
-        .replace(',', "\\c")
-        .replace(':', "\\d")
-        .replace('~', "\\t")
-}
-
-fn terminal_menu_items(node: &ShapeNode) -> Vec<TerminalMenuItem> {
-    node.children
-        .iter()
-        .filter(|child| child.kind == ShapeKind::MenuItem)
-        .map(|child| {
-            let label = child
-                .attrs
-                .get("label")
-                .map(|label| label.trim())
-                .filter(|label| !label.is_empty())
-                .unwrap_or("Item")
-                .to_string();
-            let target = child
-                .attrs
-                .get("target")
-                .map(|target| target.trim())
-                .filter(|target| !target.is_empty())
-                .map(str::to_string);
-            let close_targets = child
-                .attrs
-                .get("close_targets")
-                .map(|value| split_items(value));
-            let disabled = child
-                .attrs
-                .get("disabled")
-                .is_some_and(|value| value.eq_ignore_ascii_case("true"));
-            TerminalMenuItem {
-                id: child.id.clone(),
-                label,
-                target,
-                close_targets,
-                disabled,
-            }
-        })
-        .collect()
-}
-
-fn split_items(value: &str) -> Vec<String> {
-    value
-        .split(',')
-        .map(str::trim)
-        .filter(|item| !item.is_empty())
-        .map(str::to_string)
-        .collect()
-}
-
-fn push_unique_target(targets: &mut Vec<String>, target: &str) {
-    let target = target.trim();
-    if target.is_empty() || targets.iter().any(|existing| existing == target) {
-        return;
-    }
-    targets.push(target.to_string());
 }
 
 fn truncate_cells(value: &str, max: usize) -> String {
@@ -1697,91 +1187,17 @@ mod tests {
         attrs.insert("cols".to_string(), "24".to_string());
         attrs.insert("content".to_string(), "\x1b[32mok\x1b[0m".to_string());
         attrs.insert("font_size".to_string(), "12".to_string());
-        let mut menu_attrs = IndexMap::new();
-        menu_attrs.insert("row".to_string(), "2".to_string());
-        menu_attrs.insert("col".to_string(), "2".to_string());
-        menu_attrs.insert("rows".to_string(), "2".to_string());
-        menu_attrs.insert("cols".to_string(), "12".to_string());
-        let mut build_attrs = IndexMap::new();
-        build_attrs.insert("label".to_string(), "Build".to_string());
-        build_attrs.insert("target".to_string(), "build_menu".to_string());
-        let mut test_attrs = IndexMap::new();
-        test_attrs.insert("label".to_string(), "Test".to_string());
-        test_attrs.insert("disabled".to_string(), "true".to_string());
-        let child = ShapeNode {
-            kind: ShapeKind::TerminalMenu,
-            id: Some("menu".to_string()),
-            x: None,
-            y: None,
-            width: None,
-            height: None,
-            top: None,
-            bottom: None,
-            left: None,
-            right: None,
-            resolved: Bounds::default(),
-            attrs: menu_attrs,
-            events: vec![DiagramEvent {
-                name: None,
-                trigger: "click".to_string(),
-                state: "shown".to_string(),
-                target: None,
-                button: None,
-                mode: Some("toggle".to_string()),
-                duration_ms: None,
-                prevent_default: None,
-                guard_targets: None,
-            }],
-            children: vec![
-                ShapeNode {
-                    kind: ShapeKind::MenuItem,
-                    id: Some("build_item".to_string()),
-                    x: None,
-                    y: None,
-                    width: None,
-                    height: None,
-                    top: None,
-                    bottom: None,
-                    left: None,
-                    right: None,
-                    resolved: Bounds::default(),
-                    attrs: build_attrs,
-                    events: vec![],
-                    children: vec![],
-                    align: crate::shapes::Alignment::None,
-                    gap: 0.0,
-                    padding: 0.0,
-                    z_index: 0.0,
-                    source_order: 0,
-                },
-                ShapeNode {
-                    kind: ShapeKind::MenuItem,
-                    id: Some("test_item".to_string()),
-                    x: None,
-                    y: None,
-                    width: None,
-                    height: None,
-                    top: None,
-                    bottom: None,
-                    left: None,
-                    right: None,
-                    resolved: Bounds::default(),
-                    attrs: test_attrs,
-                    events: vec![],
-                    children: vec![],
-                    align: crate::shapes::Alignment::None,
-                    gap: 0.0,
-                    padding: 0.0,
-                    z_index: 1.0,
-                    source_order: 1,
-                },
+        let child = node(
+            ShapeKind::TerminalText,
+            "status",
+            &[
+                ("row", "2"),
+                ("col", "2"),
+                ("content", "status"),
+                ("foreground_fill", "#38bdf8"),
             ],
-            align: crate::shapes::Alignment::None,
-            gap: 0.0,
-            padding: 0.0,
-            z_index: 0.0,
-            source_order: 0,
-        };
+            vec![],
+        );
         let node = ShapeNode {
             kind: ShapeKind::Terminal,
             id: Some("term".to_string()),
@@ -1811,103 +1227,10 @@ mod tests {
         let mut svg = String::new();
         render_terminal_svg(&node, &mut svg);
         assert!(svg.contains("JetBrainsMono Nerd Font"));
-        assert!(svg.contains("wdoc-terminal-menu"));
         assert!(svg.contains("fill=\"#0dbc79\""));
         assert!(svg.contains(">ok</text>"));
-        assert!(svg.contains("Test"));
-        assert!(svg.contains("&gt;</text>"));
-        assert!(svg.contains("build_menu"));
-        assert!(svg.contains("wdoc-terminal-menu-item-disabled"));
-        assert!(svg.contains("data-wdoc-events=\"click|shown|self|toggle|left|0|false\""));
-        assert!(svg.contains("wdoc-terminal-menu-item-label-hover"));
-    }
-
-    #[test]
-    fn terminal_menu_item_blocks_open_targets_and_close_sibling_targets() {
-        let metrics = TerminalMetrics::from_attrs(&IndexMap::new(), Some(240.0), Some(120.0));
-        let mut attrs = IndexMap::new();
-        attrs.insert("row".to_string(), "1".to_string());
-        attrs.insert("col".to_string(), "1".to_string());
-        attrs.insert("rows".to_string(), "2".to_string());
-        attrs.insert("cols".to_string(), "12".to_string());
-        let mut build_attrs = IndexMap::new();
-        build_attrs.insert("label".to_string(), "Build".to_string());
-        build_attrs.insert("target".to_string(), "build_menu".to_string());
-        let mut format_attrs = IndexMap::new();
-        format_attrs.insert("label".to_string(), "Format".to_string());
-        let menu = ShapeNode {
-            kind: ShapeKind::TerminalMenu,
-            id: Some("run_menu".to_string()),
-            x: None,
-            y: None,
-            width: None,
-            height: None,
-            top: None,
-            bottom: None,
-            left: None,
-            right: None,
-            resolved: Bounds::default(),
-            attrs,
-            events: vec![],
-            children: vec![
-                ShapeNode {
-                    kind: ShapeKind::MenuItem,
-                    id: Some("build_item".to_string()),
-                    x: None,
-                    y: None,
-                    width: None,
-                    height: None,
-                    top: None,
-                    bottom: None,
-                    left: None,
-                    right: None,
-                    resolved: Bounds::default(),
-                    attrs: build_attrs,
-                    events: vec![],
-                    children: vec![],
-                    align: crate::shapes::Alignment::None,
-                    gap: 0.0,
-                    padding: 0.0,
-                    z_index: 0.0,
-                    source_order: 0,
-                },
-                ShapeNode {
-                    kind: ShapeKind::MenuItem,
-                    id: Some("format_item".to_string()),
-                    x: None,
-                    y: None,
-                    width: None,
-                    height: None,
-                    top: None,
-                    bottom: None,
-                    left: None,
-                    right: None,
-                    resolved: Bounds::default(),
-                    attrs: format_attrs,
-                    events: vec![],
-                    children: vec![],
-                    align: crate::shapes::Alignment::None,
-                    gap: 0.0,
-                    padding: 0.0,
-                    z_index: 0.0,
-                    source_order: 1,
-                },
-            ],
-            align: crate::shapes::Alignment::None,
-            gap: 0.0,
-            padding: 0.0,
-            z_index: 0.0,
-            source_order: 0,
-        };
-        let mut svg = String::new();
-        render_menu(&menu, &metrics, "#d7e0ff", "#08111f", &mut svg);
-
-        assert!(svg.contains("Build"));
-        assert!(svg.contains("Format"));
-        assert!(svg.contains("&gt;</text>"));
-        assert!(svg.contains("build_menu|add"));
-        assert!(svg.contains("build_menu|remove"));
-        assert!(svg.contains("click|shown|run_menu|remove"));
+        assert!(svg.contains(">status</text>"));
+        assert!(svg.contains("fill=\"#38bdf8\""));
     }
 
     #[test]
@@ -1917,21 +1240,6 @@ mod tests {
         attrs.insert("cols".to_string(), "60".to_string());
         attrs.insert("font_size".to_string(), "12".to_string());
 
-        let dropdown_menu = node(
-            ShapeKind::TerminalMenu,
-            "env_menu",
-            &[
-                ("row", "6"),
-                ("col", "2"),
-                ("rows", "2"),
-                ("cols", "14"),
-                ("class", "wdoc-terminal-dropdown-menu"),
-            ],
-            vec![
-                node(ShapeKind::MenuItem, "dev", &[("label", "dev")], vec![]),
-                node(ShapeKind::MenuItem, "prod", &[("label", "prod")], vec![]),
-            ],
-        );
         let terminal = ShapeNode {
             kind: ShapeKind::Terminal,
             id: Some("term".to_string()),
@@ -2012,7 +1320,6 @@ mod tests {
                     ],
                     vec![],
                 ),
-                dropdown_menu,
                 node(
                     ShapeKind::TerminalText,
                     "deploy",
@@ -2040,8 +1347,6 @@ mod tests {
         assert!(svg.contains("prod"));
         assert!(svg.contains("[ Deploy ]"));
         assert!(svg.contains("wdoc-terminal-control"));
-        assert!(svg.contains("wdoc-terminal-dropdown-menu"));
-        assert!(svg.contains("wdoc-terminal-menu"));
     }
 
     #[test]

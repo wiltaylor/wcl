@@ -199,12 +199,14 @@ namespace wdoc {
             cols: i32 @optional
             direction: string @optional
         }
+        @template("shape", "wdoc::terminal_widget_menubar")
         @parent(["wdoc::draw::terminal"]) @open schema "terminal_menubar" {
             row: i32
             col: i32
             cols: i32 @optional
             close_targets: string @optional
         }
+        @template("shape", "wdoc::terminal_widget_menu")
         @parent(["wdoc::draw::terminal"]) @open schema "terminal_menu" {
             row: i32
             col: i32
@@ -214,6 +216,7 @@ namespace wdoc {
             leave_close_targets: string @optional
             leave_guard_targets: string @optional
         }
+        @template("shape", "wdoc::terminal_widget_context_menu")
         @parent(["wdoc::draw::terminal"]) @open schema "terminal_context_menu" {
             row: i32
             col: i32
