@@ -172,6 +172,54 @@ namespace wdoc {
             tile_height: f64 @optional
         }
         @open schema "group" { }
+        @open
+        schema "terminal" {
+            rows: i32 @optional
+            cols: i32 @optional
+            content: string @optional
+            background_fill: string @optional
+            foreground_fill: string @optional
+        }
+        @parent(["wdoc::draw::terminal"]) @open schema "terminal_text" {
+            row: i32
+            col: i32
+            content: string
+        }
+        @parent(["wdoc::draw::terminal"]) @open schema "terminal_box" {
+            row: i32
+            col: i32
+            rows: i32
+            cols: i32
+            title: string @optional
+        }
+        @parent(["wdoc::draw::terminal"]) @open schema "terminal_rule" {
+            row: i32
+            col: i32
+            rows: i32 @optional
+            cols: i32 @optional
+            direction: string @optional
+        }
+        @parent(["wdoc::draw::terminal"]) @open schema "terminal_menu" {
+            row: i32
+            col: i32
+            rows: i32 @optional
+            cols: i32 @optional
+            items: string
+            selected_index: i32 @optional
+        }
+        @parent(["wdoc::draw::terminal"]) @open schema "terminal_context_menu" {
+            row: i32
+            col: i32
+            rows: i32 @optional
+            cols: i32 @optional
+            items: string
+            selected_index: i32 @optional
+        }
+        @parent(["wdoc::draw::terminal"]) @open schema "terminal_cursor" {
+            row: i32
+            col: i32
+            mode: string @optional
+        }
         @open schema "connection" { }
         @open schema "class" { }
         @parent(["wdoc::draw::class"]) @open schema "state" { }
@@ -187,6 +235,13 @@ namespace wdoc {
             "wdoc::draw::inline_svg",
             "wdoc::draw::image",
             "wdoc::draw::group",
+            "wdoc::draw::terminal",
+            "wdoc::draw::terminal_text",
+            "wdoc::draw::terminal_box",
+            "wdoc::draw::terminal_rule",
+            "wdoc::draw::terminal_menu",
+            "wdoc::draw::terminal_context_menu",
+            "wdoc::draw::terminal_cursor",
             "wdoc::draw::phone",
             "wdoc::draw::browser",
             "wdoc::draw::button",

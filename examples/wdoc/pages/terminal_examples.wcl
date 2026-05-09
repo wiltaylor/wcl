@@ -1,0 +1,159 @@
+import "./shared.wcl"
+
+class term_popup_menu {
+    opacity = 0
+    visible = false
+    pointer_events = "none"
+    transition = "opacity 120ms ease"
+    z_index = 20
+
+    state shown {
+        opacity = 1
+        visible = true
+        pointer_events = "all"
+        z_index = 40
+    }
+}
+
+page terminal_examples {
+    section = "my_docs.diagrams.terminal_examples"
+    title = "Terminal Diagrams"
+
+    layout {
+        vsplit intro {
+            split main {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Terminal Diagrams"
+                }
+
+                paragraph p1 {
+                    content = "Terminal blocks render fixed row and column grids with a bundled JetBrainsMono Nerd Font. They support ANSI SGR formatting for terminal captures and can host row/column TUI widgets."
+                }
+            }
+        }
+
+        vsplit basic {
+            split main {
+                size = 100
+
+                heading h2_basic {
+                    level = 2
+                    content = "ANSI output and TUI widgets"
+                }
+
+                diagram terminal_capture {
+                    width = 780
+                    height = 380
+
+                    terminal shell {
+                        x = 20
+                        y = 18
+                        rows = 18
+                        cols = 86
+                        font_size = 13
+                        background_fill = "#08111f"
+                        foreground_fill = "#d7e0ff"
+                        rx = 10
+                        content = "$ cargo test -p wcl_wdoc\n\u001b[32mPASS\u001b[0m terminal::ansi_parser_supports_sgr_colors_and_styles\n\u001b[32mPASS\u001b[0m terminal::terminal_svg_renders_ansi_and_tui_children\n\u001b[33mWARN\u001b[0m docs examples include generated terminal assets\n\nUse arrows to pick a task:"
+
+                        terminal_box task_panel {
+                            row = 7
+                            col = 2
+                            rows = 8
+                            cols = 38
+                            title = "Task runner"
+                            foreground_fill = "#93c5fd"
+                            background_fill = "#0f172a"
+                        }
+
+                        terminal_menu tasks {
+                            row = 9
+                            col = 4
+                            rows = 4
+                            cols = 30
+                            items = "Build docs,Run tests,Format,Deploy preview"
+                            selected_index = 1
+                            foreground_fill = "#d7e0ff"
+                            background_fill = "#111827"
+                            selected_background_fill = "#38bdf8"
+                            selected_foreground_fill = "#06121f"
+                        }
+
+                        terminal_text hint {
+                            row = 16
+                            col = 2
+                            content = "\u001b[2mEnter runs the selected task. Right click the output for actions.\u001b[0m"
+                        }
+
+                        terminal_cursor cursor {
+                            row = 5
+                            col = 0
+                            mode = "bar"
+                            fill = "#f8fafc"
+                        }
+                    }
+                }
+
+                code basic_code {
+                    language = "wcl"
+                    content = "diagram terminal_capture {\n    width = 780\n    height = 380\n\n    terminal shell {\n        x = 20\n        y = 18\n        rows = 18\n        cols = 86\n        font_size = 13\n        background_fill = \"#08111f\"\n        foreground_fill = \"#d7e0ff\"\n        content = \"$ cargo test\\n\\u001b[32mPASS\\u001b[0m terminal::ansi\"\n\n        terminal_box task_panel {\n            row = 7\n            col = 2\n            rows = 8\n            cols = 38\n            title = \"Task runner\"\n        }\n\n        terminal_menu tasks {\n            row = 9\n            col = 4\n            rows = 4\n            cols = 30\n            items = \"Build docs,Run tests,Format,Deploy preview\"\n            selected_index = 1\n        }\n    }\n}"
+                }
+            }
+        }
+
+        vsplit interactive {
+            split main {
+                size = 100
+
+                heading h2_interactive {
+                    level = 2
+                    content = "Interactive context menu"
+                }
+
+                paragraph p2 {
+                    content = "Terminal widgets use the same diagram event and class system as wireframes. Right-click the terminal surface below to toggle the menu."
+                }
+
+                diagram terminal_context {
+                    width = 680
+                    height = 250
+
+                    terminal session {
+                        x = 20
+                        y = 20
+                        rows = 11
+                        cols = 74
+                        font_size = 13
+                        background_fill = "#0b1020"
+                        foreground_fill = "#e5e7eb"
+                        content = "$ wcl wdoc serve examples/wdoc/site.wcl examples/wdoc/pages.wcl\n\u001b[36mINFO\u001b[0m serving docs at http://localhost:3000\n\u001b[90mTRACE\u001b[0m rebuilt 18 pages in 84ms"
+
+                        event open_context {
+                            trigger = "right_click"
+                            target = "menu"
+                            state = "shown"
+                            mode = "toggle"
+                        }
+
+                        terminal_context_menu menu {
+                            row = 4
+                            col = 42
+                            rows = 4
+                            cols = 22
+                            items = "Copy line,Copy command,Inspect,Clear"
+                            selected_index = 0
+                            class = "term_popup_menu"
+                            foreground_fill = "#e5e7eb"
+                            background_fill = "#111827"
+                            selected_background_fill = "#60a5fa"
+                            selected_foreground_fill = "#07111f"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

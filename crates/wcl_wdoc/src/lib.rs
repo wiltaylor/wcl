@@ -6,6 +6,7 @@ pub mod serve;
 pub mod shapes;
 pub mod source;
 pub mod templates;
+pub mod terminal;
 pub mod validate;
 
 use crate::model::WdocDocument;

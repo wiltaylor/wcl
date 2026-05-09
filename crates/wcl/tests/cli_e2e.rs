@@ -1362,7 +1362,7 @@ global_css app_fonts {
 
     let html = std::fs::read_to_string(output.join("home.html")).expect("read rendered page");
     let css = std::fs::read_to_string(output.join("styles.css")).expect("read styles");
-    assert_eq!(css.matches("@font-face").count(), 1);
+    assert_eq!(css.matches("font-family: \"Inter\";").count(), 1);
     assert!(css.contains("font-family: \"Inter\";"));
     assert!(css.contains("src: url(\"fonts/Inter-Regular.woff2\") format(\"woff2\");"));
     assert!(css.contains(":root { --font-body: \"Inter\", system-ui, sans-serif; }"));

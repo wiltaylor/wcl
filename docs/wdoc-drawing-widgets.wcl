@@ -1,5 +1,6 @@
 import <wdoc.wcl>
 use wdoc::{page, layout, heading, paragraph, code, data_table, callout, bold, link}
+use wdoc::draw::{diagram, terminal, terminal_box, terminal_text, terminal_menu, terminal_cursor}
 
 page wdoc_drawing_widgets {
     section = "wcl_docs.wdoc.wdoc_drawing_widgets"
@@ -47,6 +48,70 @@ page wdoc_drawing_widgets {
                         { widget = "badge",   attrs = "label, color" },
                         { widget = "navbar",  attrs = "title" }
                     ]
+                }
+
+                heading h2_terminal {
+                    level = 2
+                    content = "Terminal and TUI diagrams"
+                }
+
+                paragraph p_terminal {
+                    content = "Use <code>terminal</code> for fixed-grid terminal output inside a diagram. It uses bundled JetBrainsMono Nerd Font, accepts <code>rows</code> and <code>cols</code>, supports ANSI SGR styles and 16/256/truecolor foreground and background colours, and can host TUI-style child widgets positioned by row and column."
+                }
+
+                diagram terminal_demo {
+                    width = 720
+                    height = 300
+
+                    terminal shell {
+                        x = 20
+                        y = 20
+                        rows = 14
+                        cols = 76
+                        font_size = 13
+                        background_fill = "#0b1020"
+                        foreground_fill = "#d7e0ff"
+                        content = "$ cargo test\n\u001b[32mPASS\u001b[0m parser::ansi_styles\n\u001b[33mWARN\u001b[0m snapshot updated\n\nUse arrows to select a command:"
+
+                        terminal_box panel {
+                            row = 5
+                            col = 2
+                            rows = 7
+                            cols = 34
+                            title = "Commands"
+                            foreground_fill = "#93c5fd"
+                        }
+
+                        terminal_menu commands {
+                            row = 7
+                            col = 4
+                            cols = 28
+                            items = "Build,Test,Format,Deploy"
+                            selected_index = 1
+                            foreground_fill = "#d7e0ff"
+                            background_fill = "#111827"
+                            selected_background_fill = "#38bdf8"
+                            selected_foreground_fill = "#06121f"
+                        }
+
+                        terminal_text status {
+                            row = 12
+                            col = 2
+                            content = "\u001b[2mPress Enter to run selected command\u001b[0m"
+                        }
+
+                        terminal_cursor cursor {
+                            row = 3
+                            col = 0
+                            mode = "bar"
+                            fill = "#f8fafc"
+                        }
+                    }
+                }
+
+                code cui_terminal {
+                    language = "wcl"
+                    content = "diagram tui_doc {\n    width = 720, height = 300\n\n    terminal shell {\n        x = 20, y = 20\n        rows = 14\n        cols = 76\n        font_size = 13\n        background_fill = \"#0b1020\"\n        foreground_fill = \"#d7e0ff\"\n        content = \"$ cargo test\\n\\u001b[32mPASS\\u001b[0m parser::ansi_styles\"\n\n        terminal_box menu_frame { row = 5, col = 2, rows = 7, cols = 34, title = \"Commands\" }\n        terminal_menu commands { row = 7, col = 4, cols = 28, items = \"Build,Test,Format,Deploy\", selected_index = 1 }\n        terminal_cursor cursor { row = 3, col = 0, mode = \"bar\" }\n    }\n}"
                 }
 
                 code cui1 {

@@ -12,6 +12,7 @@ pub const BASE_CSS: &str = r#"/* wdoc base styles */
     --content-max-width: 960px;
     --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     --font-heading: var(--font-body);
+    --font-terminal: "JetBrainsMono Nerd Font", "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", monospace;
     --color-bg: #ffffff;
     --color-text: #1a1a1a;
     --color-nav-bg: #f5f5f5;
@@ -177,6 +178,42 @@ h6.wdoc-heading { font-size: 0.9rem; }
 .wdoc-diagram {
     margin-bottom: 1rem;
     text-align: center;
+}
+
+@font-face {
+    font-family: "JetBrainsMono Nerd Font";
+    src: url("fonts/JetBrainsMonoNerdFontMono-Regular.ttf") format("truetype");
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: "JetBrainsMono Nerd Font";
+    src: url("fonts/JetBrainsMonoNerdFontMono-Bold.ttf") format("truetype");
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: "JetBrainsMono Nerd Font";
+    src: url("fonts/JetBrainsMonoNerdFontMono-Italic.ttf") format("truetype");
+    font-weight: 400;
+    font-style: italic;
+    font-display: swap;
+}
+@font-face {
+    font-family: "JetBrainsMono Nerd Font";
+    src: url("fonts/JetBrainsMonoNerdFontMono-BoldItalic.ttf") format("truetype");
+    font-weight: 700;
+    font-style: italic;
+    font-display: swap;
+}
+@keyframes wdoc-terminal-blink {
+    0%, 49% { opacity: 1; }
+    50%, 100% { opacity: 0; }
+}
+.wdoc-terminal-blink {
+    animation: wdoc-terminal-blink 1s steps(1, end) infinite;
 }
 .wdoc-diagram svg {
     max-width: 100%;

@@ -15,6 +15,16 @@ pub const HIGHLIGHTJS_THEME_LIGHT_CSS: &str =
 pub const HIGHLIGHTJS_THEME_DARK_CSS: &str =
     include_str!("../../../extras/highlightjs/github-dark.min.css");
 
+/// Bundled JetBrainsMono Nerd Font assets for terminal diagrams.
+pub const JETBRAINS_MONO_NERD_REGULAR: &[u8] =
+    include_bytes!("../assets/fonts/JetBrainsMonoNerdFontMono-Regular.ttf");
+pub const JETBRAINS_MONO_NERD_BOLD: &[u8] =
+    include_bytes!("../assets/fonts/JetBrainsMonoNerdFontMono-Bold.ttf");
+pub const JETBRAINS_MONO_NERD_ITALIC: &[u8] =
+    include_bytes!("../assets/fonts/JetBrainsMonoNerdFontMono-Italic.ttf");
+pub const JETBRAINS_MONO_NERD_BOLD_ITALIC: &[u8] =
+    include_bytes!("../assets/fonts/JetBrainsMonoNerdFontMono-BoldItalic.ttf");
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;

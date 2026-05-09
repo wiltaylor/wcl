@@ -36,6 +36,13 @@ pub enum ShapeKind {
     InlineSvg,
     Image,
     Group,
+    Terminal,
+    TerminalText,
+    TerminalBox,
+    TerminalRule,
+    TerminalMenu,
+    TerminalContextMenu,
+    TerminalCursor,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -601,6 +608,12 @@ fn is_supported_class_property(key: &str) -> bool {
             | "font_style"
             | "text_decoration"
             | "letter_spacing"
+            | "background_fill"
+            | "foreground_fill"
+            | "selected_background_fill"
+            | "selected_foreground_fill"
+            | "cell_width"
+            | "cell_height"
     )
 }
 
@@ -763,6 +776,13 @@ pub fn parse_shape_kind(kind: &str) -> Option<ShapeKind> {
         "wdoc::draw::inline_svg" => Some(ShapeKind::InlineSvg),
         "wdoc::draw::image" => Some(ShapeKind::Image),
         "wdoc::draw::group" => Some(ShapeKind::Group),
+        "wdoc::draw::terminal" => Some(ShapeKind::Terminal),
+        "wdoc::draw::terminal_text" => Some(ShapeKind::TerminalText),
+        "wdoc::draw::terminal_box" => Some(ShapeKind::TerminalBox),
+        "wdoc::draw::terminal_rule" => Some(ShapeKind::TerminalRule),
+        "wdoc::draw::terminal_menu" => Some(ShapeKind::TerminalMenu),
+        "wdoc::draw::terminal_context_menu" => Some(ShapeKind::TerminalContextMenu),
+        "wdoc::draw::terminal_cursor" => Some(ShapeKind::TerminalCursor),
         // Anything else under `wdoc::draw::` (or a user namespace ending in `::draw::`)
         // is treated as a composite shape: a rect-shaped container whose children are
         // produced by a `@template("shape", ...)` function. The connection schema is
@@ -1078,6 +1098,16 @@ fn localize_endpoint(endpoint: &str, children: &[ShapeNode], scope_path: &str) -
 }
 
 fn apply_intrinsic_container_size(node: &mut ShapeNode) {
+    if node.kind == ShapeKind::Terminal {
+        let (width, height) = crate::terminal::intrinsic_size(&node.attrs);
+        if !has_explicit_width(node) && node.resolved.width == 0.0 {
+            node.resolved.width = width;
+        }
+        if !has_explicit_height(node) && node.resolved.height == 0.0 {
+            node.resolved.height = height;
+        }
+    }
+
     if node.children.is_empty() {
         return;
     }
@@ -1592,6 +1622,10 @@ fn render_shape_svg(node: &ShapeNode, svg: &mut String) {
         }
         ShapeKind::InlineSvg => render_inline_svg_shape_svg(node, svg),
         ShapeKind::Image => render_image_shape_svg(node, svg),
+        ShapeKind::Terminal => {
+            crate::terminal::render_terminal_svg(node, svg);
+            rendered_children = true;
+        }
         ShapeKind::Group => {
             let gx = b.x;
             let gy = b.y;
@@ -1600,6 +1634,12 @@ fn render_shape_svg(node: &ShapeNode, svg: &mut String) {
             svg.push_str("</g>");
             rendered_children = true;
         }
+        ShapeKind::TerminalText
+        | ShapeKind::TerminalBox
+        | ShapeKind::TerminalRule
+        | ShapeKind::TerminalMenu
+        | ShapeKind::TerminalContextMenu
+        | ShapeKind::TerminalCursor => {}
     }
 
     // Render children in a translated group

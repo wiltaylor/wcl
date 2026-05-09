@@ -64,6 +64,30 @@ pub fn render_document(
     )
     .map_err(|e| format!("failed to write wcl-grammar.js: {e}"))?;
 
+    let font_dir = output.join("fonts");
+    fs::create_dir_all(&font_dir).map_err(|e| format!("failed to create fonts directory: {e}"))?;
+    for (name, bytes) in [
+        (
+            "JetBrainsMonoNerdFontMono-Regular.ttf",
+            crate::library::JETBRAINS_MONO_NERD_REGULAR,
+        ),
+        (
+            "JetBrainsMonoNerdFontMono-Bold.ttf",
+            crate::library::JETBRAINS_MONO_NERD_BOLD,
+        ),
+        (
+            "JetBrainsMonoNerdFontMono-Italic.ttf",
+            crate::library::JETBRAINS_MONO_NERD_ITALIC,
+        ),
+        (
+            "JetBrainsMonoNerdFontMono-BoldItalic.ttf",
+            crate::library::JETBRAINS_MONO_NERD_BOLD_ITALIC,
+        ),
+    ] {
+        fs::write(font_dir.join(name), bytes)
+            .map_err(|e| format!("failed to write bundled font {name}: {e}"))?;
+    }
+
     // Render each page
     for p in &doc.pages {
         let html = page::render_page(doc, p, "styles.css");
@@ -199,6 +223,11 @@ fn copy_referenced_assets(
             continue;
         }
 
+        let dest = output.join(rel);
+        if dest.is_file() {
+            continue;
+        }
+
         let Some(src) = asset_dirs
             .iter()
             .map(|dir| dir.join(rel))
@@ -211,7 +240,6 @@ fn copy_referenced_assets(
             continue;
         };
 
-        let dest = output.join(rel);
         if let Some(parent) = dest.parent() {
             if let Err(e) = fs::create_dir_all(parent) {
                 eprintln!("wdoc: warning: failed to create {}: {e}", parent.display());
@@ -352,6 +380,24 @@ mod tests {
         let css = std::fs::read_to_string(output.join("styles.css")).expect("styles.css");
         assert!(css.contains("url(\"fonts/Inter-Regular.woff2\")"));
         assert!(output.join("fonts/Inter-Regular.woff2").exists());
+    }
+
+    #[test]
+    fn render_document_writes_bundled_terminal_fonts() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let output = temp.path().join("out");
+        let doc = doc_with_html("<p>Terminal fonts</p>");
+
+        render_document(&doc, &output, &[]).expect("render");
+
+        let css = std::fs::read_to_string(output.join("styles.css")).expect("styles.css");
+        assert!(css.contains("JetBrainsMono Nerd Font"));
+        assert!(output
+            .join("fonts/JetBrainsMonoNerdFontMono-Regular.ttf")
+            .exists());
+        assert!(output
+            .join("fonts/JetBrainsMonoNerdFontMono-BoldItalic.ttf")
+            .exists());
     }
 
     #[test]
