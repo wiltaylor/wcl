@@ -12,6 +12,8 @@ use quick_xml::events::{BytesStart, Event};
 use quick_xml::Reader;
 
 const LAYOUT_DECORATION_ATTR: &str = "_wdoc_layout_decoration";
+const CONNECTION_ROUTE_ATTR: &str = "_wdoc_route";
+const CONNECTION_ROUTE_DIRECT: &str = "direct";
 const ROUTE_MARGIN: f64 = 8.0;
 const ROUTE_TERMINAL_MIN: f64 = 16.0;
 
@@ -272,7 +274,7 @@ pub fn render_diagram_svg(diagram: &mut Diagram) -> String {
     };
     resolve_children(
         &mut diagram.shapes,
-        &diagram.connections,
+        &mut diagram.connections,
         &inner,
         "",
         diagram.align,
@@ -698,7 +700,7 @@ pub fn parse_shape_kind(kind: &str) -> Option<ShapeKind> {
 
 fn resolve_children(
     children: &mut [ShapeNode],
-    connections: &[Connection],
+    connections: &mut [Connection],
     parent: &Bounds,
     scope_path: &str,
     align: Alignment,
@@ -867,7 +869,7 @@ fn decoration_parent_bounds(parent: &Bounds) -> Bounds {
 fn layout_graph_subset(
     children: &mut [ShapeNode],
     indices: &[usize],
-    connections: &[Connection],
+    connections: &mut [Connection],
     parent: &Bounds,
     scope_path: &str,
     align: Alignment,
@@ -877,6 +879,9 @@ fn layout_graph_subset(
     let mut layout_children: Vec<ShapeNode> =
         indices.iter().map(|&i| children[i].clone()).collect();
     let local_connections = localize_connections(&layout_children, connections, scope_path);
+    if matches!(align, Alignment::Force | Alignment::Radial) {
+        mark_direct_connections_for_scope(&layout_children, connections, scope_path);
+    }
 
     match align {
         Alignment::Layered => crate::graph_layout::layout_layered(
@@ -912,6 +917,23 @@ fn layout_graph_subset(
 
     for (layout_child, &original_idx) in layout_children.into_iter().zip(indices) {
         children[original_idx].resolved = layout_child.resolved;
+    }
+}
+
+fn mark_direct_connections_for_scope(
+    children: &[ShapeNode],
+    connections: &mut [Connection],
+    scope_path: &str,
+) {
+    for conn in connections {
+        if localize_endpoint(&conn.from_id, children, scope_path).is_some()
+            && localize_endpoint(&conn.to_id, children, scope_path).is_some()
+        {
+            conn.attrs.insert(
+                CONNECTION_ROUTE_ATTR.to_string(),
+                CONNECTION_ROUTE_DIRECT.to_string(),
+            );
+        }
     }
 }
 
@@ -1611,6 +1633,15 @@ fn render_connection_svg(conn: &Connection, shape_map: &HashMap<String, Bounds>,
             if conn.from_anchor == AnchorPoint::Auto && conn.to_anchor == AnchorPoint::Auto {
                 let (x1, y1) = from_bounds.anchor_pos(AnchorPoint::Auto, to_bounds);
                 let (x2, y2) = to_bounds.anchor_pos(AnchorPoint::Auto, from_bounds);
+                if connection_uses_direct_route(conn) {
+                    write!(
+                        svg,
+                        "<line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\"\
+                         {stroke_default}{style}{ms}{me}/>"
+                    )
+                    .unwrap();
+                    return;
+                }
                 let obstacles: Vec<Bounds> = shape_map
                     .iter()
                     .filter(|(id, b)| {
@@ -1675,6 +1706,13 @@ fn render_connection_svg(conn: &Connection, shape_map: &HashMap<String, Bounds>,
         )
         .unwrap();
     }
+}
+
+fn connection_uses_direct_route(conn: &Connection) -> bool {
+    conn.attrs
+        .get(CONNECTION_ROUTE_ATTR)
+        .map(|route| route == CONNECTION_ROUTE_DIRECT)
+        .unwrap_or(false)
 }
 
 fn route_orthogonal(from: &Bounds, to: &Bounds, obstacles: &[Bounds]) -> Option<Vec<(f64, f64)>> {
@@ -3747,6 +3785,116 @@ mod tests {
 
         let children = &diagram.shapes[0].children;
         assert!(children[0].resolved.y < children[1].resolved.y);
+    }
+
+    #[test]
+    fn force_layout_marks_connections_for_direct_routing() {
+        let mut diagram = Diagram {
+            id: None,
+            width: 300.0,
+            height: 220.0,
+            shapes: vec![
+                shape("a", 60.0, 40.0),
+                shape("b", 60.0, 40.0),
+                shape("c", 60.0, 40.0),
+            ],
+            connections: vec![connection("a", "b"), connection("b", "c")],
+            classes: IndexMap::new(),
+            padding: 0.0,
+            align: Alignment::Force,
+            gap: 40.0,
+            options: IndexMap::new(),
+        };
+
+        let svg = render_diagram_svg(&mut diagram);
+
+        assert!(diagram.connections.iter().all(|conn| {
+            conn.attrs.get(CONNECTION_ROUTE_ATTR).map(String::as_str)
+                == Some(CONNECTION_ROUTE_DIRECT)
+        }));
+        assert!(svg.contains("<line "));
+        assert!(!svg.contains(CONNECTION_ROUTE_ATTR));
+    }
+
+    #[test]
+    fn radial_layout_marks_connections_for_direct_routing() {
+        let mut options = IndexMap::new();
+        options.insert("root".to_string(), "root".to_string());
+        let mut diagram = Diagram {
+            id: None,
+            width: 300.0,
+            height: 260.0,
+            shapes: vec![
+                shape("root", 60.0, 40.0),
+                shape("left", 60.0, 40.0),
+                shape("right", 60.0, 40.0),
+            ],
+            connections: vec![connection("root", "left"), connection("root", "right")],
+            classes: IndexMap::new(),
+            padding: 0.0,
+            align: Alignment::Radial,
+            gap: 40.0,
+            options,
+        };
+
+        let svg = render_diagram_svg(&mut diagram);
+
+        assert!(diagram.connections.iter().all(|conn| {
+            conn.attrs.get(CONNECTION_ROUTE_ATTR).map(String::as_str)
+                == Some(CONNECTION_ROUTE_DIRECT)
+        }));
+        assert!(svg.contains("<line "));
+        assert!(!svg.contains(CONNECTION_ROUTE_ATTR));
+    }
+
+    #[test]
+    fn nested_force_layout_marks_only_local_connections_direct() {
+        let mut boundary = shape("boundary", 220.0, 160.0);
+        boundary.x = Some(10.0);
+        boundary.y = Some(10.0);
+        boundary.align = Alignment::Force;
+        boundary.gap = 30.0;
+        boundary.children = vec![shape("a", 50.0, 30.0), shape("b", 50.0, 30.0)];
+
+        let mut external_a = shape("external_a", 50.0, 30.0);
+        external_a.x = Some(260.0);
+        external_a.y = Some(30.0);
+        let mut external_b = shape("external_b", 50.0, 30.0);
+        external_b.x = Some(260.0);
+        external_b.y = Some(110.0);
+
+        let mut diagram = Diagram {
+            id: None,
+            width: 340.0,
+            height: 220.0,
+            shapes: vec![boundary, external_a, external_b],
+            connections: vec![
+                connection("boundary.a", "boundary.b"),
+                connection("external_a", "external_b"),
+            ],
+            classes: IndexMap::new(),
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+        };
+
+        render_diagram_svg(&mut diagram);
+
+        assert_eq!(
+            diagram.connections[0]
+                .attrs
+                .get(CONNECTION_ROUTE_ATTR)
+                .map(String::as_str),
+            Some(CONNECTION_ROUTE_DIRECT)
+        );
+        assert_eq!(
+            diagram.connections[1]
+                .attrs
+                .get(CONNECTION_ROUTE_ATTR)
+                .map(String::as_str),
+            None
+        );
     }
 
     #[test]
