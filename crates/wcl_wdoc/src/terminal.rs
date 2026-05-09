@@ -195,7 +195,14 @@ pub(crate) fn render_terminal_svg(node: &ShapeNode, svg: &mut String) {
 
     let content = node.attrs.get("content").map(|s| s.as_str()).unwrap_or("");
     render_ansi_runs(content, 0, 0, &metrics, foreground, background, svg);
-    for child in &node.children {
+    let mut children: Vec<_> = node.children.iter().enumerate().collect();
+    children.sort_by(|(a_idx, a), (b_idx, b)| {
+        a.z_index
+            .total_cmp(&b.z_index)
+            .then_with(|| a.source_order.cmp(&b.source_order))
+            .then_with(|| a_idx.cmp(b_idx))
+    });
+    for (_, child) in children {
         render_terminal_child(child, &metrics, foreground, background, svg);
     }
 
@@ -386,6 +393,23 @@ fn render_menu(
         .filter_map(|item| item.target.clone())
         .filter(|target| !target.is_empty())
         .collect();
+    let mut click_close_targets = Vec::new();
+    if let Some(id) = child.id.as_deref() {
+        push_unique_target(&mut click_close_targets, id);
+    }
+    if let Some(targets) = child.attrs.get("leave_close_targets") {
+        for target in split_items(targets) {
+            push_unique_target(&mut click_close_targets, &target);
+        }
+    }
+    if let Some(targets) = default_close_targets.as_ref() {
+        for target in targets {
+            push_unique_target(&mut click_close_targets, target);
+        }
+    }
+    for target in &sibling_targets {
+        push_unique_target(&mut click_close_targets, target);
+    }
     let fg = child
         .attrs
         .get("foreground_fill")
@@ -420,6 +444,10 @@ fn render_menu(
             .as_ref()
             .or(default_close_targets.as_ref())
             .unwrap_or(&sibling_targets);
+        let mut item_click_close_targets = click_close_targets.clone();
+        if let Some(target) = item.target.as_deref() {
+            push_unique_target(&mut item_click_close_targets, target);
+        }
         let item_bounds = grid_bounds(metrics, row + idx, col, 1, cols);
         let item_id = item.id.clone().unwrap_or_else(|| {
             child
@@ -441,6 +469,7 @@ fn render_menu(
             item.disabled,
             item.target.as_deref(),
             close_targets,
+            &item_click_close_targets,
         );
         write!(svg, "<g{}>", node_attrs(&item_node, item_bounds)).unwrap();
         write_rect(svg, item_bounds, bg, 0.0);
@@ -583,6 +612,7 @@ fn render_menubar(
             item.disabled,
             item.target.as_deref(),
             close_targets,
+            &[],
         );
         write!(svg, "<g{}>", node_attrs(&item_node, item_bounds)).unwrap();
         write_rect(svg, item_bounds, bg, 0.0);
@@ -1502,6 +1532,7 @@ fn synthetic_terminal_item_node(
     disabled: bool,
     open_target: Option<&str>,
     close_targets: &[String],
+    click_close_targets: &[String],
 ) -> ShapeNode {
     let mut attrs = indexmap::IndexMap::new();
     attrs.insert("class".to_string(), class_name.to_string());
@@ -1551,6 +1582,22 @@ fn synthetic_terminal_item_node(
                 target: Some(target.to_string()),
                 button: None,
                 mode: Some("add".to_string()),
+                duration_ms: None,
+                prevent_default: None,
+                guard_targets: None,
+            });
+        }
+        for target in click_close_targets {
+            if target.is_empty() {
+                continue;
+            }
+            events.push(DiagramEvent {
+                name: None,
+                trigger: "click".to_string(),
+                state: "shown".to_string(),
+                target: Some(target.clone()),
+                button: None,
+                mode: Some("remove".to_string()),
                 duration_ms: None,
                 prevent_default: None,
                 guard_targets: None,
@@ -1821,6 +1868,14 @@ fn split_items(value: &str) -> Vec<String> {
         .filter(|item| !item.is_empty())
         .map(str::to_string)
         .collect()
+}
+
+fn push_unique_target(targets: &mut Vec<String>, target: &str) {
+    let target = target.trim();
+    if target.is_empty() || targets.iter().any(|existing| existing == target) {
+        return;
+    }
+    targets.push(target.to_string());
 }
 
 fn centered_cells(value: &str, cols: usize) -> String {
@@ -2199,6 +2254,7 @@ mod tests {
         assert!(svg.contains("&gt;</text>"));
         assert!(svg.contains("build_menu|add"));
         assert!(svg.contains("build_menu|remove"));
+        assert!(svg.contains("click|shown|run_menu|remove"));
     }
 
     #[test]
@@ -2307,5 +2363,62 @@ mod tests {
         assert!(svg.contains("click|shown|env_menu|toggle"));
         assert!(svg.contains("wdoc-terminal-dropdown-menu"));
         assert!(svg.contains("wdoc-terminal-menu"));
+    }
+
+    #[test]
+    fn terminal_children_render_by_z_index_then_source_order() {
+        let mut attrs = IndexMap::new();
+        attrs.insert("rows".to_string(), "4".to_string());
+        attrs.insert("cols".to_string(), "20".to_string());
+
+        let mut high = node(
+            ShapeKind::TerminalText,
+            "high",
+            &[("row", "1"), ("col", "1"), ("content", "HIGH")],
+            vec![],
+        );
+        high.z_index = 10.0;
+        high.source_order = 0;
+        let mut low = node(
+            ShapeKind::TerminalText,
+            "low",
+            &[("row", "1"), ("col", "1"), ("content", "LOW")],
+            vec![],
+        );
+        low.z_index = -1.0;
+        low.source_order = 1;
+
+        let terminal = ShapeNode {
+            kind: ShapeKind::Terminal,
+            id: Some("term".to_string()),
+            x: None,
+            y: None,
+            width: Some(220.0),
+            height: Some(80.0),
+            top: None,
+            bottom: None,
+            left: None,
+            right: None,
+            resolved: Bounds {
+                x: 0.0,
+                y: 0.0,
+                width: 220.0,
+                height: 80.0,
+            },
+            attrs,
+            events: vec![],
+            children: vec![high, low],
+            align: crate::shapes::Alignment::None,
+            gap: 0.0,
+            padding: 0.0,
+            z_index: 0.0,
+            source_order: 0,
+        };
+
+        let mut svg = String::new();
+        render_terminal_svg(&terminal, &mut svg);
+        let low_pos = svg.find(">LOW</text>").expect("low text should render");
+        let high_pos = svg.find(">HIGH</text>").expect("high text should render");
+        assert!(low_pos < high_pos);
     }
 }

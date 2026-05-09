@@ -252,6 +252,7 @@ page terminal_examples {
                             col = 62
                             cols = 15
                             value = "prod"
+                            z_index = 30
                             background_fill = "#111827"
                             foreground_fill = "#e5e7eb"
                             hover_background_fill = "#38bdf8"
