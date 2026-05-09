@@ -15,6 +15,21 @@ class term_popup_menu {
     }
 }
 
+class term_menubar_menu {
+    opacity = 0
+    visible = false
+    pointer_events = "none"
+    transition = "opacity 120ms ease"
+    z_index = 15
+
+    state shown {
+        opacity = 1
+        visible = true
+        pointer_events = "all"
+        z_index = 35
+    }
+}
+
 page terminal_examples {
     section = "my_docs.diagrams.terminal_examples"
     title = "Terminal Diagrams"
@@ -57,12 +72,83 @@ page terminal_examples {
                         background_fill = "#08111f"
                         foreground_fill = "#d7e0ff"
                         rx = 10
-                        content = "$ cargo test -p wcl_wdoc\n\u001b[32mPASS\u001b[0m terminal::ansi_parser_supports_sgr_colors_and_styles\n\u001b[32mPASS\u001b[0m terminal::terminal_svg_renders_ansi_and_tui_children\n\u001b[33mWARN\u001b[0m docs examples include generated terminal assets\n\nUse arrows to pick a task:"
+                        content = "$ cargo test -p wcl_wdoc\n\u001b[32mPASS\u001b[0m terminal::ansi_parser_supports_sgr_colors_and_styles\n\u001b[32mPASS\u001b[0m terminal::terminal_svg_renders_ansi_and_tui_children\n\u001b[33mWARN\u001b[0m docs examples include generated terminal assets\n\nUse the menu bar or arrows to pick a task:"
+
+                        terminal_menubar app_menu {
+                            row = 5
+                            col = 2
+                            cols = 42
+                            items = "File,Run,View,Help"
+                            menu_targets = "file_menu,run_menu,view_menu,help_menu"
+                            close_targets = "file_menu,run_menu,view_menu,help_menu"
+                            disabled_items = "Help"
+                            foreground_fill = "#d7e0ff"
+                            background_fill = "#111827"
+                            hover_background_fill = "#38bdf8"
+                            hover_foreground_fill = "#06121f"
+                        }
+
+                        terminal_menu file_menu {
+                            row = 6
+                            col = 2
+                            rows = 4
+                            cols = 18
+                            items = "New,Open,Save,Quit"
+                            class = "term_menubar_menu"
+                            foreground_fill = "#d7e0ff"
+                            background_fill = "#111827"
+                            hover_background_fill = "#38bdf8"
+                            hover_foreground_fill = "#06121f"
+
+                            event close_on_leave {
+                                trigger = "mouse_leave"
+                                state = "shown"
+                                mode = "remove"
+                            }
+                        }
+
+                        terminal_menu run_menu {
+                            row = 6
+                            col = 9
+                            rows = 4
+                            cols = 18
+                            items = "Build,Test,Format,Deploy"
+                            class = "term_menubar_menu"
+                            foreground_fill = "#d7e0ff"
+                            background_fill = "#111827"
+                            hover_background_fill = "#38bdf8"
+                            hover_foreground_fill = "#06121f"
+
+                            event close_on_leave {
+                                trigger = "mouse_leave"
+                                state = "shown"
+                                mode = "remove"
+                            }
+                        }
+
+                        terminal_menu view_menu {
+                            row = 6
+                            col = 14
+                            rows = 3
+                            cols = 18
+                            items = "Problems,Output,Terminal"
+                            class = "term_menubar_menu"
+                            foreground_fill = "#d7e0ff"
+                            background_fill = "#111827"
+                            hover_background_fill = "#38bdf8"
+                            hover_foreground_fill = "#06121f"
+
+                            event close_on_leave {
+                                trigger = "mouse_leave"
+                                state = "shown"
+                                mode = "remove"
+                            }
+                        }
 
                         terminal_box task_panel {
-                            row = 7
+                            row = 10
                             col = 2
-                            rows = 8
+                            rows = 6
                             cols = 38
                             title = "Task runner"
                             foreground_fill = "#93c5fd"
@@ -70,16 +156,15 @@ page terminal_examples {
                         }
 
                         terminal_menu tasks {
-                            row = 9
+                            row = 12
                             col = 4
-                            rows = 4
+                            rows = 3
                             cols = 30
-                            items = "Build docs,Run tests,Format,Deploy preview"
-                            selected_index = 1
+                            items = "Build docs,Run tests,Deploy preview"
                             foreground_fill = "#d7e0ff"
                             background_fill = "#111827"
-                            selected_background_fill = "#38bdf8"
-                            selected_foreground_fill = "#06121f"
+                            hover_background_fill = "#38bdf8"
+                            hover_foreground_fill = "#06121f"
                         }
 
                         terminal_text hint {
@@ -99,7 +184,7 @@ page terminal_examples {
 
                 code basic_code {
                     language = "wcl"
-                    content = "diagram terminal_capture {\n    width = 780\n    height = 380\n\n    terminal shell {\n        x = 20\n        y = 18\n        rows = 18\n        cols = 86\n        font_size = 13\n        background_fill = \"#08111f\"\n        foreground_fill = \"#d7e0ff\"\n        content = \"$ cargo test\\n\\u001b[32mPASS\\u001b[0m terminal::ansi\"\n\n        terminal_box task_panel {\n            row = 7\n            col = 2\n            rows = 8\n            cols = 38\n            title = \"Task runner\"\n        }\n\n        terminal_menu tasks {\n            row = 9\n            col = 4\n            rows = 4\n            cols = 30\n            items = \"Build docs,Run tests,Format,Deploy preview\"\n            selected_index = 1\n        }\n    }\n}"
+                    content = "diagram terminal_capture {\n    width = 780\n    height = 380\n\n    terminal shell {\n        x = 20\n        y = 18\n        rows = 18\n        cols = 86\n        font_size = 13\n        background_fill = \"#08111f\"\n        foreground_fill = \"#d7e0ff\"\n        content = \"$ cargo test\\n\\u001b[32mPASS\\u001b[0m terminal::ansi\"\n\n        terminal_menubar app_menu {\n            row = 5\n            col = 2\n            cols = 42\n            items = \"File,Run,View,Help\"\n            menu_targets = \"file_menu,run_menu,view_menu,help_menu\"\n            close_targets = \"file_menu,run_menu,view_menu,help_menu\"\n            disabled_items = \"Help\"\n        }\n\n        terminal_menu file_menu { row = 6, col = 2, rows = 4, cols = 18, items = \"New,Open,Save,Quit\", class = \"term_menubar_menu\" }\n        terminal_menu run_menu  { row = 6, col = 9, rows = 4, cols = 18, items = \"Build,Test,Format,Deploy\", class = \"term_menubar_menu\" }\n        terminal_menu view_menu { row = 6, col = 14, rows = 3, cols = 18, items = \"Problems,Output,Terminal\", class = \"term_menubar_menu\" }\n    }\n}"
                 }
             }
         }
@@ -144,12 +229,17 @@ page terminal_examples {
                             rows = 4
                             cols = 22
                             items = "Copy line,Copy command,Inspect,Clear"
-                            selected_index = 0
                             class = "term_popup_menu"
                             foreground_fill = "#e5e7eb"
                             background_fill = "#111827"
-                            selected_background_fill = "#60a5fa"
-                            selected_foreground_fill = "#07111f"
+                            hover_background_fill = "#60a5fa"
+                            hover_foreground_fill = "#07111f"
+
+                            event close_on_leave {
+                                trigger = "mouse_leave"
+                                state = "shown"
+                                mode = "remove"
+                            }
                         }
                     }
                 }

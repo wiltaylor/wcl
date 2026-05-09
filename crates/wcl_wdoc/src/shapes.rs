@@ -40,6 +40,7 @@ pub enum ShapeKind {
     TerminalText,
     TerminalBox,
     TerminalRule,
+    TerminalMenubar,
     TerminalMenu,
     TerminalContextMenu,
     TerminalCursor,
@@ -780,6 +781,7 @@ pub fn parse_shape_kind(kind: &str) -> Option<ShapeKind> {
         "wdoc::draw::terminal_text" => Some(ShapeKind::TerminalText),
         "wdoc::draw::terminal_box" => Some(ShapeKind::TerminalBox),
         "wdoc::draw::terminal_rule" => Some(ShapeKind::TerminalRule),
+        "wdoc::draw::terminal_menubar" => Some(ShapeKind::TerminalMenubar),
         "wdoc::draw::terminal_menu" => Some(ShapeKind::TerminalMenu),
         "wdoc::draw::terminal_context_menu" => Some(ShapeKind::TerminalContextMenu),
         "wdoc::draw::terminal_cursor" => Some(ShapeKind::TerminalCursor),
@@ -1637,6 +1639,7 @@ fn render_shape_svg(node: &ShapeNode, svg: &mut String) {
         ShapeKind::TerminalText
         | ShapeKind::TerminalBox
         | ShapeKind::TerminalRule
+        | ShapeKind::TerminalMenubar
         | ShapeKind::TerminalMenu
         | ShapeKind::TerminalContextMenu
         | ShapeKind::TerminalCursor => {}

@@ -215,6 +215,22 @@ h6.wdoc-heading { font-size: 0.9rem; }
 .wdoc-terminal-blink {
     animation: wdoc-terminal-blink 1s steps(1, end) infinite;
 }
+.wdoc-terminal-menu-item-bg,
+.wdoc-terminal-menu-item-label-hover {
+    opacity: 0;
+    transition: opacity 120ms ease;
+}
+.wdoc-terminal-menu-item.wdoc-state-hovered .wdoc-terminal-menu-item-bg,
+.wdoc-terminal-menu-item.wdoc-state-hovered .wdoc-terminal-menu-item-label-hover {
+    opacity: 1;
+}
+.wdoc-terminal-menu-item-disabled {
+    opacity: .45;
+}
+.wdoc-terminal-menu-item-disabled .wdoc-terminal-menu-item-bg,
+.wdoc-terminal-menu-item-disabled .wdoc-terminal-menu-item-label-hover {
+    opacity: 0 !important;
+}
 .wdoc-diagram svg {
     max-width: 100%;
     height: auto;

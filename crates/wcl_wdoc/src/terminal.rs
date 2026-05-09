@@ -76,6 +76,7 @@ struct TermStyle {
     hidden: bool,
     strikethrough: bool,
     overline: bool,
+    css_class: Option<String>,
 }
 
 impl Default for TermStyle {
@@ -93,7 +94,16 @@ impl Default for TermStyle {
             hidden: false,
             strikethrough: false,
             overline: false,
+            css_class: None,
         }
+    }
+}
+
+impl TermStyle {
+    fn default_with_class(class_name: &str) -> Self {
+        let mut style = Self::default();
+        style.css_class = Some(class_name.to_string());
+        style
     }
 }
 
@@ -214,6 +224,7 @@ fn render_terminal_child(
         }
         ShapeKind::TerminalBox => render_box(child, metrics, foreground, svg),
         ShapeKind::TerminalRule => render_rule(child, metrics, foreground, svg),
+        ShapeKind::TerminalMenubar => render_menubar(child, metrics, foreground, background, svg),
         ShapeKind::TerminalMenu | ShapeKind::TerminalContextMenu => {
             render_menu(child, metrics, foreground, background, svg)
         }
@@ -236,7 +247,8 @@ fn render_box(child: &ShapeNode, metrics: &TerminalMetrics, foreground: &str, sv
         .unwrap_or(foreground);
     let title = child.attrs.get("title").map(|s| s.as_str()).unwrap_or("");
     let bounds = grid_bounds(metrics, row, col, rows, cols);
-    let attrs = node_attrs(child, bounds);
+    let menu_node = node_with_extra_class(child, "wdoc-terminal-menu");
+    let attrs = node_attrs(&menu_node, bounds);
     write!(svg, "<g{}>", attrs).unwrap();
     if let Some(fill) = fill {
         write_rect(svg, bounds, fill, 0.0);
@@ -345,7 +357,11 @@ fn render_menu(
         .get("items")
         .map(|s| split_items(s))
         .unwrap_or_else(|| vec!["Open".to_string(), "Close".to_string()]);
-    let selected = attr_usize(&child.attrs, "selected_index").unwrap_or(0);
+    let disabled_items = child
+        .attrs
+        .get("disabled_items")
+        .map(|s| split_items(s))
+        .unwrap_or_default();
     let cols = attr_usize(&child.attrs, "cols")
         .unwrap_or_else(|| items.iter().map(|item| item.width()).max().unwrap_or(1) + 2)
         .max(1);
@@ -363,30 +379,48 @@ fn render_menu(
         .get("background_fill")
         .map(|s| s.as_str())
         .unwrap_or(background);
-    let selected_fg = child
+    let hover_fg = child
         .attrs
-        .get("selected_foreground_fill")
+        .get("hover_foreground_fill")
+        .or_else(|| child.attrs.get("selected_foreground_fill"))
         .map(|s| s.as_str())
         .unwrap_or(background);
-    let selected_bg = child
+    let hover_bg = child
         .attrs
-        .get("selected_background_fill")
+        .get("hover_background_fill")
+        .or_else(|| child.attrs.get("selected_background_fill"))
         .map(|s| s.as_str())
         .unwrap_or(foreground);
     let bounds = grid_bounds(metrics, row, col, rows, cols);
-    let attrs = node_attrs(child, bounds);
+    let menu_node = node_with_extra_class(child, "wdoc-terminal-menu");
+    let attrs = node_attrs(&menu_node, bounds);
     write!(svg, "<g{}>", attrs).unwrap();
     write_rect(svg, bounds, bg, 0.0);
     for (idx, item) in items.into_iter().take(rows).enumerate() {
-        let active = idx == selected;
-        if active {
-            write_rect(
-                svg,
-                grid_bounds(metrics, row + idx, col, 1, cols),
-                selected_bg,
-                0.0,
-            );
-        }
+        let disabled = item_in_list(&item, &disabled_items);
+        let item_bounds = grid_bounds(metrics, row + idx, col, 1, cols);
+        let item_id = child
+            .id
+            .as_deref()
+            .map(|id| format!("{id}_item_{idx}"))
+            .unwrap_or_else(|| format!("terminal_menu_item_{idx}"));
+        let item_class = if disabled {
+            "wdoc-terminal-menu-item wdoc-terminal-menu-item-disabled"
+        } else {
+            "wdoc-terminal-menu-item"
+        };
+        let item_node = synthetic_terminal_item_node(
+            &item_id,
+            item_class,
+            item_bounds,
+            idx,
+            disabled,
+            None,
+            &[],
+        );
+        write!(svg, "<g{}>", node_attrs(&item_node, item_bounds)).unwrap();
+        write_rect(svg, item_bounds, bg, 0.0);
+        write_rect_with_class(svg, item_bounds, hover_bg, "wdoc-terminal-menu-item-bg");
         let label = format!(" {}", truncate_cells(&item, cols.saturating_sub(1)));
         write_text(
             svg,
@@ -394,10 +428,148 @@ fn render_menu(
             row + idx,
             col,
             &format!("{label:<width$}", width = cols),
-            if active { selected_fg } else { fg },
+            fg,
             None,
             &TermStyle::default(),
         );
+        write_text(
+            svg,
+            metrics,
+            row + idx,
+            col,
+            &format!("{label:<width$}", width = cols),
+            hover_fg,
+            None,
+            &TermStyle::default_with_class("wdoc-terminal-menu-item-label-hover"),
+        );
+        svg.push_str("</g>");
+    }
+    svg.push_str("</g>");
+}
+
+fn render_menubar(
+    child: &ShapeNode,
+    metrics: &TerminalMetrics,
+    foreground: &str,
+    background: &str,
+    svg: &mut String,
+) {
+    let row = attr_usize(&child.attrs, "row").unwrap_or(0);
+    let col = attr_usize(&child.attrs, "col").unwrap_or(0);
+    let items = child
+        .attrs
+        .get("items")
+        .map(|s| split_items(s))
+        .unwrap_or_else(|| vec!["File".to_string(), "Edit".to_string()]);
+    let targets = child
+        .attrs
+        .get("menu_targets")
+        .map(|s| split_items(s))
+        .unwrap_or_default();
+    let close_targets = child
+        .attrs
+        .get("close_targets")
+        .map(|s| split_items(s))
+        .unwrap_or_else(|| targets.clone());
+    let disabled_items = child
+        .attrs
+        .get("disabled_items")
+        .map(|s| split_items(s))
+        .unwrap_or_default();
+    let cols = attr_usize(&child.attrs, "cols")
+        .unwrap_or_else(|| {
+            items
+                .iter()
+                .map(|item| item.width() + 2)
+                .sum::<usize>()
+                .max(1)
+        })
+        .max(1);
+    let fg = child
+        .attrs
+        .get("foreground_fill")
+        .or_else(|| child.attrs.get("fill"))
+        .map(|s| s.as_str())
+        .unwrap_or(foreground);
+    let bg = child
+        .attrs
+        .get("background_fill")
+        .map(|s| s.as_str())
+        .unwrap_or(background);
+    let hover_fg = child
+        .attrs
+        .get("hover_foreground_fill")
+        .or_else(|| child.attrs.get("selected_foreground_fill"))
+        .map(|s| s.as_str())
+        .unwrap_or(background);
+    let hover_bg = child
+        .attrs
+        .get("hover_background_fill")
+        .or_else(|| child.attrs.get("selected_background_fill"))
+        .map(|s| s.as_str())
+        .unwrap_or(foreground);
+    let bounds = grid_bounds(metrics, row, col, 1, cols);
+    let menu_node = node_with_extra_class(child, "wdoc-terminal-menu");
+    let attrs = node_attrs(&menu_node, bounds);
+    write!(svg, "<g{}>", attrs).unwrap();
+    write_rect(svg, bounds, bg, 0.0);
+    let mut current_col = col;
+    for (idx, item) in items.into_iter().enumerate() {
+        if current_col >= col + cols {
+            break;
+        }
+        let disabled = item_in_list(&item, &disabled_items);
+        let item_cols = (item.width() + 2).min(col + cols - current_col);
+        let item_bounds = grid_bounds(metrics, row, current_col, 1, item_cols);
+        let item_id = child
+            .id
+            .as_deref()
+            .map(|id| format!("{id}_item_{idx}"))
+            .unwrap_or_else(|| format!("terminal_menubar_item_{idx}"));
+        let item_class = if disabled {
+            "wdoc-terminal-menu-item wdoc-terminal-menu-item-disabled"
+        } else {
+            "wdoc-terminal-menu-item"
+        };
+        let target = targets
+            .get(idx)
+            .map(|s| s.as_str())
+            .filter(|s| !s.is_empty());
+        let item_node = synthetic_terminal_item_node(
+            &item_id,
+            item_class,
+            item_bounds,
+            idx,
+            disabled,
+            target,
+            &close_targets,
+        );
+        write!(svg, "<g{}>", node_attrs(&item_node, item_bounds)).unwrap();
+        write_rect(svg, item_bounds, bg, 0.0);
+        write_rect_with_class(svg, item_bounds, hover_bg, "wdoc-terminal-menu-item-bg");
+        let label = format!(" {} ", truncate_cells(&item, item_cols.saturating_sub(2)));
+        write_text(
+            svg,
+            metrics,
+            row,
+            current_col,
+            &format!("{label:<width$}", width = item_cols),
+            fg,
+            None,
+            &TermStyle::default(),
+        );
+        write_text(
+            svg,
+            metrics,
+            row,
+            current_col,
+            &format!("{label:<width$}", width = item_cols),
+            hover_fg,
+            None,
+            &TermStyle::default_with_class("wdoc-terminal-menu-item-label-hover"),
+        );
+        svg.push_str("</g>");
+        current_col += item_cols;
     }
     svg.push_str("</g>");
 }
@@ -812,10 +984,13 @@ fn write_text(
     } else {
         format!(" text-decoration=\"{}\"", escape_attr(&decoration))
     };
-    let blink = if style.blink {
-        " class=\"wdoc-terminal-blink\""
-    } else {
-        ""
+    let class_attr = match (style.blink, style.css_class.as_deref()) {
+        (true, Some(class_name)) => {
+            format!(" class=\"wdoc-terminal-blink {}\"", escape_attr(class_name))
+        }
+        (true, None) => " class=\"wdoc-terminal-blink\"".to_string(),
+        (false, Some(class_name)) => format!(" class=\"{}\"", escape_attr(class_name)),
+        (false, None) => String::new(),
     };
     let length_attr = cells
         .map(|cells| {
@@ -835,7 +1010,7 @@ fn write_text(
         font_style,
         opacity,
         decoration_attr,
-        blink,
+        class_attr,
         length_attr,
         escape_text(text)
     )
@@ -870,6 +1045,20 @@ fn write_rect(svg: &mut String, b: Bounds, fill: &str, rx: f64) {
     .unwrap();
 }
 
+fn write_rect_with_class(svg: &mut String, b: Bounds, fill: &str, class_name: &str) {
+    write!(
+        svg,
+        "<rect class=\"{}\" x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"{}\"/>",
+        escape_attr(class_name),
+        b.x,
+        b.y,
+        b.width,
+        b.height,
+        escape_attr(fill)
+    )
+    .unwrap();
+}
+
 fn grid_bounds(
     metrics: &TerminalMetrics,
     row: usize,
@@ -883,6 +1072,108 @@ fn grid_bounds(
         width: cols as f64 * metrics.cell_width,
         height: rows as f64 * metrics.cell_height,
     }
+}
+
+fn synthetic_terminal_item_node(
+    id: &str,
+    class_name: &str,
+    bounds: Bounds,
+    source_order: usize,
+    disabled: bool,
+    open_target: Option<&str>,
+    close_targets: &[String],
+) -> ShapeNode {
+    let mut attrs = indexmap::IndexMap::new();
+    attrs.insert("class".to_string(), class_name.to_string());
+    attrs.insert(
+        "cursor".to_string(),
+        if disabled { "default" } else { "pointer" }.to_string(),
+    );
+    attrs.insert(
+        "pointer_events".to_string(),
+        if disabled { "none" } else { "all" }.to_string(),
+    );
+    attrs.insert("_wdoc_runtime".to_string(), "true".to_string());
+    let mut events = Vec::new();
+    if !disabled {
+        events.push(DiagramEvent {
+            name: None,
+            trigger: "hover".to_string(),
+            state: "hovered".to_string(),
+            target: None,
+            button: None,
+            mode: Some("while".to_string()),
+            duration_ms: None,
+            prevent_default: None,
+        });
+        for target in close_targets {
+            if Some(target.as_str()) == open_target || target.is_empty() {
+                continue;
+            }
+            events.push(DiagramEvent {
+                name: None,
+                trigger: "hover".to_string(),
+                state: "shown".to_string(),
+                target: Some(target.clone()),
+                button: None,
+                mode: Some("remove".to_string()),
+                duration_ms: None,
+                prevent_default: None,
+            });
+        }
+        if let Some(target) = open_target {
+            events.push(DiagramEvent {
+                name: None,
+                trigger: "hover".to_string(),
+                state: "shown".to_string(),
+                target: Some(target.to_string()),
+                button: None,
+                mode: Some("add".to_string()),
+                duration_ms: None,
+                prevent_default: None,
+            });
+        }
+    }
+    ShapeNode {
+        kind: ShapeKind::Group,
+        id: Some(id.to_string()),
+        x: Some(bounds.x),
+        y: Some(bounds.y),
+        width: Some(bounds.width),
+        height: Some(bounds.height),
+        top: None,
+        bottom: None,
+        left: None,
+        right: None,
+        resolved: bounds,
+        attrs,
+        events,
+        children: Vec::new(),
+        align: crate::shapes::Alignment::None,
+        gap: 0.0,
+        padding: 0.0,
+        z_index: 0.0,
+        source_order,
+    }
+}
+
+fn node_with_extra_class(node: &ShapeNode, class_name: &str) -> ShapeNode {
+    let mut node = node.clone();
+    match node.attrs.get_mut("class") {
+        Some(existing) => {
+            if !existing.split_whitespace().any(|class| class == class_name) {
+                if !existing.trim().is_empty() {
+                    existing.push(' ');
+                }
+                existing.push_str(class_name);
+            }
+        }
+        None => {
+            node.attrs
+                .insert("class".to_string(), class_name.to_string());
+        }
+    }
+    node
 }
 
 fn node_attrs(node: &ShapeNode, b: Bounds) -> String {
@@ -997,6 +1288,10 @@ fn split_items(value: &str) -> Vec<String> {
         .collect()
 }
 
+fn item_in_list(item: &str, list: &[String]) -> bool {
+    list.iter().any(|entry| entry.eq_ignore_ascii_case(item))
+}
+
 fn truncate_cells(value: &str, max: usize) -> String {
     let mut out = String::new();
     let mut width = 0;
@@ -1094,7 +1389,6 @@ mod tests {
         menu_attrs.insert("row".to_string(), "2".to_string());
         menu_attrs.insert("col".to_string(), "2".to_string());
         menu_attrs.insert("items".to_string(), "Build,Test".to_string());
-        menu_attrs.insert("selected_index".to_string(), "1".to_string());
         let child = ShapeNode {
             kind: ShapeKind::TerminalMenu,
             id: Some("menu".to_string()),
@@ -1154,9 +1448,11 @@ mod tests {
         let mut svg = String::new();
         render_terminal_svg(&node, &mut svg);
         assert!(svg.contains("JetBrainsMono Nerd Font"));
+        assert!(svg.contains("wdoc-terminal-menu"));
         assert!(svg.contains("fill=\"#0dbc79\""));
         assert!(svg.contains(">ok</text>"));
         assert!(svg.contains("Test"));
         assert!(svg.contains("data-wdoc-events=\"click|shown|self|toggle|left|0|false\""));
+        assert!(svg.contains("wdoc-terminal-menu-item-label-hover"));
     }
 }
