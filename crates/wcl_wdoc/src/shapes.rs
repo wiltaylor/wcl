@@ -125,6 +125,7 @@ pub struct ShapeNode {
     pub resolved: Bounds,
     // Visual attributes (fill, stroke, rx, etc.)
     pub attrs: IndexMap<String, String>,
+    pub events: Vec<DiagramEvent>,
     // Children
     pub children: Vec<ShapeNode>,
     pub align: Alignment,
@@ -156,10 +157,36 @@ pub struct Diagram {
     pub height: f64,
     pub shapes: Vec<ShapeNode>,
     pub connections: Vec<Connection>,
+    pub classes: IndexMap<String, DiagramClass>,
     pub padding: f64,
     pub align: Alignment,
     pub gap: f64,
     pub options: IndexMap<String, String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct DiagramClass {
+    pub name: String,
+    pub attrs: IndexMap<String, String>,
+    pub states: IndexMap<String, DiagramState>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct DiagramState {
+    pub name: String,
+    pub attrs: IndexMap<String, String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct DiagramEvent {
+    pub name: Option<String>,
+    pub trigger: String,
+    pub state: String,
+    pub target: Option<String>,
+    pub button: Option<String>,
+    pub mode: Option<String>,
+    pub duration_ms: Option<i32>,
+    pub prevent_default: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -234,6 +261,8 @@ pub fn measure_text_attrs(attrs: &IndexMap<String, String>) -> TextMetrics {
 
 /// Resolve layout and render a diagram to an inline SVG string.
 pub fn render_diagram_svg(diagram: &mut Diagram) -> String {
+    apply_diagram_classes(diagram);
+
     // Phase 2: resolve layout
     let inner = Bounds {
         x: diagram.padding,
@@ -263,16 +292,32 @@ pub fn render_diagram_svg(diagram: &mut Diagram) -> String {
         .filter(|class| !class.is_empty())
         .map(|class| format!(" class=\"{}\"", svg_escape_attr(class)))
         .unwrap_or_default();
-    let scoped_css = diagram.options.get("css").and_then(|css| {
-        let css = css.trim();
-        if css.is_empty() {
-            None
+    let generated_css = diagram_generated_css(diagram);
+    let authored_css = diagram
+        .options
+        .get("css")
+        .map(|css| css.trim())
+        .unwrap_or("");
+    let css_for_scope = [generated_css.as_str(), authored_css]
+        .into_iter()
+        .filter(|css| !css.trim().is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let needs_runtime = diagram_has_events(diagram);
+    if needs_runtime {
+        mark_runtime_shapes(&mut diagram.shapes);
+    }
+    let scoped_css = if css_for_scope.trim().is_empty() && !needs_runtime {
+        None
+    } else {
+        let scope_id = diagram_scope_id(diagram, &css_for_scope);
+        let scoped = if css_for_scope.trim().is_empty() {
+            String::new()
         } else {
-            let scope_id = diagram_scope_id(diagram, css);
-            Some((scope_id.clone(), scope_svg_css(css, &scope_id)))
-        }
-    });
-
+            scope_svg_css(&css_for_scope, &scope_id)
+        };
+        Some((scope_id, scoped))
+    };
     if let Some((scope_id, _)) = &scoped_css {
         let scope_id = svg_escape_attr(scope_id);
         write!(
@@ -295,7 +340,9 @@ pub fn render_diagram_svg(diagram: &mut Diagram) -> String {
     }
 
     if let Some((_, css)) = &scoped_css {
-        write!(svg, "<style>{}</style>", svg_escape_text(css)).unwrap();
+        if !css.trim().is_empty() {
+            write!(svg, "<style>{}</style>", svg_escape_text(css)).unwrap();
+        }
     }
 
     // Arrow marker defs
@@ -309,8 +356,219 @@ pub fn render_diagram_svg(diagram: &mut Diagram) -> String {
 
     render_diagram_items_svg(&diagram.shapes, &diagram.connections, &shape_map, &mut svg);
 
-    svg.push_str("</svg></div>");
+    svg.push_str("</svg>");
+
+    if needs_runtime {
+        write!(
+            svg,
+            "<script>{}</script>",
+            html_escape_script(&diagram_runtime_js())
+        )
+        .unwrap();
+    }
+
+    svg.push_str("</div>");
     svg
+}
+
+fn apply_diagram_classes(diagram: &mut Diagram) {
+    let classes = diagram.classes.clone();
+    for shape in &mut diagram.shapes {
+        apply_classes_to_shape(shape, &classes);
+    }
+}
+
+fn apply_classes_to_shape(shape: &mut ShapeNode, classes: &IndexMap<String, DiagramClass>) {
+    let class_names: Vec<String> = shape
+        .attrs
+        .get("class")
+        .map(|s| s.split_whitespace().map(str::to_string).collect())
+        .unwrap_or_default();
+    for class_name in class_names {
+        if let Some(class) = classes.get(&class_name) {
+            for (key, value) in &class.attrs {
+                if key == "z_index" {
+                    if shape.z_index == 0.0 {
+                        if let Ok(z) = value.parse::<f64>() {
+                            shape.z_index = z;
+                        }
+                    }
+                    continue;
+                }
+                let (svg_key, svg_value) = class_attr_to_svg_attr_value(key, value);
+                shape.attrs.entry(svg_key).or_insert(svg_value);
+            }
+            let mut state_z_entries = Vec::new();
+            if let Some(existing) = shape.attrs.get("_wdoc_state_z") {
+                state_z_entries.push(existing.clone());
+            }
+            for state in class.states.values() {
+                if let Some(z) = state
+                    .attrs
+                    .get("z_index")
+                    .and_then(|s| s.parse::<f64>().ok())
+                {
+                    state_z_entries.push(format!("{}:{}", state.name, z));
+                }
+            }
+            if !state_z_entries.is_empty() {
+                shape
+                    .attrs
+                    .insert("_wdoc_state_z".to_string(), state_z_entries.join(","));
+            }
+        }
+    }
+    for child in &mut shape.children {
+        apply_classes_to_shape(child, classes);
+    }
+}
+
+fn diagram_generated_css(diagram: &Diagram) -> String {
+    let mut css = String::new();
+    for class in diagram.classes.values() {
+        if !class.attrs.is_empty() {
+            let decls = class_attrs_to_css_decls(&class.attrs, false);
+            if !decls.is_empty() {
+                let selector = format!(".{}", css_ident_escape(&class.name));
+                writeln!(css, "{selector} {{ {decls} }}").unwrap();
+            }
+        }
+        for state in class.states.values() {
+            let decls = class_attrs_to_css_decls(&state.attrs, true);
+            if !decls.is_empty() {
+                let selector = format!(
+                    ".{}.{}",
+                    css_ident_escape(&class.name),
+                    state_class_name(&state.name)
+                );
+                writeln!(css, "{selector} {{ {decls} }}").unwrap();
+            }
+        }
+    }
+    css
+}
+
+fn class_attrs_to_css_decls(attrs: &IndexMap<String, String>, include_z: bool) -> String {
+    let mut decls = Vec::new();
+    for (key, value) in attrs {
+        if key == "z_index" && !include_z {
+            continue;
+        }
+        if let Some((css_key, css_value)) = class_attr_to_css_decl(key, value) {
+            decls.push(format!("{css_key}: {css_value};"));
+        }
+    }
+    decls.join(" ")
+}
+
+fn class_attr_to_css_decl(key: &str, value: &str) -> Option<(String, String)> {
+    match key {
+        "z_index" => None,
+        "visible" => Some((
+            "visibility".to_string(),
+            if value == "false" {
+                "hidden"
+            } else {
+                "visible"
+            }
+            .to_string(),
+        )),
+        "pointer_events" => Some(("pointer-events".to_string(), css_declaration_value(value))),
+        "stroke_width" => Some(("stroke-width".to_string(), css_declaration_value(value))),
+        "stroke_dasharray" => Some(("stroke-dasharray".to_string(), css_declaration_value(value))),
+        "font_family" => Some(("font-family".to_string(), css_declaration_value(value))),
+        "font_weight" => Some(("font-weight".to_string(), css_declaration_value(value))),
+        "font_style" => Some(("font-style".to_string(), css_declaration_value(value))),
+        "text_decoration" => Some(("text-decoration".to_string(), css_declaration_value(value))),
+        key if is_supported_class_property(key) => {
+            Some((key.replace('_', "-"), css_declaration_value(value)))
+        }
+        _ => None,
+    }
+}
+
+fn class_attr_to_svg_attr_value(key: &str, value: &str) -> (String, String) {
+    match key {
+        "visible" => (
+            "visibility".to_string(),
+            if value == "false" {
+                "hidden"
+            } else {
+                "visible"
+            }
+            .to_string(),
+        ),
+        "pointer_events" => ("pointer_events".to_string(), value.to_string()),
+        _ => (key.to_string(), value.to_string()),
+    }
+}
+
+fn is_supported_class_property(key: &str) -> bool {
+    matches!(
+        key,
+        "fill"
+            | "stroke"
+            | "stroke_width"
+            | "stroke_dasharray"
+            | "rx"
+            | "ry"
+            | "opacity"
+            | "visible"
+            | "visibility"
+            | "display"
+            | "pointer_events"
+            | "cursor"
+            | "transition"
+            | "font_family"
+            | "font_weight"
+            | "font_style"
+            | "text_decoration"
+            | "letter_spacing"
+    )
+}
+
+fn css_declaration_value(value: &str) -> String {
+    value
+        .chars()
+        .filter(|ch| !matches!(ch, ';' | '{' | '}' | '<' | '>'))
+        .collect()
+}
+
+fn css_ident_escape(value: &str) -> String {
+    let mut out = String::new();
+    for ch in value.chars() {
+        if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_') {
+            out.push(ch);
+        } else {
+            out.push('-');
+        }
+    }
+    if out.is_empty() {
+        "unnamed".to_string()
+    } else {
+        out
+    }
+}
+
+fn state_class_name(state: &str) -> String {
+    format!("wdoc-state-{}", css_ident_escape(state))
+}
+
+fn diagram_has_events(diagram: &Diagram) -> bool {
+    diagram.shapes.iter().any(shape_has_events)
+}
+
+fn shape_has_events(shape: &ShapeNode) -> bool {
+    !shape.events.is_empty() || shape.children.iter().any(shape_has_events)
+}
+
+fn mark_runtime_shapes(shapes: &mut [ShapeNode]) {
+    for shape in shapes {
+        shape
+            .attrs
+            .insert("_wdoc_runtime".to_string(), "true".to_string());
+        mark_runtime_shapes(&mut shape.children);
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -1070,7 +1328,7 @@ const ARROW_DEFS: &str = r#"<defs>
 
 fn render_shape_svg(node: &ShapeNode, svg: &mut String) {
     let b = &node.resolved;
-    let style = svg_style_attrs(&node.attrs);
+    let style = svg_node_attrs(node, &node.attrs);
 
     // Wrap in <a> if shape has an href attribute (clickable)
     let href = node.attrs.get("href");
@@ -1217,7 +1475,7 @@ fn render_shape_svg(node: &ShapeNode, svg: &mut String) {
 
 fn render_inline_svg_shape_svg(node: &ShapeNode, svg: &mut String) {
     let b = &node.resolved;
-    let style = svg_style_attrs(&node.attrs);
+    let style = svg_node_attrs(node, &node.attrs);
     let content = node
         .attrs
         .get("content")
@@ -1251,7 +1509,7 @@ fn render_inline_svg_shape_svg(node: &ShapeNode, svg: &mut String) {
 
 fn render_image_shape_svg(node: &ShapeNode, svg: &mut String) {
     let b = &node.resolved;
-    let style = svg_image_attrs(&node.attrs);
+    let style = svg_image_node_attrs(node, &node.attrs);
     let src = node.attrs.get("src").map(|s| s.as_str()).unwrap_or("");
     let fit = node
         .attrs
@@ -1714,6 +1972,9 @@ fn svg_style_attrs(attrs: &IndexMap<String, String>) -> String {
         "stroke_width",
         "stroke_dasharray",
         "opacity",
+        "visible",
+        "visibility",
+        "display",
         "class",
         "style",
         "cursor",
@@ -1725,24 +1986,148 @@ fn svg_style_attrs(attrs: &IndexMap<String, String>) -> String {
         "letter_spacing",
     ] {
         if let Some(val) = attrs.get(*name) {
-            let svg_name = name.replace('_', "-");
-            let escaped = svg_escape_attr(val);
+            let (svg_name, attr_value) = svg_render_attr_name_value(name, val);
+            let escaped = svg_escape_attr(&attr_value);
             write!(s, " {svg_name}=\"{escaped}\"").unwrap();
         }
     }
     s
 }
 
+fn svg_node_attrs(node: &ShapeNode, attrs: &IndexMap<String, String>) -> String {
+    let mut s = svg_style_attrs(attrs);
+    append_shape_runtime_attrs(node, &mut s);
+    s
+}
+
 fn svg_image_attrs(attrs: &IndexMap<String, String>) -> String {
     let mut s = String::new();
-    for name in &["opacity", "class", "style", "cursor", "pointer_events"] {
+    for name in &[
+        "opacity",
+        "visible",
+        "visibility",
+        "display",
+        "class",
+        "style",
+        "cursor",
+        "pointer_events",
+    ] {
         if let Some(val) = attrs.get(*name) {
-            let svg_name = name.replace('_', "-");
-            let escaped = svg_escape_attr(val);
+            let (svg_name, attr_value) = svg_render_attr_name_value(name, val);
+            let escaped = svg_escape_attr(&attr_value);
             write!(s, " {svg_name}=\"{escaped}\"").unwrap();
         }
     }
     s
+}
+
+fn svg_render_attr_name_value(name: &str, value: &str) -> (String, String) {
+    match name {
+        "visible" => (
+            "visibility".to_string(),
+            if value == "false" {
+                "hidden"
+            } else {
+                "visible"
+            }
+            .to_string(),
+        ),
+        _ => (name.replace('_', "-"), value.to_string()),
+    }
+}
+
+fn svg_image_node_attrs(node: &ShapeNode, attrs: &IndexMap<String, String>) -> String {
+    let mut s = svg_image_attrs(attrs);
+    append_shape_runtime_attrs(node, &mut s);
+    s
+}
+
+fn append_shape_runtime_attrs(node: &ShapeNode, out: &mut String) {
+    let Some(id) = node.id.as_deref() else {
+        return;
+    };
+    if node.events.is_empty()
+        && !node.attrs.contains_key("_wdoc_state_z")
+        && node.attrs.get("_wdoc_runtime").map(|v| v == "true") != Some(true)
+    {
+        return;
+    }
+    let id = svg_escape_attr(id);
+    write!(
+        out,
+        " data-wdoc-id=\"{id}\" data-wdoc-z-base=\"{}\"",
+        node.z_index
+    )
+    .unwrap();
+    if !node.events.is_empty() {
+        let events = diagram_events_json(&node.events);
+        write!(out, " data-wdoc-events=\"{}\"", svg_escape_attr(&events)).unwrap();
+    }
+    let state_z = state_z_json_for_shape(node);
+    if !state_z.is_empty() {
+        write!(out, " data-wdoc-state-z=\"{}\"", svg_escape_attr(&state_z)).unwrap();
+    }
+}
+
+fn state_z_json_for_shape(node: &ShapeNode) -> String {
+    node.attrs.get("_wdoc_state_z").cloned().unwrap_or_default()
+}
+
+fn diagram_events_json(events: &[DiagramEvent]) -> String {
+    events
+        .iter()
+        .map(|event| {
+            [
+                event.trigger.as_str(),
+                event.state.as_str(),
+                event.target.as_deref().unwrap_or("self"),
+                event.mode.as_deref().unwrap_or(""),
+                event.button.as_deref().unwrap_or("left"),
+                &event.duration_ms.unwrap_or(0).to_string(),
+                if event
+                    .prevent_default
+                    .unwrap_or(event.trigger == "right_click")
+                {
+                    "true"
+                } else {
+                    "false"
+                },
+            ]
+            .into_iter()
+            .map(runtime_field_escape)
+            .collect::<Vec<_>>()
+            .join("|")
+        })
+        .collect::<Vec<_>>()
+        .join(";")
+}
+
+fn runtime_field_escape(value: &str) -> String {
+    value
+        .replace('\\', "\\\\")
+        .replace('|', "\\p")
+        .replace(';', "\\s")
+}
+
+fn diagram_runtime_js() -> String {
+    r#"(function(){
+if(window.__wdocDiagramRuntimeInit){var s0=document.currentScript;if(s0&&s0.parentNode)window.__wdocDiagramRuntimeInit(s0.parentNode);return;}
+function unesc(s){return (s||'').replace(/\\s/g,';').replace(/\\p/g,'|').replace(/\\\\/g,'\\');}
+function parseEvents(el){return (el.getAttribute('data-wdoc-events')||'').split(';').filter(Boolean).map(function(row){var p=row.split('|').map(unesc);return{trigger:p[0],state:p[1],target:p[2]||'self',mode:p[3],button:p[4]||'left',duration:parseInt(p[5]||'0',10)||0,prevent:p[6]==='true'};});}
+function defaultMode(trigger){if(trigger==='hover'||trigger==='mouse_down')return'while';if(trigger==='click')return'toggle';return'pulse';}
+function eventName(trigger,leaving){if(trigger==='hover')return leaving?'mouseleave':'mouseenter';if(trigger==='double_click')return'dblclick';if(trigger==='mouse_down')return leaving?'mouseup':'mousedown';if(trigger==='mouse_leave')return'mouseleave';if(trigger==='right_click')return'contextmenu';return trigger;}
+function buttonOk(e,want){var b={left:0,middle:1,right:2}[want||'left'];return e.button===b;}
+function stateClass(state){return'wdoc-state-'+String(state||'').replace(/[^A-Za-z0-9_-]/g,'-');}
+function attrEscape(s){return String(s).replace(/\\/g,'\\\\').replace(/"/g,'\\"');}
+function target(svg,source,name){if(!name||name==='self')return source;return svg.querySelector('[data-wdoc-id="'+attrEscape(name)+'"]');}
+function zMap(el){var out={};(el.getAttribute('data-wdoc-state-z')||'').split(',').forEach(function(pair){var i=pair.indexOf(':');if(i>0)out[pair.slice(0,i)]=parseFloat(pair.slice(i+1));});return out;}
+function reorder(parent){Array.prototype.slice.call(parent.children).filter(function(el){return el.hasAttribute('data-wdoc-id');}).sort(function(a,b){return (parseFloat(a.getAttribute('data-wdoc-z-current')||a.getAttribute('data-wdoc-z-base')||'0')-parseFloat(b.getAttribute('data-wdoc-z-current')||b.getAttribute('data-wdoc-z-base')||'0'))||((parseInt(a.getAttribute('data-wdoc-order')||'0',10))-(parseInt(b.getAttribute('data-wdoc-order')||'0',10)));}).forEach(function(el){parent.appendChild(el);});}
+function updateZ(el){var map=zMap(el),z=parseFloat(el.getAttribute('data-wdoc-z-base')||'0');Object.keys(map).forEach(function(state){if(el.classList.contains(stateClass(state)))z=map[state];});el.setAttribute('data-wdoc-z-current',String(z));if(el.parentNode)reorder(el.parentNode);}
+function add(el,state){el.classList.add(stateClass(state));updateZ(el);}
+function remove(el,state){el.classList.remove(stateClass(state));updateZ(el);}
+function init(root){(root||document).querySelectorAll('svg').forEach(function(svg){Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-id]'),function(el,i){if(el.__wdocBound)return;el.__wdocBound=true;if(!el.hasAttribute('data-wdoc-order'))el.setAttribute('data-wdoc-order',String(i));parseEvents(el).forEach(function(cfg){var mode=cfg.mode||defaultMode(cfg.trigger),down=eventName(cfg.trigger,false),up=eventName(cfg.trigger,true);el.addEventListener(down,function(e){if(cfg.trigger==='mouse_down'&&!buttonOk(e,cfg.button))return;if(cfg.prevent)e.preventDefault();var t=target(svg,el,cfg.target);if(!t)return;if(mode==='toggle')t.classList.contains(stateClass(cfg.state))?remove(t,cfg.state):add(t,cfg.state);else if(mode==='remove')remove(t,cfg.state);else if(mode==='pulse'){add(t,cfg.state);setTimeout(function(){remove(t,cfg.state);},cfg.duration||180);}else add(t,cfg.state);});if(mode==='while'&&(cfg.trigger==='hover'||cfg.trigger==='mouse_down'))el.addEventListener(up,function(){var t=target(svg,el,cfg.target);if(t)remove(t,cfg.state);});});});});}
+window.__wdocDiagramRuntimeInit=init;var s=document.currentScript;if(s&&s.parentNode)init(s.parentNode);if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){init(document);});else init(document);
+})();"#.to_string()
 }
 
 pub fn sanitize_inline_svg(source: &str) -> Result<String, String> {
@@ -2304,6 +2689,10 @@ fn svg_escape_attr(s: &str) -> String {
         .replace('\'', "&apos;")
 }
 
+fn html_escape_script(s: &str) -> String {
+    s.replace("</script", "<\\/script")
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -2326,6 +2715,7 @@ mod tests {
             right: None,
             resolved: Bounds::default(),
             attrs: IndexMap::new(),
+            events: Vec::new(),
             children: vec![],
             align: Alignment::None,
             gap: 0.0,
@@ -2445,6 +2835,7 @@ mod tests {
             align: Alignment::None,
             gap: 0.0,
             options: IndexMap::new(),
+            classes: IndexMap::new(),
             shapes: vec![ShapeNode {
                 kind: ShapeKind::Rect,
                 id: Some("box1".into()),
@@ -2458,6 +2849,7 @@ mod tests {
                 right: None,
                 resolved: Bounds::default(),
                 attrs: [("fill".into(), "#ccc".into())].into_iter().collect(),
+                events: Vec::new(),
                 children: vec![],
                 align: Alignment::None,
                 gap: 0.0,
@@ -2499,6 +2891,7 @@ mod tests {
             align: Alignment::None,
             gap: 0.0,
             options: IndexMap::new(),
+            classes: IndexMap::new(),
             shapes: vec![text],
             connections: vec![],
         };
@@ -2561,6 +2954,7 @@ mod tests {
             align: Alignment::None,
             gap: 0.0,
             options: IndexMap::new(),
+            classes: IndexMap::new(),
             shapes: vec![text],
             connections: vec![],
         };
@@ -2588,6 +2982,7 @@ mod tests {
             align: Alignment::None,
             gap: 0.0,
             options: IndexMap::new(),
+            classes: IndexMap::new(),
             shapes: vec![text],
             connections: vec![],
         };
@@ -2612,6 +3007,7 @@ mod tests {
             align: Alignment::None,
             gap: 0.0,
             options: IndexMap::new(),
+            classes: IndexMap::new(),
             shapes: vec![text],
             connections: vec![],
         };
@@ -2632,6 +3028,7 @@ mod tests {
             align: Alignment::None,
             gap: 0.0,
             options: IndexMap::new(),
+            classes: IndexMap::new(),
             shapes: vec![text_shape("Centered", 120.0, 30.0)],
             connections: vec![],
         };
@@ -2657,6 +3054,7 @@ mod tests {
             align: Alignment::None,
             gap: 0.0,
             options: IndexMap::new(),
+            classes: IndexMap::new(),
             shapes: vec![text],
             connections: vec![],
         };
@@ -2684,6 +3082,7 @@ mod tests {
                 align: Alignment::None,
                 gap: 0.0,
                 options: IndexMap::new(),
+                classes: IndexMap::new(),
                 shapes: vec![image],
                 connections: vec![],
             };
@@ -2725,6 +3124,7 @@ mod tests {
             align: Alignment::None,
             gap: 0.0,
             options: IndexMap::new(),
+            classes: IndexMap::new(),
             shapes: vec![icon],
             connections: vec![],
         };
@@ -2763,6 +3163,7 @@ mod tests {
             align: Alignment::None,
             gap: 0.0,
             options: IndexMap::new(),
+            classes: IndexMap::new(),
             shapes: vec![image],
             connections: vec![],
         };
@@ -2792,6 +3193,7 @@ mod tests {
             align: Alignment::None,
             gap: 0.0,
             options: IndexMap::new(),
+            classes: IndexMap::new(),
             shapes: vec![image],
             connections: vec![],
         };
@@ -2824,6 +3226,7 @@ mod tests {
             align: Alignment::None,
             gap: 0.0,
             options: IndexMap::new(),
+            classes: IndexMap::new(),
             shapes: vec![group],
             connections: vec![],
         };
@@ -2851,6 +3254,7 @@ mod tests {
             align: Alignment::None,
             gap: 0.0,
             options: IndexMap::new(),
+            classes: IndexMap::new(),
             shapes: vec![group],
             connections: vec![],
         };
@@ -2883,6 +3287,7 @@ mod tests {
             align: Alignment::None,
             gap: 0.0,
             options: IndexMap::new(),
+            classes: IndexMap::new(),
             shapes: vec![high, same_a, low, same_b],
             connections: vec![],
         };
@@ -2928,6 +3333,7 @@ mod tests {
             align: Alignment::None,
             gap: 0.0,
             options: IndexMap::new(),
+            classes: IndexMap::new(),
             shapes: vec![group, background],
             connections: vec![],
         };
@@ -2968,6 +3374,7 @@ mod tests {
             align: Alignment::None,
             gap: 0.0,
             options: IndexMap::new(),
+            classes: IndexMap::new(),
             shapes: vec![b, a],
             connections: vec![conn],
         };
@@ -3007,6 +3414,7 @@ mod tests {
             align: Alignment::None,
             gap: 0.0,
             options: IndexMap::new(),
+            classes: IndexMap::new(),
             shapes: vec![b, a],
             connections: vec![conn],
         };
@@ -3052,6 +3460,7 @@ mod tests {
             align: Alignment::None,
             gap: 0.0,
             options: IndexMap::new(),
+            classes: IndexMap::new(),
             shapes: vec![group],
             connections: vec![],
         };
@@ -3085,6 +3494,7 @@ mod tests {
             align: Alignment::None,
             gap: 0.0,
             options: IndexMap::new(),
+            classes: IndexMap::new(),
             shapes: vec![rect],
             connections: vec![],
         };
@@ -3095,6 +3505,85 @@ mod tests {
         assert!(svg.contains("style=\"filter:url(#shadow)\""));
         assert!(svg.contains("cursor=\"pointer\""));
         assert!(svg.contains("pointer-events=\"bounding-box\""));
+    }
+
+    #[test]
+    fn diagram_classes_apply_base_properties_and_emit_state_css() {
+        let mut class = DiagramClass {
+            name: "card".to_string(),
+            attrs: IndexMap::new(),
+            states: IndexMap::new(),
+        };
+        class.attrs.insert("fill".to_string(), "#fff".to_string());
+        class
+            .attrs
+            .insert("stroke_width".to_string(), "1".to_string());
+        class.attrs.insert("z_index".to_string(), "10".to_string());
+        let mut hovered = DiagramState {
+            name: "hovered".to_string(),
+            attrs: IndexMap::new(),
+        };
+        hovered
+            .attrs
+            .insert("stroke".to_string(), "#3b82f6".to_string());
+        hovered
+            .attrs
+            .insert("z_index".to_string(), "20".to_string());
+        class.states.insert("hovered".to_string(), hovered);
+
+        let mut rect = shape("task", 100.0, 40.0);
+        rect.attrs.insert("class".to_string(), "card".to_string());
+
+        let mut diagram = Diagram {
+            id: Some("classes".to_string()),
+            width: 120.0,
+            height: 60.0,
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+            classes: IndexMap::from([("card".to_string(), class)]),
+            shapes: vec![rect],
+            connections: vec![],
+        };
+
+        let svg = render_diagram_svg(&mut diagram);
+        assert!(svg.contains("fill=\"#fff\""));
+        assert!(svg.contains("stroke-width=\"1\""));
+        assert!(svg.contains(".card.wdoc-state-hovered"));
+        assert!(svg.contains("stroke: #3b82f6;"));
+        assert!(svg.contains("data-wdoc-state-z=\"hovered:20\""));
+        assert!(!svg.contains("z-index"));
+    }
+
+    #[test]
+    fn diagram_events_emit_runtime_metadata_and_script() {
+        let mut rect = shape("task", 100.0, 40.0);
+        rect.events.push(DiagramEvent {
+            name: Some("select".to_string()),
+            trigger: "click".to_string(),
+            state: "selected".to_string(),
+            mode: Some("toggle".to_string()),
+            ..Default::default()
+        });
+
+        let mut diagram = Diagram {
+            id: Some("events".to_string()),
+            width: 120.0,
+            height: 60.0,
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+            classes: IndexMap::new(),
+            shapes: vec![rect],
+            connections: vec![],
+        };
+
+        let svg = render_diagram_svg(&mut diagram);
+        assert!(svg.contains("data-wdoc-events=\"click|selected|self|toggle|left|0|false\""));
+        assert!(svg.contains("<script>"));
+        assert!(svg.contains("wdoc-state-"));
     }
 
     #[test]
@@ -3115,6 +3604,7 @@ mod tests {
             align: Alignment::None,
             gap: 0.0,
             options,
+            classes: IndexMap::new(),
             shapes: vec![shape("box", 100.0, 40.0)],
             connections: vec![],
         };
@@ -3136,6 +3626,7 @@ mod tests {
             align: Alignment::None,
             gap: 0.0,
             options: IndexMap::new(),
+            classes: IndexMap::new(),
             shapes: vec![shape("box", 100.0, 40.0)],
             connections: vec![],
         };
@@ -3177,6 +3668,7 @@ mod tests {
             height: 180.0,
             shapes: vec![boundary],
             connections: vec![],
+            classes: IndexMap::new(),
             padding: 0.0,
             align: Alignment::None,
             gap: 0.0,
@@ -3211,6 +3703,7 @@ mod tests {
             height: 200.0,
             shapes: vec![container],
             connections: vec![],
+            classes: IndexMap::new(),
             padding: 0.0,
             align: Alignment::None,
             gap: 0.0,
@@ -3243,6 +3736,7 @@ mod tests {
             height: 240.0,
             shapes: vec![boundary],
             connections: vec![connection("boundary.a", "boundary.b")],
+            classes: IndexMap::new(),
             padding: 0.0,
             align: Alignment::None,
             gap: 0.0,
@@ -3263,6 +3757,7 @@ mod tests {
             height: 180.0,
             shapes: vec![shape("a", 100.0, 60.0), shape("b", 100.0, 60.0)],
             connections: vec![connection("a", "b")],
+            classes: IndexMap::new(),
             padding: 30.0,
             align: Alignment::Layered,
             gap: 80.0,
@@ -3301,6 +3796,7 @@ mod tests {
                 connection("boundary.a", "boundary.b"),
                 connection("boundary.b", "boundary.c"),
             ],
+            classes: IndexMap::new(),
             padding: 0.0,
             align: Alignment::None,
             gap: 0.0,
@@ -3341,6 +3837,7 @@ mod tests {
             height: 220.0,
             shapes: vec![boundary],
             connections: vec![connection("boundary.a", "boundary.b")],
+            classes: IndexMap::new(),
             padding: 0.0,
             align: Alignment::None,
             gap: 0.0,
@@ -3402,6 +3899,7 @@ mod tests {
             height: 220.0,
             shapes: vec![boundary],
             connections: vec![connection("boundary.a", "boundary.b")],
+            classes: IndexMap::new(),
             padding: 0.0,
             align: Alignment::None,
             gap: 0.0,
@@ -3448,6 +3946,7 @@ mod tests {
                 connection("boundary.b", "boundary.d"),
                 connection("boundary.c", "boundary.d"),
             ],
+            classes: IndexMap::new(),
             padding: 0.0,
             align: Alignment::None,
             gap: 0.0,
@@ -3486,6 +3985,7 @@ mod tests {
             height: 120.0,
             shapes: vec![container],
             connections: vec![],
+            classes: IndexMap::new(),
             padding: 0.0,
             align: Alignment::None,
             gap: 0.0,
@@ -3517,6 +4017,7 @@ mod tests {
             height: 200.0,
             shapes: vec![container],
             connections: vec![],
+            classes: IndexMap::new(),
             padding: 0.0,
             align: Alignment::None,
             gap: 0.0,

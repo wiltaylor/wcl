@@ -173,6 +173,55 @@ namespace wdoc {
         }
         @open schema "group" { }
         @open schema "connection" { }
+        @open schema "class" { }
+        @parent(["wdoc::draw::class"]) @open schema "state" { }
+        @parent([
+            "wdoc::draw::rect",
+            "wdoc::draw::circle",
+            "wdoc::draw::ellipse",
+            "wdoc::draw::line",
+            "wdoc::draw::path",
+            "wdoc::draw::text",
+            "wdoc::draw::inline_svg",
+            "wdoc::draw::image",
+            "wdoc::draw::group",
+            "wdoc::draw::phone",
+            "wdoc::draw::browser",
+            "wdoc::draw::button",
+            "wdoc::draw::input",
+            "wdoc::draw::card",
+            "wdoc::draw::avatar",
+            "wdoc::draw::toggle",
+            "wdoc::draw::badge",
+            "wdoc::draw::navbar",
+            "wdoc::draw::flow_process",
+            "wdoc::draw::flow_decision",
+            "wdoc::draw::flow_terminal",
+            "wdoc::draw::flow_io",
+            "wdoc::draw::flow_subprocess",
+            "wdoc::draw::c4_person",
+            "wdoc::draw::c4_system",
+            "wdoc::draw::c4_container",
+            "wdoc::draw::c4_component",
+            "wdoc::draw::c4_boundary",
+            "wdoc::draw::uml_class",
+            "wdoc::draw::uml_actor",
+            "wdoc::draw::uml_package",
+            "wdoc::draw::uml_note",
+            "wdoc::draw::server",
+            "wdoc::draw::database",
+            "wdoc::draw::cloud",
+            "wdoc::draw::user"
+        ])
+        @open schema "event" {
+            trigger: string
+            state: string
+            target: string @optional
+            button: string @optional
+            mode: string @optional
+            duration_ms: i32 @optional
+            prevent_default: bool @optional
+        }
 
         // --- Composite widgets ---
         // Each widget is bound to a `@template("shape", "fn")` function defined

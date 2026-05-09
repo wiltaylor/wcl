@@ -104,6 +104,7 @@ doc wcl_docs {
         section wdoc_example_flowchart "Example — Flowchart" {}
         section wdoc_example_swimlane "Example — Swimlane Diagram" {}
         section wdoc_example_wireframe "Example — UI Wireframe" {}
+        section wdoc_example_interactions "Example — Diagram Interactions" {}
     }
 
     section reference "Language Reference" {

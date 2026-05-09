@@ -30,6 +30,7 @@ doc my_docs {
         section nested_diagrams "Nested Diagrams" {}
         section swimlane_diagrams "Swim Lane Diagrams" {}
         section wireframes "UI Wireframes" {}
+        section interactions "Diagram Interactions" {}
         section flowchart_examples "Flowchart Shapes" {}
         section c4_examples "C4 Architecture" {}
         section uml_examples "UML Shapes" {}

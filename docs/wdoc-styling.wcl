@@ -81,6 +81,13 @@ page wdoc_styling {
                     color = "#0d6efd"
                     paragraph wp { content = "Hardcoding hex colors in shapes works, but they will look wrong in dark mode. Prefer the theme variables for any structural shape; reserve hex colors for genuine accent moments." }
                 }
+
+                callout c_css_deprecated {
+                    icon = "exclamation-triangle"
+                    header = "Diagram CSS compatibility"
+                    color = "#6c757d"
+                    paragraph cp { content = "Diagram-level <code>css</code>, <code>css_fragment</code>, and <code>global_css</code> still render for existing documents, but new interactive diagrams should prefer <code>wdoc::draw::class</code>, nested <code>state</code> blocks, and shape <code>event</code> blocks." }
+                }
             }
         }
     }

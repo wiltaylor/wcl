@@ -909,6 +909,7 @@ mod tests {
                 height: h,
             },
             attrs: IndexMap::new(),
+            events: Vec::new(),
             children: vec![],
             align: Alignment::None,
             gap: 0.0,

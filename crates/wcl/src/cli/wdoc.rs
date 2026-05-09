@@ -561,6 +561,7 @@ fn render_diagram_with_ctx(br: &BlockRef, ctx: &ExtractCtx) -> String {
         height: diagram_h,
         shapes,
         connections,
+        classes: ctx.diagram_classes.borrow().clone(),
         padding,
         align,
         gap,
@@ -648,6 +649,10 @@ fn collect_shape_or_connection(
         return;
     }
 
+    if is_draw_event_block(br) || is_draw_class_block(br) || is_draw_state_block(br) {
+        return;
+    }
+
     if let Some(kind) = parse_shape_kind(&br.kind) {
         let mut a = value_map_to_string_map_lossy(&br.attributes);
 
@@ -687,6 +692,9 @@ fn collect_shape_or_connection(
         let mut child_source_order = children.len();
         for val in br.attributes.values() {
             if let Value::BlockRef(child_br) = val {
+                if is_draw_event_block(child_br) {
+                    continue;
+                }
                 collect_shape_or_connection(
                     child_br,
                     &mut children,
@@ -698,6 +706,9 @@ fn collect_shape_or_connection(
             }
         }
         for child_br in &br.children {
+            if is_draw_event_block(child_br) {
+                continue;
+            }
             collect_shape_or_connection(
                 child_br,
                 &mut children,
@@ -751,6 +762,7 @@ fn collect_shape_or_connection(
             right: nright,
             resolved: Bounds::default(),
             attrs: a,
+            events: collect_diagram_events(br),
             children,
             align,
             gap,
@@ -975,6 +987,7 @@ fn descriptor_to_shape_node_with_order(
         right: nright,
         resolved: Bounds::default(),
         attrs,
+        events: Vec::new(),
         children,
         align,
         gap,
@@ -1014,6 +1027,128 @@ fn value_map_to_string_map_lossy(map: &IndexMap<String, Value>) -> IndexMap<Stri
     result
 }
 
+fn collect_diagram_classes(
+    values: &IndexMap<String, Value>,
+) -> IndexMap<String, wcl_wdoc::shapes::DiagramClass> {
+    let mut classes = IndexMap::new();
+    for value in values.values() {
+        if let Value::BlockRef(block) = value {
+            collect_diagram_classes_in_block(block, &mut classes);
+        }
+    }
+    classes
+}
+
+fn collect_diagram_classes_in_block(
+    block: &BlockRef,
+    classes: &mut IndexMap<String, wcl_wdoc::shapes::DiagramClass>,
+) {
+    if is_draw_class_block(block) {
+        let Some(name) = block.id.clone() else {
+            return;
+        };
+        let mut attrs = value_map_to_string_map_lossy(&block.attributes);
+        let mut states = IndexMap::new();
+        for child in all_child_blocks(block) {
+            if is_draw_state_block(child) {
+                if let Some(state_name) = child.id.clone() {
+                    states.insert(
+                        state_name.clone(),
+                        wcl_wdoc::shapes::DiagramState {
+                            name: state_name,
+                            attrs: value_map_to_string_map_lossy(&child.attributes),
+                        },
+                    );
+                }
+            }
+        }
+        attrs.shift_remove("state");
+        classes.insert(
+            name.clone(),
+            wcl_wdoc::shapes::DiagramClass {
+                name,
+                attrs,
+                states,
+            },
+        );
+        return;
+    }
+    for child in all_child_blocks(block) {
+        collect_diagram_classes_in_block(child, classes);
+    }
+}
+
+fn collect_diagram_events(block: &BlockRef) -> Vec<wcl_wdoc::shapes::DiagramEvent> {
+    all_child_blocks(block)
+        .into_iter()
+        .filter(|child| is_draw_event_block(child))
+        .filter_map(|child| {
+            let trigger = child.attributes.get("trigger")?.as_string()?.to_string();
+            let state = child.attributes.get("state")?.as_string()?.to_string();
+            let target = child
+                .attributes
+                .get("target")
+                .and_then(|v| v.as_string())
+                .map(str::to_string);
+            let button = child
+                .attributes
+                .get("button")
+                .and_then(|v| v.as_string())
+                .map(str::to_string);
+            let mode = child
+                .attributes
+                .get("mode")
+                .and_then(|v| v.as_string())
+                .map(str::to_string);
+            let duration_ms = child.attributes.get("duration_ms").and_then(|v| match v {
+                Value::Int(i) => Some(*i as i32),
+                Value::Float(f) => Some(*f as i32),
+                Value::String(s) => s.parse().ok(),
+                _ => None,
+            });
+            let prevent_default = child
+                .attributes
+                .get("prevent_default")
+                .and_then(|v| match v {
+                    Value::Bool(b) => Some(*b),
+                    Value::String(s) => s.parse().ok(),
+                    _ => None,
+                });
+            Some(wcl_wdoc::shapes::DiagramEvent {
+                name: child.id.clone(),
+                trigger,
+                state,
+                target,
+                button,
+                mode,
+                duration_ms,
+                prevent_default,
+            })
+        })
+        .collect()
+}
+
+fn is_draw_class_block(block: &BlockRef) -> bool {
+    matches!(
+        block.kind.as_str(),
+        "wdoc::draw::class" | "draw::class" | "class"
+    )
+}
+
+fn is_draw_state_block(block: &BlockRef) -> bool {
+    matches!(
+        block.kind.as_str(),
+        "wdoc::draw::state" | "draw::state" | "state"
+    )
+}
+
+fn is_draw_event_block(block: &BlockRef) -> bool {
+    matches!(
+        block.kind.as_str(),
+        "wdoc::draw::event" | "draw::event" | "event"
+    )
+}
+
 fn val_f64(v: Option<&Value>) -> Option<f64> {
     match v {
         Some(Value::Int(i)) => Some(*i as f64),
@@ -1032,6 +1167,7 @@ struct ExtractCtx {
     template_fns: HashMap<String, TemplateFn>,
     builtins: HashMap<String, BuiltinFn>,
     css_registry: Rc<RefCell<DiagramCssRegistry>>,
+    diagram_classes: Rc<RefCell<IndexMap<String, wcl_wdoc::shapes::DiagramClass>>>,
     svg_search_dirs: Vec<PathBuf>,
 }
 
@@ -1318,6 +1454,7 @@ mod wdoc_draw_tests {
             template_fns: HashMap::new(),
             builtins: HashMap::new(),
             css_registry: Rc::new(RefCell::new(DiagramCssRegistry::default())),
+            diagram_classes: Rc::new(RefCell::new(IndexMap::new())),
             svg_search_dirs: Vec::new(),
         }
     }
@@ -1670,6 +1807,70 @@ mod wdoc_draw_tests {
     }
 
     #[test]
+    fn diagram_classes_and_events_flow_through_cli_extraction() {
+        let mut class_attrs = IndexMap::new();
+        string_attr(&mut class_attrs, "fill", "#ffffff");
+        string_attr(&mut class_attrs, "stroke", "#94a3b8");
+        int_attr(&mut class_attrs, "z_index", 5);
+
+        let mut state_attrs = IndexMap::new();
+        string_attr(&mut state_attrs, "fill", "#eef6ff");
+        string_attr(&mut state_attrs, "stroke", "#3b82f6");
+        int_attr(&mut state_attrs, "z_index", 20);
+
+        let card_class = block(
+            "class",
+            Some("card"),
+            class_attrs,
+            vec![block("state", Some("hovered"), state_attrs, vec![])],
+        );
+
+        let mut event_attrs = IndexMap::new();
+        string_attr(&mut event_attrs, "trigger", "hover");
+        string_attr(&mut event_attrs, "state", "hovered");
+
+        let mut rect_attrs = IndexMap::new();
+        int_attr(&mut rect_attrs, "x", 0);
+        int_attr(&mut rect_attrs, "y", 0);
+        int_attr(&mut rect_attrs, "width", 40);
+        int_attr(&mut rect_attrs, "height", 40);
+        string_attr(&mut rect_attrs, "class", "card");
+
+        let rect = block(
+            "wdoc::draw::rect",
+            Some("task"),
+            rect_attrs,
+            vec![block("event", Some("hover_card"), event_attrs, vec![])],
+        );
+
+        let mut diagram_attrs = IndexMap::new();
+        int_attr(&mut diagram_attrs, "width", 80);
+        int_attr(&mut diagram_attrs, "height", 80);
+        let diagram = block(
+            "wdoc::draw::diagram",
+            Some("class_preview"),
+            diagram_attrs,
+            vec![rect],
+        );
+
+        let ctx = empty_ctx();
+        ctx.diagram_classes
+            .borrow_mut()
+            .extend(collect_diagram_classes(&IndexMap::from([(
+                "card".to_string(),
+                Value::BlockRef(card_class),
+            )])));
+
+        let html = render_diagram_with_ctx(&diagram, &ctx);
+        assert!(html.contains("fill=\"#ffffff\""));
+        assert!(html.contains("stroke=\"#94a3b8\""));
+        assert!(html.contains(".card.wdoc-state-hovered"));
+        assert!(html.contains("data-wdoc-events=\"hover|hovered|self||left|0|false\""));
+        assert!(html.contains("data-wdoc-state-z=\"hovered:20\""));
+        assert!(!html.contains("<event"));
+    }
+
+    #[test]
     fn descriptor_z_index_is_structural_and_sorts_composite_children() {
         let mut high = IndexMap::new();
         high.insert("kind".to_string(), Value::String("rect".to_string()));
@@ -1706,6 +1907,7 @@ mod wdoc_draw_tests {
                 descriptor_to_shape_node_with_order(&Value::Map(group), 0).expect("descriptor")
             ],
             connections: vec![],
+            classes: IndexMap::new(),
         };
 
         let svg = wcl_wdoc::shapes::render_diagram_svg(&mut diagram);
@@ -1746,6 +1948,7 @@ mod wdoc_draw_tests {
                     .expect("descriptor"),
             ],
             connections: vec![],
+            classes: IndexMap::new(),
         };
 
         let svg = wcl_wdoc::shapes::render_diagram_svg(&mut diagram);
@@ -2191,6 +2394,7 @@ fn parse_and_extract_with_watch(
         template_fns,
         builtins,
         css_registry: Rc::new(RefCell::new(DiagramCssRegistry::default())),
+        diagram_classes: Rc::new(RefCell::new(collect_diagram_classes(&all_values))),
         svg_search_dirs,
     };
 
