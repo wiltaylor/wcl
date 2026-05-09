@@ -59,6 +59,15 @@
         let separator_stroke = attr_or(b, "separator_stroke", border_stroke)
         let radius = attr_or(b, "radius", 6)
         let border_width = attr_or(b, "border_width", 1)
+        let dismiss_on_leave = attr_or(b, "dismiss_on_leave", "true") == "true"
+        let leave_close_str = attr_or(b, "leave_close_targets", to_string(b.id))
+        let leave_close_ids = leave_close_str != "" ? split(",", leave_close_str) : []
+        let leave_events = dismiss_on_leave ? map(leave_close_ids, (menu_id) => {
+            trigger = "mouse_leave",
+            target = trim(menu_id),
+            state = "shown",
+            mode = "remove"
+        }) : []
         let separators = map(range(1, n), (i) => {
             kind = "line",
             x1 = 8,
@@ -70,8 +79,19 @@
             opacity = 0.55
         })
         let item_rows = map(range(0, n), (i) => wdoc::widget_context_menu_item(b, i, w, item_h, radius, label_fill, hover_fill, items, targets, close_str, disabled_items, item_blocks, has_blocks))
-        concat(concat([
-            { kind = "rect", x = 0, y = 0, width = w, height = h, rx = radius,
-              fill = bg_fill, stroke = border_stroke, stroke_width = border_width }
-        ], item_rows), separators)
+        [
+            {
+                kind = "group",
+                id = "surface",
+                x = 0,
+                y = 0,
+                width = w,
+                height = h,
+                events = leave_events,
+                children = concat(concat([
+                    { kind = "rect", x = 0, y = 0, width = w, height = h, rx = radius,
+                      fill = bg_fill, stroke = border_stroke, stroke_width = border_width }
+                ], item_rows), separators)
+            }
+        ]
     }

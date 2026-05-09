@@ -40,7 +40,7 @@ page wdoc_drawing_widgets {
                         { widget = "dropdown", attrs = "label, value, placeholder, items, open" },
                         { widget = "inline_image", attrs = "src, fit, caption" },
                         { widget = "menubar", attrs = "items, active_index" },
-                        { widget = "context_menu", attrs = "items" },
+                        { widget = "context_menu", attrs = "items, dismiss_on_leave, leave_close_targets" },
                         { widget = "card",    attrs = "(container — children render inside)" },
                         { widget = "avatar",  attrs = "label" },
                         { widget = "toggle",  attrs = "on (\"true\" / \"false\")" },
@@ -57,6 +57,10 @@ page wdoc_drawing_widgets {
                 code cui_menu {
                     language = "wcl"
                     content = "class popup_menu {\n    opacity = 0\n    visible = false\n    pointer_events = \"none\"\n    state shown {\n        opacity = 1\n        visible = true\n        pointer_events = \"all\"\n    }\n}\n\ndiagram menu_example {\n    width = 520, height = 180\n\n    menubar app_menu {\n        x = 20, y = 20, width = 260, height = 34\n        items = \"File,Edit,View\"\n        event open_menu {\n            trigger = \"click\"\n            target = \"file_menu\"\n            state = \"shown\"\n            mode = \"toggle\"\n        }\n    }\n\n    button row {\n        x = 20, y = 92, width = 140, height = 36\n        label = \"Right click\"\n        event open_context {\n            trigger = \"right_click\"\n            target = \"row_menu\"\n            state = \"shown\"\n            mode = \"toggle\"\n        }\n    }\n\n    context_menu file_menu { x = 20, y = 58, width = 150, items = \"New,Open,Save\", class = \"popup_menu\" }\n    context_menu row_menu { x = 180, y = 84, width = 150, items = \"Open,Duplicate,Delete\", class = \"popup_menu\" }\n}"
+                }
+
+                paragraph p_ui_menu_leave {
+                    content = "Context menus remove their own <code>shown</code> state when the mouse leaves the menu surface. Set <code>dismiss_on_leave = \"false\"</code> to opt out, or use <code>leave_close_targets</code> to remove <code>shown</code> from a comma-separated list of related menus."
                 }
 
                 heading h2_theme {
