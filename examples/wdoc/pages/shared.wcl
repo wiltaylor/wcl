@@ -1,0 +1,72 @@
+// Pages for the WCL documentation example
+
+import <wdoc.wcl>
+use wdoc::{doc, page, section, style, layout, heading, paragraph, image, code, data_table, callout, bold, italic, link, icon}
+use wdoc::draw::{diagram, rect, circle, ellipse, line, path, text, group, connection, phone, browser, button, input, card, avatar, toggle, badge, navbar, flow_process, flow_decision, flow_terminal, flow_io, flow_subprocess, c4_person, c4_system, c4_container, c4_component, c4_boundary, uml_class, uml_actor, uml_package, uml_note, server, database, cloud, user}
+use custom_shapes::{task_node, mini_flow}
+
+// Helper: literal dollar sign for code examples containing ${...}
+export let D = "$"
+
+// Shared theme values for examples.
+export let color_bg = "#0d1117"
+export let color_text = "#e6edf3"
+export let color_link = "#58a6ff"
+export let color_nav_bg = "#161b22"
+export let color_nav_active = "#1c3a5f"
+export let color_nav_border = "#30363d"
+export let color_code_bg = "#161b22"
+export let color_code_border = "#30363d"
+export let color_on_accent = "#ffffff"
+export let color_success = "#3fb950"
+export let color_success_bg = "#123c24"
+export let color_danger = "#f85149"
+export let color_danger_bg = "#3d1517"
+
+// Custom shape examples used by the diagram examples page.
+namespace custom_shapes {
+    @template("shape", "custom_shapes::task_node_template")
+    @open
+    schema "task_node" { }
+
+    export let task_node_template = (b) => {
+        let w = attr_or(b, "width", 130)
+        let h = attr_or(b, "height", 46)
+        let label = attr_or(b, "label", "Task")
+        let color_link = "#58a6ff"
+        let color_code_bg = "#161b22"
+        let fill = attr_or(b, "fill", color_code_bg)
+        [
+            { kind = "rect", x = 0, y = 0, width = w, height = h, rx = 7,
+              fill = fill, stroke = color_link, stroke_width = 1.5 },
+            { kind = "text", x = 0, y = 0, width = w, height = h,
+              content = label, font_size = 13 }
+        ]
+    }
+
+    @template("shape", "custom_shapes::mini_flow_template")
+    @open
+    schema "mini_flow" { }
+
+    export let mini_flow_template = (b) => {
+        let color_link = "#58a6ff"
+        let color_nav_bg = "#161b22"
+        let color_code_bg = "#161b22"
+        [
+            { kind = "rect", id = "start", width = 96, height = 34, rx = 7,
+              layout_role = "node", fill = color_code_bg,
+              stroke = color_link, stroke_width = 1.5,
+              children = [{ kind = "text", content = "Start", font_size = 12 }] },
+            { kind = "rect", id = "review", width = 96, height = 34, rx = 7,
+              layout_role = "node", fill = color_code_bg,
+              stroke = color_link, stroke_width = 1.5,
+              children = [{ kind = "text", content = "Review", font_size = 12 }] },
+            { kind = "rect", id = "done", width = 96, height = 34, rx = 7,
+              layout_role = "node", fill = color_nav_bg,
+              stroke = "#3fb950", stroke_width = 1.5,
+              children = [{ kind = "text", content = "Done", font_size = 12 }] },
+            { kind = "connection", from = "start", to = "review", direction = "to" },
+            { kind = "connection", from = "review", to = "done", direction = "to" }
+        ]
+    }
+}

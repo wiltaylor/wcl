@@ -1,0 +1,331 @@
+import "./shared.wcl"
+
+// ── Diagram Interactions page ──
+
+class ex_interaction_card {
+    fill = color_code_bg
+    stroke = color_code_border
+    stroke_width = 1
+    cursor = "pointer"
+    transition = "fill 160ms ease, stroke 160ms ease, opacity 140ms ease"
+
+    state hovered {
+        fill = color_nav_active
+        stroke = color_link
+        z_index = 10
+    }
+
+    state selected {
+        stroke = color_success
+        stroke_width = 3
+        z_index = 20
+    }
+}
+
+class ex_detail_panel {
+    fill = color_nav_bg
+    stroke = color_link
+    stroke_width = 2
+    opacity = 0
+    visible = false
+    pointer_events = "none"
+    transition = "opacity 140ms ease"
+
+    state shown {
+        opacity = 1
+        visible = true
+        pointer_events = "all"
+    }
+}
+
+class ex_stack_card {
+    fill = color_code_bg
+    stroke = color_code_border
+    stroke_width = 1
+    cursor = "pointer"
+    transition = "fill 120ms ease, stroke 120ms ease"
+
+    state front {
+        fill = color_nav_active
+        stroke = color_link
+        z_index = 30
+    }
+}
+
+page interactions {
+    section = "my_docs.diagrams.interactions"
+    title = "Diagram Interactions"
+
+    layout {
+        vsplit v_int1 {
+            split s_int1 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = icon("cursor") + " Diagram Interactions"
+                }
+                paragraph p1 { content = "Document-level diagram classes define reusable visual states. Shape-level events apply those states at runtime for hover, click, visibility, and sibling z-order changes." }
+
+                heading h2 {
+                    level = 2
+                    content = "States and targeted visibility"
+                }
+                paragraph p2 { content = "Hover the first task to reveal the details panel. Click either task to toggle a selected state." }
+
+                diagram state_demo {
+                    width = 760
+                    height = 270
+
+                    group task_review {
+                        x = 30
+                        y = 44
+                        width = 200
+                        height = 92
+                        class = "ex_interaction_card"
+
+                        event hover_card {
+                            trigger = "hover"
+                            state = "hovered"
+                            mode = "while"
+                        }
+
+                        event select_card {
+                            trigger = "click"
+                            state = "selected"
+                            mode = "toggle"
+                        }
+
+                        event reveal_details {
+                            trigger = "hover"
+                            target = "details"
+                            state = "shown"
+                            mode = "while"
+                        }
+
+                        rect bg { x = 0
+                            y = 0
+                            width = 200
+                            height = 92
+                            rx = 8 }
+                        text title { x = 16
+                            y = 16
+                            width = 168
+                            height = 24
+                            content = "Review request"
+                            anchor = "start"
+                            font_weight = "700" }
+                        text meta { x = 16
+                            y = 50
+                            width = 168
+                            height = 22
+                            content = "Hover for details"
+                            anchor = "start"
+                            font_size = 12 }
+                    }
+
+                    group task_ship {
+                        x = 270
+                        y = 44
+                        width = 200
+                        height = 92
+                        class = "ex_interaction_card"
+
+                        event hover_card {
+                            trigger = "hover"
+                            state = "hovered"
+                            mode = "while"
+                        }
+
+                        event select_card {
+                            trigger = "click"
+                            state = "selected"
+                            mode = "toggle"
+                        }
+
+                        rect bg { x = 0
+                            y = 0
+                            width = 200
+                            height = 92
+                            rx = 8 }
+                        text title { x = 16
+                            y = 16
+                            width = 168
+                            height = 24
+                            content = "Ship preview"
+                            anchor = "start"
+                            font_weight = "700" }
+                        text meta { x = 16
+                            y = 50
+                            width = 168
+                            height = 22
+                            content = "Click to select"
+                            anchor = "start"
+                            font_size = 12 }
+                    }
+
+                    group details {
+                        x = 520
+                        y = 34
+                        width = 210
+                        height = 116
+                        class = "ex_detail_panel"
+
+                        rect bg { x = 0
+                            y = 0
+                            width = 210
+                            height = 116
+                            rx = 8 }
+                        text title { x = 16
+                            y = 18
+                            width = 178
+                            height = 24
+                            content = "Targeted state"
+                            anchor = "start"
+                            font_weight = "700" }
+                        text body { x = 16
+                            y = 50
+                            width = 178
+                            height = 44
+                            content = "This panel is hidden after layout, then shown by an event on another shape."
+                            anchor = "start"
+                            font_size = 12 }
+                    }
+                }
+
+                heading h3 {
+                    level = 2
+                    content = "Runtime z-order"
+                }
+                paragraph p3 { content = "Hover each overlapping card. The <code>front</code> state raises that card within its current sibling group, then restores the original order on mouse leave." }
+
+                diagram z_order_demo {
+                    width = 460
+                    height = 190
+
+                    group alpha {
+                        x = 46
+                            y = 48
+                            width = 160
+                            height = 88
+                        class = "ex_stack_card"
+                        event front { trigger = "hover"
+                            state = "front"
+                            mode = "while" }
+                        rect bg { x = 0
+                            y = 0
+                            width = 160
+                            height = 88
+                            rx = 8 }
+                        text label { x = 0
+                            y = 0
+                            width = 160
+                            height = 88
+                            content = "Alpha" }
+                    }
+
+                    group beta {
+                        x = 128
+                            y = 34
+                            width = 160
+                            height = 88
+                        class = "ex_stack_card"
+                        event front { trigger = "hover"
+                            state = "front"
+                            mode = "while" }
+                        rect bg { x = 0
+                            y = 0
+                            width = 160
+                            height = 88
+                            rx = 8 }
+                        text label { x = 0
+                            y = 0
+                            width = 160
+                            height = 88
+                            content = "Beta" }
+                    }
+
+                    group gamma {
+                        x = 210
+                            y = 58
+                            width = 160
+                            height = 88
+                        class = "ex_stack_card"
+                        event front { trigger = "hover"
+                            state = "front"
+                            mode = "while" }
+                        rect bg { x = 0
+                            y = 0
+                            width = 160
+                            height = 88
+                            rx = 8 }
+                        text label { x = 0
+                            y = 0
+                            width = 160
+                            height = 88
+                            content = "Gamma" }
+                    }
+                }
+
+                heading h4 {
+                    level = 2
+                    content = "Source"
+                }
+                code src {
+                    language = "wcl"
+                    content = <<-'WCL'
+use wdoc::draw::{diagram, group, rect, text}
+
+class ex_interaction_card {
+    fill = color_code_bg
+    stroke = color_code_border
+    stroke_width = 1
+
+    state hovered {
+        fill = color_nav_active
+        stroke = color_link
+        z_index = 10
+    }
+
+    state selected {
+        stroke = color_success
+        stroke_width = 3
+        z_index = 20
+    }
+}
+
+class ex_detail_panel {
+    opacity = 0
+    visible = false
+    pointer_events = "none"
+
+    state shown {
+        opacity = 1
+        visible = true
+        pointer_events = "all"
+    }
+}
+
+diagram state_demo {
+    group task_review {
+        class = "ex_interaction_card"
+        event hover_card { trigger = "hover"
+                            state = "hovered"
+                            mode = "while" }
+        event select_card { trigger = "click"
+                            state = "selected"
+                            mode = "toggle" }
+        event reveal_details {
+            trigger = "hover"
+            target = "details"
+            state = "shown"
+            mode = "while"
+        }
+    }
+}
+WCL
+                }
+            }
+        }
+    }
+}

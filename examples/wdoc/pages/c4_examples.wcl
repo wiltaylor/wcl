@@ -1,0 +1,191 @@
+import "./shared.wcl"
+
+// ── C4 Architecture page ──
+
+page c4_examples {
+    section = "my_docs.diagrams.c4_examples"
+    title = "C4 Architecture"
+
+    layout {
+        vsplit v_c41 {
+            split s_c41 {
+                size = 100
+
+                heading hc41 {
+                    level = 1
+                    content = "C4 Architecture Diagrams"
+                }
+                paragraph pc41 { content = "C4 model shapes for software architecture at different zoom levels:" }
+
+                heading hc42 {
+                    level = 2
+                    content = "Context Diagram"
+                }
+
+                diagram c4_context {
+                    width = 700
+                    height = 350
+
+                    c4_person user {
+                        x = 50
+                        y = 100
+                        width = 100
+                        height = 110
+                        label = "Customer"
+                        description = "Uses the app"
+                    }
+
+                    c4_system main_sys {
+                        x = 270
+                        y = 80
+                        width = 160
+                        height = 90
+                        label = "My App"
+                        description = "Core platform"
+                    }
+
+                    c4_system email_sys {
+                        x = 530
+                        y = 30
+                        width = 150
+                        height = 80
+                        label = "Email System"
+                        description = "Sends emails"
+                        external = "true"
+                    }
+
+                    c4_system payment_sys {
+                        x = 530
+                        y = 160
+                        width = 150
+                        height = 80
+                        label = "Payment"
+                        description = "Processes payments"
+                        external = "true"
+                    }
+
+                    connection cc1 { from = "user"
+                        to = "main_sys"
+                        direction = "to"
+                        stroke = color_text
+                        stroke_width = 2
+                        label = "Uses" }
+                    connection cc2 { from = "main_sys"
+                        to = "email_sys"
+                        direction = "to"
+                        stroke = color_text
+                        stroke_width = 2
+                        label = "Sends emails" }
+                    connection cc3 { from = "main_sys"
+                        to = "payment_sys"
+                        direction = "to"
+                        stroke = color_text
+                        stroke_width = 2
+                        label = "Charges" }
+                }
+
+                heading hc43 {
+                    level = 2
+                    content = "Container Diagram"
+                }
+
+                diagram c4_container {
+                    width = 700
+                    height = 350
+
+                    c4_boundary boundary {
+                        x = 120
+                        y = 10
+                        width = 460
+                        height = 330
+                        label = "My App [System Boundary]"
+                    }
+
+                    c4_person c4user {
+                        x = 10
+                        y = 100
+                        width = 90
+                        height = 100
+                        label = "User"
+                    }
+
+                    c4_container webapp {
+                        x = 140
+                        y = 40
+                        width = 140
+                        height = 70
+                        label = "Web App"
+                        technology = "React"
+                        color = "#438DD5"
+                    }
+
+                    c4_container api {
+                        x = 310
+                        y = 40
+                        width = 140
+                        height = 70
+                        label = "API"
+                        technology = "Rust"
+                        color = "#438DD5"
+                    }
+
+                    c4_container worker {
+                        x = 140
+                        y = 150
+                        width = 140
+                        height = 70
+                        label = "Worker"
+                        technology = "Rust"
+                        color = "#438DD5"
+                    }
+
+                    c4_container db {
+                        x = 310
+                        y = 150
+                        width = 140
+                        height = 70
+                        label = "Database"
+                        technology = "PostgreSQL"
+                        color = "#438DD5"
+                    }
+
+                    c4_container cache {
+                        x = 310
+                        y = 260
+                        width = 140
+                        height = 60
+                        label = "Cache"
+                        technology = "Redis"
+                        color = "#438DD5"
+                    }
+
+                    connection ct1 { from = "c4user"
+                        to = "webapp"
+                        direction = "to"
+                        stroke = color_text
+                        label = "HTTPS" }
+                    connection ct2 { from = "webapp"
+                        to = "api"
+                        direction = "to"
+                        stroke = color_text
+                        label = "REST" }
+                    connection ct3 { from = "api"
+                        to = "db"
+                        direction = "both"
+                        stroke = color_text
+                        label = "SQL" }
+                    connection ct4 { from = "api"
+                        to = "worker"
+                        direction = "to"
+                        stroke = color_text
+                        label = "Queue" }
+                    connection ct5 { from = "api"
+                        to = "cache"
+                        direction = "both"
+                        stroke = color_text
+                        stroke_dasharray = "4,3" }
+                }
+            }
+        }
+    }
+}

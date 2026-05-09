@@ -1,0 +1,551 @@
+import "./shared.wcl"
+
+// ── Large Scale Diagram Examples (generated with for loops) ──
+
+export let grid_items = ["auth", "users", "posts", "media", "search", "notify", "billing", "analytics", "config", "logging", "metrics", "cache", "queue", "storage", "gateway"]
+
+page large_diagrams {
+    section = "my_docs.diagrams.large_diagrams"
+    title = "Large Diagrams"
+
+    layout {
+        // Large grid
+        vsplit v_lg1 {
+            split s_lg1 {
+                size = 100
+
+                heading hlg1 {
+                    level = 2
+                    content = "Large Grid (15 services)"
+                }
+                paragraph plg1 { content = "A grid layout with many items, generated with a WCL " + bold("for") + " loop:" }
+
+                diagram large_grid {
+                    width = 700
+                    height = 400
+                    align = "grid"
+                    columns = 5
+                    gap = 15
+
+                    for svc in grid_items {
+                        rect ${svc} {
+                            width = 110
+                            height = 55
+                            rx = 6
+                            fill = color_code_bg
+                            stroke = color_code_border
+                            stroke_width = 1
+                            text t { content = svc }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Large force-directed network
+        vsplit v_lg2 {
+            split s_lg2 {
+                size = 100
+
+                heading hlg2 {
+                    level = 2
+                    content = "Large Force Network (12 nodes)"
+                }
+                paragraph plg2 { content = "A complex force-directed network with many interconnections:" }
+
+                diagram large_force {
+                    width = 700
+                    height = 500
+                    align = "force"
+
+                    circle f_web {
+                        r = 25
+                        fill = color_link
+                        text t { content = "Web"
+                            fill = "#fff" }
+                    }
+                    circle f_mobile {
+                        r = 25
+                        fill = color_link
+                        text t { content = "Mobile"
+                            fill = "#fff" }
+                    }
+                    circle f_gw {
+                        r = 30
+                        fill = color_link
+                        text t { content = "Gateway"
+                            fill = "#fff" }
+                    }
+                    circle f_auth {
+                        r = 22
+                        fill = color_code_bg
+                        stroke = color_link
+                        stroke_width = 2
+                        text t { content = "Auth" }
+                    }
+                    circle f_users {
+                        r = 22
+                        fill = color_code_bg
+                        stroke = color_link
+                        stroke_width = 2
+                        text t { content = "Users" }
+                    }
+                    circle f_posts {
+                        r = 22
+                        fill = color_code_bg
+                        stroke = color_link
+                        stroke_width = 2
+                        text t { content = "Posts" }
+                    }
+                    circle f_media {
+                        r = 22
+                        fill = color_code_bg
+                        stroke = color_link
+                        stroke_width = 2
+                        text t { content = "Media" }
+                    }
+                    circle f_search {
+                        r = 22
+                        fill = color_nav_bg
+                        stroke = color_nav_border
+                        stroke_width = 2
+                        text t { content = "Search" }
+                    }
+                    circle f_db {
+                        r = 25
+                        fill = color_nav_bg
+                        stroke = color_nav_border
+                        stroke_width = 2
+                        text t { content = "DB" }
+                    }
+                    circle f_cache {
+                        r = 22
+                        fill = color_nav_bg
+                        stroke = color_nav_border
+                        stroke_width = 2
+                        text t { content = "Cache" }
+                    }
+                    circle f_queue {
+                        r = 22
+                        fill = color_nav_bg
+                        stroke = color_nav_border
+                        stroke_width = 2
+                        text t { content = "Queue" }
+                    }
+                    circle f_storage {
+                        r = 22
+                        fill = color_nav_bg
+                        stroke = color_nav_border
+                        stroke_width = 2
+                        text t { content = "Storage" }
+                    }
+
+                    // Client → Gateway
+                    connection fe1 { from = "f_web"
+                        to = "f_gw"
+                        direction = "to"
+                        stroke = color_text }
+                    connection fe2 { from = "f_mobile"
+                        to = "f_gw"
+                        direction = "to"
+                        stroke = color_text }
+                    // Gateway → Services
+                    connection fe3 { from = "f_gw"
+                        to = "f_auth"
+                        direction = "to"
+                        stroke = color_text }
+                    connection fe4 { from = "f_gw"
+                        to = "f_users"
+                        direction = "to"
+                        stroke = color_text }
+                    connection fe5 { from = "f_gw"
+                        to = "f_posts"
+                        direction = "to"
+                        stroke = color_text }
+                    connection fe6 { from = "f_gw"
+                        to = "f_media"
+                        direction = "to"
+                        stroke = color_text }
+                    // Services → Data
+                    connection fe7 { from = "f_users"
+                        to = "f_db"
+                        direction = "both"
+                        stroke = color_text }
+                    connection fe8 { from = "f_posts"
+                        to = "f_db"
+                        direction = "both"
+                        stroke = color_text }
+                    connection fe9 { from = "f_posts"
+                        to = "f_search"
+                        direction = "to"
+                        stroke = color_text }
+                    connection fe10 { from = "f_media"
+                        to = "f_storage"
+                        direction = "both"
+                        stroke = color_text }
+                    connection fe11 { from = "f_auth"
+                        to = "f_cache"
+                        direction = "both"
+                        stroke = color_text }
+                    connection fe12 { from = "f_posts"
+                        to = "f_queue"
+                        direction = "to"
+                        stroke = color_text }
+                    connection fe13 { from = "f_queue"
+                        to = "f_search"
+                        direction = "to"
+                        stroke = color_text }
+                    connection fe14 { from = "f_search"
+                        to = "f_cache"
+                        direction = "both"
+                        stroke = color_text }
+                }
+            }
+        }
+
+        // Large layered pipeline
+        vsplit v_lg3 {
+            split s_lg3 {
+                size = 100
+
+                heading hlg3 {
+                    level = 2
+                    content = "Large Layered Pipeline (10 stages)"
+                }
+                paragraph plg3 { content = "A CI/CD pipeline with branching and merging stages:" }
+
+                diagram large_layered {
+                    width = 700
+                    height = 500
+                    align = "layered"
+                    gap = 30
+
+                    rect l_src {
+                        width = 100
+                        height = 40
+                        rx = 4
+                        fill = color_code_bg
+                        stroke = color_link
+                        stroke_width = 2
+                        text t { content = "Source" }
+                    }
+                    rect l_lint {
+                        width = 100
+                        height = 40
+                        rx = 4
+                        fill = color_code_bg
+                        stroke = color_link
+                        stroke_width = 2
+                        text t { content = "Lint" }
+                    }
+                    rect l_test {
+                        width = 100
+                        height = 40
+                        rx = 4
+                        fill = color_code_bg
+                        stroke = color_link
+                        stroke_width = 2
+                        text t { content = "Test" }
+                    }
+                    rect l_build {
+                        width = 100
+                        height = 40
+                        rx = 4
+                        fill = color_code_bg
+                        stroke = color_link
+                        stroke_width = 2
+                        text t { content = "Build" }
+                    }
+                    rect l_linux {
+                        width = 100
+                        height = 40
+                        rx = 4
+                        fill = color_nav_bg
+                        stroke = color_nav_border
+                        stroke_width = 1
+                        text t { content = "Linux" }
+                    }
+                    rect l_macos {
+                        width = 100
+                        height = 40
+                        rx = 4
+                        fill = color_nav_bg
+                        stroke = color_nav_border
+                        stroke_width = 1
+                        text t { content = "macOS" }
+                    }
+                    rect l_windows {
+                        width = 100
+                        height = 40
+                        rx = 4
+                        fill = color_nav_bg
+                        stroke = color_nav_border
+                        stroke_width = 1
+                        text t { content = "Windows" }
+                    }
+                    rect l_package {
+                        width = 100
+                        height = 40
+                        rx = 4
+                        fill = color_code_bg
+                        stroke = color_link
+                        stroke_width = 2
+                        text t { content = "Package" }
+                    }
+                    rect l_staging {
+                        width = 100
+                        height = 40
+                        rx = 4
+                        fill = color_code_bg
+                        stroke = color_link
+                        stroke_width = 2
+                        text t { content = "Staging" }
+                    }
+                    rect l_prod {
+                        width = 100
+                        height = 40
+                        rx = 4
+                        fill = color_link
+                        text t { content = "Production"
+                            fill = "#fff" }
+                    }
+
+                    connection lc1 { from = "l_src"
+                        to = "l_lint"
+                        direction = "to"
+                        stroke = color_text
+                        stroke_width = 2 }
+                    connection lc2 { from = "l_src"
+                        to = "l_test"
+                        direction = "to"
+                        stroke = color_text
+                        stroke_width = 2 }
+                    connection lc3 { from = "l_lint"
+                        to = "l_build"
+                        direction = "to"
+                        stroke = color_text
+                        stroke_width = 2 }
+                    connection lc4 { from = "l_test"
+                        to = "l_build"
+                        direction = "to"
+                        stroke = color_text
+                        stroke_width = 2 }
+                    connection lc5 { from = "l_build"
+                        to = "l_linux"
+                        direction = "to"
+                        stroke = color_text }
+                    connection lc6 { from = "l_build"
+                        to = "l_macos"
+                        direction = "to"
+                        stroke = color_text }
+                    connection lc7 { from = "l_build"
+                        to = "l_windows"
+                        direction = "to"
+                        stroke = color_text }
+                    connection lc8 { from = "l_linux"
+                        to = "l_package"
+                        direction = "to"
+                        stroke = color_text }
+                    connection lc9 { from = "l_macos"
+                        to = "l_package"
+                        direction = "to"
+                        stroke = color_text }
+                    connection lc10 { from = "l_windows"
+                        to = "l_package"
+                        direction = "to"
+                        stroke = color_text }
+                    connection lc11 { from = "l_package"
+                        to = "l_staging"
+                        direction = "to"
+                        stroke = color_text
+                        stroke_width = 2 }
+                    connection lc12 { from = "l_staging"
+                        to = "l_prod"
+                        direction = "to"
+                        stroke = color_text
+                        stroke_width = 2 }
+                }
+            }
+        }
+
+        // Radial with many nodes
+        vsplit v_lg4 {
+            split s_lg4 {
+                size = 100
+
+                heading hlg4 {
+                    level = 2
+                    content = "Large Radial Hierarchy (15 nodes)"
+                }
+                paragraph plg4 { content = "An org chart with three levels of hierarchy:" }
+
+                diagram large_radial {
+                    width = 600
+                    height = 500
+                    align = "radial"
+                    root = "r_ceo"
+
+                    circle r_ceo {
+                        r = 30
+                        fill = color_link
+                        text t { content = "CEO"
+                            fill = "#fff" }
+                    }
+                    circle r_cto {
+                        r = 24
+                        fill = color_code_bg
+                        stroke = color_link
+                        stroke_width = 2
+                        text t { content = "CTO" }
+                    }
+                    circle r_cfo {
+                        r = 24
+                        fill = color_code_bg
+                        stroke = color_link
+                        stroke_width = 2
+                        text t { content = "CFO" }
+                    }
+                    circle r_coo {
+                        r = 24
+                        fill = color_code_bg
+                        stroke = color_link
+                        stroke_width = 2
+                        text t { content = "COO" }
+                    }
+                    circle r_cmo {
+                        r = 24
+                        fill = color_code_bg
+                        stroke = color_link
+                        stroke_width = 2
+                        text t { content = "CMO" }
+                    }
+                    circle r_e1 {
+                        r = 16
+                        fill = color_nav_bg
+                        stroke = color_nav_border
+                        stroke_width = 1
+                        text t { content = "FE"
+                            font_size = 11 }
+                    }
+                    circle r_e2 {
+                        r = 16
+                        fill = color_nav_bg
+                        stroke = color_nav_border
+                        stroke_width = 1
+                        text t { content = "BE"
+                            font_size = 11 }
+                    }
+                    circle r_e3 {
+                        r = 16
+                        fill = color_nav_bg
+                        stroke = color_nav_border
+                        stroke_width = 1
+                        text t { content = "Infra"
+                            font_size = 11 }
+                    }
+                    circle r_f1 {
+                        r = 16
+                        fill = color_nav_bg
+                        stroke = color_nav_border
+                        stroke_width = 1
+                        text t { content = "Acct"
+                            font_size = 11 }
+                    }
+                    circle r_f2 {
+                        r = 16
+                        fill = color_nav_bg
+                        stroke = color_nav_border
+                        stroke_width = 1
+                        text t { content = "Tax"
+                            font_size = 11 }
+                    }
+                    circle r_o1 {
+                        r = 16
+                        fill = color_nav_bg
+                        stroke = color_nav_border
+                        stroke_width = 1
+                        text t { content = "HR"
+                            font_size = 11 }
+                    }
+                    circle r_o2 {
+                        r = 16
+                        fill = color_nav_bg
+                        stroke = color_nav_border
+                        stroke_width = 1
+                        text t { content = "Ops"
+                            font_size = 11 }
+                    }
+                    circle r_m1 {
+                        r = 16
+                        fill = color_nav_bg
+                        stroke = color_nav_border
+                        stroke_width = 1
+                        text t { content = "Brand"
+                            font_size = 11 }
+                    }
+                    circle r_m2 {
+                        r = 16
+                        fill = color_nav_bg
+                        stroke = color_nav_border
+                        stroke_width = 1
+                        text t { content = "Growth"
+                            font_size = 10 }
+                    }
+                    circle r_m3 {
+                        r = 16
+                        fill = color_nav_bg
+                        stroke = color_nav_border
+                        stroke_width = 1
+                        text t { content = "Sales"
+                            font_size = 11 }
+                    }
+
+                    // Level 1
+                    connection rc1 { from = "r_ceo"
+                        to = "r_cto"
+                        stroke = color_text }
+                    connection rc2 { from = "r_ceo"
+                        to = "r_cfo"
+                        stroke = color_text }
+                    connection rc3 { from = "r_ceo"
+                        to = "r_coo"
+                        stroke = color_text }
+                    connection rc4 { from = "r_ceo"
+                        to = "r_cmo"
+                        stroke = color_text }
+                    // Level 2
+                    connection rc5 { from = "r_cto"
+                        to = "r_e1"
+                        stroke = color_text }
+                    connection rc6 { from = "r_cto"
+                        to = "r_e2"
+                        stroke = color_text }
+                    connection rc7 { from = "r_cto"
+                        to = "r_e3"
+                        stroke = color_text }
+                    connection rc8 { from = "r_cfo"
+                        to = "r_f1"
+                        stroke = color_text }
+                    connection rc9 { from = "r_cfo"
+                        to = "r_f2"
+                        stroke = color_text }
+                    connection rc10 { from = "r_coo"
+                        to = "r_o1"
+                        stroke = color_text }
+                    connection rc11 { from = "r_coo"
+                        to = "r_o2"
+                        stroke = color_text }
+                    connection rc12 { from = "r_cmo"
+                        to = "r_m1"
+                        stroke = color_text }
+                    connection rc13 { from = "r_cmo"
+                        to = "r_m2"
+                        stroke = color_text }
+                    connection rc14 { from = "r_cmo"
+                        to = "r_m3"
+                        stroke = color_text }
+                }
+            }
+        }
+    }
+}

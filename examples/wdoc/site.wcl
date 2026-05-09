@@ -2,6 +2,8 @@
 //
 // This demonstrates the wdoc documentation format built on WCL.
 // Build:  wcl wdoc build examples/wdoc/site.wcl examples/wdoc/pages.wcl --output /tmp/wdoc-example
+// Build split pages directly:
+//         wcl wdoc build examples/wdoc/site.wcl examples/wdoc/pages/*.wcl --output /tmp/wdoc-example
 // Serve:  wcl wdoc serve examples/wdoc/site.wcl examples/wdoc/pages.wcl --port 3000
 
 import <wdoc.wcl>

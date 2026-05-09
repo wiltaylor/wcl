@@ -1,0 +1,146 @@
+import "./shared.wcl"
+
+// ── Language Bindings page ──
+
+page binding_examples {
+    section = "my_docs.bindings.binding_examples"
+    title = "Binding Examples"
+
+    layout {
+        vsplit v7 {
+            split s10 {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Language Bindings"
+                }
+
+                paragraph p1 {
+                    content = "WCL provides native bindings for multiple languages. Each binding evaluates WCL documents and returns structured data in the host language."
+                }
+            }
+        }
+        vsplit v8 {
+            split s11 {
+                size = 50
+
+                heading h2a {
+                    level = 2
+                    content = "Rust"
+                }
+                paragraph pa { content = "The Rust crate provides the full WCL API:" }
+                code rust {
+                    language = "rust"
+                    content = "use wcl::{parse, ParseOptions, Value};\n\nfn main() {\n    let source = r#\"\n        server api {\n            host = \"0.0.0.0\"\n            port = 8080\n        }\n    \"#;\n\n    let doc = parse(source, ParseOptions::default());\n\n    if doc.has_errors() {\n        for diag in &doc.diagnostics {\n            eprintln!(\"{}\", diag.message);\n        }\n        return;\n    }\n\n    for (name, value) in &doc.values {\n        match value {\n            Value::BlockRef(block) => {\n                println!(\"Block: {} ({})\", block.kind, name);\n                for (k, v) in &block.attributes {\n                    println!(\"  {} = {:?}\", k, v);\n                }\n            }\n            _ => println!(\"{} = {:?}\", name, value),\n        }\n    }\n}"
+                }
+            }
+            split s12 {
+                size = 50
+
+                heading h2b {
+                    level = 2
+                    content = "Python"
+                }
+                paragraph pb { content = "The Python binding via PyO3:" }
+                code python {
+                    language = "python"
+                    content = "import pywcl\n\nsource = \"\"\"\nschema \"server\" {\n    host: string\n    port: i64 @validate(min = 1, max = 65535)\n}\n\nserver api {\n    host = \"0.0.0.0\"\n    port = 8080\n}\n\nserver admin {\n    host = \"127.0.0.1\"\n    port = 9090\n}\n\"\"\"\n\n# Parse and evaluate\nresult = pywcl.parse(source)\n\n# Access as Python dicts\nfor name, server in result[\"server\"].items():\n    print(f\"{name}: {server['host']}:{server['port']}\")\n\n# Query with selectors\nports = pywcl.query(source, \"server | .port\")\nprint(f\"Ports in use: {ports}\")"
+                }
+            }
+        }
+        vsplit v9 {
+            split s13 {
+                size = 50
+
+                heading h2c {
+                    level = 2
+                    content = "Go"
+                }
+                paragraph pc { content = "The Go binding via CGo:" }
+                code golang {
+                    language = "go"
+                    content = "package main\n\nimport (\n\t\"encoding/json\"\n\t\"fmt\"\n\t\"log\"\n\n\t\"github.com/wiltaylor/wcl/bindings/go/wcl\"\n)\n\nfunc main() {\n\tsource := `\n\t\tserver api {\n\t\t\thost = \"0.0.0.0\"\n\t\t\tport = 8080\n\t\t\ttls = true\n\t\t}\n\t`\n\n\tresult, err := wcl.Parse(source)\n\tif err != nil {\n\t\tlog.Fatal(err)\n\t}\n\n\t// Marshal to JSON for easy access\n\tdata, _ := json.MarshalIndent(result, \"\", \"  \")\n\tfmt.Println(string(data))\n}"
+                }
+            }
+            split s14 {
+                size = 50
+
+                heading h2d {
+                    level = 2
+                    content = "JavaScript (WASM)"
+                }
+                paragraph pd { content = "The WASM binding for browsers and Node.js:" }
+                code javascript {
+                    language = "javascript"
+                    content = "import init, { parse, query } from '@aspect/wcl-wasm';\n\nawait init();\n\nconst source = `\n  let regions = [\"us-east\", \"eu-west\"]\n\n  for region in regions {\n    server worker-" + D + "{region} {\n      host = \"" + D + "{region}.internal\"\n      port = 9000\n    }\n  }\n`;\n\nconst result = parse(source);\nconsole.log('Servers:', JSON.stringify(result.values, null, 2));\n\n// Query support\nconst hosts = query(source, 'server | .host');\nconsole.log('All hosts:', hosts);"
+                }
+            }
+        }
+        vsplit v10 {
+            split s15 {
+                size = 50
+
+                heading h2e {
+                    level = 2
+                    content = "C# / .NET"
+                }
+                paragraph pe { content = "The .NET binding:" }
+                code csharp {
+                    language = "csharp"
+                    content = "using WclLang;\nusing System.Text.Json;\n\nvar source = @\"\n    database primary {\n        host = \"\"db.internal\"\"\n        port = 5432\n        name = \"\"myapp\"\"\n        max_connections = 100\n        ssl = true\n    }\n\";\n\nvar result = Wcl.Parse(source);\nvar json = JsonSerializer.Serialize(result,\n    new JsonSerializerOptions { WriteIndented = true });\n\nConsole.WriteLine(json);"
+                }
+            }
+            split s16 {
+                size = 50
+
+                heading h2f {
+                    level = 2
+                    content = "Ruby"
+                }
+                paragraph pf { content = "The Ruby binding:" }
+                code ruby {
+                    language = "ruby"
+                    content = "require 'wcl'\n\nsource = <<~WCL\n  schema \"cache\" {\n    host: string\n    port: i64\n    ttl: i64 @validate(min = 0)\n  }\n\n  cache redis {\n    host = \"redis.internal\"\n    port = 6379\n    ttl = 300\n  }\nWCL\n\nresult = Wcl.parse(source)\nresult['cache'].each do |name, config|\n  puts \"#{name}: #{config['host']}:#{config['port']}\"\nend"
+                }
+            }
+        }
+        vsplit v11 {
+            split s17 {
+                size = 100
+
+                heading h2g {
+                    level = 2
+                    content = "Output Formats"
+                }
+                paragraph pg { content = "WCL can evaluate to multiple output formats. Here is the same configuration rendered as YAML and TOML:" }
+            }
+        }
+        vsplit v12 {
+            split s18 {
+                size = 50
+
+                heading h3a {
+                    level = 3
+                    content = "YAML Output"
+                }
+                code yaml_out {
+                    language = "yaml"
+                    content = "server:\n  api:\n    host: \"0.0.0.0\"\n    port: 8080\n    workers: 8\n    tls: true\n  worker-us-east:\n    host: us-east.internal\n    port: 10000\n    workers: 4\n    region: us-east\ndatabase:\n  primary:\n    host: db.internal\n    port: 5432\n    name: myapp\n    max_connections: 100\n    ssl: true"
+                }
+            }
+            split s19 {
+                size = 50
+
+                heading h3b {
+                    level = 3
+                    content = "TOML Output"
+                }
+                code toml_out {
+                    language = "toml"
+                    content = "[server.api]\nhost = \"0.0.0.0\"\nport = 8080\nworkers = 8\ntls = true\n\n[server.worker-us-east]\nhost = \"us-east.internal\"\nport = 10000\nworkers = 4\nregion = \"us-east\"\n\n[database.primary]\nhost = \"db.internal\"\nport = 5432\nname = \"myapp\"\nmax_connections = 100\nssl = true"
+                }
+            }
+        }
+    }
+}

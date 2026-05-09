@@ -1,0 +1,75 @@
+import "./shared.wcl"
+
+// ── Overview page ──
+
+page overview {
+    section = "my_docs.getting_started.overview"
+    title = "Overview"
+
+    layout {
+        vsplit v1 {
+            split s1 {
+                size = 100
+
+                image hero_img {
+                    src = "images/hero-banner.png"
+                    alt = "WCL Documentation"
+                }
+
+                @style("hero")
+                heading h1 {
+                    level = 1
+                    content = "WCL - Wils Configuration Language"
+                }
+
+                @style("hero")
+                paragraph p1 {
+                    content = "A typed, block-structured configuration language with schemas, validation, and powerful expressions."
+                }
+
+                heading h2 {
+                    level = 2
+                    content = "Why WCL?"
+                }
+
+                paragraph p2 {
+                    content = "WCL brings the " + bold("safety of typed schemas") + " and the " + bold("flexibility of expressions") + " to configuration files. No more YAML indentation bugs or JSON without comments."
+                }
+
+                callout welcome {
+                    icon = "check-circle"
+                    header = "Ready to go"
+                    color = "#28a745"
+                    paragraph w_p1 { content = "WCL is installed and ready. Explore the examples below to see what it can do." }
+                }
+
+                heading h3a {
+                    level = 3
+                    content = "Quick Example"
+                }
+
+                paragraph p3 {
+                    content = "Here is a complete WCL configuration with schemas, variables, control flow, and validation:"
+                }
+
+                code c1 {
+                    language = "wcl"
+                    content = "// Define the structure\nschema \"server\" {\n    host: string\n    port: i64 @validate(min = 1, max = 65535)\n    workers: i64 @validate(min = 1, max = 32)\n    tls: bool @optional\n    region: string @optional\n}\n\n// Variables and expressions\nlet environment = \"production\"\nlet base_port = 8000\nlet is_prod = environment == \"production\"\nlet regions = [\"us-east\", \"eu-west\", \"ap-south\"]\n\n// Static blocks\nserver api {\n    host = \"0.0.0.0\"\n    port = base_port + 80\n    workers = is_prod ? 8 : 2\n    tls = is_prod\n}\n\n// Dynamic blocks with control flow\nfor region in regions {\n    server worker-" + D + "{region} {\n        host = \"" + D + "{region}.internal\"\n        port = base_port + 2000\n        workers = 4\n        region = region\n    }\n}\n\n// Data tables\ntable users {\n    name:  string\n    role:  string\n    admin: bool\n    | \"alice\" | \"engineering\" | true  |\n    | \"bob\"   | \"marketing\"  | false |\n    | \"carol\" | \"engineering\" | true  |\n}\n\n// Validation\nvalidation \"port uniqueness\" {\n    let ports = query(server | .port)\n    check = len(distinct(ports)) == len(ports)\n    message = \"All server ports must be unique\"\n}"
+                }
+
+                heading h3b {
+                    level = 3
+                    content = "Key Features"
+                }
+
+                paragraph p4 { content = icon("shield-check", "1.1em", "#28a745") + " " + bold("Typed schemas") + " - define and validate your configuration structure at parse time." }
+                paragraph p5 { content = icon("code-slash", "1.1em", color_link) + " " + bold("Expressions") + " - variables, conditionals, loops, string interpolation, and 45+ built-in functions." }
+                paragraph p6 { content = icon("table", "1.1em", "#6f42c1") + " " + bold("Tables") + " - structured tabular data with typed columns and CSV import." }
+                paragraph p7 { content = icon("box-arrow-in-right", "1.1em", "#fd7e14") + " " + bold("Imports and Libraries") + " - modular configuration with library support and glob imports." }
+                paragraph p8 { content = icon("filetype-json", "1.1em", "#e83e8c") + " " + bold("Multiple output formats") + " - evaluate to JSON, YAML, TOML, or MessagePack." }
+                paragraph p9 { content = icon("brush", "1.1em", "#17a2b8") + " " + bold("Diagrams and Shapes") + " - vector diagrams with shapes, connections, and graph layouts." }
+                paragraph p10 { content = icon("palette", "1.1em", "#6610f2") + " " + bold("Dark mode") + " - system detection with manual toggle, theme-aware throughout." }
+            }
+        }
+    }
+}

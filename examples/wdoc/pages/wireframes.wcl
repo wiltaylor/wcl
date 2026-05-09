@@ -1,0 +1,545 @@
+import "./shared.wcl"
+
+// ── UI Wireframes page ──
+
+page wireframes {
+    section = "my_docs.diagrams.wireframes"
+    title = "UI Wireframes"
+
+    layout {
+        vsplit v_wf1 {
+            split s_wf1 {
+                size = 100
+
+                heading hwf1 {
+                    level = 1
+                    content = "UI Wireframes"
+                }
+                paragraph pwf1 { content = "Reusable UI widget shapes built from diagram primitives. Each widget is a schema with a template that returns shape primitives — no SVG hardcoding." }
+            }
+        }
+
+        // --- Widget showcase: phone, browser, buttons, inputs ---
+        vsplit v_wf2 {
+            split s_wf2 {
+                size = 100
+
+                heading hwf2 {
+                    level = 2
+                    content = "Phone and Browser Frames"
+                }
+                paragraph pwf2 { content = "Use " + bold("widget_phone") + " and " + bold("widget_browser") + " for device mockups. They accept " + bold("title") + ", " + bold("url") + ", and color attributes:" }
+
+                diagram device_frames {
+                    width = 750
+                    height = 340
+
+                    phone phone1 {
+                        x = 20
+                        y = 10
+                        width = 220
+                        height = 320
+                        title = "My App"
+                    }
+
+                    phone phone2 {
+                        x = 260
+                        y = 10
+                        width = 220
+                        height = 320
+                        title = "Settings"
+                        header_fill = color_nav_bg
+                    }
+
+                    browser browser1 {
+                        x = 500
+                        y = 10
+                        width = 240
+                        height = 180
+                        title = "Dashboard"
+                        url = "https://app.example.com"
+                    }
+
+                    browser browser2 {
+                        x = 500
+                        y = 200
+                        width = 240
+                        height = 130
+                        title = "Docs"
+                        url = "https://docs.example.com"
+                    }
+                }
+            }
+        }
+
+        // --- Buttons and inputs ---
+        vsplit v_wf3 {
+            split s_wf3 {
+                size = 100
+
+                heading hwf3 {
+                    level = 2
+                    content = "Buttons, Inputs, and Controls"
+                }
+
+                diagram controls {
+                    width = 700
+                    height = 220
+
+                    // Button variants
+                    button btn1 {
+                        x = 20
+                        y = 20
+                        width = 120
+                        height = 38
+                        label = "Primary"
+                        variant = "primary"
+                    }
+                    button btn2 {
+                        x = 150
+                        y = 20
+                        width = 120
+                        height = 38
+                        label = "Secondary"
+                        variant = "secondary"
+                    }
+                    button btn3 {
+                        x = 280
+                        y = 20
+                        width = 120
+                        height = 38
+                        label = "Outline"
+                        variant = "outline"
+                    }
+
+                    // Input fields
+                    input inp1 {
+                        x = 20
+                        y = 80
+                        width = 200
+                        height = 55
+                        label = "Email"
+                        placeholder = "you@example.com"
+                    }
+                    input inp2 {
+                        x = 240
+                        y = 80
+                        width = 200
+                        height = 55
+                        label = "Password"
+                        placeholder = "********"
+                    }
+
+                    // Toggles
+                    toggle tog1 {
+                        x = 20
+                        y = 160
+                        width = 44
+                        height = 24
+                        on = "true"
+                    }
+                    toggle tog2 {
+                        x = 80
+                        y = 160
+                        width = 44
+                        height = 24
+                        on = "false"
+                    }
+
+                    // Badges
+                    badge badge1 {
+                        x = 150
+                        y = 160
+                        width = 70
+                        height = 24
+                        label = "Active"
+                        color = color_link
+                    }
+                    badge badge2 {
+                        x = 230
+                        y = 160
+                        width = 80
+                        height = 24
+                        label = "Warning"
+                        color = "#e6a700"
+                    }
+                    badge badge3 {
+                        x = 320
+                        y = 160
+                        width = 60
+                        height = 24
+                        label = "Error"
+                        color = "#d32f2f"
+                    }
+
+                    // Avatars
+                    avatar av1 {
+                        x = 460
+                        y = 20
+                        width = 50
+                        height = 50
+                        initials = "AT"
+                        color = color_link
+                    }
+                    avatar av2 {
+                        x = 520
+                        y = 20
+                        width = 50
+                        height = 50
+                        initials = "BK"
+                        color = "#8b5cf6"
+                    }
+                    avatar av3 {
+                        x = 580
+                        y = 20
+                        width = 50
+                        height = 50
+                        initials = "CD"
+                        color = "#059669"
+                    }
+                    avatar av4 {
+                        x = 640
+                        y = 20
+                        width = 50
+                        height = 50
+                        initials = "EF"
+                        color = "#dc2626"
+                    }
+
+                    // Navbar
+                    navbar nav1 {
+                        x = 460
+                        y = 90
+                        width = 230
+                        height = 40
+                        items = "Home,Projects,Settings"
+                        active_index = 0
+                    }
+                    navbar nav2 {
+                        x = 460
+                        y = 140
+                        width = 230
+                        height = 40
+                        items = "Feed,Search,Profile,More"
+                        active_index = 2
+                    }
+                }
+            }
+        }
+
+        // --- Cards with content ---
+        vsplit v_wf4 {
+            split s_wf4 {
+                size = 100
+
+                heading hwf4 {
+                    level = 2
+                    content = "Cards and Composition"
+                }
+                paragraph pwf4 { content = "Widgets can contain additional shapes. The widget template provides the structure, user shapes are added on top:" }
+
+                diagram card_demo {
+                    width = 700
+                    height = 250
+
+                    card card1 {
+                        x = 20
+                        y = 10
+                        width = 200
+                        height = 220
+                        title = "User Profile"
+
+                        // Custom content inside the card
+                        avatar av {
+                            x = 70
+                            y = 45
+                            width = 60
+                            height = 60
+                            initials = "JD"
+                            color = color_link
+                        }
+                        text name {
+                            x = 20
+                            y = 120
+                            width = 160
+                            height = 20
+                            content = "Jane Doe"
+                            font_size = 14
+                        }
+                        text role {
+                            x = 20
+                            y = 140
+                            width = 160
+                            height = 18
+                            content = "Engineering Lead"
+                            font_size = 11
+                            opacity = 0.6
+                        }
+                        badge status {
+                            x = 55
+                            y = 165
+                            width = 90
+                            height = 22
+                            label = "Available"
+                            color = "#059669"
+                        }
+                    }
+
+                    card card2 {
+                        x = 240
+                        y = 10
+                        width = 200
+                        height = 220
+                        title = "Statistics"
+
+                        text stat1_label {
+                            x = 15
+                            y = 45
+                            width = 170
+                            height = 16
+                            content = "Active Users"
+                            font_size = 11
+                            anchor = "start"
+                            opacity = 0.6
+                        }
+                        text stat1_val {
+                            x = 15
+                            y = 65
+                            width = 170
+                            height = 25
+                            content = "12,847"
+                            font_size = 24
+                            anchor = "start"
+                        }
+                        text stat2_label {
+                            x = 15
+                            y = 105
+                            width = 170
+                            height = 16
+                            content = "Revenue"
+                            font_size = 11
+                            anchor = "start"
+                            opacity = 0.6
+                        }
+                        text stat2_val {
+                            x = 15
+                            y = 125
+                            width = 170
+                            height = 25
+                            content = "$284K"
+                            font_size = 24
+                            anchor = "start"
+                        }
+                        badge trend {
+                            x = 55
+                            y = 170
+                            width = 90
+                            height = 22
+                            label = "+12.5%"
+                            color = "#059669"
+                        }
+                    }
+
+                    card card3 {
+                        x = 460
+                        y = 10
+                        width = 220
+                        height = 220
+                        title = "Quick Actions"
+
+                        button act1 {
+                            x = 15
+                            y = 45
+                            width = 190
+                            height = 34
+                            label = "New Project"
+                            variant = "primary"
+                        }
+                        button act2 {
+                            x = 15
+                            y = 90
+                            width = 190
+                            height = 34
+                            label = "Invite Member"
+                            variant = "secondary"
+                        }
+                        button act3 {
+                            x = 15
+                            y = 135
+                            width = 190
+                            height = 34
+                            label = "View Reports"
+                            variant = "outline"
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- Login form using widgets ---
+        vsplit v_wf5 {
+            split s_wf5 {
+                size = 100
+
+                heading hwf5 {
+                    level = 2
+                    content = "Login Form (composed from widgets)"
+                }
+
+                diagram login {
+                    width = 400
+                    height = 380
+
+                    card form {
+                        x = 20
+                        y = 10
+                        width = 360
+                        height = 360
+
+                        avatar logo {
+                            x = 145
+                            y = 15
+                            width = 50
+                            height = 50
+                            initials = "W"
+                            color = color_link
+                        }
+
+                        text title {
+                            x = 30
+                            y = 75
+                            width = 300
+                            height = 25
+                            content = "Welcome back"
+                            font_size = 20
+                        }
+
+                        input email {
+                            x = 30
+                            y = 115
+                            width = 300
+                            height = 55
+                            label = "Email"
+                            placeholder = "you@example.com"
+                        }
+
+                        input password {
+                            x = 30
+                            y = 185
+                            width = 300
+                            height = 55
+                            label = "Password"
+                            placeholder = "********"
+                        }
+
+                        button signin {
+                            x = 30
+                            y = 260
+                            width = 300
+                            height = 40
+                            label = "Sign In"
+                            variant = "primary"
+                        }
+
+                        button github {
+                            x = 30
+                            y = 315
+                            width = 142
+                            height = 35
+                            label = "GitHub"
+                            variant = "outline"
+                        }
+                        button google {
+                            x = 188
+                            y = 315
+                            width = 142
+                            height = 35
+                            label = "Google"
+                            variant = "outline"
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- Clickable interactive diagram ---
+        vsplit v_wf6 {
+            split s_wf6 {
+                size = 100
+
+                heading hwf6 {
+                    level = 2
+                    content = "Interactive Clickable Diagram"
+                }
+                paragraph pwf6 { content = "Shapes with an " + bold("href") + " attribute become clickable links. Click the screens below to navigate:" }
+
+                diagram clickable_screens {
+                    width = 750
+                    height = 380
+
+                    phone screen_overview {
+                        x = 20
+                        y = 30
+                        width = 200
+                        height = 300
+                        title = "Overview"
+                        href = "overview.html"
+                    }
+
+                    phone screen_install {
+                        x = 240
+                        y = 30
+                        width = 200
+                        height = 300
+                        title = "Install"
+                        href = "install.html"
+                    }
+
+                    browser screen_basics {
+                        x = 470
+                        y = 30
+                        width = 260
+                        height = 160
+                        title = "Basics"
+                        url = "Language Basics"
+                        href = "basics.html"
+                    }
+
+                    browser screen_advanced {
+                        x = 470
+                        y = 210
+                        width = 260
+                        height = 120
+                        title = "Advanced"
+                        url = "Advanced Features"
+                        href = "advanced.html"
+                    }
+
+                    connection nav1 {
+                        from = "screen_overview"
+                        to = "screen_install"
+                        direction = "to"
+                        from_anchor = "right"
+                        to_anchor = "left"
+                        stroke = color_link
+                        stroke_width = 2
+                        label = "next"
+                    }
+
+                    connection nav2 {
+                        from = "screen_install"
+                        to = "screen_basics"
+                        direction = "to"
+                        from_anchor = "right"
+                        to_anchor = "left"
+                        stroke = color_link
+                        stroke_width = 2
+                        label = "next"
+                    }
+                }
+
+                paragraph pwf6b { content = "Internal page links also work in text: " + link("Go to Overview", "overview.html") + " | " + link("Installation", "install.html#installation") + " | " + link("Schemas section", "basics.html#schemas-and-validation") }
+            }
+        }
+    }
+}

@@ -1,0 +1,123 @@
+import "./shared.wcl"
+
+// ── Flowchart Shapes page ──
+
+page flowchart_examples {
+    section = "my_docs.diagrams.flowchart_examples"
+    title = "Flowchart Shapes"
+
+    layout {
+        vsplit v_fc1 {
+            split s_fc1 {
+                size = 100
+
+                heading hfc1 {
+                    level = 1
+                    content = "Flowchart Shapes"
+                }
+                paragraph pfc1 { content = "All five flowchart shape types with the " + bold("layered") + " layout engine:" }
+
+                diagram flowchart_demo {
+                    width = 700
+                    height = 500
+                    align = "layered"
+                    gap = 40
+
+                    flow_terminal start {
+                        width = 130
+                        height = 40
+                        label = "Start"
+                    }
+
+                    flow_io input_data {
+                        width = 150
+                        height = 50
+                        label = "Read Input"
+                    }
+
+                    flow_process validate {
+                        width = 150
+                        height = 50
+                        label = "Validate Data"
+                    }
+
+                    flow_decision is_valid {
+                        width = 110
+                        height = 80
+                        label = "Valid?"
+                    }
+
+                    flow_subprocess process_data {
+                        width = 160
+                        height = 50
+                        label = "Process Data"
+                    }
+
+                    flow_process log_error {
+                        width = 140
+                        height = 50
+                        label = "Log Error"
+                        color = "#d32f2f"
+                    }
+
+                    flow_io write_output {
+                        width = 150
+                        height = 50
+                        label = "Write Output"
+                    }
+
+                    flow_terminal done {
+                        width = 130
+                        height = 40
+                        label = "End"
+                        color = "#28a745"
+                    }
+
+                    connection fc1 { from = "start"
+                        to = "input_data"
+                        direction = "to"
+                        stroke = color_text
+                        stroke_width = 2 }
+                    connection fc2 { from = "input_data"
+                        to = "validate"
+                        direction = "to"
+                        stroke = color_text
+                        stroke_width = 2 }
+                    connection fc3 { from = "validate"
+                        to = "is_valid"
+                        direction = "to"
+                        stroke = color_text
+                        stroke_width = 2 }
+                    connection fc4 { from = "is_valid"
+                        to = "process_data"
+                        direction = "to"
+                        stroke = color_text
+                        stroke_width = 2
+                        label = "Yes" }
+                    connection fc5 { from = "is_valid"
+                        to = "log_error"
+                        direction = "to"
+                        stroke = "#d32f2f"
+                        stroke_width = 2
+                        label = "No" }
+                    connection fc6 { from = "process_data"
+                        to = "write_output"
+                        direction = "to"
+                        stroke = color_text
+                        stroke_width = 2 }
+                    connection fc7 { from = "write_output"
+                        to = "done"
+                        direction = "to"
+                        stroke = color_text
+                        stroke_width = 2 }
+                    connection fc8 { from = "log_error"
+                        to = "done"
+                        direction = "to"
+                        stroke = "#d32f2f"
+                        stroke_width = 1
+                        stroke_dasharray = "5,3" }
+                }
+            }
+        }
+    }
+}

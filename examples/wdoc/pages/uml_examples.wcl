@@ -1,0 +1,153 @@
+import "./shared.wcl"
+
+// ── UML Shapes page ──
+
+page uml_examples {
+    section = "my_docs.diagrams.uml_examples"
+    title = "UML Shapes"
+
+    layout {
+        vsplit v_uml1 {
+            split s_uml1 {
+                size = 100
+
+                heading huml1 {
+                    level = 1
+                    content = "UML Shapes"
+                }
+
+                heading huml2 {
+                    level = 2
+                    content = "Class Diagram"
+                }
+                paragraph puml1 { content = "UML class boxes with fields and methods (pipe-separated):" }
+
+                diagram uml_class_demo {
+                    width = 700
+                    height = 300
+
+                    uml_class user_class {
+                        x = 30
+                        y = 20
+                        width = 180
+                        height = 160
+                        label = "User"
+                        fields = "- id: i64|- name: String|- email: String|- active: bool"
+                        methods = "+ login()|- validate()|+ toString(): String"
+                    }
+
+                    uml_class order_class {
+                        x = 270
+                        y = 20
+                        width = 180
+                        height = 140
+                        label = "Order"
+                        stereotype = "Entity"
+                        fields = "- id: i64|- total: f64|- status: String"
+                        methods = "+ submit()|- calculate()"
+                    }
+
+                    uml_class repo_class {
+                        x = 510
+                        y = 20
+                        width = 170
+                        height = 120
+                        label = "OrderRepo"
+                        stereotype = "Repository"
+                        fields = "- db: Database"
+                        methods = "+ find(id)|+ save(order)"
+                    }
+
+                    connection uc1 { from = "user_class"
+                        to = "order_class"
+                        direction = "to"
+                        from_anchor = "right"
+                        to_anchor = "left"
+                        stroke = color_text
+                        label = "places" }
+                    connection uc2 { from = "order_class"
+                        to = "repo_class"
+                        direction = "to"
+                        from_anchor = "right"
+                        to_anchor = "left"
+                        stroke = color_text
+                        stroke_dasharray = "5,3"
+                        label = "persisted by" }
+                }
+
+                heading huml3 {
+                    level = 2
+                    content = "Use Case and Packages"
+                }
+
+                diagram uml_other {
+                    width = 700
+                    height = 280
+
+                    uml_actor actor1 {
+                        x = 30
+                        y = 30
+                        width = 60
+                        height = 100
+                        label = "Customer"
+                    }
+
+                    uml_actor actor2 {
+                        x = 30
+                        y = 160
+                        width = 60
+                        height = 100
+                        label = "Admin"
+                    }
+
+                    uml_package pkg_frontend {
+                        x = 150
+                        y = 20
+                        width = 200
+                        height = 130
+                        label = "Frontend"
+                    }
+
+                    uml_package pkg_backend {
+                        x = 150
+                        y = 160
+                        width = 200
+                        height = 100
+                        label = "Backend"
+                    }
+
+                    uml_note note1 {
+                        x = 420
+                        y = 30
+                        width = 250
+                        height = 80
+                        label = "The frontend package contains all React components and routing logic."
+                    }
+
+                    uml_note note2 {
+                        x = 420
+                        y = 140
+                        width = 250
+                        height = 80
+                        label = "Backend handles auth, data, and business logic via REST API."
+                    }
+
+                    connection un1 { from = "actor1"
+                        to = "pkg_frontend"
+                        direction = "to"
+                        stroke = color_text }
+                    connection un2 { from = "actor2"
+                        to = "pkg_backend"
+                        direction = "to"
+                        stroke = color_text }
+                    connection un3 { from = "pkg_frontend"
+                        to = "pkg_backend"
+                        direction = "to"
+                        stroke = color_text
+                        stroke_dasharray = "5,3"
+                        label = "REST API" }
+                }
+            }
+        }
+    }
+}
