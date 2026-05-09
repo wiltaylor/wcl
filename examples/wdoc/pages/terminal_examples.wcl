@@ -211,8 +211,75 @@ page terminal_examples {
                             menu_item deploy_preview_item { label = "Deploy preview" }
                         }
 
-                        terminal_text hint {
+                        terminal_text form_title {
+                            row = 10
+                            col = 43
+                            content = "\u001b[36mCompact controls\u001b[0m"
+                        }
+
+                        terminal_textbox filter_input {
+                            row = 11
+                            col = 43
+                            rows = 2
+                            cols = 34
+                            value = "deploy --env prod"
+                            cursor_col = 17
+                            background_fill = "#111827"
+                            foreground_fill = "#e5e7eb"
+                            accent_fill = "#38bdf8"
+                        }
+
+                        terminal_checkbox dry_run {
+                            row = 14
+                            col = 43
+                            cols = 18
+                            label = "Dry run"
+                            checked = "true"
+                            accent_fill = "#22c55e"
+                        }
+
+                        terminal_radio target_prod {
+                            row = 15
+                            col = 43
+                            cols = 18
+                            label = "Production"
+                            selected = "true"
+                            accent_fill = "#38bdf8"
+                        }
+
+                        terminal_dropdown deploy_env {
+                            row = 14
+                            col = 62
+                            cols = 15
+                            value = "prod"
+                            background_fill = "#111827"
+                            foreground_fill = "#e5e7eb"
+                            hover_background_fill = "#38bdf8"
+                            hover_foreground_fill = "#06121f"
+
+                            menu_item dev_item { label = "dev" }
+                            menu_item stage_item { label = "stage" }
+                            menu_item prod_item { label = "prod" }
+                        }
+
+                        terminal_button deploy_button {
                             row = 16
+                            col = 43
+                            cols = 15
+                            label = "Deploy"
+                            accent_fill = "#22c55e"
+                        }
+
+                        terminal_button cancel_button {
+                            row = 16
+                            col = 60
+                            cols = 12
+                            label = "Cancel"
+                            variant = "secondary"
+                        }
+
+                        terminal_text hint {
+                            row = 17
                             col = 2
                             content = "\u001b[2mEnter runs the selected task. Right click the output for actions.\u001b[0m"
                         }
@@ -228,7 +295,7 @@ page terminal_examples {
 
                 code basic_code {
                     language = "wcl"
-                    content = "diagram terminal_capture {\n    width = 780\n    height = 380\n\n    terminal shell {\n        x = 20\n        y = 18\n        rows = 18\n        cols = 86\n        font_size = 13\n        background_fill = \"#08111f\"\n        foreground_fill = \"#d7e0ff\"\n        content = \"$ cargo test\\n\\u001b[32mPASS\\u001b[0m terminal::ansi\"\n\n        terminal_menubar app_menu {\n            row = 5\n            col = 2\n            cols = 42\n            close_targets = \"file_menu,run_menu,view_menu,build_menu,test_menu\"\n            menu_item file_item { label = \"File\" target = \"file_menu\" }\n            menu_item run_item { label = \"Run\" target = \"run_menu\" }\n            menu_item view_item { label = \"View\" target = \"view_menu\" }\n            menu_item help_item { label = \"Help\" disabled = \"true\" }\n        }\n\n        terminal_menu run_menu {\n            row = 6\n            col = 9\n            rows = 4\n            cols = 18\n            close_targets = \"build_menu,test_menu\"\n            leave_close_targets = \"run_menu,build_menu,test_menu\"\n            leave_guard_targets = \"run_menu,build_menu,test_menu\"\n            class = \"term_menubar_menu\"\n            menu_item build_item { label = \"Build\" target = \"build_menu\" }\n            menu_item test_item { label = \"Test\" target = \"test_menu\" }\n            menu_item format_item { label = \"Format\" }\n            menu_item deploy_item { label = \"Deploy\" disabled = \"true\" }\n        }\n\n        terminal_menu build_menu {\n            row = 6\n            col = 27\n            rows = 3\n            cols = 18\n            leave_close_targets = \"run_menu,build_menu,test_menu\"\n            leave_guard_targets = \"run_menu,build_menu,test_menu\"\n            class = \"term_menubar_menu\"\n            menu_item debug_item { label = \"Debug\" }\n            menu_item release_item { label = \"Release\" }\n            menu_item docs_item { label = \"Docs\" }\n        }\n\n        terminal_menu test_menu {\n            row = 7\n            col = 27\n            rows = 3\n            cols = 18\n            leave_close_targets = \"run_menu,build_menu,test_menu\"\n            leave_guard_targets = \"run_menu,build_menu,test_menu\"\n            class = \"term_menubar_menu\"\n            menu_item unit_item { label = \"Unit\" }\n            menu_item integration_item { label = \"Integration\" }\n            menu_item snapshot_item { label = \"Snapshot\" }\n        }\n    }\n}"
+                    content = "diagram terminal_capture {\n    width = 780\n    height = 380\n\n    terminal shell {\n        x = 20\n        y = 18\n        rows = 18\n        cols = 86\n        font_size = 13\n        background_fill = \"#08111f\"\n        foreground_fill = \"#d7e0ff\"\n\n        terminal_textbox filter_input {\n            row = 11\n            col = 43\n            rows = 2\n            cols = 34\n            value = \"deploy --env prod\"\n            cursor_col = 17\n            accent_fill = \"#38bdf8\"\n        }\n\n        terminal_checkbox dry_run {\n            row = 14\n            col = 43\n            label = \"Dry run\"\n            checked = \"true\"\n            accent_fill = \"#22c55e\"\n        }\n\n        terminal_radio target_prod {\n            row = 15\n            col = 43\n            label = \"Production\"\n            selected = \"true\"\n        }\n\n        terminal_dropdown deploy_env {\n            row = 14\n            col = 62\n            cols = 15\n            value = \"prod\"\n            menu_item dev_item { label = \"dev\" }\n            menu_item stage_item { label = \"stage\" }\n            menu_item prod_item { label = \"prod\" }\n        }\n\n        terminal_button deploy_button {\n            row = 16\n            col = 43\n            cols = 15\n            label = \"Deploy\"\n            accent_fill = \"#22c55e\"\n        }\n    }\n}"
                 }
             }
         }

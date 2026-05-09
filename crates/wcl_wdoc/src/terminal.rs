@@ -238,6 +238,11 @@ fn render_terminal_child(
             render_menu(child, metrics, foreground, background, svg)
         }
         ShapeKind::TerminalCursor => render_cursor(child, metrics, foreground, svg),
+        ShapeKind::TerminalButton => render_button(child, metrics, foreground, background, svg),
+        ShapeKind::TerminalTextbox => render_textbox(child, metrics, foreground, background, svg),
+        ShapeKind::TerminalCheckbox => render_checkbox(child, metrics, foreground, svg),
+        ShapeKind::TerminalRadio => render_radio(child, metrics, foreground, svg),
+        ShapeKind::TerminalDropdown => render_dropdown(child, metrics, foreground, background, svg),
         _ => {}
     }
 }
@@ -612,6 +617,362 @@ fn render_menubar(
     svg.push_str("</g>");
 }
 
+fn render_button(
+    child: &ShapeNode,
+    metrics: &TerminalMetrics,
+    foreground: &str,
+    background: &str,
+    svg: &mut String,
+) {
+    let row = attr_usize(&child.attrs, "row").unwrap_or(0);
+    let col = attr_usize(&child.attrs, "col").unwrap_or(0);
+    let label = child
+        .attrs
+        .get("label")
+        .map(|s| s.as_str())
+        .unwrap_or("Button");
+    let cols = attr_usize(&child.attrs, "cols")
+        .unwrap_or_else(|| label.width() + 4)
+        .max(1);
+    let disabled = attr_bool(&child.attrs, "disabled");
+    let variant = child
+        .attrs
+        .get("variant")
+        .map(|s| s.as_str())
+        .unwrap_or("primary");
+    let accent = child
+        .attrs
+        .get("accent_fill")
+        .map(|s| s.as_str())
+        .unwrap_or(match variant {
+            "danger" => "#ef4444",
+            "secondary" => "#334155",
+            _ => "#38bdf8",
+        });
+    let bg = child
+        .attrs
+        .get("background_fill")
+        .map(|s| s.as_str())
+        .unwrap_or(accent);
+    let fg = child
+        .attrs
+        .get("foreground_fill")
+        .or_else(|| child.attrs.get("label_fill"))
+        .map(|s| s.as_str())
+        .unwrap_or(match variant {
+            "secondary" => foreground,
+            _ => background,
+        });
+    let hover_bg = child
+        .attrs
+        .get("hover_background_fill")
+        .map(|s| s.as_str())
+        .unwrap_or(foreground);
+    let bounds = grid_bounds(metrics, row, col, 1, cols);
+    let node = terminal_control_node(child, bounds, disabled);
+    write!(svg, "<g{}>", node_attrs(&node, bounds)).unwrap();
+    write_rect(svg, bounds, bg, 0.0);
+    write_rect_with_class(svg, bounds, hover_bg, "wdoc-terminal-control-hover");
+    let text = centered_cells(&format!("[ {label} ]"), cols);
+    write_text(
+        svg,
+        metrics,
+        row,
+        col,
+        &text,
+        fg,
+        Some(cols),
+        &TermStyle::default(),
+    );
+    svg.push_str("</g>");
+}
+
+fn render_textbox(
+    child: &ShapeNode,
+    metrics: &TerminalMetrics,
+    foreground: &str,
+    _background: &str,
+    svg: &mut String,
+) {
+    let row = attr_usize(&child.attrs, "row").unwrap_or(0);
+    let col = attr_usize(&child.attrs, "col").unwrap_or(0);
+    let rows = attr_usize(&child.attrs, "rows").unwrap_or(3).max(1);
+    let cols = attr_usize(&child.attrs, "cols").unwrap_or(24).max(1);
+    let disabled = attr_bool(&child.attrs, "disabled");
+    let value = child.attrs.get("value").map(|s| s.as_str()).unwrap_or("");
+    let placeholder = child
+        .attrs
+        .get("placeholder")
+        .map(|s| s.as_str())
+        .unwrap_or("");
+    let text = if value.is_empty() { placeholder } else { value };
+    let fg = if value.is_empty() {
+        child
+            .attrs
+            .get("muted_fill")
+            .or_else(|| child.attrs.get("placeholder_fill"))
+            .map(|s| s.as_str())
+            .unwrap_or("#94a3b8")
+    } else {
+        child
+            .attrs
+            .get("foreground_fill")
+            .map(|s| s.as_str())
+            .unwrap_or(foreground)
+    };
+    let bg = child
+        .attrs
+        .get("background_fill")
+        .map(|s| s.as_str())
+        .unwrap_or("#111827");
+    let accent = child
+        .attrs
+        .get("accent_fill")
+        .map(|s| s.as_str())
+        .unwrap_or("#38bdf8");
+    let bounds = grid_bounds(metrics, row, col, rows, cols);
+    let node = terminal_control_node(child, bounds, disabled);
+    write!(svg, "<g{}>", node_attrs(&node, bounds)).unwrap();
+    write_rect(svg, bounds, bg, 0.0);
+    for r in 0..rows {
+        let prefix = if r == 0 { ">" } else { " " };
+        write_text(
+            svg,
+            metrics,
+            row + r,
+            col,
+            prefix,
+            accent,
+            None,
+            &TermStyle::default(),
+        );
+    }
+    let line_cols = cols.saturating_sub(2);
+    for (idx, line) in wrap_terminal_text(text, line_cols)
+        .into_iter()
+        .take(rows)
+        .enumerate()
+    {
+        write_text(
+            svg,
+            metrics,
+            row + idx,
+            col + 2,
+            &format!("{:<width$}", line, width = line_cols),
+            fg,
+            Some(line_cols),
+            &TermStyle::default(),
+        );
+    }
+    if let Some(cursor_col) = attr_usize(&child.attrs, "cursor_col") {
+        let cursor_col = (col + 2 + cursor_col.min(line_cols)).min(col + cols.saturating_sub(1));
+        render_cursor_at(svg, metrics, row, cursor_col, accent, "bar");
+    }
+    svg.push_str("</g>");
+}
+
+fn render_checkbox(
+    child: &ShapeNode,
+    metrics: &TerminalMetrics,
+    foreground: &str,
+    svg: &mut String,
+) {
+    render_choice(child, metrics, foreground, svg, true);
+}
+
+fn render_radio(child: &ShapeNode, metrics: &TerminalMetrics, foreground: &str, svg: &mut String) {
+    render_choice(child, metrics, foreground, svg, false);
+}
+
+fn render_choice(
+    child: &ShapeNode,
+    metrics: &TerminalMetrics,
+    foreground: &str,
+    svg: &mut String,
+    checkbox: bool,
+) {
+    let row = attr_usize(&child.attrs, "row").unwrap_or(0);
+    let col = attr_usize(&child.attrs, "col").unwrap_or(0);
+    let label = child
+        .attrs
+        .get("label")
+        .map(|s| s.as_str())
+        .unwrap_or(if checkbox { "Checkbox" } else { "Radio" });
+    let checked = attr_bool(&child.attrs, if checkbox { "checked" } else { "selected" });
+    let disabled = attr_bool(&child.attrs, "disabled");
+    let cols = attr_usize(&child.attrs, "cols")
+        .unwrap_or_else(|| label.width() + 4)
+        .max(1);
+    let fg = child
+        .attrs
+        .get("foreground_fill")
+        .map(|s| s.as_str())
+        .unwrap_or(foreground);
+    let accent = child
+        .attrs
+        .get("accent_fill")
+        .map(|s| s.as_str())
+        .unwrap_or("#38bdf8");
+    let muted = child
+        .attrs
+        .get("muted_fill")
+        .map(|s| s.as_str())
+        .unwrap_or("#64748b");
+    let mark = if checkbox {
+        if checked {
+            "[x]"
+        } else {
+            "[ ]"
+        }
+    } else if checked {
+        "(o)"
+    } else {
+        "( )"
+    };
+    let bounds = grid_bounds(metrics, row, col, 1, cols);
+    let node = terminal_control_node(child, bounds, disabled);
+    write!(svg, "<g{}>", node_attrs(&node, bounds)).unwrap();
+    write_text(
+        svg,
+        metrics,
+        row,
+        col,
+        mark,
+        if checked { accent } else { muted },
+        None,
+        &TermStyle::default(),
+    );
+    let text = format!(" {label}");
+    write_text(
+        svg,
+        metrics,
+        row,
+        col + mark.width(),
+        &truncate_cells(&text, cols.saturating_sub(mark.width())),
+        fg,
+        None,
+        &TermStyle::default(),
+    );
+    svg.push_str("</g>");
+}
+
+fn render_dropdown(
+    child: &ShapeNode,
+    metrics: &TerminalMetrics,
+    foreground: &str,
+    background: &str,
+    svg: &mut String,
+) {
+    let row = attr_usize(&child.attrs, "row").unwrap_or(0);
+    let col = attr_usize(&child.attrs, "col").unwrap_or(0);
+    let items = terminal_menu_items(child);
+    let value = child.attrs.get("value").map(|s| s.as_str()).unwrap_or("");
+    let placeholder = child
+        .attrs
+        .get("placeholder")
+        .map(|s| s.as_str())
+        .unwrap_or("Select");
+    let selected_index = attr_usize(&child.attrs, "selected_index");
+    let selected = if !value.is_empty() {
+        value.to_string()
+    } else if let Some(idx) = selected_index {
+        items
+            .get(idx)
+            .map(|item| item.label.clone())
+            .unwrap_or_else(|| placeholder.to_string())
+    } else {
+        placeholder.to_string()
+    };
+    let cols = attr_usize(&child.attrs, "cols")
+        .unwrap_or_else(|| selected.width() + 4)
+        .max(4);
+    let disabled = attr_bool(&child.attrs, "disabled");
+    let fg = child
+        .attrs
+        .get("foreground_fill")
+        .map(|s| s.as_str())
+        .unwrap_or(foreground);
+    let muted = child
+        .attrs
+        .get("muted_fill")
+        .map(|s| s.as_str())
+        .unwrap_or("#94a3b8");
+    let bg = child
+        .attrs
+        .get("background_fill")
+        .map(|s| s.as_str())
+        .unwrap_or("#111827");
+    let hover_bg = child
+        .attrs
+        .get("hover_background_fill")
+        .map(|s| s.as_str())
+        .unwrap_or("#38bdf8");
+    let bounds = grid_bounds(metrics, row, col, 1, cols);
+    let menu_id = child
+        .id
+        .as_deref()
+        .map(|id| format!("{id}_menu"))
+        .unwrap_or_else(|| format!("terminal_dropdown_{}_{}_menu", row, col));
+    let mut node = terminal_control_node(child, bounds, disabled);
+    if !disabled {
+        node.events.push(DiagramEvent {
+            name: None,
+            trigger: "click".to_string(),
+            state: "shown".to_string(),
+            target: Some(menu_id.clone()),
+            button: None,
+            mode: Some("toggle".to_string()),
+            duration_ms: None,
+            prevent_default: None,
+            guard_targets: None,
+        });
+    }
+    write!(svg, "<g{}>", node_attrs(&node, bounds)).unwrap();
+    write_rect(svg, bounds, bg, 0.0);
+    write_rect_with_class(svg, bounds, hover_bg, "wdoc-terminal-control-hover");
+    let shown_fill = if value.is_empty() && selected_index.is_none() {
+        muted
+    } else {
+        fg
+    };
+    let label = truncate_cells(&selected, cols.saturating_sub(4));
+    write_text(
+        svg,
+        metrics,
+        row,
+        col,
+        &format!(" {label:<width$} v", width = cols.saturating_sub(3)),
+        shown_fill,
+        Some(cols),
+        &TermStyle::default(),
+    );
+    svg.push_str("</g>");
+    let mut menu = child.clone();
+    menu.kind = ShapeKind::TerminalMenu;
+    menu.id = Some(menu_id);
+    menu.attrs.insert("row".to_string(), (row + 1).to_string());
+    menu.attrs.insert("col".to_string(), col.to_string());
+    menu.attrs.insert("cols".to_string(), cols.to_string());
+    menu.attrs
+        .insert("rows".to_string(), items.len().max(1).to_string());
+    menu.attrs
+        .entry("background_fill".to_string())
+        .or_insert_with(|| bg.to_string());
+    menu.attrs
+        .entry("hover_background_fill".to_string())
+        .or_insert_with(|| hover_bg.to_string());
+    let dropdown_class = if attr_bool(&child.attrs, "open") {
+        "wdoc-terminal-dropdown-menu wdoc-state-shown"
+    } else {
+        "wdoc-terminal-dropdown-menu"
+    };
+    menu.attrs
+        .insert("class".to_string(), dropdown_class.to_string());
+    menu.attrs
+        .insert("_wdoc_runtime".to_string(), "true".to_string());
+    render_menu(&menu, metrics, foreground, background, svg);
+}
+
 fn render_cursor(child: &ShapeNode, metrics: &TerminalMetrics, foreground: &str, svg: &mut String) {
     let row = attr_usize(&child.attrs, "row").unwrap_or(0);
     let col = attr_usize(&child.attrs, "col").unwrap_or(0);
@@ -626,6 +987,24 @@ fn render_cursor(child: &ShapeNode, metrics: &TerminalMetrics, foreground: &str,
         .get("mode")
         .map(|s| s.as_str())
         .unwrap_or("block");
+    let bounds = cursor_bounds(metrics, row, col, mode);
+    let attrs = node_attrs(child, bounds);
+    write_cursor_rect(svg, bounds, fill, &attrs);
+}
+
+fn render_cursor_at(
+    svg: &mut String,
+    metrics: &TerminalMetrics,
+    row: usize,
+    col: usize,
+    fill: &str,
+    mode: &str,
+) {
+    let bounds = cursor_bounds(metrics, row, col, mode);
+    write_cursor_rect(svg, bounds, fill, "");
+}
+
+fn cursor_bounds(metrics: &TerminalMetrics, row: usize, col: usize, mode: &str) -> Bounds {
     let mut bounds = grid_bounds(metrics, row, col, 1, 1);
     match mode {
         "bar" => bounds.width = (metrics.cell_width * 0.16).max(1.0),
@@ -635,7 +1014,10 @@ fn render_cursor(child: &ShapeNode, metrics: &TerminalMetrics, foreground: &str,
         }
         _ => {}
     }
-    let attrs = node_attrs(child, bounds);
+    bounds
+}
+
+fn write_cursor_rect(svg: &mut String, bounds: Bounds, fill: &str, attrs: &str) {
     write!(
         svg,
         "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"{}\"{}/>",
@@ -1198,6 +1580,45 @@ fn synthetic_terminal_item_node(
     }
 }
 
+fn terminal_control_node(child: &ShapeNode, bounds: Bounds, disabled: bool) -> ShapeNode {
+    let class_name = if disabled {
+        "wdoc-terminal-control wdoc-terminal-control-disabled"
+    } else {
+        "wdoc-terminal-control"
+    };
+    let mut node = node_with_extra_class(child, class_name);
+    node.x = Some(bounds.x);
+    node.y = Some(bounds.y);
+    node.width = Some(bounds.width);
+    node.height = Some(bounds.height);
+    node.resolved = bounds;
+    node.attrs.insert(
+        "cursor".to_string(),
+        if disabled { "default" } else { "pointer" }.to_string(),
+    );
+    node.attrs.insert(
+        "pointer_events".to_string(),
+        if disabled { "none" } else { "all" }.to_string(),
+    );
+    node.attrs
+        .insert("_wdoc_runtime".to_string(), "true".to_string());
+    if !disabled {
+        node.events.push(DiagramEvent {
+            name: None,
+            trigger: "hover".to_string(),
+            state: "hovered".to_string(),
+            target: None,
+            button: None,
+            mode: Some("while".to_string()),
+            duration_ms: None,
+            prevent_default: None,
+            guard_targets: None,
+        });
+    }
+    node.children.clear();
+    node
+}
+
 fn add_terminal_leave_close_events(node: &mut ShapeNode) {
     let Some(close_targets) = node
         .attrs
@@ -1402,6 +1823,41 @@ fn split_items(value: &str) -> Vec<String> {
         .collect()
 }
 
+fn centered_cells(value: &str, cols: usize) -> String {
+    let text = truncate_cells(value, cols);
+    let width = text.width();
+    if width >= cols {
+        return text;
+    }
+    let left = (cols - width) / 2;
+    let right = cols - width - left;
+    format!("{}{}{}", " ".repeat(left), text, " ".repeat(right))
+}
+
+fn wrap_terminal_text(value: &str, cols: usize) -> Vec<String> {
+    if cols == 0 {
+        return vec![String::new()];
+    }
+    let mut out = Vec::new();
+    for raw_line in value.lines() {
+        let mut line = raw_line.trim();
+        if line.is_empty() {
+            out.push(String::new());
+            continue;
+        }
+        while !line.is_empty() {
+            let chunk = truncate_cells(line, cols);
+            let used = chunk.len();
+            out.push(chunk);
+            line = line.get(used..).unwrap_or("").trim_start();
+        }
+    }
+    if out.is_empty() {
+        out.push(String::new());
+    }
+    out
+}
+
 fn truncate_cells(value: &str, max: usize) -> String {
     let mut out = String::new();
     let mut width = 0;
@@ -1418,6 +1874,12 @@ fn truncate_cells(value: &str, max: usize) -> String {
 
 fn attr_usize(attrs: &indexmap::IndexMap<String, String>, key: &str) -> Option<usize> {
     attrs.get(key)?.parse::<usize>().ok()
+}
+
+fn attr_bool(attrs: &indexmap::IndexMap<String, String>, key: &str) -> bool {
+    attrs
+        .get(key)
+        .is_some_and(|value| value.eq_ignore_ascii_case("true"))
 }
 
 fn attr_f64(attrs: &indexmap::IndexMap<String, String>, key: &str) -> Option<f64> {
@@ -1460,6 +1922,38 @@ fn escape_attr(s: &str) -> String {
 mod tests {
     use super::*;
     use indexmap::IndexMap;
+
+    fn node(
+        kind: ShapeKind,
+        id: &str,
+        attrs: &[(&str, &str)],
+        children: Vec<ShapeNode>,
+    ) -> ShapeNode {
+        ShapeNode {
+            kind,
+            id: Some(id.to_string()),
+            x: None,
+            y: None,
+            width: None,
+            height: None,
+            top: None,
+            bottom: None,
+            left: None,
+            right: None,
+            resolved: Bounds::default(),
+            attrs: attrs
+                .iter()
+                .map(|(key, value)| ((*key).to_string(), (*value).to_string()))
+                .collect(),
+            events: vec![],
+            children,
+            align: crate::shapes::Alignment::None,
+            gap: 0.0,
+            padding: 0.0,
+            z_index: 0.0,
+            source_order: 0,
+        }
+    }
 
     #[test]
     fn ansi_parser_supports_sgr_colors_and_styles() {
@@ -1705,5 +2199,113 @@ mod tests {
         assert!(svg.contains("&gt;</text>"));
         assert!(svg.contains("build_menu|add"));
         assert!(svg.contains("build_menu|remove"));
+    }
+
+    #[test]
+    fn terminal_form_widgets_render_compact_controls() {
+        let mut attrs = IndexMap::new();
+        attrs.insert("rows".to_string(), "12".to_string());
+        attrs.insert("cols".to_string(), "60".to_string());
+        attrs.insert("font_size".to_string(), "12".to_string());
+
+        let dropdown = node(
+            ShapeKind::TerminalDropdown,
+            "env",
+            &[
+                ("row", "5"),
+                ("col", "2"),
+                ("cols", "14"),
+                ("value", "prod"),
+            ],
+            vec![
+                node(ShapeKind::MenuItem, "dev", &[("label", "dev")], vec![]),
+                node(ShapeKind::MenuItem, "prod", &[("label", "prod")], vec![]),
+            ],
+        );
+        let terminal = ShapeNode {
+            kind: ShapeKind::Terminal,
+            id: Some("term".to_string()),
+            x: None,
+            y: None,
+            width: Some(600.0),
+            height: Some(180.0),
+            top: None,
+            bottom: None,
+            left: None,
+            right: None,
+            resolved: Bounds {
+                x: 0.0,
+                y: 0.0,
+                width: 600.0,
+                height: 180.0,
+            },
+            attrs,
+            events: vec![],
+            children: vec![
+                node(
+                    ShapeKind::TerminalTextbox,
+                    "cmd",
+                    &[
+                        ("row", "1"),
+                        ("col", "2"),
+                        ("rows", "2"),
+                        ("cols", "24"),
+                        ("placeholder", "command"),
+                    ],
+                    vec![],
+                ),
+                node(
+                    ShapeKind::TerminalCheckbox,
+                    "dry_run",
+                    &[
+                        ("row", "4"),
+                        ("col", "2"),
+                        ("label", "Dry run"),
+                        ("checked", "true"),
+                    ],
+                    vec![],
+                ),
+                node(
+                    ShapeKind::TerminalRadio,
+                    "prod_radio",
+                    &[
+                        ("row", "4"),
+                        ("col", "18"),
+                        ("label", "Prod"),
+                        ("selected", "true"),
+                    ],
+                    vec![],
+                ),
+                dropdown,
+                node(
+                    ShapeKind::TerminalButton,
+                    "deploy",
+                    &[
+                        ("row", "9"),
+                        ("col", "2"),
+                        ("cols", "14"),
+                        ("label", "Deploy"),
+                    ],
+                    vec![],
+                ),
+            ],
+            align: crate::shapes::Alignment::None,
+            gap: 0.0,
+            padding: 0.0,
+            z_index: 0.0,
+            source_order: 0,
+        };
+
+        let mut svg = String::new();
+        render_terminal_svg(&terminal, &mut svg);
+        assert!(svg.contains("command"));
+        assert!(svg.contains("[x]"));
+        assert!(svg.contains("(o)"));
+        assert!(svg.contains("prod"));
+        assert!(svg.contains("[ Deploy ]"));
+        assert!(svg.contains("wdoc-terminal-control"));
+        assert!(svg.contains("click|shown|env_menu|toggle"));
+        assert!(svg.contains("wdoc-terminal-dropdown-menu"));
+        assert!(svg.contains("wdoc-terminal-menu"));
     }
 }

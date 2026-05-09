@@ -231,6 +231,30 @@ h6.wdoc-heading { font-size: 0.9rem; }
 .wdoc-terminal-menu-item-disabled .wdoc-terminal-menu-item-label-hover {
     opacity: 0 !important;
 }
+.wdoc-terminal-control-hover {
+    opacity: 0;
+    transition: opacity 120ms ease;
+}
+.wdoc-terminal-control.wdoc-state-hovered .wdoc-terminal-control-hover {
+    opacity: 1;
+}
+.wdoc-terminal-control-disabled {
+    opacity: .45;
+}
+.wdoc-terminal-control-disabled .wdoc-terminal-control-hover {
+    opacity: 0 !important;
+}
+.wdoc-terminal-dropdown-menu {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 120ms ease;
+}
+.wdoc-terminal-dropdown-menu.wdoc-state-shown {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: all;
+}
 .wdoc-diagram svg {
     max-width: 100%;
     height: auto;

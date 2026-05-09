@@ -228,6 +228,32 @@ namespace wdoc {
             col: i32
             mode: string @optional
         }
+        @parent(["wdoc::draw::terminal"]) @open schema "terminal_button" {
+            row: i32
+            col: i32
+            cols: i32 @optional
+        }
+        @parent(["wdoc::draw::terminal"]) @open schema "terminal_textbox" {
+            row: i32
+            col: i32
+            rows: i32 @optional
+            cols: i32 @optional
+        }
+        @parent(["wdoc::draw::terminal"]) @open schema "terminal_checkbox" {
+            row: i32
+            col: i32
+            cols: i32 @optional
+        }
+        @parent(["wdoc::draw::terminal"]) @open schema "terminal_radio" {
+            row: i32
+            col: i32
+            cols: i32 @optional
+        }
+        @parent(["wdoc::draw::terminal"]) @open schema "terminal_dropdown" {
+            row: i32
+            col: i32
+            cols: i32 @optional
+        }
         @open schema "connection" { }
         @open schema "class" { }
         @parent(["wdoc::draw::class"]) @open schema "state" { }
@@ -251,6 +277,11 @@ namespace wdoc {
             "wdoc::draw::terminal_menu",
             "wdoc::draw::terminal_context_menu",
             "wdoc::draw::terminal_cursor",
+            "wdoc::draw::terminal_button",
+            "wdoc::draw::terminal_textbox",
+            "wdoc::draw::terminal_checkbox",
+            "wdoc::draw::terminal_radio",
+            "wdoc::draw::terminal_dropdown",
             "wdoc::draw::phone",
             "wdoc::draw::browser",
             "wdoc::draw::button",
@@ -324,7 +355,8 @@ namespace wdoc {
             "wdoc::draw::context_menu",
             "wdoc::draw::terminal_menubar",
             "wdoc::draw::terminal_menu",
-            "wdoc::draw::terminal_context_menu"
+            "wdoc::draw::terminal_context_menu",
+            "wdoc::draw::terminal_dropdown"
         ])
         @open schema "menu_item" { }
         @template("shape", "wdoc::widget_badge")    @open schema "badge" { }
