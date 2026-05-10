@@ -199,6 +199,17 @@ namespace wdoc {
             grid_stroke_width: f64 @optional
             background_fill: string @optional
         }
+        @open schema "tilemap" {
+            sheet: string
+            tile_width: f64
+            tile_height: f64
+            rows: list(any)
+            background_fill: string @optional
+            grid_stroke: string @optional
+            grid_stroke_width: f64 @optional
+            transparent_color: string @optional
+            transparent_tolerance: i32 @optional
+        }
         @open schema "group" { }
         @open
         schema "terminal" {
@@ -319,6 +330,7 @@ namespace wdoc {
             "wdoc::draw::image",
             "wdoc::draw::sprite",
             "wdoc::draw::dopesheet_view",
+            "wdoc::draw::tilemap",
             "wdoc::draw::group",
             "wdoc::draw::terminal",
             "wdoc::draw::terminal_text",

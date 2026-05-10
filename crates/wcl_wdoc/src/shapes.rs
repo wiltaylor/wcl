@@ -40,6 +40,7 @@ pub enum ShapeKind {
     Image,
     Sprite,
     DopesheetView,
+    Tilemap,
     Group,
     Terminal,
     TerminalText,
@@ -826,6 +827,7 @@ pub fn parse_shape_kind(kind: &str) -> Option<ShapeKind> {
         "wdoc::draw::image" => Some(ShapeKind::Image),
         "wdoc::draw::sprite" => Some(ShapeKind::Sprite),
         "wdoc::draw::dopesheet_view" => Some(ShapeKind::DopesheetView),
+        "wdoc::draw::tilemap" => Some(ShapeKind::Tilemap),
         "wdoc::draw::group" => Some(ShapeKind::Group),
         "wdoc::draw::terminal" => Some(ShapeKind::Terminal),
         "wdoc::draw::terminal_text" => Some(ShapeKind::TerminalText),
@@ -2181,6 +2183,7 @@ fn render_shape_svg(node: &ShapeNode, svg: &mut String) {
         ShapeKind::Image => render_image_shape_svg(node, svg),
         ShapeKind::Sprite => render_sprite_shape_svg(node, svg),
         ShapeKind::DopesheetView => render_dopesheet_view_shape_svg(node, svg),
+        ShapeKind::Tilemap => render_tilemap_shape_svg(node, svg),
         ShapeKind::Terminal => {
             crate::terminal::render_terminal_svg(node, svg);
             rendered_children = true;
@@ -2902,6 +2905,124 @@ fn render_dopesheet_view_shape_svg(node: &ShapeNode, svg: &mut String) {
         )
         .unwrap();
     }
+    svg.push_str("</g>");
+}
+
+fn render_tilemap_shape_svg(node: &ShapeNode, svg: &mut String) {
+    let b = &node.resolved;
+    let style = svg_node_attrs(node, &node.attrs);
+    let src = node
+        .attrs
+        .get("_wdoc_sheet_src")
+        .or_else(|| node.attrs.get("src"))
+        .map(|s| s.as_str())
+        .unwrap_or("");
+    let columns = attr_f64(&node.attrs, "_wdoc_sheet_columns")
+        .unwrap_or(1.0)
+        .max(1.0)
+        .floor() as usize;
+    let frame_w = attr_f64(&node.attrs, "_wdoc_sheet_frame_width").unwrap_or(1.0);
+    let frame_h = attr_f64(&node.attrs, "_wdoc_sheet_frame_height").unwrap_or(1.0);
+    let offset_x = attr_f64(&node.attrs, "_wdoc_sheet_offset_x").unwrap_or(0.0);
+    let offset_y = attr_f64(&node.attrs, "_wdoc_sheet_offset_y").unwrap_or(0.0);
+    let gap_x = attr_f64(&node.attrs, "_wdoc_sheet_gap_x").unwrap_or(0.0);
+    let gap_y = attr_f64(&node.attrs, "_wdoc_sheet_gap_y").unwrap_or(0.0);
+    let sheet_rows = attr_f64(&node.attrs, "_wdoc_sheet_frame_count")
+        .map(|count| (count.max(1.0) as usize).div_ceil(columns).max(1))
+        .unwrap_or(1);
+    let sheet_w = attr_f64(&node.attrs, "_wdoc_sheet_width").unwrap_or(
+        offset_x + columns as f64 * frame_w + (columns.saturating_sub(1)) as f64 * gap_x,
+    );
+    let sheet_h = attr_f64(&node.attrs, "_wdoc_sheet_height").unwrap_or(
+        offset_y + sheet_rows as f64 * frame_h + (sheet_rows.saturating_sub(1)) as f64 * gap_y,
+    );
+    let tile_w = attr_f64(&node.attrs, "tile_width")
+        .unwrap_or(frame_w)
+        .max(1.0);
+    let tile_h = attr_f64(&node.attrs, "tile_height")
+        .unwrap_or(frame_h)
+        .max(1.0);
+    let map_columns = attr_f64(&node.attrs, "_wdoc_tilemap_columns")
+        .unwrap_or_else(|| (b.width / tile_w).ceil())
+        .max(0.0)
+        .floor() as usize;
+    let map_rows = attr_f64(&node.attrs, "_wdoc_tilemap_rows_count")
+        .unwrap_or_else(|| (b.height / tile_h).ceil())
+        .max(0.0)
+        .floor() as usize;
+    let grid_stroke = node.attrs.get("grid_stroke").map(|s| s.as_str());
+    let grid_stroke_width = attr_f64(&node.attrs, "grid_stroke_width").unwrap_or(1.0);
+    let background_fill = node
+        .attrs
+        .get("background_fill")
+        .map(|s| s.as_str())
+        .unwrap_or("none");
+    let src = svg_escape_attr(src);
+    let background_fill = svg_escape_attr(background_fill);
+
+    write!(
+        svg,
+        "<g data-wdoc-tilemap=\"true\"{style}>\
+         <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"{background_fill}\" stroke=\"none\"/>",
+        b.x, b.y, b.width, b.height
+    )
+    .unwrap();
+
+    if let Some(rows) = node.attrs.get("_wdoc_tilemap_rows") {
+        for (row_idx, row) in rows.split(';').enumerate() {
+            for (col_idx, cell) in row.split(',').enumerate() {
+                let cell = cell.trim();
+                if cell.is_empty() {
+                    continue;
+                }
+                let Ok(frame) = cell.parse::<usize>() else {
+                    continue;
+                };
+                let frame_col = frame % columns;
+                let frame_row = frame / columns;
+                let x = b.x + col_idx as f64 * tile_w;
+                let y = b.y + row_idx as f64 * tile_h;
+                let view_x = offset_x + frame_col as f64 * (frame_w + gap_x);
+                let view_y = offset_y + frame_row as f64 * (frame_h + gap_y);
+                write!(
+                    svg,
+                    "<svg x=\"{x}\" y=\"{y}\" width=\"{tile_w}\" height=\"{tile_h}\" \
+                     viewBox=\"{view_x} {view_y} {frame_w} {frame_h}\" preserveAspectRatio=\"none\" \
+                     overflow=\"hidden\" data-wdoc-sprite=\"true\" data-wdoc-sprite-current-frame=\"{frame}\"{}{}>\
+                     <image href=\"{src}\" x=\"0\" y=\"0\" width=\"{sheet_w}\" height=\"{sheet_h}\" preserveAspectRatio=\"none\"/>\
+                     </svg>",
+                    sprite_data_attr(node, "transparent_color", "transparent-color"),
+                    sprite_data_attr(node, "transparent_tolerance", "transparent-tolerance")
+                )
+                .unwrap();
+            }
+        }
+    }
+
+    if let Some(grid_stroke) = grid_stroke {
+        let grid_stroke = svg_escape_attr(grid_stroke);
+        for col in 0..=map_columns {
+            let x = b.x + col as f64 * tile_w;
+            write!(
+                svg,
+                "<line x1=\"{x}\" y1=\"{}\" x2=\"{x}\" y2=\"{}\" stroke=\"{grid_stroke}\" stroke-width=\"{grid_stroke_width}\"/>",
+                b.y,
+                b.y + map_rows as f64 * tile_h
+            )
+            .unwrap();
+        }
+        for row in 0..=map_rows {
+            let y = b.y + row as f64 * tile_h;
+            write!(
+                svg,
+                "<line x1=\"{}\" y1=\"{y}\" x2=\"{}\" y2=\"{y}\" stroke=\"{grid_stroke}\" stroke-width=\"{grid_stroke_width}\"/>",
+                b.x,
+                b.x + map_columns as f64 * tile_w
+            )
+            .unwrap();
+        }
+    }
+
     svg.push_str("</g>");
 }
 

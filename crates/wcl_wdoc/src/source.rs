@@ -824,8 +824,14 @@ fn collect_shape_or_connection(
 
     if let Some(kind) = kind {
         let mut a = value_map_to_string_map_lossy(&br.attributes);
-        if kind == ShapeKind::Sprite || kind == ShapeKind::DopesheetView {
+        if kind == ShapeKind::Sprite
+            || kind == ShapeKind::DopesheetView
+            || kind == ShapeKind::Tilemap
+        {
             apply_sprite_dopesheet_attrs(&mut a, dopesheets);
+        }
+        if kind == ShapeKind::Tilemap {
+            apply_tilemap_rows_attrs(&mut a, br);
         }
 
         // Composite shape: any block whose schema declares @template("shape", "fn").
@@ -1042,6 +1048,66 @@ fn apply_sprite_dopesheet_attrs(
             attrs.insert(dest.to_string(), value);
         }
     }
+}
+
+fn apply_tilemap_rows_attrs(attrs: &mut IndexMap<String, String>, br: &BlockRef) {
+    let Some((rows, columns, row_count)) = tilemap_rows_attr(br.attributes.get("rows")) else {
+        return;
+    };
+    attrs.insert("_wdoc_tilemap_rows".to_string(), rows);
+    attrs.insert("_wdoc_tilemap_columns".to_string(), columns.to_string());
+    attrs.insert(
+        "_wdoc_tilemap_rows_count".to_string(),
+        row_count.to_string(),
+    );
+
+    let tile_w = attrs
+        .get("tile_width")
+        .and_then(|value| value.parse::<f64>().ok());
+    let tile_h = attrs
+        .get("tile_height")
+        .and_then(|value| value.parse::<f64>().ok());
+    if !attrs.contains_key("width") {
+        if let Some(tile_w) = tile_w {
+            attrs.insert("width".to_string(), (columns as f64 * tile_w).to_string());
+        }
+    }
+    if !attrs.contains_key("height") {
+        if let Some(tile_h) = tile_h {
+            attrs.insert(
+                "height".to_string(),
+                (row_count as f64 * tile_h).to_string(),
+            );
+        }
+    }
+}
+
+fn tilemap_rows_attr(value: Option<&Value>) -> Option<(String, usize, usize)> {
+    let Value::List(rows) = value? else {
+        return None;
+    };
+    let mut encoded_rows = Vec::new();
+    let mut columns = 0usize;
+    for row in rows {
+        let Value::List(cells) = row else {
+            continue;
+        };
+        columns = columns.max(cells.len());
+        encoded_rows.push(
+            cells
+                .iter()
+                .map(|cell| match cell {
+                    Value::Int(frame) if *frame >= 0 => frame.to_string(),
+                    Value::BigInt(frame) if *frame >= 0 => frame.to_string(),
+                    Value::Float(frame) if *frame >= 0.0 => frame.floor().to_string(),
+                    Value::Null => String::new(),
+                    _ => String::new(),
+                })
+                .collect::<Vec<_>>()
+                .join(","),
+        );
+    }
+    Some((encoded_rows.join(";"), columns, rows.len()))
 }
 
 fn html_escape(s: &str) -> String {
@@ -4784,6 +4850,71 @@ mod wdoc_draw_tests {
         assert!(html.contains("viewBox=\"0 8 16 8\""));
         assert!(html.contains("fill=\"#111827\""));
         assert!(html.contains("stroke=\"#ffffff\""));
+        assert!(!html.contains("<dopesheet"));
+    }
+
+    #[test]
+    fn tilemap_rows_render_cropped_tiles_and_empty_cells() {
+        let ctx = wdoc_library_ctx();
+
+        let mut sheet_attrs = IndexMap::new();
+        string_attr(&mut sheet_attrs, "src", "images/terrain.png");
+        int_attr(&mut sheet_attrs, "columns", 4);
+        int_attr(&mut sheet_attrs, "frame_width", 16);
+        int_attr(&mut sheet_attrs, "frame_height", 8);
+        int_attr(&mut sheet_attrs, "frame_count", 12);
+
+        let mut tilemap_attrs = IndexMap::new();
+        int_attr(&mut tilemap_attrs, "x", 10);
+        int_attr(&mut tilemap_attrs, "y", 20);
+        int_attr(&mut tilemap_attrs, "tile_width", 32);
+        int_attr(&mut tilemap_attrs, "tile_height", 16);
+        string_attr(&mut tilemap_attrs, "sheet", "terrain_sheet");
+        string_attr(&mut tilemap_attrs, "background_fill", "#111827");
+        string_attr(&mut tilemap_attrs, "grid_stroke", "#ffffff");
+        string_attr(&mut tilemap_attrs, "transparent_color", "#ff00ff");
+        tilemap_attrs.insert(
+            "rows".to_string(),
+            Value::List(vec![
+                Value::List(vec![Value::Int(0), Value::Int(1), Value::Null]),
+                Value::List(vec![Value::Int(4)]),
+                Value::List(vec![Value::Null, Value::Int(9), Value::Int(2)]),
+            ]),
+        );
+
+        let mut diagram_attrs = IndexMap::new();
+        int_attr(&mut diagram_attrs, "width", 180);
+        int_attr(&mut diagram_attrs, "height", 120);
+        let diagram = block(
+            "wdoc::draw::diagram",
+            Some("tilemap_demo"),
+            diagram_attrs,
+            vec![
+                block(
+                    "wdoc::draw::dopesheet",
+                    Some("terrain_sheet"),
+                    sheet_attrs,
+                    vec![],
+                ),
+                block("wdoc::draw::tilemap", Some("level"), tilemap_attrs, vec![]),
+            ],
+        );
+
+        let html = render_diagram_with_ctx(&diagram, &ctx);
+        assert!(html.contains("data-wdoc-tilemap=\"true\""));
+        assert!(html.contains("width=\"96\" height=\"48\""));
+        assert!(html.contains("href=\"images/terrain.png\""));
+        assert!(html.contains("viewBox=\"0 0 16 8\""));
+        assert!(html.contains("viewBox=\"16 0 16 8\""));
+        assert!(html.contains("viewBox=\"16 16 16 8\""));
+        assert!(html.contains("x=\"42\" y=\"52\" width=\"32\" height=\"16\""));
+        assert!(html.contains("fill=\"#111827\""));
+        assert!(html.contains("stroke=\"#ffffff\""));
+        assert!(html.contains("data-wdoc-sprite-transparent-color=\"#ff00ff\""));
+        assert_eq!(
+            html.matches("<image href=\"images/terrain.png\"").count(),
+            5
+        );
         assert!(!html.contains("<dopesheet"));
     }
 

@@ -140,6 +140,89 @@ page game_design_examples {
                     content = "Example sprite sheet: OpenGameArt “Explosion”, CC0. The downloaded file and attribution note live in <code>examples/wdoc/images</code>."
                 }
 
+                heading h2_tilemap {
+                    level = 2
+                    content = "Tilemaps"
+                }
+
+                paragraph tilemap_intro {
+                    content = "Tilemaps reuse a <code>dopesheet</code> as a tileset and draw row arrays where each number is a frame index. Use <code>null</code> for empty cells."
+                }
+
+                diagram tilemap_demo {
+                    width = 760
+                    height = 300
+
+                    dopesheet terrain_tiles {
+                        src = "images/Tiles32.png"
+                        columns = 4
+                        frame_width = 32
+                        frame_height = 32
+                        frame_count = 4
+                    }
+
+                    tilemap map {
+                        x = 56
+                        y = 34
+                        tile_width = 48
+                        tile_height = 48
+                        sheet = "terrain_tiles"
+                        background_fill = "#0f172a"
+                        grid_stroke = "#1f2937"
+
+                        rows = [
+                            [0, 0, 0, 0, 1, 1, 1, null, null, null, null, null],
+                            [0, 2, 2, 0, 1, 3, 1, 1, 1, null, null, null],
+                            [0, 2, 2, 0, 0, 0, 0, 1, 1, 1, null, null],
+                            [0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 1, null],
+                            [1, 1, 1, 1, 1, 3, 3, 3, 0, 0, 1, 1]
+                        ]
+                    }
+                }
+
+                diagram large_tilemap_demo {
+                    width = 760
+                    height = 360
+                    mode = "pan_zoom"
+
+                    dopesheet terrain_tiles {
+                        src = "images/Tiles32.png"
+                        columns = 4
+                        frame_width = 32
+                        frame_height = 32
+                        frame_count = 4
+                    }
+
+                    tilemap large_map {
+                        x = 20
+                        y = 20
+                        tile_width = 64
+                        tile_height = 64
+                        sheet = "terrain_tiles"
+                        background_fill = "#0f172a"
+                        grid_stroke = "rgba(226, 232, 240, 0.35)"
+
+                        rows = [
+                            [0, 0, 0, 0, 0, 1, 1, 1, null, null, null, 1, 1, 1, 1, 0, 0, 0, 0, 0],
+                            [0, 2, 2, 2, 0, 1, 3, 1, 1, null, 1, 1, 3, 3, 1, 0, 2, 2, 2, 0],
+                            [0, 2, 3, 2, 0, 1, 3, 3, 1, 1, 1, 3, 3, 1, 1, 0, 2, 3, 2, 0],
+                            [0, 2, 2, 2, 0, 0, 1, 1, 1, 3, 1, 1, 1, 1, 0, 0, 2, 2, 2, 0],
+                            [0, 0, 0, 0, 0, 0, 0, 1, 3, 3, 3, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+                            [1, 1, 1, 1, 1, 0, 0, 1, 3, 2, 3, 1, 0, 0, 1, 1, 1, 1, 1, 1],
+                            [1, 3, 3, 3, 1, 1, 0, 1, 3, 3, 3, 1, 0, 1, 1, 3, 3, 3, 3, 1],
+                            [1, 3, 2, 3, 3, 1, 0, 1, 1, 3, 1, 1, 0, 1, 3, 3, 2, 2, 3, 1],
+                            [1, 3, 3, 3, 1, 1, 0, 0, 1, 1, 1, 0, 0, 1, 3, 2, 2, 2, 3, 1],
+                            [1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 3, 3, 2, 3, 3, 1],
+                            [null, null, 1, 1, 0, 0, 2, 2, 0, 1, 0, 2, 2, 0, 1, 1, 3, 3, 1, 1],
+                            [null, null, null, 1, 0, 2, 2, 2, 0, 1, 0, 2, 3, 0, 0, 1, 1, 1, 1, null]
+                        ]
+                    }
+                }
+
+                paragraph tilemap_license_note {
+                    content = "Example tileset: OpenGameArt “Simple 32x32 Map Tileset” by JohSur, CC0. The downloaded file and attribution note live in <code>examples/wdoc/images</code>."
+                }
+
                 heading h2_sheet_view {
                     level = 2
                     content = "Dopesheet preview"
@@ -175,7 +258,7 @@ page game_design_examples {
 
                 code source {
                     language = "wcl"
-                    content = "dopesheet explosion_sheet {\n    src = \"images/explosion1.png\"\n    columns = 10\n    frame_width = 100\n    frame_height = 100\n    frame_count = 50\n}\n\nclass ex_sprite_explosion {\n    animation explode {\n        frame_rate = 24\n        frames = range(0, 50)\n        fill_mode = \"both\"\n    }\n\n    state active { animation = \"explode\" }\n}\n\nsprite explosion_once {\n    sheet = \"explosion_sheet\"\n    frame = 0\n    class = \"ex_sprite_explosion\"\n\n    event click { trigger = \"click\" state = \"active\" mode = \"add\" }\n}\n\ndopesheet_view preview {\n    sheet = \"explosion_sheet\"\n    width = 700\n    height = 350\n    grid_stroke = \"#e2e8f0\"\n}"
+                    content = "dopesheet terrain_tiles {\n    src = \"images/Tiles32.png\"\n    columns = 4\n    frame_width = 32\n    frame_height = 32\n    frame_count = 4\n}\n\ntilemap map {\n    tile_width = 48\n    tile_height = 48\n    sheet = \"terrain_tiles\"\n    grid_stroke = \"#1f2937\"\n\n    rows = [\n        [0, 0, 1, 1, null],\n        [0, 2, 3, 1, 1],\n        [0, 0, 0, 1, null]\n    ]\n}\n\ndopesheet explosion_sheet {\n    src = \"images/explosion1.png\"\n    columns = 10\n    frame_width = 100\n    frame_height = 100\n    frame_count = 50\n}\n\nsprite explosion_once {\n    sheet = \"explosion_sheet\"\n    frame = 0\n    class = \"ex_sprite_explosion\"\n}\n\ndopesheet_view preview {\n    sheet = \"explosion_sheet\"\n    width = 700\n    height = 350\n    grid_stroke = \"#e2e8f0\"\n}"
                 }
             }
         }
