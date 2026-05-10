@@ -1,7 +1,11 @@
 header.wcl
 widgets/ui/button.wcl
 widgets/ui/phone.wcl
+widgets/ui/phone_landscape.wcl
 widgets/ui/browser.wcl
+widgets/ui/window.wcl
+widgets/ui/tablet.wcl
+widgets/ui/tablet_landscape.wcl
 widgets/ui/input.wcl
 widgets/ui/card.wcl
 widgets/ui/avatar.wcl

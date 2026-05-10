@@ -42,6 +42,10 @@ mod tests {
             "inline_image",
             "menubar",
             "context_menu",
+            "window",
+            "tablet",
+            "phone_landscape",
+            "tablet_landscape",
             "graph_node",
         ] {
             assert!(

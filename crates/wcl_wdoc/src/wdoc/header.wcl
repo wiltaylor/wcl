@@ -306,7 +306,11 @@ namespace wdoc {
             "wdoc::draw::terminal_radio",
             "wdoc::draw::terminal_dropdown",
             "wdoc::draw::phone",
+            "wdoc::draw::phone_landscape",
             "wdoc::draw::browser",
+            "wdoc::draw::window",
+            "wdoc::draw::tablet",
+            "wdoc::draw::tablet_landscape",
             "wdoc::draw::button",
             "wdoc::draw::input",
             "wdoc::draw::card",
@@ -361,7 +365,11 @@ namespace wdoc {
         // descriptors into the widget's child shapes.
 
         @template("shape", "wdoc::widget_phone")    @open schema "phone" { }
+        @template("shape", "wdoc::widget_phone_landscape") @open schema "phone_landscape" { }
         @template("shape", "wdoc::widget_browser")  @open schema "browser" { }
+        @template("shape", "wdoc::widget_window")   @open schema "window" { }
+        @template("shape", "wdoc::widget_tablet")   @open schema "tablet" { }
+        @template("shape", "wdoc::widget_tablet_landscape") @open schema "tablet_landscape" { }
         @template("shape", "wdoc::widget_button")   @open schema "button" { }
         @template("shape", "wdoc::widget_input")    @open schema "input" { }
         @template("shape", "wdoc::widget_card")     @open schema "card" { }

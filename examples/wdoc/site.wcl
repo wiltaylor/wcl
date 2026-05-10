@@ -32,6 +32,7 @@ doc my_docs {
         section nested_diagrams "Nested Diagrams" {}
         section swimlane_diagrams "Swim Lane Diagrams" {}
         section wireframes "UI Wireframes" {}
+        section frame_widget_examples "Window and Device Widgets" {}
         section terminal_examples "Terminal Diagrams" {}
         section widget_theme_examples "Widget Theme Properties" {}
         section graph_node_examples "Graph Node Diagrams" {}

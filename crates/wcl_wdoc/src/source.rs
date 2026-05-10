@@ -987,8 +987,29 @@ fn apply_builtin_widget_content_insets(attrs: &mut IndexMap<String, String>, br:
             insert_default_content_inset(attrs, "top", 74.0);
             insert_default_content_inset(attrs, "bottom", 50.0);
         }
+        "phone_landscape" => {
+            insert_default_content_inset(attrs, "left", 18.0);
+            insert_default_content_inset(attrs, "top", 68.0);
+            insert_default_content_inset(attrs, "right", 28.0);
+            insert_default_content_inset(attrs, "bottom", 14.0);
+        }
         "browser" => {
             insert_default_content_inset(attrs, "top", 72.0);
+        }
+        "window" => {
+            insert_default_content_inset(attrs, "top", 36.0);
+        }
+        "tablet" => {
+            insert_default_content_inset(attrs, "left", 18.0);
+            insert_default_content_inset(attrs, "top", 42.0);
+            insert_default_content_inset(attrs, "right", 18.0);
+            insert_default_content_inset(attrs, "bottom", 24.0);
+        }
+        "tablet_landscape" => {
+            insert_default_content_inset(attrs, "left", 18.0);
+            insert_default_content_inset(attrs, "top", 42.0);
+            insert_default_content_inset(attrs, "right", 24.0);
+            insert_default_content_inset(attrs, "bottom", 18.0);
         }
         _ => {}
     }
@@ -2416,6 +2437,86 @@ mod wdoc_draw_tests {
         assert_eq!(
             attrs.get("_wdoc_content_top").map(String::as_str),
             Some("36")
+        );
+
+        let mut window_attrs = IndexMap::new();
+        let window = block(
+            "wdoc::draw::window",
+            Some("desktop"),
+            IndexMap::new(),
+            vec![],
+        );
+        apply_builtin_widget_content_insets(&mut window_attrs, &window);
+        assert_eq!(
+            window_attrs.get("_wdoc_content_top").map(String::as_str),
+            Some("36")
+        );
+
+        let mut tablet_attrs = IndexMap::new();
+        let tablet = block(
+            "wdoc::draw::tablet",
+            Some("device"),
+            IndexMap::new(),
+            vec![],
+        );
+        apply_builtin_widget_content_insets(&mut tablet_attrs, &tablet);
+        assert_eq!(
+            tablet_attrs.get("_wdoc_content_left").map(String::as_str),
+            Some("18")
+        );
+        assert_eq!(
+            tablet_attrs.get("_wdoc_content_top").map(String::as_str),
+            Some("42")
+        );
+        assert_eq!(
+            tablet_attrs.get("_wdoc_content_right").map(String::as_str),
+            Some("18")
+        );
+        assert_eq!(
+            tablet_attrs.get("_wdoc_content_bottom").map(String::as_str),
+            Some("24")
+        );
+
+        let mut phone_landscape_attrs = IndexMap::new();
+        let phone_landscape = block(
+            "wdoc::draw::phone_landscape",
+            Some("mobile"),
+            IndexMap::new(),
+            vec![],
+        );
+        apply_builtin_widget_content_insets(&mut phone_landscape_attrs, &phone_landscape);
+        assert_eq!(
+            phone_landscape_attrs
+                .get("_wdoc_content_top")
+                .map(String::as_str),
+            Some("68")
+        );
+        assert_eq!(
+            phone_landscape_attrs
+                .get("_wdoc_content_right")
+                .map(String::as_str),
+            Some("28")
+        );
+
+        let mut tablet_landscape_attrs = IndexMap::new();
+        let tablet_landscape = block(
+            "wdoc::draw::tablet_landscape",
+            Some("wide"),
+            IndexMap::new(),
+            vec![],
+        );
+        apply_builtin_widget_content_insets(&mut tablet_landscape_attrs, &tablet_landscape);
+        assert_eq!(
+            tablet_landscape_attrs
+                .get("_wdoc_content_top")
+                .map(String::as_str),
+            Some("42")
+        );
+        assert_eq!(
+            tablet_landscape_attrs
+                .get("_wdoc_content_right")
+                .map(String::as_str),
+            Some("24")
         );
     }
 

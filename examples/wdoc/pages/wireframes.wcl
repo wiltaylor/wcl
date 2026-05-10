@@ -34,16 +34,16 @@ page wireframes {
             }
         }
 
-        // --- Widget showcase: phone, browser, buttons, inputs ---
+        // --- Widget showcase: device and application frames ---
         vsplit v_wf2 {
             split s_wf2 {
                 size = 100
 
                 heading hwf2 {
                     level = 2
-                    content = "Phone and Browser Frames"
+                    content = "Device and Application Frames"
                 }
-                paragraph pwf2 { content = "Use " + bold("widget_phone") + " and " + bold("widget_browser") + " for device mockups. They accept " + bold("title") + ", " + bold("url") + ", and color attributes:" }
+                paragraph pwf2 { content = "Use frame widgets such as " + bold("widget_phone") + ", " + bold("widget_tablet") + ", " + bold("widget_window") + ", and " + bold("widget_browser") + " for wireframes. They accept " + bold("title") + " and color attributes; browser frames also accept " + bold("url") + "." }
 
                 diagram device_frames {
                     width = 750
@@ -52,34 +52,42 @@ page wireframes {
                     phone phone1 {
                         x = 20
                         y = 10
-                        width = 220
-                        height = 320
+                        width = 160
+                        height = 300
                         title = "My App"
                     }
 
-                    phone phone2 {
-                        x = 260
+                    tablet tablet1 {
+                        x = 200
                         y = 10
-                        width = 220
-                        height = 320
-                        title = "Settings"
+                        width = 250
+                        height = 180
+                        title = "Planner"
                         header_fill = color_nav_bg
                     }
 
-                    browser browser1 {
-                        x = 500
+                    window window1 {
+                        x = 480
                         y = 10
-                        width = 240
-                        height = 180
+                        width = 250
+                        height = 140
+                        title = "Preferences"
+                    }
+
+                    browser browser1 {
+                        x = 200
+                        y = 210
+                        width = 250
+                        height = 120
                         title = "Dashboard"
                         url = "https://app.example.com"
                     }
 
                     browser browser2 {
-                        x = 500
-                        y = 200
-                        width = 240
-                        height = 130
+                        x = 480
+                        y = 170
+                        width = 250
+                        height = 160
                         title = "Docs"
                         url = "https://docs.example.com"
                     }

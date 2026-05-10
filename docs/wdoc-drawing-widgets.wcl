@@ -25,12 +25,16 @@ page wdoc_drawing_widgets {
                     content = "UI mockups"
                 }
 
-                paragraph p_ui1 { content = "For wireframes and product mockups. Container-style widgets such as <code>card</code>, <code>phone</code>, and <code>browser</code> work with the normal drawing layout attributes: use <code>align</code>, <code>gap</code>, and <code>padding</code> for auto-placed children, or keep using <code>x</code>/<code>y</code> and edge anchors for controls that need exact placement." }
+                paragraph p_ui1 { content = "For wireframes and product mockups. Container-style widgets such as <code>card</code>, <code>phone</code>, <code>phone_landscape</code>, <code>tablet</code>, <code>tablet_landscape</code>, <code>window</code>, and <code>browser</code> work with the normal drawing layout attributes: use <code>align</code>, <code>gap</code>, and <code>padding</code> for auto-placed children, or keep using <code>x</code>/<code>y</code> and edge anchors for controls that need exact placement." }
 
                 data_table tbl_ui {
                     caption = "UI widgets"
                     rows = [
                         { widget = "phone",   attrs = "title, header_fill" },
+                        { widget = "phone_landscape", attrs = "title, status_text, header_fill" },
+                        { widget = "tablet",  attrs = "title, status_text, header_fill" },
+                        { widget = "tablet_landscape", attrs = "title, status_text, header_fill" },
+                        { widget = "window",  attrs = "title, chrome_fill" },
                         { widget = "browser", attrs = "title, url" },
                         { widget = "button",  attrs = "label, variant (primary, secondary, outline)" },
                         { widget = "input",   attrs = "label, placeholder" },
