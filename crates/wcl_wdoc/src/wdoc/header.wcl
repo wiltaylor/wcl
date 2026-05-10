@@ -210,6 +210,13 @@ namespace wdoc {
             transparent_color: string @optional
             transparent_tolerance: i32 @optional
         }
+        @open schema "game_layer" {
+            parallax: f64 @optional
+            locked: bool @optional
+            clip: bool @optional
+            opacity: f64 @optional
+            class: string @optional
+        }
         @open schema "group" { }
         @open
         schema "terminal" {
@@ -331,6 +338,7 @@ namespace wdoc {
             "wdoc::draw::sprite",
             "wdoc::draw::dopesheet_view",
             "wdoc::draw::tilemap",
+            "wdoc::draw::game_layer",
             "wdoc::draw::group",
             "wdoc::draw::terminal",
             "wdoc::draw::terminal_text",

@@ -41,6 +41,7 @@ pub enum ShapeKind {
     Sprite,
     DopesheetView,
     Tilemap,
+    GameLayer,
     Group,
     Terminal,
     TerminalText,
@@ -828,6 +829,7 @@ pub fn parse_shape_kind(kind: &str) -> Option<ShapeKind> {
         "wdoc::draw::sprite" => Some(ShapeKind::Sprite),
         "wdoc::draw::dopesheet_view" => Some(ShapeKind::DopesheetView),
         "wdoc::draw::tilemap" => Some(ShapeKind::Tilemap),
+        "wdoc::draw::game_layer" => Some(ShapeKind::GameLayer),
         "wdoc::draw::group" => Some(ShapeKind::Group),
         "wdoc::draw::terminal" => Some(ShapeKind::Terminal),
         "wdoc::draw::terminal_text" => Some(ShapeKind::TerminalText),
@@ -1043,6 +1045,13 @@ fn is_graph_alignment(align: Alignment) -> bool {
 
 fn option_enabled(options: &IndexMap<String, String>, key: &str) -> bool {
     options.get(key).map(|s| s == "true").unwrap_or(false)
+}
+
+fn bool_attr(attrs: &IndexMap<String, String>, key: &str) -> bool {
+    attrs
+        .get(key)
+        .map(|value| matches!(value.as_str(), "true" | "1" | "yes"))
+        .unwrap_or(false)
 }
 
 fn is_layout_decoration(node: &ShapeNode) -> bool {
@@ -1618,6 +1627,13 @@ fn resolve_bounds(node: &mut ShapeNode, parent: &Bounds) {
         if !explicit_height {
             rh = metrics.height;
         }
+    } else if node.kind == ShapeKind::GameLayer {
+        if !explicit_width {
+            rw = parent.width;
+        }
+        if !explicit_height {
+            rh = parent.height;
+        }
     } else if node.kind == ShapeKind::TextBlock && (!explicit_width || !explicit_height) {
         let width = if explicit_width && rw > 0.0 {
             rw
@@ -2184,6 +2200,10 @@ fn render_shape_svg(node: &ShapeNode, svg: &mut String) {
         ShapeKind::Sprite => render_sprite_shape_svg(node, svg),
         ShapeKind::DopesheetView => render_dopesheet_view_shape_svg(node, svg),
         ShapeKind::Tilemap => render_tilemap_shape_svg(node, svg),
+        ShapeKind::GameLayer => {
+            render_game_layer_shape_svg(node, svg);
+            rendered_children = true;
+        }
         ShapeKind::Terminal => {
             crate::terminal::render_terminal_svg(node, svg);
             rendered_children = true;
@@ -3024,6 +3044,55 @@ fn render_tilemap_shape_svg(node: &ShapeNode, svg: &mut String) {
     }
 
     svg.push_str("</g>");
+}
+
+fn render_game_layer_shape_svg(node: &ShapeNode, svg: &mut String) {
+    let b = &node.resolved;
+    let style = svg_node_attrs(node, &node.attrs);
+    let parallax = attr_f64(&node.attrs, "parallax").unwrap_or(1.0);
+    let locked = bool_attr(&node.attrs, "locked");
+    let clip = bool_attr(&node.attrs, "clip");
+    let runtime_attrs = format!(
+        " data-wdoc-game-layer=\"true\" data-wdoc-game-layer-x=\"{}\" data-wdoc-game-layer-y=\"{}\" data-wdoc-game-layer-parallax=\"{}\"{}",
+        b.x,
+        b.y,
+        parallax,
+        if locked {
+            " data-wdoc-game-layer-locked=\"true\""
+        } else {
+            ""
+        }
+    );
+
+    if clip {
+        let clip_id = svg_generated_id("wdoc-game-layer-clip", node);
+        write!(
+            svg,
+            "<defs><clipPath id=\"{clip_id}\">\
+             <rect x=\"0\" y=\"0\" width=\"{}\" height=\"{}\"/>\
+             </clipPath></defs>",
+            b.width, b.height
+        )
+        .unwrap();
+        write!(
+            svg,
+            "<g transform=\"translate({},{})\"{style}{runtime_attrs}>\
+             <g clip-path=\"url(#{clip_id})\">",
+            b.x, b.y
+        )
+        .unwrap();
+        render_child_shapes_svg(&node.children, svg);
+        svg.push_str("</g></g>");
+    } else {
+        write!(
+            svg,
+            "<g transform=\"translate({},{})\"{style}{runtime_attrs}>",
+            b.x, b.y
+        )
+        .unwrap();
+        render_child_shapes_svg(&node.children, svg);
+        svg.push_str("</g>");
+    }
 }
 
 fn render_connection_svg(conn: &Connection, shape_map: &HashMap<String, Bounds>, svg: &mut String) {
@@ -4282,9 +4351,10 @@ function boxFor(svg,id){var el=svg.querySelector('[data-wdoc-id="'+attrEscape(id
 function anchor(b,a,o){var cx=b.x+b.width/2,cy=b.y+b.height/2,ox=o?o.x+o.width/2:cx,oy=o?o.y+o.height/2:cy,dx=ox-cx,dy=oy-cy;if(a==='top')return{x:cx,y:b.y};if(a==='bottom')return{x:cx,y:b.y+b.height};if(a==='left')return{x:b.x,y:cy};if(a==='right')return{x:b.x+b.width,y:cy};if(a==='center')return{x:cx,y:cy};return Math.abs(dx)>Math.abs(dy)?(dx>0?{x:b.x+b.width,y:cy}:{x:b.x,y:cy}):(dy>0?{x:cx,y:b.y+b.height}:{x:cx,y:b.y});}
 function updateConnections(svg){if(!svg)return;Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-conn-from]'),function(c){var fb=boxFor(svg,c.getAttribute('data-wdoc-conn-from')),tb=boxFor(svg,c.getAttribute('data-wdoc-conn-to'));if(!fb||!tb)return;var a=anchor(fb,c.getAttribute('data-wdoc-conn-from-anchor'),tb),b=anchor(tb,c.getAttribute('data-wdoc-conn-to-anchor'),fb);if(c.tagName.toLowerCase()==='line'){c.setAttribute('x1',a.x);c.setAttribute('y1',a.y);c.setAttribute('x2',b.x);c.setAttribute('y2',b.y);}else if(c.getAttribute('data-wdoc-conn-curve')==='bezier'){var dx=Math.abs(b.x-a.x)/2;c.setAttribute('d','M '+a.x+' '+a.y+' C '+(a.x+dx)+' '+a.y+', '+(b.x-dx)+' '+b.y+', '+b.x+' '+b.y);}else{c.setAttribute('d','M '+a.x+' '+a.y+' L '+b.x+' '+b.y);}});}
 function parseViewBox(svg){var v=(svg.getAttribute('viewBox')||'0 0 0 0').trim().split(/[\s,]+/).map(function(n){return parseFloat(n)||0;});return{x:v[0]||0,y:v[1]||0,width:v[2]||0,height:v[3]||0};}
-function setViewBox(svg,b){svg.setAttribute('viewBox',[b.x,b.y,b.width,b.height].join(' '));}
+function updateGameLayers(svg,b){if(!svg)return;var home=svg.__wdocPanZoomHome||parseViewBox(svg),v=b||parseViewBox(svg);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-game-layer="true"]'),function(el){var bx=parseFloat(el.getAttribute('data-wdoc-game-layer-x')||'0')||0,by=parseFloat(el.getAttribute('data-wdoc-game-layer-y')||'0')||0;if(el.getAttribute('data-wdoc-game-layer-locked')==='true'){var sx=v.width/(home.width||1),sy=v.height/(home.height||1),tx=v.x+(bx-home.x)*sx,ty=v.y+(by-home.y)*sy;el.setAttribute('transform','translate('+tx+','+ty+') scale('+sx+','+sy+')');}else{var p=parseFloat(el.getAttribute('data-wdoc-game-layer-parallax')||'1');if(isNaN(p))p=1;el.setAttribute('transform','translate('+(bx+(v.x-home.x)*(1-p))+','+(by+(v.y-home.y)*(1-p))+')');}});}
+function setViewBox(svg,b){svg.setAttribute('viewBox',[b.x,b.y,b.width,b.height].join(' '));updateGameLayers(svg,b);}
 function svgPoint(svg,clientX,clientY){var r=svg.getBoundingClientRect(),v=parseViewBox(svg),w=r.width||1,h=r.height||1;return{x:v.x+((clientX-r.left)/w)*v.width,y:v.y+((clientY-r.top)/h)*v.height};}
-function initPanZoom(svg){if(!svg||svg.getAttribute('data-wdoc-pan-zoom')!=='true'||svg.__wdocPanZoomBound)return;svg.__wdocPanZoomBound=true;var home=parseViewBox(svg),min=parseFloat(svg.getAttribute('data-wdoc-pan-zoom-min')||'0.25')||0.25,max=parseFloat(svg.getAttribute('data-wdoc-pan-zoom-max')||'8')||8,drag=null;function zoomTo(next,p){var v=parseViewBox(svg),current=home.width/v.width;next=Math.max(min,Math.min(max,next));var scale=current/next,nw=v.width*scale,nh=v.height*scale,nx=p.x-(p.x-v.x)*scale,ny=p.y-(p.y-v.y)*scale;setViewBox(svg,{x:nx,y:ny,width:nw,height:nh});}function zoomAt(e){e.preventDefault();var v=parseViewBox(svg),current=home.width/v.width;zoomTo(current*Math.exp(-e.deltaY*0.001),svgPoint(svg,e.clientX,e.clientY));}function zoomBy(factor){var v=parseViewBox(svg);zoomTo((home.width/v.width)*factor,{x:v.x+v.width/2,y:v.y+v.height/2});}svg.addEventListener('wheel',zoomAt,{passive:false});svg.addEventListener('pointerdown',function(e){if(e.button!==0)return;drag={x:e.clientX,y:e.clientY,view:parseViewBox(svg)};svg.setPointerCapture&&svg.setPointerCapture(e.pointerId);svg.style.cursor='grabbing';});svg.addEventListener('pointermove',function(e){if(!drag)return;e.preventDefault();var r=svg.getBoundingClientRect(),dx=(e.clientX-drag.x)/(r.width||1)*drag.view.width,dy=(e.clientY-drag.y)/(r.height||1)*drag.view.height;setViewBox(svg,{x:drag.view.x-dx,y:drag.view.y-dy,width:drag.view.width,height:drag.view.height});});function endDrag(e){if(!drag)return;drag=null;svg.releasePointerCapture&&svg.releasePointerCapture(e.pointerId);svg.style.cursor='grab';}svg.addEventListener('pointerup',endDrag);svg.addEventListener('pointercancel',endDrag);svg.addEventListener('dblclick',function(e){e.preventDefault();setViewBox(svg,home);});var wrap=svg.parentNode;if(wrap)Array.prototype.forEach.call(wrap.querySelectorAll('[data-wdoc-pan-zoom-control]'),function(btn){btn.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();var action=btn.getAttribute('data-wdoc-pan-zoom-control');if(action==='in')zoomBy(1.25);else if(action==='out')zoomBy(0.8);else setViewBox(svg,home);});});}
+function initPanZoom(svg){if(!svg||svg.getAttribute('data-wdoc-pan-zoom')!=='true'||svg.__wdocPanZoomBound)return;svg.__wdocPanZoomBound=true;var home=parseViewBox(svg);svg.__wdocPanZoomHome=home;updateGameLayers(svg,home);var min=parseFloat(svg.getAttribute('data-wdoc-pan-zoom-min')||'0.25')||0.25,max=parseFloat(svg.getAttribute('data-wdoc-pan-zoom-max')||'8')||8,drag=null;function zoomTo(next,p){var v=parseViewBox(svg),current=home.width/v.width;next=Math.max(min,Math.min(max,next));var scale=current/next,nw=v.width*scale,nh=v.height*scale,nx=p.x-(p.x-v.x)*scale,ny=p.y-(p.y-v.y)*scale;setViewBox(svg,{x:nx,y:ny,width:nw,height:nh});}function zoomAt(e){e.preventDefault();var v=parseViewBox(svg),current=home.width/v.width;zoomTo(current*Math.exp(-e.deltaY*0.001),svgPoint(svg,e.clientX,e.clientY));}function zoomBy(factor){var v=parseViewBox(svg);zoomTo((home.width/v.width)*factor,{x:v.x+v.width/2,y:v.y+v.height/2});}svg.addEventListener('wheel',zoomAt,{passive:false});svg.addEventListener('pointerdown',function(e){if(e.button!==0)return;drag={x:e.clientX,y:e.clientY,view:parseViewBox(svg)};svg.setPointerCapture&&svg.setPointerCapture(e.pointerId);svg.style.cursor='grabbing';});svg.addEventListener('pointermove',function(e){if(!drag)return;e.preventDefault();var r=svg.getBoundingClientRect(),dx=(e.clientX-drag.x)/(r.width||1)*drag.view.width,dy=(e.clientY-drag.y)/(r.height||1)*drag.view.height;setViewBox(svg,{x:drag.view.x-dx,y:drag.view.y-dy,width:drag.view.width,height:drag.view.height});});function endDrag(e){if(!drag)return;drag=null;svg.releasePointerCapture&&svg.releasePointerCapture(e.pointerId);svg.style.cursor='grab';}svg.addEventListener('pointerup',endDrag);svg.addEventListener('pointercancel',endDrag);svg.addEventListener('dblclick',function(e){e.preventDefault();setViewBox(svg,home);});var wrap=svg.parentNode;if(wrap)Array.prototype.forEach.call(wrap.querySelectorAll('[data-wdoc-pan-zoom-control]'),function(btn){btn.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();var action=btn.getAttribute('data-wdoc-pan-zoom-control');if(action==='in')zoomBy(1.25);else if(action==='out')zoomBy(0.8);else setViewBox(svg,home);});});}
 function ease(t,fn){if(fn==='linear')return t;if(fn==='ease-in')return t*t;if(fn==='ease-out')return 1-Math.pow(1-t,2);if(fn==='ease-in-out')return t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;return t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;}
 function frameValue(frames,p,prop,base){var prev=frames[0],next=frames[frames.length-1];frames.forEach(function(f){if(f.offset<=p)prev=f;if(f.offset>=p&&next.offset<p)next=f;});for(var i=0;i<frames.length;i++){if(frames[i].offset>=p){next=frames[i];break;}}var a=prev[prop];if(a==null)a=base[prop];var b=next[prop];if(b==null)b=a;if(a==null&&b==null)return null;if(next.offset===prev.offset)return b;var t=(p-prev.offset)/(next.offset-prev.offset);return a+(b-a)*t;}
 function startStateAnimation(el,state){var map=parseStateAnimations(el),name=map[state];if(!name)return;var anim=parseAnimations(el)[name];if(!anim||(!anim.keyframes.length&&!anim.frames.length))return;if(el.__wdocAnim)cancelAnimationFrame(el.__wdocAnim.raf);var base=baseBox(el),start=performance.now()+anim.delay,loops=anim.iteration==='infinite'?Infinity:Math.max(1,parseFloat(anim.iteration)||1),initialFrame=el.getAttribute('data-wdoc-sprite-current-frame');function tick(now){if(now<start){el.__wdocAnim={raf:requestAnimationFrame(tick)};return;}var elapsed=now-start,idx=Math.floor(elapsed/anim.duration),done=idx>=loops,raw=done?1:(elapsed%anim.duration)/anim.duration,dirReverse=anim.direction==='reverse'||(anim.direction==='alternate'&&idx%2===1),frameRaw=dirReverse?1-raw:raw;if(anim.keyframes.length){var pct=ease(raw,anim.timing)*100;var x=frameValue(anim.keyframes,pct,'x',base),y=frameValue(anim.keyframes,pct,'y',base),width=frameValue(anim.keyframes,pct,'width',base),height=frameValue(anim.keyframes,pct,'height',base),rotBase={rotate:0,rotate_origin_x:x+width/2,rotate_origin_y:y+height/2};var b={x:x,y:y,width:width,height:height,rotate:frameValue(anim.keyframes,pct,'rotate',rotBase),rotate_origin_x:frameValue(anim.keyframes,pct,'rotate_origin_x',rotBase),rotate_origin_y:frameValue(anim.keyframes,pct,'rotate_origin_y',rotBase)};setBox(el,b);}if(anim.frames.length){var fi=done?anim.frames.length-1:Math.min(anim.frames.length-1,Math.floor(frameRaw*anim.frames.length));setSpriteFrame(el,anim.frames[fi]);}if(done){if(anim.fill!=='forwards'&&anim.fill!=='both'){setBox(el,base);if(initialFrame!=null)setSpriteFrame(el,initialFrame);}return;}el.__wdocAnim={raf:requestAnimationFrame(tick)};}el.__wdocAnim={raf:requestAnimationFrame(tick)};}
@@ -5551,6 +5621,117 @@ mod tests {
         assert!(background < group_start);
         assert!(group_start < bottom_child);
         assert!(bottom_child < top_child);
+    }
+
+    #[test]
+    fn game_layer_defaults_to_parent_size_and_renders_children_only() {
+        let mut layer = shape("terrain", 0.0, 0.0);
+        layer.kind = ShapeKind::GameLayer;
+        layer.width = None;
+        layer.height = None;
+        let mut tile = shape("tile", 40.0, 30.0);
+        tile.attrs.insert("fill".to_string(), "terrain".to_string());
+        layer.children = vec![tile];
+
+        let mut diagram = Diagram {
+            id: None,
+            width: 320.0,
+            height: 180.0,
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+            classes: IndexMap::new(),
+            shapes: vec![layer],
+            connections: vec![],
+        };
+
+        let svg = render_diagram_svg(&mut diagram);
+        assert_eq!(diagram.shapes[0].resolved.width, 320.0);
+        assert_eq!(diagram.shapes[0].resolved.height, 180.0);
+        assert!(svg.contains("data-wdoc-game-layer=\"true\""));
+        assert!(svg.contains("<rect x=\"0\" y=\"0\" width=\"40\" height=\"30\""));
+        assert!(svg.contains("fill=\"terrain\""));
+        assert!(!svg.contains("width=\"320\" height=\"180\" fill"));
+    }
+
+    #[test]
+    fn game_layer_z_index_and_child_z_index_are_local() {
+        let mut background = shape("background", 20.0, 20.0);
+        background
+            .attrs
+            .insert("fill".to_string(), "background".to_string());
+        background.z_index = 1.0;
+
+        let mut layer = shape("actors", 100.0, 80.0);
+        layer.kind = ShapeKind::GameLayer;
+        layer.z_index = 5.0;
+        let mut front = shape("front", 20.0, 20.0);
+        front.attrs.insert("fill".to_string(), "front".to_string());
+        front.z_index = 2.0;
+        let mut back = shape("back", 20.0, 20.0);
+        back.attrs.insert("fill".to_string(), "back".to_string());
+        back.z_index = -2.0;
+        layer.children = vec![front, back];
+
+        let mut diagram = Diagram {
+            id: None,
+            width: 160.0,
+            height: 100.0,
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+            classes: IndexMap::new(),
+            shapes: vec![layer, background],
+            connections: vec![],
+        };
+
+        let svg = render_diagram_svg(&mut diagram);
+        let background = index_of(&svg, "fill=\"background\"");
+        let layer_start = index_of(&svg, "data-wdoc-game-layer=\"true\"");
+        let back = index_of(&svg, "fill=\"back\"");
+        let front = index_of(&svg, "fill=\"front\"");
+        assert!(background < layer_start);
+        assert!(layer_start < back);
+        assert!(back < front);
+    }
+
+    #[test]
+    fn game_layer_clip_and_pan_zoom_runtime_attrs_render() {
+        let mut layer = shape("hud", 200.0, 120.0);
+        layer.kind = ShapeKind::GameLayer;
+        layer.x = Some(12.0);
+        layer.y = Some(16.0);
+        layer.attrs.insert("clip".to_string(), "true".to_string());
+        layer.attrs.insert("locked".to_string(), "true".to_string());
+        layer
+            .attrs
+            .insert("parallax".to_string(), "0.4".to_string());
+        layer.children = vec![shape("panel", 60.0, 30.0)];
+
+        let mut options = IndexMap::new();
+        options.insert("mode".to_string(), "pan_zoom".to_string());
+        let mut diagram = Diagram {
+            id: Some("layered_scene".to_string()),
+            width: 320.0,
+            height: 180.0,
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options,
+            classes: IndexMap::new(),
+            shapes: vec![layer],
+            connections: vec![],
+        };
+
+        let svg = render_diagram_svg(&mut diagram);
+        assert!(svg.contains("<clipPath id=\"wdoc-game-layer-clip-"));
+        assert!(svg.contains("clip-path=\"url(#wdoc-game-layer-clip-"));
+        assert!(svg.contains("data-wdoc-game-layer-parallax=\"0.4\""));
+        assert!(svg.contains("data-wdoc-game-layer-locked=\"true\""));
+        assert!(svg.contains("updateGameLayers"));
+        assert!(svg.contains("data-wdoc-pan-zoom=\"true\""));
     }
 
     #[test]
