@@ -19,6 +19,7 @@ const CONTENT_INSET_TOP_ATTR: &str = "_wdoc_content_top";
 const CONTENT_INSET_RIGHT_ATTR: &str = "_wdoc_content_right";
 const CONTENT_INSET_BOTTOM_ATTR: &str = "_wdoc_content_bottom";
 const CONNECTION_ROUTE_DIRECT: &str = "direct";
+const SIZE_LOCKED_ATTR: &str = "_wdoc_size_locked";
 const ROUTE_MARGIN: f64 = 18.0;
 const ROUTE_TERMINAL_MIN: f64 = 24.0;
 
@@ -814,7 +815,7 @@ fn resolve_children(
             *parent
         };
         resolve_bounds(child, &bounds_parent);
-        apply_intrinsic_container_size(child);
+        apply_intrinsic_container_size(child, connections);
     }
 
     prelayout_nested_graph_containers(children, connections, parent, scope_path);
@@ -911,10 +912,15 @@ fn prelayout_nested_graph_containers(
                 *parent
             };
             resolve_bounds(child, &bounds_parent);
-            apply_intrinsic_container_size(child);
+            apply_intrinsic_container_size(child, connections);
         }
 
         resolve_nested_container(child, connections, scope_path);
+        if is_graph_alignment(child.align) {
+            child
+                .attrs
+                .insert(SIZE_LOCKED_ATTR.to_string(), "true".to_string());
+        }
     }
 }
 
@@ -923,6 +929,14 @@ fn resolve_nested_container(
     connections: &mut [Connection],
     scope_path: &str,
 ) {
+    if child
+        .attrs
+        .get(SIZE_LOCKED_ATTR)
+        .map(|v| v == "true")
+        .unwrap_or(false)
+    {
+        return;
+    }
     let insets = child_content_insets(child);
     let mut inner = Bounds {
         x: insets.left,
@@ -1111,8 +1125,11 @@ fn layout_graph_subset(
         _ => {}
     }
 
+    // Copy back the laid-out clones in full so any scaling/repositioning of
+    // grandchildren (done by layout_layered when `scale_to_fit` is enabled)
+    // propagates to the original tree.
     for (layout_child, &original_idx) in layout_children.into_iter().zip(indices) {
-        children[original_idx].resolved = layout_child.resolved;
+        children[original_idx] = layout_child;
     }
 }
 
@@ -1179,7 +1196,7 @@ fn localize_endpoint(endpoint: &str, children: &[ShapeNode], scope_path: &str) -
         .map(str::to_string)
 }
 
-fn apply_intrinsic_container_size(node: &mut ShapeNode) {
+fn apply_intrinsic_container_size(node: &mut ShapeNode, connections: &[Connection]) {
     if node.kind == ShapeKind::Terminal {
         let (width, height) = crate::terminal::intrinsic_size(&node.attrs);
         if !has_explicit_width(node) && node.resolved.width == 0.0 {
@@ -1200,7 +1217,19 @@ fn apply_intrinsic_container_size(node: &mut ShapeNode) {
         return;
     }
 
-    if let Some(bounds) = input_children_bounds(&node.children) {
+    if is_graph_alignment(node.align) {
+        if let Some((w, h)) = intrinsic_graph_container_size(node, connections) {
+            if needs_width {
+                node.resolved.width = w;
+            }
+            if needs_height {
+                node.resolved.height = h;
+            }
+            return;
+        }
+    }
+
+    if let Some(bounds) = input_children_bounds(&node.children, connections) {
         if needs_width {
             node.resolved.width = (bounds.x + bounds.width + node.padding * 2.0).max(0.0);
         }
@@ -1208,6 +1237,111 @@ fn apply_intrinsic_container_size(node: &mut ShapeNode) {
             node.resolved.height = (bounds.y + bounds.height + node.padding * 2.0).max(0.0);
         }
     }
+}
+
+/// Compute the natural size of a graph-aligned container by simulating its
+/// inner graph layout against an unbounded parent and unioning the resulting
+/// child bounds. Returns `(width, height)` including the container's content
+/// insets, or `None` if children produce no measurable bounds.
+fn intrinsic_graph_container_size(
+    node: &ShapeNode,
+    connections: &[Connection],
+) -> Option<(f64, f64)> {
+    if node.children.is_empty() || !is_graph_alignment(node.align) {
+        return None;
+    }
+
+    // Strip this node's id from incoming dotted ids so child-level connections
+    // are addressed by their direct child paths (e.g. `outer.inner.a` → `inner.a`).
+    let scope = node.id.as_deref().unwrap_or("");
+    let stripped: Vec<Connection> = connections
+        .iter()
+        .filter_map(|conn| {
+            let strip = |s: &str| -> Option<String> {
+                if scope.is_empty() {
+                    Some(s.to_string())
+                } else {
+                    s.strip_prefix(scope)
+                        .and_then(|r| r.strip_prefix('.'))
+                        .map(str::to_string)
+                }
+            };
+            let from = strip(&conn.from_id)?;
+            let to = strip(&conn.to_id)?;
+            let mut c = conn.clone();
+            c.from_id = from;
+            c.to_id = to;
+            Some(c)
+        })
+        .collect();
+
+    let mut clones: Vec<ShapeNode> = node
+        .children
+        .iter()
+        .filter(|c| !is_layout_decoration(c))
+        .cloned()
+        .collect();
+    if clones.is_empty() {
+        return None;
+    }
+    let zero_parent = Bounds {
+        x: 0.0,
+        y: 0.0,
+        width: 0.0,
+        height: 0.0,
+    };
+    for child in clones.iter_mut() {
+        resolve_bounds(child, &zero_parent);
+        apply_intrinsic_container_size(child, &stripped);
+    }
+
+    let unbounded = Bounds {
+        x: 0.0,
+        y: 0.0,
+        width: 1.0e6,
+        height: 1.0e6,
+    };
+    let local_connections = localize_connections(&clones, &stripped, "");
+    let mut options = node.attrs.clone();
+    options.shift_remove("_wdoc_scale_to_fit");
+
+    match node.align {
+        Alignment::Layered => crate::graph_layout::layout_layered(
+            &mut clones,
+            &local_connections,
+            &unbounded,
+            node.gap,
+            &options,
+        ),
+        Alignment::Force => crate::graph_layout::layout_force(
+            &mut clones,
+            &local_connections,
+            &unbounded,
+            node.gap,
+            &options,
+        ),
+        Alignment::Radial => crate::graph_layout::layout_radial(
+            &mut clones,
+            &local_connections,
+            &unbounded,
+            node.gap,
+            &options,
+        ),
+        Alignment::Grid => crate::graph_layout::layout_grid(
+            &mut clones,
+            &local_connections,
+            &unbounded,
+            node.gap,
+            &options,
+        ),
+        _ => return None,
+    }
+
+    let bounds = children_bounds(&clones)?;
+    let insets = child_content_insets(node);
+    let width = bounds.width + insets.left + insets.right;
+    let height = bounds.height + insets.top + insets.bottom;
+    Some((width.max(0.0), height.max(0.0)))
 }
 
 fn apply_post_layout_container_size(node: &mut ShapeNode) {
@@ -1255,7 +1389,7 @@ fn expand_container_to_fit_layout_children(node: &mut ShapeNode) {
     resize_full_container_decorations(&mut node.children, old_width, old_height, node.resolved);
 }
 
-fn input_children_bounds(children: &[ShapeNode]) -> Option<Bounds> {
+fn input_children_bounds(children: &[ShapeNode], connections: &[Connection]) -> Option<Bounds> {
     let mut resolved = Vec::with_capacity(children.len());
     for child in children {
         let mut child = child.clone();
@@ -1266,7 +1400,7 @@ fn input_children_bounds(children: &[ShapeNode]) -> Option<Bounds> {
             height: 0.0,
         };
         resolve_bounds(&mut child, &parent);
-        apply_intrinsic_container_size(&mut child);
+        apply_intrinsic_container_size(&mut child, connections);
         resolved.push(child);
     }
     children_bounds(&resolved)
@@ -1912,16 +2046,8 @@ fn render_connection_svg(conn: &Connection, shape_map: &HashMap<String, Bounds>,
                     .unwrap();
                     return;
                 }
-                let obstacles: Vec<Bounds> = shape_map
-                    .iter()
-                    .filter(|(id, b)| {
-                        id.as_str() != conn.from_id
-                            && id.as_str() != conn.to_id
-                            && !bounds_contains_point(b, x1, y1)
-                            && !bounds_contains_point(b, x2, y2)
-                    })
-                    .map(|(_, b)| *b)
-                    .collect();
+                let obstacles: Vec<Bounds> =
+                    connection_obstacles(&conn.from_id, &conn.to_id, x1, y1, x2, y2, shape_map);
                 if let Some(points) = route_orthogonal(from_bounds, to_bounds, &obstacles) {
                     let d = path_data(&points);
                     write!(
@@ -1960,6 +2086,41 @@ fn render_connection_svg(conn: &Connection, shape_map: &HashMap<String, Bounds>,
                 let (x2, y2) = to_bounds.anchor_pos(conn.to_anchor, from_bounds);
                 let obstacles =
                     connection_obstacles(&conn.from_id, &conn.to_id, x1, y1, x2, y2, shape_map);
+
+                if !connection_uses_direct_route(conn)
+                    && conn.from_anchor != AnchorPoint::Auto
+                    && conn.to_anchor != AnchorPoint::Auto
+                {
+                    let fc = nearest_container_id(&conn.from_id, shape_map)
+                        .and_then(|id| shape_map.get(id).copied());
+                    let tc = nearest_container_id(&conn.to_id, shape_map)
+                        .and_then(|id| shape_map.get(id).copied());
+                    let from_outer = fc.unwrap_or(*from_bounds);
+                    let to_outer = tc.unwrap_or(*to_bounds);
+                    let cross_container =
+                        (fc.is_some() || tc.is_some()) && !bounds_eq(&from_outer, &to_outer);
+                    if cross_container {
+                        let points = route_cross_container(
+                            from_bounds,
+                            &from_outer,
+                            conn.from_anchor,
+                            to_bounds,
+                            &to_outer,
+                            conn.to_anchor,
+                            &obstacles,
+                        );
+                        if !path_intersects_obstacle(&points, &obstacles) && points.len() >= 2 {
+                            let d = path_data(&points);
+                            write!(
+                                svg,
+                                "<path d=\"{d}\" fill=\"none\"{stroke_default}{style}{runtime_attrs}{ms}{me}/>"
+                            )
+                            .unwrap();
+                            return;
+                        }
+                    }
+                }
+
                 if !connection_uses_direct_route(conn) {
                     if let Some(points) = route_orthogonal_anchored(
                         from_bounds,
@@ -2278,16 +2439,277 @@ fn connection_obstacles(
     y2: f64,
     shape_map: &HashMap<String, Bounds>,
 ) -> Vec<Bounds> {
+    let from_ancestors = id_ancestors(from_id);
+    let to_ancestors = id_ancestors(to_id);
     shape_map
         .iter()
         .filter(|(id, b)| {
-            id.as_str() != from_id
-                && id.as_str() != to_id
-                && !bounds_contains_point(b, x1, y1)
-                && !bounds_contains_point(b, x2, y2)
+            let id_str = id.as_str();
+            if id_str == from_id || id_str == to_id {
+                return false;
+            }
+            if is_strict_ancestor(id_str, &from_ancestors)
+                || is_strict_ancestor(id_str, &to_ancestors)
+                || is_descendant_of_endpoint(id_str, from_id)
+                || is_descendant_of_endpoint(id_str, to_id)
+            {
+                return false;
+            }
+            !bounds_contains_point(b, x1, y1) && !bounds_contains_point(b, x2, y2)
         })
         .map(|(_, b)| *b)
         .collect()
+}
+
+/// Returns `["a.b.c", "a.b", "a"]` for input `"a.b.c"` — the endpoint id and
+/// each ancestor container id derived from the dotted path.
+fn id_ancestors(id: &str) -> Vec<&str> {
+    let mut out = vec![id];
+    let mut cursor = id;
+    while let Some(idx) = cursor.rfind('.') {
+        cursor = &cursor[..idx];
+        out.push(cursor);
+    }
+    out
+}
+
+/// Finds the nearest ancestor container of `id` in `shape_map` — that is, the
+/// closest enclosing dotted-path prefix that exists as its own shape. Returns
+/// `None` for top-level ids or ids whose ancestors aren't tracked.
+fn nearest_container_id<'a>(id: &'a str, shape_map: &HashMap<String, Bounds>) -> Option<&'a str> {
+    let mut cursor = id;
+    while let Some(idx) = cursor.rfind('.') {
+        cursor = &cursor[..idx];
+        if shape_map.contains_key(cursor) {
+            return Some(cursor);
+        }
+    }
+    None
+}
+
+/// Projects an inner endpoint onto its container's anchored edge, so the
+/// stub leaving the inner node aligns with the inner node's center axis.
+fn project_anchor_through(inner: &Bounds, container: &Bounds, anchor: AnchorPoint) -> (f64, f64) {
+    match anchor {
+        AnchorPoint::Top => (inner.x + inner.width / 2.0, container.y),
+        AnchorPoint::Bottom => (inner.x + inner.width / 2.0, container.y + container.height),
+        AnchorPoint::Left => (container.x, inner.y + inner.height / 2.0),
+        AnchorPoint::Right => (container.x + container.width, inner.y + inner.height / 2.0),
+        AnchorPoint::Center | AnchorPoint::Auto => inner.anchor_pos(anchor, container),
+    }
+}
+
+fn anchor_axis_is_vertical(anchor: AnchorPoint) -> bool {
+    matches!(anchor, AnchorPoint::Top | AnchorPoint::Bottom)
+}
+
+fn anchor_axis_is_horizontal(anchor: AnchorPoint) -> bool {
+    matches!(anchor, AnchorPoint::Left | AnchorPoint::Right)
+}
+
+/// Build an orthogonal route between two cross-container anchored points,
+/// connecting through an inter-container channel that avoids `obstacles`.
+fn route_cross_container(
+    from_inner: &Bounds,
+    from_container: &Bounds,
+    from_anchor: AnchorPoint,
+    to_inner: &Bounds,
+    to_container: &Bounds,
+    to_anchor: AnchorPoint,
+    obstacles: &[Bounds],
+) -> Vec<(f64, f64)> {
+    let inner_start = from_inner.anchor_pos(from_anchor, to_container);
+    let inner_end = to_inner.anchor_pos(to_anchor, from_container);
+    let exit = project_anchor_through(from_inner, from_container, from_anchor);
+    let entry = project_anchor_through(to_inner, to_container, to_anchor);
+
+    let mut points: Vec<(f64, f64)> = Vec::new();
+    points.push(inner_start);
+    if exit != inner_start {
+        points.push(exit);
+    }
+
+    let from_v = anchor_axis_is_vertical(from_anchor);
+    let to_v = anchor_axis_is_vertical(to_anchor);
+    let from_h = anchor_axis_is_horizontal(from_anchor);
+    let to_h = anchor_axis_is_horizontal(to_anchor);
+
+    if from_v && to_v {
+        let containers_overlap_y = from_container.y < to_container.y + to_container.height
+            && to_container.y < from_container.y + from_container.height;
+        if containers_overlap_y {
+            // Containers are arranged horizontally. Route through the vertical
+            // gap between them: exit → (gap_x, exit.y) → (gap_x, entry.y) → entry.
+            let gap_x = inter_container_lane_x(from_container, to_container, obstacles);
+            points.push((gap_x, exit.1));
+            points.push((gap_x, entry.1));
+        } else {
+            // Containers stacked vertically — direct mid-y channel works.
+            let mid_y = pick_mid_lane(exit.1, entry.1, true, obstacles);
+            points.push((exit.0, mid_y));
+            points.push((entry.0, mid_y));
+        }
+    } else if from_h && to_h {
+        let containers_overlap_x = from_container.x < to_container.x + to_container.width
+            && to_container.x < from_container.x + from_container.width;
+        if containers_overlap_x {
+            let gap_y = inter_container_lane_y(from_container, to_container, obstacles);
+            points.push((exit.0, gap_y));
+            points.push((entry.0, gap_y));
+        } else {
+            let mid_x = pick_mid_lane(exit.0, entry.0, false, obstacles);
+            points.push((mid_x, exit.1));
+            points.push((mid_x, entry.1));
+        }
+    } else if from_v {
+        points.push((entry.0, exit.1));
+    } else if from_h {
+        points.push((exit.0, entry.1));
+    }
+
+    if entry != inner_end {
+        points.push(entry);
+    }
+    points.push(inner_end);
+    simplify_points(points)
+}
+
+/// Pick a clean x-coordinate in the inter-container vertical gap. Falls back
+/// to a midpoint between the two container x-extents if there's no gap.
+fn inter_container_lane_x(a: &Bounds, b: &Bounds, obstacles: &[Bounds]) -> f64 {
+    let (left, right) = if a.x + a.width <= b.x {
+        (a.x + a.width, b.x)
+    } else if b.x + b.width <= a.x {
+        (b.x + b.width, a.x)
+    } else {
+        // Containers overlap on x too — fall back to midpoint of nearest edges.
+        let candidates = [
+            (a.x + a.width).min(b.x + b.width),
+            a.x.max(b.x),
+        ];
+        return (candidates[0] + candidates[1]) / 2.0;
+    };
+    let mid = (left + right) / 2.0;
+    let intersects = |lane: f64| {
+        obstacles.iter().any(|o| {
+            lane > o.x - ROUTE_MARGIN && lane < o.x + o.width + ROUTE_MARGIN
+        })
+    };
+    if !intersects(mid) {
+        return mid;
+    }
+    let mut best = mid;
+    let mut best_dist = f64::MAX;
+    let mut step = 1.0;
+    while left + step < right - step {
+        for cand in [mid - step, mid + step] {
+            if cand > left && cand < right && !intersects(cand) {
+                let d = (cand - mid).abs();
+                if d < best_dist {
+                    best = cand;
+                    best_dist = d;
+                }
+            }
+        }
+        if best_dist < f64::MAX {
+            break;
+        }
+        step *= 2.0;
+    }
+    best
+}
+
+/// Pick a clean y-coordinate in the inter-container horizontal gap.
+fn inter_container_lane_y(a: &Bounds, b: &Bounds, obstacles: &[Bounds]) -> f64 {
+    let (top, bottom) = if a.y + a.height <= b.y {
+        (a.y + a.height, b.y)
+    } else if b.y + b.height <= a.y {
+        (b.y + b.height, a.y)
+    } else {
+        let candidates = [
+            (a.y + a.height).min(b.y + b.height),
+            a.y.max(b.y),
+        ];
+        return (candidates[0] + candidates[1]) / 2.0;
+    };
+    let mid = (top + bottom) / 2.0;
+    let intersects = |lane: f64| {
+        obstacles.iter().any(|o| {
+            lane > o.y - ROUTE_MARGIN && lane < o.y + o.height + ROUTE_MARGIN
+        })
+    };
+    if !intersects(mid) {
+        return mid;
+    }
+    let mut best = mid;
+    let mut best_dist = f64::MAX;
+    let mut step = 1.0;
+    while top + step < bottom - step {
+        for cand in [mid - step, mid + step] {
+            if cand > top && cand < bottom && !intersects(cand) {
+                let d = (cand - mid).abs();
+                if d < best_dist {
+                    best = cand;
+                    best_dist = d;
+                }
+            }
+        }
+        if best_dist < f64::MAX {
+            break;
+        }
+        step *= 2.0;
+    }
+    best
+}
+
+/// Picks the midpoint of an inter-container channel, nudged off obstacle edges
+/// when the naive midpoint would clip an obstacle. `vertical` selects which
+/// axis to scan along.
+fn pick_mid_lane(a: f64, b: f64, vertical: bool, obstacles: &[Bounds]) -> f64 {
+    let mid = (a + b) / 2.0;
+    let intersects = |lane: f64| {
+        obstacles.iter().any(|o| {
+            if vertical {
+                lane > o.y - ROUTE_MARGIN && lane < o.y + o.height + ROUTE_MARGIN
+            } else {
+                lane > o.x - ROUTE_MARGIN && lane < o.x + o.width + ROUTE_MARGIN
+            }
+        })
+    };
+    if !intersects(mid) {
+        return mid;
+    }
+    let lo = a.min(b);
+    let hi = a.max(b);
+    let mut candidates: Vec<f64> = vec![mid];
+    for o in obstacles {
+        if vertical {
+            candidates.push(o.y - ROUTE_MARGIN);
+            candidates.push(o.y + o.height + ROUTE_MARGIN);
+        } else {
+            candidates.push(o.x - ROUTE_MARGIN);
+            candidates.push(o.x + o.width + ROUTE_MARGIN);
+        }
+    }
+    candidates
+        .into_iter()
+        .filter(|lane| *lane >= lo && *lane <= hi && !intersects(*lane))
+        .min_by(|x, y| {
+            ((x - mid).abs())
+                .partial_cmp(&(y - mid).abs())
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .unwrap_or(mid)
+}
+
+fn is_strict_ancestor(id: &str, ancestors: &[&str]) -> bool {
+    ancestors.iter().skip(1).any(|ancestor| id == *ancestor)
+}
+
+fn is_descendant_of_endpoint(id: &str, endpoint: &str) -> bool {
+    id.len() > endpoint.len()
+        && id.starts_with(endpoint)
+        && id.as_bytes()[endpoint.len()] == b'.'
 }
 
 fn route_x_lanes(from: &Bounds, to: &Bounds, margin: f64) -> Vec<f64> {
@@ -2333,7 +2755,7 @@ fn direct_auto_line_is_clean(start: (f64, f64), end: (f64, f64), obstacles: &[Bo
 
 fn build_hv_route(from: &Bounds, to: &Bounds, mid_x: f64) -> Vec<(f64, f64)> {
     let from_anchor = horizontal_anchor_for_lane(from, mid_x);
-    let to_anchor = horizontal_anchor_for_lane(to, mid_x).opposite();
+    let to_anchor = horizontal_anchor_for_lane(to, mid_x);
     let start = from.anchor_pos(from_anchor, to);
     let end = to.anchor_pos(to_anchor, from);
     simplify_points(vec![start, (mid_x, start.1), (mid_x, end.1), end])
@@ -2341,7 +2763,7 @@ fn build_hv_route(from: &Bounds, to: &Bounds, mid_x: f64) -> Vec<(f64, f64)> {
 
 fn build_hv_route_with_escape(from: &Bounds, to: &Bounds, mid_x: f64) -> Vec<(f64, f64)> {
     let from_anchor = horizontal_anchor_for_lane(from, mid_x);
-    let to_anchor = horizontal_anchor_for_lane(to, mid_x).opposite();
+    let to_anchor = horizontal_anchor_for_lane(to, mid_x);
     let start = from.anchor_pos(from_anchor, to);
     let end = to.anchor_pos(to_anchor, from);
     let start_exit = anchor_escape_point(from, from_anchor, start, ROUTE_TERMINAL_MIN);
@@ -2358,7 +2780,7 @@ fn build_hv_route_with_escape(from: &Bounds, to: &Bounds, mid_x: f64) -> Vec<(f6
 
 fn build_vh_route(from: &Bounds, to: &Bounds, mid_y: f64) -> Vec<(f64, f64)> {
     let from_anchor = vertical_anchor_for_lane(from, mid_y);
-    let to_anchor = vertical_anchor_for_lane(to, mid_y).opposite();
+    let to_anchor = vertical_anchor_for_lane(to, mid_y);
     let start = from.anchor_pos(from_anchor, to);
     let end = to.anchor_pos(to_anchor, from);
     simplify_points(vec![start, (start.0, mid_y), (end.0, mid_y), end])
@@ -2366,7 +2788,7 @@ fn build_vh_route(from: &Bounds, to: &Bounds, mid_y: f64) -> Vec<(f64, f64)> {
 
 fn build_vh_route_with_escape(from: &Bounds, to: &Bounds, mid_y: f64) -> Vec<(f64, f64)> {
     let from_anchor = vertical_anchor_for_lane(from, mid_y);
-    let to_anchor = vertical_anchor_for_lane(to, mid_y).opposite();
+    let to_anchor = vertical_anchor_for_lane(to, mid_y);
     let start = from.anchor_pos(from_anchor, to);
     let end = to.anchor_pos(to_anchor, from);
     let start_exit = anchor_escape_point(from, from_anchor, start, ROUTE_TERMINAL_MIN);
@@ -2394,23 +2816,6 @@ fn vertical_anchor_for_lane(bounds: &Bounds, y: f64) -> AnchorPoint {
         AnchorPoint::Top
     } else {
         AnchorPoint::Bottom
-    }
-}
-
-trait AnchorOpposite {
-    fn opposite(self) -> AnchorPoint;
-}
-
-impl AnchorOpposite for AnchorPoint {
-    fn opposite(self) -> AnchorPoint {
-        match self {
-            AnchorPoint::Top => AnchorPoint::Bottom,
-            AnchorPoint::Bottom => AnchorPoint::Top,
-            AnchorPoint::Left => AnchorPoint::Right,
-            AnchorPoint::Right => AnchorPoint::Left,
-            AnchorPoint::Center => AnchorPoint::Center,
-            AnchorPoint::Auto => AnchorPoint::Auto,
-        }
     }
 }
 
@@ -2574,6 +2979,11 @@ fn segment_intersects_bounds(a: (f64, f64), b: (f64, f64), bounds: &Bounds) -> b
 
 fn bounds_contains_point(bounds: &Bounds, x: f64, y: f64) -> bool {
     x >= bounds.x && x <= bounds.x + bounds.width && y >= bounds.y && y <= bounds.y + bounds.height
+}
+
+fn bounds_eq(a: &Bounds, b: &Bounds) -> bool {
+    nearly_eq(a.x, b.x) && nearly_eq(a.y, b.y) && nearly_eq(a.width, b.width)
+        && nearly_eq(a.height, b.height)
 }
 
 fn nearly_eq(a: f64, b: f64) -> bool {
@@ -5369,8 +5779,8 @@ mod tests {
         };
 
         let points = route_orthogonal(&from, &to, &[obstacle]).expect("expected routed path");
-        assert_eq!(points.last().copied(), Some((180.0, 120.0)));
-        assert!(points[points.len() - 2].1 > to.y + to.height);
+        assert_eq!(points.last().copied(), Some((180.0, 80.0)));
+        assert!(points[points.len() - 2].1 < to.y);
     }
 
     #[test]
@@ -5516,7 +5926,7 @@ mod tests {
             points.last().unwrap().1
         ));
         assert!(points[1].1 >= from.y + from.height);
-        assert!(points[points.len() - 2].1 >= to.y + to.height);
+        assert!(points[points.len() - 2].1 <= to.y);
     }
 
     #[test]
@@ -5665,5 +6075,546 @@ mod tests {
 
         assert_eq!(route[0], (180.0, 120.0));
         assert!(route[1].0 > from.x + from.width);
+    }
+
+    #[test]
+    fn orthogonal_hv_route_enters_target_side_facing_lane() {
+        let left = Bounds {
+            x: 0.0,
+            y: 80.0,
+            width: 40.0,
+            height: 40.0,
+        };
+        let right = Bounds {
+            x: 160.0,
+            y: 80.0,
+            width: 40.0,
+            height: 40.0,
+        };
+
+        let left_to_right = build_hv_route(&left, &right, 100.0);
+        assert_eq!(left_to_right.last().copied(), Some((160.0, 100.0)));
+        assert_eq!(
+            left_to_right[left_to_right.len() - 2],
+            (100.0, 100.0)
+        );
+
+        let right_to_left = build_hv_route(&right, &left, 100.0);
+        assert_eq!(right_to_left.last().copied(), Some((40.0, 100.0)));
+        assert_eq!(
+            right_to_left[right_to_left.len() - 2],
+            (100.0, 100.0)
+        );
+    }
+
+    #[test]
+    fn orthogonal_vh_route_enters_target_side_facing_lane() {
+        let top = Bounds {
+            x: 80.0,
+            y: 0.0,
+            width: 40.0,
+            height: 40.0,
+        };
+        let bottom = Bounds {
+            x: 80.0,
+            y: 160.0,
+            width: 40.0,
+            height: 40.0,
+        };
+
+        let top_to_bottom = build_vh_route(&top, &bottom, 100.0);
+        assert_eq!(top_to_bottom.last().copied(), Some((100.0, 160.0)));
+        assert_eq!(
+            top_to_bottom[top_to_bottom.len() - 2],
+            (100.0, 100.0)
+        );
+
+        let bottom_to_top = build_vh_route(&bottom, &top, 100.0);
+        assert_eq!(bottom_to_top.last().copied(), Some((100.0, 40.0)));
+        assert_eq!(
+            bottom_to_top[bottom_to_top.len() - 2],
+            (100.0, 100.0)
+        );
+    }
+
+    #[test]
+    fn intrinsic_size_of_layered_container_accounts_for_stacked_children() {
+        let mut container = shape("container", 0.0, 0.0);
+        container.width = None;
+        container.height = None;
+        container.align = Alignment::Layered;
+        container.gap = 20.0;
+        container.children = vec![
+            shape("a", 100.0, 30.0),
+            shape("b", 100.0, 30.0),
+            shape("c", 100.0, 30.0),
+            shape("d", 100.0, 30.0),
+            shape("e", 100.0, 30.0),
+        ];
+        let connections = vec![
+            connection("container.a", "container.b"),
+            connection("container.b", "container.c"),
+            connection("container.c", "container.d"),
+            connection("container.d", "container.e"),
+        ];
+
+        let (w, h) = intrinsic_graph_container_size(&container, &connections)
+            .expect("container should yield intrinsic size");
+        assert!(
+            h >= 5.0 * 30.0 + 4.0 * 20.0,
+            "expected intrinsic height ≥ 230, got {h}"
+        );
+        assert!(w >= 100.0, "expected intrinsic width ≥ 100, got {w}");
+    }
+
+    #[test]
+    fn nested_horizontal_layered_containers_do_not_overlap() {
+        let mut frontend = shape("frontend", 0.0, 0.0);
+        frontend.width = None;
+        frontend.height = None;
+        frontend.align = Alignment::Layered;
+        frontend.gap = 20.0;
+        frontend.children = vec![
+            shape("fe_a", 100.0, 40.0),
+            shape("fe_b", 100.0, 40.0),
+            shape("fe_c", 100.0, 40.0),
+        ];
+
+        let mut backend = shape("backend", 0.0, 0.0);
+        backend.width = None;
+        backend.height = None;
+        backend.align = Alignment::Layered;
+        backend.gap = 20.0;
+        backend.children = vec![
+            shape("be_a", 100.0, 40.0),
+            shape("be_b", 100.0, 40.0),
+            shape("be_c", 100.0, 40.0),
+            shape("be_d", 100.0, 40.0),
+        ];
+
+        let mut data = shape("data", 0.0, 0.0);
+        data.width = None;
+        data.height = None;
+        data.align = Alignment::Layered;
+        data.attrs
+            .insert("direction".to_string(), "horizontal".to_string());
+        data.gap = 20.0;
+        data.children = vec![
+            shape("d_a", 100.0, 40.0),
+            shape("d_b", 100.0, 40.0),
+            shape("d_c", 100.0, 40.0),
+        ];
+
+        let mut diagram = Diagram {
+            id: None,
+            width: 1200.0,
+            height: 600.0,
+            shapes: vec![frontend, backend, data],
+            connections: vec![
+                connection("frontend.fe_a", "frontend.fe_b"),
+                connection("frontend.fe_b", "frontend.fe_c"),
+                connection("backend.be_a", "backend.be_b"),
+                connection("backend.be_b", "backend.be_c"),
+                connection("backend.be_c", "backend.be_d"),
+                connection("data.d_a", "data.d_b"),
+                connection("data.d_b", "data.d_c"),
+            ],
+            classes: IndexMap::new(),
+            padding: 0.0,
+            align: Alignment::Layered,
+            gap: 24.0,
+            options: {
+                let mut opts = IndexMap::new();
+                opts.insert("direction".to_string(), "horizontal".to_string());
+                opts
+            },
+        };
+
+        render_diagram_svg(&mut diagram);
+
+        let frontend = &diagram.shapes[0];
+        let backend = &diagram.shapes[1];
+        let data = &diagram.shapes[2];
+        assert!(
+            !overlaps(frontend, backend),
+            "frontend overlaps backend: f={:?} b={:?}",
+            frontend.resolved,
+            backend.resolved
+        );
+        assert!(
+            !overlaps(backend, data),
+            "backend overlaps data: b={:?} d={:?}",
+            backend.resolved,
+            data.resolved
+        );
+        assert!(
+            !overlaps(frontend, data),
+            "frontend overlaps data: f={:?} d={:?}",
+            frontend.resolved,
+            data.resolved
+        );
+
+        for container in [frontend, backend, data] {
+            for child in container
+                .children
+                .iter()
+                .filter(|c| !is_layout_decoration(c))
+            {
+                assert!(
+                    child.resolved.x + child.resolved.width <= container.resolved.width + 0.01,
+                    "child {:?} overflows container width {}",
+                    child.id,
+                    container.resolved.width
+                );
+                assert!(
+                    child.resolved.y + child.resolved.height <= container.resolved.height + 0.01,
+                    "child {:?} overflows container height {}",
+                    child.id,
+                    container.resolved.height
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn cross_container_edge_routes_around_sibling_container() {
+        let mut shape_map = HashMap::new();
+        shape_map.insert(
+            "a".to_string(),
+            Bounds {
+                x: 0.0,
+                y: 100.0,
+                width: 120.0,
+                height: 200.0,
+            },
+        );
+        shape_map.insert(
+            "a.x".to_string(),
+            Bounds {
+                x: 20.0,
+                y: 200.0,
+                width: 60.0,
+                height: 30.0,
+            },
+        );
+        shape_map.insert(
+            "b".to_string(),
+            Bounds {
+                x: 200.0,
+                y: 100.0,
+                width: 120.0,
+                height: 200.0,
+            },
+        );
+        shape_map.insert(
+            "b.y".to_string(),
+            Bounds {
+                x: 220.0,
+                y: 200.0,
+                width: 60.0,
+                height: 30.0,
+            },
+        );
+        shape_map.insert(
+            "c".to_string(),
+            Bounds {
+                x: 400.0,
+                y: 100.0,
+                width: 120.0,
+                height: 200.0,
+            },
+        );
+        shape_map.insert(
+            "c.z".to_string(),
+            Bounds {
+                x: 420.0,
+                y: 200.0,
+                width: 60.0,
+                height: 30.0,
+            },
+        );
+
+        let conn = connection("a.x", "c.z");
+        let mut svg = String::new();
+        render_connection_svg(&conn, &shape_map, &mut svg);
+
+        assert!(svg.contains("<path"), "expected elbow path, got {svg}");
+        let b_bounds = shape_map["b"];
+        let path_d = svg
+            .split("d=\"")
+            .nth(1)
+            .and_then(|s| s.split('"').next())
+            .expect("path d attribute");
+        let coords: Vec<(f64, f64)> = path_d
+            .split(|c: char| !c.is_ascii_digit() && c != '.' && c != '-')
+            .filter(|s| !s.is_empty())
+            .filter_map(|s| s.parse::<f64>().ok())
+            .collect::<Vec<_>>()
+            .chunks(2)
+            .filter(|w| w.len() == 2)
+            .map(|w| (w[0], w[1]))
+            .collect();
+        assert!(coords.len() >= 3);
+        for window in coords.windows(2) {
+            let (sx, sy) = window[0];
+            let (ex, ey) = window[1];
+            // No segment may pass through `b`'s interior.
+            assert!(
+                !segment_intersects_obstacle((sx, sy), (ex, ey), &b_bounds),
+                "segment ({sx},{sy})->({ex},{ey}) crosses obstacle b={:?}",
+                b_bounds
+            );
+        }
+    }
+
+    #[test]
+    fn cross_container_obstacles_include_destination_sibling_children() {
+        let backend = Bounds {
+            x: 440.0,
+            y: 100.0,
+            width: 260.0,
+            height: 475.0,
+        };
+        let data_svc = Bounds {
+            x: 530.0,
+            y: 405.0,
+            width: 105.0,
+            height: 45.0,
+        };
+        let data_layer = Bounds {
+            x: 745.0,
+            y: 198.0,
+            width: 295.0,
+            height: 206.0,
+        };
+        let postgres = Bounds {
+            x: 905.0,
+            y: 230.0,
+            width: 107.0,
+            height: 44.0,
+        };
+        let redis = Bounds {
+            x: 760.0,
+            y: 230.0,
+            width: 120.0,
+            height: 50.0,
+        };
+        let kafka = Bounds {
+            x: 760.0,
+            y: 313.0,
+            width: 120.0,
+            height: 50.0,
+        };
+
+        let mut shape_map = HashMap::new();
+        shape_map.insert("backend".to_string(), backend);
+        shape_map.insert("backend.be_data_svc".to_string(), data_svc);
+        shape_map.insert("data_layer".to_string(), data_layer);
+        shape_map.insert("data_layer.dl_postgres".to_string(), postgres);
+        shape_map.insert("data_layer.dl_cache".to_string(), redis);
+        shape_map.insert("data_layer.dl_stream".to_string(), kafka);
+
+        let obstacles = connection_obstacles(
+            "backend.be_data_svc",
+            "data_layer.dl_postgres",
+            data_svc.x + data_svc.width,
+            data_svc.y + data_svc.height / 2.0,
+            postgres.x,
+            postgres.y + postgres.height / 2.0,
+            &shape_map,
+        );
+
+        assert!(contains_bounds(&obstacles, &redis));
+        assert!(contains_bounds(&obstacles, &kafka));
+        assert!(!contains_bounds(&obstacles, &backend));
+        assert!(!contains_bounds(&obstacles, &data_layer));
+        assert!(!contains_bounds(&obstacles, &data_svc));
+        assert!(!contains_bounds(&obstacles, &postgres));
+    }
+
+    #[test]
+    fn cross_container_edge_routes_around_destination_sibling_children() {
+        let mut shape_map = HashMap::new();
+        shape_map.insert(
+            "backend".to_string(),
+            Bounds {
+                x: 440.0,
+                y: 100.0,
+                width: 260.0,
+                height: 475.0,
+            },
+        );
+        shape_map.insert(
+            "backend.be_data_svc".to_string(),
+            Bounds {
+                x: 530.0,
+                y: 405.0,
+                width: 105.0,
+                height: 45.0,
+            },
+        );
+        shape_map.insert(
+            "data_layer".to_string(),
+            Bounds {
+                x: 745.0,
+                y: 198.0,
+                width: 295.0,
+                height: 206.0,
+            },
+        );
+        shape_map.insert(
+            "data_layer.dl_cache".to_string(),
+            Bounds {
+                x: 760.0,
+                y: 230.0,
+                width: 120.0,
+                height: 50.0,
+            },
+        );
+        shape_map.insert(
+            "data_layer.dl_postgres".to_string(),
+            Bounds {
+                x: 905.0,
+                y: 230.0,
+                width: 107.0,
+                height: 44.0,
+            },
+        );
+        shape_map.insert(
+            "data_layer.dl_stream".to_string(),
+            Bounds {
+                x: 760.0,
+                y: 313.0,
+                width: 120.0,
+                height: 50.0,
+            },
+        );
+
+        let conn = connection("backend.be_data_svc", "data_layer.dl_postgres");
+        let mut svg = String::new();
+        render_connection_svg(&conn, &shape_map, &mut svg);
+
+        assert!(svg.contains("<path"), "expected elbow path, got {svg}");
+        let coords = path_coords(&svg);
+        assert!(coords.len() >= 3);
+        for obstacle in [&shape_map["data_layer.dl_cache"], &shape_map["data_layer.dl_stream"]] {
+            for window in coords.windows(2) {
+                assert!(
+                    !segment_intersects_obstacle(window[0], window[1], obstacle),
+                    "segment {:?}->{:?} crosses obstacle {:?}; svg={svg}",
+                    window[0],
+                    window[1],
+                    obstacle
+                );
+            }
+        }
+    }
+
+    fn segment_intersects_obstacle(s: (f64, f64), e: (f64, f64), b: &Bounds) -> bool {
+        // Trivial axis-aligned segment / rect overlap test for orthogonal routes.
+        let xmin = s.0.min(e.0);
+        let xmax = s.0.max(e.0);
+        let ymin = s.1.min(e.1);
+        let ymax = s.1.max(e.1);
+        let bxmin = b.x;
+        let bxmax = b.x + b.width;
+        let bymin = b.y;
+        let bymax = b.y + b.height;
+        let overlap_x = xmax > bxmin && xmin < bxmax;
+        let overlap_y = ymax > bymin && ymin < bymax;
+        overlap_x && overlap_y
+    }
+
+    fn contains_bounds(bounds: &[Bounds], needle: &Bounds) -> bool {
+        bounds.iter().any(|bounds| bounds_eq(bounds, needle))
+    }
+
+    fn path_coords(svg: &str) -> Vec<(f64, f64)> {
+        let path_d = svg
+            .split("d=\"")
+            .nth(1)
+            .and_then(|s| s.split('"').next())
+            .expect("path d attribute");
+        path_d
+            .split(|c: char| !c.is_ascii_digit() && c != '.' && c != '-')
+            .filter(|s| !s.is_empty())
+            .filter_map(|s| s.parse::<f64>().ok())
+            .collect::<Vec<_>>()
+            .chunks(2)
+            .filter(|w| w.len() == 2)
+            .map(|w| (w[0], w[1]))
+            .collect()
+    }
+
+    #[test]
+    fn cross_container_edge_with_anchors_exits_via_container_boundary() {
+        let mut shape_map = HashMap::new();
+        shape_map.insert(
+            "frontend".to_string(),
+            Bounds {
+                x: 0.0,
+                y: 0.0,
+                width: 200.0,
+                height: 200.0,
+            },
+        );
+        shape_map.insert(
+            "frontend.api".to_string(),
+            Bounds {
+                x: 30.0,
+                y: 150.0,
+                width: 80.0,
+                height: 30.0,
+            },
+        );
+        shape_map.insert(
+            "backend".to_string(),
+            Bounds {
+                x: 360.0,
+                y: 0.0,
+                width: 200.0,
+                height: 200.0,
+            },
+        );
+        shape_map.insert(
+            "backend.gateway".to_string(),
+            Bounds {
+                x: 380.0,
+                y: 30.0,
+                width: 80.0,
+                height: 30.0,
+            },
+        );
+
+        let mut conn = connection("frontend.api", "backend.gateway");
+        conn.from_anchor = AnchorPoint::Right;
+        conn.to_anchor = AnchorPoint::Left;
+        let mut svg = String::new();
+        render_connection_svg(&conn, &shape_map, &mut svg);
+
+        assert!(svg.contains("<path"), "expected path output, got {svg}");
+        // The path should include a vertex on frontend's right edge (x=200) and on
+        // backend's left edge (x=360).
+        let path_d = svg
+            .split("d=\"")
+            .nth(1)
+            .and_then(|s| s.split('"').next())
+            .expect("path d attribute");
+        let xs: Vec<f64> = path_d
+            .split(|c: char| !c.is_ascii_digit() && c != '.' && c != '-')
+            .filter(|s| !s.is_empty())
+            .filter_map(|s| s.parse::<f64>().ok())
+            .enumerate()
+            .filter(|(i, _)| i % 2 == 0)
+            .map(|(_, v)| v)
+            .collect();
+        assert!(
+            xs.iter().any(|x| (*x - 200.0).abs() < 0.01),
+            "no vertex on frontend right edge: xs={xs:?}"
+        );
+        assert!(
+            xs.iter().any(|x| (*x - 360.0).abs() < 0.01),
+            "no vertex on backend left edge: xs={xs:?}"
+        );
     }
 }

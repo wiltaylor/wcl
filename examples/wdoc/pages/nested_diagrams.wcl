@@ -243,8 +243,6 @@ page nested_diagrams {
                         from = "frontend.fe_api_client"
                         to = "backend.be_gateway"
                         direction = "to"
-                        from_anchor = "bottom"
-                        to_anchor = "top"
                         stroke = color_link
                         stroke_width = 3
                         label = "REST"
@@ -253,8 +251,6 @@ page nested_diagrams {
                         from = "backend.be_data_svc"
                         to = "data_layer.dl_postgres"
                         direction = "both"
-                        from_anchor = "bottom"
-                        to_anchor = "top"
                         stroke = color_text
                         stroke_width = 2
                         label = "read/write"
@@ -263,8 +259,6 @@ page nested_diagrams {
                         from = "backend.be_event"
                         to = "data_layer.dl_stream"
                         direction = "to"
-                        from_anchor = "bottom"
-                        to_anchor = "top"
                         stroke = color_text
                         stroke_dasharray = "5,3"
                         label = "events"
@@ -273,8 +267,6 @@ page nested_diagrams {
                         from = "backend.be_user_svc"
                         to = "response"
                         direction = "to"
-                        from_anchor = "bottom"
-                        to_anchor = "top"
                         stroke = color_success
                         stroke_width = 2
                     }
