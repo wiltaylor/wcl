@@ -327,7 +327,8 @@ pub fn render_diagram_svg(diagram: &mut Diagram) -> String {
         .filter(|css| !css.trim().is_empty())
         .collect::<Vec<_>>()
         .join("\n");
-    let needs_runtime = diagram_has_events(diagram);
+    let pan_zoom = diagram_pan_zoom_enabled(diagram);
+    let needs_runtime = diagram_has_events(diagram) || pan_zoom;
     if needs_runtime {
         mark_runtime_shapes(&mut diagram.shapes);
     }
@@ -342,22 +343,41 @@ pub fn render_diagram_svg(diagram: &mut Diagram) -> String {
         };
         Some((scope_id, scoped))
     };
+    let pan_zoom_attrs = if pan_zoom {
+        " data-wdoc-pan-zoom=\"true\" data-wdoc-pan-zoom-min=\"0.25\" data-wdoc-pan-zoom-max=\"8\" style=\"cursor: grab; touch-action: none; user-select: none;\""
+    } else {
+        ""
+    };
+    let wrapper_attrs = if pan_zoom {
+        " style=\"position: relative; display: inline-block;\""
+    } else {
+        ""
+    };
+    let pan_zoom_controls = if pan_zoom {
+        "<div class=\"wdoc-diagram-pan-zoom-controls\" data-wdoc-pan-zoom-controls=\"true\" style=\"position: absolute; top: 8px; left: 8px; z-index: 1; display: flex; gap: 4px; background: rgba(13, 17, 23, 0.76); border: 1px solid rgba(148, 163, 184, 0.45); border-radius: 6px; padding: 4px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.22);\">\
+         <button type=\"button\" data-wdoc-pan-zoom-control=\"in\" aria-label=\"Zoom in\" title=\"Zoom in\" style=\"width: 28px; height: 28px; border: 0; border-radius: 4px; background: #f8fafc; color: #0f172a; font: 600 16px/1 system-ui, sans-serif; cursor: pointer;\">+</button>\
+         <button type=\"button\" data-wdoc-pan-zoom-control=\"out\" aria-label=\"Zoom out\" title=\"Zoom out\" style=\"width: 28px; height: 28px; border: 0; border-radius: 4px; background: #f8fafc; color: #0f172a; font: 600 16px/1 system-ui, sans-serif; cursor: pointer;\">-</button>\
+         <button type=\"button\" data-wdoc-pan-zoom-control=\"reset\" aria-label=\"Reset zoom\" title=\"Reset zoom\" style=\"height: 28px; border: 0; border-radius: 4px; background: #f8fafc; color: #0f172a; font: 600 12px/1 system-ui, sans-serif; cursor: pointer; padding: 0 8px;\">Reset</button>\
+         </div>"
+    } else {
+        ""
+    };
     if let Some((scope_id, _)) = &scoped_css {
         let scope_id = svg_escape_attr(scope_id);
         write!(
             svg,
-            "<div class=\"wdoc-diagram\">\
+            "<div class=\"wdoc-diagram\"{wrapper_attrs}>{pan_zoom_controls}\
              <svg xmlns=\"http://www.w3.org/2000/svg\" id=\"{scope_id}\"{class_attr} \
-             width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">",
+             width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\"{pan_zoom_attrs}>",
             diagram.width, diagram.height, diagram.width, diagram.height
         )
         .unwrap();
     } else {
         write!(
             svg,
-            "<div class=\"wdoc-diagram\">\
+            "<div class=\"wdoc-diagram\"{wrapper_attrs}>{pan_zoom_controls}\
              <svg xmlns=\"http://www.w3.org/2000/svg\"{class_attr} \
-             width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">",
+             width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\"{pan_zoom_attrs}>",
             diagram.width, diagram.height, diagram.width, diagram.height
         )
         .unwrap();
@@ -645,6 +665,14 @@ fn state_class_name(state: &str) -> String {
 
 fn diagram_has_events(diagram: &Diagram) -> bool {
     diagram.shapes.iter().any(shape_needs_runtime)
+}
+
+fn diagram_pan_zoom_enabled(diagram: &Diagram) -> bool {
+    diagram
+        .options
+        .get("mode")
+        .map(|mode| matches!(mode.trim(), "pan_zoom" | "pan-zoom"))
+        .unwrap_or(false)
 }
 
 fn shape_needs_runtime(shape: &ShapeNode) -> bool {
@@ -3238,11 +3266,15 @@ function setBox(el,b){var tag=el.tagName.toLowerCase(),base={x:parseFloat(el.get
 function boxFor(svg,id){var el=svg.querySelector('[data-wdoc-id="'+attrEscape(id)+'"]');if(!el)return null;return el.__wdocBox||baseBox(el);}
 function anchor(b,a,o){var cx=b.x+b.width/2,cy=b.y+b.height/2,ox=o?o.x+o.width/2:cx,oy=o?o.y+o.height/2:cy,dx=ox-cx,dy=oy-cy;if(a==='top')return{x:cx,y:b.y};if(a==='bottom')return{x:cx,y:b.y+b.height};if(a==='left')return{x:b.x,y:cy};if(a==='right')return{x:b.x+b.width,y:cy};if(a==='center')return{x:cx,y:cy};return Math.abs(dx)>Math.abs(dy)?(dx>0?{x:b.x+b.width,y:cy}:{x:b.x,y:cy}):(dy>0?{x:cx,y:b.y+b.height}:{x:cx,y:b.y});}
 function updateConnections(svg){if(!svg)return;Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-conn-from]'),function(c){var fb=boxFor(svg,c.getAttribute('data-wdoc-conn-from')),tb=boxFor(svg,c.getAttribute('data-wdoc-conn-to'));if(!fb||!tb)return;var a=anchor(fb,c.getAttribute('data-wdoc-conn-from-anchor'),tb),b=anchor(tb,c.getAttribute('data-wdoc-conn-to-anchor'),fb);if(c.tagName.toLowerCase()==='line'){c.setAttribute('x1',a.x);c.setAttribute('y1',a.y);c.setAttribute('x2',b.x);c.setAttribute('y2',b.y);}else if(c.getAttribute('data-wdoc-conn-curve')==='bezier'){var dx=Math.abs(b.x-a.x)/2;c.setAttribute('d','M '+a.x+' '+a.y+' C '+(a.x+dx)+' '+a.y+', '+(b.x-dx)+' '+b.y+', '+b.x+' '+b.y);}else{c.setAttribute('d','M '+a.x+' '+a.y+' L '+b.x+' '+b.y);}});}
+function parseViewBox(svg){var v=(svg.getAttribute('viewBox')||'0 0 0 0').trim().split(/[\s,]+/).map(function(n){return parseFloat(n)||0;});return{x:v[0]||0,y:v[1]||0,width:v[2]||0,height:v[3]||0};}
+function setViewBox(svg,b){svg.setAttribute('viewBox',[b.x,b.y,b.width,b.height].join(' '));}
+function svgPoint(svg,clientX,clientY){var r=svg.getBoundingClientRect(),v=parseViewBox(svg),w=r.width||1,h=r.height||1;return{x:v.x+((clientX-r.left)/w)*v.width,y:v.y+((clientY-r.top)/h)*v.height};}
+function initPanZoom(svg){if(!svg||svg.getAttribute('data-wdoc-pan-zoom')!=='true'||svg.__wdocPanZoomBound)return;svg.__wdocPanZoomBound=true;var home=parseViewBox(svg),min=parseFloat(svg.getAttribute('data-wdoc-pan-zoom-min')||'0.25')||0.25,max=parseFloat(svg.getAttribute('data-wdoc-pan-zoom-max')||'8')||8,drag=null;function zoomTo(next,p){var v=parseViewBox(svg),current=home.width/v.width;next=Math.max(min,Math.min(max,next));var scale=current/next,nw=v.width*scale,nh=v.height*scale,nx=p.x-(p.x-v.x)*scale,ny=p.y-(p.y-v.y)*scale;setViewBox(svg,{x:nx,y:ny,width:nw,height:nh});}function zoomAt(e){e.preventDefault();var v=parseViewBox(svg),current=home.width/v.width;zoomTo(current*Math.exp(-e.deltaY*0.001),svgPoint(svg,e.clientX,e.clientY));}function zoomBy(factor){var v=parseViewBox(svg);zoomTo((home.width/v.width)*factor,{x:v.x+v.width/2,y:v.y+v.height/2});}svg.addEventListener('wheel',zoomAt,{passive:false});svg.addEventListener('pointerdown',function(e){if(e.button!==0)return;drag={x:e.clientX,y:e.clientY,view:parseViewBox(svg)};svg.setPointerCapture&&svg.setPointerCapture(e.pointerId);svg.style.cursor='grabbing';});svg.addEventListener('pointermove',function(e){if(!drag)return;e.preventDefault();var r=svg.getBoundingClientRect(),dx=(e.clientX-drag.x)/(r.width||1)*drag.view.width,dy=(e.clientY-drag.y)/(r.height||1)*drag.view.height;setViewBox(svg,{x:drag.view.x-dx,y:drag.view.y-dy,width:drag.view.width,height:drag.view.height});});function endDrag(e){if(!drag)return;drag=null;svg.releasePointerCapture&&svg.releasePointerCapture(e.pointerId);svg.style.cursor='grab';}svg.addEventListener('pointerup',endDrag);svg.addEventListener('pointercancel',endDrag);svg.addEventListener('dblclick',function(e){e.preventDefault();setViewBox(svg,home);});var wrap=svg.parentNode;if(wrap)Array.prototype.forEach.call(wrap.querySelectorAll('[data-wdoc-pan-zoom-control]'),function(btn){btn.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();var action=btn.getAttribute('data-wdoc-pan-zoom-control');if(action==='in')zoomBy(1.25);else if(action==='out')zoomBy(0.8);else setViewBox(svg,home);});});}
 function ease(t,fn){if(fn==='linear')return t;if(fn==='ease-in')return t*t;if(fn==='ease-out')return 1-Math.pow(1-t,2);if(fn==='ease-in-out')return t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;return t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;}
 function frameValue(frames,p,prop,base){var prev=frames[0],next=frames[frames.length-1];frames.forEach(function(f){if(f.offset<=p)prev=f;if(f.offset>=p&&next.offset<p)next=f;});for(var i=0;i<frames.length;i++){if(frames[i].offset>=p){next=frames[i];break;}}var a=prev[prop];if(a==null)a=base[prop];var b=next[prop];if(b==null)b=a;if(next.offset===prev.offset)return b;var t=(p-prev.offset)/(next.offset-prev.offset);return a+(b-a)*t;}
 function startStateAnimation(el,state){var map=parseStateAnimations(el),name=map[state];if(!name)return;var anim=parseAnimations(el)[name];if(!anim||!anim.keyframes.length)return;if(el.__wdocAnim)cancelAnimationFrame(el.__wdocAnim.raf);var base=baseBox(el),start=performance.now()+anim.delay,loops=anim.iteration==='infinite'?Infinity:Math.max(1,parseFloat(anim.iteration)||1);function tick(now){if(now<start){el.__wdocAnim={raf:requestAnimationFrame(tick)};return;}var elapsed=now-start,idx=Math.floor(elapsed/anim.duration),done=idx>=loops,raw=done?1:(elapsed%anim.duration)/anim.duration;if(anim.direction==='reverse'||(anim.direction==='alternate'&&idx%2===1))raw=1-raw;var pct=ease(raw,anim.timing)*100;var b={x:frameValue(anim.keyframes,pct,'x',base),y:frameValue(anim.keyframes,pct,'y',base),width:frameValue(anim.keyframes,pct,'width',base),height:frameValue(anim.keyframes,pct,'height',base)};setBox(el,b);if(done){if(anim.fill!=='forwards'&&anim.fill!=='both')setBox(el,base);return;}el.__wdocAnim={raf:requestAnimationFrame(tick)};}el.__wdocAnim={raf:requestAnimationFrame(tick)};}
 function stopStateAnimation(el,state){var map=parseStateAnimations(el);if(!map[state]||!el.__wdocAnim)return;cancelAnimationFrame(el.__wdocAnim.raf);el.__wdocAnim=null;setBox(el,baseBox(el));}
-function init(root){(root||document).querySelectorAll('svg').forEach(function(svg){Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-id]'),function(el,i){if(el.__wdocBound)return;el.__wdocBound=true;if(!el.hasAttribute('data-wdoc-order'))el.setAttribute('data-wdoc-order',String(i));parseEvents(el).forEach(function(cfg){var mode=cfg.mode||defaultMode(cfg.trigger),down=eventName(cfg.trigger,false),up=eventName(cfg.trigger,true);el.addEventListener(down,function(e){if(cfg.trigger==='mouse_down'&&!buttonOk(e,cfg.button))return;if(cfg.prevent)e.preventDefault();if(cfg.trigger==='mouse_leave'&&mode==='remove'&&guardedTo(svg,e.relatedTarget,cfg.guard))return;var t=target(svg,el,cfg.target);if(!t)return;if(mode==='toggle')t.classList.contains(stateClass(cfg.state))?remove(t,cfg.state):add(t,cfg.state);else if(mode==='remove')remove(t,cfg.state);else if(mode==='pulse'){add(t,cfg.state);setTimeout(function(){remove(t,cfg.state);},cfg.duration||180);}else add(t,cfg.state);});if(mode==='while'&&(cfg.trigger==='hover'||cfg.trigger==='mouse_down'))el.addEventListener(up,function(){var t=target(svg,el,cfg.target);if(t)remove(t,cfg.state);});});});});}
+function init(root){(root||document).querySelectorAll('svg').forEach(function(svg){initPanZoom(svg);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-id]'),function(el,i){if(el.__wdocBound)return;el.__wdocBound=true;if(!el.hasAttribute('data-wdoc-order'))el.setAttribute('data-wdoc-order',String(i));parseEvents(el).forEach(function(cfg){var mode=cfg.mode||defaultMode(cfg.trigger),down=eventName(cfg.trigger,false),up=eventName(cfg.trigger,true);el.addEventListener(down,function(e){if(cfg.trigger==='mouse_down'&&!buttonOk(e,cfg.button))return;if(cfg.prevent)e.preventDefault();if(cfg.trigger==='mouse_leave'&&mode==='remove'&&guardedTo(svg,e.relatedTarget,cfg.guard))return;var t=target(svg,el,cfg.target);if(!t)return;if(mode==='toggle')t.classList.contains(stateClass(cfg.state))?remove(t,cfg.state):add(t,cfg.state);else if(mode==='remove')remove(t,cfg.state);else if(mode==='pulse'){add(t,cfg.state);setTimeout(function(){remove(t,cfg.state);},cfg.duration||180);}else add(t,cfg.state);});if(mode==='while'&&(cfg.trigger==='hover'||cfg.trigger==='mouse_down'))el.addEventListener(up,function(){var t=target(svg,el,cfg.target);if(t)remove(t,cfg.state);});});});});}
 window.__wdocDiagramRuntimeInit=init;var s=document.currentScript;if(s&&s.parentNode)init(s.parentNode);if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){init(document);});else init(document);
 })();"#.to_string()
 }
@@ -4911,6 +4943,59 @@ mod tests {
         let svg = render_diagram_svg(&mut diagram);
         assert!(!svg.contains("id=\"wdoc-diagram-plain\""));
         assert!(!svg.contains("<style>"));
+    }
+
+    #[test]
+    fn pan_zoom_diagram_emits_runtime_metadata_and_script() {
+        let mut options = IndexMap::new();
+        options.insert("mode".to_string(), "pan_zoom".to_string());
+        let mut diagram = Diagram {
+            id: Some("huge_graph".to_string()),
+            width: 120.0,
+            height: 60.0,
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options,
+            classes: IndexMap::new(),
+            shapes: vec![shape("box", 100.0, 40.0)],
+            connections: vec![],
+        };
+
+        let svg = render_diagram_svg(&mut diagram);
+        assert!(svg.contains("id=\"wdoc-diagram-huge-graph\""));
+        assert!(svg.contains("data-wdoc-pan-zoom=\"true\""));
+        assert!(svg.contains("data-wdoc-pan-zoom-min=\"0.25\""));
+        assert!(svg.contains("data-wdoc-pan-zoom-max=\"8\""));
+        assert!(svg.contains("data-wdoc-pan-zoom-controls=\"true\""));
+        assert!(svg.contains("data-wdoc-pan-zoom-control=\"in\""));
+        assert!(svg.contains("data-wdoc-pan-zoom-control=\"out\""));
+        assert!(svg.contains("data-wdoc-pan-zoom-control=\"reset\""));
+        assert!(svg.contains("<script>"));
+        assert!(svg.contains("initPanZoom"));
+        assert!(svg.contains("zoomBy"));
+        assert!(svg.contains("wheel"));
+    }
+
+    #[test]
+    fn static_diagram_does_not_emit_pan_zoom_runtime() {
+        let mut diagram = Diagram {
+            id: Some("plain".to_string()),
+            width: 120.0,
+            height: 60.0,
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+            classes: IndexMap::new(),
+            shapes: vec![shape("box", 100.0, 40.0)],
+            connections: vec![],
+        };
+
+        let svg = render_diagram_svg(&mut diagram);
+        assert!(!svg.contains("data-wdoc-pan-zoom"));
+        assert!(!svg.contains("data-wdoc-pan-zoom-control"));
+        assert!(!svg.contains("<script>"));
     }
 
     #[test]

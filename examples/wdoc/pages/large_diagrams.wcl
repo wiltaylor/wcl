@@ -547,5 +547,74 @@ page large_diagrams {
                 }
             }
         }
+
+        // Huge pan/zoom graph
+        vsplit v_lg5 {
+            split s_lg5 {
+                size = 100
+
+                heading hlg5 {
+                    level = 2
+                    content = "Huge Pan/Zoom Graph (120 nodes)"
+                }
+                paragraph plg5 { content = "This diagram uses <code>mode = \"pan_zoom\"</code> so dense graphs can be explored without shrinking every node into the initial viewport." }
+
+                diagram huge_pan_zoom_graph {
+                    width = 900
+                    height = 560
+                    mode = "pan_zoom"
+
+                    for row in range(0, 10) {
+                        for col in range(0, 12) {
+                            rect n-${row}-${col} {
+                                x = 40 + col * 170
+                                y = 40 + row * 110
+                                width = 118
+                                height = 48
+                                rx = 7
+                                fill = (row + col) % 5 == 0 ? color_nav_active : color_code_bg
+                                stroke = (row + col) % 5 == 0 ? color_link : color_code_border
+                                stroke_width = 1.5
+                                text t-${row}-${col} {
+                                    content = "svc-${row}-${col}"
+                                    font_size = 12
+                                }
+                            }
+
+                            if col < 11 {
+                                connection h-${row}-${col} {
+                                    from = "n-${row}-${col}"
+                                    to = "n-${row}-${col + 1}"
+                                    direction = "to"
+                                    stroke = color_text
+                                    stroke_width = 1
+                                }
+                            }
+
+                            if row < 9 {
+                                connection v-${row}-${col} {
+                                    from = "n-${row}-${col}"
+                                    to = "n-${row + 1}-${col}"
+                                    direction = "to"
+                                    stroke = color_nav_border
+                                    stroke_width = 1
+                                }
+                            }
+
+                            if row < 9 && col < 11 && (row + col) % 4 == 0 {
+                                connection diag-${row}-${col} {
+                                    from = "n-${row}-${col}"
+                                    to = "n-${row + 1}-${col + 1}"
+                                    direction = "to"
+                                    stroke = color_link
+                                    stroke_width = 1
+                                    stroke_dasharray = "5,3"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }

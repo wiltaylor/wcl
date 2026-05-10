@@ -43,6 +43,7 @@ page wdoc_drawing_overview {
                     rows = [
                         { attr = "width",   description = "Canvas width in SVG units" },
                         { attr = "height",  description = "Canvas height in SVG units" },
+                        { attr = "mode",    description = "Set to pan_zoom to enable wheel zoom, drag panning, and double-click reset for large diagrams" },
                         { attr = "align",   description = "Layout algorithm for unpositioned children: none, flow, stack, center, layered, force, radial, grid" },
                         { attr = "gap",     description = "Spacing used by the layout engine" },
                         { attr = "padding", description = "Inner padding around the canvas" },
