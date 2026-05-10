@@ -1,0 +1,4 @@
+explosion1.png
+Source: https://opengameart.org/content/explosion-7
+License: CC0
+Downloaded from: https://opengameart.org/sites/default/files/explosion1_6.png

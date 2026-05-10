@@ -16,7 +16,7 @@ page wdoc_drawing_shapes {
                 }
 
                 paragraph p1 {
-                    content = "Six primitive shapes are provided in <code>wdoc::draw</code>. They map onto the SVG elements of the same names. All accept the common positioning and styling attributes described in the Drawing Overview; this page focuses on the attributes that are specific to each kind."
+                    content = "WDoc drawing primitives map mostly onto SVG elements, with a few authoring helpers for interactive diagrams and game mockups. All accept the common positioning and styling attributes described in the Drawing Overview; this page focuses on the attributes that are specific to each kind."
                 }
 
                 heading h2_rect {
@@ -91,6 +91,36 @@ page wdoc_drawing_shapes {
                     content = "draw::class button_face {\n    fill = \"#5E81AC\"\n    stroke = \"#5E81AC\"\n    transition = \"fill 160ms ease, stroke 160ms ease\"\n\n    state hovered {\n        fill = \"#81A1C1\"\n        stroke = \"#81A1C1\"\n    }\n}\n\ndiagram button_preview {\n    width = 180\n    height = 70\n\n    group button {\n        x = 20, y = 16, width = 140, height = 38\n        cursor = \"pointer\"\n        pointer_events = \"all\"\n\n        event hover_button {\n            trigger = \"hover\"\n            target = \"bg\"\n            state = \"hovered\"\n            mode = \"while\"\n        }\n\n        rect bg {\n            x = 0, y = 0, width = 140, height = 38\n            rx = 6\n            class = \"button_face\"\n        }\n\n        text label {\n            x = 0, y = 0, width = 140, height = 38\n            content = \"Preview\"\n            fill = \"#fff\"\n            font_weight = \"600\"\n        }\n    }\n}"
                 }
 
+                heading h2_sprites {
+                    level = 2
+                    content = "dopesheet and sprite"
+                }
+
+                paragraph p_sprite1 {
+                    content = "A <code>dopesheet</code> describes a regular sprite sheet: source image, frames per row, frame size, optional offsets, and optional gaps. A <code>sprite</code> renders one frame from the sheet and can animate selected frame indexes through class animations. Use <code>dopesheet_view</code> to show every frame as a uniform cropped grid in the document."
+                }
+
+                data_table tbl_sprite {
+                    caption = "sprite sheet fields"
+                    rows = [
+                        { attr = "dopesheet.src", description = "Image path for the sheet" },
+                        { attr = "columns", description = "How many frames are on each row" },
+                        { attr = "frame_width, frame_height", description = "Source frame size in pixels" },
+                        { attr = "offset_x, offset_y", description = "Optional top-left source offset before the first frame" },
+                        { attr = "gap_x, gap_y", description = "Optional spacing between source frames" },
+                        { attr = "sprite.sheet", description = "Referenced dopesheet id" },
+                        { attr = "sprite.frame", description = "Initial frame index, zero-based" },
+                        { attr = "dopesheet_view.sheet", description = "Referenced dopesheet id rendered as a uniform frame grid" },
+                        { attr = "grid_stroke, grid_stroke_width", description = "Optional divider style for a dopesheet preview" },
+                        { attr = "transparent_color", description = "Optional color key such as #ff00ff for sheets without alpha" }
+                    ]
+                }
+
+                code csprite {
+                    language = "wcl"
+                    content = "class explosion_anim {\n    animation explode {\n        frame_rate = 24\n        frames = range(0, 50)\n    }\n\n    state active { animation = \"explode\" }\n}\n\ndiagram sprite_demo {\n    width = 520\n    height = 300\n\n    dopesheet explosion_sheet {\n        src = \"images/explosion1.png\"\n        columns = 10\n        frame_width = 100\n        frame_height = 100\n        frame_count = 50\n    }\n\n    sprite explosion {\n        x = 30\n        y = 30\n        width = 100\n        height = 100\n        sheet = \"explosion_sheet\"\n        frame = 0\n        class = \"explosion_anim\"\n\n        event click { trigger = \"click\" state = \"active\" mode = \"add\" }\n    }\n\n    dopesheet_view preview {\n        x = 170\n        y = 24\n        width = 320\n        height = 250\n        sheet = \"explosion_sheet\"\n        grid_stroke = \"#94a3b8\"\n    }\n}"
+                }
+
                 data_table tbl_safe_attrs {
                     caption = "safe SVG passthrough attributes"
                     rows = [
@@ -138,7 +168,8 @@ page wdoc_drawing_shapes {
                         { attr = "x, y",            description = "Animated shape position in SVG units" },
                         { attr = "width, height",   description = "Animated shape bounds in SVG units" },
                         { attr = "rotate",          description = "Animated rotation in degrees" },
-                        { attr = "rotate_origin_x, rotate_origin_y", description = "Optional absolute SVG pivot; defaults to the animated shape center" }
+                        { attr = "rotate_origin_x, rotate_origin_y", description = "Optional absolute SVG pivot; defaults to the animated shape center" },
+                        { attr = "frame_rate, frames", description = "For sprites: frames per second and the selected dopesheet frame indexes to play" }
                     ]
                 }
 

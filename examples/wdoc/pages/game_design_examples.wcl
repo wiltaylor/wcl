@@ -1,0 +1,183 @@
+import "./shared.wcl"
+
+class ex_sprite_explosion {
+    cursor = "pointer"
+
+    animation explode {
+        frame_rate = 24
+        frames = range(0, 50)
+        fill_mode = "both"
+
+        keyframe start {
+            offset = 0
+            width = 96
+            height = 96
+        }
+
+        keyframe end {
+            offset = 100
+            width = 132
+            height = 132
+        }
+    }
+
+    state active {
+        animation = "explode"
+    }
+}
+
+class ex_sprite_subset {
+    cursor = "pointer"
+
+    animation burst_loop {
+        frame_rate = 12
+        frames = [8, 10, 12, 14, 16, 18, 20, 22]
+        iteration_count = "infinite"
+        fill_mode = "both"
+    }
+
+    state looping {
+        animation = "burst_loop"
+    }
+}
+
+page game_design_examples {
+    section = "my_docs.diagrams.game_design_examples"
+    title = "Game Design Primitives"
+
+    layout {
+        vsplit main {
+            split content {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Game Design Primitives"
+                }
+
+                paragraph intro {
+                    content = "Sprites can render a single frame from a dopesheet and play selected frames through the same class/state animation system as other drawing primitives."
+                }
+
+                diagram sprite_dopesheet_demo {
+                    width = 760
+                    height = 300
+
+                    dopesheet explosion_sheet {
+                        src = "images/explosion1.png"
+                        columns = 10
+                        frame_width = 100
+                        frame_height = 100
+                        frame_count = 50
+                    }
+
+                    rect stage {
+                        x = 28
+                        y = 28
+                        width = 704
+                        height = 220
+                        rx = 10
+                        fill = "#0f172a"
+                        stroke = "#334155"
+                    }
+
+                    text full_label {
+                        x = 82
+                        y = 246
+                        width = 210
+                        height = 24
+                        content = "Click: play all frames"
+                        font_size = 13
+                        fill = "#0f172a"
+                    }
+
+                    text subset_label {
+                        x = 418
+                        y = 246
+                        width = 230
+                        height = 24
+                        content = "Hover: selected frames"
+                        font_size = 13
+                        fill = "#0f172a"
+                    }
+
+                    sprite explosion_once {
+                        x = 120
+                        y = 76
+                        width = 96
+                        height = 96
+                        sheet = "explosion_sheet"
+                        frame = 0
+                        class = "ex_sprite_explosion"
+                        alt = "Explosion sprite animation"
+
+                        event click {
+                            trigger = "click"
+                            state = "active"
+                            mode = "add"
+                        }
+                    }
+
+                    sprite explosion_subset {
+                        x = 470
+                        y = 76
+                        width = 112
+                        height = 112
+                        sheet = "explosion_sheet"
+                        frame = 8
+                        class = "ex_sprite_subset"
+                        alt = "Looping selected explosion frames"
+
+                        event hover {
+                            trigger = "hover"
+                            state = "looping"
+                            mode = "while"
+                        }
+                    }
+                }
+
+                paragraph license_note {
+                    content = "Example sprite sheet: OpenGameArt “Explosion”, CC0. The downloaded file and attribution note live in <code>examples/wdoc/images</code>."
+                }
+
+                heading h2_sheet_view {
+                    level = 2
+                    content = "Dopesheet preview"
+                }
+
+                paragraph sheet_view_intro {
+                    content = "Use <code>dopesheet_view</code> when you want to show every frame as a uniform grid instead of displaying the original sheet image as-is."
+                }
+
+                diagram dopesheet_preview_demo {
+                    width = 760
+                    height = 410
+
+                    dopesheet explosion_sheet {
+                        src = "images/explosion1.png"
+                        columns = 10
+                        frame_width = 100
+                        frame_height = 100
+                        frame_count = 50
+                    }
+
+                    dopesheet_view preview {
+                        x = 30
+                        y = 30
+                        width = 700
+                        height = 350
+                        sheet = "explosion_sheet"
+                        background_fill = "#0f172a"
+                        grid_stroke = "#e2e8f0"
+                        grid_stroke_width = 1.2
+                    }
+                }
+
+                code source {
+                    language = "wcl"
+                    content = "dopesheet explosion_sheet {\n    src = \"images/explosion1.png\"\n    columns = 10\n    frame_width = 100\n    frame_height = 100\n    frame_count = 50\n}\n\nclass ex_sprite_explosion {\n    animation explode {\n        frame_rate = 24\n        frames = range(0, 50)\n        fill_mode = \"both\"\n    }\n\n    state active { animation = \"explode\" }\n}\n\nsprite explosion_once {\n    sheet = \"explosion_sheet\"\n    frame = 0\n    class = \"ex_sprite_explosion\"\n\n    event click { trigger = \"click\" state = \"active\" mode = \"add\" }\n}\n\ndopesheet_view preview {\n    sheet = \"explosion_sheet\"\n    width = 700\n    height = 350\n    grid_stroke = \"#e2e8f0\"\n}"
+                }
+            }
+        }
+    }
+}

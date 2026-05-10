@@ -40,6 +40,7 @@ doc my_docs {
         section text_block_examples "Text Block Diagrams" {}
         section interactions "Diagram Interactions" {}
         section animation_examples "Keyframe Animations" {}
+        section game_design_examples "Game Design Primitives" {}
         section flowchart_examples "Flowchart Shapes" {}
         section c4_examples "C4 Architecture" {}
         section uml_examples "UML Shapes" {}

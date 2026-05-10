@@ -172,6 +172,33 @@ namespace wdoc {
             tile_width: f64 @optional
             tile_height: f64 @optional
         }
+        @parent(["wdoc::draw::diagram"]) @open schema "dopesheet" {
+            src: string
+            columns: i32
+            frame_width: f64
+            frame_height: f64
+            frame_count: i32 @optional
+            offset_x: f64 @optional
+            offset_y: f64 @optional
+            gap_x: f64 @optional
+            gap_y: f64 @optional
+            sheet_width: f64 @optional
+            sheet_height: f64 @optional
+        }
+        @open schema "sprite" {
+            sheet: string
+            frame: i32 @optional
+            fit: string @optional
+            alt: string @optional
+            transparent_color: string @optional
+            transparent_tolerance: i32 @optional
+        }
+        @open schema "dopesheet_view" {
+            sheet: string
+            grid_stroke: string @optional
+            grid_stroke_width: f64 @optional
+            background_fill: string @optional
+        }
         @open schema "group" { }
         @open
         schema "terminal" {
@@ -290,6 +317,8 @@ namespace wdoc {
             "wdoc::draw::text_block",
             "wdoc::draw::inline_svg",
             "wdoc::draw::image",
+            "wdoc::draw::sprite",
+            "wdoc::draw::dopesheet_view",
             "wdoc::draw::group",
             "wdoc::draw::terminal",
             "wdoc::draw::terminal_text",

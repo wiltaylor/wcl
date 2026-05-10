@@ -531,6 +531,7 @@ fn render_diagram_with_ctx(br: &BlockRef, ctx: &ExtractCtx) -> String {
     let mut shapes = Vec::new();
     let mut connections = Vec::new();
     let graph_node_connected_ports = diagram_graph_node_connected_ports(br);
+    let dopesheets = diagram_dopesheets(br);
 
     let mut source_order = 0;
     for val in br.attributes.values() {
@@ -544,6 +545,7 @@ fn render_diagram_with_ctx(br: &BlockRef, ctx: &ExtractCtx) -> String {
                     &mut connections,
                     ctx,
                     source_order,
+                    &dopesheets,
                 );
             } else {
                 collect_shape_or_connection(
@@ -552,6 +554,7 @@ fn render_diagram_with_ctx(br: &BlockRef, ctx: &ExtractCtx) -> String {
                     &mut connections,
                     ctx,
                     source_order,
+                    &dopesheets,
                 );
             }
             source_order += 1;
@@ -566,9 +569,17 @@ fn render_diagram_with_ctx(br: &BlockRef, ctx: &ExtractCtx) -> String {
                 &mut connections,
                 ctx,
                 source_order,
+                &dopesheets,
             );
         } else {
-            collect_shape_or_connection(child, &mut shapes, &mut connections, ctx, source_order);
+            collect_shape_or_connection(
+                child,
+                &mut shapes,
+                &mut connections,
+                ctx,
+                source_order,
+                &dopesheets,
+            );
         }
         source_order += 1;
     }
@@ -732,12 +743,41 @@ fn graph_node_with_connected_ports(
     Some(annotated)
 }
 
+fn diagram_dopesheets(diagram: &BlockRef) -> HashMap<String, IndexMap<String, String>> {
+    let mut sheets = HashMap::new();
+    for val in diagram.attributes.values() {
+        if let Value::BlockRef(child) = val {
+            collect_dopesheet(child, &mut sheets);
+        }
+    }
+    for child in &diagram.children {
+        collect_dopesheet(child, &mut sheets);
+    }
+    sheets
+}
+
+fn collect_dopesheet(block: &BlockRef, sheets: &mut HashMap<String, IndexMap<String, String>>) {
+    if is_draw_dopesheet_block(block) {
+        if let Some(id) = block.id.as_deref().filter(|id| !id.is_empty()) {
+            sheets.insert(
+                id.to_string(),
+                value_map_to_string_map_lossy(&block.attributes),
+            );
+        }
+        return;
+    }
+    for child in all_child_blocks(block) {
+        collect_dopesheet(child, sheets);
+    }
+}
+
 fn collect_shape_or_connection(
     br: &BlockRef,
     shapes: &mut Vec<crate::shapes::ShapeNode>,
     connections: &mut Vec<crate::shapes::Connection>,
     ctx: &ExtractCtx,
     source_order: usize,
+    dopesheets: &HashMap<String, IndexMap<String, String>>,
 ) {
     use crate::shapes::*;
 
@@ -766,6 +806,7 @@ fn collect_shape_or_connection(
         || is_draw_state_block(br)
         || is_draw_animation_block(br)
         || is_draw_keyframe_block(br)
+        || is_draw_dopesheet_block(br)
         || is_draw_widget_structural_block(br)
     {
         return;
@@ -783,6 +824,9 @@ fn collect_shape_or_connection(
 
     if let Some(kind) = kind {
         let mut a = value_map_to_string_map_lossy(&br.attributes);
+        if kind == ShapeKind::Sprite || kind == ShapeKind::DopesheetView {
+            apply_sprite_dopesheet_attrs(&mut a, dopesheets);
+        }
 
         // Composite shape: any block whose schema declares @template("shape", "fn").
         // Call the function and convert its returned shape descriptors into the
@@ -828,6 +872,7 @@ fn collect_shape_or_connection(
                     &mut child_connections,
                     ctx,
                     child_source_order,
+                    dopesheets,
                 );
                 child_source_order += 1;
             }
@@ -846,6 +891,7 @@ fn collect_shape_or_connection(
                 &mut child_connections,
                 ctx,
                 child_source_order,
+                dopesheets,
             );
             child_source_order += 1;
         }
@@ -949,6 +995,53 @@ fn text_block_items_from_block(
     }
 
     items
+}
+
+fn apply_sprite_dopesheet_attrs(
+    attrs: &mut IndexMap<String, String>,
+    dopesheets: &HashMap<String, IndexMap<String, String>>,
+) {
+    let Some(sheet_id) = attrs.get("sheet").cloned() else {
+        return;
+    };
+    let Some(sheet) = dopesheets.get(&sheet_id) else {
+        return;
+    };
+    attrs.insert("_wdoc_sheet_id".to_string(), sheet_id);
+    for (src, dest) in [
+        ("src", "_wdoc_sheet_src"),
+        ("columns", "_wdoc_sheet_columns"),
+        ("frame_width", "_wdoc_sheet_frame_width"),
+        ("frame_height", "_wdoc_sheet_frame_height"),
+        ("offset_x", "_wdoc_sheet_offset_x"),
+        ("offset_y", "_wdoc_sheet_offset_y"),
+        ("gap_x", "_wdoc_sheet_gap_x"),
+        ("gap_y", "_wdoc_sheet_gap_y"),
+        ("frame_count", "_wdoc_sheet_frame_count"),
+        ("sheet_width", "_wdoc_sheet_width"),
+        ("sheet_height", "_wdoc_sheet_height"),
+    ] {
+        if let Some(value) = sheet.get(src) {
+            attrs.insert(dest.to_string(), value.clone());
+        }
+    }
+    for (src, dest) in [
+        ("src", "_wdoc_sheet_src"),
+        ("columns", "_wdoc_sheet_columns"),
+        ("frame_width", "_wdoc_sheet_frame_width"),
+        ("frame_height", "_wdoc_sheet_frame_height"),
+        ("offset_x", "_wdoc_sheet_offset_x"),
+        ("offset_y", "_wdoc_sheet_offset_y"),
+        ("gap_x", "_wdoc_sheet_gap_x"),
+        ("gap_y", "_wdoc_sheet_gap_y"),
+        ("frame_count", "_wdoc_sheet_frame_count"),
+        ("sheet_width", "_wdoc_sheet_width"),
+        ("sheet_height", "_wdoc_sheet_height"),
+    ] {
+        if let Some(value) = attrs.get(src).cloned() {
+            attrs.insert(dest.to_string(), value);
+        }
+    }
 }
 
 fn html_escape(s: &str) -> String {
@@ -1634,18 +1727,30 @@ fn collect_diagram_events(block: &BlockRef) -> Vec<crate::shapes::DiagramEvent> 
 fn parse_diagram_animation(block: &BlockRef) -> Option<crate::shapes::DiagramAnimation> {
     let name = block.id.clone()?;
     let attrs = &block.attributes;
+    let frames = attrs
+        .get("frames")
+        .map(value_as_i32_list)
+        .unwrap_or_default();
+    let frame_rate = attrs.get("frame_rate").and_then(value_as_f64);
     let mut keyframes = all_child_blocks(block)
         .into_iter()
         .filter(|child| is_draw_keyframe_block(child))
         .filter_map(parse_diagram_keyframe)
         .collect::<Vec<_>>();
     keyframes.sort_by(|a, b| a.offset.total_cmp(&b.offset));
-    if keyframes.is_empty() {
+    if keyframes.is_empty() && frames.is_empty() {
         return None;
     }
+    let duration_ms = value_as_i32(attrs.get("duration_ms")).unwrap_or_else(|| {
+        frame_rate
+            .filter(|rate| *rate > 0.0)
+            .map(|rate| ((frames.len() as f64 / rate) * 1000.0).round() as i32)
+            .filter(|duration| *duration > 0)
+            .unwrap_or(1000)
+    });
     Some(crate::shapes::DiagramAnimation {
         name,
-        duration_ms: value_as_i32(attrs.get("duration_ms")).unwrap_or(1000),
+        duration_ms,
         delay_ms: value_as_i32(attrs.get("delay_ms")).unwrap_or(0),
         timing_function: value_as_string(attrs.get("timing_function"))
             .unwrap_or("ease")
@@ -1660,6 +1765,8 @@ fn parse_diagram_animation(block: &BlockRef) -> Option<crate::shapes::DiagramAni
             .unwrap_or("none")
             .to_string(),
         keyframes,
+        frame_rate,
+        frames,
     })
 }
 
@@ -1703,6 +1810,25 @@ fn value_as_i32(v: Option<&Value>) -> Option<i32> {
     })
 }
 
+fn value_as_i32_list(value: &Value) -> Vec<i32> {
+    match value {
+        Value::List(values) => values
+            .iter()
+            .filter_map(|value| match value {
+                Value::Int(i) => Some(*i as i32),
+                Value::Float(f) => Some(*f as i32),
+                Value::String(s) => s.parse().ok(),
+                _ => None,
+            })
+            .collect(),
+        Value::String(s) => s
+            .split(',')
+            .filter_map(|part| part.trim().parse::<i32>().ok())
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
 fn value_as_string(v: Option<&Value>) -> Option<&str> {
     v.and_then(|value| value.as_string())
 }
@@ -1732,6 +1858,13 @@ fn is_draw_keyframe_block(block: &BlockRef) -> bool {
     matches!(
         block.kind.as_str(),
         "wdoc::draw::keyframe" | "draw::keyframe" | "keyframe"
+    )
+}
+
+fn is_draw_dopesheet_block(block: &BlockRef) -> bool {
+    matches!(
+        block.kind.as_str(),
+        "wdoc::draw::dopesheet" | "draw::dopesheet" | "dopesheet"
     )
 }
 
@@ -3874,7 +4007,14 @@ mod wdoc_draw_tests {
         let ctx = empty_ctx();
         let mut shapes = Vec::new();
         let mut connections = Vec::new();
-        collect_shape_or_connection(&group, &mut shapes, &mut connections, &ctx, 0);
+        collect_shape_or_connection(
+            &group,
+            &mut shapes,
+            &mut connections,
+            &ctx,
+            0,
+            &HashMap::new(),
+        );
 
         assert_eq!(connections.len(), 1);
         assert_eq!(connections[0].from_id, "phase.a");
@@ -3920,7 +4060,14 @@ mod wdoc_draw_tests {
 
         let mut shapes = Vec::new();
         let mut connections = Vec::new();
-        collect_shape_or_connection(&flow, &mut shapes, &mut connections, &ctx, 0);
+        collect_shape_or_connection(
+            &flow,
+            &mut shapes,
+            &mut connections,
+            &ctx,
+            0,
+            &HashMap::new(),
+        );
 
         assert_eq!(connections.len(), 1);
         assert_eq!(connections[0].from_id, "flow.start");
@@ -3986,7 +4133,14 @@ mod wdoc_draw_tests {
 
         let mut shapes = Vec::new();
         let mut connections = Vec::new();
-        collect_shape_or_connection(&flow, &mut shapes, &mut connections, &ctx, 0);
+        collect_shape_or_connection(
+            &flow,
+            &mut shapes,
+            &mut connections,
+            &ctx,
+            0,
+            &HashMap::new(),
+        );
 
         assert_eq!(connections.len(), 1);
         assert_eq!(connections[0].from_id, "flow.start");
@@ -4093,7 +4247,14 @@ mod wdoc_draw_tests {
 
         let mut shapes = Vec::new();
         let mut connections = Vec::new();
-        collect_shape_or_connection(&outer, &mut shapes, &mut connections, &ctx, 0);
+        collect_shape_or_connection(
+            &outer,
+            &mut shapes,
+            &mut connections,
+            &ctx,
+            0,
+            &HashMap::new(),
+        );
 
         assert_eq!(connections.len(), 1);
         assert_eq!(connections[0].from_id, "outer.start");
@@ -4121,7 +4282,14 @@ mod wdoc_draw_tests {
         let node = block("wdoc::draw::flow_process", Some("validate"), attrs, vec![]);
         let mut shapes = Vec::new();
         let mut connections = Vec::new();
-        collect_shape_or_connection(&node, &mut shapes, &mut connections, &ctx, 0);
+        collect_shape_or_connection(
+            &node,
+            &mut shapes,
+            &mut connections,
+            &ctx,
+            0,
+            &HashMap::new(),
+        );
 
         assert_eq!(shapes.len(), 1);
         assert_eq!(shapes[0].width, None);
@@ -4156,7 +4324,14 @@ mod wdoc_draw_tests {
         let node = block("wdoc::draw::flow_process", Some("manual"), attrs, vec![]);
         let mut shapes = Vec::new();
         let mut connections = Vec::new();
-        collect_shape_or_connection(&node, &mut shapes, &mut connections, &ctx, 0);
+        collect_shape_or_connection(
+            &node,
+            &mut shapes,
+            &mut connections,
+            &ctx,
+            0,
+            &HashMap::new(),
+        );
 
         assert_eq!(shapes[0].width, Some(220.0));
         assert_eq!(shapes[0].height, Some(90.0));
@@ -4457,6 +4632,159 @@ mod wdoc_draw_tests {
         assert!(html.contains("<image href=\"images/hero.png\""));
         assert!(html.contains("preserveAspectRatio=\"xMidYMid slice\""));
         assert!(html.contains("role=\"img\" aria-label=\"Hero image\""));
+    }
+
+    #[test]
+    fn sprite_dopesheet_animation_flows_through_cli_extraction() {
+        let ctx = wdoc_library_ctx();
+
+        let mut sheet_attrs = IndexMap::new();
+        string_attr(&mut sheet_attrs, "src", "images/explosion.png");
+        int_attr(&mut sheet_attrs, "columns", 10);
+        int_attr(&mut sheet_attrs, "frame_width", 100);
+        int_attr(&mut sheet_attrs, "frame_height", 100);
+        int_attr(&mut sheet_attrs, "frame_count", 50);
+
+        let mut states = IndexMap::new();
+        states.insert(
+            "active".to_string(),
+            crate::shapes::DiagramState {
+                name: "active".to_string(),
+                attrs: IndexMap::from([("animation".to_string(), "explode".to_string())]),
+            },
+        );
+        let mut animations = IndexMap::new();
+        animations.insert(
+            "explode".to_string(),
+            crate::shapes::DiagramAnimation {
+                name: "explode".to_string(),
+                duration_ms: 150,
+                delay_ms: 0,
+                timing_function: "ease".to_string(),
+                iteration_count: "1".to_string(),
+                direction: "normal".to_string(),
+                fill_mode: "none".to_string(),
+                keyframes: Vec::new(),
+                frame_rate: Some(20.0),
+                frames: vec![0, 1, 2],
+            },
+        );
+        ctx.diagram_classes.borrow_mut().insert(
+            "sprite_fx".to_string(),
+            crate::shapes::DiagramClass {
+                name: "sprite_fx".to_string(),
+                attrs: IndexMap::new(),
+                states,
+                animations,
+            },
+        );
+
+        let mut sprite_attrs = IndexMap::new();
+        int_attr(&mut sprite_attrs, "x", 20);
+        int_attr(&mut sprite_attrs, "y", 20);
+        int_attr(&mut sprite_attrs, "width", 64);
+        int_attr(&mut sprite_attrs, "height", 64);
+        string_attr(&mut sprite_attrs, "sheet", "explosion_sheet");
+        int_attr(&mut sprite_attrs, "frame", 1);
+        string_attr(&mut sprite_attrs, "class", "sprite_fx");
+        string_attr(&mut sprite_attrs, "transparent_color", "#ff00ff");
+
+        let mut event_attrs = IndexMap::new();
+        string_attr(&mut event_attrs, "trigger", "click");
+        string_attr(&mut event_attrs, "state", "active");
+        string_attr(&mut event_attrs, "mode", "add");
+
+        let mut diagram_attrs = IndexMap::new();
+        int_attr(&mut diagram_attrs, "width", 120);
+        int_attr(&mut diagram_attrs, "height", 100);
+        let diagram = block(
+            "wdoc::draw::diagram",
+            Some("sprite_demo"),
+            diagram_attrs,
+            vec![
+                block(
+                    "wdoc::draw::dopesheet",
+                    Some("explosion_sheet"),
+                    sheet_attrs,
+                    vec![],
+                ),
+                block(
+                    "wdoc::draw::sprite",
+                    Some("explosion"),
+                    sprite_attrs,
+                    vec![block(
+                        "wdoc::draw::event",
+                        Some("play"),
+                        event_attrs,
+                        vec![],
+                    )],
+                ),
+            ],
+        );
+
+        let html = render_diagram_with_ctx(&diagram, &ctx);
+        assert!(html.contains("data-wdoc-sprite=\"true\""));
+        assert!(html.contains("viewBox=\"100 0 100 100\""));
+        assert!(html.contains("href=\"images/explosion.png\""));
+        assert!(html.contains("data-wdoc-sprite-transparent-color=\"#ff00ff\""));
+        assert!(
+            html.contains("data-wdoc-animations=\"explode|150|0|ease|1|normal|none||20|0,1,2\"")
+        );
+        assert!(!html.contains("<dopesheet"));
+    }
+
+    #[test]
+    fn dopesheet_view_renders_uniform_cropped_frame_grid() {
+        let ctx = wdoc_library_ctx();
+
+        let mut sheet_attrs = IndexMap::new();
+        string_attr(&mut sheet_attrs, "src", "images/player.png");
+        int_attr(&mut sheet_attrs, "columns", 2);
+        int_attr(&mut sheet_attrs, "frame_width", 16);
+        int_attr(&mut sheet_attrs, "frame_height", 8);
+        int_attr(&mut sheet_attrs, "frame_count", 3);
+
+        let mut view_attrs = IndexMap::new();
+        int_attr(&mut view_attrs, "x", 10);
+        int_attr(&mut view_attrs, "y", 20);
+        int_attr(&mut view_attrs, "width", 120);
+        int_attr(&mut view_attrs, "height", 80);
+        string_attr(&mut view_attrs, "sheet", "player_sheet");
+        string_attr(&mut view_attrs, "background_fill", "#111827");
+        string_attr(&mut view_attrs, "grid_stroke", "#ffffff");
+
+        let mut diagram_attrs = IndexMap::new();
+        int_attr(&mut diagram_attrs, "width", 160);
+        int_attr(&mut diagram_attrs, "height", 120);
+        let diagram = block(
+            "wdoc::draw::diagram",
+            Some("dopesheet_view_demo"),
+            diagram_attrs,
+            vec![
+                block(
+                    "wdoc::draw::dopesheet",
+                    Some("player_sheet"),
+                    sheet_attrs,
+                    vec![],
+                ),
+                block(
+                    "wdoc::draw::dopesheet_view",
+                    Some("preview"),
+                    view_attrs,
+                    vec![],
+                ),
+            ],
+        );
+
+        let html = render_diagram_with_ctx(&diagram, &ctx);
+        assert!(html.contains("data-wdoc-dopesheet-view=\"true\""));
+        assert!(html.contains("href=\"images/player.png\""));
+        assert!(html.contains("viewBox=\"0 0 16 8\""));
+        assert!(html.contains("viewBox=\"16 0 16 8\""));
+        assert!(html.contains("viewBox=\"0 8 16 8\""));
+        assert!(html.contains("fill=\"#111827\""));
+        assert!(html.contains("stroke=\"#ffffff\""));
+        assert!(!html.contains("<dopesheet"));
     }
 
     #[test]
