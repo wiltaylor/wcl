@@ -1,0 +1,7 @@
+Isometric Blocks
+Author: Kenney
+Source: https://opengameart.org/content/isometric-blocks
+License: CC0 1.0 Universal Public Domain Dedication
+Downloaded file: Isometric Blocks.zip
+Derived example sheet: kenney_isometric_blocks_sheet.png, assembled from voxelTile_01.png through voxelTile_08.png
+Attribution note from author: Credit "Kenney.nl" or "www.kenney.nl", not mandatory.

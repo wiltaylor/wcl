@@ -203,7 +203,9 @@ namespace wdoc {
             sheet: string
             tile_width: f64
             tile_height: f64
+            tile_render_height: f64 @optional
             rows: list(any)
+            orientation: string @optional
             background_fill: string @optional
             grid_stroke: string @optional
             grid_stroke_width: f64 @optional

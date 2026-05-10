@@ -1067,17 +1067,34 @@ fn apply_tilemap_rows_attrs(attrs: &mut IndexMap<String, String>, br: &BlockRef)
     let tile_h = attrs
         .get("tile_height")
         .and_then(|value| value.parse::<f64>().ok());
+    let tile_render_h = attrs
+        .get("tile_render_height")
+        .and_then(|value| value.parse::<f64>().ok());
+    let orientation = attrs
+        .get("orientation")
+        .map(|value| value.trim().to_string())
+        .unwrap_or_else(|| "orthogonal".to_string());
     if !attrs.contains_key("width") {
         if let Some(tile_w) = tile_w {
-            attrs.insert("width".to_string(), (columns as f64 * tile_w).to_string());
+            let width = if orientation == "isometric" {
+                (columns + row_count) as f64 * tile_w / 2.0
+            } else {
+                columns as f64 * tile_w
+            };
+            attrs.insert("width".to_string(), width.to_string());
         }
     }
     if !attrs.contains_key("height") {
         if let Some(tile_h) = tile_h {
-            attrs.insert(
-                "height".to_string(),
-                (row_count as f64 * tile_h).to_string(),
-            );
+            let extra_render_h = tile_render_h
+                .map(|value| (value - tile_h).max(0.0))
+                .unwrap_or(0.0);
+            let height = if orientation == "isometric" {
+                (columns + row_count) as f64 * tile_h / 2.0 + extra_render_h
+            } else {
+                row_count as f64 * tile_h + extra_render_h
+            };
+            attrs.insert("height".to_string(), height.to_string());
         }
     }
 }
@@ -4916,6 +4933,130 @@ mod wdoc_draw_tests {
             5
         );
         assert!(!html.contains("<dopesheet"));
+    }
+
+    #[test]
+    fn isometric_tilemap_rows_render_in_diamond_layout() {
+        let ctx = wdoc_library_ctx();
+
+        let mut sheet_attrs = IndexMap::new();
+        string_attr(&mut sheet_attrs, "src", "images/iso.png");
+        int_attr(&mut sheet_attrs, "columns", 4);
+        int_attr(&mut sheet_attrs, "frame_width", 64);
+        int_attr(&mut sheet_attrs, "frame_height", 32);
+        int_attr(&mut sheet_attrs, "frame_count", 16);
+
+        let mut tilemap_attrs = IndexMap::new();
+        int_attr(&mut tilemap_attrs, "x", 10);
+        int_attr(&mut tilemap_attrs, "y", 20);
+        int_attr(&mut tilemap_attrs, "tile_width", 64);
+        int_attr(&mut tilemap_attrs, "tile_height", 32);
+        string_attr(&mut tilemap_attrs, "sheet", "iso_sheet");
+        string_attr(&mut tilemap_attrs, "orientation", "isometric");
+        string_attr(&mut tilemap_attrs, "background_fill", "#111827");
+        string_attr(&mut tilemap_attrs, "grid_stroke", "#ffffff");
+        tilemap_attrs.insert(
+            "rows".to_string(),
+            Value::List(vec![
+                Value::List(vec![Value::Int(0), Value::Int(1), Value::Null]),
+                Value::List(vec![Value::Int(4), Value::Int(5), Value::Int(6)]),
+                Value::List(vec![Value::Null, Value::Int(9)]),
+            ]),
+        );
+
+        let mut diagram_attrs = IndexMap::new();
+        int_attr(&mut diagram_attrs, "width", 260);
+        int_attr(&mut diagram_attrs, "height", 160);
+        let diagram = block(
+            "wdoc::draw::diagram",
+            Some("iso_tilemap_demo"),
+            diagram_attrs,
+            vec![
+                block(
+                    "wdoc::draw::dopesheet",
+                    Some("iso_sheet"),
+                    sheet_attrs,
+                    vec![],
+                ),
+                block("wdoc::draw::tilemap", Some("iso"), tilemap_attrs, vec![]),
+            ],
+        );
+
+        let html = render_diagram_with_ctx(&diagram, &ctx);
+        assert!(html.contains("data-wdoc-tilemap=\"true\""));
+        assert!(html.contains("width=\"192\" height=\"96\""));
+        assert!(html.contains("x=\"74\" y=\"20\" width=\"64\" height=\"32\""));
+        assert!(html.contains("x=\"106\" y=\"36\" width=\"64\" height=\"32\""));
+        assert!(html.contains("x=\"42\" y=\"36\" width=\"64\" height=\"32\""));
+        assert!(html.contains("x=\"42\" y=\"68\" width=\"64\" height=\"32\""));
+        assert!(html.contains("viewBox=\"64 64 64 32\""));
+        assert_eq!(html.matches("<image href=\"images/iso.png\"").count(), 6);
+        assert!(!html.contains("stroke=\"#ffffff\""));
+        assert!(!html.contains("<dopesheet"));
+    }
+
+    #[test]
+    fn isometric_tilemap_rows_support_taller_render_height() {
+        let ctx = wdoc_library_ctx();
+
+        let mut sheet_attrs = IndexMap::new();
+        string_attr(&mut sheet_attrs, "src", "images/elevated-iso.png");
+        int_attr(&mut sheet_attrs, "columns", 2);
+        int_attr(&mut sheet_attrs, "frame_width", 64);
+        int_attr(&mut sheet_attrs, "frame_height", 64);
+        int_attr(&mut sheet_attrs, "frame_count", 4);
+
+        let mut tilemap_attrs = IndexMap::new();
+        int_attr(&mut tilemap_attrs, "x", 10);
+        int_attr(&mut tilemap_attrs, "y", 20);
+        int_attr(&mut tilemap_attrs, "tile_width", 64);
+        int_attr(&mut tilemap_attrs, "tile_height", 32);
+        int_attr(&mut tilemap_attrs, "tile_render_height", 64);
+        string_attr(&mut tilemap_attrs, "sheet", "elevated_iso_sheet");
+        string_attr(&mut tilemap_attrs, "orientation", "isometric");
+        tilemap_attrs.insert(
+            "rows".to_string(),
+            Value::List(vec![
+                Value::List(vec![Value::Int(0), Value::Int(1)]),
+                Value::List(vec![Value::Int(2), Value::Int(3)]),
+            ]),
+        );
+
+        let mut diagram_attrs = IndexMap::new();
+        int_attr(&mut diagram_attrs, "width", 220);
+        int_attr(&mut diagram_attrs, "height", 160);
+        let diagram = block(
+            "wdoc::draw::diagram",
+            Some("elevated_iso_tilemap_demo"),
+            diagram_attrs,
+            vec![
+                block(
+                    "wdoc::draw::dopesheet",
+                    Some("elevated_iso_sheet"),
+                    sheet_attrs,
+                    vec![],
+                ),
+                block(
+                    "wdoc::draw::tilemap",
+                    Some("elevated_iso"),
+                    tilemap_attrs,
+                    vec![],
+                ),
+            ],
+        );
+
+        let html = render_diagram_with_ctx(&diagram, &ctx);
+        assert!(html.contains("width=\"128\" height=\"96\""));
+        assert!(html.contains("x=\"42\" y=\"20\" width=\"64\" height=\"64\""));
+        assert!(html.contains("x=\"74\" y=\"36\" width=\"64\" height=\"64\""));
+        assert!(html.contains("x=\"10\" y=\"36\" width=\"64\" height=\"64\""));
+        assert!(html.contains("x=\"42\" y=\"52\" width=\"64\" height=\"64\""));
+        assert!(html.contains("viewBox=\"64 64 64 64\""));
+        assert_eq!(
+            html.matches("<image href=\"images/elevated-iso.png\"")
+                .count(),
+            4
+        );
     }
 
     #[test]

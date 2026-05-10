@@ -2962,6 +2962,9 @@ fn render_tilemap_shape_svg(node: &ShapeNode, svg: &mut String) {
     let tile_h = attr_f64(&node.attrs, "tile_height")
         .unwrap_or(frame_h)
         .max(1.0);
+    let tile_render_h = attr_f64(&node.attrs, "tile_render_height")
+        .unwrap_or(tile_h)
+        .max(1.0);
     let map_columns = attr_f64(&node.attrs, "_wdoc_tilemap_columns")
         .unwrap_or_else(|| (b.width / tile_w).ceil())
         .max(0.0)
@@ -2970,6 +2973,12 @@ fn render_tilemap_shape_svg(node: &ShapeNode, svg: &mut String) {
         .unwrap_or_else(|| (b.height / tile_h).ceil())
         .max(0.0)
         .floor() as usize;
+    let orientation = node
+        .attrs
+        .get("orientation")
+        .map(|value| value.trim())
+        .unwrap_or("orthogonal");
+    let is_isometric = orientation == "isometric";
     let grid_stroke = node.attrs.get("grid_stroke").map(|s| s.as_str());
     let grid_stroke_width = attr_f64(&node.attrs, "grid_stroke_width").unwrap_or(1.0);
     let background_fill = node
@@ -2989,6 +2998,7 @@ fn render_tilemap_shape_svg(node: &ShapeNode, svg: &mut String) {
     .unwrap();
 
     if let Some(rows) = node.attrs.get("_wdoc_tilemap_rows") {
+        let mut tiles = Vec::new();
         for (row_idx, row) in rows.split(';').enumerate() {
             for (col_idx, cell) in row.split(',').enumerate() {
                 let cell = cell.trim();
@@ -2998,28 +3008,46 @@ fn render_tilemap_shape_svg(node: &ShapeNode, svg: &mut String) {
                 let Ok(frame) = cell.parse::<usize>() else {
                     continue;
                 };
-                let frame_col = frame % columns;
-                let frame_row = frame / columns;
-                let x = b.x + col_idx as f64 * tile_w;
-                let y = b.y + row_idx as f64 * tile_h;
-                let view_x = offset_x + frame_col as f64 * (frame_w + gap_x);
-                let view_y = offset_y + frame_row as f64 * (frame_h + gap_y);
-                write!(
-                    svg,
-                    "<svg x=\"{x}\" y=\"{y}\" width=\"{tile_w}\" height=\"{tile_h}\" \
-                     viewBox=\"{view_x} {view_y} {frame_w} {frame_h}\" preserveAspectRatio=\"none\" \
-                     overflow=\"hidden\" data-wdoc-sprite=\"true\" data-wdoc-sprite-current-frame=\"{frame}\"{}{}>\
-                     <image href=\"{src}\" x=\"0\" y=\"0\" width=\"{sheet_w}\" height=\"{sheet_h}\" preserveAspectRatio=\"none\"/>\
-                     </svg>",
-                    sprite_data_attr(node, "transparent_color", "transparent-color"),
-                    sprite_data_attr(node, "transparent_tolerance", "transparent-tolerance")
-                )
-                .unwrap();
+                tiles.push((row_idx, col_idx, frame));
             }
+        }
+        if is_isometric {
+            tiles.sort_by(|(row_a, col_a, _), (row_b, col_b, _)| {
+                (row_a + col_a)
+                    .cmp(&(row_b + col_b))
+                    .then_with(|| row_a.cmp(row_b))
+                    .then_with(|| col_a.cmp(col_b))
+            });
+        }
+        for (row_idx, col_idx, frame) in tiles {
+            let frame_col = frame % columns;
+            let frame_row = frame / columns;
+            let (x, y) = if is_isometric {
+                (
+                    b.x + (col_idx as f64 - row_idx as f64) * tile_w / 2.0
+                        + (map_rows.saturating_sub(1)) as f64 * tile_w / 2.0,
+                    b.y + (col_idx as f64 + row_idx as f64) * tile_h / 2.0,
+                )
+            } else {
+                (b.x + col_idx as f64 * tile_w, b.y + row_idx as f64 * tile_h)
+            };
+            let view_x = offset_x + frame_col as f64 * (frame_w + gap_x);
+            let view_y = offset_y + frame_row as f64 * (frame_h + gap_y);
+            write!(
+                svg,
+                "<svg x=\"{x}\" y=\"{y}\" width=\"{tile_w}\" height=\"{tile_render_h}\" \
+                 viewBox=\"{view_x} {view_y} {frame_w} {frame_h}\" preserveAspectRatio=\"none\" \
+                 overflow=\"hidden\" data-wdoc-sprite=\"true\" data-wdoc-sprite-current-frame=\"{frame}\"{}{}>\
+                 <image href=\"{src}\" x=\"0\" y=\"0\" width=\"{sheet_w}\" height=\"{sheet_h}\" preserveAspectRatio=\"none\"/>\
+                 </svg>",
+                sprite_data_attr(node, "transparent_color", "transparent-color"),
+                sprite_data_attr(node, "transparent_tolerance", "transparent-tolerance")
+            )
+            .unwrap();
         }
     }
 
-    if let Some(grid_stroke) = grid_stroke {
+    if let Some(grid_stroke) = grid_stroke.filter(|_| !is_isometric) {
         let grid_stroke = svg_escape_attr(grid_stroke);
         for col in 0..=map_columns {
             let x = b.x + col as f64 * tile_w;

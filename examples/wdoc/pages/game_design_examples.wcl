@@ -223,6 +223,142 @@ page game_design_examples {
                     content = "Example tileset: OpenGameArt “Simple 32x32 Map Tileset” by JohSur, CC0. The downloaded file and attribution note live in <code>examples/wdoc/images</code>."
                 }
 
+                heading h2_iso_tilemap {
+                    level = 2
+                    content = "Isometric tilemaps"
+                }
+
+                paragraph iso_tilemap_intro {
+                    content = "Set <code>orientation = \"isometric\"</code> on a <code>tilemap</code> to draw the same row arrays as a diamond map. Tiles render back-to-front so lower cells overlay upper cells. Use <code>tile_render_height</code> when elevated tile art is taller than the diamond grid pitch."
+                }
+
+                diagram isometric_tilemap_demo {
+                    width = 760
+                    height = 460
+
+                    dopesheet elevated_iso_blocks {
+                        src = "images/kenney_isometric_blocks_sheet.png"
+                        columns = 4
+                        frame_width = 111
+                        frame_height = 128
+                        frame_count = 8
+                    }
+
+                    tilemap iso_map {
+                        x = 72
+                        y = 88
+                        orientation = "isometric"
+                        tile_width = 112
+                        tile_height = 64
+                        tile_render_height = 128
+                        sheet = "elevated_iso_blocks"
+                        background_fill = "#dbeafe"
+
+                        rows = [
+                            [0, 0, 1, 1, 2, 2],
+                            [0, 3, 3, 1, 2, 2],
+                            [4, 3, 5, 5, 6, 2],
+                            [4, 4, 5, 6, 6, 7],
+                            [null, 4, 4, 7, 7, null]
+                        ]
+                    }
+
+                    tilemap raised_blocks {
+                        x = 72
+                        y = 24
+                        orientation = "isometric"
+                        tile_width = 112
+                        tile_height = 64
+                        tile_render_height = 128
+                        sheet = "elevated_iso_blocks"
+                        background_fill = "none"
+
+                        rows = [
+                            [null, null, null, null, null, null],
+                            [null, null, 5, null, null, null],
+                            [null, null, null, 6, null, null],
+                            [null, null, 7, null, null, null],
+                            [null, null, null, null, null, null]
+                        ]
+                    }
+                }
+
+                diagram isometric_layer_demo {
+                    width = 760
+                    height = 460
+                    mode = "pan_zoom"
+
+                    dopesheet elevated_iso_blocks {
+                        src = "images/kenney_isometric_blocks_sheet.png"
+                        columns = 4
+                        frame_width = 111
+                        frame_height = 128
+                        frame_count = 8
+                    }
+
+                    game_layer backdrop {
+                        z_index = -10
+                        parallax = 0.45
+
+                        rect sky { x = -120 y = -80 width = 1100 height = 680 fill = "#dbeafe" }
+                        ellipse cloud { x = 210 y = 52 width = 220 height = 60 fill = "#ffffff" opacity = 0.82 }
+                    }
+
+                    game_layer world {
+                        z_index = 0
+
+                        tilemap island {
+                            x = 72
+                            y = 96
+                            orientation = "isometric"
+                            tile_width = 112
+                            tile_height = 64
+                            tile_render_height = 128
+                            sheet = "elevated_iso_blocks"
+                            background_fill = "none"
+
+                            rows = [
+                                [null, 0, 0, 1, 1, null],
+                                [0, 0, 3, 3, 1, 2],
+                                [4, 3, 5, 5, 6, 2],
+                                [4, 4, 5, 6, 6, 7],
+                                [null, 4, 4, 7, 7, null]
+                            ]
+                        }
+
+                        tilemap raised_blocks {
+                            x = 72
+                            y = 32
+                            orientation = "isometric"
+                            tile_width = 112
+                            tile_height = 64
+                            tile_render_height = 128
+                            sheet = "elevated_iso_blocks"
+                            background_fill = "none"
+
+                            rows = [
+                                [null, null, null, null, null, null],
+                                [null, null, 5, null, null, null],
+                                [null, null, null, 6, null, null],
+                                [null, null, 7, null, null, null],
+                                [null, null, null, null, null, null]
+                            ]
+                        }
+                    }
+
+                    game_layer hud {
+                        z_index = 100
+                        locked = true
+
+                        rect panel { x = 16 y = 16 width = 220 height = 44 rx = 8 fill = "#111827" opacity = 0.9 }
+                        text label { x = 28 y = 26 width = 196 height = 24 content = "Isometric pan/zoom" fill = "#f8fafc" font_size = 14 font_weight = "700" }
+                    }
+                }
+
+                paragraph iso_tilemap_license_note {
+                    content = "Example isometric tilesets: OpenGameArt “32x32 Isometric Tileset Version 0_1” by hawkbirdtree, CC0, and OpenGameArt “Isometric Blocks” by Kenney, CC0. The downloaded files and attribution notes live in <code>examples/wdoc/images</code>."
+                }
+
                 heading h2_layers {
                     level = 2
                     content = "Game layers"
@@ -349,7 +485,7 @@ page game_design_examples {
 
                 code source {
                     language = "wcl"
-                    content = "dopesheet terrain_tiles {\n    src = \"images/Tiles32.png\"\n    columns = 4\n    frame_width = 32\n    frame_height = 32\n    frame_count = 4\n}\n\ngame_layer world {\n    z_index = 0\n\n    tilemap map {\n        tile_width = 48\n        tile_height = 48\n        sheet = \"terrain_tiles\"\n        rows = [[0, 0, 1], [0, 2, 3]]\n    }\n}\n\ngame_layer hud {\n    z_index = 100\n    locked = true\n\n    rect panel { x = 16 y = 16 width = 160 height = 44 }\n}\n\ndopesheet explosion_sheet {\n    src = \"images/explosion1.png\"\n    columns = 10\n    frame_width = 100\n    frame_height = 100\n    frame_count = 50\n}\n\nsprite explosion_once {\n    sheet = \"explosion_sheet\"\n    frame = 0\n    class = \"ex_sprite_explosion\"\n}\n\ndopesheet_view preview {\n    sheet = \"explosion_sheet\"\n    width = 700\n    height = 350\n    grid_stroke = \"#e2e8f0\"\n}"
+                    content = "dopesheet elevated_iso_blocks {\n    src = \"images/kenney_isometric_blocks_sheet.png\"\n    columns = 4\n    frame_width = 111\n    frame_height = 128\n    frame_count = 8\n}\n\ntilemap iso_base {\n    y = 64\n    orientation = \"isometric\"\n    tile_width = 112\n    tile_height = 64\n    tile_render_height = 128\n    sheet = \"elevated_iso_blocks\"\n    rows = [[0, 0, 1], [4, 5, 2], [4, 7, 7]]\n}\n\ntilemap iso_raised {\n    y = 0\n    orientation = \"isometric\"\n    tile_width = 112\n    tile_height = 64\n    tile_render_height = 128\n    sheet = \"elevated_iso_blocks\"\n    rows = [[null, null, null], [null, 5, null], [null, null, null]]\n}\n\ngame_layer world {\n    z_index = 0\n    tilemap map { tile_width = 48 tile_height = 48 sheet = \"terrain_tiles\" rows = [[0, 0, 1], [0, 2, 3]] }\n}\n\ngame_layer hud {\n    z_index = 100\n    locked = true\n    rect panel { x = 16 y = 16 width = 160 height = 44 }\n}\n\ndopesheet explosion_sheet {\n    src = \"images/explosion1.png\"\n    columns = 10\n    frame_width = 100\n    frame_height = 100\n    frame_count = 50\n}\n\nsprite explosion_once {\n    sheet = \"explosion_sheet\"\n    frame = 0\n    class = \"ex_sprite_explosion\"\n}\n\ndopesheet_view preview {\n    sheet = \"explosion_sheet\"\n    width = 700\n    height = 350\n    grid_stroke = \"#e2e8f0\"\n}"
                 }
             }
         }
