@@ -1000,6 +1000,7 @@ mod tests {
             attrs: IndexMap::new(),
             events: Vec::new(),
             children: vec![],
+            text_block_items: Vec::new(),
             align: Alignment::None,
             gap: 0.0,
             padding: 0.0,

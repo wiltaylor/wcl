@@ -35,6 +35,7 @@ pub enum ShapeKind {
     Line,
     Path,
     Text,
+    TextBlock,
     InlineSvg,
     Image,
     Group,
@@ -146,11 +147,23 @@ pub struct ShapeNode {
     pub events: Vec<DiagramEvent>,
     // Children
     pub children: Vec<ShapeNode>,
+    pub text_block_items: Vec<TextBlockItem>,
     pub align: Alignment,
     pub gap: f64,
     pub padding: f64,
     pub z_index: f64,
     pub source_order: usize,
+}
+
+#[derive(Debug, Clone)]
+pub enum TextBlockItem {
+    Paragraph {
+        html: String,
+    },
+    Code {
+        content: String,
+        language: Option<String>,
+    },
 }
 
 /// A connection between two shapes.
@@ -800,6 +813,7 @@ pub fn parse_shape_kind(kind: &str) -> Option<ShapeKind> {
         "wdoc::draw::line" => Some(ShapeKind::Line),
         "wdoc::draw::path" => Some(ShapeKind::Path),
         "wdoc::draw::text" => Some(ShapeKind::Text),
+        "wdoc::draw::text_block" => Some(ShapeKind::TextBlock),
         "wdoc::draw::inline_svg" => Some(ShapeKind::InlineSvg),
         "wdoc::draw::image" => Some(ShapeKind::Image),
         "wdoc::draw::group" => Some(ShapeKind::Group),
@@ -1384,6 +1398,8 @@ fn apply_post_layout_container_size(node: &mut ShapeNode) {
     }
 
     if let Some(bounds) = children_bounds(&node.children) {
+        let old_width = node.resolved.width;
+        let old_height = node.resolved.height;
         let insets = child_content_insets(node);
         if needs_width {
             node.resolved.width = node
@@ -1397,6 +1413,7 @@ fn apply_post_layout_container_size(node: &mut ShapeNode) {
                 .height
                 .max(bounds.y.max(insets.top) + bounds.height + insets.bottom);
         }
+        resize_full_container_decorations(&mut node.children, old_width, old_height, node.resolved);
     }
 }
 
@@ -1562,6 +1579,13 @@ fn resolve_bounds(node: &mut ShapeNode, parent: &Bounds) {
         parent.y,
         parent.height,
     );
+    if node.kind == ShapeKind::TextBlock
+        && node.y.is_none()
+        && node.top.is_some()
+        && node.bottom.is_none()
+    {
+        ry = parent.y + node.top.unwrap_or(0.0);
+    }
 
     // Legacy text labels with no positioning or size fill their parent.
     // Positioned text can omit width/height and use its natural measured size.
@@ -1581,6 +1605,27 @@ fn resolve_bounds(node: &mut ShapeNode, parent: &Bounds) {
         }
         if !explicit_height {
             rh = metrics.height;
+        }
+    } else if node.kind == ShapeKind::TextBlock && (!explicit_width || !explicit_height) {
+        let width = if explicit_width && rw > 0.0 {
+            rw
+        } else {
+            attr_f64(&node.attrs, "max_width")
+                .filter(|w| *w > 0.0)
+                .unwrap_or_else(|| {
+                    let available = parent.width - (rx - parent.x);
+                    if available > 0.0 {
+                        available
+                    } else {
+                        240.0
+                    }
+                })
+        };
+        if !explicit_width || rw <= 0.0 {
+            rw = width;
+        }
+        if !explicit_height {
+            rh = measure_text_block_height(&node.attrs, &node.text_block_items, rw);
         }
     }
 
@@ -1638,6 +1683,241 @@ fn resolve_axis(
         (_, Some(s), None, None) => (parent_origin, s),
         _ => (parent_origin, 0.0),
     }
+}
+
+#[derive(Debug, Clone, Default)]
+struct InlineStyle {
+    bold: bool,
+    italic: bool,
+    code: bool,
+    href: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct InlineFragment {
+    text: String,
+    style: InlineStyle,
+}
+
+fn measure_text_block_height(
+    attrs: &IndexMap<String, String>,
+    items: &[TextBlockItem],
+    width: f64,
+) -> f64 {
+    let padding = attr_f64(attrs, "padding").unwrap_or(0.0);
+    let gap = attr_f64(attrs, "gap").unwrap_or(8.0);
+    let mut height = padding * 2.0;
+    let mut seen = false;
+    for item in items {
+        if seen {
+            height += gap;
+        }
+        seen = true;
+        height += match item {
+            TextBlockItem::Paragraph { html } => {
+                let font_size = attr_f64(attrs, "font_size").unwrap_or(12.0);
+                let line_height = attr_f64(attrs, "line_height").unwrap_or(1.35);
+                let lines = wrap_inline_fragments(
+                    parse_inline_html_fragments(html),
+                    (width - padding * 2.0).max(1.0),
+                    font_size,
+                    attrs,
+                );
+                (lines.len().max(1) as f64) * font_size * line_height
+            }
+            TextBlockItem::Code { content, .. } => {
+                let code_padding = attr_f64(attrs, "code_padding").unwrap_or(8.0);
+                let font_size = attr_f64(attrs, "code_font_size")
+                    .unwrap_or_else(|| attr_f64(attrs, "font_size").unwrap_or(12.0) * 0.92);
+                let line_height = attr_f64(attrs, "code_line_height").unwrap_or(1.25);
+                let mut measure_attrs = attrs.clone();
+                measure_attrs.insert("font_size".to_string(), font_size.to_string());
+                measure_attrs.insert(
+                    "width".to_string(),
+                    (width - padding * 2.0 - code_padding * 2.0)
+                        .max(1.0)
+                        .to_string(),
+                );
+                let lines = wrapped_text_lines(
+                    content,
+                    Some((width - padding * 2.0 - code_padding * 2.0).max(1.0)),
+                    font_size,
+                    0.0,
+                    &measure_attrs,
+                );
+                (lines.len().max(1) as f64) * font_size * line_height + code_padding * 2.0
+            }
+        };
+    }
+    height
+}
+
+fn parse_inline_html_fragments(html: &str) -> Vec<InlineFragment> {
+    let mut fragments = Vec::new();
+    let mut style = InlineStyle::default();
+    let mut index = 0;
+    while index < html.len() {
+        let rest = &html[index..];
+        if let Some(tag_start) = rest.find('<') {
+            let text = &rest[..tag_start];
+            push_inline_text(&mut fragments, text, &style);
+            index += tag_start;
+            let tag_rest = &html[index..];
+            let Some(tag_end) = tag_rest.find('>') else {
+                push_inline_text(&mut fragments, tag_rest, &style);
+                break;
+            };
+            apply_inline_tag(&tag_rest[1..tag_end], &mut style);
+            index += tag_end + 1;
+        } else {
+            push_inline_text(&mut fragments, rest, &style);
+            break;
+        }
+    }
+    fragments
+}
+
+fn push_inline_text(fragments: &mut Vec<InlineFragment>, text: &str, style: &InlineStyle) {
+    let decoded = decode_basic_entities(text);
+    if !decoded.is_empty() {
+        fragments.push(InlineFragment {
+            text: decoded,
+            style: style.clone(),
+        });
+    }
+}
+
+fn apply_inline_tag(tag: &str, style: &mut InlineStyle) {
+    let lower = tag.trim().to_ascii_lowercase();
+    if lower.starts_with("strong") || lower == "b" {
+        style.bold = true;
+    } else if lower.starts_with("/strong") || lower == "/b" {
+        style.bold = false;
+    } else if lower == "em" || lower == "i" || lower.starts_with("em ") || lower.starts_with("i ") {
+        style.italic = true;
+    } else if lower == "/em" || lower == "/i" {
+        style.italic = false;
+    } else if lower.starts_with("code") {
+        style.code = true;
+    } else if lower.starts_with("/code") {
+        style.code = false;
+    } else if lower.starts_with("a ") || lower == "a" {
+        style.href = extract_href(tag);
+    } else if lower.starts_with("/a") {
+        style.href = None;
+    }
+}
+
+fn extract_href(tag: &str) -> Option<String> {
+    let href_pos = tag.find("href=")?;
+    let value = &tag[href_pos + 5..].trim_start();
+    let quote = value.chars().next()?;
+    if quote == '"' || quote == '\'' {
+        let rest = &value[1..];
+        let end = rest.find(quote)?;
+        Some(decode_basic_entities(&rest[..end]))
+    } else {
+        Some(
+            value
+                .split_whitespace()
+                .next()
+                .map(decode_basic_entities)
+                .unwrap_or_default(),
+        )
+    }
+}
+
+fn decode_basic_entities(text: &str) -> String {
+    text.replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&amp;", "&")
+}
+
+fn wrap_inline_fragments(
+    fragments: Vec<InlineFragment>,
+    max_width: f64,
+    font_size: f64,
+    attrs: &IndexMap<String, String>,
+) -> Vec<Vec<InlineFragment>> {
+    let mut lines: Vec<Vec<InlineFragment>> = vec![Vec::new()];
+    let mut line_width = 0.0;
+    let space_width = measure_inline_text(" ", &InlineStyle::default(), font_size, attrs);
+
+    for fragment in fragments {
+        for (segment_index, segment) in fragment.text.split('\n').enumerate() {
+            if segment_index > 0 {
+                lines.push(Vec::new());
+                line_width = 0.0;
+            }
+            for word in segment.split_whitespace() {
+                let word_width = measure_inline_text(word, &fragment.style, font_size, attrs);
+                let needs_space = !lines.last().is_none_or(Vec::is_empty);
+                let attaches_to_previous = word
+                    .chars()
+                    .next()
+                    .is_some_and(|ch| matches!(ch, '.' | ',' | ';' | ':' | '!' | '?' | ')'));
+                let add_space = needs_space && !attaches_to_previous;
+                let candidate = line_width + if add_space { space_width } else { 0.0 } + word_width;
+                if needs_space && candidate > max_width {
+                    lines.push(Vec::new());
+                    line_width = 0.0;
+                } else if add_space {
+                    push_line_fragment(lines.last_mut().unwrap(), " ", &fragment.style);
+                    line_width += space_width;
+                }
+                push_line_fragment(lines.last_mut().unwrap(), word, &fragment.style);
+                line_width += word_width;
+            }
+        }
+    }
+
+    if lines.is_empty() {
+        vec![Vec::new()]
+    } else {
+        lines
+    }
+}
+
+fn push_line_fragment(line: &mut Vec<InlineFragment>, text: &str, style: &InlineStyle) {
+    if let Some(last) = line.last_mut() {
+        if last.style.bold == style.bold
+            && last.style.italic == style.italic
+            && last.style.code == style.code
+            && last.style.href == style.href
+        {
+            last.text.push_str(text);
+            return;
+        }
+    }
+    line.push(InlineFragment {
+        text: text.to_string(),
+        style: style.clone(),
+    });
+}
+
+fn measure_inline_text(
+    text: &str,
+    style: &InlineStyle,
+    font_size: f64,
+    attrs: &IndexMap<String, String>,
+) -> f64 {
+    let letter_spacing = attrs
+        .get("letter_spacing")
+        .map(|s| parse_css_length(s, font_size))
+        .unwrap_or(0.0);
+    let mut width = text
+        .chars()
+        .map(|ch| char_advance_factor(ch) * font_size + letter_spacing)
+        .sum::<f64>();
+    if style.bold {
+        width *= 1.05;
+    }
+    if style.code {
+        width *= 0.96;
+    }
+    width
 }
 
 // ---------------------------------------------------------------------------
@@ -1886,6 +2166,7 @@ fn render_shape_svg(node: &ShapeNode, svg: &mut String) {
             }
             svg.push_str("</text>");
         }
+        ShapeKind::TextBlock => render_text_block_svg(node, svg),
         ShapeKind::InlineSvg => render_inline_svg_shape_svg(node, svg),
         ShapeKind::Image => render_image_shape_svg(node, svg),
         ShapeKind::Terminal => {
@@ -1924,6 +2205,389 @@ fn render_shape_svg(node: &ShapeNode, svg: &mut String) {
     if href.is_some() {
         svg.push_str("</a>");
     }
+}
+
+fn render_text_block_svg(node: &ShapeNode, svg: &mut String) {
+    let b = node.resolved;
+    let padding = attr_f64(&node.attrs, "padding").unwrap_or(0.0);
+    let gap = attr_f64(&node.attrs, "gap").unwrap_or(8.0);
+    let font_size = attr_f64(&node.attrs, "font_size").unwrap_or(12.0);
+    let line_height = attr_f64(&node.attrs, "line_height").unwrap_or(1.35);
+    let line_step = font_size * line_height;
+    let fill = node
+        .attrs
+        .get("fill")
+        .map(String::as_str)
+        .unwrap_or("currentColor");
+    let mut y = b.y + padding;
+    let inner_width = (b.width - padding * 2.0).max(1.0);
+
+    for (index, item) in node.text_block_items.iter().enumerate() {
+        if index > 0 {
+            y += gap;
+        }
+        match item {
+            TextBlockItem::Paragraph { html } => {
+                let lines = wrap_inline_fragments(
+                    parse_inline_html_fragments(html),
+                    inner_width,
+                    font_size,
+                    &node.attrs,
+                );
+                render_inline_lines_svg(
+                    svg,
+                    &lines,
+                    b.x + padding,
+                    y,
+                    font_size,
+                    line_step,
+                    fill,
+                    node,
+                );
+                y += (lines.len().max(1) as f64) * line_step;
+            }
+            TextBlockItem::Code { content, language } => {
+                y += render_code_panel_svg(
+                    svg,
+                    node,
+                    content,
+                    language.as_deref(),
+                    b.x + padding,
+                    y,
+                    inner_width,
+                );
+            }
+        }
+    }
+}
+
+fn render_inline_lines_svg(
+    svg: &mut String,
+    lines: &[Vec<InlineFragment>],
+    x: f64,
+    y: f64,
+    font_size: f64,
+    line_step: f64,
+    fill: &str,
+    node: &ShapeNode,
+) {
+    let baseline = font_size * 0.8 + ((line_step - font_size).max(0.0) / 2.0);
+    let font_family = node
+        .attrs
+        .get("font_family")
+        .map(String::as_str)
+        .unwrap_or("Inter, system-ui, sans-serif");
+    write!(
+        svg,
+        "<text x=\"{x}\" y=\"{}\" font-size=\"{}\" font-family=\"{}\" text-anchor=\"start\" dominant-baseline=\"auto\" fill=\"{}\">",
+        y + baseline,
+        font_size,
+        svg_escape_attr(font_family),
+        svg_escape_attr(fill)
+    )
+    .unwrap();
+    for (line_index, line) in lines.iter().enumerate() {
+        let line_y = y + baseline + (line_index as f64 * line_step);
+        write!(svg, "<tspan x=\"{x}\" y=\"{line_y}\">").unwrap();
+        if line.is_empty() {
+            svg.push(' ');
+        } else {
+            for fragment in line {
+                render_inline_fragment_svg(svg, fragment, node);
+            }
+        }
+        svg.push_str("</tspan>");
+    }
+    svg.push_str("</text>");
+}
+
+fn render_inline_fragment_svg(svg: &mut String, fragment: &InlineFragment, node: &ShapeNode) {
+    let mut attrs = String::new();
+    if fragment.style.bold {
+        attrs.push_str(" font-weight=\"700\"");
+    }
+    if fragment.style.italic {
+        attrs.push_str(" font-style=\"italic\"");
+    }
+    if fragment.style.code {
+        let family = node
+            .attrs
+            .get("code_font_family")
+            .map(String::as_str)
+            .unwrap_or("JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace");
+        let fill = node
+            .attrs
+            .get("inline_code_fill")
+            .map(String::as_str)
+            .unwrap_or("var(--color-link)");
+        write!(
+            attrs,
+            " font-family=\"{}\" fill=\"{}\"",
+            svg_escape_attr(family),
+            svg_escape_attr(fill)
+        )
+        .unwrap();
+    }
+    if fragment.style.href.is_some() {
+        let fill = node
+            .attrs
+            .get("link_fill")
+            .map(String::as_str)
+            .unwrap_or("var(--color-link)");
+        write!(
+            attrs,
+            " fill=\"{}\" text-decoration=\"underline\"",
+            svg_escape_attr(fill)
+        )
+        .unwrap();
+    }
+    let text = svg_escape_text(&fragment.text);
+    if let Some(href) = &fragment.style.href {
+        write!(
+            svg,
+            "<a href=\"{}\" target=\"_top\"><tspan{attrs}>{text}</tspan></a>",
+            svg_escape_attr(href)
+        )
+        .unwrap();
+    } else {
+        write!(svg, "<tspan{attrs}>{text}</tspan>").unwrap();
+    }
+}
+
+fn render_code_panel_svg(
+    svg: &mut String,
+    node: &ShapeNode,
+    content: &str,
+    language: Option<&str>,
+    x: f64,
+    y: f64,
+    width: f64,
+) -> f64 {
+    let code_padding = attr_f64(&node.attrs, "code_padding").unwrap_or(8.0);
+    let font_size = attr_f64(&node.attrs, "code_font_size")
+        .unwrap_or_else(|| attr_f64(&node.attrs, "font_size").unwrap_or(12.0) * 0.92);
+    let line_height = attr_f64(&node.attrs, "code_line_height").unwrap_or(1.25);
+    let line_step = font_size * line_height;
+    let wrap_width = (width - code_padding * 2.0).max(1.0);
+    let mut measure_attrs = node.attrs.clone();
+    measure_attrs.insert("font_size".to_string(), font_size.to_string());
+    measure_attrs.insert("width".to_string(), wrap_width.to_string());
+    let lines = wrapped_text_lines(content, Some(wrap_width), font_size, 0.0, &measure_attrs);
+    let height = (lines.len().max(1) as f64) * line_step + code_padding * 2.0;
+    let fill = node
+        .attrs
+        .get("code_background_fill")
+        .map(String::as_str)
+        .unwrap_or("var(--color-code-bg)");
+    let stroke = node
+        .attrs
+        .get("code_border_stroke")
+        .map(String::as_str)
+        .unwrap_or("var(--color-nav-border)");
+    let radius = attr_f64(&node.attrs, "code_radius").unwrap_or(6.0);
+    write!(
+        svg,
+        "<rect x=\"{x}\" y=\"{y}\" width=\"{width}\" height=\"{height}\" rx=\"{radius}\" ry=\"{radius}\" fill=\"{}\" stroke=\"{}\"/>",
+        svg_escape_attr(fill),
+        svg_escape_attr(stroke)
+    )
+    .unwrap();
+    let family = node
+        .attrs
+        .get("code_font_family")
+        .map(String::as_str)
+        .unwrap_or("JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace");
+    let text_fill = node
+        .attrs
+        .get("code_fill")
+        .map(String::as_str)
+        .unwrap_or("currentColor");
+    let baseline = font_size * 0.8 + ((line_step - font_size).max(0.0) / 2.0);
+    write!(
+        svg,
+        "<text x=\"{}\" y=\"{}\" font-size=\"{}\" font-family=\"{}\" text-anchor=\"start\" dominant-baseline=\"auto\" fill=\"{}\" xml:space=\"preserve\"",
+        x + code_padding,
+        y + code_padding + baseline,
+        font_size,
+        svg_escape_attr(family),
+        svg_escape_attr(text_fill)
+    )
+    .unwrap();
+    if let Some(language) = language.filter(|value| !value.is_empty()) {
+        write!(svg, " data-language=\"{}\"", svg_escape_attr(language)).unwrap();
+    }
+    svg.push('>');
+    for (line_index, line) in lines.iter().enumerate() {
+        let line_y = y + code_padding + baseline + (line_index as f64 * line_step);
+        write!(svg, "<tspan x=\"{}\" y=\"{line_y}\">", x + code_padding).unwrap();
+        render_code_line_svg(svg, line, language);
+        svg.push_str("</tspan>");
+    }
+    svg.push_str("</text>");
+    height
+}
+
+fn render_code_line_svg(svg: &mut String, line: &str, language: Option<&str>) {
+    if !language
+        .map(|lang| lang.eq_ignore_ascii_case("wcl"))
+        .unwrap_or(false)
+    {
+        svg.push_str(&svg_escape_text(line));
+        return;
+    }
+
+    for (text, class_name) in tokenize_wcl_code_line(line) {
+        if let Some(class_name) = class_name {
+            write!(
+                svg,
+                "<tspan class=\"{}\" fill=\"currentColor\">{}</tspan>",
+                svg_escape_attr(class_name),
+                svg_escape_text(text)
+            )
+            .unwrap();
+        } else {
+            svg.push_str(&svg_escape_text(text));
+        }
+    }
+}
+
+fn tokenize_wcl_code_line(line: &str) -> Vec<(&str, Option<&'static str>)> {
+    let mut tokens = Vec::new();
+    let mut index = 0;
+
+    while index < line.len() {
+        let rest = &line[index..];
+        if rest.starts_with("//") {
+            tokens.push((rest, Some("hljs-comment")));
+            break;
+        }
+
+        let ch = rest.chars().next().unwrap();
+        if ch == '"' {
+            let end = quoted_token_end(line, index);
+            tokens.push((&line[index..end], Some("hljs-string")));
+            index = end;
+            continue;
+        }
+
+        if ch == '@' {
+            let end = take_while_from(line, index + ch.len_utf8(), is_ident_char);
+            tokens.push((&line[index..end], Some("hljs-meta")));
+            index = end;
+            continue;
+        }
+
+        if ch.is_ascii_digit() {
+            let end = take_while_from(line, index + ch.len_utf8(), |c| {
+                c.is_ascii_digit() || c == '.'
+            });
+            tokens.push((&line[index..end], Some("hljs-number")));
+            index = end;
+            continue;
+        }
+
+        if is_ident_start(ch) {
+            let end = take_while_from(line, index + ch.len_utf8(), is_ident_char);
+            let ident = &line[index..end];
+            let class_name = if is_wcl_keyword(ident) {
+                Some("hljs-keyword")
+            } else if next_non_ws_char(line, end) == Some('=') {
+                Some("hljs-attr")
+            } else {
+                None
+            };
+            tokens.push((ident, class_name));
+            index = end;
+            continue;
+        }
+
+        if matches!(ch, '{' | '}' | '[' | ']' | '(' | ')' | '=' | ',' | '.') {
+            let end = index + ch.len_utf8();
+            tokens.push((&line[index..end], None));
+            index = end;
+            continue;
+        }
+
+        let end = index + ch.len_utf8();
+        tokens.push((&line[index..end], None));
+        index = end;
+    }
+
+    tokens
+}
+
+fn quoted_token_end(line: &str, start: usize) -> usize {
+    let mut escaped = false;
+    for (offset, ch) in line[start + 1..].char_indices() {
+        let pos = start + 1 + offset + ch.len_utf8();
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if ch == '"' {
+            return pos;
+        }
+    }
+    line.len()
+}
+
+fn take_while_from<F>(line: &str, start: usize, predicate: F) -> usize
+where
+    F: Fn(char) -> bool,
+{
+    let mut end = start;
+    for (offset, ch) in line[start..].char_indices() {
+        if !predicate(ch) {
+            return start + offset;
+        }
+        end = start + offset + ch.len_utf8();
+    }
+    end
+}
+
+fn next_non_ws_char(line: &str, start: usize) -> Option<char> {
+    line[start..].chars().find(|ch| !ch.is_whitespace())
+}
+
+fn is_ident_start(ch: char) -> bool {
+    ch == '_' || ch.is_ascii_alphabetic()
+}
+
+fn is_ident_char(ch: char) -> bool {
+    ch == '_' || ch == '-' || ch.is_ascii_alphanumeric()
+}
+
+fn is_wcl_keyword(ident: &str) -> bool {
+    matches!(
+        ident,
+        "as" | "else"
+            | "export"
+            | "false"
+            | "for"
+            | "if"
+            | "import"
+            | "in"
+            | "let"
+            | "namespace"
+            | "null"
+            | "schema"
+            | "true"
+            | "use"
+            | "connection"
+            | "diagram"
+            | "graph_node"
+            | "graph_row"
+            | "text_block"
+            | "paragraph"
+            | "code"
+            | "rect"
+            | "circle"
+            | "database"
+    )
 }
 
 fn render_inline_svg_shape_svg(node: &ShapeNode, svg: &mut String) {
@@ -2611,17 +3275,14 @@ fn inter_container_lane_x(a: &Bounds, b: &Bounds, obstacles: &[Bounds]) -> f64 {
         (b.x + b.width, a.x)
     } else {
         // Containers overlap on x too — fall back to midpoint of nearest edges.
-        let candidates = [
-            (a.x + a.width).min(b.x + b.width),
-            a.x.max(b.x),
-        ];
+        let candidates = [(a.x + a.width).min(b.x + b.width), a.x.max(b.x)];
         return (candidates[0] + candidates[1]) / 2.0;
     };
     let mid = (left + right) / 2.0;
     let intersects = |lane: f64| {
-        obstacles.iter().any(|o| {
-            lane > o.x - ROUTE_MARGIN && lane < o.x + o.width + ROUTE_MARGIN
-        })
+        obstacles
+            .iter()
+            .any(|o| lane > o.x - ROUTE_MARGIN && lane < o.x + o.width + ROUTE_MARGIN)
     };
     if !intersects(mid) {
         return mid;
@@ -2654,17 +3315,14 @@ fn inter_container_lane_y(a: &Bounds, b: &Bounds, obstacles: &[Bounds]) -> f64 {
     } else if b.y + b.height <= a.y {
         (b.y + b.height, a.y)
     } else {
-        let candidates = [
-            (a.y + a.height).min(b.y + b.height),
-            a.y.max(b.y),
-        ];
+        let candidates = [(a.y + a.height).min(b.y + b.height), a.y.max(b.y)];
         return (candidates[0] + candidates[1]) / 2.0;
     };
     let mid = (top + bottom) / 2.0;
     let intersects = |lane: f64| {
-        obstacles.iter().any(|o| {
-            lane > o.y - ROUTE_MARGIN && lane < o.y + o.height + ROUTE_MARGIN
-        })
+        obstacles
+            .iter()
+            .any(|o| lane > o.y - ROUTE_MARGIN && lane < o.y + o.height + ROUTE_MARGIN)
     };
     if !intersects(mid) {
         return mid;
@@ -2735,9 +3393,7 @@ fn is_strict_ancestor(id: &str, ancestors: &[&str]) -> bool {
 }
 
 fn is_descendant_of_endpoint(id: &str, endpoint: &str) -> bool {
-    id.len() > endpoint.len()
-        && id.starts_with(endpoint)
-        && id.as_bytes()[endpoint.len()] == b'.'
+    id.len() > endpoint.len() && id.starts_with(endpoint) && id.as_bytes()[endpoint.len()] == b'.'
 }
 
 fn route_x_lanes(from: &Bounds, to: &Bounds, margin: f64) -> Vec<f64> {
@@ -3010,7 +3666,9 @@ fn bounds_contains_point(bounds: &Bounds, x: f64, y: f64) -> bool {
 }
 
 fn bounds_eq(a: &Bounds, b: &Bounds) -> bool {
-    nearly_eq(a.x, b.x) && nearly_eq(a.y, b.y) && nearly_eq(a.width, b.width)
+    nearly_eq(a.x, b.x)
+        && nearly_eq(a.y, b.y)
+        && nearly_eq(a.width, b.width)
         && nearly_eq(a.height, b.height)
 }
 
@@ -3879,6 +4537,7 @@ mod tests {
             attrs: IndexMap::new(),
             events: Vec::new(),
             children: vec![],
+            text_block_items: Vec::new(),
             align: Alignment::None,
             gap: 0.0,
             padding: 0.0,
@@ -4013,6 +4672,7 @@ mod tests {
                 attrs: [("fill".into(), "#ccc".into())].into_iter().collect(),
                 events: Vec::new(),
                 children: vec![],
+                text_block_items: Vec::new(),
                 align: Alignment::None,
                 gap: 0.0,
                 padding: 0.0,
@@ -6179,17 +6839,11 @@ mod tests {
 
         let left_to_right = build_hv_route(&left, &right, 100.0);
         assert_eq!(left_to_right.last().copied(), Some((160.0, 100.0)));
-        assert_eq!(
-            left_to_right[left_to_right.len() - 2],
-            (100.0, 100.0)
-        );
+        assert_eq!(left_to_right[left_to_right.len() - 2], (100.0, 100.0));
 
         let right_to_left = build_hv_route(&right, &left, 100.0);
         assert_eq!(right_to_left.last().copied(), Some((40.0, 100.0)));
-        assert_eq!(
-            right_to_left[right_to_left.len() - 2],
-            (100.0, 100.0)
-        );
+        assert_eq!(right_to_left[right_to_left.len() - 2], (100.0, 100.0));
     }
 
     #[test]
@@ -6209,17 +6863,11 @@ mod tests {
 
         let top_to_bottom = build_vh_route(&top, &bottom, 100.0);
         assert_eq!(top_to_bottom.last().copied(), Some((100.0, 160.0)));
-        assert_eq!(
-            top_to_bottom[top_to_bottom.len() - 2],
-            (100.0, 100.0)
-        );
+        assert_eq!(top_to_bottom[top_to_bottom.len() - 2], (100.0, 100.0));
 
         let bottom_to_top = build_vh_route(&bottom, &top, 100.0);
         assert_eq!(bottom_to_top.last().copied(), Some((100.0, 40.0)));
-        assert_eq!(
-            bottom_to_top[bottom_to_top.len() - 2],
-            (100.0, 100.0)
-        );
+        assert_eq!(bottom_to_top[bottom_to_top.len() - 2], (100.0, 100.0));
     }
 
     #[test]
@@ -6582,7 +7230,10 @@ mod tests {
         assert!(svg.contains("<path"), "expected elbow path, got {svg}");
         let coords = path_coords(&svg);
         assert!(coords.len() >= 3);
-        for obstacle in [&shape_map["data_layer.dl_cache"], &shape_map["data_layer.dl_stream"]] {
+        for obstacle in [
+            &shape_map["data_layer.dl_cache"],
+            &shape_map["data_layer.dl_stream"],
+        ] {
             for window in coords.windows(2) {
                 assert!(
                     !segment_intersects_obstacle(window[0], window[1], obstacle),

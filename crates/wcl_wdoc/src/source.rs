@@ -900,6 +900,11 @@ fn collect_shape_or_connection(
             attrs: a,
             events: collect_diagram_events(br),
             children,
+            text_block_items: if kind == ShapeKind::TextBlock {
+                text_block_items_from_block(br, ctx)
+            } else {
+                Vec::new()
+            },
             align,
             gap,
             padding: pad,
@@ -907,6 +912,50 @@ fn collect_shape_or_connection(
             source_order,
         });
     }
+}
+
+fn text_block_items_from_block(
+    br: &BlockRef,
+    ctx: &ExtractCtx,
+) -> Vec<crate::shapes::TextBlockItem> {
+    let mut items = Vec::new();
+    if let Some(content) = value_as_string(br.attributes.get("content")) {
+        items.push(crate::shapes::TextBlockItem::Paragraph {
+            html: render_markup_string(content, ctx).unwrap_or_else(|_| html_escape(content)),
+        });
+    }
+
+    for child in all_child_blocks(br) {
+        match child.kind.as_str() {
+            "wdoc::paragraph" | "paragraph" | "wdoc::p" | "p" => {
+                if let Some(content) = value_as_string(child.attributes.get("content")) {
+                    items.push(crate::shapes::TextBlockItem::Paragraph {
+                        html: render_markup_string(content, ctx)
+                            .unwrap_or_else(|_| html_escape(content)),
+                    });
+                }
+            }
+            "wdoc::code" | "code" => {
+                if let Some(content) = value_as_string(child.attributes.get("content")) {
+                    items.push(crate::shapes::TextBlockItem::Code {
+                        content: content.to_string(),
+                        language: value_as_string(child.attributes.get("language"))
+                            .map(str::to_string),
+                    });
+                }
+            }
+            _ => {}
+        }
+    }
+
+    items
+}
+
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 fn apply_builtin_widget_content_insets(attrs: &mut IndexMap<String, String>, br: &BlockRef) {
@@ -1265,6 +1314,7 @@ fn descriptor_to_shape_node_and_connections(
         attrs,
         events,
         children,
+        text_block_items: Vec::new(),
         align,
         gap,
         padding,
@@ -2536,6 +2586,131 @@ mod wdoc_draw_tests {
         assert!(html.contains("fill=\"#10b981\" stroke=\"var(--color-bg)\""));
         assert!(html.contains("fill=\"none\" stroke=\"var(--color-bg)\""));
         assert!(!html.contains("width=\"0\" height=\"0\""));
+    }
+
+    #[test]
+    fn text_block_renders_styled_wdoc_content_inside_shapes() {
+        let ctx = wdoc_library_ctx();
+
+        let mut para_attrs = IndexMap::new();
+        string_attr(
+            &mut para_attrs,
+            "content",
+            "Routes **authenticated** requests to _domain_ services, links to [docs](docs.html), and emits `AuditEvent`.",
+        );
+
+        let mut code_attrs = IndexMap::new();
+        string_attr(&mut code_attrs, "language", "wcl");
+        string_attr(
+            &mut code_attrs,
+            "content",
+            "connection c { from = \"api.out\" to = \"worker.in\" }",
+        );
+
+        let mut text_attrs = IndexMap::new();
+        int_attr(&mut text_attrs, "left", 12);
+        int_attr(&mut text_attrs, "top", 12);
+        int_attr(&mut text_attrs, "right", 12);
+        int_attr(&mut text_attrs, "font_size", 12);
+
+        let mut card_attrs = IndexMap::new();
+        int_attr(&mut card_attrs, "x", 20);
+        int_attr(&mut card_attrs, "y", 20);
+        int_attr(&mut card_attrs, "width", 260);
+        string_attr(&mut card_attrs, "fill", "#111827");
+
+        let mut diagram_attrs = IndexMap::new();
+        int_attr(&mut diagram_attrs, "width", 320);
+        int_attr(&mut diagram_attrs, "height", 220);
+
+        let diagram = block(
+            "wdoc::draw::diagram",
+            Some("text_block_styles"),
+            diagram_attrs,
+            vec![block(
+                "wdoc::draw::rect",
+                Some("card"),
+                card_attrs,
+                vec![block(
+                    "wdoc::draw::text_block",
+                    Some("body"),
+                    text_attrs,
+                    vec![
+                        block("wdoc::paragraph", Some("summary"), para_attrs, vec![]),
+                        block("wdoc::code", Some("example"), code_attrs, vec![]),
+                    ],
+                )],
+            )],
+        );
+
+        let html = render_diagram_with_ctx(&diagram, &ctx);
+        assert!(html.contains("font-weight=\"700\""));
+        assert!(html.contains("font-style=\"italic\""));
+        assert!(html.contains("text-decoration=\"underline\""));
+        assert!(html.contains("AuditEvent"));
+        assert!(html.contains("data-language=\"wcl\""));
+        assert!(html.contains("class=\"hljs-keyword\""));
+        assert!(html.contains("class=\"hljs-attr\""));
+        assert!(html.contains("class=\"hljs-string\""));
+        assert!(html.contains("connection"));
+        assert!(!html.contains("<strong>"));
+        assert!(!html.contains("height=\"0\""));
+    }
+
+    #[test]
+    fn text_block_grows_parent_without_explicit_height() {
+        let ctx = wdoc_library_ctx();
+
+        let mut para_attrs = IndexMap::new();
+        string_attr(
+            &mut para_attrs,
+            "content",
+            "This text block is intentionally long enough to wrap over several lines so the parent rectangle must grow downward.",
+        );
+
+        let mut text_attrs = IndexMap::new();
+        int_attr(&mut text_attrs, "left", 10);
+        int_attr(&mut text_attrs, "top", 10);
+        int_attr(&mut text_attrs, "right", 10);
+        int_attr(&mut text_attrs, "font_size", 12);
+
+        let mut card_attrs = IndexMap::new();
+        int_attr(&mut card_attrs, "x", 20);
+        int_attr(&mut card_attrs, "y", 20);
+        int_attr(&mut card_attrs, "width", 150);
+
+        let mut diagram_attrs = IndexMap::new();
+        int_attr(&mut diagram_attrs, "width", 240);
+        int_attr(&mut diagram_attrs, "height", 180);
+
+        let diagram = block(
+            "wdoc::draw::diagram",
+            Some("text_block_grow"),
+            diagram_attrs,
+            vec![block(
+                "wdoc::draw::rect",
+                Some("card"),
+                card_attrs,
+                vec![block(
+                    "wdoc::draw::text_block",
+                    Some("body"),
+                    text_attrs,
+                    vec![block(
+                        "wdoc::paragraph",
+                        Some("summary"),
+                        para_attrs,
+                        vec![],
+                    )],
+                )],
+            )],
+        );
+
+        let html = render_diagram_with_ctx(&diagram, &ctx);
+        let height_prefix = "<rect x=\"20\" y=\"20\" width=\"150\" height=\"";
+        let start = html.find(height_prefix).expect("parent rect") + height_prefix.len();
+        let end = html[start..].find('"').expect("height end") + start;
+        let height = html[start..end].parse::<f64>().expect("numeric height");
+        assert!(height > 80.0, "expected parent to grow, got {height}");
     }
 
     #[test]

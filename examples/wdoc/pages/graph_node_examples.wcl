@@ -130,6 +130,72 @@ page graph_node_examples {
                     }
                 }
 
+                heading h2_text_blocks {
+                    level = 2
+                    content = "Styled text blocks inside graph nodes"
+                }
+
+                diagram graph_node_text_blocks {
+                    width = 880
+                    height = 330
+
+                    graph_node api_details {
+                        x = 48
+                        y = 34
+                        width = 330
+                        title = "API contract"
+                        subtitle = "embedded docs"
+
+                        text_block body {
+                            left = 16
+                            top = 50
+                            right = 16
+                            padding = 0
+                            gap = 10
+                            font_size = 12
+                            line_height = 1.35
+
+                            paragraph summary {
+                                content = "Routes **authenticated** requests to _domain_ services and emits `AuditEvent` records for downstream consumers."
+                            }
+
+                            code route {
+                                language = "wcl"
+                                content = "connection audit {\n    from = \"gateway.events\"\n    to = \"user_service.audit\"\n    direction = \"to\"\n}"
+                            }
+                        }
+                    }
+
+                    graph_node worker_details {
+                        x = 510
+                        y = 74
+                        width = 300
+                        title = "Worker"
+                        subtitle = "consumer"
+
+                        graph_row input {
+                            label = "Input"
+                            left_port = "audit"
+                        }
+
+                        text_block body {
+                            left = 16
+                            top = 78
+                            right = 16
+                            gap = 8
+
+                            p note "Handles [audit events](#) with **idempotent** writes and reports `_status` updates."
+                        }
+                    }
+
+                    connection docs_audit {
+                        from = "api_details"
+                        to = "worker_details.audit"
+                        direction = "to"
+                        stroke = color_success
+                    }
+                }
+
                 heading h2_dense {
                     level = 2
                     content = "Dense node with many rows"

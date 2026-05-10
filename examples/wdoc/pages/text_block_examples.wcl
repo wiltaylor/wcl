@@ -1,0 +1,166 @@
+import "./shared.wcl"
+
+page text_block_examples {
+    section = "my_docs.diagrams.text_block_examples"
+    title = "Text Block Diagrams"
+
+    layout {
+        vsplit v_text_blocks {
+            split s_text_blocks {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Text Block Diagrams"
+                }
+
+                paragraph intro {
+                    content = "<code>text_block</code> lets diagram shapes contain wrapped WDoc paragraphs and code panels. Inline formatting such as <code>**bold**</code>, <code>_italic_</code>, links, and inline code is carried into the SVG output."
+                }
+
+                heading h2_graph {
+                    level = 2
+                    content = "Graph node with embedded docs"
+                }
+
+                diagram graph_node_text_block_example {
+                    width = 920
+                    height = 360
+
+                    graph_node gateway {
+                        x = 44
+                        y = 36
+                        width = 340
+                        title = "Gateway"
+                        subtitle = "edge service"
+
+                        graph_row ingress {
+                            label = "Ingress"
+                            left_port = "request"
+                            right_port = "route"
+                        }
+
+                        text_block docs {
+                            left = 16
+                            top = 78
+                            right = 16
+                            gap = 10
+                            font_size = 12
+
+                            paragraph summary {
+                                content = "Validates **signed** requests, maps them to _service_ routes, and publishes `AuditEvent` messages."
+                            }
+
+                            code route {
+                                language = "wcl"
+                                content = "connection route {\n    from = \"gateway.route\"\n    to = \"orders.in\"\n    direction = \"to\"\n}"
+                            }
+                        }
+                    }
+
+                    graph_node orders {
+                        x = 530
+                        y = 58
+                        width = 300
+                        title = "Orders service"
+                        subtitle = "domain API"
+
+                        graph_row api {
+                            label = "Command API"
+                            left_port = "in"
+                            right_port = "store"
+                        }
+
+                        text_block docs {
+                            left = 16
+                            top = 78
+                            right = 16
+                            gap = 8
+
+                            p details "Writes are **idempotent** and link to [runbooks](#) when retry limits are exceeded."
+                        }
+                    }
+
+                    database store {
+                        x = 610
+                        y = 250
+                        width = 120
+                        height = 86
+                        label = "Postgres"
+                    }
+
+                    connection request {
+                        from = "gateway.route"
+                        to = "orders.in"
+                        direction = "to"
+                        stroke = color_link
+                    }
+
+                    connection persist {
+                        from = "orders.store"
+                        to = "store"
+                        direction = "to"
+                    }
+                }
+
+                heading h2_plain {
+                    level = 2
+                    content = "Plain shape notes"
+                }
+
+                diagram plain_text_block_example {
+                    width = 760
+                    height = 260
+
+                    rect note_card {
+                        x = 42
+                        y = 34
+                        width = 300
+                        rx = 8
+                        fill = color_code_bg
+                        stroke = color_nav_border
+
+                        text_block body {
+                            left = 16
+                            top = 16
+                            right = 16
+                            gap = 10
+
+                            paragraph note {
+                                content = "A normal rectangle can grow around a <code>text_block</code> when no explicit height is set."
+                            }
+
+                            code snippet {
+                                language = "wcl"
+                                content = "rect note_card {\n    width = 300\n    text_block body { ... }\n}"
+                            }
+                        }
+                    }
+
+                    rect fixed_card {
+                        x = 420
+                        y = 34
+                        width = 270
+                        height = 150
+                        rx = 8
+                        fill = color_code_bg
+                        stroke = color_link
+
+                        text_block body {
+                            left = 16
+                            top = 16
+                            right = 16
+
+                            p fixed "Shapes with an explicit <code>height</code> keep that height; the text block still wraps downward inside the shape."
+                        }
+                    }
+                }
+
+                code sample {
+                    language = "wcl"
+                    content = "graph_node gateway {\n    width = 340\n    title = \"Gateway\"\n\n    graph_row ingress {\n        label = \"Ingress\"\n        right_port = \"route\"\n    }\n\n    text_block docs {\n        left = 16\n        top = 78\n        right = 16\n\n        paragraph summary {\n            content = \"Validates **signed** requests and publishes `AuditEvent` messages.\"\n        }\n\n        code route {\n            language = \"wcl\"\n            content = \"connection route { from = \\\"gateway.route\\\" to = \\\"orders.in\\\" }\"\n        }\n    }\n}"
+                }
+            }
+        }
+    }
+}

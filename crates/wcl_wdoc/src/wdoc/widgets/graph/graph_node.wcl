@@ -73,7 +73,8 @@
         let row_shapes = map(range(0, row_count), (i) => wdoc::graph_node_row_shapes(rows[i], i, w, header_h, row_h, label_fill, muted_fill, separator_stroke, port_r, port_fill, unused_port_fill, port_stroke, port_stroke_width, connected_ports))
         concat(concat(concat([
             { kind = "rect", id = "surface", x = 0, y = 0, width = w, height = h, rx = radius,
-              fill = surface_fill, stroke = border_stroke, stroke_width = border_width },
+              fill = surface_fill, stroke = border_stroke, stroke_width = border_width,
+              _wdoc_full_container = "true" },
             { kind = "rect", x = 0, y = 0, width = w, height = header_h, rx = radius,
               fill = header_fill },
             { kind = "rect", x = 0, y = header_h - radius, width = w, height = radius,
@@ -83,6 +84,7 @@
               font_weight = "600", anchor = "start", fill = header_label_fill }
         ], subtitle_part), flatten(row_shapes)), [
             { kind = "rect", x = 0, y = 0, width = w, height = h, rx = radius,
-              fill = "none", stroke = border_stroke, stroke_width = border_width }
+              fill = "none", stroke = border_stroke, stroke_width = border_width,
+              _wdoc_full_container = "true" }
         ])
     }

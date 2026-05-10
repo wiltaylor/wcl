@@ -150,6 +150,7 @@ namespace wdoc {
         @open schema "line" { }
         @open schema "path" { }
         @open schema "text" { }
+        @open schema "text_block" { }
         @open
         schema "inline_svg" {
             src: string @optional
@@ -286,6 +287,7 @@ namespace wdoc {
             "wdoc::draw::line",
             "wdoc::draw::path",
             "wdoc::draw::text",
+            "wdoc::draw::text_block",
             "wdoc::draw::inline_svg",
             "wdoc::draw::image",
             "wdoc::draw::group",
@@ -386,6 +388,12 @@ namespace wdoc {
         @template("shape", "wdoc::widget_navbar")   @open schema "navbar" { }
         @template("shape", "wdoc::widget_graph_node") @open schema "graph_node" { }
         @parent(["wdoc::draw::graph_node"]) @open schema "graph_row" { }
+        @parent(["wdoc::draw::text_block"]) @open schema "paragraph" { content: string }
+        @parent(["wdoc::draw::text_block"]) @open schema "p" { content: string @text }
+        @parent(["wdoc::draw::text_block"]) @open schema "code" {
+            language: string @optional
+            content: string
+        }
 
         @template("shape", "wdoc::widget_flowchart")       @open schema "flowchart" { }
         @template("shape", "wdoc::widget_flow_process")    @open schema "flow_process" { }

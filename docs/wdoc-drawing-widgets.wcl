@@ -1,6 +1,6 @@
 import <wdoc.wcl>
 use wdoc::{page, layout, heading, paragraph, code, data_table, callout, bold, link}
-use wdoc::draw::{diagram, terminal, terminal_box, terminal_text, terminal_menu, terminal_cursor, graph_node, graph_row, connection, database}
+use wdoc::draw::{diagram, terminal, terminal_box, terminal_text, terminal_menu, terminal_cursor, graph_node, graph_row, text_block, connection, database}
 
 page wdoc_drawing_widgets {
     section = "wcl_docs.wdoc.wdoc_drawing_widgets"
@@ -148,14 +148,15 @@ page wdoc_drawing_widgets {
                 }
 
                 paragraph p_graph {
-                    content = "<code>graph_node</code> renders a card with nested <code>graph_row</code> entries. Rows expose explicit left and right ports, and connections target those ports with scoped IDs such as <code>api.out</code> or <code>db.query</code>."
+                    content = "<code>graph_node</code> renders a card with nested <code>graph_row</code> entries. Rows expose explicit left and right ports, and connections target those ports with scoped IDs such as <code>api.out</code> or <code>db.query</code>. Add <code>text_block</code> children when a node needs wrapped WDoc paragraphs or code panels."
                 }
 
                 data_table tbl_graph {
                     caption = "Graph node widgets"
                     rows = [
                         { widget = "graph_node", attrs = "title, subtitle, row_height, header_height, port_radius, port_fill, unused_port_fill" },
-                        { widget = "graph_row",  attrs = "label, detail, left_port, right_port, left_ports, right_ports" }
+                        { widget = "graph_row",  attrs = "label, detail, left_port, right_port, left_ports, right_ports" },
+                        { widget = "text_block", attrs = "content, padding, gap, font_size, line_height, code_font_size, code_background_fill" }
                     ]
                 }
 
@@ -185,6 +186,21 @@ page wdoc_drawing_widgets {
                             label = "Events"
                             right_port = "events"
                             detail = "async"
+                        }
+
+                        text_block docs {
+                            left = 14
+                            top = 124
+                            right = 14
+
+                            paragraph summary {
+                                content = "Routes **authenticated** traffic and emits `AuditEvent` records."
+                            }
+
+                            code snippet {
+                                language = "wcl"
+                                content = "connection e { from = \"api.events\" to = \"worker.in\" direction = \"to\" }"
+                            }
                         }
                     }
 

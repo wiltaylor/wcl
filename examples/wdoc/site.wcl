@@ -35,6 +35,7 @@ doc my_docs {
         section terminal_examples "Terminal Diagrams" {}
         section widget_theme_examples "Widget Theme Properties" {}
         section graph_node_examples "Graph Node Diagrams" {}
+        section text_block_examples "Text Block Diagrams" {}
         section interactions "Diagram Interactions" {}
         section animation_examples "Keyframe Animations" {}
         section flowchart_examples "Flowchart Shapes" {}
