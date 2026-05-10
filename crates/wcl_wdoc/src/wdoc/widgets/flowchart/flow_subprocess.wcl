@@ -1,7 +1,8 @@
     export let widget_flow_subprocess = (b) => {
-        let w = attr_or(b, "width", 160)
-        let h = attr_or(b, "height", 50)
         let label = attr_or(b, "label", "Subprocess")
+        let box = wdoc::flow_label_box(b, label, 13, 130, 190, 50, 24, 14)
+        let w = box.width
+        let h = box.height
         let color = attr_or(b, "color", "var(--color-link)")
         let surface_fill = attr_or(b, "surface_fill", "var(--color-bg)")
         let border_stroke = attr_or(b, "border_stroke", color)
@@ -15,7 +16,8 @@
             { kind = "line", x1 = 10, y1 = 0, x2 = 10, y2 = h, stroke = separator_stroke, stroke_width = 1 },
             { kind = "line", x1 = w - 10, y1 = 0, x2 = w - 10, y2 = h, stroke = separator_stroke, stroke_width = 1 },
             { kind = "text", x = 0, y = 0, width = w, height = h,
-              content = label, font_size = 13, fill = label_fill }
+              content = label, font_size = box.font_size, line_height = box.line_height,
+              max_width = box.label_width, fill = label_fill }
         ]
     }
 

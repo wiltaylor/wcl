@@ -15,7 +15,7 @@ page flowchart_examples {
                     level = 1
                     content = "Flowchart Shapes"
                 }
-                paragraph pfc1 { content = "All five flowchart shape types with the " + bold("layered") + " layout engine:" }
+                paragraph pfc1 { content = "Flowchart nodes auto-size from their labels when width and height are omitted. Long labels wrap on spaces before the layered layout runs:" }
 
                 diagram flowchart_demo {
                     width = 700
@@ -24,51 +24,37 @@ page flowchart_examples {
                     gap = 40
 
                     flow_terminal start {
-                        width = 130
-                        height = 40
                         label = "Start"
                     }
 
                     flow_io input_data {
-                        width = 150
-                        height = 50
                         label = "Read Input"
                     }
 
                     flow_process validate {
-                        width = 150
-                        height = 50
-                        label = "Validate Data"
+                        label = "Validate incoming customer data"
+                        max_width = 165
                     }
 
                     flow_decision is_valid {
-                        width = 110
-                        height = 80
-                        label = "Valid?"
+                        label = "Valid payload?"
                     }
 
                     flow_subprocess process_data {
-                        width = 160
-                        height = 50
-                        label = "Process Data"
+                        label = "Process accepted data"
+                        max_width = 170
                     }
 
                     flow_process log_error {
-                        width = 140
-                        height = 50
                         label = "Log Error"
                         color = "#d32f2f"
                     }
 
                     flow_io write_output {
-                        width = 150
-                        height = 50
                         label = "Write Output"
                     }
 
                     flow_terminal done {
-                        width = 130
-                        height = 40
                         label = "End"
                         color = "#28a745"
                     }
@@ -116,6 +102,120 @@ page flowchart_examples {
                         stroke = "#d32f2f"
                         stroke_width = 1
                         stroke_dasharray = "5,3" }
+                }
+            }
+        }
+
+        vsplit v_fc_nested {
+            split s_fc_nested {
+                size = 100
+
+                heading hfc_nested {
+                    level = 2
+                    content = "Nested flowcharts"
+                }
+                paragraph pfc_nested {
+                    content = "Use " + bold("flowchart") + " as a lightweight container when a flowchart step needs its own internal flow. It defaults to layered layout and supports dotted connection targets."
+                }
+
+                diagram nested_flowchart_demo {
+                    width = 760
+                    height = 360
+                    align = "layered"
+                    gap = 52
+
+                    flow_terminal request {
+                        width = 130
+                        height = 40
+                        label = "Request"
+                    }
+
+                    flowchart auth_flow {
+                        width = 320
+                        height = 240
+                        label = "Auth flow"
+                        border_stroke = color_link
+
+                        flow_terminal auth_start {
+                            width = 120
+                            height = 38
+                            label = "Token"
+                        }
+
+                        flow_process validate_token {
+                            width = 150
+                            height = 48
+                            label = "Validate"
+                        }
+
+                        flow_decision accepted {
+                            width = 105
+                            height = 76
+                            label = "OK?"
+                        }
+
+                        flow_terminal auth_done {
+                            width = 120
+                            height = 38
+                            label = "Allow"
+                            color = color_success
+                        }
+
+                        connection auth1 {
+                            from = "auth_start"
+                            to = "validate_token"
+                            direction = "to"
+                            stroke = color_text
+                        }
+                        connection auth2 {
+                            from = "validate_token"
+                            to = "accepted"
+                            direction = "to"
+                            stroke = color_text
+                        }
+                        connection auth3 {
+                            from = "accepted"
+                            to = "auth_done"
+                            direction = "to"
+                            stroke = color_success
+                            label = "yes"
+                        }
+                    }
+
+                    flow_process route {
+                        width = 150
+                        height = 50
+                        label = "Route"
+                    }
+
+                    flow_terminal response {
+                        width = 130
+                        height = 40
+                        label = "Response"
+                        color = color_success
+                    }
+
+                    connection request_to_auth {
+                        from = "request"
+                        to = "auth_flow.auth_start"
+                        direction = "to"
+                        stroke = color_text
+                        stroke_width = 2
+                    }
+                    connection auth_to_route {
+                        from = "auth_flow.auth_done"
+                        to = "route"
+                        direction = "to"
+                        stroke = color_text
+                        stroke_width = 2
+                    }
+                    connection route_to_response {
+                        from = "route"
+                        to = "response"
+                        direction = "to"
+                        stroke = color_text
+                        stroke_width = 2
+                    }
                 }
             }
         }

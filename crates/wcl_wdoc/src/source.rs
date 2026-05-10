@@ -724,6 +724,21 @@ fn collect_shape_or_connection(
         }
         connections.extend(scope_connections(child_connections, br.id.as_deref()));
 
+        // Composite shape containers are invisible — the template provides all
+        // visuals. Default fill/stroke to none so the wrapping rect doesn't
+        // double up on the template's drawing. Apply widget defaults before
+        // parsing structural attrs so defaults like flowchart align/gap affect
+        // the ShapeNode fields as well as the attrs map.
+        if is_composite {
+            a.entry("fill".to_string())
+                .or_insert_with(|| "none".to_string());
+            a.entry("stroke".to_string())
+                .or_insert_with(|| "none".to_string());
+            a.insert("_wdoc_composite".to_string(), "true".to_string());
+            assign_default_widget_class(&mut a, br);
+            apply_builtin_widget_content_insets(&mut a, br);
+        }
+
         let pf =
             |m: &IndexMap<String, String>, k: &str| m.get(k).and_then(|s| s.parse::<f64>().ok());
         let align = parse_alignment_str(a.get("align").map(|s| s.as_str()).unwrap_or("none"));
@@ -741,19 +756,6 @@ fn collect_shape_or_connection(
 
         if kind == ShapeKind::InlineSvg {
             hydrate_inline_svg_attrs(&mut a, ctx);
-        }
-
-        // Composite shape containers are invisible — the template provides all
-        // visuals. Default fill/stroke to none so the wrapping rect doesn't
-        // double up on the template's drawing.
-        if is_composite {
-            a.entry("fill".to_string())
-                .or_insert_with(|| "none".to_string());
-            a.entry("stroke".to_string())
-                .or_insert_with(|| "none".to_string());
-            a.insert("_wdoc_composite".to_string(), "true".to_string());
-            assign_default_widget_class(&mut a, br);
-            apply_builtin_widget_content_insets(&mut a, br);
         }
 
         shapes.push(ShapeNode {
@@ -783,6 +785,18 @@ fn collect_shape_or_connection(
 fn apply_builtin_widget_content_insets(attrs: &mut IndexMap<String, String>, br: &BlockRef) {
     let kind = br.kind.rsplit("::").next().unwrap_or(br.kind.as_str());
     match kind {
+        "flowchart" => {
+            attrs
+                .entry("align".to_string())
+                .or_insert_with(|| "layered".to_string());
+            attrs
+                .entry("gap".to_string())
+                .or_insert_with(|| "48".to_string());
+            insert_default_content_inset(attrs, "left", 16.0);
+            insert_default_content_inset(attrs, "top", 36.0);
+            insert_default_content_inset(attrs, "right", 16.0);
+            insert_default_content_inset(attrs, "bottom", 16.0);
+        }
         "card" => {
             if br
                 .attributes
@@ -3294,6 +3308,223 @@ mod wdoc_draw_tests {
         crate::shapes::render_diagram_svg(&mut diagram);
         let flow_children = &diagram.shapes[0].children;
         assert!(flow_children[0].resolved.y < flow_children[1].resolved.y);
+    }
+
+    #[test]
+    fn flowchart_widget_defaults_to_layered_nested_container() {
+        let ctx = wdoc_library_ctx();
+        assert!(ctx
+            .template_map
+            .contains_key(&("shape".to_string(), "wdoc::draw::flowchart".to_string())));
+
+        let mut start_attrs = IndexMap::new();
+        int_attr(&mut start_attrs, "width", 80);
+        int_attr(&mut start_attrs, "height", 32);
+        let mut end_attrs = IndexMap::new();
+        int_attr(&mut end_attrs, "width", 80);
+        int_attr(&mut end_attrs, "height", 32);
+        let mut conn_attrs = IndexMap::new();
+        string_attr(&mut conn_attrs, "from", "start");
+        string_attr(&mut conn_attrs, "to", "end");
+        string_attr(&mut conn_attrs, "direction", "to");
+        let mut flow_attrs = IndexMap::new();
+        int_attr(&mut flow_attrs, "width", 180);
+        int_attr(&mut flow_attrs, "height", 150);
+
+        let flow = block(
+            "wdoc::draw::flowchart",
+            Some("flow"),
+            flow_attrs,
+            vec![
+                block(
+                    "wdoc::draw::flow_process",
+                    Some("start"),
+                    start_attrs,
+                    vec![],
+                ),
+                block("wdoc::draw::flow_process", Some("end"), end_attrs, vec![]),
+                block("wdoc::draw::connection", Some("step"), conn_attrs, vec![]),
+            ],
+        );
+
+        let mut shapes = Vec::new();
+        let mut connections = Vec::new();
+        collect_shape_or_connection(&flow, &mut shapes, &mut connections, &ctx, 0);
+
+        assert_eq!(connections.len(), 1);
+        assert_eq!(connections[0].from_id, "flow.start");
+        assert_eq!(connections[0].to_id, "flow.end");
+        assert_eq!(
+            shapes[0].attrs.get("align").map(String::as_str),
+            Some("layered")
+        );
+        assert_eq!(shapes[0].attrs.get("gap").map(String::as_str), Some("48"));
+        assert_eq!(
+            shapes[0].attrs.get("_wdoc_content_top").map(String::as_str),
+            Some("36")
+        );
+
+        let mut diagram = crate::shapes::Diagram {
+            id: None,
+            width: 220.0,
+            height: 190.0,
+            padding: 0.0,
+            align: crate::shapes::Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+            shapes,
+            connections,
+            classes: IndexMap::new(),
+        };
+        crate::shapes::render_diagram_svg(&mut diagram);
+        let flow_children = &diagram.shapes[0].children;
+        let start = flow_children
+            .iter()
+            .find(|child| child.id.as_deref() == Some("start"))
+            .expect("start child should exist");
+        let end = flow_children
+            .iter()
+            .find(|child| child.id.as_deref() == Some("end"))
+            .expect("end child should exist");
+        assert!(start.resolved.y < end.resolved.y);
+        assert!(start.resolved.y >= 36.0);
+    }
+
+    #[test]
+    fn flowchart_widget_preserves_explicit_layout_overrides_and_dotted_targets() {
+        let ctx = wdoc_library_ctx();
+
+        let mut start_attrs = IndexMap::new();
+        int_attr(&mut start_attrs, "width", 80);
+        int_attr(&mut start_attrs, "height", 32);
+        let mut inner_attrs = IndexMap::new();
+        int_attr(&mut inner_attrs, "width", 180);
+        int_attr(&mut inner_attrs, "height", 140);
+        string_attr(&mut inner_attrs, "align", "grid");
+        int_attr(&mut inner_attrs, "gap", 12);
+        int_attr(&mut inner_attrs, "content_top", 8);
+        let mut inner_start_attrs = IndexMap::new();
+        int_attr(&mut inner_start_attrs, "width", 80);
+        int_attr(&mut inner_start_attrs, "height", 32);
+        let mut inner_end_attrs = IndexMap::new();
+        int_attr(&mut inner_end_attrs, "width", 80);
+        int_attr(&mut inner_end_attrs, "height", 32);
+        let mut outer_conn_attrs = IndexMap::new();
+        string_attr(&mut outer_conn_attrs, "from", "start");
+        string_attr(&mut outer_conn_attrs, "to", "inner.inner_start");
+        string_attr(&mut outer_conn_attrs, "direction", "to");
+
+        let inner = block(
+            "wdoc::draw::flowchart",
+            Some("inner"),
+            inner_attrs,
+            vec![
+                block(
+                    "wdoc::draw::flow_process",
+                    Some("inner_start"),
+                    inner_start_attrs,
+                    vec![],
+                ),
+                block(
+                    "wdoc::draw::flow_process",
+                    Some("inner_end"),
+                    inner_end_attrs,
+                    vec![],
+                ),
+            ],
+        );
+        let outer = block(
+            "wdoc::draw::flowchart",
+            Some("outer"),
+            IndexMap::new(),
+            vec![
+                block(
+                    "wdoc::draw::flow_process",
+                    Some("start"),
+                    start_attrs,
+                    vec![],
+                ),
+                inner,
+                block(
+                    "wdoc::draw::connection",
+                    Some("to_inner"),
+                    outer_conn_attrs,
+                    vec![],
+                ),
+            ],
+        );
+
+        let mut shapes = Vec::new();
+        let mut connections = Vec::new();
+        collect_shape_or_connection(&outer, &mut shapes, &mut connections, &ctx, 0);
+
+        assert_eq!(connections.len(), 1);
+        assert_eq!(connections[0].from_id, "outer.start");
+        assert_eq!(connections[0].to_id, "outer.inner.inner_start");
+        let inner = shapes[0]
+            .children
+            .iter()
+            .find(|child| child.id.as_deref() == Some("inner"))
+            .expect("nested flowchart should be present");
+        assert_eq!(inner.attrs.get("align").map(String::as_str), Some("grid"));
+        assert_eq!(inner.attrs.get("gap").map(String::as_str), Some("12"));
+        assert_eq!(
+            inner.attrs.get("_wdoc_content_top").map(String::as_str),
+            Some("8")
+        );
+    }
+
+    #[test]
+    fn flowchart_nodes_autosize_and_wrap_labels() {
+        let ctx = wdoc_library_ctx();
+        let mut attrs = IndexMap::new();
+        string_attr(&mut attrs, "label", "Validate customer shipping address");
+        int_attr(&mut attrs, "max_width", 150);
+
+        let node = block("wdoc::draw::flow_process", Some("validate"), attrs, vec![]);
+        let mut shapes = Vec::new();
+        let mut connections = Vec::new();
+        collect_shape_or_connection(&node, &mut shapes, &mut connections, &ctx, 0);
+
+        assert_eq!(shapes.len(), 1);
+        assert_eq!(shapes[0].width, None);
+        assert_eq!(shapes[0].height, None);
+        let label = shapes[0]
+            .children
+            .iter()
+            .find(|child| child.kind == crate::shapes::ShapeKind::Text)
+            .expect("label text should be present");
+        assert!(label.width.unwrap() <= 150.0);
+        assert!(label.height.unwrap() > 50.0);
+        let label_max_width = label
+            .attrs
+            .get("max_width")
+            .and_then(|value| value.parse::<f64>().ok())
+            .expect("label max width should be numeric");
+        assert!(label_max_width <= 110.0);
+    }
+
+    #[test]
+    fn flowchart_nodes_preserve_explicit_dimensions() {
+        let ctx = wdoc_library_ctx();
+        let mut attrs = IndexMap::new();
+        string_attr(
+            &mut attrs,
+            "label",
+            "Long label that still uses manual sizing",
+        );
+        int_attr(&mut attrs, "width", 220);
+        int_attr(&mut attrs, "height", 90);
+
+        let node = block("wdoc::draw::flow_process", Some("manual"), attrs, vec![]);
+        let mut shapes = Vec::new();
+        let mut connections = Vec::new();
+        collect_shape_or_connection(&node, &mut shapes, &mut connections, &ctx, 0);
+
+        assert_eq!(shapes[0].width, Some(220.0));
+        assert_eq!(shapes[0].height, Some(90.0));
+        assert_eq!(shapes[0].children[0].width, Some(220.0));
+        assert_eq!(shapes[0].children[0].height, Some(90.0));
     }
 
     #[test]

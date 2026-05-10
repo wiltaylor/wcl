@@ -71,10 +71,19 @@ pub fn layout_layered(
         &isolated,
     );
 
+    let scale_to_fit = options
+        .get("_wdoc_scale_to_fit")
+        .map(|s| s == "true")
+        .unwrap_or(false);
+
     if horizontal {
-        layout_layered_horizontal(children, &layers, parent, gap);
+        layout_layered_horizontal(children, &layers, parent, gap, scale_to_fit);
     } else {
-        layout_layered_vertical(children, &layers, parent, gap);
+        layout_layered_vertical(children, &layers, parent, gap, scale_to_fit);
+    }
+    if scale_to_fit {
+        scale_children_to_parent(children, parent);
+        fit_children_to_parent(children, parent);
     }
 }
 
@@ -623,6 +632,7 @@ fn layout_layered_vertical(
     layers: &[Vec<usize>],
     parent: &Bounds,
     gap: f64,
+    scale_to_fit: bool,
 ) {
     let layer_rows: Vec<Vec<WrappedLine>> = layers
         .iter()
@@ -632,7 +642,11 @@ fn layout_layered_vertical(
         .iter()
         .map(|rows| layer_group_cross_size(rows, gap))
         .collect();
-    let layer_gap = fit_gap(parent.height, &layer_heights, gap);
+    let layer_gap = if scale_to_fit {
+        gap
+    } else {
+        fit_gap(parent.height, &layer_heights, gap)
+    };
 
     let mut y = parent.y;
     for (layer_idx, rows) in layer_rows.into_iter().enumerate() {
@@ -665,6 +679,7 @@ fn layout_layered_horizontal(
     layers: &[Vec<usize>],
     parent: &Bounds,
     gap: f64,
+    scale_to_fit: bool,
 ) {
     let layer_columns: Vec<Vec<WrappedLine>> = layers
         .iter()
@@ -674,7 +689,11 @@ fn layout_layered_horizontal(
         .iter()
         .map(|columns| layer_group_cross_size(columns, gap))
         .collect();
-    let layer_gap = fit_gap(parent.width, &layer_widths, gap);
+    let layer_gap = if scale_to_fit {
+        gap
+    } else {
+        fit_gap(parent.width, &layer_widths, gap)
+    };
 
     let mut x = parent.x;
     for (layer_idx, columns) in layer_columns.into_iter().enumerate() {
@@ -808,7 +827,7 @@ fn bounding_box(positions: &[(f64, f64)]) -> (f64, f64, f64, f64) {
     (min_x, max_x, min_y, max_y)
 }
 
-fn fit_children_to_parent(children: &mut [ShapeNode], parent: &Bounds) {
+pub(crate) fn fit_children_to_parent(children: &mut [ShapeNode], parent: &Bounds) {
     if children.is_empty() {
         return;
     }
@@ -836,6 +855,76 @@ fn fit_children_to_parent(children: &mut [ShapeNode], parent: &Bounds) {
         child.resolved.x += dx;
         child.resolved.y += dy;
         clamp_child_to_parent(child, parent);
+    }
+}
+
+pub(crate) fn scale_children_to_parent(children: &mut [ShapeNode], parent: &Bounds) {
+    if children.is_empty() || parent.width <= 0.0 || parent.height <= 0.0 {
+        return;
+    }
+
+    let Some(bounds) = children_bounds(children) else {
+        return;
+    };
+    if bounds.width <= parent.width && bounds.height <= parent.height {
+        return;
+    }
+
+    let scale_x = if bounds.width > 0.0 {
+        parent.width / bounds.width
+    } else {
+        1.0
+    };
+    let scale_y = if bounds.height > 0.0 {
+        parent.height / bounds.height
+    } else {
+        1.0
+    };
+    let scale = scale_x.min(scale_y).min(1.0);
+    if scale >= 1.0 {
+        return;
+    }
+
+    let scaled_width = bounds.width * scale;
+    let scaled_height = bounds.height * scale;
+    let target_x = parent.x + (parent.width - scaled_width) / 2.0;
+    let target_y = parent.y + (parent.height - scaled_height) / 2.0;
+
+    for child in children.iter_mut() {
+        child.resolved.x = target_x + (child.resolved.x - bounds.x) * scale;
+        child.resolved.y = target_y + (child.resolved.y - bounds.y) * scale;
+        scale_node_size_and_local_children(child, scale);
+    }
+}
+
+fn scale_node_size_and_local_children(node: &mut ShapeNode, scale: f64) {
+    node.resolved.width *= scale;
+    node.resolved.height *= scale;
+    scale_numeric_attr(&mut node.attrs, "font_size", scale);
+    scale_numeric_attr(&mut node.attrs, "letter_spacing", scale);
+    scale_numeric_attr(&mut node.attrs, "stroke_width", scale);
+    scale_numeric_attr(&mut node.attrs, "rx", scale);
+    scale_numeric_attr(&mut node.attrs, "ry", scale);
+
+    for child in &mut node.children {
+        child.resolved.x *= scale;
+        child.resolved.y *= scale;
+        scale_node_size_and_local_children(child, scale);
+    }
+}
+
+fn scale_numeric_attr(attrs: &mut IndexMap<String, String>, key: &str, scale: f64) {
+    let Some(value) = attrs.get(key).and_then(|s| s.parse::<f64>().ok()) else {
+        return;
+    };
+    attrs.insert(key.to_string(), format_number(value * scale));
+}
+
+fn format_number(value: f64) -> String {
+    if (value.fract()).abs() < 1e-9 {
+        (value as i64).to_string()
+    } else {
+        value.to_string()
     }
 }
 
@@ -976,7 +1065,10 @@ mod tests {
             width: 160.0,
             height: 120.0,
         };
-        layout_layered(&mut nodes, &conns, &parent, 40.0, &IndexMap::new());
+        let opts = [("_wdoc_scale_to_fit".to_string(), "true".to_string())]
+            .into_iter()
+            .collect();
+        layout_layered(&mut nodes, &conns, &parent, 40.0, &opts);
 
         for node in nodes {
             assert!(node.resolved.x >= parent.x);
@@ -984,6 +1076,77 @@ mod tests {
             assert!(node.resolved.x + node.resolved.width <= parent.x + parent.width);
             assert!(node.resolved.y + node.resolved.height <= parent.y + parent.height);
         }
+    }
+
+    #[test]
+    fn test_layered_scales_oversized_graph_to_parent() {
+        let mut nodes = vec![
+            make_node("a", 120.0, 60.0),
+            make_node("b", 120.0, 60.0),
+            make_node("c", 120.0, 60.0),
+            make_node("d", 120.0, 60.0),
+        ];
+        nodes[0]
+            .attrs
+            .insert("font_size".to_string(), "20".to_string());
+        nodes[0].children = vec![make_node("label", 100.0, 20.0)];
+        let conns = vec![
+            make_conn("a", "b"),
+            make_conn("b", "c"),
+            make_conn("c", "d"),
+        ];
+        let parent = Bounds {
+            x: 10.0,
+            y: 20.0,
+            width: 180.0,
+            height: 180.0,
+        };
+        let opts = [("_wdoc_scale_to_fit".to_string(), "true".to_string())]
+            .into_iter()
+            .collect();
+        layout_layered(&mut nodes, &conns, &parent, 48.0, &opts);
+
+        for node in &nodes {
+            assert!(node.resolved.x >= parent.x);
+            assert!(node.resolved.y >= parent.y);
+            assert!(node.resolved.x + node.resolved.width <= parent.x + parent.width);
+            assert!(node.resolved.y + node.resolved.height <= parent.y + parent.height);
+        }
+        assert!(nodes[0].resolved.width < 120.0);
+        assert!(nodes[0].attrs["font_size"].parse::<f64>().unwrap() < 20.0);
+        assert!(nodes[0].children[0].resolved.width < 100.0);
+    }
+
+    #[test]
+    fn test_layered_scale_to_fit_preserves_layer_gap_before_scaling() {
+        let mut nodes = vec![
+            make_node("a", 120.0, 50.0),
+            make_node("b", 120.0, 50.0),
+            make_node("c", 120.0, 50.0),
+        ];
+        let conns = vec![make_conn("a", "b"), make_conn("b", "c")];
+        let parent = Bounds {
+            x: 0.0,
+            y: 0.0,
+            width: 240.0,
+            height: 120.0,
+        };
+        let opts = [
+            ("_wdoc_scale_to_fit".to_string(), "true".to_string()),
+            ("direction".to_string(), "horizontal".to_string()),
+        ]
+        .into_iter()
+        .collect();
+        layout_layered(&mut nodes, &conns, &parent, 60.0, &opts);
+
+        for node in &nodes {
+            assert!(node.resolved.x >= parent.x);
+            assert!(node.resolved.x + node.resolved.width <= parent.x + parent.width);
+        }
+        let first_gap = nodes[1].resolved.x - (nodes[0].resolved.x + nodes[0].resolved.width);
+        let second_gap = nodes[2].resolved.x - (nodes[1].resolved.x + nodes[1].resolved.width);
+        assert!(first_gap > 10.0, "first gap was {first_gap}");
+        assert!(second_gap > 10.0, "second gap was {second_gap}");
     }
 
     #[test]

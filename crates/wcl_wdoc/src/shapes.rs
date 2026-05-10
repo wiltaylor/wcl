@@ -12,14 +12,15 @@ use quick_xml::events::{BytesStart, Event};
 use quick_xml::Reader;
 
 const LAYOUT_DECORATION_ATTR: &str = "_wdoc_layout_decoration";
+const FULL_CONTAINER_DECORATION_ATTR: &str = "_wdoc_full_container";
 const CONNECTION_ROUTE_ATTR: &str = "_wdoc_route";
 const CONTENT_INSET_LEFT_ATTR: &str = "_wdoc_content_left";
 const CONTENT_INSET_TOP_ATTR: &str = "_wdoc_content_top";
 const CONTENT_INSET_RIGHT_ATTR: &str = "_wdoc_content_right";
 const CONTENT_INSET_BOTTOM_ATTR: &str = "_wdoc_content_bottom";
 const CONNECTION_ROUTE_DIRECT: &str = "direct";
-const ROUTE_MARGIN: f64 = 8.0;
-const ROUTE_TERMINAL_MIN: f64 = 16.0;
+const ROUTE_MARGIN: f64 = 18.0;
+const ROUTE_TERMINAL_MIN: f64 = 24.0;
 
 // ---------------------------------------------------------------------------
 // Data model
@@ -263,36 +264,17 @@ pub fn measure_text_attrs(attrs: &IndexMap<String, String>) -> TextMetrics {
         .and_then(|s| parse_svg_number(s))
         .filter(|w| *w > 0.0);
 
-    let mut lines = Vec::new();
-    for segment in content.split('\n') {
-        if let Some(max_width) = wrap_width {
-            wrap_text_segment(
-                segment,
-                max_width,
-                font_size,
-                letter_spacing,
-                attrs,
-                &mut lines,
-            );
-        } else {
-            lines.push(measure_line_width(
-                segment,
-                font_size,
-                letter_spacing,
-                attrs,
-            ));
-        }
-    }
-    if lines.is_empty() {
-        lines.push(0.0);
-    }
+    let lines = wrapped_text_lines(content, wrap_width, font_size, letter_spacing, attrs);
 
     let line_step = font_size * line_height;
     let height = line_step * lines.len() as f64;
     let baseline = ((line_step - font_size).max(0.0) / 2.0) + font_size * 0.8;
 
     TextMetrics {
-        width: lines.into_iter().fold(0.0, f64::max),
+        width: lines
+            .iter()
+            .map(|line| measure_line_width(line, font_size, letter_spacing, attrs))
+            .fold(0.0, f64::max),
         height,
         baseline,
     }
@@ -309,6 +291,8 @@ pub fn render_diagram_svg(diagram: &mut Diagram) -> String {
         width: diagram.width - diagram.padding * 2.0,
         height: diagram.height - diagram.padding * 2.0,
     };
+    let mut options = diagram.options.clone();
+    options.insert("_wdoc_scale_to_fit".to_string(), "true".to_string());
     resolve_children(
         &mut diagram.shapes,
         &mut diagram.connections,
@@ -316,7 +300,7 @@ pub fn render_diagram_svg(diagram: &mut Diagram) -> String {
         "",
         diagram.align,
         diagram.gap,
-        &diagram.options,
+        &options,
     );
 
     // Phase 2b: build shape map for connections
@@ -833,6 +817,8 @@ fn resolve_children(
         apply_intrinsic_container_size(child);
     }
 
+    prelayout_nested_graph_containers(children, connections, parent, scope_path);
+
     // Second pass: position unpositioned children via alignment engine
     let unpositioned: Vec<usize> = children
         .iter()
@@ -892,40 +878,103 @@ fn resolve_children(
 
     // Recurse into children
     for child in children.iter_mut() {
-        let insets = child_content_insets(child);
-        let mut inner = Bounds {
-            x: insets.left,
-            y: insets.top,
-            width: (child.resolved.width - insets.left - insets.right).max(0.0),
-            height: (child.resolved.height - insets.top - insets.bottom).max(0.0),
-        };
-        let child_scope_path = match (scope_path.is_empty(), child.id.as_deref()) {
-            (_, None) => scope_path.to_string(),
-            (true, Some(id)) => id.to_string(),
-            (false, Some(id)) => format!("{scope_path}.{id}"),
-        };
-        resolve_children(
-            &mut child.children,
-            connections,
-            &inner,
-            &child_scope_path,
-            child.align,
-            child.gap,
-            &child.attrs,
-        );
-        apply_post_layout_container_size(child);
-        if child.align == Alignment::Layered {
-            expand_container_to_fit_layered_children(child);
-            let insets = child_content_insets(child);
-            inner.x = insets.left;
-            inner.y = insets.top;
-            inner.width = (child.resolved.width - insets.left - insets.right).max(0.0);
-            inner.height = (child.resolved.height - insets.top - insets.bottom).max(0.0);
-        }
-        if has_explicit_width(child) && has_explicit_height(child) {
-            clamp_children_to_parent(&mut child.children, &inner);
-        }
+        resolve_nested_container(child, connections, scope_path);
     }
+
+    if scope_path.is_empty()
+        && align == Alignment::Layered
+        && option_enabled(options, "_wdoc_scale_to_fit")
+    {
+        crate::graph_layout::scale_children_to_parent(children, parent);
+        crate::graph_layout::fit_children_to_parent(children, parent);
+    }
+}
+
+fn prelayout_nested_graph_containers(
+    children: &mut [ShapeNode],
+    connections: &mut [Connection],
+    parent: &Bounds,
+    scope_path: &str,
+) {
+    for child in children.iter_mut() {
+        if is_layout_decoration(child)
+            || child.children.is_empty()
+            || !is_graph_alignment(child.align)
+        {
+            continue;
+        }
+
+        if child.resolved.width == 0.0 || child.resolved.height == 0.0 {
+            let bounds_parent = if is_layout_decoration(child) {
+                decoration_parent_bounds(parent)
+            } else {
+                *parent
+            };
+            resolve_bounds(child, &bounds_parent);
+            apply_intrinsic_container_size(child);
+        }
+
+        resolve_nested_container(child, connections, scope_path);
+    }
+}
+
+fn resolve_nested_container(
+    child: &mut ShapeNode,
+    connections: &mut [Connection],
+    scope_path: &str,
+) {
+    let insets = child_content_insets(child);
+    let mut inner = Bounds {
+        x: insets.left,
+        y: insets.top,
+        width: (child.resolved.width - insets.left - insets.right).max(0.0),
+        height: (child.resolved.height - insets.top - insets.bottom).max(0.0),
+    };
+    let child_scope_path = scoped_child_path(scope_path, child.id.as_deref());
+    let mut options = child.attrs.clone();
+    if has_explicit_width(child) && has_explicit_height(child) {
+        options.insert("_wdoc_scale_to_fit".to_string(), "true".to_string());
+    }
+    resolve_children(
+        &mut child.children,
+        connections,
+        &inner,
+        &child_scope_path,
+        child.align,
+        child.gap,
+        &options,
+    );
+    apply_post_layout_container_size(child);
+    if is_graph_alignment(child.align) {
+        expand_container_to_fit_layout_children(child);
+        let insets = child_content_insets(child);
+        inner.x = insets.left;
+        inner.y = insets.top;
+        inner.width = (child.resolved.width - insets.left - insets.right).max(0.0);
+        inner.height = (child.resolved.height - insets.top - insets.bottom).max(0.0);
+    }
+    if has_explicit_width(child) && has_explicit_height(child) {
+        clamp_children_to_parent(&mut child.children, &inner);
+    }
+}
+
+fn scoped_child_path(scope_path: &str, child_id: Option<&str>) -> String {
+    match (scope_path.is_empty(), child_id) {
+        (_, None) => scope_path.to_string(),
+        (true, Some(id)) => id.to_string(),
+        (false, Some(id)) => format!("{scope_path}.{id}"),
+    }
+}
+
+fn is_graph_alignment(align: Alignment) -> bool {
+    matches!(
+        align,
+        Alignment::Grid | Alignment::Layered | Alignment::Force | Alignment::Radial
+    )
+}
+
+fn option_enabled(options: &IndexMap<String, String>, key: &str) -> bool {
+    options.get(key).map(|s| s == "true").unwrap_or(false)
 }
 
 fn is_layout_decoration(node: &ShapeNode) -> bool {
@@ -989,6 +1038,15 @@ fn decoration_header_inset(node: &ShapeNode) -> Option<f64> {
 }
 
 fn is_full_container_decoration(child: &ShapeNode, container: Bounds) -> bool {
+    if child
+        .attrs
+        .get(FULL_CONTAINER_DECORATION_ATTR)
+        .map(|v| v == "true")
+        .unwrap_or(false)
+    {
+        return true;
+    }
+
     nearly_eq(child.resolved.x, 0.0)
         && nearly_eq(child.resolved.y, 0.0)
         && nearly_eq(child.resolved.width, container.width)
@@ -1085,6 +1143,9 @@ fn localize_connections(
         .filter_map(|conn| {
             let from_id = localize_endpoint(&conn.from_id, children, scope_path)?;
             let to_id = localize_endpoint(&conn.to_id, children, scope_path)?;
+            if from_id == to_id {
+                return None;
+            }
             let mut local = conn.clone();
             local.from_id = from_id;
             local.to_id = to_id;
@@ -1103,8 +1164,12 @@ fn localize_endpoint(endpoint: &str, children: &[ShapeNode], scope_path: &str) -
         endpoint
     };
 
-    if endpoint.contains('.') {
-        return None;
+    if let Some((owner, _)) = endpoint.split_once('.') {
+        return children
+            .iter()
+            .filter_map(|child| child.id.as_deref())
+            .find(|id| *id == owner)
+            .map(str::to_string);
     }
 
     children
@@ -1173,7 +1238,7 @@ fn apply_post_layout_container_size(node: &mut ShapeNode) {
     }
 }
 
-fn expand_container_to_fit_layered_children(node: &mut ShapeNode) {
+fn expand_container_to_fit_layout_children(node: &mut ShapeNode) {
     let Some(bounds) = children_bounds_without_decoration(&node.children) else {
         return;
     };
@@ -1187,9 +1252,7 @@ fn expand_container_to_fit_layered_children(node: &mut ShapeNode) {
     node.resolved.width = node.resolved.width.max(needed_width);
     node.resolved.height = node.resolved.height.max(needed_height);
 
-    if node.resolved.width != old_width || node.resolved.height != old_height {
-        resize_full_container_decorations(&mut node.children, old_width, old_height, node.resolved);
-    }
+    resize_full_container_decorations(&mut node.children, old_width, old_height, node.resolved);
 }
 
 fn input_children_bounds(children: &[ShapeNode]) -> Option<Bounds> {
@@ -1262,11 +1325,16 @@ fn resize_full_container_decorations(
     new_bounds: Bounds,
 ) {
     for child in children.iter_mut().filter(|c| is_layout_decoration(c)) {
-        if child.resolved.x == 0.0
+        let marked_full_container = child
+            .attrs
+            .get(FULL_CONTAINER_DECORATION_ATTR)
+            .map(|v| v == "true")
+            .unwrap_or(false);
+        let was_full_container = child.resolved.x == 0.0
             && child.resolved.y == 0.0
             && child.resolved.width == old_width
-            && child.resolved.height == old_height
-        {
+            && child.resolved.height == old_height;
+        if marked_full_container || was_full_container {
             child.resolved.width = new_bounds.width;
             child.resolved.height = new_bounds.height;
         }
@@ -1589,6 +1657,17 @@ fn render_shape_svg(node: &ShapeNode, svg: &mut String) {
                 .get("line_height")
                 .and_then(|s| s.parse::<f64>().ok())
                 .unwrap_or(1.2);
+            let letter_spacing = node
+                .attrs
+                .get("letter_spacing")
+                .map(|s| parse_css_length(s, font_size_for_layout))
+                .unwrap_or(0.0);
+            let wrap_width = node
+                .attrs
+                .get("max_width")
+                .or_else(|| node.attrs.get("width"))
+                .and_then(|s| parse_svg_number(s))
+                .filter(|w| *w > 0.0);
             let line_step = font_size_for_layout * line_height;
             let anchor = node
                 .attrs
@@ -1610,16 +1689,24 @@ fn render_shape_svg(node: &ShapeNode, svg: &mut String) {
             };
             let font_size_attr = svg_escape_attr(font_size);
             let anchor_attr = svg_escape_attr(anchor);
-            let lines: Vec<&str> = content.split('\n').collect();
             write!(
                 svg,
                 "<text x=\"{tx}\" y=\"{ty}\" font-size=\"{font_size_attr}\" \
                  text-anchor=\"{anchor_attr}\" dominant-baseline=\"central\"\
-                 {fill_default}{style}>"
+                {fill_default}{style}>"
             )
             .unwrap();
+            let lines = wrapped_text_lines(
+                content,
+                wrap_width,
+                font_size_for_layout,
+                letter_spacing,
+                &node.attrs,
+            );
             if lines.len() <= 1 {
-                svg.push_str(&svg_escape_text(content));
+                svg.push_str(&svg_escape_text(
+                    lines.first().map(String::as_str).unwrap_or(""),
+                ));
             } else {
                 let first_y = ty - ((lines.len() - 1) as f64 * line_step / 2.0);
                 for (idx, line) in lines.iter().enumerate() {
@@ -1842,6 +1929,24 @@ fn render_connection_svg(conn: &Connection, shape_map: &HashMap<String, Bounds>,
                         "<path d=\"{d}\" fill=\"none\"{stroke_default}{style}{runtime_attrs}{ms}{me}/>"
                     )
                     .unwrap();
+                } else if !direct_auto_line_is_clean((x1, y1), (x2, y2), &obstacles) {
+                    if let Some(points) =
+                        route_orthogonal_best_effort(from_bounds, to_bounds, &obstacles)
+                    {
+                        let d = path_data(&points);
+                        write!(
+                        svg,
+                        "<path d=\"{d}\" fill=\"none\"{stroke_default}{style}{runtime_attrs}{ms}{me}/>"
+                    )
+                    .unwrap();
+                    } else {
+                        write!(
+                            svg,
+                            "<line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\"\
+                             {stroke_default}{style}{runtime_attrs}{ms}{me}/>"
+                        )
+                        .unwrap();
+                    }
                 } else {
                     write!(
                         svg,
@@ -1853,6 +1958,40 @@ fn render_connection_svg(conn: &Connection, shape_map: &HashMap<String, Bounds>,
             } else {
                 let (x1, y1) = from_bounds.anchor_pos(conn.from_anchor, to_bounds);
                 let (x2, y2) = to_bounds.anchor_pos(conn.to_anchor, from_bounds);
+                let obstacles =
+                    connection_obstacles(&conn.from_id, &conn.to_id, x1, y1, x2, y2, shape_map);
+                if !connection_uses_direct_route(conn) {
+                    if let Some(points) = route_orthogonal_anchored(
+                        from_bounds,
+                        to_bounds,
+                        &obstacles,
+                        conn.from_anchor,
+                        conn.to_anchor,
+                    ) {
+                        let d = path_data(&points);
+                        write!(
+                            svg,
+                            "<path d=\"{d}\" fill=\"none\"{stroke_default}{style}{runtime_attrs}{ms}{me}/>"
+                        )
+                        .unwrap();
+                        return;
+                    }
+                    if let Some(points) = route_orthogonal_anchored_best_effort(
+                        from_bounds,
+                        to_bounds,
+                        &obstacles,
+                        conn.from_anchor,
+                        conn.to_anchor,
+                    ) {
+                        let d = path_data(&points);
+                        write!(
+                            svg,
+                            "<path d=\"{d}\" fill=\"none\"{stroke_default}{style}{runtime_attrs}{ms}{me}/>"
+                        )
+                        .unwrap();
+                        return;
+                    }
+                }
                 write!(
                     svg,
                     "<line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\"\
@@ -1930,6 +2069,43 @@ fn route_orthogonal(from: &Bounds, to: &Bounds, obstacles: &[Bounds]) -> Option<
         return None;
     }
 
+    route_orthogonal_candidates(from, to, obstacles)
+        .into_iter()
+        .filter(|points| {
+            !path_intersects_obstacle(points, obstacles)
+                && route_exits_endpoint_bounds(points, from, to)
+                && route_has_visible_terminal_segments(points, ROUTE_TERMINAL_MIN)
+        })
+        .min_by(|a, b| {
+            route_score(a)
+                .partial_cmp(&route_score(b))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+}
+
+fn route_orthogonal_best_effort(
+    from: &Bounds,
+    to: &Bounds,
+    obstacles: &[Bounds],
+) -> Option<Vec<(f64, f64)>> {
+    route_orthogonal_candidates(from, to, obstacles)
+        .into_iter()
+        .filter(|points| {
+            route_exits_endpoint_bounds(points, from, to)
+                && route_has_visible_terminal_segments(points, ROUTE_TERMINAL_MIN)
+        })
+        .min_by(|a, b| {
+            route_score_with_obstacles(a, obstacles)
+                .partial_cmp(&route_score_with_obstacles(b, obstacles))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+}
+
+fn route_orthogonal_candidates(
+    from: &Bounds,
+    to: &Bounds,
+    obstacles: &[Bounds],
+) -> Vec<Vec<(f64, f64)>> {
     let mut candidates = Vec::new();
 
     let mut x_lanes = route_x_lanes(from, to, ROUTE_MARGIN);
@@ -1943,9 +2119,126 @@ fn route_orthogonal(from: &Bounds, to: &Bounds, obstacles: &[Bounds]) -> Option<
 
     for mid_x in x_lanes {
         candidates.push(build_hv_route(from, to, mid_x));
+        candidates.push(build_hv_route_with_escape(from, to, mid_x));
     }
     for mid_y in y_lanes {
         candidates.push(build_vh_route(from, to, mid_y));
+        candidates.push(build_vh_route_with_escape(from, to, mid_y));
+    }
+
+    candidates
+}
+
+fn route_orthogonal_anchored(
+    from: &Bounds,
+    to: &Bounds,
+    obstacles: &[Bounds],
+    from_anchor: AnchorPoint,
+    to_anchor: AnchorPoint,
+) -> Option<Vec<(f64, f64)>> {
+    let start = from.anchor_pos(from_anchor, to);
+    let end = to.anchor_pos(to_anchor, from);
+    if direct_auto_line_is_clean(start, end, obstacles) {
+        return None;
+    }
+
+    route_orthogonal_anchored_best_effort(from, to, obstacles, from_anchor, to_anchor).filter(
+        |points| {
+            !path_intersects_obstacle(points, obstacles)
+                && route_exits_endpoint_bounds(points, from, to)
+                && route_has_visible_terminal_segments(points, ROUTE_TERMINAL_MIN)
+        },
+    )
+}
+
+fn route_orthogonal_anchored_best_effort(
+    from: &Bounds,
+    to: &Bounds,
+    obstacles: &[Bounds],
+    from_anchor: AnchorPoint,
+    to_anchor: AnchorPoint,
+) -> Option<Vec<(f64, f64)>> {
+    let start = from.anchor_pos(from_anchor, to);
+    let end = to.anchor_pos(to_anchor, from);
+    let start_exit = anchor_escape_point(from, from_anchor, start, ROUTE_TERMINAL_MIN);
+    let end_exit = anchor_escape_point(to, to_anchor, end, ROUTE_TERMINAL_MIN);
+
+    let mut candidates = vec![
+        simplify_points(vec![start, (start.0, end.1), end]),
+        simplify_points(vec![start, (end.0, start.1), end]),
+        simplify_points(vec![
+            start,
+            start_exit,
+            (start_exit.0, end_exit.1),
+            end_exit,
+            end,
+        ]),
+        simplify_points(vec![
+            start,
+            start_exit,
+            (end_exit.0, start_exit.1),
+            end_exit,
+            end,
+        ]),
+    ];
+
+    for mid_x in route_x_lanes(from, to, ROUTE_MARGIN) {
+        candidates.push(simplify_points(vec![
+            start,
+            (mid_x, start.1),
+            (mid_x, end.1),
+            end,
+        ]));
+        candidates.push(simplify_points(vec![
+            start,
+            start_exit,
+            (mid_x, start_exit.1),
+            (mid_x, end_exit.1),
+            end_exit,
+            end,
+        ]));
+    }
+    for mid_y in route_y_lanes(from, to, ROUTE_MARGIN) {
+        candidates.push(simplify_points(vec![
+            start,
+            (start.0, mid_y),
+            (end.0, mid_y),
+            end,
+        ]));
+        candidates.push(simplify_points(vec![
+            start,
+            start_exit,
+            (start_exit.0, mid_y),
+            (end_exit.0, mid_y),
+            end_exit,
+            end,
+        ]));
+    }
+    for b in obstacles {
+        candidates.push(simplify_points(vec![
+            start,
+            (b.x - ROUTE_MARGIN, start.1),
+            (b.x - ROUTE_MARGIN, end.1),
+            end,
+        ]));
+        candidates.push(simplify_points(vec![
+            start,
+            (b.x + b.width + ROUTE_MARGIN, start.1),
+            (b.x + b.width + ROUTE_MARGIN, end.1),
+            end,
+        ]));
+        candidates.push(simplify_points(vec![
+            start,
+            (start.0, b.y - ROUTE_MARGIN),
+            (end.0, b.y - ROUTE_MARGIN),
+            end,
+        ]));
+        candidates.push(simplify_points(vec![
+            start,
+            (start.0, b.y + b.height + ROUTE_MARGIN),
+            (end.0, b.y + b.height + ROUTE_MARGIN),
+            end,
+        ]));
     }
 
     candidates
@@ -1953,13 +2246,48 @@ fn route_orthogonal(from: &Bounds, to: &Bounds, obstacles: &[Bounds]) -> Option<
         .filter(|points| {
             route_exits_endpoint_bounds(points, from, to)
                 && route_has_visible_terminal_segments(points, ROUTE_TERMINAL_MIN)
-                && !path_intersects_obstacle(points, obstacles)
         })
         .min_by(|a, b| {
-            route_score(a)
-                .partial_cmp(&route_score(b))
+            route_score_with_obstacles(a, obstacles)
+                .partial_cmp(&route_score_with_obstacles(b, obstacles))
                 .unwrap_or(std::cmp::Ordering::Equal)
         })
+}
+
+fn anchor_escape_point(
+    bounds: &Bounds,
+    anchor: AnchorPoint,
+    point: (f64, f64),
+    margin: f64,
+) -> (f64, f64) {
+    match anchor {
+        AnchorPoint::Top => (point.0, bounds.y - margin),
+        AnchorPoint::Bottom => (point.0, bounds.y + bounds.height + margin),
+        AnchorPoint::Left => (bounds.x - margin, point.1),
+        AnchorPoint::Right => (bounds.x + bounds.width + margin, point.1),
+        AnchorPoint::Center | AnchorPoint::Auto => point,
+    }
+}
+
+fn connection_obstacles(
+    from_id: &str,
+    to_id: &str,
+    x1: f64,
+    y1: f64,
+    x2: f64,
+    y2: f64,
+    shape_map: &HashMap<String, Bounds>,
+) -> Vec<Bounds> {
+    shape_map
+        .iter()
+        .filter(|(id, b)| {
+            id.as_str() != from_id
+                && id.as_str() != to_id
+                && !bounds_contains_point(b, x1, y1)
+                && !bounds_contains_point(b, x2, y2)
+        })
+        .map(|(_, b)| *b)
+        .collect()
 }
 
 fn route_x_lanes(from: &Bounds, to: &Bounds, margin: f64) -> Vec<f64> {
@@ -2004,61 +2332,85 @@ fn direct_auto_line_is_clean(start: (f64, f64), end: (f64, f64), obstacles: &[Bo
 }
 
 fn build_hv_route(from: &Bounds, to: &Bounds, mid_x: f64) -> Vec<(f64, f64)> {
-    let fc = bounds_center(from);
-    let tc = bounds_center(to);
-    let from_anchor = horizontal_anchor(nonzero_delta(mid_x - fc.0, tc.0 - fc.0));
-    let to_anchor = if nonzero_delta(tc.0 - mid_x, tc.0 - fc.0) >= 0.0 {
-        AnchorPoint::Left
-    } else {
-        AnchorPoint::Right
-    };
+    let from_anchor = horizontal_anchor_for_lane(from, mid_x);
+    let to_anchor = horizontal_anchor_for_lane(to, mid_x).opposite();
     let start = from.anchor_pos(from_anchor, to);
     let end = to.anchor_pos(to_anchor, from);
     simplify_points(vec![start, (mid_x, start.1), (mid_x, end.1), end])
 }
 
+fn build_hv_route_with_escape(from: &Bounds, to: &Bounds, mid_x: f64) -> Vec<(f64, f64)> {
+    let from_anchor = horizontal_anchor_for_lane(from, mid_x);
+    let to_anchor = horizontal_anchor_for_lane(to, mid_x).opposite();
+    let start = from.anchor_pos(from_anchor, to);
+    let end = to.anchor_pos(to_anchor, from);
+    let start_exit = anchor_escape_point(from, from_anchor, start, ROUTE_TERMINAL_MIN);
+    let end_exit = anchor_escape_point(to, to_anchor, end, ROUTE_TERMINAL_MIN);
+    simplify_points(vec![
+        start,
+        start_exit,
+        (mid_x, start_exit.1),
+        (mid_x, end_exit.1),
+        end_exit,
+        end,
+    ])
+}
+
 fn build_vh_route(from: &Bounds, to: &Bounds, mid_y: f64) -> Vec<(f64, f64)> {
-    let fc = bounds_center(from);
-    let tc = bounds_center(to);
-    let from_anchor = vertical_anchor(nonzero_delta(mid_y - fc.1, tc.1 - fc.1));
-    let to_anchor = if nonzero_delta(tc.1 - mid_y, tc.1 - fc.1) >= 0.0 {
-        AnchorPoint::Top
-    } else {
-        AnchorPoint::Bottom
-    };
+    let from_anchor = vertical_anchor_for_lane(from, mid_y);
+    let to_anchor = vertical_anchor_for_lane(to, mid_y).opposite();
     let start = from.anchor_pos(from_anchor, to);
     let end = to.anchor_pos(to_anchor, from);
     simplify_points(vec![start, (start.0, mid_y), (end.0, mid_y), end])
 }
 
-fn bounds_center(bounds: &Bounds) -> (f64, f64) {
-    (
-        bounds.x + bounds.width / 2.0,
-        bounds.y + bounds.height / 2.0,
-    )
+fn build_vh_route_with_escape(from: &Bounds, to: &Bounds, mid_y: f64) -> Vec<(f64, f64)> {
+    let from_anchor = vertical_anchor_for_lane(from, mid_y);
+    let to_anchor = vertical_anchor_for_lane(to, mid_y).opposite();
+    let start = from.anchor_pos(from_anchor, to);
+    let end = to.anchor_pos(to_anchor, from);
+    let start_exit = anchor_escape_point(from, from_anchor, start, ROUTE_TERMINAL_MIN);
+    let end_exit = anchor_escape_point(to, to_anchor, end, ROUTE_TERMINAL_MIN);
+    simplify_points(vec![
+        start,
+        start_exit,
+        (start_exit.0, mid_y),
+        (end_exit.0, mid_y),
+        end_exit,
+        end,
+    ])
 }
 
-fn horizontal_anchor(delta: f64) -> AnchorPoint {
-    if delta >= 0.0 {
-        AnchorPoint::Right
-    } else {
+fn horizontal_anchor_for_lane(bounds: &Bounds, x: f64) -> AnchorPoint {
+    if x <= bounds.x {
         AnchorPoint::Left
+    } else {
+        AnchorPoint::Right
     }
 }
 
-fn vertical_anchor(delta: f64) -> AnchorPoint {
-    if delta >= 0.0 {
-        AnchorPoint::Bottom
-    } else {
+fn vertical_anchor_for_lane(bounds: &Bounds, y: f64) -> AnchorPoint {
+    if y <= bounds.y {
         AnchorPoint::Top
+    } else {
+        AnchorPoint::Bottom
     }
 }
 
-fn nonzero_delta(delta: f64, fallback: f64) -> f64 {
-    if delta.abs() < f64::EPSILON {
-        fallback
-    } else {
-        delta
+trait AnchorOpposite {
+    fn opposite(self) -> AnchorPoint;
+}
+
+impl AnchorOpposite for AnchorPoint {
+    fn opposite(self) -> AnchorPoint {
+        match self {
+            AnchorPoint::Top => AnchorPoint::Bottom,
+            AnchorPoint::Bottom => AnchorPoint::Top,
+            AnchorPoint::Left => AnchorPoint::Right,
+            AnchorPoint::Right => AnchorPoint::Left,
+            AnchorPoint::Center => AnchorPoint::Center,
+            AnchorPoint::Auto => AnchorPoint::Auto,
+        }
     }
 }
 
@@ -2085,7 +2437,35 @@ fn route_score(points: &[(f64, f64)]) -> f64 {
         .map(|segment| segment_length(segment[0], segment[1]))
         .sum();
     let bends = points.len().saturating_sub(2) as f64;
-    length + bends * 20.0
+    let terminal_penalty = endpoint_clearance_penalty(points) * 200.0;
+    length + bends * 20.0 + terminal_penalty
+}
+
+fn route_score_with_obstacles(points: &[(f64, f64)], obstacles: &[Bounds]) -> f64 {
+    let intersections = obstacle_intersection_count(points, obstacles) as f64;
+    route_score(points) + intersections * 10_000.0
+}
+
+fn obstacle_intersection_count(points: &[(f64, f64)], obstacles: &[Bounds]) -> usize {
+    points
+        .windows(2)
+        .map(|segment| {
+            obstacles
+                .iter()
+                .filter(|b| segment_intersects_bounds(segment[0], segment[1], b))
+                .count()
+        })
+        .sum()
+}
+
+fn endpoint_clearance_penalty(points: &[(f64, f64)]) -> f64 {
+    if points.len() < 4 {
+        return 0.0;
+    }
+
+    let first = segment_length(points[0], points[1]);
+    let last = segment_length(points[points.len() - 2], points[points.len() - 1]);
+    (ROUTE_TERMINAL_MIN - first).max(0.0) + (ROUTE_TERMINAL_MIN - last).max(0.0)
 }
 
 fn segment_length(a: (f64, f64), b: (f64, f64)) -> f64 {
@@ -2827,16 +3207,44 @@ fn scope_selector_list(selector: &str, root_selector: &str) -> String {
         .join(", ")
 }
 
+fn wrapped_text_lines(
+    content: &str,
+    wrap_width: Option<f64>,
+    font_size: f64,
+    letter_spacing: f64,
+    attrs: &IndexMap<String, String>,
+) -> Vec<String> {
+    let mut lines = Vec::new();
+    for segment in content.split('\n') {
+        if let Some(max_width) = wrap_width {
+            wrap_text_segment(
+                segment,
+                max_width,
+                font_size,
+                letter_spacing,
+                attrs,
+                &mut lines,
+            );
+        } else {
+            lines.push(segment.to_string());
+        }
+    }
+    if lines.is_empty() {
+        lines.push(String::new());
+    }
+    lines
+}
+
 fn wrap_text_segment(
     segment: &str,
     max_width: f64,
     font_size: f64,
     letter_spacing: f64,
     attrs: &IndexMap<String, String>,
-    lines: &mut Vec<f64>,
+    lines: &mut Vec<String>,
 ) {
     if segment.is_empty() {
-        lines.push(0.0);
+        lines.push(String::new());
         return;
     }
 
@@ -2853,12 +3261,7 @@ fn wrap_text_segment(
         }
 
         if !current.is_empty() {
-            lines.push(measure_line_width(
-                &current,
-                font_size,
-                letter_spacing,
-                attrs,
-            ));
+            lines.push(current.clone());
             current.clear();
         }
 
@@ -2870,12 +3273,7 @@ fn wrap_text_segment(
     }
 
     if !current.is_empty() {
-        lines.push(measure_line_width(
-            &current,
-            font_size,
-            letter_spacing,
-            attrs,
-        ));
+        lines.push(current);
     }
 }
 
@@ -2885,7 +3283,7 @@ fn push_wrapped_word(
     font_size: f64,
     letter_spacing: f64,
     attrs: &IndexMap<String, String>,
-    lines: &mut Vec<f64>,
+    lines: &mut Vec<String>,
 ) -> String {
     let mut current = String::new();
     for ch in word.chars() {
@@ -2895,12 +3293,7 @@ fn push_wrapped_word(
         {
             current = candidate;
         } else {
-            lines.push(measure_line_width(
-                &current,
-                font_size,
-                letter_spacing,
-                attrs,
-            ));
+            lines.push(current.clone());
             current.clear();
             current.push(ch);
         }
@@ -3264,6 +3657,32 @@ mod tests {
         let metrics = measure_text_attrs(&attrs);
         assert!(metrics.width <= 58.0);
         assert!(metrics.height > 16.8);
+    }
+
+    #[test]
+    fn text_render_wraps_to_width_constraint() {
+        let mut text = text_shape("Inline text wraps", 58.0, 80.0);
+        text.attrs.insert("font_size".to_string(), "14".to_string());
+        text.attrs.insert("max_width".to_string(), "58".to_string());
+
+        let mut diagram = Diagram {
+            id: None,
+            width: 120.0,
+            height: 90.0,
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+            classes: IndexMap::new(),
+            shapes: vec![text],
+            connections: vec![],
+        };
+
+        let svg = render_diagram_svg(&mut diagram);
+        assert!(svg.contains("<tspan"));
+        assert!(svg.contains(">Inline</tspan>"));
+        assert!(svg.contains(">text</tspan>"));
+        assert!(svg.contains(">wraps</tspan>"));
     }
 
     #[test]
@@ -4270,6 +4689,40 @@ mod tests {
     }
 
     #[test]
+    fn parent_graph_layout_uses_dotted_connection_owners() {
+        let mut group = shape("group", 140.0, 100.0);
+        group.children = vec![shape("inner", 60.0, 40.0)];
+        let leaf = shape("leaf", 60.0, 40.0);
+
+        let mut diagram = Diagram {
+            id: None,
+            width: 260.0,
+            height: 220.0,
+            shapes: vec![group, leaf],
+            connections: vec![connection("group.inner", "leaf")],
+            classes: IndexMap::new(),
+            padding: 0.0,
+            align: Alignment::Layered,
+            gap: 24.0,
+            options: IndexMap::new(),
+        };
+
+        render_diagram_svg(&mut diagram);
+
+        let group = &diagram.shapes[0];
+        let leaf = &diagram.shapes[1];
+        assert!(group.resolved.y < leaf.resolved.y);
+    }
+
+    #[test]
+    fn parent_graph_layout_ignores_same_owner_dotted_connections() {
+        let children = vec![shape("group", 140.0, 100.0), shape("peer", 60.0, 40.0)];
+        let connections = vec![connection("group.a", "group.b")];
+
+        assert!(localize_connections(&children, &connections, "").is_empty());
+    }
+
+    #[test]
     fn force_layout_marks_connections_for_direct_routing() {
         let mut diagram = Diagram {
             id: None,
@@ -4553,7 +5006,7 @@ mod tests {
     }
 
     #[test]
-    fn nested_layered_layout_wraps_wide_rank_and_expands_boundary_height() {
+    fn fixed_nested_layered_layout_scales_wide_rank_to_boundary() {
         let mut boundary = shape("boundary", 120.0, 80.0);
         boundary.x = Some(20.0);
         boundary.y = Some(20.0);
@@ -4587,15 +5040,211 @@ mod tests {
 
         let boundary = &diagram.shapes[0];
         let children = &boundary.children;
-        assert!(boundary.resolved.height > 80.0);
-        assert_eq!(children[0].resolved.width, 80.0);
-        assert_eq!(children[1].resolved.width, 80.0);
+        assert_eq!(boundary.resolved.height, 80.0);
+        assert!(children[0].resolved.width < 80.0);
+        assert!(children[1].resolved.width < 80.0);
         assert!(!overlaps(&children[0], &children[1]));
         assert!(!overlaps(&children[1], &children[2]));
         for child in children {
             assert!(child.resolved.x + child.resolved.width <= boundary.resolved.width);
             assert!(child.resolved.y + child.resolved.height <= boundary.resolved.height);
         }
+    }
+
+    #[test]
+    fn autosized_nested_graph_is_sized_before_parent_layout() {
+        let left = shape("left", 80.0, 40.0);
+        let right = shape("right", 80.0, 40.0);
+
+        let mut boundary = shape("boundary", 0.0, 0.0);
+        boundary.width = None;
+        boundary.height = None;
+        boundary.align = Alignment::Layered;
+        boundary.gap = 20.0;
+        boundary
+            .attrs
+            .insert("direction".to_string(), "horizontal".to_string());
+        boundary.children = vec![
+            shape("a", 80.0, 40.0),
+            shape("b", 80.0, 40.0),
+            shape("c", 80.0, 40.0),
+        ];
+
+        let mut diagram = Diagram {
+            id: None,
+            width: 400.0,
+            height: 240.0,
+            shapes: vec![left, boundary, right],
+            connections: vec![
+                connection("boundary.a", "boundary.b"),
+                connection("boundary.b", "boundary.c"),
+            ],
+            classes: IndexMap::new(),
+            padding: 0.0,
+            align: Alignment::Layered,
+            gap: 20.0,
+            options: IndexMap::new(),
+        };
+
+        render_diagram_svg(&mut diagram);
+
+        let left = &diagram.shapes[0];
+        let boundary = &diagram.shapes[1];
+        let right = &diagram.shapes[2];
+        assert!(boundary.resolved.width >= 240.0);
+        assert!(!overlaps(left, boundary));
+        assert!(!overlaps(boundary, right));
+        assert!(!overlaps(left, right));
+        for child in &boundary.children {
+            assert!(child.resolved.x + child.resolved.width <= boundary.resolved.width);
+        }
+    }
+
+    #[test]
+    fn marked_full_container_decoration_tracks_autosized_graph() {
+        let mut frame = shape("frame", 120.0, 80.0);
+        frame.x = Some(0.0);
+        frame.y = Some(0.0);
+        frame
+            .attrs
+            .insert(LAYOUT_DECORATION_ATTR.to_string(), "true".to_string());
+        frame.attrs.insert(
+            FULL_CONTAINER_DECORATION_ATTR.to_string(),
+            "true".to_string(),
+        );
+
+        let mut boundary = shape("boundary", 0.0, 0.0);
+        boundary.width = None;
+        boundary.height = None;
+        boundary.align = Alignment::Layered;
+        boundary.gap = 20.0;
+        boundary.children = vec![
+            frame,
+            shape("a", 80.0, 40.0),
+            shape("b", 80.0, 40.0),
+            shape("c", 80.0, 40.0),
+        ];
+
+        let mut diagram = Diagram {
+            id: None,
+            width: 240.0,
+            height: 320.0,
+            shapes: vec![boundary],
+            connections: vec![connection("boundary.a", "boundary.c")],
+            classes: IndexMap::new(),
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+        };
+
+        render_diagram_svg(&mut diagram);
+
+        let boundary = &diagram.shapes[0];
+        let frame = &boundary.children[0];
+        assert_eq!(frame.resolved.width, boundary.resolved.width);
+        assert_eq!(frame.resolved.height, boundary.resolved.height);
+        for child in boundary
+            .children
+            .iter()
+            .filter(|c| !is_layout_decoration(c))
+        {
+            assert!(child.resolved.y + child.resolved.height <= frame.resolved.height);
+        }
+    }
+
+    #[test]
+    fn autosized_nested_graphs_size_bottom_up() {
+        let mut inner = shape("inner", 0.0, 0.0);
+        inner.width = None;
+        inner.height = None;
+        inner.align = Alignment::Layered;
+        inner.gap = 20.0;
+        inner
+            .attrs
+            .insert("direction".to_string(), "horizontal".to_string());
+        inner.children = vec![
+            shape("a", 80.0, 40.0),
+            shape("b", 80.0, 40.0),
+            shape("c", 80.0, 40.0),
+        ];
+
+        let mut outer = shape("outer", 0.0, 0.0);
+        outer.width = None;
+        outer.height = None;
+        outer.align = Alignment::Layered;
+        outer.gap = 20.0;
+        outer.children = vec![inner, shape("tail", 80.0, 40.0)];
+
+        let mut diagram = Diagram {
+            id: None,
+            width: 520.0,
+            height: 320.0,
+            shapes: vec![outer],
+            connections: vec![
+                connection("outer.inner.a", "outer.inner.b"),
+                connection("outer.inner.b", "outer.inner.c"),
+                connection("outer.inner.c", "outer.tail"),
+            ],
+            classes: IndexMap::new(),
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+        };
+
+        render_diagram_svg(&mut diagram);
+
+        let outer = &diagram.shapes[0];
+        let inner = &outer.children[0];
+        let tail = &outer.children[1];
+        assert!(inner.resolved.width >= 240.0);
+        assert!(outer.resolved.width >= inner.resolved.width);
+        assert!(!overlaps(inner, tail));
+        assert!(inner.resolved.x + inner.resolved.width <= outer.resolved.width);
+        assert!(tail.resolved.x + tail.resolved.width <= outer.resolved.width);
+    }
+
+    #[test]
+    fn top_level_scale_to_fit_runs_after_nested_autosize() {
+        let mut boundary = shape("boundary", 0.0, 0.0);
+        boundary.width = None;
+        boundary.height = None;
+        boundary.align = Alignment::Layered;
+        boundary.gap = 20.0;
+        boundary
+            .attrs
+            .insert("direction".to_string(), "horizontal".to_string());
+        boundary.children = vec![
+            shape("a", 90.0, 40.0),
+            shape("b", 90.0, 40.0),
+            shape("c", 90.0, 40.0),
+        ];
+
+        let mut diagram = Diagram {
+            id: None,
+            width: 180.0,
+            height: 140.0,
+            shapes: vec![boundary],
+            connections: vec![
+                connection("boundary.a", "boundary.b"),
+                connection("boundary.b", "boundary.c"),
+            ],
+            classes: IndexMap::new(),
+            padding: 0.0,
+            align: Alignment::Layered,
+            gap: 20.0,
+            options: IndexMap::new(),
+        };
+
+        render_diagram_svg(&mut diagram);
+
+        let boundary = &diagram.shapes[0];
+        assert!(boundary.resolved.x >= 0.0);
+        assert!(boundary.resolved.y >= 0.0);
+        assert!(boundary.resolved.x + boundary.resolved.width <= diagram.width);
+        assert!(boundary.resolved.y + boundary.resolved.height <= diagram.height);
+        assert!(boundary.resolved.width < 270.0);
     }
 
     #[test]
@@ -4720,7 +5369,8 @@ mod tests {
         };
 
         let points = route_orthogonal(&from, &to, &[obstacle]).expect("expected routed path");
-        assert_eq!(points.last().copied(), Some((180.0, 80.0)));
+        assert_eq!(points.last().copied(), Some((180.0, 120.0)));
+        assert!(points[points.len() - 2].1 > to.y + to.height);
     }
 
     #[test]
@@ -4860,13 +5510,17 @@ mod tests {
 
         assert!(route_exits_endpoint_bounds(&points, &from, &to));
         assert_eq!(points.first().copied(), Some((605.0, 540.0)));
-        assert_eq!(points.last().copied(), Some((480.0, 603.0)));
+        assert!(bounds_contains_point(
+            &to,
+            points.last().unwrap().0,
+            points.last().unwrap().1
+        ));
         assert!(points[1].1 >= from.y + from.height);
-        assert!(points[points.len() - 2].1 <= to.y);
+        assert!(points[points.len() - 2].1 >= to.y + to.height);
     }
 
     #[test]
-    fn explicit_anchor_connection_preserves_line_rendering() {
+    fn explicit_anchor_connection_can_route_around_obstacle() {
         let mut shape_map = HashMap::new();
         shape_map.insert(
             "a".to_string(),
@@ -4901,6 +5555,115 @@ mod tests {
         let mut svg = String::new();
         render_connection_svg(&conn, &shape_map, &mut svg);
 
-        assert!(svg.contains("<line"));
+        assert!(svg.contains("<path"));
+        assert!(!svg.contains("<line"));
+    }
+
+    #[test]
+    fn explicit_bottom_top_anchors_can_use_elbow_route() {
+        let mut shape_map = HashMap::new();
+        shape_map.insert(
+            "a".to_string(),
+            Bounds {
+                x: 20.0,
+                y: 20.0,
+                width: 80.0,
+                height: 40.0,
+            },
+        );
+        shape_map.insert(
+            "b".to_string(),
+            Bounds {
+                x: 140.0,
+                y: 140.0,
+                width: 80.0,
+                height: 40.0,
+            },
+        );
+        let mut conn = connection("a", "b");
+        conn.from_anchor = AnchorPoint::Bottom;
+        conn.to_anchor = AnchorPoint::Top;
+        let mut svg = String::new();
+        render_connection_svg(&conn, &shape_map, &mut svg);
+
+        assert!(svg.contains("<path"));
+        assert!(!svg.contains("<line"));
+    }
+
+    #[test]
+    fn dotted_cross_graph_connection_uses_elbow_route() {
+        let mut shape_map = HashMap::new();
+        shape_map.insert(
+            "frontend".to_string(),
+            Bounds {
+                x: 40.0,
+                y: 40.0,
+                width: 180.0,
+                height: 220.0,
+            },
+        );
+        shape_map.insert(
+            "frontend.api".to_string(),
+            Bounds {
+                x: 90.0,
+                y: 200.0,
+                width: 80.0,
+                height: 34.0,
+            },
+        );
+        shape_map.insert(
+            "backend".to_string(),
+            Bounds {
+                x: 260.0,
+                y: 40.0,
+                width: 180.0,
+                height: 220.0,
+            },
+        );
+        shape_map.insert(
+            "backend.gateway".to_string(),
+            Bounds {
+                x: 310.0,
+                y: 70.0,
+                width: 80.0,
+                height: 34.0,
+            },
+        );
+        shape_map.insert(
+            "backend.allowed".to_string(),
+            Bounds {
+                x: 305.0,
+                y: 125.0,
+                width: 90.0,
+                height: 60.0,
+            },
+        );
+        let conn = connection("frontend.api", "backend.gateway");
+        let mut svg = String::new();
+        render_connection_svg(&conn, &shape_map, &mut svg);
+
+        assert!(svg.contains("<path"));
+        assert!(!svg.contains("<line"));
+        assert!(svg.matches(" L ").count() >= 2);
+    }
+
+    #[test]
+    fn orthogonal_route_starts_on_side_facing_first_lane() {
+        let from = Bounds {
+            x: 100.0,
+            y: 100.0,
+            width: 80.0,
+            height: 40.0,
+        };
+        let to = Bounds {
+            x: 260.0,
+            y: 80.0,
+            width: 80.0,
+            height: 40.0,
+        };
+        let route = build_hv_route(&from, &to, 220.0);
+
+        assert_eq!(route[0], (180.0, 120.0));
+        assert!(route[1].0 > from.x + from.width);
     }
 }

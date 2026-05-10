@@ -1,7 +1,8 @@
     export let widget_flow_io = (b) => {
-        let w = attr_or(b, "width", 150)
-        let h = attr_or(b, "height", 50)
         let label = attr_or(b, "label", "I/O")
+        let box = wdoc::flow_label_box(b, label, 12, 120, 180, 50, 24, 14)
+        let w = box.width
+        let h = box.height
         let color = attr_or(b, "color", "var(--color-link)")
         let surface_fill = attr_or(b, "surface_fill", "var(--color-bg)")
         let border_stroke = attr_or(b, "border_stroke", color)
@@ -11,6 +12,8 @@
         let d = "M " + to_string(s) + " 0 L " + to_string(w) + " 0 L " + to_string(w - s) + " " + to_string(h) + " L 0 " + to_string(h) + " Z"
         [
             { kind = "path", x = 0, y = 0, width = w, height = h, d = d, fill = surface_fill, stroke = border_stroke, stroke_width = border_width },
-            { kind = "text", x = 0, y = 0, width = w, height = h, content = label, font_size = 12, fill = label_fill }
+            { kind = "text", x = 0, y = 0, width = w, height = h, content = label,
+              font_size = box.font_size, line_height = box.line_height,
+              max_width = box.label_width, fill = label_fill }
         ]
     }

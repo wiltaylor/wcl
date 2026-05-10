@@ -64,6 +64,7 @@ mod tests {
 
         for path in [
             "widgets/ui/button.wcl",
+            "widgets/flowchart/flowchart.wcl",
             "widgets/flowchart/flow_process.wcl",
             "widgets/c4/c4_person.wcl",
             "widgets/uml/uml_class.wcl",
