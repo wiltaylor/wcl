@@ -47,6 +47,9 @@ mod tests {
             "phone_landscape",
             "tablet_landscape",
             "graph_node",
+            "pie_chart",
+            "bar_chart",
+            "line_chart",
         ] {
             assert!(
                 WDOC_LIBRARY_WCL.contains(&format!("schema \"{widget}\"")),
@@ -70,6 +73,7 @@ mod tests {
         for path in [
             "widgets/ui/button.wcl",
             "widgets/graph/graph_node.wcl",
+            "widgets/chart/charts.wcl",
             "widgets/flowchart/flowchart.wcl",
             "widgets/flowchart/flow_process.wcl",
             "widgets/c4/c4_person.wcl",

@@ -21,6 +21,7 @@ widgets/ui/context_menu.wcl
 widgets/ui/badge.wcl
 widgets/ui/navbar.wcl
 widgets/graph/graph_node.wcl
+widgets/chart/charts.wcl
 widgets/terminal/button.wcl
 widgets/terminal/textbox.wcl
 widgets/terminal/checkbox.wcl

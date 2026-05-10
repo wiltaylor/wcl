@@ -327,6 +327,9 @@ namespace wdoc {
             "wdoc::draw::badge",
             "wdoc::draw::navbar",
             "wdoc::draw::graph_node",
+            "wdoc::draw::pie_chart",
+            "wdoc::draw::bar_chart",
+            "wdoc::draw::line_chart",
             "wdoc::draw::flowchart",
             "wdoc::draw::flow_process",
             "wdoc::draw::flow_decision",
@@ -397,6 +400,15 @@ namespace wdoc {
         @template("shape", "wdoc::widget_graph_node") @open schema "graph_node" { }
         @parent(["wdoc::draw::graph_node"]) @open schema "graph_row" { }
         @parent(["wdoc::draw::graph_node"]) @open schema "graph_divider" { }
+        @template("shape", "wdoc::widget_pie_chart") @open schema "pie_chart" { }
+        @template("shape", "wdoc::widget_bar_chart") @open schema "bar_chart" { }
+        @template("shape", "wdoc::widget_line_chart") @open schema "line_chart" { }
+        @parent([
+            "wdoc::draw::pie_chart",
+            "wdoc::draw::bar_chart",
+            "wdoc::draw::line_chart"
+        ])
+        @open schema "chart_point" { }
         @parent(["wdoc::draw::text_block"]) @open schema "paragraph" { content: string }
         @parent(["wdoc::draw::text_block"]) @open schema "p" { content: string @text }
         @parent(["wdoc::draw::text_block"]) @open schema "code" {

@@ -205,6 +205,66 @@ pub fn builtin_signatures() -> Vec<FunctionSignature> {
             doc: "Power".into(),
         },
         FunctionSignature {
+            name: "sin".into(),
+            params: vec!["n: f64".into()],
+            return_type: "f64".into(),
+            doc: "Sine of an angle in radians".into(),
+        },
+        FunctionSignature {
+            name: "cos".into(),
+            params: vec!["n: f64".into()],
+            return_type: "f64".into(),
+            doc: "Cosine of an angle in radians".into(),
+        },
+        FunctionSignature {
+            name: "tan".into(),
+            params: vec!["n: f64".into()],
+            return_type: "f64".into(),
+            doc: "Tangent of an angle in radians".into(),
+        },
+        FunctionSignature {
+            name: "asin".into(),
+            params: vec!["n: f64".into()],
+            return_type: "f64".into(),
+            doc: "Arcsine in radians".into(),
+        },
+        FunctionSignature {
+            name: "acos".into(),
+            params: vec!["n: f64".into()],
+            return_type: "f64".into(),
+            doc: "Arccosine in radians".into(),
+        },
+        FunctionSignature {
+            name: "atan".into(),
+            params: vec!["n: f64".into()],
+            return_type: "f64".into(),
+            doc: "Arctangent in radians".into(),
+        },
+        FunctionSignature {
+            name: "atan2".into(),
+            params: vec!["y: f64".into(), "x: f64".into()],
+            return_type: "f64".into(),
+            doc: "Four-quadrant arctangent in radians".into(),
+        },
+        FunctionSignature {
+            name: "degrees".into(),
+            params: vec!["n: f64".into()],
+            return_type: "f64".into(),
+            doc: "Convert radians to degrees".into(),
+        },
+        FunctionSignature {
+            name: "radians".into(),
+            params: vec!["n: f64".into()],
+            return_type: "f64".into(),
+            doc: "Convert degrees to radians".into(),
+        },
+        FunctionSignature {
+            name: "pi".into(),
+            params: vec![],
+            return_type: "f64".into(),
+            doc: "The mathematical constant pi".into(),
+        },
+        FunctionSignature {
             name: "len".into(),
             params: vec!["collection".into()],
             return_type: "i64".into(),
@@ -505,6 +565,16 @@ pub fn builtin_registry() -> HashMap<String, BuiltinFn> {
     m.insert("round".into(), wrap_builtin(fn_round));
     m.insert("sqrt".into(), wrap_builtin(sqrt));
     m.insert("pow".into(), wrap_builtin(pow));
+    m.insert("sin".into(), wrap_builtin(sin));
+    m.insert("cos".into(), wrap_builtin(cos));
+    m.insert("tan".into(), wrap_builtin(tan));
+    m.insert("asin".into(), wrap_builtin(asin));
+    m.insert("acos".into(), wrap_builtin(acos));
+    m.insert("atan".into(), wrap_builtin(atan));
+    m.insert("atan2".into(), wrap_builtin(atan2));
+    m.insert("degrees".into(), wrap_builtin(degrees));
+    m.insert("radians".into(), wrap_builtin(radians));
+    m.insert("pi".into(), wrap_builtin(pi));
 
     // Collection functions (Section 14.3)
     m.insert("len".into(), wrap_builtin(len));
@@ -1005,6 +1075,66 @@ fn pow(args: &[Value]) -> Result<Value, String> {
     let base = coerce_to_float(&args[0], 1, "pow")?;
     let exp = coerce_to_float(&args[1], 2, "pow")?;
     Ok(Value::Float(base.powf(exp)))
+}
+
+fn sin(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 1, "sin")?;
+    let f = coerce_to_float(&args[0], 1, "sin")?;
+    Ok(Value::Float(f.sin()))
+}
+
+fn cos(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 1, "cos")?;
+    let f = coerce_to_float(&args[0], 1, "cos")?;
+    Ok(Value::Float(f.cos()))
+}
+
+fn tan(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 1, "tan")?;
+    let f = coerce_to_float(&args[0], 1, "tan")?;
+    Ok(Value::Float(f.tan()))
+}
+
+fn asin(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 1, "asin")?;
+    let f = coerce_to_float(&args[0], 1, "asin")?;
+    Ok(Value::Float(f.asin()))
+}
+
+fn acos(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 1, "acos")?;
+    let f = coerce_to_float(&args[0], 1, "acos")?;
+    Ok(Value::Float(f.acos()))
+}
+
+fn atan(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 1, "atan")?;
+    let f = coerce_to_float(&args[0], 1, "atan")?;
+    Ok(Value::Float(f.atan()))
+}
+
+fn atan2(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 2, "atan2")?;
+    let y = coerce_to_float(&args[0], 1, "atan2")?;
+    let x = coerce_to_float(&args[1], 2, "atan2")?;
+    Ok(Value::Float(y.atan2(x)))
+}
+
+fn degrees(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 1, "degrees")?;
+    let f = coerce_to_float(&args[0], 1, "degrees")?;
+    Ok(Value::Float(f.to_degrees()))
+}
+
+fn radians(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 1, "radians")?;
+    let f = coerce_to_float(&args[0], 1, "radians")?;
+    Ok(Value::Float(f.to_radians()))
+}
+
+fn pi(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 0, "pi")?;
+    Ok(Value::Float(std::f64::consts::PI))
 }
 
 // ---------------------------------------------------------------------------
@@ -2009,6 +2139,45 @@ mod tests {
         assert_eq!(pow(&[f(2.0), f(0.5)]).unwrap(), f(2.0f64.powf(0.5)));
     }
 
+    #[test]
+    fn test_trig() {
+        assert_eq!(sin(&[i(0)]).unwrap(), f(0.0));
+        assert!(
+            (match sin(&[f(std::f64::consts::FRAC_PI_2)]).unwrap() {
+                Value::Float(v) => v,
+                other => panic!("expected float, got {other:?}"),
+            } - 1.0)
+                .abs()
+                < 1e-12
+        );
+        assert!(
+            (match cos(&[f(std::f64::consts::PI)]).unwrap() {
+                Value::Float(v) => v,
+                other => panic!("expected float, got {other:?}"),
+            } + 1.0)
+                .abs()
+                < 1e-12
+        );
+        assert!(
+            (match tan(&[f(std::f64::consts::FRAC_PI_4)]).unwrap() {
+                Value::Float(v) => v,
+                other => panic!("expected float, got {other:?}"),
+            } - 1.0)
+                .abs()
+                < 1e-12
+        );
+        assert_eq!(asin(&[f(1.0)]).unwrap(), f(std::f64::consts::FRAC_PI_2));
+        assert_eq!(acos(&[f(0.0)]).unwrap(), f(std::f64::consts::FRAC_PI_2));
+        assert_eq!(atan(&[f(1.0)]).unwrap(), f(std::f64::consts::FRAC_PI_4));
+        assert_eq!(
+            atan2(&[f(1.0), f(1.0)]).unwrap(),
+            f(std::f64::consts::FRAC_PI_4)
+        );
+        assert_eq!(degrees(&[f(std::f64::consts::PI)]).unwrap(), f(180.0));
+        assert_eq!(radians(&[f(180.0)]).unwrap(), f(std::f64::consts::PI));
+        assert_eq!(pi(&[]).unwrap(), f(std::f64::consts::PI));
+    }
+
     // --- Collections ---
 
     #[test]
@@ -2273,6 +2442,16 @@ mod tests {
             "round",
             "sqrt",
             "pow",
+            "sin",
+            "cos",
+            "tan",
+            "asin",
+            "acos",
+            "atan",
+            "atan2",
+            "degrees",
+            "radians",
+            "pi",
             "len",
             "keys",
             "values",

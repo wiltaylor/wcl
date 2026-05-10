@@ -766,7 +766,7 @@ fn collect_shape_or_connection(
         || is_draw_state_block(br)
         || is_draw_animation_block(br)
         || is_draw_keyframe_block(br)
-        || is_draw_graph_node_structural_block(br)
+        || is_draw_widget_structural_block(br)
     {
         return;
     }
@@ -818,7 +818,7 @@ fn collect_shape_or_connection(
                 if is_draw_event_block(child_br)
                     || is_draw_animation_block(child_br)
                     || is_draw_keyframe_block(child_br)
-                    || is_draw_graph_node_structural_block(child_br)
+                    || is_draw_widget_structural_block(child_br)
                 {
                     continue;
                 }
@@ -836,7 +836,7 @@ fn collect_shape_or_connection(
             if is_draw_event_block(child_br)
                 || is_draw_animation_block(child_br)
                 || is_draw_keyframe_block(child_br)
-                || is_draw_graph_node_structural_block(child_br)
+                || is_draw_widget_structural_block(child_br)
             {
                 continue;
             }
@@ -1758,6 +1758,17 @@ fn is_draw_graph_divider_block(block: &BlockRef) -> bool {
 
 fn is_draw_graph_node_structural_block(block: &BlockRef) -> bool {
     is_draw_graph_row_block(block) || is_draw_graph_divider_block(block)
+}
+
+fn is_draw_chart_point_block(block: &BlockRef) -> bool {
+    matches!(
+        block.kind.as_str(),
+        "wdoc::draw::chart_point" | "draw::chart_point" | "chart_point"
+    )
+}
+
+fn is_draw_widget_structural_block(block: &BlockRef) -> bool {
+    is_draw_graph_node_structural_block(block) || is_draw_chart_point_block(block)
 }
 
 fn is_draw_graph_node_block(block: &BlockRef) -> bool {
@@ -2769,6 +2780,59 @@ mod wdoc_draw_tests {
         assert!(html.contains(">Ingress</text>"));
         assert!(html.contains(">Repository</text>"));
         assert!(!html.contains("width=\"0\" height=\"0\""));
+    }
+
+    #[test]
+    fn chart_widgets_render_points_without_leaking_structural_children() {
+        let ctx = wdoc_library_ctx();
+        assert!(ctx
+            .template_map
+            .contains_key(&("shape".to_string(), "wdoc::draw::bar_chart".to_string())));
+
+        let mut chart_attrs = IndexMap::new();
+        int_attr(&mut chart_attrs, "x", 20);
+        int_attr(&mut chart_attrs, "y", 20);
+        int_attr(&mut chart_attrs, "width", 300);
+        int_attr(&mut chart_attrs, "height", 200);
+        int_attr(&mut chart_attrs, "y_min", 0);
+        int_attr(&mut chart_attrs, "y_max", 100);
+        int_attr(&mut chart_attrs, "tick_count", 2);
+        string_attr(&mut chart_attrs, "title", "Revenue");
+
+        let mut q1_attrs = IndexMap::new();
+        string_attr(&mut q1_attrs, "label", "Q1");
+        int_attr(&mut q1_attrs, "value", 40);
+
+        let mut q2_attrs = IndexMap::new();
+        string_attr(&mut q2_attrs, "label", "Q2");
+        int_attr(&mut q2_attrs, "value", 80);
+
+        let mut diagram_attrs = IndexMap::new();
+        int_attr(&mut diagram_attrs, "width", 360);
+        int_attr(&mut diagram_attrs, "height", 250);
+
+        let diagram = block(
+            "wdoc::draw::diagram",
+            Some("chart_widgets"),
+            diagram_attrs,
+            vec![block(
+                "wdoc::draw::bar_chart",
+                Some("revenue"),
+                chart_attrs,
+                vec![
+                    block("wdoc::draw::chart_point", Some("q1"), q1_attrs, vec![]),
+                    block("wdoc::draw::chart_point", Some("q2"), q2_attrs, vec![]),
+                ],
+            )],
+        );
+
+        let html = render_diagram_with_ctx(&diagram, &ctx);
+        assert!(html.contains("class=\"wdoc-widget-bar_chart\""));
+        assert!(html.contains(">Revenue</text>"));
+        assert!(html.contains(">Q1</text>"));
+        assert!(html.contains("height=\"51.2\""));
+        assert!(!html.contains("width=\"0\" height=\"0\""));
+        assert!(!html.contains("wdoc-widget-chart_point"));
     }
 
     #[test]

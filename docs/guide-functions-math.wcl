@@ -34,7 +34,17 @@ page functions_math {
                         ["ceil", "ceil(n: f64) -> i64", "Round up to nearest integer"],
                         ["round", "round(n: f64) -> i64", "Round to nearest integer (half-up)"],
                         ["sqrt", "sqrt(n: i64|f64) -> f64", "Square root; always returns float"],
-                        ["pow", "pow(base: i64|f64, exp: i64|f64) -> f64", "Raise base to the power of exp; always returns float"]
+                        ["pow", "pow(base: i64|f64, exp: i64|f64) -> f64", "Raise base to the power of exp; always returns float"],
+                        ["sin", "sin(n: i64|f64) -> f64", "Sine of an angle in radians"],
+                        ["cos", "cos(n: i64|f64) -> f64", "Cosine of an angle in radians"],
+                        ["tan", "tan(n: i64|f64) -> f64", "Tangent of an angle in radians"],
+                        ["asin", "asin(n: i64|f64) -> f64", "Arcsine in radians"],
+                        ["acos", "acos(n: i64|f64) -> f64", "Arccosine in radians"],
+                        ["atan", "atan(n: i64|f64) -> f64", "Arctangent in radians"],
+                        ["atan2", "atan2(y: i64|f64, x: i64|f64) -> f64", "Four-quadrant arctangent in radians"],
+                        ["degrees", "degrees(n: i64|f64) -> f64", "Convert radians to degrees"],
+                        ["radians", "radians(n: i64|f64) -> f64", "Convert degrees to radians"],
+                        ["pi", "pi() -> f64", "The mathematical constant pi"]
                     ]
                 }
 
@@ -117,6 +127,22 @@ page functions_math {
                     let squared = pow(4, 2)     // 16.0
                     let cubed   = pow(2, 10)    // 1024.0
                     let frac    = pow(8, 0.333) // ~2.0
+                    WCL
+                }
+
+                heading h3_trig {
+                    level = 3
+                    content = "Trigonometry"
+                }
+
+                code c_trig {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let angle = radians(90)       // 1.5707963267948966
+                    let y = sin(angle)            // 1.0
+                    let x = cos(pi())             // -1.0
+                    let a = asin(1)               // 1.5707963267948966
+                    let bearing = degrees(atan2(1, 1)) // 45.0
                     WCL
                 }
 
