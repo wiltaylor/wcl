@@ -1,6 +1,6 @@
 import <wdoc.wcl>
 use wdoc::{page, layout, heading, paragraph, code, data_table, callout, bold, link}
-use wdoc::draw::{diagram, terminal, terminal_box, terminal_text, terminal_menu, terminal_cursor, graph_node, graph_row, text_block, connection, database}
+use wdoc::draw::{diagram, terminal, terminal_box, terminal_text, terminal_menu, terminal_cursor, graph_node, graph_row, graph_divider, text_block, connection, database}
 
 page wdoc_drawing_widgets {
     section = "wcl_docs.wdoc.wdoc_drawing_widgets"
@@ -148,7 +148,7 @@ page wdoc_drawing_widgets {
                 }
 
                 paragraph p_graph {
-                    content = "<code>graph_node</code> renders a card with nested <code>graph_row</code> entries. Rows expose explicit left and right ports, and connections target those ports with scoped IDs such as <code>api.out</code> or <code>db.query</code>. Add <code>text_block</code> children when a node needs wrapped WDoc paragraphs or code panels."
+                    content = "<code>graph_node</code> renders a card with nested <code>graph_row</code> entries. Rows expose explicit left and right ports, and connections target those ports with scoped IDs such as <code>api.out</code> or <code>db.query</code>. Use <code>graph_divider</code> to draw section lines between rows. Add <code>text_block</code> children when a node needs wrapped WDoc paragraphs or code panels."
                 }
 
                 data_table tbl_graph {
@@ -156,6 +156,7 @@ page wdoc_drawing_widgets {
                     rows = [
                         { widget = "graph_node", attrs = "title, subtitle, row_height, header_height, port_radius, port_fill, unused_port_fill" },
                         { widget = "graph_row",  attrs = "label, detail, left_port, right_port, left_ports, right_ports" },
+                        { widget = "graph_divider", attrs = "height, inset, stroke, stroke_width, opacity" },
                         { widget = "text_block", attrs = "content, padding, gap, font_size, line_height, code_font_size, code_background_fill" }
                     ]
                 }
@@ -176,6 +177,8 @@ page wdoc_drawing_widgets {
                             left_port = "in"
                             right_port = "route"
                         }
+
+                        graph_divider boundary { }
 
                         graph_row users {
                             label = "Users"
@@ -245,7 +248,7 @@ page wdoc_drawing_widgets {
 
                 code cgraph {
                     language = "wcl"
-                    content = "diagram service_ports {\n    width = 720, height = 300\n\n    graph_node api {\n        x = 30, y = 34, width = 230\n        title = \"API\"\n        subtitle = \"edge service\"\n\n        graph_row request { label = \"Request\", left_port = \"in\", right_port = \"route\" }\n        graph_row users   { label = \"Users\",   right_port = \"users\" }\n        graph_row events  { label = \"Events\",  right_port = \"events\", detail = \"async\" }\n    }\n\n    graph_node worker {\n        x = 430, y = 44, width = 230\n        title = \"Worker\"\n\n        graph_row input { label = \"Input\", left_port = \"in\" }\n        graph_row query { label = \"Query DB\", right_port = \"query\" }\n    }\n\n    database db { x = 470, y = 210, width = 110, height = 76, label = \"DB\" }\n\n    connection e1 { from = \"api.route\",    to = \"worker.in\", direction = \"to\" }\n    connection e2 { from = \"worker.query\", to = \"db\",        direction = \"both\", to_anchor = \"top\" }\n}"
+                    content = "diagram service_ports {\n    width = 720, height = 300\n\n    graph_node api {\n        x = 30, y = 34, width = 230\n        title = \"API\"\n        subtitle = \"edge service\"\n\n        graph_row request { label = \"Request\", left_port = \"in\", right_port = \"route\" }\n        graph_divider boundary { }\n        graph_row users   { label = \"Users\",   right_port = \"users\" }\n        graph_row events  { label = \"Events\",  right_port = \"events\", detail = \"async\" }\n    }\n\n    graph_node worker {\n        x = 430, y = 44, width = 230\n        title = \"Worker\"\n\n        graph_row input { label = \"Input\", left_port = \"in\" }\n        graph_row query { label = \"Query DB\", right_port = \"query\" }\n    }\n\n    database db { x = 470, y = 210, width = 110, height = 76, label = \"DB\" }\n\n    connection e1 { from = \"api.route\",    to = \"worker.in\", direction = \"to\" }\n    connection e2 { from = \"worker.query\", to = \"db\",        direction = \"both\", to_anchor = \"top\" }\n}"
                 }
 
                 heading h2_flow {

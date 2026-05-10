@@ -40,6 +40,8 @@ page graph_node_examples {
                             right_port = "rest"
                         }
 
+                        graph_divider edge_boundary { }
+
                         graph_row auth {
                             label = "Auth policy"
                             right_port = "token"
@@ -63,6 +65,11 @@ page graph_node_examples {
                             label = "REST API"
                             left_port = "in"
                             right_port = "query"
+                        }
+
+                        graph_divider clients_boundary {
+                            stroke = color_link
+                            opacity = 0.55
                         }
 
                         graph_row cache {
@@ -178,6 +185,8 @@ page graph_node_examples {
                             left_port = "audit"
                         }
 
+                        graph_divider docs_boundary { }
+
                         text_block body {
                             left = 16
                             top = 78
@@ -263,7 +272,7 @@ page graph_node_examples {
 
                 code sample {
                     language = "wcl"
-                    content = "graph_node gateway {\n    title = \"Gateway\"\n\n    graph_row ingress {\n        label = \"Ingress\"\n        left_port = \"request\"\n        right_port = \"rest\"\n    }\n}\n\nconnection rest {\n    from = \"gateway.rest\"\n    to = \"user_service.in\"\n    direction = \"to\"\n}"
+                    content = "graph_node gateway {\n    title = \"Gateway\"\n\n    graph_row ingress {\n        label = \"Ingress\"\n        left_port = \"request\"\n        right_port = \"rest\"\n    }\n\n    graph_divider public_private { }\n\n    graph_row auth {\n        label = \"Auth policy\"\n        right_port = \"token\"\n    }\n}\n\nconnection rest {\n    from = \"gateway.rest\"\n    to = \"user_service.in\"\n    direction = \"to\"\n}"
                 }
             }
         }

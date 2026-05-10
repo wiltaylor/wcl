@@ -766,7 +766,7 @@ fn collect_shape_or_connection(
         || is_draw_state_block(br)
         || is_draw_animation_block(br)
         || is_draw_keyframe_block(br)
-        || is_draw_graph_row_block(br)
+        || is_draw_graph_node_structural_block(br)
     {
         return;
     }
@@ -818,7 +818,7 @@ fn collect_shape_or_connection(
                 if is_draw_event_block(child_br)
                     || is_draw_animation_block(child_br)
                     || is_draw_keyframe_block(child_br)
-                    || is_draw_graph_row_block(child_br)
+                    || is_draw_graph_node_structural_block(child_br)
                 {
                     continue;
                 }
@@ -836,7 +836,7 @@ fn collect_shape_or_connection(
             if is_draw_event_block(child_br)
                 || is_draw_animation_block(child_br)
                 || is_draw_keyframe_block(child_br)
-                || is_draw_graph_row_block(child_br)
+                || is_draw_graph_node_structural_block(child_br)
             {
                 continue;
             }
@@ -1719,6 +1719,17 @@ fn is_draw_graph_row_block(block: &BlockRef) -> bool {
     )
 }
 
+fn is_draw_graph_divider_block(block: &BlockRef) -> bool {
+    matches!(
+        block.kind.as_str(),
+        "wdoc::draw::graph_divider" | "draw::graph_divider" | "graph_divider"
+    )
+}
+
+fn is_draw_graph_node_structural_block(block: &BlockRef) -> bool {
+    is_draw_graph_row_block(block) || is_draw_graph_divider_block(block)
+}
+
 fn is_draw_graph_node_block(block: &BlockRef) -> bool {
     matches!(
         block.kind.as_str(),
@@ -2585,6 +2596,68 @@ mod wdoc_draw_tests {
         assert!(html.contains("marker-end=\"url(#wdoc-arrow)\""));
         assert!(html.contains("fill=\"#10b981\" stroke=\"var(--color-bg)\""));
         assert!(html.contains("fill=\"none\" stroke=\"var(--color-bg)\""));
+        assert!(!html.contains("width=\"0\" height=\"0\""));
+    }
+
+    #[test]
+    fn graph_node_dividers_render_between_rows() {
+        let ctx = wdoc_library_ctx();
+
+        let mut node_attrs = IndexMap::new();
+        int_attr(&mut node_attrs, "x", 30);
+        int_attr(&mut node_attrs, "y", 30);
+        int_attr(&mut node_attrs, "width", 220);
+        string_attr(&mut node_attrs, "title", "API");
+
+        let mut first_attrs = IndexMap::new();
+        string_attr(&mut first_attrs, "label", "Ingress");
+        string_attr(&mut first_attrs, "right_port", "in");
+
+        let mut divider_attrs = IndexMap::new();
+        int_attr(&mut divider_attrs, "height", 14);
+        int_attr(&mut divider_attrs, "inset", 12);
+        string_attr(&mut divider_attrs, "stroke", "#ff00aa");
+
+        let mut second_attrs = IndexMap::new();
+        string_attr(&mut second_attrs, "label", "Repository");
+        string_attr(&mut second_attrs, "right_port", "repo");
+
+        let mut diagram_attrs = IndexMap::new();
+        int_attr(&mut diagram_attrs, "width", 320);
+        int_attr(&mut diagram_attrs, "height", 200);
+
+        let diagram = block(
+            "wdoc::draw::diagram",
+            Some("graph_node_dividers"),
+            diagram_attrs,
+            vec![block(
+                "wdoc::draw::graph_node",
+                Some("api"),
+                node_attrs,
+                vec![
+                    block(
+                        "wdoc::draw::graph_row",
+                        Some("ingress"),
+                        first_attrs,
+                        vec![],
+                    ),
+                    block(
+                        "wdoc::draw::graph_divider",
+                        Some("boundary"),
+                        divider_attrs,
+                        vec![],
+                    ),
+                    block("wdoc::draw::graph_row", Some("repo"), second_attrs, vec![]),
+                ],
+            )],
+        );
+
+        let html = render_diagram_with_ctx(&diagram, &ctx);
+        assert!(html.contains("height=\"104\""));
+        assert!(html.contains("x1=\"12\" y1=\"69\" x2=\"208\" y2=\"69\""));
+        assert!(html.contains("stroke=\"#ff00aa\""));
+        assert!(html.contains(">Ingress</text>"));
+        assert!(html.contains(">Repository</text>"));
         assert!(!html.contains("width=\"0\" height=\"0\""));
     }
 

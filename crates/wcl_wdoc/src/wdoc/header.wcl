@@ -388,6 +388,7 @@ namespace wdoc {
         @template("shape", "wdoc::widget_navbar")   @open schema "navbar" { }
         @template("shape", "wdoc::widget_graph_node") @open schema "graph_node" { }
         @parent(["wdoc::draw::graph_node"]) @open schema "graph_row" { }
+        @parent(["wdoc::draw::graph_node"]) @open schema "graph_divider" { }
         @parent(["wdoc::draw::text_block"]) @open schema "paragraph" { content: string }
         @parent(["wdoc::draw::text_block"]) @open schema "p" { content: string @text }
         @parent(["wdoc::draw::text_block"]) @open schema "code" {
