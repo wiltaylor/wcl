@@ -82,6 +82,17 @@ class server_theme {
     indicator_fill = "#22c55e"
 }
 
+class wdoc-widget-graph_node {
+    surface_fill = "#0f172a"
+    header_fill = "#1d4ed8"
+    border_stroke = "#38bdf8"
+    header_label_fill = "#ffffff"
+    label_fill = "#e0f2fe"
+    muted_fill = "#bae6fd"
+    separator_stroke = "#1e3a8a"
+    port_fill = "#22c55e"
+}
+
 page widget_theme_examples {
     section = "my_docs.diagrams.widget_theme_examples"
     title = "Widget Theme Properties"
@@ -289,6 +300,120 @@ page widget_theme_examples {
                         from = "api"
                         to = "model"
                         direction = "to"
+                    }
+                }
+
+                heading h2_graph_nodes {
+                    level = 2
+                    content = "Graph nodes with row ports"
+                }
+
+                paragraph p_graph_nodes {
+                    content = "Graph nodes are card-like widgets with rows that expose explicit ports. Connections target ports with scoped IDs such as <code>gateway.rest</code> and <code>users.query</code>."
+                }
+
+                diagram graph_node_ports {
+                    width = 760
+                    height = 360
+
+                    graph_node gateway {
+                        x = 35
+                        y = 34
+                        width = 230
+                        title = "Gateway"
+                        subtitle = "public edge"
+
+                        graph_row http {
+                            label = "HTTP listener"
+                            left_port = "request"
+                            right_port = "rest"
+                        }
+
+                        graph_row auth {
+                            label = "Auth policy"
+                            right_port = "token"
+                        }
+
+                        graph_row events {
+                            label = "Event stream"
+                            right_port = "events"
+                            detail = "Kafka producer"
+                        }
+                    }
+
+                    graph_node users {
+                        x = 470
+                        y = 24
+                        width = 230
+                        title = "User service"
+
+                        graph_row api {
+                            label = "REST API"
+                            left_port = "in"
+                            right_port = "query"
+                        }
+
+                        graph_row cache {
+                            label = "Cache client"
+                            left_port = "cache_in"
+                        }
+
+                        graph_row audit {
+                            label = "Audit events"
+                            left_port = "audit"
+                        }
+                    }
+
+                    database store {
+                        x = 496
+                        y = 232
+                        width = 120
+                        height = 100
+                        label = "Postgres"
+                    }
+
+                    rect client {
+                        x = 40
+                        y = 260
+                        width = 126
+                        height = 42
+                        rx = 8
+                        fill = color_code_bg
+                        stroke = color_link
+                        text t { content = "Client" }
+                    }
+
+                    connection req {
+                        from = "client"
+                        to = "gateway.request"
+                        direction = "to"
+                    }
+
+                    connection rest {
+                        from = "gateway.rest"
+                        to = "users.in"
+                        direction = "to"
+                        stroke = color_link
+                    }
+
+                    connection token {
+                        from = "gateway.token"
+                        to = "users.cache_in"
+                        direction = "to"
+                        stroke = color_success
+                    }
+
+                    connection db {
+                        from = "users.query"
+                        to = "store"
+                        direction = "both"
+                    }
+
+                    connection audit {
+                        from = "gateway.events"
+                        to = "users.audit"
+                        direction = "to"
+                        stroke_dasharray = "5,3"
                     }
                 }
             }

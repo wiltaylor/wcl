@@ -1,0 +1,205 @@
+import "./shared.wcl"
+
+page graph_node_examples {
+    section = "my_docs.diagrams.graph_node_examples"
+    title = "Graph Node Diagrams"
+
+    layout {
+        vsplit v_graph_nodes {
+            split s_graph_nodes {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Graph Node Diagrams"
+                }
+
+                paragraph intro {
+                    content = "Graph nodes are card-like diagram widgets with row-level ports. Connections can target any named port with scoped IDs such as <code>gateway.rest</code>, <code>users.in</code>, or <code>database.query</code>."
+                }
+
+                heading h2_basic {
+                    level = 2
+                    content = "Port-to-port routing"
+                }
+
+                diagram graph_node_service_map {
+                    width = 880
+                    height = 360
+
+                    graph_node gateway {
+                        x = 40
+                        y = 34
+                        width = 240
+                        title = "Gateway"
+                        subtitle = "public edge"
+
+                        graph_row ingress {
+                            label = "Ingress"
+                            left_port = "request"
+                            right_port = "rest"
+                        }
+
+                        graph_row auth {
+                            label = "Auth policy"
+                            right_port = "token"
+                        }
+
+                        graph_row event_bus {
+                            label = "Event bus"
+                            right_port = "events"
+                            detail = "publish"
+                        }
+                    }
+
+                    graph_node user_service {
+                        x = 430
+                        y = 34
+                        width = 240
+                        title = "User service"
+                        subtitle = "domain API"
+
+                        graph_row rest {
+                            label = "REST API"
+                            left_port = "in"
+                            right_port = "query"
+                        }
+
+                        graph_row cache {
+                            label = "Cache client"
+                            left_port = "cache_in"
+                            right_port = "cache_out"
+                        }
+
+                        graph_row audit {
+                            label = "Audit events"
+                            left_port = "audit"
+                        }
+                    }
+
+                    rect browser {
+                        x = 55
+                        y = 280
+                        width = 130
+                        height = 42
+                        rx = 8
+                        fill = color_code_bg
+                        stroke = color_link
+                        text t { content = "Browser" }
+                    }
+
+                    database postgres {
+                        x = 720
+                        y = 30
+                        width = 122
+                        height = 104
+                        label = "Postgres"
+                    }
+
+                    connection request {
+                        from = "browser"
+                        to = "gateway.request"
+                        direction = "to"
+                    }
+
+                    connection rest {
+                        from = "gateway.rest"
+                        to = "user_service.in"
+                        direction = "to"
+                        stroke = color_link
+                    }
+
+                    connection token {
+                        from = "gateway.token"
+                        to = "user_service.cache_in"
+                        direction = "to"
+                        stroke = color_success
+                    }
+
+                    connection audit {
+                        from = "gateway.events"
+                        to = "user_service.audit"
+                        direction = "to"
+                        stroke_dasharray = "5,3"
+                    }
+
+                    connection query {
+                        from = "user_service.query"
+                        to = "postgres"
+                        direction = "both"
+                    }
+                }
+
+                heading h2_dense {
+                    level = 2
+                    content = "Dense node with many rows"
+                }
+
+                diagram graph_node_dense {
+                    width = 820
+                    height = 430
+                    mode = "pan_zoom"
+
+                    graph_node orchestrator {
+                        x = 50
+                        y = 40
+                        width = 260
+                        title = "Orchestrator"
+                        subtitle = "workflow runtime"
+
+                        for i in range(0, 10) {
+                            graph_row step-${i} {
+                                label = "Step ${i}"
+                                left_port = "in_${i}"
+                                right_port = "out_${i}"
+                                detail = i % 2 == 0 ? "sync" : "async"
+                            }
+                        }
+                    }
+
+                    graph_node workers {
+                        x = 520
+                        y = 58
+                        width = 230
+                        title = "Worker pool"
+
+                        graph_row queue {
+                            label = "Queue"
+                            left_ports = "job_0,job_1,job_2"
+                        }
+
+                        graph_row result {
+                            label = "Results"
+                            right_ports = "ok,failed"
+                        }
+                    }
+
+                    connection job0 {
+                        from = "orchestrator.out_0"
+                        to = "workers.job_0"
+                        direction = "to"
+                    }
+
+                    connection job1 {
+                        from = "orchestrator.out_4"
+                        to = "workers.job_1"
+                        direction = "to"
+                        stroke = color_link
+                    }
+
+                    connection job2 {
+                        from = "orchestrator.out_8"
+                        to = "workers.job_2"
+                        direction = "to"
+                        stroke = color_success
+                    }
+                }
+
+                code sample {
+                    language = "wcl"
+                    content = "graph_node gateway {\n    title = \"Gateway\"\n\n    graph_row ingress {\n        label = \"Ingress\"\n        left_port = \"request\"\n        right_port = \"rest\"\n    }\n}\n\nconnection rest {\n    from = \"gateway.rest\"\n    to = \"user_service.in\"\n    direction = \"to\"\n}"
+                }
+            }
+        }
+    }
+}

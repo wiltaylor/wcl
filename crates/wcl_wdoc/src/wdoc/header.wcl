@@ -320,6 +320,7 @@ namespace wdoc {
             "wdoc::draw::context_menu",
             "wdoc::draw::badge",
             "wdoc::draw::navbar",
+            "wdoc::draw::graph_node",
             "wdoc::draw::flowchart",
             "wdoc::draw::flow_process",
             "wdoc::draw::flow_decision",
@@ -383,6 +384,8 @@ namespace wdoc {
         @open schema "menu_item" { }
         @template("shape", "wdoc::widget_badge")    @open schema "badge" { }
         @template("shape", "wdoc::widget_navbar")   @open schema "navbar" { }
+        @template("shape", "wdoc::widget_graph_node") @open schema "graph_node" { }
+        @parent(["wdoc::draw::graph_node"]) @open schema "graph_row" { }
 
         @template("shape", "wdoc::widget_flowchart")       @open schema "flowchart" { }
         @template("shape", "wdoc::widget_flow_process")    @open schema "flow_process" { }

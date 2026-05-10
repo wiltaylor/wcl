@@ -530,16 +530,46 @@ fn render_diagram_with_ctx(br: &BlockRef, ctx: &ExtractCtx) -> String {
 
     let mut shapes = Vec::new();
     let mut connections = Vec::new();
+    let graph_node_connected_ports = diagram_graph_node_connected_ports(br);
 
     let mut source_order = 0;
     for val in br.attributes.values() {
         if let Value::BlockRef(child) = val {
-            collect_shape_or_connection(child, &mut shapes, &mut connections, ctx, source_order);
+            if let Some(annotated) =
+                graph_node_with_connected_ports(child, &graph_node_connected_ports)
+            {
+                collect_shape_or_connection(
+                    &annotated,
+                    &mut shapes,
+                    &mut connections,
+                    ctx,
+                    source_order,
+                );
+            } else {
+                collect_shape_or_connection(
+                    child,
+                    &mut shapes,
+                    &mut connections,
+                    ctx,
+                    source_order,
+                );
+            }
             source_order += 1;
         }
     }
     for child in &br.children {
-        collect_shape_or_connection(child, &mut shapes, &mut connections, ctx, source_order);
+        if let Some(annotated) = graph_node_with_connected_ports(child, &graph_node_connected_ports)
+        {
+            collect_shape_or_connection(
+                &annotated,
+                &mut shapes,
+                &mut connections,
+                ctx,
+                source_order,
+            );
+        } else {
+            collect_shape_or_connection(child, &mut shapes, &mut connections, ctx, source_order);
+        }
         source_order += 1;
     }
 
@@ -608,6 +638,100 @@ fn append_class_attr(attrs: &mut IndexMap<String, String>, class_name: &str) {
     }
 }
 
+fn diagram_graph_node_connected_ports(diagram: &BlockRef) -> HashMap<String, Vec<String>> {
+    let mut graph_node_ids = HashSet::new();
+    for val in diagram.attributes.values() {
+        if let Value::BlockRef(child) = val {
+            collect_graph_node_id(child, &mut graph_node_ids);
+        }
+    }
+    for child in &diagram.children {
+        collect_graph_node_id(child, &mut graph_node_ids);
+    }
+
+    let mut connected_ports: HashMap<String, Vec<String>> = HashMap::new();
+    if graph_node_ids.is_empty() {
+        return connected_ports;
+    }
+
+    for val in diagram.attributes.values() {
+        if let Value::BlockRef(child) = val {
+            collect_connection_port_usage(child, &graph_node_ids, &mut connected_ports);
+        }
+    }
+    for child in &diagram.children {
+        collect_connection_port_usage(child, &graph_node_ids, &mut connected_ports);
+    }
+
+    connected_ports
+}
+
+fn collect_graph_node_id(block: &BlockRef, ids: &mut HashSet<String>) {
+    if is_draw_graph_node_block(block) {
+        if let Some(id) = block.id.as_deref().filter(|id| !id.is_empty()) {
+            ids.insert(id.to_string());
+        }
+    }
+}
+
+fn collect_connection_port_usage(
+    block: &BlockRef,
+    graph_node_ids: &HashSet<String>,
+    connected_ports: &mut HashMap<String, Vec<String>>,
+) {
+    if block.kind != "wdoc::draw::connection" {
+        return;
+    }
+    collect_endpoint_port_usage(
+        block.attributes.get("from"),
+        graph_node_ids,
+        connected_ports,
+    );
+    collect_endpoint_port_usage(block.attributes.get("to"), graph_node_ids, connected_ports);
+}
+
+fn collect_endpoint_port_usage(
+    endpoint_value: Option<&Value>,
+    graph_node_ids: &HashSet<String>,
+    connected_ports: &mut HashMap<String, Vec<String>>,
+) {
+    let Some(endpoint) = value_as_string(endpoint_value).map(str::trim) else {
+        return;
+    };
+    let Some((node_id, port_id)) = endpoint.split_once('.') else {
+        return;
+    };
+    let port_id = port_id.trim();
+    if !graph_node_ids.contains(node_id) || port_id.is_empty() {
+        return;
+    }
+    let ports = connected_ports.entry(node_id.to_string()).or_default();
+    if !ports.iter().any(|existing| existing == port_id) {
+        ports.push(port_id.to_string());
+    }
+}
+
+fn graph_node_with_connected_ports(
+    block: &BlockRef,
+    connected_ports: &HashMap<String, Vec<String>>,
+) -> Option<BlockRef> {
+    if !is_draw_graph_node_block(block) {
+        return None;
+    }
+    let id = block.id.as_deref()?;
+    let ports = connected_ports.get(id)?;
+    if ports.is_empty() {
+        return None;
+    }
+
+    let mut annotated = block.clone();
+    annotated.attributes.insert(
+        "_wdoc_connected_ports".to_string(),
+        Value::String(ports.join(",")),
+    );
+    Some(annotated)
+}
+
 fn collect_shape_or_connection(
     br: &BlockRef,
     shapes: &mut Vec<crate::shapes::ShapeNode>,
@@ -642,6 +766,7 @@ fn collect_shape_or_connection(
         || is_draw_state_block(br)
         || is_draw_animation_block(br)
         || is_draw_keyframe_block(br)
+        || is_draw_graph_row_block(br)
     {
         return;
     }
@@ -693,6 +818,7 @@ fn collect_shape_or_connection(
                 if is_draw_event_block(child_br)
                     || is_draw_animation_block(child_br)
                     || is_draw_keyframe_block(child_br)
+                    || is_draw_graph_row_block(child_br)
                 {
                     continue;
                 }
@@ -710,6 +836,7 @@ fn collect_shape_or_connection(
             if is_draw_event_block(child_br)
                 || is_draw_animation_block(child_br)
                 || is_draw_keyframe_block(child_br)
+                || is_draw_graph_row_block(child_br)
             {
                 continue;
             }
@@ -1535,6 +1662,20 @@ fn is_draw_event_block(block: &BlockRef) -> bool {
     )
 }
 
+fn is_draw_graph_row_block(block: &BlockRef) -> bool {
+    matches!(
+        block.kind.as_str(),
+        "wdoc::draw::graph_row" | "draw::graph_row" | "graph_row"
+    )
+}
+
+fn is_draw_graph_node_block(block: &BlockRef) -> bool {
+    matches!(
+        block.kind.as_str(),
+        "wdoc::draw::graph_node" | "draw::graph_node" | "graph_node"
+    )
+}
+
 fn val_f64(v: Option<&Value>) -> Option<f64> {
     match v {
         Some(Value::Int(i)) => Some(*i as f64),
@@ -2321,6 +2462,80 @@ mod wdoc_draw_tests {
                 .and_then(Value::as_string),
             Some("#ffffff")
         );
+    }
+
+    #[test]
+    fn graph_node_rows_emit_scoped_port_endpoints() {
+        let ctx = wdoc_library_ctx();
+
+        let mut api_attrs = IndexMap::new();
+        int_attr(&mut api_attrs, "x", 30);
+        int_attr(&mut api_attrs, "y", 30);
+        int_attr(&mut api_attrs, "width", 220);
+        string_attr(&mut api_attrs, "title", "API");
+        string_attr(&mut api_attrs, "port_fill", "#10b981");
+
+        let mut api_in = IndexMap::new();
+        string_attr(&mut api_in, "label", "HTTP");
+        string_attr(&mut api_in, "left_port", "in");
+
+        let mut api_out = IndexMap::new();
+        string_attr(&mut api_out, "label", "Repository");
+        string_attr(&mut api_out, "right_port", "out");
+
+        let mut db_attrs = IndexMap::new();
+        int_attr(&mut db_attrs, "x", 330);
+        int_attr(&mut db_attrs, "y", 54);
+        int_attr(&mut db_attrs, "width", 220);
+        string_attr(&mut db_attrs, "title", "Database");
+        string_attr(&mut db_attrs, "port_fill", "#10b981");
+
+        let mut db_in = IndexMap::new();
+        string_attr(&mut db_in, "label", "SQL");
+        string_attr(&mut db_in, "left_port", "query");
+
+        let mut conn_attrs = IndexMap::new();
+        string_attr(&mut conn_attrs, "from", "api.out");
+        string_attr(&mut conn_attrs, "to", "db.query");
+        string_attr(&mut conn_attrs, "direction", "to");
+
+        let mut diagram_attrs = IndexMap::new();
+        int_attr(&mut diagram_attrs, "width", 600);
+        int_attr(&mut diagram_attrs, "height", 220);
+
+        let diagram = block(
+            "wdoc::draw::diagram",
+            Some("graph_node_ports"),
+            diagram_attrs,
+            vec![
+                block(
+                    "wdoc::draw::graph_node",
+                    Some("api"),
+                    api_attrs,
+                    vec![
+                        block("wdoc::draw::graph_row", Some("http"), api_in, vec![]),
+                        block("wdoc::draw::graph_row", Some("repo"), api_out, vec![]),
+                    ],
+                ),
+                block(
+                    "wdoc::draw::graph_node",
+                    Some("db"),
+                    db_attrs,
+                    vec![block("wdoc::draw::graph_row", Some("sql"), db_in, vec![])],
+                ),
+                block("wdoc::draw::connection", Some("api_db"), conn_attrs, vec![]),
+            ],
+        );
+
+        let html = render_diagram_with_ctx(&diagram, &ctx);
+        assert!(html.contains(">API</text>"));
+        assert!(html.contains(">Repository</text>"));
+        assert!(html.contains("data-wdoc-conn-from=\"api.out\""));
+        assert!(html.contains("data-wdoc-conn-to=\"db.query\""));
+        assert!(html.contains("marker-end=\"url(#wdoc-arrow)\""));
+        assert!(html.contains("fill=\"#10b981\" stroke=\"var(--color-bg)\""));
+        assert!(html.contains("fill=\"none\" stroke=\"var(--color-bg)\""));
+        assert!(!html.contains("width=\"0\" height=\"0\""));
     }
 
     #[test]

@@ -1,6 +1,6 @@
 import <wdoc.wcl>
 use wdoc::{page, layout, heading, paragraph, code, data_table, callout, bold, link}
-use wdoc::draw::{diagram, terminal, terminal_box, terminal_text, terminal_menu, terminal_cursor}
+use wdoc::draw::{diagram, terminal, terminal_box, terminal_text, terminal_menu, terminal_cursor, graph_node, graph_row, connection, database}
 
 page wdoc_drawing_widgets {
     section = "wcl_docs.wdoc.wdoc_drawing_widgets"
@@ -140,6 +140,96 @@ page wdoc_drawing_widgets {
                 code ctheme {
                     language = "wcl"
                     content = "class wdoc-widget-button {\n    background_fill = \"#0f766e\"\n    border_stroke = \"#0f766e\"\n    label_fill = \"#ffffff\"\n    radius = 8\n}\n\nclass brand_button {\n    background_fill = \"#7c3aed\"\n    border_stroke = \"#6d28d9\"\n    label_fill = \"#ffffff\"\n}\n\ndiagram themed_controls {\n    width = 360\n    height = 140\n\n    button default_submit {\n        x = 20, y = 24, width = 140, height = 38\n        label = \"Default class\"\n    }\n\n    button custom_submit {\n        x = 190, y = 24, width = 140, height = 38\n        class = \"brand_button\"\n        label = \"Replacement\"\n    }\n\n    button danger {\n        x = 105, y = 82, width = 140, height = 38\n        class = \"brand_button\"\n        label = \"Override\"\n        background_fill = \"#b91c1c\"\n        border_stroke = \"#b91c1c\"\n    }\n}"
+                }
+
+                heading h2_graph {
+                    level = 2
+                    content = "Graph nodes"
+                }
+
+                paragraph p_graph {
+                    content = "<code>graph_node</code> renders a card with nested <code>graph_row</code> entries. Rows expose explicit left and right ports, and connections target those ports with scoped IDs such as <code>api.out</code> or <code>db.query</code>."
+                }
+
+                data_table tbl_graph {
+                    caption = "Graph node widgets"
+                    rows = [
+                        { widget = "graph_node", attrs = "title, subtitle, row_height, header_height, port_radius, port_fill, unused_port_fill" },
+                        { widget = "graph_row",  attrs = "label, detail, left_port, right_port, left_ports, right_ports" }
+                    ]
+                }
+
+                diagram graph_node_doc_example {
+                    width = 720
+                    height = 300
+
+                    graph_node api {
+                        x = 30
+                        y = 34
+                        width = 230
+                        title = "API"
+                        subtitle = "edge service"
+
+                        graph_row request {
+                            label = "Request"
+                            left_port = "in"
+                            right_port = "route"
+                        }
+
+                        graph_row users {
+                            label = "Users"
+                            right_port = "users"
+                        }
+
+                        graph_row events {
+                            label = "Events"
+                            right_port = "events"
+                            detail = "async"
+                        }
+                    }
+
+                    graph_node worker {
+                        x = 430
+                        y = 44
+                        width = 230
+                        title = "Worker"
+
+                        graph_row input {
+                            label = "Input"
+                            left_port = "in"
+                        }
+
+                        graph_row query {
+                            label = "Query DB"
+                            right_port = "query"
+                        }
+                    }
+
+                    database db {
+                        x = 470
+                        y = 210
+                        width = 110
+                        height = 76
+                        label = "DB"
+                    }
+
+                    connection e1 {
+                        from = "api.route"
+                        to = "worker.in"
+                        direction = "to"
+                    }
+
+                    connection e2 {
+                        from = "worker.query"
+                        to = "db"
+                        direction = "both"
+                        to_anchor = "top"
+                    }
+                }
+
+                code cgraph {
+                    language = "wcl"
+                    content = "diagram service_ports {\n    width = 720, height = 300\n\n    graph_node api {\n        x = 30, y = 34, width = 230\n        title = \"API\"\n        subtitle = \"edge service\"\n\n        graph_row request { label = \"Request\", left_port = \"in\", right_port = \"route\" }\n        graph_row users   { label = \"Users\",   right_port = \"users\" }\n        graph_row events  { label = \"Events\",  right_port = \"events\", detail = \"async\" }\n    }\n\n    graph_node worker {\n        x = 430, y = 44, width = 230\n        title = \"Worker\"\n\n        graph_row input { label = \"Input\", left_port = \"in\" }\n        graph_row query { label = \"Query DB\", right_port = \"query\" }\n    }\n\n    database db { x = 470, y = 210, width = 110, height = 76, label = \"DB\" }\n\n    connection e1 { from = \"api.route\",    to = \"worker.in\", direction = \"to\" }\n    connection e2 { from = \"worker.query\", to = \"db\",        direction = \"both\", to_anchor = \"top\" }\n}"
                 }
 
                 heading h2_flow {
