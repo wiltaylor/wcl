@@ -77,6 +77,136 @@ class ex_anim_loop {
     }
 }
 
+class ex_anim_rotate {
+    fill = "#8b5cf6"
+    stroke = color_code_border
+    stroke_width = 1.5
+    cursor = "pointer"
+
+    animation spin {
+        duration_ms = 1200
+        timing_function = "ease-in-out"
+        iteration_count = "infinite"
+        direction = "alternate"
+        fill_mode = "both"
+
+        keyframe start {
+            offset = 0
+            rotate = 0
+        }
+
+        keyframe center_turn {
+            offset = 50
+            rotate = 45
+        }
+
+        keyframe pivot_turn {
+            offset = 100
+            rotate = -30
+            rotate_origin_x = 240
+            rotate_origin_y = 82
+        }
+    }
+
+    state spinning {
+        animation = "spin"
+    }
+}
+
+class ex_anim_center_spin {
+    fill = "#2563eb"
+    stroke = color_code_border
+    stroke_width = 1.5
+    cursor = "pointer"
+
+    animation center_spin {
+        duration_ms = 900
+        timing_function = "ease-in-out"
+        iteration_count = "infinite"
+        fill_mode = "both"
+
+        keyframe start {
+            offset = 0
+            rotate = 0
+        }
+
+        keyframe end {
+            offset = 100
+            rotate = 360
+        }
+    }
+
+    state spinning {
+        animation = "center_spin"
+    }
+}
+
+class ex_anim_pivot_swing {
+    fill = "#f59e0b"
+    stroke = color_code_border
+    stroke_width = 1.5
+    cursor = "pointer"
+
+    animation swing {
+        duration_ms = 1000
+        timing_function = "ease-in-out"
+        iteration_count = "infinite"
+        direction = "alternate"
+        fill_mode = "both"
+
+        keyframe left {
+            offset = 0
+            rotate = -35
+            rotate_origin_x = 340
+            rotate_origin_y = 85
+        }
+
+        keyframe right {
+            offset = 100
+            rotate = 35
+            rotate_origin_x = 340
+            rotate_origin_y = 85
+        }
+    }
+
+    state swinging {
+        animation = "swing"
+    }
+}
+
+class ex_anim_rotate_move {
+    fill = "#14b8a6"
+    stroke = color_code_border
+    stroke_width = 1.5
+    cursor = "pointer"
+
+    animation move_and_rotate {
+        duration_ms = 1200
+        timing_function = "ease-in-out"
+        iteration_count = "infinite"
+        direction = "alternate"
+        fill_mode = "both"
+
+        keyframe start {
+            offset = 0
+            x = 60
+            y = 170
+            rotate = 0
+        }
+
+        keyframe end {
+            offset = 100
+            x = 250
+            y = 205
+            rotate = 180
+        }
+    }
+
+    state flying {
+        animation = "move_and_rotate"
+    }
+}
+
 page animation_examples {
     section = "my_docs.diagrams.animation_examples"
     title = "Keyframe Animations"
@@ -200,6 +330,158 @@ page animation_examples {
                     }
                 }
 
+                heading h4_rotate {
+                    level = 2
+                    content = "Rotating keyframes"
+                }
+
+                paragraph p4_rotate {
+                    content = "Hover the purple shape to rotate it. The first turn uses the animated shape center; the final keyframe sets an explicit pivot with " + bold("rotate_origin_x") + " and " + bold("rotate_origin_y") + "."
+                }
+
+                diagram rotation_animation {
+                    width = 360
+                    height = 180
+
+                    circle pivot {
+                        x = 236
+                        y = 78
+                        width = 8
+                        height = 8
+                        fill = "#f59e0b"
+                        stroke = color_code_border
+                    }
+
+                    rect spinner {
+                        x = 96
+                        y = 58
+                        width = 112
+                        height = 46
+                        rx = 8
+                        class = "ex_anim_rotate"
+
+                        event hover_spin {
+                            trigger = "hover"
+                            state = "spinning"
+                            mode = "while"
+                        }
+                    }
+
+                    text label {
+                        x = 236
+                        y = 92
+                        width = 90
+                        height = 24
+                        content = "pivot"
+                        anchor = "start"
+                        font_size = 12
+                    }
+                }
+
+                heading h4_patterns {
+                    level = 2
+                    content = "Rotation patterns"
+                }
+
+                paragraph p4_patterns {
+                    content = "This diagram shows common rotation patterns: spin around the shape center, swing around an explicit pivot, and combine rotation with animated movement."
+                }
+
+                diagram rotation_patterns {
+                    width = 560
+                    height = 310
+
+                    rect center_spin {
+                        x = 62
+                        y = 54
+                        width = 86
+                        height = 52
+                        rx = 8
+                        class = "ex_anim_center_spin"
+
+                        event spin {
+                            trigger = "hover"
+                            state = "spinning"
+                            mode = "while"
+                        }
+                    }
+
+                    text center_label {
+                        x = 44
+                        y = 116
+                        width = 126
+                        height = 24
+                        content = "center pivot"
+                        font_size = 12
+                    }
+
+                    circle pivot_dot {
+                        x = 336
+                        y = 81
+                        width = 8
+                        height = 8
+                        fill = "#fef3c7"
+                        stroke = color_code_border
+                    }
+
+                    rect pivot_swing {
+                        x = 342
+                        y = 60
+                        width = 116
+                        height = 40
+                        rx = 8
+                        class = "ex_anim_pivot_swing"
+
+                        event swing {
+                            trigger = "hover"
+                            state = "swinging"
+                            mode = "while"
+                        }
+                    }
+
+                    text pivot_label {
+                        x = 292
+                        y = 116
+                        width = 190
+                        height = 24
+                        content = "explicit pivot"
+                        font_size = 12
+                    }
+
+                    line path_hint {
+                        x1 = 70
+                        y1 = 236
+                        x2 = 342
+                        y2 = 236
+                        stroke = color_code_border
+                        stroke_dasharray = "6,5"
+                    }
+
+                    rect move_rotate {
+                        x = 60
+                        y = 170
+                        width = 92
+                        height = 44
+                        rx = 8
+                        class = "ex_anim_rotate_move"
+
+                        event fly {
+                            trigger = "hover"
+                            state = "flying"
+                            mode = "while"
+                        }
+                    }
+
+                    text move_label {
+                        x = 190
+                        y = 254
+                        width = 170
+                        height = 24
+                        content = "move + rotate"
+                        font_size = 12
+                    }
+                }
+
                 heading h4 {
                     level = 2
                     content = "Source"
@@ -229,6 +511,9 @@ class moving_token {
             y = 104
             width = 110
             height = 60
+            rotate = 90
+            rotate_origin_x = 405
+            rotate_origin_y = 134
         }
     }
 

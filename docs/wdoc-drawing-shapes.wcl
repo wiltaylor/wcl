@@ -131,6 +131,17 @@ page wdoc_drawing_shapes {
                     ]
                 }
 
+                data_table tbl_keyframes {
+                    caption = "animation keyframe fields"
+                    rows = [
+                        { attr = "offset",          description = "Percent position from 0 to 100" },
+                        { attr = "x, y",            description = "Animated shape position in SVG units" },
+                        { attr = "width, height",   description = "Animated shape bounds in SVG units" },
+                        { attr = "rotate",          description = "Animated rotation in degrees" },
+                        { attr = "rotate_origin_x, rotate_origin_y", description = "Optional absolute SVG pivot; defaults to the animated shape center" }
+                    ]
+                }
+
                 heading h2_text {
                     level = 2
                     content = "text"

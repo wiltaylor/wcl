@@ -1682,6 +1682,15 @@ fn parse_diagram_keyframe(block: &BlockRef) -> Option<crate::shapes::DiagramKeyf
         y: block.attributes.get("y").and_then(value_as_f64),
         width: block.attributes.get("width").and_then(value_as_f64),
         height: block.attributes.get("height").and_then(value_as_f64),
+        rotate: block.attributes.get("rotate").and_then(value_as_f64),
+        rotate_origin_x: block
+            .attributes
+            .get("rotate_origin_x")
+            .and_then(value_as_f64),
+        rotate_origin_y: block
+            .attributes
+            .get("rotate_origin_y")
+            .and_then(value_as_f64),
     })
 }
 
@@ -4190,12 +4199,16 @@ mod wdoc_draw_tests {
         int_attr(&mut from_attrs, "y", 10);
         int_attr(&mut from_attrs, "width", 40);
         int_attr(&mut from_attrs, "height", 30);
+        int_attr(&mut from_attrs, "rotate", 0);
 
         let mut to_attrs = IndexMap::new();
         int_attr(&mut to_attrs, "x", 90);
         int_attr(&mut to_attrs, "y", 30);
         int_attr(&mut to_attrs, "width", 50);
         int_attr(&mut to_attrs, "height", 35);
+        int_attr(&mut to_attrs, "rotate", 180);
+        int_attr(&mut to_attrs, "rotate_origin_x", 80);
+        int_attr(&mut to_attrs, "rotate_origin_y", 40);
 
         let animation = block(
             "animation",
@@ -4258,6 +4271,7 @@ mod wdoc_draw_tests {
         let html = render_diagram_with_ctx(&diagram, &ctx);
         assert!(html.contains("data-wdoc-state-animation=\"active:slide\""));
         assert!(html.contains("slide|750|0|ease|infinite|alternate|both|"));
+        assert!(html.contains("100,90,30,50,35,180,80,40"));
         assert!(html.contains("data-wdoc-events=\"click|active|self|toggle|left|0|false\""));
         assert!(!html.contains("<animation"));
         assert!(!html.contains("<keyframe"));
