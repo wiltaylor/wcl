@@ -30,6 +30,14 @@ page signal_examples {
         initial = "Stage"
     }
 
+    signal camp_marker {
+        initial = { x = 483 y = 341 }
+    }
+
+    signal objective_marker {
+        initial = { x = 629 y = 438 }
+    }
+
     binding progress_text {
         signal = "progress"
         target = "progress_readout"
@@ -85,6 +93,48 @@ page signal_examples {
         format = "Dropdown signal: {value}"
     }
 
+    binding camp_marker_readout {
+        signal = "camp_marker"
+        target = "camp_readout"
+        property = "text"
+        format = "Camp marker coordinates {value}"
+    }
+
+    binding camp_icon_x {
+        signal = "camp_marker"
+        path = "x"
+        target = "camp_drag_icon"
+        property = "map_anchor_x"
+    }
+
+    binding camp_icon_y {
+        signal = "camp_marker"
+        path = "y"
+        target = "camp_drag_icon"
+        property = "map_anchor_y"
+    }
+
+    binding objective_marker_readout {
+        signal = "objective_marker"
+        target = "objective_readout"
+        property = "text"
+        format = "Objective marker coordinates {value}"
+    }
+
+    binding objective_icon_x {
+        signal = "objective_marker"
+        path = "x"
+        target = "objective_drag_icon"
+        property = "map_anchor_x"
+    }
+
+    binding objective_icon_y {
+        signal = "objective_marker"
+        path = "y"
+        target = "objective_drag_icon"
+        property = "map_anchor_y"
+    }
+
     layout {
         vsplit signal_layout {
             split main {
@@ -121,6 +171,79 @@ page signal_examples {
 
                 paragraph environment_readout {
                     content = "Dropdown signal: Stage"
+                }
+
+                paragraph map_drag_intro {
+                    content = "Drag the map icons. The icon positions are stored in signals as map coordinates, so they stay attached to the map while pan and zoom changes."
+                }
+
+                paragraph camp_readout {
+                    content = "Camp marker coordinates 483, 341"
+                }
+
+                paragraph objective_readout {
+                    content = "Objective marker coordinates 629, 438"
+                }
+
+                diagram map_drag_demo {
+                    width = 760
+                    height = 420
+
+                    map route_map {
+                        x = 30
+                        y = 30
+                        width = 700
+                        height = 340
+                        src = "images/inkscape-rpg-map.png"
+                        content_width = 927
+                        content_height = 704
+                        view_x = 150
+                        view_y = 120
+                        view_width = 520
+                        view_height = 252
+                        min_zoom = 0.5
+                        max_zoom = 6
+                        background_fill = "#0f172a"
+                        alt = "Draggable signal map"
+
+                        icon camp_drag_icon {
+                            x = 470
+                            y = 315
+                            width = 26
+                            height = 26
+                            name = "tent"
+                            fill = "#f59e0b"
+                            stroke = "#f59e0b"
+                            map_fixed = true
+                            map_anchor_x = 483
+                            map_anchor_y = 341
+                            draggable = true
+                            drag_signal = "camp_marker"
+                            drag_x_path = "x"
+                            drag_y_path = "y"
+                            cursor = "grab"
+                            pointer_events = "all"
+                        }
+
+                        icon objective_drag_icon {
+                            x = 615
+                            y = 410
+                            width = 28
+                            height = 28
+                            name = "flag"
+                            fill = "#22c55e"
+                            stroke = "#22c55e"
+                            map_fixed = true
+                            map_anchor_x = 629
+                            map_anchor_y = 438
+                            draggable = true
+                            drag_signal = "objective_marker"
+                            drag_x_path = "x"
+                            drag_y_path = "y"
+                            cursor = "grab"
+                            pointer_events = "all"
+                        }
+                    }
                 }
 
                 diagram signal_demo {
@@ -299,7 +422,7 @@ page signal_examples {
 
                 code source {
                     language = "wcl"
-                    content = "signal title_text {\n    initial = \"Signal title\"\n}\n\nsignal notes {\n    initial = \"Edit this note\"\n}\n\nsignal enabled {\n    initial = true\n}\n\nsignal plan {\n    initial = \"Team\"\n}\n\nsignal environment {\n    initial = \"Stage\"\n}\n\ndiagram signal_demo {\n    textbox title_editor {\n        signal = \"title_text\"\n        multiline = \"false\"\n        debounce_ms = 300\n        value = \"Signal title\"\n    }\n\n    textbox notes_editor {\n        signal = \"notes\"\n        multiline = \"true\"\n        debounce_ms = 300\n        value = \"Edit this note\"\n    }\n\n    checkbox enabled_toggle {\n        signal = \"enabled\"\n        checked = \"true\"\n    }\n\n    radio plan_team {\n        signal = \"plan\"\n        value = \"Team\"\n        selected = \"true\"\n    }\n\n    dropdown environment_picker {\n        signal = \"environment\"\n        value = \"Stage\"\n        items = \"Dev,Stage,Prod\"\n    }\n}"
+                    content = "signal camp_marker {\n    initial = { x = 483 y = 341 }\n}\n\nbinding camp_icon_x {\n    signal = \"camp_marker\"\n    path = \"x\"\n    target = \"camp_drag_icon\"\n    property = \"map_anchor_x\"\n}\n\nbinding camp_icon_y {\n    signal = \"camp_marker\"\n    path = \"y\"\n    target = \"camp_drag_icon\"\n    property = \"map_anchor_y\"\n}\n\ndiagram map_drag_demo {\n    map route_map {\n        src = \"images/inkscape-rpg-map.png\"\n        content_width = 927\n        content_height = 704\n\n        icon camp_drag_icon {\n            name = \"tent\"\n            map_fixed = true\n            map_anchor_x = 483\n            map_anchor_y = 341\n            draggable = true\n            drag_signal = \"camp_marker\"\n            drag_x_path = \"x\"\n            drag_y_path = \"y\"\n        }\n    }\n}"
                 }
             }
         }
