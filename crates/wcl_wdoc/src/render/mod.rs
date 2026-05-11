@@ -1,5 +1,4 @@
 pub mod assets;
-pub mod content;
 pub mod layout;
 pub mod page;
 

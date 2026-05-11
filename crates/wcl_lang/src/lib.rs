@@ -1278,6 +1278,18 @@ for sys in (..System) {
     }
 
     #[test]
+    fn mutually_recursive_exported_lambdas_do_not_trip_init_cycle_detection() {
+        let src = r#"
+export let even = n => n == 0 ? true : odd(n - 1)
+export let odd = n => n == 0 ? false : even(n - 1)
+export let result = even(4)
+        "#;
+        let doc = parse(src, ParseOptions::default());
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+        assert_eq!(doc.values.get("result"), Some(&Value::Bool(true)));
+    }
+
+    #[test]
     fn map_lambda_can_access_block_id() {
         let src = r#"
 System sys1 {}

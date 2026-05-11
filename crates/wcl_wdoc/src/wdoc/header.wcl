@@ -719,6 +719,39 @@ namespace wdoc {
         "<div class=\"wdoc-callout\" style=\"border-left-color:" + color + ";\">" + header_html + "<div class=\"wdoc-callout-body\">" + wdoc::render_children(b) + "</div></div>"
     }
 
+    export let render_content_block = (b) => {
+        let id = attr_or(b, "id", "")
+        let style = attr_or(b, "style", "")
+        let kind = attr_or(b, "css_kind", "")
+        let html = attr_or(b, "html", "")
+        let id_attr = id != "" ? " id=\"" + wdoc::html_escape(id) + "\"" : ""
+        let data_id_attr = id != "" ? " data-wdoc-content-id=\"" + wdoc::html_escape(id) + "\"" : ""
+        let class_attr = style != "" ? " class=\"wdoc-style-" + wdoc::html_escape(style) + "--" + wdoc::html_escape(kind) + "\"" : ""
+        (id != "" || style != "") ? "<div" + id_attr + data_id_attr + class_attr + ">" + html + "</div>\n" : html + "\n"
+    }
+
+    export let render_split_group = (item) => {
+        let dir_class = item.direction == "vertical" ? "wdoc-vsplit" : "wdoc-hsplit"
+        let children_html = wdoc::render_layout_items(item.splits)
+        "<div class=\"" + dir_class + "\">\n" + children_html + "</div>\n"
+    }
+
+    export let render_split = (item) => {
+        let children_html = wdoc::render_layout_items(item.children)
+        "<div class=\"wdoc-split\" style=\"flex: 0 0 " + to_string(item.size_percent) + "%;\">\n" + children_html + "</div>\n"
+    }
+
+    export let render_layout_item = (item) => {
+        let item_kind = attr_or(item, "item_kind", "")
+        item_kind == "content" ? wdoc::render_content_block(item) : (
+            item_kind == "split_group" ? wdoc::render_split_group(item) : (
+                item_kind == "split" ? wdoc::render_split(item) : ""
+            )
+        )
+    }
+
+    export let render_layout_items = (items) => join("", map(items, (item) => wdoc::render_layout_item(item)))
+
     // ----------------------------------------------------------------------
     // Widget shape templates
     // ----------------------------------------------------------------------

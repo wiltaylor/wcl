@@ -135,7 +135,7 @@ fn extract_string_expr(expr: &ast::Expr) -> Option<String> {
     }
 }
 
-fn collect_template_helpers(doc: &wcl_lang::Document) -> HashMap<String, FunctionValue> {
+pub(crate) fn collect_template_helpers(doc: &wcl_lang::Document) -> HashMap<String, FunctionValue> {
     doc.values
         .iter()
         .filter_map(|(name, value)| match value {
@@ -305,7 +305,7 @@ fn validate_markup_pattern(
 // WCL custom functions (inline formatting + template rendering)
 // ---------------------------------------------------------------------------
 
-fn wdoc_functions() -> FunctionRegistry {
+pub(crate) fn wdoc_functions() -> FunctionRegistry {
     let mut reg = FunctionRegistry::new();
     let measure_text = std::sync::Arc::new(|args: &[Value]| {
         if args.len() != 1 {

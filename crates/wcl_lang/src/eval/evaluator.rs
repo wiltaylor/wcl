@@ -228,15 +228,33 @@ impl Evaluator {
                 DocItem::Body(body_item) => self.register_body_item(body_item, scope_id),
                 DocItem::ExportLet(el) => {
                     let deps = self.find_dependencies(&el.value);
+                    let (value, evaluated) = if matches!(el.value, Expr::Lambda(_, _, _)) {
+                        match self.eval_expr(&el.value, scope_id) {
+                            Ok(mut value) => {
+                                self.attach_function_decorators(
+                                    &mut value,
+                                    &el.decorators,
+                                    scope_id,
+                                );
+                                (Some(value), true)
+                            }
+                            Err(diag) => {
+                                self.diagnostics.add(diag);
+                                (None, false)
+                            }
+                        }
+                    } else {
+                        (None, false)
+                    };
                     self.scopes.add_entry(
                         scope_id,
                         ScopeEntry {
                             name: el.name.name.clone(),
                             kind: ScopeEntryKind::ExportLet,
-                            value: None,
+                            value,
                             span: el.span,
                             dependencies: deps,
-                            evaluated: false,
+                            evaluated,
                             read_count: 0,
                         },
                     );
@@ -286,15 +304,29 @@ impl Evaluator {
                     }
                 }
                 let deps = self.find_dependencies(&lb.value);
+                let (value, evaluated) = if matches!(lb.value, Expr::Lambda(_, _, _)) {
+                    match self.eval_expr(&lb.value, scope_id) {
+                        Ok(mut value) => {
+                            self.attach_function_decorators(&mut value, &lb.decorators, scope_id);
+                            (Some(value), true)
+                        }
+                        Err(diag) => {
+                            self.diagnostics.add(diag);
+                            (None, false)
+                        }
+                    }
+                } else {
+                    (None, false)
+                };
                 self.scopes.add_entry(
                     scope_id,
                     ScopeEntry {
                         name: lb.name.name.clone(),
                         kind: ScopeEntryKind::LetBinding,
-                        value: None,
+                        value,
                         span: lb.span,
                         dependencies: deps,
-                        evaluated: false,
+                        evaluated,
                         read_count: 0,
                     },
                 );
@@ -617,9 +649,7 @@ impl Evaluator {
                     }
                 }
             }
-            Expr::Lambda(_, body, _) => {
-                self.collect_deps(body, deps);
-            }
+            Expr::Lambda(_, _, _) => {}
             Expr::BlockExpr(lets, final_expr, _) => {
                 for lb in lets {
                     self.collect_deps(&lb.value, deps);
