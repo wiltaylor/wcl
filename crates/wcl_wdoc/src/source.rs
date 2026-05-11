@@ -7,7 +7,9 @@ use indexmap::IndexMap;
 
 use crate::model::*;
 use wcl_lang::ast;
-use wcl_lang::{BlockRef, BuiltinFn, FunctionRegistry, FunctionSignature, FunctionValue, Value};
+use wcl_lang::{
+    BlockRef, BuiltinFn, FileId, FunctionRegistry, FunctionSignature, FunctionValue, Value,
+};
 
 /// Options for parsing WCL source files into a WDoc document.
 #[derive(Clone, Debug, Default)]
@@ -47,18 +49,7 @@ fn collect_template_map(doc: &wcl_lang::Document) -> HashMap<(String, String), S
     let mut map = HashMap::new();
     for item in &doc.ast.items {
         if let ast::DocItem::Body(ast::BodyItem::Schema(schema)) = item {
-            let schema_name = schema
-                .name
-                .parts
-                .iter()
-                .filter_map(|p| {
-                    if let ast::StringPart::Literal(s) = p {
-                        Some(s.as_str())
-                    } else {
-                        None
-                    }
-                })
-                .collect::<String>();
+            let schema_name = schema_name_literal(schema);
 
             for dec in &schema.decorators {
                 if dec.name.name == "template" && dec.args.len() >= 2 {
@@ -72,6 +63,34 @@ fn collect_template_map(doc: &wcl_lang::Document) -> HashMap<(String, String), S
         }
     }
     map
+}
+
+fn collect_draw_schema_names(doc: &wcl_lang::Document) -> HashSet<String> {
+    let mut names = HashSet::new();
+    for item in &doc.ast.items {
+        if let ast::DocItem::Body(ast::BodyItem::Schema(schema)) = item {
+            let schema_name = schema_name_literal(schema);
+            if schema_name.starts_with("wdoc::draw::") {
+                names.insert(schema_name);
+            }
+        }
+    }
+    names
+}
+
+fn schema_name_literal(schema: &ast::Schema) -> String {
+    schema
+        .name
+        .parts
+        .iter()
+        .filter_map(|p| {
+            if let ast::StringPart::Literal(s) = p {
+                Some(s.as_str())
+            } else {
+                None
+            }
+        })
+        .collect::<String>()
 }
 
 fn extract_string_arg(arg: &ast::DecoratorArg) -> Option<String> {
@@ -767,7 +786,7 @@ fn render_diagram_with_ctx(br: &BlockRef, ctx: &ExtractCtx) -> String {
         height: diagram_h,
         shapes,
         connections,
-        classes: ctx.diagram_classes.borrow().clone(),
+        classes: diagram_classes_for_file(ctx, br.span.file),
         padding,
         align,
         gap,
@@ -996,7 +1015,7 @@ fn collect_shape_or_connection(
     let kind = parse_shape_kind(&br.kind).or_else(|| {
         // User-defined @template("shape", ...) schemas are composite shape
         // containers even when they do not live under wdoc::draw::*.
-        is_composite.then_some(ShapeKind::Rect)
+        (is_composite || ctx.draw_schema_names.contains(&br.kind)).then_some(ShapeKind::Custom)
     });
 
     if let Some(kind) = kind {
@@ -1125,6 +1144,7 @@ fn collect_shape_or_connection(
 
         shapes.push(ShapeNode {
             kind,
+            kind_name: br.kind.clone(),
             id: br.id.clone(),
             x: nx,
             y: ny,
@@ -1861,7 +1881,7 @@ fn dispatch_shape_template(br: &BlockRef, ctx: &ExtractCtx) -> Result<ShapeTempl
         if let Some(conn) = descriptor_to_connection_with_order(desc, idx) {
             result.connections.push(conn);
         } else if let Some((node, connections)) =
-            descriptor_to_shape_node_and_connections(desc, idx)
+            descriptor_to_shape_node_and_connections(desc, idx, Some(&ctx.draw_schema_names))
         {
             result.shapes.push(node);
             result.connections.extend(connections);
@@ -1877,7 +1897,7 @@ fn apply_widget_theme_class_attrs(br: &BlockRef, ctx: &ExtractCtx) -> BlockRef {
         return themed;
     }
 
-    let classes = ctx.diagram_classes.borrow();
+    let classes = diagram_classes_for_file(ctx, br.span.file);
     for class_name in class_names {
         let Some(class) = classes.get(&class_name) else {
             continue;
@@ -1917,12 +1937,13 @@ fn descriptor_to_shape_node_with_order(
     val: &Value,
     source_order: usize,
 ) -> Option<crate::shapes::ShapeNode> {
-    descriptor_to_shape_node_and_connections(val, source_order).map(|(node, _)| node)
+    descriptor_to_shape_node_and_connections(val, source_order, None).map(|(node, _)| node)
 }
 
 fn descriptor_to_shape_node_and_connections(
     val: &Value,
     source_order: usize,
+    draw_schema_names: Option<&HashSet<String>>,
 ) -> Option<(crate::shapes::ShapeNode, Vec<crate::shapes::Connection>)> {
     use crate::shapes::*;
 
@@ -1938,7 +1959,20 @@ fn descriptor_to_shape_node_and_connections(
     } else {
         format!("wdoc::draw::{kind_str}")
     };
-    let kind = parse_shape_kind(&qualified)?;
+    let is_connection = map
+        .get("kind")
+        .and_then(|v| v.as_string())
+        .is_some_and(|kind| kind == "connection" || kind == "wdoc::draw::connection");
+    let has_children = matches!(map.get("children"), Some(Value::List(items)) if !items.is_empty());
+    let kind = parse_shape_kind(&qualified).or_else(|| {
+        let is_declared_draw_schema =
+            draw_schema_names.is_some_and(|schema_names| schema_names.contains(&qualified));
+        if !is_connection && (has_children || is_declared_draw_schema) {
+            Some(ShapeKind::Custom)
+        } else {
+            None
+        }
+    })?;
 
     let pf = |k: &str| map.get(k).and_then(value_as_f64);
     let nx = pf("x");
@@ -2009,7 +2043,7 @@ fn descriptor_to_shape_node_and_connections(
             if let Some(conn) = descriptor_to_connection_with_order(item, idx) {
                 connections.push(conn);
             } else if let Some((child, child_connections)) =
-                descriptor_to_shape_node_and_connections(item, idx)
+                descriptor_to_shape_node_and_connections(item, idx, draw_schema_names)
             {
                 children.push(child);
                 connections.extend(child_connections);
@@ -2022,6 +2056,7 @@ fn descriptor_to_shape_node_and_connections(
 
     let node = ShapeNode {
         kind,
+        kind_name: qualified,
         id: id.clone(),
         x: nx,
         y: ny,
@@ -2288,49 +2323,91 @@ fn collect_diagram_classes(
     classes
 }
 
+fn collect_diagram_classes_by_file(
+    values: &IndexMap<String, Value>,
+) -> HashMap<FileId, IndexMap<String, crate::shapes::DiagramClass>> {
+    let mut classes = HashMap::new();
+    for value in values.values() {
+        if let Value::BlockRef(block) = value {
+            collect_diagram_classes_by_file_in_block(block, &mut classes);
+        }
+    }
+    classes
+}
+
+fn collect_diagram_classes_by_file_in_block(
+    block: &BlockRef,
+    classes: &mut HashMap<FileId, IndexMap<String, crate::shapes::DiagramClass>>,
+) {
+    if let Some(class) = diagram_class_from_block(block) {
+        classes
+            .entry(block.span.file)
+            .or_default()
+            .insert(class.name.clone(), class);
+        return;
+    }
+    for child in all_child_blocks(block) {
+        collect_diagram_classes_by_file_in_block(child, classes);
+    }
+}
+
 fn collect_diagram_classes_in_block(
     block: &BlockRef,
     classes: &mut IndexMap<String, crate::shapes::DiagramClass>,
 ) {
-    if is_draw_class_block(block) {
-        let Some(name) = block.id.clone() else {
-            return;
-        };
-        let mut attrs = value_map_to_string_map_lossy(&block.attributes);
-        let mut states = IndexMap::new();
-        let mut animations = IndexMap::new();
-        for child in all_child_blocks(block) {
-            if is_draw_state_block(child) {
-                if let Some(state_name) = child.id.clone() {
-                    states.insert(
-                        state_name.clone(),
-                        crate::shapes::DiagramState {
-                            name: state_name,
-                            attrs: value_map_to_string_map_lossy(&child.attributes),
-                        },
-                    );
-                }
-            } else if is_draw_animation_block(child) {
-                if let Some(animation) = parse_diagram_animation(child) {
-                    animations.insert(animation.name.clone(), animation);
-                }
-            }
-        }
-        attrs.shift_remove("state");
-        attrs.shift_remove("animation");
-        classes.insert(
-            name.clone(),
-            crate::shapes::DiagramClass {
-                name,
-                attrs,
-                states,
-                animations,
-            },
-        );
+    if let Some(class) = diagram_class_from_block(block) {
+        classes.insert(class.name.clone(), class);
         return;
     }
     for child in all_child_blocks(block) {
         collect_diagram_classes_in_block(child, classes);
+    }
+}
+
+fn diagram_class_from_block(block: &BlockRef) -> Option<crate::shapes::DiagramClass> {
+    if !is_draw_class_block(block) {
+        return None;
+    }
+    let name = block.id.clone()?;
+    let mut attrs = value_map_to_string_map_lossy(&block.attributes);
+    let mut states = IndexMap::new();
+    let mut animations = IndexMap::new();
+    for child in all_child_blocks(block) {
+        if is_draw_state_block(child) {
+            if let Some(state_name) = child.id.clone() {
+                states.insert(
+                    state_name.clone(),
+                    crate::shapes::DiagramState {
+                        name: state_name,
+                        attrs: value_map_to_string_map_lossy(&child.attributes),
+                    },
+                );
+            }
+        } else if is_draw_animation_block(child) {
+            if let Some(animation) = parse_diagram_animation(child) {
+                animations.insert(animation.name.clone(), animation);
+            }
+        }
+    }
+    attrs.shift_remove("state");
+    attrs.shift_remove("animation");
+    Some(crate::shapes::DiagramClass {
+        name,
+        attrs,
+        states,
+        animations,
+    })
+}
+
+fn diagram_classes_for_file(
+    ctx: &ExtractCtx,
+    file: FileId,
+) -> IndexMap<String, crate::shapes::DiagramClass> {
+    let classes_by_file = ctx.diagram_classes_by_file.borrow();
+    if classes_by_file.is_empty() {
+        ctx.diagram_classes.borrow().clone()
+    } else {
+        classes_by_file.get(&file).cloned().unwrap_or_default()
     }
 }
 
@@ -2646,11 +2723,14 @@ fn val_f64(v: Option<&Value>) -> Option<f64> {
 
 struct ExtractCtx {
     template_map: HashMap<(String, String), String>,
+    draw_schema_names: HashSet<String>,
     template_helpers: HashMap<String, FunctionValue>,
     markup_rules: Vec<MarkupRule>,
     builtins: HashMap<String, BuiltinFn>,
     css_registry: Rc<RefCell<DiagramCssRegistry>>,
     diagram_classes: Rc<RefCell<IndexMap<String, crate::shapes::DiagramClass>>>,
+    diagram_classes_by_file:
+        Rc<RefCell<HashMap<FileId, IndexMap<String, crate::shapes::DiagramClass>>>>,
     binding_targets: Rc<RefCell<HashSet<String>>>,
     svg_search_dirs: Vec<PathBuf>,
     icon_registry: IconRegistry,
@@ -2972,11 +3052,13 @@ mod wdoc_draw_tests {
     fn empty_ctx() -> ExtractCtx {
         ExtractCtx {
             template_map: HashMap::new(),
+            draw_schema_names: HashSet::new(),
             template_helpers: HashMap::new(),
             markup_rules: Vec::new(),
             builtins: HashMap::new(),
             css_registry: Rc::new(RefCell::new(DiagramCssRegistry::default())),
             diagram_classes: Rc::new(RefCell::new(IndexMap::new())),
+            diagram_classes_by_file: Rc::new(RefCell::new(HashMap::new())),
             binding_targets: Rc::new(RefCell::new(HashSet::new())),
             svg_search_dirs: Vec::new(),
             icon_registry: IconRegistry::default(),
@@ -3176,11 +3258,13 @@ mod wdoc_draw_tests {
         let markup_rules = collect_markup_rules(&doc, &template_helpers).unwrap();
         ExtractCtx {
             template_map: collect_template_map(&doc),
+            draw_schema_names: collect_draw_schema_names(&doc),
             template_helpers,
             markup_rules,
             builtins: functions.functions,
             css_registry: Rc::new(RefCell::new(DiagramCssRegistry::default())),
             diagram_classes: Rc::new(RefCell::new(IndexMap::new())),
+            diagram_classes_by_file: Rc::new(RefCell::new(HashMap::new())),
             binding_targets: Rc::new(RefCell::new(HashSet::new())),
             svg_search_dirs: Vec::new(),
             icon_registry: IconRegistry::default(),
@@ -3277,11 +3361,13 @@ mod wdoc_draw_tests {
         let template_helpers = collect_template_helpers(&doc);
         let ctx = ExtractCtx {
             template_map: collect_template_map(&doc),
+            draw_schema_names: collect_draw_schema_names(&doc),
             markup_rules: collect_markup_rules(&doc, &template_helpers).unwrap(),
             template_helpers,
             builtins: functions.functions,
             css_registry: Rc::new(RefCell::new(DiagramCssRegistry::default())),
             diagram_classes: Rc::new(RefCell::new(IndexMap::new())),
+            diagram_classes_by_file: Rc::new(RefCell::new(HashMap::new())),
             binding_targets: Rc::new(RefCell::new(HashSet::new())),
             svg_search_dirs: Vec::new(),
             icon_registry: IconRegistry::default(),
@@ -4599,6 +4685,113 @@ mod wdoc_draw_tests {
         )
         .unwrap();
         assert_eq!(rendered, Value::String("File|Edit".to_string()));
+    }
+
+    #[test]
+    fn custom_shape_template_preserves_open_kind() {
+        let ctx = custom_shape_ctx(
+            r##"
+            export let my_task_template = (b) => [
+                { kind = "rect", x = 0, y = 0, width = 100, height = 40, fill = "#bada55" }
+            ]
+            "##,
+            "my::task",
+            "my_task_template",
+        );
+        let mut attrs = IndexMap::new();
+        int_attr(&mut attrs, "width", 100);
+        int_attr(&mut attrs, "height", 40);
+
+        let mut shapes = Vec::new();
+        let mut connections = Vec::new();
+        collect_shape_or_connection(
+            &block("my::task", Some("task"), attrs, vec![]),
+            &mut shapes,
+            &mut connections,
+            &ctx,
+            0,
+            &HashMap::new(),
+        );
+
+        assert_eq!(shapes.len(), 1);
+        assert_eq!(shapes[0].kind, crate::shapes::ShapeKind::Custom);
+        assert_eq!(shapes[0].kind_name, "my::task");
+        assert_eq!(shapes[0].children.len(), 1);
+        assert_eq!(shapes[0].children[0].kind, crate::shapes::ShapeKind::Rect);
+    }
+
+    #[test]
+    fn unknown_wdoc_draw_block_without_template_is_skipped() {
+        let mut shapes = Vec::new();
+        let mut connections = Vec::new();
+        collect_shape_or_connection(
+            &block(
+                "wdoc::draw::not_a_builtin",
+                Some("mystery"),
+                IndexMap::new(),
+                vec![],
+            ),
+            &mut shapes,
+            &mut connections,
+            &empty_ctx(),
+            0,
+            &HashMap::new(),
+        );
+
+        assert!(shapes.is_empty());
+        assert!(connections.is_empty());
+    }
+
+    #[test]
+    fn unknown_descriptor_with_children_becomes_custom_container() {
+        let mut child = IndexMap::new();
+        string_attr(&mut child, "kind", "rect");
+        int_attr(&mut child, "width", 20);
+        int_attr(&mut child, "height", 10);
+
+        let mut descriptor = IndexMap::new();
+        string_attr(&mut descriptor, "kind", "callout_badge");
+        descriptor.insert("children".to_string(), Value::List(vec![Value::Map(child)]));
+
+        let (node, connections) =
+            descriptor_to_shape_node_and_connections(&Value::Map(descriptor), 0, None)
+                .expect("custom container descriptor");
+        assert_eq!(node.kind, crate::shapes::ShapeKind::Custom);
+        assert_eq!(node.kind_name, "wdoc::draw::callout_badge");
+        assert_eq!(node.children.len(), 1);
+        assert_eq!(node.children[0].kind, crate::shapes::ShapeKind::Rect);
+        assert!(connections.is_empty());
+    }
+
+    #[test]
+    fn unknown_leaf_descriptor_is_rejected() {
+        let descriptor = IndexMap::from([(
+            "kind".to_string(),
+            Value::String("callout_badge".to_string()),
+        )]);
+
+        assert!(
+            descriptor_to_shape_node_and_connections(&Value::Map(descriptor), 0, None).is_none()
+        );
+    }
+
+    #[test]
+    fn declared_draw_leaf_descriptor_becomes_custom_without_rust_kind() {
+        let mut draw_schemas = HashSet::new();
+        draw_schemas.insert("wdoc::draw::terminal_text".to_string());
+        let descriptor = IndexMap::from([(
+            "kind".to_string(),
+            Value::String("terminal_text".to_string()),
+        )]);
+
+        let (node, _) = descriptor_to_shape_node_and_connections(
+            &Value::Map(descriptor),
+            0,
+            Some(&draw_schemas),
+        )
+        .expect("declared draw descriptor");
+        assert_eq!(node.kind, crate::shapes::ShapeKind::Custom);
+        assert_eq!(node.kind_name, "wdoc::draw::terminal_text");
     }
 
     #[test]
@@ -6705,6 +6898,7 @@ pub fn parse_extract_from_files(
 
     // Build template dispatch context
     let template_map = collect_template_map(&doc);
+    let draw_schema_names = collect_draw_schema_names(&doc);
     let builtins: HashMap<String, BuiltinFn> = functions.functions;
     let template_helpers = collect_template_helpers(&doc);
     let markup_rules = collect_markup_rules(&doc, &template_helpers)?;
@@ -6712,11 +6906,15 @@ pub fn parse_extract_from_files(
     let icon_registry = collect_icon_sets(&all_values, &svg_search_dirs)?;
     let ctx = ExtractCtx {
         template_map,
+        draw_schema_names,
         template_helpers,
         markup_rules,
         builtins,
         css_registry: Rc::new(RefCell::new(DiagramCssRegistry::default())),
         diagram_classes: Rc::new(RefCell::new(collect_diagram_classes(&all_values))),
+        diagram_classes_by_file: Rc::new(RefCell::new(collect_diagram_classes_by_file(
+            &all_values,
+        ))),
         binding_targets: Rc::new(RefCell::new(HashSet::new())),
         svg_search_dirs,
         icon_registry,

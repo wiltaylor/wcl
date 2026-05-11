@@ -7,7 +7,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use indexmap::IndexMap;
 
-use crate::shapes::{Bounds, Connection, ShapeNode};
+use crate::shapes::{Bounds, Connection, ShapeKind, ShapeNode};
 
 // ---------------------------------------------------------------------------
 // Layered (Sugiyama-style) — directed graphs, flowcharts, pipelines
@@ -900,11 +900,19 @@ pub(crate) fn scale_children_to_parent(children: &mut [ShapeNode], parent: &Boun
 fn scale_node_size_and_local_children(node: &mut ShapeNode, scale: f64) {
     node.resolved.width *= scale;
     node.resolved.height *= scale;
+    node.width = node.width.map(|width| width * scale);
+    node.height = node.height.map(|height| height * scale);
+    scale_numeric_attr(&mut node.attrs, "width", scale);
+    scale_numeric_attr(&mut node.attrs, "height", scale);
+    scale_numeric_attr(&mut node.attrs, "max_width", scale);
     scale_numeric_attr(&mut node.attrs, "font_size", scale);
     scale_numeric_attr(&mut node.attrs, "letter_spacing", scale);
     scale_numeric_attr(&mut node.attrs, "stroke_width", scale);
     scale_numeric_attr(&mut node.attrs, "rx", scale);
     scale_numeric_attr(&mut node.attrs, "ry", scale);
+    if node.kind == ShapeKind::Path {
+        scale_path_data_attr(&mut node.attrs, scale);
+    }
 
     for child in &mut node.children {
         child.resolved.x *= scale;
@@ -918,6 +926,77 @@ fn scale_numeric_attr(attrs: &mut IndexMap<String, String>, key: &str, scale: f6
         return;
     };
     attrs.insert(key.to_string(), format_number(value * scale));
+}
+
+fn scale_path_data_attr(attrs: &mut IndexMap<String, String>, scale: f64) {
+    let Some(d) = attrs.get("d").cloned() else {
+        return;
+    };
+    attrs.insert("d".to_string(), scale_path_data(&d, scale));
+}
+
+fn scale_path_data(d: &str, scale: f64) -> String {
+    let mut out = String::with_capacity(d.len());
+    let mut command = '\0';
+    let mut param_index = 0usize;
+    let mut chars = d.char_indices().peekable();
+
+    while let Some((start, ch)) = chars.next() {
+        if ch.is_ascii_alphabetic() {
+            command = ch;
+            param_index = 0;
+            out.push(ch);
+            continue;
+        }
+
+        if is_path_number_start(ch, chars.peek().map(|(_, next)| *next)) {
+            let mut end = start + ch.len_utf8();
+            while let Some(&(next_idx, next_ch)) = chars.peek() {
+                if is_path_number_continue(next_ch) {
+                    chars.next();
+                    end = next_idx + next_ch.len_utf8();
+                } else {
+                    break;
+                }
+            }
+            let token = &d[start..end];
+            if let Ok(value) = token.parse::<f64>() {
+                let scaled = if should_scale_path_param(command, param_index) {
+                    value * scale
+                } else {
+                    value
+                };
+                out.push_str(&format_number(scaled));
+                param_index += 1;
+                continue;
+            }
+            out.push_str(token);
+            continue;
+        }
+
+        out.push(ch);
+    }
+
+    out
+}
+
+fn is_path_number_start(ch: char, next: Option<char>) -> bool {
+    ch.is_ascii_digit()
+        || ch == '.'
+        || ((ch == '-' || ch == '+') && next.is_some_and(|c| c.is_ascii_digit() || c == '.'))
+}
+
+fn is_path_number_continue(ch: char) -> bool {
+    ch.is_ascii_digit() || ch == '.' || ch == '-' || ch == '+' || ch == 'e' || ch == 'E'
+}
+
+fn should_scale_path_param(command: char, param_index: usize) -> bool {
+    match command.to_ascii_uppercase() {
+        'H' | 'V' => true,
+        'A' => matches!(param_index % 7, 0 | 1 | 5 | 6),
+        'Z' => false,
+        _ => true,
+    }
 }
 
 fn format_number(value: f64) -> String {
@@ -982,6 +1061,7 @@ mod tests {
     fn make_node(id: &str, w: f64, h: f64) -> ShapeNode {
         ShapeNode {
             kind: ShapeKind::Rect,
+            kind_name: ShapeKind::Rect.as_str().to_string(),
             id: Some(id.to_string()),
             x: None,
             y: None,
@@ -1090,7 +1170,22 @@ mod tests {
         nodes[0]
             .attrs
             .insert("font_size".to_string(), "20".to_string());
-        nodes[0].children = vec![make_node("label", 100.0, 20.0)];
+        nodes[0]
+            .attrs
+            .insert("width".to_string(), "120".to_string());
+        nodes[0]
+            .attrs
+            .insert("height".to_string(), "60".to_string());
+        nodes[0]
+            .attrs
+            .insert("max_width".to_string(), "160".to_string());
+        let mut path = make_node("diamond", 100.0, 60.0);
+        path.kind = ShapeKind::Path;
+        path.attrs.insert(
+            "d".to_string(),
+            "M 50 0 L 100 30 L 50 60 L 0 30 Z".to_string(),
+        );
+        nodes[0].children = vec![make_node("label", 100.0, 20.0), path];
         let conns = vec![
             make_conn("a", "b"),
             make_conn("b", "c"),
@@ -1114,8 +1209,17 @@ mod tests {
             assert!(node.resolved.y + node.resolved.height <= parent.y + parent.height);
         }
         assert!(nodes[0].resolved.width < 120.0);
+        assert!(nodes[0].width.unwrap() < 120.0);
+        assert!(nodes[0].height.unwrap() < 60.0);
+        assert!(nodes[0].attrs["width"].parse::<f64>().unwrap() < 120.0);
+        assert!(nodes[0].attrs["height"].parse::<f64>().unwrap() < 60.0);
+        assert!(nodes[0].attrs["max_width"].parse::<f64>().unwrap() < 160.0);
         assert!(nodes[0].attrs["font_size"].parse::<f64>().unwrap() < 20.0);
         assert!(nodes[0].children[0].resolved.width < 100.0);
+        assert_ne!(
+            nodes[0].children[1].attrs["d"],
+            "M 50 0 L 100 30 L 50 60 L 0 30 Z"
+        );
     }
 
     #[test]

@@ -18,10 +18,10 @@ page flowchart_examples {
                 paragraph pfc1 { content = "Flowchart nodes auto-size from their labels when width and height are omitted. Long labels wrap on spaces before the layered layout runs:" }
 
                 diagram flowchart_demo {
-                    width = 700
-                    height = 500
+                    width = 760
+                    height = 660
                     align = "layered"
-                    gap = 40
+                    gap = 48
 
                     flow_terminal start {
                         label = "Start"
@@ -120,9 +120,9 @@ page flowchart_examples {
 
                 diagram nested_flowchart_demo {
                     width = 760
-                    height = 360
+                    height = 620
                     align = "layered"
-                    gap = 52
+                    gap = 56
 
                     flow_terminal request {
                         width = 130
@@ -132,7 +132,7 @@ page flowchart_examples {
 
                     flowchart auth_flow {
                         width = 320
-                        height = 240
+                        height = 300
                         label = "Auth flow"
                         border_stroke = color_link
 

@@ -275,8 +275,8 @@ fn render_terminal_child(
     background: &str,
     svg: &mut String,
 ) {
-    match child.kind {
-        ShapeKind::TerminalText => {
+    match child.kind_name.as_str() {
+        "wdoc::draw::terminal_text" => {
             let row = attr_usize(&child.attrs, "row").unwrap_or(0);
             let col = attr_usize(&child.attrs, "col").unwrap_or(0);
             let content = child.attrs.get("content").map(|s| s.as_str()).unwrap_or("");
@@ -312,11 +312,13 @@ fn render_terminal_child(
             render_ansi_runs(&content, row, col, metrics, fg, bg, svg);
             svg.push_str("</g>");
         }
-        ShapeKind::TerminalBox => render_box(child, metrics, foreground, svg),
-        ShapeKind::TerminalRule => render_rule(child, metrics, foreground, svg),
-        ShapeKind::Group => render_terminal_group(child, metrics, foreground, background, svg),
-        ShapeKind::TerminalCursor => render_cursor(child, metrics, foreground, svg),
-        ShapeKind::TerminalSurface => render_surface(child, metrics, background, svg),
+        "wdoc::draw::terminal_box" => render_box(child, metrics, foreground, svg),
+        "wdoc::draw::terminal_rule" => render_rule(child, metrics, foreground, svg),
+        "wdoc::draw::terminal_cursor" => render_cursor(child, metrics, foreground, svg),
+        "wdoc::draw::terminal_surface" => render_surface(child, metrics, background, svg),
+        _ if child.kind == ShapeKind::Group => {
+            render_terminal_group(child, metrics, foreground, background, svg)
+        }
         _ => render_terminal_container_or_children(child, metrics, foreground, background, svg),
     }
 }
@@ -1195,13 +1197,18 @@ mod tests {
     use indexmap::IndexMap;
 
     fn node(
-        kind: ShapeKind,
+        kind_name: &str,
         id: &str,
         attrs: &[(&str, &str)],
         children: Vec<ShapeNode>,
     ) -> ShapeNode {
         ShapeNode {
-            kind,
+            kind: if kind_name == "group" {
+                ShapeKind::Group
+            } else {
+                ShapeKind::Custom
+            },
+            kind_name: format!("wdoc::draw::{kind_name}"),
             id: Some(id.to_string()),
             x: None,
             y: None,
@@ -1267,7 +1274,8 @@ mod tests {
         attrs.insert("font_size".to_string(), "12".to_string());
 
         let terminal = ShapeNode {
-            kind: ShapeKind::Terminal,
+            kind: ShapeKind::Custom,
+            kind_name: "wdoc::draw::terminal".to_string(),
             id: Some("term".to_string()),
             x: None,
             y: None,
@@ -1314,7 +1322,8 @@ mod tests {
         attrs.insert("chrome".to_string(), "none".to_string());
 
         let terminal = ShapeNode {
-            kind: ShapeKind::Terminal,
+            kind: ShapeKind::Custom,
+            kind_name: "wdoc::draw::terminal".to_string(),
             id: Some("term".to_string()),
             x: None,
             y: None,
@@ -1374,7 +1383,7 @@ mod tests {
         attrs.insert("content".to_string(), "\x1b[32mok\x1b[0m".to_string());
         attrs.insert("font_size".to_string(), "12".to_string());
         let child = node(
-            ShapeKind::TerminalText,
+            "terminal_text",
             "status",
             &[
                 ("row", "2"),
@@ -1385,7 +1394,8 @@ mod tests {
             vec![],
         );
         let node = ShapeNode {
-            kind: ShapeKind::Terminal,
+            kind: ShapeKind::Custom,
+            kind_name: "wdoc::draw::terminal".to_string(),
             id: Some("term".to_string()),
             x: None,
             y: None,
@@ -1428,7 +1438,8 @@ mod tests {
         attrs.insert("font_size".to_string(), "12".to_string());
 
         let terminal = ShapeNode {
-            kind: ShapeKind::Terminal,
+            kind: ShapeKind::Custom,
+            kind_name: "wdoc::draw::terminal".to_string(),
             id: Some("term".to_string()),
             x: None,
             y: None,
@@ -1448,7 +1459,7 @@ mod tests {
             events: vec![],
             children: vec![
                 node(
-                    ShapeKind::TerminalSurface,
+                    "terminal_surface",
                     "cmd_surface",
                     &[
                         ("row", "1"),
@@ -1461,7 +1472,7 @@ mod tests {
                     vec![],
                 ),
                 node(
-                    ShapeKind::TerminalText,
+                    "terminal_text",
                     "cmd_prompt",
                     &[
                         ("row", "1"),
@@ -1472,19 +1483,19 @@ mod tests {
                     vec![],
                 ),
                 node(
-                    ShapeKind::TerminalText,
+                    "terminal_text",
                     "dry_run",
                     &[("row", "4"), ("col", "2"), ("content", "[x] Dry run")],
                     vec![],
                 ),
                 node(
-                    ShapeKind::TerminalText,
+                    "terminal_text",
                     "prod_radio",
                     &[("row", "4"), ("col", "18"), ("content", "(o) Prod")],
                     vec![],
                 ),
                 node(
-                    ShapeKind::TerminalSurface,
+                    "terminal_surface",
                     "env_surface",
                     &[
                         ("row", "5"),
@@ -1497,7 +1508,7 @@ mod tests {
                     vec![],
                 ),
                 node(
-                    ShapeKind::TerminalText,
+                    "terminal_text",
                     "env_label",
                     &[
                         ("row", "5"),
@@ -1508,7 +1519,7 @@ mod tests {
                     vec![],
                 ),
                 node(
-                    ShapeKind::TerminalText,
+                    "terminal_text",
                     "deploy",
                     &[
                         ("row", "9"),
@@ -1544,7 +1555,7 @@ mod tests {
         attrs.insert("cols".to_string(), "20".to_string());
 
         let mut high = node(
-            ShapeKind::TerminalText,
+            "terminal_text",
             "high",
             &[("row", "1"), ("col", "1"), ("content", "HIGH")],
             vec![],
@@ -1552,7 +1563,7 @@ mod tests {
         high.z_index = 10.0;
         high.source_order = 0;
         let mut low = node(
-            ShapeKind::TerminalText,
+            "terminal_text",
             "low",
             &[("row", "1"), ("col", "1"), ("content", "LOW")],
             vec![],
@@ -1561,7 +1572,8 @@ mod tests {
         low.source_order = 1;
 
         let terminal = ShapeNode {
-            kind: ShapeKind::Terminal,
+            kind: ShapeKind::Custom,
+            kind_name: "wdoc::draw::terminal".to_string(),
             id: Some("term".to_string()),
             x: None,
             y: None,

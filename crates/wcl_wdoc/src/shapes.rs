@@ -22,6 +22,7 @@ const CONNECTION_ROUTE_DIRECT: &str = "direct";
 const SIZE_LOCKED_ATTR: &str = "_wdoc_size_locked";
 const ROUTE_MARGIN: f64 = 18.0;
 const ROUTE_TERMINAL_MIN: f64 = 24.0;
+const DIRECT_ROUTE_ALIGNMENT_EPSILON: f64 = 6.0;
 
 // ---------------------------------------------------------------------------
 // Data model
@@ -45,16 +46,31 @@ pub enum ShapeKind {
     Tilemap,
     GameLayer,
     Group,
-    Terminal,
-    TerminalText,
-    TerminalBox,
-    TerminalRule,
-    TerminalMenubar,
-    TerminalMenu,
-    TerminalContextMenu,
-    TerminalCursor,
-    TerminalSurface,
-    MenuItem,
+    Custom,
+}
+
+impl ShapeKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ShapeKind::Rect => "rect",
+            ShapeKind::Circle => "circle",
+            ShapeKind::Ellipse => "ellipse",
+            ShapeKind::Line => "line",
+            ShapeKind::Path => "path",
+            ShapeKind::Text => "text",
+            ShapeKind::TextBlock => "text_block",
+            ShapeKind::InlineSvg => "inline_svg",
+            ShapeKind::Icon => "icon",
+            ShapeKind::Image => "image",
+            ShapeKind::Map => "map",
+            ShapeKind::Sprite => "sprite",
+            ShapeKind::DopesheetView => "dopesheet_view",
+            ShapeKind::Tilemap => "tilemap",
+            ShapeKind::GameLayer => "game_layer",
+            ShapeKind::Group => "group",
+            ShapeKind::Custom => "custom",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -135,7 +151,12 @@ impl Bounds {
 /// A shape node in the diagram tree.
 #[derive(Debug, Clone)]
 pub struct ShapeNode {
+    /// Internal render classification. Built-ins use a concrete variant;
+    /// user-defined/template-backed shapes use `Custom`.
     pub kind: ShapeKind,
+    /// Original shape kind from WCL, preserved so custom schemas are not
+    /// collapsed into a built-in Rust shape name.
+    pub kind_name: String,
     pub id: Option<String>,
     // Positioning inputs (all optional)
     pub x: Option<f64>,
@@ -872,21 +893,6 @@ pub fn parse_shape_kind(kind: &str) -> Option<ShapeKind> {
         "wdoc::draw::tilemap" => Some(ShapeKind::Tilemap),
         "wdoc::draw::game_layer" => Some(ShapeKind::GameLayer),
         "wdoc::draw::group" => Some(ShapeKind::Group),
-        "wdoc::draw::terminal" => Some(ShapeKind::Terminal),
-        "wdoc::draw::terminal_text" => Some(ShapeKind::TerminalText),
-        "wdoc::draw::terminal_box" => Some(ShapeKind::TerminalBox),
-        "wdoc::draw::terminal_rule" => Some(ShapeKind::TerminalRule),
-        "wdoc::draw::terminal_menubar" => Some(ShapeKind::TerminalMenubar),
-        "wdoc::draw::terminal_menu" => Some(ShapeKind::TerminalMenu),
-        "wdoc::draw::terminal_context_menu" => Some(ShapeKind::TerminalContextMenu),
-        "wdoc::draw::terminal_cursor" => Some(ShapeKind::TerminalCursor),
-        "wdoc::draw::terminal_surface" => Some(ShapeKind::TerminalSurface),
-        "wdoc::draw::menu_item" => Some(ShapeKind::MenuItem),
-        // Anything else under `wdoc::draw::` (or a user namespace ending in `::draw::`)
-        // is treated as a composite shape: a rect-shaped container whose children are
-        // produced by a `@template("shape", ...)` function. The connection schema is
-        // handled separately by the dispatcher and never reaches this function.
-        k if k.starts_with("wdoc::draw::") && k != "wdoc::draw::diagram" => Some(ShapeKind::Rect),
         _ => None,
     }
 }
@@ -1317,7 +1323,7 @@ fn localize_endpoint(endpoint: &str, children: &[ShapeNode], scope_path: &str) -
 }
 
 fn apply_intrinsic_container_size(node: &mut ShapeNode, connections: &[Connection]) {
-    if node.kind == ShapeKind::Terminal {
+    if node.kind_name == "wdoc::draw::terminal" {
         let (width, height) = crate::terminal::intrinsic_size(&node.attrs);
         if !has_explicit_width(node) && node.resolved.width == 0.0 {
             node.resolved.width = width;
@@ -2266,10 +2272,6 @@ fn render_shape_svg(node: &ShapeNode, svg: &mut String) {
             render_game_layer_shape_svg(node, svg);
             rendered_children = true;
         }
-        ShapeKind::Terminal => {
-            crate::terminal::render_terminal_svg(node, svg);
-            rendered_children = true;
-        }
         ShapeKind::Group => {
             let gx = b.x;
             let gy = b.y;
@@ -2278,15 +2280,19 @@ fn render_shape_svg(node: &ShapeNode, svg: &mut String) {
             svg.push_str("</g>");
             rendered_children = true;
         }
-        ShapeKind::TerminalText
-        | ShapeKind::TerminalBox
-        | ShapeKind::TerminalRule
-        | ShapeKind::TerminalMenubar
-        | ShapeKind::TerminalMenu
-        | ShapeKind::TerminalContextMenu
-        | ShapeKind::TerminalCursor
-        | ShapeKind::TerminalSurface
-        | ShapeKind::MenuItem => {}
+        ShapeKind::Custom => {
+            if node.kind_name == "wdoc::draw::terminal" {
+                crate::terminal::render_terminal_svg(node, svg);
+                rendered_children = true;
+            } else if !node.children.is_empty() {
+                let gx = b.x;
+                let gy = b.y;
+                write!(svg, "<g transform=\"translate({gx},{gy})\"{style}>").unwrap();
+                render_child_shapes_svg(&node.children, svg);
+                svg.push_str("</g>");
+                rendered_children = true;
+            }
+        }
     }
 
     // Render children in a translated group
@@ -3369,14 +3375,21 @@ fn render_connection_svg(conn: &Connection, shape_map: &HashMap<String, Bounds>,
                 }
                 let obstacles: Vec<Bounds> =
                     connection_obstacles(&conn.from_id, &conn.to_id, x1, y1, x2, y2, shape_map);
-                if let Some(points) = route_orthogonal(from_bounds, to_bounds, &obstacles) {
+                if direct_auto_line_is_clean((x1, y1), (x2, y2), &obstacles) {
+                    write!(
+                        svg,
+                        "<line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\"\
+                         {stroke_default}{style}{runtime_attrs}{ms}{me}/>"
+                    )
+                    .unwrap();
+                } else if let Some(points) = route_orthogonal(from_bounds, to_bounds, &obstacles) {
                     let d = path_data(&points);
                     write!(
                         svg,
                         "<path d=\"{d}\" fill=\"none\"{stroke_default}{style}{runtime_attrs}{ms}{me}/>"
                     )
                     .unwrap();
-                } else if !direct_auto_line_is_clean((x1, y1), (x2, y2), &obstacles) {
+                } else {
                     if let Some(points) =
                         route_orthogonal_best_effort(from_bounds, to_bounds, &obstacles)
                     {
@@ -3394,13 +3407,6 @@ fn render_connection_svg(conn: &Connection, shape_map: &HashMap<String, Bounds>,
                         )
                         .unwrap();
                     }
-                } else {
-                    write!(
-                        svg,
-                        "<line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\"\
-                         {stroke_default}{style}{runtime_attrs}{ms}{me}/>"
-                    )
-                    .unwrap();
                 }
             } else {
                 let (x1, y1) = from_bounds.anchor_pos(conn.from_anchor, to_bounds);
@@ -4062,7 +4068,8 @@ fn route_y_lanes(from: &Bounds, to: &Bounds, margin: f64) -> Vec<f64> {
 }
 
 fn direct_auto_line_is_clean(start: (f64, f64), end: (f64, f64), obstacles: &[Bounds]) -> bool {
-    let aligned = (start.0 - end.0).abs() < 0.001 || (start.1 - end.1).abs() < 0.001;
+    let aligned = (start.0 - end.0).abs() <= DIRECT_ROUTE_ALIGNMENT_EPSILON
+        || (start.1 - end.1).abs() <= DIRECT_ROUTE_ALIGNMENT_EPSILON;
     aligned && !path_intersects_obstacle(&[start, end], obstacles)
 }
 
@@ -5307,6 +5314,7 @@ mod tests {
     fn shape(id: &str, width: f64, height: f64) -> ShapeNode {
         ShapeNode {
             kind: ShapeKind::Rect,
+            kind_name: ShapeKind::Rect.as_str().to_string(),
             id: Some(id.to_string()),
             x: None,
             y: None,
@@ -5449,6 +5457,7 @@ mod tests {
             classes: IndexMap::new(),
             shapes: vec![ShapeNode {
                 kind: ShapeKind::Rect,
+                kind_name: ShapeKind::Rect.as_str().to_string(),
                 id: Some("box1".into()),
                 x: Some(10.0),
                 y: Some(10.0),
@@ -7844,6 +7853,34 @@ mod tests {
                 x: 160.0,
                 y: 40.0,
                 width: 40.0,
+                height: 40.0,
+            },
+        );
+        let mut svg = String::new();
+        render_connection_svg(&connection("a", "b"), &shape_map, &mut svg);
+
+        assert!(svg.contains("<line"));
+        assert!(!svg.contains("<path"));
+    }
+
+    #[test]
+    fn nearly_aligned_auto_connection_without_obstacle_keeps_line_rendering() {
+        let mut shape_map = HashMap::new();
+        shape_map.insert(
+            "a".to_string(),
+            Bounds {
+                x: 100.0,
+                y: 40.0,
+                width: 120.0,
+                height: 40.0,
+            },
+        );
+        shape_map.insert(
+            "b".to_string(),
+            Bounds {
+                x: 102.0,
+                y: 140.0,
+                width: 120.0,
                 height: 40.0,
             },
         );

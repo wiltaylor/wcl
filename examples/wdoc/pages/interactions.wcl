@@ -3,6 +3,18 @@ import "./shared.wcl"
 // ── Diagram Interactions page ──
 
 class ex_interaction_card {
+    cursor = "pointer"
+
+    state hovered {
+        z_index = 10
+    }
+
+    state selected {
+        z_index = 20
+    }
+}
+
+class ex_interaction_face {
     fill = color_code_bg
     stroke = color_code_border
     stroke_width = 1
@@ -12,13 +24,11 @@ class ex_interaction_card {
     state hovered {
         fill = color_nav_active
         stroke = color_link
-        z_index = 10
     }
 
     state selected {
         stroke = color_success
         stroke_width = 3
-        z_index = 20
     }
 }
 
@@ -39,6 +49,14 @@ class ex_detail_panel {
 }
 
 class ex_stack_card {
+    cursor = "pointer"
+
+    state front {
+        z_index = 30
+    }
+}
+
+class ex_stack_face {
     fill = color_code_bg
     stroke = color_code_border
     stroke_width = 1
@@ -48,7 +66,6 @@ class ex_stack_card {
     state front {
         fill = color_nav_active
         stroke = color_link
-        z_index = 30
     }
 }
 
@@ -124,8 +141,22 @@ page interactions {
                             mode = "while"
                         }
 
+                        event hover_card_face {
+                            trigger = "hover"
+                            target = "task_review_bg"
+                            state = "hovered"
+                            mode = "while"
+                        }
+
                         event select_card {
                             trigger = "click"
+                            state = "selected"
+                            mode = "toggle"
+                        }
+
+                        event select_card_face {
+                            trigger = "click"
+                            target = "task_review_bg"
                             state = "selected"
                             mode = "toggle"
                         }
@@ -137,16 +168,18 @@ page interactions {
                             mode = "while"
                         }
 
-                        rect bg { x = 0
+                        rect task_review_bg { x = 0
                             y = 0
                             width = 200
                             height = 92
+                            class = "ex_interaction_face"
                             rx = 8 }
                         text title { x = 16
                             y = 16
                             width = 168
                             height = 24
                             content = "Review request"
+                            fill = color_text
                             anchor = "start"
                             font_weight = "700" }
                         text meta { x = 16
@@ -154,6 +187,7 @@ page interactions {
                             width = 168
                             height = 22
                             content = "Hover for details"
+                            fill = color_text
                             anchor = "start"
                             font_size = 12 }
                     }
@@ -171,22 +205,38 @@ page interactions {
                             mode = "while"
                         }
 
+                        event hover_card_face {
+                            trigger = "hover"
+                            target = "task_ship_bg"
+                            state = "hovered"
+                            mode = "while"
+                        }
+
                         event select_card {
                             trigger = "click"
                             state = "selected"
                             mode = "toggle"
                         }
 
-                        rect bg { x = 0
+                        event select_card_face {
+                            trigger = "click"
+                            target = "task_ship_bg"
+                            state = "selected"
+                            mode = "toggle"
+                        }
+
+                        rect task_ship_bg { x = 0
                             y = 0
                             width = 200
                             height = 92
+                            class = "ex_interaction_face"
                             rx = 8 }
                         text title { x = 16
                             y = 16
                             width = 168
                             height = 24
                             content = "Ship preview"
+                            fill = color_text
                             anchor = "start"
                             font_weight = "700" }
                         text meta { x = 16
@@ -194,6 +244,7 @@ page interactions {
                             width = 168
                             height = 22
                             content = "Click to select"
+                            fill = color_text
                             anchor = "start"
                             font_size = 12 }
                     }
@@ -205,16 +256,20 @@ page interactions {
                         height = 116
                         class = "ex_detail_panel"
 
-                        rect bg { x = 0
+                        rect details_bg { x = 0
                             y = 0
                             width = 210
                             height = 116
+                            fill = color_nav_bg
+                            stroke = color_link
+                            stroke_width = 2
                             rx = 8 }
                         text title { x = 16
                             y = 18
                             width = 178
                             height = 24
                             content = "Targeted state"
+                            fill = color_text
                             anchor = "start"
                             font_weight = "700" }
                         text body { x = 16
@@ -222,6 +277,7 @@ page interactions {
                             width = 178
                             height = 44
                             content = "This panel is hidden after layout, then shown by an event on another shape."
+                            fill = color_text
                             anchor = "start"
                             font_size = 12 }
                     }
@@ -246,15 +302,21 @@ page interactions {
                         event front { trigger = "hover"
                             state = "front"
                             mode = "while" }
-                        rect bg { x = 0
+                        event front_face { trigger = "hover"
+                            target = "alpha_bg"
+                            state = "front"
+                            mode = "while" }
+                        rect alpha_bg { x = 0
                             y = 0
                             width = 160
                             height = 88
+                            class = "ex_stack_face"
                             rx = 8 }
                         text label { x = 0
                             y = 0
                             width = 160
                             height = 88
+                            fill = color_text
                             content = "Alpha" }
                     }
 
@@ -267,15 +329,21 @@ page interactions {
                         event front { trigger = "hover"
                             state = "front"
                             mode = "while" }
-                        rect bg { x = 0
+                        event front_face { trigger = "hover"
+                            target = "beta_bg"
+                            state = "front"
+                            mode = "while" }
+                        rect beta_bg { x = 0
                             y = 0
                             width = 160
                             height = 88
+                            class = "ex_stack_face"
                             rx = 8 }
                         text label { x = 0
                             y = 0
                             width = 160
                             height = 88
+                            fill = color_text
                             content = "Beta" }
                     }
 
@@ -288,15 +356,21 @@ page interactions {
                         event front { trigger = "hover"
                             state = "front"
                             mode = "while" }
-                        rect bg { x = 0
+                        event front_face { trigger = "hover"
+                            target = "gamma_bg"
+                            state = "front"
+                            mode = "while" }
+                        rect gamma_bg { x = 0
                             y = 0
                             width = 160
                             height = 88
+                            class = "ex_stack_face"
                             rx = 8 }
                         text label { x = 0
                             y = 0
                             width = 160
                             height = 88
+                            fill = color_text
                             content = "Gamma" }
                     }
                 }
