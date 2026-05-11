@@ -1,0 +1,41 @@
+    export let widget_stat_card = (b) => {
+        let w = attr_or(b, "width", 170)
+        let h = attr_or(b, "height", 90)
+        let title = attr_or(b, "title", "Metric")
+        let value = attr_or(b, "value", "0")
+        let caption = attr_or(b, "caption", "")
+        let badge_label = attr_or(b, "badge_label", "")
+        let badge_color = attr_or(b, "badge_color", "var(--color-link)")
+        let surface_fill = attr_or(b, "surface_fill", "var(--color-bg)")
+        let border_stroke = attr_or(b, "border_stroke", "var(--color-nav-border)")
+        let title_fill = attr_or(b, "title_fill", "currentColor")
+        let value_fill = attr_or(b, "value_fill", "currentColor")
+        let muted_fill = attr_or(b, "muted_fill", "currentColor")
+        let radius = attr_or(b, "radius", 8)
+        let badge_w = attr_or(b, "badge_width", 78)
+        let badge_h = attr_or(b, "badge_height", 22)
+        let caption_y = badge_label != "" ? h - 62 : h - 30
+        let badge = badge_label != "" ? [
+            { kind = "rect", x = w - badge_w - 14, y = h - badge_h - 14,
+              width = badge_w, height = badge_h, rx = badge_h / 2,
+              fill = badge_color, opacity = 0.15 },
+            { kind = "text", x = w - badge_w - 14, y = h - badge_h - 14,
+              width = badge_w, height = badge_h, content = badge_label,
+              font_size = 11, fill = badge_color }
+        ] : []
+        let caption_part = caption != "" ? [
+            { kind = "text", x = 14, y = caption_y, width = w - 28, height = 18,
+              content = caption, font_size = 11, anchor = "start",
+              fill = muted_fill, opacity = 0.6 }
+        ] : []
+        concat(concat([
+            { kind = "rect", x = 0, y = 0, width = w, height = h, rx = radius,
+              fill = surface_fill, stroke = border_stroke, stroke_width = 1.5 },
+            { kind = "text", x = 14, y = 12, width = w - 28, height = 16,
+              content = title, font_size = 11, anchor = "start",
+              fill = title_fill, opacity = 0.65 },
+            { kind = "text", x = 14, y = 34, width = w - 28, height = 30,
+              content = value, font_size = 24, anchor = "start",
+              fill = value_fill }
+        ], caption_part), badge)
+    }

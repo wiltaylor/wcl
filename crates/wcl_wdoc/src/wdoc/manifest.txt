@@ -21,6 +21,10 @@ widgets/ui/menubar.wcl
 widgets/ui/context_menu.wcl
 widgets/ui/badge.wcl
 widgets/ui/navbar.wcl
+widgets/ui/stat_card.wcl
+widgets/ui/profile_card.wcl
+widgets/ui/action_panel.wcl
+widgets/ui/list_item.wcl
 widgets/graph/graph_node.wcl
 widgets/chart/charts.wcl
 widgets/terminal/button.wcl

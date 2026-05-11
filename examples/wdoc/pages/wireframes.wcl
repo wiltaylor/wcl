@@ -43,7 +43,7 @@ page wireframes {
                     level = 2
                     content = "Device and Application Frames"
                 }
-                paragraph pwf2 { content = "Use frame widgets such as " + bold("widget_phone") + ", " + bold("widget_tablet") + ", " + bold("widget_window") + ", and " + bold("widget_browser") + " for wireframes. They accept " + bold("title") + " and color attributes; browser frames also accept " + bold("url") + "." }
+                paragraph pwf2 { content = "Use frame widgets such as <code>phone</code>, <code>tablet</code>, <code>window</code>, and <code>browser</code> for wireframes. They accept " + bold("title") + " and color attributes; browser frames also accept " + bold("url") + "." }
 
                 diagram device_frames {
                     width = 750
@@ -443,135 +443,44 @@ page wireframes {
                     width = 700
                     height = 250
 
-                    card card1 {
+                    profile_card card1 {
                         x = 20
                         y = 10
                         width = 200
                         height = 220
                         title = "User Profile"
-
-                        // Custom content inside the card
-                        avatar av {
-                            x = 70
-                            y = 45
-                            width = 60
-                            height = 60
-                            initials = "JD"
-                            color = color_link
-                        }
-                        text name {
-                            x = 20
-                            y = 120
-                            width = 160
-                            height = 20
-                            content = "Jane Doe"
-                            font_size = 14
-                        }
-                        text role {
-                            x = 20
-                            y = 140
-                            width = 160
-                            height = 18
-                            content = "Engineering Lead"
-                            font_size = 11
-                            opacity = 0.6
-                        }
-                        badge status {
-                            x = 55
-                            y = 165
-                            width = 90
-                            height = 22
-                            label = "Available"
-                            color = "#059669"
-                        }
+                        name = "Jane Doe"
+                        role = "Engineering Lead"
+                        initials = "JD"
+                        avatar_color = color_link
+                        status_label = "Available"
+                        status_color = "#059669"
                     }
 
-                    card card2 {
+                    stat_card card2 {
                         x = 240
                         y = 10
                         width = 200
                         height = 220
                         title = "Statistics"
-
-                        text stat1_label {
-                            x = 15
-                            y = 45
-                            width = 170
-                            height = 16
-                            content = "Active Users"
-                            font_size = 11
-                            anchor = "start"
-                            opacity = 0.6
-                        }
-                        text stat1_val {
-                            x = 15
-                            y = 65
-                            width = 170
-                            height = 25
-                            content = "12,847"
-                            font_size = 24
-                            anchor = "start"
-                        }
-                        text stat2_label {
-                            x = 15
-                            y = 105
-                            width = 170
-                            height = 16
-                            content = "Revenue"
-                            font_size = 11
-                            anchor = "start"
-                            opacity = 0.6
-                        }
-                        text stat2_val {
-                            x = 15
-                            y = 125
-                            width = 170
-                            height = 25
-                            content = "$284K"
-                            font_size = 24
-                            anchor = "start"
-                        }
-                        badge trend {
-                            x = 55
-                            y = 170
-                            width = 90
-                            height = 22
-                            label = "+12.5%"
-                            color = "#059669"
-                        }
+                        value = "$284K"
+                        caption = "12.8K active users"
+                        badge_label = "+12.5%"
+                        badge_color = "#059669"
                     }
 
-                    card card3 {
+                    action_panel card3 {
                         x = 460
                         y = 10
                         width = 220
                         height = 220
                         title = "Quick Actions"
-
-                        button act1 {
-                            x = 15
-                            y = 45
-                            width = 190
-                            height = 34
-                            label = "New Project"
-                            variant = "primary"
-                        }
-                        button act2 {
-                            x = 15
-                            y = 90
-                            width = 190
-                            height = 34
-                            label = "Invite Member"
-                            variant = "secondary"
-                        }
-                        button act3 {
-                            x = 15
-                            y = 135
-                            width = 190
-                            height = 34
-                            label = "View Reports"
-                            variant = "outline"
-                        }
+                        primary_label = "New Project"
+                        primary_variant = "primary"
+                        secondary_label = "Invite Member"
+                        secondary_variant = "secondary"
+                        tertiary_label = "View Reports"
+                        tertiary_variant = "outline"
                     }
                 }
             }
@@ -749,10 +658,24 @@ page wireframes {
                         gap = 12
                         padding = 16
 
-                        toggle notifications {
-                            width = 44
-                            height = 24
-                            on = "true"
+                        group notification_row {
+                            width = 208
+                            height = 48
+                            list_item notification_text {
+                                x = 0
+                                y = 0
+                                width = 152
+                                height = 48
+                                label = "Notifications"
+                                description = "Push and email alerts"
+                            }
+                            toggle notifications {
+                                x = 164
+                                y = 12
+                                width = 44
+                                height = 24
+                                on = "true"
+                            }
                         }
                         button profile {
                             height = 34
@@ -801,75 +724,40 @@ page wireframes {
                         gap = 16
                         padding = 18
 
-                        card stat_revenue {
+                        stat_card stat_revenue {
                             width = 170
                             height = 90
                             title = "Revenue"
-                            text value {
-                                x = 16
-                                y = 42
-                                width = 120
-                                height = 24
-                                content = "$284K"
-                                font_size = 22
-                                anchor = "start"
-                            }
+                            value = "$284K"
+                            caption = "This month"
                         }
-                        card stat_users {
+                        stat_card stat_users {
                             width = 170
                             height = 90
                             title = "Users"
-                            text value {
-                                x = 16
-                                y = 42
-                                width = 120
-                                height = 24
-                                content = "12,847"
-                                font_size = 22
-                                anchor = "start"
-                            }
+                            value = "12,847"
+                            caption = "Active"
                         }
-                        card stat_uptime {
+                        stat_card stat_uptime {
                             width = 170
                             height = 90
                             title = "Uptime"
-                            text value {
-                                x = 16
-                                y = 42
-                                width = 120
-                                height = 24
-                                content = "99.9%"
-                                font_size = 22
-                                anchor = "start"
-                            }
+                            value = "99.9%"
+                            caption = "30 days"
                         }
-                        card stat_tasks {
+                        stat_card stat_tasks {
                             width = 170
                             height = 90
                             title = "Tasks"
-                            text value {
-                                x = 16
-                                y = 42
-                                width = 120
-                                height = 24
-                                content = "42"
-                                font_size = 22
-                                anchor = "start"
-                            }
+                            value = "42"
+                            caption = "Open"
                         }
-                        card stat_errors {
+                        stat_card stat_errors {
                             width = 170
                             height = 90
                             title = "Errors"
-                            text value {
-                                x = 16
-                                y = 42
-                                width = 120
-                                height = 24
-                                content = "3"
-                                font_size = 22
-                                anchor = "start"
-                            }
+                            value = "3"
+                            caption = "Needs review"
                         }
                         button help {
                             right = 18
@@ -982,7 +870,8 @@ page wireframes {
                             label = "Live"
                             color = color_success
                         }
-                        input title {
+                        input project_title {
+                            width = 180
                             height = 55
                             label = "Title"
                             placeholder = "Launch plan"
@@ -1027,13 +916,17 @@ page wireframes {
                         gap = 10
                         padding = 16
 
-                        card summary {
-                            height = 72
-                            title = "Summary"
+                        list_item summary {
+                            height = 54
+                            label = "Summary"
+                            description = "Current report snapshot"
+                            trailing = "Open"
                         }
-                        card activity {
-                            height = 72
-                            title = "Activity"
+                        list_item activity {
+                            height = 54
+                            label = "Activity"
+                            description = "Latest report events"
+                            trailing = "12"
                         }
                         navbar footer {
                             left = 16

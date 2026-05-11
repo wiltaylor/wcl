@@ -436,6 +436,10 @@ namespace wdoc {
             "wdoc::draw::context_menu",
             "wdoc::draw::badge",
             "wdoc::draw::navbar",
+            "wdoc::draw::stat_card",
+            "wdoc::draw::profile_card",
+            "wdoc::draw::action_panel",
+            "wdoc::draw::list_item",
             "wdoc::draw::graph_node",
             "wdoc::draw::pie_chart",
             "wdoc::draw::bar_chart",
@@ -513,6 +517,10 @@ namespace wdoc {
         @open schema "menu_item" { }
         @template("shape", "wdoc::widget_badge")    @open schema "badge" { }
         @template("shape", "wdoc::widget_navbar")   @open schema "navbar" { }
+        @template("shape", "wdoc::widget_stat_card") @open schema "stat_card" { }
+        @template("shape", "wdoc::widget_profile_card") @open schema "profile_card" { }
+        @template("shape", "wdoc::widget_action_panel") @open schema "action_panel" { }
+        @template("shape", "wdoc::widget_list_item") @open schema "list_item" { }
         @template("shape", "wdoc::widget_graph_node") @open schema "graph_node" { }
         @parent(["wdoc::draw::graph_node"]) @open schema "graph_row" { }
         @parent(["wdoc::draw::graph_node"]) @open schema "graph_divider" { }
