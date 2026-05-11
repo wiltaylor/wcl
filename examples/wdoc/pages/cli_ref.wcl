@@ -19,7 +19,7 @@ page cli_ref {
 
                 heading h2a {
                     level = 2
-                    content = icon("play-fill") + " eval"
+                    content = wdoc::icon("play") + " eval"
                 }
                 paragraph p2 { content = "Evaluate a WCL document and output resolved configuration:" }
                 code c1 {
@@ -29,7 +29,7 @@ page cli_ref {
 
                 heading h2b {
                     level = 2
-                    content = icon("check-circle") + " validate"
+                    content = wdoc::icon("circle-check") + " validate"
                 }
                 paragraph p3 { content = "Check for errors without producing output:" }
                 code c2 {
@@ -39,7 +39,7 @@ page cli_ref {
 
                 heading h2c {
                     level = 2
-                    content = icon("search") + " eval with expressions"
+                    content = wdoc::icon("search") + " eval with expressions"
                 }
                 paragraph p4 { content = "Evaluate and project the document with WCL expressions:" }
                 code c3 {
@@ -49,7 +49,7 @@ page cli_ref {
 
                 heading h2d {
                     level = 2
-                    content = icon("text-indent-left") + " fmt"
+                    content = wdoc::icon("list-indent-decrease") + " fmt"
                 }
                 paragraph p5 { content = "Format WCL source code consistently:" }
                 code c4 {
@@ -59,7 +59,7 @@ page cli_ref {
 
                 heading h2f {
                     level = 2
-                    content = icon("file-earmark-richtext") + " wdoc"
+                    content = wdoc::icon("file-text") + " wdoc"
                 }
                 paragraph p7 { content = "Build documentation sites from WCL-based wdoc files:" }
                 code c6 {

@@ -79,6 +79,18 @@ page wdoc_drawing_shapes {
                     content = "path arrow {\n    d = \"M 10 10 L 100 10 L 90 0 M 100 10 L 90 20\"\n    fill = \"none\"\n    stroke = \"var(--color-link)\"\n    stroke_width = 2\n}"
                 }
 
+                heading h2_icon {
+                    level = 2
+                    content = "icon"
+                }
+
+                paragraph p_icon1 { content = "SVG icons are loaded from a configured <code>icon_set</code>, sanitized, and normalized to a consistent viewBox. The drawing <code>icon</code> shape uses normal diagram bounds, while inline <code>icon()</code> helpers render the same icon set in WDoc text." }
+
+                code cicon1 {
+                    language = "wcl"
+                    content = "icon_set app_icons {\n    path = \"icons/app\"\n    default = true\n    normalize_width = 24\n    normalize_height = 24\n\n    icon_part accent {\n        selector = \".accent\"\n        property = \"fill\"\n        default = \"currentColor\"\n    }\n}\n\ndiagram toolbar {\n    width = 160\n    height = 64\n\n    wdoc::draw::icon save {\n        x = 24, y = 16, width = 32, height = 32\n        name = \"save\"\n        fill = \"var(--color-link)\"\n        props = { accent = \"#3fb950\" }\n    }\n}"
+                }
+
                 heading h2_group {
                     level = 2
                     content = "group"

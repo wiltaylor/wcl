@@ -376,6 +376,97 @@ fn register_renderer_helpers(reg: &mut FunctionRegistry) {
         },
     );
 
+    register_icon_helper(
+        reg,
+        "wdoc::icon",
+        "Render a named SVG icon from the active WDoc icon set",
+        |args| {
+            if args.len() != 1 {
+                return Err("wdoc::icon() expects 1 argument".into());
+            }
+            Ok(icon_placeholder(
+                &value_to_string(&args[0]),
+                "1em",
+                None,
+                IndexMap::new(),
+            ))
+        },
+    );
+    register_icon_helper(reg, "icon", "Render a named SVG icon", |args| {
+        if args.len() != 1 {
+            return Err("icon() expects 1 argument".into());
+        }
+        Ok(icon_placeholder(
+            &value_to_string(&args[0]),
+            "1em",
+            None,
+            IndexMap::new(),
+        ))
+    });
+    register_icon_helper(
+        reg,
+        "wdoc::icon_styled",
+        "Render a named SVG icon with size and colour",
+        |args| {
+            if args.len() != 3 {
+                return Err("wdoc::icon_styled() expects 3 arguments".into());
+            }
+            let mut props = IndexMap::new();
+            props.insert("fill".to_string(), value_to_string(&args[2]));
+            Ok(icon_placeholder(
+                &value_to_string(&args[0]),
+                &value_to_string(&args[1]),
+                None,
+                props,
+            ))
+        },
+    );
+    register_icon_helper(reg, "icon_styled", "Render a styled SVG icon", |args| {
+        if args.len() != 3 {
+            return Err("icon_styled() expects 3 arguments".into());
+        }
+        let mut props = IndexMap::new();
+        props.insert("fill".to_string(), value_to_string(&args[2]));
+        Ok(icon_placeholder(
+            &value_to_string(&args[0]),
+            &value_to_string(&args[1]),
+            None,
+            props,
+        ))
+    });
+    register_icon_helper(
+        reg,
+        "wdoc::icon_props",
+        "Render a named SVG icon with CSS variable properties",
+        |args| {
+            if args.len() != 3 {
+                return Err("wdoc::icon_props() expects 3 arguments".into());
+            }
+            Ok(icon_placeholder(
+                &value_to_string(&args[0]),
+                &value_to_string(&args[1]),
+                None,
+                value_to_string_props(args.get(2)),
+            ))
+        },
+    );
+    register_icon_helper(
+        reg,
+        "icon_props",
+        "Render an SVG icon with properties",
+        |args| {
+            if args.len() != 3 {
+                return Err("icon_props() expects 3 arguments".into());
+            }
+            Ok(icon_placeholder(
+                &value_to_string(&args[0]),
+                &value_to_string(&args[1]),
+                None,
+                value_to_string_props(args.get(2)),
+            ))
+        },
+    );
+
     // attr_or(block, "key", default) — read an attribute from a BlockRef or Map
     // with a fallback. Used by shape template functions to handle optional widget
     // attributes without erroring on missing keys.
@@ -406,6 +497,23 @@ fn register_renderer_helpers(reg: &mut FunctionRegistry) {
             ],
             return_type: "any".into(),
             doc: "Read an attribute from a block or map, returning a default if missing".into(),
+        },
+    );
+}
+
+fn register_icon_helper<F>(reg: &mut FunctionRegistry, name: &str, doc: &str, func: F)
+where
+    F: Fn(&[Value]) -> Result<String, String> + Send + Sync + 'static,
+{
+    let function_name = name.to_string();
+    reg.register(
+        name,
+        std::sync::Arc::new(move |args: &[Value]| func(args).map(Value::String)) as BuiltinFn,
+        FunctionSignature {
+            name: function_name,
+            params: vec!["name: string".into()],
+            return_type: "string".into(),
+            doc: doc.into(),
         },
     );
 }
@@ -442,6 +550,93 @@ fn value_to_string(value: &Value) -> String {
         Value::Null => String::new(),
         other => format!("{other}"),
     }
+}
+
+fn value_to_string_props(value: Option<&Value>) -> IndexMap<String, String> {
+    let Some(Value::Map(map)) = value else {
+        return IndexMap::new();
+    };
+    map.iter()
+        .filter_map(|(key, value)| {
+            if key.trim().is_empty() {
+                None
+            } else {
+                Some((key.clone(), value_to_string(value)))
+            }
+        })
+        .collect()
+}
+
+fn icon_placeholder(
+    name: &str,
+    size: &str,
+    set: Option<&str>,
+    props: IndexMap<String, String>,
+) -> String {
+    let mut attrs = vec![
+        ("data-wdoc-icon", "true".to_string()),
+        ("data-name", name.to_string()),
+        ("data-size", size.to_string()),
+    ];
+    if let Some(set) = set.filter(|set| !set.trim().is_empty()) {
+        attrs.push(("data-set", set.to_string()));
+    }
+    if !props.is_empty() {
+        let encoded = props
+            .iter()
+            .map(|(key, value)| {
+                format!(
+                    "{}={}",
+                    url_component_escape(key),
+                    url_component_escape(value)
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("&");
+        attrs.push(("data-props", encoded));
+    }
+    let mut html = String::from("<span");
+    for (name, value) in attrs {
+        html.push(' ');
+        html.push_str(name);
+        html.push_str("=\"");
+        html.push_str(&html_escape(&value));
+        html.push('"');
+    }
+    html.push_str("></span>");
+    html
+}
+
+fn url_component_escape(value: &str) -> String {
+    let mut out = String::new();
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
+            out.push(byte as char);
+        } else {
+            out.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    out
+}
+
+fn url_component_unescape(value: &str) -> String {
+    let bytes = value.as_bytes();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let Ok(hex) = std::str::from_utf8(&bytes[i + 1..i + 3]) {
+                if let Ok(byte) = u8::from_str_radix(hex, 16) {
+                    out.push(byte);
+                    i += 3;
+                    continue;
+                }
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).to_string()
 }
 
 fn wdoc_table_rows(value: &Value) -> Value {
@@ -935,6 +1130,8 @@ fn collect_shape_or_connection(
 
         if kind == ShapeKind::InlineSvg {
             hydrate_inline_svg_attrs(&mut a, ctx);
+        } else if kind == ShapeKind::Icon {
+            hydrate_icon_shape_attrs(&mut a, br.attributes.get("props"), ctx);
         }
 
         shapes.push(ShapeNode {
@@ -1134,6 +1331,13 @@ fn html_escape(s: &str) -> String {
         .replace('"', "&quot;")
 }
 
+fn html_unescape(s: &str) -> String {
+    s.replace("&quot;", "\"")
+        .replace("&gt;", ">")
+        .replace("&lt;", "<")
+        .replace("&amp;", "&")
+}
+
 fn apply_builtin_widget_content_insets(attrs: &mut IndexMap<String, String>, br: &BlockRef) {
     let kind = br.kind.rsplit("::").next().unwrap_or(br.kind.as_str());
     match kind {
@@ -1242,6 +1446,76 @@ fn hydrate_inline_svg_attrs(attrs: &mut IndexMap<String, String>, ctx: &ExtractC
     }
 }
 
+fn hydrate_icon_shape_attrs(
+    attrs: &mut IndexMap<String, String>,
+    props_value: Option<&Value>,
+    ctx: &ExtractCtx,
+) {
+    let Some(name) = attrs
+        .get("name")
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+    else {
+        return;
+    };
+    let set = attrs
+        .get("icon_set")
+        .or_else(|| attrs.get("set"))
+        .map(|s| s.as_str());
+    let normalize_width = attrs
+        .get("normalize_width")
+        .and_then(|value| value.parse::<f64>().ok());
+    let normalize_height = attrs
+        .get("normalize_height")
+        .and_then(|value| value.parse::<f64>().ok());
+    let normalize_mode = attrs.get("normalize_mode").map(|s| s.as_str());
+    let mut props = value_to_string_props(props_value);
+    if let Some(fill) = attrs.get("fill").filter(|value| !value.trim().is_empty()) {
+        props.insert("fill".to_string(), fill.clone());
+    }
+    if let Some(stroke) = attrs.get("stroke").filter(|value| !value.trim().is_empty()) {
+        props.insert("stroke".to_string(), stroke.clone());
+    }
+    match resolve_icon_reference(
+        &ctx.icon_registry,
+        set,
+        &name,
+        normalize_width,
+        normalize_height,
+        normalize_mode,
+    ) {
+        Ok(icon) => {
+            attrs.insert("_wdoc_icon_content".to_string(), icon.content);
+            attrs.insert("_wdoc_icon_css".to_string(), icon.css);
+            attrs.insert(
+                "_wdoc_icon_normalize_mode".to_string(),
+                icon.normalize_mode.to_string(),
+            );
+            if let Some(width) = icon.normalize_width {
+                attrs.insert("_wdoc_icon_normalize_width".to_string(), width.to_string());
+            }
+            if let Some(height) = icon.normalize_height {
+                attrs.insert(
+                    "_wdoc_icon_normalize_height".to_string(),
+                    height.to_string(),
+                );
+            }
+            let style_vars = icon_style_vars(&props);
+            if !style_vars.is_empty() {
+                let mut existing = attrs.get("style").cloned().unwrap_or_default();
+                if !existing.trim().is_empty() && !existing.trim_end().ends_with(';') {
+                    existing.push(';');
+                }
+                attrs.insert("style".to_string(), format!("{existing}{style_vars}"));
+            }
+        }
+        Err(err) => {
+            attrs.insert("_wdoc_icon_missing".to_string(), name.clone());
+            eprintln!("wdoc: warning: icon '{name}' could not be loaded: {err}");
+        }
+    }
+}
+
 fn read_local_inline_svg(src: &str, search_dirs: &[PathBuf]) -> Result<String, String> {
     let lower = src.to_ascii_lowercase();
     if lower.starts_with("http://") || lower.starts_with("https://") || lower.starts_with("data:") {
@@ -1288,6 +1562,267 @@ fn read_local_inline_svg(src: &str, search_dirs: &[PathBuf]) -> Result<String, S
     }
 
     Err("file was not found in WDoc source directories".to_string())
+}
+
+#[derive(Clone, Default)]
+struct IconRegistry {
+    sets: IndexMap<String, IconSet>,
+    default_set: Option<String>,
+}
+
+#[derive(Clone)]
+struct IconSet {
+    dir: PathBuf,
+    normalize_width: Option<f64>,
+    normalize_height: Option<f64>,
+    normalize_mode: String,
+    parts: IndexMap<String, IconPart>,
+}
+
+#[derive(Clone)]
+struct IconPart {
+    selector: String,
+    property: String,
+    default: Option<String>,
+}
+
+struct ResolvedIcon {
+    name: String,
+    content: String,
+    normalize_width: Option<f64>,
+    normalize_height: Option<f64>,
+    normalize_mode: String,
+    css: String,
+}
+
+fn collect_icon_sets(
+    values: &IndexMap<String, Value>,
+    search_dirs: &[PathBuf],
+) -> Result<IconRegistry, String> {
+    let mut registry = IconRegistry::default();
+    for value in values.values() {
+        if let Value::BlockRef(block) = value {
+            collect_icon_sets_in_block(block, search_dirs, &mut registry)?;
+        }
+    }
+    Ok(registry)
+}
+
+fn collect_icon_sets_in_block(
+    block: &BlockRef,
+    search_dirs: &[PathBuf],
+    registry: &mut IconRegistry,
+) -> Result<(), String> {
+    if block.kind == "wdoc::icon_set" {
+        let Some(id) = block.id.as_deref().filter(|id| !id.trim().is_empty()) else {
+            return Err("wdoc::icon_set requires an id".to_string());
+        };
+        let path = value_as_string(block.attributes.get("path"))
+            .ok_or_else(|| format!("icon_set '{id}' requires a path"))?;
+        let dir = resolve_local_icon_dir(path, search_dirs)
+            .map_err(|err| format!("icon_set '{id}' path '{path}' is invalid: {err}"))?;
+        let normalize_width = val_f64(block.attributes.get("normalize_width"));
+        let normalize_height = val_f64(block.attributes.get("normalize_height"));
+        let normalize_mode = value_as_string(block.attributes.get("normalize_mode"))
+            .unwrap_or("viewbox")
+            .to_string();
+        let mut parts = IndexMap::new();
+        for child in all_child_blocks(block) {
+            if child.kind != "wdoc::icon_part" {
+                continue;
+            }
+            let Some(name) = child.id.as_deref().filter(|name| !name.trim().is_empty()) else {
+                continue;
+            };
+            let Some(selector) = value_as_string(child.attributes.get("selector")) else {
+                continue;
+            };
+            let Some(property) = value_as_string(child.attributes.get("property")) else {
+                continue;
+            };
+            if !is_safe_css_selector(selector) || !is_safe_css_property(property) {
+                continue;
+            }
+            parts.insert(
+                name.to_string(),
+                IconPart {
+                    selector: selector.to_string(),
+                    property: property.to_string(),
+                    default: value_as_string(child.attributes.get("default")).map(str::to_string),
+                },
+            );
+        }
+        if value_as_bool(block.attributes.get("default")).unwrap_or(false) {
+            registry.default_set = Some(id.to_string());
+        }
+        if registry.default_set.is_none() {
+            registry.default_set = Some(id.to_string());
+        }
+        registry.sets.insert(
+            id.to_string(),
+            IconSet {
+                dir,
+                normalize_width,
+                normalize_height,
+                normalize_mode,
+                parts,
+            },
+        );
+        return Ok(());
+    }
+    for child in all_child_blocks(block) {
+        collect_icon_sets_in_block(child, search_dirs, registry)?;
+    }
+    Ok(())
+}
+
+fn resolve_local_icon_dir(path: &str, search_dirs: &[PathBuf]) -> Result<PathBuf, String> {
+    let lower = path.to_ascii_lowercase();
+    if lower.starts_with("http://") || lower.starts_with("https://") || lower.starts_with("data:") {
+        return Err("remote and data URLs are not supported".to_string());
+    }
+    let canonical_dirs: Vec<PathBuf> = search_dirs
+        .iter()
+        .filter_map(|dir| dir.canonicalize().ok())
+        .collect();
+    if canonical_dirs.is_empty() {
+        return Err("no source directories are available for icon lookup".to_string());
+    }
+    let raw_path = Path::new(path);
+    if raw_path.is_absolute() {
+        let canonical = raw_path
+            .canonicalize()
+            .map_err(|_| "directory was not found in WDoc source directories".to_string())?;
+        if !canonical.is_dir() {
+            return Err("path is not a directory".to_string());
+        }
+        if !canonical_dirs.iter().any(|dir| canonical.starts_with(dir)) {
+            return Err("path escapes the WDoc source directory".to_string());
+        }
+        return Ok(canonical);
+    }
+    for dir in &canonical_dirs {
+        let candidate = dir.join(raw_path);
+        let Ok(canonical) = candidate.canonicalize() else {
+            continue;
+        };
+        if !canonical.starts_with(dir) {
+            return Err("path escapes the WDoc source directory".to_string());
+        }
+        if canonical.is_dir() {
+            return Ok(canonical);
+        }
+    }
+    Err("directory was not found in WDoc source directories".to_string())
+}
+
+fn resolve_icon_reference(
+    registry: &IconRegistry,
+    set_name: Option<&str>,
+    icon_name: &str,
+    normalize_width: Option<f64>,
+    normalize_height: Option<f64>,
+    normalize_mode: Option<&str>,
+) -> Result<ResolvedIcon, String> {
+    let (name_set, name) = split_icon_name(icon_name);
+    let set_name = set_name
+        .filter(|set| !set.trim().is_empty())
+        .or(name_set)
+        .or(registry.default_set.as_deref())
+        .ok_or_else(|| "no icon_set is configured".to_string())?;
+    if !is_safe_icon_name(name) {
+        return Err(format!("invalid icon name '{name}'"));
+    }
+    let set = registry
+        .sets
+        .get(set_name)
+        .ok_or_else(|| format!("icon_set '{set_name}' is not configured"))?;
+    let candidate = set.dir.join(format!("{name}.svg"));
+    let canonical = candidate
+        .canonicalize()
+        .map_err(|_| format!("icon '{name}' was not found in icon_set '{set_name}'"))?;
+    if !canonical.starts_with(&set.dir) {
+        return Err("icon path escapes its icon_set directory".to_string());
+    }
+    let content = std::fs::read_to_string(&canonical)
+        .map_err(|e| format!("failed to read {}: {e}", canonical.display()))?;
+    Ok(ResolvedIcon {
+        name: name.to_string(),
+        content,
+        normalize_width: normalize_width.or(set.normalize_width),
+        normalize_height: normalize_height.or(set.normalize_height),
+        normalize_mode: normalize_mode.unwrap_or(&set.normalize_mode).to_string(),
+        css: icon_css(&set.parts),
+    })
+}
+
+fn split_icon_name(name: &str) -> (Option<&str>, &str) {
+    if let Some((set, icon)) = name.split_once(':') {
+        (Some(set.trim()), icon.trim())
+    } else {
+        (None, name.trim())
+    }
+}
+
+fn is_safe_icon_name(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+}
+
+fn icon_css(parts: &IndexMap<String, IconPart>) -> String {
+    let mut css = String::from(
+        ":where(path,rect,circle,ellipse,polygon,polyline,line,text,tspan):not([fill]){fill:var(--wdoc-icon-fill,currentColor);}:where(path,rect,circle,ellipse,polygon,polyline,line,text,tspan):not([stroke]){stroke:var(--wdoc-icon-stroke,none);}",
+    );
+    for (name, part) in parts {
+        let var = css_var_suffix(name);
+        let default = part
+            .default
+            .as_deref()
+            .filter(|value| is_safe_css_value(value))
+            .unwrap_or("currentColor");
+        css.push_str(&part.selector);
+        css.push('{');
+        css.push_str(&part.property);
+        css.push_str(":var(--wdoc-icon-");
+        css.push_str(&var);
+        css.push(',');
+        css.push_str(default);
+        css.push_str(");}");
+    }
+    css
+}
+
+fn css_var_suffix(name: &str) -> String {
+    name.chars()
+        .filter_map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                Some(ch.to_ascii_lowercase())
+            } else if ch == '-' || ch == '_' {
+                Some('-')
+            } else {
+                None
+            }
+        })
+        .collect::<String>()
+}
+
+fn is_safe_css_selector(value: &str) -> bool {
+    !value.trim().is_empty() && !value.chars().any(|ch| matches!(ch, '<' | '{' | '}' | ';'))
+}
+
+fn is_safe_css_property(value: &str) -> bool {
+    !value.trim().is_empty()
+        && value
+            .chars()
+            .all(|ch| ch.is_ascii_alphabetic() || ch == '-')
+}
+
+fn is_safe_css_value(value: &str) -> bool {
+    !value
+        .chars()
+        .any(|ch| matches!(ch, '<' | '>' | '{' | '}' | ';'))
 }
 
 struct ShapeTemplateResult {
@@ -1916,6 +2451,14 @@ fn value_as_string(v: Option<&Value>) -> Option<&str> {
     v.and_then(|value| value.as_string())
 }
 
+fn value_as_bool(v: Option<&Value>) -> Option<bool> {
+    match v {
+        Some(Value::Bool(value)) => Some(*value),
+        Some(Value::String(value)) => value.parse().ok(),
+        _ => None,
+    }
+}
+
 fn is_draw_class_block(block: &BlockRef) -> bool {
     matches!(
         block.kind.as_str(),
@@ -2015,6 +2558,7 @@ struct ExtractCtx {
     css_registry: Rc<RefCell<DiagramCssRegistry>>,
     diagram_classes: Rc<RefCell<IndexMap<String, crate::shapes::DiagramClass>>>,
     svg_search_dirs: Vec<PathBuf>,
+    icon_registry: IconRegistry,
 }
 
 impl ExtractCtx {
@@ -2040,10 +2584,11 @@ impl ExtractCtx {
             &self.builtins,
             &self.template_helpers,
         )?;
-        match result {
-            Value::String(s) => Ok(s),
-            other => Ok(format!("{other}")),
-        }
+        let output = match result {
+            Value::String(s) => s,
+            other => format!("{other}"),
+        };
+        Ok(resolve_icon_placeholders(&output, self))
     }
 }
 
@@ -2338,7 +2883,33 @@ mod wdoc_draw_tests {
             css_registry: Rc::new(RefCell::new(DiagramCssRegistry::default())),
             diagram_classes: Rc::new(RefCell::new(IndexMap::new())),
             svg_search_dirs: Vec::new(),
+            icon_registry: IconRegistry::default(),
         }
+    }
+
+    fn ctx_with_icon_set(dir: PathBuf) -> ExtractCtx {
+        let mut ctx = empty_ctx();
+        let mut parts = IndexMap::new();
+        parts.insert(
+            "accent".to_string(),
+            IconPart {
+                selector: ".accent".to_string(),
+                property: "fill".to_string(),
+                default: Some("currentColor".to_string()),
+            },
+        );
+        ctx.icon_registry.default_set = Some("test".to_string());
+        ctx.icon_registry.sets.insert(
+            "test".to_string(),
+            IconSet {
+                dir,
+                normalize_width: Some(24.0),
+                normalize_height: Some(24.0),
+                normalize_mode: "viewbox".to_string(),
+                parts,
+            },
+        );
+        ctx
     }
 
     fn custom_shape_ctx(source: &str, kind: &str, template_name: &str) -> ExtractCtx {
@@ -2392,6 +2963,7 @@ mod wdoc_draw_tests {
             css_registry: Rc::new(RefCell::new(DiagramCssRegistry::default())),
             diagram_classes: Rc::new(RefCell::new(IndexMap::new())),
             svg_search_dirs: Vec::new(),
+            icon_registry: IconRegistry::default(),
         }
     }
 
@@ -2434,7 +3006,32 @@ mod wdoc_draw_tests {
         assert!(html.contains("<em>expressions</em>"));
         assert!(html.contains("<code>code</code>"));
         assert!(html.contains("<a href=\"guide-imports.html\">imports</a>"));
-        assert!(html.contains("<i class=\"bi bi-github\"></i>"));
+        assert!(html.contains("wdoc-icon"));
+        assert!(html.contains("github"));
+    }
+
+    #[test]
+    fn inline_icon_set_renders_normalized_svg_with_custom_properties() {
+        let temp = tempfile::tempdir().unwrap();
+        let icon_dir = temp.path().join("icons");
+        std::fs::create_dir(&icon_dir).unwrap();
+        std::fs::write(
+            icon_dir.join("sample.svg"),
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 24"><path class="accent" d="M0 0h48v24H0z"/></svg>"#,
+        )
+        .unwrap();
+        let ctx = ctx_with_icon_set(icon_dir);
+        let mut props = IndexMap::new();
+        props.insert("accent".to_string(), "#f85149".to_string());
+
+        let html = render_inline_icon("sample", "2em", None, props, &ctx);
+
+        assert!(html.contains("<svg class=\"wdoc-icon\""));
+        assert!(html.contains("width=\"2em\" height=\"2em\""));
+        assert!(html.contains("viewBox=\"0 0 24 24\""));
+        assert!(html.contains("--wdoc-icon-accent:#f85149;"));
+        assert!(html.contains(".accent{fill:var(--wdoc-icon-accent,currentColor);}"));
+        assert!(html.contains("<path class=\"accent\""));
     }
 
     #[test]
@@ -2465,6 +3062,7 @@ mod wdoc_draw_tests {
             css_registry: Rc::new(RefCell::new(DiagramCssRegistry::default())),
             diagram_classes: Rc::new(RefCell::new(IndexMap::new())),
             svg_search_dirs: Vec::new(),
+            icon_registry: IconRegistry::default(),
         };
         let mut attrs = IndexMap::new();
         string_attr(&mut attrs, "content", "This is ==marked== text");
@@ -2493,7 +3091,7 @@ mod wdoc_draw_tests {
         string_attr(
             &mut attrs,
             "content",
-            "<i class=\"bi bi-shield-check\" style=\"font-size:1.1em;color:#28a745;\"></i> **Typed schemas**",
+            "<span class=\"status-icon\" style=\"font-size:1.1em;color:#28a745;\"></span> **Typed schemas**",
         );
         let html = ctx
             .render_block(&block("wdoc::paragraph", None, attrs, vec![]))
@@ -5238,7 +5836,171 @@ fn render_markup_string(text: &str, ctx: &ExtractCtx) -> Result<String, String> 
         out.push(ch);
         pos += ch.len_utf8();
     }
-    Ok(out)
+    Ok(resolve_icon_placeholders(&out, ctx))
+}
+
+fn resolve_icon_placeholders(html: &str, ctx: &ExtractCtx) -> String {
+    let marker = "<span data-wdoc-icon=\"true\"";
+    let mut out = String::new();
+    let mut pos = 0;
+    while let Some(start_rel) = html[pos..].find(marker) {
+        let start = pos + start_rel;
+        out.push_str(&html[pos..start]);
+        let Some(tag_end_rel) = html[start..].find('>') else {
+            out.push_str(&html[start..]);
+            return out;
+        };
+        let tag_end = start + tag_end_rel + 1;
+        let close = html[tag_end..]
+            .find("</span>")
+            .map(|offset| tag_end + offset + "</span>".len())
+            .unwrap_or(tag_end);
+        let tag = &html[start..tag_end];
+        let name = html_attr(tag, "data-name").unwrap_or_default();
+        let size = html_attr(tag, "data-size").unwrap_or_else(|| "1em".to_string());
+        let set = html_attr(tag, "data-set");
+        let props = html_attr(tag, "data-props")
+            .map(|encoded| decode_props(&encoded))
+            .unwrap_or_default();
+        out.push_str(&render_inline_icon(
+            &name,
+            &size,
+            set.as_deref(),
+            props,
+            ctx,
+        ));
+        pos = close;
+    }
+    out.push_str(&html[pos..]);
+    out
+}
+
+fn html_attr(tag: &str, name: &str) -> Option<String> {
+    let needle = format!("{name}=\"");
+    let start = tag.find(&needle)? + needle.len();
+    let end = tag[start..].find('"')? + start;
+    Some(html_unescape(&tag[start..end]))
+}
+
+fn decode_props(encoded: &str) -> IndexMap<String, String> {
+    let mut props = IndexMap::new();
+    for part in encoded.split('&') {
+        let Some((key, value)) = part.split_once('=') else {
+            continue;
+        };
+        props.insert(url_component_unescape(key), url_component_unescape(value));
+    }
+    props
+}
+
+fn render_inline_icon(
+    name: &str,
+    size: &str,
+    set: Option<&str>,
+    props: IndexMap<String, String>,
+    ctx: &ExtractCtx,
+) -> String {
+    match resolve_icon_reference(&ctx.icon_registry, set, name, None, None, None) {
+        Ok(icon) => render_inline_icon_svg(&icon, size, &props),
+        Err(_) => {
+            let label = html_escape(name);
+            format!(
+                "<span class=\"wdoc-icon wdoc-icon-missing\" aria-hidden=\"true\">{label}</span>"
+            )
+        }
+    }
+}
+
+fn render_inline_icon_svg(
+    icon: &ResolvedIcon,
+    size: &str,
+    props: &IndexMap<String, String>,
+) -> String {
+    let sanitized = crate::shapes::sanitize_inline_svg(&icon.content).unwrap_or_default();
+    let native_view_box = crate::shapes::svg_source_view_box(&icon.content)
+        .and_then(|view_box| crate::shapes::parse_svg_view_box(&view_box))
+        .unwrap_or((0.0, 0.0, 24.0, 24.0));
+    let (min_x, min_y, native_width, native_height) = native_view_box;
+    let native_width = native_width.max(1.0);
+    let native_height = native_height.max(1.0);
+    let ratio = native_width / native_height;
+    let (view_min_x, view_min_y, view_width, view_height, transform) =
+        if icon.normalize_mode == "none" {
+            (min_x, min_y, native_width, native_height, String::new())
+        } else {
+            let norm_width = icon
+                .normalize_width
+                .or_else(|| icon.normalize_height.map(|height| height * ratio))
+                .unwrap_or(native_width)
+                .max(1.0);
+            let norm_height = icon
+                .normalize_height
+                .or_else(|| icon.normalize_width.map(|width| width / ratio))
+                .unwrap_or(native_height)
+                .max(1.0);
+            let scale = (norm_width / native_width).min(norm_height / native_height);
+            let tx = (norm_width - native_width * scale) / 2.0 - min_x * scale;
+            let ty = (norm_height - native_height * scale) / 2.0 - min_y * scale;
+            (
+                0.0,
+                0.0,
+                norm_width,
+                norm_height,
+                format!(" transform=\"translate({tx},{ty}) scale({scale})\""),
+            )
+        };
+    let mut style = String::from("vertical-align:-0.125em;");
+    style.push_str(&icon_style_vars(props));
+    let size = html_escape(size);
+    let style = html_escape(&style);
+    let label = html_escape(&icon.name);
+    let css = icon.css.replace("</style", "<\\/style");
+    let body = if transform.is_empty() {
+        sanitized
+    } else {
+        format!("<g{transform}>{sanitized}</g>")
+    };
+    format!(
+        "<svg class=\"wdoc-icon\" width=\"{size}\" height=\"{size}\" viewBox=\"{view_min_x} {view_min_y} {view_width} {view_height}\" style=\"{style}\" aria-hidden=\"true\" data-wdoc-icon-name=\"{label}\"><style>{css}</style>{body}</svg>"
+    )
+}
+
+fn icon_style_vars(props: &IndexMap<String, String>) -> String {
+    let mut style = String::new();
+    let fill = props
+        .get("fill")
+        .map(String::as_str)
+        .unwrap_or("currentColor");
+    let stroke_prop = props.get("stroke").map(String::as_str);
+    let stroke = stroke_prop.unwrap_or("none");
+    if is_safe_css_value(fill) {
+        style.push_str("color:");
+        style.push_str(stroke_prop.filter(|value| *value != "none").unwrap_or(fill));
+        style.push(';');
+        style.push_str("--wdoc-icon-fill:");
+        style.push_str(fill);
+        style.push(';');
+    }
+    if is_safe_css_value(stroke) {
+        style.push_str("--wdoc-icon-stroke:");
+        style.push_str(stroke);
+        style.push(';');
+    }
+    for (key, value) in props {
+        if key == "fill" || key == "stroke" || !is_safe_css_value(value) {
+            continue;
+        }
+        let suffix = css_var_suffix(key);
+        if suffix.is_empty() {
+            continue;
+        }
+        style.push_str("--wdoc-icon-");
+        style.push_str(&suffix);
+        style.push(':');
+        style.push_str(value);
+        style.push(';');
+    }
+    style
 }
 
 fn match_markup_rule(
@@ -5649,6 +6411,7 @@ pub fn parse_extract_from_files(
     let template_helpers = collect_template_helpers(&doc);
     let markup_rules = collect_markup_rules(&doc, &template_helpers)?;
     let svg_search_dirs = wdoc_source_dirs(files, &doc.imported_paths, &lib_dir);
+    let icon_registry = collect_icon_sets(&all_values, &svg_search_dirs)?;
     let ctx = ExtractCtx {
         template_map,
         template_helpers,
@@ -5657,6 +6420,7 @@ pub fn parse_extract_from_files(
         css_registry: Rc::new(RefCell::new(DiagramCssRegistry::default())),
         diagram_classes: Rc::new(RefCell::new(collect_diagram_classes(&all_values))),
         svg_search_dirs,
+        icon_registry,
     };
 
     let wdoc_doc = extract(&all_values, &ctx)?;

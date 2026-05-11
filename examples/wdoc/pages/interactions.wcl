@@ -97,7 +97,7 @@ page interactions {
 
                 heading h1 {
                     level = 1
-                    content = icon("cursor") + " Diagram Interactions"
+                    content = wdoc::icon("mouse-pointer") + " Diagram Interactions"
                 }
                 paragraph p1 { content = "Document-level diagram classes define reusable visual states. Shape-level events apply those states at runtime for hover, click, visibility, and sibling z-order changes." }
 

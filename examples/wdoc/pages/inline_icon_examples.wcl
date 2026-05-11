@@ -1,0 +1,80 @@
+import "./shared.wcl"
+
+page inline_icon_examples {
+    section = "my_docs.guide.inline_icon_examples"
+    title = "Inline Icon Examples"
+
+    layout {
+        vsplit main {
+            split content {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = "Inline Icon Examples"
+                }
+
+                paragraph intro {
+                    content = "Lucide SVGs can be used directly in regular WDoc text. The example site configures an <code>icon_set</code> in <code>shared.wcl</code>, then paragraphs, headings, callouts, and links can render icons without diagram blocks."
+                }
+
+                heading h2_helpers {
+                    level = 2
+                    content = ":sparkles: Markup shorthand"
+                }
+
+                paragraph helpers_a {
+                    content = ":circle-check: Use <code>:icon-name:</code> in regular WDoc text for a default inline icon that follows the surrounding text color."
+                }
+
+                paragraph helpers_b {
+                    content = ":triangle-alert: The shorthand is the preferred form for normal prose. Use <code>wdoc::icon_styled(name, size, color)</code> only when a status, warning, or label needs its own colour."
+                }
+
+                paragraph helpers_c {
+                    content = wdoc::icon_styled("map-pin", "1.15em", "#ef4444") + " Icons are normal inline SVG, so they sit inside paragraphs with " + bold("bold text") + ", " + italic("emphasis") + ", and " + link("links", "https://lucide.dev") + "."
+                }
+
+                heading h2_markup {
+                    level = 2
+                    content = "Inline examples"
+                }
+
+                paragraph markup_intro {
+                    content = "The colon shorthand also works in regular WDoc text: :book-open: documentation, :search: search, :flag: milestones, and :palette: themes."
+                }
+
+                callout status {
+                    icon = "info"
+                    header = "Callouts use the same icon set"
+                    color = "#58a6ff"
+                    paragraph status_body {
+                        content = "The callout header icon is resolved from the configured Lucide icon set, just like inline paragraph icons."
+                    }
+                }
+
+                heading h2_gallery {
+                    level = 2
+                    content = "Small inline gallery"
+                }
+
+                paragraph gallery_one {
+                    content = wdoc::icon_styled("shield-check", "1.25em", "#22c55e") + " validated configuration  " +
+                              wdoc::icon_styled("code-xml", "1.25em", "#58a6ff") + " expression support  " +
+                              wdoc::icon_styled("braces", "1.25em", "#e83e8c") + " structured output"
+                }
+
+                paragraph gallery_two {
+                    content = wdoc::icon_styled("tent", "1.25em", "#f59e0b") + " game maps  " +
+                              wdoc::icon_styled("navigation", "1.25em", "#38bdf8") + " routes  " +
+                              wdoc::icon_styled("diamond", "1.25em", "#a78bfa") + " diagram landmarks"
+                }
+
+                code sample {
+                    language = "wcl"
+                    content = "paragraph p {\n    content = \":circle-check: Done\"\n}\n\nparagraph status {\n    content = \":triangle-alert: Needs review\"\n}\n\nparagraph styled {\n    content = wdoc::icon_styled(\"map-pin\", \"1.1em\", \"#ef4444\") + \" Critical location\"\n}"
+                }
+            }
+        }
+    }
+}

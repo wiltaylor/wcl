@@ -102,7 +102,7 @@ Renders as `<table>`; first list-of-maps attribute is treated as the rows.
 
 ```wcl
 callout info_box {
-  icon   = "info"            # Bootstrap icon name
+  icon   = "info"            # name from the configured icon_set
   header = "Important"
   color  = "#0d6efd"         # or "var(--color-link)"
   paragraph p1 { content = "This is a note." }
@@ -117,10 +117,13 @@ Return HTML strings; use inside `content = ...`.
 bold(text)                     # <strong>text</strong>
 italic(text)                   # <em>text</em>
 link(text, url)                # <a href="url">text</a>
-icon(name, size?, color?)      # Bootstrap icon
+icon(name)                     # inline SVG from the default icon_set
+icon_styled(name, size, color) # inline SVG with fill color
+icon_props(name, size, props)  # inline SVG with fill/stroke/custom icon vars
+:icon-name:                    # preferred regular-text shorthand
 
 paragraph p {
-  content = "See " + bold("API docs") + " at " + link("example.com", "https://example.com")
+  content = ":book-open: See " + bold("API docs") + " at " + link("example.com", "https://example.com")
 }
 ```
 

@@ -489,7 +489,7 @@ page game_design_examples {
                 }
 
                 paragraph map_view_intro {
-                    content = "Use <code>map</code> for a large image-backed coordinate space. Normal child shapes sit in the map's content coordinates and move with the internal pan/zoom viewport."
+                    content = wdoc::icon("map-pin") + " Use <code>map</code> for a large image-backed coordinate space. Normal child shapes sit in the map's content coordinates and move with the internal pan/zoom viewport; fixed icon shapes such as " + wdoc::icon_styled("tent", "1em", "#f59e0b") + " camps and " + wdoc::icon_styled("flag", "1em", "#22c55e") + " objectives keep their on-screen size while zooming."
                 }
 
                 diagram map_view_demo {
@@ -514,13 +514,17 @@ page game_design_examples {
                         alt = "Pan and zoom map"
 
                         ellipse base_a_shadow { x = 303 y = 270 width = 22 height = 7 fill = "#020617" opacity = 0.45 map_fixed = true }
+                        icon base_a_pin { x = 300 y = 245 width = 28 height = 28 name = "map-pin" fill = "#ef4444" stroke = "#ef4444" map_fixed = true map_anchor_x = 314 map_anchor_y = 273 }
                         circle base_a { x = 305 y = 255 width = 18 height = 18 fill = "#ef4444" stroke = "#ffffff" stroke_width = 3 vector_effect = "non-scaling-stroke" map_fixed = true map_anchor_x = 314 map_anchor_y = 273 }
                         circle base_a_tip { x = 311 y = 270 width = 6 height = 6 fill = "#ffffff" opacity = 0.9 map_fixed = true map_anchor_x = 314 map_anchor_y = 273 }
                         text base_a_label { x = 329 y = 245 width = 120 height = 24 content = "Base A" anchor = "start" fill = "#f8fafc" font_size = 15 font_weight = "700" }
                         ellipse base_b_shadow { x = 618 y = 435 width = 22 height = 7 fill = "#020617" opacity = 0.45 map_fixed = true }
+                        icon base_b_pin { x = 615 y = 410 width = 28 height = 28 name = "flag" fill = "#22c55e" stroke = "#22c55e" map_fixed = true map_anchor_x = 629 map_anchor_y = 438 }
                         circle base_b { x = 620 y = 420 width = 18 height = 18 fill = "#22c55e" stroke = "#ffffff" stroke_width = 3 vector_effect = "non-scaling-stroke" map_fixed = true map_anchor_x = 629 map_anchor_y = 438 }
                         circle base_b_tip { x = 626 y = 435 width = 6 height = 6 fill = "#ffffff" opacity = 0.9 map_fixed = true map_anchor_x = 629 map_anchor_y = 438 }
                         text base_b_label { x = 644 y = 410 width = 120 height = 24 content = "Base B" anchor = "start" fill = "#f8fafc" font_size = 15 font_weight = "700" }
+                        icon camp { x = 470 y = 315 width = 26 height = 26 name = "tent" fill = "#f59e0b" stroke = "#f59e0b" map_fixed = true map_anchor_x = 483 map_anchor_y = 341 }
+                        text camp_label { x = 498 y = 310 width = 120 height = 24 content = "Camp" anchor = "start" fill = "#f8fafc" font_size = 14 font_weight = "700" }
                     }
                 }
 

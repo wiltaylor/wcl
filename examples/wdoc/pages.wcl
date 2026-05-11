@@ -5,6 +5,7 @@
 import "./pages/overview.wcl"
 import "./pages/install.wcl"
 import "./pages/basics.wcl"
+import "./pages/inline_icon_examples.wcl"
 import "./pages/advanced.wcl"
 import "./pages/diagram_examples.wcl"
 import "./pages/large_diagrams.wcl"

@@ -80,8 +80,9 @@ page wdoc_content {
                         { fn = "bold(text)",                      result = "<strong>text</strong>" },
                         { fn = "italic(text)",                    result = "<em>text</em>" },
                         { fn = "link(text, url)",                 result = "<a href=\"url\">text</a>" },
-                        { fn = "icon(name)",                      result = "Bootstrap icon" },
-                        { fn = "icon_styled(name, size, color)",  result = "Bootstrap icon, sized and colored" }
+                        { fn = "icon(name)",                      result = "Inline SVG from the default icon_set" },
+                        { fn = "icon_styled(name, size, color)",  result = "Inline SVG with fill color" },
+                        { fn = "icon_props(name, size, props)",   result = "Inline SVG with fill, stroke, and custom properties" }
                     ]
                 }
 
@@ -133,7 +134,7 @@ page wdoc_content {
                 }
 
                 paragraph p_co1 {
-                    content = "A boxed admonition, useful for tips, warnings, and notes. It accepts an optional <code>icon</code> (Bootstrap icon name), <code>header</code>, and <code>color</code>, and contains other content blocks (typically paragraphs) as children."
+                    content = "A boxed admonition, useful for tips, warnings, and notes. It accepts an optional <code>icon</code> from the configured icon set, <code>header</code>, and <code>color</code>, and contains other content blocks (typically paragraphs) as children."
                 }
 
                 code cco1 {

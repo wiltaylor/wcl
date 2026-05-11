@@ -218,7 +218,7 @@ page animation_examples {
 
                 heading h1 {
                     level = 1
-                    content = icon("play") + " Keyframe Animations"
+                    content = wdoc::icon("play") + " Keyframe Animations"
                 }
 
                 paragraph p1 {

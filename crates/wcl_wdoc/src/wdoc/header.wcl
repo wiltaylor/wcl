@@ -131,6 +131,20 @@ namespace wdoc {
         display: string @optional
     }
 
+    schema "icon_set" {
+        path: string
+        default: bool @optional
+        normalize_width: f64 @optional
+        normalize_height: f64 @optional
+        normalize_mode: string @optional
+    }
+
+    @parent(["wdoc::icon_set"]) @open schema "icon_part" {
+        selector: string
+        property: string
+        default: string @optional
+    }
+
     // --- Diagram and shape schemas ---
 
     namespace draw {
@@ -171,6 +185,19 @@ namespace wdoc {
             ry: f64 @optional
             tile_width: f64 @optional
             tile_height: f64 @optional
+        }
+        @open
+        schema "icon" {
+            name: string
+            icon_set: string @optional
+            fill: string @optional
+            stroke: string @optional
+            props: map(string, any) @optional
+            normalize_width: f64 @optional
+            normalize_height: f64 @optional
+            normalize_mode: string @optional
+            class: string @optional
+            opacity: f64 @optional
         }
         @open
         schema "map" {
@@ -351,6 +378,7 @@ namespace wdoc {
             "wdoc::draw::text_block",
             "wdoc::draw::inline_svg",
             "wdoc::draw::image",
+            "wdoc::draw::icon",
             "wdoc::draw::map",
             "wdoc::draw::sprite",
             "wdoc::draw::dopesheet_view",
@@ -533,9 +561,9 @@ namespace wdoc {
     @markup(":{name}:")
     export let icon_markup = name => wdoc::icon(name)
 
-    export let icon = name => "<i class=\"bi bi-" + wdoc::html_escape(name) + "\"></i>"
-
-    export let icon_styled = (name, size, color) => "<i class=\"bi bi-" + wdoc::html_escape(name) + "\" style=\"font-size:" + wdoc::html_escape(size) + ";color:" + wdoc::html_escape(color) + ";\"></i>"
+    declare icon(name: string) -> string
+    declare icon_styled(name: string, size: string, color: string) -> string
+    declare icon_props(name: string, size: string, props: map(string, any)) -> string
 
     declare measure_text(text: any) -> map(string, any)
     declare slugify(value: any) -> string
@@ -605,7 +633,7 @@ namespace wdoc {
         let color = attr_or(b, "color", "var(--color-nav-border)")
         let header = attr_or(b, "header", "")
         let icon = attr_or(b, "icon", "")
-        let icon_html = icon != "" ? "<i class=\"bi bi-" + wdoc::html_escape(icon) + "\"></i> " : ""
+        let icon_html = icon != "" ? wdoc::icon_styled(icon, "1em", color) + " " : ""
         let header_html = (header != "" || icon != "") ? "<div class=\"wdoc-callout-header\" style=\"color:" + color + ";\">" + icon_html + wdoc::render_markup(header) + "</div>" : ""
         "<div class=\"wdoc-callout\" style=\"border-left-color:" + color + ";\">" + header_html + "<div class=\"wdoc-callout-body\">" + wdoc::render_children(b) + "</div></div>"
     }
@@ -622,7 +650,7 @@ namespace wdoc {
     //
     // Recognized descriptor fields:
     //   kind     — "rect" | "circle" | "ellipse" | "line" | "path" | "text" |
-    //              "inline_svg" | "image" | "map" | "group" | "connection"
+    //              "inline_svg" | "icon" | "image" | "map" | "group" | "connection"
     //   id       — shape ID for layout and connection endpoints
     //   x, y, width, height       — absolute placement (relative to widget)
     //   top, bottom, left, right  — anchored placement

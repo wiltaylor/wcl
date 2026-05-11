@@ -63,10 +63,10 @@ page install {
                     level = 3
                     content = "Quick Links"
                 }
-                paragraph l1 { content = icon("github") + " " + link("GitHub Repository", "https://github.com/wiltaylor/wcl") }
-                paragraph l2 { content = icon("book") + " " + link("API Documentation", "https://wcl.dev/docs") }
-                paragraph l3 { content = icon("tag") + " " + link("Release Notes", "https://github.com/wiltaylor/wcl/releases") }
-                paragraph l4 { content = icon("window") + " " + link("VS Code Extension", "https://marketplace.visualstudio.com") }
+                paragraph l1 { content = wdoc::icon("file-text") + " " + link("GitHub Repository", "https://github.com/wiltaylor/wcl") }
+                paragraph l2 { content = wdoc::icon("book-open") + " " + link("API Documentation", "https://wcl.dev/docs") }
+                paragraph l3 { content = wdoc::icon("tag") + " " + link("Release Notes", "https://github.com/wiltaylor/wcl/releases") }
+                paragraph l4 { content = wdoc::icon("panel-top") + " " + link("VS Code Extension", "https://marketplace.visualstudio.com") }
             }
         }
     }

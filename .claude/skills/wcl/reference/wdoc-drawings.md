@@ -8,7 +8,7 @@ Sources: `crates/wcl_wdoc/src/wdoc.wcl` (widget templates), `crates/wcl_wdoc/src
 
 ```wcl
 import <wdoc.wcl>
-use wdoc::draw::{diagram, rect, circle, ellipse, line, path, text, image, map, connection}
+use wdoc::draw::{diagram, rect, circle, ellipse, line, path, text, image, icon, map, connection}
 # Widgets as needed:
 use wdoc::draw::{flow_terminal, flow_process, flow_decision, flow_io, flow_subprocess}
 use wdoc::draw::{c4_person, c4_system, c4_container, c4_component, c4_boundary}
@@ -119,6 +119,19 @@ map world {
 ```
 
 Set `map_fixed = true` on a child shape to keep its on-screen size stable while the map zooms. By default the shape is anchored at its center; override with `map_anchor_x` / `map_anchor_y` for pin-tip behavior.
+
+### `icon`
+SVG icon from a configured `wdoc::icon_set`. Icons are loaded from local `name.svg` files, sanitized, and normalized to the set's `normalize_width` / `normalize_height` unless `normalize_mode = "none"`.
+
+```wcl
+icon save {
+  x = 24, y = 24, width = 32, height = 32
+  name = "save"
+  fill = "var(--color-link)"
+}
+```
+
+Use `icon_part` blocks on the icon set to map custom CSS selectors and properties to variables supplied through `props`; `fill` and `stroke` are supported by default.
 
 ## Positioning
 

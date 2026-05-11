@@ -37,6 +37,7 @@ pub enum ShapeKind {
     Text,
     TextBlock,
     InlineSvg,
+    Icon,
     Image,
     Map,
     Sprite,
@@ -827,6 +828,7 @@ pub fn parse_shape_kind(kind: &str) -> Option<ShapeKind> {
         "wdoc::draw::text" => Some(ShapeKind::Text),
         "wdoc::draw::text_block" => Some(ShapeKind::TextBlock),
         "wdoc::draw::inline_svg" => Some(ShapeKind::InlineSvg),
+        "wdoc::draw::icon" => Some(ShapeKind::Icon),
         "wdoc::draw::image" => Some(ShapeKind::Image),
         "wdoc::draw::map" => Some(ShapeKind::Map),
         "wdoc::draw::sprite" => Some(ShapeKind::Sprite),
@@ -2215,6 +2217,7 @@ fn render_shape_svg(node: &ShapeNode, svg: &mut String) {
         }
         ShapeKind::TextBlock => render_text_block_svg(node, svg),
         ShapeKind::InlineSvg => render_inline_svg_shape_svg(node, svg),
+        ShapeKind::Icon => render_icon_shape_svg(node, svg),
         ShapeKind::Image => render_image_shape_svg(node, svg),
         ShapeKind::Map => {
             render_map_shape_svg(node, svg);
@@ -2680,6 +2683,96 @@ fn render_inline_svg_shape_svg(node: &ShapeNode, svg: &mut String) {
     .unwrap();
     svg.push_str(&sanitized);
     svg.push_str("</g>");
+}
+
+fn render_icon_shape_svg(node: &ShapeNode, svg: &mut String) {
+    let b = &node.resolved;
+    let style_attrs = svg_node_attrs(node, &node.attrs);
+    let content = node
+        .attrs
+        .get("_wdoc_icon_content")
+        .map(|s| s.as_str())
+        .unwrap_or("");
+    let sanitized = sanitize_inline_svg(content).unwrap_or_default();
+    let native_view_box = svg_root_view_box(content)
+        .and_then(|view_box| parse_view_box(&view_box))
+        .unwrap_or((0.0, 0.0, b.width.max(1.0), b.height.max(1.0)));
+    let (min_x, min_y, native_width, native_height) = native_view_box;
+    let native_width = native_width.max(1.0);
+    let native_height = native_height.max(1.0);
+    let mode = node
+        .attrs
+        .get("_wdoc_icon_normalize_mode")
+        .map(|s| s.as_str())
+        .unwrap_or("viewbox");
+    let requested_width = attr_f64(&node.attrs, "_wdoc_icon_normalize_width");
+    let requested_height = attr_f64(&node.attrs, "_wdoc_icon_normalize_height");
+    let ratio = native_width / native_height;
+    let (view_min_x, view_min_y, view_width, view_height, transform) = if mode == "none" {
+        (min_x, min_y, native_width, native_height, String::new())
+    } else {
+        let norm_width = requested_width
+            .or_else(|| requested_height.map(|height| height * ratio))
+            .unwrap_or(native_width)
+            .max(1.0);
+        let norm_height = requested_height
+            .or_else(|| requested_width.map(|width| width / ratio))
+            .unwrap_or(native_height)
+            .max(1.0);
+        let scale = (norm_width / native_width).min(norm_height / native_height);
+        let tx = (norm_width - native_width * scale) / 2.0 - min_x * scale;
+        let ty = (norm_height - native_height * scale) / 2.0 - min_y * scale;
+        (
+            0.0,
+            0.0,
+            norm_width,
+            norm_height,
+            format!(" transform=\"translate({tx},{ty}) scale({scale})\""),
+        )
+    };
+
+    let css = node
+        .attrs
+        .get("_wdoc_icon_css")
+        .map(|s| s.as_str())
+        .unwrap_or("");
+
+    write!(
+        svg,
+        "<svg x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" viewBox=\"{} {} {} {}\" overflow=\"visible\"{style_attrs}>",
+        b.x, b.y, b.width, b.height, view_min_x, view_min_y, view_width, view_height
+    )
+    .unwrap();
+    if !css.trim().is_empty() {
+        let css = css.replace("</style", "<\\/style");
+        write!(svg, "<style>{css}</style>").unwrap();
+    }
+    if sanitized.is_empty() {
+        let label = node
+            .attrs
+            .get("_wdoc_icon_missing")
+            .map(|s| s.as_str())
+            .unwrap_or("icon");
+        let label = svg_escape_text(label);
+        write!(
+            svg,
+            "<rect x=\"1\" y=\"1\" width=\"{}\" height=\"{}\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"/>\
+             <text x=\"{}\" y=\"{}\" fill=\"currentColor\" font-size=\"{}\" text-anchor=\"middle\" dominant-baseline=\"central\">{label}</text>",
+            (view_width - 2.0).max(1.0),
+            (view_height - 2.0).max(1.0),
+            view_width / 2.0,
+            view_height / 2.0,
+            (view_height / 4.0).clamp(6.0, 14.0),
+        )
+        .unwrap();
+    } else if transform.is_empty() {
+        svg.push_str(&sanitized);
+    } else {
+        write!(svg, "<g{transform}>").unwrap();
+        svg.push_str(&sanitized);
+        svg.push_str("</g>");
+    }
+    svg.push_str("</svg>");
 }
 
 fn render_image_shape_svg(node: &ShapeNode, svg: &mut String) {
@@ -4612,6 +4705,10 @@ fn svg_root_view_box(source: &str) -> Option<String> {
     }
 }
 
+pub fn svg_source_view_box(source: &str) -> Option<String> {
+    svg_root_view_box(source)
+}
+
 fn svg_event_name(name: &[u8]) -> String {
     let full = String::from_utf8_lossy(name);
     full.rsplit(':').next().unwrap_or(&full).to_string()
@@ -5054,6 +5151,10 @@ fn parse_view_box(value: &str) -> Option<(f64, f64, f64, f64)> {
     } else {
         None
     }
+}
+
+pub fn parse_svg_view_box(value: &str) -> Option<(f64, f64, f64, f64)> {
+    parse_view_box(value)
 }
 
 fn svg_escape_text(s: &str) -> String {
