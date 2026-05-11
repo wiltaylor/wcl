@@ -715,6 +715,26 @@ fn shape_needs_runtime(shape: &ShapeNode) -> bool {
         || shape.attrs.get("_wdoc_runtime").map(|v| v == "true") == Some(true)
         || shape.attrs.contains_key("data_wdoc_slider")
         || shape.attrs.contains_key("data-wdoc-slider")
+        || shape
+            .attrs
+            .get("data_wdoc_textbox")
+            .or_else(|| shape.attrs.get("data-wdoc-textbox"))
+            .is_some_and(|value| value == "true")
+        || shape
+            .attrs
+            .get("data_wdoc_checkbox")
+            .or_else(|| shape.attrs.get("data-wdoc-checkbox"))
+            .is_some_and(|value| value == "true")
+        || shape
+            .attrs
+            .get("data_wdoc_radio")
+            .or_else(|| shape.attrs.get("data-wdoc-radio"))
+            .is_some_and(|value| value == "true")
+        || shape
+            .attrs
+            .get("data_wdoc_dropdown")
+            .or_else(|| shape.attrs.get("data-wdoc-dropdown"))
+            .is_some_and(|value| value == "true")
         || shape.attrs.contains_key("transparent_color")
         || shape.children.iter().any(shape_needs_runtime)
 }
@@ -4385,6 +4405,30 @@ fn append_shape_runtime_attrs(node: &ShapeNode, out: &mut String) {
         && node.attrs.get("_wdoc_runtime").map(|v| v == "true") != Some(true)
         && !node.attrs.contains_key("data_wdoc_slider")
         && !node.attrs.contains_key("data-wdoc-slider")
+        && node
+            .attrs
+            .get("data_wdoc_textbox")
+            .or_else(|| node.attrs.get("data-wdoc-textbox"))
+            .map(|value| value == "true")
+            != Some(true)
+        && node
+            .attrs
+            .get("data_wdoc_checkbox")
+            .or_else(|| node.attrs.get("data-wdoc-checkbox"))
+            .map(|value| value == "true")
+            != Some(true)
+        && node
+            .attrs
+            .get("data_wdoc_radio")
+            .or_else(|| node.attrs.get("data-wdoc-radio"))
+            .map(|value| value == "true")
+            != Some(true)
+        && node
+            .attrs
+            .get("data_wdoc_dropdown")
+            .or_else(|| node.attrs.get("data-wdoc-dropdown"))
+            .map(|value| value == "true")
+            != Some(true)
     {
         return;
     }
@@ -4614,11 +4658,15 @@ function frameValue(frames,p,prop,base){var prev=frames[0],next=frames[frames.le
 function startStateAnimation(el,state){var map=parseStateAnimations(el),name=map[state];if(!name)return;var anim=parseAnimations(el)[name];if(!anim||(!anim.keyframes.length&&!anim.frames.length))return;if(el.__wdocAnim)cancelAnimationFrame(el.__wdocAnim.raf);var base=baseBox(el),start=performance.now()+anim.delay,loops=anim.iteration==='infinite'?Infinity:Math.max(1,parseFloat(anim.iteration)||1),initialFrame=el.getAttribute('data-wdoc-sprite-current-frame');function tick(now){if(now<start){el.__wdocAnim={raf:requestAnimationFrame(tick)};return;}var elapsed=now-start,idx=Math.floor(elapsed/anim.duration),done=idx>=loops,raw=done?1:(elapsed%anim.duration)/anim.duration,dirReverse=anim.direction==='reverse'||(anim.direction==='alternate'&&idx%2===1),frameRaw=dirReverse?1-raw:raw;if(anim.keyframes.length){var pct=ease(raw,anim.timing)*100;var x=frameValue(anim.keyframes,pct,'x',base),y=frameValue(anim.keyframes,pct,'y',base),width=frameValue(anim.keyframes,pct,'width',base),height=frameValue(anim.keyframes,pct,'height',base),rotBase={rotate:0,rotate_origin_x:x+width/2,rotate_origin_y:y+height/2};var b={x:x,y:y,width:width,height:height,rotate:frameValue(anim.keyframes,pct,'rotate',rotBase),rotate_origin_x:frameValue(anim.keyframes,pct,'rotate_origin_x',rotBase),rotate_origin_y:frameValue(anim.keyframes,pct,'rotate_origin_y',rotBase)};setBox(el,b);}if(anim.frames.length){var fi=done?anim.frames.length-1:Math.min(anim.frames.length-1,Math.floor(frameRaw*anim.frames.length));setSpriteFrame(el,anim.frames[fi]);}if(done){if(anim.fill!=='forwards'&&anim.fill!=='both'){setBox(el,base);if(initialFrame!=null)setSpriteFrame(el,initialFrame);}return;}el.__wdocAnim={raf:requestAnimationFrame(tick)};}el.__wdocAnim={raf:requestAnimationFrame(tick)};}
 function stopStateAnimation(el,state){var map=parseStateAnimations(el);if(!map[state]||!el.__wdocAnim)return;cancelAnimationFrame(el.__wdocAnim.raf);el.__wdocAnim=null;setBox(el,baseBox(el));var initial=el.getAttribute('data-wdoc-sprite-initial-frame');if(initial!=null)setSpriteFrame(el,initial);}
 function initSlider(el){if(!el||el.__wdocSliderBound)return;el.__wdocSliderBound=true;var signal=el.getAttribute('data-wdoc-slider-signal')||'',min=parseFloat(el.getAttribute('data-wdoc-slider-min')||'0')||0,max=parseFloat(el.getAttribute('data-wdoc-slider-max')||'100')||100,step=parseFloat(el.getAttribute('data-wdoc-slider-step')||'1')||1,w=parseFloat(el.getAttribute('data-wdoc-width')||el.getAttribute('width')||'100')||100,h=parseFloat(el.getAttribute('data-wdoc-height')||'24')||24,drag=false;function clamp(v){v=Math.max(min,Math.min(max,parseFloat(v)||0));return step>0?Math.round(v/step)*step:v;}function pct(v){return max===min?0:(clamp(v)-min)/(max-min);}function draw(v){var p=pct(v),fill=el.querySelector('[data-wdoc-slider-fill]'),thumb=el.querySelector('[data-wdoc-slider-thumb]');if(fill)fill.setAttribute('width',String(w*p));if(thumb){var r=parseFloat(thumb.getAttribute('r')||String(h/2));thumb.setAttribute('cx',String(w*p));thumb.setAttribute('cy',String(h/2));thumb.setAttribute('r',String(r));}}function setFromEvent(e){var r=el.getBoundingClientRect(),p=Math.max(0,Math.min(1,(e.clientX-r.left)/(r.width||1))),v=clamp(min+p*(max-min));draw(v);if(window.__wdocSetSignal&&signal)window.__wdocSetSignal(signal,v,'');}draw(el.getAttribute('data-wdoc-slider-value')||min);el.addEventListener('pointerdown',function(e){if(e.button!==0)return;drag=true;el.setPointerCapture&&el.setPointerCapture(e.pointerId);setFromEvent(e);});el.addEventListener('pointermove',function(e){if(drag)setFromEvent(e);});function end(e){if(!drag)return;drag=false;el.releasePointerCapture&&el.releasePointerCapture(e.pointerId);}el.addEventListener('pointerup',end);el.addEventListener('pointercancel',end);document.addEventListener('wdoc:signal-change',function(e){if(e.detail&&e.detail.name===signal)draw(e.detail.value);});}
+function initTextbox(el){if(!el||el.__wdocTextboxBound||el.getAttribute('data-wdoc-textbox')!=='true')return;el.__wdocTextboxBound=true;var signal=el.getAttribute('data-wdoc-textbox-signal')||'',placeholder=el.getAttribute('data-wdoc-textbox-placeholder')||'',value=el.getAttribute('data-wdoc-textbox-value')||'',delay=parseInt(el.getAttribute('data-wdoc-textbox-debounce-ms')||'300',10)||300,multiline=el.getAttribute('data-wdoc-textbox-multiline')==='true',timer=null,editor=null;function textNode(){return el.querySelector('[data-wdoc-textbox-value-node]');}function setDisplay(v){value=v==null?'':String(v);var n=textNode(),shown=value||placeholder;if(n){n.textContent=shown;n.setAttribute('opacity',value?1:.4);var fill=value?(el.getAttribute('data-wdoc-textbox-text-fill')||'currentColor'):(el.getAttribute('data-wdoc-textbox-placeholder-fill')||'currentColor');n.setAttribute('fill',fill);}el.setAttribute('data-wdoc-textbox-value',value);}function flush(){if(timer){clearTimeout(timer);timer=null;}if(window.__wdocSetSignal&&signal)window.__wdocSetSignal(signal,value,'');}function schedule(){if(timer)clearTimeout(timer);timer=setTimeout(flush,delay);}function close(){if(!editor)return;flush();editor.remove();editor=null;}function open(){if(editor)return;var r=el.getBoundingClientRect(),base=baseBox(el),fy=parseFloat(el.getAttribute('data-wdoc-textbox-field-y')||'0')||0,fh=parseFloat(el.getAttribute('data-wdoc-textbox-field-h')||String(base.height))||base.height,px=parseFloat(el.getAttribute('data-wdoc-textbox-padding-x')||'10')||10,py=parseFloat(el.getAttribute('data-wdoc-textbox-padding-y')||'8')||8,sx=r.width/(base.width||r.width||1),sy=r.height/(base.height||r.height||1);editor=document.createElement(multiline?'textarea':'input');if(!multiline)editor.type='text';editor.value=value;editor.placeholder=placeholder;editor.setAttribute('aria-label',signal||'textbox');editor.style.position='fixed';editor.style.left=(r.left+px*sx)+'px';editor.style.top=(r.top+(fy+py)*sy)+'px';editor.style.width=Math.max(20,r.width-(px*2*sx))+'px';editor.style.height=Math.max(20,fh*sy-(py*2*sy))+'px';editor.style.zIndex='2147483647';editor.style.resize='none';editor.style.boxSizing='border-box';editor.style.border='1px solid '+(el.getAttribute('data-wdoc-textbox-border')||'transparent');editor.style.borderRadius='4px';editor.style.padding='2px 4px';editor.style.margin='0';editor.style.outline='2px solid rgba(88,166,255,.55)';editor.style.background=el.getAttribute('data-wdoc-textbox-fill')||'var(--color-code-bg)';editor.style.color=el.getAttribute('data-wdoc-textbox-text-fill')||'currentColor';editor.style.font=(parseFloat(el.getAttribute('data-wdoc-textbox-font-size')||'12')*sy)+'px system-ui, sans-serif';editor.style.lineHeight='1.3';document.body.appendChild(editor);editor.focus();editor.select();editor.addEventListener('input',function(){setDisplay(editor.value);schedule();});editor.addEventListener('blur',close);editor.addEventListener('keydown',function(e){if(e.key==='Escape'||(!multiline&&e.key==='Enter')){e.preventDefault();close();}});}setDisplay(value);el.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();open();});document.addEventListener('wdoc:signal-change',function(e){if(e.detail&&e.detail.name===signal&&!editor)setDisplay(e.detail.value);});}
+function initCheckbox(el){if(!el||el.__wdocCheckboxBound||el.getAttribute('data-wdoc-checkbox')!=='true')return;el.__wdocCheckboxBound=true;var signal=el.getAttribute('data-wdoc-checkbox-signal')||'',disabled=el.getAttribute('data-wdoc-checkbox-disabled')==='true';function bool(v){return v===true||v==='true'||v===1||v==='1';}function draw(v){var checked=bool(v),box=el.querySelector('[data-wdoc-checkbox-box]'),marks=el.querySelectorAll('[data-wdoc-checkbox-mark]'),active=el.getAttribute('data-wdoc-checkbox-active-fill')||'currentColor',field=el.getAttribute('data-wdoc-checkbox-field-fill')||'transparent',border=el.getAttribute('data-wdoc-checkbox-border-stroke')||'currentColor';el.setAttribute('data-wdoc-checkbox-checked',checked?'true':'false');if(box){box.setAttribute('fill',checked?active:field);box.setAttribute('stroke',checked?active:border);}Array.prototype.forEach.call(marks,function(m){m.setAttribute('opacity',checked?'1':'0');});}draw(el.getAttribute('data-wdoc-checkbox-checked'));el.addEventListener('click',function(e){if(disabled)return;e.preventDefault();e.stopPropagation();var next=el.getAttribute('data-wdoc-checkbox-checked')!=='true';draw(next);if(window.__wdocSetSignal&&signal)window.__wdocSetSignal(signal,next,'');});document.addEventListener('wdoc:signal-change',function(e){if(e.detail&&e.detail.name===signal)draw(e.detail.value);});}
+function initRadio(el){if(!el||el.__wdocRadioBound||el.getAttribute('data-wdoc-radio')!=='true')return;el.__wdocRadioBound=true;var signal=el.getAttribute('data-wdoc-radio-signal')||'',value=el.getAttribute('data-wdoc-radio-value')||'',disabled=el.getAttribute('data-wdoc-radio-disabled')==='true';function draw(selected){var outer=el.querySelector('[data-wdoc-radio-outer]'),dot=el.querySelector('[data-wdoc-radio-dot]'),active=el.getAttribute('data-wdoc-radio-active-fill')||'currentColor',border=el.getAttribute('data-wdoc-radio-border-stroke')||'currentColor';el.setAttribute('data-wdoc-radio-selected',selected?'true':'false');if(outer)outer.setAttribute('stroke',selected?active:border);if(dot)dot.setAttribute('opacity',selected?'1':'0');}function apply(v){draw(String(v)==String(value));}apply(el.getAttribute('data-wdoc-radio-selected')==='true'?value:null);el.addEventListener('click',function(e){if(disabled)return;e.preventDefault();e.stopPropagation();apply(value);if(window.__wdocSetSignal&&signal)window.__wdocSetSignal(signal,value,'');});document.addEventListener('wdoc:signal-change',function(e){if(e.detail&&e.detail.name===signal)apply(e.detail.value);});}
+function initDropdown(el){if(!el||el.__wdocDropdownBound||el.getAttribute('data-wdoc-dropdown')!=='true')return;el.__wdocDropdownBound=true;var signal=el.getAttribute('data-wdoc-dropdown-signal')||'',placeholder=el.getAttribute('data-wdoc-dropdown-placeholder')||'Select',value=el.getAttribute('data-wdoc-dropdown-value')||'',menu=null;function items(){return (el.getAttribute('data-wdoc-dropdown-items')||'').split(',').map(function(s){return s.trim();}).filter(Boolean);}function valueNode(){return el.querySelector('[data-wdoc-dropdown-value-node]');}function setDisplay(v){value=v==null?'':String(v);var n=valueNode(),shown=value||placeholder;if(n){n.textContent=shown;n.setAttribute('opacity',value?1:.4);n.setAttribute('fill',value?(el.getAttribute('data-wdoc-dropdown-value-fill')||'currentColor'):(el.getAttribute('data-wdoc-dropdown-placeholder-fill')||'currentColor'));}el.setAttribute('data-wdoc-dropdown-value',value);}function close(){if(menu){menu.remove();menu=null;}}function choose(v){setDisplay(v);if(window.__wdocSetSignal&&signal)window.__wdocSetSignal(signal,v,'');close();}function open(){if(menu){close();return;}var r=el.getBoundingClientRect(),base=baseBox(el),fy=parseFloat(el.getAttribute('data-wdoc-dropdown-field-y')||'0')||0,fh=parseFloat(el.getAttribute('data-wdoc-dropdown-field-h')||String(base.height))||base.height,sy=r.height/(base.height||r.height||1),opts=items();menu=document.createElement('div');menu.setAttribute('role','listbox');menu.style.position='fixed';menu.style.left=r.left+'px';menu.style.top=(r.top+(fy+fh)*sy+4)+'px';menu.style.width=r.width+'px';menu.style.zIndex='2147483647';menu.style.boxSizing='border-box';menu.style.border='1px solid '+(el.getAttribute('data-wdoc-dropdown-border-stroke')||'currentColor');menu.style.borderRadius='4px';menu.style.background=el.getAttribute('data-wdoc-dropdown-menu-fill')||'Canvas';menu.style.color=el.getAttribute('data-wdoc-dropdown-label-fill')||'CanvasText';menu.style.font='12px system-ui, sans-serif';menu.style.boxShadow='0 8px 20px rgba(0,0,0,.18)';opts.forEach(function(opt){var row=document.createElement('button');row.type='button';row.textContent=opt;row.style.display='block';row.style.width='100%';row.style.padding='6px 10px';row.style.border='0';row.style.background=opt===value?'rgba(88,166,255,.18)':'transparent';row.style.color='inherit';row.style.textAlign='left';row.style.cursor='pointer';row.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();choose(opt);});menu.appendChild(row);});document.body.appendChild(menu);setTimeout(function(){document.addEventListener('click',outside,true);},0);}function outside(e){if(menu&&e.target!==menu&&!menu.contains(e.target)){document.removeEventListener('click',outside,true);close();}}setDisplay(value);el.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();open();});document.addEventListener('wdoc:signal-change',function(e){if(e.detail&&e.detail.name===signal)setDisplay(e.detail.value);});}
 function eventValue(v,e){return v==='$event.value'&&e&&e.__wdocValue!==undefined?e.__wdocValue:v;}
 function runActions(cfg,e){if(!window.__wdocSetSignal||!cfg.actions)return;cfg.actions.forEach(function(a){if(a&&a.signal)window.__wdocSetSignal(a.signal,eventValue(a.value,e),a.path||'');});}
 function applyProperty(el,prop,value){var s=value==null?'':String(value),b;if(['x','y','width','height'].indexOf(prop)>=0){b=el.__wdocBox||baseBox(el);b={x:b.x,y:b.y,width:b.width,height:b.height};b[prop]=parseFloat(value)||0;setBox(el,b);return true;}if(prop==='content'||prop==='text'){el.textContent=s;return true;}if(['fill','stroke','opacity','visibility','display','class','transform'].indexOf(prop)>=0){el.setAttribute(prop,s);return true;}return false;}
 window.__wdocDiagramApplyProperty=applyProperty;
-function init(root){(root||document).querySelectorAll('svg').forEach(function(svg){initPanZoom(svg);initMap(svg);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-map]'),initMap);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-sprite]'),applySpriteTransparency);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-slider]'),initSlider);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-id]'),function(el,i){if(el.__wdocBound)return;el.__wdocBound=true;if(!el.hasAttribute('data-wdoc-order'))el.setAttribute('data-wdoc-order',String(i));parseEvents(el).forEach(function(cfg){var mode=cfg.mode||defaultMode(cfg.trigger),down=eventName(cfg.trigger,false),up=eventName(cfg.trigger,true);el.addEventListener(down,function(e){if(cfg.trigger==='mouse_down'&&!buttonOk(e,cfg.button))return;if(cfg.prevent)e.preventDefault();if(cfg.trigger==='mouse_leave'&&mode==='remove'&&guardedTo(svg,e.relatedTarget,cfg.guard))return;var t=target(svg,el,cfg.target);if(t){if(mode==='toggle')t.classList.contains(stateClass(cfg.state))?remove(t,cfg.state):add(t,cfg.state);else if(mode==='remove')remove(t,cfg.state);else if(mode==='pulse'){add(t,cfg.state);setTimeout(function(){remove(t,cfg.state);},cfg.duration||180);}else add(t,cfg.state);}runActions(cfg,e);});if(mode==='while'&&(cfg.trigger==='hover'||cfg.trigger==='mouse_down'))el.addEventListener(up,function(){var t=target(svg,el,cfg.target);if(t)remove(t,cfg.state);});});});});}
+function init(root){(root||document).querySelectorAll('svg').forEach(function(svg){initPanZoom(svg);initMap(svg);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-map]'),initMap);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-sprite]'),applySpriteTransparency);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-slider]'),initSlider);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-textbox="true"]'),initTextbox);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-checkbox="true"]'),initCheckbox);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-radio="true"]'),initRadio);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-dropdown="true"]'),initDropdown);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-id]'),function(el,i){if(el.__wdocBound)return;el.__wdocBound=true;if(!el.hasAttribute('data-wdoc-order'))el.setAttribute('data-wdoc-order',String(i));parseEvents(el).forEach(function(cfg){var mode=cfg.mode||defaultMode(cfg.trigger),down=eventName(cfg.trigger,false),up=eventName(cfg.trigger,true);el.addEventListener(down,function(e){if(cfg.trigger==='mouse_down'&&!buttonOk(e,cfg.button))return;if(cfg.prevent)e.preventDefault();if(cfg.trigger==='mouse_leave'&&mode==='remove'&&guardedTo(svg,e.relatedTarget,cfg.guard))return;var t=target(svg,el,cfg.target);if(t){if(mode==='toggle')t.classList.contains(stateClass(cfg.state))?remove(t,cfg.state):add(t,cfg.state);else if(mode==='remove')remove(t,cfg.state);else if(mode==='pulse'){add(t,cfg.state);setTimeout(function(){remove(t,cfg.state);},cfg.duration||180);}else add(t,cfg.state);}runActions(cfg,e);});if(mode==='while'&&(cfg.trigger==='hover'||cfg.trigger==='mouse_down'))el.addEventListener(up,function(){var t=target(svg,el,cfg.target);if(t)remove(t,cfg.state);});});});});}
 window.__wdocDiagramRuntimeInit=init;var s=document.currentScript;if(s&&s.parentNode)init(s.parentNode);if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){init(document);});else init(document);
 })();"#.to_string()
 }
@@ -6390,6 +6438,138 @@ mod tests {
         assert!(svg.contains("data-wdoc-events=\"click||self||left|0|false||"));
         assert!(svg.contains("&quot;signal&quot;:&quot;progress&quot;"));
         assert!(svg.contains("runActions"));
+        assert!(svg.contains("__wdocSetSignal"));
+    }
+
+    #[test]
+    fn textbox_signal_widget_emits_runtime_metadata_and_script() {
+        let mut textbox = shape("notes_editor", 240.0, 90.0);
+        textbox.kind = ShapeKind::Group;
+        textbox
+            .attrs
+            .insert("data_wdoc_textbox".to_string(), "true".to_string());
+        textbox
+            .attrs
+            .insert("data_wdoc_textbox_signal".to_string(), "notes".to_string());
+        textbox.attrs.insert(
+            "data_wdoc_textbox_debounce_ms".to_string(),
+            "300".to_string(),
+        );
+        let mut value = text_shape("Edit this note", 220.0, 40.0);
+        value.id = Some("notes_editor_value".to_string());
+        value.attrs.insert(
+            "data_wdoc_textbox_value_node".to_string(),
+            "true".to_string(),
+        );
+        textbox.children.push(value);
+
+        let mut diagram = Diagram {
+            id: Some("textbox".to_string()),
+            width: 260.0,
+            height: 120.0,
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+            classes: IndexMap::new(),
+            shapes: vec![textbox],
+            connections: vec![],
+        };
+
+        let svg = render_diagram_svg(&mut diagram);
+        assert!(svg.contains("data-wdoc-textbox=\"true\""));
+        assert!(svg.contains("data-wdoc-textbox-signal=\"notes\""));
+        assert!(svg.contains("data-wdoc-textbox-debounce-ms=\"300\""));
+        assert!(svg.contains("data-wdoc-textbox-value-node=\"true\""));
+        assert!(svg.contains("initTextbox"));
+        assert!(svg.contains("data-wdoc-textbox-multiline"));
+        assert!(svg.contains("createElement(multiline?'textarea':'input')"));
+        assert!(svg.contains("!multiline&&e.key==='Enter'"));
+        assert!(svg.contains("__wdocSetSignal"));
+    }
+
+    #[test]
+    fn signal_form_widgets_emit_runtime_metadata_and_script() {
+        let mut checkbox = shape("enabled_toggle", 160.0, 28.0);
+        checkbox.kind = ShapeKind::Group;
+        checkbox
+            .attrs
+            .insert("data_wdoc_checkbox".to_string(), "true".to_string());
+        checkbox.attrs.insert(
+            "data_wdoc_checkbox_signal".to_string(),
+            "enabled".to_string(),
+        );
+        checkbox
+            .attrs
+            .insert("data_wdoc_checkbox_checked".to_string(), "true".to_string());
+        let mut checkbox_box = shape("enabled_box", 16.0, 16.0);
+        checkbox_box
+            .attrs
+            .insert("data_wdoc_checkbox_box".to_string(), "true".to_string());
+        checkbox.children.push(checkbox_box);
+
+        let mut radio = shape("plan_team", 160.0, 28.0);
+        radio.kind = ShapeKind::Group;
+        radio
+            .attrs
+            .insert("data_wdoc_radio".to_string(), "true".to_string());
+        radio
+            .attrs
+            .insert("data_wdoc_radio_signal".to_string(), "plan".to_string());
+        radio
+            .attrs
+            .insert("data_wdoc_radio_value".to_string(), "Team".to_string());
+        let mut radio_dot = shape("plan_dot", 8.0, 8.0);
+        radio_dot.kind = ShapeKind::Circle;
+        radio_dot
+            .attrs
+            .insert("data_wdoc_radio_dot".to_string(), "true".to_string());
+        radio.children.push(radio_dot);
+
+        let mut dropdown = shape("environment_picker", 200.0, 56.0);
+        dropdown.kind = ShapeKind::Group;
+        dropdown
+            .attrs
+            .insert("data_wdoc_dropdown".to_string(), "true".to_string());
+        dropdown.attrs.insert(
+            "data_wdoc_dropdown_signal".to_string(),
+            "environment".to_string(),
+        );
+        dropdown.attrs.insert(
+            "data_wdoc_dropdown_items".to_string(),
+            "Dev,Stage,Prod".to_string(),
+        );
+        let mut value = text_shape("Stage", 180.0, 38.0);
+        value.id = Some("environment_value".to_string());
+        value.attrs.insert(
+            "data_wdoc_dropdown_value_node".to_string(),
+            "true".to_string(),
+        );
+        dropdown.children.push(value);
+
+        let mut diagram = Diagram {
+            id: Some("signal_widgets".to_string()),
+            width: 560.0,
+            height: 180.0,
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+            classes: IndexMap::new(),
+            shapes: vec![checkbox, radio, dropdown],
+            connections: vec![],
+        };
+
+        let svg = render_diagram_svg(&mut diagram);
+        assert!(svg.contains("data-wdoc-checkbox=\"true\""));
+        assert!(svg.contains("data-wdoc-checkbox-signal=\"enabled\""));
+        assert!(svg.contains("data-wdoc-radio=\"true\""));
+        assert!(svg.contains("data-wdoc-radio-value=\"Team\""));
+        assert!(svg.contains("data-wdoc-dropdown=\"true\""));
+        assert!(svg.contains("data-wdoc-dropdown-items=\"Dev,Stage,Prod\""));
+        assert!(svg.contains("initCheckbox"));
+        assert!(svg.contains("initRadio"));
+        assert!(svg.contains("initDropdown"));
         assert!(svg.contains("__wdocSetSignal"));
     }
 

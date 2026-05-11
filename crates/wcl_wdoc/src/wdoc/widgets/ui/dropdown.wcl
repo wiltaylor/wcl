@@ -3,6 +3,7 @@
         let h = attr_or(b, "height", 38)
         let label = attr_or(b, "label", "")
         let value = attr_or(b, "value", "")
+        let signal = attr_or(b, "signal", "")
         let placeholder = attr_or(b, "placeholder", "Select")
         let open = attr_or(b, "open", "false") == "true"
         let items_str = attr_or(b, "items", "Option A,Option B,Option C")
@@ -40,17 +41,38 @@
             fill = label_fill,
             z_index = 6
         })) : []
-        concat(concat(label_part, [
-            { kind = "rect", x = 0, y = field_y, width = w, height = field_h, rx = radius,
-              fill = field_fill, stroke = border_stroke, stroke_width = border_width },
-            { kind = "text", x = 10, y = field_y, width = w - 36, height = field_h,
-              content = shown_text, font_size = 12, anchor = "start", fill = shown_fill,
-              opacity = shown_opacity },
-            { kind = "line", x1 = w - 22, y1 = field_y + (field_h / 2) - 2,
-              x2 = w - 17, y2 = field_y + (field_h / 2) + 3,
-              stroke = label_fill, stroke_width = 1.5 },
-            { kind = "line", x1 = w - 17, y1 = field_y + (field_h / 2) + 3,
-              x2 = w - 12, y2 = field_y + (field_h / 2) - 2,
-              stroke = label_fill, stroke_width = 1.5 }
-        ]), menu)
+        [{
+            kind = "group",
+            id = to_string(b.id),
+            width = w,
+            height = h,
+            cursor = signal != "" ? "pointer" : attr_or(b, "cursor", "default"),
+            pointer_events = signal != "" ? "all" : attr_or(b, "pointer_events", "all"),
+            data_wdoc_dropdown = signal != "" ? "true" : "",
+            data_wdoc_dropdown_signal = signal,
+            data_wdoc_dropdown_value = value,
+            data_wdoc_dropdown_items = items_str,
+            data_wdoc_dropdown_placeholder = placeholder,
+            data_wdoc_dropdown_field_y = field_y,
+            data_wdoc_dropdown_field_h = field_h,
+            data_wdoc_dropdown_value_fill = attr_or(b, "value_fill", "currentColor"),
+            data_wdoc_dropdown_placeholder_fill = attr_or(b, "placeholder_fill", "currentColor"),
+            data_wdoc_dropdown_menu_fill = menu_fill,
+            data_wdoc_dropdown_field_fill = field_fill,
+            data_wdoc_dropdown_border_stroke = border_stroke,
+            data_wdoc_dropdown_label_fill = label_fill,
+            children = concat(concat(label_part, [
+                { kind = "rect", x = 0, y = field_y, width = w, height = field_h, rx = radius,
+                  fill = field_fill, stroke = border_stroke, stroke_width = border_width },
+                { kind = "text", x = 10, y = field_y, width = w - 36, height = field_h,
+                  content = shown_text, font_size = 12, anchor = "start", fill = shown_fill,
+                  opacity = shown_opacity, data_wdoc_dropdown_value_node = "true" },
+                { kind = "line", x1 = w - 22, y1 = field_y + (field_h / 2) - 2,
+                  x2 = w - 17, y2 = field_y + (field_h / 2) + 3,
+                  stroke = label_fill, stroke_width = 1.5 },
+                { kind = "line", x1 = w - 17, y1 = field_y + (field_h / 2) + 3,
+                  x2 = w - 12, y2 = field_y + (field_h / 2) - 2,
+                  stroke = label_fill, stroke_width = 1.5 }
+            ]), menu)
+        }]
     }

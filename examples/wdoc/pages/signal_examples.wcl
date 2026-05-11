@@ -10,6 +10,26 @@ page signal_examples {
         initial = 140
     }
 
+    signal notes {
+        initial = "Edit this note"
+    }
+
+    signal title_text {
+        initial = "Signal title"
+    }
+
+    signal enabled {
+        initial = true
+    }
+
+    signal plan {
+        initial = "Team"
+    }
+
+    signal environment {
+        initial = "Stage"
+    }
+
     binding progress_text {
         signal = "progress"
         target = "progress_readout"
@@ -30,6 +50,41 @@ page signal_examples {
         format = "{value}px"
     }
 
+    binding notes_text {
+        signal = "notes"
+        target = "notes_readout"
+        property = "text"
+        format = "Notes signal: {value}"
+    }
+
+    binding title_text_readout {
+        signal = "title_text"
+        target = "title_readout"
+        property = "text"
+        format = "Single-line signal: {value}"
+    }
+
+    binding enabled_text_readout {
+        signal = "enabled"
+        target = "enabled_readout"
+        property = "text"
+        format = "Checkbox signal: {value}"
+    }
+
+    binding plan_text_readout {
+        signal = "plan"
+        target = "plan_readout"
+        property = "text"
+        format = "Radio signal: {value}"
+    }
+
+    binding environment_text_readout {
+        signal = "environment"
+        target = "environment_readout"
+        property = "text"
+        format = "Dropdown signal: {value}"
+    }
+
     layout {
         vsplit signal_layout {
             split main {
@@ -41,16 +96,36 @@ page signal_examples {
                 }
 
                 paragraph intro {
-                    content = "This page declares a page-scoped signal and binds it to both normal content and diagram shape properties. Drag the slider to update the readout and the meter width."
+                    content = "This page declares page-scoped signals and binds them to both normal content and diagram shape properties. Change the controls to update the readouts."
                 }
 
                 paragraph progress_readout {
                     content = "Slider value: 140"
                 }
 
+                paragraph title_readout {
+                    content = "Single-line signal: Signal title"
+                }
+
+                paragraph notes_readout {
+                    content = "Notes signal: Edit this note"
+                }
+
+                paragraph enabled_readout {
+                    content = "Checkbox signal: true"
+                }
+
+                paragraph plan_readout {
+                    content = "Radio signal: Team"
+                }
+
+                paragraph environment_readout {
+                    content = "Dropdown signal: Stage"
+                }
+
                 diagram signal_demo {
                     width = 760
-                    height = 260
+                    height = 560
 
                     rect meter_back {
                         x = 70
@@ -110,11 +185,121 @@ page signal_examples {
                         fill = color_text
                         opacity = 0.72
                     }
+
+                    textbox title_editor {
+                        x = 70
+                        y = 235
+                        width = 360
+                        height = 56
+                        label = "Single-line textbox"
+                        value = "Signal title"
+                        placeholder = "Type a title"
+                        signal = "title_text"
+                        debounce_ms = 300
+                        multiline = "false"
+                        field_fill = color_code_bg
+                        border_stroke = color_nav_border
+                        label_fill = color_text
+                        value_fill = color_text
+                        placeholder_fill = color_text
+                    }
+
+                    textbox notes_editor {
+                        x = 70
+                        y = 310
+                        width = 360
+                        height = 94
+                        label = "Multiline textbox"
+                        value = "Edit this note"
+                        placeholder = "Type a note"
+                        signal = "notes"
+                        debounce_ms = 300
+                        multiline = "true"
+                        field_fill = color_code_bg
+                        border_stroke = color_nav_border
+                        label_fill = color_text
+                        value_fill = color_text
+                        placeholder_fill = color_text
+                    }
+
+                    checkbox enabled_toggle {
+                        x = 470
+                        y = 235
+                        width = 190
+                        height = 28
+                        label = "Enabled"
+                        signal = "enabled"
+                        checked = "true"
+                        field_fill = color_code_bg
+                        border_stroke = color_nav_border
+                        active_fill = color_success
+                        label_fill = color_text
+                    }
+
+                    radio plan_free {
+                        x = 470
+                        y = 292
+                        width = 190
+                        height = 28
+                        label = "Free"
+                        value = "Free"
+                        signal = "plan"
+                        field_fill = color_code_bg
+                        border_stroke = color_nav_border
+                        active_fill = color_link
+                        label_fill = color_text
+                    }
+
+                    radio plan_team {
+                        x = 470
+                        y = 326
+                        width = 190
+                        height = 28
+                        label = "Team"
+                        value = "Team"
+                        signal = "plan"
+                        selected = "true"
+                        field_fill = color_code_bg
+                        border_stroke = color_nav_border
+                        active_fill = color_link
+                        label_fill = color_text
+                    }
+
+                    radio plan_enterprise {
+                        x = 470
+                        y = 360
+                        width = 190
+                        height = 28
+                        label = "Enterprise"
+                        value = "Enterprise"
+                        signal = "plan"
+                        field_fill = color_code_bg
+                        border_stroke = color_nav_border
+                        active_fill = color_link
+                        label_fill = color_text
+                    }
+
+                    dropdown environment_picker {
+                        x = 470
+                        y = 430
+                        width = 210
+                        height = 56
+                        label = "Environment"
+                        value = "Stage"
+                        items = "Dev,Stage,Prod"
+                        signal = "environment"
+                        field_fill = color_code_bg
+                        border_stroke = color_nav_border
+                        menu_fill = color_bg
+                        label_fill = color_text
+                        value_fill = color_text
+                        placeholder_fill = color_text
+                    }
                 }
 
                 code source {
                     language = "wcl"
-                    content = "signal progress {\n    initial = 140\n}\n\nbinding progress_meter_width {\n    signal = \"progress\"\n    target = \"progress_meter\"\n    property = \"width\"\n}\n\nbinding progress_text {\n    signal = \"progress\"\n    target = \"progress_readout\"\n    property = \"text\"\n    format = \"Slider value: {value}\"\n}\n\ndiagram signal_demo {\n    rect progress_meter { width = 140 }\n    slider progress_control {\n        signal = \"progress\"\n        min = 40\n        max = 320\n        step = 10\n        value = 140\n    }\n}"
+                    content = "signal title_text {\n    initial = \"Signal title\"\n}\n\nsignal notes {\n    initial = \"Edit this note\"\n}\n\nsignal enabled {\n    initial = true\n}\n\nsignal plan {\n    initial = \"Team\"\n}\n\nsignal environment {\n    initial = \"Stage\"\n}\n\ndiagram signal_demo {\n    textbox title_editor {\n        signal = \"title_text\"\n        multiline = \"false\"\n        debounce_ms = 300\n        value = \"Signal title\"\n    }\n\n    textbox notes_editor {\n        signal = \"notes\"\n        multiline = \"true\"\n        debounce_ms = 300\n        value = \"Edit this note\"\n    }\n\n    checkbox enabled_toggle {\n        signal = \"enabled\"\n        checked = \"true\"\n    }\n\n    radio plan_team {\n        signal = \"plan\"\n        value = \"Team\"\n        selected = \"true\"\n    }\n\n    dropdown environment_picker {\n        signal = \"environment\"\n        value = \"Stage\"\n        items = \"Dev,Stage,Prod\"\n    }\n}"
                 }
             }
         }
