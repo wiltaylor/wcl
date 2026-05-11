@@ -522,8 +522,8 @@ namespace wdoc {
         @template("shape", "wdoc::widget_action_panel") @open schema "action_panel" { }
         @template("shape", "wdoc::widget_list_item") @open schema "list_item" { }
         @template("shape", "wdoc::widget_graph_node") @open schema "graph_node" { }
-        @parent(["wdoc::draw::graph_node"]) @open schema "graph_row" { }
-        @parent(["wdoc::draw::graph_node"]) @open schema "graph_divider" { }
+        @structural @parent(["wdoc::draw::graph_node"]) @open schema "graph_row" { }
+        @structural @parent(["wdoc::draw::graph_node"]) @open schema "graph_divider" { }
         @template("shape", "wdoc::widget_pie_chart") @open schema "pie_chart" { }
         @template("shape", "wdoc::widget_bar_chart") @open schema "bar_chart" { }
         @template("shape", "wdoc::widget_line_chart") @open schema "line_chart" { }
@@ -532,7 +532,7 @@ namespace wdoc {
             "wdoc::draw::bar_chart",
             "wdoc::draw::line_chart"
         ])
-        @open schema "chart_point" { }
+        @structural @open schema "chart_point" { }
         @parent(["wdoc::draw::text_block"]) @open schema "paragraph" { content: string }
         @parent(["wdoc::draw::text_block"]) @open schema "p" { content: string @text }
         @parent(["wdoc::draw::text_block"]) @open schema "code" {
@@ -573,6 +573,56 @@ namespace wdoc {
     }
 
     // --- Inline formatting functions ---
+
+    export let shape_default_attrs = (b) => {
+        let kind = b.kind
+        kind == "wdoc::draw::flowchart" ? {
+            align = "layered",
+            gap = 48,
+            content_left = 16,
+            content_top = 36,
+            content_right = 16,
+            content_bottom = 16
+        } : (
+            kind == "wdoc::draw::card" && attr_or(b, "title", "") != "" ? {
+                content_top = 36
+            } : (
+                kind == "wdoc::draw::phone" ? {
+                    content_top = 74,
+                    content_bottom = 50
+                } : (
+                    kind == "wdoc::draw::phone_landscape" ? {
+                        content_left = 18,
+                        content_top = 68,
+                        content_right = 28,
+                        content_bottom = 14
+                    } : (
+                        kind == "wdoc::draw::browser" ? {
+                            content_top = 72
+                        } : (
+                            kind == "wdoc::draw::window" ? {
+                                content_top = 36
+                            } : (
+                                kind == "wdoc::draw::tablet" ? {
+                                    content_left = 18,
+                                    content_top = 42,
+                                    content_right = 18,
+                                    content_bottom = 24
+                                } : (
+                                    kind == "wdoc::draw::tablet_landscape" ? {
+                                        content_left = 18,
+                                        content_top = 42,
+                                        content_right = 24,
+                                        content_bottom = 18
+                                    } : null
+                                )
+                            )
+                        )
+                    )
+                )
+            )
+        )
+    }
 
     export let html_escape = value => replace(replace(replace(replace(to_string(value), "&", "&amp;"), "<", "&lt;"), ">", "&gt;"), "\"", "&quot;")
 

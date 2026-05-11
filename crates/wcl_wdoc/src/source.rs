@@ -78,6 +78,22 @@ fn collect_draw_schema_names(doc: &wcl_lang::Document) -> HashSet<String> {
     names
 }
 
+fn collect_structural_shape_schema_names(doc: &wcl_lang::Document) -> HashSet<String> {
+    let mut names = HashSet::new();
+    for item in &doc.ast.items {
+        if let ast::DocItem::Body(ast::BodyItem::Schema(schema)) = item {
+            if schema
+                .decorators
+                .iter()
+                .any(|dec| dec.name.name == "structural")
+            {
+                names.insert(schema_name_literal(schema));
+            }
+        }
+    }
+    names
+}
+
 fn schema_name_literal(schema: &ast::Schema) -> String {
     schema
         .name
@@ -726,15 +742,13 @@ fn render_diagram_with_ctx(br: &BlockRef, ctx: &ExtractCtx) -> String {
 
     let mut shapes = Vec::new();
     let mut connections = Vec::new();
-    let graph_node_connected_ports = diagram_graph_node_connected_ports(br);
+    let connected_ports = diagram_connected_ports(br);
     let dopesheets = diagram_dopesheets(br);
 
     let mut source_order = 0;
     for val in br.attributes.values() {
         if let Value::BlockRef(child) = val {
-            if let Some(annotated) =
-                graph_node_with_connected_ports(child, &graph_node_connected_ports)
-            {
+            if let Some(annotated) = block_with_connected_ports(child, &connected_ports) {
                 collect_shape_or_connection(
                     &annotated,
                     &mut shapes,
@@ -757,8 +771,7 @@ fn render_diagram_with_ctx(br: &BlockRef, ctx: &ExtractCtx) -> String {
         }
     }
     for child in &br.children {
-        if let Some(annotated) = graph_node_with_connected_ports(child, &graph_node_connected_ports)
-        {
+        if let Some(annotated) = block_with_connected_ports(child, &connected_ports) {
             collect_shape_or_connection(
                 &annotated,
                 &mut shapes,
@@ -845,39 +858,45 @@ fn append_class_attr(attrs: &mut IndexMap<String, String>, class_name: &str) {
     }
 }
 
-fn diagram_graph_node_connected_ports(diagram: &BlockRef) -> HashMap<String, Vec<String>> {
-    let mut graph_node_ids = HashSet::new();
+fn diagram_connected_ports(diagram: &BlockRef) -> HashMap<String, Vec<String>> {
+    let mut shape_ids = HashSet::new();
     for val in diagram.attributes.values() {
         if let Value::BlockRef(child) = val {
-            collect_graph_node_id(child, &mut graph_node_ids);
+            collect_block_ids(child, &mut shape_ids);
         }
     }
     for child in &diagram.children {
-        collect_graph_node_id(child, &mut graph_node_ids);
+        collect_block_ids(child, &mut shape_ids);
     }
 
     let mut connected_ports: HashMap<String, Vec<String>> = HashMap::new();
-    if graph_node_ids.is_empty() {
+    if shape_ids.is_empty() {
         return connected_ports;
     }
 
     for val in diagram.attributes.values() {
         if let Value::BlockRef(child) = val {
-            collect_connection_port_usage(child, &graph_node_ids, &mut connected_ports);
+            collect_connection_port_usage(child, &shape_ids, &mut connected_ports);
         }
     }
     for child in &diagram.children {
-        collect_connection_port_usage(child, &graph_node_ids, &mut connected_ports);
+        collect_connection_port_usage(child, &shape_ids, &mut connected_ports);
     }
 
     connected_ports
 }
 
-fn collect_graph_node_id(block: &BlockRef, ids: &mut HashSet<String>) {
-    if is_draw_graph_node_block(block) {
-        if let Some(id) = block.id.as_deref().filter(|id| !id.is_empty()) {
-            ids.insert(id.to_string());
+fn collect_block_ids(block: &BlockRef, ids: &mut HashSet<String>) {
+    if let Some(id) = block.id.as_deref().filter(|id| !id.is_empty()) {
+        ids.insert(id.to_string());
+    }
+    for value in block.attributes.values() {
+        if let Value::BlockRef(child) = value {
+            collect_block_ids(child, ids);
         }
+    }
+    for child in &block.children {
+        collect_block_ids(child, ids);
     }
 }
 
@@ -918,13 +937,10 @@ fn collect_endpoint_port_usage(
     }
 }
 
-fn graph_node_with_connected_ports(
+fn block_with_connected_ports(
     block: &BlockRef,
     connected_ports: &HashMap<String, Vec<String>>,
 ) -> Option<BlockRef> {
-    if !is_draw_graph_node_block(block) {
-        return None;
-    }
     let id = block.id.as_deref()?;
     let ports = connected_ports.get(id)?;
     if ports.is_empty() {
@@ -1003,7 +1019,7 @@ fn collect_shape_or_connection(
         || is_draw_animation_block(br)
         || is_draw_keyframe_block(br)
         || is_draw_dopesheet_block(br)
-        || is_draw_widget_structural_block(br)
+        || is_draw_widget_structural_block(br, ctx)
     {
         return;
     }
@@ -1064,7 +1080,7 @@ fn collect_shape_or_connection(
                 if is_draw_event_block(child_br)
                     || is_draw_animation_block(child_br)
                     || is_draw_keyframe_block(child_br)
-                    || is_draw_widget_structural_block(child_br)
+                    || is_draw_widget_structural_block(child_br, ctx)
                 {
                     continue;
                 }
@@ -1083,7 +1099,7 @@ fn collect_shape_or_connection(
             if is_draw_event_block(child_br)
                 || is_draw_animation_block(child_br)
                 || is_draw_keyframe_block(child_br)
-                || is_draw_widget_structural_block(child_br)
+                || is_draw_widget_structural_block(child_br, ctx)
             {
                 continue;
             }
@@ -1111,7 +1127,7 @@ fn collect_shape_or_connection(
                 .or_insert_with(|| "none".to_string());
             a.insert("_wdoc_composite".to_string(), "true".to_string());
             assign_default_widget_class(&mut a, br);
-            apply_builtin_widget_content_insets(&mut a, br);
+            apply_wcl_shape_default_attrs(&mut a, br, ctx);
         }
 
         let pf =
@@ -1347,60 +1363,44 @@ fn html_unescape(s: &str) -> String {
         .replace("&amp;", "&")
 }
 
-fn apply_builtin_widget_content_insets(attrs: &mut IndexMap<String, String>, br: &BlockRef) {
-    let kind = br.kind.rsplit("::").next().unwrap_or(br.kind.as_str());
-    match kind {
-        "flowchart" => {
-            attrs
-                .entry("align".to_string())
-                .or_insert_with(|| "layered".to_string());
-            attrs
-                .entry("gap".to_string())
-                .or_insert_with(|| "48".to_string());
-            insert_default_content_inset(attrs, "left", 16.0);
-            insert_default_content_inset(attrs, "top", 36.0);
-            insert_default_content_inset(attrs, "right", 16.0);
-            insert_default_content_inset(attrs, "bottom", 16.0);
+fn apply_wcl_shape_default_attrs(
+    attrs: &mut IndexMap<String, String>,
+    br: &BlockRef,
+    ctx: &ExtractCtx,
+) {
+    let Some(func) = ctx.template_helpers.get("wdoc::shape_default_attrs") else {
+        return;
+    };
+
+    let Ok(Value::Map(defaults)) = wcl_lang::call_lambda_with_env(
+        func,
+        &[Value::BlockRef(br.clone())],
+        &ctx.builtins,
+        &ctx.template_helpers,
+    ) else {
+        return;
+    };
+
+    for (key, value) in defaults {
+        let Some(value) = shape_default_attr_value(&value) else {
+            continue;
+        };
+        if let Some(edge) = key.strip_prefix("content_") {
+            insert_default_content_inset(attrs, edge, value);
+        } else {
+            attrs.entry(key).or_insert(value);
         }
-        "card" => {
-            if br
-                .attributes
-                .get("title")
-                .and_then(|v| v.as_string())
-                .is_some_and(|title| !title.is_empty())
-            {
-                insert_default_content_inset(attrs, "top", 36.0);
-            }
-        }
-        "phone" => {
-            insert_default_content_inset(attrs, "top", 74.0);
-            insert_default_content_inset(attrs, "bottom", 50.0);
-        }
-        "phone_landscape" => {
-            insert_default_content_inset(attrs, "left", 18.0);
-            insert_default_content_inset(attrs, "top", 68.0);
-            insert_default_content_inset(attrs, "right", 28.0);
-            insert_default_content_inset(attrs, "bottom", 14.0);
-        }
-        "browser" => {
-            insert_default_content_inset(attrs, "top", 72.0);
-        }
-        "window" => {
-            insert_default_content_inset(attrs, "top", 36.0);
-        }
-        "tablet" => {
-            insert_default_content_inset(attrs, "left", 18.0);
-            insert_default_content_inset(attrs, "top", 42.0);
-            insert_default_content_inset(attrs, "right", 18.0);
-            insert_default_content_inset(attrs, "bottom", 24.0);
-        }
-        "tablet_landscape" => {
-            insert_default_content_inset(attrs, "left", 18.0);
-            insert_default_content_inset(attrs, "top", 42.0);
-            insert_default_content_inset(attrs, "right", 24.0);
-            insert_default_content_inset(attrs, "bottom", 18.0);
-        }
-        _ => {}
+    }
+}
+
+fn shape_default_attr_value(value: &Value) -> Option<String> {
+    match value {
+        Value::String(s) => Some(s.clone()),
+        Value::Int(i) => Some(i.to_string()),
+        Value::Float(f) => Some(format_number(*f)),
+        Value::Bool(b) => Some(b.to_string()),
+        Value::Null | Value::BlockRef(_) => None,
+        _ => Some(format!("{value}")),
     }
 }
 
@@ -1416,13 +1416,10 @@ fn assign_default_widget_class(attrs: &mut IndexMap<String, String>, br: &BlockR
     attrs.insert("class".to_string(), format!("wdoc-widget-{kind}"));
 }
 
-fn insert_default_content_inset(attrs: &mut IndexMap<String, String>, edge: &str, value: f64) {
+fn insert_default_content_inset(attrs: &mut IndexMap<String, String>, edge: &str, value: String) {
     let public_key = format!("content_{edge}");
     let private_key = format!("_wdoc_content_{edge}");
-    let value = attrs
-        .get(&public_key)
-        .cloned()
-        .unwrap_or_else(|| format_number(value));
+    let value = attrs.get(&public_key).cloned().unwrap_or(value);
     attrs.entry(private_key).or_insert(value);
 }
 
@@ -2672,40 +2669,8 @@ fn is_wdoc_binding_block(block: &BlockRef) -> bool {
     matches!(block.kind.as_str(), "wdoc::binding" | "binding")
 }
 
-fn is_draw_graph_row_block(block: &BlockRef) -> bool {
-    matches!(
-        block.kind.as_str(),
-        "wdoc::draw::graph_row" | "draw::graph_row" | "graph_row"
-    )
-}
-
-fn is_draw_graph_divider_block(block: &BlockRef) -> bool {
-    matches!(
-        block.kind.as_str(),
-        "wdoc::draw::graph_divider" | "draw::graph_divider" | "graph_divider"
-    )
-}
-
-fn is_draw_graph_node_structural_block(block: &BlockRef) -> bool {
-    is_draw_graph_row_block(block) || is_draw_graph_divider_block(block)
-}
-
-fn is_draw_chart_point_block(block: &BlockRef) -> bool {
-    matches!(
-        block.kind.as_str(),
-        "wdoc::draw::chart_point" | "draw::chart_point" | "chart_point"
-    )
-}
-
-fn is_draw_widget_structural_block(block: &BlockRef) -> bool {
-    is_draw_graph_node_structural_block(block) || is_draw_chart_point_block(block)
-}
-
-fn is_draw_graph_node_block(block: &BlockRef) -> bool {
-    matches!(
-        block.kind.as_str(),
-        "wdoc::draw::graph_node" | "draw::graph_node" | "graph_node"
-    )
+fn is_draw_widget_structural_block(block: &BlockRef, ctx: &ExtractCtx) -> bool {
+    ctx.structural_shape_schema_names.contains(&block.kind)
 }
 
 fn val_f64(v: Option<&Value>) -> Option<f64> {
@@ -2724,6 +2689,7 @@ fn val_f64(v: Option<&Value>) -> Option<f64> {
 struct ExtractCtx {
     template_map: HashMap<(String, String), String>,
     draw_schema_names: HashSet<String>,
+    structural_shape_schema_names: HashSet<String>,
     template_helpers: HashMap<String, FunctionValue>,
     markup_rules: Vec<MarkupRule>,
     builtins: HashMap<String, BuiltinFn>,
@@ -3053,6 +3019,7 @@ mod wdoc_draw_tests {
         ExtractCtx {
             template_map: HashMap::new(),
             draw_schema_names: HashSet::new(),
+            structural_shape_schema_names: HashSet::new(),
             template_helpers: HashMap::new(),
             markup_rules: Vec::new(),
             builtins: HashMap::new(),
@@ -3236,6 +3203,8 @@ mod wdoc_draw_tests {
         ctx.template_helpers = collect_template_helpers(&doc);
         ctx.markup_rules = collect_markup_rules(&doc, &ctx.template_helpers).unwrap();
         ctx.builtins = functions.functions;
+        ctx.draw_schema_names = collect_draw_schema_names(&doc);
+        ctx.structural_shape_schema_names = collect_structural_shape_schema_names(&doc);
         ctx
     }
 
@@ -3259,6 +3228,7 @@ mod wdoc_draw_tests {
         ExtractCtx {
             template_map: collect_template_map(&doc),
             draw_schema_names: collect_draw_schema_names(&doc),
+            structural_shape_schema_names: collect_structural_shape_schema_names(&doc),
             template_helpers,
             markup_rules,
             builtins: functions.functions,
@@ -3362,6 +3332,7 @@ mod wdoc_draw_tests {
         let ctx = ExtractCtx {
             template_map: collect_template_map(&doc),
             draw_schema_names: collect_draw_schema_names(&doc),
+            structural_shape_schema_names: collect_structural_shape_schema_names(&doc),
             markup_rules: collect_markup_rules(&doc, &template_helpers).unwrap(),
             template_helpers,
             builtins: functions.functions,
@@ -3568,13 +3539,14 @@ mod wdoc_draw_tests {
     }
 
     #[test]
-    fn builtin_widget_content_insets_are_added_to_composite_container_attrs() {
+    fn wcl_widget_content_insets_are_added_to_composite_container_attrs() {
+        let ctx = wdoc_library_ctx();
         let mut attrs = IndexMap::new();
         let mut block_attrs = IndexMap::new();
         string_attr(&mut block_attrs, "title", "Profile");
         let card = block("wdoc::draw::card", Some("panel"), block_attrs, vec![]);
 
-        apply_builtin_widget_content_insets(&mut attrs, &card);
+        apply_wcl_shape_default_attrs(&mut attrs, &card, &ctx);
 
         assert_eq!(
             attrs.get("_wdoc_content_top").map(String::as_str),
@@ -3588,7 +3560,7 @@ mod wdoc_draw_tests {
             IndexMap::new(),
             vec![],
         );
-        apply_builtin_widget_content_insets(&mut window_attrs, &window);
+        apply_wcl_shape_default_attrs(&mut window_attrs, &window, &ctx);
         assert_eq!(
             window_attrs.get("_wdoc_content_top").map(String::as_str),
             Some("36")
@@ -3601,7 +3573,7 @@ mod wdoc_draw_tests {
             IndexMap::new(),
             vec![],
         );
-        apply_builtin_widget_content_insets(&mut tablet_attrs, &tablet);
+        apply_wcl_shape_default_attrs(&mut tablet_attrs, &tablet, &ctx);
         assert_eq!(
             tablet_attrs.get("_wdoc_content_left").map(String::as_str),
             Some("18")
@@ -3626,7 +3598,7 @@ mod wdoc_draw_tests {
             IndexMap::new(),
             vec![],
         );
-        apply_builtin_widget_content_insets(&mut phone_landscape_attrs, &phone_landscape);
+        apply_wcl_shape_default_attrs(&mut phone_landscape_attrs, &phone_landscape, &ctx);
         assert_eq!(
             phone_landscape_attrs
                 .get("_wdoc_content_top")
@@ -3647,7 +3619,7 @@ mod wdoc_draw_tests {
             IndexMap::new(),
             vec![],
         );
-        apply_builtin_widget_content_insets(&mut tablet_landscape_attrs, &tablet_landscape);
+        apply_wcl_shape_default_attrs(&mut tablet_landscape_attrs, &tablet_landscape, &ctx);
         assert_eq!(
             tablet_landscape_attrs
                 .get("_wdoc_content_top")
@@ -3664,11 +3636,12 @@ mod wdoc_draw_tests {
 
     #[test]
     fn explicit_widget_content_insets_override_defaults() {
+        let ctx = wdoc_library_ctx();
         let mut attrs = IndexMap::new();
         attrs.insert("content_top".to_string(), "96".to_string());
         let phone = block("wdoc::draw::phone", Some("screen"), IndexMap::new(), vec![]);
 
-        apply_builtin_widget_content_insets(&mut attrs, &phone);
+        apply_wcl_shape_default_attrs(&mut attrs, &phone, &ctx);
 
         assert_eq!(
             attrs.get("_wdoc_content_top").map(String::as_str),
@@ -4718,6 +4691,93 @@ mod wdoc_draw_tests {
         assert_eq!(shapes[0].kind_name, "my::task");
         assert_eq!(shapes[0].children.len(), 1);
         assert_eq!(shapes[0].children[0].kind, crate::shapes::ShapeKind::Rect);
+    }
+
+    #[test]
+    fn structural_shape_schemas_are_metadata_driven() {
+        let ctx = custom_shape_ctx(
+            r##"
+            namespace wdoc::draw {
+                @structural @open schema "widget_data" { }
+            }
+
+            export let widget_box = (b) => [
+                { kind = "rect", x = 0, y = 0, width = 120, height = 50, fill = "#123456" }
+            ]
+            "##,
+            "wdoc::draw::widget_box",
+            "widget_box",
+        );
+
+        let mut attrs = IndexMap::new();
+        int_attr(&mut attrs, "width", 120);
+        int_attr(&mut attrs, "height", 50);
+        let diagram = block(
+            "wdoc::draw::diagram",
+            Some("custom_structural"),
+            IndexMap::new(),
+            vec![block(
+                "wdoc::draw::widget_box",
+                Some("box"),
+                attrs,
+                vec![block(
+                    "wdoc::draw::widget_data",
+                    Some("metadata"),
+                    IndexMap::new(),
+                    vec![],
+                )],
+            )],
+        );
+
+        let html = render_diagram_with_ctx(&diagram, &ctx);
+        assert!(html.contains("#123456"));
+        assert!(!html.contains("metadata"));
+    }
+
+    #[test]
+    fn connected_port_context_is_available_to_any_shape_template() {
+        let ctx = custom_shape_ctx(
+            r##"
+            export let widget_socket = (b) => {
+                let ports = attr_or(b, "_wdoc_connected_ports", "")
+                [
+                    { kind = "text", x = 0, y = 0, width = 120, height = 20, content = ports }
+                ]
+            }
+            "##,
+            "wdoc::draw::socket",
+            "widget_socket",
+        );
+
+        let mut socket_attrs = IndexMap::new();
+        int_attr(&mut socket_attrs, "width", 120);
+        int_attr(&mut socket_attrs, "height", 20);
+        let mut sink_attrs = IndexMap::new();
+        int_attr(&mut sink_attrs, "x", 180);
+        int_attr(&mut sink_attrs, "width", 20);
+        int_attr(&mut sink_attrs, "height", 20);
+        let mut connection_attrs = IndexMap::new();
+        string_attr(&mut connection_attrs, "from", "source.out");
+        string_attr(&mut connection_attrs, "to", "sink");
+
+        let diagram = block(
+            "wdoc::draw::diagram",
+            Some("ports"),
+            IndexMap::new(),
+            vec![
+                block("wdoc::draw::socket", Some("source"), socket_attrs, vec![]),
+                block("wdoc::draw::rect", Some("sink"), sink_attrs, vec![]),
+                block(
+                    "wdoc::draw::connection",
+                    Some("edge"),
+                    connection_attrs,
+                    vec![],
+                ),
+            ],
+        );
+
+        let html = render_diagram_with_ctx(&diagram, &ctx);
+        assert!(html.contains(">out</text>"));
     }
 
     #[test]
@@ -6899,6 +6959,7 @@ pub fn parse_extract_from_files(
     // Build template dispatch context
     let template_map = collect_template_map(&doc);
     let draw_schema_names = collect_draw_schema_names(&doc);
+    let structural_shape_schema_names = collect_structural_shape_schema_names(&doc);
     let builtins: HashMap<String, BuiltinFn> = functions.functions;
     let template_helpers = collect_template_helpers(&doc);
     let markup_rules = collect_markup_rules(&doc, &template_helpers)?;
@@ -6907,6 +6968,7 @@ pub fn parse_extract_from_files(
     let ctx = ExtractCtx {
         template_map,
         draw_schema_names,
+        structural_shape_schema_names,
         template_helpers,
         markup_rules,
         builtins,

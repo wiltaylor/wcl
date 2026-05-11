@@ -66,6 +66,13 @@ impl DecoratorSchemaRegistry {
             span: Span::dummy(),
         });
         self.insert(ResolvedDecoratorSchema {
+            name: "structural".to_string(),
+            targets: vec![DecoratorTarget::Schema],
+            params: vec![],
+            constraints: vec![],
+            span: Span::dummy(),
+        });
+        self.insert(ResolvedDecoratorSchema {
             name: "default".to_string(),
             targets: vec![DecoratorTarget::Schema],
             params: vec![DecoratorParam {
