@@ -1,0 +1,122 @@
+import "./shared.wcl"
+
+// ── Signal Examples page ──
+
+page signal_examples {
+    section = "my_docs.diagrams.signal_examples"
+    title = "Signals and Bindings"
+
+    signal progress {
+        initial = 140
+    }
+
+    binding progress_text {
+        signal = "progress"
+        target = "progress_readout"
+        property = "text"
+        format = "Slider value: {value}"
+    }
+
+    binding progress_meter_width {
+        signal = "progress"
+        target = "progress_meter"
+        property = "width"
+    }
+
+    binding progress_meter_label {
+        signal = "progress"
+        target = "meter_label"
+        property = "text"
+        format = "{value}px"
+    }
+
+    layout {
+        vsplit signal_layout {
+            split main {
+                size = 100
+
+                heading h1 {
+                    level = 1
+                    content = wdoc::icon("mouse-pointer") + " Signals and Bindings"
+                }
+
+                paragraph intro {
+                    content = "This page declares a page-scoped signal and binds it to both normal content and diagram shape properties. Drag the slider to update the readout and the meter width."
+                }
+
+                paragraph progress_readout {
+                    content = "Slider value: 140"
+                }
+
+                diagram signal_demo {
+                    width = 760
+                    height = 260
+
+                    rect meter_back {
+                        x = 70
+                        y = 60
+                        width = 320
+                        height = 34
+                        rx = 8
+                        fill = color_code_bg
+                        stroke = color_code_border
+                        stroke_width = 1
+                    }
+
+                    rect progress_meter {
+                        x = 70
+                        y = 60
+                        width = 140
+                        height = 34
+                        rx = 8
+                        fill = color_link
+                        opacity = 0.82
+                    }
+
+                    text meter_label {
+                        x = 410
+                        y = 58
+                        width = 110
+                        height = 38
+                        content = "140px"
+                        font_size = 16
+                        anchor = "start"
+                        fill = color_text
+                    }
+
+                    slider progress_control {
+                        x = 70
+                        y = 145
+                        width = 320
+                        height = 32
+                        signal = "progress"
+                        min = 40
+                        max = 320
+                        step = 10
+                        value = 140
+                        fill = color_success
+                        track_fill = color_nav_border
+                        thumb_stroke = color_success
+                    }
+
+                    text slider_caption {
+                        x = 70
+                        y = 184
+                        width = 320
+                        height = 24
+                        content = "Drag the slider"
+                        font_size = 13
+                        anchor = "middle"
+                        fill = color_text
+                        opacity = 0.72
+                    }
+                }
+
+                code source {
+                    language = "wcl"
+                    content = "signal progress {\n    initial = 140\n}\n\nbinding progress_meter_width {\n    signal = \"progress\"\n    target = \"progress_meter\"\n    property = \"width\"\n}\n\nbinding progress_text {\n    signal = \"progress\"\n    target = \"progress_readout\"\n    property = \"text\"\n    format = \"Slider value: {value}\"\n}\n\ndiagram signal_demo {\n    rect progress_meter { width = 140 }\n    slider progress_control {\n        signal = \"progress\"\n        min = 40\n        max = 320\n        step = 10\n        value = 140\n    }\n}"
+                }
+            }
+        }
+    }
+}

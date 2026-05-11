@@ -1,5 +1,6 @@
 header.wcl
 widgets/ui/button.wcl
+widgets/ui/slider.wcl
 widgets/ui/phone.wcl
 widgets/ui/phone_landscape.wcl
 widgets/ui/browser.wcl

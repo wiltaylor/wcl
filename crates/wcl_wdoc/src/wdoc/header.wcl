@@ -33,6 +33,21 @@ namespace wdoc {
         title: string
     }
 
+    @parent(["wdoc::page"]) @open
+    schema "signal" {
+        initial: any @optional
+        type: string @optional
+    }
+
+    @parent(["wdoc::page", "wdoc::layout"]) @open
+    schema "binding" {
+        signal: string
+        target: string
+        property: string
+        path: string @optional
+        format: string @optional
+    }
+
     @open
     schema "section" { }
 
@@ -406,6 +421,7 @@ namespace wdoc {
             "wdoc::draw::tablet",
             "wdoc::draw::tablet_landscape",
             "wdoc::draw::button",
+            "wdoc::draw::slider",
             "wdoc::draw::input",
             "wdoc::draw::card",
             "wdoc::draw::avatar",
@@ -446,13 +462,18 @@ namespace wdoc {
         ])
         @open schema "event" {
             trigger: string
-            state: string
+            state: string @optional
             target: string @optional
             button: string @optional
             mode: string @optional
             duration_ms: i32 @optional
             prevent_default: bool @optional
             guard_targets: string @optional
+        }
+        @parent(["wdoc::draw::event"]) @open schema "set_signal" {
+            signal: string
+            value: any @optional
+            path: string @optional
         }
 
         // --- Composite widgets ---
@@ -468,6 +489,7 @@ namespace wdoc {
         @template("shape", "wdoc::widget_tablet")   @open schema "tablet" { }
         @template("shape", "wdoc::widget_tablet_landscape") @open schema "tablet_landscape" { }
         @template("shape", "wdoc::widget_button")   @open schema "button" { }
+        @template("shape", "wdoc::widget_slider")   @open schema "slider" { }
         @template("shape", "wdoc::widget_input")    @open schema "input" { }
         @template("shape", "wdoc::widget_card")     @open schema "card" { }
         @template("shape", "wdoc::widget_avatar")   @open schema "avatar" { }

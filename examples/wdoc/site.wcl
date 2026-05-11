@@ -40,6 +40,7 @@ doc my_docs {
         section chart_examples "Chart Widgets" {}
         section text_block_examples "Text Block Diagrams" {}
         section interactions "Diagram Interactions" {}
+        section signal_examples "Signals and Bindings" {}
         section animation_examples "Keyframe Animations" {}
         section game_design_examples "Game Design Primitives" {}
         section flowchart_examples "Flowchart Shapes" {}

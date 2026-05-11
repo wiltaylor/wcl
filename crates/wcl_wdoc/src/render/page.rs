@@ -104,9 +104,51 @@ pub fn render_page(doc: &WdocDocument, page: &Page, css_path: &str) -> String {
     html.push_str("</main>\n");
 
     // Theme + highlight.js script
+    if page_has_runtime(page) {
+        html.push_str(&page_signal_runtime(page));
+    }
     html.push_str(THEME_SCRIPT);
     html.push_str("\n</body>\n</html>\n");
     html
+}
+
+fn page_has_runtime(page: &Page) -> bool {
+    !page.signals.is_empty() || !page.bindings.is_empty()
+}
+
+fn page_signal_runtime(page: &Page) -> String {
+    let signals = page
+        .signals
+        .iter()
+        .map(|signal| {
+            serde_json::json!({
+                "name": signal.name,
+                "initial": signal.initial,
+                "type": signal.type_name,
+            })
+        })
+        .collect::<Vec<_>>();
+    let bindings = page
+        .bindings
+        .iter()
+        .map(|binding| {
+            serde_json::json!({
+                "name": binding.name,
+                "signal": binding.signal,
+                "target": binding.target,
+                "property": binding.property,
+                "path": binding.path,
+                "format": binding.format,
+            })
+        })
+        .collect::<Vec<_>>();
+    let data = serde_json::json!({
+        "signals": signals,
+        "bindings": bindings,
+    })
+    .to_string()
+    .replace("</", "<\\/");
+    format!("<script>(function(cfg){{if(window.__wdocPageSignalsInit){{window.__wdocPageSignalsInit(cfg);return;}}function val(v){{return v&&typeof v==='object'&&Object.prototype.hasOwnProperty.call(v,'initial')?v.initial:v;}}function clone(v){{return v==null||typeof v!=='object'?v:JSON.parse(JSON.stringify(v));}}function text(v){{if(v==null)return'';return typeof v==='string'?v:JSON.stringify(v);}}function readPath(v,p){{if(!p)return v;return String(p).replace(/\\[(\\d+)\\]/g,'.$1').split('.').filter(Boolean).reduce(function(a,k){{return a==null?undefined:a[k];}},v);}}function writePath(v,p,n){{if(!p)return n;var root=clone(v),cur=root,parts=String(p).replace(/\\[(\\d+)\\]/g,'.$1').split('.').filter(Boolean);for(var i=0;i<parts.length-1;i++){{var k=parts[i];if(cur[k]==null)cur[k]=/^\\d+$/.test(parts[i+1])?[]:{{}};cur=cur[k];}}cur[parts[parts.length-1]]=n;return root;}}function fmt(v,f){{var s=text(v);return f?String(f).replace(/\\{{value\\}}/g,s):s;}}function findTarget(id){{return document.querySelector('[data-wdoc-id=\"'+css(id)+'\"]')||document.querySelector('[data-wdoc-content-id=\"'+css(id)+'\"]')||document.getElementById(id);}}function css(s){{return String(s).replace(/\\\\/g,'\\\\\\\\').replace(/\"/g,'\\\\\"');}}function applyProp(el,prop,value){{if(!el)return;var s=text(value);if(prop==='text'||prop==='content'){{el.textContent=s;return;}}if(prop==='html'){{el.innerHTML=s;return;}}if(prop==='class'){{el.setAttribute('class',s);return;}}if(prop.indexOf('style.')===0){{el.style.setProperty(prop.slice(6).replace(/_/g,'-'),s);return;}}if(window.__wdocDiagramApplyProperty&&el.hasAttribute('data-wdoc-id')&&window.__wdocDiagramApplyProperty(el,prop,value))return;el.setAttribute(prop.replace(/_/g,'-'),s);}}function apply(){{bindings.forEach(function(b){{applyProp(findTarget(b.target),b.property,fmt(readPath(signals[b.signal],b.path),b.format));}});}}function setSignal(name,value,path){{signals[name]=writePath(signals[name],path,value);apply();document.dispatchEvent(new CustomEvent('wdoc:signal-change',{{detail:{{name:name,value:signals[name]}}}}));}}var signals={{}},bindings=cfg.bindings||[];(cfg.signals||[]).forEach(function(s){{signals[s.name]=clone(val(s));}});window.__wdocSignals=signals;window.__wdocSetSignal=setSignal;window.__wdocPageSignalsInit=function(next){{cfg=next||cfg;bindings=cfg.bindings||[];signals={{}};(cfg.signals||[]).forEach(function(s){{signals[s.name]=clone(val(s));}});window.__wdocSignals=signals;apply();}};if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',apply);else apply();}})({data});</script>\n")
 }
 
 fn render_nav(doc: &WdocDocument, active_section: &str, html: &mut String) {

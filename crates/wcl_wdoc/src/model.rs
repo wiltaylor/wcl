@@ -32,6 +32,8 @@ pub struct Page {
     pub section_id: String,
     pub title: String,
     pub layout: Layout,
+    pub signals: Vec<WdocSignal>,
+    pub bindings: Vec<WdocBinding>,
 }
 
 /// The layout container for a page.
@@ -81,6 +83,25 @@ pub struct ContentBlock {
     pub rendered_html: String,
     /// Style class from @style decorator
     pub style: Option<String>,
+}
+
+/// A page-scoped dynamic value available to wdoc runtime bindings.
+#[derive(Debug, Clone)]
+pub struct WdocSignal {
+    pub name: String,
+    pub initial: serde_json::Value,
+    pub type_name: Option<String>,
+}
+
+/// A declarative runtime binding from a signal value to an HTML/SVG property.
+#[derive(Debug, Clone)]
+pub struct WdocBinding {
+    pub name: Option<String>,
+    pub signal: String,
+    pub target: String,
+    pub property: String,
+    pub path: Option<String>,
+    pub format: Option<String>,
 }
 
 /// A named style definition.

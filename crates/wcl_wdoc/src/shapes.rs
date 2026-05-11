@@ -252,6 +252,14 @@ pub struct DiagramEvent {
     pub duration_ms: Option<i32>,
     pub prevent_default: Option<bool>,
     pub guard_targets: Option<String>,
+    pub signal_actions: Vec<SignalAction>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SignalAction {
+    pub signal: String,
+    pub value: serde_json::Value,
+    pub path: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -704,6 +712,9 @@ fn shape_needs_runtime(shape: &ShapeNode) -> bool {
         || shape.kind == ShapeKind::Map
         || shape.attrs.contains_key("_wdoc_state_z")
         || shape.attrs.contains_key("_wdoc_state_animation")
+        || shape.attrs.get("_wdoc_runtime").map(|v| v == "true") == Some(true)
+        || shape.attrs.contains_key("data_wdoc_slider")
+        || shape.attrs.contains_key("data-wdoc-slider")
         || shape.attrs.contains_key("transparent_color")
         || shape.children.iter().any(shape_needs_runtime)
 }
@@ -4307,6 +4318,13 @@ fn svg_style_attrs(attrs: &IndexMap<String, String>) -> String {
             write!(s, " {svg_name}=\"{escaped}\"").unwrap();
         }
     }
+    for (name, val) in attrs {
+        if name.starts_with("data_wdoc_") || name.starts_with("data-wdoc-") {
+            let svg_name = name.replace('_', "-");
+            let escaped = svg_escape_attr(val);
+            write!(s, " {svg_name}=\"{escaped}\"").unwrap();
+        }
+    }
     s
 }
 
@@ -4365,6 +4383,8 @@ fn append_shape_runtime_attrs(node: &ShapeNode, out: &mut String) {
     if node.events.is_empty()
         && !node.attrs.contains_key("_wdoc_state_z")
         && node.attrs.get("_wdoc_runtime").map(|v| v == "true") != Some(true)
+        && !node.attrs.contains_key("data_wdoc_slider")
+        && !node.attrs.contains_key("data-wdoc-slider")
     {
         return;
     }
@@ -4447,6 +4467,13 @@ fn diagram_events_json(events: &[DiagramEvent]) -> String {
             ];
             if let Some(guard_targets) = event.guard_targets.as_deref() {
                 fields.push(guard_targets);
+            } else if !event.signal_actions.is_empty() {
+                fields.push("");
+            }
+            let actions_json;
+            if !event.signal_actions.is_empty() {
+                actions_json = signal_actions_data(&event.signal_actions);
+                fields.push(actions_json.as_str());
             }
             fields
                 .into_iter()
@@ -4456,6 +4483,20 @@ fn diagram_events_json(events: &[DiagramEvent]) -> String {
         })
         .collect::<Vec<_>>()
         .join(";")
+}
+
+fn signal_actions_data(actions: &[SignalAction]) -> String {
+    let values = actions
+        .iter()
+        .map(|action| {
+            serde_json::json!({
+                "signal": action.signal,
+                "value": action.value,
+                "path": action.path,
+            })
+        })
+        .collect::<Vec<_>>();
+    serde_json::Value::Array(values).to_string()
 }
 
 fn diagram_animations_data(animations: &IndexMap<String, DiagramAnimation>) -> String {
@@ -4530,7 +4571,7 @@ fn diagram_runtime_js() -> String {
     r#"(function(){
 if(window.__wdocDiagramRuntimeInit){var s0=document.currentScript;if(s0&&s0.parentNode)window.__wdocDiagramRuntimeInit(s0.parentNode);return;}
 function unesc(s){return (s||'').replace(/\\s/g,';').replace(/\\p/g,'|').replace(/\\\\/g,'\\');}
-function parseEvents(el){return (el.getAttribute('data-wdoc-events')||'').split(';').filter(Boolean).map(function(row){var p=row.split('|').map(unesc);return{trigger:p[0],state:p[1],target:p[2]||'self',mode:p[3],button:p[4]||'left',duration:parseInt(p[5]||'0',10)||0,prevent:p[6]==='true',guard:p[7]||''};});}
+function parseEvents(el){return (el.getAttribute('data-wdoc-events')||'').split(';').filter(Boolean).map(function(row){var p=row.split('|').map(unesc),actions=[];try{actions=p[8]?JSON.parse(p[8]):[];}catch(e){}return{trigger:p[0],state:p[1],target:p[2]||'self',mode:p[3],button:p[4]||'left',duration:parseInt(p[5]||'0',10)||0,prevent:p[6]==='true',guard:p[7]||'',actions:actions};});}
 function parseStateAnimations(el){var out={};(el.getAttribute('data-wdoc-state-animation')||'').split(',').filter(Boolean).forEach(function(pair){var i=pair.indexOf(':');if(i>0)out[pair.slice(0,i)]=pair.slice(i+1);});return out;}
 function parseAnimations(el){var out={};(el.getAttribute('data-wdoc-animations')||'').split(';').filter(Boolean).forEach(function(row){var p=row.split('|').map(unesc),k=(p[7]||'').split('~').filter(Boolean).map(function(f){var q=f.split(',');return{offset:parseFloat(q[0])||0,x:num(q[1]),y:num(q[2]),width:num(q[3]),height:num(q[4]),rotate:num(q[5]),rotate_origin_x:num(q[6]),rotate_origin_y:num(q[7])};}).sort(function(a,b){return a.offset-b.offset;}),frames=(p[9]||'').split(',').filter(function(v){return v!=='';}).map(function(v){return parseInt(v,10)||0;});out[p[0]]={name:p[0],duration:parseInt(p[1]||'1000',10)||1000,delay:parseInt(p[2]||'0',10)||0,timing:p[3]||'ease',iteration:p[4]||'1',direction:p[5]||'normal',fill:p[6]||'none',keyframes:k,frameRate:num(p[8]),frames:frames};});return out;}
 function num(v){return v===''||v==null?null:parseFloat(v);}
@@ -4572,7 +4613,12 @@ function ease(t,fn){if(fn==='linear')return t;if(fn==='ease-in')return t*t;if(fn
 function frameValue(frames,p,prop,base){var prev=frames[0],next=frames[frames.length-1];frames.forEach(function(f){if(f.offset<=p)prev=f;if(f.offset>=p&&next.offset<p)next=f;});for(var i=0;i<frames.length;i++){if(frames[i].offset>=p){next=frames[i];break;}}var a=prev[prop];if(a==null)a=base[prop];var b=next[prop];if(b==null)b=a;if(a==null&&b==null)return null;if(next.offset===prev.offset)return b;var t=(p-prev.offset)/(next.offset-prev.offset);return a+(b-a)*t;}
 function startStateAnimation(el,state){var map=parseStateAnimations(el),name=map[state];if(!name)return;var anim=parseAnimations(el)[name];if(!anim||(!anim.keyframes.length&&!anim.frames.length))return;if(el.__wdocAnim)cancelAnimationFrame(el.__wdocAnim.raf);var base=baseBox(el),start=performance.now()+anim.delay,loops=anim.iteration==='infinite'?Infinity:Math.max(1,parseFloat(anim.iteration)||1),initialFrame=el.getAttribute('data-wdoc-sprite-current-frame');function tick(now){if(now<start){el.__wdocAnim={raf:requestAnimationFrame(tick)};return;}var elapsed=now-start,idx=Math.floor(elapsed/anim.duration),done=idx>=loops,raw=done?1:(elapsed%anim.duration)/anim.duration,dirReverse=anim.direction==='reverse'||(anim.direction==='alternate'&&idx%2===1),frameRaw=dirReverse?1-raw:raw;if(anim.keyframes.length){var pct=ease(raw,anim.timing)*100;var x=frameValue(anim.keyframes,pct,'x',base),y=frameValue(anim.keyframes,pct,'y',base),width=frameValue(anim.keyframes,pct,'width',base),height=frameValue(anim.keyframes,pct,'height',base),rotBase={rotate:0,rotate_origin_x:x+width/2,rotate_origin_y:y+height/2};var b={x:x,y:y,width:width,height:height,rotate:frameValue(anim.keyframes,pct,'rotate',rotBase),rotate_origin_x:frameValue(anim.keyframes,pct,'rotate_origin_x',rotBase),rotate_origin_y:frameValue(anim.keyframes,pct,'rotate_origin_y',rotBase)};setBox(el,b);}if(anim.frames.length){var fi=done?anim.frames.length-1:Math.min(anim.frames.length-1,Math.floor(frameRaw*anim.frames.length));setSpriteFrame(el,anim.frames[fi]);}if(done){if(anim.fill!=='forwards'&&anim.fill!=='both'){setBox(el,base);if(initialFrame!=null)setSpriteFrame(el,initialFrame);}return;}el.__wdocAnim={raf:requestAnimationFrame(tick)};}el.__wdocAnim={raf:requestAnimationFrame(tick)};}
 function stopStateAnimation(el,state){var map=parseStateAnimations(el);if(!map[state]||!el.__wdocAnim)return;cancelAnimationFrame(el.__wdocAnim.raf);el.__wdocAnim=null;setBox(el,baseBox(el));var initial=el.getAttribute('data-wdoc-sprite-initial-frame');if(initial!=null)setSpriteFrame(el,initial);}
-function init(root){(root||document).querySelectorAll('svg').forEach(function(svg){initPanZoom(svg);initMap(svg);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-map]'),initMap);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-sprite]'),applySpriteTransparency);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-id]'),function(el,i){if(el.__wdocBound)return;el.__wdocBound=true;if(!el.hasAttribute('data-wdoc-order'))el.setAttribute('data-wdoc-order',String(i));parseEvents(el).forEach(function(cfg){var mode=cfg.mode||defaultMode(cfg.trigger),down=eventName(cfg.trigger,false),up=eventName(cfg.trigger,true);el.addEventListener(down,function(e){if(cfg.trigger==='mouse_down'&&!buttonOk(e,cfg.button))return;if(cfg.prevent)e.preventDefault();if(cfg.trigger==='mouse_leave'&&mode==='remove'&&guardedTo(svg,e.relatedTarget,cfg.guard))return;var t=target(svg,el,cfg.target);if(!t)return;if(mode==='toggle')t.classList.contains(stateClass(cfg.state))?remove(t,cfg.state):add(t,cfg.state);else if(mode==='remove')remove(t,cfg.state);else if(mode==='pulse'){add(t,cfg.state);setTimeout(function(){remove(t,cfg.state);},cfg.duration||180);}else add(t,cfg.state);});if(mode==='while'&&(cfg.trigger==='hover'||cfg.trigger==='mouse_down'))el.addEventListener(up,function(){var t=target(svg,el,cfg.target);if(t)remove(t,cfg.state);});});});});}
+function initSlider(el){if(!el||el.__wdocSliderBound)return;el.__wdocSliderBound=true;var signal=el.getAttribute('data-wdoc-slider-signal')||'',min=parseFloat(el.getAttribute('data-wdoc-slider-min')||'0')||0,max=parseFloat(el.getAttribute('data-wdoc-slider-max')||'100')||100,step=parseFloat(el.getAttribute('data-wdoc-slider-step')||'1')||1,w=parseFloat(el.getAttribute('data-wdoc-width')||el.getAttribute('width')||'100')||100,h=parseFloat(el.getAttribute('data-wdoc-height')||'24')||24,drag=false;function clamp(v){v=Math.max(min,Math.min(max,parseFloat(v)||0));return step>0?Math.round(v/step)*step:v;}function pct(v){return max===min?0:(clamp(v)-min)/(max-min);}function draw(v){var p=pct(v),fill=el.querySelector('[data-wdoc-slider-fill]'),thumb=el.querySelector('[data-wdoc-slider-thumb]');if(fill)fill.setAttribute('width',String(w*p));if(thumb){var r=parseFloat(thumb.getAttribute('r')||String(h/2));thumb.setAttribute('cx',String(w*p));thumb.setAttribute('cy',String(h/2));thumb.setAttribute('r',String(r));}}function setFromEvent(e){var r=el.getBoundingClientRect(),p=Math.max(0,Math.min(1,(e.clientX-r.left)/(r.width||1))),v=clamp(min+p*(max-min));draw(v);if(window.__wdocSetSignal&&signal)window.__wdocSetSignal(signal,v,'');}draw(el.getAttribute('data-wdoc-slider-value')||min);el.addEventListener('pointerdown',function(e){if(e.button!==0)return;drag=true;el.setPointerCapture&&el.setPointerCapture(e.pointerId);setFromEvent(e);});el.addEventListener('pointermove',function(e){if(drag)setFromEvent(e);});function end(e){if(!drag)return;drag=false;el.releasePointerCapture&&el.releasePointerCapture(e.pointerId);}el.addEventListener('pointerup',end);el.addEventListener('pointercancel',end);document.addEventListener('wdoc:signal-change',function(e){if(e.detail&&e.detail.name===signal)draw(e.detail.value);});}
+function eventValue(v,e){return v==='$event.value'&&e&&e.__wdocValue!==undefined?e.__wdocValue:v;}
+function runActions(cfg,e){if(!window.__wdocSetSignal||!cfg.actions)return;cfg.actions.forEach(function(a){if(a&&a.signal)window.__wdocSetSignal(a.signal,eventValue(a.value,e),a.path||'');});}
+function applyProperty(el,prop,value){var s=value==null?'':String(value),b;if(['x','y','width','height'].indexOf(prop)>=0){b=el.__wdocBox||baseBox(el);b={x:b.x,y:b.y,width:b.width,height:b.height};b[prop]=parseFloat(value)||0;setBox(el,b);return true;}if(prop==='content'||prop==='text'){el.textContent=s;return true;}if(['fill','stroke','opacity','visibility','display','class','transform'].indexOf(prop)>=0){el.setAttribute(prop,s);return true;}return false;}
+window.__wdocDiagramApplyProperty=applyProperty;
+function init(root){(root||document).querySelectorAll('svg').forEach(function(svg){initPanZoom(svg);initMap(svg);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-map]'),initMap);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-sprite]'),applySpriteTransparency);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-slider]'),initSlider);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-id]'),function(el,i){if(el.__wdocBound)return;el.__wdocBound=true;if(!el.hasAttribute('data-wdoc-order'))el.setAttribute('data-wdoc-order',String(i));parseEvents(el).forEach(function(cfg){var mode=cfg.mode||defaultMode(cfg.trigger),down=eventName(cfg.trigger,false),up=eventName(cfg.trigger,true);el.addEventListener(down,function(e){if(cfg.trigger==='mouse_down'&&!buttonOk(e,cfg.button))return;if(cfg.prevent)e.preventDefault();if(cfg.trigger==='mouse_leave'&&mode==='remove'&&guardedTo(svg,e.relatedTarget,cfg.guard))return;var t=target(svg,el,cfg.target);if(t){if(mode==='toggle')t.classList.contains(stateClass(cfg.state))?remove(t,cfg.state):add(t,cfg.state);else if(mode==='remove')remove(t,cfg.state);else if(mode==='pulse'){add(t,cfg.state);setTimeout(function(){remove(t,cfg.state);},cfg.duration||180);}else add(t,cfg.state);}runActions(cfg,e);});if(mode==='while'&&(cfg.trigger==='hover'||cfg.trigger==='mouse_down'))el.addEventListener(up,function(){var t=target(svg,el,cfg.target);if(t)remove(t,cfg.state);});});});});}
 window.__wdocDiagramRuntimeInit=init;var s=document.currentScript;if(s&&s.parentNode)init(s.parentNode);if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){init(document);});else init(document);
 })();"#.to_string()
 }
@@ -6312,6 +6358,39 @@ mod tests {
         assert!(svg.contains("data-wdoc-events=\"click|selected|self|toggle|left|0|false\""));
         assert!(svg.contains("<script>"));
         assert!(svg.contains("wdoc-state-"));
+    }
+
+    #[test]
+    fn diagram_events_emit_signal_actions() {
+        let mut rect = shape("slider_thumb", 20.0, 20.0);
+        rect.events.push(DiagramEvent {
+            trigger: "click".to_string(),
+            signal_actions: vec![SignalAction {
+                signal: "progress".to_string(),
+                value: serde_json::json!("$event.value"),
+                path: Some("value".to_string()),
+            }],
+            ..Default::default()
+        });
+
+        let mut diagram = Diagram {
+            id: Some("signals".to_string()),
+            width: 80.0,
+            height: 40.0,
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+            classes: IndexMap::new(),
+            shapes: vec![rect],
+            connections: vec![],
+        };
+
+        let svg = render_diagram_svg(&mut diagram);
+        assert!(svg.contains("data-wdoc-events=\"click||self||left|0|false||"));
+        assert!(svg.contains("&quot;signal&quot;:&quot;progress&quot;"));
+        assert!(svg.contains("runActions"));
+        assert!(svg.contains("__wdocSetSignal"));
     }
 
     #[test]

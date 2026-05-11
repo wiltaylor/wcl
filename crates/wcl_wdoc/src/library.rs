@@ -36,6 +36,7 @@ mod tests {
         for widget in [
             "checkbox",
             "radio",
+            "slider",
             "button_group",
             "textbox",
             "dropdown",

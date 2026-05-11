@@ -1133,6 +1133,13 @@ fn collect_shape_or_connection(
         } else if kind == ShapeKind::Icon {
             hydrate_icon_shape_attrs(&mut a, br.attributes.get("props"), ctx);
         }
+        if br
+            .id
+            .as_deref()
+            .is_some_and(|id| ctx.binding_targets.borrow().contains(id))
+        {
+            a.insert("_wdoc_runtime".to_string(), "true".to_string());
+        }
 
         shapes.push(ShapeNode {
             kind,
@@ -2068,7 +2075,11 @@ fn descriptor_events(map: &IndexMap<String, Value>) -> Vec<crate::shapes::Diagra
                 return None;
             };
             let trigger = event.get("trigger")?.as_string()?.to_string();
-            let state = event.get("state")?.as_string()?.to_string();
+            let state = event
+                .get("state")
+                .and_then(|v| v.as_string())
+                .unwrap_or("")
+                .to_string();
             let target = event
                 .get("target")
                 .and_then(|v| v.as_string())
@@ -2109,9 +2120,64 @@ fn descriptor_events(map: &IndexMap<String, Value>) -> Vec<crate::shapes::Diagra
                 duration_ms,
                 prevent_default,
                 guard_targets,
+                signal_actions: descriptor_signal_actions(event),
             })
         })
         .collect()
+}
+
+fn descriptor_signal_actions(event: &IndexMap<String, Value>) -> Vec<crate::shapes::SignalAction> {
+    let mut actions = Vec::new();
+    if let Some(value) = event.get("set_signal") {
+        match value {
+            Value::Map(map) => {
+                if let Some(action) = descriptor_signal_action(map) {
+                    actions.push(action);
+                }
+            }
+            Value::List(items) => {
+                for item in items {
+                    if let Value::Map(map) = item {
+                        if let Some(action) = descriptor_signal_action(map) {
+                            actions.push(action);
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    if let Some(Value::List(items)) = event.get("actions") {
+        for item in items {
+            let Value::Map(map) = item else {
+                continue;
+            };
+            if map
+                .get("kind")
+                .and_then(|value| value.as_string())
+                .is_some_and(|kind| kind == "set_signal")
+            {
+                if let Some(action) = descriptor_signal_action(map) {
+                    actions.push(action);
+                }
+            }
+        }
+    }
+    actions
+}
+
+fn descriptor_signal_action(map: &IndexMap<String, Value>) -> Option<crate::shapes::SignalAction> {
+    Some(crate::shapes::SignalAction {
+        signal: map.get("signal")?.as_string()?.to_string(),
+        value: map
+            .get("value")
+            .map(wcl_lang::json::value_to_json)
+            .unwrap_or(serde_json::Value::Null),
+        path: map
+            .get("path")
+            .and_then(|value| value.as_string())
+            .map(str::to_string),
+    })
 }
 
 fn descriptor_to_connection_with_order(
@@ -2292,7 +2358,12 @@ fn collect_diagram_events(block: &BlockRef) -> Vec<crate::shapes::DiagramEvent> 
         .filter(|child| is_draw_event_block(child))
         .filter_map(|child| {
             let trigger = child.attributes.get("trigger")?.as_string()?.to_string();
-            let state = child.attributes.get("state")?.as_string()?.to_string();
+            let state = child
+                .attributes
+                .get("state")
+                .and_then(|v| v.as_string())
+                .unwrap_or("")
+                .to_string();
             let target = child
                 .attributes
                 .get("target")
@@ -2337,6 +2408,32 @@ fn collect_diagram_events(block: &BlockRef) -> Vec<crate::shapes::DiagramEvent> 
                 duration_ms,
                 prevent_default,
                 guard_targets,
+                signal_actions: collect_signal_actions(child),
+            })
+        })
+        .collect()
+}
+
+fn collect_signal_actions(block: &BlockRef) -> Vec<crate::shapes::SignalAction> {
+    all_child_blocks(block)
+        .into_iter()
+        .filter(|child| is_draw_set_signal_block(child))
+        .filter_map(|child| {
+            let signal = child.attributes.get("signal")?.as_string()?.to_string();
+            let value = child
+                .attributes
+                .get("value")
+                .map(wcl_lang::json::value_to_json)
+                .unwrap_or(serde_json::Value::Null);
+            let path = child
+                .attributes
+                .get("path")
+                .and_then(|value| value.as_string())
+                .map(str::to_string);
+            Some(crate::shapes::SignalAction {
+                signal,
+                value,
+                path,
             })
         })
         .collect()
@@ -2501,6 +2598,21 @@ fn is_draw_event_block(block: &BlockRef) -> bool {
     )
 }
 
+fn is_draw_set_signal_block(block: &BlockRef) -> bool {
+    matches!(
+        block.kind.as_str(),
+        "wdoc::draw::set_signal" | "draw::set_signal" | "set_signal"
+    )
+}
+
+fn is_wdoc_signal_block(block: &BlockRef) -> bool {
+    matches!(block.kind.as_str(), "wdoc::signal" | "signal")
+}
+
+fn is_wdoc_binding_block(block: &BlockRef) -> bool {
+    matches!(block.kind.as_str(), "wdoc::binding" | "binding")
+}
+
 fn is_draw_graph_row_block(block: &BlockRef) -> bool {
     matches!(
         block.kind.as_str(),
@@ -2557,6 +2669,7 @@ struct ExtractCtx {
     builtins: HashMap<String, BuiltinFn>,
     css_registry: Rc<RefCell<DiagramCssRegistry>>,
     diagram_classes: Rc<RefCell<IndexMap<String, crate::shapes::DiagramClass>>>,
+    binding_targets: Rc<RefCell<HashSet<String>>>,
     svg_search_dirs: Vec<PathBuf>,
     icon_registry: IconRegistry,
 }
@@ -2882,6 +2995,7 @@ mod wdoc_draw_tests {
             builtins: HashMap::new(),
             css_registry: Rc::new(RefCell::new(DiagramCssRegistry::default())),
             diagram_classes: Rc::new(RefCell::new(IndexMap::new())),
+            binding_targets: Rc::new(RefCell::new(HashSet::new())),
             svg_search_dirs: Vec::new(),
             icon_registry: IconRegistry::default(),
         }
@@ -2910,6 +3024,129 @@ mod wdoc_draw_tests {
             },
         );
         ctx
+    }
+
+    #[test]
+    fn page_signals_and_bindings_extract_full_wdoc_values() {
+        let mut initial = IndexMap::new();
+        initial.insert(
+            "items".to_string(),
+            Value::List(vec![Value::Map(IndexMap::from([(
+                "label".to_string(),
+                Value::String("Alpha".to_string()),
+            )]))]),
+        );
+        let signal = block(
+            "wdoc::signal",
+            Some("selection"),
+            IndexMap::from([("initial".to_string(), Value::Map(initial))]),
+            vec![],
+        );
+        let binding = block(
+            "wdoc::binding",
+            Some("label_binding"),
+            IndexMap::from([
+                ("signal".to_string(), Value::String("selection".to_string())),
+                ("target".to_string(), Value::String("label".to_string())),
+                ("property".to_string(), Value::String("text".to_string())),
+                (
+                    "path".to_string(),
+                    Value::String("items[0].label".to_string()),
+                ),
+                (
+                    "format".to_string(),
+                    Value::String("Selected: {value}".to_string()),
+                ),
+            ]),
+            vec![],
+        );
+        let page = block(
+            "wdoc::page",
+            Some("interactive"),
+            IndexMap::from([
+                (
+                    "section".to_string(),
+                    Value::String("docs.interactive".to_string()),
+                ),
+                (
+                    "title".to_string(),
+                    Value::String("Interactive".to_string()),
+                ),
+            ]),
+            vec![signal, binding],
+        );
+
+        let extracted = extract_page(&page, &empty_ctx()).expect("page extracts");
+
+        assert_eq!(extracted.signals.len(), 1);
+        assert_eq!(extracted.signals[0].name, "selection");
+        assert_eq!(extracted.signals[0].initial["items"][0]["label"], "Alpha");
+        assert_eq!(extracted.bindings.len(), 1);
+        assert_eq!(
+            extracted.bindings[0].path.as_deref(),
+            Some("items[0].label")
+        );
+        assert_eq!(
+            extracted.bindings[0].format.as_deref(),
+            Some("Selected: {value}")
+        );
+    }
+
+    #[test]
+    fn page_binding_marks_diagram_shape_as_runtime_target() {
+        let rect = block(
+            "wdoc::draw::rect",
+            Some("meter"),
+            IndexMap::from([
+                ("width".to_string(), Value::Int(40)),
+                ("height".to_string(), Value::Int(20)),
+            ]),
+            vec![],
+        );
+        let diagram = block(
+            "wdoc::draw::diagram",
+            Some("preview"),
+            IndexMap::from([
+                ("width".to_string(), Value::Int(100)),
+                ("height".to_string(), Value::Int(40)),
+            ]),
+            vec![rect],
+        );
+        let layout = block("wdoc::layout", None, IndexMap::new(), vec![diagram]);
+        let binding = block(
+            "wdoc::binding",
+            None,
+            IndexMap::from([
+                ("signal".to_string(), Value::String("progress".to_string())),
+                ("target".to_string(), Value::String("meter".to_string())),
+                ("property".to_string(), Value::String("width".to_string())),
+            ]),
+            vec![],
+        );
+        let page = block(
+            "wdoc::page",
+            Some("interactive"),
+            IndexMap::from([
+                (
+                    "section".to_string(),
+                    Value::String("docs.interactive".to_string()),
+                ),
+                (
+                    "title".to_string(),
+                    Value::String("Interactive".to_string()),
+                ),
+            ]),
+            vec![binding, layout],
+        );
+
+        let extracted = extract_page(&page, &empty_ctx()).expect("page extracts");
+        let LayoutItem::Content(content) = &extracted.layout.children[0] else {
+            panic!("expected diagram content");
+        };
+
+        assert!(content.rendered_html.contains("data-wdoc-id=\"meter\""));
+        assert!(content.rendered_html.contains("data-wdoc-width=\"40\""));
+        assert!(content.rendered_html.contains("<script>"));
     }
 
     fn custom_shape_ctx(source: &str, kind: &str, template_name: &str) -> ExtractCtx {
@@ -2962,6 +3199,7 @@ mod wdoc_draw_tests {
             builtins: functions.functions,
             css_registry: Rc::new(RefCell::new(DiagramCssRegistry::default())),
             diagram_classes: Rc::new(RefCell::new(IndexMap::new())),
+            binding_targets: Rc::new(RefCell::new(HashSet::new())),
             svg_search_dirs: Vec::new(),
             icon_registry: IconRegistry::default(),
         }
@@ -3061,6 +3299,7 @@ mod wdoc_draw_tests {
             builtins: functions.functions,
             css_registry: Rc::new(RefCell::new(DiagramCssRegistry::default())),
             diagram_classes: Rc::new(RefCell::new(IndexMap::new())),
+            binding_targets: Rc::new(RefCell::new(HashSet::new())),
             svg_search_dirs: Vec::new(),
             icon_registry: IconRegistry::default(),
         };
@@ -6181,6 +6420,15 @@ fn extract_page(block: &BlockRef, ctx: &ExtractCtx) -> Result<Page, String> {
         .to_string();
 
     let all_children = all_child_blocks(block);
+    let signals = extract_page_signals(&all_children);
+    let bindings = extract_page_bindings(&all_children);
+    {
+        let mut targets = ctx.binding_targets.borrow_mut();
+        targets.clear();
+        for binding in &bindings {
+            targets.insert(binding.target.clone());
+        }
+    }
     let layout = all_children
         .iter()
         .find(|c| c.kind == "wdoc::layout")
@@ -6188,13 +6436,80 @@ fn extract_page(block: &BlockRef, ctx: &ExtractCtx) -> Result<Page, String> {
         .unwrap_or(Layout {
             children: Vec::new(),
         });
+    ctx.binding_targets.borrow_mut().clear();
 
     Ok(Page {
         id,
         section_id,
         title,
         layout,
+        signals,
+        bindings,
     })
+}
+
+fn extract_page_signals(blocks: &[&BlockRef]) -> Vec<WdocSignal> {
+    blocks
+        .iter()
+        .filter(|block| is_wdoc_signal_block(block))
+        .filter_map(|block| {
+            let name = block.id.clone()?;
+            let initial = block
+                .attributes
+                .get("initial")
+                .map(wcl_lang::json::value_to_json)
+                .unwrap_or(serde_json::Value::Null);
+            let type_name = block
+                .attributes
+                .get("type")
+                .and_then(|value| value.as_string())
+                .map(str::to_string);
+            Some(WdocSignal {
+                name,
+                initial,
+                type_name,
+            })
+        })
+        .collect()
+}
+
+fn extract_page_bindings(blocks: &[&BlockRef]) -> Vec<WdocBinding> {
+    let mut bindings = Vec::new();
+    for block in blocks {
+        collect_bindings_in_block(block, &mut bindings);
+    }
+    bindings
+}
+
+fn collect_bindings_in_block(block: &BlockRef, bindings: &mut Vec<WdocBinding>) {
+    if is_wdoc_binding_block(block) {
+        if let (Some(signal), Some(target), Some(property)) = (
+            block.attributes.get("signal").and_then(|v| v.as_string()),
+            block.attributes.get("target").and_then(|v| v.as_string()),
+            block.attributes.get("property").and_then(|v| v.as_string()),
+        ) {
+            bindings.push(WdocBinding {
+                name: block.id.clone(),
+                signal: signal.to_string(),
+                target: target.to_string(),
+                property: property.to_string(),
+                path: block
+                    .attributes
+                    .get("path")
+                    .and_then(|v| v.as_string())
+                    .map(str::to_string),
+                format: block
+                    .attributes
+                    .get("format")
+                    .and_then(|v| v.as_string())
+                    .map(str::to_string),
+            });
+        }
+        return;
+    }
+    for child in all_child_blocks(block) {
+        collect_bindings_in_block(child, bindings);
+    }
 }
 
 fn extract_layout(block: &BlockRef, ctx: &ExtractCtx) -> Layout {
@@ -6219,7 +6534,7 @@ fn extract_layout_children(block: &BlockRef, ctx: &ExtractCtx) -> Vec<LayoutItem
             ))),
             // Known structural blocks are not content
             "wdoc::layout" | "wdoc::section" | "wdoc::page" | "wdoc::doc" | "wdoc::style"
-            | "split" => {}
+            | "wdoc::signal" | "wdoc::binding" | "signal" | "binding" | "split" => {}
             // Diagram — needs ctx so shape templates can be dispatched.
             // Cannot go through the html template path because templates can't
             // see ctx.
@@ -6419,6 +6734,7 @@ pub fn parse_extract_from_files(
         builtins,
         css_registry: Rc::new(RefCell::new(DiagramCssRegistry::default())),
         diagram_classes: Rc::new(RefCell::new(collect_diagram_classes(&all_values))),
+        binding_targets: Rc::new(RefCell::new(HashSet::new())),
         svg_search_dirs,
         icon_registry,
     };

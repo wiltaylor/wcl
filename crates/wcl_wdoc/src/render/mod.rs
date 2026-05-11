@@ -322,6 +322,8 @@ mod tests {
                         style: None,
                     })],
                 },
+                signals: vec![],
+                bindings: vec![],
             }],
             styles: vec![],
             extra_css: String::new(),

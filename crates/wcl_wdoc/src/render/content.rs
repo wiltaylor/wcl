@@ -11,18 +11,28 @@ pub fn render_content(block: &ContentBlock, out: &mut String) {
         .as_ref()
         .map(|id| format!(" id=\"{id}\""))
         .unwrap_or_default();
+    let data_id_attr = block
+        .id
+        .as_ref()
+        .map(|id| format!(" data-wdoc-content-id=\"{id}\""))
+        .unwrap_or_default();
 
     if let Some(style) = &block.style {
         // Use the leaf name for CSS classes (strip namespace prefix)
         let css_kind = block.kind.rsplit("::").next().unwrap_or(&block.kind);
         writeln!(
             out,
-            "<div{id_attr} class=\"wdoc-style-{style}--{css_kind}\">{}</div>",
+            "<div{id_attr}{data_id_attr} class=\"wdoc-style-{style}--{css_kind}\">{}</div>",
             block.rendered_html
         )
         .unwrap();
     } else if !id_attr.is_empty() {
-        writeln!(out, "<div{id_attr}>{}</div>", block.rendered_html).unwrap();
+        writeln!(
+            out,
+            "<div{id_attr}{data_id_attr}>{}</div>",
+            block.rendered_html
+        )
+        .unwrap();
     } else {
         out.push_str(&block.rendered_html);
         out.push('\n');
