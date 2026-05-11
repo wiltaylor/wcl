@@ -588,12 +588,13 @@ namespace wdoc {
     declare icon_props(name: string, size: string, props: map(string, any)) -> string
 
     declare measure_text(text: any) -> map(string, any)
-    declare slugify(value: any) -> string
     declare render_markup(text: string) -> string
     declare render_children(block: any) -> string
     declare table_rows(block: any) -> map(string, any)
 
     // --- Template rendering functions ---
+
+    export let slugify = value => regex_replace_all(regex_replace_all(regex_replace_all(lower(to_string(value)), "[^\\p{L}\\p{N}]", "-"), "^-+", ""), "-+$", "")
 
     export let render_heading_at = (b, level) => {
         let content = attr_or(b, "content", "")

@@ -308,24 +308,6 @@ fn wdoc_functions() -> FunctionRegistry {
 
 fn register_renderer_helpers(reg: &mut FunctionRegistry) {
     reg.register(
-        "wdoc::slugify",
-        std::sync::Arc::new(|args: &[Value]| {
-            if args.len() != 1 {
-                return Err("wdoc::slugify() expects 1 argument".into());
-            }
-            Ok(Value::String(crate::templates::slugify(&value_to_string(
-                &args[0],
-            ))))
-        }) as BuiltinFn,
-        FunctionSignature {
-            name: "wdoc::slugify".into(),
-            params: vec!["value: any".into()],
-            return_type: "string".into(),
-            doc: "Generate a URL-safe slug from text".into(),
-        },
-    );
-
-    reg.register(
         "wdoc::table_rows",
         std::sync::Arc::new(|args: &[Value]| {
             if args.len() != 1 {
@@ -3220,6 +3202,7 @@ mod wdoc_draw_tests {
             "link",
             "wdoc::link",
             "wdoc::html_escape",
+            "wdoc::slugify",
         ] {
             assert!(
                 !functions.functions.contains_key(name),
