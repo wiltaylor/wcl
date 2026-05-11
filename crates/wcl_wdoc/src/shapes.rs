@@ -38,6 +38,7 @@ pub enum ShapeKind {
     TextBlock,
     InlineSvg,
     Image,
+    Map,
     Sprite,
     DopesheetView,
     Tilemap,
@@ -699,6 +700,7 @@ fn diagram_pan_zoom_enabled(diagram: &Diagram) -> bool {
 
 fn shape_needs_runtime(shape: &ShapeNode) -> bool {
     !shape.events.is_empty()
+        || shape.kind == ShapeKind::Map
         || shape.attrs.contains_key("_wdoc_state_z")
         || shape.attrs.contains_key("_wdoc_state_animation")
         || shape.attrs.contains_key("transparent_color")
@@ -826,6 +828,7 @@ pub fn parse_shape_kind(kind: &str) -> Option<ShapeKind> {
         "wdoc::draw::text_block" => Some(ShapeKind::TextBlock),
         "wdoc::draw::inline_svg" => Some(ShapeKind::InlineSvg),
         "wdoc::draw::image" => Some(ShapeKind::Image),
+        "wdoc::draw::map" => Some(ShapeKind::Map),
         "wdoc::draw::sprite" => Some(ShapeKind::Sprite),
         "wdoc::draw::dopesheet_view" => Some(ShapeKind::DopesheetView),
         "wdoc::draw::tilemap" => Some(ShapeKind::Tilemap),
@@ -994,11 +997,20 @@ fn resolve_nested_container(
         return;
     }
     let insets = child_content_insets(child);
-    let mut inner = Bounds {
-        x: insets.left,
-        y: insets.top,
-        width: (child.resolved.width - insets.left - insets.right).max(0.0),
-        height: (child.resolved.height - insets.top - insets.bottom).max(0.0),
+    let mut inner = if child.kind == ShapeKind::Map {
+        Bounds {
+            x: 0.0,
+            y: 0.0,
+            width: map_content_width(child),
+            height: map_content_height(child),
+        }
+    } else {
+        Bounds {
+            x: insets.left,
+            y: insets.top,
+            width: (child.resolved.width - insets.left - insets.right).max(0.0),
+            height: (child.resolved.height - insets.top - insets.bottom).max(0.0),
+        }
     };
     let child_scope_path = scoped_child_path(scope_path, child.id.as_deref());
     let mut options = child.attrs.clone();
@@ -1018,10 +1030,17 @@ fn resolve_nested_container(
     if is_graph_alignment(child.align) {
         expand_container_to_fit_layout_children(child);
         let insets = child_content_insets(child);
-        inner.x = insets.left;
-        inner.y = insets.top;
-        inner.width = (child.resolved.width - insets.left - insets.right).max(0.0);
-        inner.height = (child.resolved.height - insets.top - insets.bottom).max(0.0);
+        if child.kind == ShapeKind::Map {
+            inner.x = 0.0;
+            inner.y = 0.0;
+            inner.width = map_content_width(child);
+            inner.height = map_content_height(child);
+        } else {
+            inner.x = insets.left;
+            inner.y = insets.top;
+            inner.width = (child.resolved.width - insets.left - insets.right).max(0.0);
+            inner.height = (child.resolved.height - insets.top - insets.bottom).max(0.0);
+        }
     }
     if has_explicit_width(child) && has_explicit_height(child) {
         clamp_children_to_parent(&mut child.children, &inner);
@@ -2197,6 +2216,10 @@ fn render_shape_svg(node: &ShapeNode, svg: &mut String) {
         ShapeKind::TextBlock => render_text_block_svg(node, svg),
         ShapeKind::InlineSvg => render_inline_svg_shape_svg(node, svg),
         ShapeKind::Image => render_image_shape_svg(node, svg),
+        ShapeKind::Map => {
+            render_map_shape_svg(node, svg);
+            rendered_children = true;
+        }
         ShapeKind::Sprite => render_sprite_shape_svg(node, svg),
         ShapeKind::DopesheetView => render_dopesheet_view_shape_svg(node, svg),
         ShapeKind::Tilemap => render_tilemap_shape_svg(node, svg),
@@ -2730,6 +2753,57 @@ fn render_image_shape_svg(node: &ShapeNode, svg: &mut String) {
     if !aria.is_empty() {
         svg.push_str("</g>");
     }
+}
+
+fn render_map_shape_svg(node: &ShapeNode, svg: &mut String) {
+    let b = &node.resolved;
+    let style = svg_image_node_attrs(node, &node.attrs);
+    let src = node.attrs.get("src").map(|s| s.as_str()).unwrap_or("");
+    let content_w = map_content_width(node);
+    let content_h = map_content_height(node);
+    let view_x = attr_f64(&node.attrs, "view_x").unwrap_or(0.0);
+    let view_y = attr_f64(&node.attrs, "view_y").unwrap_or(0.0);
+    let view_w = attr_f64(&node.attrs, "view_width")
+        .unwrap_or(b.width.min(content_w))
+        .max(1.0);
+    let view_h = attr_f64(&node.attrs, "view_height")
+        .unwrap_or(b.height.min(content_h))
+        .max(1.0);
+    let min_zoom = attr_f64(&node.attrs, "min_zoom").unwrap_or(0.25).max(0.001);
+    let max_zoom = attr_f64(&node.attrs, "max_zoom")
+        .unwrap_or(8.0)
+        .max(min_zoom);
+    let background_fill = node
+        .attrs
+        .get("background_fill")
+        .map(|s| s.as_str())
+        .unwrap_or("none");
+    let src = svg_escape_attr(src);
+    let background_fill = svg_escape_attr(background_fill);
+    let aria = node
+        .attrs
+        .get("alt")
+        .map(|alt| {
+            let alt = svg_escape_attr(alt);
+            format!(" role=\"img\" aria-label=\"{alt}\"")
+        })
+        .unwrap_or_default();
+
+    write!(
+        svg,
+        "<svg x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" \
+         viewBox=\"{view_x} {view_y} {view_w} {view_h}\" overflow=\"hidden\" \
+         data-wdoc-map=\"true\" data-wdoc-map-content-width=\"{content_w}\" \
+         data-wdoc-map-content-height=\"{content_h}\" data-wdoc-map-home-view-box=\"{view_x} {view_y} {view_w} {view_h}\" \
+         data-wdoc-map-min-zoom=\"{min_zoom}\" data-wdoc-map-max-zoom=\"{max_zoom}\" \
+         {aria}{style}>\
+         <rect x=\"0\" y=\"0\" width=\"{content_w}\" height=\"{content_h}\" fill=\"{background_fill}\" stroke=\"none\"/>\
+         <image href=\"{src}\" x=\"0\" y=\"0\" width=\"{content_w}\" height=\"{content_h}\" preserveAspectRatio=\"none\"/>",
+        b.x, b.y, b.width, b.height
+    )
+    .unwrap();
+    render_child_shapes_svg(&node.children, svg);
+    svg.push_str("</svg>");
 }
 
 fn render_sprite_shape_svg(node: &ShapeNode, svg: &mut String) {
@@ -4118,6 +4192,7 @@ fn svg_style_attrs(attrs: &IndexMap<String, String>) -> String {
         "fill",
         "stroke",
         "stroke_width",
+        "vector_effect",
         "stroke_dasharray",
         "opacity",
         "visible",
@@ -4228,6 +4303,19 @@ fn append_shape_runtime_attrs(node: &ShapeNode, out: &mut String) {
             out,
             " data-wdoc-animations=\"{}\"",
             svg_escape_attr(animations)
+        )
+        .unwrap();
+    }
+    if bool_attr(&node.attrs, "map_fixed") {
+        out.push_str(" data-wdoc-map-fixed=\"true\"");
+        let anchor_x = attr_f64(&node.attrs, "map_anchor_x")
+            .unwrap_or(node.resolved.x + node.resolved.width / 2.0);
+        let anchor_y = attr_f64(&node.attrs, "map_anchor_y")
+            .unwrap_or(node.resolved.y + node.resolved.height / 2.0);
+        write!(
+            out,
+            " data-wdoc-map-anchor-x=\"{}\" data-wdoc-map-anchor-y=\"{}\"",
+            anchor_x, anchor_y
         )
         .unwrap();
     }
@@ -4382,12 +4470,16 @@ function parseViewBox(svg){var v=(svg.getAttribute('viewBox')||'0 0 0 0').trim()
 function updateGameLayers(svg,b){if(!svg)return;var home=svg.__wdocPanZoomHome||parseViewBox(svg),v=b||parseViewBox(svg);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-game-layer="true"]'),function(el){var bx=parseFloat(el.getAttribute('data-wdoc-game-layer-x')||'0')||0,by=parseFloat(el.getAttribute('data-wdoc-game-layer-y')||'0')||0;if(el.getAttribute('data-wdoc-game-layer-locked')==='true'){var sx=v.width/(home.width||1),sy=v.height/(home.height||1),tx=v.x+(bx-home.x)*sx,ty=v.y+(by-home.y)*sy;el.setAttribute('transform','translate('+tx+','+ty+') scale('+sx+','+sy+')');}else{var p=parseFloat(el.getAttribute('data-wdoc-game-layer-parallax')||'1');if(isNaN(p))p=1;el.setAttribute('transform','translate('+(bx+(v.x-home.x)*(1-p))+','+(by+(v.y-home.y)*(1-p))+')');}});}
 function setViewBox(svg,b){svg.setAttribute('viewBox',[b.x,b.y,b.width,b.height].join(' '));updateGameLayers(svg,b);}
 function svgPoint(svg,clientX,clientY){var r=svg.getBoundingClientRect(),v=parseViewBox(svg),w=r.width||1,h=r.height||1;return{x:v.x+((clientX-r.left)/w)*v.width,y:v.y+((clientY-r.top)/h)*v.height};}
+function clampMapView(m,b){var cw=parseFloat(m.getAttribute('data-wdoc-map-content-width')||'0')||b.width,ch=parseFloat(m.getAttribute('data-wdoc-map-content-height')||'0')||b.height;if(b.width>cw){b.x=(cw-b.width)/2;}else{b.x=Math.max(0,Math.min(cw-b.width,b.x));}if(b.height>ch){b.y=(ch-b.height)/2;}else{b.y=Math.max(0,Math.min(ch-b.height,b.y));}return b;}
+function setFixedMapShape(el,b){var tag=el.tagName.toLowerCase();if(tag==='circle'){el.setAttribute('cx',b.x+b.width/2);el.setAttribute('cy',b.y+b.height/2);el.setAttribute('r',Math.max(b.width,b.height)/2);}else if(tag==='ellipse'){el.setAttribute('cx',b.x+b.width/2);el.setAttribute('cy',b.y+b.height/2);el.setAttribute('rx',b.width/2);el.setAttribute('ry',b.height/2);}else if(tag==='text'){el.setAttribute('x',b.x+b.width/2);el.setAttribute('y',b.y+b.height/2);}else{if(el.hasAttribute('x'))el.setAttribute('x',b.x);if(el.hasAttribute('y'))el.setAttribute('y',b.y);if(el.hasAttribute('width'))el.setAttribute('width',b.width);if(el.hasAttribute('height'))el.setAttribute('height',b.height);}}
+function updateMapFixedShapes(m,b){var home=m.__wdocMapHome||parseViewBox(m),v=b||parseViewBox(m),sx=v.width/(home.width||1),sy=v.height/(home.height||1);Array.prototype.forEach.call(m.querySelectorAll('[data-wdoc-map-fixed="true"]'),function(el){var base=baseBox(el),ax=parseFloat(el.getAttribute('data-wdoc-map-anchor-x')||String(base.x+base.width/2)),ay=parseFloat(el.getAttribute('data-wdoc-map-anchor-y')||String(base.y+base.height/2)),nw=base.width*sx,nh=base.height*sy;setFixedMapShape(el,{x:ax-nw/2,y:ay-nh/2,width:nw,height:nh});});}
+function initMap(m){if(!m||m.getAttribute('data-wdoc-map')!=='true'||m.__wdocMapBound)return;m.__wdocMapBound=true;m.style.cursor=m.style.cursor||'grab';m.style.touchAction='none';m.style.userSelect='none';var home=parseViewBox(m);m.__wdocMapHome=home;updateMapFixedShapes(m,home);var min=parseFloat(m.getAttribute('data-wdoc-map-min-zoom')||'0.25')||0.25,max=parseFloat(m.getAttribute('data-wdoc-map-max-zoom')||'8')||8,drag=null;function setMapView(b){m.setAttribute('viewBox',[b.x,b.y,b.width,b.height].join(' '));updateMapFixedShapes(m,b);}function zoomTo(next,p){var v=parseViewBox(m),current=home.width/v.width;next=Math.max(min,Math.min(max,next));var scale=current/next,nw=v.width*scale,nh=v.height*scale,nx=p.x-(p.x-v.x)*scale,ny=p.y-(p.y-v.y)*scale;setMapView(clampMapView(m,{x:nx,y:ny,width:nw,height:nh}));}m.addEventListener('wheel',function(e){e.preventDefault();var v=parseViewBox(m),current=home.width/v.width;zoomTo(current*Math.exp(-e.deltaY*0.001),svgPoint(m,e.clientX,e.clientY));},{passive:false});m.addEventListener('pointerdown',function(e){if(e.button!==0)return;e.stopPropagation();drag={x:e.clientX,y:e.clientY,view:parseViewBox(m)};m.setPointerCapture&&m.setPointerCapture(e.pointerId);m.style.cursor='grabbing';});m.addEventListener('pointermove',function(e){if(!drag)return;e.preventDefault();e.stopPropagation();var r=m.getBoundingClientRect(),dx=(e.clientX-drag.x)/(r.width||1)*drag.view.width,dy=(e.clientY-drag.y)/(r.height||1)*drag.view.height;setMapView(clampMapView(m,{x:drag.view.x-dx,y:drag.view.y-dy,width:drag.view.width,height:drag.view.height}));});function endDrag(e){if(!drag)return;drag=null;m.releasePointerCapture&&m.releasePointerCapture(e.pointerId);m.style.cursor='grab';}m.addEventListener('pointerup',endDrag);m.addEventListener('pointercancel',endDrag);m.addEventListener('dblclick',function(e){e.preventDefault();e.stopPropagation();setMapView(home);});}
 function initPanZoom(svg){if(!svg||svg.getAttribute('data-wdoc-pan-zoom')!=='true'||svg.__wdocPanZoomBound)return;svg.__wdocPanZoomBound=true;var home=parseViewBox(svg);svg.__wdocPanZoomHome=home;updateGameLayers(svg,home);var min=parseFloat(svg.getAttribute('data-wdoc-pan-zoom-min')||'0.25')||0.25,max=parseFloat(svg.getAttribute('data-wdoc-pan-zoom-max')||'8')||8,drag=null;function zoomTo(next,p){var v=parseViewBox(svg),current=home.width/v.width;next=Math.max(min,Math.min(max,next));var scale=current/next,nw=v.width*scale,nh=v.height*scale,nx=p.x-(p.x-v.x)*scale,ny=p.y-(p.y-v.y)*scale;setViewBox(svg,{x:nx,y:ny,width:nw,height:nh});}function zoomAt(e){e.preventDefault();var v=parseViewBox(svg),current=home.width/v.width;zoomTo(current*Math.exp(-e.deltaY*0.001),svgPoint(svg,e.clientX,e.clientY));}function zoomBy(factor){var v=parseViewBox(svg);zoomTo((home.width/v.width)*factor,{x:v.x+v.width/2,y:v.y+v.height/2});}svg.addEventListener('wheel',zoomAt,{passive:false});svg.addEventListener('pointerdown',function(e){if(e.button!==0)return;drag={x:e.clientX,y:e.clientY,view:parseViewBox(svg)};svg.setPointerCapture&&svg.setPointerCapture(e.pointerId);svg.style.cursor='grabbing';});svg.addEventListener('pointermove',function(e){if(!drag)return;e.preventDefault();var r=svg.getBoundingClientRect(),dx=(e.clientX-drag.x)/(r.width||1)*drag.view.width,dy=(e.clientY-drag.y)/(r.height||1)*drag.view.height;setViewBox(svg,{x:drag.view.x-dx,y:drag.view.y-dy,width:drag.view.width,height:drag.view.height});});function endDrag(e){if(!drag)return;drag=null;svg.releasePointerCapture&&svg.releasePointerCapture(e.pointerId);svg.style.cursor='grab';}svg.addEventListener('pointerup',endDrag);svg.addEventListener('pointercancel',endDrag);svg.addEventListener('dblclick',function(e){e.preventDefault();setViewBox(svg,home);});var wrap=svg.parentNode;if(wrap)Array.prototype.forEach.call(wrap.querySelectorAll('[data-wdoc-pan-zoom-control]'),function(btn){btn.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();var action=btn.getAttribute('data-wdoc-pan-zoom-control');if(action==='in')zoomBy(1.25);else if(action==='out')zoomBy(0.8);else setViewBox(svg,home);});});}
 function ease(t,fn){if(fn==='linear')return t;if(fn==='ease-in')return t*t;if(fn==='ease-out')return 1-Math.pow(1-t,2);if(fn==='ease-in-out')return t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;return t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;}
 function frameValue(frames,p,prop,base){var prev=frames[0],next=frames[frames.length-1];frames.forEach(function(f){if(f.offset<=p)prev=f;if(f.offset>=p&&next.offset<p)next=f;});for(var i=0;i<frames.length;i++){if(frames[i].offset>=p){next=frames[i];break;}}var a=prev[prop];if(a==null)a=base[prop];var b=next[prop];if(b==null)b=a;if(a==null&&b==null)return null;if(next.offset===prev.offset)return b;var t=(p-prev.offset)/(next.offset-prev.offset);return a+(b-a)*t;}
 function startStateAnimation(el,state){var map=parseStateAnimations(el),name=map[state];if(!name)return;var anim=parseAnimations(el)[name];if(!anim||(!anim.keyframes.length&&!anim.frames.length))return;if(el.__wdocAnim)cancelAnimationFrame(el.__wdocAnim.raf);var base=baseBox(el),start=performance.now()+anim.delay,loops=anim.iteration==='infinite'?Infinity:Math.max(1,parseFloat(anim.iteration)||1),initialFrame=el.getAttribute('data-wdoc-sprite-current-frame');function tick(now){if(now<start){el.__wdocAnim={raf:requestAnimationFrame(tick)};return;}var elapsed=now-start,idx=Math.floor(elapsed/anim.duration),done=idx>=loops,raw=done?1:(elapsed%anim.duration)/anim.duration,dirReverse=anim.direction==='reverse'||(anim.direction==='alternate'&&idx%2===1),frameRaw=dirReverse?1-raw:raw;if(anim.keyframes.length){var pct=ease(raw,anim.timing)*100;var x=frameValue(anim.keyframes,pct,'x',base),y=frameValue(anim.keyframes,pct,'y',base),width=frameValue(anim.keyframes,pct,'width',base),height=frameValue(anim.keyframes,pct,'height',base),rotBase={rotate:0,rotate_origin_x:x+width/2,rotate_origin_y:y+height/2};var b={x:x,y:y,width:width,height:height,rotate:frameValue(anim.keyframes,pct,'rotate',rotBase),rotate_origin_x:frameValue(anim.keyframes,pct,'rotate_origin_x',rotBase),rotate_origin_y:frameValue(anim.keyframes,pct,'rotate_origin_y',rotBase)};setBox(el,b);}if(anim.frames.length){var fi=done?anim.frames.length-1:Math.min(anim.frames.length-1,Math.floor(frameRaw*anim.frames.length));setSpriteFrame(el,anim.frames[fi]);}if(done){if(anim.fill!=='forwards'&&anim.fill!=='both'){setBox(el,base);if(initialFrame!=null)setSpriteFrame(el,initialFrame);}return;}el.__wdocAnim={raf:requestAnimationFrame(tick)};}el.__wdocAnim={raf:requestAnimationFrame(tick)};}
 function stopStateAnimation(el,state){var map=parseStateAnimations(el);if(!map[state]||!el.__wdocAnim)return;cancelAnimationFrame(el.__wdocAnim.raf);el.__wdocAnim=null;setBox(el,baseBox(el));var initial=el.getAttribute('data-wdoc-sprite-initial-frame');if(initial!=null)setSpriteFrame(el,initial);}
-function init(root){(root||document).querySelectorAll('svg').forEach(function(svg){initPanZoom(svg);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-sprite]'),applySpriteTransparency);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-id]'),function(el,i){if(el.__wdocBound)return;el.__wdocBound=true;if(!el.hasAttribute('data-wdoc-order'))el.setAttribute('data-wdoc-order',String(i));parseEvents(el).forEach(function(cfg){var mode=cfg.mode||defaultMode(cfg.trigger),down=eventName(cfg.trigger,false),up=eventName(cfg.trigger,true);el.addEventListener(down,function(e){if(cfg.trigger==='mouse_down'&&!buttonOk(e,cfg.button))return;if(cfg.prevent)e.preventDefault();if(cfg.trigger==='mouse_leave'&&mode==='remove'&&guardedTo(svg,e.relatedTarget,cfg.guard))return;var t=target(svg,el,cfg.target);if(!t)return;if(mode==='toggle')t.classList.contains(stateClass(cfg.state))?remove(t,cfg.state):add(t,cfg.state);else if(mode==='remove')remove(t,cfg.state);else if(mode==='pulse'){add(t,cfg.state);setTimeout(function(){remove(t,cfg.state);},cfg.duration||180);}else add(t,cfg.state);});if(mode==='while'&&(cfg.trigger==='hover'||cfg.trigger==='mouse_down'))el.addEventListener(up,function(){var t=target(svg,el,cfg.target);if(t)remove(t,cfg.state);});});});});}
+function init(root){(root||document).querySelectorAll('svg').forEach(function(svg){initPanZoom(svg);initMap(svg);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-map]'),initMap);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-sprite]'),applySpriteTransparency);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-id]'),function(el,i){if(el.__wdocBound)return;el.__wdocBound=true;if(!el.hasAttribute('data-wdoc-order'))el.setAttribute('data-wdoc-order',String(i));parseEvents(el).forEach(function(cfg){var mode=cfg.mode||defaultMode(cfg.trigger),down=eventName(cfg.trigger,false),up=eventName(cfg.trigger,true);el.addEventListener(down,function(e){if(cfg.trigger==='mouse_down'&&!buttonOk(e,cfg.button))return;if(cfg.prevent)e.preventDefault();if(cfg.trigger==='mouse_leave'&&mode==='remove'&&guardedTo(svg,e.relatedTarget,cfg.guard))return;var t=target(svg,el,cfg.target);if(!t)return;if(mode==='toggle')t.classList.contains(stateClass(cfg.state))?remove(t,cfg.state):add(t,cfg.state);else if(mode==='remove')remove(t,cfg.state);else if(mode==='pulse'){add(t,cfg.state);setTimeout(function(){remove(t,cfg.state);},cfg.duration||180);}else add(t,cfg.state);});if(mode==='while'&&(cfg.trigger==='hover'||cfg.trigger==='mouse_down'))el.addEventListener(up,function(){var t=target(svg,el,cfg.target);if(t)remove(t,cfg.state);});});});});}
 window.__wdocDiagramRuntimeInit=init;var s=document.currentScript;if(s&&s.parentNode)init(s.parentNode);if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){init(document);});else init(document);
 })();"#.to_string()
 }
@@ -4935,6 +5027,18 @@ fn attr_f64(attrs: &IndexMap<String, String>, key: &str) -> Option<f64> {
     attrs.get(key).and_then(|s| s.parse().ok())
 }
 
+fn map_content_width(node: &ShapeNode) -> f64 {
+    attr_f64(&node.attrs, "content_width")
+        .unwrap_or(node.resolved.width)
+        .max(1.0)
+}
+
+fn map_content_height(node: &ShapeNode) -> f64 {
+    attr_f64(&node.attrs, "content_height")
+        .unwrap_or(node.resolved.height)
+        .max(1.0)
+}
+
 fn parse_svg_number(value: &str) -> Option<f64> {
     value.trim().parse().ok()
 }
@@ -5029,6 +5133,13 @@ mod tests {
     fn image_shape(src: &str, width: f64, height: f64) -> ShapeNode {
         let mut node = shape("hero", width, height);
         node.kind = ShapeKind::Image;
+        node.attrs.insert("src".to_string(), src.to_string());
+        node
+    }
+
+    fn map_shape(src: &str, width: f64, height: f64) -> ShapeNode {
+        let mut node = shape("world", width, height);
+        node.kind = ShapeKind::Map;
         node.attrs.insert("src".to_string(), src.to_string());
         node
     }
@@ -5565,6 +5676,107 @@ mod tests {
         let svg = render_diagram_svg(&mut diagram);
         assert!(svg.contains("<g transform=\"translate(20,10)\">"));
         assert!(svg.contains("<image href=\"images/hero.webp\""));
+    }
+
+    #[test]
+    fn map_shape_renders_image_viewport_and_children() {
+        let mut map = map_shape("images/world.png", 300.0, 180.0);
+        map.x = Some(10.0);
+        map.y = Some(20.0);
+        map.attrs
+            .insert("content_width".to_string(), "1200".to_string());
+        map.attrs
+            .insert("content_height".to_string(), "800".to_string());
+        map.attrs.insert("view_x".to_string(), "300".to_string());
+        map.attrs.insert("view_y".to_string(), "200".to_string());
+        map.attrs
+            .insert("view_width".to_string(), "300".to_string());
+        map.attrs
+            .insert("view_height".to_string(), "180".to_string());
+        map.attrs
+            .insert("background_fill".to_string(), "#0f172a".to_string());
+        let mut marker = shape("pin", 12.0, 12.0);
+        marker.kind = ShapeKind::Circle;
+        marker.x = Some(740.0);
+        marker.y = Some(410.0);
+        marker
+            .attrs
+            .insert("fill".to_string(), "#ef4444".to_string());
+        marker
+            .attrs
+            .insert("map_fixed".to_string(), "true".to_string());
+        marker
+            .attrs
+            .insert("map_anchor_x".to_string(), "746".to_string());
+        marker
+            .attrs
+            .insert("map_anchor_y".to_string(), "428".to_string());
+        map.children.push(marker);
+
+        let mut diagram = Diagram {
+            id: Some("map_demo".to_string()),
+            width: 340.0,
+            height: 220.0,
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+            classes: IndexMap::new(),
+            shapes: vec![map],
+            connections: vec![],
+        };
+
+        let svg = render_diagram_svg(&mut diagram);
+        assert!(svg.contains("data-wdoc-map=\"true\""));
+        assert!(svg.contains("x=\"10\" y=\"20\" width=\"300\" height=\"180\""));
+        assert!(svg.contains("viewBox=\"300 200 300 180\""));
+        assert!(svg.contains("data-wdoc-map-content-width=\"1200\""));
+        assert!(svg.contains("data-wdoc-map-content-height=\"800\""));
+        assert!(svg.contains(
+            "<image href=\"images/world.png\" x=\"0\" y=\"0\" width=\"1200\" height=\"800\""
+        ));
+        assert!(svg.contains("fill=\"#0f172a\""));
+        assert!(svg.contains("<circle cx=\"746\" cy=\"416\" r=\"6\" fill=\"#ef4444\""));
+        assert!(svg.contains("data-wdoc-map-fixed=\"true\""));
+        assert!(svg.contains("data-wdoc-map-anchor-x=\"746\""));
+        assert!(svg.contains("data-wdoc-map-anchor-y=\"428\""));
+        assert!(svg.contains("<script>"));
+        assert!(svg.contains("initMap"));
+        assert!(svg.contains("updateMapFixedShapes"));
+    }
+
+    #[test]
+    fn map_children_resolve_against_content_size() {
+        let mut map = map_shape("images/world.png", 300.0, 180.0);
+        map.attrs
+            .insert("content_width".to_string(), "1200".to_string());
+        map.attrs
+            .insert("content_height".to_string(), "800".to_string());
+        let mut anchored = shape("corner", 20.0, 20.0);
+        anchored.left = Some(1180.0);
+        anchored.top = Some(780.0);
+        anchored
+            .attrs
+            .insert("fill".to_string(), "#22c55e".to_string());
+        map.children.push(anchored);
+
+        let mut diagram = Diagram {
+            id: Some("map_demo".to_string()),
+            width: 300.0,
+            height: 180.0,
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+            classes: IndexMap::new(),
+            shapes: vec![map],
+            connections: vec![],
+        };
+
+        render_diagram_svg(&mut diagram);
+        let child = &diagram.shapes[0].children[0];
+        assert_eq!(child.resolved.x, 1180.0);
+        assert_eq!(child.resolved.y, 780.0);
     }
 
     #[test]

@@ -172,6 +172,20 @@ namespace wdoc {
             tile_width: f64 @optional
             tile_height: f64 @optional
         }
+        @open
+        schema "map" {
+            src: string
+            content_width: f64 @optional
+            content_height: f64 @optional
+            view_x: f64 @optional
+            view_y: f64 @optional
+            view_width: f64 @optional
+            view_height: f64 @optional
+            min_zoom: f64 @optional
+            max_zoom: f64 @optional
+            alt: string @optional
+            background_fill: string @optional
+        }
         @parent(["wdoc::draw::diagram"]) @open schema "dopesheet" {
             src: string
             columns: i32
@@ -337,6 +351,7 @@ namespace wdoc {
             "wdoc::draw::text_block",
             "wdoc::draw::inline_svg",
             "wdoc::draw::image",
+            "wdoc::draw::map",
             "wdoc::draw::sprite",
             "wdoc::draw::dopesheet_view",
             "wdoc::draw::tilemap",
@@ -607,10 +622,11 @@ namespace wdoc {
     //
     // Recognized descriptor fields:
     //   kind     — "rect" | "circle" | "ellipse" | "line" | "path" | "text" |
-    //              "inline_svg" | "image" | "group" | "connection"
+    //              "inline_svg" | "image" | "map" | "group" | "connection"
     //   id       — shape ID for layout and connection endpoints
     //   x, y, width, height       — absolute placement (relative to widget)
     //   top, bottom, left, right  — anchored placement
+    //   map children use the map's content_width/content_height coordinate space
     //   align, gap, padding       — layout for nested children
     //   layout_role               — "node" opts template children into parent layout
     //   z_index                   — sibling paint order, higher renders later

@@ -483,6 +483,47 @@ page game_design_examples {
                     }
                 }
 
+                heading h2_map_view {
+                    level = 2
+                    content = "Pan and zoom maps"
+                }
+
+                paragraph map_view_intro {
+                    content = "Use <code>map</code> for a large image-backed coordinate space. Normal child shapes sit in the map's content coordinates and move with the internal pan/zoom viewport."
+                }
+
+                diagram map_view_demo {
+                    width = 760
+                    height = 420
+
+                    map campaign_map {
+                        x = 30
+                        y = 30
+                        width = 700
+                        height = 340
+                        src = "images/inkscape-rpg-map.png"
+                        content_width = 927
+                        content_height = 704
+                        view_x = 150
+                        view_y = 120
+                        view_width = 520
+                        view_height = 252
+                        min_zoom = 0.5
+                        max_zoom = 6
+                        background_fill = "#0f172a"
+                        alt = "Pan and zoom map"
+
+                        ellipse base_a_shadow { x = 303 y = 270 width = 22 height = 7 fill = "#020617" opacity = 0.45 map_fixed = true }
+                        circle base_a { x = 305 y = 255 width = 18 height = 18 fill = "#ef4444" stroke = "#ffffff" stroke_width = 3 vector_effect = "non-scaling-stroke" map_fixed = true map_anchor_x = 314 map_anchor_y = 273 }
+                        circle base_a_tip { x = 311 y = 270 width = 6 height = 6 fill = "#ffffff" opacity = 0.9 map_fixed = true map_anchor_x = 314 map_anchor_y = 273 }
+                        text base_a_label { x = 329 y = 245 width = 120 height = 24 content = "Base A" anchor = "start" fill = "#f8fafc" font_size = 15 font_weight = "700" }
+                        ellipse base_b_shadow { x = 618 y = 435 width = 22 height = 7 fill = "#020617" opacity = 0.45 map_fixed = true }
+                        circle base_b { x = 620 y = 420 width = 18 height = 18 fill = "#22c55e" stroke = "#ffffff" stroke_width = 3 vector_effect = "non-scaling-stroke" map_fixed = true map_anchor_x = 629 map_anchor_y = 438 }
+                        circle base_b_tip { x = 626 y = 435 width = 6 height = 6 fill = "#ffffff" opacity = 0.9 map_fixed = true map_anchor_x = 629 map_anchor_y = 438 }
+                        text base_b_label { x = 644 y = 410 width = 120 height = 24 content = "Base B" anchor = "start" fill = "#f8fafc" font_size = 15 font_weight = "700" }
+                    }
+                }
+
                 code source {
                     language = "wcl"
                     content = "dopesheet elevated_iso_blocks {\n    src = \"images/kenney_isometric_blocks_sheet.png\"\n    columns = 4\n    frame_width = 111\n    frame_height = 128\n    frame_count = 8\n}\n\ntilemap iso_base {\n    y = 64\n    orientation = \"isometric\"\n    tile_width = 112\n    tile_height = 64\n    tile_render_height = 128\n    sheet = \"elevated_iso_blocks\"\n    rows = [[0, 0, 1], [4, 5, 2], [4, 7, 7]]\n}\n\ntilemap iso_raised {\n    y = 0\n    orientation = \"isometric\"\n    tile_width = 112\n    tile_height = 64\n    tile_render_height = 128\n    sheet = \"elevated_iso_blocks\"\n    rows = [[null, null, null], [null, 5, null], [null, null, null]]\n}\n\ngame_layer world {\n    z_index = 0\n    tilemap map { tile_width = 48 tile_height = 48 sheet = \"terrain_tiles\" rows = [[0, 0, 1], [0, 2, 3]] }\n}\n\ngame_layer hud {\n    z_index = 100\n    locked = true\n    rect panel { x = 16 y = 16 width = 160 height = 44 }\n}\n\ndopesheet explosion_sheet {\n    src = \"images/explosion1.png\"\n    columns = 10\n    frame_width = 100\n    frame_height = 100\n    frame_count = 50\n}\n\nsprite explosion_once {\n    sheet = \"explosion_sheet\"\n    frame = 0\n    class = \"ex_sprite_explosion\"\n}\n\ndopesheet_view preview {\n    sheet = \"explosion_sheet\"\n    width = 700\n    height = 350\n    grid_stroke = \"#e2e8f0\"\n}"

@@ -4718,6 +4718,49 @@ mod wdoc_draw_tests {
     }
 
     #[test]
+    fn diagram_map_flows_through_cli_extraction_with_child_shapes() {
+        let mut pin_attrs = IndexMap::new();
+        int_attr(&mut pin_attrs, "x", 720);
+        int_attr(&mut pin_attrs, "y", 460);
+        int_attr(&mut pin_attrs, "width", 14);
+        int_attr(&mut pin_attrs, "height", 14);
+        string_attr(&mut pin_attrs, "fill", "#ef4444");
+        let pin = block("wdoc::draw::circle", Some("pin"), pin_attrs, vec![]);
+
+        let mut map_attrs = IndexMap::new();
+        int_attr(&mut map_attrs, "x", 0);
+        int_attr(&mut map_attrs, "y", 0);
+        int_attr(&mut map_attrs, "width", 300);
+        int_attr(&mut map_attrs, "height", 180);
+        string_attr(&mut map_attrs, "src", "images/world.png");
+        int_attr(&mut map_attrs, "content_width", 1200);
+        int_attr(&mut map_attrs, "content_height", 800);
+        int_attr(&mut map_attrs, "view_x", 300);
+        int_attr(&mut map_attrs, "view_y", 200);
+        int_attr(&mut map_attrs, "view_width", 300);
+        int_attr(&mut map_attrs, "view_height", 180);
+        let map = block("wdoc::draw::map", Some("world"), map_attrs, vec![pin]);
+
+        let mut diagram_attrs = IndexMap::new();
+        int_attr(&mut diagram_attrs, "width", 300);
+        int_attr(&mut diagram_attrs, "height", 180);
+        let diagram = block(
+            "wdoc::draw::diagram",
+            Some("map_preview"),
+            diagram_attrs,
+            vec![map],
+        );
+
+        let ctx = empty_ctx();
+
+        let html = render_diagram_with_ctx(&diagram, &ctx);
+        assert!(html.contains("data-wdoc-map=\"true\""));
+        assert!(html.contains("<image href=\"images/world.png\""));
+        assert!(html.contains("viewBox=\"300 200 300 180\""));
+        assert!(html.contains("<circle cx=\"727\" cy=\"467\" r=\"7\" fill=\"#ef4444\""));
+    }
+
+    #[test]
     fn sprite_dopesheet_animation_flows_through_cli_extraction() {
         let ctx = wdoc_library_ctx();
 

@@ -8,7 +8,7 @@ Sources: `crates/wcl_wdoc/src/wdoc.wcl` (widget templates), `crates/wcl_wdoc/src
 
 ```wcl
 import <wdoc.wcl>
-use wdoc::draw::{diagram, rect, circle, ellipse, line, path, text, connection}
+use wdoc::draw::{diagram, rect, circle, ellipse, line, path, text, image, map, connection}
 # Widgets as needed:
 use wdoc::draw::{flow_terminal, flow_process, flow_decision, flow_io, flow_subprocess}
 use wdoc::draw::{c4_person, c4_system, c4_container, c4_component, c4_boundary}
@@ -34,7 +34,7 @@ diagram pipeline {
 
 ## Primitive Shapes
 
-Six kinds, defined in `shapes.rs::ShapeKind`.
+Primitive kinds are defined in `shapes.rs::ShapeKind`.
 
 ### `rect`
 ```wcl
@@ -98,6 +98,27 @@ text label {
   anchor    = "start"   # "start" | "middle" | "end"
 }
 ```
+
+### `map`
+PNG-backed viewport with internal pan/zoom. Child shapes are ordinary drawing shapes, positioned in the map's `content_width` / `content_height` coordinate space.
+
+```wcl
+map world {
+  x = 0, y = 0, width = 900, height = 560
+  src = "images/world-map.png"
+  content_width = 2400
+  content_height = 1600
+  view_x = 600, view_y = 380
+  view_width = 900, view_height = 560
+  min_zoom = 0.5
+  max_zoom = 8
+
+  circle brisbane { x = 1730, y = 1040, width = 18, height = 18, fill = "#ef4444", map_fixed = true }
+  text brisbane_label { x = 1752, y = 1028, width = 110, height = 24, content = "Brisbane", anchor = "start" }
+}
+```
+
+Set `map_fixed = true` on a child shape to keep its on-screen size stable while the map zooms. By default the shape is anchored at its center; override with `map_anchor_x` / `map_anchor_y` for pin-tip behavior.
 
 ## Positioning
 
