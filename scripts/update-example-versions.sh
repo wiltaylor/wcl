@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Update published package versions in example projects.
-# Run this after publishing a new release to keep examples current.
+# This intentionally switches examples from their local-first development
+# references to published package references for release/docs updates.
 #
 # Usage: ./scripts/update-example-versions.sh <version>
 # Example: ./scripts/update-example-versions.sh 0.3.0
@@ -32,21 +33,26 @@ DOTNET_VERSION="$VERSION"
 echo "Updating example versions to $VERSION..."
 
 # ── Rust ──
-sed -i "s|^wcl = \".*\"|wcl = \"$RUST_VERSION\"|" \
+sed -i -E "s|^wcl = .*$|wcl = \"$RUST_VERSION\"|" \
   "$REPO_ROOT/examples/rust/Cargo.toml"
 echo "  ✓ Rust: wcl = \"$RUST_VERSION\""
 
 # ── Python ──
-sed -i "s|^# dependencies = \[\"pywcl>=.*\"\]|# dependencies = [\"pywcl>=$PYTHON_VERSION\"]|" \
+sed -i -E "s|^# dependencies = \\[\"pywcl.*\"\\]|# dependencies = [\"pywcl>=$PYTHON_VERSION\"]|" \
   "$REPO_ROOT/examples/python/example.py"
+sed -i '/^# \[tool\.uv\.sources\]$/,+1d' "$REPO_ROOT/examples/python/example.py"
 echo "  ✓ Python: pywcl>=$PYTHON_VERSION"
 
 # ── Ruby ──
-sed -i "s|^gem \"wcl\", \".*\"|gem \"wcl\", \"$RUBY_VERSION\"|" \
+sed -i -E "s|^gem \"wcl\".*|gem \"wcl\", \"$RUBY_VERSION\"|" \
   "$REPO_ROOT/examples/ruby/Gemfile"
 echo "  ✓ Ruby: gem \"wcl\", \"$RUBY_VERSION\""
 
 # ── .NET ──
+if grep -q 'ProjectReference Include="../../bindings/dotnet/src/Wcl/Wcl.csproj"' "$REPO_ROOT/examples/dotnet/Example.csproj"; then
+  sed -i 's|<ProjectReference Include="../../bindings/dotnet/src/Wcl/Wcl.csproj" />|<PackageReference Include="WclLang" Version="__VERSION__" />|' \
+    "$REPO_ROOT/examples/dotnet/Example.csproj"
+fi
 sed -i "s|<PackageReference Include=\"WclLang\" Version=\".*\" />|<PackageReference Include=\"WclLang\" Version=\"$DOTNET_VERSION\" />|" \
   "$REPO_ROOT/examples/dotnet/Example.csproj"
 echo "  ✓ .NET: WclLang $DOTNET_VERSION"

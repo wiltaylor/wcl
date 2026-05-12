@@ -7,7 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="WclLang" Version="0.2.4-alpha" />
+    <ProjectReference Include="../../bindings/dotnet/src/Wcl/Wcl.csproj" />
   </ItemGroup>
 
 </Project>

@@ -5,21 +5,19 @@ wcl_version := env('WCL_VERSION', `git describe --tags --abbrev=0 --match 'v*' -
 
 # Build the documentation site
 wdoc-build:
-    wcl wdoc build docs/*.wcl --output docs/build --var version="{{wcl_version}}"
-
-# Serve the documentation site locally with live reload
-wdoc-serve:
-    wcl wdoc serve docs/*.wcl --port 3000 --var version="{{wcl_version}}"
-
-# Build the documentation site using locally-built binary
-wdoc-build-local:
     cargo build --quiet -p wcl
     ./target/debug/wcl wdoc build docs/*.wcl --output docs/build --var version="{{wcl_version}}"
 
-# Serve the documentation site using locally-built binary
-wdoc-serve-local:
+# Serve the documentation site locally with live reload
+wdoc-serve:
     cargo build --quiet -p wcl
     ./target/debug/wcl wdoc serve docs/*.wcl --port 3000 --var version="{{wcl_version}}"
+
+# Backward-compatible alias for local-first default
+wdoc-build-local: wdoc-build
+
+# Backward-compatible alias for local-first default
+wdoc-serve-local: wdoc-serve
 
 # Build full website (Hugo + wdoc merged)
 web-build: wdoc-build

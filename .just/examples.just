@@ -1,10 +1,10 @@
 set working-directory := '..'
 
-# Run all examples
+# Run all examples against local source builds/packages
 all: cli rust python javascript go dotnet jvm ruby
 
-# Build and run ALL examples against the locally-built wcl
-run-local: build-local patch-local run-local-cli run-local-transform unpatch-local
+# Build and run CLI examples against the locally-built wcl
+run-local: cli transform
 
 # Build the CLI binary (no install)
 build-local:
@@ -21,52 +21,42 @@ run-local-cli:
 run-local-transform:
     PATH="$(pwd)/target/debug:$PATH" bash examples/cli/transform.sh
 
-# Install the locally-built CLI into PATH (only needed for non-local recipes)
+# Install the locally-built CLI into PATH (only needed for manual shell testing)
 install-local:
     cargo install --path crates/wcl --quiet
 
-# Patch binding examples to use locally-built packages (for CI)
+# Deprecated: examples are local-first by default.
 patch-local:
     bash scripts/patch-examples-local.sh
 
-# Restore binding examples to use published package versions
+# Deprecated: examples are local-first by default.
 unpatch-local:
-    rm -rf examples/rust/.cargo
-    git checkout -- examples/python/example.py examples/ruby/Gemfile examples/dotnet/Example.csproj
-    git checkout -- examples/ruby/Gemfile.lock 2>/dev/null || true
+    @echo "examples are local-first; nothing to unpatch"
 
 # Update published package versions in examples
 update-versions version:
     bash scripts/update-example-versions.sh {{version}}
 
-# Build wdoc example (requires wcl in PATH)
-wdoc:
-    wcl wdoc build examples/wdoc/site.wcl examples/wdoc/pages.wcl --output /tmp/wdoc-example
-    @echo "wdoc: output at /tmp/wdoc-example/index.html"
-
 # Build wdoc example using locally-built binary
-wdoc-local: build-local
+wdoc: build-local
     ./target/debug/wcl wdoc build examples/wdoc/site.wcl examples/wdoc/pages.wcl --output /tmp/wdoc-example
     @echo "wdoc: output at /tmp/wdoc-example/index.html"
 
-# Serve wdoc example with live reload (requires wcl in PATH)
-wdoc-serve:
-    wcl wdoc serve examples/wdoc/site.wcl examples/wdoc/pages.wcl --port 3000 --open
+# Backward-compatible alias for local-first default
+wdoc-local: wdoc
 
-# Serve wdoc example using locally-built binary (restores patched files on exit)
-wdoc-serve-local: build-local patch-local && unpatch-local
+# Serve wdoc example using locally-built binary
+wdoc-serve: build-local
     ./target/debug/wcl wdoc serve examples/wdoc/site.wcl examples/wdoc/pages.wcl --port 3000 --open
 
-# Run CLI examples (requires wcl in PATH)
-cli:
-    bash examples/cli/eval.sh
-    bash examples/cli/validate.sh
-    bash examples/cli/fmt.sh
-    bash examples/cli/manipulate.sh
+# Backward-compatible alias for local-first default
+wdoc-serve-local: wdoc-serve
 
-# Run transform examples (requires wcl in PATH)
-transform:
-    bash examples/cli/transform.sh
+# Run CLI examples using locally-built binary
+cli: run-local-cli
+
+# Run transform examples using locally-built binary
+transform: run-local-transform
 
 # Run Rust example
 rust:

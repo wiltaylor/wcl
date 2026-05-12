@@ -1,7 +1,10 @@
 #!/usr/bin/env -S uv run
 # /// script
 # requires-python = ">=3.9"
-# dependencies = ["pywcl>=0.2.4a1"]
+# dependencies = ["pywcl"]
+#
+# [tool.uv.sources]
+# pywcl = { path = "../../bindings/python" }
 # ///
 """WCL Python binding example."""
 
