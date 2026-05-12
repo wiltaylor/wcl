@@ -5,6 +5,8 @@ use std::collections::HashMap;
 
 use crate::eval::value::Value;
 
+type CaptureEvalFn<'a> = dyn Fn(&Expr, &HashMap<String, Value>) -> Result<Value, String> + 'a;
+
 /// Expands `for` loops and `if/else` conditionals in a WCL document.
 ///
 /// Control flow expansion occurs after macro expansion and before final scope
@@ -60,11 +62,7 @@ impl ControlFlowExpander {
         self.expand_with_captures(doc, &|expr, _captures| eval_expr(expr));
     }
 
-    pub fn expand_with_captures(
-        &mut self,
-        doc: &mut Document,
-        eval_expr: &dyn Fn(&Expr, &HashMap<String, Value>) -> Result<Value, String>,
-    ) {
+    pub fn expand_with_captures(&mut self, doc: &mut Document, eval_expr: &CaptureEvalFn<'_>) {
         self.local_scopes.clear();
         self.local_scopes.push(HashMap::new());
         let original_items = std::mem::take(&mut doc.items);
@@ -100,7 +98,7 @@ impl ControlFlowExpander {
     fn expand_single_item(
         &mut self,
         item: BodyItem,
-        eval_expr: &dyn Fn(&Expr, &HashMap<String, Value>) -> Result<Value, String>,
+        eval_expr: &CaptureEvalFn<'_>,
         depth: u32,
     ) -> Vec<BodyItem> {
         if depth > self.max_depth {
@@ -187,7 +185,7 @@ impl ControlFlowExpander {
     fn expand_for_loop_with_captures(
         &mut self,
         for_loop: &ForLoop,
-        eval_expr: &dyn Fn(&Expr, &HashMap<String, Value>) -> Result<Value, String>,
+        eval_expr: &CaptureEvalFn<'_>,
         depth: u32,
     ) -> Vec<BodyItem> {
         // When in tolerant mode, defer any iterable that references a
@@ -310,7 +308,7 @@ impl ControlFlowExpander {
     fn expand_conditional_with_captures(
         &mut self,
         cond: &Conditional,
-        eval_expr: &dyn Fn(&Expr, &HashMap<String, Value>) -> Result<Value, String>,
+        eval_expr: &CaptureEvalFn<'_>,
         depth: u32,
     ) -> Vec<BodyItem> {
         // Evaluate the condition

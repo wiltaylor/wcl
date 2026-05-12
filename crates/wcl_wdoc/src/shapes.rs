@@ -956,25 +956,29 @@ fn resolve_children(
         Alignment::Grid if !unpositioned.is_empty() => {
             layout_graph_subset(
                 children,
-                &unpositioned,
                 connections,
-                parent,
-                scope_path,
-                align,
-                gap,
-                options,
+                GraphSubsetLayout {
+                    indices: &unpositioned,
+                    parent,
+                    scope_path,
+                    align,
+                    gap,
+                    options,
+                },
             );
         }
         Alignment::Layered | Alignment::Force | Alignment::Radial if !layoutable.is_empty() => {
             layout_graph_subset(
                 children,
-                &layoutable,
                 connections,
-                parent,
-                scope_path,
-                align,
-                gap,
-                options,
+                GraphSubsetLayout {
+                    indices: &layoutable,
+                    parent,
+                    scope_path,
+                    align,
+                    gap,
+                    options,
+                },
             );
         }
         _ => {}
@@ -1202,16 +1206,28 @@ fn decoration_parent_bounds(parent: &Bounds) -> Bounds {
     }
 }
 
-fn layout_graph_subset(
-    children: &mut [ShapeNode],
-    indices: &[usize],
-    connections: &mut [Connection],
-    parent: &Bounds,
-    scope_path: &str,
+struct GraphSubsetLayout<'a> {
+    indices: &'a [usize],
+    parent: &'a Bounds,
+    scope_path: &'a str,
     align: Alignment,
     gap: f64,
-    options: &IndexMap<String, String>,
+    options: &'a IndexMap<String, String>,
+}
+
+fn layout_graph_subset(
+    children: &mut [ShapeNode],
+    connections: &mut [Connection],
+    layout: GraphSubsetLayout<'_>,
 ) {
+    let GraphSubsetLayout {
+        indices,
+        parent,
+        scope_path,
+        align,
+        gap,
+        options,
+    } = layout;
     let mut layout_children: Vec<ShapeNode> =
         indices.iter().map(|&i| children[i].clone()).collect();
     let local_connections = localize_connections(&layout_children, connections, scope_path);
@@ -2340,11 +2356,13 @@ fn render_text_block_svg(node: &ShapeNode, svg: &mut String) {
                 render_inline_lines_svg(
                     svg,
                     &lines,
-                    b.x + padding,
-                    y,
-                    font_size,
-                    line_step,
-                    fill,
+                    InlineLineLayout {
+                        x: b.x + padding,
+                        y,
+                        font_size,
+                        line_step,
+                        fill,
+                    },
                     node,
                 );
                 y += (lines.len().max(1) as f64) * line_step;
@@ -2367,13 +2385,16 @@ fn render_text_block_svg(node: &ShapeNode, svg: &mut String) {
 fn render_inline_lines_svg(
     svg: &mut String,
     lines: &[Vec<InlineFragment>],
-    x: f64,
-    y: f64,
-    font_size: f64,
-    line_step: f64,
-    fill: &str,
+    layout: InlineLineLayout<'_>,
     node: &ShapeNode,
 ) {
+    let InlineLineLayout {
+        x,
+        y,
+        font_size,
+        line_step,
+        fill,
+    } = layout;
     let baseline = font_size * 0.8 + ((line_step - font_size).max(0.0) / 2.0);
     let font_family = node
         .attrs
@@ -2402,6 +2423,14 @@ fn render_inline_lines_svg(
         svg.push_str("</tspan>");
     }
     svg.push_str("</text>");
+}
+
+struct InlineLineLayout<'a> {
+    x: f64,
+    y: f64,
+    font_size: f64,
+    line_step: f64,
+    fill: &'a str,
 }
 
 fn render_inline_fragment_svg(svg: &mut String, fragment: &InlineFragment, node: &ShapeNode) {
@@ -3002,7 +3031,7 @@ fn render_sprite_shape_svg(node: &ShapeNode, svg: &mut String) {
          data-wdoc-sprite-columns=\"{columns}\" data-wdoc-sprite-frame-width=\"{frame_w}\" \
          data-wdoc-sprite-frame-height=\"{frame_h}\" data-wdoc-sprite-offset-x=\"{offset_x}\" \
          data-wdoc-sprite-offset-y=\"{offset_y}\" data-wdoc-sprite-gap-x=\"{gap_x}\" \
-         data-wdoc-sprite-gap-y=\"{gap_y}\" data-wdoc-sprite-current-frame=\"{frame}\"{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{aria}{style}>\
+         data-wdoc-sprite-gap-y=\"{gap_y}\" data-wdoc-sprite-current-frame=\"{frame}\"{}{}{}{}{}{}{}{}{}{}{}{}{}{}{aria}{style}>\
          <image href=\"{src}\" x=\"0\" y=\"0\" width=\"{sheet_w}\" height=\"{sheet_h}\" \
          preserveAspectRatio=\"none\"/>\
          </svg>",
@@ -3023,8 +3052,7 @@ fn render_sprite_shape_svg(node: &ShapeNode, svg: &mut String) {
         sprite_data_attr(node, "fit", "fit"),
         sprite_data_attr(node, "alt", "alt"),
         sprite_data_attr(node, "class", "class"),
-        sprite_data_attr(node, "id", "id"),
-        ""
+        sprite_data_attr(node, "id", "id")
     )
     .unwrap();
 }
@@ -3389,24 +3417,22 @@ fn render_connection_svg(conn: &Connection, shape_map: &HashMap<String, Bounds>,
                         "<path d=\"{d}\" fill=\"none\"{stroke_default}{style}{runtime_attrs}{ms}{me}/>"
                     )
                     .unwrap();
-                } else {
-                    if let Some(points) =
-                        route_orthogonal_best_effort(from_bounds, to_bounds, &obstacles)
-                    {
-                        let d = path_data(&points);
-                        write!(
+                } else if let Some(points) =
+                    route_orthogonal_best_effort(from_bounds, to_bounds, &obstacles)
+                {
+                    let d = path_data(&points);
+                    write!(
                         svg,
                         "<path d=\"{d}\" fill=\"none\"{stroke_default}{style}{runtime_attrs}{ms}{me}/>"
                     )
                     .unwrap();
-                    } else {
-                        write!(
-                            svg,
-                            "<line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\"\
-                             {stroke_default}{style}{runtime_attrs}{ms}{me}/>"
-                        )
-                        .unwrap();
-                    }
+                } else {
+                    write!(
+                        svg,
+                        "<line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\"\
+                         {stroke_default}{style}{runtime_attrs}{ms}{me}/>"
+                    )
+                    .unwrap();
                 }
             } else {
                 let (x1, y1) = from_bounds.anchor_pos(conn.from_anchor, to_bounds);

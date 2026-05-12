@@ -62,7 +62,7 @@ impl TerminalMetrics {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 struct TermStyle {
     fg: Option<String>,
     bg: Option<String>,
@@ -77,26 +77,6 @@ struct TermStyle {
     strikethrough: bool,
     overline: bool,
     css_class: Option<String>,
-}
-
-impl Default for TermStyle {
-    fn default() -> Self {
-        Self {
-            fg: None,
-            bg: None,
-            bold: false,
-            dim: false,
-            italic: false,
-            underline: false,
-            double_underline: false,
-            blink: false,
-            inverse: false,
-            hidden: false,
-            strikethrough: false,
-            overline: false,
-            css_class: None,
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -431,11 +411,13 @@ fn render_box(child: &ShapeNode, metrics: &TerminalMetrics, foreground: &str, sv
         write_text(
             svg,
             metrics,
-            row + r,
-            col,
-            &text,
-            stroke,
-            None,
+            TextCellSpan {
+                row: row + r,
+                col,
+                text: &text,
+                fill: stroke,
+                cells: None,
+            },
             &TermStyle::default(),
         );
     }
@@ -476,11 +458,13 @@ fn render_rule(child: &ShapeNode, metrics: &TerminalMetrics, foreground: &str, s
             write_text(
                 svg,
                 metrics,
-                row + r,
-                col,
-                &glyph,
-                fg,
-                None,
+                TextCellSpan {
+                    row: row + r,
+                    col,
+                    text: &glyph,
+                    fill: fg,
+                    cells: None,
+                },
                 &TermStyle::default(),
             );
         }
@@ -488,11 +472,13 @@ fn render_rule(child: &ShapeNode, metrics: &TerminalMetrics, foreground: &str, s
         write_text(
             svg,
             metrics,
-            row,
-            col,
-            &glyph.repeat(cols),
-            fg,
-            None,
+            TextCellSpan {
+                row,
+                col,
+                text: &glyph.repeat(cols),
+                fill: fg,
+                cells: None,
+            },
             &TermStyle::default(),
         );
     }
@@ -579,11 +565,13 @@ fn render_ansi_runs(
             write_text(
                 svg,
                 metrics,
-                row_offset + run.row,
-                col_offset + run.col,
-                &run.text,
-                &fg,
-                Some(run.cells),
+                TextCellSpan {
+                    row: row_offset + run.row,
+                    col: col_offset + run.col,
+                    text: &run.text,
+                    fill: &fg,
+                    cells: Some(run.cells),
+                },
                 &run.style,
             );
         }
@@ -663,7 +651,7 @@ fn ansi_runs(content: &str, rows: usize, cols: usize) -> Vec<TermRun> {
             }
             '\t' => {
                 let next = ((col / 8) + 1) * 8;
-                for _ in col..next {
+                for _ in 0..next.saturating_sub(col) {
                     push_cell(
                         ' ',
                         &mut runs,
@@ -886,16 +874,27 @@ fn effective_bg(style: &TermStyle, default_bg: &str, default_fg: &str) -> String
     }
 }
 
+struct TextCellSpan<'a> {
+    row: usize,
+    col: usize,
+    text: &'a str,
+    fill: &'a str,
+    cells: Option<usize>,
+}
+
 fn write_text(
     svg: &mut String,
     metrics: &TerminalMetrics,
-    row: usize,
-    col: usize,
-    text: &str,
-    fill: &str,
-    cells: Option<usize>,
+    span: TextCellSpan<'_>,
     style: &TermStyle,
 ) {
+    let TextCellSpan {
+        row,
+        col,
+        text,
+        fill,
+        cells,
+    } = span;
     if row >= metrics.rows || col >= metrics.cols {
         return;
     }
