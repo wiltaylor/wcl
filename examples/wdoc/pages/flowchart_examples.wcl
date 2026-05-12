@@ -1,6 +1,6 @@
 import "./shared.wcl"
 
-// ── Flowchart Shapes page ──
+// -- Flowchart Shapes page --
 
 page flowchart_examples {
     section = "my_docs.diagrams.flowchart_examples"
@@ -15,93 +15,264 @@ page flowchart_examples {
                     level = 1
                     content = "Flowchart Shapes"
                 }
-                paragraph pfc1 { content = "Flowchart nodes auto-size from their labels when width and height are omitted. Long labels wrap on spaces before the layered layout runs:" }
+                paragraph pfc1 { content = "This page intentionally uses dense flowcharts with branches, loops, cross-links, explicit anchors, and mixed connection styles so connection routing and avoidance issues are easy to reproduce:" }
 
                 diagram flowchart_demo {
-                    width = 760
-                    height = 660
+                    width = 980
+                    height = 880
                     align = "layered"
-                    gap = 48
+                    gap = 42
 
                     flow_terminal start {
-                        label = "Start"
+                        label = "Start intake"
                     }
 
-                    flow_io input_data {
-                        label = "Read Input"
+                    flow_io intake {
+                        label = "Read request"
                     }
 
-                    flow_process validate {
-                        label = "Validate incoming customer data"
-                        max_width = 165
+                    flow_process normalize {
+                        label = "Normalize payload"
+                        max_width = 160
                     }
 
-                    flow_decision is_valid {
-                        label = "Valid payload?"
+                    flow_decision has_account {
+                        label = "Account found?"
                     }
 
-                    flow_subprocess process_data {
-                        label = "Process accepted data"
-                        max_width = 170
+                    flow_process create_case {
+                        label = "Create review case"
+                        color = "#f59e0b"
                     }
 
-                    flow_process log_error {
-                        label = "Log Error"
+                    flow_process load_profile {
+                        label = "Load profile"
+                    }
+
+                    flow_decision risk_check {
+                        label = "Risk score high?"
+                    }
+
+                    flow_subprocess manual_review {
+                        label = "Manual review queue"
+                        color = "#7c3aed"
+                        max_width = 180
+                    }
+
+                    flow_process approve_fast {
+                        label = "Fast approve"
+                        color = color_success
+                    }
+
+                    flow_io notify_ops {
+                        label = "Notify ops"
                         color = "#d32f2f"
                     }
 
-                    flow_io write_output {
-                        label = "Write Output"
+                    flow_subprocess payment_flow {
+                        label = "Payment subprocess"
+                        max_width = 170
+                    }
+
+                    flow_decision payment_ok {
+                        label = "Payment OK?"
+                    }
+
+                    flow_process retry_payment {
+                        label = "Retry payment"
+                        color = "#f59e0b"
+                    }
+
+                    flow_io audit_log {
+                        label = "Write audit log"
+                    }
+
+                    flow_process release_order {
+                        label = "Release order"
+                        color = color_success
+                    }
+
+                    flow_process fraud_hold {
+                        label = "Fraud hold"
+                        color = "#d32f2f"
+                    }
+
+                    flow_io customer_notice {
+                        label = "Customer notice"
                     }
 
                     flow_terminal done {
-                        label = "End"
+                        label = "Complete"
                         color = "#28a745"
                     }
 
                     connection fc1 { from = "start"
-                        to = "input_data"
+                        to = "intake"
                         direction = "to"
                         stroke = color_text
                         stroke_width = 2 }
-                    connection fc2 { from = "input_data"
-                        to = "validate"
+                    connection fc2 { from = "intake"
+                        to = "normalize"
                         direction = "to"
                         stroke = color_text
                         stroke_width = 2 }
-                    connection fc3 { from = "validate"
-                        to = "is_valid"
+                    connection fc3 { from = "normalize"
+                        to = "has_account"
                         direction = "to"
                         stroke = color_text
                         stroke_width = 2 }
-                    connection fc4 { from = "is_valid"
-                        to = "process_data"
+                    connection fc4 { from = "has_account"
+                        to = "load_profile"
                         direction = "to"
                         stroke = color_text
                         stroke_width = 2
                         label = "Yes" }
-                    connection fc5 { from = "is_valid"
-                        to = "log_error"
+                    connection fc5 { from = "has_account"
+                        to = "create_case"
+                        direction = "to"
+                        from_anchor = "left"
+                        to_anchor = "right"
+                        stroke = "#f59e0b"
+                        stroke_width = 2
+                        label = "No" }
+                    connection fc6 { from = "create_case"
+                        to = "manual_review"
+                        direction = "to"
+                        from_anchor = "bottom"
+                        to_anchor = "left"
+                        curve = "bezier"
+                        stroke = "#f59e0b"
+                        stroke_width = 2
+                        label = "triage" }
+                    connection fc7 { from = "load_profile"
+                        to = "risk_check"
+                        direction = "to"
+                        stroke = color_text
+                        stroke_width = 2 }
+                    connection fc8 { from = "risk_check"
+                        to = "approve_fast"
+                        direction = "to"
+                        stroke = color_success
+                        stroke_width = 2
+                        label = "No" }
+                    connection fc9 { from = "risk_check"
+                        to = "manual_review"
+                        direction = "to"
+                        from_anchor = "left"
+                        to_anchor = "right"
+                        stroke = "#7c3aed"
+                        stroke_width = 2
+                        label = "Yes" }
+                    connection fc10 { from = "manual_review"
+                        to = "approve_fast"
+                        direction = "both"
+                        from_anchor = "right"
+                        to_anchor = "left"
+                        curve = "bezier"
+                        stroke = "#7c3aed"
+                        stroke_width = 2
+                        label = "questions" }
+                    connection fc11 { from = "manual_review"
+                        to = "notify_ops"
+                        direction = "to"
+                        from_anchor = "bottom"
+                        to_anchor = "top"
+                        stroke = "#d32f2f"
+                        stroke_width = 2
+                        label = "blocked" }
+                    connection fc12 { from = "approve_fast"
+                        to = "payment_flow"
+                        direction = "to"
+                        stroke = color_text
+                        stroke_width = 2 }
+                    connection fc13 { from = "payment_flow"
+                        to = "payment_ok"
+                        direction = "to"
+                        stroke = color_text
+                        stroke_width = 2 }
+                    connection fc14 { from = "payment_ok"
+                        to = "release_order"
+                        direction = "to"
+                        stroke = color_success
+                        stroke_width = 2
+                        label = "Yes" }
+                    connection fc15 { from = "payment_ok"
+                        to = "retry_payment"
+                        direction = "to"
+                        from_anchor = "left"
+                        to_anchor = "right"
+                        stroke = "#f59e0b"
+                        stroke_width = 2
+                        label = "Retry" }
+                    connection fc16 { from = "retry_payment"
+                        to = "payment_flow"
+                        direction = "to"
+                        from_anchor = "top"
+                        to_anchor = "left"
+                        curve = "bezier"
+                        stroke = "#f59e0b"
+                        stroke_width = 2
+                        stroke_dasharray = "6,4"
+                        label = "again" }
+                    connection fc17 { from = "retry_payment"
+                        to = "fraud_hold"
                         direction = "to"
                         stroke = "#d32f2f"
                         stroke_width = 2
-                        label = "No" }
-                    connection fc6 { from = "process_data"
-                        to = "write_output"
+                        label = "limit" }
+                    connection fc18 { from = "fraud_hold"
+                        to = "notify_ops"
+                        direction = "to"
+                        from_anchor = "left"
+                        to_anchor = "bottom"
+                        curve = "bezier"
+                        stroke = "#d32f2f"
+                        stroke_width = 2
+                        stroke_dasharray = "5,3" }
+                    connection fc19 { from = "release_order"
+                        to = "audit_log"
                         direction = "to"
                         stroke = color_text
                         stroke_width = 2 }
-                    connection fc7 { from = "write_output"
+                    connection fc20 { from = "audit_log"
+                        to = "customer_notice"
+                        direction = "to"
+                        stroke = color_text
+                        stroke_width = 2 }
+                    connection fc21 { from = "customer_notice"
                         to = "done"
                         direction = "to"
                         stroke = color_text
                         stroke_width = 2 }
-                    connection fc8 { from = "log_error"
-                        to = "done"
+                    connection fc22 { from = "notify_ops"
+                        to = "audit_log"
                         direction = "to"
+                        from_anchor = "right"
+                        to_anchor = "left"
+                        stroke = "#d32f2f"
+                        stroke_width = 2
+                        stroke_dasharray = "5,3"
+                        label = "incident" }
+                    connection fc23 { from = "audit_log"
+                        to = "normalize"
+                        direction = "to"
+                        from_anchor = "top"
+                        to_anchor = "right"
+                        curve = "bezier"
+                        stroke = "#64748b"
+                        stroke_width = 1
+                        stroke_dasharray = "4,4"
+                        label = "replay" }
+                    connection fc24 { from = "fraud_hold"
+                        to = "has_account"
+                        direction = "to"
+                        from_anchor = "top"
+                        to_anchor = "right"
+                        curve = "bezier"
                         stroke = "#d32f2f"
                         stroke_width = 1
-                        stroke_dasharray = "5,3" }
+                        stroke_dasharray = "3,4"
+                        label = "appeal" }
                 }
             }
         }
@@ -115,14 +286,14 @@ page flowchart_examples {
                     content = "Nested flowcharts"
                 }
                 paragraph pfc_nested {
-                    content = "Use " + bold("flowchart") + " as a lightweight container when a flowchart step needs its own internal flow. It defaults to layered layout and supports dotted connection targets."
+                    content = "Nested " + bold("flowchart") + " containers can hold their own nodes and connections while outer connections target nested shapes with dotted IDs. This example stresses edges entering, leaving, crossing, and looping back through subgraphs."
                 }
 
                 diagram nested_flowchart_demo {
-                    width = 760
-                    height = 620
+                    width = 980
+                    height = 820
                     align = "layered"
-                    gap = 56
+                    gap = 46
 
                     flow_terminal request {
                         width = 130
@@ -131,8 +302,8 @@ page flowchart_examples {
                     }
 
                     flowchart auth_flow {
-                        width = 320
-                        height = 300
+                        width = 340
+                        height = 360
                         label = "Auth flow"
                         border_stroke = color_link
 
@@ -148,10 +319,24 @@ page flowchart_examples {
                             label = "Validate"
                         }
 
+                        flow_io refresh_token {
+                            width = 140
+                            height = 48
+                            label = "Refresh"
+                            color = "#f59e0b"
+                        }
+
                         flow_decision accepted {
                             width = 105
                             height = 76
                             label = "OK?"
+                        }
+
+                        flow_process auth_error {
+                            width = 135
+                            height = 48
+                            label = "Auth error"
+                            color = "#d32f2f"
                         }
 
                         flow_terminal auth_done {
@@ -180,12 +365,151 @@ page flowchart_examples {
                             stroke = color_success
                             label = "yes"
                         }
+                        connection auth4 {
+                            from = "accepted"
+                            to = "refresh_token"
+                            direction = "to"
+                            from_anchor = "left"
+                            to_anchor = "right"
+                            stroke = "#f59e0b"
+                            label = "expired"
+                        }
+                        connection auth5 {
+                            from = "refresh_token"
+                            to = "validate_token"
+                            direction = "to"
+                            from_anchor = "top"
+                            to_anchor = "left"
+                            curve = "bezier"
+                            stroke = "#f59e0b"
+                            stroke_dasharray = "6,4"
+                        }
+                        connection auth6 {
+                            from = "accepted"
+                            to = "auth_error"
+                            direction = "to"
+                            stroke = "#d32f2f"
+                            label = "no"
+                        }
+                    }
+
+                    flowchart fulfillment_flow {
+                        width = 360
+                        height = 380
+                        label = "Fulfillment flow"
+                        border_stroke = color_success
+
+                        flow_terminal pack_start {
+                            width = 120
+                            height = 38
+                            label = "Accepted"
+                            color = color_success
+                        }
+
+                        flow_process reserve_stock {
+                            width = 150
+                            height = 48
+                            label = "Reserve stock"
+                        }
+
+                        flow_decision stock_ok {
+                            width = 118
+                            height = 78
+                            label = "Stock OK?"
+                        }
+
+                        flow_process backorder {
+                            width = 140
+                            height = 48
+                            label = "Backorder"
+                            color = "#f59e0b"
+                        }
+
+                        flow_subprocess ship {
+                            width = 145
+                            height = 48
+                            label = "Ship parcel"
+                            color = color_success
+                        }
+
+                        flow_terminal fulfilled {
+                            width = 125
+                            height = 38
+                            label = "Fulfilled"
+                            color = color_success
+                        }
+
+                        connection f1 {
+                            from = "pack_start"
+                            to = "reserve_stock"
+                            direction = "to"
+                            stroke = color_text
+                        }
+                        connection f2 {
+                            from = "reserve_stock"
+                            to = "stock_ok"
+                            direction = "to"
+                            stroke = color_text
+                        }
+                        connection f3 {
+                            from = "stock_ok"
+                            to = "ship"
+                            direction = "to"
+                            stroke = color_success
+                            label = "yes"
+                        }
+                        connection f4 {
+                            from = "stock_ok"
+                            to = "backorder"
+                            direction = "to"
+                            from_anchor = "left"
+                            to_anchor = "right"
+                            stroke = "#f59e0b"
+                            label = "no"
+                        }
+                        connection f5 {
+                            from = "backorder"
+                            to = "reserve_stock"
+                            direction = "to"
+                            from_anchor = "top"
+                            to_anchor = "left"
+                            curve = "bezier"
+                            stroke = "#f59e0b"
+                            stroke_dasharray = "5,3"
+                            label = "restock"
+                        }
+                        connection f6 {
+                            from = "ship"
+                            to = "fulfilled"
+                            direction = "to"
+                            stroke = color_success
+                        }
                     }
 
                     flow_process route {
                         width = 150
                         height = 50
                         label = "Route"
+                    }
+
+                    flow_decision needs_ops {
+                        width = 120
+                        height = 78
+                        label = "Ops needed?"
+                    }
+
+                    flow_io ops_ticket {
+                        width = 135
+                        height = 48
+                        label = "Ops ticket"
+                        color = "#d32f2f"
+                    }
+
+                    flow_process reconcile {
+                        width = 145
+                        height = 50
+                        label = "Reconcile"
+                        color = "#7c3aed"
                     }
 
                     flow_terminal response {
@@ -199,6 +523,8 @@ page flowchart_examples {
                         from = "request"
                         to = "auth_flow.auth_start"
                         direction = "to"
+                        from_anchor = "right"
+                        to_anchor = "left"
                         stroke = color_text
                         stroke_width = 2
                     }
@@ -206,13 +532,105 @@ page flowchart_examples {
                         from = "auth_flow.auth_done"
                         to = "route"
                         direction = "to"
+                        from_anchor = "right"
+                        to_anchor = "left"
                         stroke = color_text
                         stroke_width = 2
                     }
-                    connection route_to_response {
+                    connection auth_error_to_ticket {
+                        from = "auth_flow.auth_error"
+                        to = "ops_ticket"
+                        direction = "to"
+                        from_anchor = "bottom"
+                        to_anchor = "left"
+                        curve = "bezier"
+                        stroke = "#d32f2f"
+                        stroke_width = 2
+                        label = "deny"
+                    }
+                    connection route_to_fulfillment {
                         from = "route"
+                        to = "fulfillment_flow.pack_start"
+                        direction = "to"
+                        from_anchor = "right"
+                        to_anchor = "left"
+                        stroke = color_text
+                        stroke_width = 2
+                    }
+                    connection fulfillment_to_ops_decision {
+                        from = "fulfillment_flow.fulfilled"
+                        to = "needs_ops"
+                        direction = "to"
+                        from_anchor = "right"
+                        to_anchor = "left"
+                        stroke = color_text
+                        stroke_width = 2
+                    }
+                    connection backorder_to_ticket {
+                        from = "fulfillment_flow.backorder"
+                        to = "ops_ticket"
+                        direction = "to"
+                        from_anchor = "bottom"
+                        to_anchor = "top"
+                        curve = "bezier"
+                        stroke = "#f59e0b"
+                        stroke_width = 2
+                        label = "delay"
+                    }
+                    connection ops_to_reconcile {
+                        from = "ops_ticket"
+                        to = "reconcile"
+                        direction = "to"
+                        stroke = "#d32f2f"
+                        stroke_width = 2
+                        stroke_dasharray = "5,3"
+                    }
+                    connection reconcile_to_auth_retry {
+                        from = "reconcile"
+                        to = "auth_flow.refresh_token"
+                        direction = "to"
+                        from_anchor = "top"
+                        to_anchor = "bottom"
+                        curve = "bezier"
+                        stroke = "#7c3aed"
+                        stroke_width = 2
+                        stroke_dasharray = "4,4"
+                        label = "retry auth"
+                    }
+                    connection route_to_ops_check {
+                        from = "route"
+                        to = "needs_ops"
+                        direction = "to"
+                        from_anchor = "bottom"
+                        to_anchor = "top"
+                        stroke = color_text
+                        stroke_width = 2
+                    }
+                    connection ops_check_to_ticket {
+                        from = "needs_ops"
+                        to = "ops_ticket"
+                        direction = "to"
+                        from_anchor = "left"
+                        to_anchor = "right"
+                        stroke = "#d32f2f"
+                        stroke_width = 2
+                        label = "yes"
+                    }
+                    connection ops_check_to_response {
+                        from = "needs_ops"
                         to = "response"
                         direction = "to"
+                        stroke = color_success
+                        stroke_width = 2
+                        label = "no"
+                    }
+                    connection fulfillment_to_response {
+                        from = "fulfillment_flow.fulfilled"
+                        to = "response"
+                        direction = "to"
+                        from_anchor = "bottom"
+                        to_anchor = "top"
+                        curve = "bezier"
                         stroke = color_text
                         stroke_width = 2
                     }
