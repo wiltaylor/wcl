@@ -18,10 +18,10 @@ page flowchart_examples {
                 paragraph pfc1 { content = "This page intentionally uses dense flowcharts with branches, loops, cross-links, explicit anchors, and mixed connection styles so connection routing and avoidance issues are easy to reproduce:" }
 
                 diagram flowchart_demo {
-                    width = 980
-                    height = 880
+                    width = 1120
+                    height = 1160
                     align = "layered"
-                    gap = 42
+                    gap = 50
 
                     flow_terminal start {
                         label = "Start intake"
@@ -143,7 +143,9 @@ page flowchart_examples {
                         curve = "bezier"
                         stroke = "#f59e0b"
                         stroke_width = 2
-                        label = "triage" }
+                        label = "triage"
+                        label_dx = -14
+                        label_dy = -4 }
                     connection fc7 { from = "load_profile"
                         to = "risk_check"
                         direction = "to"
@@ -171,7 +173,8 @@ page flowchart_examples {
                         curve = "bezier"
                         stroke = "#7c3aed"
                         stroke_width = 2
-                        label = "questions" }
+                        label = "questions"
+                        label_dy = -6 }
                     connection fc11 { from = "manual_review"
                         to = "notify_ops"
                         direction = "to"
@@ -179,7 +182,8 @@ page flowchart_examples {
                         to_anchor = "top"
                         stroke = "#d32f2f"
                         stroke_width = 2
-                        label = "blocked" }
+                        label = "blocked"
+                        label_dx = -12 }
                     connection fc12 { from = "approve_fast"
                         to = "payment_flow"
                         direction = "to"
@@ -213,7 +217,8 @@ page flowchart_examples {
                         stroke = "#f59e0b"
                         stroke_width = 2
                         stroke_dasharray = "6,4"
-                        label = "again" }
+                        label = "again"
+                        label_dx = -18 }
                     connection fc17 { from = "retry_payment"
                         to = "fraud_hold"
                         direction = "to"
@@ -252,7 +257,9 @@ page flowchart_examples {
                         stroke = "#d32f2f"
                         stroke_width = 2
                         stroke_dasharray = "5,3"
-                        label = "incident" }
+                        label = "incident"
+                        label_dx = -12
+                        label_dy = -4 }
                     connection fc23 { from = "audit_log"
                         to = "normalize"
                         direction = "to"
@@ -262,7 +269,9 @@ page flowchart_examples {
                         stroke = "#64748b"
                         stroke_width = 1
                         stroke_dasharray = "4,4"
-                        label = "replay" }
+                        label = "replay"
+                        label_dx = 18
+                        label_dy = -6 }
                     connection fc24 { from = "fraud_hold"
                         to = "has_account"
                         direction = "to"
@@ -272,7 +281,293 @@ page flowchart_examples {
                         stroke = "#d32f2f"
                         stroke_width = 1
                         stroke_dasharray = "3,4"
-                        label = "appeal" }
+                        label = "appeal"
+                        label_dx = 18
+                        label_dy = 4 }
+                }
+            }
+        }
+
+
+
+        vsplit v_fc_panzoom {
+            split s_fc_panzoom {
+                size = 100
+
+                heading hfc_panzoom {
+                    level = 2
+                    content = "Pan/zoom flowchart"
+                }
+                paragraph pfc_panzoom { content = "This is the same dense flowchart with <code>mode = \"pan_zoom\"</code> enabled. Use the controls, mouse wheel, drag panning, or double-click reset to inspect routing details." }
+
+                diagram flowchart_demo_panzoom {
+                    width = 1120
+                    height = 1160
+                    align = "layered"
+                    mode = "pan_zoom"
+                    gap = 50
+
+                    flow_terminal start {
+                        label = "Start intake"
+                    }
+
+                    flow_io intake {
+                        label = "Read request"
+                    }
+
+                    flow_process normalize {
+                        label = "Normalize payload"
+                        max_width = 160
+                    }
+
+                    flow_decision has_account {
+                        label = "Account found?"
+                    }
+
+                    flow_process create_case {
+                        label = "Create review case"
+                        color = "#f59e0b"
+                    }
+
+                    flow_process load_profile {
+                        label = "Load profile"
+                    }
+
+                    flow_decision risk_check {
+                        label = "Risk score high?"
+                    }
+
+                    flow_subprocess manual_review {
+                        label = "Manual review queue"
+                        color = "#7c3aed"
+                        max_width = 180
+                    }
+
+                    flow_process approve_fast {
+                        label = "Fast approve"
+                        color = color_success
+                    }
+
+                    flow_io notify_ops {
+                        label = "Notify ops"
+                        color = "#d32f2f"
+                    }
+
+                    flow_subprocess payment_flow {
+                        label = "Payment subprocess"
+                        max_width = 170
+                    }
+
+                    flow_decision payment_ok {
+                        label = "Payment OK?"
+                    }
+
+                    flow_process retry_payment {
+                        label = "Retry payment"
+                        color = "#f59e0b"
+                    }
+
+                    flow_io audit_log {
+                        label = "Write audit log"
+                    }
+
+                    flow_process release_order {
+                        label = "Release order"
+                        color = color_success
+                    }
+
+                    flow_process fraud_hold {
+                        label = "Fraud hold"
+                        color = "#d32f2f"
+                    }
+
+                    flow_io customer_notice {
+                        label = "Customer notice"
+                    }
+
+                    flow_terminal done {
+                        label = "Complete"
+                        color = "#28a745"
+                    }
+
+                    connection fc1 { from = "start"
+                        to = "intake"
+                        direction = "to"
+                        stroke = color_text
+                        stroke_width = 2 }
+                    connection fc2 { from = "intake"
+                        to = "normalize"
+                        direction = "to"
+                        stroke = color_text
+                        stroke_width = 2 }
+                    connection fc3 { from = "normalize"
+                        to = "has_account"
+                        direction = "to"
+                        stroke = color_text
+                        stroke_width = 2 }
+                    connection fc4 { from = "has_account"
+                        to = "load_profile"
+                        direction = "to"
+                        stroke = color_text
+                        stroke_width = 2
+                        label = "Yes" }
+                    connection fc5 { from = "has_account"
+                        to = "create_case"
+                        direction = "to"
+                        from_anchor = "left"
+                        to_anchor = "right"
+                        stroke = "#f59e0b"
+                        stroke_width = 2
+                        label = "No" }
+                    connection fc6 { from = "create_case"
+                        to = "manual_review"
+                        direction = "to"
+                        from_anchor = "bottom"
+                        to_anchor = "left"
+                        curve = "bezier"
+                        stroke = "#f59e0b"
+                        stroke_width = 2
+                        label = "triage"
+                        label_dx = -14
+                        label_dy = -4 }
+                    connection fc7 { from = "load_profile"
+                        to = "risk_check"
+                        direction = "to"
+                        stroke = color_text
+                        stroke_width = 2 }
+                    connection fc8 { from = "risk_check"
+                        to = "approve_fast"
+                        direction = "to"
+                        stroke = color_success
+                        stroke_width = 2
+                        label = "No" }
+                    connection fc9 { from = "risk_check"
+                        to = "manual_review"
+                        direction = "to"
+                        from_anchor = "left"
+                        to_anchor = "right"
+                        stroke = "#7c3aed"
+                        stroke_width = 2
+                        label = "Yes" }
+                    connection fc10 { from = "manual_review"
+                        to = "approve_fast"
+                        direction = "both"
+                        from_anchor = "right"
+                        to_anchor = "left"
+                        curve = "bezier"
+                        stroke = "#7c3aed"
+                        stroke_width = 2
+                        label = "questions"
+                        label_dy = -6 }
+                    connection fc11 { from = "manual_review"
+                        to = "notify_ops"
+                        direction = "to"
+                        from_anchor = "bottom"
+                        to_anchor = "top"
+                        stroke = "#d32f2f"
+                        stroke_width = 2
+                        label = "blocked"
+                        label_dx = -12 }
+                    connection fc12 { from = "approve_fast"
+                        to = "payment_flow"
+                        direction = "to"
+                        stroke = color_text
+                        stroke_width = 2 }
+                    connection fc13 { from = "payment_flow"
+                        to = "payment_ok"
+                        direction = "to"
+                        stroke = color_text
+                        stroke_width = 2 }
+                    connection fc14 { from = "payment_ok"
+                        to = "release_order"
+                        direction = "to"
+                        stroke = color_success
+                        stroke_width = 2
+                        label = "Yes" }
+                    connection fc15 { from = "payment_ok"
+                        to = "retry_payment"
+                        direction = "to"
+                        from_anchor = "left"
+                        to_anchor = "right"
+                        stroke = "#f59e0b"
+                        stroke_width = 2
+                        label = "Retry" }
+                    connection fc16 { from = "retry_payment"
+                        to = "payment_flow"
+                        direction = "to"
+                        from_anchor = "top"
+                        to_anchor = "left"
+                        curve = "bezier"
+                        stroke = "#f59e0b"
+                        stroke_width = 2
+                        stroke_dasharray = "6,4"
+                        label = "again"
+                        label_dx = -18 }
+                    connection fc17 { from = "retry_payment"
+                        to = "fraud_hold"
+                        direction = "to"
+                        stroke = "#d32f2f"
+                        stroke_width = 2
+                        label = "limit" }
+                    connection fc18 { from = "fraud_hold"
+                        to = "notify_ops"
+                        direction = "to"
+                        from_anchor = "left"
+                        to_anchor = "bottom"
+                        curve = "bezier"
+                        stroke = "#d32f2f"
+                        stroke_width = 2
+                        stroke_dasharray = "5,3" }
+                    connection fc19 { from = "release_order"
+                        to = "audit_log"
+                        direction = "to"
+                        stroke = color_text
+                        stroke_width = 2 }
+                    connection fc20 { from = "audit_log"
+                        to = "customer_notice"
+                        direction = "to"
+                        stroke = color_text
+                        stroke_width = 2 }
+                    connection fc21 { from = "customer_notice"
+                        to = "done"
+                        direction = "to"
+                        stroke = color_text
+                        stroke_width = 2 }
+                    connection fc22 { from = "notify_ops"
+                        to = "audit_log"
+                        direction = "to"
+                        from_anchor = "right"
+                        to_anchor = "left"
+                        stroke = "#d32f2f"
+                        stroke_width = 2
+                        stroke_dasharray = "5,3"
+                        label = "incident"
+                        label_dx = -12
+                        label_dy = -4 }
+                    connection fc23 { from = "audit_log"
+                        to = "normalize"
+                        direction = "to"
+                        from_anchor = "top"
+                        to_anchor = "right"
+                        curve = "bezier"
+                        stroke = "#64748b"
+                        stroke_width = 1
+                        stroke_dasharray = "4,4"
+                        label = "replay"
+                        label_dx = 18
+                        label_dy = -6 }
+                    connection fc24 { from = "fraud_hold"
+                        to = "has_account"
+                        direction = "to"
+                        from_anchor = "top"
+                        to_anchor = "right"
+                        curve = "bezier"
+                        stroke = "#d32f2f"
+                        stroke_width = 1
+                        stroke_dasharray = "3,4"
+                        label = "appeal"
+                        label_dx = 18
+                        label_dy = 4 }
                 }
             }
         }
@@ -290,10 +585,10 @@ page flowchart_examples {
                 }
 
                 diagram nested_flowchart_demo {
-                    width = 980
-                    height = 820
+                    width = 1280
+                    height = 1320
                     align = "layered"
-                    gap = 46
+                    gap = 90
 
                     flow_terminal request {
                         width = 130
@@ -302,8 +597,9 @@ page flowchart_examples {
                     }
 
                     flowchart auth_flow {
-                        width = 340
-                        height = 360
+                        width = 430
+                        height = 480
+                        gap = 54
                         label = "Auth flow"
                         border_stroke = color_link
 
@@ -394,8 +690,9 @@ page flowchart_examples {
                     }
 
                     flowchart fulfillment_flow {
-                        width = 360
-                        height = 380
+                        width = 450
+                        height = 520
+                        gap = 58
                         label = "Fulfillment flow"
                         border_stroke = color_success
 
@@ -547,6 +844,8 @@ page flowchart_examples {
                         stroke = "#d32f2f"
                         stroke_width = 2
                         label = "deny"
+                        label_dx = -18
+                        label_dy = -4
                     }
                     connection route_to_fulfillment {
                         from = "route"
@@ -576,6 +875,8 @@ page flowchart_examples {
                         stroke = "#f59e0b"
                         stroke_width = 2
                         label = "delay"
+                        label_dx = 18
+                        label_dy = -4
                     }
                     connection ops_to_reconcile {
                         from = "ops_ticket"
@@ -596,6 +897,8 @@ page flowchart_examples {
                         stroke_width = 2
                         stroke_dasharray = "4,4"
                         label = "retry auth"
+                        label_dx = -22
+                        label_dy = -4
                     }
                     connection route_to_ops_check {
                         from = "route"

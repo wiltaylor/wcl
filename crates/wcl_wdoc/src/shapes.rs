@@ -3637,7 +3637,7 @@ fn render_routed_connection_svg(route: &RoutedConnection, svg: &mut String) {
     }
 
     if let Some(label) = &conn.label {
-        let (mx, my) = route_label_point(&route.geometry);
+        let (mx, my) = connection_label_point(&route.geometry, &conn.attrs);
         let label = svg_escape_text(label);
         write!(
             svg,
@@ -3648,10 +3648,25 @@ fn render_routed_connection_svg(route: &RoutedConnection, svg: &mut String) {
     }
 }
 
+fn connection_label_point(
+    geometry: &RoutedGeometry,
+    attrs: &IndexMap<String, String>,
+) -> (f64, f64) {
+    let (x, y) = route_label_point(geometry);
+    (
+        x + attr_f64(attrs, "label_dx").unwrap_or(0.0),
+        y + attr_f64(attrs, "label_dy").unwrap_or(0.0),
+    )
+}
+
 fn route_label_point(geometry: &RoutedGeometry) -> (f64, f64) {
     let points = route_polyline_points(geometry);
-    let (x, y) = polyline_midpoint(&points);
-    (x, y - 10.0)
+    let (x, y, segment) = polyline_midpoint_segment(&points);
+    let (dx, dy) = match segment {
+        Some((start, end)) => label_offset_for_segment(start, end),
+        None => (0.0, -10.0),
+    };
+    (x + dx, y + dy)
 }
 
 fn route_polyline_points(geometry: &RoutedGeometry) -> Vec<(f64, f64)> {
@@ -3669,19 +3684,21 @@ fn route_polyline_points(geometry: &RoutedGeometry) -> Vec<(f64, f64)> {
     }
 }
 
-fn polyline_midpoint(points: &[(f64, f64)]) -> (f64, f64) {
+fn polyline_midpoint_segment(
+    points: &[(f64, f64)],
+) -> (f64, f64, Option<((f64, f64), (f64, f64))>) {
     if points.is_empty() {
-        return (0.0, 0.0);
+        return (0.0, 0.0, None);
     }
     if points.len() == 1 {
-        return points[0];
+        return (points[0].0, points[0].1, None);
     }
     let total: f64 = points
         .windows(2)
         .map(|segment| segment_length(segment[0], segment[1]))
         .sum();
     if total <= 0.001 {
-        return points[0];
+        return (points[0].0, points[0].1, None);
     }
     let target = total / 2.0;
     let mut walked = 0.0;
@@ -3692,11 +3709,23 @@ fn polyline_midpoint(points: &[(f64, f64)]) -> (f64, f64) {
             return (
                 segment[0].0 + (segment[1].0 - segment[0].0) * t,
                 segment[0].1 + (segment[1].1 - segment[0].1) * t,
+                Some((segment[0], segment[1])),
             );
         }
         walked += len;
     }
-    *points.last().unwrap()
+    let last = *points.last().unwrap();
+    (last.0, last.1, None)
+}
+
+fn label_offset_for_segment(start: (f64, f64), end: (f64, f64)) -> (f64, f64) {
+    let dx = end.0 - start.0;
+    let dy = end.1 - start.1;
+    if dx.abs() >= dy.abs() {
+        (0.0, -10.0)
+    } else {
+        (10.0, 0.0)
+    }
 }
 
 fn bezier_point(
@@ -8602,6 +8631,33 @@ mod tests {
         let label = route_label_point(&route);
 
         assert_eq!(label, (170.0, 110.0));
+    }
+
+    #[test]
+    fn vertical_route_label_offsets_to_side_of_path() {
+        let route = RoutedGeometry::Orthogonal {
+            points: vec![(100.0, 60.0), (100.0, 160.0)],
+        };
+
+        let label = route_label_point(&route);
+
+        assert_eq!(label, (110.0, 110.0));
+    }
+
+    #[test]
+    fn connection_label_point_applies_manual_offsets_after_auto_offset() {
+        let route = RoutedGeometry::Line {
+            start: (20.0, 40.0),
+            end: (120.0, 40.0),
+        };
+        let attrs = IndexMap::from([
+            ("label_dx".to_string(), "5".to_string()),
+            ("label_dy".to_string(), "-3".to_string()),
+        ]);
+
+        let label = connection_label_point(&route, &attrs);
+
+        assert_eq!(label, (75.0, 27.0));
     }
 
     #[test]
