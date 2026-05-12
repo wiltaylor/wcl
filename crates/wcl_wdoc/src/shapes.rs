@@ -22,6 +22,7 @@ const CONNECTION_ROUTE_DIRECT: &str = "direct";
 const SIZE_LOCKED_ATTR: &str = "_wdoc_size_locked";
 const ROUTE_MARGIN: f64 = 18.0;
 const ROUTE_TERMINAL_MIN: f64 = 24.0;
+const PARALLEL_CORRIDOR_MIN: f64 = 8.0;
 const DIRECT_ROUTE_ALIGNMENT_EPSILON: f64 = 6.0;
 
 // ---------------------------------------------------------------------------
@@ -107,6 +108,13 @@ pub enum AnchorPoint {
 pub enum CurveStyle {
     Straight,
     Bezier,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum ParallelOffsetAxis {
+    Auto,
+    X,
+    Y,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -3433,9 +3441,13 @@ fn compute_connection_route(
 
     let geometry = match conn.curve {
         CurveStyle::Straight => {
+            let from_anchor =
+                effective_endpoint_anchor(&conn.from_id, from_bounds, conn.from_anchor, shape_map);
+            let to_anchor =
+                effective_endpoint_anchor(&conn.to_id, to_bounds, conn.to_anchor, shape_map);
             if conn.from_anchor == AnchorPoint::Auto && conn.to_anchor == AnchorPoint::Auto {
-                let (x1, y1) = from_bounds.anchor_pos(AnchorPoint::Auto, to_bounds);
-                let (x2, y2) = to_bounds.anchor_pos(AnchorPoint::Auto, from_bounds);
+                let (x1, y1) = from_bounds.anchor_pos(from_anchor, to_bounds);
+                let (x2, y2) = to_bounds.anchor_pos(to_anchor, from_bounds);
                 if connection_uses_direct_route(conn) {
                     RoutedGeometry::Line {
                         start: (x1, y1),
@@ -3448,6 +3460,47 @@ fn compute_connection_route(
                         RoutedGeometry::Line {
                             start: (x1, y1),
                             end: (x2, y2),
+                        }
+                    } else if from_anchor != AnchorPoint::Auto || to_anchor != AnchorPoint::Auto {
+                        let from_route_anchor = if from_anchor == AnchorPoint::Auto {
+                            conn.from_anchor
+                        } else {
+                            from_anchor
+                        };
+                        let to_route_anchor = if to_anchor == AnchorPoint::Auto {
+                            conn.to_anchor
+                        } else {
+                            to_anchor
+                        };
+                        if let Some(points) = route_orthogonal_anchored(
+                            from_bounds,
+                            to_bounds,
+                            &obstacles,
+                            from_route_anchor,
+                            to_route_anchor,
+                        ) {
+                            RoutedGeometry::Orthogonal { points }
+                        } else if let Some(points) = route_orthogonal_anchored_best_effort(
+                            from_bounds,
+                            to_bounds,
+                            &obstacles,
+                            from_route_anchor,
+                            to_route_anchor,
+                        ) {
+                            RoutedGeometry::Orthogonal { points }
+                        } else if let Some(points) =
+                            route_orthogonal(from_bounds, to_bounds, &obstacles)
+                        {
+                            RoutedGeometry::Orthogonal { points }
+                        } else if let Some(points) =
+                            route_orthogonal_best_effort(from_bounds, to_bounds, &obstacles)
+                        {
+                            RoutedGeometry::Orthogonal { points }
+                        } else {
+                            RoutedGeometry::Line {
+                                start: (x1, y1),
+                                end: (x2, y2),
+                            }
                         }
                     } else if let Some(points) =
                         route_orthogonal(from_bounds, to_bounds, &obstacles)
@@ -3465,14 +3518,14 @@ fn compute_connection_route(
                     }
                 }
             } else {
-                let (x1, y1) = from_bounds.anchor_pos(conn.from_anchor, to_bounds);
-                let (x2, y2) = to_bounds.anchor_pos(conn.to_anchor, from_bounds);
+                let (x1, y1) = from_bounds.anchor_pos(from_anchor, to_bounds);
+                let (x2, y2) = to_bounds.anchor_pos(to_anchor, from_bounds);
                 let obstacles =
                     connection_obstacles(&conn.from_id, &conn.to_id, x1, y1, x2, y2, shape_map);
 
                 if !connection_uses_direct_route(conn)
-                    && conn.from_anchor != AnchorPoint::Auto
-                    && conn.to_anchor != AnchorPoint::Auto
+                    && from_anchor != AnchorPoint::Auto
+                    && to_anchor != AnchorPoint::Auto
                 {
                     let fc = nearest_container_id(&conn.from_id, shape_map)
                         .and_then(|id| shape_map.get(id).copied());
@@ -3486,10 +3539,10 @@ fn compute_connection_route(
                         let points = route_cross_container(
                             from_bounds,
                             &from_outer,
-                            conn.from_anchor,
+                            from_anchor,
                             to_bounds,
                             &to_outer,
-                            conn.to_anchor,
+                            to_anchor,
                             &obstacles,
                         );
                         if !path_intersects_obstacle(&points, &obstacles) && points.len() >= 2 {
@@ -3506,8 +3559,8 @@ fn compute_connection_route(
                         from_bounds,
                         to_bounds,
                         &obstacles,
-                        conn.from_anchor,
-                        conn.to_anchor,
+                        from_anchor,
+                        to_anchor,
                     ) {
                         return Some(RoutedConnection {
                             conn: conn.clone(),
@@ -3518,8 +3571,8 @@ fn compute_connection_route(
                         from_bounds,
                         to_bounds,
                         &obstacles,
-                        conn.from_anchor,
-                        conn.to_anchor,
+                        from_anchor,
+                        to_anchor,
                     ) {
                         return Some(RoutedConnection {
                             conn: conn.clone(),
@@ -3534,14 +3587,18 @@ fn compute_connection_route(
             }
         }
         CurveStyle::Bezier => {
-            let (x1, y1) = from_bounds.anchor_pos(conn.from_anchor, to_bounds);
-            let (x2, y2) = to_bounds.anchor_pos(conn.to_anchor, from_bounds);
+            let from_anchor =
+                effective_endpoint_anchor(&conn.from_id, from_bounds, conn.from_anchor, shape_map);
+            let to_anchor =
+                effective_endpoint_anchor(&conn.to_id, to_bounds, conn.to_anchor, shape_map);
+            let (x1, y1) = from_bounds.anchor_pos(from_anchor, to_bounds);
+            let (x2, y2) = to_bounds.anchor_pos(to_anchor, from_bounds);
             let obstacles =
                 connection_obstacles(&conn.from_id, &conn.to_id, x1, y1, x2, y2, shape_map);
             let dx = (x2 - x1).abs() / 2.0;
             let dy = (y2 - y1).abs() / 2.0;
-            let (c1x, c1y) = ctrl_point(x1, y1, conn.from_anchor, dx, dy);
-            let (c2x, c2y) = ctrl_point(x2, y2, conn.to_anchor, dx, dy);
+            let (c1x, c1y) = ctrl_point(x1, y1, from_anchor, dx, dy);
+            let (c2x, c2y) = ctrl_point(x2, y2, to_anchor, dx, dy);
             let bezier = RoutedGeometry::Bezier {
                 start: (x1, y1),
                 c1: (c1x, c1y),
@@ -3550,21 +3607,21 @@ fn compute_connection_route(
             };
             if !bezier_intersects_obstacles(&bezier, &obstacles) {
                 bezier
-            } else if conn.from_anchor != AnchorPoint::Auto && conn.to_anchor != AnchorPoint::Auto {
+            } else if from_anchor != AnchorPoint::Auto && to_anchor != AnchorPoint::Auto {
                 if let Some(points) = route_orthogonal_anchored(
                     from_bounds,
                     to_bounds,
                     &obstacles,
-                    conn.from_anchor,
-                    conn.to_anchor,
+                    from_anchor,
+                    to_anchor,
                 ) {
                     RoutedGeometry::Orthogonal { points }
                 } else if let Some(points) = route_orthogonal_anchored_best_effort(
                     from_bounds,
                     to_bounds,
                     &obstacles,
-                    conn.from_anchor,
-                    conn.to_anchor,
+                    from_anchor,
+                    to_anchor,
                 ) {
                     RoutedGeometry::Orthogonal { points }
                 } else {
@@ -3781,40 +3838,116 @@ fn separate_parallel_routes(routes: &mut [RoutedConnection]) {
         }
         let mut sorted = cluster;
         sorted.sort_by_key(|idx| routes[*idx].conn.source_order);
+        let preserve_start_trunk = cluster_shares_start_trunk(routes, &sorted);
+        let offset_axis = cluster_shared_corridor_axis(routes, &sorted);
         let count = sorted.len() as f64;
         for (rank, idx) in sorted.into_iter().enumerate() {
             if route_polyline_points(&routes[idx].geometry).len() > 6 {
                 continue;
             }
             let offset = ((rank as f64 - (count - 1.0) / 2.0) * 7.0).clamp(-28.0, 28.0);
-            apply_route_parallel_offset(&mut routes[idx].geometry, offset);
+            apply_route_parallel_offset(
+                &mut routes[idx].geometry,
+                offset,
+                preserve_start_trunk,
+                offset_axis,
+            );
         }
     }
 }
 
-fn routes_share_corridor(a: &RoutedConnection, b: &RoutedConnection) -> bool {
-    let a_points = route_polyline_points(&a.geometry);
-    let b_points = route_polyline_points(&b.geometry);
-    a_points.windows(2).any(|a_seg| {
-        b_points
-            .windows(2)
-            .any(|b_seg| segments_share_corridor(a_seg[0], a_seg[1], b_seg[0], b_seg[1]))
+fn cluster_shares_start_trunk(routes: &[RoutedConnection], indices: &[usize]) -> bool {
+    let mut points_iter = indices
+        .iter()
+        .map(|idx| route_polyline_points(&routes[*idx].geometry));
+    let Some(first) = points_iter.next() else {
+        return false;
+    };
+    if first.len() < 3 {
+        return false;
+    }
+    let first_start = first[0];
+    let first_next = first[1];
+    let first_horizontal = nearly_eq(first_start.1, first_next.1);
+    let first_vertical = nearly_eq(first_start.0, first_next.0);
+    if !first_horizontal && !first_vertical {
+        return false;
+    }
+
+    points_iter.all(|points| {
+        points.len() >= 3
+            && point_nearly_eq(points[0], first_start)
+            && ((first_horizontal && nearly_eq(points[0].1, points[1].1))
+                || (first_vertical && nearly_eq(points[0].0, points[1].0)))
+            && same_direction(first_start, first_next, points[0], points[1])
     })
 }
 
-fn segments_share_corridor(a1: (f64, f64), a2: (f64, f64), b1: (f64, f64), b2: (f64, f64)) -> bool {
+fn point_nearly_eq(a: (f64, f64), b: (f64, f64)) -> bool {
+    nearly_eq(a.0, b.0) && nearly_eq(a.1, b.1)
+}
+
+fn same_direction(a1: (f64, f64), a2: (f64, f64), b1: (f64, f64), b2: (f64, f64)) -> bool {
+    let adx = a2.0 - a1.0;
+    let ady = a2.1 - a1.1;
+    let bdx = b2.0 - b1.0;
+    let bdy = b2.1 - b1.1;
+    (adx.signum() == bdx.signum() || (adx.abs() < 0.001 && bdx.abs() < 0.001))
+        && (ady.signum() == bdy.signum() || (ady.abs() < 0.001 && bdy.abs() < 0.001))
+}
+
+fn routes_share_corridor(a: &RoutedConnection, b: &RoutedConnection) -> bool {
+    routes_shared_corridor_axis(a, b).is_some()
+}
+
+fn cluster_shared_corridor_axis(
+    routes: &[RoutedConnection],
+    indices: &[usize],
+) -> ParallelOffsetAxis {
+    for (pos, a_idx) in indices.iter().enumerate() {
+        for b_idx in indices.iter().skip(pos + 1) {
+            if let Some(vertical) = routes_shared_corridor_axis(&routes[*a_idx], &routes[*b_idx]) {
+                return if vertical {
+                    ParallelOffsetAxis::X
+                } else {
+                    ParallelOffsetAxis::Y
+                };
+            }
+        }
+    }
+    ParallelOffsetAxis::Auto
+}
+
+fn routes_shared_corridor_axis(a: &RoutedConnection, b: &RoutedConnection) -> Option<bool> {
+    let a_points = route_polyline_points(&a.geometry);
+    let b_points = route_polyline_points(&b.geometry);
+    a_points.windows(2).find_map(|a_seg| {
+        b_points
+            .windows(2)
+            .find_map(|b_seg| shared_corridor_axis(a_seg[0], a_seg[1], b_seg[0], b_seg[1]))
+    })
+}
+
+fn shared_corridor_axis(
+    a1: (f64, f64),
+    a2: (f64, f64),
+    b1: (f64, f64),
+    b2: (f64, f64),
+) -> Option<bool> {
     let a_vertical = nearly_eq(a1.0, a2.0);
     let b_vertical = nearly_eq(b1.0, b2.0);
     let a_horizontal = nearly_eq(a1.1, a2.1);
     let b_horizontal = nearly_eq(b1.1, b2.1);
 
     if a_vertical && b_vertical && (a1.0 - b1.0).abs() <= 2.0 {
-        return ranges_overlap_len(a1.1, a2.1, b1.1, b2.1) >= ROUTE_TERMINAL_MIN;
+        return (ranges_overlap_len(a1.1, a2.1, b1.1, b2.1) >= PARALLEL_CORRIDOR_MIN)
+            .then_some(true);
     }
     if a_horizontal && b_horizontal && (a1.1 - b1.1).abs() <= 2.0 {
-        return ranges_overlap_len(a1.0, a2.0, b1.0, b2.0) >= ROUTE_TERMINAL_MIN;
+        return (ranges_overlap_len(a1.0, a2.0, b1.0, b2.0) >= PARALLEL_CORRIDOR_MIN)
+            .then_some(false);
     }
-    false
+    None
 }
 
 fn ranges_overlap_len(a1: f64, a2: f64, b1: f64, b2: f64) -> f64 {
@@ -3825,7 +3958,12 @@ fn ranges_overlap_len(a1: f64, a2: f64, b1: f64, b2: f64) -> f64 {
     (a_max.min(b_max) - a_min.max(b_min)).max(0.0)
 }
 
-fn apply_route_parallel_offset(geometry: &mut RoutedGeometry, offset: f64) {
+fn apply_route_parallel_offset(
+    geometry: &mut RoutedGeometry,
+    offset: f64,
+    preserve_start_trunk: bool,
+    offset_axis: ParallelOffsetAxis,
+) {
     if offset.abs() < 0.001 {
         return;
     }
@@ -3863,18 +4001,35 @@ fn apply_route_parallel_offset(geometry: &mut RoutedGeometry, offset: f64) {
                 points[1].1 += oy;
                 return;
             }
-            let (vertical, horizontal) = route_orientation_lengths(points);
-            let (dx, dy) = if vertical >= horizontal {
-                (offset, 0.0)
-            } else {
-                (0.0, offset)
+            let (dx, dy) = match offset_axis {
+                ParallelOffsetAxis::X => (offset, 0.0),
+                ParallelOffsetAxis::Y => (0.0, offset),
+                ParallelOffsetAxis::Auto => {
+                    let (vertical, horizontal) = route_orientation_lengths(points);
+                    if vertical >= horizontal {
+                        (offset, 0.0)
+                    } else {
+                        (0.0, offset)
+                    }
+                }
             };
+            let original = points.clone();
             let last = points.len() - 1;
-            for point in points.iter_mut().take(last).skip(1) {
+            let first_offset_idx = if preserve_start_trunk && points.len() > 3 {
+                2
+            } else {
+                1
+            };
+            let end_offset_idx = if points.len() > 3 { last - 1 } else { last };
+            for point in points
+                .iter_mut()
+                .take(end_offset_idx)
+                .skip(first_offset_idx)
+            {
                 point.0 += dx;
                 point.1 += dy;
             }
-            *points = simplify_points(std::mem::take(points));
+            *points = orthogonalize_offset_points(&original, std::mem::take(points));
         }
         RoutedGeometry::Bezier { start, c1, c2, end } => {
             let dx = end.0 - start.0;
@@ -3895,6 +4050,36 @@ fn apply_route_parallel_offset(geometry: &mut RoutedGeometry, offset: f64) {
             end.1 += oy;
         }
     }
+}
+
+fn orthogonalize_offset_points(
+    original: &[(f64, f64)],
+    points: Vec<(f64, f64)>,
+) -> Vec<(f64, f64)> {
+    if points.len() < 2 {
+        return points;
+    }
+
+    let mut out = Vec::with_capacity(points.len() * 2);
+    for (idx, segment) in points.windows(2).enumerate() {
+        let start = segment[0];
+        let end = segment[1];
+        out.push(start);
+        if !nearly_eq(start.0, end.0) && !nearly_eq(start.1, end.1) {
+            let original_segment = original.get(idx).zip(original.get(idx + 1));
+            let horizontal = original_segment
+                .map(|(a, b)| nearly_eq(a.1, b.1))
+                .unwrap_or((end.0 - start.0).abs() >= (end.1 - start.1).abs());
+            let corner = if horizontal {
+                (end.0, start.1)
+            } else {
+                (start.0, end.1)
+            };
+            out.push(corner);
+        }
+    }
+    out.push(*points.last().unwrap());
+    simplify_collinear_points(out)
 }
 
 fn route_orientation_lengths(points: &[(f64, f64)]) -> (f64, f64) {
@@ -3942,6 +4127,43 @@ fn connection_uses_direct_route(conn: &Connection) -> bool {
         .get(CONNECTION_ROUTE_ATTR)
         .map(|route| route == CONNECTION_ROUTE_DIRECT)
         .unwrap_or(false)
+}
+
+fn effective_endpoint_anchor(
+    id: &str,
+    bounds: &Bounds,
+    anchor: AnchorPoint,
+    shape_map: &HashMap<String, Bounds>,
+) -> AnchorPoint {
+    if anchor != AnchorPoint::Auto {
+        return anchor;
+    }
+
+    let Some(container) = nearest_container_id(id, shape_map).and_then(|id| shape_map.get(id))
+    else {
+        return AnchorPoint::Auto;
+    };
+
+    let center_x = bounds.x + bounds.width / 2.0;
+    let center_y = bounds.y + bounds.height / 2.0;
+    let distances = [
+        (AnchorPoint::Left, (center_x - container.x).abs()),
+        (
+            AnchorPoint::Right,
+            (center_x - (container.x + container.width)).abs(),
+        ),
+        (AnchorPoint::Top, (center_y - container.y).abs()),
+        (
+            AnchorPoint::Bottom,
+            (center_y - (container.y + container.height)).abs(),
+        ),
+    ];
+    distances
+        .into_iter()
+        .filter(|(_, distance)| *distance <= ROUTE_TERMINAL_MIN)
+        .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+        .map(|(anchor, _)| anchor)
+        .unwrap_or(AnchorPoint::Auto)
 }
 
 fn route_orthogonal(from: &Bounds, to: &Bounds, obstacles: &[Bounds]) -> Option<Vec<(f64, f64)>> {
@@ -8618,6 +8840,126 @@ mod tests {
     }
 
     #[test]
+    fn graph_node_edge_ports_auto_anchor_away_from_parent_table() {
+        let mut shape_map = HashMap::new();
+        shape_map.insert(
+            "orders".to_string(),
+            Bounds {
+                x: 370.0,
+                y: 28.0,
+                width: 240.0,
+                height: 142.0,
+            },
+        );
+        shape_map.insert(
+            "orders.items".to_string(),
+            Bounds {
+                x: 605.0,
+                y: 66.0,
+                width: 10.0,
+                height: 10.0,
+            },
+        );
+        shape_map.insert(
+            "order_items".to_string(),
+            Bounds {
+                x: 370.0,
+                y: 315.0,
+                width: 240.0,
+                height: 114.0,
+            },
+        );
+        shape_map.insert(
+            "order_items.order_id".to_string(),
+            Bounds {
+                x: 365.0,
+                y: 386.0,
+                width: 10.0,
+                height: 10.0,
+            },
+        );
+
+        let conn = connection("orders.items", "order_items.order_id");
+        let route = compute_connection_route(&conn, &shape_map).expect("route");
+        let points = route_polyline_points(&route.geometry);
+
+        assert!(points.len() >= 4);
+        assert_eq!(points[0], (615.0, 71.0));
+        assert!(points[1].0 > points[0].0);
+        assert_eq!(points.last().copied(), Some((365.0, 391.0)));
+        assert!(points[points.len() - 2].0 < points[points.len() - 1].0);
+    }
+
+    #[test]
+    fn parallel_route_offsets_keep_orthogonal_segments() {
+        let mut geometry = RoutedGeometry::Orthogonal {
+            points: vec![
+                (615.0, 71.0),
+                (639.0, 71.0),
+                (639.0, 290.0),
+                (341.0, 290.0),
+                (341.0, 391.0),
+                (365.0, 391.0),
+            ],
+        };
+
+        apply_route_parallel_offset(&mut geometry, -7.0, false, ParallelOffsetAxis::Auto);
+        let points = route_polyline_points(&geometry);
+
+        assert!(points.windows(2).all(|segment| {
+            nearly_eq(segment[0].0, segment[1].0) || nearly_eq(segment[0].1, segment[1].1)
+        }));
+    }
+
+    #[test]
+    fn short_shared_corridors_are_separated_on_the_shared_axis() {
+        let mut first = connection("a", "b");
+        first.source_order = 0;
+        first.from_id = "users.orders".to_string();
+        first.to_id = "orders.user_id".to_string();
+        let mut second = connection("c", "d");
+        second.source_order = 1;
+        second.from_id = "users.addresses".to_string();
+        second.to_id = "addresses.user_id".to_string();
+
+        let mut routes = vec![
+            RoutedConnection {
+                conn: first.clone(),
+                geometry: RoutedGeometry::Orthogonal {
+                    points: vec![(275.0, 79.0), (299.0, 79.0), (299.0, 104.0), (365.0, 104.0)],
+                },
+            },
+            RoutedConnection {
+                conn: second.clone(),
+                geometry: RoutedGeometry::Orthogonal {
+                    points: vec![
+                        (275.0, 88.0),
+                        (299.0, 88.0),
+                        (299.0, 322.0),
+                        (11.0, 322.0),
+                        (11.0, 416.0),
+                        (35.0, 416.0),
+                    ],
+                },
+            },
+        ];
+
+        separate_parallel_routes(&mut routes);
+        let first_points = route_polyline_points(&routes[0].geometry);
+        let second_points = route_polyline_points(&routes[1].geometry);
+
+        assert_eq!(first_points[1].0, 295.5);
+        assert_eq!(second_points[1].0, 302.5);
+        assert_ne!(first_points[1].0, second_points[1].0);
+        assert!(first_points.windows(2).all(|segment| {
+            nearly_eq(segment[0].0, segment[1].0) || nearly_eq(segment[0].1, segment[1].1)
+        }));
+        assert!(second_points.windows(2).all(|segment| {
+            nearly_eq(segment[0].0, segment[1].0) || nearly_eq(segment[0].1, segment[1].1)
+        }));
+    }
+
+    #[test]
     fn route_label_uses_midpoint_along_rendered_path() {
         let route = RoutedGeometry::Orthogonal {
             points: vec![
@@ -8703,6 +9045,54 @@ mod tests {
             .collect();
 
         assert_eq!(ys, vec![93.0, 100.0, 107.0]);
+    }
+
+    #[test]
+    fn same_source_branch_routes_keep_shared_initial_trunk() {
+        let mut shape_map = HashMap::new();
+        shape_map.insert(
+            "main".to_string(),
+            Bounds {
+                x: 270.0,
+                y: 80.0,
+                width: 160.0,
+                height: 90.0,
+            },
+        );
+        shape_map.insert(
+            "email".to_string(),
+            Bounds {
+                x: 530.0,
+                y: 30.0,
+                width: 150.0,
+                height: 80.0,
+            },
+        );
+        shape_map.insert(
+            "payment".to_string(),
+            Bounds {
+                x: 530.0,
+                y: 160.0,
+                width: 150.0,
+                height: 80.0,
+            },
+        );
+
+        let mut email = connection("main", "email");
+        email.source_order = 1;
+        let mut payment = connection("main", "payment");
+        payment.source_order = 2;
+
+        let routes = routed_connections(&[email.clone(), payment.clone()], &shape_map);
+        let email_points = route_polyline_points(&routes[&connection_render_key(&email)].geometry);
+        let payment_points =
+            route_polyline_points(&routes[&connection_render_key(&payment)].geometry);
+
+        assert_eq!(email_points[0], (430.0, 125.0));
+        assert_eq!(payment_points[0], (430.0, 125.0));
+        assert_eq!(email_points[1], (480.0, 125.0));
+        assert_eq!(payment_points[1], (480.0, 125.0));
+        assert_ne!(email_points[2], payment_points[2]);
     }
 
     #[test]

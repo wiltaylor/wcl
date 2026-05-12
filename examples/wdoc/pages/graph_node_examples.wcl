@@ -270,6 +270,250 @@ page graph_node_examples {
                     }
                 }
 
+                heading h2_schema {
+                    level = 2
+                    content = "Database schema joins"
+                }
+
+                paragraph schema_intro {
+                    content = "Graph nodes can model database tables by using rows for columns and row ports for primary-key and foreign-key joins."
+                }
+
+                diagram graph_node_database_schema {
+                    width = 980
+                    height = 580
+                    mode = "pan_zoom"
+
+                    graph_node users {
+                        x = 40
+                        y = 36
+                        width = 230
+                        title = "users"
+                        subtitle = "customer accounts"
+                        header_fill = "#1d4ed8"
+                        port_fill = color_success
+
+                        graph_row id {
+                            label = "id"
+                            detail = "uuid pk"
+                            right_ports = "orders,addresses"
+                        }
+
+                        graph_row email {
+                            label = "email"
+                            detail = "text unique"
+                        }
+
+                        graph_row created_at {
+                            label = "created_at"
+                            detail = "timestamp"
+                        }
+                    }
+
+                    graph_node orders {
+                        x = 370
+                        y = 28
+                        width = 240
+                        title = "orders"
+                        subtitle = "checkout header"
+                        header_fill = "#7c3aed"
+                        port_fill = color_success
+
+                        graph_row id {
+                            label = "id"
+                            detail = "uuid pk"
+                            right_ports = "items,payments"
+                        }
+
+                        graph_row user_id {
+                            label = "user_id"
+                            detail = "uuid fk"
+                            left_port = "user_id"
+                        }
+
+                        graph_row status {
+                            label = "status"
+                            detail = "enum"
+                        }
+
+                        graph_row total_cents {
+                            label = "total_cents"
+                            detail = "integer"
+                        }
+                    }
+
+                    graph_node products {
+                        x = 710
+                        y = 34
+                        width = 230
+                        title = "products"
+                        subtitle = "catalog"
+                        header_fill = "#047857"
+                        port_fill = color_success
+
+                        graph_row id {
+                            label = "id"
+                            detail = "uuid pk"
+                            left_port = "id"
+                        }
+
+                        graph_row sku {
+                            label = "sku"
+                            detail = "text unique"
+                        }
+
+                        graph_row name {
+                            label = "name"
+                            detail = "text"
+                        }
+
+                        graph_row active {
+                            label = "active"
+                            detail = "bool"
+                        }
+                    }
+
+                    graph_node addresses {
+                        x = 40
+                        y = 340
+                        width = 230
+                        title = "addresses"
+                        subtitle = "shipping profiles"
+                        header_fill = "#0f766e"
+                        port_fill = color_success
+
+                        graph_row id {
+                            label = "id"
+                            detail = "uuid pk"
+                        }
+
+                        graph_row user_id {
+                            label = "user_id"
+                            detail = "uuid fk"
+                            left_port = "user_id"
+                        }
+
+                        graph_row city {
+                            label = "city"
+                            detail = "text"
+                        }
+
+                        graph_row country {
+                            label = "country"
+                            detail = "text"
+                        }
+                    }
+
+                    graph_node order_items {
+                        x = 370
+                        y = 315
+                        width = 240
+                        title = "order_items"
+                        subtitle = "line items"
+                        header_fill = "#b45309"
+                        port_fill = color_success
+
+                        graph_row id {
+                            label = "id"
+                            detail = "uuid pk"
+                        }
+
+                        graph_row order_id {
+                            label = "order_id"
+                            detail = "uuid fk"
+                            left_port = "order_id"
+                        }
+
+                        graph_row product_id {
+                            label = "product_id"
+                            detail = "uuid fk"
+                            right_port = "product_id"
+                        }
+
+                        graph_row quantity {
+                            label = "quantity"
+                            detail = "integer"
+                        }
+                    }
+
+                    graph_node payments {
+                        x = 710
+                        y = 340
+                        width = 230
+                        title = "payments"
+                        subtitle = "settlement"
+                        header_fill = "#be123c"
+                        port_fill = color_success
+
+                        graph_row id {
+                            label = "id"
+                            detail = "uuid pk"
+                        }
+
+                        graph_row order_id {
+                            label = "order_id"
+                            detail = "uuid fk"
+                            left_port = "order_id"
+                        }
+
+                        graph_row provider_ref {
+                            label = "provider_ref"
+                            detail = "text"
+                        }
+
+                        graph_row state {
+                            label = "state"
+                            detail = "enum"
+                        }
+                    }
+
+                    connection user_orders {
+                        from = "users.orders"
+                        to = "orders.user_id"
+                        direction = "to"
+                        stroke = color_success
+                        stroke_width = 2
+                        label = "1:N"
+                    }
+
+                    connection user_addresses {
+                        from = "users.addresses"
+                        to = "addresses.user_id"
+                        direction = "to"
+                        stroke = color_success
+                        stroke_width = 2
+                        stroke_dasharray = "5,3"
+                        label = "1:N"
+                    }
+
+                    connection order_items_join {
+                        from = "orders.items"
+                        to = "order_items.order_id"
+                        direction = "to"
+                        stroke = "#f59e0b"
+                        stroke_width = 2
+                        label = "1:N"
+                    }
+
+                    connection order_payments_join {
+                        from = "orders.payments"
+                        to = "payments.order_id"
+                        direction = "to"
+                        stroke = "#f43f5e"
+                        stroke_width = 2
+                        label = "1:N"
+                    }
+
+                    connection product_items_join {
+                        from = "order_items.product_id"
+                        to = "products.id"
+                        direction = "to"
+                        stroke = color_link
+                        stroke_width = 2
+                        label = "N:1"
+                    }
+                }
+
                 code sample {
                     language = "wcl"
                     content = "graph_node gateway {\n    title = \"Gateway\"\n\n    graph_row ingress {\n        label = \"Ingress\"\n        left_port = \"request\"\n        right_port = \"rest\"\n    }\n\n    graph_divider public_private { }\n\n    graph_row auth {\n        label = \"Auth policy\"\n        right_port = \"token\"\n    }\n}\n\nconnection rest {\n    from = \"gateway.rest\"\n    to = \"user_service.in\"\n    direction = \"to\"\n}"

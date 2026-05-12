@@ -54,17 +54,18 @@
         let left_ports = wdoc::graph_node_ports(row, "left")
         let right_ports = wdoc::graph_node_ports(row, "right")
         let label_w = w - 34
+        let has_detail = detail != ""
         let separator_part = show_separator ? [
             { kind = "line", x1 = 0, y1 = row_y, x2 = w, y2 = row_y,
               stroke = separator_stroke, stroke_width = 1, opacity = 0.72 }
         ] : []
         let detail_part = detail != "" ? [
-            { kind = "text", x = 14, y = row_y + row_h - 14, width = label_w, height = 10,
+            { kind = "text", x = 14, y = row_y + row_h - 17, width = label_w, height = 12,
               content = detail, font_size = 9, anchor = "start", fill = muted_fill, opacity = 0.78 }
         ] : []
         concat(concat(concat(concat(concat(separator_part, [
-            { kind = "text", x = 14, y = row_y + (detail != "" ? 4 : 0), width = label_w,
-              height = detail != "" ? row_h - 10 : row_h, content = label, font_size = 11,
+            { kind = "text", x = 14, y = row_y + (has_detail ? 5 : 0), width = label_w,
+              height = has_detail ? 16 : row_h, content = label, font_size = 11,
               anchor = "start", fill = label_fill }
         ]), detail_part), wdoc::graph_node_port_shapes(left_ports, "left", w, row_y, row_h, port_r, port_fill, unused_port_fill, port_stroke, port_stroke_width, connected_ports)), wdoc::graph_node_port_shapes(right_ports, "right", w, row_y, row_h, port_r, port_fill, unused_port_fill, port_stroke, port_stroke_width, connected_ports)), [])
     }
@@ -82,7 +83,7 @@
         let item_count = len(items)
         let w = attr_or(b, "width", 240)
         let header_h = attr_or(b, "header_height", 34)
-        let row_h = attr_or(b, "row_height", 28)
+        let row_h = attr_or(b, "row_height", 40)
         let h = attr_or(b, "height", header_h + sum(map(items, (item) => wdoc::graph_node_item_height(item, row_h))))
         let title = attr_or(b, "title", attr_or(b, "label", b.id))
         let subtitle = attr_or(b, "subtitle", "")

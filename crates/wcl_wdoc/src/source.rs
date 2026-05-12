@@ -3869,8 +3869,8 @@ mod wdoc_draw_tests {
         );
 
         let html = render_diagram_with_ctx(&diagram, &ctx);
-        assert!(html.contains("height=\"104\""));
-        assert!(html.contains("x1=\"12\" y1=\"69\" x2=\"208\" y2=\"69\""));
+        assert!(html.contains("height=\"128\""));
+        assert!(html.contains("x1=\"12\" y1=\"81\" x2=\"208\" y2=\"81\""));
         assert!(html.contains("stroke=\"#ff00aa\""));
         assert!(html.contains(">Ingress</text>"));
         assert!(html.contains(">Repository</text>"));
