@@ -4368,15 +4368,21 @@ fn resolve_closest_auto_anchors(
 
 fn closest_anchor_pair(from: &Bounds, to: &Bounds) -> (AnchorPoint, AnchorPoint) {
     let mut best = (AnchorPoint::Right, AnchorPoint::Left);
-    let mut best_distance = f64::MAX;
+    let mut best_score = f64::MAX;
     for from_anchor in SIDE_ANCHORS {
         for to_anchor in SIDE_ANCHORS {
             let from_point = from.anchor_pos(from_anchor, to);
             let to_point = to.anchor_pos(to_anchor, from);
-            let distance = squared_distance(from_point, to_point);
-            if distance < best_distance {
+            let mut score = squared_distance(from_point, to_point);
+            if !anchor_faces_point(from_anchor, from_point, to_point) {
+                score += 1.0e9;
+            }
+            if !anchor_faces_point(to_anchor, to_point, from_point) {
+                score += 1.0e9;
+            }
+            if score < best_score {
                 best = (from_anchor, to_anchor);
-                best_distance = distance;
+                best_score = score;
             }
         }
     }
@@ -4392,6 +4398,18 @@ fn closest_anchor_to_point(bounds: &Bounds, point: (f64, f64), other: &Bounds) -
             da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
         })
         .unwrap_or(AnchorPoint::Auto)
+}
+
+fn anchor_faces_point(anchor: AnchorPoint, anchor_point: (f64, f64), point: (f64, f64)) -> bool {
+    let dx = point.0 - anchor_point.0;
+    let dy = point.1 - anchor_point.1;
+    match anchor {
+        AnchorPoint::Top => dy <= 0.001,
+        AnchorPoint::Bottom => dy >= -0.001,
+        AnchorPoint::Left => dx <= 0.001,
+        AnchorPoint::Right => dx >= -0.001,
+        AnchorPoint::Center | AnchorPoint::Auto => true,
+    }
 }
 
 const SIDE_ANCHORS: [AnchorPoint; 4] = [
@@ -6654,6 +6672,43 @@ mod tests {
         );
         assert!(svg.contains("marker-end=\"url(#wdoc-arrow)\""));
         assert!(!svg.contains("x2=\"167\""));
+    }
+
+    #[test]
+    fn auto_connection_prefers_target_side_facing_source() {
+        let mut shape_map = HashMap::new();
+        shape_map.insert(
+            "api".to_string(),
+            Bounds {
+                x: 477.00977853777783,
+                y: 209.53141720019897,
+                width: 63.040000000000006,
+                height: 44.8,
+            },
+        );
+        shape_map.insert(
+            "measured".to_string(),
+            Bounds {
+                x: 326.156286791696,
+                y: 279.2743744182869,
+                width: 218.30000000000004,
+                height: 44.8,
+            },
+        );
+
+        let mut conn = connection("api", "measured");
+        conn.attrs.insert(
+            CONNECTION_ROUTE_ATTR.to_string(),
+            CONNECTION_ROUTE_DIRECT.to_string(),
+        );
+        let route = compute_connection_route(&conn, &shape_map).unwrap();
+        match route.geometry {
+            RoutedGeometry::Line { start, end } => {
+                assert_eq!(start, (477.00977853777783, 231.93141720019898));
+                assert_eq!(end, (435.30628679169604, 279.2743744182869));
+            }
+            _ => panic!("expected direct line"),
+        }
     }
 
     #[test]
