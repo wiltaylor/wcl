@@ -65,6 +65,25 @@ fn collect_template_map(doc: &wcl_lang::Document) -> HashMap<(String, String), S
     map
 }
 
+/// Map from schema_name → base_schema_name, built from AST @extends decorators.
+fn collect_template_extends_map(doc: &wcl_lang::Document) -> HashMap<String, String> {
+    let mut map = HashMap::new();
+    for item in &doc.ast.items {
+        if let ast::DocItem::Body(ast::BodyItem::Schema(schema)) = item {
+            let schema_name = schema_name_literal(schema);
+
+            for dec in &schema.decorators {
+                if dec.name.name == "extends" && !dec.args.is_empty() {
+                    if let Some(base_name) = extract_string_arg(&dec.args[0]) {
+                        map.insert(schema_name.clone(), base_name);
+                    }
+                }
+            }
+        }
+    }
+    map
+}
+
 fn collect_draw_schema_names(doc: &wcl_lang::Document) -> HashSet<String> {
     let mut names = HashSet::new();
     for item in &doc.ast.items {
@@ -1831,44 +1850,17 @@ fn is_safe_css_value(value: &str) -> bool {
         .any(|ch| matches!(ch, '<' | '>' | '{' | '}' | ';'))
 }
 
+#[derive(Debug)]
 struct ShapeTemplateResult {
     shapes: Vec<crate::shapes::ShapeNode>,
     connections: Vec<crate::shapes::Connection>,
 }
 
 /// Look up a `@template("shape", "fn")` function for `br.kind` and call it.
-/// The function receives the BlockRef as its single argument and must return a
-/// list of "shape descriptor" values (maps describing primitive shapes).
+/// Plain shape templates receive the BlockRef as their single argument.
+/// Templates with `@extends` receive `(BlockRef, base_descriptors)`.
 fn dispatch_shape_template(br: &BlockRef, ctx: &ExtractCtx) -> Result<ShapeTemplateResult, String> {
-    let fn_name = ctx
-        .template_map
-        .get(&("shape".to_string(), br.kind.clone()))
-        .ok_or_else(|| format!("no @template(\"shape\", ...) on schema '{}'", br.kind))?;
-
-    let func = ctx.template_helpers.get(fn_name).ok_or_else(|| {
-        if ctx.builtins.contains_key(fn_name) {
-            format!("shape template function '{fn_name}' must be an exported WCL function")
-        } else {
-            format!("shape template function '{fn_name}' not registered")
-        }
-    })?;
-
-    let themed_block = apply_widget_theme_class_attrs(br, ctx);
-    let arg = Value::BlockRef(themed_block);
-    let result =
-        wcl_lang::call_lambda_with_env(func, &[arg], &ctx.builtins, &ctx.template_helpers)?;
-
-    let descriptors = match result {
-        Value::List(items) => items,
-        Value::Map(_) => vec![result],
-        Value::Null => vec![],
-        other => {
-            return Err(format!(
-                "shape template '{fn_name}' must return a list of shape maps, got {}",
-                other.type_name()
-            ))
-        }
-    };
+    let descriptors = dispatch_shape_template_descriptors(br, ctx, &mut Vec::new())?;
 
     let mut result = ShapeTemplateResult {
         shapes: Vec::new(),
@@ -1885,6 +1877,73 @@ fn dispatch_shape_template(br: &BlockRef, ctx: &ExtractCtx) -> Result<ShapeTempl
         }
     }
     Ok(result)
+}
+
+fn dispatch_shape_template_descriptors(
+    br: &BlockRef,
+    ctx: &ExtractCtx,
+    stack: &mut Vec<String>,
+) -> Result<Vec<Value>, String> {
+    let schema_name = br.kind.clone();
+    if let Some(pos) = stack.iter().position(|kind| kind == &schema_name) {
+        let mut cycle = stack[pos..].to_vec();
+        cycle.push(schema_name.clone());
+        return Err(format!(
+            "shape template extension cycle: {}",
+            cycle.join(" -> ")
+        ));
+    }
+    stack.push(schema_name.clone());
+
+    let fn_name = ctx
+        .template_map
+        .get(&("shape".to_string(), schema_name.clone()))
+        .ok_or_else(|| format!("no @template(\"shape\", ...) on schema '{}'", schema_name))?;
+
+    let func = ctx.template_helpers.get(fn_name).ok_or_else(|| {
+        if ctx.builtins.contains_key(fn_name) {
+            format!("shape template function '{fn_name}' must be an exported WCL function")
+        } else {
+            format!("shape template function '{fn_name}' not registered")
+        }
+    })?;
+
+    let themed_block = apply_widget_theme_class_attrs(br, ctx);
+    let result = if let Some(base_kind) = ctx.template_extends_map.get(&schema_name) {
+        let mut base_block = themed_block.clone();
+        base_block.kind = base_kind.clone();
+        let base_descriptors = dispatch_shape_template_descriptors(&base_block, ctx, stack)?;
+        wcl_lang::call_lambda_with_env(
+            func,
+            &[
+                Value::BlockRef(themed_block),
+                Value::List(base_descriptors.clone()),
+            ],
+            &ctx.builtins,
+            &ctx.template_helpers,
+        )
+    } else {
+        wcl_lang::call_lambda_with_env(
+            func,
+            &[Value::BlockRef(themed_block)],
+            &ctx.builtins,
+            &ctx.template_helpers,
+        )
+    }?;
+
+    let descriptors = match result {
+        Value::List(items) => items,
+        Value::Map(_) => vec![result],
+        Value::Null => vec![],
+        other => {
+            return Err(format!(
+                "shape template '{fn_name}' must return a list of shape maps, got {}",
+                other.type_name()
+            ))
+        }
+    };
+    stack.pop();
+    Ok(descriptors)
 }
 
 fn apply_widget_theme_class_attrs(br: &BlockRef, ctx: &ExtractCtx) -> BlockRef {
@@ -2688,6 +2747,7 @@ fn val_f64(v: Option<&Value>) -> Option<f64> {
 
 struct ExtractCtx {
     template_map: HashMap<(String, String), String>,
+    template_extends_map: HashMap<String, String>,
     draw_schema_names: HashSet<String>,
     structural_shape_schema_names: HashSet<String>,
     template_helpers: HashMap<String, FunctionValue>,
@@ -3018,6 +3078,7 @@ mod wdoc_draw_tests {
     fn empty_ctx() -> ExtractCtx {
         ExtractCtx {
             template_map: HashMap::new(),
+            template_extends_map: HashMap::new(),
             draw_schema_names: HashSet::new(),
             structural_shape_schema_names: HashSet::new(),
             template_helpers: HashMap::new(),
@@ -3181,6 +3242,14 @@ mod wdoc_draw_tests {
     }
 
     fn custom_shape_ctx(source: &str, kind: &str, template_name: &str) -> ExtractCtx {
+        custom_shape_ctx_with_templates(source, &[(kind, template_name)], &[])
+    }
+
+    fn custom_shape_ctx_with_templates(
+        source: &str,
+        templates: &[(&str, &str)],
+        extends: &[(&str, &str)],
+    ) -> ExtractCtx {
         let functions = wdoc_functions();
         let doc = wcl_lang::parse(
             source,
@@ -3196,11 +3265,44 @@ mod wdoc_draw_tests {
         );
 
         let mut ctx = empty_ctx();
-        ctx.template_map.insert(
-            ("shape".to_string(), kind.to_string()),
-            template_name.to_string(),
-        );
+        for (kind, template_name) in templates {
+            ctx.template_map.insert(
+                ("shape".to_string(), (*kind).to_string()),
+                (*template_name).to_string(),
+            );
+        }
+        for (kind, base_kind) in extends {
+            ctx.template_extends_map
+                .insert((*kind).to_string(), (*base_kind).to_string());
+        }
         ctx.template_helpers = collect_template_helpers(&doc);
+        ctx.markup_rules = collect_markup_rules(&doc, &ctx.template_helpers).unwrap();
+        ctx.builtins = functions.functions;
+        ctx.draw_schema_names = collect_draw_schema_names(&doc);
+        ctx.structural_shape_schema_names = collect_structural_shape_schema_names(&doc);
+        ctx
+    }
+
+    fn custom_shape_ctx_from_source(source: &str) -> ExtractCtx {
+        let functions = wdoc_functions();
+        let doc = wcl_lang::parse(
+            source,
+            wcl_lang::ParseOptions {
+                functions: functions.clone(),
+                ..Default::default()
+            },
+        );
+        assert!(
+            !doc.has_errors(),
+            "unexpected diagnostics: {:?}",
+            doc.diagnostics
+        );
+
+        let template_helpers = collect_template_helpers(&doc);
+        let mut ctx = empty_ctx();
+        ctx.template_map = collect_template_map(&doc);
+        ctx.template_extends_map = collect_template_extends_map(&doc);
+        ctx.template_helpers = template_helpers;
         ctx.markup_rules = collect_markup_rules(&doc, &ctx.template_helpers).unwrap();
         ctx.builtins = functions.functions;
         ctx.draw_schema_names = collect_draw_schema_names(&doc);
@@ -3227,6 +3329,7 @@ mod wdoc_draw_tests {
         let markup_rules = collect_markup_rules(&doc, &template_helpers).unwrap();
         ExtractCtx {
             template_map: collect_template_map(&doc),
+            template_extends_map: collect_template_extends_map(&doc),
             draw_schema_names: collect_draw_schema_names(&doc),
             structural_shape_schema_names: collect_structural_shape_schema_names(&doc),
             template_helpers,
@@ -3331,6 +3434,7 @@ mod wdoc_draw_tests {
         let template_helpers = collect_template_helpers(&doc);
         let ctx = ExtractCtx {
             template_map: collect_template_map(&doc),
+            template_extends_map: collect_template_extends_map(&doc),
             draw_schema_names: collect_draw_schema_names(&doc),
             structural_shape_schema_names: collect_structural_shape_schema_names(&doc),
             markup_rules: collect_markup_rules(&doc, &template_helpers).unwrap(),
@@ -4691,6 +4795,193 @@ mod wdoc_draw_tests {
         assert_eq!(shapes[0].kind_name, "my::task");
         assert_eq!(shapes[0].children.len(), 1);
         assert_eq!(shapes[0].children[0].kind, crate::shapes::ShapeKind::Rect);
+    }
+
+    #[test]
+    fn shape_template_can_extend_base_widget_descriptors() {
+        let ctx = custom_shape_ctx_with_templates(
+            r##"
+            export let base_button = (b) => [
+                { kind = "rect", x = 0, y = 0, width = attr_or(b, "width", 120), height = 40, fill = "#111111" }
+            ]
+
+            export let danger_button = (b, base) => concat(base, [
+                { kind = "text", x = 0, y = 0, width = attr_or(b, "width", 120), height = 40, content = "Danger", fill = "#ff0000" }
+            ])
+            "##,
+            &[
+                ("my::base_button", "base_button"),
+                ("my::danger_button", "danger_button"),
+            ],
+            &[("my::danger_button", "my::base_button")],
+        );
+
+        let mut attrs = IndexMap::new();
+        int_attr(&mut attrs, "width", 140);
+        int_attr(&mut attrs, "height", 40);
+        let diagram = block(
+            "wdoc::draw::diagram",
+            Some("extended_widget"),
+            IndexMap::new(),
+            vec![block("my::danger_button", Some("danger"), attrs, vec![])],
+        );
+
+        let html = render_diagram_with_ctx(&diagram, &ctx);
+
+        assert!(html.contains("fill=\"#111111\""));
+        assert!(html.contains(">Danger</text>"));
+        assert!(html.contains("fill=\"#ff0000\""));
+    }
+
+    #[test]
+    fn shape_template_extends_uses_schema_decorator_metadata() {
+        let ctx = custom_shape_ctx_from_source(
+            r##"
+            @template("shape", "base_card")
+            @open schema "my::base_card" { }
+
+            @extends("my::base_card")
+            @template("shape", "accent_card")
+            @open schema "my::accent_card" { }
+
+            export let base_card = (_b) => [
+                { kind = "rect", x = 0, y = 0, width = 90, height = 32, fill = "#445566" }
+            ]
+            export let accent_card = (_b, base) => concat(base, [
+                { kind = "rect", x = 4, y = 4, width = 12, height = 12, fill = "#abcdef" }
+            ])
+            "##,
+        );
+
+        let diagram = block(
+            "wdoc::draw::diagram",
+            Some("decorator_extends"),
+            IndexMap::new(),
+            vec![block(
+                "my::accent_card",
+                Some("card"),
+                IndexMap::new(),
+                vec![],
+            )],
+        );
+
+        let html = render_diagram_with_ctx(&diagram, &ctx);
+
+        assert!(html.contains("fill=\"#445566\""));
+        assert!(html.contains("fill=\"#abcdef\""));
+    }
+
+    #[test]
+    fn shape_template_extends_normalizes_single_map_base_result() {
+        let ctx = custom_shape_ctx_with_templates(
+            r##"
+            export let base_badge = (_b) => { kind = "rect", x = 0, y = 0, width = 80, height = 28, fill = "#222222" }
+            export let labeled_badge = (_b, base) => concat(base, [
+                { kind = "text", x = 0, y = 0, width = 80, height = 28, content = "1", fill = "#ffffff" }
+            ])
+            "##,
+            &[
+                ("my::base_badge", "base_badge"),
+                ("my::labeled_badge", "labeled_badge"),
+            ],
+            &[("my::labeled_badge", "my::base_badge")],
+        );
+
+        let diagram = block(
+            "wdoc::draw::diagram",
+            Some("single_map_base"),
+            IndexMap::new(),
+            vec![block(
+                "my::labeled_badge",
+                Some("badge"),
+                IndexMap::new(),
+                vec![],
+            )],
+        );
+
+        let html = render_diagram_with_ctx(&diagram, &ctx);
+
+        assert!(html.contains("fill=\"#222222\""));
+        assert!(html.contains(">1</text>"));
+    }
+
+    #[test]
+    fn shape_template_extends_supports_chains() {
+        let ctx = custom_shape_ctx_with_templates(
+            r##"
+            export let base_box = (_b) => [
+                { kind = "rect", x = 0, y = 0, width = 100, height = 40, fill = "#101010" }
+            ]
+            export let middle_box = (_b, base) => concat(base, [
+                { kind = "circle", x = 8, y = 8, r = 6, fill = "#202020" }
+            ])
+            export let final_box = (_b, base) => concat(base, [
+                { kind = "text", x = 0, y = 0, width = 100, height = 40, content = "Final", fill = "#303030" }
+            ])
+            "##,
+            &[
+                ("my::base_box", "base_box"),
+                ("my::middle_box", "middle_box"),
+                ("my::final_box", "final_box"),
+            ],
+            &[
+                ("my::middle_box", "my::base_box"),
+                ("my::final_box", "my::middle_box"),
+            ],
+        );
+
+        let diagram = block(
+            "wdoc::draw::diagram",
+            Some("extend_chain"),
+            IndexMap::new(),
+            vec![block("my::final_box", Some("box"), IndexMap::new(), vec![])],
+        );
+
+        let html = render_diagram_with_ctx(&diagram, &ctx);
+
+        assert!(html.contains("fill=\"#101010\""));
+        assert!(html.contains("fill=\"#202020\""));
+        assert!(html.contains(">Final</text>"));
+    }
+
+    #[test]
+    fn shape_template_extends_reports_wrong_arity() {
+        let ctx = custom_shape_ctx_with_templates(
+            r##"
+            export let base_box = (_b) => []
+            export let bad_box = (_b) => []
+            "##,
+            &[("my::base_box", "base_box"), ("my::bad_box", "bad_box")],
+            &[("my::bad_box", "my::base_box")],
+        );
+
+        let err = dispatch_shape_template(
+            &block("my::bad_box", Some("bad"), IndexMap::new(), vec![]),
+            &ctx,
+        )
+        .unwrap_err();
+
+        assert!(err.contains("expected 1 arguments, got 2"));
+    }
+
+    #[test]
+    fn shape_template_extends_reports_cycles() {
+        let ctx = custom_shape_ctx_with_templates(
+            r##"
+            export let a_box = (_b, base) => base
+            export let b_box = (_b, base) => base
+            "##,
+            &[("my::a_box", "a_box"), ("my::b_box", "b_box")],
+            &[("my::a_box", "my::b_box"), ("my::b_box", "my::a_box")],
+        );
+
+        let err = dispatch_shape_template(
+            &block("my::a_box", Some("a"), IndexMap::new(), vec![]),
+            &ctx,
+        )
+        .unwrap_err();
+
+        assert!(err.contains("shape template extension cycle: my::a_box -> my::b_box -> my::a_box"));
     }
 
     #[test]
@@ -6960,6 +7251,7 @@ pub fn parse_extract_from_files(
     let template_map = collect_template_map(&doc);
     let draw_schema_names = collect_draw_schema_names(&doc);
     let structural_shape_schema_names = collect_structural_shape_schema_names(&doc);
+    let template_extends_map = collect_template_extends_map(&doc);
     let builtins: HashMap<String, BuiltinFn> = functions.functions;
     let template_helpers = collect_template_helpers(&doc);
     let markup_rules = collect_markup_rules(&doc, &template_helpers)?;
@@ -6967,6 +7259,7 @@ pub fn parse_extract_from_files(
     let icon_registry = collect_icon_sets(&all_values, &svg_search_dirs)?;
     let ctx = ExtractCtx {
         template_map,
+        template_extends_map,
         draw_schema_names,
         structural_shape_schema_names,
         template_helpers,

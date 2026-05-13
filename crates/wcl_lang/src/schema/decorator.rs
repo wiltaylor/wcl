@@ -236,6 +236,19 @@ impl DecoratorSchemaRegistry {
             span: Span::dummy(),
         });
         self.insert(ResolvedDecoratorSchema {
+            name: "extends".to_string(),
+            targets: vec![DecoratorTarget::Schema],
+            params: vec![DecoratorParam {
+                name: "schema".to_string(),
+                type_expr: TypeExpr::String(Span::dummy()),
+                required: true,
+                default: None,
+                span: Span::dummy(),
+            }],
+            constraints: vec![],
+            span: Span::dummy(),
+        });
+        self.insert(ResolvedDecoratorSchema {
             name: "auto_id".to_string(),
             targets: vec![DecoratorTarget::Schema],
             params: vec![],

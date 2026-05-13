@@ -308,7 +308,7 @@ page diagram_examples {
             }
         }
 
-        // --- Example 3: Anchored layout ---
+        // --- Example 4: Anchored layout ---
         vsplit v_diag4 {
             split s_diag4 {
                 size = 100
@@ -384,7 +384,7 @@ page diagram_examples {
             }
         }
 
-        // --- Example 4: Stack layout ---
+        // --- Example 5: Stack layout ---
         vsplit v_diag5 {
             split s_diag5 {
                 size = 100
@@ -452,7 +452,7 @@ page diagram_examples {
             }
         }
 
-        // --- Example 5: Layered (Sugiyama) layout ---
+        // --- Example 6: Layered (Sugiyama) layout ---
         vsplit v_diag6 {
             split s_diag6 {
                 size = 100
@@ -551,7 +551,7 @@ page diagram_examples {
             }
         }
 
-        // --- Example 6: Custom shapes as graph nodes ---
+        // --- Example 7: Custom shapes as graph nodes ---
         vsplit v_diag_custom1 {
             split s_diag_custom1 {
                 size = 100
@@ -616,7 +616,70 @@ page diagram_examples {
             }
         }
 
-        // --- Example 7: Nested local connections ---
+        // --- Example 8: Extended custom widgets ---
+        vsplit v_diag_extend1 {
+            split s_diag_extend1 {
+                size = 100
+
+                heading hd_extend1 {
+                    level = 2
+                    content = "Extending a Shape Widget"
+                }
+                paragraph pd_extend1 {
+                    content = "A custom widget can declare " + bold("@extends") + " to receive the base widget's descriptors as a second lambda parameter. This example extends the reusable task node and appends a status badge and accent rule."
+                }
+
+                diagram extended_shape_widgets {
+                    width = 700
+                    height = 260
+                    align = "layered"
+                    gap = 52
+
+                    status_task_node planned {
+                        width = 150
+                        height = 54
+                        label = "Plan"
+                        status = "TODO"
+                        status_fill = color_link
+                        accent = color_link
+                    }
+                    status_task_node running {
+                        width = 150
+                        height = 54
+                        label = "Build"
+                        status = "LIVE"
+                        status_fill = color_success
+                        accent = color_success
+                    }
+                    status_task_node blocked {
+                        width = 150
+                        height = 54
+                        label = "Review"
+                        status = "HOLD"
+                        status_fill = color_danger
+                        accent = color_danger
+                    }
+
+                    connection extend_c1 {
+                        from = "planned"
+                        to = "running"
+                        direction = "to"
+                    }
+                    connection extend_c2 {
+                        from = "running"
+                        to = "blocked"
+                        direction = "to"
+                    }
+                }
+
+                code extended_shape_widgets_src {
+                    language = "wcl"
+                    content = "@extends(\"custom_shapes::task_node\")\n@template(\"shape\", \"custom_shapes::status_task_node_template\")\n@open\nschema \"status_task_node\" { }\n\nexport let status_task_node_template = (b, base) => {\n    let w = attr_or(b, \"width\", 150)\n    let h = attr_or(b, \"height\", 54)\n    concat(base, [\n        { kind = \"rect\", x = w - 48, y = 7, width = 38, height = 16, rx = 8,\n          fill = attr_or(b, \"status_fill\", \"#3fb950\") },\n        { kind = \"text\", x = w - 48, y = 7, width = 38, height = 16,\n          content = attr_or(b, \"status\", \"NEW\"), font_size = 9, font_weight = \"700\" },\n        { kind = \"line\", x1 = 12, y1 = h - 9, x2 = w - 12, y2 = h - 9,\n          stroke = attr_or(b, \"accent\", \"#3fb950\"), stroke_width = 2 }\n    ])\n}"
+                }
+            }
+        }
+
+        // --- Example 9: Nested local connections ---
         vsplit v_diag_custom2 {
             split s_diag_custom2 {
                 size = 100
@@ -683,7 +746,7 @@ page diagram_examples {
             }
         }
 
-        // --- Example 8: Template-generated links ---
+        // --- Example 10: Template-generated links ---
         vsplit v_diag_custom3 {
             split s_diag_custom3 {
                 size = 100
@@ -726,7 +789,7 @@ page diagram_examples {
             }
         }
 
-        // --- Example 9: Force-directed layout ---
+        // --- Example 11: Force-directed layout ---
         vsplit v_diag7 {
             split s_diag7 {
                 size = 100
@@ -823,7 +886,7 @@ page diagram_examples {
             }
         }
 
-        // --- Example 10: Radial layout ---
+        // --- Example 12: Radial layout ---
         vsplit v_diag8 {
             split s_diag8 {
                 size = 100
@@ -923,7 +986,7 @@ page diagram_examples {
             }
         }
 
-        // --- Example 11: Grid layout ---
+        // --- Example 13: Grid layout ---
         vsplit v_diag9 {
             split s_diag9 {
                 size = 100
