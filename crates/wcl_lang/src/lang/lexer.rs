@@ -26,6 +26,12 @@ pub enum TokenKind {
     SymbolLit(String),
     /// Date literal: `d"2024-03-15"`
     DateLit(String),
+    /// Offset date-time literal: `odt"1979-05-27T07:32:00Z"`
+    OffsetDateTimeLit(String),
+    /// Local date-time literal: `ldt"1979-05-27T07:32:00"`
+    LocalDateTimeLit(String),
+    /// Local time literal: `lt"07:32:00"`
+    LocalTimeLit(String),
     /// Duration literal: `dur"P1Y2M3D"`
     DurationLit(String),
 
@@ -934,7 +940,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    // ── Prefix string literal lexer (d"..." and dur"...") ─────────────────
+    // ── Prefix string literal lexer (d"...", odt"...", ldt"...", lt"...", dur"...")
 
     fn lex_prefix_string_literal(&mut self, prefix: &str, start: usize) -> Token {
         // Skip the opening quote
@@ -945,10 +951,12 @@ impl<'a> Lexer<'a> {
             if c == '"' {
                 let content = self.input[content_start..self.pos].to_string();
                 self.advance_char(); // consume closing '"'
-                let kind = if prefix == "d" {
-                    TokenKind::DateLit(content)
-                } else {
-                    TokenKind::DurationLit(content)
+                let kind = match prefix {
+                    "d" => TokenKind::DateLit(content),
+                    "odt" => TokenKind::OffsetDateTimeLit(content),
+                    "ldt" => TokenKind::LocalDateTimeLit(content),
+                    "lt" => TokenKind::LocalTimeLit(content),
+                    _ => TokenKind::DurationLit(content),
                 };
                 return self.make_tok(kind, start);
             } else if c == '\n' || c == '\r' {
@@ -963,10 +971,16 @@ impl<'a> Lexer<'a> {
             Span::new(self.file, start, self.pos),
         ));
         self.make_tok(
-            if prefix == "d" {
-                TokenKind::DateLit(self.input[content_start..self.pos].to_string())
-            } else {
-                TokenKind::DurationLit(self.input[content_start..self.pos].to_string())
+            match prefix {
+                "d" => TokenKind::DateLit(self.input[content_start..self.pos].to_string()),
+                "odt" => {
+                    TokenKind::OffsetDateTimeLit(self.input[content_start..self.pos].to_string())
+                }
+                "ldt" => {
+                    TokenKind::LocalDateTimeLit(self.input[content_start..self.pos].to_string())
+                }
+                "lt" => TokenKind::LocalTimeLit(self.input[content_start..self.pos].to_string()),
+                _ => TokenKind::DurationLit(self.input[content_start..self.pos].to_string()),
             },
             start,
         )
@@ -999,8 +1013,8 @@ impl<'a> Lexer<'a> {
         }
         let word = &self.input[word_start..self.pos];
 
-        // Check for date/duration prefix literals: d"..." and dur"..."
-        if (word == "d" || word == "dur") && self.peek() == Some('"') {
+        // Check for temporal prefix literals.
+        if matches!(word, "d" | "odt" | "ldt" | "lt" | "dur") && self.peek() == Some('"') {
             return self.lex_prefix_string_literal(word, start);
         }
 

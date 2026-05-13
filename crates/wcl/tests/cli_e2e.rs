@@ -1458,6 +1458,58 @@ transform yaml-copy {
 }
 
 #[test]
+fn transform_toml_codec_uses_standard_wcl_codec() {
+    let dir = tempdir().expect("tempdir");
+    let transform = dir.path().join("toml.wcl");
+    let input = dir.path().join("input.toml");
+
+    std::fs::write(
+        &input,
+        "[[items]]\nname = \"Alice\"\nactive = true\n\n[[items]]\nname = \"Bob\"\nactive = false\n",
+    )
+    .expect("write input");
+    std::fs::write(
+        &transform,
+        r#"
+transform toml-copy {
+    input = "codec::toml"
+    output = "codec::toml"
+
+    map {
+        name = in.name
+        active = in.active
+    }
+}
+"#,
+    )
+    .expect("write transform");
+
+    let stdout = run_transform_stdout(&transform, "toml-copy", &input);
+    let toml: toml::Value = toml::from_str(&stdout).expect("valid toml output");
+    let records = toml
+        .get("records")
+        .and_then(toml::Value::as_array)
+        .expect("records array");
+    assert_eq!(records.len(), 2);
+    assert_eq!(
+        records[0].get("name").and_then(toml::Value::as_str),
+        Some("Alice")
+    );
+    assert_eq!(
+        records[0].get("active").and_then(toml::Value::as_bool),
+        Some(true)
+    );
+    assert_eq!(
+        records[1].get("name").and_then(toml::Value::as_str),
+        Some("Bob")
+    );
+    assert_eq!(
+        records[1].get("active").and_then(toml::Value::as_bool),
+        Some(false)
+    );
+}
+
+#[test]
 fn transform_imported_codecs_library_does_not_duplicate_json() {
     let dir = tempdir().expect("tempdir");
     let lib_dir = dir.path().join("lib");

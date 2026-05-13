@@ -82,7 +82,6 @@ pub fn execute_with_custom(
     } else {
         match input_codec {
             "csv" => codec::csv_codec::decode_csv_records(input_reader, true, b',')?,
-            "toml" => codec::toml_codec::decode_toml_records(input_reader)?,
             "hcl" => codec::hcl_codec::decode_hcl_records(input_reader)?,
             "xml" => codec::xml::decode_xml_records(input_reader)?,
             "msgpack" => codec::msgpack::decode_msgpack_records(input_reader)?,
@@ -127,17 +126,11 @@ pub fn execute_with_custom(
     let transformed = map_records(&records, config)?;
 
     // Encode output
-    let pretty = output_options
-        .get("pretty")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
     if let Some(custom) = custom_codecs.get(output_codec) {
         codec::custom::encode_custom_records(&transformed, custom, output_options, output_writer)?;
     } else {
         match output_codec {
             "csv" => codec::csv_codec::encode_csv_records(&transformed, output_writer, b',')?,
-            "toml" => codec::toml_codec::encode_toml_records(&transformed, output_writer, pretty)?,
             "hcl" => codec::hcl_codec::encode_hcl_records(&transformed, output_writer)?,
             "xml" => codec::xml::encode_xml_records(&transformed, output_writer, "root")?,
             "msgpack" => codec::msgpack::encode_msgpack_records(&transformed, output_writer)?,

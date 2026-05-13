@@ -75,6 +75,18 @@ impl Parser {
                         self.advance();
                         Some(TypeExpr::Date(start_span))
                     }
+                    "offset_datetime" => {
+                        self.advance();
+                        Some(TypeExpr::OffsetDateTime(start_span))
+                    }
+                    "local_datetime" => {
+                        self.advance();
+                        Some(TypeExpr::LocalDateTime(start_span))
+                    }
+                    "local_time" => {
+                        self.advance();
+                        Some(TypeExpr::LocalTime(start_span))
+                    }
                     "duration" => {
                         self.advance();
                         Some(TypeExpr::Duration(start_span))

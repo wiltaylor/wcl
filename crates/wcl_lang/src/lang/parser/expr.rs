@@ -183,6 +183,24 @@ impl Parser {
                 self.advance();
                 Some(Expr::DateLit(s, span))
             }
+            TokenKind::OffsetDateTimeLit(s) => {
+                let span = self.current_span();
+                let s = s.clone();
+                self.advance();
+                Some(Expr::OffsetDateTimeLit(s, span))
+            }
+            TokenKind::LocalDateTimeLit(s) => {
+                let span = self.current_span();
+                let s = s.clone();
+                self.advance();
+                Some(Expr::LocalDateTimeLit(s, span))
+            }
+            TokenKind::LocalTimeLit(s) => {
+                let span = self.current_span();
+                let s = s.clone();
+                self.advance();
+                Some(Expr::LocalTimeLit(s, span))
+            }
             TokenKind::DurationLit(s) => {
                 let span = self.current_span();
                 let s = s.clone();

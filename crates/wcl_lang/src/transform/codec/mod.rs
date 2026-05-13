@@ -9,7 +9,6 @@ pub mod custom;
 pub mod hcl_codec;
 pub mod msgpack;
 pub mod text_codec;
-pub mod toml_codec;
 pub mod xml;
 
 use crate::transform::error::TransformError;

@@ -28,6 +28,12 @@ pub enum Value {
     Function(FunctionValue),
     /// ISO 8601 date value (e.g. `d"2024-03-15"`)
     Date(String),
+    /// RFC 3339 offset date-time value (e.g. `odt"1979-05-27T07:32:00Z"`)
+    OffsetDateTime(String),
+    /// TOML local date-time value (e.g. `ldt"1979-05-27T07:32:00"`)
+    LocalDateTime(String),
+    /// TOML local time value (e.g. `lt"07:32:00"`)
+    LocalTime(String),
     /// ISO 8601 duration value (e.g. `dur"P1Y2M3D"`)
     Duration(String),
     /// Regex pattern value (e.g. /^[a-z]+$/)
@@ -134,6 +140,9 @@ impl Value {
             Value::BlockRef(_) => "block_ref",
             Value::Function(_) => "function",
             Value::Date(_) => "date",
+            Value::OffsetDateTime(_) => "offset_datetime",
+            Value::LocalDateTime(_) => "local_datetime",
+            Value::LocalTime(_) => "local_time",
             Value::Duration(_) => "duration",
             Value::Pattern(_) => "pattern",
         }
@@ -224,6 +233,15 @@ impl Value {
     pub fn as_date(&self) -> Option<&str> {
         match self {
             Value::Date(s) => Some(s),
+            Value::OffsetDateTime(s) => Some(s),
+            Value::LocalDateTime(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    pub fn as_local_time(&self) -> Option<&str> {
+        match self {
+            Value::LocalTime(s) => Some(s),
             _ => None,
         }
     }
@@ -246,6 +264,9 @@ impl Value {
             Value::Identifier(s) => Ok(s.clone()),
             Value::Symbol(s) => Ok(format!(":{}", s)),
             Value::Date(s) => Ok(s.clone()),
+            Value::OffsetDateTime(s) => Ok(s.clone()),
+            Value::LocalDateTime(s) => Ok(s.clone()),
+            Value::LocalTime(s) => Ok(s.clone()),
             Value::Duration(s) => Ok(s.clone()),
             Value::Pattern(s) => Ok(format!("/{}/", s)),
             _ => Err(format!(
@@ -273,6 +294,9 @@ impl PartialEq for Value {
             (Value::Map(a), Value::Map(b)) => a == b,
             (Value::Set(a), Value::Set(b)) => a == b,
             (Value::Date(a), Value::Date(b)) => a == b,
+            (Value::OffsetDateTime(a), Value::OffsetDateTime(b)) => a == b,
+            (Value::LocalDateTime(a), Value::LocalDateTime(b)) => a == b,
+            (Value::LocalTime(a), Value::LocalTime(b)) => a == b,
             (Value::Duration(a), Value::Duration(b)) => a == b,
             (Value::Pattern(a), Value::Pattern(b)) => a == b,
             _ => false,
@@ -353,6 +377,9 @@ impl fmt::Display for Value {
             }
             Value::Function(_) => write!(f, "<function>"),
             Value::Date(s) => write!(f, "d\"{}\"", s),
+            Value::OffsetDateTime(s) => write!(f, "odt\"{}\"", s),
+            Value::LocalDateTime(s) => write!(f, "ldt\"{}\"", s),
+            Value::LocalTime(s) => write!(f, "lt\"{}\"", s),
             Value::Duration(s) => write!(f, "dur\"{}\"", s),
             Value::Pattern(s) => write!(f, "/{}/", s),
         }

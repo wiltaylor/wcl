@@ -721,6 +721,9 @@ impl Evaluator {
             Expr::IntLit(i, _) => Ok(Value::Int(*i)),
             Expr::FloatLit(f, _) => Ok(Value::Float(*f)),
             Expr::DateLit(s, _) => Ok(Value::Date(s.clone())),
+            Expr::OffsetDateTimeLit(s, _) => Ok(Value::OffsetDateTime(s.clone())),
+            Expr::LocalDateTimeLit(s, _) => Ok(Value::LocalDateTime(s.clone())),
+            Expr::LocalTimeLit(s, _) => Ok(Value::LocalTime(s.clone())),
             Expr::DurationLit(s, _) => Ok(Value::Duration(s.clone())),
             Expr::PatternLit(s, _) => Ok(Value::Pattern(s.clone())),
             Expr::BoolLit(b, _) => Ok(Value::Bool(*b)),
@@ -1217,6 +1220,9 @@ impl Evaluator {
             (Value::Float(a), Value::BigInt(b)) => compare_partial_ord(a, &(*b as f64), op),
             (Value::String(a), Value::String(b)) => compare_ord(a, b, op),
             (Value::Date(a), Value::Date(b)) => compare_ord(a, b, op),
+            (Value::OffsetDateTime(a), Value::OffsetDateTime(b)) => compare_ord(a, b, op),
+            (Value::LocalDateTime(a), Value::LocalDateTime(b)) => compare_ord(a, b, op),
+            (Value::LocalTime(a), Value::LocalTime(b)) => compare_ord(a, b, op),
             (Value::Duration(a), Value::Duration(b)) => compare_ord(a, b, op),
             _ => {
                 return Err(Diagnostic::error(
@@ -2342,7 +2348,7 @@ fn decode_import_codec(
     options: &IndexMap<String, Value>,
 ) -> Result<Vec<Value>, crate::transform::TransformError> {
     match codec {
-        "json" | "yaml" => {
+        "json" | "yaml" | "toml" => {
             let registry = crate::transform::codec::custom::standard_registry()?;
             let custom = registry.get(codec).ok_or_else(|| {
                 crate::transform::TransformError::Codec(format!(
@@ -2357,7 +2363,6 @@ fn decode_import_codec(
             let has_header = option_bool(options, "has_header", true)?;
             crate::transform::codec::csv_codec::decode_csv_records(bytes, has_header, separator)
         }
-        "toml" => crate::transform::codec::toml_codec::decode_toml_records(bytes),
         "hcl" => crate::transform::codec::hcl_codec::decode_hcl_records(bytes),
         "xml" => crate::transform::codec::xml::decode_xml_records(bytes),
         "msgpack" => crate::transform::codec::msgpack::decode_msgpack_records(bytes),

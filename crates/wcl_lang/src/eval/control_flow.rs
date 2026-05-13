@@ -1193,6 +1193,9 @@ pub(crate) fn value_to_expr(value: &Value, span: Span) -> Option<Expr> {
         })),
         Value::Symbol(s) => Some(Expr::SymbolLit(s.clone(), span)),
         Value::Date(s) => Some(Expr::DateLit(s.clone(), span)),
+        Value::OffsetDateTime(s) => Some(Expr::OffsetDateTimeLit(s.clone(), span)),
+        Value::LocalDateTime(s) => Some(Expr::LocalDateTimeLit(s.clone(), span)),
+        Value::LocalTime(s) => Some(Expr::LocalTimeLit(s.clone(), span)),
         Value::Duration(s) => Some(Expr::DurationLit(s.clone(), span)),
         Value::Pattern(s) => Some(Expr::PatternLit(s.clone(), span)),
         Value::List(items) => {

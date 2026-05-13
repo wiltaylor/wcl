@@ -714,6 +714,12 @@ pub enum TypeExpr {
     F64(Span),
     /// `date` — ISO 8601 date
     Date(Span),
+    /// `offset_datetime` — RFC 3339 date-time with offset
+    OffsetDateTime(Span),
+    /// `local_datetime` — TOML local date-time
+    LocalDateTime(Span),
+    /// `local_time` — TOML local time
+    LocalTime(Span),
     /// `duration` — ISO 8601 duration
     Duration(Span),
     /// `bool`
@@ -760,6 +766,9 @@ impl TypeExpr {
             | TypeExpr::F32(s)
             | TypeExpr::F64(s)
             | TypeExpr::Date(s)
+            | TypeExpr::OffsetDateTime(s)
+            | TypeExpr::LocalDateTime(s)
+            | TypeExpr::LocalTime(s)
             | TypeExpr::Duration(s)
             | TypeExpr::Bool(s)
             | TypeExpr::Null(s)
@@ -833,6 +842,12 @@ pub enum Expr {
     Paren(Box<Expr>, Span),
     /// Date literal: `d"2024-03-15"`
     DateLit(String, Span),
+    /// Offset date-time literal: `odt"1979-05-27T07:32:00Z"`
+    OffsetDateTimeLit(String, Span),
+    /// Local date-time literal: `ldt"1979-05-27T07:32:00"`
+    LocalDateTimeLit(String, Span),
+    /// Local time literal: `lt"07:32:00"`
+    LocalTimeLit(String, Span),
     /// Duration literal: `dur"P1Y2M3D"`
     DurationLit(String, Span),
     /// Pattern literal: /regex/
@@ -864,6 +879,9 @@ impl Expr {
             | Expr::Paren(_, s)
             | Expr::SymbolLit(_, s)
             | Expr::DateLit(_, s)
+            | Expr::OffsetDateTimeLit(_, s)
+            | Expr::LocalDateTimeLit(_, s)
+            | Expr::LocalTimeLit(_, s)
             | Expr::DurationLit(_, s)
             | Expr::PatternLit(_, s) => *s,
             Expr::StringLit(s) => s.span,

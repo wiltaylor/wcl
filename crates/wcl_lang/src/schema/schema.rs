@@ -1376,6 +1376,9 @@ pub(crate) fn value_type_label(value: &Value) -> &'static str {
         Value::BlockRef(_) => "block",
         Value::Function(_) => "function",
         Value::Date(_) => "date",
+        Value::OffsetDateTime(_) => "offset_datetime",
+        Value::LocalDateTime(_) => "local_datetime",
+        Value::LocalTime(_) => "local_time",
         Value::Duration(_) => "duration",
         Value::Pattern(_) => "pattern",
     }

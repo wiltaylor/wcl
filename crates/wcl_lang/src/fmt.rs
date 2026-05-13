@@ -723,6 +723,15 @@ impl<'a> Formatter<'a> {
             Expr::DateLit(s, _) => {
                 self.out.push_str(&format!("d\"{}\"", s));
             }
+            Expr::OffsetDateTimeLit(s, _) => {
+                self.out.push_str(&format!("odt\"{}\"", s));
+            }
+            Expr::LocalDateTimeLit(s, _) => {
+                self.out.push_str(&format!("ldt\"{}\"", s));
+            }
+            Expr::LocalTimeLit(s, _) => {
+                self.out.push_str(&format!("lt\"{}\"", s));
+            }
             Expr::DurationLit(s, _) => {
                 self.out.push_str(&format!("dur\"{}\"", s));
             }
@@ -829,6 +838,9 @@ impl<'a> Formatter<'a> {
             TypeExpr::F32(_) => self.out.push_str("f32"),
             TypeExpr::F64(_) => self.out.push_str("f64"),
             TypeExpr::Date(_) => self.out.push_str("date"),
+            TypeExpr::OffsetDateTime(_) => self.out.push_str("offset_datetime"),
+            TypeExpr::LocalDateTime(_) => self.out.push_str("local_datetime"),
+            TypeExpr::LocalTime(_) => self.out.push_str("local_time"),
             TypeExpr::Duration(_) => self.out.push_str("duration"),
             TypeExpr::Bool(_) => self.out.push_str("bool"),
             TypeExpr::Null(_) => self.out.push_str("null"),

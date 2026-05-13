@@ -64,6 +64,9 @@ impl<'de> de::Deserializer<'de> for Deserializer {
                 "cannot deserialize function values".to_string(),
             )),
             Value::Date(s) => visitor.visit_string(s),
+            Value::OffsetDateTime(s) => visitor.visit_string(s),
+            Value::LocalDateTime(s) => visitor.visit_string(s),
+            Value::LocalTime(s) => visitor.visit_string(s),
             Value::Duration(s) => visitor.visit_string(s),
             Value::Pattern(s) => visitor.visit_string(s),
         }

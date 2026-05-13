@@ -540,6 +540,24 @@ pub fn builtin_signatures() -> Vec<FunctionSignature> {
             doc: "Parse ISO 8601 date (YYYY-MM-DD)".into(),
         },
         FunctionSignature {
+            name: "offset_datetime".into(),
+            params: vec!["s: string".into()],
+            return_type: "offset_datetime".into(),
+            doc: "Parse TOML/RFC 3339 offset date-time".into(),
+        },
+        FunctionSignature {
+            name: "local_datetime".into(),
+            params: vec!["s: string".into()],
+            return_type: "local_datetime".into(),
+            doc: "Parse TOML local date-time".into(),
+        },
+        FunctionSignature {
+            name: "local_time".into(),
+            params: vec!["s: string".into()],
+            return_type: "local_time".into(),
+            doc: "Parse TOML local time".into(),
+        },
+        FunctionSignature {
             name: "duration".into(),
             params: vec!["s: string".into()],
             return_type: "duration".into(),
@@ -653,6 +671,9 @@ pub fn builtin_registry() -> HashMap<String, BuiltinFn> {
 
     // Date/Duration constructors (Section 14.8)
     m.insert("date".into(), wrap_builtin(fn_date));
+    m.insert("offset_datetime".into(), wrap_builtin(fn_offset_datetime));
+    m.insert("local_datetime".into(), wrap_builtin(fn_local_datetime));
+    m.insert("local_time".into(), wrap_builtin(fn_local_time));
     m.insert("duration".into(), wrap_builtin(fn_duration));
 
     m
@@ -1787,6 +1808,27 @@ fn fn_date(args: &[Value]) -> Result<Value, String> {
     Ok(Value::Date(s.to_string()))
 }
 
+fn fn_offset_datetime(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 1, "offset_datetime")?;
+    let s = get_string(&args[0], 1, "offset_datetime")?;
+    validate_toml_offset_datetime(s)?;
+    Ok(Value::OffsetDateTime(s.to_string()))
+}
+
+fn fn_local_datetime(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 1, "local_datetime")?;
+    let s = get_string(&args[0], 1, "local_datetime")?;
+    validate_toml_local_datetime(s)?;
+    Ok(Value::LocalDateTime(s.to_string()))
+}
+
+fn fn_local_time(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 1, "local_time")?;
+    let s = get_string(&args[0], 1, "local_time")?;
+    validate_toml_local_time(s)?;
+    Ok(Value::LocalTime(s.to_string()))
+}
+
 /// Validate and construct an ISO 8601 duration (PnYnMnDTnHnMnS).
 fn fn_duration(args: &[Value]) -> Result<Value, String> {
     expect_args(args, 1, "duration")?;
@@ -1834,6 +1876,60 @@ fn validate_iso_date(s: &str) -> Result<(), String> {
             "date: day {} out of range for month {} (max {})",
             day, month, max_day
         ));
+    }
+    Ok(())
+}
+
+fn validate_toml_local_time(s: &str) -> Result<(), String> {
+    let re = regex::Regex::new(r"^[0-9]{2}:[0-9]{2}(:[0-9]{2}(\.[0-9]+)?)?$").unwrap();
+    if !re.is_match(s) {
+        return Err(format!(
+            "local_time: invalid format {:?}, expected HH:MM[:SS[.fraction]]",
+            s
+        ));
+    }
+    let hour: u32 = s[0..2].parse().unwrap_or(99);
+    let minute: u32 = s[3..5].parse().unwrap_or(99);
+    let second: u32 = if s.len() >= 8 {
+        s[6..8].parse().unwrap_or(99)
+    } else {
+        0
+    };
+    if hour > 23 || minute > 59 || second > 59 {
+        return Err(format!("local_time: invalid time {:?}", s));
+    }
+    Ok(())
+}
+
+fn validate_toml_local_datetime(s: &str) -> Result<(), String> {
+    let Some((date, time)) = s.split_once('T').or_else(|| s.split_once(' ')) else {
+        return Err(format!(
+            "local_datetime: invalid format {:?}, expected YYYY-MM-DD[T ]HH:MM[:SS]",
+            s
+        ));
+    };
+    validate_iso_date(date).map_err(|e| e.replace("date:", "local_datetime date:"))?;
+    validate_toml_local_time(time).map_err(|e| e.replace("local_time:", "local_datetime time:"))?;
+    Ok(())
+}
+
+fn validate_toml_offset_datetime(s: &str) -> Result<(), String> {
+    let re = regex::Regex::new(r"^(.+[T ].+)(Z|[+-][0-9]{2}:[0-9]{2})$").unwrap();
+    let Some(caps) = re.captures(s) else {
+        return Err(format!(
+            "offset_datetime: invalid format {:?}, expected RFC 3339 date-time with offset",
+            s
+        ));
+    };
+    validate_toml_local_datetime(&caps[1])
+        .map_err(|e| e.replace("local_datetime:", "offset_datetime:"))?;
+    if &caps[2] != "Z" {
+        let offset = &caps[2];
+        let hour: u32 = offset[1..3].parse().unwrap_or(99);
+        let minute: u32 = offset[4..6].parse().unwrap_or(99);
+        if hour > 23 || minute > 59 {
+            return Err(format!("offset_datetime: invalid offset {:?}", offset));
+        }
     }
     Ok(())
 }
@@ -2548,6 +2644,9 @@ mod tests {
             "children",
             "has_decorator",
             "date",
+            "offset_datetime",
+            "local_datetime",
+            "local_time",
             "duration",
         ];
         for name in &expected {

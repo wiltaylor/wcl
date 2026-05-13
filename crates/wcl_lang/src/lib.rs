@@ -2195,6 +2195,98 @@ rows = import_codec("data.yaml", "yaml", {})
     }
 
     #[test]
+    fn test_import_codec_toml_uses_standard_wcl_codec() {
+        std::thread::Builder::new()
+            .name("import-codec-toml".into())
+            .stack_size(64 * 1024 * 1024)
+            .spawn(|| {
+                use std::sync::Arc;
+
+                let mut fs = InMemoryFs::new();
+                fs.add_file(
+                    std::path::PathBuf::from("/project/data.toml"),
+                    "[[items]]\nname = \"alice\"\nactive = true\n\n[[items]]\nname = \"bob\"\nactive = false\n",
+                );
+
+                let mut opts = ParseOptions::default();
+                opts.root_dir = std::path::PathBuf::from("/project");
+                opts.fs = Some(Arc::new(fs));
+
+                let doc = parse(
+                    r#"
+rows = import_codec("data.toml", "toml", {})
+            "#,
+                    opts,
+                );
+                let messages: Vec<_> =
+                    doc.diagnostics.iter().map(|d| d.message.as_str()).collect();
+                assert!(
+                    doc.diagnostics.is_empty(),
+                    "expected no errors, got: {:?}",
+                    messages
+                );
+
+                let rows = doc.values.get("rows").expect("rows value");
+                let Value::List(items) = rows else {
+                    panic!("expected rows list, got {:?}", rows);
+                };
+                assert_eq!(items.len(), 2);
+                let Value::Map(row) = &items[0] else {
+                    panic!("expected row map");
+                };
+                assert_eq!(row.get("name"), Some(&Value::String("alice".into())));
+                assert_eq!(row.get("active"), Some(&Value::Bool(true)));
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
+    #[test]
+    fn test_temporal_literals_and_constructors() {
+        let doc = parse(
+            r#"
+odt_lit = odt"1979-05-27T07:32:00Z"
+ldt_lit = ldt"1979-05-27T07:32:00"
+lt_lit = lt"07:32:00"
+odt_fn = offset_datetime("1979-05-27T00:32:00-07:00")
+ldt_fn = local_datetime("1979-05-27 07:32")
+lt_fn = local_time("07:32")
+            "#,
+            ParseOptions::default(),
+        );
+        assert!(
+            doc.diagnostics.is_empty(),
+            "expected no errors, got: {:?}",
+            doc.diagnostics
+        );
+        assert_eq!(
+            doc.values.get("odt_lit"),
+            Some(&Value::OffsetDateTime("1979-05-27T07:32:00Z".into()))
+        );
+        assert_eq!(
+            doc.values.get("ldt_lit"),
+            Some(&Value::LocalDateTime("1979-05-27T07:32:00".into()))
+        );
+        assert_eq!(
+            doc.values.get("lt_lit"),
+            Some(&Value::LocalTime("07:32:00".into()))
+        );
+        assert_eq!(
+            doc.values.get("odt_fn"),
+            Some(&Value::OffsetDateTime("1979-05-27T00:32:00-07:00".into()))
+        );
+        assert_eq!(
+            doc.values.get("ldt_fn"),
+            Some(&Value::LocalDateTime("1979-05-27 07:32".into()))
+        );
+        assert_eq!(
+            doc.values.get("lt_fn"),
+            Some(&Value::LocalTime("07:32".into()))
+        );
+    }
+
+    #[test]
     fn test_import_codec_accepts_codec_namespace_prefix() {
         use std::sync::Arc;
 

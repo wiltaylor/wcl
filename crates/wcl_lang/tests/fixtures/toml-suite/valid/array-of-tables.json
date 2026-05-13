@@ -1,0 +1,10 @@
+[
+  {
+    "name": {"type": "string", "value": "Alice"},
+    "age": {"type": "integer", "value": "30"}
+  },
+  {
+    "name": {"type": "string", "value": "Bob"},
+    "age": {"type": "integer", "value": "25"}
+  }
+]

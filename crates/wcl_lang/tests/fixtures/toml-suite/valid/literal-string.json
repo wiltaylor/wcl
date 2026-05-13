@@ -1,0 +1,4 @@
+{
+  "path": {"type": "string", "value": "C:\\Users\\nodejs\\templates"},
+  "quoted": {"type": "string", "value": "Tom \"Dubs\" Preston-Werner"}
+}

@@ -38,6 +38,9 @@ pub fn value_to_json(value: &Value) -> serde_json::Value {
         Value::BlockRef(br) => block_ref_to_json(br),
         Value::Function(_) => serde_json::Value::Null,
         Value::Date(s) => json!(s),
+        Value::OffsetDateTime(s) => json!(s),
+        Value::LocalDateTime(s) => json!(s),
+        Value::LocalTime(s) => json!(s),
         Value::Duration(s) => json!(s),
         Value::Pattern(s) => json!(s),
     }

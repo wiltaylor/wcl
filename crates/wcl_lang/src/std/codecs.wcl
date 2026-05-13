@@ -635,3 +635,259 @@ codec yaml {
     encoder = record => __yaml_render(record, 0) + "\n"
     encoder_all = records => __yaml_encoder_all(records)
 }
+
+export let __toml_tokenizer = cursor =>
+    cursor.eof() ? null : {
+        let start = cursor.pos()
+        let text = cursor.take(cursor.len())
+        { kind = :source, text = text, start = start, end = cursor.pos(), value = text }
+    }
+
+export let __toml_lines = source =>
+    split("\n", replace(replace(source, "\r\n", "\n"), "\r", "\n"))
+
+export let __toml_strip_comment_chars = (line, i, quote, acc) =>
+    i >= length(line) ? acc : {
+        let ch = substr(line, i, i + 1)
+        quote == "" && ch == "#" ? acc :
+        quote == "" && ch == "\"" ? __toml_strip_comment_chars(line, i + 1, "\"", acc + ch) :
+        quote == "" && ch == "'" ? __toml_strip_comment_chars(line, i + 1, "'", acc + ch) :
+        quote == "\"" && ch == "\\" ? __toml_strip_comment_chars(line, i + 2, quote, acc + substr(line, i, i + 2)) :
+        quote == ch ? __toml_strip_comment_chars(line, i + 1, "", acc + ch) :
+        __toml_strip_comment_chars(line, i + 1, quote, acc + ch)
+    }
+
+export let __toml_strip_comment = line => trim(__toml_strip_comment_chars(line, 0, "", ""))
+
+export let __toml_split_top_loop = (text, sep, i, depth, quote, current, acc) =>
+    i >= length(text) ? concat(acc, [current]) : {
+        let ch = substr(text, i, i + 1)
+        quote == "" && (ch == "\"" || ch == "'") ? __toml_split_top_loop(text, sep, i + 1, depth, ch, current + ch, acc) :
+        quote != "" && quote == "\"" && ch == "\\" ? __toml_split_top_loop(text, sep, i + 2, depth, quote, current + substr(text, i, i + 2), acc) :
+        quote != "" && ch == quote ? __toml_split_top_loop(text, sep, i + 1, depth, "", current + ch, acc) :
+        quote != "" ? __toml_split_top_loop(text, sep, i + 1, depth, quote, current + ch, acc) :
+        ch == "[" || ch == "{" ? __toml_split_top_loop(text, sep, i + 1, depth + 1, quote, current + ch, acc) :
+        ch == "]" || ch == "}" ? __toml_split_top_loop(text, sep, i + 1, depth - 1, quote, current + ch, acc) :
+        depth == 0 && ch == sep ? __toml_split_top_loop(text, sep, i + 1, depth, quote, "", concat(acc, [current])) :
+        __toml_split_top_loop(text, sep, i + 1, depth, quote, current + ch, acc)
+    }
+
+export let __toml_split_top = (text, sep) => __toml_split_top_loop(text, sep, 0, 0, "", "", [])
+
+export let __toml_find_equals_loop = (text, i, quote) =>
+    i >= length(text) ? -1 : {
+        let ch = substr(text, i, i + 1)
+        quote == "" && (ch == "\"" || ch == "'") ? __toml_find_equals_loop(text, i + 1, ch) :
+        quote != "" && quote == "\"" && ch == "\\" ? __toml_find_equals_loop(text, i + 2, quote) :
+        quote != "" && ch == quote ? __toml_find_equals_loop(text, i + 1, "") :
+        quote == "" && ch == "=" ? i :
+        __toml_find_equals_loop(text, i + 1, quote)
+    }
+
+export let __toml_key_part = part => {
+    let p = trim(part)
+    starts_with(p, "\"") && ends_with(p, "\"") ? __json_read_string_like(substr(p, 1, length(p) - 1)) :
+    starts_with(p, "'") && ends_with(p, "'") ? substr(p, 1, length(p) - 1) :
+    p
+}
+
+export let __json_read_string_like = s => {
+    let s1 = replace(s, "\\\"", "\"")
+    let s2 = replace(s1, "\\n", "\n")
+    let s3 = replace(s2, "\\t", "\t")
+    let s4 = replace(s3, "\\r", "\r")
+    replace(s4, "\\\\", "\\")
+}
+
+export let __toml_parse_key = text => map(__toml_split_top(text, "."), part => __toml_key_part(part))
+
+export let __toml_parse_basic_string = text =>
+    __json_read_string_like(substr(text, 1, length(text) - 1))
+
+export let __toml_parse_literal_string = text =>
+    substr(text, 1, length(text) - 1)
+
+export let __toml_clean_num = text => replace(text, "_", "")
+
+export let __toml_parse_value = text => {
+    let t = trim(text)
+    t == "" ? __codec_error("missing TOML value") :
+    starts_with(t, "\"") && ends_with(t, "\"") ? __toml_parse_basic_string(t) :
+    starts_with(t, "'") && ends_with(t, "'") ? __toml_parse_literal_string(t) :
+    starts_with(t, "[") && ends_with(t, "]") ? __toml_parse_array(substr(t, 1, length(t) - 1)) :
+    starts_with(t, "{") && ends_with(t, "}") ? __toml_parse_inline_table(substr(t, 1, length(t) - 1)) :
+    t == "true" ? true :
+    t == "false" ? false :
+    regex_match(t, "^[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}(:[0-9]{2}(\\.[0-9]+)?)?(Z|[+-][0-9]{2}:[0-9]{2})$") ? offset_datetime(t) :
+    regex_match(t, "^[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}(:[0-9]{2}(\\.[0-9]+)?)?$") ? local_datetime(t) :
+    regex_match(t, "^[0-9]{4}-[0-9]{2}-[0-9]{2}$") ? date(t) :
+    regex_match(t, "^[0-9]{2}:[0-9]{2}(:[0-9]{2}(\\.[0-9]+)?)?$") ? local_time(t) :
+    t == "inf" || t == "+inf" ? to_float("inf") :
+    t == "-inf" ? to_float("-inf") :
+    t == "nan" || t == "+nan" || t == "-nan" ? to_float("NaN") :
+    regex_match(t, "^[+-]?([0-9][0-9_]*\\.[0-9][0-9_]*|[0-9][0-9_]*[eE][+-]?[0-9][0-9_]*|[0-9][0-9_]*\\.[0-9][0-9_]*[eE][+-]?[0-9][0-9_]*)$") ? to_float(__toml_clean_num(t)) :
+    regex_match(t, "^[+-]?[0-9][0-9_]*$") ? to_int(__toml_clean_num(t)) :
+    regex_match(t, "^0x[0-9A-Fa-f_]+$") ? __codec_error("hex TOML integers are not supported yet") :
+    __codec_error("invalid TOML value: " + t)
+}
+
+export let __toml_parse_array_items = (items, i, acc) =>
+    i >= len(items) ? acc : {
+        let item = trim(items[i])
+        item == "" ? __toml_parse_array_items(items, i + 1, acc) : {
+            let value = __toml_parse_value(item)
+            __codec_is_error(value) ? value : __toml_parse_array_items(items, i + 1, concat(acc, [value]))
+        }
+    }
+
+export let __toml_parse_array = inner => __toml_parse_array_items(__toml_split_top(inner, ","), 0, [])
+
+export let __toml_parse_inline_items = (items, i, acc) =>
+    i >= len(items) ? acc : {
+        let item = trim(items[i])
+        item == "" ? __toml_parse_inline_items(items, i + 1, acc) : {
+            let eq = __toml_find_equals_loop(item, 0, "")
+            eq < 0 ? __codec_error("expected '=' in inline table") : {
+                let key = __toml_key_part(substr(item, 0, eq))
+                let value = __toml_parse_value(substr(item, eq + 1))
+                __codec_is_error(value) ? value :
+                map_has(acc, key) ? __codec_error("duplicate TOML key: " + key) :
+                __toml_parse_inline_items(items, i + 1, map_set(acc, key, value))
+            }
+        }
+    }
+
+export let __toml_parse_inline_table = inner => __toml_parse_inline_items(__toml_split_top(inner, ","), 0, {})
+
+export let __toml_set_path = (root, path, value) =>
+    len(path) == 0 ? value :
+    len(path) == 1 ? (map_has(root, path[0]) ? __codec_error("duplicate TOML key: " + path[0]) : map_set(root, path[0], value)) : {
+        let key = path[0]
+        let child = map_has(root, key) ? root[key] : {}
+        type_of(child) != "map" ? __codec_error("TOML key is not a table: " + key) : {
+            let updated = __toml_set_path(child, substr_list(path, 1), value)
+            __codec_is_error(updated) ? updated : map_set(root, key, updated)
+        }
+    }
+
+export let substr_list = (items, start) =>
+    start >= len(items) ? [] : concat([items[start]], substr_list(items, start + 1))
+
+export let __toml_get_path = (root, path) =>
+    len(path) == 0 ? root :
+    map_has(root, path[0]) ? __toml_get_path(root[path[0]], substr_list(path, 1)) : {}
+
+export let __toml_set_current = (root, current, key_path, value) =>
+    __toml_set_path(root, concat(current, key_path), value)
+
+export let __toml_replace_last = (items, value) =>
+    len(items) == 0 ? [value] :
+    len(items) == 1 ? [value] :
+    concat([items[0]], __toml_replace_last(substr_list(items, 1), value))
+
+export let __toml_set_array_current = (root, array_key, key_path, value) => {
+    let arr = map_has(root, array_key) ? root[array_key] : []
+    let current = len(arr) == 0 ? {} : arr[len(arr) - 1]
+    let updated = __toml_set_path(current, key_path, value)
+    __codec_is_error(updated) ? updated : map_set(root, array_key, __toml_replace_last(arr, updated))
+}
+
+export let __toml_parse_lines = (lines, i, root, current, array_key) =>
+    i >= len(lines) ? root : {
+        let line = __toml_strip_comment(lines[i])
+        line == "" ? __toml_parse_lines(lines, i + 1, root, current, array_key) :
+        starts_with(line, "[[") && ends_with(line, "]]") ? {
+            let key = __toml_key_part(substr(line, 2, length(line) - 2))
+            let arr = map_has(root, key) ? root[key] : []
+            type_of(arr) != "list" ? __codec_error("TOML array of tables conflicts with key: " + key) :
+            __toml_parse_lines(lines, i + 1, map_set(root, key, concat(arr, [{}])), [], key)
+        } :
+        starts_with(line, "[") && ends_with(line, "]") ? {
+            let path = __toml_parse_key(substr(line, 1, length(line) - 1))
+            let ensured = __toml_set_path(root, path, __toml_get_path(root, path))
+            __codec_is_error(ensured) ? ensured : __toml_parse_lines(lines, i + 1, ensured, path, "")
+        } : {
+            let eq = __toml_find_equals_loop(line, 0, "")
+            eq < 0 ? __codec_error("expected '=' in TOML key/value") : {
+                let key_path = __toml_parse_key(substr(line, 0, eq))
+                let value = __toml_parse_value(substr(line, eq + 1))
+                __codec_is_error(value) ? value : {
+                    let updated = array_key == "" ? __toml_set_current(root, current, key_path, value) : __toml_set_array_current(root, array_key, key_path, value)
+                    __codec_is_error(updated) ? updated : __toml_parse_lines(lines, i + 1, updated, current, array_key)
+                }
+            }
+        }
+    }
+
+export let __toml_first_record_key = (root, ks, i) =>
+    i >= len(ks) ? "" :
+    type_of(root[ks[i]]) == "list" && every(root[ks[i]], item => type_of(item) == "map") ? ks[i] :
+    __toml_first_record_key(root, ks, i + 1)
+
+export let __toml_records_from_root = root => {
+    let record_key = __toml_first_record_key(root, keys(root), 0)
+    record_key == "" ? [root] : root[record_key]
+}
+
+export let __toml_parser_all = tokens => {
+    let source = tokens.expect_kind(:source, "expected TOML source")
+    __codec_is_error(source) ? source : {
+        let root = __toml_parse_lines(__toml_lines(source.value), 0, {}, [], "")
+        __codec_is_error(root) ? root : __toml_records_from_root(root)
+    }
+}
+
+export let __toml_quote = s => "\"" + replace(replace(replace(replace(s, "\\", "\\\\"), "\"", "\\\""), "\n", "\\n"), "\t", "\\t") + "\""
+
+export let __toml_bare_key = key =>
+    regex_match(key, "^[A-Za-z0-9_-]+$") ? key : __toml_quote(key)
+
+export let __toml_temporal_text = value => {
+    let s = to_string(value)
+    type_of(value) == "date" ? substr(s, 2, length(s) - 1) :
+    type_of(value) == "offset_datetime" ? substr(s, 4, length(s) - 1) :
+    type_of(value) == "local_datetime" ? substr(s, 4, length(s) - 1) :
+    type_of(value) == "local_time" ? substr(s, 3, length(s) - 1) :
+    s
+}
+
+export let __toml_render_value = value =>
+    type_of(value) == "string" ? __toml_quote(value) :
+    type_of(value) == "int" || type_of(value) == "bigint" || type_of(value) == "float" ? to_string(value) :
+    type_of(value) == "bool" ? to_string(value) :
+    type_of(value) == "date" || type_of(value) == "offset_datetime" || type_of(value) == "local_datetime" || type_of(value) == "local_time" ? __toml_temporal_text(value) :
+    type_of(value) == "list" ? "[" + join(", ", map(value, item => __toml_render_value(item))) + "]" :
+    type_of(value) == "map" ? "{ " + join(", ", map(keys(value), key => __toml_bare_key(key) + " = " + __toml_render_value(value[key]))) + " }" :
+    __toml_quote(to_string(value))
+
+export let __toml_render_scalars = value =>
+    join("", map(keys(value), key =>
+        type_of(value[key]) == "map" ? "" :
+        type_of(value[key]) == "list" && every(value[key], item => type_of(item) == "map") ? "" :
+        __toml_bare_key(key) + " = " + __toml_render_value(value[key]) + "\n"
+    ))
+
+export let __toml_render_tables = (value, prefix) =>
+    join("", map(keys(value), key =>
+        type_of(value[key]) == "map" ?
+            "\n[" + (prefix == "" ? __toml_bare_key(key) : prefix + "." + __toml_bare_key(key)) + "]\n" +
+            __toml_render_map(value[key], prefix == "" ? __toml_bare_key(key) : prefix + "." + __toml_bare_key(key)) :
+        type_of(value[key]) == "list" && every(value[key], item => type_of(item) == "map") ?
+            join("", map(value[key], item => "\n[[" + (prefix == "" ? __toml_bare_key(key) : prefix + "." + __toml_bare_key(key)) + "]]\n" + __toml_render_map(item, prefix == "" ? __toml_bare_key(key) : prefix + "." + __toml_bare_key(key)))) :
+        ""
+    ))
+
+export let __toml_render_map = (value, prefix) =>
+    __toml_render_scalars(value) + __toml_render_tables(value, prefix)
+
+export let __toml_encoder_all = records =>
+    len(records) == 1 ? __toml_render_map(records[0], "") :
+    join("", map(records, record => "[[records]]\n" + __toml_render_map(record, "records") + "\n"))
+
+codec toml {
+    mode = :text
+    tokenizer = cursor => __toml_tokenizer(cursor)
+    parser_all = tokens => __toml_parser_all(tokens)
+    encoder = record => __toml_render_map(record, "")
+    encoder_all = records => __toml_encoder_all(records)
+}
