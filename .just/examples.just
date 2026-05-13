@@ -39,7 +39,7 @@ update-versions version:
 
 # Build wdoc example using locally-built binary
 wdoc: build-local
-    ./target/debug/wcl wdoc build examples/wdoc/site.wcl examples/wdoc/pages.wcl --output /tmp/wdoc-example
+    ./target/debug/wcl wdoc build examples/wdoc/site.wcl --output /tmp/wdoc-example
     @echo "wdoc: output at /tmp/wdoc-example/index.html"
 
 # Backward-compatible alias for local-first default
@@ -47,7 +47,7 @@ wdoc-local: wdoc
 
 # Serve wdoc example using locally-built binary
 wdoc-serve: build-local
-    ./target/debug/wcl wdoc serve examples/wdoc/site.wcl examples/wdoc/pages.wcl --port 3000 --open
+    ./target/debug/wcl wdoc serve examples/wdoc/site.wcl --port 3000 --open
 
 # Backward-compatible alias for local-first default
 wdoc-serve-local: wdoc-serve

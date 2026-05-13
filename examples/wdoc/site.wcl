@@ -7,6 +7,8 @@
 // Serve:  wcl wdoc serve examples/wdoc/site.wcl examples/wdoc/pages.wcl --port 3000
 
 import <wdoc.wcl>
+import "pages.wcl"
+
 use wdoc::{doc, page, section, style, layout, heading, paragraph, image, code, data_table, callout, bold, italic, link, icon, icon_styled}
 
 // ── Document definition with section outline ──

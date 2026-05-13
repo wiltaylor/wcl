@@ -14,10 +14,27 @@
     "Formatters"
   ],
   "activationEvents": [
-    "onLanguage:wcl"
+    "onLanguage:wcl",
+    "onCommand:wcl.preview"
   ],
   "main": "./extension.js",
   "contributes": {
+    "commands": [
+      {
+        "command": "wcl.preview",
+        "title": "WCL: Preview",
+        "category": "WCL"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "wcl.preview",
+          "when": "resourceScheme == file && resourceExtname == .wcl",
+          "group": "navigation"
+        }
+      ]
+    },
     "languages": [
       {
         "id": "wcl",
