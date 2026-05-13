@@ -1544,6 +1544,54 @@ transform csv-copy {
 }
 
 #[test]
+fn transform_hcl_codec_uses_standard_wcl_codec() {
+    let dir = tempdir().expect("tempdir");
+    let transform = dir.path().join("hcl.wcl");
+    let input = dir.path().join("input.hcl");
+
+    std::fs::write(
+        &input,
+        r#"
+name = "root"
+count = 1 + 2 * 3
+server "web" "prod" {
+  host = "localhost"
+}
+"#,
+    )
+    .expect("write input");
+    std::fs::write(
+        &transform,
+        r#"
+transform hcl-copy {
+    input = "codec::hcl"
+    output = "codec::json"
+
+    map {
+        name = in.name
+        count = in.count
+        server = in.server
+    }
+}
+"#,
+    )
+    .expect("write transform");
+
+    let stdout = run_transform_stdout(&transform, "hcl-copy", &input);
+    let json: serde_json::Value = serde_json::from_str(stdout.trim()).expect("valid json output");
+    assert_eq!(
+        json,
+        serde_json::json!([
+            {
+                "name": "root",
+                "count": 7,
+                "server": {"web": {"prod": {"host": "localhost"}}}
+            }
+        ])
+    );
+}
+
+#[test]
 fn transform_imported_codecs_library_does_not_duplicate_json() {
     let dir = tempdir().expect("tempdir");
     let lib_dir = dir.path().join("lib");

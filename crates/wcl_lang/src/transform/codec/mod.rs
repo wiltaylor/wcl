@@ -5,7 +5,6 @@
 
 pub mod binary_codec;
 pub mod custom;
-pub mod hcl_codec;
 pub mod msgpack;
 pub mod text_codec;
 pub mod xml;

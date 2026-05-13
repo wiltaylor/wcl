@@ -390,6 +390,352 @@ codec csv {
     encoder_all = (records, options) => __csv_encoder_all(records, options)
 }
 
+export let __hcl_tokenizer = cursor =>
+    cursor.eof() ? null : {
+        let start = cursor.pos()
+        let text = cursor.take(cursor.len())
+        { kind = :source, text = text, start = start, end = cursor.pos(), value = text }
+    }
+
+export let __hcl_error = message => __codec_error(message)
+
+export let __hcl_strip_comment_chars = (line, i, quote, acc) =>
+    i >= length(line) ? acc : {
+        let ch = substr(line, i, i + 1)
+        let next = substr(line, i, i + 2)
+        quote == "" && ch == "#" ? acc :
+        quote == "" && next == "//" ? acc :
+        quote == "" && (ch == "\"" || ch == "'") ? __hcl_strip_comment_chars(line, i + 1, ch, acc + ch) :
+        quote != "" && ch == "\\" ? __hcl_strip_comment_chars(line, i + 2, quote, acc + substr(line, i, i + 2)) :
+        quote != "" && ch == quote ? __hcl_strip_comment_chars(line, i + 1, "", acc + ch) :
+        __hcl_strip_comment_chars(line, i + 1, quote, acc + ch)
+    }
+
+export let __hcl_strip_comment = line => trim(__hcl_strip_comment_chars(line, 0, "", ""))
+
+export let __hcl_lines = source =>
+    split("\n", replace(replace(source, "\r\n", "\n"), "\r", "\n"))
+
+export let __hcl_unquote = text =>
+    starts_with(text, "\"") && ends_with(text, "\"") ? __json_read_string_like(substr(text, 1, length(text) - 1)) :
+    starts_with(text, "'") && ends_with(text, "'") ? substr(text, 1, length(text) - 1) :
+    text
+
+export let __hcl_header_parts_loop = (text, acc) => {
+    let t = trim(text)
+    t == "" ? acc :
+    starts_with(t, "\"") ? {
+        let cap = regex_capture(t, "^\"((\\\\.|[^\"])*)\"(.*)$")
+        len(cap) < 3 ? __hcl_error("unterminated HCL block label") :
+        __hcl_header_parts_loop(cap[2], concat(acc, [__json_read_string_like(cap[0])]))
+    } : {
+        let cap = regex_capture(t, "^([^ \t]+)(.*)$")
+        len(cap) < 2 ? acc : __hcl_header_parts_loop(cap[1], concat(acc, [cap[0]]))
+    }
+}
+
+export let __hcl_header_parts = text => __hcl_header_parts_loop(text, [])
+
+export let __hcl_set_or_append = (mapv, key, value) =>
+    map_has(mapv, key) ?
+        (type_of(mapv[key]) == "list" ? map_set(mapv, key, concat(mapv[key], [value])) : map_set(mapv, key, [mapv[key], value])) :
+        map_set(mapv, key, value)
+
+export let __hcl_set_label_path = (mapv, labels, value) =>
+    len(labels) == 0 ? value :
+    len(labels) == 1 ? __hcl_set_or_append(mapv, labels[0], value) : {
+        let child = map_has(mapv, labels[0]) ? mapv[labels[0]] : {}
+        type_of(child) != "map" ? __hcl_error("HCL block label conflicts with existing value: " + labels[0]) : {
+            let updated = __hcl_set_label_path(child, substr_list(labels, 1), value)
+            __codec_is_error(updated) ? updated : map_set(mapv, labels[0], updated)
+        }
+    }
+
+export let __hcl_set_block = (body, parts, value) =>
+    len(parts) == 0 ? __hcl_error("missing HCL block type") : {
+        let block_type = parts[0]
+        let labels = substr_list(parts, 1)
+        len(labels) == 0 ? __hcl_set_or_append(body, block_type, value) : {
+            let container = map_has(body, block_type) ? body[block_type] : {}
+            type_of(container) != "map" ? __hcl_error("HCL block type conflicts with existing value: " + block_type) : {
+                let updated = __hcl_set_label_path(container, labels, value)
+                __codec_is_error(updated) ? updated : map_set(body, block_type, updated)
+            }
+        }
+    }
+
+export let __hcl_set_attr = (body, key, value) =>
+    map_has(body, key) ? __hcl_error("duplicate HCL attribute: " + key) : map_set(body, key, value)
+
+export let __hcl_split_top_loop = (text, sep, i, depth, quote, current, acc) =>
+    i >= length(text) ? concat(acc, [current]) : {
+        let ch = substr(text, i, i + 1)
+        quote == "" && (ch == "\"" || ch == "'") ? __hcl_split_top_loop(text, sep, i + 1, depth, ch, current + ch, acc) :
+        quote != "" && ch == "\\" ? __hcl_split_top_loop(text, sep, i + 2, depth, quote, current + substr(text, i, i + 2), acc) :
+        quote != "" && ch == quote ? __hcl_split_top_loop(text, sep, i + 1, depth, "", current + ch, acc) :
+        quote != "" ? __hcl_split_top_loop(text, sep, i + 1, depth, quote, current + ch, acc) :
+        ch == "[" || ch == "{" || ch == "(" ? __hcl_split_top_loop(text, sep, i + 1, depth + 1, quote, current + ch, acc) :
+        ch == "]" || ch == "}" || ch == ")" ? __hcl_split_top_loop(text, sep, i + 1, depth - 1, quote, current + ch, acc) :
+        depth == 0 && ch == sep ? __hcl_split_top_loop(text, sep, i + 1, depth, quote, "", concat(acc, [current])) :
+        __hcl_split_top_loop(text, sep, i + 1, depth, quote, current + ch, acc)
+    }
+
+export let __hcl_split_top = (text, sep) => __hcl_split_top_loop(text, sep, 0, 0, "", "", [])
+
+export let __hcl_match_any_op = (text, i, ops, j) =>
+    j >= len(ops) ? "" :
+    substr(text, i, i + length(ops[j])) == ops[j] ? ops[j] :
+    __hcl_match_any_op(text, i, ops, j + 1)
+
+export let __hcl_find_op_loop = (text, ops, i, depth, quote, last) =>
+    i >= length(text) ? last : {
+        let ch = substr(text, i, i + 1)
+        quote == "" && (ch == "\"" || ch == "'") ? __hcl_find_op_loop(text, ops, i + 1, depth, ch, last) :
+        quote != "" && ch == "\\" ? __hcl_find_op_loop(text, ops, i + 2, depth, quote, last) :
+        quote != "" && ch == quote ? __hcl_find_op_loop(text, ops, i + 1, depth, "", last) :
+        quote != "" ? __hcl_find_op_loop(text, ops, i + 1, depth, quote, last) :
+        ch == "[" || ch == "{" || ch == "(" ? __hcl_find_op_loop(text, ops, i + 1, depth + 1, quote, last) :
+        ch == "]" || ch == "}" || ch == ")" ? __hcl_find_op_loop(text, ops, i + 1, depth - 1, quote, last) : {
+            let op = depth == 0 && i > 0 ? __hcl_match_any_op(text, i, ops, 0) : ""
+            op == "" ? __hcl_find_op_loop(text, ops, i + 1, depth, quote, last) :
+            __hcl_find_op_loop(text, ops, i + length(op), depth, quote, { index = i op = op })
+        }
+    }
+
+export let __hcl_find_op = (text, ops) => __hcl_find_op_loop(text, ops, 0, 0, "", { index = -1 op = "" })
+
+export let __hcl_vars = options =>
+    type_of(options) == "map" && map_has(options, "variables") && type_of(options.variables) == "map" ? options.variables : {}
+
+export let __hcl_lookup_path = (value, parts, i) =>
+    i >= len(parts) ? value :
+    type_of(value) != "map" ? __hcl_error("HCL variable path is not a map") :
+    map_has(value, parts[i]) ? __hcl_lookup_path(value[parts[i]], parts, i + 1) :
+    __hcl_error("unknown HCL variable: " + join(".", parts))
+
+export let __hcl_eval_variable = (text, options) =>
+    __hcl_lookup_path(__hcl_vars(options), split(".", text), 0)
+
+export let __hcl_apply_binary = (left, op, right) =>
+    op == "||" ? (left || right) :
+    op == "&&" ? (left && right) :
+    op == "==" ? (left == right) :
+    op == "!=" ? (left != right) :
+    op == ">" ? (left > right) :
+    op == ">=" ? (left >= right) :
+    op == "<" ? (left < right) :
+    op == "<=" ? (left <= right) :
+    op == "+" ? (left + right) :
+    op == "-" ? (left - right) :
+    op == "*" ? (left * right) :
+    op == "/" ? (left / right) :
+    op == "%" ? (left % right) :
+    __hcl_error("unsupported HCL operator: " + op)
+
+export let __hcl_eval_binary_level = (text, options, ops, next) => {
+    let found = __hcl_find_op(text, ops)
+    found.index < 0 ? next(text, options) : {
+        let left = __hcl_eval_expr(substr(text, 0, found.index), options)
+        __codec_is_error(left) ? left : {
+            let right = __hcl_eval_expr(substr(text, found.index + length(found.op)), options)
+            __codec_is_error(right) ? right : __hcl_apply_binary(left, found.op, right)
+        }
+    }
+}
+
+export let __hcl_eval_args = (items, options, i, acc) =>
+    i >= len(items) ? acc : {
+        let item = trim(items[i])
+        item == "" ? __hcl_eval_args(items, options, i + 1, acc) : {
+            let value = __hcl_eval_expr(item, options)
+            __codec_is_error(value) ? value : __hcl_eval_args(items, options, i + 1, concat(acc, [value]))
+        }
+    }
+
+export let __hcl_call_function = (name, args) =>
+    name == "length" || name == "len" ? len(args[0]) :
+    name == "upper" ? upper(args[0]) :
+    name == "lower" ? lower(args[0]) :
+    name == "trim" ? trim(args[0]) :
+    name == "contains" ? contains(args[0], args[1]) :
+    name == "join" ? join(args[0], args[1]) :
+    name == "split" ? split(args[0], args[1]) :
+    name == "min" ? min(args[0], args[1]) :
+    name == "max" ? max(args[0], args[1]) :
+    __hcl_error("unknown HCL function: " + name)
+
+export let __hcl_eval_function = (text, options) => {
+    let cap = regex_capture(text, "^([A-Za-z_][A-Za-z0-9_-]*)\\((.*)\\)$")
+    len(cap) != 2 ? null : {
+        let args = trim(cap[1]) == "" ? [] : __hcl_eval_args(__hcl_split_top(cap[1], ","), options, 0, [])
+        __codec_is_error(args) ? args : __hcl_call_function(cap[0], args)
+    }
+}
+
+export let __hcl_parse_list_items = (items, options, i, acc) =>
+    i >= len(items) ? acc : {
+        let item = trim(items[i])
+        item == "" ? __hcl_parse_list_items(items, options, i + 1, acc) : {
+            let value = __hcl_eval_expr(item, options)
+            __codec_is_error(value) ? value : __hcl_parse_list_items(items, options, i + 1, concat(acc, [value]))
+        }
+    }
+
+export let __hcl_parse_object_items = (items, options, i, acc) =>
+    i >= len(items) ? acc : {
+        let item = trim(items[i])
+        item == "" ? __hcl_parse_object_items(items, options, i + 1, acc) : {
+            let eq = __toml_find_equals_loop(item, 0, "")
+            let colon = regex_capture(item, "^([^:]+):(.*)$")
+            eq >= 0 ? {
+                let key = trim(substr(item, 0, eq))
+                let value = __hcl_eval_expr(substr(item, eq + 1), options)
+                __codec_is_error(value) ? value : __hcl_parse_object_items(items, options, i + 1, map_set(acc, __hcl_unquote(key), value))
+            } :
+            len(colon) == 2 ? {
+                let value = __hcl_eval_expr(colon[1], options)
+                __codec_is_error(value) ? value : __hcl_parse_object_items(items, options, i + 1, map_set(acc, __hcl_unquote(trim(colon[0])), value))
+            } :
+            __hcl_error("expected HCL object item")
+        }
+    }
+
+export let __hcl_eval_primary = (text, options) => {
+    let t = trim(text)
+    t == "" ? __hcl_error("empty HCL expression") :
+    starts_with(t, "(") && ends_with(t, ")") ? __hcl_eval_expr(substr(t, 1, length(t) - 1), options) :
+    starts_with(t, "\"") && ends_with(t, "\"") ? __hcl_unquote(t) :
+    starts_with(t, "'") && ends_with(t, "'") ? __hcl_unquote(t) :
+    starts_with(t, "[") && ends_with(t, "]") ? __hcl_parse_list_items(__hcl_split_top(substr(t, 1, length(t) - 1), ","), options, 0, []) :
+    starts_with(t, "{") && ends_with(t, "}") ? __hcl_parse_object_items(__hcl_split_top(substr(t, 1, length(t) - 1), ","), options, 0, {}) :
+    t == "true" ? true :
+    t == "false" ? false :
+    t == "null" ? null :
+    regex_match(t, "^[+-]?[0-9]+\\.[0-9]+([eE][+-]?[0-9]+)?$") ? to_float(t) :
+    regex_match(t, "^[+-]?[0-9]+([eE][+-]?[0-9]+)$") ? to_float(t) :
+    regex_match(t, "^[+-]?[0-9]+$") ? to_int(t) : {
+        let call = __hcl_eval_function(t, options)
+        call != null ? call :
+        regex_match(t, "^[A-Za-z_][A-Za-z0-9_-]*(\\.[A-Za-z_][A-Za-z0-9_-]*)*$") ? __hcl_eval_variable(t, options) :
+        "${" + t + "}"
+    }
+}
+
+export let __hcl_eval_expr = (text, options) => {
+    let t = trim(text)
+    __hcl_eval_binary_level(t, options, ["||"], (x, o) =>
+        __hcl_eval_binary_level(x, o, ["&&"], (x2, o2) =>
+            __hcl_eval_binary_level(x2, o2, ["==", "!="], (x3, o3) =>
+                __hcl_eval_binary_level(x3, o3, [">=", "<=", ">", "<"], (x4, o4) =>
+                    __hcl_eval_binary_level(x4, o4, ["+", "-"], (x5, o5) =>
+                        __hcl_eval_binary_level(x5, o5, ["*", "/", "%"], (x6, o6) =>
+                            starts_with(trim(x6), "!") ? !__hcl_eval_expr(substr(trim(x6), 1), o6) :
+                            starts_with(trim(x6), "-") && !regex_match(trim(x6), "^-[0-9]") ? -__hcl_eval_expr(substr(trim(x6), 1), o6) :
+                            __hcl_eval_primary(x6, o6)
+                        )
+                    )
+                )
+            )
+        )
+    )
+}
+
+export let __hcl_read_heredoc = (lines, i, marker, acc) =>
+    i >= len(lines) ? __hcl_error("unterminated HCL heredoc") :
+    trim(lines[i]) == marker ? { value = join("\n", acc) next = i + 1 } :
+    __hcl_read_heredoc(lines, i + 1, marker, concat(acc, [lines[i]]))
+
+export let __hcl_parse_attr_value = (value_text, lines, i, options) => {
+    let t = trim(value_text)
+    starts_with(t, "<<-") || starts_with(t, "<<") ? {
+        let marker = trim(starts_with(t, "<<-") ? substr(t, 3) : substr(t, 2))
+        __hcl_read_heredoc(lines, i + 1, marker, [])
+    } : {
+        let value = __hcl_eval_expr(t, options)
+        __codec_is_error(value) ? value : { value = value next = i + 1 }
+    }
+}
+
+export let __hcl_parse_body = (lines, i, body, options) =>
+    i >= len(lines) ? { value = body next = i } : {
+        let line = __hcl_strip_comment(lines[i])
+        line == "" ? __hcl_parse_body(lines, i + 1, body, options) :
+        line == "}" ? { value = body next = i + 1 } : {
+            let eq = __toml_find_equals_loop(line, 0, "")
+            let open = regex_capture(line, "^(.*)\\{(.*)$")
+            len(open) == 2 && (eq < 0 || length(open[0]) < eq) ? {
+                let header = trim(open[0])
+                let rest = trim(open[1])
+                let parts = __hcl_header_parts(header)
+                __codec_is_error(parts) ? parts :
+                ends_with(rest, "}") ? {
+                    let inner = trim(substr(rest, 0, length(rest) - 1))
+                    let child = inner == "" ? {} : {
+                        let inner_eq = __toml_find_equals_loop(inner, 0, "")
+                        inner_eq < 0 ? __hcl_error("one-line HCL block supports a single attribute") : {
+                            let child_value = __hcl_eval_expr(substr(inner, inner_eq + 1), options)
+                            __codec_is_error(child_value) ? child_value : map_set({}, trim(substr(inner, 0, inner_eq)), child_value)
+                        }
+                    }
+                    __codec_is_error(child) ? child : {
+                        let updated = __hcl_set_block(body, parts, child)
+                        __codec_is_error(updated) ? updated : __hcl_parse_body(lines, i + 1, updated, options)
+                    }
+                } : {
+                    let child = __hcl_parse_body(lines, i + 1, {}, options)
+                    __codec_is_error(child) ? child : {
+                        let updated = __hcl_set_block(body, parts, child.value)
+                        __codec_is_error(updated) ? updated : __hcl_parse_body(lines, child.next, updated, options)
+                    }
+                }
+            } :
+            eq >= 0 ? {
+                let key = trim(substr(line, 0, eq))
+                let parsed = __hcl_parse_attr_value(substr(line, eq + 1), lines, i, options)
+                __codec_is_error(parsed) ? parsed : {
+                    let updated = __hcl_set_attr(body, key, parsed.value)
+                    __codec_is_error(updated) ? updated : __hcl_parse_body(lines, parsed.next, updated, options)
+                }
+            } :
+            __hcl_error("expected HCL attribute or block")
+        }
+    }
+
+export let __hcl_parser_all = (tokens, options) =>
+    tokens.eof() ? [] : {
+        let source = tokens.expect_kind(:source, "expected HCL source")
+        __codec_is_error(source) ? source : {
+            let parsed = __hcl_parse_body(__hcl_lines(source.value), 0, {}, options)
+            __codec_is_error(parsed) ? parsed : [parsed.value]
+        }
+    }
+
+export let __hcl_ident = key =>
+    regex_match(key, "^[A-Za-z_][A-Za-z0-9_-]*$") ? key : __json_quote(key)
+
+export let __hcl_render_value = value =>
+    type_of(value) == "string" ? __json_quote(value) :
+    type_of(value) == "null" ? "null" :
+    type_of(value) == "bool" ? to_string(value) :
+    type_of(value) == "int" || type_of(value) == "bigint" || type_of(value) == "float" ? to_string(value) :
+    type_of(value) == "list" ? "[" + join(", ", map(value, item => __hcl_render_value(item))) + "]" :
+    type_of(value) == "map" ? "{ " + join(", ", map(keys(value), key => __hcl_ident(key) + " = " + __hcl_render_value(value[key]))) + " }" :
+    __json_quote(to_string(value))
+
+export let __hcl_render_map = value =>
+    join("", map(keys(value), key => __hcl_ident(key) + " = " + __hcl_render_value(value[key]) + "\n"))
+
+export let __hcl_encoder_all = records =>
+    join("\n", map(records, record => type_of(record) == "map" ? __hcl_render_map(record) : __hcl_render_value(record) + "\n"))
+
+codec hcl {
+    mode = :text
+    tokenizer = cursor => __hcl_tokenizer(cursor)
+    parser_all = (tokens, options) => __hcl_parser_all(tokens, options)
+    encoder = record => __hcl_render_value(record) + "\n"
+    encoder_all = records => __hcl_encoder_all(records)
+}
+
 export let __yaml_tokenizer = cursor =>
     cursor.eof() ? null : {
         let start = cursor.pos()

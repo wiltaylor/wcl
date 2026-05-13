@@ -81,7 +81,6 @@ pub fn execute_with_custom(
         codec::custom::decode_custom_records_with_options(input_reader, custom, input_options)?
     } else {
         match input_codec {
-            "hcl" => codec::hcl_codec::decode_hcl_records(input_reader)?,
             "xml" => codec::xml::decode_xml_records(input_reader)?,
             "msgpack" => codec::msgpack::decode_msgpack_records(input_reader)?,
             "binary" => {
@@ -129,7 +128,6 @@ pub fn execute_with_custom(
         codec::custom::encode_custom_records(&transformed, custom, output_options, output_writer)?;
     } else {
         match output_codec {
-            "hcl" => codec::hcl_codec::encode_hcl_records(&transformed, output_writer)?,
             "xml" => codec::xml::encode_xml_records(&transformed, output_writer, "root")?,
             "msgpack" => codec::msgpack::encode_msgpack_records(&transformed, output_writer)?,
             "binary" => {

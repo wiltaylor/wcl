@@ -2349,6 +2349,47 @@ lt_fn = local_time("07:32")
     }
 
     #[test]
+    fn test_import_codec_hcl_uses_standard_wcl_codec() {
+        std::thread::Builder::new()
+            .name("import-codec-hcl".into())
+            .stack_size(64 * 1024 * 1024)
+            .spawn(|| {
+                use std::sync::Arc;
+
+                let mut fs = InMemoryFs::new();
+                fs.add_file(
+                    std::path::PathBuf::from("/project/data.hcl"),
+                    "name = env\ncount = replicas + 1",
+                );
+
+                let mut opts = ParseOptions::default();
+                opts.root_dir = std::path::PathBuf::from("/project");
+                opts.fs = Some(Arc::new(fs));
+
+                let doc = parse(
+                    r#"rows = import_codec("data.hcl", "hcl", { variables = { env = "prod" replicas = 2 } })"#,
+                    opts,
+                );
+                assert!(
+                    doc.diagnostics.is_empty(),
+                    "expected no errors, got: {:?}",
+                    doc.diagnostics
+                );
+                let Value::List(rows) = doc.values.get("rows").expect("rows value") else {
+                    panic!("expected rows list");
+                };
+                let Value::Map(row) = &rows[0] else {
+                    panic!("expected row map");
+                };
+                assert_eq!(row.get("name"), Some(&Value::String("prod".into())));
+                assert_eq!(row.get("count"), Some(&Value::Int(3)));
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
+    #[test]
     fn test_import_codec_msgpack_bytes() {
         use std::sync::Arc;
 
