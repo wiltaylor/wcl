@@ -19,15 +19,28 @@ pub struct WclLanguageServer {
 
 impl WclLanguageServer {
     pub fn new_router(client: ClientSocket) -> Router<Self> {
+        Self::new_router_with_options(client, wcl_lang::ParseOptions::default())
+    }
+
+    pub fn new_router_with_options(
+        client: ClientSocket,
+        default_options: wcl_lang::ParseOptions,
+    ) -> Router<Self> {
         Router::from_language_server(Self {
             client,
-            state: WorldState::new(),
+            state: WorldState::with_options(default_options),
         })
     }
 
     fn analyze_and_publish(&mut self, uri: Url, source: String, version: i32) {
         let rope = Rope::from_str(&source);
-        let analysis = analyze(&source, &self.state.default_options);
+        let mut options = self.state.default_options.clone();
+        if let Ok(path) = uri.to_file_path() {
+            if let Some(parent) = path.parent() {
+                options.root_dir = parent.to_path_buf();
+            }
+        }
+        let analysis = analyze(&source, &options);
 
         let diagnostics: Vec<Diagnostic> = analysis
             .diagnostics
@@ -100,6 +113,7 @@ impl LanguageServer for WclLanguageServer {
                         trigger_characters: Some(vec![
                             "@".to_string(),
                             ".".to_string(),
+                            ":".to_string(),
                             "\"".to_string(),
                         ]),
                         ..Default::default()

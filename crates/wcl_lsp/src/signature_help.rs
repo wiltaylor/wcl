@@ -18,7 +18,7 @@ pub fn signature_help(
         builtin_sigs = wcl_lang::eval::builtin_signatures();
         &builtin_sigs
     };
-    if let Some(sig) = sigs.iter().find(|s| s.name == fn_name) {
+    if let Some(sig) = find_signature(sigs, &fn_name) {
         let params: Vec<ParameterInformation> = sig
             .params
             .iter()
@@ -91,6 +91,32 @@ pub fn signature_help(
     None
 }
 
+fn find_signature<'a>(
+    sigs: &'a [wcl_lang::eval::FunctionSignature],
+    fn_name: &str,
+) -> Option<&'a wcl_lang::eval::FunctionSignature> {
+    if let Some(sig) = sigs.iter().find(|s| s.name == fn_name) {
+        return Some(sig);
+    }
+
+    if fn_name.contains("::") {
+        return None;
+    }
+
+    let mut matches = sigs.iter().filter(|s| {
+        s.name
+            .rsplit_once("::")
+            .map(|(_, tail)| tail == fn_name)
+            .unwrap_or(false)
+    });
+    let first = matches.next()?;
+    if matches.next().is_none() {
+        Some(first)
+    } else {
+        None
+    }
+}
+
 fn type_expr_label(te: &wcl_lang::lang::ast::TypeExpr) -> String {
     match te {
         wcl_lang::lang::ast::TypeExpr::String(_) => "string".to_string(),
@@ -128,9 +154,9 @@ fn find_call_context(before: &str) -> Option<(String, u32)> {
                     // Found the opening paren, extract the function name before it
                     let prefix = before[..i].trim_end();
                     let name = prefix
-                        .rsplit(|c: char| !c.is_alphanumeric() && c != '_')
+                        .rsplit(|c: char| !c.is_alphanumeric() && c != '_' && c != ':')
                         .next()?;
-                    if name.is_empty() {
+                    if name.is_empty() || name.ends_with(':') {
                         return None;
                     }
                     return Some((name.to_string(), commas));
@@ -152,6 +178,13 @@ mod tests {
     fn test_find_call_context_simple() {
         let (name, param) = find_call_context("upper(").unwrap();
         assert_eq!(name, "upper");
+        assert_eq!(param, 0);
+    }
+
+    #[test]
+    fn test_find_call_context_namespaced() {
+        let (name, param) = find_call_context("wdoc::icon(").unwrap();
+        assert_eq!(name, "wdoc::icon");
         assert_eq!(param, 0);
     }
 
@@ -205,5 +238,33 @@ mod tests {
         assert!(h.signatures[0].label.contains("greet"));
         assert!(h.signatures[0].label.contains("name"));
         assert!(h.signatures[0].label.contains("greeting"));
+    }
+
+    #[test]
+    fn test_signature_help_namespaced_custom_function() {
+        use crate::analysis::analyze;
+        use std::sync::Arc;
+
+        let mut functions = wcl_lang::FunctionRegistry::new();
+        let dummy: wcl_lang::BuiltinFn =
+            Arc::new(|_: &[wcl_lang::Value]| Ok(wcl_lang::Value::Null));
+        functions.register(
+            "wdoc::icon",
+            dummy,
+            wcl_lang::FunctionSignature {
+                name: "wdoc::icon".into(),
+                params: vec!["name: string".into()],
+                return_type: "string".into(),
+                doc: "Render a named SVG icon".into(),
+            },
+        );
+        let options = wcl_lang::ParseOptions {
+            functions,
+            ..Default::default()
+        };
+        let source = "let x = wdoc::icon(";
+        let analysis = analyze(source, &options);
+        let help = signature_help(source, source.len(), Some(&analysis)).unwrap();
+        assert_eq!(help.signatures[0].label, "wdoc::icon(name: string)");
     }
 }

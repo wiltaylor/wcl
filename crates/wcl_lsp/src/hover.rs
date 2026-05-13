@@ -20,7 +20,7 @@ pub fn hover(analysis: &AnalysisResult, offset: usize, rope: &Rope) -> Option<Ho
         NodeAtOffset::MacroCallName(mc) => hover_macro_call(analysis, mc, rope),
         NodeAtOffset::SchemaName(schema) => hover_schema(schema, rope),
         NodeAtOffset::TypeExpr(te) => hover_type_expr(te, rope),
-        NodeAtOffset::FnCall(expr, _) => hover_fn_call(expr, rope),
+        NodeAtOffset::FnCall(expr, _) => hover_fn_call(analysis, expr, rope),
         NodeAtOffset::ImportPath(import) => hover_import(import, rope),
         NodeAtOffset::Keyword(_) | NodeAtOffset::None => None,
     }
@@ -53,6 +53,27 @@ fn hover_ident_ref(analysis: &AnalysisResult, ident: &Ident, rope: &Rope) -> Opt
                 range: Some(span_to_lsp_range(ident.span, rope)),
             });
         }
+    }
+
+    if let Some(sig) = find_function_signature(analysis, &ident.name) {
+        let label = format!(
+            "{}({}) -> {}",
+            sig.name,
+            sig.params.join(", "),
+            sig.return_type
+        );
+        let value = if sig.doc.is_empty() {
+            format!("```wcl\n{}\n```", label)
+        } else {
+            format!("```wcl\n{}\n```\n\n{}", label, sig.doc)
+        };
+        return Some(Hover {
+            contents: HoverContents::Markup(MarkupContent {
+                kind: MarkupKind::Markdown,
+                value,
+            }),
+            range: Some(span_to_lsp_range(ident.span, rope)),
+        });
     }
 
     // Fallback: just show the identifier name
@@ -315,13 +336,33 @@ fn hover_macro_call(analysis: &AnalysisResult, mc: &MacroCall, rope: &Rope) -> O
     })
 }
 
-fn hover_fn_call(expr: &Expr, rope: &Rope) -> Option<Hover> {
+fn hover_fn_call(analysis: &AnalysisResult, expr: &Expr, rope: &Rope) -> Option<Hover> {
     if let Expr::FnCall(callee, _, span) = expr {
         let name = match callee.as_ref() {
             Expr::Ident(i) => i.name.clone(),
             Expr::MemberAccess(_, field, _) => field.name.clone(),
             _ => return None,
         };
+        if let Some(sig) = find_function_signature(analysis, &name) {
+            let label = format!(
+                "{}({}) -> {}",
+                sig.name,
+                sig.params.join(", "),
+                sig.return_type
+            );
+            let value = if sig.doc.is_empty() {
+                format!("```wcl\n{}\n```", label)
+            } else {
+                format!("```wcl\n{}\n```\n\n{}", label, sig.doc)
+            };
+            return Some(Hover {
+                contents: HoverContents::Markup(MarkupContent {
+                    kind: MarkupKind::Markdown,
+                    value,
+                }),
+                range: Some(span_to_lsp_range(*span, rope)),
+            });
+        }
         Some(Hover {
             contents: HoverContents::Markup(MarkupContent {
                 kind: MarkupKind::Markdown,
@@ -329,6 +370,32 @@ fn hover_fn_call(expr: &Expr, rope: &Rope) -> Option<Hover> {
             }),
             range: Some(span_to_lsp_range(*span, rope)),
         })
+    } else {
+        None
+    }
+}
+
+fn find_function_signature<'a>(
+    analysis: &'a AnalysisResult,
+    name: &str,
+) -> Option<&'a wcl_lang::eval::FunctionSignature> {
+    if let Some(sig) = analysis.function_signatures.iter().find(|s| s.name == name) {
+        return Some(sig);
+    }
+
+    if name.contains("::") {
+        return None;
+    }
+
+    let mut matches = analysis.function_signatures.iter().filter(|s| {
+        s.name
+            .rsplit_once("::")
+            .map(|(_, tail)| tail == name)
+            .unwrap_or(false)
+    });
+    let first = matches.next()?;
+    if matches.next().is_none() {
+        Some(first)
     } else {
         None
     }
@@ -375,6 +442,16 @@ mod tests {
 
     fn get_hover(source: &str, offset: usize) -> Option<Hover> {
         let analysis = analyze(source, &wcl_lang::ParseOptions::default());
+        let rope = ropey::Rope::from_str(source);
+        hover(&analysis, offset, &rope)
+    }
+
+    fn get_hover_with_options(
+        source: &str,
+        offset: usize,
+        options: &wcl_lang::ParseOptions,
+    ) -> Option<Hover> {
+        let analysis = analyze(source, options);
         let rope = ropey::Rope::from_str(source);
         hover(&analysis, offset, &rope)
     }
@@ -429,6 +506,35 @@ mod tests {
         let val = hover_value(&h);
         assert!(val.contains("import"));
         assert!(val.contains("other.wcl"));
+    }
+
+    #[test]
+    fn test_hover_custom_function_signature() {
+        use std::sync::Arc;
+
+        let mut functions = wcl_lang::FunctionRegistry::new();
+        let dummy: wcl_lang::BuiltinFn =
+            Arc::new(|_: &[wcl_lang::Value]| Ok(wcl_lang::Value::Null));
+        functions.register(
+            "wdoc::icon",
+            dummy,
+            wcl_lang::FunctionSignature {
+                name: "wdoc::icon".into(),
+                params: vec!["name: string".into()],
+                return_type: "string".into(),
+                doc: "Render a named SVG icon".into(),
+            },
+        );
+        let options = wcl_lang::ParseOptions {
+            functions,
+            ..Default::default()
+        };
+        let source = "let x = wdoc::icon(\"home\")";
+        let offset = source.find("icon").unwrap();
+        let h = get_hover_with_options(source, offset, &options).unwrap();
+        let val = hover_value(&h);
+        assert!(val.contains("wdoc::icon(name: string) -> string"));
+        assert!(val.contains("Render a named SVG icon"));
     }
 
     #[test]

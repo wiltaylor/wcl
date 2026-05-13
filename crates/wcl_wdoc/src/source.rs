@@ -324,7 +324,7 @@ fn validate_markup_pattern(
 // WCL custom functions (inline formatting + template rendering)
 // ---------------------------------------------------------------------------
 
-pub(crate) fn wdoc_functions() -> FunctionRegistry {
+pub fn wdoc_functions() -> FunctionRegistry {
     let mut reg = FunctionRegistry::new();
     let measure_text = std::sync::Arc::new(|args: &[Value]| {
         if args.len() != 1 {
@@ -358,6 +358,39 @@ pub(crate) fn wdoc_functions() -> FunctionRegistry {
     register_renderer_helpers(&mut reg);
 
     reg
+}
+
+/// Parse options for editor/LSP tooling that should understand WDoc files.
+///
+/// This registers WDoc host functions and exposes the embedded `wdoc.wcl`
+/// library through a temporary library directory, so `import <wdoc.wcl>` works
+/// without requiring a prior `wcl wdoc install-library`.
+pub fn lsp_parse_options() -> Result<wcl_lang::ParseOptions, String> {
+    let mut options = wcl_lang::ParseOptions {
+        functions: wdoc_functions(),
+        ..Default::default()
+    };
+    options.lib_paths.push(setup_lib_dir()?);
+    Ok(options)
+}
+
+#[cfg(test)]
+mod lsp_parse_options_tests {
+    use super::*;
+
+    #[test]
+    fn lsp_parse_options_resolve_embedded_wdoc_library_and_icons() {
+        let options = lsp_parse_options().unwrap();
+        let doc = wcl_lang::parse(
+            "import <wdoc.wcl>\nuse wdoc::{icon}\nlet x = icon(\"home\")",
+            options,
+        );
+        assert!(
+            doc.diagnostics.iter().all(|d| !d.is_error()),
+            "unexpected diagnostics: {:?}",
+            doc.diagnostics
+        );
+    }
 }
 
 fn register_renderer_helpers(reg: &mut FunctionRegistry) {

@@ -250,7 +250,7 @@
         },
         {
           "name": "support.function.builtin.wcl",
-          "match": "\\b(query|has|import_table|import_raw|is_imported|has_schema)\\b"
+          "match": "\\b(upper|lower|trim|trim_prefix|trim_suffix|replace|split|join|starts_with|ends_with|contains|length|substr|format|regex_match|regex_capture|abs|min|max|floor|ceil|round|sqrt|pow|sin|cos|tan|asin|acos|atan|atan2|degrees|radians|pi|len|keys|values|flatten|concat|distinct|sort|reverse|index_of|range|zip|map|filter|every|some|reduce|sum|avg|min_of|max_of|count|find|insert_row|remove_rows|update_rows|sha256|base64_encode|base64_decode|json_encode|to_string|to_int|to_float|to_bool|type_of|has|children|has_decorator|is_imported|has_schema|query|import_table|import_raw|icon|icon_styled|icon_props|measure_text)\\b"
         }
       ]
     },

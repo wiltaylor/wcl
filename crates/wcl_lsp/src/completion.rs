@@ -79,11 +79,48 @@ fn function_names(analysis: &AnalysisResult) -> Vec<&str> {
         .collect()
 }
 
+fn namespace_function_members<'a>(analysis: &'a AnalysisResult, namespace: &str) -> Vec<&'a str> {
+    let prefix = format!("{namespace}::");
+    analysis
+        .function_signatures
+        .iter()
+        .filter_map(|s| s.name.strip_prefix(&prefix))
+        .filter(|name| !name.is_empty())
+        .collect()
+}
+
+fn push_function_items(items: &mut Vec<CompletionItem>, names: impl IntoIterator<Item = String>) {
+    for name in names {
+        items.push(CompletionItem {
+            label: name,
+            kind: Some(CompletionItemKind::FUNCTION),
+            detail: Some("function".to_string()),
+            ..Default::default()
+        });
+    }
+}
+
 pub fn completions(analysis: &AnalysisResult, source: &str, offset: usize) -> Vec<CompletionItem> {
     let context = detect_context(source, offset);
     let mut items = Vec::new();
 
     match context {
+        CompletionContext::NamespaceAccess(namespace) => {
+            push_function_items(
+                &mut items,
+                namespace_function_members(analysis, &namespace)
+                    .into_iter()
+                    .map(str::to_string),
+            );
+        }
+        CompletionContext::UseMembers(namespace) => {
+            push_function_items(
+                &mut items,
+                namespace_function_members(analysis, &namespace)
+                    .into_iter()
+                    .map(str::to_string),
+            );
+        }
         CompletionContext::Decorator => {
             for name in BUILTIN_DECORATORS {
                 items.push(CompletionItem {
@@ -152,14 +189,10 @@ pub fn completions(analysis: &AnalysisResult, source: &str, offset: usize) -> Ve
                     ..Default::default()
                 });
             }
-            for name in function_names(analysis) {
-                items.push(CompletionItem {
-                    label: name.to_string(),
-                    kind: Some(CompletionItemKind::FUNCTION),
-                    detail: Some("builtin".to_string()),
-                    ..Default::default()
-                });
-            }
+            push_function_items(
+                &mut items,
+                function_names(analysis).into_iter().map(str::to_string),
+            );
         }
         CompletionContext::Expression => {
             // Variables from scope
@@ -181,15 +214,10 @@ pub fn completions(analysis: &AnalysisResult, source: &str, offset: usize) -> Ve
                     ..Default::default()
                 });
             }
-            // Built-in functions
-            for name in function_names(analysis) {
-                items.push(CompletionItem {
-                    label: name.to_string(),
-                    kind: Some(CompletionItemKind::FUNCTION),
-                    detail: Some("builtin".to_string()),
-                    ..Default::default()
-                });
-            }
+            push_function_items(
+                &mut items,
+                function_names(analysis).into_iter().map(str::to_string),
+            );
         }
         CompletionContext::TopLevel | CompletionContext::BlockBody => {
             for kw in KEYWORDS {
@@ -247,6 +275,8 @@ enum CompletionContext {
     Decorator,
     Type,
     MemberAccess,
+    NamespaceAccess(String),
+    UseMembers(String),
     StringInterpolation,
 }
 
@@ -270,6 +300,14 @@ fn detect_context(source: &str, offset: usize) -> CompletionContext {
 
     // Check for = (expression context)
     let trimmed = before.trim_end();
+
+    if let Some(namespace) = detect_use_members_context(trimmed) {
+        return CompletionContext::UseMembers(namespace);
+    }
+
+    if let Some(namespace) = trimmed.strip_suffix("::").and_then(namespace_before_cursor) {
+        return CompletionContext::NamespaceAccess(namespace.to_string());
+    }
 
     // Check for `.` member access
     if trimmed.ends_with('.') {
@@ -322,6 +360,34 @@ fn detect_context(source: &str, offset: usize) -> CompletionContext {
         CompletionContext::BlockBody
     } else {
         CompletionContext::TopLevel
+    }
+}
+
+fn namespace_before_cursor(prefix: &str) -> Option<&str> {
+    let start = prefix
+        .rfind(|c: char| !c.is_alphanumeric() && c != '_' && c != ':')
+        .map(|idx| idx + 1)
+        .unwrap_or(0);
+    let namespace = &prefix[start..];
+    if namespace.is_empty() || namespace.ends_with(':') {
+        None
+    } else {
+        Some(namespace)
+    }
+}
+
+fn detect_use_members_context(trimmed: &str) -> Option<String> {
+    let line = trimmed.rsplit('\n').next().unwrap_or(trimmed).trim_start();
+    let after_use = line.strip_prefix("use ")?;
+    let brace = after_use.rfind("::{")?;
+    if after_use[brace + 3..].contains('}') {
+        return None;
+    }
+    let namespace = after_use[..brace].trim();
+    if namespace.is_empty() {
+        None
+    } else {
+        Some(namespace.to_string())
     }
 }
 
@@ -410,10 +476,51 @@ fn collect_block_kinds(
 mod tests {
     use super::*;
     use crate::analysis::analyze;
+    use std::sync::Arc;
 
     fn get_completions(source: &str, offset: usize) -> Vec<CompletionItem> {
         let analysis = analyze(source, &wcl_lang::ParseOptions::default());
         completions(&analysis, source, offset)
+    }
+
+    fn wdoc_like_options() -> wcl_lang::ParseOptions {
+        let mut functions = wcl_lang::FunctionRegistry::new();
+        let dummy: wcl_lang::BuiltinFn =
+            Arc::new(|_: &[wcl_lang::Value]| Ok(wcl_lang::Value::Null));
+        functions.register(
+            "icon",
+            dummy.clone(),
+            wcl_lang::FunctionSignature {
+                name: "icon".into(),
+                params: vec!["name: string".into()],
+                return_type: "string".into(),
+                doc: "Render a named SVG icon".into(),
+            },
+        );
+        functions.register(
+            "wdoc::icon",
+            dummy.clone(),
+            wcl_lang::FunctionSignature {
+                name: "wdoc::icon".into(),
+                params: vec!["name: string".into()],
+                return_type: "string".into(),
+                doc: "Render a named SVG icon from WDoc".into(),
+            },
+        );
+        functions.register(
+            "wdoc::measure_text",
+            dummy,
+            wcl_lang::FunctionSignature {
+                name: "wdoc::measure_text".into(),
+                params: vec!["text: any".into()],
+                return_type: "map".into(),
+                doc: "Measure text".into(),
+            },
+        );
+        wcl_lang::ParseOptions {
+            functions,
+            ..Default::default()
+        }
     }
 
     #[test]
@@ -510,6 +617,37 @@ mod tests {
         for label in &labels {
             assert!(seen.insert(label), "duplicate completion label: {}", label);
         }
+    }
+
+    #[test]
+    fn test_expression_context_includes_custom_wdoc_functions() {
+        let source = "let x = ";
+        let analysis = analyze(source, &wdoc_like_options());
+        let items = completions(&analysis, source, source.len());
+        let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+        assert!(labels.contains(&"icon"));
+        assert!(labels.contains(&"wdoc::icon"));
+    }
+
+    #[test]
+    fn test_namespace_access_completion() {
+        let source = "let x = wdoc::";
+        let analysis = analyze(source, &wdoc_like_options());
+        let items = completions(&analysis, source, source.len());
+        let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+        assert!(labels.contains(&"icon"));
+        assert!(labels.contains(&"measure_text"));
+        assert!(!labels.contains(&"wdoc::icon"));
+    }
+
+    #[test]
+    fn test_use_members_completion() {
+        let source = "use wdoc::{";
+        let analysis = analyze(source, &wdoc_like_options());
+        let items = completions(&analysis, source, source.len());
+        let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+        assert!(labels.contains(&"icon"));
+        assert!(labels.contains(&"measure_text"));
     }
 }
 

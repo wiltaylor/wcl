@@ -452,12 +452,22 @@ pub fn main() {
                 .map_err(|e| format!("failed to create tokio runtime: {}", e));
             match rt {
                 Ok(rt) => {
+                    #[cfg(feature = "wdoc")]
+                    let lsp_options = wcl_wdoc::source::lsp_parse_options().unwrap_or_else(|e| {
+                        eprintln!("error: {}", e);
+                        process::exit(1);
+                    });
+                    #[cfg(not(feature = "wdoc"))]
+                    let lsp_options = crate::ParseOptions::default();
+
                     if let Some(addr) = tcp {
                         rt.block_on(async {
-                            wcl_lsp::start_tcp(&addr).await.map_err(|e| e.to_string())
+                            wcl_lsp::start_tcp_with_options(&addr, lsp_options)
+                                .await
+                                .map_err(|e| e.to_string())
                         })
                     } else {
-                        rt.block_on(wcl_lsp::start_stdio());
+                        rt.block_on(wcl_lsp::start_stdio_with_options(lsp_options));
                         Ok(())
                     }
                 }

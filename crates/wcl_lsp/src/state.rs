@@ -43,9 +43,13 @@ impl Default for WorldState {
 
 impl WorldState {
     pub fn new() -> Self {
+        Self::with_options(wcl_lang::ParseOptions::default())
+    }
+
+    pub fn with_options(default_options: wcl_lang::ParseOptions) -> Self {
         WorldState {
             documents: HashMap::new(),
-            default_options: wcl_lang::ParseOptions::default(),
+            default_options,
         }
     }
 }
