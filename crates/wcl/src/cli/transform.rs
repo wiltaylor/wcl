@@ -151,6 +151,20 @@ pub fn run(
                             .insert("pretty".to_string(), crate::eval::value::Value::Bool(*b));
                     }
                 }
+                "root_name" => {
+                    if let Some(s) = value_str {
+                        output_options
+                            .insert("root_name".to_string(), crate::eval::value::Value::String(s));
+                    }
+                }
+                "xml_declaration" => {
+                    if let crate::lang::ast::Expr::BoolLit(b, _) = &attr.value {
+                        output_options.insert(
+                            "xml_declaration".to_string(),
+                            crate::eval::value::Value::Bool(*b),
+                        );
+                    }
+                }
                 _ => {}
             }
         }
@@ -333,6 +347,8 @@ fn build_map_config(block: &crate::lang::ast::Block) -> Result<MapConfig, String
                         | "has_header"
                         | "header"
                         | "pretty"
+                        | "root_name"
+                        | "xml_declaration"
                         | "on_parse_error"
                         | "on_output_error"
                 ) =>

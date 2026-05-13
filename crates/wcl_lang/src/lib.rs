@@ -2390,6 +2390,52 @@ lt_fn = local_time("07:32")
     }
 
     #[test]
+    fn test_import_codec_xml_uses_standard_wcl_codec() {
+        std::thread::Builder::new()
+            .name("import-codec-xml".into())
+            .stack_size(64 * 1024 * 1024)
+            .spawn(|| {
+                use std::sync::Arc;
+
+                let mut fs = InMemoryFs::new();
+                fs.add_file(
+                    std::path::PathBuf::from("/project/data.xml"),
+                    r#"<person id="p1"><name>Alice &amp; Bob</name></person>"#,
+                );
+
+                let mut opts = ParseOptions::default();
+                opts.root_dir = std::path::PathBuf::from("/project");
+                opts.fs = Some(Arc::new(fs));
+
+                let doc = parse(r#"rows = import_codec("data.xml", "xml", {})"#, opts);
+                assert!(
+                    doc.diagnostics.is_empty(),
+                    "expected no errors, got: {:?}",
+                    doc.diagnostics
+                );
+                let Value::List(rows) = doc.values.get("rows").expect("rows value") else {
+                    panic!("expected rows list");
+                };
+                let Value::Map(root) = &rows[0] else {
+                    panic!("expected root map");
+                };
+                assert_eq!(root.get("type"), Some(&Value::String("element".into())));
+                assert_eq!(root.get("name"), Some(&Value::String("person".into())));
+                assert_eq!(root.get("text"), Some(&Value::String(String::new())));
+                let Some(Value::List(children)) = root.get("children") else {
+                    panic!("expected children");
+                };
+                let Value::Map(name) = &children[0] else {
+                    panic!("expected child map");
+                };
+                assert_eq!(name.get("text"), Some(&Value::String("Alice & Bob".into())));
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
+    #[test]
     fn test_import_codec_msgpack_bytes() {
         use std::sync::Arc;
 

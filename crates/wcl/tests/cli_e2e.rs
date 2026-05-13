@@ -1351,6 +1351,41 @@ transform json-copy {
 }
 
 #[test]
+fn transform_xml_codec_decodes_and_encodes_standard_codec() {
+    let dir = tempdir().expect("tempdir");
+    let transform = dir.path().join("xml.wcl");
+    let input = dir.path().join("input.xml");
+
+    std::fs::write(
+        &input,
+        r#"<person id="p1"><name>Alice &amp; Bob</name></person>"#,
+    )
+    .expect("write input");
+    std::fs::write(
+        &transform,
+        r#"
+transform transform_xml {
+    input = "codec::xml"
+    output = "codec::xml"
+    root_name = "summary"
+
+    map {
+        person = in.name
+        name = in.children[0].text
+    }
+}
+"#,
+    )
+    .expect("write transform");
+
+    let stdout = run_transform_stdout(&transform, "transform_xml", &input);
+    assert_eq!(
+        stdout,
+        "<summary><person>person</person><name>Alice &amp; Bob</name></summary>\n"
+    );
+}
+
+#[test]
 fn transform_json_codec_preserves_comment_markers_inside_strings() {
     let dir = tempdir().expect("tempdir");
     let transform = dir.path().join("json.wcl");

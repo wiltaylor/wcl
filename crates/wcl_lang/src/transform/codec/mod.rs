@@ -7,7 +7,6 @@ pub mod binary_codec;
 pub mod custom;
 pub mod msgpack;
 pub mod text_codec;
-pub mod xml;
 
 use crate::transform::error::TransformError;
 use crate::transform::event::Event;

@@ -500,7 +500,13 @@ fn call_codec_lambda(
     args: &[Value],
     builtins: HashMap<String, BuiltinFn>,
 ) -> Result<Value, TransformError> {
-    crate::eval::evaluator::call_lambda_with_env(func, args, &builtins, &codec.helpers)
+    crate::eval::evaluator::call_lambda_with_env_and_max_depth(
+        func,
+        args,
+        &builtins,
+        &codec.helpers,
+        1024,
+    )
         .map_err(|e| TransformError::Codec(format!("custom codec '{}': {}", codec.name, e)))
 }
 

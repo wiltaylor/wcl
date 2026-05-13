@@ -1358,3 +1358,557 @@ codec toml {
     encoder = record => __toml_render_map(record, "")
     encoder_all = records => __toml_encoder_all(records)
 }
+
+export let __xml_tokenizer = cursor =>
+    cursor.eof() ? null : {
+        let start = cursor.pos()
+        let text = cursor.take(cursor.len())
+        { kind = :source, text = text, start = start, end = cursor.pos(), value = text }
+    }
+
+export let __xml_xml_ns = () => "http://www.w3.org/XML/1998/namespace"
+export let __xml_xmlns_ns = () => "http://www.w3.org/2000/xmlns/"
+
+export let __xml_error = message => __codec_error(message)
+
+export let __xml_is_error = value => __codec_is_error(value)
+
+export let __xml_state = (src, pos, version) => { src = src pos = pos version = version }
+
+export let __xml_ok = (state, value) => { state = state value = value }
+
+export let __xml_len = state => length(state.src)
+
+export let __xml_eof = state => state.pos >= __xml_len(state)
+
+export let __xml_at = (state, n) => substr(state.src, state.pos, state.pos + n)
+
+export let __xml_starts = (state, text) => __xml_at(state, length(text)) == text
+
+export let __xml_set_pos = (state, pos) => __xml_state(state.src, pos, state.version)
+
+export let __xml_take = (state, n) =>
+    __xml_ok(__xml_set_pos(state, state.pos + n), substr(state.src, state.pos, state.pos + n))
+
+export let __xml_consume = (state, text, message) =>
+    __xml_starts(state, text) ? __xml_ok(__xml_set_pos(state, state.pos + length(text)), text) : __xml_error(message)
+
+export let __xml_skip_ws = state =>
+    __xml_eof(state) ? state : {
+        let ch = __xml_at(state, 1)
+        ch == " " || ch == "\n" || ch == "\r" || ch == "\t" ? __xml_skip_ws(__xml_set_pos(state, state.pos + 1)) : state
+    }
+
+export let __xml_index_of = (src, needle, from) =>
+    from + length(needle) > length(src) ? 0 - 1 :
+    substr(src, from, from + length(needle)) == needle ? from :
+    __xml_index_of(src, needle, from + 1)
+
+export let __xml_take_until = (state, needle, message) => {
+    let idx = __xml_index_of(state.src, needle, state.pos)
+    idx < 0 ? __xml_error(message) : __xml_ok(__xml_set_pos(state, idx), substr(state.src, state.pos, idx))
+}
+
+export let __xml_code = ch => char_codepoint(ch)
+
+export let __xml_is_char = (ch, version) => {
+    let c = __xml_code(ch)
+    c == 9 || c == 10 || c == 13 ||
+    (c >= 32 && c <= 55295) ||
+    (c >= 57344 && c <= 65533) ||
+    (c >= 65536 && c <= 1114111)
+}
+
+export let __xml_validate_chars = (src, i, version) =>
+    i >= length(src) ? null : {
+        let ch = substr(src, i, i + 1)
+        __xml_is_char(ch, version) ? __xml_validate_chars(src, i + 1, version) :
+        __xml_error("illegal XML character U+" + to_string(char_codepoint(ch)))
+    }
+
+export let __xml_is_name_start = ch =>
+    ch == ":" || ch == "_" || regex_match(ch, "^[\\p{L}]$")
+
+export let __xml_is_name_char = ch =>
+    __xml_is_name_start(ch) || regex_match(ch, "^[0-9\\-.]$") || ch == "·"
+
+export let __xml_split_qname = name => {
+    let parts = split(":", name)
+    len(parts) == 1 ? { prefix = "" local = parts[0] } :
+    len(parts) == 2 && parts[0] != "" && parts[1] != "" ? { prefix = parts[0] local = parts[1] } :
+    __xml_error("invalid qualified XML name '" + name + "'")
+}
+
+export let __xml_valid_name_chars = (name, i) =>
+    i >= length(name) ? true :
+    __xml_is_name_char(substr(name, i, i + 1)) ? __xml_valid_name_chars(name, i + 1) : false
+
+export let __xml_validate_qname = name =>
+    length(name) == 0 ? __xml_error("XML name must not be empty") :
+    __xml_is_name_start(substr(name, 0, 1)) == false ? __xml_error("invalid XML name '" + name + "'") :
+    __xml_valid_name_chars(name, 1) == false ? __xml_error("invalid XML name '" + name + "'") :
+    __xml_split_qname(name)
+
+export let __xml_read_name_loop = (state, acc) =>
+    __xml_eof(state) ? __xml_ok(state, acc) : {
+        let ch = __xml_at(state, 1)
+        __xml_is_name_char(ch) ? __xml_read_name_loop(__xml_set_pos(state, state.pos + 1), acc + ch) :
+        __xml_ok(state, acc)
+    }
+
+export let __xml_read_name = state =>
+    __xml_eof(state) ? __xml_error("expected XML name") : {
+        let ch = __xml_at(state, 1)
+        __xml_is_name_start(ch) == false ? __xml_error("invalid XML name start '" + ch + "'") : {
+            let read = __xml_read_name_loop(__xml_set_pos(state, state.pos + 1), ch)
+            __xml_is_error(read) ? read : {
+                let q = __xml_validate_qname(read.value)
+                __xml_is_error(q) ? q : read
+            }
+        }
+    }
+
+export let __xml_hex_value = ch =>
+    ch >= "0" && ch <= "9" ? char_codepoint(ch) - char_codepoint("0") :
+    ch >= "a" && ch <= "f" ? 10 + char_codepoint(ch) - char_codepoint("a") :
+    ch >= "A" && ch <= "F" ? 10 + char_codepoint(ch) - char_codepoint("A") :
+    0 - 1
+
+export let __xml_parse_hex = (text, i, acc) =>
+    i >= length(text) ? acc : {
+        let value = __xml_hex_value(substr(text, i, i + 1))
+        value < 0 ? 0 - 1 : __xml_parse_hex(text, i + 1, acc * 16 + value)
+    }
+
+export let __xml_numeric_char = (digits, radix, version) => {
+    let code = radix == 16 ? __xml_parse_hex(digits, 0, 0) : (regex_match(digits, "^[0-9]+$") ? to_int(digits) : 0 - 1)
+    code < 0 ? __xml_error("invalid numeric character reference") : {
+        let ch = char_from_codepoint(code)
+        __xml_is_char(ch, version) ? ch : __xml_error("numeric character reference U+" + to_string(code) + " is not allowed")
+    }
+}
+
+export let __xml_decode_ref_text = (text, version) =>
+    text == "lt" ? "<" :
+    text == "gt" ? ">" :
+    text == "amp" ? "&" :
+    text == "apos" ? "'" :
+    text == "quot" ? "\"" :
+    starts_with(text, "#x") ? __xml_numeric_char(substr(text, 2), 16, version) :
+    starts_with(text, "#") ? __xml_numeric_char(substr(text, 1), 10, version) :
+    __xml_error("unknown entity reference '&" + text + ";'")
+
+export let __xml_parse_reference = state => {
+    let open = __xml_consume(state, "&", "expected entity reference")
+    __xml_is_error(open) ? open : {
+        let body = __xml_take_until(open.state, ";", "unterminated entity reference")
+        __xml_is_error(body) ? body : {
+            let close = __xml_consume(body.state, ";", "unterminated entity reference")
+            __xml_is_error(close) ? close : {
+                let value = __xml_decode_ref_text(body.value, state.version)
+                __xml_is_error(value) ? value : __xml_ok(close.state, value)
+            }
+        }
+    }
+}
+
+export let __xml_attr_value_loop = (state, quote, acc) =>
+    __xml_eof(state) ? __xml_error("unterminated attribute value") : {
+        let ch = __xml_at(state, 1)
+        ch == quote ? __xml_ok(__xml_set_pos(state, state.pos + 1), acc) :
+        ch == "<" ? __xml_error("attribute values must not contain '<'") :
+        ch == "&" ? {
+            let entity = __xml_parse_reference(state)
+            __xml_is_error(entity) ? entity : __xml_attr_value_loop(entity.state, quote, acc + entity.value)
+        } :
+        __xml_attr_value_loop(__xml_set_pos(state, state.pos + 1), quote, acc + ch)
+    }
+
+export let __xml_read_attr_value = state =>
+    __xml_eof(state) ? __xml_error("attribute value must be quoted") : {
+        let quote = __xml_at(state, 1)
+        quote != "\"" && quote != "'" ? __xml_error("attribute value must be quoted") :
+        __xml_attr_value_loop(__xml_set_pos(state, state.pos + 1), quote, "")
+    }
+
+export let __xml_parse_comment = state => {
+    let open = __xml_consume(state, "<!--", "expected comment")
+    __xml_is_error(open) ? open : {
+        let body = __xml_take_until(open.state, "-->", "unterminated comment")
+        __xml_is_error(body) ? body :
+        contains(body.value, "--") || ends_with(body.value, "-") ? __xml_error("XML comments must not contain '--' or end with '-'") : {
+            let close = __xml_consume(body.state, "-->", "unterminated comment")
+            __xml_is_error(close) ? close : __xml_ok(close.state, { type = "comment" text = body.value })
+        }
+    }
+}
+
+export let __xml_parse_cdata = state => {
+    let open = __xml_consume(state, "<![CDATA[", "expected CDATA")
+    __xml_is_error(open) ? open : {
+        let body = __xml_take_until(open.state, "]]>", "unterminated CDATA section")
+        __xml_is_error(body) ? body : {
+            let close = __xml_consume(body.state, "]]>", "unterminated CDATA section")
+            __xml_is_error(close) ? close : __xml_ok(close.state, body.value)
+        }
+    }
+}
+
+export let __xml_parse_pi = state => {
+    let open = __xml_consume(state, "<?", "expected processing instruction")
+    __xml_is_error(open) ? open : {
+        let target = __xml_read_name(open.state)
+        __xml_is_error(target) ? target :
+        lower(target.value) == "xml" ? __xml_error("processing instruction target 'xml' is reserved") : {
+            let body = __xml_take_until(target.state, "?>", "unterminated processing instruction")
+            __xml_is_error(body) ? body : {
+                let close = __xml_consume(body.state, "?>", "unterminated processing instruction")
+                __xml_is_error(close) ? close : __xml_ok(close.state, { type = "pi" target = target.value text = trim(body.value) })
+            }
+        }
+    }
+}
+
+export let __xml_text_loop = (state, acc) =>
+    __xml_eof(state) || __xml_starts(state, "<") ? __xml_ok(state, acc) :
+    __xml_starts(state, "&") ? {
+        let entity = __xml_parse_reference(state)
+        __xml_is_error(entity) ? entity : __xml_text_loop(entity.state, acc + entity.value)
+    } : {
+        let ch = __xml_at(state, 1)
+        __xml_text_loop(__xml_set_pos(state, state.pos + 1), acc + ch)
+    }
+
+export let __xml_namespace_allowed = (prefix, uri) =>
+    prefix == "" && (uri == __xml_xml_ns() || uri == __xml_xmlns_ns()) ? __xml_error("reserved namespace URI cannot be used as the default namespace") :
+    prefix == "xml" && uri != __xml_xml_ns() ? __xml_error("xml prefix must be bound to its reserved namespace") :
+    prefix == "xmlns" || uri == __xml_xmlns_ns() ? __xml_error("xmlns prefix and namespace URI are reserved") :
+    prefix != "xml" && uri == __xml_xml_ns() ? __xml_error("XML namespace URI may only be bound to the xml prefix") :
+    prefix != "" && uri == "" ? __xml_error("namespace prefixes must not be undeclared") :
+    null
+
+export let __xml_attr_loop = (state, scope, namespaces, attrs, seen) => {
+    let s = __xml_skip_ws(state)
+    __xml_starts(s, "/>") ? __xml_ok(__xml_set_pos(s, s.pos + 2), { scope = scope namespaces = namespaces attrs = attrs empty = true }) :
+    __xml_starts(s, ">") ? __xml_ok(__xml_set_pos(s, s.pos + 1), { scope = scope namespaces = namespaces attrs = attrs empty = false }) : {
+        let name = __xml_read_name(s)
+        __xml_is_error(name) ? name :
+        map_has(seen, name.value) ? __xml_error("duplicate attribute '" + name.value + "'") : {
+            let q = __xml_split_qname(name.value)
+            __xml_is_error(q) ? q : {
+                let eq_state = __xml_skip_ws(name.state)
+                let eq = __xml_consume(eq_state, "=", "expected '=' after attribute name")
+                __xml_is_error(eq) ? eq : {
+                    let value = __xml_read_attr_value(__xml_skip_ws(eq.state))
+                    __xml_is_error(value) ? value :
+                    name.value == "xmlns" ? {
+                        let allowed = __xml_namespace_allowed("", value.value)
+                        __xml_is_error(allowed) ? allowed :
+                        __xml_attr_loop(value.state, map_set(scope, "", value.value), map_set(namespaces, "", value.value), attrs, map_set(seen, name.value, true))
+                    } :
+                    q.prefix == "xmlns" ? {
+                        let allowed = __xml_namespace_allowed(q.local, value.value)
+                        __xml_is_error(allowed) ? allowed :
+                        __xml_attr_loop(value.state, map_set(scope, q.local, value.value), map_set(namespaces, q.local, value.value), attrs, map_set(seen, name.value, true))
+                    } :
+                    __xml_attr_loop(value.state, scope, namespaces, concat(attrs, [{ name = name.value prefix = q.prefix local_name = q.local value = value.value }]), map_set(seen, name.value, true))
+                }
+            }
+        }
+    }
+}
+
+export let __xml_resolve_element_ns = (prefix, scope) =>
+    prefix == "xml" ? __xml_xml_ns() :
+    prefix == "" ? (map_has(scope, "") ? scope[""] : "") :
+    map_has(scope, prefix) ? scope[prefix] :
+    __xml_error("unbound namespace prefix '" + prefix + "'")
+
+export let __xml_resolve_attrs = (attrs, scope, i, seen, acc) =>
+    i >= len(attrs) ? acc : {
+        let attr = attrs[i]
+        let ns = attr.prefix == "" ? "" : (map_has(scope, attr.prefix) ? scope[attr.prefix] : __xml_error("unbound namespace prefix '" + attr.prefix + "'"))
+        __xml_is_error(ns) ? ns : {
+            let expanded = ns + "|" + attr.local_name
+            map_has(seen, expanded) ? __xml_error("duplicate attribute by expanded name '" + attr.name + "'") :
+            __xml_resolve_attrs(attrs, scope, i + 1, map_set(seen, expanded, true), concat(acc, [{
+                name = attr.name prefix = attr.prefix local_name = attr.local_name namespace_uri = ns value = attr.value
+            }]))
+        }
+    }
+
+export let __xml_text_node = text => { type = "text" text = text }
+
+export let __xml_children_loop = (state, scope, element_name, children, text) =>
+    __xml_eof(state) ? __xml_error("unterminated element '" + element_name + "'") :
+    __xml_starts(state, "</") ? {
+        let open = __xml_consume(state, "</", "expected end tag")
+        let close_name = __xml_read_name(open.state)
+        __xml_is_error(close_name) ? close_name : {
+            let close = __xml_consume(__xml_skip_ws(close_name.state), ">", "expected '>' after end tag")
+            __xml_is_error(close) ? close :
+            close_name.value != element_name ? __xml_error("mismatched end tag: expected </" + element_name + ">, got </" + close_name.value + ">") :
+            __xml_ok(close.state, { children = children text = text })
+        }
+    } :
+    __xml_starts(state, "<!--") ? {
+        let comment = __xml_parse_comment(state)
+        __xml_is_error(comment) ? comment : __xml_children_loop(comment.state, scope, element_name, concat(children, [comment.value]), text)
+    } :
+    __xml_starts(state, "<![CDATA[") ? {
+        let cdata = __xml_parse_cdata(state)
+        __xml_is_error(cdata) ? cdata : __xml_children_loop(cdata.state, scope, element_name, concat(children, [__xml_text_node(cdata.value)]), text + cdata.value)
+    } :
+    __xml_starts(state, "<?") ? {
+        let pi = __xml_parse_pi(state)
+        __xml_is_error(pi) ? pi : __xml_children_loop(pi.state, scope, element_name, concat(children, [pi.value]), text)
+    } :
+    __xml_starts(state, "<!") ? __xml_error("markup declarations are only allowed in the DOCTYPE internal subset") :
+    __xml_starts(state, "<") ? {
+        let child = __xml_parse_element(state, scope)
+        __xml_is_error(child) ? child : __xml_children_loop(child.state, scope, element_name, concat(children, [child.value]), text)
+    } : {
+        let data = __xml_text_loop(state, "")
+        __xml_is_error(data) ? data :
+        data.value == "" ? __xml_children_loop(data.state, scope, element_name, children, text) :
+        __xml_children_loop(data.state, scope, element_name, concat(children, [__xml_text_node(data.value)]), text + data.value)
+    }
+
+export let __xml_parse_element = (state, inherited_scope) => {
+    let open = __xml_consume(state, "<", "expected element")
+    __xml_is_error(open) ? open : {
+        let name = __xml_read_name(open.state)
+        __xml_is_error(name) ? name : {
+            let q = __xml_split_qname(name.value)
+            __xml_is_error(q) ? q :
+            q.prefix == "xmlns" ? __xml_error("element names must not use the reserved xmlns prefix") : {
+                let parsed_attrs = __xml_attr_loop(name.state, inherited_scope, {}, [], {})
+                __xml_is_error(parsed_attrs) ? parsed_attrs : {
+                    let ns = __xml_resolve_element_ns(q.prefix, parsed_attrs.value.scope)
+                    __xml_is_error(ns) ? ns : {
+                        let attrs = __xml_resolve_attrs(parsed_attrs.value.attrs, parsed_attrs.value.scope, 0, {}, [])
+                        __xml_is_error(attrs) ? attrs :
+                        parsed_attrs.value.empty ? __xml_ok(parsed_attrs.state, {
+                            type = "element" name = name.value prefix = q.prefix local_name = q.local namespace_uri = ns
+                            attributes = attrs namespaces = parsed_attrs.value.namespaces children = [] text = ""
+                        }) : {
+                            let content = __xml_children_loop(parsed_attrs.state, parsed_attrs.value.scope, name.value, [], "")
+                            __xml_is_error(content) ? content : __xml_ok(content.state, {
+                                type = "element" name = name.value prefix = q.prefix local_name = q.local namespace_uri = ns
+                                attributes = attrs namespaces = parsed_attrs.value.namespaces children = content.value.children text = content.value.text
+                            })
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+export let __xml_parse_xml_decl = state =>
+    __xml_starts(state, "<?xml") ? {
+        let body = __xml_take_until(state, "?>", "unterminated XML declaration")
+        __xml_is_error(body) ? body : {
+            let version =
+                contains(body.value, "version=\"1.1\"") || contains(body.value, "version='1.1'") ? "1.1" :
+                contains(body.value, "version=\"1.0\"") || contains(body.value, "version='1.0'") ? "1.0" :
+                ""
+            version == "" ? __xml_error("XML declaration must declare version 1.0 or 1.1") : {
+                let close = __xml_consume(body.state, "?>", "unterminated XML declaration")
+                __xml_is_error(close) ? close : __xml_ok(__xml_state(close.state.src, close.state.pos, version), null)
+            }
+        }
+    } : __xml_ok(state, null)
+
+export let __xml_parse_misc = state => {
+    let s = __xml_skip_ws(state)
+    __xml_starts(s, "<!--") ? {
+        let c = __xml_parse_comment(s)
+        __xml_is_error(c) ? c : __xml_parse_misc(c.state)
+    } :
+    __xml_starts(s, "<?") ? {
+        let p = __xml_parse_pi(s)
+        __xml_is_error(p) ? p : __xml_parse_misc(p.state)
+    } :
+    __xml_ok(s, null)
+}
+
+export let __xml_doctype_loop = (state, depth, quote) =>
+    __xml_eof(state) ? __xml_error("unterminated DOCTYPE") : {
+        let ch = __xml_at(state, 1)
+        let next = __xml_set_pos(state, state.pos + 1)
+        quote != "" ? (ch == quote ? __xml_doctype_loop(next, depth, "") : __xml_doctype_loop(next, depth, quote)) :
+        ch == "\"" || ch == "'" ? __xml_doctype_loop(next, depth, ch) :
+        ch == "[" ? __xml_doctype_loop(next, depth + 1, "") :
+        ch == "]" && depth > 0 ? __xml_doctype_loop(next, depth - 1, "") :
+        ch == ">" && depth == 0 ? __xml_ok(next, null) :
+        __xml_doctype_loop(next, depth, "")
+    }
+
+export let __xml_parse_doctype = state =>
+    __xml_starts(state, "<!DOCTYPE") ? {
+        let start = state.pos
+        let skipped = __xml_doctype_loop(__xml_set_pos(state, state.pos + length("<!DOCTYPE")), 0, "")
+        __xml_is_error(skipped) ? skipped : {
+            let text = substr(state.src, start, skipped.state.pos)
+            contains(text, "SYSTEM") || contains(text, "PUBLIC") ? __xml_error("external DOCTYPE identifiers are not supported") :
+            contains(text, "<!ENTITY") || contains(text, "<!NOTATION") || contains(text, "%") ? __xml_error("DTD entity declarations are not supported") :
+            skipped
+        }
+    } : __xml_ok(state, null)
+
+export let __xml_parse_document = source => {
+    let base = starts_with(source, char_from_codepoint(65279)) ? __xml_state(source, 1, "1.0") : __xml_state(source, 0, "1.0")
+    let decl = __xml_parse_xml_decl(__xml_skip_ws(base))
+    __xml_is_error(decl) ? decl : {
+        let chars = __xml_validate_chars(source, 0, decl.state.version)
+        __xml_is_error(chars) ? chars : {
+            let misc1 = __xml_parse_misc(decl.state)
+            __xml_is_error(misc1) ? misc1 : {
+                let doctype = __xml_parse_doctype(misc1.state)
+                __xml_is_error(doctype) ? doctype : {
+                    let misc2 = __xml_parse_misc(doctype.state)
+                    __xml_is_error(misc2) ? misc2 :
+                    __xml_starts(misc2.state, "<") == false || __xml_starts(misc2.state, "</") ? __xml_error("XML document must contain one root element") : {
+                        let scope = map_set({}, "xml", __xml_xml_ns())
+                        let root = __xml_parse_element(misc2.state, scope)
+                        __xml_is_error(root) ? root : {
+                            let tail = __xml_parse_misc(root.state)
+                            __xml_is_error(tail) ? tail :
+                            __xml_eof(tail.state) == false ? __xml_error("XML document has content after the root element") :
+                            [root.value]
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+export let __xml_escape_text = text =>
+    replace(replace(replace(text, "&", "&amp;"), "<", "&lt;"), ">", "&gt;")
+
+export let __xml_escape_attr = text =>
+    replace(replace(replace(replace(replace(text, "&", "&amp;"), "<", "&lt;"), ">", "&gt;"), "\"", "&quot;"), "'", "&apos;")
+
+export let __xml_node_type = node =>
+    type_of(node) == "map" && map_has(node, "type") && type_of(node.type) == "string" ? node.type : ""
+
+export let __xml_is_element_node = node => __xml_node_type(node) == "element"
+
+export let __xml_render_namespaces_loop = (namespaces, ns_keys, i, acc) =>
+    i >= len(ns_keys) ? acc : {
+        let prefix = ns_keys[i]
+        let uri = namespaces[prefix]
+        type_of(uri) != "string" ? __xml_error("XML namespace URI must be string") :
+        prefix != "" && __xml_is_error(__xml_validate_qname(prefix)) ? __xml_validate_qname(prefix) :
+        __xml_render_namespaces_loop(namespaces, ns_keys, i + 1, acc + (
+            prefix == "" ?
+                " xmlns=\"" + __xml_escape_attr(uri) + "\"" :
+                " xmlns:" + prefix + "=\"" + __xml_escape_attr(uri) + "\""
+        ))
+    }
+
+export let __xml_render_namespaces = namespaces =>
+    type_of(namespaces) != "map" ? __xml_error("XML element namespaces must be a map") :
+    __xml_render_namespaces_loop(namespaces, keys(namespaces), 0, "")
+
+export let __xml_render_attrs_loop = (attrs, i, acc) =>
+    i >= len(attrs) ? acc : {
+        let attr = attrs[i]
+        type_of(attr) != "map" ? __xml_error("XML attributes must be maps") : {
+            let q = __xml_validate_qname(attr.name)
+            __xml_is_error(q) ? q :
+            attr.name == "xmlns" || starts_with(attr.name, "xmlns:") ? __xml_error("namespace declarations must be encoded via namespaces") :
+            __xml_render_attrs_loop(attrs, i + 1, acc + " " + attr.name + "=\"" + __xml_escape_attr(attr.value) + "\"")
+        }
+    }
+
+export let __xml_render_attrs = attrs =>
+    type_of(attrs) != "list" ? __xml_error("XML element attributes must be a list") :
+    __xml_render_attrs_loop(attrs, 0, "")
+
+export let __xml_render_node = node =>
+    __xml_node_type(node) == "text" ? __xml_escape_text(node.text) :
+    __xml_node_type(node) == "comment" ? (contains(node.text, "--") || ends_with(node.text, "-") ? __xml_error("XML comments must not contain '--' or end with '-'") : "<!--" + node.text + "-->") :
+    __xml_node_type(node) == "pi" ? (lower(node.target) == "xml" || contains(node.text, "?>") ? __xml_error("invalid processing instruction") : "<?" + node.target + (node.text == "" ? "" : " " + node.text) + "?>") :
+    __xml_node_type(node) == "element" ? __xml_render_element(node) :
+    __xml_error("unknown XML node type")
+
+export let __xml_render_children = (children, i, acc) =>
+    i >= len(children) ? acc : {
+        let rendered = __xml_render_node(children[i])
+        __xml_is_error(rendered) ? rendered : __xml_render_children(children, i + 1, acc + rendered)
+    }
+
+export let __xml_render_element = node => {
+    let q = __xml_validate_qname(node.name)
+    __xml_is_error(q) ? q : {
+        let attrs = __xml_render_attrs(node.attributes)
+        let ns = __xml_render_namespaces(node.namespaces)
+        __xml_is_error(attrs) ? attrs :
+        __xml_is_error(ns) ? ns :
+        type_of(node.children) != "list" ? __xml_error("XML element children must be a list") : {
+        let children = node.children
+        len(children) == 0 ? "<" + node.name + ns + attrs + "/>" : {
+            let rendered = __xml_render_children(children, 0, "")
+            __xml_is_error(rendered) ? rendered : "<" + node.name + ns + attrs + ">" + rendered + "</" + node.name + ">"
+        }
+        }
+    }
+}
+
+export let __xml_scalar_text = value =>
+    type_of(value) == "null" ? "" : to_string(value)
+
+export let __xml_render_plain_map = (value, ks, i, acc) =>
+    i >= len(ks) ? acc : {
+        let key = ks[i]
+        let q = __xml_validate_qname(key)
+        __xml_is_error(q) ? q : {
+            let rendered = __xml_render_plain(value[key])
+            __xml_is_error(rendered) ? rendered : __xml_render_plain_map(value, ks, i + 1, acc + "<" + key + ">" + rendered + "</" + key + ">")
+        }
+    }
+
+export let __xml_render_plain_list = (items, i, acc) =>
+    i >= len(items) ? acc : {
+        let rendered = __xml_render_plain(items[i])
+        __xml_is_error(rendered) ? rendered : __xml_render_plain_list(items, i + 1, acc + rendered)
+    }
+
+export let __xml_render_plain = value =>
+    type_of(value) == "map" ? __xml_render_plain_map(value, keys(value), 0, "") :
+    type_of(value) == "list" ? __xml_render_plain_list(value, 0, "") :
+    __xml_escape_text(__xml_scalar_text(value))
+
+export let __xml_option_string = (options, key, default) =>
+    type_of(options) == "map" && map_has(options, key) ? options[key] : default
+
+export let __xml_option_bool = (options, key, default) =>
+    type_of(options) == "map" && map_has(options, key) ? options[key] : default
+
+export let __xml_parser_all = (tokens, options) => {
+    let source = tokens.expect_kind(:source, "expected XML source")
+    __codec_is_error(source) ? source : __xml_parse_document(source.value)
+}
+
+export let __xml_encoder_all = (records, options) => {
+    let root_name = __xml_option_string(options, "root_name", "root")
+    let declaration = __xml_option_bool(options, "xml_declaration", false) ? "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" : ""
+    let body =
+        len(records) == 1 && __xml_is_element_node(records[0]) ? __xml_render_element(records[0]) :
+        {
+            let q = __xml_validate_qname(root_name)
+            __xml_is_error(q) ? q : "<" + root_name + ">" + join("", map(records, record => __xml_render_plain(record))) + "</" + root_name + ">"
+        }
+    __xml_is_error(body) ? body : declaration + body + "\n"
+}
+
+codec xml {
+    mode = :text
+    tokenizer = cursor => __xml_tokenizer(cursor)
+    parser_all = (tokens, options) => __xml_parser_all(tokens, options)
+    encoder = (record, options) => __xml_encoder_all([record], options)
+    encoder_all = (records, options) => __xml_encoder_all(records, options)
+}

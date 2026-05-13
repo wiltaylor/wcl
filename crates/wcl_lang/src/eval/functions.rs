@@ -145,6 +145,18 @@ pub fn builtin_signatures() -> Vec<FunctionSignature> {
             doc: "Substring".into(),
         },
         FunctionSignature {
+            name: "char_codepoint".into(),
+            params: vec!["s: string".into()],
+            return_type: "i64".into(),
+            doc: "Return the Unicode scalar value for a single-character string".into(),
+        },
+        FunctionSignature {
+            name: "char_from_codepoint".into(),
+            params: vec!["codepoint: i64".into()],
+            return_type: "string".into(),
+            doc: "Return the single-character string for a Unicode scalar value".into(),
+        },
+        FunctionSignature {
             name: "format".into(),
             params: vec!["fmt: string".into(), "...args".into()],
             return_type: "string".into(),
@@ -594,6 +606,11 @@ pub fn builtin_registry() -> HashMap<String, BuiltinFn> {
     m.insert("contains".into(), wrap_builtin(fn_contains));
     m.insert("length".into(), wrap_builtin(length));
     m.insert("substr".into(), wrap_builtin(substr));
+    m.insert("char_codepoint".into(), wrap_builtin(char_codepoint));
+    m.insert(
+        "char_from_codepoint".into(),
+        wrap_builtin(char_from_codepoint),
+    );
     m.insert("format".into(), wrap_builtin(fn_format));
     m.insert("regex_match".into(), wrap_builtin(regex_match));
     m.insert("regex_capture".into(), wrap_builtin(regex_capture));
@@ -1027,6 +1044,29 @@ fn substr(args: &[Value]) -> Result<Value, String> {
     let end = end.max(start);
 
     Ok(Value::String(chars[start..end].iter().collect()))
+}
+
+fn char_codepoint(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 1, "char_codepoint")?;
+    let s = get_string(&args[0], 1, "char_codepoint")?;
+    let mut chars = s.chars();
+    let Some(ch) = chars.next() else {
+        return Err("char_codepoint: expected a single-character string".into());
+    };
+    if chars.next().is_some() {
+        return Err("char_codepoint: expected a single-character string".into());
+    }
+    Ok(Value::Int(ch as u32 as i64))
+}
+
+fn char_from_codepoint(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 1, "char_from_codepoint")?;
+    let code = get_int(&args[0], 1, "char_from_codepoint")?;
+    let code = u32::try_from(code)
+        .map_err(|_| "char_from_codepoint: codepoint must be non-negative".to_string())?;
+    let ch = char::from_u32(code)
+        .ok_or_else(|| "char_from_codepoint: invalid Unicode scalar value".to_string())?;
+    Ok(Value::String(ch.to_string()))
 }
 
 /// `format(fmt, args...)` — replace `{}` placeholders positionally.
@@ -2299,6 +2339,25 @@ mod tests {
     }
 
     #[test]
+    fn test_char_codepoint() {
+        assert_eq!(char_codepoint(&[s("A")]).unwrap(), i(65));
+        assert_eq!(char_codepoint(&[s("é")]).unwrap(), i(233));
+        assert_eq!(char_codepoint(&[s("\u{10ffff}")]).unwrap(), i(0x10ffff));
+        assert!(char_codepoint(&[s("")]).is_err());
+        assert!(char_codepoint(&[s("ab")]).is_err());
+    }
+
+    #[test]
+    fn test_char_from_codepoint() {
+        assert_eq!(char_from_codepoint(&[i(65)]).unwrap(), s("A"));
+        assert_eq!(char_from_codepoint(&[i(233)]).unwrap(), s("é"));
+        assert_eq!(char_from_codepoint(&[i(0x10ffff)]).unwrap(), s("\u{10ffff}"));
+        assert!(char_from_codepoint(&[i(-1)]).is_err());
+        assert!(char_from_codepoint(&[i(0xd800)]).is_err());
+        assert!(char_from_codepoint(&[i(0x110000)]).is_err());
+    }
+
+    #[test]
     fn test_format() {
         assert_eq!(
             fn_format(&[s("Hello, {}!"), s("world")]).unwrap(),
@@ -2713,6 +2772,8 @@ mod tests {
             "contains",
             "length",
             "substr",
+            "char_codepoint",
+            "char_from_codepoint",
             "format",
             "regex_match",
             "regex_capture",

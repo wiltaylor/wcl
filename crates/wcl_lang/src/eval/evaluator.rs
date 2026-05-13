@@ -2258,6 +2258,18 @@ pub fn call_lambda_with_env(
     builtins: &HashMap<String, BuiltinFn>,
     helpers: &HashMap<String, FunctionValue>,
 ) -> Result<Value, String> {
+    call_lambda_with_env_and_max_depth(func, args, builtins, helpers, 64)
+}
+
+/// Call a `FunctionValue` with a custom recursion budget. This is used by
+/// WCL-authored codecs, which are often small recursive parsers.
+pub fn call_lambda_with_env_and_max_depth(
+    func: &FunctionValue,
+    args: &[Value],
+    builtins: &HashMap<String, BuiltinFn>,
+    helpers: &HashMap<String, FunctionValue>,
+    max_call_depth: usize,
+) -> Result<Value, String> {
     if args.len() != func.params.len() {
         return Err(format!(
             "expected {} arguments, got {}",
@@ -2276,6 +2288,7 @@ pub fn call_lambda_with_env(
         }
         FunctionBody::UserDefined(_) | FunctionBody::BlockExpr(_, _) => {
             let mut eval = Evaluator::new();
+            eval.max_call_depth = max_call_depth;
             // Register builtins so the lambda body can call other functions
             for (name, f) in builtins {
                 eval.register_function(name.clone(), f.clone());
@@ -2345,7 +2358,7 @@ fn decode_import_codec(
     options: &IndexMap<String, Value>,
 ) -> Result<Vec<Value>, crate::transform::TransformError> {
     match codec {
-        "json" | "yaml" | "toml" | "csv" | "hcl" => {
+        "json" | "yaml" | "toml" | "csv" | "hcl" | "xml" => {
             let registry = crate::transform::codec::custom::standard_registry()?;
             let custom = registry.get(codec).ok_or_else(|| {
                 crate::transform::TransformError::Codec(format!(
@@ -2357,7 +2370,6 @@ fn decode_import_codec(
                 bytes, custom, options,
             )
         }
-        "xml" => crate::transform::codec::xml::decode_xml_records(bytes),
         "msgpack" => crate::transform::codec::msgpack::decode_msgpack_records(bytes),
         "text" => {
             let separator = option_string(options, "separator", "\t")?;
