@@ -1,0 +1,26 @@
+---
+- name: Spec Example 2.5. Sequence of Sequences
+  from: http://www.yaml.org/spec/1.2/spec.html#id2760351
+  tags: spec sequence
+  yaml: |
+    - [name        , hr, avg  ]
+    - [Mark McGwire, 65, 0.278]
+    - [Sammy Sosa  , 63, 0.288]
+  json: |
+    [
+      [
+        "name",
+        "hr",
+        "avg"
+      ],
+      [
+        "Mark McGwire",
+        65,
+        0.278
+      ],
+      [
+        "Sammy Sosa",
+        63,
+        0.288
+      ]
+    ]

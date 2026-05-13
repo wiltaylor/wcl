@@ -2,7 +2,7 @@
 //!
 //! Custom codecs are hosted by Rust but implemented with WCL lambdas. The
 //! tokenizer receives a seekable source cursor and emits token maps. The parser
-//! receives a seekable token cursor and emits record maps.
+//! receives a seekable token cursor and emits WCL record values.
 
 use crate::eval::functions::BuiltinFn;
 use crate::eval::value::{BlockRef, FunctionBody, FunctionValue, LambdaAttrs, Value};
@@ -28,7 +28,8 @@ pub struct CustomCodec {
     pub name: String,
     pub mode: CustomCodecMode,
     pub tokenizer: FunctionValue,
-    pub parser: FunctionValue,
+    pub parser: Option<FunctionValue>,
+    pub parser_all: Option<FunctionValue>,
     pub encoder: FunctionValue,
     pub encoder_all: Option<FunctionValue>,
     pub helpers: HashMap<String, FunctionValue>,
@@ -161,15 +162,23 @@ pub fn custom_codec_from_block(
         None => CustomCodecMode::Text,
     };
 
-    Ok(CustomCodec {
+    let codec = CustomCodec {
         name: name.to_string(),
         mode,
         tokenizer: required_function(name, block, "tokenizer")?,
-        parser: required_function(name, block, "parser")?,
+        parser: optional_function(name, block, "parser")?,
+        parser_all: optional_function(name, block, "parser_all")?,
         encoder: required_function(name, block, "encoder")?,
         encoder_all: optional_function(name, block, "encoder_all")?,
         helpers,
-    })
+    };
+    if codec.parser.is_none() && codec.parser_all.is_none() {
+        return Err(TransformError::Codec(format!(
+            "codec '{}' missing required 'parser' or 'parser_all'",
+            name
+        )));
+    }
+    Ok(codec)
 }
 
 fn required_function(
@@ -318,7 +327,7 @@ fn tokenize(data: &[u8], codec: &CustomCodec) -> Result<Vec<Value>, TransformErr
                 break;
             }
             Value::Map(map) => {
-                if let Some(message) = error_message(&map) {
+                if let Some(message) = codec_error_message(&map) {
                     return Err(TransformError::Codec(format!(
                         "custom codec '{}' tokenizer error at byte {}: {}",
                         codec.name, before, message
@@ -350,11 +359,54 @@ fn tokenize(data: &[u8], codec: &CustomCodec) -> Result<Vec<Value>, TransformErr
 fn parse_records(tokens: Vec<Value>, codec: &CustomCodec) -> Result<Vec<Value>, TransformError> {
     let token_cursor = Arc::new(Mutex::new(TokenCursor::new(tokens)));
     let (cursor, builtins) = token_cursor_runtime(token_cursor.clone());
+
+    if let Some(parser_all) = &codec.parser_all {
+        let value = call_codec_lambda(codec, parser_all, &[cursor], builtins)?;
+        if let Value::Map(map) = &value {
+            if let Some(message) = codec_error_message(map) {
+                return Err(TransformError::Codec(format!(
+                    "custom codec '{}' parser_all error at token 0: {}",
+                    codec.name, message
+                )));
+            }
+        }
+        if !token_cursor.lock().unwrap().eof() {
+            return Err(TransformError::Codec(format!(
+                "custom codec '{}' parser_all did not consume all tokens",
+                codec.name
+            )));
+        }
+        let Value::List(records) = value else {
+            return Err(TransformError::Codec(format!(
+                "custom codec '{}' parser_all must return a list of records, got {}",
+                codec.name,
+                value.type_name()
+            )));
+        };
+        for record in &records {
+            if let Value::Map(map) = record {
+                if let Some(message) = codec_error_message(map) {
+                    return Err(TransformError::Codec(format!(
+                        "custom codec '{}' parser_all record error: {}",
+                        codec.name, message
+                    )));
+                }
+            }
+        }
+        return Ok(records);
+    }
+
+    let parser = codec.parser.as_ref().ok_or_else(|| {
+        TransformError::Codec(format!(
+            "custom codec '{}' missing required 'parser'",
+            codec.name
+        ))
+    })?;
     let mut records = Vec::new();
 
     loop {
         let before = token_cursor.lock().unwrap().pos;
-        let value = call_codec_lambda(codec, &codec.parser, &[cursor.clone()], builtins.clone())?;
+        let value = call_codec_lambda(codec, parser, &[cursor.clone()], builtins.clone())?;
         match value {
             Value::Null => {
                 if !token_cursor.lock().unwrap().eof() {
@@ -366,7 +418,7 @@ fn parse_records(tokens: Vec<Value>, codec: &CustomCodec) -> Result<Vec<Value>, 
                 break;
             }
             Value::Map(map) => {
-                if let Some(message) = error_message(&map) {
+                if let Some(message) = codec_error_message(&map) {
                     return Err(TransformError::Codec(format!(
                         "custom codec '{}' parser error at token {}: {}",
                         codec.name, before, message
@@ -382,11 +434,14 @@ fn parse_records(tokens: Vec<Value>, codec: &CustomCodec) -> Result<Vec<Value>, 
                 records.push(Value::Map(map));
             }
             other => {
-                return Err(TransformError::Codec(format!(
-                    "custom codec '{}' parser must return record map or null, got {}",
-                    codec.name,
-                    other.type_name()
-                )));
+                let after = token_cursor.lock().unwrap().pos;
+                if after == before {
+                    return Err(TransformError::Codec(format!(
+                        "custom codec '{}' parser did not advance at token {}",
+                        codec.name, before
+                    )));
+                }
+                records.push(other);
             }
         }
     }
@@ -452,9 +507,10 @@ fn validate_token(name: &str, map: &IndexMap<String, Value>) -> Result<(), Trans
     Ok(())
 }
 
-fn error_message(map: &IndexMap<String, Value>) -> Option<String> {
-    match map.get("error") {
-        Some(Value::String(s)) => Some(s.clone()),
+fn codec_error_message(map: &IndexMap<String, Value>) -> Option<String> {
+    match (map.get("__wcl_codec_error"), map.get("message")) {
+        (Some(Value::Bool(true)), Some(Value::String(s))) => Some(s.clone()),
+        (Some(Value::Bool(true)), _) => Some("codec error".into()),
         _ => None,
     }
 }
@@ -837,5 +893,136 @@ fn tokens_slice_value(tokens: &[Value], pos: usize, n: usize) -> Value {
         slice.into_iter().next().unwrap_or(Value::Null)
     } else {
         Value::List(slice)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn decode_with(
+        source: &str,
+        input: &str,
+        codec_name: &str,
+    ) -> Result<Vec<Value>, TransformError> {
+        let registry = registry_from_source(source, false)?;
+        let codec = registry.get(codec_name).expect("codec registered");
+        decode_custom_records(input.as_bytes(), codec)
+    }
+
+    #[test]
+    fn parser_can_return_scalar_records() {
+        let source = r#"
+codec chars {
+    mode = :text
+    tokenizer = cursor => cursor.eof() ? null : {
+        let start = cursor.pos()
+        let ch = cursor.take(1)
+        { kind = :char, text = ch, start = start, end = cursor.pos(), value = ch }
+    }
+    parser = tokens => tokens.eof() ? null : {
+        let token = tokens.take(1)
+        token.value
+    }
+    encoder = record => record
+}
+"#;
+
+        let records = decode_with(source, "ab", "chars").unwrap();
+        assert_eq!(
+            records,
+            vec![Value::String("a".into()), Value::String("b".into())]
+        );
+    }
+
+    #[test]
+    fn parser_all_parses_full_stream_once() {
+        let source = r#"
+codec pairs {
+    mode = :text
+    tokenizer = cursor => cursor.eof() ? null : {
+        let start = cursor.pos()
+        let ch = cursor.take(1)
+        { kind = :char, text = ch, start = start, end = cursor.pos(), value = ch }
+    }
+    parser_all = tokens => {
+        let first = tokens.take(1)
+        let second = tokens.take(1)
+        [first.value + second.value]
+    }
+    encoder = record => record
+}
+"#;
+
+        let records = decode_with(source, "ab", "pairs").unwrap();
+        assert_eq!(records, vec![Value::String("ab".into())]);
+    }
+
+    #[test]
+    fn parser_all_must_consume_all_tokens() {
+        let source = r#"
+codec incomplete {
+    mode = :text
+    tokenizer = cursor => cursor.eof() ? null : {
+        let start = cursor.pos()
+        let ch = cursor.take(1)
+        { kind = :char, text = ch, start = start, end = cursor.pos(), value = ch }
+    }
+    parser_all = tokens => []
+    encoder = record => record
+}
+"#;
+
+        let err = decode_with(source, "x", "incomplete").unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("parser_all did not consume all tokens"));
+    }
+
+    #[test]
+    fn error_key_is_valid_record_data() {
+        let source = r#"
+codec keyed {
+    mode = :text
+    tokenizer = cursor => cursor.eof() ? null : {
+        let start = cursor.pos()
+        let ch = cursor.take(1)
+        { kind = :char, text = ch, start = start, end = cursor.pos(), value = ch }
+    }
+    parser = tokens => tokens.eof() ? null : {
+        let token = tokens.take(1)
+        { error = token.value }
+    }
+    encoder = record => record.error
+}
+"#;
+
+        let records = decode_with(source, "x", "keyed").unwrap();
+        let Value::Map(map) = &records[0] else {
+            panic!("expected map");
+        };
+        assert_eq!(map.get("error"), Some(&Value::String("x".into())));
+    }
+
+    #[test]
+    fn reserved_codec_error_shape_fails_parser() {
+        let source = r#"
+codec failing {
+    mode = :text
+    tokenizer = cursor => cursor.eof() ? null : {
+        let start = cursor.pos()
+        let ch = cursor.take(1)
+        { kind = :char, text = ch, start = start, end = cursor.pos(), value = ch }
+    }
+    parser = tokens => tokens.eof() ? null : {
+        let _token = tokens.take(1)
+        { __wcl_codec_error = true message = "boom" }
+    }
+    encoder = record => ""
+}
+"#;
+
+        let err = decode_with(source, "x", "failing").unwrap_err();
+        assert!(err.to_string().contains("boom"));
     }
 }

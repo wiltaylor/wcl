@@ -1,0 +1,16 @@
+{
+  "upstream_commit": "da267a5c4782e7361e82889e76c0dc7df0e1e870",
+  "cases": [
+    { "id": "229Q", "classification": "pass", "reason": "block sequence of mappings" },
+    { "id": "YD5X", "classification": "pass", "reason": "flow sequences nested in a block sequence" },
+    { "id": "ZF4X", "classification": "pass", "reason": "block mapping containing flow mappings" },
+    { "id": "4GC6", "classification": "pass", "reason": "single quoted scalar" },
+    { "id": "4WA9", "classification": "pass", "reason": "literal block scalars" },
+    { "id": "J9HZ", "classification": "pass", "reason": "comments and document marker" },
+    { "id": "3GZX", "classification": "pass", "reason": "anchors and aliases" },
+    { "id": "33X3", "classification": "pass", "reason": "explicit integer tags" },
+    { "id": "CQ3W", "classification": "error", "reason": "unterminated double quoted scalar" },
+    { "id": "236B", "classification": "error", "reason": "invalid value after mapping" },
+    { "id": "W4TN", "classification": "skip", "reason": "multi-document streams are required for the WCL YAML codec gate but are not implemented by the current Rust serde_yaml_ng path" }
+  ]
+}

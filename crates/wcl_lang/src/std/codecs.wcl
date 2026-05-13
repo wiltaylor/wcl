@@ -1,9 +1,13 @@
 // Standard transform codecs implemented in WCL.
 
-export let __json_error = message => { error = message }
+export let __codec_error = message => { __wcl_codec_error = true message = message }
 
-export let __json_is_error = value =>
-    type_of(value) == "map" ? map_has(value, "error") : false
+export let __codec_is_error = value =>
+    type_of(value) == "map" ? (map_has(value, "__wcl_codec_error") ? value.__wcl_codec_error == true : false) : false
+
+export let __json_error = message => __codec_error(message)
+
+export let __json_is_error = value => __codec_is_error(value)
 
 export let __json_is_ws = ch =>
     ch == " " || ch == "\n" || ch == "\r" || ch == "\t"
