@@ -268,3 +268,370 @@ codec json {
     encoder = (record, options) => __json_render_with_options(record, options)
     encoder_all = (records, options) => __json_render_with_options(records, options) + "\n"
 }
+
+export let __yaml_tokenizer = cursor =>
+    cursor.eof() ? null : {
+        let start = cursor.pos()
+        let text = cursor.take(cursor.len())
+        { kind = :source, text = text, start = start, end = cursor.pos(), value = text }
+    }
+
+export let __yaml_lines = source =>
+    split("\n", replace(replace(source, "\r\n", "\n"), "\r", "\n"))
+
+export let __yaml_is_error = value => __codec_is_error(value)
+
+export let __yaml_line_indent = line => {
+    let cap = regex_capture(line, "^( *)")
+    length(cap[0])
+}
+
+export let __yaml_strip_comment = line =>
+    starts_with(trim(line), "#") ? "" : regex_replace(line, "\\s+#.*$", "")
+
+export let __yaml_is_ignored = line => {
+    let stripped = trim(line)
+    stripped == "" || starts_with(stripped, "#") || starts_with(stripped, "%")
+}
+
+export let __yaml_skip_ignored = (lines, i) =>
+    i >= len(lines) ? i :
+    __yaml_is_ignored(lines[i]) ? __yaml_skip_ignored(lines, i + 1) :
+    i
+
+export let __yaml_doc_line = (line, marker) => {
+    let stripped = trim(line)
+    stripped == marker || starts_with(stripped, marker + " ")
+}
+
+export let __yaml_marker_rest = (line, marker) => {
+    let stripped = trim(line)
+    trim(substr(stripped, length(marker)))
+}
+
+export let __yaml_append_doc = (docs, current) =>
+    len(current) == 0 ? docs : concat(docs, [current])
+
+export let __yaml_split_docs_loop = (lines, i, current, docs) =>
+    i >= len(lines) ? __yaml_append_doc(docs, current) : {
+        let line = lines[i]
+        __yaml_doc_line(line, "---") ? {
+            let docs2 = __yaml_append_doc(docs, current)
+            let rest = __yaml_marker_rest(line, "---")
+            let current2 = rest == "" ? [] : [rest]
+            __yaml_split_docs_loop(lines, i + 1, current2, docs2)
+        } :
+        __yaml_doc_line(line, "...") ? {
+            let docs2 = __yaml_append_doc(docs, current)
+            __yaml_split_docs_loop(lines, i + 1, [], docs2)
+        } :
+        trim(line) == "" && len(current) == 0 ? __yaml_split_docs_loop(lines, i + 1, current, docs) :
+        starts_with(trim(line), "%") && len(current) == 0 ? __yaml_split_docs_loop(lines, i + 1, current, docs) :
+        __yaml_split_docs_loop(lines, i + 1, concat(current, [line]), docs)
+    }
+
+export let __yaml_split_docs = source =>
+    __yaml_split_docs_loop(__yaml_lines(source), 0, [], [])
+
+export let __yaml_result = (value, next, anchors) => { value = value next = next anchors = anchors }
+
+export let __yaml_unquote_single = text =>
+    replace(substr(text, 1, length(text) - 1), "''", "'")
+
+export let __yaml_unquote_double = text => {
+    let inner = substr(text, 1, length(text) - 1)
+    let s1 = replace(inner, "\\\"", "\"")
+    let s2 = replace(s1, "\\n", "\n")
+    let s3 = replace(s2, "\\t", "\t")
+    replace(s3, "\\\\", "\\")
+}
+
+export let __yaml_core_scalar = text => {
+    let t = trim(text)
+    t == "" || t == "~" || lower(t) == "null" ? null :
+    lower(t) == "true" ? true :
+    lower(t) == "false" ? false :
+    regex_match(t, "^[+-]?[0-9]+$") ? to_int(t) :
+    regex_match(t, "^[+-]?([0-9]+\\.[0-9]*|[0-9]*\\.[0-9]+)([eE][+-]?[0-9]+)?$") ? to_float(t) :
+    regex_match(t, "^[+-]?[0-9]+[eE][+-]?[0-9]+$") ? to_float(t) :
+    t
+}
+
+export let __yaml_parse_scalar = (text, anchors) => {
+    let t0 = trim(text)
+    let t = starts_with(t0, "!!int ") ? trim(substr(t0, 6)) : t0
+    starts_with(t, "&") ? {
+        let cap = regex_capture(t, "^&([^ ]+) +(.*)$")
+        len(cap) == 2 ? {
+            let parsed = __yaml_parse_scalar(cap[1], anchors)
+            __yaml_is_error(parsed) ? parsed :
+            { value = parsed.value anchors = map_set(parsed.anchors, cap[0], parsed.value) }
+        } : __codec_error("invalid anchor")
+    } :
+    starts_with(t, "*") ? {
+        let name = substr(t, 1)
+        map_has(anchors, name) ? { value = anchors[name] anchors = anchors } : __codec_error("unidentified alias: " + name)
+    } :
+    starts_with(t, "\"") && !ends_with(t, "\"") ? __codec_error("unterminated double quoted scalar") :
+    starts_with(t, "'") && !ends_with(t, "'") ? __codec_error("unterminated single quoted scalar") :
+    starts_with(t, "'") && ends_with(t, "'") ? { value = __yaml_unquote_single(t) anchors = anchors } :
+    starts_with(t, "\"") && ends_with(t, "\"") ? { value = __yaml_unquote_double(t) anchors = anchors } :
+    starts_with(t, "[") && ends_with(t, "]") ? __yaml_parse_flow_seq(substr(t, 1, length(t) - 1), anchors) :
+    starts_with(t, "{") && ends_with(t, "}") ? __yaml_parse_flow_map(substr(t, 1, length(t) - 1), anchors) :
+    { value = __yaml_core_scalar(t) anchors = anchors }
+}
+
+export let __yaml_parse_flow_seq_items = (items, i, acc, anchors) =>
+    i >= len(items) ? { value = acc anchors = anchors } : {
+        let item = trim(items[i])
+        item == "" ? __yaml_parse_flow_seq_items(items, i + 1, acc, anchors) : {
+            let parsed = __yaml_parse_scalar(item, anchors)
+            __yaml_is_error(parsed) ? parsed :
+            __yaml_parse_flow_seq_items(items, i + 1, concat(acc, [parsed.value]), parsed.anchors)
+        }
+    }
+
+export let __yaml_parse_flow_seq = (inner, anchors) =>
+    trim(inner) == "" ? { value = [] anchors = anchors } :
+    __yaml_parse_flow_seq_items(split(",", inner), 0, [], anchors)
+
+export let __yaml_flow_pair = item => regex_capture(item, "^([^:]+):(.*)$")
+
+export let __yaml_parse_flow_map_items = (items, i, acc, anchors) =>
+    i >= len(items) ? { value = acc anchors = anchors } : {
+        let item = trim(items[i])
+        item == "" ? __yaml_parse_flow_map_items(items, i + 1, acc, anchors) : {
+            let pair = __yaml_flow_pair(item)
+            len(pair) != 2 ? __codec_error("expected ':' in flow mapping") : {
+                let key = trim(pair[0])
+                map_has(acc, key) ? __codec_error("duplicate mapping key: " + key) : {
+                    let parsed = __yaml_parse_scalar(pair[1], anchors)
+                    __yaml_is_error(parsed) ? parsed :
+                    __yaml_parse_flow_map_items(items, i + 1, map_set(acc, key, parsed.value), parsed.anchors)
+                }
+            }
+        }
+    }
+
+export let __yaml_parse_flow_map = (inner, anchors) =>
+    trim(inner) == "" ? { value = {} anchors = anchors } :
+    __yaml_parse_flow_map_items(split(",", inner), 0, {}, anchors)
+
+export let __yaml_collect_block = (lines, i, indent, acc) =>
+    i >= len(lines) ? { text = acc next = i } : {
+        let line = lines[i]
+        trim(line) == "" && i + 1 >= len(lines) ? { text = acc next = i + 1 } :
+        trim(line) == "" ? __yaml_collect_block(lines, i + 1, indent, acc + "\n") :
+        __yaml_line_indent(line) < indent ? { text = acc next = i } :
+        __yaml_collect_block(lines, i + 1, indent, acc + substr(line, indent) + "\n")
+    }
+
+export let __yaml_fold_lines = text =>
+    replace(replace(text, "\n\n", "__WCL_YAML_BLANK_LINE__"), "\n", " ")
+
+export let __yaml_block_value = (style, block) =>
+    starts_with(style, ">") ? replace(__yaml_fold_lines(block.text), "__WCL_YAML_BLANK_LINE__", "\n") : block.text
+
+export let __yaml_collect_flow = (lines, i, acc) =>
+    i >= len(lines) ? __codec_error("unterminated flow collection") : {
+        let part = trim(__yaml_strip_comment(lines[i]))
+        let acc2 = acc + " " + part
+        contains(part, "}") || contains(part, "]") ? { text = acc2 next = i + 1 } :
+        __yaml_collect_flow(lines, i + 1, acc2)
+    }
+
+export let __yaml_parse_node = (lines, i, indent, anchors) => {
+    let j = __yaml_skip_ignored(lines, i)
+    j >= len(lines) ? __yaml_result(null, j, anchors) : {
+        let line = lines[j]
+        let clean = __yaml_strip_comment(line)
+        let actual = __yaml_line_indent(line)
+        actual < indent ? __yaml_result(null, j, anchors) :
+        starts_with(trim(clean), "|") || starts_with(trim(clean), ">") ? {
+            let block = __yaml_collect_block(lines, j + 1, 0, "")
+            __yaml_result(__yaml_block_value(trim(clean), block), block.next, anchors)
+        } :
+        starts_with(substr(line, actual), "-") ? __yaml_parse_seq(lines, j, actual, [], anchors) :
+        contains(clean, ":") ? __yaml_parse_map(lines, j, actual, {}, anchors) : {
+            let parsed = __yaml_parse_scalar(clean, anchors)
+            __yaml_is_error(parsed) ? parsed : __yaml_result(parsed.value, j + 1, parsed.anchors)
+        }
+    }
+}
+
+export let __yaml_parse_map = (lines, i, indent, acc, anchors) => {
+    let j = __yaml_skip_ignored(lines, i)
+    j >= len(lines) ? __yaml_result(acc, j, anchors) : {
+        let line = lines[j]
+        let clean = __yaml_strip_comment(line)
+        let actual = __yaml_line_indent(line)
+        actual < indent ? __yaml_result(acc, j, anchors) :
+        actual != indent ? __yaml_result(acc, j, anchors) : {
+            let pair = regex_capture(substr(clean, indent), "^([^:]+):(.*)$")
+            len(pair) != 2 ? __yaml_result(acc, j, anchors) : {
+                let key = trim(pair[0])
+                let rest = trim(pair[1])
+                map_has(acc, key) ? __codec_error("duplicate mapping key: " + key) :
+                rest == "" ? {
+                    let child = __yaml_parse_node(lines, j + 1, indent + 2, anchors)
+                    __yaml_is_error(child) ? child :
+                    __yaml_parse_map(lines, child.next, indent, map_set(acc, key, child.value), child.anchors)
+                } :
+                starts_with(rest, "|") || starts_with(rest, ">") ? {
+                    let block = __yaml_collect_block(lines, j + 1, indent + 2, "")
+                    __yaml_parse_map(lines, block.next, indent, map_set(acc, key, __yaml_block_value(rest, block)), anchors)
+                } :
+                (starts_with(rest, "{") && !ends_with(rest, "}")) || (starts_with(rest, "[") && !ends_with(rest, "]")) ? {
+                    let flow = __yaml_collect_flow(lines, j + 1, rest)
+                    __yaml_is_error(flow) ? flow : {
+                        let parsed = __yaml_parse_scalar(flow.text, anchors)
+                        __yaml_is_error(parsed) ? parsed :
+                        __yaml_parse_map(lines, flow.next, indent, map_set(acc, key, parsed.value), parsed.anchors)
+                    }
+                } : {
+                    let parsed = __yaml_parse_scalar(rest, anchors)
+                    __yaml_is_error(parsed) ? parsed :
+                    __yaml_parse_map(lines, j + 1, indent, map_set(acc, key, parsed.value), parsed.anchors)
+                }
+            }
+        }
+    }
+}
+
+export let __yaml_parse_seq_inline_map = (rest, lines, j, indent, anchors) => {
+    let pair = regex_capture(rest, "^([^:]+):(.*)$")
+    len(pair) != 2 ? __codec_error("expected sequence mapping") : {
+        let key = trim(pair[0])
+        let value_text = trim(pair[1])
+        value_text == "" ? {
+            let child = __yaml_parse_node(lines, j + 1, indent + 2, anchors)
+            __yaml_is_error(child) ? child :
+            __yaml_result(map_set({}, key, child.value), child.next, child.anchors)
+        } :
+        starts_with(value_text, "|") || starts_with(value_text, ">") ? {
+            let block_indent = contains(value_text, "2") ? indent + 4 : indent + 2
+            let block = __yaml_collect_block(lines, j + 1, block_indent, "")
+            let first = map_set({}, key, __yaml_block_value(value_text, block))
+            let more = __yaml_parse_map(lines, block.next, indent + 2, first, anchors)
+            __yaml_is_error(more) ? more : __yaml_result(more.value, more.next, more.anchors)
+        } : {
+            let parsed = __yaml_parse_scalar(value_text, anchors)
+            __yaml_is_error(parsed) ? parsed : {
+                let first = map_set({}, key, parsed.value)
+                let more = __yaml_parse_map(lines, j + 1, indent + 2, first, parsed.anchors)
+                __yaml_is_error(more) ? more : __yaml_result(more.value, more.next, more.anchors)
+            }
+        }
+    }
+}
+
+export let __yaml_parse_seq = (lines, i, indent, acc, anchors) => {
+    let j = __yaml_skip_ignored(lines, i)
+    j >= len(lines) ? __yaml_result(acc, j, anchors) : {
+        let line = lines[j]
+        let actual = __yaml_line_indent(line)
+        actual < indent ? __yaml_result(acc, j, anchors) :
+        actual != indent ? __yaml_result(acc, j, anchors) : {
+            let stripped = substr(line, indent)
+            !starts_with(stripped, "-") ? __yaml_result(acc, j, anchors) : {
+                let rest = trim(substr(stripped, 1))
+                rest == "" ? {
+                    let child = __yaml_parse_node(lines, j + 1, indent + 2, anchors)
+                    __yaml_is_error(child) ? child :
+                    __yaml_parse_seq(lines, child.next, indent, concat(acc, [child.value]), child.anchors)
+                } :
+                contains(rest, ":") && !starts_with(rest, "\"") && !starts_with(rest, "'") && !starts_with(rest, "{") ? {
+                    let item = __yaml_parse_seq_inline_map(rest, lines, j, indent, anchors)
+                    __yaml_is_error(item) ? item :
+                    __yaml_parse_seq(lines, item.next, indent, concat(acc, [item.value]), item.anchors)
+                } :
+                starts_with(rest, "|") || starts_with(rest, ">") ? {
+                    let block = __yaml_collect_block(lines, j + 1, indent + 2, "")
+                    __yaml_parse_seq(lines, block.next, indent, concat(acc, [__yaml_block_value(rest, block)]), anchors)
+                } : {
+                    let parsed = __yaml_parse_scalar(__yaml_strip_comment(rest), anchors)
+                    __yaml_is_error(parsed) ? parsed :
+                    __yaml_parse_seq(lines, j + 1, indent, concat(acc, [parsed.value]), parsed.anchors)
+                }
+            }
+        }
+    }
+}
+
+export let __yaml_parse_doc = lines => {
+    let parsed = __yaml_parse_node(lines, 0, 0, {})
+    __yaml_is_error(parsed) ? parsed : {
+        let next = __yaml_skip_ignored(lines, parsed.next)
+        next >= len(lines) ? parsed.value : __codec_error("unexpected content after YAML document")
+    }
+}
+
+export let __yaml_records_from_doc = value =>
+    type_of(value) == "list" ? value : [value]
+
+export let __yaml_parse_docs = (docs, i, acc) =>
+    i >= len(docs) ? acc : {
+        let value = __yaml_parse_doc(docs[i])
+        __yaml_is_error(value) ? value :
+        __yaml_parse_docs(docs, i + 1, concat(acc, __yaml_records_from_doc(value)))
+    }
+
+export let __yaml_parser_all = tokens => {
+    let source = tokens.expect_kind(:source, "expected YAML source")
+    __yaml_is_error(source) ? source :
+    __yaml_parse_docs(__yaml_split_docs(source.value), 0, [])
+}
+
+export let __yaml_needs_quote = s =>
+    s == "" || contains(s, ":") || starts_with(s, "-") || starts_with(s, "#") || starts_with(s, "{") || starts_with(s, "[") || contains(s, "\n")
+
+export let __yaml_quote = s => "\"" + replace(replace(replace(s, "\\", "\\\\"), "\"", "\\\""), "\n", "\\n") + "\""
+
+export let __yaml_scalar_render = value =>
+    type_of(value) == "null" ? "null" :
+    type_of(value) == "bool" ? to_string(value) :
+    type_of(value) == "int" ? to_string(value) :
+    type_of(value) == "bigint" ? to_string(value) :
+    type_of(value) == "float" ? to_string(value) :
+    type_of(value) == "symbol" ? __yaml_quote(substr(to_string(value), 1)) :
+    type_of(value) == "identifier" ? __yaml_quote(to_string(value)) :
+    type_of(value) == "string" ? (__yaml_needs_quote(value) ? __yaml_quote(value) : value) :
+    "null"
+
+export let __yaml_indent = level =>
+    level <= 0 ? "" : "  " + __yaml_indent(level - 1)
+
+export let __yaml_render = (value, level) =>
+    type_of(value) == "list" ? __yaml_render_list(value, level) :
+    type_of(value) == "map" ? __yaml_render_map(value, level) :
+    __yaml_scalar_render(value)
+
+export let __yaml_render_list = (value, level) =>
+    len(value) == 0 ? "[]" :
+    join("\n", map(value, item =>
+        type_of(item) == "map" || type_of(item) == "list" ?
+            __yaml_indent(level) + "-\n" + __yaml_indent_block(__yaml_render(item, level + 1), level + 1) :
+            __yaml_indent(level) + "- " + __yaml_render(item, level + 1)
+    ))
+
+export let __yaml_render_map = (value, level) =>
+    len(keys(value)) == 0 ? "{}" :
+    join("\n", map(keys(value), key =>
+        type_of(value[key]) == "map" || type_of(value[key]) == "list" ?
+            __yaml_indent(level) + key + ":\n" + __yaml_indent_block(__yaml_render(value[key], level + 1), level + 1) :
+            __yaml_indent(level) + key + ": " + __yaml_render(value[key], level + 1)
+    ))
+
+export let __yaml_indent_block = (text, level) =>
+    join("\n", map(split("\n", text), line => __yaml_indent(level) + line))
+
+export let __yaml_encoder_all = records =>
+    __yaml_render(records, 0) + "\n"
+
+codec yaml {
+    mode = :text
+    tokenizer = cursor => __yaml_tokenizer(cursor)
+    parser_all = tokens => __yaml_parser_all(tokens)
+    encoder = record => __yaml_render(record, 0) + "\n"
+    encoder_all = records => __yaml_encoder_all(records)
+}

@@ -1419,6 +1419,45 @@ transform json-copy {
 }
 
 #[test]
+fn transform_yaml_codec_uses_standard_wcl_codec() {
+    let dir = tempdir().expect("tempdir");
+    let transform = dir.path().join("yaml.wcl");
+    let input = dir.path().join("input.yaml");
+
+    std::fs::write(
+        &input,
+        "- name: Alice\n  active: true\n- name: Bob\n  active: false\n",
+    )
+    .expect("write input");
+    std::fs::write(
+        &transform,
+        r#"
+transform yaml-copy {
+    input = "codec::yaml"
+    output = "codec::yaml"
+
+    map {
+        name = in.name
+        active = in.active
+    }
+}
+"#,
+    )
+    .expect("write transform");
+
+    let stdout = run_transform_stdout(&transform, "yaml-copy", &input);
+    let yaml: serde_yaml_ng::Value = serde_yaml_ng::from_str(&stdout).expect("valid yaml output");
+    let json = serde_json::to_value(yaml).expect("yaml to json");
+    assert_eq!(
+        json,
+        serde_json::json!([
+            {"name": "Alice", "active": true},
+            {"name": "Bob", "active": false}
+        ])
+    );
+}
+
+#[test]
 fn transform_imported_codecs_library_does_not_duplicate_json() {
     let dir = tempdir().expect("tempdir");
     let lib_dir = dir.path().join("lib");

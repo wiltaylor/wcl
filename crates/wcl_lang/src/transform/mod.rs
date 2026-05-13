@@ -81,7 +81,6 @@ pub fn execute_with_custom(
         codec::custom::decode_custom_records(input_reader, custom)?
     } else {
         match input_codec {
-            "yaml" => codec::yaml::decode_yaml_records(input_reader)?,
             "csv" => codec::csv_codec::decode_csv_records(input_reader, true, b',')?,
             "toml" => codec::toml_codec::decode_toml_records(input_reader)?,
             "hcl" => codec::hcl_codec::decode_hcl_records(input_reader)?,
@@ -137,7 +136,6 @@ pub fn execute_with_custom(
         codec::custom::encode_custom_records(&transformed, custom, output_options, output_writer)?;
     } else {
         match output_codec {
-            "yaml" => codec::yaml::encode_yaml_records(&transformed, output_writer, pretty)?,
             "csv" => codec::csv_codec::encode_csv_records(&transformed, output_writer, b',')?,
             "toml" => codec::toml_codec::encode_toml_records(&transformed, output_writer, pretty)?,
             "hcl" => codec::hcl_codec::encode_hcl_records(&transformed, output_writer)?,

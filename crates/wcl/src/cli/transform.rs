@@ -229,7 +229,7 @@ fn build_custom_codec_registry(
             ));
         };
 
-        if codec_name == "json" && is_standard_codecs_source(doc, block.span.file) {
+        if is_standard_codecs_source(doc, block.span.file) {
             continue;
         }
 

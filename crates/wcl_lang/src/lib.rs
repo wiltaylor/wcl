@@ -2148,6 +2148,53 @@ rows = import_codec("data.json", "json", {})
     }
 
     #[test]
+    fn test_import_codec_yaml_uses_standard_wcl_codec() {
+        std::thread::Builder::new()
+            .name("import-codec-yaml".into())
+            .stack_size(64 * 1024 * 1024)
+            .spawn(|| {
+                use std::sync::Arc;
+
+                let mut fs = InMemoryFs::new();
+                fs.add_file(
+                    std::path::PathBuf::from("/project/data.yaml"),
+                    "- name: alice\n  active: true\n- name: bob\n  active: false\n",
+                );
+
+                let mut opts = ParseOptions::default();
+                opts.root_dir = std::path::PathBuf::from("/project");
+                opts.fs = Some(Arc::new(fs));
+
+                let doc = parse(
+                    r#"
+rows = import_codec("data.yaml", "yaml", {})
+            "#,
+                    opts,
+                );
+                let messages: Vec<_> = doc.diagnostics.iter().map(|d| d.message.as_str()).collect();
+                assert!(
+                    doc.diagnostics.is_empty(),
+                    "expected no errors, got: {:?}",
+                    messages
+                );
+
+                let rows = doc.values.get("rows").expect("rows value");
+                let Value::List(items) = rows else {
+                    panic!("expected rows list, got {:?}", rows);
+                };
+                assert_eq!(items.len(), 2);
+                let Value::Map(row) = &items[0] else {
+                    panic!("expected row map");
+                };
+                assert_eq!(row.get("name"), Some(&Value::String("alice".into())));
+                assert_eq!(row.get("active"), Some(&Value::Bool(true)));
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
+    #[test]
     fn test_import_codec_accepts_codec_namespace_prefix() {
         use std::sync::Arc;
 

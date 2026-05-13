@@ -2342,16 +2342,16 @@ fn decode_import_codec(
     options: &IndexMap<String, Value>,
 ) -> Result<Vec<Value>, crate::transform::TransformError> {
     match codec {
-        "json" => {
+        "json" | "yaml" => {
             let registry = crate::transform::codec::custom::standard_registry()?;
-            let json = registry.get("json").ok_or_else(|| {
-                crate::transform::TransformError::Codec(
-                    "standard json codec is not registered".into(),
-                )
+            let custom = registry.get(codec).ok_or_else(|| {
+                crate::transform::TransformError::Codec(format!(
+                    "standard {} codec is not registered",
+                    codec
+                ))
             })?;
-            crate::transform::codec::custom::decode_custom_records(bytes, json)
+            crate::transform::codec::custom::decode_custom_records(bytes, custom)
         }
-        "yaml" => crate::transform::codec::yaml::decode_yaml_records(bytes),
         "csv" => {
             let separator = option_separator_byte(options, "separator", b',')?;
             let has_header = option_bool(options, "has_header", true)?;

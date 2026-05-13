@@ -11,7 +11,6 @@ pub mod msgpack;
 pub mod text_codec;
 pub mod toml_codec;
 pub mod xml;
-pub mod yaml;
 
 use crate::transform::error::TransformError;
 use crate::transform::event::Event;

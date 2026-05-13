@@ -548,6 +548,10 @@ impl SourceCursor {
         self.pos = end;
         Ok(value)
     }
+
+    fn text_remaining(&self, name: &str) -> Result<&str, String> {
+        std::str::from_utf8(self.remaining()).map_err(|e| format!("{name}() needs UTF-8 text: {e}"))
+    }
 }
 
 #[derive(Debug)]
@@ -582,6 +586,9 @@ fn source_cursor_runtime(
         ("peek", 1),
         ("take", 1),
         ("match", 1),
+        ("peek_match", 1),
+        ("take_match", 1),
+        ("take_until", 1),
     ];
     for (name, arity) in arities {
         map.insert(
@@ -657,7 +664,7 @@ fn source_cursor_runtime(
         );
     }
     {
-        let c = cursor;
+        let c = cursor.clone();
         builtins.insert(
             format!("{prefix}_match"),
             Arc::new(move |args| {
@@ -666,6 +673,52 @@ fn source_cursor_runtime(
                     .ok_or_else(|| "match() expects 1 argument".to_string())?;
                 let c = c.lock().unwrap();
                 source_matches(&c, mode, needle).map(Value::Bool)
+            }),
+        );
+    }
+    {
+        let c = cursor.clone();
+        builtins.insert(
+            format!("{prefix}_peek_match"),
+            Arc::new(move |args| {
+                let pattern = expect_pattern(args, 0, "peek_match")?;
+                let c = c.lock().unwrap();
+                source_regex_match(&c, pattern, "peek_match")
+                    .map(|m| m.map(Value::String).unwrap_or(Value::Null))
+            }),
+        );
+    }
+    {
+        let c = cursor.clone();
+        builtins.insert(
+            format!("{prefix}_take_match"),
+            Arc::new(move |args| {
+                let pattern = expect_pattern(args, 0, "take_match")?;
+                let mut c = c.lock().unwrap();
+                let Some(matched) = source_regex_match(&c, pattern, "take_match")? else {
+                    return Ok(Value::Null);
+                };
+                c.pos = c.pos.saturating_add(matched.len()).min(c.data.len());
+                Ok(Value::String(matched))
+            }),
+        );
+    }
+    {
+        let c = cursor;
+        builtins.insert(
+            format!("{prefix}_take_until"),
+            Arc::new(move |args| {
+                let pattern = expect_pattern(args, 0, "take_until")?;
+                let mut c = c.lock().unwrap();
+                let haystack = c.text_remaining("take_until")?;
+                let re = Regex::new(pattern).map_err(|e| format!("invalid pattern: {e}"))?;
+                let end = re
+                    .find(haystack)
+                    .map(|m| m.start())
+                    .unwrap_or(haystack.len());
+                let value = haystack[..end].to_string();
+                c.pos = c.pos.saturating_add(value.len()).min(c.data.len());
+                Ok(Value::String(value))
             }),
         );
     }
@@ -686,6 +739,9 @@ fn token_cursor_runtime(cursor: Arc<Mutex<TokenCursor>>) -> (Value, HashMap<Stri
         ("peek", 1),
         ("take", 1),
         ("match_kind", 1),
+        ("peek_kind", 0),
+        ("take_kind", 1),
+        ("expect_kind", 2),
     ];
     for (name, arity) in arities {
         map.insert(
@@ -765,7 +821,7 @@ fn token_cursor_runtime(cursor: Arc<Mutex<TokenCursor>>) -> (Value, HashMap<Stri
         );
     }
     {
-        let c = cursor;
+        let c = cursor.clone();
         builtins.insert(
             format!("{prefix}_match_kind"),
             Arc::new(move |args| {
@@ -789,6 +845,60 @@ fn token_cursor_runtime(cursor: Arc<Mutex<TokenCursor>>) -> (Value, HashMap<Stri
                     .map(|kind| kind == expected)
                     .unwrap_or(false);
                 Ok(Value::Bool(matched))
+            }),
+        );
+    }
+    {
+        let c = cursor.clone();
+        builtins.insert(
+            format!("{prefix}_peek_kind"),
+            Arc::new(move |_| {
+                let c = c.lock().unwrap();
+                Ok(token_kind_at(&c, c.pos)
+                    .map(Value::Symbol)
+                    .unwrap_or(Value::Null))
+            }),
+        );
+    }
+    {
+        let c = cursor.clone();
+        builtins.insert(
+            format!("{prefix}_take_kind"),
+            Arc::new(move |args| {
+                let expected = expect_symbol(args, 0, "take_kind")?;
+                let mut c = c.lock().unwrap();
+                if token_kind_at(&c, c.pos).as_deref() != Some(expected) {
+                    return Ok(Value::Null);
+                }
+                let value = tokens_slice_value(&c.tokens, c.pos, 1);
+                c.pos = c.pos.saturating_add(1).min(c.tokens.len());
+                Ok(value)
+            }),
+        );
+    }
+    {
+        let c = cursor;
+        builtins.insert(
+            format!("{prefix}_expect_kind"),
+            Arc::new(move |args| {
+                let expected = expect_symbol(args, 0, "expect_kind")?;
+                let message = match args.get(1) {
+                    Some(Value::String(s)) => s.clone(),
+                    Some(v) => {
+                        return Err(format!(
+                            "expect_kind() argument 2 must be string, got {}",
+                            v.type_name()
+                        ))
+                    }
+                    None => return Err("expect_kind() expects argument 2".into()),
+                };
+                let mut c = c.lock().unwrap();
+                if token_kind_at(&c, c.pos).as_deref() != Some(expected) {
+                    return Ok(codec_error_value(message));
+                }
+                let value = tokens_slice_value(&c.tokens, c.pos, 1);
+                c.pos = c.pos.saturating_add(1).min(c.tokens.len());
+                Ok(value)
             }),
         );
     }
@@ -852,6 +962,26 @@ fn expect_nonnegative_usize(args: &[Value], index: usize, name: &str) -> Result<
     Ok(n as usize)
 }
 
+fn expect_pattern<'a>(args: &'a [Value], index: usize, name: &str) -> Result<&'a str, String> {
+    match args.get(index) {
+        Some(Value::Pattern(pattern)) => Ok(pattern),
+        Some(Value::String(pattern)) => Ok(pattern),
+        Some(v) => Err(format!(
+            "{name}() expects string or pattern, got {}",
+            v.type_name()
+        )),
+        None => Err(format!("{name}() expects argument {}", index + 1)),
+    }
+}
+
+fn expect_symbol<'a>(args: &'a [Value], index: usize, name: &str) -> Result<&'a str, String> {
+    match args.get(index) {
+        Some(Value::Symbol(symbol)) => Ok(symbol),
+        Some(v) => Err(format!("{name}() expects symbol, got {}", v.type_name())),
+        None => Err(format!("{name}() expects argument {}", index + 1)),
+    }
+}
+
 fn clamp_pos(pos: i64, len: usize) -> usize {
     pos.clamp(0, len as i64) as usize
 }
@@ -881,6 +1011,36 @@ fn source_matches(
             other.type_name()
         )),
     }
+}
+
+fn source_regex_match(
+    cursor: &SourceCursor,
+    pattern: &str,
+    name: &str,
+) -> Result<Option<String>, String> {
+    let haystack = cursor.text_remaining(name)?;
+    let re = Regex::new(pattern).map_err(|e| format!("invalid pattern: {e}"))?;
+    Ok(re
+        .find(haystack)
+        .filter(|m| m.start() == 0)
+        .map(|m| m.as_str().to_string()))
+}
+
+fn token_kind_at(cursor: &TokenCursor, pos: usize) -> Option<String> {
+    cursor
+        .tokens
+        .get(pos)
+        .and_then(Value::as_map)
+        .and_then(|m| m.get("kind"))
+        .and_then(Value::as_symbol)
+        .map(str::to_string)
+}
+
+fn codec_error_value(message: String) -> Value {
+    let mut map = IndexMap::new();
+    map.insert("__wcl_codec_error".into(), Value::Bool(true));
+    map.insert("message".into(), Value::String(message));
+    Value::Map(map)
 }
 
 fn tokens_slice_value(tokens: &[Value], pos: usize, n: usize) -> Value {
@@ -1024,5 +1184,79 @@ codec failing {
 
         let err = decode_with(source, "x", "failing").unwrap_err();
         assert!(err.to_string().contains("boom"));
+    }
+
+    #[test]
+    fn source_cursor_regex_helpers_match_and_advance() {
+        let source = r#"
+codec words {
+    mode = :text
+    tokenizer = cursor => cursor.eof() ? null : {
+        let start = cursor.pos()
+        let prefix = cursor.peek_match("[A-Za-z]+")
+        prefix == null ? {
+            let skipped = cursor.take_until("[A-Za-z]+")
+            { kind = :skip, text = skipped, start = start, end = cursor.pos() }
+        } : {
+            let word = cursor.take_match("[A-Za-z]+")
+            { kind = :word, text = word, start = start, end = cursor.pos(), value = word }
+        }
+    }
+    parser = tokens => tokens.eof() ? null : {
+        let token = tokens.take(1)
+        token.kind == :word ? token.value : ""
+    }
+    encoder = record => record
+}
+"#;
+
+        let records = decode_with(source, "--alpha beta", "words").unwrap();
+        assert_eq!(
+            records,
+            vec![
+                Value::String("".into()),
+                Value::String("alpha".into()),
+                Value::String("".into()),
+                Value::String("beta".into())
+            ]
+        );
+    }
+
+    #[test]
+    fn token_cursor_kind_helpers_take_and_expect() {
+        let source = r#"
+codec simple {
+    mode = :text
+    tokenizer = cursor => cursor.eof() ? null : {
+        let start = cursor.pos()
+        let ch = cursor.take(1)
+        { kind = ch == "," ? :comma : :word, text = ch, start = start, end = cursor.pos(), value = ch }
+    }
+    parser_all = tokens => {
+        let first_kind = tokens.peek_kind()
+        let first = tokens.take_kind(:word)
+        let comma = tokens.expect_kind(:comma, "expected comma")
+        (type_of(comma) == "map" && map_has(comma, "__wcl_codec_error")) ? comma : {
+            let second = tokens.take_kind(:word)
+            [first_kind, first.value, comma.kind, second.value]
+        }
+    }
+    encoder = record => to_string(record)
+}
+"#;
+
+        let records = decode_with(source, "a,b", "simple").unwrap();
+        assert_eq!(
+            records,
+            vec![
+                Value::Symbol("word".into()),
+                Value::String("a".into()),
+                Value::Symbol("comma".into()),
+                Value::String("b".into())
+            ]
+        );
+
+        let err = decode_with(source, "ab", "simple").unwrap_err();
+        assert!(err.to_string().contains("expected comma"));
     }
 }

@@ -1,7 +1,6 @@
 use serde::Deserialize;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use wcl_lang::transform::codec::yaml::decode_yaml_records;
 use wcl_lang::Value;
 
 const FIXTURE_ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/yaml-suite");
@@ -70,7 +69,19 @@ fn vendored_yaml_suite_cases_are_classified() {
 
 #[test]
 fn yaml_compliance_gate_curated_cases() {
+    std::thread::Builder::new()
+        .name("yaml-compliance".into())
+        .stack_size(64 * 1024 * 1024)
+        .spawn(run_yaml_compliance_gate_curated_cases)
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+fn run_yaml_compliance_gate_curated_cases() {
     let manifest = load_manifest();
+    let registry = wcl_lang::transform::codec::custom::standard_registry().unwrap();
+    let yaml = registry.get("yaml").expect("standard yaml codec");
 
     for case in manifest.cases {
         let suite_case = load_suite_case(&case.id);
@@ -79,14 +90,21 @@ fn yaml_compliance_gate_curated_cases() {
                 let expected = expected_records(suite_case.json.as_deref().unwrap_or_else(|| {
                     panic!("{} pass fixture must include upstream json", case.id)
                 }));
-                let actual = decode_yaml_records(suite_case.yaml.as_bytes())
-                    .unwrap_or_else(|err| panic!("{} should decode: {}", case.id, err));
+                let actual = wcl_lang::transform::codec::custom::decode_custom_records(
+                    suite_case.yaml.as_bytes(),
+                    yaml,
+                )
+                .unwrap_or_else(|err| panic!("{} should decode: {}", case.id, err));
                 assert_eq!(actual, expected, "{} mismatch", case.id);
             }
             Classification::Error => {
                 assert!(suite_case.fail, "{} error fixture should set fail", case.id);
                 assert!(
-                    decode_yaml_records(suite_case.yaml.as_bytes()).is_err(),
+                    wcl_lang::transform::codec::custom::decode_custom_records(
+                        suite_case.yaml.as_bytes(),
+                        yaml,
+                    )
+                    .is_err(),
                     "{} should fail to decode",
                     case.id
                 );
@@ -94,6 +112,41 @@ fn yaml_compliance_gate_curated_cases() {
             Classification::Skip => {}
         }
     }
+}
+
+#[test]
+fn yaml_wcl_encoder_roundtrips_records() {
+    std::thread::Builder::new()
+        .name("yaml-encoder".into())
+        .stack_size(64 * 1024 * 1024)
+        .spawn(run_yaml_wcl_encoder_roundtrips_records)
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+fn run_yaml_wcl_encoder_roundtrips_records() {
+    let registry = wcl_lang::transform::codec::custom::standard_registry().unwrap();
+    let yaml = registry.get("yaml").expect("standard yaml codec");
+
+    let expected_json = serde_json::json!([
+        {"name": "Alice", "active": true, "score": 42, "tags": ["a", "b"]},
+        {"name": "Bob", "active": false, "score": 7, "meta": {"city": "Brisbane"}}
+    ]);
+    let expected = expected_records(&expected_json.to_string());
+
+    let mut output = Vec::new();
+    wcl_lang::transform::codec::custom::encode_custom_records(
+        &expected,
+        yaml,
+        &Default::default(),
+        &mut output,
+    )
+    .unwrap();
+
+    let decoded =
+        wcl_lang::transform::codec::custom::decode_custom_records(output.as_slice(), yaml).unwrap();
+    assert_eq!(decoded, expected);
 }
 
 fn load_manifest() -> Manifest {
