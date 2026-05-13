@@ -23,7 +23,8 @@ When source files change, update the listed reference file(s) so the skill stays
 
 | Source | Reference to update |
 |--------|---------------------|
-| `crates/wcl_wdoc/src/wdoc.wcl` (schemas + widget templates) | `reference/wdoc.md`, `reference/wdoc-drawings.md` |
+| `crates/wcl_wdoc/src/wdoc/header.wcl` (schemas + widget templates) | `reference/wdoc.md`, `reference/wdoc-drawings.md` |
+| `crates/wcl_wdoc/src/source.rs` (embedded WDoc source + host functions) | `reference/wdoc.md`, `reference/wdoc-drawings.md`, `reference/cli.md` |
 | `crates/wcl_wdoc/src/model.rs` | `reference/wdoc.md` |
 | `crates/wcl_wdoc/src/shapes.rs` (ShapeKind, Alignment, Connection) | `reference/wdoc-drawings.md` |
 | `crates/wcl_wdoc/src/graph_layout.rs` | `reference/wdoc-drawings.md` |

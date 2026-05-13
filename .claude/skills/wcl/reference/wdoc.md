@@ -1,6 +1,6 @@
 # wdoc Format
 
-Documentation format built on top of WCL. Sources: `crates/wcl_wdoc/src/wdoc.wcl` (schemas + widgets), `crates/wcl_wdoc/src/model.rs` (data model), `crates/wcl/src/cli/wdoc.rs` (render pipeline).
+Documentation format built on top of WCL. Sources: `crates/wcl_wdoc/src/wdoc/header.wcl` (schemas + widgets), `crates/wcl_wdoc/src/source.rs` (host functions), `crates/wcl_wdoc/src/model.rs` (data model), `crates/wcl/src/cli/wdoc.rs` (render pipeline).
 
 For drawings, see `wdoc-drawings.md`.
 
@@ -42,6 +42,13 @@ A site = one `doc` block (title + section outline) + one or more `page` blocks (
 | `page` | Content page | `section` (qualified ID), `title`, `layout` child |
 | `layout` | Page content container | children: split groups or content |
 | `style` | Named CSS rule set | children keyed by content kind |
+| `signal` | Reactive value for drawings/widgets | `initial?` |
+| `binding` | Signal binding | `target`, `property`, `signal` |
+| `css_fragment` | Scoped CSS fragment | `scope`, `css` |
+| `global_css` | Global CSS | `css` |
+| `font_asset` | Font registration | `family`, `src`, `weight?`, `style?`, `display?` |
+| `icon_set` | SVG icon directory | `path`, `default?`, normalization attrs |
+| `icon_part` | Custom icon variable mapping | `selector`, `property`, `default?` |
 
 ## Content Elements
 
@@ -98,6 +105,38 @@ data_table features {
 
 Renders as `<table>`; first list-of-maps attribute is treated as the rows.
 
+### CSS, Fonts, and Icon Sets
+
+```wcl
+global_css site_css {
+  css = "body { text-rendering: optimizeLegibility; }"
+}
+
+css_fragment alerts {
+  scope = ".callout"
+  css = "border-left-width: 4px;"
+}
+
+font_asset inter {
+  family = "Inter"
+  src = "fonts/Inter.woff2"
+  display = "swap"
+}
+
+icon_set lucide {
+  path = "assets/icons"
+  default = true
+  normalize_width = 24
+  normalize_height = 24
+
+  icon_part accent {
+    selector = ".accent"
+    property = "fill"
+    default = "currentColor"
+  }
+}
+```
+
 ### Callout
 
 ```wcl
@@ -116,7 +155,9 @@ Return HTML strings; use inside `content = ...`.
 ```wcl
 bold(text)                     # <strong>text</strong>
 italic(text)                   # <em>text</em>
+code_span(text)                # <code>text</code>
 link(text, url)                # <a href="url">text</a>
+icon_markup(name)              # inline markup shorthand helper
 icon(name)                     # inline SVG from the default icon_set
 icon_styled(name, size, color) # inline SVG with fill color
 icon_props(name, size, props)  # inline SVG with fill/stroke/custom icon vars
@@ -126,6 +167,19 @@ paragraph p {
   content = ":book-open: See " + bold("API docs") + " at " + link("example.com", "https://example.com")
 }
 ```
+
+## WDoc Host Helpers
+
+These are declared by the WDoc library and implemented by the renderer host. They are available after `import <wdoc.wcl>` and the relevant `use` statement.
+
+| Helper | Purpose |
+|--------|---------|
+| `measure_text(text)` | Estimate rendered text metrics |
+| `render_markup(value)` | Render WDoc inline markup into HTML |
+| `render_children(block)` | Render a block's children as HTML |
+| `block_children(block)` | Return child block values |
+| `children(block)` / `children(block, kind)` | Return children, optionally filtered by kind |
+| `table_rows(block)` | Extract rows from WDoc table-like widgets |
 
 ## Layouts and Splits
 

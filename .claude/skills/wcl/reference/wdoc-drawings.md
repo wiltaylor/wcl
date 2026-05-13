@@ -2,18 +2,25 @@
 
 Inline SVG diagrams authored as WCL blocks. Fully evaluated through the normal pipeline (variables, loops, expressions).
 
-Sources: `crates/wcl_wdoc/src/wdoc.wcl` (widget templates), `crates/wcl_wdoc/src/shapes.rs` (renderer + primitive enums), `crates/wcl_wdoc/src/graph_layout.rs` (layout algorithms).
+Sources: `crates/wcl_wdoc/src/wdoc/header.wcl` (widget templates), `crates/wcl_wdoc/src/source.rs` (host functions), `crates/wcl_wdoc/src/shapes.rs` (renderer + primitive enums), `crates/wcl_wdoc/src/graph_layout.rs` (layout algorithms).
 
 ## Imports
 
 ```wcl
 import <wdoc.wcl>
-use wdoc::draw::{diagram, rect, circle, ellipse, line, path, text, image, icon, map, connection}
+use wdoc::{p, bold}
+use wdoc::draw::{diagram, rect, circle, ellipse, line, path, text, text_block, inline_svg}
+use wdoc::draw::{image, icon, map, connection, group}
 # Widgets as needed:
+use wdoc::draw::{phone, phone_landscape, browser, window, tablet, tablet_landscape}
+use wdoc::draw::{button, slider, input, card, avatar, toggle, checkbox, radio, button_group}
+use wdoc::draw::{textbox, dropdown, inline_image, menubar, context_menu, menu_item}
+use wdoc::draw::{badge, navbar, stat_card, profile_card, action_panel, list_item}
+use wdoc::draw::{datatable, datatable_column, datatable_row, datatable_cell}
+use wdoc::draw::{graph_node, graph_row, graph_divider, pie_chart, bar_chart, line_chart, chart_point}
 use wdoc::draw::{flow_terminal, flow_process, flow_decision, flow_io, flow_subprocess}
 use wdoc::draw::{c4_person, c4_system, c4_container, c4_component, c4_boundary}
 use wdoc::draw::{uml_class, uml_actor, uml_package, uml_note}
-use wdoc::draw::{phone, browser, button, input, card, avatar, toggle, badge, navbar}
 use wdoc::draw::{server, database, cloud, user}
 ```
 
@@ -99,6 +106,22 @@ text label {
 }
 ```
 
+### `text_block` and `inline_svg`
+
+`text_block` lays out wrapped rich text inside a drawing. `inline_svg` embeds trusted SVG markup as a drawing primitive.
+
+```wcl
+text_block notes {
+  x = 40, y = 40, width = 280, height = 120
+  content = "Use " + bold("markup") + " inside wrapped drawing text."
+}
+
+inline_svg logo {
+  x = 360, y = 40, width = 48, height = 48
+  content = "<svg viewBox=\"0 0 24 24\"><path d=\"M4 12h16\"/></svg>"
+}
+```
+
 ### `map`
 PNG-backed viewport with internal pan/zoom. Child shapes are ordinary drawing shapes, positioned in the map's `content_width` / `content_height` coordinate space.
 
@@ -132,6 +155,32 @@ icon save {
 ```
 
 Use `icon_part` blocks on the icon set to map custom CSS selectors and properties to variables supplied through `props`; `fill` and `stroke` are supported by default.
+
+### `group`
+
+Groups nest shapes under one positioned container. Children can be referenced by dotted connection paths such as `panel.submit`.
+
+```wcl
+group panel {
+  x = 20, y = 20, width = 280, height = 160
+  rect bg { left = 0, top = 0, right = 0, bottom = 0, rx = 8, fill = "var(--color-bg)" }
+  button submit { x = 20, y = 100, width = 120, height = 36, label = "Save" }
+}
+```
+
+### Timeline, Sprite, Tilemap, and Runtime Shapes
+
+The renderer also supports animation and game-oriented drawing primitives:
+
+| Primitive | Purpose |
+|-----------|---------|
+| `dopesheet` | Timeline data container |
+| `sprite` | Sprite image/animation primitive |
+| `dopesheet_view` | Visual timeline editor/view |
+| `tilemap` | Tile-grid layer |
+| `game_layer` | Layer container for game-style scenes |
+| `terminal` | Terminal widget with `terminal_command`, `terminal_output`, and `terminal_prompt` children |
+| `class`, `state`, `animation`, `keyframe`, `event`, `set_signal` | Runtime styling/state/animation/event model |
 
 ## Positioning
 
@@ -213,18 +262,86 @@ diagram pipeline {
 
 All widgets are WCL template functions that expand to primitive shape lists. Mix freely with primitives.
 
-### UI mockups
+### UI mockups and controls
 | Widget | Attributes |
 |--------|-----------|
 | `phone` | `title`, `header_fill` |
+| `phone_landscape` | `title`, `header_fill` |
 | `browser` | `title`, `url` |
+| `window` | `title` |
+| `tablet` | `title` |
+| `tablet_landscape` | `title` |
 | `button` | `label`, `variant` (`primary`, `secondary`, `outline`) |
+| `slider` | `value`, `min`, `max`, `step` |
 | `input` | `label`, `placeholder` |
 | `card` | (children render inside) |
 | `avatar` | `label` (initials) |
 | `toggle` | `on` (`"true"` / `"false"`) |
+| `checkbox` | `label`, `checked` |
+| `radio` | `label`, `checked`, `name` |
+| `button_group` | child buttons |
+| `textbox` | `value`, `placeholder`, multiline text |
+| `dropdown` | `label`, `items`, `selected_index` |
+| `inline_image` | `src`, `alt` |
+| `menubar` | child menu items |
+| `context_menu` | child menu items |
+| `menu_item` | `label`, `icon?`, `shortcut?` |
 | `badge` | `label`, `color` |
 | `navbar` | `items` (comma-separated), `active_index` |
+| `stat_card` | `label`, `value`, `trend?` |
+| `profile_card` | `name`, `subtitle`, `avatar?` |
+| `action_panel` | heading/action grouping |
+| `list_item` | `label`, `subtitle?`, `icon?` |
+
+### Data table widget
+
+`datatable` is the wireframe table widget. It can render WDoc text and nested wireframe controls in cells.
+
+```wcl
+datatable users {
+  x = 20, y = 80, width = 720, height = 260
+
+  datatable_column name { label = "Name", width = 180 }
+  datatable_column status { label = "Status", width = 140 }
+  datatable_column action { label = "Action", width = 160 }
+
+  datatable_row alice {
+    datatable_cell name { p "Alice Example" }
+    datatable_cell status { badge active { label = "Active", color = "#16a34a" } }
+    datatable_cell action { button edit { label = "Edit", variant = "secondary" } }
+  }
+}
+```
+
+Rows can also come from a WCL table inside the widget block:
+
+```wcl
+datatable users {
+  datatable_column name { label = "Name" }
+  datatable_column role { label = "Role" }
+
+  table rows {
+    name: string
+    role: string
+    | "Alice" | "Admin" |
+    | "Bob"   | "Viewer" |
+  }
+}
+```
+
+Use sub-block rows when cells need WDoc markup or controls. Use an embedded `table` when the rows are plain data.
+
+### Graph and charts
+
+| Widget | Attributes |
+|--------|-----------|
+| `graph_node` | `label`, child rows/dividers |
+| `graph_row` | `label`, `value?` |
+| `graph_divider` | divider inside a graph node |
+| `pie_chart` | data rows/children |
+| `bar_chart` | data rows/children |
+| `line_chart` | data rows/children |
+| `chart_point` | `x`, `y`, `label?` |
 
 ### Flowchart
 | Widget | Shape |

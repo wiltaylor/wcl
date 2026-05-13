@@ -1,6 +1,6 @@
 # Built-in Functions
 
-Source of truth: `crates/wcl_lang/src/eval/functions.rs::builtin_registry()` (line 467).
+Source of truth: `crates/wcl_lang/src/eval/functions.rs` (`builtin_signatures()` and `builtin_registry()`).
 
 Unknown function → E052. Argument count/type mismatch → E050.
 
@@ -42,6 +42,16 @@ Unknown function → E052. Argument count/type mismatch → E050.
 | `round(n)` | `f64 → i64` | Round half-away |
 | `sqrt(n)` | `f64 → f64` | Square root |
 | `pow(base, exp)` | `(f64, f64) → f64` | Exponent |
+| `sin(n)` | `f64 → f64` | Sine, radians |
+| `cos(n)` | `f64 → f64` | Cosine, radians |
+| `tan(n)` | `f64 → f64` | Tangent, radians |
+| `asin(n)` | `f64 → f64` | Arcsine, returns radians |
+| `acos(n)` | `f64 → f64` | Arccosine, returns radians |
+| `atan(n)` | `f64 → f64` | Arctangent, returns radians |
+| `atan2(y, x)` | `(f64, f64) → f64` | Quadrant-aware angle, radians |
+| `degrees(n)` | `f64 → f64` | Radians to degrees |
+| `radians(n)` | `f64 → f64` | Degrees to radians |
+| `pi()` | `() → f64` | Mathematical pi |
 
 ## Collections (Section 14.3)
 

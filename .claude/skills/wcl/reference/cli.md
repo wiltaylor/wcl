@@ -47,6 +47,8 @@ Start the language server.
 
 Flags: `--tcp <addr>` (defaults to stdio).
 
+When built with the `wdoc` feature, the LSP embeds the current WDoc library source so `import <wdoc.wcl>` and WDoc `use` items resolve without a separate install.
+
 ```bash
 wcl lsp                    # stdio — editor integration
 wcl lsp --tcp 127.0.0.1:9257
@@ -138,7 +140,7 @@ Structure-only validation.
 Dev server with live reload. Flags: `--port <num>` (default `3000`), `--open`.
 
 ### `wcl wdoc install-library`
-Install `wdoc.wcl` into user library dir so editors/LSP resolve `import <wdoc.wcl>`.
+Install `wdoc.wcl` into the user library dir. This is useful for external tools, `wcl validate`, and builds that do not embed the WDoc library; the bundled `wcl lsp` with the `wdoc` feature already has embedded WDoc source.
 
 Flags: `--force` (overwrite).
 

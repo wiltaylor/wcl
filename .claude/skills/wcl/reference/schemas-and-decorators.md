@@ -59,7 +59,7 @@ schema "menu" @child(kind = "item", min = 1, max = 10, max_depth = 3) { ... }
 schema "event" @tagged(field = "kind") { ... }
 
 # Symbol constraints
-symbol_set http_methods { GET, POST, PUT, DELETE }
+symbol_set http_methods { :GET, :POST, :PUT, :DELETE }
 schema "endpoint" { method: symbol @symbol_set("http_methods") }
 ```
 
@@ -92,7 +92,7 @@ replicas:  i64    @validate(min = 1, max = 100, custom_msg = "must be 1–100")
 
 - E073: constraint violation. `@validate` requires at least one of `min`, `max`, `pattern`, `one_of` (E064).
 
-## Built-in Decorator Registry (24 total)
+## Built-in Decorator Registry (27 total)
 
 Every built-in decorator, from the registry. "Targets" column shows where it can be applied. Required params are bold.
 
@@ -100,6 +100,7 @@ Every built-in decorator, from the registry. "Targets" column shows where it can
 |-----------|---------|--------|
 | `@optional` | Schema | — |
 | `@required` | Schema | — |
+| `@structural` | Schema | — |
 | `@default(value)` | Schema | **`value: any`** |
 | `@sensitive(redact_in_logs?)` | Attribute | `redact_in_logs: bool = true` |
 | `@deprecated(message, since?)` | Block, Attribute | **`message: string`**, `since: string` |
@@ -109,6 +110,7 @@ Every built-in decorator, from the registry. "Targets" column shows where it can
 | `@id_pattern(pattern)` | Schema | **`pattern: string`** |
 | `@ref(schema)` | Schema | **`schema: string`** |
 | `@open` | Schema | — |
+| `@extends(schema)` | Schema | **`schema: string`** |
 | `@auto_id` | Schema | — |
 | `@warning` | Block | — |
 | `@partial_requires(fields)` | Block | **`fields: list(string)`** |
@@ -122,11 +124,15 @@ Every built-in decorator, from the registry. "Targets" column shows where it can
 | `@symbol_set(name)` | Schema | **`name: string`** |
 | `@embedded_lsp(language)` | Attribute | **`language: string`** |
 | `@table_index(columns, unique?)` | Table | **`columns: list(string)`**, `unique: bool = false` |
+| `@markup(pattern, priority?)` | Schema | **`pattern: string`**, `priority: i64 = 0` |
 
 ### Notes on select decorators
 
 - **`@inline(N)`** — NOT in the decorator registry; it's a parser-level modifier that maps positional arg N to a schema field. Used as `port: u16 @inline(1)`.
 - **`@schema("name")`** — shorthand on a `table` block that sets its schema. Equivalent to `table x : name { ... }`.
+- **`@structural`** — schema participates in structural validation rather than matching only by block kind.
+- **`@extends("base")`** — schema inherits fields and constraints from another schema.
+- **`@markup(pattern, priority?)`** — registers a markup schema used by WDoc markup rendering.
 - **`@sensitive`** — attributes are redacted in logs/output by default. Pass `redact_in_logs = false` to opt out.
 - **`@warning`** — downgrades schema errors on the block to warnings.
 - **`@open`** — relaxes unknown-attribute check (E072).
@@ -135,7 +141,8 @@ Every built-in decorator, from the registry. "Targets" column shows where it can
 ## User-Defined Decorators
 
 ```wcl
-decorator_schema "my_decorator" targets Block {
+decorator_schema "my_decorator" {
+  target = [Block]
   label:   string @required
   enabled: bool   @default(true)
 }

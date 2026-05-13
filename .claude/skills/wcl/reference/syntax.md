@@ -136,6 +136,18 @@ Search paths for `<name.wcl>`: `$XDG_DATA_HOME/wcl/lib/` then `$XDG_DATA_DIRS/wc
 
 - E010 not found, E011 jail escape, E014 depth, E015 library not found, E016 glob no match, E017 lazy needs namespace.
 
+## Function Declarations
+
+Host-provided functions can be declared in WCL libraries so validation, LSP, and evaluation know their signatures.
+
+```wcl
+declare measure_text(text: any) -> map(string, any)
+declare render_children(block: any) -> string
+declare icon(name: string) -> string
+```
+
+Declarations describe functions implemented by the host, not WCL macro bodies. Use `macro` for WCL-authored expansion logic.
+
 ## Namespaces and `use`
 
 ```wcl
@@ -230,6 +242,63 @@ service "api" @with_monitoring(alert_channel = "sre") { port = 8080 }
 
 Hygiene: macro-local `let` bindings are not visible outside the macro. Max expansion depth 64 (E022). Recursion detected (E021).
 
+## Structs and Variants
+
+Structured value types are declared with `struct`. Variants add tagged shapes under the same struct name.
+
+```wcl
+struct "point" {
+  x: f64
+  y: f64
+}
+
+struct "event" {
+  id: string
+
+  variant "click" {
+    target: string
+  }
+
+  variant "keypress" {
+    key: string
+  }
+}
+```
+
+Schemas can use struct types where type expressions are accepted.
+
+## Symbol Sets
+
+```wcl
+symbol_set http_methods {
+  :GET
+  :POST
+  :PUT
+  :DELETE
+}
+
+schema "endpoint" {
+  method: symbol @symbol_set("http_methods")
+}
+```
+
+Symbol values use the colon-prefixed literal form (`:GET`), including inside `symbol_set`.
+
+## Decorator Schemas
+
+```wcl
+decorator_schema "my_decorator" {
+  target = [Block]
+  label: string @required
+  enabled: bool @default(true)
+}
+
+@my_decorator(label = "prod")
+service api { port = 8080 }
+```
+
+`target` is a list of decorator targets such as `Block`, `Attribute`, `Schema`, or `Table`.
+
 ## Queries / Selectors
 
 Query expressions run at evaluation time and return lists of blocks or values:
@@ -313,6 +382,46 @@ table docs {
 - E090: `@table_index` references nonexistent column.
 - E091: duplicate value in unique index.
 - E092: inline columns with a schema applied.
+
+## Transform Blocks
+
+Transform blocks can inject, set, update, or remove matching content.
+
+```wcl
+transform "set-prod-defaults" {
+  update service {
+    set {
+      env = "prod"
+    }
+  }
+
+  inject {
+    service api { port = 8080 }
+  }
+
+  remove [service#old-api]
+}
+```
+
+Table update directives are also supported inside transforms: `inject_rows`, `remove_rows`, `update_rows`, and `clear_rows`.
+
+## Stream, Codec, and Layout Blocks
+
+These are first-class top-level block forms parsed by the language and used by tooling-specific workflows.
+
+```wcl
+stream "events" {
+  source = "events.jsonl"
+}
+
+codec "json" {
+  format = "json"
+}
+
+layout "default" {
+  columns = 2
+}
+```
 
 ## Validation Blocks
 
