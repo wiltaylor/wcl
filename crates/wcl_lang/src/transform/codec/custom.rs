@@ -507,7 +507,7 @@ fn call_codec_lambda(
         &codec.helpers,
         1024,
     )
-        .map_err(|e| TransformError::Codec(format!("custom codec '{}': {}", codec.name, e)))
+    .map_err(|e| TransformError::Codec(format!("custom codec '{}': {}", codec.name, e)))
 }
 
 fn validate_token(name: &str, map: &IndexMap<String, Value>) -> Result<(), TransformError> {

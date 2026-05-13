@@ -1359,6 +1359,302 @@ codec toml {
     encoder_all = records => __toml_encoder_all(records)
 }
 
+export let __msgpack_tokenizer = cursor =>
+    cursor.eof() ? null : {
+        let start = cursor.pos()
+        let data = cursor.take(cursor.len())
+        { kind = :source, start = start, end = cursor.pos(), value = data }
+    }
+
+export let __msgpack_error = message => __codec_error(message)
+export let __msgpack_is_error = value => __codec_is_error(value)
+export let __msgpack_state = (data, pos) => { data = data pos = pos }
+export let __msgpack_ok = (state, value) => { state = state value = value }
+export let __msgpack_eof = state => state.pos >= len(state.data)
+export let __msgpack_slice = (items, start, count, i, acc) =>
+    i >= count ? acc : __msgpack_slice(items, start, count, i + 1, concat(acc, [items[start + i]]))
+
+export let __msgpack_take = (state, n, message) =>
+    state.pos + n > len(state.data) ? __msgpack_error(message) :
+    __msgpack_ok(__msgpack_state(state.data, state.pos + n), __msgpack_slice(state.data, state.pos, n, 0, []))
+
+export let __msgpack_byte = (state, message) => {
+    let taken = __msgpack_take(state, 1, message)
+    __msgpack_is_error(taken) ? taken : __msgpack_ok(taken.state, taken.value[0])
+}
+
+export let __msgpack_uint = (state, n, message) => {
+    let taken = __msgpack_take(state, n, message)
+    __msgpack_is_error(taken) ? taken : __msgpack_ok(taken.state, bytes_to_uint_be(taken.value))
+}
+
+export let __msgpack_int = (state, n, message) => {
+    let taken = __msgpack_take(state, n, message)
+    __msgpack_is_error(taken) ? taken : __msgpack_ok(taken.state, bytes_to_int_be(taken.value))
+}
+
+export let __msgpack_str = (state, n) => {
+    let taken = __msgpack_take(state, n, "unexpected EOF in MessagePack string")
+    __msgpack_is_error(taken) ? taken : {
+        let text = bytes_to_utf8(taken.value)
+        __msgpack_is_error(text) ? text : __msgpack_ok(taken.state, text)
+    }
+}
+
+export let __msgpack_bin = (state, n) => {
+    let taken = __msgpack_take(state, n, "unexpected EOF in MessagePack binary")
+    __msgpack_is_error(taken) ? taken : __msgpack_ok(taken.state, bytes(taken.value))
+}
+
+export let __msgpack_ext_type_id = byte => byte >= 128 ? byte - 256 : byte
+
+export let __msgpack_timestamp_from_ext = data =>
+    len(data) == 4 ? msgpack_timestamp(bytes_to_uint_be(data), 0) :
+    len(data) == 8 ? {
+        let raw = bytes_to_uint_be(data)
+        let seconds = raw % 17179869184
+        let nanos = raw / 17179869184
+        msgpack_timestamp(seconds, nanos)
+    } :
+    len(data) == 12 ? {
+        let nanos = bytes_to_uint_be(__msgpack_slice(data, 0, 4, 0, []))
+        let seconds = bytes_to_int_be(__msgpack_slice(data, 4, 8, 0, []))
+        msgpack_timestamp(seconds, nanos)
+    } :
+    __msgpack_error("invalid MessagePack timestamp extension length")
+
+export let __msgpack_ext = (state, n) => {
+    let type_byte = __msgpack_byte(state, "unexpected EOF in MessagePack extension type")
+    __msgpack_is_error(type_byte) ? type_byte : {
+        let data = __msgpack_take(type_byte.state, n, "unexpected EOF in MessagePack extension data")
+        __msgpack_is_error(data) ? data : {
+            let type_id = __msgpack_ext_type_id(type_byte.value)
+            let value = type_id == 0 - 1 ? __msgpack_timestamp_from_ext(data.value) : msgpack_ext(type_id, data.value)
+            __msgpack_is_error(value) ? value : __msgpack_ok(data.state, value)
+        }
+    }
+}
+
+export let __msgpack_parse_array_items = (state, count, i, acc) =>
+    i >= count ? __msgpack_ok(state, acc) : {
+        let item = __msgpack_parse_value(state)
+        __msgpack_is_error(item) ? item : __msgpack_parse_array_items(item.state, count, i + 1, concat(acc, [item.value]))
+    }
+
+export let __msgpack_map_entry = (key, value) => { key = key value = value }
+
+export let __msgpack_parse_map_entries = (state, count, i, entries) =>
+    i >= count ? __msgpack_ok(state, entries) : {
+        let key = __msgpack_parse_value(state)
+        __msgpack_is_error(key) ? key : {
+            let value = __msgpack_parse_value(key.state)
+            __msgpack_is_error(value) ? value :
+            __msgpack_parse_map_entries(value.state, count, i + 1, concat(entries, [__msgpack_map_entry(key.value, value.value)]))
+        }
+    }
+
+export let __msgpack_all_string_keys = (entries, i) =>
+    i >= len(entries) ? true :
+    type_of(entries[i].key) == "string" ? __msgpack_all_string_keys(entries, i + 1) : false
+
+export let __msgpack_entries_to_map = (entries, i, acc) =>
+    i >= len(entries) ? acc :
+    __msgpack_entries_to_map(entries, i + 1, map_set(acc, entries[i].key, entries[i].value))
+
+export let __msgpack_entries_to_pair_maps = (entries, i, acc) =>
+    i >= len(entries) ? acc :
+    __msgpack_entries_to_pair_maps(entries, i + 1, concat(acc, [{ key = entries[i].key value = entries[i].value }]))
+
+export let __msgpack_map_value = entries =>
+    __msgpack_all_string_keys(entries, 0) ?
+        __msgpack_entries_to_map(entries, 0, {}) :
+        { __msgpack_type = "map" entries = __msgpack_entries_to_pair_maps(entries, 0, []) }
+
+export let __msgpack_parse_map = (state, count) => {
+    let entries = __msgpack_parse_map_entries(state, count, 0, [])
+    __msgpack_is_error(entries) ? entries : __msgpack_ok(entries.state, __msgpack_map_value(entries.value))
+}
+
+export let __msgpack_parse_value = state => {
+    let h = __msgpack_byte(state, "unexpected EOF in MessagePack value")
+    __msgpack_is_error(h) ? h : {
+        let b = h.value
+        b <= 127 ? __msgpack_ok(h.state, b) :
+        b >= 224 ? __msgpack_ok(h.state, b - 256) :
+        b >= 128 && b <= 143 ? __msgpack_parse_map(h.state, b - 128) :
+        b >= 144 && b <= 159 ? {
+            let arr = __msgpack_parse_array_items(h.state, b - 144, 0, [])
+            __msgpack_is_error(arr) ? arr : __msgpack_ok(arr.state, arr.value)
+        } :
+        b >= 160 && b <= 191 ? __msgpack_str(h.state, b - 160) :
+        b == 192 ? __msgpack_ok(h.state, null) :
+        b == 194 ? __msgpack_ok(h.state, false) :
+        b == 195 ? __msgpack_ok(h.state, true) :
+        b == 196 ? { let n = __msgpack_uint(h.state, 1, "unexpected EOF in bin8 length") __msgpack_is_error(n) ? n : __msgpack_bin(n.state, n.value) } :
+        b == 197 ? { let n = __msgpack_uint(h.state, 2, "unexpected EOF in bin16 length") __msgpack_is_error(n) ? n : __msgpack_bin(n.state, n.value) } :
+        b == 198 ? { let n = __msgpack_uint(h.state, 4, "unexpected EOF in bin32 length") __msgpack_is_error(n) ? n : __msgpack_bin(n.state, n.value) } :
+        b == 199 ? { let n = __msgpack_uint(h.state, 1, "unexpected EOF in ext8 length") __msgpack_is_error(n) ? n : __msgpack_ext(n.state, n.value) } :
+        b == 200 ? { let n = __msgpack_uint(h.state, 2, "unexpected EOF in ext16 length") __msgpack_is_error(n) ? n : __msgpack_ext(n.state, n.value) } :
+        b == 201 ? { let n = __msgpack_uint(h.state, 4, "unexpected EOF in ext32 length") __msgpack_is_error(n) ? n : __msgpack_ext(n.state, n.value) } :
+        b == 202 ? { let bs = __msgpack_take(h.state, 4, "unexpected EOF in float32") __msgpack_is_error(bs) ? bs : __msgpack_ok(bs.state, bytes_to_f32_be(bs.value)) } :
+        b == 203 ? { let bs = __msgpack_take(h.state, 8, "unexpected EOF in float64") __msgpack_is_error(bs) ? bs : __msgpack_ok(bs.state, bytes_to_f64_be(bs.value)) } :
+        b == 204 ? __msgpack_uint(h.state, 1, "unexpected EOF in uint8") :
+        b == 205 ? __msgpack_uint(h.state, 2, "unexpected EOF in uint16") :
+        b == 206 ? __msgpack_uint(h.state, 4, "unexpected EOF in uint32") :
+        b == 207 ? __msgpack_uint(h.state, 8, "unexpected EOF in uint64") :
+        b == 208 ? __msgpack_int(h.state, 1, "unexpected EOF in int8") :
+        b == 209 ? __msgpack_int(h.state, 2, "unexpected EOF in int16") :
+        b == 210 ? __msgpack_int(h.state, 4, "unexpected EOF in int32") :
+        b == 211 ? __msgpack_int(h.state, 8, "unexpected EOF in int64") :
+        b == 212 ? __msgpack_ext(h.state, 1) :
+        b == 213 ? __msgpack_ext(h.state, 2) :
+        b == 214 ? __msgpack_ext(h.state, 4) :
+        b == 215 ? __msgpack_ext(h.state, 8) :
+        b == 216 ? __msgpack_ext(h.state, 16) :
+        b == 217 ? { let n = __msgpack_uint(h.state, 1, "unexpected EOF in str8 length") __msgpack_is_error(n) ? n : __msgpack_str(n.state, n.value) } :
+        b == 218 ? { let n = __msgpack_uint(h.state, 2, "unexpected EOF in str16 length") __msgpack_is_error(n) ? n : __msgpack_str(n.state, n.value) } :
+        b == 219 ? { let n = __msgpack_uint(h.state, 4, "unexpected EOF in str32 length") __msgpack_is_error(n) ? n : __msgpack_str(n.state, n.value) } :
+        b == 220 ? { let n = __msgpack_uint(h.state, 2, "unexpected EOF in array16 length") __msgpack_is_error(n) ? n : __msgpack_parse_array_items(n.state, n.value, 0, []) } :
+        b == 221 ? { let n = __msgpack_uint(h.state, 4, "unexpected EOF in array32 length") __msgpack_is_error(n) ? n : __msgpack_parse_array_items(n.state, n.value, 0, []) } :
+        b == 222 ? { let n = __msgpack_uint(h.state, 2, "unexpected EOF in map16 length") __msgpack_is_error(n) ? n : __msgpack_parse_map(n.state, n.value) } :
+        b == 223 ? { let n = __msgpack_uint(h.state, 4, "unexpected EOF in map32 length") __msgpack_is_error(n) ? n : __msgpack_parse_map(n.state, n.value) } :
+        __msgpack_error("reserved MessagePack marker")
+    }
+}
+
+export let __msgpack_parser_all = tokens => {
+    let source = tokens.expect_kind(:source, "expected MessagePack source")
+    __codec_is_error(source) ? source : {
+        let parsed = __msgpack_parse_value(__msgpack_state(source.value, 0))
+        __msgpack_is_error(parsed) ? parsed :
+        __msgpack_eof(parsed.state) == false ? __msgpack_error("trailing bytes after MessagePack value") :
+        type_of(parsed.value) == "list" ? parsed.value : [parsed.value]
+    }
+}
+
+export let __msgpack_str_prefix = n =>
+    n < 32 ? [160 + n] :
+    n <= 255 ? concat([217], uint_to_bytes_be(n, 1)) :
+    n <= 65535 ? concat([218], uint_to_bytes_be(n, 2)) :
+    concat([219], uint_to_bytes_be(n, 4))
+
+export let __msgpack_bin_prefix = n =>
+    n <= 255 ? concat([196], uint_to_bytes_be(n, 1)) :
+    n <= 65535 ? concat([197], uint_to_bytes_be(n, 2)) :
+    concat([198], uint_to_bytes_be(n, 4))
+
+export let __msgpack_array_prefix = n =>
+    n < 16 ? [144 + n] :
+    n <= 65535 ? concat([220], uint_to_bytes_be(n, 2)) :
+    concat([221], uint_to_bytes_be(n, 4))
+
+export let __msgpack_map_prefix = n =>
+    n < 16 ? [128 + n] :
+    n <= 65535 ? concat([222], uint_to_bytes_be(n, 2)) :
+    concat([223], uint_to_bytes_be(n, 4))
+
+export let __msgpack_encode_str = text => {
+    let bs = utf8_to_bytes(text)
+    concat(__msgpack_str_prefix(len(bs)), bs)
+}
+
+export let __msgpack_encode_bin = value => {
+    let bs = bytes_data(value)
+    concat(__msgpack_bin_prefix(len(bs)), bs)
+}
+
+export let __msgpack_encode_int = n =>
+    n >= 0 && n <= 127 ? [n] :
+    n < 0 && n >= 0 - 32 ? [256 + n] :
+    n >= 0 && n <= 255 ? concat([204], uint_to_bytes_be(n, 1)) :
+    n >= 0 && n <= 65535 ? concat([205], uint_to_bytes_be(n, 2)) :
+    n >= 0 && n <= 4294967295 ? concat([206], uint_to_bytes_be(n, 4)) :
+    n >= 0 ? concat([207], uint_to_bytes_be(n, 8)) :
+    n >= 0 - 128 ? concat([208], int_to_bytes_be(n, 1)) :
+    n >= 0 - 32768 ? concat([209], int_to_bytes_be(n, 2)) :
+    n >= 0 - 2147483648 ? concat([210], int_to_bytes_be(n, 4)) :
+    concat([211], int_to_bytes_be(n, 8))
+
+export let __msgpack_encode_array_items = (items, i, acc) =>
+    i >= len(items) ? acc : {
+        let encoded = __msgpack_encode_value(items[i])
+        __msgpack_is_error(encoded) ? encoded : __msgpack_encode_array_items(items, i + 1, concat(acc, encoded))
+    }
+
+export let __msgpack_encode_array = items => {
+    let body = __msgpack_encode_array_items(items, 0, [])
+    __msgpack_is_error(body) ? body :
+    concat(__msgpack_array_prefix(len(items)), body)
+}
+
+export let __msgpack_encode_map_pairs = (pairs, i, acc) =>
+    i >= len(pairs) ? acc : {
+        let key = __msgpack_encode_value(pairs[i].key)
+        __msgpack_is_error(key) ? key : {
+            let value = __msgpack_encode_value(pairs[i].value)
+            __msgpack_is_error(value) ? value : __msgpack_encode_map_pairs(pairs, i + 1, concat(concat(acc, key), value))
+        }
+    }
+
+export let __msgpack_map_key_pairs = (mapv, ks, i, acc) =>
+    i >= len(ks) ? acc :
+    __msgpack_map_key_pairs(mapv, ks, i + 1, concat(acc, [{ key = ks[i] value = mapv[ks[i]] }]))
+
+export let __msgpack_is_pair_map = value =>
+    type_of(value) == "map" && map_has(value, "__msgpack_type") && value.__msgpack_type == "map" && map_has(value, "entries")
+
+export let __msgpack_encode_map = value => {
+    let pairs = __msgpack_is_pair_map(value) ? value.entries : __msgpack_map_key_pairs(value, keys(value), 0, [])
+    let body = __msgpack_encode_map_pairs(pairs, 0, [])
+    __msgpack_is_error(body) ? body :
+    concat(__msgpack_map_prefix(len(pairs)), body)
+}
+
+export let __msgpack_encode_ext_data = (type_id, data) =>
+    len(data) == 1 ? concat([212, type_id < 0 ? 256 + type_id : type_id], data) :
+    len(data) == 2 ? concat([213, type_id < 0 ? 256 + type_id : type_id], data) :
+    len(data) == 4 ? concat([214, type_id < 0 ? 256 + type_id : type_id], data) :
+    len(data) == 8 ? concat([215, type_id < 0 ? 256 + type_id : type_id], data) :
+    len(data) == 16 ? concat([216, type_id < 0 ? 256 + type_id : type_id], data) :
+    len(data) <= 255 ? concat(concat([199], uint_to_bytes_be(len(data), 1)), concat([type_id < 0 ? 256 + type_id : type_id], data)) :
+    len(data) <= 65535 ? concat(concat([200], uint_to_bytes_be(len(data), 2)), concat([type_id < 0 ? 256 + type_id : type_id], data)) :
+    concat(concat([201], uint_to_bytes_be(len(data), 4)), concat([type_id < 0 ? 256 + type_id : type_id], data))
+
+export let __msgpack_encode_timestamp = value => {
+    let seconds = msgpack_timestamp_seconds(value)
+    let nanos = msgpack_timestamp_nanoseconds(value)
+    nanos == 0 && seconds >= 0 && seconds <= 4294967295 ?
+        __msgpack_encode_ext_data(0 - 1, uint_to_bytes_be(seconds, 4)) :
+    seconds >= 0 && seconds < 17179869184 ?
+        __msgpack_encode_ext_data(0 - 1, uint_to_bytes_be(nanos * 17179869184 + seconds, 8)) :
+        __msgpack_encode_ext_data(0 - 1, concat(uint_to_bytes_be(nanos, 4), int_to_bytes_be(seconds, 8)))
+}
+
+export let __msgpack_encode_value = value =>
+    type_of(value) == "null" ? [192] :
+    type_of(value) == "bool" ? (value ? [195] : [194]) :
+    type_of(value) == "int" || type_of(value) == "bigint" ? __msgpack_encode_int(value) :
+    type_of(value) == "float" ? concat([203], f64_to_bytes_be(value)) :
+    type_of(value) == "string" ? __msgpack_encode_str(value) :
+    type_of(value) == "bytes" ? __msgpack_encode_bin(value) :
+    type_of(value) == "msgpack_ext" ? __msgpack_encode_ext_data(msgpack_ext_type_id(value), msgpack_ext_data(value)) :
+    type_of(value) == "msgpack_timestamp" ? __msgpack_encode_timestamp(value) :
+    type_of(value) == "list" ? __msgpack_encode_array(value) :
+    type_of(value) == "map" ? __msgpack_encode_map(value) :
+    type_of(value) == "identifier" || type_of(value) == "symbol" ? __msgpack_encode_str(to_string(value)) :
+    __msgpack_error("cannot encode " + type_of(value) + " as MessagePack")
+
+export let __msgpack_encoder_all = records =>
+    __msgpack_encode_array(records)
+
+codec msgpack {
+    mode = :bytes
+    tokenizer = cursor => __msgpack_tokenizer(cursor)
+    parser_all = tokens => __msgpack_parser_all(tokens)
+    encoder = record => __msgpack_encoder_all([record])
+    encoder_all = records => __msgpack_encoder_all(records)
+}
+
 export let __xml_tokenizer = cursor =>
     cursor.eof() ? null : {
         let start = cursor.pos()

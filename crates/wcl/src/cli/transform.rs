@@ -153,8 +153,10 @@ pub fn run(
                 }
                 "root_name" => {
                     if let Some(s) = value_str {
-                        output_options
-                            .insert("root_name".to_string(), crate::eval::value::Value::String(s));
+                        output_options.insert(
+                            "root_name".to_string(),
+                            crate::eval::value::Value::String(s),
+                        );
                     }
                 }
                 "xml_declaration" => {

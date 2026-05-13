@@ -2358,7 +2358,7 @@ fn decode_import_codec(
     options: &IndexMap<String, Value>,
 ) -> Result<Vec<Value>, crate::transform::TransformError> {
     match codec {
-        "json" | "yaml" | "toml" | "csv" | "hcl" | "xml" => {
+        "json" | "yaml" | "toml" | "csv" | "hcl" | "xml" | "msgpack" => {
             let registry = crate::transform::codec::custom::standard_registry()?;
             let custom = registry.get(codec).ok_or_else(|| {
                 crate::transform::TransformError::Codec(format!(
@@ -2370,7 +2370,6 @@ fn decode_import_codec(
                 bytes, custom, options,
             )
         }
-        "msgpack" => crate::transform::codec::msgpack::decode_msgpack_records(bytes),
         "text" => {
             let separator = option_string(options, "separator", "\t")?;
             let has_header = option_bool(options, "has_header", false)?;

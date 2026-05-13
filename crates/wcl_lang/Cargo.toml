@@ -25,10 +25,8 @@ indexmap = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
-# Codec / format deps (used by transform module)
-rmp-serde = "1"
-
 [dev-dependencies]
 serde_json = { workspace = true }
 serde_yaml_ng = "0.10"
 toml = "1"
+rmp-serde = "1"

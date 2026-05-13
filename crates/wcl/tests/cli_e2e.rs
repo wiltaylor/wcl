@@ -1386,6 +1386,40 @@ transform transform_xml {
 }
 
 #[test]
+fn transform_msgpack_codec_uses_standard_wcl_codec() {
+    let dir = tempdir().expect("tempdir");
+    let transform = dir.path().join("msgpack.wcl");
+    let input = dir.path().join("input.msgpack");
+
+    std::fs::write(
+        &input,
+        [
+            0x91, 0x82, 0xa4, b'n', b'a', b'm', b'e', 0xa3, b'A', b'd', b'a', 0xa4, b'p', b'o',
+            b'r', b't', 0xcd, 0x1f, 0x90,
+        ],
+    )
+    .expect("write input");
+    std::fs::write(
+        &transform,
+        r#"
+transform transform_msgpack {
+    input = "codec::msgpack"
+    output = "codec::json"
+
+    map {
+        name = in.name
+        port = in.port
+    }
+}
+"#,
+    )
+    .expect("write transform");
+
+    let stdout = run_transform_stdout(&transform, "transform_msgpack", &input);
+    assert_eq!(stdout, r#"[{"name":"Ada","port":8080}]"#.to_string() + "\n");
+}
+
+#[test]
 fn transform_json_codec_preserves_comment_markers_inside_strings() {
     let dir = tempdir().expect("tempdir");
     let transform = dir.path().join("json.wcl");

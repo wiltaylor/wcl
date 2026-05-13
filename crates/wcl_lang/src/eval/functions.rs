@@ -157,6 +157,114 @@ pub fn builtin_signatures() -> Vec<FunctionSignature> {
             doc: "Return the single-character string for a Unicode scalar value".into(),
         },
         FunctionSignature {
+            name: "bytes".into(),
+            params: vec!["data: list(int)".into()],
+            return_type: "bytes".into(),
+            doc: "Create a bytes value from a list of byte values".into(),
+        },
+        FunctionSignature {
+            name: "bytes_data".into(),
+            params: vec!["value: bytes".into()],
+            return_type: "list(int)".into(),
+            doc: "Return the byte values from a bytes value".into(),
+        },
+        FunctionSignature {
+            name: "msgpack_ext".into(),
+            params: vec!["type_id: i64".into(), "data: list(int)".into()],
+            return_type: "msgpack_ext".into(),
+            doc: "Create a MessagePack extension value".into(),
+        },
+        FunctionSignature {
+            name: "msgpack_ext_type_id".into(),
+            params: vec!["value: msgpack_ext".into()],
+            return_type: "i64".into(),
+            doc: "Return a MessagePack extension type id".into(),
+        },
+        FunctionSignature {
+            name: "msgpack_ext_data".into(),
+            params: vec!["value: msgpack_ext".into()],
+            return_type: "list(int)".into(),
+            doc: "Return MessagePack extension payload bytes".into(),
+        },
+        FunctionSignature {
+            name: "msgpack_timestamp".into(),
+            params: vec!["seconds: i64".into(), "nanoseconds: i64".into()],
+            return_type: "msgpack_timestamp".into(),
+            doc: "Create a MessagePack timestamp extension value".into(),
+        },
+        FunctionSignature {
+            name: "msgpack_timestamp_seconds".into(),
+            params: vec!["value: msgpack_timestamp".into()],
+            return_type: "i64".into(),
+            doc: "Return MessagePack timestamp seconds".into(),
+        },
+        FunctionSignature {
+            name: "msgpack_timestamp_nanoseconds".into(),
+            params: vec!["value: msgpack_timestamp".into()],
+            return_type: "i64".into(),
+            doc: "Return MessagePack timestamp nanoseconds".into(),
+        },
+        FunctionSignature {
+            name: "bytes_to_uint_be".into(),
+            params: vec!["data: list(int)".into()],
+            return_type: "int".into(),
+            doc: "Decode big-endian bytes as an unsigned integer".into(),
+        },
+        FunctionSignature {
+            name: "bytes_to_int_be".into(),
+            params: vec!["data: list(int)".into()],
+            return_type: "int".into(),
+            doc: "Decode big-endian bytes as a signed integer".into(),
+        },
+        FunctionSignature {
+            name: "uint_to_bytes_be".into(),
+            params: vec!["value: int".into(), "width: i64".into()],
+            return_type: "list(int)".into(),
+            doc: "Encode an unsigned integer as fixed-width big-endian bytes".into(),
+        },
+        FunctionSignature {
+            name: "int_to_bytes_be".into(),
+            params: vec!["value: int".into(), "width: i64".into()],
+            return_type: "list(int)".into(),
+            doc: "Encode a signed integer as fixed-width big-endian bytes".into(),
+        },
+        FunctionSignature {
+            name: "bytes_to_f32_be".into(),
+            params: vec!["data: list(int)".into()],
+            return_type: "float".into(),
+            doc: "Decode four big-endian bytes as a float32 value".into(),
+        },
+        FunctionSignature {
+            name: "bytes_to_f64_be".into(),
+            params: vec!["data: list(int)".into()],
+            return_type: "float".into(),
+            doc: "Decode eight big-endian bytes as a float64 value".into(),
+        },
+        FunctionSignature {
+            name: "f32_to_bytes_be".into(),
+            params: vec!["value: float".into()],
+            return_type: "list(int)".into(),
+            doc: "Encode a float32 value as big-endian bytes".into(),
+        },
+        FunctionSignature {
+            name: "f64_to_bytes_be".into(),
+            params: vec!["value: float".into()],
+            return_type: "list(int)".into(),
+            doc: "Encode a float64 value as big-endian bytes".into(),
+        },
+        FunctionSignature {
+            name: "utf8_to_bytes".into(),
+            params: vec!["text: string".into()],
+            return_type: "list(int)".into(),
+            doc: "Encode a string as UTF-8 bytes".into(),
+        },
+        FunctionSignature {
+            name: "bytes_to_utf8".into(),
+            params: vec!["data: list(int)".into()],
+            return_type: "string".into(),
+            doc: "Decode UTF-8 bytes as a string".into(),
+        },
+        FunctionSignature {
             name: "format".into(),
             params: vec!["fmt: string".into(), "...args".into()],
             return_type: "string".into(),
@@ -611,6 +719,33 @@ pub fn builtin_registry() -> HashMap<String, BuiltinFn> {
         "char_from_codepoint".into(),
         wrap_builtin(char_from_codepoint),
     );
+    m.insert("bytes".into(), wrap_builtin(bytes));
+    m.insert("bytes_data".into(), wrap_builtin(bytes_data));
+    m.insert("msgpack_ext".into(), wrap_builtin(msgpack_ext));
+    m.insert(
+        "msgpack_ext_type_id".into(),
+        wrap_builtin(msgpack_ext_type_id),
+    );
+    m.insert("msgpack_ext_data".into(), wrap_builtin(msgpack_ext_data));
+    m.insert("msgpack_timestamp".into(), wrap_builtin(msgpack_timestamp));
+    m.insert(
+        "msgpack_timestamp_seconds".into(),
+        wrap_builtin(msgpack_timestamp_seconds),
+    );
+    m.insert(
+        "msgpack_timestamp_nanoseconds".into(),
+        wrap_builtin(msgpack_timestamp_nanoseconds),
+    );
+    m.insert("bytes_to_uint_be".into(), wrap_builtin(bytes_to_uint_be));
+    m.insert("bytes_to_int_be".into(), wrap_builtin(bytes_to_int_be));
+    m.insert("uint_to_bytes_be".into(), wrap_builtin(uint_to_bytes_be));
+    m.insert("int_to_bytes_be".into(), wrap_builtin(int_to_bytes_be));
+    m.insert("bytes_to_f32_be".into(), wrap_builtin(bytes_to_f32_be));
+    m.insert("bytes_to_f64_be".into(), wrap_builtin(bytes_to_f64_be));
+    m.insert("f32_to_bytes_be".into(), wrap_builtin(f32_to_bytes_be));
+    m.insert("f64_to_bytes_be".into(), wrap_builtin(f64_to_bytes_be));
+    m.insert("utf8_to_bytes".into(), wrap_builtin(utf8_to_bytes));
+    m.insert("bytes_to_utf8".into(), wrap_builtin(bytes_to_utf8));
     m.insert("format".into(), wrap_builtin(fn_format));
     m.insert("regex_match".into(), wrap_builtin(regex_match));
     m.insert("regex_capture".into(), wrap_builtin(regex_capture));
@@ -1067,6 +1202,249 @@ fn char_from_codepoint(args: &[Value]) -> Result<Value, String> {
     let ch = char::from_u32(code)
         .ok_or_else(|| "char_from_codepoint: invalid Unicode scalar value".to_string())?;
     Ok(Value::String(ch.to_string()))
+}
+
+fn list_to_bytes(value: &Value, fn_name: &str, pos: usize) -> Result<Vec<u8>, String> {
+    let items = get_list(value, pos, fn_name)?;
+    let mut bytes = Vec::with_capacity(items.len());
+    for item in items {
+        let Value::Int(i) = item else {
+            return Err(format!("{fn_name}: byte list elements must be int"));
+        };
+        if !(0..=255).contains(i) {
+            return Err(format!("{fn_name}: byte value out of range: {i}"));
+        }
+        bytes.push(*i as u8);
+    }
+    Ok(bytes)
+}
+
+fn bytes_to_value(bytes: &[u8]) -> Value {
+    Value::List(bytes.iter().map(|b| Value::Int(i64::from(*b))).collect())
+}
+
+fn numeric_to_i128(value: &Value, fn_name: &str, pos: usize) -> Result<i128, String> {
+    match value {
+        Value::Int(i) => Ok(*i as i128),
+        Value::BigInt(i) => Ok(*i),
+        other => Err(format!(
+            "{fn_name}: argument {pos} must be int or bigint, got {}",
+            other.type_name()
+        )),
+    }
+}
+
+fn numeric_to_u128(value: &Value, fn_name: &str, pos: usize) -> Result<u128, String> {
+    let n = numeric_to_i128(value, fn_name, pos)?;
+    u128::try_from(n).map_err(|_| format!("{fn_name}: argument {pos} must be non-negative"))
+}
+
+fn int_value(n: i128) -> Value {
+    if (i64::MIN as i128..=i64::MAX as i128).contains(&n) {
+        Value::Int(n as i64)
+    } else {
+        Value::BigInt(n)
+    }
+}
+
+fn bytes(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 1, "bytes")?;
+    Ok(Value::Bytes(list_to_bytes(&args[0], "bytes", 1)?))
+}
+
+fn bytes_data(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 1, "bytes_data")?;
+    match &args[0] {
+        Value::Bytes(bytes) => Ok(bytes_to_value(bytes)),
+        other => Err(format!(
+            "bytes_data: argument 1 must be bytes, got {}",
+            other.type_name()
+        )),
+    }
+}
+
+fn msgpack_ext(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 2, "msgpack_ext")?;
+    let type_id = get_int(&args[0], 1, "msgpack_ext")?;
+    let type_id = i8::try_from(type_id)
+        .map_err(|_| "msgpack_ext: type_id must fit in signed 8-bit range".to_string())?;
+    let data = list_to_bytes(&args[1], "msgpack_ext", 2)?;
+    Ok(Value::MsgPackExt { type_id, data })
+}
+
+fn msgpack_ext_type_id(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 1, "msgpack_ext_type_id")?;
+    match &args[0] {
+        Value::MsgPackExt { type_id, .. } => Ok(Value::Int(i64::from(*type_id))),
+        other => Err(format!(
+            "msgpack_ext_type_id: argument 1 must be msgpack_ext, got {}",
+            other.type_name()
+        )),
+    }
+}
+
+fn msgpack_ext_data(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 1, "msgpack_ext_data")?;
+    match &args[0] {
+        Value::MsgPackExt { data, .. } => Ok(bytes_to_value(data)),
+        other => Err(format!(
+            "msgpack_ext_data: argument 1 must be msgpack_ext, got {}",
+            other.type_name()
+        )),
+    }
+}
+
+fn msgpack_timestamp(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 2, "msgpack_timestamp")?;
+    let seconds = get_int(&args[0], 1, "msgpack_timestamp")?;
+    let nanoseconds = get_int(&args[1], 2, "msgpack_timestamp")?;
+    let nanoseconds = u32::try_from(nanoseconds)
+        .map_err(|_| "msgpack_timestamp: nanoseconds must be non-negative".to_string())?;
+    if nanoseconds >= 1_000_000_000 {
+        return Err("msgpack_timestamp: nanoseconds must be less than 1000000000".into());
+    }
+    Ok(Value::MsgPackTimestamp {
+        seconds,
+        nanoseconds,
+    })
+}
+
+fn msgpack_timestamp_seconds(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 1, "msgpack_timestamp_seconds")?;
+    match &args[0] {
+        Value::MsgPackTimestamp { seconds, .. } => Ok(Value::Int(*seconds)),
+        other => Err(format!(
+            "msgpack_timestamp_seconds: argument 1 must be msgpack_timestamp, got {}",
+            other.type_name()
+        )),
+    }
+}
+
+fn msgpack_timestamp_nanoseconds(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 1, "msgpack_timestamp_nanoseconds")?;
+    match &args[0] {
+        Value::MsgPackTimestamp { nanoseconds, .. } => Ok(Value::Int(i64::from(*nanoseconds))),
+        other => Err(format!(
+            "msgpack_timestamp_nanoseconds: argument 1 must be msgpack_timestamp, got {}",
+            other.type_name()
+        )),
+    }
+}
+
+fn bytes_to_uint_be(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 1, "bytes_to_uint_be")?;
+    let bytes = list_to_bytes(&args[0], "bytes_to_uint_be", 1)?;
+    if bytes.len() > 8 {
+        return Err("bytes_to_uint_be: at most 8 bytes are supported".into());
+    }
+    let mut n: u128 = 0;
+    for byte in bytes {
+        n = (n << 8) | u128::from(byte);
+    }
+    if n <= i64::MAX as u128 {
+        Ok(Value::Int(n as i64))
+    } else {
+        Ok(Value::BigInt(n as i128))
+    }
+}
+
+fn bytes_to_int_be(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 1, "bytes_to_int_be")?;
+    let bytes = list_to_bytes(&args[0], "bytes_to_int_be", 1)?;
+    if bytes.is_empty() || bytes.len() > 8 {
+        return Err("bytes_to_int_be: byte list length must be 1..=8".into());
+    }
+    let bits = bytes.len() * 8;
+    let mut unsigned: u128 = 0;
+    for byte in bytes {
+        unsigned = (unsigned << 8) | u128::from(byte);
+    }
+    let sign_bit = 1u128 << (bits - 1);
+    let value = if unsigned & sign_bit == 0 {
+        unsigned as i128
+    } else {
+        (unsigned as i128) - (1i128 << bits)
+    };
+    Ok(int_value(value))
+}
+
+fn uint_to_bytes_be(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 2, "uint_to_bytes_be")?;
+    let mut n = numeric_to_u128(&args[0], "uint_to_bytes_be", 1)?;
+    let len = get_int(&args[1], 2, "uint_to_bytes_be")?;
+    if !(0..=8).contains(&len) {
+        return Err("uint_to_bytes_be: length must be 0..=8".into());
+    }
+    let mut bytes = vec![0u8; len as usize];
+    for byte in bytes.iter_mut().rev() {
+        *byte = (n & 0xff) as u8;
+        n >>= 8;
+    }
+    if n != 0 {
+        return Err("uint_to_bytes_be: value does not fit in requested length".into());
+    }
+    Ok(bytes_to_value(&bytes))
+}
+
+fn int_to_bytes_be(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 2, "int_to_bytes_be")?;
+    let n = numeric_to_i128(&args[0], "int_to_bytes_be", 1)?;
+    let len = get_int(&args[1], 2, "int_to_bytes_be")?;
+    if !(1..=8).contains(&len) {
+        return Err("int_to_bytes_be: length must be 1..=8".into());
+    }
+    let bits = len * 8;
+    let min = -(1i128 << (bits - 1));
+    let max = (1i128 << (bits - 1)) - 1;
+    if n < min || n > max {
+        return Err("int_to_bytes_be: value does not fit in requested length".into());
+    }
+    let unsigned = if n < 0 { (1i128 << bits) + n } else { n } as u128;
+    uint_to_bytes_be(&[int_value(unsigned as i128), Value::Int(len)])
+}
+
+fn bytes_to_f32_be(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 1, "bytes_to_f32_be")?;
+    let bytes = list_to_bytes(&args[0], "bytes_to_f32_be", 1)?;
+    let arr: [u8; 4] = bytes
+        .try_into()
+        .map_err(|_| "bytes_to_f32_be: expected exactly 4 bytes".to_string())?;
+    Ok(Value::Float(f32::from_be_bytes(arr) as f64))
+}
+
+fn bytes_to_f64_be(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 1, "bytes_to_f64_be")?;
+    let bytes = list_to_bytes(&args[0], "bytes_to_f64_be", 1)?;
+    let arr: [u8; 8] = bytes
+        .try_into()
+        .map_err(|_| "bytes_to_f64_be: expected exactly 8 bytes".to_string())?;
+    Ok(Value::Float(f64::from_be_bytes(arr)))
+}
+
+fn f32_to_bytes_be(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 1, "f32_to_bytes_be")?;
+    let f = coerce_to_float(&args[0], 1, "f32_to_bytes_be")? as f32;
+    Ok(bytes_to_value(&f.to_be_bytes()))
+}
+
+fn f64_to_bytes_be(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 1, "f64_to_bytes_be")?;
+    let f = coerce_to_float(&args[0], 1, "f64_to_bytes_be")?;
+    Ok(bytes_to_value(&f.to_be_bytes()))
+}
+
+fn utf8_to_bytes(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 1, "utf8_to_bytes")?;
+    let s = get_string(&args[0], 1, "utf8_to_bytes")?;
+    Ok(bytes_to_value(s.as_bytes()))
+}
+
+fn bytes_to_utf8(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 1, "bytes_to_utf8")?;
+    let bytes = list_to_bytes(&args[0], "bytes_to_utf8", 1)?;
+    String::from_utf8(bytes)
+        .map(Value::String)
+        .map_err(|e| format!("bytes_to_utf8: invalid UTF-8: {}", e))
 }
 
 /// `format(fmt, args...)` — replace `{}` placeholders positionally.
@@ -2351,7 +2729,10 @@ mod tests {
     fn test_char_from_codepoint() {
         assert_eq!(char_from_codepoint(&[i(65)]).unwrap(), s("A"));
         assert_eq!(char_from_codepoint(&[i(233)]).unwrap(), s("é"));
-        assert_eq!(char_from_codepoint(&[i(0x10ffff)]).unwrap(), s("\u{10ffff}"));
+        assert_eq!(
+            char_from_codepoint(&[i(0x10ffff)]).unwrap(),
+            s("\u{10ffff}")
+        );
         assert!(char_from_codepoint(&[i(-1)]).is_err());
         assert!(char_from_codepoint(&[i(0xd800)]).is_err());
         assert!(char_from_codepoint(&[i(0x110000)]).is_err());
@@ -2774,6 +3155,24 @@ mod tests {
             "substr",
             "char_codepoint",
             "char_from_codepoint",
+            "bytes",
+            "bytes_data",
+            "msgpack_ext",
+            "msgpack_ext_type_id",
+            "msgpack_ext_data",
+            "msgpack_timestamp",
+            "msgpack_timestamp_seconds",
+            "msgpack_timestamp_nanoseconds",
+            "bytes_to_uint_be",
+            "bytes_to_int_be",
+            "uint_to_bytes_be",
+            "int_to_bytes_be",
+            "bytes_to_f32_be",
+            "bytes_to_f64_be",
+            "f32_to_bytes_be",
+            "f64_to_bytes_be",
+            "utf8_to_bytes",
+            "bytes_to_utf8",
             "format",
             "regex_match",
             "regex_capture",

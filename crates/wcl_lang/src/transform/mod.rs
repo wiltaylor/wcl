@@ -81,7 +81,6 @@ pub fn execute_with_custom(
         codec::custom::decode_custom_records_with_options(input_reader, custom, input_options)?
     } else {
         match input_codec {
-            "msgpack" => codec::msgpack::decode_msgpack_records(input_reader)?,
             "binary" => {
                 let ctx = context.ok_or_else(|| {
                     TransformError::Other("binary codec requires transform context".into())
@@ -127,7 +126,6 @@ pub fn execute_with_custom(
         codec::custom::encode_custom_records(&transformed, custom, output_options, output_writer)?;
     } else {
         match output_codec {
-            "msgpack" => codec::msgpack::encode_msgpack_records(&transformed, output_writer)?,
             "binary" => {
                 let ctx = context.ok_or_else(|| {
                     TransformError::Other("binary codec requires transform context".into())

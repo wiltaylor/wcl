@@ -39,6 +39,41 @@ impl<'de> de::Deserializer<'de> for Deserializer {
                 };
                 visitor.visit_map(map_de)
             }
+            Value::Bytes(bytes) => visitor.visit_byte_buf(bytes),
+            Value::MsgPackExt { type_id, data } => {
+                let mut map = IndexMap::new();
+                map.insert("__type".to_string(), Value::String("msgpack_ext".into()));
+                map.insert("type_id".to_string(), Value::Int(i64::from(type_id)));
+                map.insert(
+                    "data".to_string(),
+                    Value::List(data.into_iter().map(|b| Value::Int(i64::from(b))).collect()),
+                );
+                let map_de = MapDeserializer {
+                    iter: map.into_iter(),
+                    value: None,
+                };
+                visitor.visit_map(map_de)
+            }
+            Value::MsgPackTimestamp {
+                seconds,
+                nanoseconds,
+            } => {
+                let mut map = IndexMap::new();
+                map.insert(
+                    "__type".to_string(),
+                    Value::String("msgpack_timestamp".into()),
+                );
+                map.insert("seconds".to_string(), Value::Int(seconds));
+                map.insert(
+                    "nanoseconds".to_string(),
+                    Value::Int(i64::from(nanoseconds)),
+                );
+                let map_de = MapDeserializer {
+                    iter: map.into_iter(),
+                    value: None,
+                };
+                visitor.visit_map(map_de)
+            }
             Value::BlockRef(br) => {
                 // Deserialize block as a map with id and attributes
                 let mut map = IndexMap::new();

@@ -29,6 +29,29 @@ pub fn value_to_json(value: &Value) -> serde_json::Value {
                 .collect();
             serde_json::Value::Object(obj)
         }
+        Value::Bytes(bytes) => {
+            json!({
+                "__type": "bytes",
+                "bytes": bytes,
+            })
+        }
+        Value::MsgPackExt { type_id, data } => {
+            json!({
+                "__type": "msgpack_ext",
+                "type_id": type_id,
+                "data": data,
+            })
+        }
+        Value::MsgPackTimestamp {
+            seconds,
+            nanoseconds,
+        } => {
+            json!({
+                "__type": "msgpack_timestamp",
+                "seconds": seconds,
+                "nanoseconds": nanoseconds,
+            })
+        }
         Value::Set(items) => {
             json!({
                 "__type": "set",

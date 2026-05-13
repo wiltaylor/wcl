@@ -59,6 +59,69 @@ pub fn value_to_js(value: &Value) -> JsValue {
             obj.into()
         }
         Value::BigInt(i) => JsValue::from_f64(*i as f64),
+        Value::Bytes(bytes) => {
+            let obj = Object::new();
+            Reflect::set(
+                &obj,
+                &JsValue::from_str("__type"),
+                &JsValue::from_str("bytes"),
+            )
+            .unwrap();
+            Reflect::set(
+                &obj,
+                &JsValue::from_str("bytes"),
+                &bytes_to_js_array(bytes).into(),
+            )
+            .unwrap();
+            obj.into()
+        }
+        Value::MsgPackExt { type_id, data } => {
+            let obj = Object::new();
+            Reflect::set(
+                &obj,
+                &JsValue::from_str("__type"),
+                &JsValue::from_str("msgpack_ext"),
+            )
+            .unwrap();
+            Reflect::set(
+                &obj,
+                &JsValue::from_str("type_id"),
+                &JsValue::from_f64(*type_id as f64),
+            )
+            .unwrap();
+            Reflect::set(
+                &obj,
+                &JsValue::from_str("data"),
+                &bytes_to_js_array(data).into(),
+            )
+            .unwrap();
+            obj.into()
+        }
+        Value::MsgPackTimestamp {
+            seconds,
+            nanoseconds,
+        } => {
+            let obj = Object::new();
+            Reflect::set(
+                &obj,
+                &JsValue::from_str("__type"),
+                &JsValue::from_str("msgpack_timestamp"),
+            )
+            .unwrap();
+            Reflect::set(
+                &obj,
+                &JsValue::from_str("seconds"),
+                &JsValue::from_f64(*seconds as f64),
+            )
+            .unwrap();
+            Reflect::set(
+                &obj,
+                &JsValue::from_str("nanoseconds"),
+                &JsValue::from_f64(*nanoseconds as f64),
+            )
+            .unwrap();
+            obj.into()
+        }
         Value::Date(s)
         | Value::OffsetDateTime(s)
         | Value::LocalDateTime(s)
@@ -71,6 +134,14 @@ pub fn value_to_js(value: &Value) -> JsValue {
             re.into()
         }
     }
+}
+
+fn bytes_to_js_array(bytes: &[u8]) -> Array {
+    let arr = Array::new();
+    for byte in bytes {
+        arr.push(&JsValue::from_f64(*byte as f64));
+    }
+    arr
 }
 
 /// Convert a JsValue to a WCL Value.

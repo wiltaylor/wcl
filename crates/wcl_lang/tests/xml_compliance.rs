@@ -51,14 +51,20 @@ fn map<'a>(value: &'a Value) -> &'a IndexMap<String, Value> {
 }
 
 fn string_field<'a>(value: &'a Value, key: &str) -> &'a str {
-    let Value::String(text) = map(value).get(key).unwrap_or_else(|| panic!("missing {key}")) else {
+    let Value::String(text) = map(value)
+        .get(key)
+        .unwrap_or_else(|| panic!("missing {key}"))
+    else {
         panic!("expected string field {key}");
     };
     text
 }
 
 fn list_field<'a>(value: &'a Value, key: &str) -> &'a Vec<Value> {
-    let Value::List(items) = map(value).get(key).unwrap_or_else(|| panic!("missing {key}")) else {
+    let Value::List(items) = map(value)
+        .get(key)
+        .unwrap_or_else(|| panic!("missing {key}"))
+    else {
         panic!("expected list field {key}");
     };
     items
@@ -66,10 +72,9 @@ fn list_field<'a>(value: &'a Value, key: &str) -> &'a Vec<Value> {
 
 #[test]
 fn decodes_structured_root_with_attributes_text_and_entities() {
-    let records = decode(
-        r#"<?xml version="1.0"?><book id="b1" note="Tom &amp; Jerry">A&lt;B&#x21;</book>"#,
-    )
-    .unwrap();
+    let records =
+        decode(r#"<?xml version="1.0"?><book id="b1" note="Tom &amp; Jerry">A&lt;B&#x21;</book>"#)
+            .unwrap();
     assert_eq!(records.len(), 1);
     let root = &records[0];
     assert_eq!(string_field(root, "type"), "element");
@@ -121,7 +126,10 @@ fn rejects_non_well_formed_documents() {
 fn encodes_structured_element_and_plain_values() {
     let records = decode(r#"<root><item flag="yes">a &amp; b</item></root>"#).unwrap();
     let output = encode(&records, CodecOptions::new()).unwrap();
-    assert_eq!(output, r#"<root><item flag="yes">a &amp; b</item></root>"#.to_string() + "\n");
+    assert_eq!(
+        output,
+        r#"<root><item flag="yes">a &amp; b</item></root>"#.to_string() + "\n"
+    );
 
     let mut record = IndexMap::new();
     record.insert("name".into(), Value::String("Alice & Bob".into()));

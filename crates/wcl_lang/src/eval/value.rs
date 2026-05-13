@@ -18,6 +18,18 @@ pub enum Value {
     List(Vec<Value>),
     /// Ordered map (preserves insertion order)
     Map(IndexMap<String, Value>),
+    /// Raw bytes.
+    Bytes(Vec<u8>),
+    /// MessagePack extension value.
+    MsgPackExt {
+        type_id: i8,
+        data: Vec<u8>,
+    },
+    /// MessagePack timestamp extension value.
+    MsgPackTimestamp {
+        seconds: i64,
+        nanoseconds: u32,
+    },
     /// Set (ordered, unique values)
     Set(Vec<Value>),
     /// Reference to a block (block type, inline id, attributes map, child blocks, decorators)
@@ -135,6 +147,9 @@ impl Value {
             Value::Identifier(_) => "identifier",
             Value::List(_) => "list",
             Value::Map(_) => "map",
+            Value::Bytes(_) => "bytes",
+            Value::MsgPackExt { .. } => "msgpack_ext",
+            Value::MsgPackTimestamp { .. } => "msgpack_timestamp",
             Value::Set(_) => "set",
             Value::Symbol(_) => "symbol",
             Value::BlockRef(_) => "block_ref",
@@ -292,6 +307,27 @@ impl PartialEq for Value {
             (Value::Symbol(a), Value::Symbol(b)) => a == b,
             (Value::List(a), Value::List(b)) => a == b,
             (Value::Map(a), Value::Map(b)) => a == b,
+            (Value::Bytes(a), Value::Bytes(b)) => a == b,
+            (
+                Value::MsgPackExt {
+                    type_id: a_type_id,
+                    data: a_data,
+                },
+                Value::MsgPackExt {
+                    type_id: b_type_id,
+                    data: b_data,
+                },
+            ) => a_type_id == b_type_id && a_data == b_data,
+            (
+                Value::MsgPackTimestamp {
+                    seconds: a_seconds,
+                    nanoseconds: a_nanoseconds,
+                },
+                Value::MsgPackTimestamp {
+                    seconds: b_seconds,
+                    nanoseconds: b_nanoseconds,
+                },
+            ) => a_seconds == b_seconds && a_nanoseconds == b_nanoseconds,
             (Value::Set(a), Value::Set(b)) => a == b,
             (Value::Date(a), Value::Date(b)) => a == b,
             (Value::OffsetDateTime(a), Value::OffsetDateTime(b)) => a == b,
@@ -348,6 +384,34 @@ impl fmt::Display for Value {
                 }
                 write!(f, "}}")
             }
+            Value::Bytes(bytes) => {
+                write!(f, "{{__type = bytes, bytes = [")?;
+                for (i, byte) in bytes.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", byte)?;
+                }
+                write!(f, "]}}")
+            }
+            Value::MsgPackExt { type_id, data } => {
+                write!(f, "{{__type = msgpack_ext, type_id = {}, data = [", type_id)?;
+                for (i, byte) in data.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", byte)?;
+                }
+                write!(f, "]}}")
+            }
+            Value::MsgPackTimestamp {
+                seconds,
+                nanoseconds,
+            } => write!(
+                f,
+                "{{__type = msgpack_timestamp, seconds = {}, nanoseconds = {}}}",
+                seconds, nanoseconds
+            ),
             Value::Set(items) => {
                 write!(f, "set(")?;
                 for (i, item) in items.iter().enumerate() {
