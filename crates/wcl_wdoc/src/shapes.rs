@@ -2135,6 +2135,31 @@ fn render_shape_svg(node: &ShapeNode, svg: &mut String) {
 
     if node
         .attrs
+        .get("_wdoc_group_render")
+        .is_some_and(|value| value == "true")
+        && !node.children.is_empty()
+    {
+        if let Some(url) = node.attrs.get("href") {
+            let url = svg_escape_attr(url);
+            write!(svg, "<a href=\"{url}\" target=\"_top\">").unwrap();
+        }
+        write!(svg, "<g transform=\"translate({},{})\">", b.x, b.y).unwrap();
+        let mut local = node.clone();
+        local.resolved.x = 0.0;
+        local.resolved.y = 0.0;
+        local.children.clear();
+        local.attrs.shift_remove("_wdoc_group_render");
+        render_shape_svg(&local, svg);
+        render_child_shapes_svg(&node.children, svg);
+        svg.push_str("</g>");
+        if node.attrs.contains_key("href") {
+            svg.push_str("</a>");
+        }
+        return;
+    }
+
+    if node
+        .attrs
         .get("_wdoc_composite")
         .is_some_and(|value| value == "true")
         && !node.children.is_empty()
@@ -3453,6 +3478,15 @@ fn compute_connection_route(
                 &mut to_anchor,
                 shape_map,
             );
+            resolve_regular_shape_closest_auto_anchors(
+                &conn.from_id,
+                &conn.to_id,
+                from_bounds,
+                to_bounds,
+                &mut from_anchor,
+                &mut to_anchor,
+                shape_map,
+            );
             if conn.from_anchor == AnchorPoint::Auto && conn.to_anchor == AnchorPoint::Auto {
                 let (mut x1, mut y1) = from_bounds.anchor_pos(from_anchor, to_bounds);
                 project_graph_port_endpoint_outside_container(
@@ -3664,6 +3698,15 @@ fn compute_connection_route(
                 &mut to_anchor,
                 shape_map,
             );
+            resolve_regular_shape_closest_auto_anchors(
+                &conn.from_id,
+                &conn.to_id,
+                from_bounds,
+                to_bounds,
+                &mut from_anchor,
+                &mut to_anchor,
+                shape_map,
+            );
             let (mut x1, mut y1) = from_bounds.anchor_pos(from_anchor, to_bounds);
             project_graph_port_endpoint_outside_container(
                 &conn.from_id,
@@ -3768,6 +3811,7 @@ fn render_routed_connection_svg(route: &RoutedConnection, svg: &mut String) {
 
     match &route.geometry {
         RoutedGeometry::Line { start, end } => {
+            let (start, end) = marker_adjusted_line(*start, *end, conn);
             write!(
                 svg,
                 "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\"\
@@ -3805,6 +3849,38 @@ fn render_routed_connection_svg(route: &RoutedConnection, svg: &mut String) {
         )
         .unwrap();
     }
+}
+
+fn marker_adjusted_line(
+    mut start: (f64, f64),
+    mut end: (f64, f64),
+    conn: &Connection,
+) -> ((f64, f64), (f64, f64)) {
+    let dx = end.0 - start.0;
+    let dy = end.1 - start.1;
+    let len = (dx * dx + dy * dy).sqrt();
+    if len <= 0.001 {
+        return (start, end);
+    }
+    let ux = dx / len;
+    let uy = dy / len;
+    let clearance = marker_endpoint_clearance(conn);
+    if matches!(conn.direction, Direction::From | Direction::Both) {
+        start.0 -= ux * clearance;
+        start.1 -= uy * clearance;
+    }
+    if matches!(conn.direction, Direction::To | Direction::Both) {
+        end.0 += ux * clearance;
+        end.1 += uy * clearance;
+    }
+    (start, end)
+}
+
+fn marker_endpoint_clearance(conn: &Connection) -> f64 {
+    attr_f64(&conn.attrs, "stroke_width")
+        .unwrap_or(1.0)
+        .max(1.0)
+        * 7.0
 }
 
 fn connection_label_point(
@@ -4282,6 +4358,86 @@ fn align_graph_port_to_shape_anchors(
     {
         *to_anchor = opposite_anchor(*from_anchor);
     }
+}
+
+fn resolve_regular_shape_closest_auto_anchors(
+    from_id: &str,
+    to_id: &str,
+    from: &Bounds,
+    to: &Bounds,
+    from_anchor: &mut AnchorPoint,
+    to_anchor: &mut AnchorPoint,
+    shape_map: &HashMap<String, Bounds>,
+) {
+    if nearest_container_id(from_id, shape_map).is_some()
+        || nearest_container_id(to_id, shape_map).is_some()
+    {
+        return;
+    }
+    resolve_closest_auto_anchors(from, to, from_anchor, to_anchor);
+}
+
+fn resolve_closest_auto_anchors(
+    from: &Bounds,
+    to: &Bounds,
+    from_anchor: &mut AnchorPoint,
+    to_anchor: &mut AnchorPoint,
+) {
+    match (*from_anchor, *to_anchor) {
+        (AnchorPoint::Auto, AnchorPoint::Auto) => {
+            let (from_best, to_best) = closest_anchor_pair(from, to);
+            *from_anchor = from_best;
+            *to_anchor = to_best;
+        }
+        (AnchorPoint::Auto, explicit_to) => {
+            *from_anchor = closest_anchor_to_point(from, to.anchor_pos(explicit_to, from), to);
+        }
+        (explicit_from, AnchorPoint::Auto) => {
+            *to_anchor = closest_anchor_to_point(to, from.anchor_pos(explicit_from, to), from);
+        }
+        _ => {}
+    }
+}
+
+fn closest_anchor_pair(from: &Bounds, to: &Bounds) -> (AnchorPoint, AnchorPoint) {
+    let mut best = (AnchorPoint::Right, AnchorPoint::Left);
+    let mut best_distance = f64::MAX;
+    for from_anchor in SIDE_ANCHORS {
+        for to_anchor in SIDE_ANCHORS {
+            let from_point = from.anchor_pos(from_anchor, to);
+            let to_point = to.anchor_pos(to_anchor, from);
+            let distance = squared_distance(from_point, to_point);
+            if distance < best_distance {
+                best = (from_anchor, to_anchor);
+                best_distance = distance;
+            }
+        }
+    }
+    best
+}
+
+fn closest_anchor_to_point(bounds: &Bounds, point: (f64, f64), other: &Bounds) -> AnchorPoint {
+    SIDE_ANCHORS
+        .into_iter()
+        .min_by(|a, b| {
+            let da = squared_distance(bounds.anchor_pos(*a, other), point);
+            let db = squared_distance(bounds.anchor_pos(*b, other), point);
+            da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .unwrap_or(AnchorPoint::Auto)
+}
+
+const SIDE_ANCHORS: [AnchorPoint; 4] = [
+    AnchorPoint::Top,
+    AnchorPoint::Bottom,
+    AnchorPoint::Left,
+    AnchorPoint::Right,
+];
+
+fn squared_distance(a: (f64, f64), b: (f64, f64)) -> f64 {
+    let dx = a.0 - b.0;
+    let dy = a.1 - b.1;
+    dx * dx + dy * dy
 }
 
 fn project_graph_port_endpoint_outside_container(
@@ -5362,6 +5518,7 @@ fn svg_style_attrs(attrs: &IndexMap<String, String>) -> String {
         "class",
         "style",
         "cursor",
+        "tabindex",
         "pointer_events",
         "font_family",
         "font_weight",
@@ -5401,6 +5558,7 @@ fn svg_image_attrs(attrs: &IndexMap<String, String>) -> String {
         "class",
         "style",
         "cursor",
+        "tabindex",
         "pointer_events",
     ] {
         if let Some(val) = attrs.get(*name) {
@@ -5722,13 +5880,14 @@ function initTextbox(el){if(!el||el.__wdocTextboxBound||el.getAttribute('data-wd
 function initCheckbox(el){if(!el||el.__wdocCheckboxBound||el.getAttribute('data-wdoc-checkbox')!=='true')return;el.__wdocCheckboxBound=true;var signal=el.getAttribute('data-wdoc-checkbox-signal')||'',disabled=el.getAttribute('data-wdoc-checkbox-disabled')==='true';function bool(v){return v===true||v==='true'||v===1||v==='1';}function draw(v){var checked=bool(v),box=el.querySelector('[data-wdoc-checkbox-box]'),marks=el.querySelectorAll('[data-wdoc-checkbox-mark]'),active=el.getAttribute('data-wdoc-checkbox-active-fill')||'currentColor',field=el.getAttribute('data-wdoc-checkbox-field-fill')||'transparent',border=el.getAttribute('data-wdoc-checkbox-border-stroke')||'currentColor';el.setAttribute('data-wdoc-checkbox-checked',checked?'true':'false');if(box){box.setAttribute('fill',checked?active:field);box.setAttribute('stroke',checked?active:border);}Array.prototype.forEach.call(marks,function(m){m.setAttribute('opacity',checked?'1':'0');});}draw(el.getAttribute('data-wdoc-checkbox-checked'));el.addEventListener('click',function(e){if(disabled)return;e.preventDefault();e.stopPropagation();var next=el.getAttribute('data-wdoc-checkbox-checked')!=='true';draw(next);if(window.__wdocSetSignal&&signal)window.__wdocSetSignal(signal,next,'');});document.addEventListener('wdoc:signal-change',function(e){if(e.detail&&e.detail.name===signal)draw(e.detail.value);});}
 function initRadio(el){if(!el||el.__wdocRadioBound||el.getAttribute('data-wdoc-radio')!=='true')return;el.__wdocRadioBound=true;var signal=el.getAttribute('data-wdoc-radio-signal')||'',value=el.getAttribute('data-wdoc-radio-value')||'',disabled=el.getAttribute('data-wdoc-radio-disabled')==='true';function draw(selected){var outer=el.querySelector('[data-wdoc-radio-outer]'),dot=el.querySelector('[data-wdoc-radio-dot]'),active=el.getAttribute('data-wdoc-radio-active-fill')||'currentColor',border=el.getAttribute('data-wdoc-radio-border-stroke')||'currentColor';el.setAttribute('data-wdoc-radio-selected',selected?'true':'false');if(outer)outer.setAttribute('stroke',selected?active:border);if(dot)dot.setAttribute('opacity',selected?'1':'0');}function apply(v){draw(String(v)==String(value));}apply(el.getAttribute('data-wdoc-radio-selected')==='true'?value:null);el.addEventListener('click',function(e){if(disabled)return;e.preventDefault();e.stopPropagation();apply(value);if(window.__wdocSetSignal&&signal)window.__wdocSetSignal(signal,value,'');});document.addEventListener('wdoc:signal-change',function(e){if(e.detail&&e.detail.name===signal)apply(e.detail.value);});}
 function initDropdown(el){if(!el||el.__wdocDropdownBound||el.getAttribute('data-wdoc-dropdown')!=='true')return;el.__wdocDropdownBound=true;var signal=el.getAttribute('data-wdoc-dropdown-signal')||'',placeholder=el.getAttribute('data-wdoc-dropdown-placeholder')||'Select',value=el.getAttribute('data-wdoc-dropdown-value')||'',menu=null;function items(){return (el.getAttribute('data-wdoc-dropdown-items')||'').split(',').map(function(s){return s.trim();}).filter(Boolean);}function valueNode(){return el.querySelector('[data-wdoc-dropdown-value-node]');}function setDisplay(v){value=v==null?'':String(v);var n=valueNode(),shown=value||placeholder;if(n){n.textContent=shown;n.setAttribute('opacity',value?1:.4);n.setAttribute('fill',value?(el.getAttribute('data-wdoc-dropdown-value-fill')||'currentColor'):(el.getAttribute('data-wdoc-dropdown-placeholder-fill')||'currentColor'));}el.setAttribute('data-wdoc-dropdown-value',value);}function close(){if(menu){menu.remove();menu=null;}}function choose(v){setDisplay(v);if(window.__wdocSetSignal&&signal)window.__wdocSetSignal(signal,v,'');close();}function open(){if(menu){close();return;}var r=el.getBoundingClientRect(),base=baseBox(el),fy=parseFloat(el.getAttribute('data-wdoc-dropdown-field-y')||'0')||0,fh=parseFloat(el.getAttribute('data-wdoc-dropdown-field-h')||String(base.height))||base.height,sy=r.height/(base.height||r.height||1),opts=items();menu=document.createElement('div');menu.setAttribute('role','listbox');menu.style.position='fixed';menu.style.left=r.left+'px';menu.style.top=(r.top+(fy+fh)*sy+4)+'px';menu.style.width=r.width+'px';menu.style.zIndex='2147483647';menu.style.boxSizing='border-box';menu.style.border='1px solid '+(el.getAttribute('data-wdoc-dropdown-border-stroke')||'currentColor');menu.style.borderRadius='4px';menu.style.background=el.getAttribute('data-wdoc-dropdown-menu-fill')||'Canvas';menu.style.color=el.getAttribute('data-wdoc-dropdown-label-fill')||'CanvasText';menu.style.font='12px system-ui, sans-serif';menu.style.boxShadow='0 8px 20px rgba(0,0,0,.18)';opts.forEach(function(opt){var row=document.createElement('button');row.type='button';row.textContent=opt;row.style.display='block';row.style.width='100%';row.style.padding='6px 10px';row.style.border='0';row.style.background=opt===value?'rgba(88,166,255,.18)':'transparent';row.style.color='inherit';row.style.textAlign='left';row.style.cursor='pointer';row.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();choose(opt);});menu.appendChild(row);});document.body.appendChild(menu);setTimeout(function(){document.addEventListener('click',outside,true);},0);}function outside(e){if(menu&&e.target!==menu&&!menu.contains(e.target)){document.removeEventListener('click',outside,true);close();}}setDisplay(value);el.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();open();});document.addEventListener('wdoc:signal-change',function(e){if(e.detail&&e.detail.name===signal)setDisplay(e.detail.value);});}
+function initTooltip(el){if(!el||el.__wdocTooltipBound)return;var tipId=el.getAttribute('data-wdoc-tooltip-id');if(!tipId)return;el.__wdocTooltipBound=true;var svg=el.closest('svg'),tip=target(svg,el,tipId),timer=null,last=null,visible=false,delay=parseInt(el.getAttribute('data-wdoc-tooltip-delay-ms')||'500',10)||500,ox=parseFloat(el.getAttribute('data-wdoc-tooltip-offset-x')||'12')||12,oy=parseFloat(el.getAttribute('data-wdoc-tooltip-offset-y')||'12')||12;if(!svg||!tip)return;function focusPoint(){var r=el.getBoundingClientRect();return svgPoint(svg,r.left+r.width/2,r.top+r.height/2);}function place(p){if(!p)return;var b=tip.__wdocBox||baseBox(tip),v=parseViewBox(svg),x=p.x+ox,y=p.y+oy;if(b.width>0)x=Math.max(v.x,Math.min(v.x+v.width-b.width,x));if(b.height>0)y=Math.max(v.y,Math.min(v.y+v.height-b.height,y));setBox(tip,{x:x,y:y,width:b.width,height:b.height,rotate:0,rotate_origin_x:null,rotate_origin_y:null});}function show(p){visible=true;tip.setAttribute('visibility','visible');place(p||last||focusPoint());}function cancel(){if(timer){clearTimeout(timer);timer=null;}}function schedule(p){last=p||last;cancel();timer=setTimeout(function(){timer=null;show(last);},delay);}function hide(){cancel();visible=false;tip.setAttribute('visibility','hidden');}el.addEventListener('pointerenter',function(e){last=svgPoint(svg,e.clientX,e.clientY);schedule(last);});el.addEventListener('pointermove',function(e){last=svgPoint(svg,e.clientX,e.clientY);if(visible)place(last);});el.addEventListener('pointerleave',hide);el.addEventListener('focusin',function(){schedule(focusPoint());});el.addEventListener('focusout',hide);el.addEventListener('keydown',function(e){if(e.key==='Escape')hide();});}
 function initCollapsiblePanel(el){if(!el||el.__wdocCollapseBound||el.getAttribute('data-wdoc-collapsible-panel')!=='true')return;el.__wdocCollapseBound=true;var svg=el.closest('svg'),headerH=parseFloat(el.getAttribute('data-wdoc-collapse-header-height')||'36')||36,home=baseBox(el),group=el.getAttribute('data-wdoc-collapse-group')||'',header=el.querySelector('[data-wdoc-collapse-header="true"]')||el,frame=el.querySelector('[data-wdoc-collapse-frame="true"]');function bool(v){return v===true||v==='true'||v===1||v==='1';}function parts(){return Array.prototype.slice.call(el.children).filter(function(child){return child.getAttribute('data-wdoc-collapse-keep')!=='true';});}function setFrameHeight(h){if(frame&&frame.hasAttribute('height'))frame.setAttribute('height',String(h));}function setCollapsed(collapsed){el.setAttribute('data-wdoc-collapse-collapsed',collapsed?'true':'false');parts().forEach(function(child){if(collapsed){if(!child.hasAttribute('data-wdoc-collapse-prev-visibility'))child.setAttribute('data-wdoc-collapse-prev-visibility',child.getAttribute('visibility')||'');if(!child.hasAttribute('data-wdoc-collapse-prev-pointer-events'))child.setAttribute('data-wdoc-collapse-prev-pointer-events',child.getAttribute('pointer-events')||'');child.setAttribute('visibility','hidden');child.setAttribute('pointer-events','none');}else{var v=child.getAttribute('data-wdoc-collapse-prev-visibility'),p=child.getAttribute('data-wdoc-collapse-prev-pointer-events');if(v){child.setAttribute('visibility',v);}else child.removeAttribute('visibility');if(p){child.setAttribute('pointer-events',p);}else child.removeAttribute('pointer-events');child.removeAttribute('data-wdoc-collapse-prev-visibility');child.removeAttribute('data-wdoc-collapse-prev-pointer-events');}});setFrameHeight(collapsed?headerH:home.height);setBox(el,{x:home.x,y:home.y,width:home.width,height:collapsed?headerH:home.height,rotate:home.rotate||0,rotate_origin_x:home.rotate_origin_x,rotate_origin_y:home.rotate_origin_y});if(svg)updateConnections(svg);}function collapsePeers(){if(!svg||!group)return;Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-collapsible-panel="true"][data-wdoc-collapse-group="'+attrEscape(group)+'"]'),function(other){if(other!==el&&other.__wdocSetCollapsed)other.__wdocSetCollapsed(true);});}el.__wdocSetCollapsed=setCollapsed;setCollapsed(bool(el.getAttribute('data-wdoc-collapse-collapsed')));header.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();var next=!bool(el.getAttribute('data-wdoc-collapse-collapsed'));if(!next)collapsePeers();setCollapsed(next);});}
 function initDraggable(el){if(!el||el.__wdocDragBound||el.getAttribute('data-wdoc-draggable')!=='true')return;el.__wdocDragBound=true;var signal=el.getAttribute('data-wdoc-drag-signal')||'',xPath=el.getAttribute('data-wdoc-drag-x-path')||'x',yPath=el.getAttribute('data-wdoc-drag-y-path')||'y',drag=null;el.style.cursor=el.style.cursor||'grab';function point(e){var m=el.closest('[data-wdoc-map="true"]');if(m)return{point:svgPoint(m,e.clientX,e.clientY),map:m};var svg=el.closest('svg');return{point:svgPoint(svg,e.clientX,e.clientY),map:null};}function move(e){if(!drag)return;e.preventDefault();e.stopPropagation();var p=point(e),x=p.point.x-drag.dx,y=p.point.y-drag.dy;if(p.map&&el.getAttribute('data-wdoc-map-fixed')==='true'){el.setAttribute('data-wdoc-map-anchor-x',String(x));el.setAttribute('data-wdoc-map-anchor-y',String(y));updateMapFixedShapes(p.map);}else{var b=el.__wdocBox||baseBox(el);setBox(el,{x:x-drag.localX,y:y-drag.localY,width:b.width,height:b.height,rotate:b.rotate||0,rotate_origin_x:b.rotate_origin_x,rotate_origin_y:b.rotate_origin_y});}if(window.__wdocSetSignal&&signal){window.__wdocSetSignal(signal,x,xPath);window.__wdocSetSignal(signal,y,yPath);}}function end(e){if(!drag)return;drag=null;el.style.cursor='grab';el.releasePointerCapture&&el.releasePointerCapture(e.pointerId);}el.addEventListener('pointerdown',function(e){if(e.button!==0)return;var p=point(e),b=baseBox(el),anchorX=parseFloat(el.getAttribute('data-wdoc-map-anchor-x')||String(b.x+b.width/2)),anchorY=parseFloat(el.getAttribute('data-wdoc-map-anchor-y')||String(b.y+b.height/2));e.preventDefault();e.stopPropagation();drag={dx:p.point.x-anchorX,dy:p.point.y-anchorY,localX:anchorX-b.x,localY:anchorY-b.y};el.style.cursor='grabbing';el.setPointerCapture&&el.setPointerCapture(e.pointerId);move(e);});el.addEventListener('pointermove',move);el.addEventListener('pointerup',end);el.addEventListener('pointercancel',end);}
 function eventValue(v,e){return v==='$event.value'&&e&&e.__wdocValue!==undefined?e.__wdocValue:v;}
 function runActions(cfg,e){if(!window.__wdocSetSignal||!cfg.actions)return;cfg.actions.forEach(function(a){if(a&&a.signal)window.__wdocSetSignal(a.signal,eventValue(a.value,e),a.path||'');});}
 function applyProperty(el,prop,value){var s=value==null?'':String(value),b;if(['x','y','width','height'].indexOf(prop)>=0){b=el.__wdocBox||baseBox(el);b={x:b.x,y:b.y,width:b.width,height:b.height};b[prop]=parseFloat(value)||0;setBox(el,b);return true;}if(prop==='map_anchor_x'||prop==='map_anchor_y'){el.setAttribute(prop==='map_anchor_x'?'data-wdoc-map-anchor-x':'data-wdoc-map-anchor-y',String(parseFloat(value)||0));var m=el.closest('[data-wdoc-map="true"]');if(m)updateMapFixedShapes(m);return true;}if(prop==='content'||prop==='text'){el.textContent=s;return true;}if(['fill','stroke','opacity','visibility','display','class','transform'].indexOf(prop)>=0){el.setAttribute(prop,s);return true;}return false;}
 window.__wdocDiagramApplyProperty=applyProperty;
-function init(root){(root||document).querySelectorAll('svg').forEach(function(svg){initPanZoom(svg);initMap(svg);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-map]'),initMap);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-sprite]'),applySpriteTransparency);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-slider]'),initSlider);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-textbox="true"]'),initTextbox);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-checkbox="true"]'),initCheckbox);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-radio="true"]'),initRadio);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-dropdown="true"]'),initDropdown);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-collapsible-panel="true"]'),initCollapsiblePanel);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-draggable="true"]'),initDraggable);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-id]'),function(el,i){if(el.__wdocBound)return;el.__wdocBound=true;if(!el.hasAttribute('data-wdoc-order'))el.setAttribute('data-wdoc-order',String(i));parseEvents(el).forEach(function(cfg){var mode=cfg.mode||defaultMode(cfg.trigger),down=eventName(cfg.trigger,false),up=eventName(cfg.trigger,true);el.addEventListener(down,function(e){if(cfg.trigger==='mouse_down'&&!buttonOk(e,cfg.button))return;if(cfg.prevent)e.preventDefault();if(cfg.trigger==='mouse_leave'&&mode==='remove'&&guardedTo(svg,e.relatedTarget,cfg.guard))return;var t=target(svg,el,cfg.target);if(t){if(mode==='toggle')t.classList.contains(stateClass(cfg.state))?remove(t,cfg.state):add(t,cfg.state);else if(mode==='remove')remove(t,cfg.state);else if(mode==='pulse'){add(t,cfg.state);setTimeout(function(){remove(t,cfg.state);},cfg.duration||180);}else add(t,cfg.state);}runActions(cfg,e);});if(mode==='while'&&(cfg.trigger==='hover'||cfg.trigger==='mouse_down'))el.addEventListener(up,function(){var t=target(svg,el,cfg.target);if(t)remove(t,cfg.state);});});});});}
+function init(root){(root||document).querySelectorAll('svg').forEach(function(svg){initPanZoom(svg);initMap(svg);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-map]'),initMap);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-sprite]'),applySpriteTransparency);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-slider]'),initSlider);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-textbox="true"]'),initTextbox);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-checkbox="true"]'),initCheckbox);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-radio="true"]'),initRadio);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-dropdown="true"]'),initDropdown);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-tooltip-id]'),initTooltip);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-collapsible-panel="true"]'),initCollapsiblePanel);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-draggable="true"]'),initDraggable);Array.prototype.forEach.call(svg.querySelectorAll('[data-wdoc-id]'),function(el,i){if(el.__wdocBound)return;el.__wdocBound=true;if(!el.hasAttribute('data-wdoc-order'))el.setAttribute('data-wdoc-order',String(i));parseEvents(el).forEach(function(cfg){var mode=cfg.mode||defaultMode(cfg.trigger),down=eventName(cfg.trigger,false),up=eventName(cfg.trigger,true);el.addEventListener(down,function(e){if(cfg.trigger==='mouse_down'&&!buttonOk(e,cfg.button))return;if(cfg.prevent)e.preventDefault();if(cfg.trigger==='mouse_leave'&&mode==='remove'&&guardedTo(svg,e.relatedTarget,cfg.guard))return;var t=target(svg,el,cfg.target);if(t){if(mode==='toggle')t.classList.contains(stateClass(cfg.state))?remove(t,cfg.state):add(t,cfg.state);else if(mode==='remove')remove(t,cfg.state);else if(mode==='pulse'){add(t,cfg.state);setTimeout(function(){remove(t,cfg.state);},cfg.duration||180);}else add(t,cfg.state);}runActions(cfg,e);});if(mode==='while'&&(cfg.trigger==='hover'||cfg.trigger==='mouse_down'))el.addEventListener(up,function(){var t=target(svg,el,cfg.target);if(t)remove(t,cfg.state);});});});});}
 window.__wdocDiagramRuntimeInit=init;var s=document.currentScript;if(s&&s.parentNode)init(s.parentNode);if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){init(document);});else init(document);
 })();"#.to_string()
 }
@@ -6468,6 +6627,109 @@ mod tests {
         assert_eq!(b.anchor_pos(AnchorPoint::Bottom, &other), (200.0, 150.0));
         assert_eq!(b.anchor_pos(AnchorPoint::Left, &other), (100.0, 100.0));
         assert_eq!(b.anchor_pos(AnchorPoint::Right, &other), (300.0, 100.0));
+    }
+
+    #[test]
+    fn auto_connection_uses_closest_side_pair() {
+        let mut shape_map = HashMap::new();
+        shape_map.insert(
+            "a".to_string(),
+            Bounds {
+                x: 0.0,
+                y: 0.0,
+                width: 40.0,
+                height: 40.0,
+            },
+        );
+        shape_map.insert(
+            "b".to_string(),
+            Bounds {
+                x: 120.0,
+                y: 0.0,
+                width: 40.0,
+                height: 40.0,
+            },
+        );
+
+        let route = compute_connection_route(&connection("a", "b"), &shape_map).unwrap();
+        match route.geometry {
+            RoutedGeometry::Line { start, end } => {
+                assert_eq!(start, (40.0, 20.0));
+                assert_eq!(end, (120.0, 20.0));
+            }
+            _ => panic!("expected direct line"),
+        }
+    }
+
+    #[test]
+    fn diagonal_auto_connection_uses_closest_side_pair_for_route_endpoints() {
+        let mut shape_map = HashMap::new();
+        shape_map.insert(
+            "a".to_string(),
+            Bounds {
+                x: 0.0,
+                y: 0.0,
+                width: 100.0,
+                height: 40.0,
+            },
+        );
+        shape_map.insert(
+            "b".to_string(),
+            Bounds {
+                x: 70.0,
+                y: 90.0,
+                width: 40.0,
+                height: 40.0,
+            },
+        );
+
+        let route = compute_connection_route(&connection("a", "b"), &shape_map).unwrap();
+        match route.geometry {
+            RoutedGeometry::Orthogonal { points } => {
+                assert_eq!(points.first().copied(), Some((50.0, 40.0)));
+                assert_eq!(points.last().copied(), Some((90.0, 90.0)));
+            }
+            _ => panic!("expected orthogonal route"),
+        }
+    }
+
+    #[test]
+    fn explicit_connection_anchors_override_closest_side_selection() {
+        let mut shape_map = HashMap::new();
+        shape_map.insert(
+            "a".to_string(),
+            Bounds {
+                x: 0.0,
+                y: 0.0,
+                width: 40.0,
+                height: 40.0,
+            },
+        );
+        shape_map.insert(
+            "b".to_string(),
+            Bounds {
+                x: 120.0,
+                y: 0.0,
+                width: 40.0,
+                height: 40.0,
+            },
+        );
+        let mut conn = connection("a", "b");
+        conn.from_anchor = AnchorPoint::Bottom;
+        conn.to_anchor = AnchorPoint::Top;
+
+        let route = compute_connection_route(&conn, &shape_map).unwrap();
+        match route.geometry {
+            RoutedGeometry::Orthogonal { points } => {
+                assert_eq!(points.first().copied(), Some((20.0, 40.0)));
+                assert_eq!(points.last().copied(), Some((140.0, 0.0)));
+            }
+            RoutedGeometry::Line { start, end } => {
+                assert_eq!(start, (20.0, 40.0));
+                assert_eq!(end, (140.0, 0.0));
+            }
+            _ => panic!("expected straight or orthogonal route"),
+        }
     }
 
     #[test]
@@ -9297,7 +9559,7 @@ mod tests {
     }
 
     #[test]
-    fn same_source_branch_routes_keep_shared_initial_trunk() {
+    fn same_source_branch_routes_keep_shared_source_endpoint() {
         let mut shape_map = HashMap::new();
         shape_map.insert(
             "main".to_string(),
@@ -9339,8 +9601,10 @@ mod tests {
 
         assert_eq!(email_points[0], (430.0, 125.0));
         assert_eq!(payment_points[0], (430.0, 125.0));
-        assert_eq!(email_points[1], (480.0, 125.0));
-        assert_eq!(payment_points[1], (480.0, 125.0));
+        assert!(email_points[1].0 > email_points[0].0);
+        assert!(payment_points[1].0 > payment_points[0].0);
+        assert_eq!(email_points[1].1, 125.0);
+        assert_eq!(payment_points[1].1, 125.0);
         assert_ne!(email_points[2], payment_points[2]);
     }
 

@@ -1120,6 +1120,10 @@ fn collect_shape_or_connection(
 
     if let Some(kind) = kind {
         let mut a = value_map_to_string_map_lossy(&br.attributes);
+        let tooltip_blocks = all_child_blocks(br)
+            .into_iter()
+            .filter(|child| is_draw_tooltip_block(child))
+            .collect::<Vec<_>>();
         if kind == ShapeKind::Sprite
             || kind == ShapeKind::DopesheetView
             || kind == ShapeKind::Tilemap
@@ -1241,8 +1245,34 @@ fn collect_shape_or_connection(
         {
             a.insert("_wdoc_runtime".to_string(), "true".to_string());
         }
+        if !tooltip_blocks.is_empty() {
+            if let Some(source_id) = br.id.as_deref() {
+                let tooltip = tooltip_blocks[0];
+                let tooltip_id = tooltip
+                    .id
+                    .as_deref()
+                    .map(str::to_string)
+                    .unwrap_or_else(|| format!("{source_id}_tooltip"));
+                a.insert("data_wdoc_tooltip_id".to_string(), tooltip_id);
+                a.insert(
+                    "data_wdoc_tooltip_delay_ms".to_string(),
+                    tooltip_attr_string(tooltip, "delay_ms", "500"),
+                );
+                a.insert(
+                    "data_wdoc_tooltip_offset_x".to_string(),
+                    tooltip_attr_string(tooltip, "offset_x", "12"),
+                );
+                a.insert(
+                    "data_wdoc_tooltip_offset_y".to_string(),
+                    tooltip_attr_string(tooltip, "offset_y", "12"),
+                );
+                a.entry("tabindex".to_string())
+                    .or_insert_with(|| "0".to_string());
+                a.insert("_wdoc_runtime".to_string(), "true".to_string());
+            }
+        }
 
-        shapes.push(ShapeNode {
+        let source_node = ShapeNode {
             kind,
             kind_name: br.kind.clone(),
             id: br.id.clone(),
@@ -1268,8 +1298,161 @@ fn collect_shape_or_connection(
             padding: pad,
             z_index,
             source_order,
-        });
+        };
+        shapes.push(source_node);
+
+        if let Some(source_id) = br.id.as_deref() {
+            for (idx, tooltip) in tooltip_blocks.iter().take(1).enumerate() {
+                shapes.push(tooltip_overlay_shape(
+                    source_id,
+                    tooltip,
+                    ctx,
+                    dopesheets,
+                    source_order + idx + 1,
+                    z_index,
+                ));
+            }
+        }
     }
+}
+
+fn tooltip_overlay_shape(
+    source_id: &str,
+    tooltip: &BlockRef,
+    ctx: &ExtractCtx,
+    dopesheets: &HashMap<String, IndexMap<String, String>>,
+    source_order: usize,
+    source_z: f64,
+) -> crate::shapes::ShapeNode {
+    use crate::shapes::*;
+
+    let attrs = value_map_to_string_map_lossy(&tooltip.attributes);
+    let width = attrs
+        .get("width")
+        .and_then(|value| value.parse::<f64>().ok())
+        .unwrap_or(240.0);
+    let height = attrs
+        .get("height")
+        .and_then(|value| value.parse::<f64>().ok())
+        .unwrap_or(96.0);
+    let padding = attrs
+        .get("padding")
+        .and_then(|value| value.parse::<f64>().ok())
+        .unwrap_or(10.0);
+    let radius = attrs
+        .get("radius")
+        .cloned()
+        .unwrap_or_else(|| "6".to_string());
+    let fill = attrs
+        .get("surface_fill")
+        .cloned()
+        .unwrap_or_else(|| "var(--color-bg)".to_string());
+    let stroke = attrs
+        .get("border_stroke")
+        .cloned()
+        .unwrap_or_else(|| "var(--color-nav-border)".to_string());
+    let stroke_width = attrs
+        .get("border_width")
+        .cloned()
+        .unwrap_or_else(|| "1".to_string());
+    let id = tooltip
+        .id
+        .as_deref()
+        .map(str::to_string)
+        .unwrap_or_else(|| format!("{source_id}_tooltip"));
+
+    let mut children = vec![ShapeNode {
+        kind: ShapeKind::Rect,
+        kind_name: "wdoc::draw::rect".to_string(),
+        id: Some(format!("{id}_frame")),
+        x: Some(0.0),
+        y: Some(0.0),
+        width: Some(width),
+        height: Some(height),
+        top: None,
+        bottom: None,
+        left: None,
+        right: None,
+        resolved: Bounds::default(),
+        attrs: IndexMap::from([
+            ("rx".to_string(), radius),
+            ("fill".to_string(), fill),
+            ("stroke".to_string(), stroke),
+            ("stroke_width".to_string(), stroke_width),
+            ("_wdoc_layout_decoration".to_string(), "true".to_string()),
+            ("_wdoc_full_container".to_string(), "true".to_string()),
+        ]),
+        events: Vec::new(),
+        children: Vec::new(),
+        text_block_items: Vec::new(),
+        align: Alignment::None,
+        gap: 0.0,
+        padding: 0.0,
+        z_index: -1.0,
+        source_order: 0,
+    }];
+
+    let mut tooltip_connections = Vec::new();
+    let mut child_source_order = 1;
+    for child in all_child_blocks(tooltip) {
+        collect_shape_or_connection(
+            child,
+            &mut children,
+            &mut tooltip_connections,
+            ctx,
+            child_source_order,
+            dopesheets,
+        );
+        child_source_order += 1;
+    }
+
+    let mut overlay_attrs = IndexMap::new();
+    overlay_attrs.insert("visibility".to_string(), "hidden".to_string());
+    overlay_attrs.insert("pointer_events".to_string(), "none".to_string());
+    overlay_attrs.insert("data_wdoc_tooltip_overlay".to_string(), "true".to_string());
+    overlay_attrs.insert("data_wdoc_tooltip_for".to_string(), source_id.to_string());
+    overlay_attrs.insert("_wdoc_runtime".to_string(), "true".to_string());
+    if let Some(class_name) = attrs.get("class").filter(|value| !value.trim().is_empty()) {
+        overlay_attrs.insert("class".to_string(), class_name.clone());
+    }
+
+    ShapeNode {
+        kind: ShapeKind::Group,
+        kind_name: "wdoc::draw::group".to_string(),
+        id: Some(id),
+        x: Some(0.0),
+        y: Some(0.0),
+        width: Some(width),
+        height: Some(height),
+        top: None,
+        bottom: None,
+        left: None,
+        right: None,
+        resolved: Bounds::default(),
+        attrs: overlay_attrs,
+        events: Vec::new(),
+        children,
+        text_block_items: Vec::new(),
+        align: Alignment::Stack,
+        gap: attrs
+            .get("gap")
+            .and_then(|value| value.parse::<f64>().ok())
+            .unwrap_or(8.0),
+        padding,
+        z_index: attrs
+            .get("z_index")
+            .and_then(|value| value.parse::<f64>().ok())
+            .unwrap_or(source_z + 10_000.0),
+        source_order,
+    }
+}
+
+fn tooltip_attr_string(block: &BlockRef, key: &str, default: &str) -> String {
+    block
+        .attributes
+        .get(key)
+        .and_then(shape_default_attr_value)
+        .unwrap_or_else(|| default.to_string())
 }
 
 fn text_block_items_from_block(
@@ -2877,6 +3060,13 @@ fn is_wdoc_binding_block(block: &BlockRef) -> bool {
 
 fn is_draw_widget_structural_block(block: &BlockRef, ctx: &ExtractCtx) -> bool {
     ctx.structural_shape_schema_names.contains(&block.kind)
+}
+
+fn is_draw_tooltip_block(block: &BlockRef) -> bool {
+    matches!(
+        block.kind.as_str(),
+        "wdoc::draw::tooltip" | "draw::tooltip" | "tooltip"
+    )
 }
 
 fn val_f64(v: Option<&Value>) -> Option<f64> {
@@ -4560,6 +4750,75 @@ mod wdoc_draw_tests {
         assert!(html.contains("data-wdoc-collapse-keep=\"true\""));
         assert!(html.contains("data-wdoc-id=\"search\""));
         assert!(html.contains("initCollapsiblePanel"));
+    }
+
+    #[test]
+    fn nested_tooltip_renders_delayed_overlay_with_text_block() {
+        let ctx = wdoc_library_ctx();
+        let mut rect_attrs = IndexMap::new();
+        int_attr(&mut rect_attrs, "x", 40);
+        int_attr(&mut rect_attrs, "y", 30);
+        int_attr(&mut rect_attrs, "width", 120);
+        int_attr(&mut rect_attrs, "height", 60);
+        string_attr(&mut rect_attrs, "fill", "#dbeafe");
+
+        let mut tooltip_attrs = IndexMap::new();
+        int_attr(&mut tooltip_attrs, "width", 220);
+        int_attr(&mut tooltip_attrs, "height", 90);
+        int_attr(&mut tooltip_attrs, "delay_ms", 650);
+
+        let mut paragraph_attrs = IndexMap::new();
+        string_attr(
+            &mut paragraph_attrs,
+            "content",
+            "Runs **API** requests and publishes events.",
+        );
+        let paragraph = block("paragraph", Some("summary"), paragraph_attrs, vec![]);
+        let mut text_block_attrs = IndexMap::new();
+        int_attr(&mut text_block_attrs, "width", 200);
+        let text_block = block(
+            "wdoc::draw::text_block",
+            Some("body"),
+            text_block_attrs,
+            vec![paragraph],
+        );
+        let tooltip = block(
+            "wdoc::draw::tooltip",
+            Some("server_tip"),
+            tooltip_attrs,
+            vec![text_block],
+        );
+        let rect = block(
+            "wdoc::draw::rect",
+            Some("server"),
+            rect_attrs,
+            vec![tooltip],
+        );
+
+        let mut diagram_attrs = IndexMap::new();
+        int_attr(&mut diagram_attrs, "width", 420);
+        int_attr(&mut diagram_attrs, "height", 220);
+        let diagram = block(
+            "wdoc::draw::diagram",
+            Some("tooltip_demo"),
+            diagram_attrs,
+            vec![rect],
+        );
+
+        let html = render_diagram_with_ctx(&diagram, &ctx);
+        assert!(html.contains("data-wdoc-id=\"server\""));
+        assert!(html.contains("data-wdoc-tooltip-id=\"server_tip\""));
+        assert!(html.contains("data-wdoc-tooltip-delay-ms=\"650\""));
+        assert!(html.contains("tabindex=\"0\""));
+        assert!(html.contains("data-wdoc-id=\"server_tip\""));
+        assert!(html.contains("data-wdoc-tooltip-overlay=\"true\""));
+        assert!(html.contains("data-wdoc-tooltip-for=\"server\""));
+        assert!(html.contains("visibility=\"hidden\""));
+        assert!(html.contains("Runs"));
+        assert!(html.contains("font-weight=\"700\""));
+        assert!(html.contains("initTooltip"));
+        assert!(html.contains("setTimeout"));
+        assert!(!html.contains("wdoc::draw::tooltip"));
     }
 
     #[test]

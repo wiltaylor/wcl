@@ -883,6 +883,117 @@ page diagram_examples {
                         stroke = color_text
                     }
                 }
+
+                paragraph pd8b { content = "Long force-layout nodes now reserve their full box, and direct arrows choose the closest side anchors instead of a fixed dominant axis." }
+
+                diagram force_long_nodes {
+                    width = 760
+                    height = 420
+                    align = "force"
+                    gap = 24
+
+                    rect ingestion {
+                        width = 240
+                        height = 58
+                        rx = 8
+                        fill = color_code_bg
+                        stroke = color_link
+                        stroke_width = 2
+                        text label {
+                            content = "Customer Event Ingestion"
+                            font_size = 13
+                        }
+                    }
+
+                    rect normalization {
+                        width = 260
+                        height = 58
+                        rx = 8
+                        fill = color_code_bg
+                        stroke = color_link
+                        stroke_width = 2
+                        text label {
+                            content = "Schema Normalization Service"
+                            font_size = 13
+                        }
+                    }
+
+                    rect warehouse {
+                        width = 250
+                        height = 58
+                        rx = 8
+                        fill = color_nav_bg
+                        stroke = color_nav_border
+                        stroke_width = 2
+                        text label {
+                            content = "Analytics Warehouse Writer"
+                            font_size = 13
+                        }
+                    }
+
+                    rect alerting {
+                        width = 220
+                        height = 58
+                        rx = 8
+                        fill = color_danger_bg
+                        stroke = color_danger
+                        stroke_width = 2
+                        text label {
+                            content = "Realtime Alert Fanout"
+                            font_size = 13
+                        }
+                    }
+
+                    rect dashboard {
+                        width = 230
+                        height = 58
+                        rx = 8
+                        fill = color_success_bg
+                        stroke = color_success
+                        stroke_width = 2
+                        text label {
+                            content = "Operations Dashboard"
+                            font_size = 13
+                        }
+                    }
+
+                    connection f_long_1 {
+                        from = "ingestion"
+                        to = "normalization"
+                        direction = "to"
+                        stroke = color_text
+                        stroke_width = 2
+                    }
+                    connection f_long_2 {
+                        from = "normalization"
+                        to = "warehouse"
+                        direction = "to"
+                        stroke = color_text
+                        stroke_width = 2
+                    }
+                    connection f_long_3 {
+                        from = "normalization"
+                        to = "alerting"
+                        direction = "to"
+                        stroke = color_danger
+                        stroke_width = 2
+                    }
+                    connection f_long_4 {
+                        from = "warehouse"
+                        to = "dashboard"
+                        direction = "to"
+                        stroke = color_success
+                        stroke_width = 2
+                    }
+                    connection f_long_5 {
+                        from = "alerting"
+                        to = "dashboard"
+                        direction = "to"
+                        stroke = color_text
+                        stroke_width = 2
+                        stroke_dasharray = "6,4"
+                    }
+                }
             }
         }
 

@@ -577,6 +577,126 @@ page wireframes {
             }
         }
 
+        // --- Shape tooltips ---
+        vsplit v_wf_tooltips {
+            split s_wf_tooltips {
+                size = 100
+
+                heading hwf_tooltips {
+                    level = 2
+                    content = "Shape Tooltips"
+                }
+                paragraph pwf_tooltips { content = "Any drawing shape can declare a nested <code>tooltip</code>. The tooltip waits briefly on hover or focus, follows the cursor, and can contain regular shapes such as <code>text_block</code>." }
+
+                diagram tooltip_shapes {
+                    width = 700
+                    height = 260
+
+                    rect api_card {
+                        x = 40
+                        y = 60
+                        width = 180
+                        height = 90
+                        rx = 8
+                        fill = color_nav_bg
+                        stroke = color_link
+                        stroke_width = 2
+
+                        text api_label {
+                            x = 16
+                            y = 18
+                            width = 148
+                            height = 24
+                            content = "API Gateway"
+                            anchor = "start"
+                            font_size = 15
+                            fill = color_text
+                        }
+                        text api_caption {
+                            x = 16
+                            y = 48
+                            width = 148
+                            height = 22
+                            content = "Hover for details"
+                            anchor = "start"
+                            font_size = 12
+                            fill = "#94a3b8"
+                        }
+
+                        tooltip api_tip {
+                            width = 260
+                            height = 112
+                            delay_ms = 500
+                            text_block body {
+                                width = 240
+                                paragraph summary {
+                                    content = "Routes **signed** requests and publishes `AuditEvent` messages."
+                                }
+                            }
+                        }
+                    }
+
+                    button deploy_button {
+                        x = 290
+                        y = 86
+                        width = 140
+                        height = 42
+                        label = "Deploy"
+                        variant = "primary"
+
+                        tooltip deploy_tip {
+                            width = 220
+                            height = 96
+                            delay_ms = 650
+                            rect status_dot {
+                                width = 10
+                                height = 10
+                                rx = 5
+                                fill = color_success
+                            }
+                            text_block details {
+                                width = 186
+                                paragraph copy {
+                                    content = "Starts a **staged** rollout after checks pass."
+                                }
+                            }
+                        }
+                    }
+
+                    graph_node worker_node {
+                        x = 500
+                        y = 46
+                        width = 160
+                        title = "Worker"
+                        subtitle = "background jobs"
+                        graph_row queue {
+                            label = "Queue"
+                            left_port = "in"
+                        }
+                        graph_row events {
+                            label = "Events"
+                            right_port = "out"
+                        }
+
+                        tooltip worker_tip {
+                            width = 230
+                            height = 110
+                            text_block docs {
+                                width = 210
+                                paragraph p {
+                                    content = "Consumes queued work and emits status updates."
+                                }
+                                code sample {
+                                    language = "wcl"
+                                    content = "connection q { from = \"api\" to = \"worker.in\" }"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // --- Collapsible panels ---
         vsplit v_wf_collapsible {
             split s_wf_collapsible {

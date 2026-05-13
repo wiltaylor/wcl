@@ -1,6 +1,6 @@
 import <wdoc.wcl>
 use wdoc::{page, layout, heading, paragraph, code, data_table, callout, bold, link}
-use wdoc::draw::{diagram, terminal, terminal_box, terminal_text, terminal_menu, terminal_cursor, graph_node, graph_row, graph_divider, text_block, connection, database, pie_chart, bar_chart, line_chart, chart_point, collapsible_panel, input, checkbox, button}
+use wdoc::draw::{diagram, rect, terminal, terminal_box, terminal_text, terminal_menu, terminal_cursor, graph_node, graph_row, graph_divider, text_block, tooltip, connection, database, pie_chart, bar_chart, line_chart, chart_point, collapsible_panel, input, checkbox, button}
 
 page wdoc_drawing_widgets {
     section = "wcl_docs.wdoc.wdoc_drawing_widgets"
@@ -25,7 +25,7 @@ page wdoc_drawing_widgets {
                     content = "UI mockups"
                 }
 
-                paragraph p_ui1 { content = "For wireframes and product mockups. Container-style widgets such as <code>card</code>, <code>collapsible_panel</code>, <code>phone</code>, <code>phone_landscape</code>, <code>tablet</code>, <code>tablet_landscape</code>, <code>window</code>, and <code>browser</code> work with the normal drawing layout attributes: use <code>align</code>, <code>gap</code>, and <code>padding</code> for auto-placed children, or keep using <code>x</code>/<code>y</code> and edge anchors for controls that need exact placement." }
+                paragraph p_ui1 { content = "For wireframes and product mockups. Container-style widgets such as <code>card</code>, <code>collapsible_panel</code>, <code>phone</code>, <code>phone_landscape</code>, <code>tablet</code>, <code>tablet_landscape</code>, <code>window</code>, and <code>browser</code> work with the normal drawing layout attributes: use <code>align</code>, <code>gap</code>, and <code>padding</code> for auto-placed children, or keep using <code>x</code>/<code>y</code> and edge anchors for controls that need exact placement. Add a nested <code>tooltip</code> to any shape when it needs delayed hover or focus help." }
 
                 data_table tbl_ui {
                     caption = "UI widgets"
@@ -48,6 +48,7 @@ page wdoc_drawing_widgets {
                         { widget = "context_menu", attrs = "items, dismiss_on_leave, leave_close_targets" },
                         { widget = "card",    attrs = "(container — children render inside)" },
                         { widget = "collapsible_panel", attrs = "title, collapsed, collapse_group" },
+                        { widget = "tooltip", attrs = "delay_ms, width, height, offset_x, offset_y, drawing-shape children" },
                         { widget = "avatar",  attrs = "label" },
                         { widget = "toggle",  attrs = "on (\"true\" / \"false\")" },
                         { widget = "badge",   attrs = "label, color" },
@@ -147,6 +148,51 @@ page wdoc_drawing_widgets {
                 code cui1 {
                     language = "wcl"
                     content = "diagram mockup {\n    width = 600, height = 360\n\n    card form {\n        x = 20, y = 20, width = 240, height = 300\n        title = \"Sign in\"\n        align = \"stack\"\n        gap = 12\n        padding = 18\n\n        input email { height = 55, label = \"Email\" }\n        input password { height = 55, label = \"Password\" }\n        button submit { height = 38, label = \"Continue\", variant = \"primary\" }\n        button help {\n            right = 18, bottom = 18, width = 90, height = 32\n            label = \"Help\"\n            variant = \"outline\"\n        }\n    }\n\n    browser b1 {\n        x = 300, y = 20, width = 280, height = 200\n        title = \"Dashboard\"\n        url = \"https://app.example.com\"\n    }\n}"
+                }
+
+                diagram tooltip_demo {
+                    width = 500
+                    height = 180
+
+                    rect api {
+                        x = 32
+                        y = 44
+                        width = 150
+                        height = 70
+                        rx = 8
+                        fill = "#eff6ff"
+                        stroke = "#2563eb"
+
+                        tooltip api_tip {
+                            width = 250
+                            height = 96
+                            delay_ms = 500
+                            text_block body {
+                                width = 230
+                                paragraph p {
+                                    content = "Routes **signed** requests and emits `AuditEvent` records."
+                                }
+                            }
+                        }
+                    }
+
+                    button deploy {
+                        x = 260
+                        y = 58
+                        width = 120
+                        height = 38
+                        label = "Deploy"
+                        variant = "primary"
+
+                        tooltip deploy_tip {
+                            width = 220
+                            height = 80
+                            text_block body {
+                                width = 200
+                                paragraph p { content = "Starts a staged rollout after checks pass." }
+                            }
+                        }
+                    }
                 }
 
                 diagram collapsible_panel_demo {

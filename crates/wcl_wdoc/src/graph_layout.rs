@@ -95,7 +95,7 @@ pub fn layout_force(
     children: &mut [ShapeNode],
     connections: &[Connection],
     parent: &Bounds,
-    _gap: f64,
+    gap: f64,
     _options: &IndexMap<String, String>,
 ) {
     let n = children.len();
@@ -120,92 +120,135 @@ pub fn layout_force(
         }
     }
 
-    // Initialize positions in a circle
-    let cx = parent.width / 2.0;
-    let cy = parent.height / 2.0;
-    let radius = parent.width.min(parent.height) / 3.0;
+    let gap = gap.max(0.0);
+    let original_children = children.to_vec();
 
-    let mut pos: Vec<(f64, f64)> = (0..n)
-        .map(|i| {
-            let angle = 2.0 * std::f64::consts::PI * i as f64 / n as f64;
-            (cx + radius * angle.cos(), cy + radius * angle.sin())
-        })
-        .collect();
-
-    let mut vel: Vec<(f64, f64)> = vec![(0.0, 0.0); n];
-
-    // Simulation parameters
-    let repulsion = 5000.0;
-    let attraction = 0.01;
-    let damping = 0.85;
-    let iterations = 120;
-
-    for _ in 0..iterations {
-        // Repulsive forces (all pairs)
-        for i in 0..n {
-            for j in (i + 1)..n {
-                let dx = pos[i].0 - pos[j].0;
-                let dy = pos[i].1 - pos[j].1;
-                let dist_sq = (dx * dx + dy * dy).max(1.0);
-                let force = repulsion / dist_sq;
-                let dist = dist_sq.sqrt();
-                let fx = force * dx / dist;
-                let fy = force * dy / dist;
-                vel[i].0 += fx;
-                vel[i].1 += fy;
-                vel[j].0 -= fx;
-                vel[j].1 -= fy;
+    for attempt in 0..5 {
+        let mut candidate_children = original_children.clone();
+        let retry_scale = 0.85_f64.powi(attempt as i32);
+        if retry_scale < 1.0 {
+            for child in candidate_children.iter_mut() {
+                scale_node_size_and_local_children(child, retry_scale);
             }
         }
 
-        // Attractive forces (along edges)
-        for &(from, to) in &edges {
-            let dx = pos[to].0 - pos[from].0;
-            let dy = pos[to].1 - pos[from].1;
-            let dist = (dx * dx + dy * dy).sqrt().max(1.0);
-            let force = attraction * dist;
-            let fx = force * dx / dist;
-            let fy = force * dy / dist;
-            vel[from].0 += fx;
-            vel[from].1 += fy;
-            vel[to].0 -= fx;
-            vel[to].1 -= fy;
+        // Solve in a virtual workspace first; the final result is scaled into
+        // the requested diagram bounds after nodes and direct edges are clear.
+        let workspace = force_workspace(&candidate_children, parent, gap, attempt);
+        let cx = workspace.x + workspace.width / 2.0;
+        let cy = workspace.y + workspace.height / 2.0;
+        let radius = workspace.width.min(workspace.height) / 3.0;
+
+        let mut pos: Vec<(f64, f64)> = (0..n)
+            .map(|i| {
+                let angle = 2.0 * std::f64::consts::PI * i as f64 / n as f64;
+                (cx + radius * angle.cos(), cy + radius * angle.sin())
+            })
+            .collect();
+
+        let mut vel: Vec<(f64, f64)> = vec![(0.0, 0.0); n];
+
+        // Simulation parameters
+        let repulsion = 5000.0;
+        let attraction = 0.01;
+        let damping = 0.85;
+        let iterations = 120;
+
+        for _ in 0..iterations {
+            // Repulsive forces (all pairs)
+            for i in 0..n {
+                for j in (i + 1)..n {
+                    let dx = pos[i].0 - pos[j].0;
+                    let dy = pos[i].1 - pos[j].1;
+                    let dist_sq = (dx * dx + dy * dy).max(1.0);
+                    let force = repulsion / dist_sq;
+                    let dist = dist_sq.sqrt();
+                    let fx = force * dx / dist;
+                    let fy = force * dy / dist;
+                    vel[i].0 += fx;
+                    vel[i].1 += fy;
+                    vel[j].0 -= fx;
+                    vel[j].1 -= fy;
+                }
+            }
+
+            // Attractive forces (along edges)
+            for &(from, to) in &edges {
+                let dx = pos[to].0 - pos[from].0;
+                let dy = pos[to].1 - pos[from].1;
+                let dist = (dx * dx + dy * dy).sqrt().max(1.0);
+                let force = attraction * dist;
+                let fx = force * dx / dist;
+                let fy = force * dy / dist;
+                vel[from].0 += fx;
+                vel[from].1 += fy;
+                vel[to].0 -= fx;
+                vel[to].1 -= fy;
+            }
+
+            // Apply velocity with damping
+            for i in 0..n {
+                pos[i].0 += vel[i].0;
+                pos[i].1 += vel[i].1;
+                vel[i].0 *= damping;
+                vel[i].1 *= damping;
+            }
+
+            resolve_force_collisions(&mut pos, &candidate_children, gap, 1);
+            resolve_force_edge_obstacles(&mut pos, &candidate_children, &edges, gap, 1);
         }
 
-        // Apply velocity with damping
+        resolve_force_collisions(&mut pos, &candidate_children, gap, 120);
+        for _ in 0..80 {
+            resolve_force_edge_obstacles(&mut pos, &candidate_children, &edges, gap, 1);
+            resolve_force_collisions(&mut pos, &candidate_children, gap, 1);
+        }
+
+        // Scale and center the resolved node boxes to fit parent bounds.
+        let box_bounds = center_box_bounds(&pos, &candidate_children);
+        let scale_x = if box_bounds.width > parent.width && box_bounds.width > 0.0 {
+            parent.width / box_bounds.width
+        } else {
+            1.0
+        };
+        let scale_y = if box_bounds.height > parent.height && box_bounds.height > 0.0 {
+            parent.height / box_bounds.height
+        } else {
+            1.0
+        };
+        let node_scale = scale_x.min(scale_y).min(1.0);
+        if node_scale < 1.0 {
+            for child in candidate_children.iter_mut() {
+                scale_node_size_and_local_children(child, node_scale);
+            }
+        }
+
+        let scaled_width = box_bounds.width * node_scale;
+        let scaled_height = box_bounds.height * node_scale;
+        let offset_x =
+            parent.x + (parent.width - scaled_width).max(0.0) / 2.0 - box_bounds.x * node_scale;
+        let offset_y =
+            parent.y + (parent.height - scaled_height).max(0.0) / 2.0 - box_bounds.y * node_scale;
+
         for i in 0..n {
-            pos[i].0 += vel[i].0;
-            pos[i].1 += vel[i].1;
-            vel[i].0 *= damping;
-            vel[i].1 *= damping;
+            let w = candidate_children[i].resolved.width;
+            let h = candidate_children[i].resolved.height;
+            candidate_children[i].resolved.x = pos[i].0 * node_scale + offset_x - w / 2.0;
+            candidate_children[i].resolved.y = pos[i].1 * node_scale + offset_y - h / 2.0;
+        }
+
+        if attempt == 4 || force_layout_is_clear(&candidate_children, &edges) {
+            for child in candidate_children.iter_mut() {
+                if !child.children.is_empty() {
+                    child
+                        .attrs
+                        .insert("_wdoc_group_render".to_string(), "true".to_string());
+                }
+            }
+            children.clone_from_slice(&candidate_children);
+            break;
         }
     }
-
-    // Scale and center to fit parent bounds
-    let (min_x, max_x, min_y, max_y) = bounding_box(&pos);
-    let scale_x = if max_x > min_x {
-        (parent.width * 0.8) / (max_x - min_x)
-    } else {
-        1.0
-    };
-    let scale_y = if max_y > min_y {
-        (parent.height * 0.8) / (max_y - min_y)
-    } else {
-        1.0
-    };
-    let scale = scale_x.min(scale_y);
-
-    let offset_x = parent.x + (parent.width - (max_x - min_x) * scale) / 2.0;
-    let offset_y = parent.y + (parent.height - (max_y - min_y) * scale) / 2.0;
-
-    for i in 0..n {
-        let w = children[i].resolved.width;
-        let h = children[i].resolved.height;
-        children[i].resolved.x = (pos[i].0 - min_x) * scale + offset_x - w / 2.0;
-        children[i].resolved.y = (pos[i].1 - min_y) * scale + offset_y - h / 2.0;
-    }
-
-    fit_children_to_parent(children, parent);
 }
 
 // ---------------------------------------------------------------------------
@@ -813,18 +856,285 @@ where
     lines
 }
 
-fn bounding_box(positions: &[(f64, f64)]) -> (f64, f64, f64, f64) {
+fn center_box_bounds(positions: &[(f64, f64)], children: &[ShapeNode]) -> Bounds {
     let mut min_x = f64::MAX;
-    let mut max_x = f64::MIN;
     let mut min_y = f64::MAX;
+    let mut max_x = f64::MIN;
     let mut max_y = f64::MIN;
-    for &(x, y) in positions {
-        min_x = min_x.min(x);
-        max_x = max_x.max(x);
-        min_y = min_y.min(y);
-        max_y = max_y.max(y);
+    for (pos, child) in positions.iter().zip(children) {
+        let half_w = child.resolved.width / 2.0;
+        let half_h = child.resolved.height / 2.0;
+        min_x = min_x.min(pos.0 - half_w);
+        min_y = min_y.min(pos.1 - half_h);
+        max_x = max_x.max(pos.0 + half_w);
+        max_y = max_y.max(pos.1 + half_h);
     }
-    (min_x, max_x, min_y, max_y)
+    Bounds {
+        x: min_x,
+        y: min_y,
+        width: (max_x - min_x).max(0.0),
+        height: (max_y - min_y).max(0.0),
+    }
+}
+
+fn force_workspace(children: &[ShapeNode], parent: &Bounds, gap: f64, attempt: usize) -> Bounds {
+    let count = children.len().max(1) as f64;
+    let max_w = children
+        .iter()
+        .map(|child| child.resolved.width)
+        .fold(0.0, f64::max);
+    let max_h = children
+        .iter()
+        .map(|child| child.resolved.height)
+        .fold(0.0, f64::max);
+    let area: f64 = children
+        .iter()
+        .map(|child| (child.resolved.width + gap) * (child.resolved.height + gap))
+        .sum();
+    let spread = 1.8 + attempt as f64 * 0.45;
+    let area_side = area.sqrt() * spread;
+    let row_side = count.sqrt().ceil();
+    let width = parent
+        .width
+        .max(area_side)
+        .max(row_side * (max_w + gap) * spread);
+    let height = parent
+        .height
+        .max(area_side * 0.75)
+        .max(row_side * (max_h + gap) * spread);
+    Bounds {
+        x: 0.0,
+        y: 0.0,
+        width,
+        height,
+    }
+}
+
+fn resolve_force_collisions(
+    positions: &mut [(f64, f64)],
+    children: &[ShapeNode],
+    gap: f64,
+    iterations: usize,
+) {
+    for _ in 0..iterations {
+        let mut moved = false;
+        for i in 0..positions.len() {
+            for j in (i + 1)..positions.len() {
+                let min_dx = (children[i].resolved.width + children[j].resolved.width) / 2.0 + gap;
+                let min_dy =
+                    (children[i].resolved.height + children[j].resolved.height) / 2.0 + gap;
+                let dx = positions[j].0 - positions[i].0;
+                let dy = positions[j].1 - positions[i].1;
+                let overlap_x = min_dx - dx.abs();
+                let overlap_y = min_dy - dy.abs();
+                if overlap_x <= 0.0 || overlap_y <= 0.0 {
+                    continue;
+                }
+
+                moved = true;
+                if overlap_x < overlap_y {
+                    let dir = if dx.abs() < 0.001 {
+                        if i % 2 == 0 {
+                            1.0
+                        } else {
+                            -1.0
+                        }
+                    } else {
+                        dx.signum()
+                    };
+                    let push = overlap_x / 2.0;
+                    positions[i].0 -= dir * push;
+                    positions[j].0 += dir * push;
+                } else {
+                    let dir = if dy.abs() < 0.001 {
+                        if i % 2 == 0 {
+                            1.0
+                        } else {
+                            -1.0
+                        }
+                    } else {
+                        dy.signum()
+                    };
+                    let push = overlap_y / 2.0;
+                    positions[i].1 -= dir * push;
+                    positions[j].1 += dir * push;
+                }
+            }
+        }
+        if !moved {
+            break;
+        }
+    }
+}
+
+fn resolve_force_edge_obstacles(
+    positions: &mut [(f64, f64)],
+    children: &[ShapeNode],
+    edges: &[(usize, usize)],
+    gap: f64,
+    iterations: usize,
+) {
+    let margin = gap.max(12.0);
+    for _ in 0..iterations {
+        let mut moved = false;
+        for &(from, to) in edges {
+            let from_bounds = bounds_from_center(positions[from], &children[from]);
+            let to_bounds = bounds_from_center(positions[to], &children[to]);
+            let (start, end) = closest_force_anchor_pair(&from_bounds, &to_bounds);
+            for node in 0..positions.len() {
+                if node == from || node == to {
+                    continue;
+                }
+                let obstacle =
+                    expand_bounds(bounds_from_center(positions[node], &children[node]), margin);
+                if !segment_intersects_bounds(start, end, &obstacle) {
+                    continue;
+                }
+
+                let center = positions[node];
+                let nearest = nearest_point_on_segment(center, start, end);
+                let mut dx = center.0 - nearest.0;
+                let mut dy = center.1 - nearest.1;
+                let len = (dx * dx + dy * dy).sqrt();
+                if len < 0.001 {
+                    let edge_dx = end.0 - start.0;
+                    let edge_dy = end.1 - start.1;
+                    dx = -edge_dy;
+                    dy = edge_dx;
+                }
+                let len = (dx * dx + dy * dy).sqrt().max(1.0);
+                let push = margin * 0.65;
+                positions[node].0 += dx / len * push;
+                positions[node].1 += dy / len * push;
+                moved = true;
+            }
+        }
+        if !moved {
+            break;
+        }
+    }
+}
+
+fn force_layout_is_clear(children: &[ShapeNode], edges: &[(usize, usize)]) -> bool {
+    for i in 0..children.len() {
+        for j in (i + 1)..children.len() {
+            if bounds_overlap(&children[i].resolved, &children[j].resolved) {
+                return false;
+            }
+        }
+    }
+
+    let margin = 0.0;
+    for &(from, to) in edges {
+        let (start, end) =
+            closest_force_anchor_pair(&children[from].resolved, &children[to].resolved);
+        for node in 0..children.len() {
+            if node == from || node == to {
+                continue;
+            }
+            let obstacle = expand_bounds(children[node].resolved, margin);
+            if segment_intersects_bounds(start, end, &obstacle) {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+fn bounds_overlap(a: &Bounds, b: &Bounds) -> bool {
+    a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y
+}
+
+fn bounds_from_center(center: (f64, f64), child: &ShapeNode) -> Bounds {
+    Bounds {
+        x: center.0 - child.resolved.width / 2.0,
+        y: center.1 - child.resolved.height / 2.0,
+        width: child.resolved.width,
+        height: child.resolved.height,
+    }
+}
+
+fn expand_bounds(bounds: Bounds, margin: f64) -> Bounds {
+    Bounds {
+        x: bounds.x - margin,
+        y: bounds.y - margin,
+        width: bounds.width + margin * 2.0,
+        height: bounds.height + margin * 2.0,
+    }
+}
+
+fn closest_force_anchor_pair(from: &Bounds, to: &Bounds) -> ((f64, f64), (f64, f64)) {
+    let anchors = [
+        (from.x + from.width / 2.0, from.y),
+        (from.x + from.width / 2.0, from.y + from.height),
+        (from.x, from.y + from.height / 2.0),
+        (from.x + from.width, from.y + from.height / 2.0),
+    ];
+    let targets = [
+        (to.x + to.width / 2.0, to.y),
+        (to.x + to.width / 2.0, to.y + to.height),
+        (to.x, to.y + to.height / 2.0),
+        (to.x + to.width, to.y + to.height / 2.0),
+    ];
+    let mut best = (anchors[0], targets[0]);
+    let mut best_dist = f64::MAX;
+    for a in anchors {
+        for b in targets {
+            let dx = a.0 - b.0;
+            let dy = a.1 - b.1;
+            let dist = dx * dx + dy * dy;
+            if dist < best_dist {
+                best = (a, b);
+                best_dist = dist;
+            }
+        }
+    }
+    best
+}
+
+fn nearest_point_on_segment(point: (f64, f64), start: (f64, f64), end: (f64, f64)) -> (f64, f64) {
+    let dx = end.0 - start.0;
+    let dy = end.1 - start.1;
+    let len_sq = dx * dx + dy * dy;
+    if len_sq <= 0.001 {
+        return start;
+    }
+    let t = (((point.0 - start.0) * dx + (point.1 - start.1) * dy) / len_sq).clamp(0.0, 1.0);
+    (start.0 + dx * t, start.1 + dy * t)
+}
+
+fn segment_intersects_bounds(start: (f64, f64), end: (f64, f64), bounds: &Bounds) -> bool {
+    if point_in_bounds(start, bounds) || point_in_bounds(end, bounds) {
+        return true;
+    }
+    let left = bounds.x;
+    let right = bounds.x + bounds.width;
+    let top = bounds.y;
+    let bottom = bounds.y + bounds.height;
+    segments_intersect(start, end, (left, top), (right, top))
+        || segments_intersect(start, end, (right, top), (right, bottom))
+        || segments_intersect(start, end, (right, bottom), (left, bottom))
+        || segments_intersect(start, end, (left, bottom), (left, top))
+}
+
+fn point_in_bounds(point: (f64, f64), bounds: &Bounds) -> bool {
+    point.0 >= bounds.x
+        && point.0 <= bounds.x + bounds.width
+        && point.1 >= bounds.y
+        && point.1 <= bounds.y + bounds.height
+}
+
+fn segments_intersect(a: (f64, f64), b: (f64, f64), c: (f64, f64), d: (f64, f64)) -> bool {
+    let d1 = direction(c, d, a);
+    let d2 = direction(c, d, b);
+    let d3 = direction(a, b, c);
+    let d4 = direction(a, b, d);
+    ((d1 > 0.0 && d2 < 0.0) || (d1 < 0.0 && d2 > 0.0))
+        && ((d3 > 0.0 && d4 < 0.0) || (d3 < 0.0 && d4 > 0.0))
+}
+
+fn direction(a: (f64, f64), b: (f64, f64), c: (f64, f64)) -> f64 {
+    (c.0 - a.0) * (b.1 - a.1) - (c.1 - a.1) * (b.0 - a.0)
 }
 
 pub(crate) fn fit_children_to_parent(children: &mut [ShapeNode], parent: &Bounds) {
@@ -1111,6 +1421,11 @@ mod tests {
             && a.resolved.y + a.resolved.height > b.resolved.y
     }
 
+    fn direct_edge_crosses_node(a: &ShapeNode, b: &ShapeNode, obstacle: &ShapeNode) -> bool {
+        let (start, end) = closest_force_anchor_pair(&a.resolved, &b.resolved);
+        segment_intersects_bounds(start, end, &obstacle.resolved)
+    }
+
     #[test]
     fn test_layered_linear() {
         let mut nodes = vec![
@@ -1358,6 +1673,87 @@ mod tests {
             + (nodes[0].resolved.y - nodes[1].resolved.y).powi(2))
         .sqrt();
         assert!(dist > 10.0);
+    }
+
+    #[test]
+    fn test_force_separates_long_nodes_by_bounds() {
+        let mut nodes = vec![
+            make_node("a", 180.0, 44.0),
+            make_node("b", 180.0, 44.0),
+            make_node("c", 160.0, 44.0),
+        ];
+        let conns = vec![make_conn("a", "b"), make_conn("b", "c")];
+        let parent = Bounds {
+            x: 0.0,
+            y: 0.0,
+            width: 640.0,
+            height: 360.0,
+        };
+        layout_force(&mut nodes, &conns, &parent, 20.0, &IndexMap::new());
+
+        for i in 0..nodes.len() {
+            for j in (i + 1)..nodes.len() {
+                assert!(
+                    !overlaps(&nodes[i], &nodes[j]),
+                    "{} overlapped {}",
+                    nodes[i].id.as_deref().unwrap_or(""),
+                    nodes[j].id.as_deref().unwrap_or("")
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_force_scales_long_nodes_when_parent_is_too_small() {
+        let mut nodes = vec![make_node("a", 180.0, 50.0), make_node("b", 180.0, 50.0)];
+        let conns = vec![make_conn("a", "b")];
+        let parent = Bounds {
+            x: 0.0,
+            y: 0.0,
+            width: 200.0,
+            height: 90.0,
+        };
+        layout_force(&mut nodes, &conns, &parent, 20.0, &IndexMap::new());
+
+        assert!(nodes[0].resolved.width < 180.0);
+        assert!(nodes[1].resolved.width < 180.0);
+        assert!(!overlaps(&nodes[0], &nodes[1]));
+        for node in &nodes {
+            assert!(node.resolved.x >= parent.x);
+            assert!(node.resolved.y >= parent.y);
+            assert!(node.resolved.x + node.resolved.width <= parent.x + parent.width);
+            assert!(node.resolved.y + node.resolved.height <= parent.y + parent.height);
+        }
+    }
+
+    #[test]
+    fn test_force_moves_nodes_away_from_direct_edges() {
+        let mut nodes = vec![
+            make_node("source", 220.0, 58.0),
+            make_node("target", 220.0, 58.0),
+            make_node("obstacle", 230.0, 58.0),
+            make_node("anchor", 180.0, 50.0),
+        ];
+        let conns = vec![
+            make_conn("source", "target"),
+            make_conn("source", "obstacle"),
+            make_conn("target", "anchor"),
+            make_conn("obstacle", "anchor"),
+        ];
+        let parent = Bounds {
+            x: 0.0,
+            y: 0.0,
+            width: 760.0,
+            height: 420.0,
+        };
+        layout_force(&mut nodes, &conns, &parent, 24.0, &IndexMap::new());
+
+        assert!(!direct_edge_crosses_node(&nodes[0], &nodes[1], &nodes[2]));
+        for i in 0..nodes.len() {
+            for j in (i + 1)..nodes.len() {
+                assert!(!overlaps(&nodes[i], &nodes[j]));
+            }
+        }
     }
 
     #[test]

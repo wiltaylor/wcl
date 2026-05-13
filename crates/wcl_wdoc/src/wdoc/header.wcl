@@ -541,6 +541,7 @@ namespace wdoc {
             "wdoc::draw::line_chart"
         ])
         @structural @open schema "chart_point" { }
+        @structural @open schema "tooltip" { }
         @parent(["wdoc::draw::text_block"]) @open schema "paragraph" { content: string }
         @parent(["wdoc::draw::text_block"]) @open schema "p" { content: string @text }
         @parent(["wdoc::draw::text_block"]) @open schema "code" {
