@@ -1,0 +1,238 @@
+// Standard transform codecs implemented in WCL.
+
+export let __json_error = message => { error = message }
+
+export let __json_is_error = value =>
+    type_of(value) == "map" ? map_has(value, "error") : false
+
+export let __json_is_ws = ch =>
+    ch == " " || ch == "\n" || ch == "\r" || ch == "\t"
+
+export let __json_is_digit = ch =>
+    regex_match(ch, "^[0-9]$")
+
+export let __json_is_number_char = ch =>
+    regex_match(ch, "^[0-9eE+\\-.]$")
+
+export let __json_skip_line_comment = cursor =>
+    cursor.eof() ? null : {
+        let ch = cursor.take(1)
+        ch == "\n" ? null : __json_skip_line_comment(cursor)
+    }
+
+export let __json_skip_block_comment = cursor =>
+    cursor.eof() ? __json_error("unterminated block comment") :
+    cursor.match("*/") ? {
+        let _end = cursor.take(2)
+        null
+    } : {
+        let _ch = cursor.take(1)
+        __json_skip_block_comment(cursor)
+    }
+
+export let __json_skip_ignored = cursor =>
+    cursor.eof() ? null :
+    __json_is_ws(cursor.peek(1)) ? {
+        let _ws = cursor.take(1)
+        __json_skip_ignored(cursor)
+    } :
+    cursor.match("//") ? {
+        let _open = cursor.take(2)
+        let _comment = __json_skip_line_comment(cursor)
+        __json_skip_ignored(cursor)
+    } :
+    cursor.match("/*") ? {
+        let _open = cursor.take(2)
+        let result = __json_skip_block_comment(cursor)
+        __json_is_error(result) ? result : __json_skip_ignored(cursor)
+    } :
+    null
+
+export let __json_read_string = (cursor, acc) =>
+    cursor.eof() ? __json_error("unterminated string") : {
+        let ch = cursor.take(1)
+        ch == "\"" ? acc :
+        ch == "\\" ? {
+            let esc = cursor.eof() ? "" : cursor.take(1)
+            let value =
+                esc == "\"" ? "\"" :
+                esc == "\\" ? "\\" :
+                esc == "/" ? "/" :
+                esc == "n" ? "\n" :
+                esc == "r" ? "\r" :
+                esc == "t" ? "\t" :
+                esc == "b" ? "" :
+                esc == "f" ? "" :
+                esc
+            __json_read_string(cursor, acc + value)
+        } :
+        __json_read_string(cursor, acc + ch)
+    }
+
+export let __json_read_number = (cursor, acc) =>
+    cursor.eof() ? acc :
+    __json_is_number_char(cursor.peek(1)) ? {
+        let ch = cursor.take(1)
+        __json_read_number(cursor, acc + ch)
+    } :
+    acc
+
+export let __json_token = (kind, text, start, end, value) =>
+    { kind = kind, text = text, start = start, end = end, value = value }
+
+export let __json_tokenizer = cursor => {
+    let ignored = __json_skip_ignored(cursor)
+    __json_is_error(ignored) ? ignored :
+    cursor.eof() ? null : {
+        let start = cursor.pos()
+        let ch = cursor.peek(1)
+        ch == "{" ? { let text = cursor.take(1) __json_token(:lbrace, text, start, cursor.pos(), text) } :
+        ch == "}" ? { let text = cursor.take(1) __json_token(:rbrace, text, start, cursor.pos(), text) } :
+        ch == "[" ? { let text = cursor.take(1) __json_token(:lbracket, text, start, cursor.pos(), text) } :
+        ch == "]" ? { let text = cursor.take(1) __json_token(:rbracket, text, start, cursor.pos(), text) } :
+        ch == ":" ? { let text = cursor.take(1) __json_token(:colon, text, start, cursor.pos(), text) } :
+        ch == "," ? { let text = cursor.take(1) __json_token(:comma, text, start, cursor.pos(), text) } :
+        ch == "\"" ? {
+            let _open = cursor.take(1)
+            let value = __json_read_string(cursor, "")
+            __json_is_error(value) ? value : __json_token(:string, value, start, cursor.pos(), value)
+        } :
+        __json_is_number_char(ch) ? {
+            let text = __json_read_number(cursor, "")
+            __json_token(:number, text, start, cursor.pos(), text)
+        } :
+        cursor.match("true") ? {
+            let text = cursor.take(4)
+            __json_token(:true, text, start, cursor.pos(), true)
+        } :
+        cursor.match("false") ? {
+            let text = cursor.take(5)
+            __json_token(:false, text, start, cursor.pos(), false)
+        } :
+        cursor.match("null") ? {
+            let text = cursor.take(4)
+            __json_token(:null, text, start, cursor.pos(), null)
+        } :
+        __json_error("unexpected character")
+    }
+}
+
+export let __json_expect = (tokens, kind, message) =>
+    tokens.match_kind(kind) ? tokens.take(1) : __json_error(message)
+
+export let __json_parse_number = text =>
+    contains(text, ".") || contains(text, "e") || contains(text, "E") ?
+        to_float(text) :
+        to_int(text)
+
+export let __json_parse_value = tokens =>
+    tokens.eof() ? __json_error("unexpected end of JSON") :
+    tokens.match_kind(:lbrace) ? __json_parse_object(tokens) :
+    tokens.match_kind(:lbracket) ? __json_parse_array(tokens) :
+    tokens.match_kind(:string) ? { let t = tokens.take(1) t.value } :
+    tokens.match_kind(:number) ? { let t = tokens.take(1) __json_parse_number(t.text) } :
+    tokens.match_kind(:true) ? { let _t = tokens.take(1) true } :
+    tokens.match_kind(:false) ? { let _t = tokens.take(1) false } :
+    tokens.match_kind(:null) ? { let _t = tokens.take(1) null } :
+    __json_error("expected JSON value")
+
+export let __json_parse_object = tokens => {
+    let _open = __json_expect(tokens, :lbrace, "expected object")
+    __json_is_error(_open) ? _open :
+    tokens.match_kind(:rbrace) ? {
+        let _close = tokens.take(1)
+        {}
+    } :
+    __json_parse_object_entries(tokens, {})
+}
+
+export let __json_parse_object_entries = (tokens, acc) =>
+    tokens.match_kind(:string) ? {
+        let key = tokens.take(1)
+        let colon = __json_expect(tokens, :colon, "expected ':' after object key")
+        __json_is_error(colon) ? colon : {
+            let value = __json_parse_value(tokens)
+            __json_is_error(value) ? value : {
+                let updated = map_set(acc, key.value, value)
+                tokens.match_kind(:comma) ? {
+                    let _comma = tokens.take(1)
+                    __json_parse_object_entries(tokens, updated)
+                } :
+                tokens.match_kind(:rbrace) ? {
+                    let _close = tokens.take(1)
+                    updated
+                } :
+                __json_error("expected ',' or '}' in object")
+            }
+        }
+    } :
+    __json_error("expected object key")
+
+export let __json_parse_array = tokens => {
+    let _open = __json_expect(tokens, :lbracket, "expected array")
+    __json_is_error(_open) ? _open :
+    tokens.match_kind(:rbracket) ? {
+        let _close = tokens.take(1)
+        []
+    } :
+    __json_parse_array_items(tokens, [])
+}
+
+export let __json_parse_array_items = (tokens, acc) => {
+    let value = __json_parse_value(tokens)
+    __json_is_error(value) ? value : {
+        let updated = concat(acc, [value])
+        tokens.match_kind(:comma) ? {
+            let _comma = tokens.take(1)
+            __json_parse_array_items(tokens, updated)
+        } :
+        tokens.match_kind(:rbracket) ? {
+            let _close = tokens.take(1)
+            updated
+        } :
+        __json_error("expected ',' or ']' in array")
+    }
+}
+
+export let __json_parser = tokens =>
+    tokens.eof() ? null :
+    tokens.match_kind(:lbracket) ? {
+        let _open = tokens.take(1)
+        tokens.match_kind(:rbracket) ? { let _close = tokens.take(1) null } : __json_parse_value(tokens)
+    } :
+    tokens.match_kind(:comma) ? {
+        let _comma = tokens.take(1)
+        tokens.match_kind(:rbracket) ? { let _close = tokens.take(1) null } : __json_parse_value(tokens)
+    } :
+    tokens.match_kind(:rbracket) ? { let _close = tokens.take(1) null } :
+    __json_parse_value(tokens)
+
+export let __json_quote = s => {
+    let escaped1 = replace(s, "\\", "\\\\")
+    let escaped2 = replace(escaped1, "\"", "\\\"")
+    let escaped3 = replace(escaped2, "\n", "\\n")
+    let escaped4 = replace(escaped3, "\r", "\\r")
+    let escaped5 = replace(escaped4, "\t", "\\t")
+    "\"" + escaped5 + "\""
+}
+
+export let __json_render = value =>
+    type_of(value) == "null" ? "null" :
+    type_of(value) == "bool" ? to_string(value) :
+    type_of(value) == "int" ? to_string(value) :
+    type_of(value) == "bigint" ? to_string(value) :
+    type_of(value) == "float" ? to_string(value) :
+    type_of(value) == "string" ? __json_quote(value) :
+    type_of(value) == "identifier" ? __json_quote(to_string(value)) :
+    type_of(value) == "symbol" ? __json_quote(substr(to_string(value), 1)) :
+    type_of(value) == "list" ? "[" + join(",", map(value, item => __json_render(item))) + "]" :
+    type_of(value) == "map" ? "{" + join(",", map(keys(value), key => __json_quote(key) + ":" + __json_render(value[key]))) + "}" :
+    "null"
+
+codec json {
+    mode = :text
+    tokenizer = cursor => __json_tokenizer(cursor)
+    parser = tokens => __json_parser(tokens)
+    encoder = record => __json_render(record)
+    encoder_all = records => __json_render(records) + "\n"
+}

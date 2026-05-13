@@ -66,7 +66,7 @@ page cli_transform {
                 }
 
                 paragraph p4 {
-                    content = "The transform block specifies input and output codecs (currently <code>json</code>), and contains <code>map</code> sub-blocks that define how input fields are mapped to output fields. Inside map blocks, <code>in</code> refers to the current input record."
+                    content = "The transform block specifies input and output codecs such as <code>json</code>, <code>yaml</code>, <code>csv</code>, <code>toml</code>, and custom WCL codecs, and contains <code>map</code> sub-blocks that define how input fields are mapped to output fields. Inside map blocks, <code>in</code> refers to the current input record."
                 }
 
                 paragraph p5 {

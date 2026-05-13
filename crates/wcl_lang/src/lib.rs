@@ -10,6 +10,7 @@ pub mod fmt_value;
 pub mod lang;
 pub mod schema;
 pub mod serde_impl;
+pub mod standard_lib;
 pub mod transform;
 
 pub mod json;

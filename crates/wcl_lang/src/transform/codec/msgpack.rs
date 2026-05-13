@@ -4,8 +4,6 @@ use crate::eval::value::Value;
 use crate::transform::error::TransformError;
 use std::io::{Read, Write};
 
-use super::json::json_value_to_wcl;
-
 /// Convenience: decode a MessagePack reader into a Vec of WCL Value records.
 ///
 /// Deserializes MessagePack binary data via `rmp_serde` into a
@@ -17,9 +15,11 @@ pub fn decode_msgpack_records(reader: impl Read) -> Result<Vec<Value>, Transform
         .map_err(|e| TransformError::Codec(format!("MessagePack parse error: {}", e)))?;
 
     match json_val {
-        serde_json::Value::Array(arr) => Ok(arr.iter().map(json_value_to_wcl).collect()),
-        serde_json::Value::Object(_) => Ok(vec![json_value_to_wcl(&json_val)]),
-        other => Ok(vec![json_value_to_wcl(&other)]),
+        serde_json::Value::Array(arr) => {
+            Ok(arr.iter().map(crate::json::json_value_to_wcl).collect())
+        }
+        serde_json::Value::Object(_) => Ok(vec![crate::json::json_value_to_wcl(&json_val)]),
+        other => Ok(vec![crate::json::json_value_to_wcl(&other)]),
     }
 }
 

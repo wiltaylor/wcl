@@ -67,12 +67,20 @@ pub fn execute_with_custom(
     context: Option<&TransformContext>,
     custom_codecs: Option<&codec::custom::CustomCodecRegistry>,
 ) -> Result<TransformStats, TransformError> {
+    let standard_codecs;
+    let custom_codecs = match custom_codecs {
+        Some(registry) => registry,
+        None => {
+            standard_codecs = codec::custom::standard_registry()?;
+            &standard_codecs
+        }
+    };
+
     // Decode input records
-    let records = if let Some(custom) = custom_codecs.and_then(|r| r.get(input_codec)) {
+    let records = if let Some(custom) = custom_codecs.get(input_codec) {
         codec::custom::decode_custom_records(input_reader, custom)?
     } else {
         match input_codec {
-            "json" => codec::json::decode_json_records(input_reader)?,
             "yaml" => codec::yaml::decode_yaml_records(input_reader)?,
             "csv" => codec::csv_codec::decode_csv_records(input_reader, true, b',')?,
             "toml" => codec::toml_codec::decode_toml_records(input_reader)?,
@@ -125,11 +133,10 @@ pub fn execute_with_custom(
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
-    if let Some(custom) = custom_codecs.and_then(|r| r.get(output_codec)) {
+    if let Some(custom) = custom_codecs.get(output_codec) {
         codec::custom::encode_custom_records(&transformed, custom, output_writer)?;
     } else {
         match output_codec {
-            "json" => codec::json::encode_json_records(&transformed, output_writer, pretty)?,
             "yaml" => codec::yaml::encode_yaml_records(&transformed, output_writer, pretty)?,
             "csv" => codec::csv_codec::encode_csv_records(&transformed, output_writer, b',')?,
             "toml" => codec::toml_codec::encode_toml_records(&transformed, output_writer, pretty)?,

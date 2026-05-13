@@ -19,16 +19,11 @@ pub fn decode_yaml_records(reader: impl Read) -> Result<Vec<Value>, TransformErr
         .map_err(|e| TransformError::Codec(format!("YAML->JSON conversion error: {}", e)))?;
 
     match json_val {
-        serde_json::Value::Array(arr) => Ok(arr
-            .iter()
-            .map(crate::transform::codec::json::json_value_to_wcl)
-            .collect()),
-        serde_json::Value::Object(_) => Ok(vec![crate::transform::codec::json::json_value_to_wcl(
-            &json_val,
-        )]),
-        other => Ok(vec![crate::transform::codec::json::json_value_to_wcl(
-            &other,
-        )]),
+        serde_json::Value::Array(arr) => {
+            Ok(arr.iter().map(crate::json::json_value_to_wcl).collect())
+        }
+        serde_json::Value::Object(_) => Ok(vec![crate::json::json_value_to_wcl(&json_val)]),
+        other => Ok(vec![crate::json::json_value_to_wcl(&other)]),
     }
 }
 

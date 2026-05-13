@@ -4,8 +4,6 @@ use crate::eval::value::Value;
 use crate::transform::error::TransformError;
 use std::io::{Read, Write};
 
-use super::json::json_value_to_wcl;
-
 /// Convenience: decode an XML reader into a Vec of WCL Value records.
 ///
 /// Uses `quick_xml` serde deserialization to convert XML into a
@@ -24,7 +22,7 @@ pub fn decode_xml_records(reader: impl Read) -> Result<Vec<Value>, TransformErro
     let json_val: serde_json::Value = quick_xml::de::from_str(&buf)
         .map_err(|e| TransformError::Codec(format!("XML parse error: {}", e)))?;
 
-    let wcl_val = simplify_xml_value(json_value_to_wcl(&json_val));
+    let wcl_val = simplify_xml_value(crate::json::json_value_to_wcl(&json_val));
 
     match wcl_val {
         Value::List(items) => Ok(items),

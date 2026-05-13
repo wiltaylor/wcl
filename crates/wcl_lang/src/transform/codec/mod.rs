@@ -7,7 +7,6 @@ pub mod binary_codec;
 pub mod csv_codec;
 pub mod custom;
 pub mod hcl_codec;
-pub mod json;
 pub mod msgpack;
 pub mod text_codec;
 pub mod toml_codec;
@@ -59,23 +58,7 @@ impl CodecRegistry {
         reg
     }
 
-    fn register_builtins(&mut self) {
-        // JSON
-        self.decoders.insert(
-            "json".into(),
-            Box::new(|reader, _opts| Box::new(json::JsonDecoder::new(reader))),
-        );
-        self.encoders.insert(
-            "json".into(),
-            Box::new(|writer, opts| {
-                let pretty = opts
-                    .get("pretty")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-                Box::new(json::JsonEncoder::new(writer, pretty))
-            }),
-        );
-    }
+    fn register_builtins(&mut self) {}
 
     /// Create a decoder for the named codec.
     pub fn decoder(

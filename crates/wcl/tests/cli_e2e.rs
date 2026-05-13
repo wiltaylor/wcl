@@ -61,6 +61,32 @@ fn eval_expr_json(content: &str, expr: &str) -> serde_json::Value {
     serde_json::from_str(stdout.trim()).expect("stdout should be valid JSON")
 }
 
+fn run_transform_stdout(
+    transform: &std::path::Path,
+    name: &str,
+    input: &std::path::Path,
+) -> String {
+    let output = Command::cargo_bin("wcl")
+        .unwrap()
+        .args([
+            "transform",
+            "run",
+            name,
+            "-f",
+            transform.to_str().unwrap(),
+            "--input",
+            input.to_str().unwrap(),
+        ])
+        .output()
+        .expect("run wcl transform");
+    assert!(
+        output.status.success(),
+        "transform failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8_lossy(&output.stdout).into_owned()
+}
+
 // ===========================================================================
 // EVAL
 // ===========================================================================
@@ -1172,6 +1198,192 @@ transform bad-to-json {
         .assert()
         .failure()
         .stderr(predicate::str::contains("token kind must be a symbol"));
+}
+
+#[test]
+fn transform_json_codec_accepts_comments() {
+    let dir = tempdir().expect("tempdir");
+    let transform = dir.path().join("json.wcl");
+    let input = dir.path().join("input.json");
+
+    std::fs::write(
+        &input,
+        r#"
+// leading comment
+[
+    {"name":"Alice", /* inline block */ "age":30},
+    {"name":"Bob", "age":25} // trailing item comment
+]
+"#,
+    )
+    .expect("write input");
+    std::fs::write(
+        &transform,
+        r#"
+transform json-copy {
+    input = "codec::json"
+    output = "codec::json"
+
+    map {
+        name = in.name
+        age = in.age
+    }
+}
+"#,
+    )
+    .expect("write transform");
+
+    let stdout = run_transform_stdout(&transform, "json-copy", &input);
+    let json: serde_json::Value = serde_json::from_str(stdout.trim()).expect("valid json output");
+    assert_eq!(
+        json,
+        serde_json::json!([
+            {"name": "Alice", "age": 30},
+            {"name": "Bob", "age": 25}
+        ])
+    );
+}
+
+#[test]
+fn transform_json_codec_preserves_comment_markers_inside_strings() {
+    let dir = tempdir().expect("tempdir");
+    let transform = dir.path().join("json.wcl");
+    let input = dir.path().join("input.json");
+
+    std::fs::write(&input, r#"[{"text":"// not a comment /* also not */"}]"#).expect("write input");
+    std::fs::write(
+        &transform,
+        r#"
+transform json-copy {
+    input = "codec::json"
+    output = "codec::json"
+
+    map {
+        text = in.text
+    }
+}
+"#,
+    )
+    .expect("write transform");
+
+    let stdout = run_transform_stdout(&transform, "json-copy", &input);
+    let json: serde_json::Value = serde_json::from_str(stdout.trim()).expect("valid json output");
+    assert_eq!(
+        json,
+        serde_json::json!([{"text": "// not a comment /* also not */"}])
+    );
+}
+
+#[test]
+fn transform_json_codec_rejects_unterminated_block_comment() {
+    let dir = tempdir().expect("tempdir");
+    let transform = dir.path().join("json.wcl");
+    let input = dir.path().join("input.json");
+
+    std::fs::write(&input, r#"[{"name":"Alice"} /* no close"#).expect("write input");
+    std::fs::write(
+        &transform,
+        r#"
+transform json-copy {
+    input = "codec::json"
+    output = "codec::json"
+
+    map {
+        name = in.name
+    }
+}
+"#,
+    )
+    .expect("write transform");
+
+    Command::cargo_bin("wcl")
+        .unwrap()
+        .args([
+            "transform",
+            "run",
+            "json-copy",
+            "-f",
+            transform.to_str().unwrap(),
+            "--input",
+            input.to_str().unwrap(),
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("unterminated block comment"));
+}
+
+#[test]
+fn transform_imported_codecs_library_does_not_duplicate_json() {
+    let dir = tempdir().expect("tempdir");
+    let lib_dir = dir.path().join("lib");
+    let transform = dir.path().join("json.wcl");
+    let input = dir.path().join("input.json");
+
+    std::fs::create_dir_all(&lib_dir).expect("create lib");
+    std::fs::write(
+        lib_dir.join("codecs.wcl"),
+        wcl::standard_lib::CODECS_LIBRARY_WCL,
+    )
+    .expect("write codecs");
+    std::fs::write(&input, r#"[{"name":"Alice"}]"#).expect("write input");
+    std::fs::write(
+        &transform,
+        r#"
+import <codecs.wcl>
+
+transform json-copy {
+    input = "codec::json"
+    output = "codec::json"
+
+    map {
+        name = in.name
+    }
+}
+"#,
+    )
+    .expect("write transform");
+
+    let output = Command::cargo_bin("wcl")
+        .unwrap()
+        .args([
+            "transform",
+            "run",
+            "json-copy",
+            "-f",
+            transform.to_str().unwrap(),
+            "--input",
+            input.to_str().unwrap(),
+            "--lib-path",
+            lib_dir.to_str().unwrap(),
+        ])
+        .output()
+        .expect("run transform");
+    assert!(
+        output.status.success(),
+        "transform failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let json: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("valid json output");
+    assert_eq!(json, serde_json::json!([{"name": "Alice"}]));
+}
+
+#[test]
+fn install_library_writes_codecs_file() {
+    let dir = tempdir().expect("tempdir");
+    let data_home = dir.path().join("data");
+
+    Command::cargo_bin("wcl")
+        .unwrap()
+        .env("XDG_DATA_HOME", &data_home)
+        .args(["install-library"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("installed codecs library"));
+
+    let codecs = data_home.join("wcl/lib/codecs.wcl");
+    let source = std::fs::read_to_string(codecs).expect("read codecs");
+    assert!(source.contains("codec json"));
 }
 
 // ===========================================================================

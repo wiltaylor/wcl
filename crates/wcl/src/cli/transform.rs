@@ -6,7 +6,7 @@ use std::io::{self, Read};
 use std::path::Path;
 
 use crate::cli::LibraryArgs;
-use crate::eval::value::{BlockRef, FunctionValue, Value};
+use crate::eval::value::{FunctionValue, Value};
 use crate::lang::ast::{BodyItem, DocItem};
 use crate::transform::{self, FieldMapping, MapConfig, WhereClause};
 
@@ -191,7 +191,8 @@ pub fn run(
 fn build_custom_codec_registry(
     doc: &crate::Document,
 ) -> Result<crate::transform::codec::custom::CustomCodecRegistry, String> {
-    let mut registry = crate::transform::codec::custom::CustomCodecRegistry::new();
+    let mut registry =
+        crate::transform::codec::custom::standard_registry().map_err(|e| e.to_string())?;
     let helpers: HashMap<String, FunctionValue> = doc
         .values
         .iter()
@@ -222,61 +223,24 @@ fn build_custom_codec_registry(
             ));
         };
 
-        registry
-            .insert(custom_codec_from_block(
-                &codec_name,
-                codec_ref,
-                helpers.clone(),
-            )?)
-            .map_err(|e| e.to_string())?;
+        if codec_name == "json" && is_standard_codecs_source(doc, block.span.file) {
+            continue;
+        }
+
+        let codec = crate::transform::codec::custom::custom_codec_from_block(
+            &codec_name,
+            codec_ref,
+            helpers.clone(),
+        )
+        .map_err(|e| e.to_string())?;
+        registry.insert(codec).map_err(|e| e.to_string())?;
     }
 
     Ok(registry)
 }
 
-fn custom_codec_from_block(
-    name: &str,
-    block: &BlockRef,
-    helpers: HashMap<String, FunctionValue>,
-) -> Result<crate::transform::codec::custom::CustomCodec, String> {
-    let mode = match block.attributes.get("mode") {
-        Some(Value::Symbol(s)) if s == "text" => {
-            crate::transform::codec::custom::CustomCodecMode::Text
-        }
-        Some(Value::Symbol(s)) if s == "bytes" => {
-            crate::transform::codec::custom::CustomCodecMode::Bytes
-        }
-        Some(v) => {
-            return Err(format!(
-                "codec '{}' mode must be :text or :bytes, got {}",
-                name,
-                v.type_name()
-            ))
-        }
-        None => crate::transform::codec::custom::CustomCodecMode::Text,
-    };
-
-    Ok(crate::transform::codec::custom::CustomCodec {
-        name: name.to_string(),
-        mode,
-        tokenizer: required_function(name, block, "tokenizer")?,
-        parser: required_function(name, block, "parser")?,
-        encoder: required_function(name, block, "encoder")?,
-        helpers,
-    })
-}
-
-fn required_function(name: &str, block: &BlockRef, attr: &str) -> Result<FunctionValue, String> {
-    match block.attributes.get(attr) {
-        Some(Value::Function(func)) => Ok(func.clone()),
-        Some(v) => Err(format!(
-            "codec '{}' attribute '{}' must be a lambda, got {}",
-            name,
-            attr,
-            v.type_name()
-        )),
-        None => Err(format!("codec '{}' missing required '{}'", name, attr)),
-    }
+fn is_standard_codecs_source(doc: &crate::Document, file: crate::lang::FileId) -> bool {
+    doc.source_map.get_file(file).path.ends_with("codecs.wcl")
 }
 
 /// Extract input/output codec names from the transform block's AST.

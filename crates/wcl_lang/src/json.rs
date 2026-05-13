@@ -115,6 +115,37 @@ pub fn json_to_value(json: &serde_json::Value) -> Result<Value, String> {
     }
 }
 
+/// Convert a JSON value to a WCL Value without fallible validation.
+///
+/// This is used by transform codecs that deserialize through serde-compatible
+/// formats and need the same JSON-to-WCL shape as `json_to_value`.
+pub fn json_value_to_wcl(json: &serde_json::Value) -> Value {
+    match json {
+        serde_json::Value::Null => Value::Null,
+        serde_json::Value::Bool(b) => Value::Bool(*b),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                Value::Int(i)
+            } else if let Some(f) = n.as_f64() {
+                Value::Float(f)
+            } else {
+                Value::Null
+            }
+        }
+        serde_json::Value::String(s) => Value::String(s.clone()),
+        serde_json::Value::Array(items) => {
+            Value::List(items.iter().map(json_value_to_wcl).collect())
+        }
+        serde_json::Value::Object(map) => {
+            let mut result = IndexMap::new();
+            for (k, v) in map {
+                result.insert(k.clone(), json_value_to_wcl(v));
+            }
+            Value::Map(result)
+        }
+    }
+}
+
 /// Convert an IndexMap of WCL Values to a JSON value.
 pub fn values_to_json(values: &IndexMap<String, Value>) -> serde_json::Value {
     let obj: serde_json::Map<String, serde_json::Value> = values

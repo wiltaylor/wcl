@@ -250,6 +250,12 @@ enum Commands {
         #[command(flatten)]
         lib_args: LibraryArgs,
     },
+    /// Install standard WCL libraries into the user library directory
+    InstallLibrary {
+        /// Overwrite existing installations
+        #[arg(long)]
+        force: bool,
+    },
     /// Start the WCL language server
     Lsp {
         /// Listen on a TCP address instead of stdio (e.g. 127.0.0.1:9257)
@@ -447,6 +453,7 @@ pub fn main() {
             vars,
             lib_args,
         } => eval::run(&file, expression.as_deref(), &format, &vars, &lib_args),
+        Commands::InstallLibrary { force } => run_install_library(force),
         Commands::Lsp { tcp } => {
             let rt = tokio::runtime::Runtime::new()
                 .map_err(|e| format!("failed to create tokio runtime: {}", e));
@@ -558,4 +565,17 @@ pub fn main() {
         eprintln!("error: {}", e);
         process::exit(1);
     }
+}
+
+fn run_install_library(force: bool) -> Result<(), String> {
+    let codecs = crate::standard_lib::install_codecs_library(force)?;
+    println!("installed codecs library to {}", codecs.display());
+
+    #[cfg(feature = "wdoc")]
+    {
+        let wdoc = wcl_wdoc::source::install_library(force)?;
+        println!("installed wdoc library to {}", wdoc.display());
+    }
+
+    Ok(())
 }

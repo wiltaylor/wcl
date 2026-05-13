@@ -5,7 +5,8 @@
 //! receives a seekable token cursor and emits record maps.
 
 use crate::eval::functions::BuiltinFn;
-use crate::eval::value::{FunctionBody, FunctionValue, LambdaAttrs, Value};
+use crate::eval::value::{BlockRef, FunctionBody, FunctionValue, LambdaAttrs, Value};
+use crate::lang::ast::{BodyItem, DocItem, InlineId};
 use crate::transform::error::TransformError;
 use indexmap::IndexMap;
 use regex::Regex;
@@ -29,6 +30,7 @@ pub struct CustomCodec {
     pub tokenizer: FunctionValue,
     pub parser: FunctionValue,
     pub encoder: FunctionValue,
+    pub encoder_all: Option<FunctionValue>,
     pub helpers: HashMap<String, FunctionValue>,
 }
 
@@ -55,8 +57,155 @@ impl CustomCodecRegistry {
         Ok(())
     }
 
+    pub fn insert_standard(&mut self, codec: CustomCodec) -> Result<(), TransformError> {
+        if self.codecs.insert(codec.name.clone(), codec).is_some() {
+            return Err(TransformError::Codec("duplicate standard codec".into()));
+        }
+        Ok(())
+    }
+
     pub fn get(&self, name: &str) -> Option<&CustomCodec> {
         self.codecs.get(name)
+    }
+}
+
+pub fn standard_registry() -> Result<CustomCodecRegistry, TransformError> {
+    registry_from_source(crate::standard_lib::CODECS_LIBRARY_WCL, true)
+}
+
+pub fn registry_from_source(
+    source: &str,
+    standard: bool,
+) -> Result<CustomCodecRegistry, TransformError> {
+    let doc = crate::parse(source, crate::ParseOptions::default());
+    if doc.has_errors() {
+        let messages = doc
+            .errors()
+            .into_iter()
+            .map(|d| d.message.clone())
+            .collect::<Vec<_>>()
+            .join("; ");
+        return Err(TransformError::Codec(format!(
+            "failed to load standard codecs: {}",
+            messages
+        )));
+    }
+    registry_from_document(&doc, standard)
+}
+
+pub fn registry_from_document(
+    doc: &crate::Document,
+    standard: bool,
+) -> Result<CustomCodecRegistry, TransformError> {
+    let mut registry = CustomCodecRegistry::new();
+    let helpers: HashMap<String, FunctionValue> = doc
+        .values
+        .iter()
+        .filter_map(|(name, value)| match value {
+            Value::Function(func) => Some((name.clone(), func.clone())),
+            _ => None,
+        })
+        .collect();
+
+    for item in &doc.ast.items {
+        let DocItem::Body(BodyItem::Block(block)) = item else {
+            continue;
+        };
+        if block.kind.name != "codec" {
+            continue;
+        }
+        let Some(codec_name) = block.inline_id.as_ref().and_then(|id| match id {
+            InlineId::Literal(lit) => Some(lit.value.clone()),
+            InlineId::Interpolated(_) => None,
+        }) else {
+            return Err(TransformError::Codec(
+                "codec block requires a literal inline id".into(),
+            ));
+        };
+        let value = doc.values.get(&codec_name).ok_or_else(|| {
+            TransformError::Codec(format!("codec '{}' was not evaluated", codec_name))
+        })?;
+        let Value::BlockRef(codec_ref) = value else {
+            return Err(TransformError::Codec(format!(
+                "codec '{}' did not evaluate to a block",
+                codec_name
+            )));
+        };
+
+        let codec = custom_codec_from_block(&codec_name, codec_ref, helpers.clone())?;
+        if standard {
+            registry.insert_standard(codec)?;
+        } else {
+            registry.insert(codec)?;
+        }
+    }
+
+    Ok(registry)
+}
+
+pub fn custom_codec_from_block(
+    name: &str,
+    block: &BlockRef,
+    helpers: HashMap<String, FunctionValue>,
+) -> Result<CustomCodec, TransformError> {
+    let mode = match block.attributes.get("mode") {
+        Some(Value::Symbol(s)) if s == "text" => CustomCodecMode::Text,
+        Some(Value::Symbol(s)) if s == "bytes" => CustomCodecMode::Bytes,
+        Some(v) => {
+            return Err(TransformError::Codec(format!(
+                "codec '{}' mode must be :text or :bytes, got {}",
+                name,
+                v.type_name()
+            )))
+        }
+        None => CustomCodecMode::Text,
+    };
+
+    Ok(CustomCodec {
+        name: name.to_string(),
+        mode,
+        tokenizer: required_function(name, block, "tokenizer")?,
+        parser: required_function(name, block, "parser")?,
+        encoder: required_function(name, block, "encoder")?,
+        encoder_all: optional_function(name, block, "encoder_all")?,
+        helpers,
+    })
+}
+
+fn required_function(
+    name: &str,
+    block: &BlockRef,
+    attr: &str,
+) -> Result<FunctionValue, TransformError> {
+    match block.attributes.get(attr) {
+        Some(Value::Function(func)) => Ok(func.clone()),
+        Some(v) => Err(TransformError::Codec(format!(
+            "codec '{}' attribute '{}' must be a lambda, got {}",
+            name,
+            attr,
+            v.type_name()
+        ))),
+        None => Err(TransformError::Codec(format!(
+            "codec '{}' missing required '{}'",
+            name, attr
+        ))),
+    }
+}
+
+fn optional_function(
+    name: &str,
+    block: &BlockRef,
+    attr: &str,
+) -> Result<Option<FunctionValue>, TransformError> {
+    match block.attributes.get(attr) {
+        Some(Value::Function(func)) => Ok(Some(func.clone())),
+        Some(v) => Err(TransformError::Codec(format!(
+            "codec '{}' attribute '{}' must be a lambda, got {}",
+            name,
+            attr,
+            v.type_name()
+        ))),
+        None => Ok(None),
     }
 }
 
@@ -76,28 +225,49 @@ pub fn encode_custom_records(
     codec: &CustomCodec,
     writer: &mut dyn Write,
 ) -> Result<(), TransformError> {
+    if let Some(encoder_all) = &codec.encoder_all {
+        let value = call_codec_lambda(
+            codec,
+            encoder_all,
+            &[Value::List(records.to_vec())],
+            HashMap::new(),
+        )?;
+        write_encoded_value(&value, codec, writer)?;
+        writer.flush().map_err(TransformError::Io)?;
+        return Ok(());
+    }
+
     for record in records {
         let value = call_codec_lambda(codec, &codec.encoder, &[record.clone()], HashMap::new())?;
-        match codec.mode {
-            CustomCodecMode::Text => {
-                let Value::String(s) = value else {
-                    return Err(TransformError::Codec(format!(
-                        "custom codec '{}' encoder must return string in text mode, got {}",
-                        codec.name,
-                        value.type_name()
-                    )));
-                };
-                writer.write_all(s.as_bytes()).map_err(TransformError::Io)?;
-            }
-            CustomCodecMode::Bytes => {
-                let bytes = value_to_bytes(&value).map_err(|e| {
-                    TransformError::Codec(format!("custom codec '{}' encoder: {}", codec.name, e))
-                })?;
-                writer.write_all(&bytes).map_err(TransformError::Io)?;
-            }
-        }
+        write_encoded_value(&value, codec, writer)?;
     }
     writer.flush().map_err(TransformError::Io)?;
+    Ok(())
+}
+
+fn write_encoded_value(
+    value: &Value,
+    codec: &CustomCodec,
+    writer: &mut dyn Write,
+) -> Result<(), TransformError> {
+    match codec.mode {
+        CustomCodecMode::Text => {
+            let Value::String(s) = value else {
+                return Err(TransformError::Codec(format!(
+                    "custom codec '{}' encoder must return string in text mode, got {}",
+                    codec.name,
+                    value.type_name()
+                )));
+            };
+            writer.write_all(s.as_bytes()).map_err(TransformError::Io)?;
+        }
+        CustomCodecMode::Bytes => {
+            let bytes = value_to_bytes(value).map_err(|e| {
+                TransformError::Codec(format!("custom codec '{}' encoder: {}", codec.name, e))
+            })?;
+            writer.write_all(&bytes).map_err(TransformError::Io)?;
+        }
+    }
     Ok(())
 }
 

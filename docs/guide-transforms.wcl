@@ -85,6 +85,13 @@ page guide_transforms {
                     content = "Transform statistics (records read, written, filtered) are printed to stderr."
                 }
 
+                callout json_library {
+                    icon = "info-circle"
+                    header = "Standard codec library"
+                    color = "#3498db"
+                    content = "The JSON transform codec is implemented in WCL and embedded as <code>codecs.wcl</code>. Transforms can use <code>codec::json</code> directly; run <code>wcl install-library</code> to install <code>codecs.wcl</code> into the user library path so editors and the LSP can resolve <code>import &lt;codecs.wcl&gt;</code>. The JSON codec accepts <code>//</code> line comments and <code>/* ... */</code> block comments."
+                }
+
                 heading h2_field_expr {
                     level = 2
                     content = "Field Expressions"

@@ -331,6 +331,18 @@ pub fn builtin_signatures() -> Vec<FunctionSignature> {
             doc: "Zip two lists".into(),
         },
         FunctionSignature {
+            name: "map_has".into(),
+            params: vec!["map: map".into(), "key: string".into()],
+            return_type: "bool".into(),
+            doc: "Check map key existence".into(),
+        },
+        FunctionSignature {
+            name: "map_set".into(),
+            params: vec!["map: map".into(), "key: string".into(), "value".into()],
+            return_type: "map".into(),
+            doc: "Return a map with a key set".into(),
+        },
+        FunctionSignature {
             name: "map".into(),
             params: vec!["list: list".into(), "fn: lambda".into()],
             return_type: "list".into(),
@@ -588,6 +600,8 @@ pub fn builtin_registry() -> HashMap<String, BuiltinFn> {
     m.insert("index_of".into(), wrap_builtin(index_of));
     m.insert("range".into(), wrap_builtin(range));
     m.insert("zip".into(), wrap_builtin(zip));
+    m.insert("map_has".into(), wrap_builtin(map_has));
+    m.insert("map_set".into(), wrap_builtin(map_set));
 
     // Table manipulation functions (Section 14.3b)
     m.insert("find".into(), wrap_builtin(fn_find));
@@ -1309,6 +1323,38 @@ fn zip(args: &[Value]) -> Result<Value, String> {
         .map(|(a, b): (&Value, &Value)| Value::List(vec![a.clone(), b.clone()]))
         .collect();
     Ok(Value::List(result))
+}
+
+fn map_has(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 2, "map_has")?;
+    let map = match &args[0] {
+        Value::Map(m) => m,
+        other => {
+            return Err(format!(
+                "map_has: argument 1 must be map, got {}",
+                other.type_name()
+            ))
+        }
+    };
+    let key = get_string(&args[1], 2, "map_has")?;
+    Ok(Value::Bool(map.contains_key(key)))
+}
+
+fn map_set(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 3, "map_set")?;
+    let map = match &args[0] {
+        Value::Map(m) => m,
+        other => {
+            return Err(format!(
+                "map_set: argument 1 must be map, got {}",
+                other.type_name()
+            ))
+        }
+    };
+    let key = get_string(&args[1], 2, "map_set")?;
+    let mut result = map.clone();
+    result.insert(key.to_string(), args[2].clone());
+    Ok(Value::Map(result))
 }
 
 // ---------------------------------------------------------------------------
@@ -2463,6 +2509,8 @@ mod tests {
             "index_of",
             "range",
             "zip",
+            "map_has",
+            "map_set",
             "find",
             "insert_row",
             "remove_rows",
