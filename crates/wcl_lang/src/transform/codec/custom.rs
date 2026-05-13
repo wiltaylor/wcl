@@ -223,14 +223,18 @@ pub fn decode_custom_records(
 pub fn encode_custom_records(
     records: &[Value],
     codec: &CustomCodec,
+    options: &super::CodecOptions,
     writer: &mut dyn Write,
 ) -> Result<(), TransformError> {
+    let options = Value::Map(options.clone());
+
     if let Some(encoder_all) = &codec.encoder_all {
-        let value = call_codec_lambda(
+        let value = call_codec_encoder(
             codec,
             encoder_all,
-            &[Value::List(records.to_vec())],
-            HashMap::new(),
+            Value::List(records.to_vec()),
+            options.clone(),
+            "encoder_all",
         )?;
         write_encoded_value(&value, codec, writer)?;
         writer.flush().map_err(TransformError::Io)?;
@@ -238,11 +242,34 @@ pub fn encode_custom_records(
     }
 
     for record in records {
-        let value = call_codec_lambda(codec, &codec.encoder, &[record.clone()], HashMap::new())?;
+        let value = call_codec_encoder(
+            codec,
+            &codec.encoder,
+            record.clone(),
+            options.clone(),
+            "encoder",
+        )?;
         write_encoded_value(&value, codec, writer)?;
     }
     writer.flush().map_err(TransformError::Io)?;
     Ok(())
+}
+
+fn call_codec_encoder(
+    codec: &CustomCodec,
+    func: &FunctionValue,
+    value: Value,
+    options: Value,
+    attr: &str,
+) -> Result<Value, TransformError> {
+    match func.params.len() {
+        1 => call_codec_lambda(codec, func, &[value], HashMap::new()),
+        2 => call_codec_lambda(codec, func, &[value, options], HashMap::new()),
+        n => Err(TransformError::Codec(format!(
+            "codec '{}' attribute '{}' must accept 1 or 2 arguments, got {}",
+            codec.name, attr, n
+        ))),
+    }
 }
 
 fn write_encoded_value(

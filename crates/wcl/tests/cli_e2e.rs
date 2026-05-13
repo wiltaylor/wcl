@@ -1245,6 +1245,70 @@ transform json-copy {
 }
 
 #[test]
+fn transform_json_codec_pretty_prints_when_enabled() {
+    let dir = tempdir().expect("tempdir");
+    let transform = dir.path().join("json.wcl");
+    let input = dir.path().join("input.json");
+
+    std::fs::write(&input, r#"[{"name":"Alice","meta":{"age":30}}]"#).expect("write input");
+    std::fs::write(
+        &transform,
+        r#"
+transform json-copy {
+    input = "codec::json"
+    output = "codec::json"
+    pretty = true
+
+    map {
+        name = in.name
+        meta = in.meta
+    }
+}
+"#,
+    )
+    .expect("write transform");
+
+    let stdout = run_transform_stdout(&transform, "json-copy", &input);
+    let json: serde_json::Value = serde_json::from_str(stdout.trim()).expect("valid json output");
+    assert_eq!(
+        json,
+        serde_json::json!([{"name": "Alice", "meta": {"age": 30}}])
+    );
+    assert!(stdout.contains("[\n"));
+    assert!(stdout.contains("  {\n"));
+    assert!(stdout.contains("    \"name\": \"Alice\""));
+    assert!(stdout.contains("    \"meta\": {\n"));
+    assert!(stdout.contains("      \"age\": 30"));
+}
+
+#[test]
+fn transform_json_codec_defaults_to_compact_output() {
+    let dir = tempdir().expect("tempdir");
+    let transform = dir.path().join("json.wcl");
+    let input = dir.path().join("input.json");
+
+    std::fs::write(&input, r#"[{"name":"Alice","age":30}]"#).expect("write input");
+    std::fs::write(
+        &transform,
+        r#"
+transform json-copy {
+    input = "codec::json"
+    output = "codec::json"
+
+    map {
+        name = in.name
+        age = in.age
+    }
+}
+"#,
+    )
+    .expect("write transform");
+
+    let stdout = run_transform_stdout(&transform, "json-copy", &input);
+    assert_eq!(stdout, r#"[{"name":"Alice","age":30}]"#.to_string() + "\n");
+}
+
+#[test]
 fn transform_json_codec_preserves_comment_markers_inside_strings() {
     let dir = tempdir().expect("tempdir");
     let transform = dir.path().join("json.wcl");

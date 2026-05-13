@@ -145,6 +145,12 @@ pub fn run(
                             .insert("header".to_string(), crate::eval::value::Value::Bool(*b));
                     }
                 }
+                "pretty" => {
+                    if let crate::lang::ast::Expr::BoolLit(b, _) = &attr.value {
+                        output_options
+                            .insert("pretty".to_string(), crate::eval::value::Value::Bool(*b));
+                    }
+                }
                 _ => {}
             }
         }
@@ -326,6 +332,7 @@ fn build_map_config(block: &crate::lang::ast::Block) -> Result<MapConfig, String
                         | "separator"
                         | "has_header"
                         | "header"
+                        | "pretty"
                         | "on_parse_error"
                         | "on_output_error"
                 ) =>

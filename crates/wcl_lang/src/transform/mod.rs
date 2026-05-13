@@ -134,7 +134,7 @@ pub fn execute_with_custom(
         .unwrap_or(false);
 
     if let Some(custom) = custom_codecs.get(output_codec) {
-        codec::custom::encode_custom_records(&transformed, custom, output_writer)?;
+        codec::custom::encode_custom_records(&transformed, custom, output_options, output_writer)?;
     } else {
         match output_codec {
             "yaml" => codec::yaml::encode_yaml_records(&transformed, output_writer, pretty)?,

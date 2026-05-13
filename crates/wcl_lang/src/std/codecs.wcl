@@ -229,10 +229,38 @@ export let __json_render = value =>
     type_of(value) == "map" ? "{" + join(",", map(keys(value), key => __json_quote(key) + ":" + __json_render(value[key]))) + "}" :
     "null"
 
+export let __json_indent = level =>
+    level <= 0 ? "" : "  " + __json_indent(level - 1)
+
+export let __json_render_pretty = (value, level) =>
+    type_of(value) == "list" ? __json_render_pretty_list(value, level) :
+    type_of(value) == "map" ? __json_render_pretty_map(value, level) :
+    __json_render(value)
+
+export let __json_render_pretty_list = (value, level) =>
+    len(value) == 0 ? "[]" :
+    "[\n" +
+    join(",\n", map(value, item => __json_indent(level + 1) + __json_render_pretty(item, level + 1))) +
+    "\n" + __json_indent(level) + "]"
+
+export let __json_render_pretty_map = (value, level) =>
+    len(keys(value)) == 0 ? "{}" :
+    "{\n" +
+    join(",\n", map(keys(value), key => __json_indent(level + 1) + __json_quote(key) + ": " + __json_render_pretty(value[key], level + 1))) +
+    "\n" + __json_indent(level) + "}"
+
+export let __json_is_pretty = options =>
+    type_of(options) == "map" ?
+        (map_has(options, "pretty") ? options.pretty : false) :
+        false
+
+export let __json_render_with_options = (value, options) =>
+    __json_is_pretty(options) ? __json_render_pretty(value, 0) : __json_render(value)
+
 codec json {
     mode = :text
     tokenizer = cursor => __json_tokenizer(cursor)
     parser = tokens => __json_parser(tokens)
-    encoder = record => __json_render(record)
-    encoder_all = records => __json_render(records) + "\n"
+    encoder = (record, options) => __json_render_with_options(record, options)
+    encoder_all = (records, options) => __json_render_with_options(records, options) + "\n"
 }
