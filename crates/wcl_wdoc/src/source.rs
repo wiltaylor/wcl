@@ -4517,6 +4517,52 @@ mod wdoc_draw_tests {
     }
 
     #[test]
+    fn collapsible_panel_widget_emits_runtime_metadata() {
+        let ctx = wdoc_library_ctx();
+        let mut panel_attrs = IndexMap::new();
+        int_attr(&mut panel_attrs, "x", 20);
+        int_attr(&mut panel_attrs, "y", 16);
+        int_attr(&mut panel_attrs, "width", 260);
+        int_attr(&mut panel_attrs, "height", 180);
+        string_attr(&mut panel_attrs, "title", "Filters");
+        string_attr(&mut panel_attrs, "collapse_group", "settings");
+        panel_attrs.insert("collapsed".to_string(), Value::Bool(true));
+
+        let mut input_attrs = IndexMap::new();
+        int_attr(&mut input_attrs, "height", 55);
+        string_attr(&mut input_attrs, "label", "Search");
+        let input = block("wdoc::draw::input", Some("search"), input_attrs, vec![]);
+
+        let panel = block(
+            "wdoc::draw::collapsible_panel",
+            Some("filters"),
+            panel_attrs,
+            vec![input],
+        );
+        let mut diagram_attrs = IndexMap::new();
+        int_attr(&mut diagram_attrs, "width", 320);
+        int_attr(&mut diagram_attrs, "height", 230);
+        let diagram = block(
+            "wdoc::draw::diagram",
+            Some("collapse_demo"),
+            diagram_attrs,
+            vec![panel],
+        );
+
+        let html = render_diagram_with_ctx(&diagram, &ctx);
+        assert!(html.contains("data-wdoc-id=\"filters\""));
+        assert!(html.contains("data-wdoc-collapsible-panel=\"true\""));
+        assert!(html.contains("data-wdoc-collapse-group=\"settings\""));
+        assert!(html.contains("data-wdoc-collapse-header-height=\"36\""));
+        assert!(html.contains("data-wdoc-collapse-collapsed=\"true\""));
+        assert!(html.contains("data-wdoc-collapse-header=\"true\""));
+        assert!(html.contains("data-wdoc-collapse-frame=\"true\""));
+        assert!(html.contains("data-wdoc-collapse-keep=\"true\""));
+        assert!(html.contains("data-wdoc-id=\"search\""));
+        assert!(html.contains("initCollapsiblePanel"));
+    }
+
+    #[test]
     fn datatable_widget_renders_compact_rows() {
         let ctx = wdoc_library_ctx();
         let mut diagram_attrs = IndexMap::new();

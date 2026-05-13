@@ -1,6 +1,6 @@
 import <wdoc.wcl>
 use wdoc::{page, layout, heading, paragraph, code, data_table, callout, bold, link}
-use wdoc::draw::{diagram, terminal, terminal_box, terminal_text, terminal_menu, terminal_cursor, graph_node, graph_row, graph_divider, text_block, connection, database, pie_chart, bar_chart, line_chart, chart_point}
+use wdoc::draw::{diagram, terminal, terminal_box, terminal_text, terminal_menu, terminal_cursor, graph_node, graph_row, graph_divider, text_block, connection, database, pie_chart, bar_chart, line_chart, chart_point, collapsible_panel, input, checkbox, button}
 
 page wdoc_drawing_widgets {
     section = "wcl_docs.wdoc.wdoc_drawing_widgets"
@@ -25,7 +25,7 @@ page wdoc_drawing_widgets {
                     content = "UI mockups"
                 }
 
-                paragraph p_ui1 { content = "For wireframes and product mockups. Container-style widgets such as <code>card</code>, <code>phone</code>, <code>phone_landscape</code>, <code>tablet</code>, <code>tablet_landscape</code>, <code>window</code>, and <code>browser</code> work with the normal drawing layout attributes: use <code>align</code>, <code>gap</code>, and <code>padding</code> for auto-placed children, or keep using <code>x</code>/<code>y</code> and edge anchors for controls that need exact placement." }
+                paragraph p_ui1 { content = "For wireframes and product mockups. Container-style widgets such as <code>card</code>, <code>collapsible_panel</code>, <code>phone</code>, <code>phone_landscape</code>, <code>tablet</code>, <code>tablet_landscape</code>, <code>window</code>, and <code>browser</code> work with the normal drawing layout attributes: use <code>align</code>, <code>gap</code>, and <code>padding</code> for auto-placed children, or keep using <code>x</code>/<code>y</code> and edge anchors for controls that need exact placement." }
 
                 data_table tbl_ui {
                     caption = "UI widgets"
@@ -47,6 +47,7 @@ page wdoc_drawing_widgets {
                         { widget = "menubar", attrs = "items, active_index" },
                         { widget = "context_menu", attrs = "items, dismiss_on_leave, leave_close_targets" },
                         { widget = "card",    attrs = "(container — children render inside)" },
+                        { widget = "collapsible_panel", attrs = "title, collapsed, collapse_group" },
                         { widget = "avatar",  attrs = "label" },
                         { widget = "toggle",  attrs = "on (\"true\" / \"false\")" },
                         { widget = "badge",   attrs = "label, color" },
@@ -146,6 +147,43 @@ page wdoc_drawing_widgets {
                 code cui1 {
                     language = "wcl"
                     content = "diagram mockup {\n    width = 600, height = 360\n\n    card form {\n        x = 20, y = 20, width = 240, height = 300\n        title = \"Sign in\"\n        align = \"stack\"\n        gap = 12\n        padding = 18\n\n        input email { height = 55, label = \"Email\" }\n        input password { height = 55, label = \"Password\" }\n        button submit { height = 38, label = \"Continue\", variant = \"primary\" }\n        button help {\n            right = 18, bottom = 18, width = 90, height = 32\n            label = \"Help\"\n            variant = \"outline\"\n        }\n    }\n\n    browser b1 {\n        x = 300, y = 20, width = 280, height = 200\n        title = \"Dashboard\"\n        url = \"https://app.example.com\"\n    }\n}"
+                }
+
+                diagram collapsible_panel_demo {
+                    width = 620
+                    height = 230
+
+                    collapsible_panel filters {
+                        x = 20
+                        y = 20
+                        width = 260
+                        height = 180
+                        title = "Filters"
+                        collapse_group = "sidebar"
+                        align = "stack"
+                        gap = 10
+                        padding = 14
+
+                        input query { height = 52 label = "Search" }
+                        checkbox active { height = 28 label = "Active only" checked = "true" }
+                        button apply { height = 34 label = "Apply" variant = "primary" }
+                    }
+
+                    collapsible_panel details {
+                        x = 320
+                        y = 20
+                        width = 260
+                        height = 180
+                        title = "Details"
+                        collapse_group = "sidebar"
+                        collapsed = true
+                        align = "stack"
+                        gap = 10
+                        padding = 14
+
+                        input owner { height = 52 label = "Owner" }
+                        checkbox archived { height = 28 label = "Include archived" }
+                    }
                 }
 
                 code cui_menu {

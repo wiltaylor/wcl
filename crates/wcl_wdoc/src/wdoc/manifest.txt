@@ -9,6 +9,7 @@ widgets/ui/tablet.wcl
 widgets/ui/tablet_landscape.wcl
 widgets/ui/input.wcl
 widgets/ui/card.wcl
+widgets/ui/collapsible_panel.wcl
 widgets/ui/avatar.wcl
 widgets/ui/toggle.wcl
 widgets/ui/checkbox.wcl

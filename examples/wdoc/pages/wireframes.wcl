@@ -577,6 +577,103 @@ page wireframes {
             }
         }
 
+        // --- Collapsible panels ---
+        vsplit v_wf_collapsible {
+            split s_wf_collapsible {
+                size = 100
+
+                heading hwf_collapsible {
+                    level = 2
+                    content = "Collapsible Panels"
+                }
+                paragraph pwf_collapsible { content = "Click a panel header to collapse or expand its controls. Panels with the same <code>collapse_group</code> behave like an accordion, so opening one collapses the others in the group." }
+
+                diagram collapsible_panels {
+                    width = 760
+                    height = 270
+
+                    collapsible_panel filters {
+                        x = 20
+                        y = 20
+                        width = 220
+                        height = 220
+                        title = "Filters"
+                        collapse_group = "search"
+                        align = "stack"
+                        gap = 10
+                        padding = 14
+
+                        input query {
+                            height = 52
+                            label = "Query"
+                            placeholder = "Search"
+                        }
+                        checkbox active_only {
+                            height = 28
+                            label = "Active only"
+                            checked = "true"
+                        }
+                        dropdown status {
+                            height = 38
+                            placeholder = "Status"
+                            value = "Open"
+                            items = "Open,Closed,Paused"
+                        }
+                        button apply_filters {
+                            height = 34
+                            label = "Apply"
+                            variant = "primary"
+                        }
+                    }
+
+                    collapsible_panel details {
+                        x = 270
+                        y = 20
+                        width = 220
+                        height = 220
+                        title = "Details"
+                        collapse_group = "search"
+                        collapsed = true
+                        align = "stack"
+                        gap = 10
+                        padding = 14
+
+                        input owner {
+                            height = 52
+                            label = "Owner"
+                            placeholder = "Team"
+                        }
+                        checkbox archived {
+                            height = 28
+                            label = "Include archived"
+                        }
+                        button export_details {
+                            height = 34
+                            label = "Export"
+                            variant = "outline"
+                        }
+                    }
+
+                    collapsible_panel standalone {
+                        x = 520
+                        y = 20
+                        width = 220
+                        height = 150
+                        title = "Standalone"
+                        align = "stack"
+                        gap = 10
+                        padding = 14
+
+                        textbox note {
+                            height = 70
+                            placeholder = "Panel notes"
+                            rows = 3
+                        }
+                    }
+                }
+            }
+        }
+
         // --- Login form using widgets ---
         vsplit v_wf5 {
             split s_wf5 {

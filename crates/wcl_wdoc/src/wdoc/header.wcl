@@ -425,6 +425,7 @@ namespace wdoc {
             "wdoc::draw::slider",
             "wdoc::draw::input",
             "wdoc::draw::card",
+            "wdoc::draw::collapsible_panel",
             "wdoc::draw::avatar",
             "wdoc::draw::toggle",
             "wdoc::draw::checkbox",
@@ -498,6 +499,7 @@ namespace wdoc {
         @template("shape", "wdoc::widget_slider")   @open schema "slider" { }
         @template("shape", "wdoc::widget_input")    @open schema "input" { }
         @template("shape", "wdoc::widget_card")     @open schema "card" { }
+        @template("shape", "wdoc::widget_collapsible_panel") @open schema "collapsible_panel" { }
         @template("shape", "wdoc::widget_avatar")   @open schema "avatar" { }
         @template("shape", "wdoc::widget_toggle")   @open schema "toggle" { }
         @template("shape", "wdoc::widget_checkbox") @open schema "checkbox" { }
@@ -593,7 +595,15 @@ namespace wdoc {
             kind == "wdoc::draw::card" && attr_or(b, "title", "") != "" ? {
                 content_top = 36
             } : (
-                kind == "wdoc::draw::phone" ? {
+                kind == "wdoc::draw::collapsible_panel" ? {
+                    content_top = attr_or(b, "header_height", 36),
+                    data_wdoc_collapsible_panel = "true",
+                    data_wdoc_collapse_group = attr_or(b, "collapse_group", ""),
+                    data_wdoc_collapse_header_height = attr_or(b, "header_height", 36),
+                    data_wdoc_collapse_collapsed = attr_or(b, "collapsed", false),
+                    _wdoc_runtime = "true"
+                } : (
+                    kind == "wdoc::draw::phone" ? {
                     content_top = 74,
                     content_bottom = 50
                 } : (
@@ -621,6 +631,7 @@ namespace wdoc {
                                         content_right = 24,
                                         content_bottom = 18
                                     } : null
+                                    )
                                 )
                             )
                         )
