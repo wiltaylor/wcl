@@ -165,6 +165,48 @@ fn eval_let_bindings_not_in_output() {
 }
 
 #[test]
+fn eval_import_codec_json_can_be_filtered() {
+    let dir = tempdir().expect("tempdir");
+    let config = dir.path().join("config.wcl");
+    let data = dir.path().join("data.json");
+
+    std::fs::write(
+        &data,
+        r#"
+// comments are accepted by the WCL JSON codec
+[
+  {"name": "alice", "active": true},
+  {"name": "bob", "active": false}
+]
+"#,
+    )
+    .expect("write data");
+    std::fs::write(
+        &config,
+        r#"
+rows = import_codec("data.json", "json", {})
+active = filter(rows, row => row.active)
+names = map(active, row => { name = row.name })
+"#,
+    )
+    .expect("write config");
+
+    let output = Command::cargo_bin("wcl")
+        .unwrap()
+        .args(["eval", "--format", "json", config.to_str().unwrap()])
+        .output()
+        .expect("run wcl eval");
+    assert!(
+        output.status.success(),
+        "eval failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let json: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("stdout should be valid JSON");
+    assert_eq!(json["names"], serde_json::json!([{"name": "alice"}]));
+}
+
+#[test]
 fn eval_arithmetic_expressions() {
     let json = eval_json(
         r#"

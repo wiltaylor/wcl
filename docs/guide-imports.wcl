@@ -277,6 +277,29 @@ page guide_imports {
                     ]
                 }
 
+                heading h3_codec {
+                    level = 3
+                    content = "Codec Data: import_codec"
+                }
+
+                paragraph p22_codec {
+                    content = "<code>import_codec(path, codec, options)</code> reads a file through a standard transform codec and returns a list of WCL values. Use <code>filter()</code> and <code>map()</code> to keep only the records and fields you need:"
+                }
+
+                code c8_codec {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    let rows = import_codec("./data.json", "json", {})
+                    let active = filter(rows, row => row.active)
+                    let names = map(active, row => { name = row.name })
+
+                    let tsv = import_codec("./data.tsv", "csv", {
+                        separator = "\t"
+                        has_header = true
+                    })
+                    WCL
+                }
+
                 paragraph p23 {
                     content = "Tables can be populated directly from CSV using assignment syntax:"
                 }
@@ -296,7 +319,7 @@ page guide_imports {
                 }
 
                 paragraph p25 {
-                    content = "When processing untrusted WCL input you can disable all file-loading operations by setting the <code>allow_imports</code> pipeline option to <code>false</code>. With this option disabled, any <code>import</code>, <code>import_raw</code>, or <code>import_table</code> statement produces an error rather than reading from disk. This is recommended for any context where the WCL source is not fully trusted."
+                    content = "When processing untrusted WCL input you can disable all file-loading operations by setting the <code>allow_imports</code> pipeline option to <code>false</code>. With this option disabled, any <code>import</code>, <code>import_raw</code>, <code>import_table</code>, or <code>import_codec</code> statement produces an error rather than reading from disk. This is recommended for any context where the WCL source is not fully trusted."
                 }
 
                 code c10 {

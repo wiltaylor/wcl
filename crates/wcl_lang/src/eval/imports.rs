@@ -8,6 +8,9 @@ use std::path::{Path, PathBuf};
 /// Trait for file system access (enables testing with in-memory FS).
 pub trait FileSystem: Send + Sync {
     fn read_file(&self, path: &Path) -> Result<String, String>;
+    fn read_file_bytes(&self, path: &Path) -> Result<Vec<u8>, String> {
+        self.read_file(path).map(String::into_bytes)
+    }
     fn canonicalize(&self, path: &Path) -> Result<PathBuf, String>;
     fn exists(&self, path: &Path) -> bool;
     /// Return all paths matching a glob pattern.
@@ -23,6 +26,10 @@ pub struct RealFileSystem;
 impl FileSystem for RealFileSystem {
     fn read_file(&self, path: &Path) -> Result<String, String> {
         std::fs::read_to_string(path).map_err(|e| e.to_string())
+    }
+
+    fn read_file_bytes(&self, path: &Path) -> Result<Vec<u8>, String> {
+        std::fs::read(path).map_err(|e| e.to_string())
     }
 
     fn canonicalize(&self, path: &Path) -> Result<PathBuf, String> {
@@ -48,7 +55,7 @@ impl FileSystem for RealFileSystem {
 
 /// In-memory file system for testing.
 pub struct InMemoryFs {
-    pub files: HashMap<PathBuf, String>,
+    pub files: HashMap<PathBuf, Vec<u8>>,
 }
 
 impl InMemoryFs {
@@ -59,6 +66,10 @@ impl InMemoryFs {
     }
 
     pub fn add_file(&mut self, path: impl Into<PathBuf>, content: impl Into<String>) {
+        self.files.insert(path.into(), content.into().into_bytes());
+    }
+
+    pub fn add_file_bytes(&mut self, path: impl Into<PathBuf>, content: impl Into<Vec<u8>>) {
         self.files.insert(path.into(), content.into());
     }
 }
@@ -71,6 +82,14 @@ impl Default for InMemoryFs {
 
 impl FileSystem for InMemoryFs {
     fn read_file(&self, path: &Path) -> Result<String, String> {
+        self.files
+            .get(path)
+            .map(|bytes| String::from_utf8(bytes.clone()).map_err(|e| e.to_string()))
+            .transpose()?
+            .ok_or_else(|| format!("file not found: {}", path.display()))
+    }
+
+    fn read_file_bytes(&self, path: &Path) -> Result<Vec<u8>, String> {
         self.files
             .get(path)
             .cloned()

@@ -775,6 +775,9 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
         fn read_file(&self, path: &std::path::Path) -> Result<String, String> {
             self.0.read_file(path)
         }
+        fn read_file_bytes(&self, path: &std::path::Path) -> Result<Vec<u8>, String> {
+            self.0.read_file_bytes(path)
+        }
         fn canonicalize(&self, path: &std::path::Path) -> Result<PathBuf, String> {
             self.0.canonicalize(path)
         }
@@ -2103,6 +2106,203 @@ service beta {}
             },
             other => panic!("expected Attribute, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn test_import_codec_json() {
+        use std::sync::Arc;
+
+        let mut fs = InMemoryFs::new();
+        fs.add_file(
+            std::path::PathBuf::from("/project/data.json"),
+            r#"[{"name": "alice", "active": true}, {"name": "bob", "active": false}]"#,
+        );
+
+        let mut opts = ParseOptions::default();
+        opts.root_dir = std::path::PathBuf::from("/project");
+        opts.fs = Some(Arc::new(fs));
+
+        let doc = parse(
+            r#"
+rows = import_codec("data.json", "json", {})
+            "#,
+            opts,
+        );
+        let messages: Vec<_> = doc.diagnostics.iter().map(|d| d.message.as_str()).collect();
+        assert!(
+            doc.diagnostics.is_empty(),
+            "expected no errors, got: {:?}",
+            messages
+        );
+
+        let rows = doc.values.get("rows").expect("rows value");
+        let Value::List(items) = rows else {
+            panic!("expected rows list, got {:?}", rows);
+        };
+        assert_eq!(items.len(), 2);
+        let Value::Map(row) = &items[0] else {
+            panic!("expected row map");
+        };
+        assert_eq!(row.get("name"), Some(&Value::String("alice".into())));
+        assert_eq!(row.get("active"), Some(&Value::Bool(true)));
+    }
+
+    #[test]
+    fn test_import_codec_accepts_codec_namespace_prefix() {
+        use std::sync::Arc;
+
+        let mut fs = InMemoryFs::new();
+        fs.add_file(
+            std::path::PathBuf::from("/project/data.json"),
+            r#"[{"name": "alice"}]"#,
+        );
+
+        let mut opts = ParseOptions::default();
+        opts.root_dir = std::path::PathBuf::from("/project");
+        opts.fs = Some(Arc::new(fs));
+
+        let doc = parse(
+            r#"rows = import_codec("data.json", "codec::json", {})"#,
+            opts,
+        );
+        assert!(
+            doc.diagnostics.is_empty(),
+            "expected no errors, got: {:?}",
+            doc.diagnostics
+        );
+        let Value::List(rows) = doc.values.get("rows").expect("rows value") else {
+            panic!("expected rows list");
+        };
+        assert_eq!(rows.len(), 1);
+    }
+
+    #[test]
+    fn test_import_codec_csv_options() {
+        use std::sync::Arc;
+
+        let mut fs = InMemoryFs::new();
+        fs.add_file(
+            std::path::PathBuf::from("/project/data.tsv"),
+            "name\tport\napi\t9090",
+        );
+
+        let mut opts = ParseOptions::default();
+        opts.root_dir = std::path::PathBuf::from("/project");
+        opts.fs = Some(Arc::new(fs));
+
+        let doc = parse(
+            r#"rows = import_codec("data.tsv", "csv", { separator = "\t" has_header = true })"#,
+            opts,
+        );
+        assert!(
+            doc.diagnostics.is_empty(),
+            "expected no errors, got: {:?}",
+            doc.diagnostics
+        );
+        let Value::List(rows) = doc.values.get("rows").expect("rows value") else {
+            panic!("expected rows list");
+        };
+        let Value::Map(row) = &rows[0] else {
+            panic!("expected row map");
+        };
+        assert_eq!(row.get("name"), Some(&Value::String("api".into())));
+        assert_eq!(row.get("port"), Some(&Value::String("9090".into())));
+    }
+
+    #[test]
+    fn test_import_codec_msgpack_bytes() {
+        use std::sync::Arc;
+
+        let packed = rmp_serde::to_vec(&serde_json::json!([
+            {"name": "alice", "port": 8080}
+        ]))
+        .expect("pack msgpack");
+        let mut fs = InMemoryFs::new();
+        fs.add_file_bytes(std::path::PathBuf::from("/project/data.msgpack"), packed);
+
+        let mut opts = ParseOptions::default();
+        opts.root_dir = std::path::PathBuf::from("/project");
+        opts.fs = Some(Arc::new(fs));
+
+        let doc = parse(
+            r#"rows = import_codec("data.msgpack", "msgpack", {})"#,
+            opts,
+        );
+        assert!(
+            doc.diagnostics.is_empty(),
+            "expected no errors, got: {:?}",
+            doc.diagnostics
+        );
+        let Value::List(rows) = doc.values.get("rows").expect("rows value") else {
+            panic!("expected rows list");
+        };
+        let Value::Map(row) = &rows[0] else {
+            panic!("expected row map");
+        };
+        assert_eq!(row.get("name"), Some(&Value::String("alice".into())));
+        assert_eq!(row.get("port"), Some(&Value::Int(8080)));
+    }
+
+    #[test]
+    fn test_import_codec_missing_file_errors() {
+        use std::sync::Arc;
+
+        let fs = InMemoryFs::new();
+        let mut opts = ParseOptions::default();
+        opts.root_dir = std::path::PathBuf::from("/project");
+        opts.fs = Some(Arc::new(fs));
+
+        let doc = parse(r#"rows = import_codec("missing.json", "json", {})"#, opts);
+        assert!(
+            doc.diagnostics
+                .iter()
+                .any(|d| d.message.contains("cannot read file 'missing.json'")),
+            "expected missing file diagnostic, got: {:?}",
+            doc.diagnostics
+        );
+    }
+
+    #[test]
+    fn test_import_codec_jail_escape_rejected() {
+        use std::sync::Arc;
+
+        let mut fs = InMemoryFs::new();
+        fs.add_file(std::path::PathBuf::from("/outside/data.json"), "[]");
+        let mut opts = ParseOptions::default();
+        opts.root_dir = std::path::PathBuf::from("/project");
+        opts.fs = Some(Arc::new(fs));
+
+        let doc = parse(
+            r#"rows = import_codec("../outside/data.json", "json", {})"#,
+            opts,
+        );
+        assert!(
+            doc.diagnostics
+                .iter()
+                .any(|d| d.message.contains("escapes root directory")),
+            "expected jail diagnostic, got: {:?}",
+            doc.diagnostics
+        );
+    }
+
+    #[test]
+    fn test_import_codec_binary_is_not_supported() {
+        use std::sync::Arc;
+
+        let mut fs = InMemoryFs::new();
+        fs.add_file_bytes(std::path::PathBuf::from("/project/data.bin"), vec![0, 1, 2]);
+        let mut opts = ParseOptions::default();
+        opts.root_dir = std::path::PathBuf::from("/project");
+        opts.fs = Some(Arc::new(fs));
+
+        let doc = parse(r#"rows = import_codec("data.bin", "binary", {})"#, opts);
+        assert!(
+            doc.diagnostics
+                .iter()
+                .any(|d| d.message.contains("does not support binary")),
+            "expected binary unsupported diagnostic, got: {:?}",
+            doc.diagnostics
+        );
     }
 
     #[test]

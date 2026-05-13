@@ -912,6 +912,61 @@ impl Evaluator {
             .map_err(|e| Diagnostic::error(format!("cannot read file '{}': {}", path_str, e), span))
     }
 
+    fn read_file_bytes_checked(&self, path_str: &str, span: Span) -> Result<Vec<u8>, Diagnostic> {
+        let fs = self
+            .fs
+            .as_ref()
+            .ok_or_else(|| Diagnostic::error("import_codec not available in this context", span))?;
+        let base = self.base_dir.as_ref().unwrap();
+        let resolved = base.join(path_str);
+        let normalized = crate::eval::imports::normalize_path(&resolved);
+        let canonical_base = crate::eval::imports::normalize_path(base);
+        if !normalized.starts_with(&canonical_base) {
+            return Err(Diagnostic::error(
+                format!("path '{}' escapes root directory", path_str),
+                span,
+            ));
+        }
+
+        fs.read_file_bytes(&normalized)
+            .map_err(|e| Diagnostic::error(format!("cannot read file '{}': {}", path_str, e), span))
+    }
+
+    fn eval_import_codec(&self, args: &[Value], span: Span) -> Result<Value, Diagnostic> {
+        if args.len() != 3 {
+            return Err(
+                Diagnostic::error("import_codec() expects exactly 3 arguments", span)
+                    .with_code("E052"),
+            );
+        }
+        let path = args[0].as_string().ok_or_else(|| {
+            Diagnostic::error("import_codec() argument 1 must be a string", span).with_code("E052")
+        })?;
+        let codec = args[1].as_string().ok_or_else(|| {
+            Diagnostic::error("import_codec() argument 2 must be a string", span).with_code("E052")
+        })?;
+        let options = match &args[2] {
+            Value::Map(options) => options,
+            other => {
+                return Err(Diagnostic::error(
+                    format!(
+                        "import_codec() argument 3 must be a map, got {}",
+                        other.type_name()
+                    ),
+                    span,
+                )
+                .with_code("E052"))
+            }
+        };
+
+        let codec = codec.strip_prefix("codec::").unwrap_or(codec);
+        let bytes = self.read_file_bytes_checked(path, span)?;
+        let records = decode_import_codec(codec, &bytes, options).map_err(|e| {
+            Diagnostic::error(format!("in import_codec(): {}", e), span).with_code("E052")
+        })?;
+        Ok(Value::List(records))
+    }
+
     // ------------------------------------------------------------------
     // Identifier resolution
     // ------------------------------------------------------------------
@@ -1342,6 +1397,11 @@ impl Evaluator {
                         }
                     };
                     return Ok(Value::Bool(self.schema_names.contains(&schema_name)));
+                }
+
+                if name == "import_codec" {
+                    let eval_args = self.eval_call_args(args, scope_id)?;
+                    return self.eval_import_codec(&eval_args, span);
                 }
 
                 // Evaluate arguments eagerly for normal builtins and user fns
@@ -2273,6 +2333,102 @@ fn compare_partial_ord<T: PartialOrd>(a: &T, b: &T, op: BinOp) -> bool {
         BinOp::Lte => a <= b,
         BinOp::Gte => a >= b,
         _ => unreachable!(),
+    }
+}
+
+fn decode_import_codec(
+    codec: &str,
+    bytes: &[u8],
+    options: &IndexMap<String, Value>,
+) -> Result<Vec<Value>, crate::transform::TransformError> {
+    match codec {
+        "json" => {
+            let registry = crate::transform::codec::custom::standard_registry()?;
+            let json = registry.get("json").ok_or_else(|| {
+                crate::transform::TransformError::Codec(
+                    "standard json codec is not registered".into(),
+                )
+            })?;
+            crate::transform::codec::custom::decode_custom_records(bytes, json)
+        }
+        "yaml" => crate::transform::codec::yaml::decode_yaml_records(bytes),
+        "csv" => {
+            let separator = option_separator_byte(options, "separator", b',')?;
+            let has_header = option_bool(options, "has_header", true)?;
+            crate::transform::codec::csv_codec::decode_csv_records(bytes, has_header, separator)
+        }
+        "toml" => crate::transform::codec::toml_codec::decode_toml_records(bytes),
+        "hcl" => crate::transform::codec::hcl_codec::decode_hcl_records(bytes),
+        "xml" => crate::transform::codec::xml::decode_xml_records(bytes),
+        "msgpack" => crate::transform::codec::msgpack::decode_msgpack_records(bytes),
+        "text" => {
+            let separator = option_string(options, "separator", "\t")?;
+            let has_header = option_bool(options, "has_header", false)?;
+            crate::transform::codec::text_codec::decode_text_records(bytes, &separator, has_header)
+        }
+        "binary" => Err(crate::transform::TransformError::Codec(
+            "import_codec() does not support binary in this version".into(),
+        )),
+        other => Err(crate::transform::TransformError::UnknownCodec(
+            other.to_string(),
+        )),
+    }
+}
+
+fn option_bool(
+    options: &IndexMap<String, Value>,
+    key: &str,
+    default: bool,
+) -> Result<bool, crate::transform::TransformError> {
+    match options.get(key) {
+        Some(Value::Bool(value)) => Ok(*value),
+        Some(value) => Err(crate::transform::TransformError::Codec(format!(
+            "option '{}' must be bool, got {}",
+            key,
+            value.type_name()
+        ))),
+        None => Ok(default),
+    }
+}
+
+fn option_string(
+    options: &IndexMap<String, Value>,
+    key: &str,
+    default: &str,
+) -> Result<String, crate::transform::TransformError> {
+    match options.get(key) {
+        Some(Value::String(value)) => Ok(value.clone()),
+        Some(value) => Err(crate::transform::TransformError::Codec(format!(
+            "option '{}' must be string, got {}",
+            key,
+            value.type_name()
+        ))),
+        None => Ok(default.to_string()),
+    }
+}
+
+fn option_separator_byte(
+    options: &IndexMap<String, Value>,
+    key: &str,
+    default: u8,
+) -> Result<u8, crate::transform::TransformError> {
+    let Some(value) = options.get(key) else {
+        return Ok(default);
+    };
+    let Value::String(separator) = value else {
+        return Err(crate::transform::TransformError::Codec(format!(
+            "option '{}' must be string, got {}",
+            key,
+            value.type_name()
+        )));
+    };
+    let mut bytes = separator.bytes();
+    match (bytes.next(), bytes.next()) {
+        (Some(byte), None) => Ok(byte),
+        _ => Err(crate::transform::TransformError::Codec(format!(
+            "option '{}' must be a single-byte separator",
+            key
+        ))),
     }
 }
 

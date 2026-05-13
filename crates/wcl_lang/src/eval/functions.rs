@@ -518,6 +518,16 @@ pub fn builtin_signatures() -> Vec<FunctionSignature> {
             doc: "Check if a file was imported".into(),
         },
         FunctionSignature {
+            name: "import_codec".into(),
+            params: vec![
+                "path: string".into(),
+                "codec: string".into(),
+                "options: map".into(),
+            ],
+            return_type: "list".into(),
+            doc: "Import a file through a standard transform codec".into(),
+        },
+        FunctionSignature {
             name: "has_schema".into(),
             params: vec!["name: string".into()],
             return_type: "bool".into(),
