@@ -70,13 +70,24 @@ const BUILTIN_DECORATORS: &[&str] = &[
     "partial_requires",
 ];
 
-/// Collect function names from analysis signatures (builtins + custom).
-fn function_names(analysis: &AnalysisResult) -> Vec<&str> {
-    analysis
+/// Collect function names from analysis signatures plus imported aliases.
+fn function_names(analysis: &AnalysisResult) -> Vec<String> {
+    let mut names: Vec<String> = analysis
+        .function_signatures
+        .iter()
+        .map(|s| s.name.clone())
+        .collect();
+    let signature_names: std::collections::HashSet<&str> = analysis
         .function_signatures
         .iter()
         .map(|s| s.name.as_str())
-        .collect()
+        .collect();
+    for (alias, qualified) in &analysis.namespace_aliases {
+        if signature_names.contains(qualified.as_str()) {
+            names.push(alias.clone());
+        }
+    }
+    names
 }
 
 fn namespace_function_members<'a>(analysis: &'a AnalysisResult, namespace: &str) -> Vec<&'a str> {
@@ -189,10 +200,7 @@ pub fn completions(analysis: &AnalysisResult, source: &str, offset: usize) -> Ve
                     ..Default::default()
                 });
             }
-            push_function_items(
-                &mut items,
-                function_names(analysis).into_iter().map(str::to_string),
-            );
+            push_function_items(&mut items, function_names(analysis));
         }
         CompletionContext::Expression => {
             // Variables from scope
@@ -214,10 +222,7 @@ pub fn completions(analysis: &AnalysisResult, source: &str, offset: usize) -> Ve
                     ..Default::default()
                 });
             }
-            push_function_items(
-                &mut items,
-                function_names(analysis).into_iter().map(str::to_string),
-            );
+            push_function_items(&mut items, function_names(analysis));
         }
         CompletionContext::TopLevel | CompletionContext::BlockBody => {
             for kw in KEYWORDS {
@@ -622,6 +627,17 @@ mod tests {
     #[test]
     fn test_expression_context_includes_custom_wdoc_functions() {
         let source = "let x = ";
+        let analysis = analyze(source, &wdoc_like_options());
+        let items = completions(&analysis, source, source.len());
+        let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+        assert!(labels.contains(&"icon"));
+        assert!(labels.contains(&"wdoc::icon"));
+    }
+
+    #[test]
+    fn test_expression_context_includes_use_alias_functions() {
+        let source =
+            "namespace wdoc { declare icon(name: string) -> string }\nuse wdoc::{icon}\nlet x = ";
         let analysis = analyze(source, &wdoc_like_options());
         let items = completions(&analysis, source, source.len());
         let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();

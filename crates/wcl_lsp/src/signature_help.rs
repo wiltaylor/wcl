@@ -12,13 +12,13 @@ pub fn signature_help(
 
     // Try function signatures (builtins + custom) from analysis, or fallback to builtins
     let builtin_sigs;
-    let sigs: &[wcl_lang::eval::FunctionSignature] = if let Some(analysis) = analysis {
-        &analysis.function_signatures
+    let sig = if let Some(analysis) = analysis {
+        find_signature(analysis, &fn_name)
     } else {
         builtin_sigs = wcl_lang::eval::builtin_signatures();
-        &builtin_sigs
+        find_signature_in_slice(&builtin_sigs, &fn_name)
     };
-    if let Some(sig) = find_signature(sigs, &fn_name) {
+    if let Some(sig) = sig {
         let params: Vec<ParameterInformation> = sig
             .params
             .iter()
@@ -92,6 +92,22 @@ pub fn signature_help(
 }
 
 fn find_signature<'a>(
+    analysis: &'a crate::state::AnalysisResult,
+    fn_name: &str,
+) -> Option<&'a wcl_lang::eval::FunctionSignature> {
+    if let Some(qualified) = analysis.namespace_aliases.get(fn_name) {
+        if let Some(sig) = analysis
+            .function_signatures
+            .iter()
+            .find(|s| s.name == *qualified)
+        {
+            return Some(sig);
+        }
+    }
+    find_signature_in_slice(&analysis.function_signatures, fn_name)
+}
+
+fn find_signature_in_slice<'a>(
     sigs: &'a [wcl_lang::eval::FunctionSignature],
     fn_name: &str,
 ) -> Option<&'a wcl_lang::eval::FunctionSignature> {
@@ -266,5 +282,33 @@ mod tests {
         let analysis = analyze(source, &options);
         let help = signature_help(source, source.len(), Some(&analysis)).unwrap();
         assert_eq!(help.signatures[0].label, "wdoc::icon(name: string)");
+    }
+
+    #[test]
+    fn test_signature_help_use_alias_custom_function() {
+        use crate::analysis::analyze;
+        use std::sync::Arc;
+
+        let mut functions = wcl_lang::FunctionRegistry::new();
+        let dummy: wcl_lang::BuiltinFn =
+            Arc::new(|_: &[wcl_lang::Value]| Ok(wcl_lang::Value::Null));
+        functions.register(
+            "wdoc::bold",
+            dummy,
+            wcl_lang::FunctionSignature {
+                name: "wdoc::bold".into(),
+                params: vec!["text: string".into()],
+                return_type: "string".into(),
+                doc: "Render bold text".into(),
+            },
+        );
+        let options = wcl_lang::ParseOptions {
+            functions,
+            ..Default::default()
+        };
+        let source = "namespace wdoc { declare bold(text: string) -> string }\nuse wdoc::{bold}\nlet x = bold(";
+        let analysis = analyze(source, &options);
+        let help = signature_help(source, source.len(), Some(&analysis)).unwrap();
+        assert_eq!(help.signatures[0].label, "wdoc::bold(text: string)");
     }
 }

@@ -35,6 +35,7 @@ pub fn analyze(source: &str, options: &wcl_lang::ParseOptions) -> AnalysisResult
                 schemas: SchemaRegistry::new(),
                 macro_registry: MacroRegistry::new(),
                 function_signatures: builtin_signatures(),
+                namespace_aliases: std::collections::HashMap::new(),
             };
         }
     };
@@ -90,7 +91,11 @@ pub fn analyze(source: &str, options: &wcl_lang::ParseOptions) -> AnalysisResult
     };
 
     // Macro expansion
-    let mut expander = MacroExpander::new(&macro_registry, options.max_macro_depth);
+    let mut expander = MacroExpander::with_namespace_aliases(
+        &macro_registry,
+        namespace_aliases.clone(),
+        options.max_macro_depth,
+    );
     expander.expand(&mut doc);
     all_diagnostics.extend(expander.into_diagnostics().into_diagnostics());
 
@@ -98,8 +103,9 @@ pub fn analyze(source: &str, options: &wcl_lang::ParseOptions) -> AnalysisResult
     // to the retry pass after evaluation, matching wcl_lang::parse).
     let mut cf_expander = ControlFlowExpander::new(options.max_loop_depth, options.max_iterations)
         .with_tolerate_missing(true);
-    let pre_eval =
-        std::cell::RefCell::new(Evaluator::with_functions(&options.functions, None, None));
+    let mut pre_evaluator = Evaluator::with_functions(&options.functions, None, None);
+    pre_evaluator.set_namespace_aliases(namespace_aliases.clone());
+    let pre_eval = std::cell::RefCell::new(pre_evaluator);
     let pre_scope = pre_eval
         .borrow_mut()
         .scopes_mut()
@@ -195,11 +201,13 @@ pub fn analyze(source: &str, options: &wcl_lang::ParseOptions) -> AnalysisResult
 
     // Scope construction + evaluation (retain scopes)
     let build_evaluator = || {
-        Evaluator::with_functions(
+        let mut evaluator = Evaluator::with_functions(
             &options.functions,
             Some(Box::new(RealFileSystem)),
             Some(options.root_dir.clone()),
-        )
+        );
+        evaluator.set_namespace_aliases(namespace_aliases.clone());
+        evaluator
     };
     let mut evaluator = build_evaluator();
     let mut values = evaluator.evaluate(&doc);
@@ -246,7 +254,7 @@ pub fn analyze(source: &str, options: &wcl_lang::ParseOptions) -> AnalysisResult
 
     // Schema validation
     let mut schemas = SchemaRegistry::new();
-    schemas.namespace_aliases = namespace_aliases.aliases;
+    schemas.namespace_aliases = namespace_aliases.aliases.clone();
     let mut diag_bag = DiagnosticBag::new();
     schemas.collect(&doc, &mut diag_bag);
     let mut symbol_sets = wcl_lang::schema::SymbolSetRegistry::new();
@@ -269,7 +277,11 @@ pub fn analyze(source: &str, options: &wcl_lang::ParseOptions) -> AnalysisResult
     let mut diag_bag = DiagnosticBag::new();
     wcl_lang::schema::document::validate_document(
         &doc,
-        &mut Evaluator::with_functions(&options.functions, None, None),
+        &mut {
+            let mut evaluator = Evaluator::with_functions(&options.functions, None, None);
+            evaluator.set_namespace_aliases(namespace_aliases.clone());
+            evaluator
+        },
         &mut diag_bag,
     );
     all_diagnostics.extend(diag_bag.into_diagnostics());
@@ -308,6 +320,7 @@ pub fn analyze(source: &str, options: &wcl_lang::ParseOptions) -> AnalysisResult
         schemas,
         macro_registry,
         function_signatures,
+        namespace_aliases: namespace_aliases.aliases,
     }
 }
 
@@ -357,6 +370,27 @@ fn type_expr_to_string(te: &wcl_lang::lang::ast::TypeExpr) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
+
+    fn options_with_wdoc_bold() -> wcl_lang::ParseOptions {
+        let mut functions = wcl_lang::FunctionRegistry::new();
+        let dummy: wcl_lang::BuiltinFn =
+            Arc::new(|_: &[wcl_lang::Value]| Ok(wcl_lang::Value::String("<b>x</b>".into())));
+        functions.register(
+            "wdoc::bold",
+            dummy,
+            wcl_lang::FunctionSignature {
+                name: "wdoc::bold".into(),
+                params: vec!["text: string".into()],
+                return_type: "string".into(),
+                doc: "Render bold text".into(),
+            },
+        );
+        wcl_lang::ParseOptions {
+            functions,
+            ..Default::default()
+        }
+    }
 
     #[test]
     fn test_analyze_simple() {
@@ -403,5 +437,21 @@ mod tests {
         // Source with an unterminated string should not panic
         let result = analyze("name = \"unterminated", &wcl_lang::ParseOptions::default());
         assert!(result.diagnostics.iter().any(|d| d.is_error()));
+    }
+
+    #[test]
+    fn test_analyze_resolves_use_alias_for_function_calls() {
+        let source =
+            "namespace wdoc { declare bold(text: string) -> string }\nuse wdoc::{bold}\nlet x = bold(\"ok\")";
+        let result = analyze(source, &options_with_wdoc_bold());
+        assert!(
+            result.diagnostics.iter().all(|d| !d.is_error()),
+            "unexpected diagnostics: {:?}",
+            result.diagnostics
+        );
+        assert_eq!(
+            result.namespace_aliases.get("bold").map(String::as_str),
+            Some("wdoc::bold")
+        );
     }
 }

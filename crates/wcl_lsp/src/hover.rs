@@ -379,6 +379,16 @@ fn find_function_signature<'a>(
     analysis: &'a AnalysisResult,
     name: &str,
 ) -> Option<&'a wcl_lang::eval::FunctionSignature> {
+    if let Some(qualified) = analysis.namespace_aliases.get(name) {
+        if let Some(sig) = analysis
+            .function_signatures
+            .iter()
+            .find(|s| s.name == *qualified)
+        {
+            return Some(sig);
+        }
+    }
+
     if let Some(sig) = analysis.function_signatures.iter().find(|s| s.name == name) {
         return Some(sig);
     }
@@ -535,6 +545,36 @@ mod tests {
         let val = hover_value(&h);
         assert!(val.contains("wdoc::icon(name: string) -> string"));
         assert!(val.contains("Render a named SVG icon"));
+    }
+
+    #[test]
+    fn test_hover_use_alias_function_signature() {
+        use std::sync::Arc;
+
+        let mut functions = wcl_lang::FunctionRegistry::new();
+        let dummy: wcl_lang::BuiltinFn =
+            Arc::new(|_: &[wcl_lang::Value]| Ok(wcl_lang::Value::Null));
+        functions.register(
+            "wdoc::bold",
+            dummy,
+            wcl_lang::FunctionSignature {
+                name: "wdoc::bold".into(),
+                params: vec!["text: string".into()],
+                return_type: "string".into(),
+                doc: "Render bold text".into(),
+            },
+        );
+        let options = wcl_lang::ParseOptions {
+            functions,
+            ..Default::default()
+        };
+        let source =
+            "namespace wdoc { declare bold(text: string) -> string }\nuse wdoc::{bold}\nlet x = bold(\"ok\")";
+        let offset = source.rfind("bold").unwrap();
+        let h = get_hover_with_options(source, offset, &options).unwrap();
+        let val = hover_value(&h);
+        assert!(val.contains("wdoc::bold(text: string) -> string"));
+        assert!(val.contains("Render bold text"));
     }
 
     #[test]

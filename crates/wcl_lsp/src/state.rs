@@ -28,6 +28,7 @@ pub struct AnalysisResult {
     pub schemas: SchemaRegistry,
     pub macro_registry: MacroRegistry,
     pub function_signatures: Vec<FunctionSignature>,
+    pub namespace_aliases: HashMap<String, String>,
 }
 
 pub struct WorldState {
