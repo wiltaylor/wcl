@@ -125,12 +125,6 @@ pub fn layout_force(
 
     for attempt in 0..5 {
         let mut candidate_children = original_children.clone();
-        let retry_scale = 0.85_f64.powi(attempt as i32);
-        if retry_scale < 1.0 {
-            for child in candidate_children.iter_mut() {
-                scale_node_size_and_local_children(child, retry_scale);
-            }
-        }
 
         // Solve in a virtual workspace first; the final result is scaled into
         // the requested diagram bounds after nodes and direct edges are clear.
@@ -219,7 +213,7 @@ pub fn layout_force(
         let node_scale = scale_x.min(scale_y).min(1.0);
         if node_scale < 1.0 {
             for child in candidate_children.iter_mut() {
-                scale_node_size_and_local_children(child, node_scale);
+                scale_node_resolved_size_and_visual_children(child, node_scale);
             }
         }
 
@@ -1231,6 +1225,25 @@ fn scale_node_size_and_local_children(node: &mut ShapeNode, scale: f64) {
     }
 }
 
+fn scale_node_resolved_size_and_visual_children(node: &mut ShapeNode, scale: f64) {
+    node.resolved.width *= scale;
+    node.resolved.height *= scale;
+    scale_numeric_attr(&mut node.attrs, "font_size", scale);
+    scale_numeric_attr(&mut node.attrs, "letter_spacing", scale);
+    scale_numeric_attr(&mut node.attrs, "stroke_width", scale);
+    scale_numeric_attr(&mut node.attrs, "rx", scale);
+    scale_numeric_attr(&mut node.attrs, "ry", scale);
+    if node.kind == ShapeKind::Path {
+        scale_path_data_attr(&mut node.attrs, scale);
+    }
+
+    for child in &mut node.children {
+        child.resolved.x *= scale;
+        child.resolved.y *= scale;
+        scale_node_resolved_size_and_visual_children(child, scale);
+    }
+}
+
 fn scale_numeric_attr(attrs: &mut IndexMap<String, String>, key: &str, scale: f64) {
     let Some(value) = attrs.get(key).and_then(|s| s.parse::<f64>().ok()) else {
         return;
@@ -1706,6 +1719,10 @@ mod tests {
     #[test]
     fn test_force_scales_long_nodes_when_parent_is_too_small() {
         let mut nodes = vec![make_node("a", 180.0, 50.0), make_node("b", 180.0, 50.0)];
+        for node in &mut nodes {
+            node.attrs.insert("width".to_string(), "180".to_string());
+            node.attrs.insert("height".to_string(), "50".to_string());
+        }
         let conns = vec![make_conn("a", "b")];
         let parent = Bounds {
             x: 0.0,
@@ -1717,6 +1734,14 @@ mod tests {
 
         assert!(nodes[0].resolved.width < 180.0);
         assert!(nodes[1].resolved.width < 180.0);
+        assert_eq!(nodes[0].width, Some(180.0));
+        assert_eq!(nodes[0].height, Some(50.0));
+        assert_eq!(nodes[0].attrs["width"], "180");
+        assert_eq!(nodes[0].attrs["height"], "50");
+        assert_eq!(nodes[1].width, Some(180.0));
+        assert_eq!(nodes[1].height, Some(50.0));
+        assert_eq!(nodes[1].attrs["width"], "180");
+        assert_eq!(nodes[1].attrs["height"], "50");
         assert!(!overlaps(&nodes[0], &nodes[1]));
         for node in &nodes {
             assert!(node.resolved.x >= parent.x);
@@ -1724,6 +1749,47 @@ mod tests {
             assert!(node.resolved.x + node.resolved.width <= parent.x + parent.width);
             assert!(node.resolved.y + node.resolved.height <= parent.y + parent.height);
         }
+    }
+
+    #[test]
+    fn test_force_preserves_measured_node_dimensions_when_fit_is_not_needed() {
+        let measured_short = 73.32;
+        let measured_long = 271.70;
+        let mut nodes = vec![
+            make_node("short", measured_short, 80.0),
+            make_node("long", measured_long, 80.0),
+        ];
+        nodes[0]
+            .attrs
+            .insert("width".to_string(), format_number(measured_short));
+        nodes[0]
+            .attrs
+            .insert("height".to_string(), "80".to_string());
+        nodes[1]
+            .attrs
+            .insert("width".to_string(), format_number(measured_long));
+        nodes[1]
+            .attrs
+            .insert("height".to_string(), "80".to_string());
+
+        let conns = vec![make_conn("short", "long")];
+        let parent = Bounds {
+            x: 0.0,
+            y: 0.0,
+            width: 700.0,
+            height: 300.0,
+        };
+        layout_force(&mut nodes, &conns, &parent, 20.0, &IndexMap::new());
+
+        assert_eq!(nodes[0].resolved.width, measured_short);
+        assert_eq!(nodes[0].resolved.height, 80.0);
+        assert_eq!(nodes[0].attrs["width"], format_number(measured_short));
+        assert_eq!(nodes[0].attrs["height"], "80");
+        assert_eq!(nodes[1].resolved.width, measured_long);
+        assert_eq!(nodes[1].resolved.height, 80.0);
+        assert_eq!(nodes[1].attrs["width"], format_number(measured_long));
+        assert_eq!(nodes[1].attrs["height"], "80");
+        assert!(!overlaps(&nodes[0], &nodes[1]));
     }
 
     #[test]
