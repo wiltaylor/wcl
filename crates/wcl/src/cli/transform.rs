@@ -1,10 +1,12 @@
 //! CLI handler for `wcl transform run`.
 
+use std::collections::HashMap;
 use std::fs;
 use std::io::{self, Read};
 use std::path::Path;
 
 use crate::cli::LibraryArgs;
+use crate::eval::value::{BlockRef, FunctionValue, Value};
 use crate::lang::ast::{BodyItem, DocItem};
 use crate::transform::{self, FieldMapping, MapConfig, WhereClause};
 
@@ -73,6 +75,7 @@ pub fn run(
 
     // Build the MapConfig from the transform's map sub-blocks
     let map_config = build_map_config(transform_block)?;
+    let custom_codecs = build_custom_codec_registry(&doc)?;
 
     // Open input
     let input_data: Box<dyn Read> = match input {
@@ -152,7 +155,7 @@ pub fn run(
         layout_registry: &doc.layout_registry,
     };
 
-    let stats = transform::execute(
+    let stats = transform::execute_with_custom(
         &input_codec,
         input_bytes.as_slice(),
         &output_codec,
@@ -161,6 +164,7 @@ pub fn run(
         &input_options,
         &output_options,
         Some(&ctx),
+        Some(&custom_codecs),
     )
     .map_err(|e| format!("transform error: {}", e))?;
 
@@ -182,6 +186,97 @@ pub fn run(
     );
 
     Ok(())
+}
+
+fn build_custom_codec_registry(
+    doc: &crate::Document,
+) -> Result<crate::transform::codec::custom::CustomCodecRegistry, String> {
+    let mut registry = crate::transform::codec::custom::CustomCodecRegistry::new();
+    let helpers: HashMap<String, FunctionValue> = doc
+        .values
+        .iter()
+        .filter_map(|(name, value)| match value {
+            Value::Function(func) => Some((name.clone(), func.clone())),
+            _ => None,
+        })
+        .collect();
+
+    for block in doc.blocks_of_type("codec") {
+        let codec_name = block
+            .inline_id
+            .as_ref()
+            .and_then(|id| match id {
+                crate::lang::ast::InlineId::Literal(lit) => Some(lit.value.clone()),
+                crate::lang::ast::InlineId::Interpolated(_) => None,
+            })
+            .ok_or_else(|| "codec block requires a literal inline id".to_string())?;
+
+        let value = doc
+            .values
+            .get(&codec_name)
+            .ok_or_else(|| format!("codec '{}' was not evaluated", codec_name))?;
+        let Value::BlockRef(codec_ref) = value else {
+            return Err(format!(
+                "codec '{}' did not evaluate to a block",
+                codec_name
+            ));
+        };
+
+        registry
+            .insert(custom_codec_from_block(
+                &codec_name,
+                codec_ref,
+                helpers.clone(),
+            )?)
+            .map_err(|e| e.to_string())?;
+    }
+
+    Ok(registry)
+}
+
+fn custom_codec_from_block(
+    name: &str,
+    block: &BlockRef,
+    helpers: HashMap<String, FunctionValue>,
+) -> Result<crate::transform::codec::custom::CustomCodec, String> {
+    let mode = match block.attributes.get("mode") {
+        Some(Value::Symbol(s)) if s == "text" => {
+            crate::transform::codec::custom::CustomCodecMode::Text
+        }
+        Some(Value::Symbol(s)) if s == "bytes" => {
+            crate::transform::codec::custom::CustomCodecMode::Bytes
+        }
+        Some(v) => {
+            return Err(format!(
+                "codec '{}' mode must be :text or :bytes, got {}",
+                name,
+                v.type_name()
+            ))
+        }
+        None => crate::transform::codec::custom::CustomCodecMode::Text,
+    };
+
+    Ok(crate::transform::codec::custom::CustomCodec {
+        name: name.to_string(),
+        mode,
+        tokenizer: required_function(name, block, "tokenizer")?,
+        parser: required_function(name, block, "parser")?,
+        encoder: required_function(name, block, "encoder")?,
+        helpers,
+    })
+}
+
+fn required_function(name: &str, block: &BlockRef, attr: &str) -> Result<FunctionValue, String> {
+    match block.attributes.get(attr) {
+        Some(Value::Function(func)) => Ok(func.clone()),
+        Some(v) => Err(format!(
+            "codec '{}' attribute '{}' must be a lambda, got {}",
+            name,
+            attr,
+            v.type_name()
+        )),
+        None => Err(format!("codec '{}' missing required '{}'", name, attr)),
+    }
 }
 
 /// Extract input/output codec names from the transform block's AST.

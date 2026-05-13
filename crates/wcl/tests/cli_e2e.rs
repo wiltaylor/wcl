@@ -962,6 +962,219 @@ fn fmt_check_returns_success_when_formatted() {
 }
 
 // ===========================================================================
+// TRANSFORMS
+// ===========================================================================
+
+#[test]
+fn transform_custom_text_codec_decodes_with_symbol_tokens() {
+    let dir = tempdir().expect("tempdir");
+    let transform = dir.path().join("custom.wcl");
+    let input = dir.path().join("input.txt");
+
+    std::fs::write(&input, "ab").expect("write input");
+    std::fs::write(
+        &transform,
+        r#"
+codec chars {
+    mode = :text
+
+    tokenizer = cursor => cursor.eof() ? null : {
+        let start = cursor.pos()
+        let ch = cursor.take(1)
+        { kind = :char, text = ch, start = start, end = cursor.pos(), value = ch }
+    }
+
+    parser = tokens => tokens.eof() ? null : {
+        let t = tokens.take(1)
+        { text = t.text, kind = t.kind }
+    }
+
+    encoder = record => record.text
+}
+
+transform chars-to-json {
+    input = "codec::chars"
+    output = "codec::json"
+
+    map {
+        text = in.text
+        kind = in.kind
+    }
+}
+"#,
+    )
+    .expect("write transform");
+
+    Command::cargo_bin("wcl")
+        .unwrap()
+        .args([
+            "transform",
+            "run",
+            "chars-to-json",
+            "-f",
+            transform.to_str().unwrap(),
+            "--input",
+            input.to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(r#""kind":"char""#))
+        .stdout(predicate::str::contains(r#""text":"a""#))
+        .stdout(predicate::str::contains(r#""text":"b""#));
+}
+
+#[test]
+fn transform_custom_text_codec_encodes_records() {
+    let dir = tempdir().expect("tempdir");
+    let transform = dir.path().join("custom.wcl");
+    let input = dir.path().join("input.json");
+
+    std::fs::write(&input, r#"[{"text":"x"},{"text":"y"}]"#).expect("write input");
+    std::fs::write(
+        &transform,
+        r#"
+codec chars {
+    mode = :text
+    tokenizer = cursor => null
+    parser = tokens => null
+    encoder = record => record.text
+}
+
+transform json-to-chars {
+    input = "codec::json"
+    output = "codec::chars"
+
+    map {
+        text = in.text
+    }
+}
+"#,
+    )
+    .expect("write transform");
+
+    Command::cargo_bin("wcl")
+        .unwrap()
+        .args([
+            "transform",
+            "run",
+            "json-to-chars",
+            "-f",
+            transform.to_str().unwrap(),
+            "--input",
+            input.to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("xy"));
+}
+
+#[test]
+fn transform_custom_byte_codec_decodes_records() {
+    let dir = tempdir().expect("tempdir");
+    let transform = dir.path().join("bytes.wcl");
+    let input = dir.path().join("input.bin");
+
+    std::fs::write(&input, [65_u8, 66_u8]).expect("write input");
+    std::fs::write(
+        &transform,
+        r#"
+codec bytes-one {
+    mode = :bytes
+
+    tokenizer = cursor => cursor.eof() ? null : {
+        let start = cursor.pos()
+        let b = cursor.take(1)
+        { kind = :byte, start = start, end = cursor.pos(), value = b[0] }
+    }
+
+    parser = tokens => tokens.eof() ? null : {
+        let t = tokens.take(1)
+        { value = t.value, kind = t.kind }
+    }
+
+    encoder = record => [record.value]
+}
+
+transform bytes-to-json {
+    input = "codec::bytes-one"
+    output = "codec::json"
+
+    map {
+        value = in.value
+        kind = in.kind
+    }
+}
+"#,
+    )
+    .expect("write transform");
+
+    Command::cargo_bin("wcl")
+        .unwrap()
+        .args([
+            "transform",
+            "run",
+            "bytes-to-json",
+            "-f",
+            transform.to_str().unwrap(),
+            "--input",
+            input.to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(r#""kind":"byte""#))
+        .stdout(predicate::str::contains(r#""value":65"#))
+        .stdout(predicate::str::contains(r#""value":66"#));
+}
+
+#[test]
+fn transform_custom_codec_rejects_string_token_kind() {
+    let dir = tempdir().expect("tempdir");
+    let transform = dir.path().join("bad.wcl");
+    let input = dir.path().join("input.txt");
+
+    std::fs::write(&input, "x").expect("write input");
+    std::fs::write(
+        &transform,
+        r#"
+codec bad {
+    mode = :text
+
+    tokenizer = cursor => cursor.eof() ? null : {
+        let start = cursor.pos()
+        let ch = cursor.take(1)
+        { kind = "char", text = ch, start = start, end = cursor.pos() }
+    }
+
+    parser = tokens => null
+    encoder = record => record.text
+}
+
+transform bad-to-json {
+    input = "codec::bad"
+    output = "codec::json"
+    map { text = in.text }
+}
+"#,
+    )
+    .expect("write transform");
+
+    Command::cargo_bin("wcl")
+        .unwrap()
+        .args([
+            "transform",
+            "run",
+            "bad-to-json",
+            "-f",
+            transform.to_str().unwrap(),
+            "--input",
+            input.to_str().unwrap(),
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("token kind must be a symbol"));
+}
+
+// ===========================================================================
 // WDOC
 // ===========================================================================
 

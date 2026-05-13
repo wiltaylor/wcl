@@ -196,6 +196,47 @@ page guide_transforms {
                     ]
                 }
 
+                heading h3_custom_codecs {
+                    level = 3
+                    content = "Custom WCL Codecs"
+                }
+
+                paragraph p13_custom {
+                    content = "Top-level <code>codec</code> blocks define tokenizer, parser, and encoder lambdas in WCL. Token kinds are symbols."
+                }
+
+                code c_custom_codec {
+                    language = "wcl"
+                    content = <<-'WCL'
+                    codec chars {
+                        mode = :text  // :text or :bytes
+
+                        tokenizer = cursor => cursor.eof() ? null : {
+                            let start = cursor.pos()
+                            let ch = cursor.take(1)
+                            { kind = :char, text = ch, start = start, end = cursor.pos(), value = ch }
+                        }
+
+                        parser = tokens => tokens.eof() ? null : {
+                            let t = tokens.take(1)
+                            { text = t.text, kind = t.kind }
+                        }
+
+                        encoder = record => record.text
+                    }
+
+                    transform chars-to-json {
+                        input  = "codec::chars"
+                        output = "codec::json"
+
+                        map {
+                            text = in.text
+                            kind = in.kind
+                        }
+                    }
+                    WCL
+                }
+
                 heading h2_structs {
                     level = 2
                     content = "Structs as Data Types"

@@ -41,49 +41,79 @@ pub fn execute(
     output_options: &codec::CodecOptions,
     context: Option<&TransformContext>,
 ) -> Result<TransformStats, TransformError> {
+    execute_with_custom(
+        input_codec,
+        input_reader,
+        output_codec,
+        output_writer,
+        config,
+        input_options,
+        output_options,
+        context,
+        None,
+    )
+}
+
+/// Execute a transform with optional WCL-authored custom codecs.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_with_custom(
+    input_codec: &str,
+    input_reader: impl Read,
+    output_codec: &str,
+    output_writer: &mut dyn Write,
+    config: &MapConfig,
+    input_options: &codec::CodecOptions,
+    output_options: &codec::CodecOptions,
+    context: Option<&TransformContext>,
+    custom_codecs: Option<&codec::custom::CustomCodecRegistry>,
+) -> Result<TransformStats, TransformError> {
     // Decode input records
-    let records = match input_codec {
-        "json" => codec::json::decode_json_records(input_reader)?,
-        "yaml" => codec::yaml::decode_yaml_records(input_reader)?,
-        "csv" => codec::csv_codec::decode_csv_records(input_reader, true, b',')?,
-        "toml" => codec::toml_codec::decode_toml_records(input_reader)?,
-        "hcl" => codec::hcl_codec::decode_hcl_records(input_reader)?,
-        "xml" => codec::xml::decode_xml_records(input_reader)?,
-        "msgpack" => codec::msgpack::decode_msgpack_records(input_reader)?,
-        "binary" => {
-            let ctx = context.ok_or_else(|| {
-                TransformError::Other("binary codec requires transform context".into())
-            })?;
-            let layout_name = input_options
-                .get("layout")
-                .and_then(|v| v.as_string())
-                .ok_or_else(|| {
-                    TransformError::Other("binary codec requires 'layout' option".into())
+    let records = if let Some(custom) = custom_codecs.and_then(|r| r.get(input_codec)) {
+        codec::custom::decode_custom_records(input_reader, custom)?
+    } else {
+        match input_codec {
+            "json" => codec::json::decode_json_records(input_reader)?,
+            "yaml" => codec::yaml::decode_yaml_records(input_reader)?,
+            "csv" => codec::csv_codec::decode_csv_records(input_reader, true, b',')?,
+            "toml" => codec::toml_codec::decode_toml_records(input_reader)?,
+            "hcl" => codec::hcl_codec::decode_hcl_records(input_reader)?,
+            "xml" => codec::xml::decode_xml_records(input_reader)?,
+            "msgpack" => codec::msgpack::decode_msgpack_records(input_reader)?,
+            "binary" => {
+                let ctx = context.ok_or_else(|| {
+                    TransformError::Other("binary codec requires transform context".into())
                 })?;
-            let mut data = Vec::new();
-            let mut reader_box: Box<dyn Read> = Box::new(input_reader);
-            reader_box
-                .read_to_end(&mut data)
-                .map_err(TransformError::Io)?;
-            codec::binary_codec::decode_binary_records(
-                &data,
-                layout_name,
-                ctx.struct_registry,
-                ctx.layout_registry,
-            )?
+                let layout_name = input_options
+                    .get("layout")
+                    .and_then(|v| v.as_string())
+                    .ok_or_else(|| {
+                        TransformError::Other("binary codec requires 'layout' option".into())
+                    })?;
+                let mut data = Vec::new();
+                let mut reader_box: Box<dyn Read> = Box::new(input_reader);
+                reader_box
+                    .read_to_end(&mut data)
+                    .map_err(TransformError::Io)?;
+                codec::binary_codec::decode_binary_records(
+                    &data,
+                    layout_name,
+                    ctx.struct_registry,
+                    ctx.layout_registry,
+                )?
+            }
+            "text" => {
+                let separator = input_options
+                    .get("separator")
+                    .and_then(|v| v.as_string())
+                    .unwrap_or("\t");
+                let has_header = input_options
+                    .get("has_header")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                codec::text_codec::decode_text_records(input_reader, separator, has_header)?
+            }
+            _ => return Err(TransformError::UnknownCodec(input_codec.to_string())),
         }
-        "text" => {
-            let separator = input_options
-                .get("separator")
-                .and_then(|v| v.as_string())
-                .unwrap_or("\t");
-            let has_header = input_options
-                .get("has_header")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
-            codec::text_codec::decode_text_records(input_reader, separator, has_header)?
-        }
-        _ => return Err(TransformError::UnknownCodec(input_codec.to_string())),
     };
 
     // Apply mappings
@@ -95,44 +125,53 @@ pub fn execute(
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
-    match output_codec {
-        "json" => codec::json::encode_json_records(&transformed, output_writer, pretty)?,
-        "yaml" => codec::yaml::encode_yaml_records(&transformed, output_writer, pretty)?,
-        "csv" => codec::csv_codec::encode_csv_records(&transformed, output_writer, b',')?,
-        "toml" => codec::toml_codec::encode_toml_records(&transformed, output_writer, pretty)?,
-        "hcl" => codec::hcl_codec::encode_hcl_records(&transformed, output_writer)?,
-        "xml" => codec::xml::encode_xml_records(&transformed, output_writer, "root")?,
-        "msgpack" => codec::msgpack::encode_msgpack_records(&transformed, output_writer)?,
-        "binary" => {
-            let ctx = context.ok_or_else(|| {
-                TransformError::Other("binary codec requires transform context".into())
-            })?;
-            let layout_name = output_options
-                .get("layout")
-                .and_then(|v| v.as_string())
-                .ok_or_else(|| {
-                    TransformError::Other("binary codec requires 'layout' option".into())
+    if let Some(custom) = custom_codecs.and_then(|r| r.get(output_codec)) {
+        codec::custom::encode_custom_records(&transformed, custom, output_writer)?;
+    } else {
+        match output_codec {
+            "json" => codec::json::encode_json_records(&transformed, output_writer, pretty)?,
+            "yaml" => codec::yaml::encode_yaml_records(&transformed, output_writer, pretty)?,
+            "csv" => codec::csv_codec::encode_csv_records(&transformed, output_writer, b',')?,
+            "toml" => codec::toml_codec::encode_toml_records(&transformed, output_writer, pretty)?,
+            "hcl" => codec::hcl_codec::encode_hcl_records(&transformed, output_writer)?,
+            "xml" => codec::xml::encode_xml_records(&transformed, output_writer, "root")?,
+            "msgpack" => codec::msgpack::encode_msgpack_records(&transformed, output_writer)?,
+            "binary" => {
+                let ctx = context.ok_or_else(|| {
+                    TransformError::Other("binary codec requires transform context".into())
                 })?;
-            codec::binary_codec::encode_binary_records(
-                &transformed,
-                layout_name,
-                ctx.struct_registry,
-                ctx.layout_registry,
-                output_writer,
-            )?;
+                let layout_name = output_options
+                    .get("layout")
+                    .and_then(|v| v.as_string())
+                    .ok_or_else(|| {
+                        TransformError::Other("binary codec requires 'layout' option".into())
+                    })?;
+                codec::binary_codec::encode_binary_records(
+                    &transformed,
+                    layout_name,
+                    ctx.struct_registry,
+                    ctx.layout_registry,
+                    output_writer,
+                )?;
+            }
+            "text" => {
+                let separator = output_options
+                    .get("separator")
+                    .and_then(|v| v.as_string())
+                    .unwrap_or("\t");
+                let header = output_options
+                    .get("header")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                codec::text_codec::encode_text_records(
+                    &transformed,
+                    output_writer,
+                    separator,
+                    header,
+                )?;
+            }
+            _ => return Err(TransformError::UnknownCodec(output_codec.to_string())),
         }
-        "text" => {
-            let separator = output_options
-                .get("separator")
-                .and_then(|v| v.as_string())
-                .unwrap_or("\t");
-            let header = output_options
-                .get("header")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
-            codec::text_codec::encode_text_records(&transformed, output_writer, separator, header)?;
-        }
-        _ => return Err(TransformError::UnknownCodec(output_codec.to_string())),
     }
 
     Ok(TransformStats {

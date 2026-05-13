@@ -856,8 +856,8 @@ impl Parser {
                 let s = self.parse_struct_def(decorators, trivia)?;
                 Some(BodyItem::StructDef(s))
             }
-            // Transform-related keywords parse as regular blocks
-            TokenKind::Transform | TokenKind::Layout | TokenKind::Pipeline => {
+            // Transform-related keywords parse as regular blocks.
+            TokenKind::Transform | TokenKind::Layout | TokenKind::Pipeline | TokenKind::Codec => {
                 let block = self.parse_block(decorators, trivia, false)?;
                 Some(BodyItem::Block(block))
             }
