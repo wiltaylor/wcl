@@ -1510,6 +1510,40 @@ transform toml-copy {
 }
 
 #[test]
+fn transform_csv_codec_uses_standard_wcl_codec() {
+    let dir = tempdir().expect("tempdir");
+    let transform = dir.path().join("csv.wcl");
+    let input = dir.path().join("input.csv");
+
+    std::fs::write(
+        &input,
+        "name,note\nAlice,\"hello, \"\"world\"\"\"\nBob,\"line 1\nline 2\"\n",
+    )
+    .expect("write input");
+    std::fs::write(
+        &transform,
+        r#"
+transform csv-copy {
+    input = "codec::csv"
+    output = "codec::csv"
+
+    map {
+        name = in.name
+        note = in.note
+    }
+}
+"#,
+    )
+    .expect("write transform");
+
+    let stdout = run_transform_stdout(&transform, "csv-copy", &input);
+    assert_eq!(
+        stdout,
+        "name,note\nAlice,\"hello, \"\"world\"\"\"\nBob,\"line 1\nline 2\"\n"
+    );
+}
+
+#[test]
 fn transform_imported_codecs_library_does_not_duplicate_json() {
     let dir = tempdir().expect("tempdir");
     let lib_dir = dir.path().join("lib");

@@ -222,11 +222,19 @@ pub fn decode_custom_records(
     mut reader: impl Read,
     codec: &CustomCodec,
 ) -> Result<Vec<Value>, TransformError> {
+    decode_custom_records_with_options(&mut reader, codec, &super::CodecOptions::new())
+}
+
+pub fn decode_custom_records_with_options(
+    mut reader: impl Read,
+    codec: &CustomCodec,
+    options: &super::CodecOptions,
+) -> Result<Vec<Value>, TransformError> {
     let mut data = Vec::new();
     reader.read_to_end(&mut data).map_err(TransformError::Io)?;
 
     let tokens = tokenize(&data, codec)?;
-    parse_records(tokens, codec)
+    parse_records(tokens, codec, options)
 }
 
 pub fn encode_custom_records(
@@ -356,12 +364,24 @@ fn tokenize(data: &[u8], codec: &CustomCodec) -> Result<Vec<Value>, TransformErr
     Ok(tokens)
 }
 
-fn parse_records(tokens: Vec<Value>, codec: &CustomCodec) -> Result<Vec<Value>, TransformError> {
+fn parse_records(
+    tokens: Vec<Value>,
+    codec: &CustomCodec,
+    options: &super::CodecOptions,
+) -> Result<Vec<Value>, TransformError> {
     let token_cursor = Arc::new(Mutex::new(TokenCursor::new(tokens)));
     let (cursor, builtins) = token_cursor_runtime(token_cursor.clone());
+    let options = Value::Map(options.clone());
 
     if let Some(parser_all) = &codec.parser_all {
-        let value = call_codec_lambda(codec, parser_all, &[cursor], builtins)?;
+        let value = call_codec_parser(
+            codec,
+            parser_all,
+            cursor,
+            options.clone(),
+            builtins,
+            "parser_all",
+        )?;
         if let Value::Map(map) = &value {
             if let Some(message) = codec_error_message(map) {
                 return Err(TransformError::Codec(format!(
@@ -406,7 +426,14 @@ fn parse_records(tokens: Vec<Value>, codec: &CustomCodec) -> Result<Vec<Value>, 
 
     loop {
         let before = token_cursor.lock().unwrap().pos;
-        let value = call_codec_lambda(codec, parser, &[cursor.clone()], builtins.clone())?;
+        let value = call_codec_parser(
+            codec,
+            parser,
+            cursor.clone(),
+            options.clone(),
+            builtins.clone(),
+            "parser",
+        )?;
         match value {
             Value::Null => {
                 if !token_cursor.lock().unwrap().eof() {
@@ -447,6 +474,24 @@ fn parse_records(tokens: Vec<Value>, codec: &CustomCodec) -> Result<Vec<Value>, 
     }
 
     Ok(records)
+}
+
+fn call_codec_parser(
+    codec: &CustomCodec,
+    func: &FunctionValue,
+    cursor: Value,
+    options: Value,
+    builtins: HashMap<String, BuiltinFn>,
+    attr: &str,
+) -> Result<Value, TransformError> {
+    match func.params.len() {
+        1 => call_codec_lambda(codec, func, &[cursor], builtins),
+        2 => call_codec_lambda(codec, func, &[cursor, options], builtins),
+        n => Err(TransformError::Codec(format!(
+            "codec '{}' attribute '{}' must accept 1 or 2 arguments, got {}",
+            codec.name, attr, n
+        ))),
+    }
 }
 
 fn call_codec_lambda(

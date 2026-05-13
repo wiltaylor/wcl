@@ -842,12 +842,9 @@ impl Evaluator {
                         .filter_map(|s| self.eval_string_to_string(s, scope_id).ok())
                         .collect()
                 });
-                Ok(parse_table(
-                    &content,
-                    separator,
-                    headers,
-                    columns.as_deref(),
-                ))
+                parse_table_result(&content, separator, headers, columns.as_deref()).map_err(|e| {
+                    Diagnostic::error(format!("in import_table(): {}", e), *span).with_code("E052")
+                })
             }
             Expr::Paren(e, _) => self.eval_expr(e, scope_id),
         }
@@ -2348,7 +2345,7 @@ fn decode_import_codec(
     options: &IndexMap<String, Value>,
 ) -> Result<Vec<Value>, crate::transform::TransformError> {
     match codec {
-        "json" | "yaml" | "toml" => {
+        "json" | "yaml" | "toml" | "csv" => {
             let registry = crate::transform::codec::custom::standard_registry()?;
             let custom = registry.get(codec).ok_or_else(|| {
                 crate::transform::TransformError::Codec(format!(
@@ -2356,12 +2353,9 @@ fn decode_import_codec(
                     codec
                 ))
             })?;
-            crate::transform::codec::custom::decode_custom_records(bytes, custom)
-        }
-        "csv" => {
-            let separator = option_separator_byte(options, "separator", b',')?;
-            let has_header = option_bool(options, "has_header", true)?;
-            crate::transform::codec::csv_codec::decode_csv_records(bytes, has_header, separator)
+            crate::transform::codec::custom::decode_custom_records_with_options(
+                bytes, custom, options,
+            )
         }
         "hcl" => crate::transform::codec::hcl_codec::decode_hcl_records(bytes),
         "xml" => crate::transform::codec::xml::decode_xml_records(bytes),
@@ -2412,31 +2406,6 @@ fn option_string(
     }
 }
 
-fn option_separator_byte(
-    options: &IndexMap<String, Value>,
-    key: &str,
-    default: u8,
-) -> Result<u8, crate::transform::TransformError> {
-    let Some(value) = options.get(key) else {
-        return Ok(default);
-    };
-    let Value::String(separator) = value else {
-        return Err(crate::transform::TransformError::Codec(format!(
-            "option '{}' must be string, got {}",
-            key,
-            value.type_name()
-        )));
-    };
-    let mut bytes = separator.bytes();
-    match (bytes.next(), bytes.next()) {
-        (Some(byte), None) => Ok(byte),
-        _ => Err(crate::transform::TransformError::Codec(format!(
-            "option '{}' must be a single-byte separator",
-            key
-        ))),
-    }
-}
-
 /// Parse CSV/TSV content into a `Value::List(Vec<Value::Map>)`.
 ///
 /// This is a pure function extracted from `Evaluator` so it can be reused
@@ -2447,49 +2416,81 @@ pub fn parse_table(
     has_headers: bool,
     explicit_columns: Option<&[String]>,
 ) -> Value {
-    let mut lines = content.lines().peekable();
+    parse_table_result(content, separator, has_headers, explicit_columns)
+        .unwrap_or_else(|_| Value::List(vec![]))
+}
 
-    // Determine column names
-    let col_names: Vec<String> = if let Some(cols) = explicit_columns {
-        // Explicit columns provided — skip header line if headers=true
-        if has_headers {
-            lines.next();
-        }
-        cols.to_vec()
+pub fn parse_table_result(
+    content: &str,
+    separator: char,
+    has_headers: bool,
+    explicit_columns: Option<&[String]>,
+) -> Result<Value, crate::transform::TransformError> {
+    let mut options = IndexMap::new();
+    options.insert(
+        "separator".to_string(),
+        Value::String(separator.to_string()),
+    );
+    options.insert(
+        "has_header".to_string(),
+        Value::Bool(has_headers && explicit_columns.is_none()),
+    );
+
+    let registry = crate::transform::codec::custom::standard_registry()?;
+    let csv = registry.get("csv").ok_or_else(|| {
+        crate::transform::TransformError::Codec("standard csv codec is not registered".into())
+    })?;
+    let records = crate::transform::codec::custom::decode_custom_records_with_options(
+        content.as_bytes(),
+        csv,
+        &options,
+    )?;
+
+    let rows = if let Some(columns) = explicit_columns {
+        let data_records = if has_headers && !records.is_empty() {
+            records.into_iter().skip(1).collect()
+        } else {
+            records
+        };
+        remap_table_rows(data_records, columns)
     } else if has_headers {
-        // First line is headers
-        match lines.next() {
-            Some(line) => line
-                .split(separator)
-                .map(|s| s.trim().to_string())
-                .collect(),
-            None => return Value::List(vec![]),
-        }
+        records
     } else {
-        // No headers, no explicit columns — use numeric indices.
-        // Peek at first data line to determine column count.
-        match lines.peek() {
-            Some(line) => (0..line.split(separator).count())
-                .map(|i| i.to_string())
-                .collect(),
-            None => return Value::List(vec![]),
-        }
+        let columns = numeric_columns_from_records(&records);
+        remap_table_rows(records, &columns)
     };
 
-    let rows: Vec<Value> = lines
-        .filter(|line| !line.trim().is_empty())
-        .map(|line| {
-            let fields: Vec<&str> = line.split(separator).collect();
-            let mut map = IndexMap::new();
-            for (i, header) in col_names.iter().enumerate() {
-                let val = fields.get(i).map(|f| f.trim()).unwrap_or("");
-                map.insert(header.clone(), Value::String(val.to_string()));
-            }
-            Value::Map(map)
-        })
-        .collect();
+    Ok(Value::List(rows))
+}
 
-    Value::List(rows)
+fn numeric_columns_from_records(records: &[Value]) -> Vec<String> {
+    let Some(Value::Map(first)) = records.first() else {
+        return Vec::new();
+    };
+    (0..first.len()).map(|i| i.to_string()).collect()
+}
+
+fn remap_table_rows(records: Vec<Value>, columns: &[String]) -> Vec<Value> {
+    records
+        .into_iter()
+        .filter_map(|record| {
+            let Value::Map(map) = record else {
+                return None;
+            };
+            let values = map.values().cloned().collect::<Vec<_>>();
+            let mut remapped = IndexMap::new();
+            for (i, column) in columns.iter().enumerate() {
+                remapped.insert(
+                    column.clone(),
+                    values
+                        .get(i)
+                        .cloned()
+                        .unwrap_or_else(|| Value::String(String::new())),
+                );
+            }
+            Some(Value::Map(remapped))
+        })
+        .collect()
 }
 
 // =====================================================================
@@ -3643,6 +3644,49 @@ mod tests {
         assert_eq!(
             result,
             Value::List(vec![Value::Map(row1), Value::Map(row2)])
+        );
+    }
+
+    #[test]
+    fn test_import_table_csv_quoted_fields() {
+        use crate::eval::imports::InMemoryFs;
+        use std::path::PathBuf;
+
+        let mut fs = InMemoryFs::new();
+        fs.add_file(
+            PathBuf::from("/project/data.csv"),
+            "name,note\napi,\"hello, \"\"world\"\"\"\nworker,\"line 1\nline 2\"",
+        );
+        let mut ev = Evaluator::with_fs(Box::new(fs), PathBuf::from("/project"));
+        let scope = ev.scopes.create_scope(ScopeKind::Module, None);
+
+        let expr = Expr::ImportTable(
+            ImportTableArgs {
+                path: mk_string_lit("data.csv"),
+                separator: None,
+                headers: None,
+                columns: None,
+            },
+            ds(),
+        );
+        let result = ev.eval_expr(&expr, scope).unwrap();
+        let Value::List(rows) = result else {
+            panic!("expected rows");
+        };
+        assert_eq!(rows.len(), 2);
+        let Value::Map(first) = &rows[0] else {
+            panic!("expected row map");
+        };
+        let Value::Map(second) = &rows[1] else {
+            panic!("expected row map");
+        };
+        assert_eq!(
+            first.get("note"),
+            Some(&Value::String("hello, \"world\"".into()))
+        );
+        assert_eq!(
+            second.get("note"),
+            Some(&Value::String("line 1\nline 2".into()))
         );
     }
 

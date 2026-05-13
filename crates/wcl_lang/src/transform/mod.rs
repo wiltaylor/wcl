@@ -78,10 +78,9 @@ pub fn execute_with_custom(
 
     // Decode input records
     let records = if let Some(custom) = custom_codecs.get(input_codec) {
-        codec::custom::decode_custom_records(input_reader, custom)?
+        codec::custom::decode_custom_records_with_options(input_reader, custom, input_options)?
     } else {
         match input_codec {
-            "csv" => codec::csv_codec::decode_csv_records(input_reader, true, b',')?,
             "hcl" => codec::hcl_codec::decode_hcl_records(input_reader)?,
             "xml" => codec::xml::decode_xml_records(input_reader)?,
             "msgpack" => codec::msgpack::decode_msgpack_records(input_reader)?,
@@ -130,7 +129,6 @@ pub fn execute_with_custom(
         codec::custom::encode_custom_records(&transformed, custom, output_options, output_writer)?;
     } else {
         match output_codec {
-            "csv" => codec::csv_codec::encode_csv_records(&transformed, output_writer, b',')?,
             "hcl" => codec::hcl_codec::encode_hcl_records(&transformed, output_writer)?,
             "xml" => codec::xml::encode_xml_records(&transformed, output_writer, "root")?,
             "msgpack" => codec::msgpack::encode_msgpack_records(&transformed, output_writer)?,

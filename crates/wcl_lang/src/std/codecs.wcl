@@ -269,6 +269,127 @@ codec json {
     encoder_all = (records, options) => __json_render_with_options(records, options) + "\n"
 }
 
+export let __csv_tokenizer = cursor =>
+    cursor.eof() ? null : {
+        let start = cursor.pos()
+        let text = cursor.take(cursor.len())
+        { kind = :source, text = text, start = start, end = cursor.pos(), value = text }
+    }
+
+export let __csv_error = message => __codec_error(message)
+
+export let __csv_is_error = value => __codec_is_error(value)
+
+export let __csv_option_separator = options =>
+    type_of(options) == "map" && map_has(options, "separator") ? {
+        let sep = options.separator
+        type_of(sep) != "string" ? __csv_error("CSV option 'separator' must be string") :
+        length(sep) != 1 ? __csv_error("CSV option 'separator' must be a single character") :
+        sep
+    } :
+    ","
+
+export let __csv_option_has_header = options =>
+    type_of(options) == "map" && map_has(options, "has_header") ? {
+        let has_header = options.has_header
+        type_of(has_header) != "bool" ? __csv_error("CSV option 'has_header' must be bool") :
+        has_header
+    } :
+    true
+
+export let __csv_parse_rows = (text, sep) =>
+    split_delimited(text, sep)
+
+export let __csv_header_names = (count, i, prefix, acc) =>
+    i >= count ? acc : __csv_header_names(count, i + 1, prefix, concat(acc, [prefix + to_string(i)]))
+
+export let __csv_check_headers = (headers, i, seen) =>
+    i >= len(headers) ? headers : {
+        let header = headers[i]
+        map_has(seen, header) ? __csv_error("duplicate CSV header: " + header) :
+        __csv_check_headers(headers, i + 1, map_set(seen, header, true))
+    }
+
+export let __csv_row_to_map = (headers, row, i, acc) =>
+    i >= len(headers) ? acc :
+    __csv_row_to_map(headers, row, i + 1, map_set(acc, headers[i], row[i]))
+
+export let __csv_rows_to_maps = (rows, headers, i, acc) =>
+    i >= len(rows) ? acc : {
+        let row = rows[i]
+        len(row) != len(headers) ? __csv_error("CSV row has " + to_string(len(row)) + " fields but expected " + to_string(len(headers))) : {
+            let mapped = __csv_row_to_map(headers, row, 0, {})
+            __csv_rows_to_maps(rows, headers, i + 1, concat(acc, [mapped]))
+        }
+    }
+
+export let __csv_records = (rows, has_header) =>
+    len(rows) == 0 ? [] :
+    has_header ? {
+        let checked = __csv_check_headers(rows[0], 0, {})
+        __csv_is_error(checked) ? checked : __csv_rows_to_maps(substr_list(rows, 1), checked, 0, [])
+    } : {
+        let headers = __csv_header_names(len(rows[0]), 0, "col", [])
+        __csv_rows_to_maps(rows, headers, 0, [])
+    }
+
+export let __csv_parser_all = (tokens, options) => {
+    let sep = __csv_option_separator(options)
+    __csv_is_error(sep) ? sep : {
+        let has_header = __csv_option_has_header(options)
+        __csv_is_error(has_header) ? has_header :
+        tokens.eof() ? [] : {
+            let source = tokens.expect_kind(:source, "expected CSV source")
+            __csv_is_error(source) ? source : {
+                let rows = __csv_parse_rows(source.value, sep)
+                __csv_is_error(rows) ? rows : __csv_records(rows, has_header)
+            }
+        }
+    }
+}
+
+export let __csv_string_value = value =>
+    type_of(value) == "null" ? "" : to_string(value)
+
+export let __csv_quote_field = (field, sep) =>
+    contains(field, sep) || contains(field, "\"") || contains(field, "\n") || contains(field, "\r") ?
+        "\"" + replace(field, "\"", "\"\"") + "\"" :
+        field
+
+export let __csv_render_row = (fields, sep) =>
+    join(sep, map(fields, field => __csv_quote_field(field, sep)))
+
+export let __csv_record_fields = (record, headers, i, acc) =>
+    i >= len(headers) ? acc :
+    __csv_record_fields(record, headers, i + 1, concat(acc, [map_has(record, headers[i]) ? __csv_string_value(record[headers[i]]) : ""]))
+
+export let __csv_records_rows = (records, headers, sep, i, acc) =>
+    i >= len(records) ? acc :
+    type_of(records[i]) != "map" ? __csv_error("CSV encode expects map records") : {
+        let fields = __csv_record_fields(records[i], headers, 0, [])
+        __csv_records_rows(records, headers, sep, i + 1, concat(acc, [__csv_render_row(fields, sep)]))
+    }
+
+export let __csv_encoder_all = (records, options) => {
+    let sep = __csv_option_separator(options)
+    __csv_is_error(sep) ? sep :
+    len(records) == 0 ? "" :
+    type_of(records[0]) != "map" ? __csv_error("CSV encode expects map records") : {
+        let headers = keys(records[0])
+        let header_row = __csv_render_row(headers, sep)
+        let rows = __csv_records_rows(records, headers, sep, 0, [])
+        __csv_is_error(rows) ? rows : join("\n", concat([header_row], rows)) + "\n"
+    }
+}
+
+codec csv {
+    mode = :text
+    tokenizer = cursor => __csv_tokenizer(cursor)
+    parser_all = (tokens, options) => __csv_parser_all(tokens, options)
+    encoder = (record, options) => __csv_encoder_all([record], options)
+    encoder_all = (records, options) => __csv_encoder_all(records, options)
+}
+
 export let __yaml_tokenizer = cursor =>
     cursor.eof() ? null : {
         let start = cursor.pos()

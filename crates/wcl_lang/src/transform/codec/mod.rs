@@ -4,7 +4,6 @@
 //! the unified Event stream.
 
 pub mod binary_codec;
-pub mod csv_codec;
 pub mod custom;
 pub mod hcl_codec;
 pub mod msgpack;

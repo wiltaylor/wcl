@@ -285,7 +285,7 @@ fn resolve_let_import_table<FS: FileSystem + ?Sized>(
     diagnostics: &mut DiagnosticBag,
 ) {
     use crate::eval::control_flow::value_to_expr;
-    use crate::eval::evaluator::parse_table;
+    use crate::eval::evaluator::parse_table_result;
 
     // Only handle import_table expressions
     let (args, span) = match expr {
@@ -326,12 +326,21 @@ fn resolve_let_import_table<FS: FileSystem + ?Sized>(
         .as_ref()
         .map(|cols| cols.iter().map(string_lit_to_plain).collect());
 
-    let parsed = parse_table(
+    let parsed = match parse_table_result(
         &content,
         separator,
         has_headers,
         explicit_columns.as_deref(),
-    );
+    ) {
+        Ok(parsed) => parsed,
+        Err(e) => {
+            diagnostics.error(
+                format!("cannot parse import_table file '{}': {}", path_str, e),
+                span,
+            );
+            return;
+        }
+    };
 
     if let Some(list_expr) = value_to_expr(&parsed, span) {
         *expr = list_expr;
@@ -344,7 +353,7 @@ fn resolve_single_import_table<FS: FileSystem + ?Sized>(
     base_dir: &Path,
     diagnostics: &mut DiagnosticBag,
 ) {
-    use crate::eval::evaluator::parse_table;
+    use crate::eval::evaluator::parse_table_result;
     use crate::eval::value::Value;
     use crate::lang::trivia::Trivia;
 
@@ -402,12 +411,22 @@ fn resolve_single_import_table<FS: FileSystem + ?Sized>(
         .map(|cols| cols.iter().map(string_lit_to_plain).collect());
 
     // Parse the CSV content
-    let parsed = parse_table(
+    let parsed = match parse_table_result(
         &content,
         separator,
         has_headers,
         explicit_columns.as_deref(),
-    );
+    ) {
+        Ok(parsed) => parsed,
+        Err(e) => {
+            diagnostics.error(
+                format!("cannot parse import_table file '{}': {}", path_str, e),
+                span,
+            );
+            table.import_expr = Some(Box::new(Expr::ImportTable(args, span)));
+            return;
+        }
+    };
 
     // Convert Value back to AST columns + rows
     if let Value::List(rows) = parsed {

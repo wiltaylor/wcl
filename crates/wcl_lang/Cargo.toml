@@ -26,7 +26,6 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 
 # Codec / format deps (used by transform module)
-csv = "1"
 hcl-rs = "0.18"
 quick-xml = { version = "0.37", features = ["serialize"] }
 rmp-serde = "1"

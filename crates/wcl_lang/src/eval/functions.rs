@@ -103,6 +103,12 @@ pub fn builtin_signatures() -> Vec<FunctionSignature> {
             doc: "Split string by separator".into(),
         },
         FunctionSignature {
+            name: "split_delimited".into(),
+            params: vec!["s: string".into(), "sep: string".into()],
+            return_type: "list(list(string))".into(),
+            doc: "Split quoted delimited text into rows and fields".into(),
+        },
+        FunctionSignature {
             name: "join".into(),
             params: vec!["list: list".into(), "sep: string".into()],
             return_type: "string".into(),
@@ -581,6 +587,7 @@ pub fn builtin_registry() -> HashMap<String, BuiltinFn> {
     m.insert("trim_suffix".into(), wrap_builtin(trim_suffix));
     m.insert("replace".into(), wrap_builtin(fn_replace));
     m.insert("split".into(), wrap_builtin(split));
+    m.insert("split_delimited".into(), wrap_builtin(split_delimited));
     m.insert("join".into(), wrap_builtin(join));
     m.insert("starts_with".into(), wrap_builtin(starts_with));
     m.insert("ends_with".into(), wrap_builtin(ends_with));
@@ -827,6 +834,117 @@ fn split(args: &[Value]) -> Result<Value, String> {
         .map(|p: &str| Value::String(p.to_string()))
         .collect();
     Ok(Value::List(parts))
+}
+
+fn split_delimited(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 2, "split_delimited")?;
+    let s = get_string(&args[0], 1, "split_delimited")?;
+    let sep = get_string(&args[1], 2, "split_delimited")?;
+    let mut sep_chars = sep.chars();
+    let Some(separator) = sep_chars.next() else {
+        return Err("split_delimited: separator must be a single character".into());
+    };
+    if sep_chars.next().is_some() {
+        return Err("split_delimited: separator must be a single character".into());
+    }
+
+    let mut rows: Vec<Vec<String>> = Vec::new();
+    let mut row: Vec<String> = Vec::new();
+    let mut field = String::new();
+    let mut chars = s.chars().peekable();
+    let mut in_quotes = false;
+    let mut after_quote = false;
+    let mut field_started = false;
+
+    while let Some(ch) = chars.next() {
+        if in_quotes {
+            if ch == '"' {
+                if chars.peek() == Some(&'"') {
+                    chars.next();
+                    field.push('"');
+                } else {
+                    in_quotes = false;
+                    after_quote = true;
+                }
+            } else {
+                field.push(ch);
+            }
+            field_started = true;
+            continue;
+        }
+
+        if after_quote {
+            match ch {
+                c if c == separator => {
+                    row.push(std::mem::take(&mut field));
+                    after_quote = false;
+                    field_started = false;
+                }
+                '\n' => {
+                    row.push(std::mem::take(&mut field));
+                    rows.push(std::mem::take(&mut row));
+                    after_quote = false;
+                    field_started = false;
+                }
+                '\r' => {
+                    if chars.peek() == Some(&'\n') {
+                        chars.next();
+                    }
+                    row.push(std::mem::take(&mut field));
+                    rows.push(std::mem::take(&mut row));
+                    after_quote = false;
+                    field_started = false;
+                }
+                _ => return Err("split_delimited: unexpected character after quoted field".into()),
+            }
+            continue;
+        }
+
+        match ch {
+            '"' if !field_started && field.is_empty() => {
+                in_quotes = true;
+                field_started = true;
+            }
+            '"' => return Err("split_delimited: unexpected quote in unquoted field".into()),
+            c if c == separator => {
+                row.push(std::mem::take(&mut field));
+                field_started = false;
+            }
+            '\n' => {
+                row.push(std::mem::take(&mut field));
+                rows.push(std::mem::take(&mut row));
+                field_started = false;
+            }
+            '\r' => {
+                if chars.peek() == Some(&'\n') {
+                    chars.next();
+                }
+                row.push(std::mem::take(&mut field));
+                rows.push(std::mem::take(&mut row));
+                field_started = false;
+            }
+            _ => {
+                field.push(ch);
+                field_started = true;
+            }
+        }
+    }
+
+    if in_quotes {
+        return Err("split_delimited: unterminated quoted field".into());
+    }
+    if field_started || !field.is_empty() || !row.is_empty() {
+        row.push(field);
+        if !(row.len() == 1 && row[0].is_empty()) {
+            rows.push(row);
+        }
+    }
+
+    Ok(Value::List(
+        rows.into_iter()
+            .map(|row| Value::List(row.into_iter().map(Value::String).collect()))
+            .collect(),
+    ))
 }
 
 fn join(args: &[Value]) -> Result<Value, String> {
@@ -2064,6 +2182,18 @@ mod tests {
     fn test_trim() {
         assert_eq!(trim(&[s("  hello  ")]).unwrap(), s("hello"));
         assert_eq!(trim(&[s("\t\n foo \n")]).unwrap(), s("foo"));
+    }
+
+    #[test]
+    fn test_split_delimited() {
+        assert_eq!(
+            split_delimited(&[s("name,note\nalice,\"hello, \"\"world\"\"\""), s(",")]).unwrap(),
+            list(vec![
+                list(vec![s("name"), s("note")]),
+                list(vec![s("alice"), s("hello, \"world\"")]),
+            ])
+        );
+        assert!(split_delimited(&[s("name,note\nalice,\"unterminated"), s(",")]).is_err());
     }
 
     #[test]

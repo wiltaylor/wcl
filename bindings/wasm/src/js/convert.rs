@@ -59,8 +59,11 @@ pub fn value_to_js(value: &Value) -> JsValue {
             obj.into()
         }
         Value::BigInt(i) => JsValue::from_f64(*i as f64),
-        Value::Date(s) => JsValue::from_str(s),
-        Value::Duration(s) => JsValue::from_str(s),
+        Value::Date(s)
+        | Value::OffsetDateTime(s)
+        | Value::LocalDateTime(s)
+        | Value::LocalTime(s)
+        | Value::Duration(s) => JsValue::from_str(s),
         Value::Function(_) => JsValue::NULL,
         Value::Pattern(s) => {
             // Convert to JS RegExp
