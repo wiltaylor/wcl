@@ -50,7 +50,8 @@ page wdoc_drawing_widgets {
                         { widget = "avatar",  attrs = "label" },
                         { widget = "toggle",  attrs = "on (\"true\" / \"false\")" },
                         { widget = "badge",   attrs = "label, color" },
-                        { widget = "navbar",  attrs = "title" }
+                        { widget = "navbar",  attrs = "title" },
+                        { widget = "datatable", attrs = "columns, rows, datatable_column / datatable_row / datatable_cell children" }
                     ]
                 }
 

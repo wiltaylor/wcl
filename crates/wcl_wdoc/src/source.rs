@@ -393,6 +393,38 @@ fn register_renderer_helpers(reg: &mut FunctionRegistry) {
         },
     );
 
+    let block_children = std::sync::Arc::new(|args: &[Value]| {
+        if args.len() != 1 {
+            return Err("block_children() expects 1 argument".into());
+        }
+        let Value::BlockRef(block) = &args[0] else {
+            return Err("block_children() expects a block argument".into());
+        };
+        Ok(Value::List(
+            all_child_blocks(block)
+                .into_iter()
+                .cloned()
+                .map(Value::BlockRef)
+                .collect(),
+        ))
+    }) as BuiltinFn;
+    let block_children_sig = |name: &str| FunctionSignature {
+        name: name.into(),
+        params: vec!["block: any".into()],
+        return_type: "list(any)".into(),
+        doc: "Return all direct child blocks, including named child blocks".into(),
+    };
+    reg.register(
+        "block_children",
+        block_children.clone(),
+        block_children_sig("block_children"),
+    );
+    reg.register(
+        "wdoc::block_children",
+        block_children,
+        block_children_sig("wdoc::block_children"),
+    );
+
     reg.register(
         "wdoc::render_markup",
         std::sync::Arc::new(|args: &[Value]| {
@@ -1069,7 +1101,7 @@ fn collect_shape_or_connection(
         // Call the function and convert its returned shape descriptors into the
         // widget container's children.
         let mut children: Vec<ShapeNode> = if is_composite {
-            match dispatch_shape_template(br, ctx) {
+            match dispatch_shape_template(br, ctx, dopesheets) {
                 Ok(mut result) => {
                     for child in &mut result.shapes {
                         mark_template_layout_decoration(child);
@@ -1238,6 +1270,53 @@ fn text_block_items_from_block(
                 }
             }
             _ => {}
+        }
+    }
+
+    items
+}
+
+fn text_block_items_from_descriptor(
+    map: &IndexMap<String, Value>,
+    ctx: Option<&ExtractCtx>,
+) -> Vec<crate::shapes::TextBlockItem> {
+    let mut items = Vec::new();
+    if let Some(content) = value_as_string(map.get("content")) {
+        items.push(crate::shapes::TextBlockItem::Paragraph {
+            html: ctx
+                .and_then(|ctx| render_markup_string(content, ctx).ok())
+                .unwrap_or_else(|| html_escape(content)),
+        });
+    }
+
+    if let Some(Value::List(descriptor_items)) = map.get("items") {
+        for item in descriptor_items {
+            let Value::Map(item_map) = item else {
+                continue;
+            };
+            match item_map
+                .get("kind")
+                .and_then(|value| value.as_string())
+                .unwrap_or("paragraph")
+            {
+                "code" | "wdoc::code" => {
+                    if let Some(content) = value_as_string(item_map.get("content")) {
+                        items.push(crate::shapes::TextBlockItem::Code {
+                            content: content.to_string(),
+                            language: value_as_string(item_map.get("language")).map(str::to_string),
+                        });
+                    }
+                }
+                _ => {
+                    if let Some(content) = value_as_string(item_map.get("content")) {
+                        items.push(crate::shapes::TextBlockItem::Paragraph {
+                            html: ctx
+                                .and_then(|ctx| render_markup_string(content, ctx).ok())
+                                .unwrap_or_else(|| html_escape(content)),
+                        });
+                    }
+                }
+            }
         }
     }
 
@@ -1859,7 +1938,11 @@ struct ShapeTemplateResult {
 /// Look up a `@template("shape", "fn")` function for `br.kind` and call it.
 /// Plain shape templates receive the BlockRef as their single argument.
 /// Templates with `@extends` receive `(BlockRef, base_descriptors)`.
-fn dispatch_shape_template(br: &BlockRef, ctx: &ExtractCtx) -> Result<ShapeTemplateResult, String> {
+fn dispatch_shape_template(
+    br: &BlockRef,
+    ctx: &ExtractCtx,
+    dopesheets: &HashMap<String, IndexMap<String, String>>,
+) -> Result<ShapeTemplateResult, String> {
     let descriptors = dispatch_shape_template_descriptors(br, ctx, &mut Vec::new())?;
 
     let mut result = ShapeTemplateResult {
@@ -1869,9 +1952,13 @@ fn dispatch_shape_template(br: &BlockRef, ctx: &ExtractCtx) -> Result<ShapeTempl
     for (idx, desc) in descriptors.iter().enumerate() {
         if let Some(conn) = descriptor_to_connection_with_order(desc, idx) {
             result.connections.push(conn);
-        } else if let Some((node, connections)) =
-            descriptor_to_shape_node_and_connections(desc, idx, Some(&ctx.draw_schema_names))
-        {
+        } else if let Some((node, connections)) = descriptor_to_shape_node_and_connections(
+            desc,
+            idx,
+            Some(&ctx.draw_schema_names),
+            Some(ctx),
+            dopesheets,
+        ) {
             result.shapes.push(node);
             result.connections.extend(connections);
         }
@@ -1993,13 +2080,16 @@ fn descriptor_to_shape_node_with_order(
     val: &Value,
     source_order: usize,
 ) -> Option<crate::shapes::ShapeNode> {
-    descriptor_to_shape_node_and_connections(val, source_order, None).map(|(node, _)| node)
+    descriptor_to_shape_node_and_connections(val, source_order, None, None, &HashMap::new())
+        .map(|(node, _)| node)
 }
 
 fn descriptor_to_shape_node_and_connections(
     val: &Value,
     source_order: usize,
     draw_schema_names: Option<&HashSet<String>>,
+    ctx: Option<&ExtractCtx>,
+    dopesheets: &HashMap<String, IndexMap<String, String>>,
 ) -> Option<(crate::shapes::ShapeNode, Vec<crate::shapes::Connection>)> {
     use crate::shapes::*;
 
@@ -2068,6 +2158,7 @@ fn descriptor_to_shape_node_and_connections(
                 | "z_index"
                 | "align"
                 | "children"
+                | "items"
                 | "events"
                 | "id"
                 | "layout_role"
@@ -2098,8 +2189,27 @@ fn descriptor_to_shape_node_and_connections(
         for (idx, item) in items.iter().enumerate() {
             if let Some(conn) = descriptor_to_connection_with_order(item, idx) {
                 connections.push(conn);
+            } else if let (Value::BlockRef(child_br), Some(ctx)) = (item, ctx) {
+                let mut child_shapes = Vec::new();
+                let mut child_connections = Vec::new();
+                collect_shape_or_connection(
+                    child_br,
+                    &mut child_shapes,
+                    &mut child_connections,
+                    ctx,
+                    idx,
+                    dopesheets,
+                );
+                children.extend(child_shapes);
+                connections.extend(child_connections);
             } else if let Some((child, child_connections)) =
-                descriptor_to_shape_node_and_connections(item, idx, draw_schema_names)
+                descriptor_to_shape_node_and_connections(
+                    item,
+                    idx,
+                    draw_schema_names,
+                    ctx,
+                    dopesheets,
+                )
             {
                 children.push(child);
                 connections.extend(child_connections);
@@ -2126,7 +2236,11 @@ fn descriptor_to_shape_node_and_connections(
         attrs,
         events,
         children,
-        text_block_items: Vec::new(),
+        text_block_items: if kind == ShapeKind::TextBlock {
+            text_block_items_from_descriptor(map, ctx)
+        } else {
+            Vec::new()
+        },
         align,
         gap,
         padding,
@@ -3545,6 +3659,7 @@ mod wdoc_draw_tests {
         let err = match dispatch_shape_template(
             &block("my::legacy", Some("legacy"), IndexMap::new(), vec![]),
             &ctx,
+            &HashMap::new(),
         ) {
             Ok(_) => panic!("expected rust builtin shape template to fail"),
             Err(err) => err,
@@ -4369,6 +4484,153 @@ mod wdoc_draw_tests {
     }
 
     #[test]
+    fn datatable_widget_renders_compact_rows() {
+        let ctx = wdoc_library_ctx();
+        let mut diagram_attrs = IndexMap::new();
+        int_attr(&mut diagram_attrs, "width", 520);
+        int_attr(&mut diagram_attrs, "height", 180);
+
+        let mut first = IndexMap::new();
+        string_attr(&mut first, "Name", "Ada");
+        string_attr(&mut first, "Role", "Admin");
+        string_attr(&mut first, "Status", "Active");
+        let mut second = IndexMap::new();
+        string_attr(&mut second, "Name", "Lin");
+        string_attr(&mut second, "Role", "Editor");
+        string_attr(&mut second, "Status", "Pending");
+
+        let mut table_attrs = IndexMap::new();
+        int_attr(&mut table_attrs, "x", 20);
+        int_attr(&mut table_attrs, "y", 20);
+        int_attr(&mut table_attrs, "width", 460);
+        table_attrs.insert(
+            "rows".to_string(),
+            Value::List(vec![Value::Map(first), Value::Map(second)]),
+        );
+
+        let diagram = block(
+            "wdoc::draw::diagram",
+            Some("datatable_compact"),
+            diagram_attrs,
+            vec![block(
+                "wdoc::draw::datatable",
+                Some("users"),
+                table_attrs,
+                vec![],
+            )],
+        );
+
+        let html = render_diagram_with_ctx(&diagram, &ctx);
+        assert!(html.contains("Ada"));
+        assert!(html.contains("Role"));
+        assert!(html.contains("Pending"));
+        assert!(!html.contains("datatable_row"));
+    }
+
+    #[test]
+    fn datatable_widget_renders_rich_cell_controls_and_markup() {
+        let ctx = wdoc_library_ctx();
+        let mut diagram_attrs = IndexMap::new();
+        int_attr(&mut diagram_attrs, "width", 620);
+        int_attr(&mut diagram_attrs, "height", 180);
+
+        let columns = vec![
+            {
+                let mut attrs = IndexMap::new();
+                string_attr(&mut attrs, "label", "Name");
+                int_attr(&mut attrs, "width", 180);
+                block("wdoc::draw::datatable_column", Some("name"), attrs, vec![])
+            },
+            {
+                let mut attrs = IndexMap::new();
+                string_attr(&mut attrs, "label", "Status");
+                int_attr(&mut attrs, "width", 120);
+                block(
+                    "wdoc::draw::datatable_column",
+                    Some("status"),
+                    attrs,
+                    vec![],
+                )
+            },
+            {
+                let mut attrs = IndexMap::new();
+                string_attr(&mut attrs, "label", "");
+                int_attr(&mut attrs, "width", 110);
+                block(
+                    "wdoc::draw::datatable_column",
+                    Some("action"),
+                    attrs,
+                    vec![],
+                )
+            },
+        ];
+
+        let mut name_cell_attrs = IndexMap::new();
+        string_attr(&mut name_cell_attrs, "content", "**Ada**");
+        let name_cell = block(
+            "wdoc::draw::datatable_cell",
+            Some("name"),
+            name_cell_attrs,
+            vec![],
+        );
+        let badge = block(
+            "wdoc::draw::badge",
+            Some("ok"),
+            IndexMap::from([("label".to_string(), Value::String("Active".to_string()))]),
+            vec![],
+        );
+        let status_cell = block(
+            "wdoc::draw::datatable_cell",
+            Some("status"),
+            IndexMap::new(),
+            vec![badge],
+        );
+        let button = block(
+            "wdoc::draw::button",
+            Some("edit"),
+            IndexMap::from([("label".to_string(), Value::String("Edit".to_string()))]),
+            vec![],
+        );
+        let action_cell = block(
+            "wdoc::draw::datatable_cell",
+            Some("action"),
+            IndexMap::new(),
+            vec![button],
+        );
+        let row = block(
+            "wdoc::draw::datatable_row",
+            Some("r1"),
+            IndexMap::new(),
+            vec![name_cell, status_cell, action_cell],
+        );
+
+        let mut table_children = columns;
+        table_children.push(row);
+        let mut table_attrs = IndexMap::new();
+        int_attr(&mut table_attrs, "x", 20);
+        int_attr(&mut table_attrs, "y", 20);
+        int_attr(&mut table_attrs, "width", 460);
+        let diagram = block(
+            "wdoc::draw::diagram",
+            Some("datatable_rich"),
+            diagram_attrs,
+            vec![block(
+                "wdoc::draw::datatable",
+                Some("users"),
+                table_attrs,
+                table_children,
+            )],
+        );
+
+        let html = render_diagram_with_ctx(&diagram, &ctx);
+        assert!(html.contains("Ada"));
+        assert!(html.contains("font-weight=\"700\""));
+        assert!(html.contains("Active"));
+        assert!(html.contains("Edit"));
+        assert!(!html.contains("datatable_cell"));
+    }
+
+    #[test]
     fn terminal_widget_classes_theme_all_controls_and_animate_root_groups() {
         let ctx = wdoc_library_ctx();
 
@@ -4958,6 +5220,7 @@ mod wdoc_draw_tests {
         let err = dispatch_shape_template(
             &block("my::bad_box", Some("bad"), IndexMap::new(), vec![]),
             &ctx,
+            &HashMap::new(),
         )
         .unwrap_err();
 
@@ -4978,6 +5241,7 @@ mod wdoc_draw_tests {
         let err = dispatch_shape_template(
             &block("my::a_box", Some("a"), IndexMap::new(), vec![]),
             &ctx,
+            &HashMap::new(),
         )
         .unwrap_err();
 
@@ -5104,9 +5368,14 @@ mod wdoc_draw_tests {
         string_attr(&mut descriptor, "kind", "callout_badge");
         descriptor.insert("children".to_string(), Value::List(vec![Value::Map(child)]));
 
-        let (node, connections) =
-            descriptor_to_shape_node_and_connections(&Value::Map(descriptor), 0, None)
-                .expect("custom container descriptor");
+        let (node, connections) = descriptor_to_shape_node_and_connections(
+            &Value::Map(descriptor),
+            0,
+            None,
+            None,
+            &HashMap::new(),
+        )
+        .expect("custom container descriptor");
         assert_eq!(node.kind, crate::shapes::ShapeKind::Custom);
         assert_eq!(node.kind_name, "wdoc::draw::callout_badge");
         assert_eq!(node.children.len(), 1);
@@ -5121,9 +5390,14 @@ mod wdoc_draw_tests {
             Value::String("callout_badge".to_string()),
         )]);
 
-        assert!(
-            descriptor_to_shape_node_and_connections(&Value::Map(descriptor), 0, None).is_none()
-        );
+        assert!(descriptor_to_shape_node_and_connections(
+            &Value::Map(descriptor),
+            0,
+            None,
+            None,
+            &HashMap::new(),
+        )
+        .is_none());
     }
 
     #[test]
@@ -5139,6 +5413,8 @@ mod wdoc_draw_tests {
             &Value::Map(descriptor),
             0,
             Some(&draw_schemas),
+            None,
+            &HashMap::new(),
         )
         .expect("declared draw descriptor");
         assert_eq!(node.kind, crate::shapes::ShapeKind::Custom);

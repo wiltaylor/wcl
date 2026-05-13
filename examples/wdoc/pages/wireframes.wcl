@@ -428,6 +428,97 @@ page wireframes {
             }
         }
 
+        // --- Data table widget ---
+        vsplit v_wf_datatable {
+            split s_wf_datatable {
+                size = 100
+
+                heading hwf_datatable {
+                    level = 2
+                    content = "Data Tables"
+                }
+                paragraph pwf_datatable { content = "The <code>datatable</code> widget can render compact WCL row data or rich row blocks whose cells contain WDoc text and other wireframe controls." }
+
+                diagram datatable_demo {
+                    width = 760
+                    height = 320
+
+                    datatable team_table {
+                        x = 24
+                        y = 24
+                        width = 520
+
+                        datatable_column name_col {
+                            key = "name"
+                            label = "Name"
+                            width = 180
+                        }
+                        datatable_column status_col {
+                            key = "status"
+                            label = "Status"
+                            width = 130
+                        }
+                        datatable_column action_col {
+                            key = "action"
+                            label = ""
+                            width = 110
+                        }
+
+                        datatable_row ada {
+                            datatable_cell name {
+                                content = "**Ada Lovelace**"
+                            }
+                            datatable_cell status {
+                                badge active {
+                                    label = "Active"
+                                    color = "green"
+                                }
+                            }
+                            datatable_cell action {
+                                button edit {
+                                    width = 78
+                                    height = 26
+                                    label = "Edit"
+                                    variant = "secondary"
+                                }
+                            }
+                        }
+
+                        datatable_row lin {
+                            datatable_cell name {
+                                content = "Lin Chen"
+                            }
+                            datatable_cell status {
+                                badge pending {
+                                    label = "Pending"
+                                    color = "amber"
+                                }
+                            }
+                            datatable_cell action {
+                                button review {
+                                    width = 78
+                                    height = 26
+                                    label = "Review"
+                                }
+                            }
+                        }
+                    }
+
+                    datatable compact_table {
+                        x = 24
+                        y = 176
+                        width = 520
+                        row_height = 34
+                        columns = "Route,Method,State"
+                        rows = [
+                            { Route = "/api/users", Method = "GET", State = "cached" },
+                            { Route = "/api/invite", Method = "POST", State = "queued" }
+                        ]
+                    }
+                }
+            }
+        }
+
         // --- Cards with content ---
         vsplit v_wf4 {
             split s_wf4 {

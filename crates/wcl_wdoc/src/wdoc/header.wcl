@@ -15,6 +15,7 @@ declare measure_text(text: any) -> map(string, any)
 // filtered by exact block kind, e.g. children(item, "UiMenuItem").
 declare children(block: any) -> list(any)
 declare children(block: any, kind: string) -> list(any)
+declare block_children(block: any) -> list(any)
 
 namespace wdoc {
 
@@ -440,6 +441,7 @@ namespace wdoc {
             "wdoc::draw::profile_card",
             "wdoc::draw::action_panel",
             "wdoc::draw::list_item",
+            "wdoc::draw::datatable",
             "wdoc::draw::graph_node",
             "wdoc::draw::pie_chart",
             "wdoc::draw::bar_chart",
@@ -521,6 +523,10 @@ namespace wdoc {
         @template("shape", "wdoc::widget_profile_card") @open schema "profile_card" { }
         @template("shape", "wdoc::widget_action_panel") @open schema "action_panel" { }
         @template("shape", "wdoc::widget_list_item") @open schema "list_item" { }
+        @template("shape", "wdoc::widget_datatable") @open schema "datatable" { }
+        @structural @parent(["wdoc::draw::datatable"]) @open schema "datatable_column" { }
+        @structural @parent(["wdoc::draw::datatable"]) @open schema "datatable_row" { }
+        @structural @parent(["wdoc::draw::datatable_row"]) @open schema "datatable_cell" { }
         @template("shape", "wdoc::widget_graph_node") @open schema "graph_node" { }
         @structural @parent(["wdoc::draw::graph_node"]) @open schema "graph_row" { }
         @structural @parent(["wdoc::draw::graph_node"]) @open schema "graph_divider" { }
@@ -648,6 +654,7 @@ namespace wdoc {
     declare measure_text(text: any) -> map(string, any)
     declare render_markup(text: string) -> string
     declare render_children(block: any) -> string
+    declare block_children(block: any) -> list(any)
     declare table_rows(block: any) -> map(string, any)
 
     // --- Template rendering functions ---
