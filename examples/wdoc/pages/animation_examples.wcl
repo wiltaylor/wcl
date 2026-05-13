@@ -336,7 +336,7 @@ page animation_examples {
                 }
 
                 paragraph p4_rotate {
-                    content = "Hover the purple shape to rotate it. The first turn uses the animated shape center; the final keyframe sets an explicit pivot with " + bold("rotate_origin_x") + " and " + bold("rotate_origin_y") + "."
+                    content = "Hover the purple shape to rotate it. The first turn uses the animated shape center; the final keyframe sets an explicit pivot with " + wdoc::bold("rotate_origin_x") + " and " + wdoc::bold("rotate_origin_y") + "."
                 }
 
                 diagram rotation_animation {
