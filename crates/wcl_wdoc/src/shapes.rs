@@ -3811,7 +3811,6 @@ fn render_routed_connection_svg(route: &RoutedConnection, svg: &mut String) {
 
     match &route.geometry {
         RoutedGeometry::Line { start, end } => {
-            let (start, end) = marker_adjusted_line(*start, *end, conn);
             write!(
                 svg,
                 "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\"\
@@ -3849,38 +3848,6 @@ fn render_routed_connection_svg(route: &RoutedConnection, svg: &mut String) {
         )
         .unwrap();
     }
-}
-
-fn marker_adjusted_line(
-    mut start: (f64, f64),
-    mut end: (f64, f64),
-    conn: &Connection,
-) -> ((f64, f64), (f64, f64)) {
-    let dx = end.0 - start.0;
-    let dy = end.1 - start.1;
-    let len = (dx * dx + dy * dy).sqrt();
-    if len <= 0.001 {
-        return (start, end);
-    }
-    let ux = dx / len;
-    let uy = dy / len;
-    let clearance = marker_endpoint_clearance(conn);
-    if matches!(conn.direction, Direction::From | Direction::Both) {
-        start.0 -= ux * clearance;
-        start.1 -= uy * clearance;
-    }
-    if matches!(conn.direction, Direction::To | Direction::Both) {
-        end.0 += ux * clearance;
-        end.1 += uy * clearance;
-    }
-    (start, end)
-}
-
-fn marker_endpoint_clearance(conn: &Connection) -> f64 {
-    attr_f64(&conn.attrs, "stroke_width")
-        .unwrap_or(1.0)
-        .max(1.0)
-        * 7.0
 }
 
 fn connection_label_point(
@@ -6659,6 +6626,34 @@ mod tests {
             }
             _ => panic!("expected direct line"),
         }
+    }
+
+    #[test]
+    fn rendered_line_marker_ends_at_target_anchor() {
+        let mut diagram = Diagram {
+            id: None,
+            width: 220.0,
+            height: 80.0,
+            shapes: vec![shape("a", 40.0, 40.0), shape("b", 40.0, 40.0)],
+            connections: vec![connection("a", "b")],
+            classes: IndexMap::new(),
+            padding: 0.0,
+            align: Alignment::None,
+            gap: 0.0,
+            options: IndexMap::new(),
+        };
+        diagram.shapes[0].x = Some(20.0);
+        diagram.shapes[0].y = Some(20.0);
+        diagram.shapes[1].x = Some(160.0);
+        diagram.shapes[1].y = Some(20.0);
+
+        let svg = render_diagram_svg(&mut diagram);
+
+        assert!(
+            svg.contains("<line x1=\"60\" y1=\"40\" x2=\"160\" y2=\"40\" stroke=\"currentColor\"")
+        );
+        assert!(svg.contains("marker-end=\"url(#wdoc-arrow)\""));
+        assert!(!svg.contains("x2=\"167\""));
     }
 
     #[test]
