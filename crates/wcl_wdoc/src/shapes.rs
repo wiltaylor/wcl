@@ -23,6 +23,7 @@ const SIZE_LOCKED_ATTR: &str = "_wdoc_size_locked";
 const ROUTE_MARGIN: f64 = 18.0;
 const ROUTE_TERMINAL_MIN: f64 = 24.0;
 const PARALLEL_CORRIDOR_MIN: f64 = 8.0;
+const GRAPH_PORT_MARKER_CLEARANCE: f64 = 12.0;
 const DIRECT_ROUTE_ALIGNMENT_EPSILON: f64 = 6.0;
 
 // ---------------------------------------------------------------------------
@@ -3441,13 +3442,49 @@ fn compute_connection_route(
 
     let geometry = match conn.curve {
         CurveStyle::Straight => {
-            let from_anchor =
+            let mut from_anchor =
                 effective_endpoint_anchor(&conn.from_id, from_bounds, conn.from_anchor, shape_map);
-            let to_anchor =
+            let mut to_anchor =
                 effective_endpoint_anchor(&conn.to_id, to_bounds, conn.to_anchor, shape_map);
+            align_graph_port_to_shape_anchors(
+                &conn.from_id,
+                &conn.to_id,
+                &mut from_anchor,
+                &mut to_anchor,
+                shape_map,
+            );
             if conn.from_anchor == AnchorPoint::Auto && conn.to_anchor == AnchorPoint::Auto {
-                let (x1, y1) = from_bounds.anchor_pos(from_anchor, to_bounds);
-                let (x2, y2) = to_bounds.anchor_pos(to_anchor, from_bounds);
+                let (mut x1, mut y1) = from_bounds.anchor_pos(from_anchor, to_bounds);
+                project_graph_port_endpoint_outside_container(
+                    &conn.from_id,
+                    from_anchor,
+                    from_bounds,
+                    &mut x1,
+                    &mut y1,
+                    graph_port_start_marker_clearance(conn),
+                    shape_map,
+                );
+                let (mut x2, mut y2) = to_bounds.anchor_pos(to_anchor, from_bounds);
+                project_graph_port_endpoint_outside_container(
+                    &conn.to_id,
+                    to_anchor,
+                    to_bounds,
+                    &mut x2,
+                    &mut y2,
+                    0.0,
+                    shape_map,
+                );
+                project_regular_shape_endpoint_to_graph_port_axis(
+                    &conn.from_id,
+                    &conn.to_id,
+                    from_anchor,
+                    to_anchor,
+                    (x1, y1),
+                    to_bounds,
+                    &mut x2,
+                    &mut y2,
+                    shape_map,
+                );
                 if connection_uses_direct_route(conn) {
                     RoutedGeometry::Line {
                         start: (x1, y1),
@@ -3518,8 +3555,37 @@ fn compute_connection_route(
                     }
                 }
             } else {
-                let (x1, y1) = from_bounds.anchor_pos(from_anchor, to_bounds);
-                let (x2, y2) = to_bounds.anchor_pos(to_anchor, from_bounds);
+                let (mut x1, mut y1) = from_bounds.anchor_pos(from_anchor, to_bounds);
+                project_graph_port_endpoint_outside_container(
+                    &conn.from_id,
+                    from_anchor,
+                    from_bounds,
+                    &mut x1,
+                    &mut y1,
+                    graph_port_start_marker_clearance(conn),
+                    shape_map,
+                );
+                let (mut x2, mut y2) = to_bounds.anchor_pos(to_anchor, from_bounds);
+                project_graph_port_endpoint_outside_container(
+                    &conn.to_id,
+                    to_anchor,
+                    to_bounds,
+                    &mut x2,
+                    &mut y2,
+                    0.0,
+                    shape_map,
+                );
+                project_regular_shape_endpoint_to_graph_port_axis(
+                    &conn.from_id,
+                    &conn.to_id,
+                    from_anchor,
+                    to_anchor,
+                    (x1, y1),
+                    to_bounds,
+                    &mut x2,
+                    &mut y2,
+                    shape_map,
+                );
                 let obstacles =
                     connection_obstacles(&conn.from_id, &conn.to_id, x1, y1, x2, y2, shape_map);
 
@@ -3587,12 +3653,48 @@ fn compute_connection_route(
             }
         }
         CurveStyle::Bezier => {
-            let from_anchor =
+            let mut from_anchor =
                 effective_endpoint_anchor(&conn.from_id, from_bounds, conn.from_anchor, shape_map);
-            let to_anchor =
+            let mut to_anchor =
                 effective_endpoint_anchor(&conn.to_id, to_bounds, conn.to_anchor, shape_map);
-            let (x1, y1) = from_bounds.anchor_pos(from_anchor, to_bounds);
-            let (x2, y2) = to_bounds.anchor_pos(to_anchor, from_bounds);
+            align_graph_port_to_shape_anchors(
+                &conn.from_id,
+                &conn.to_id,
+                &mut from_anchor,
+                &mut to_anchor,
+                shape_map,
+            );
+            let (mut x1, mut y1) = from_bounds.anchor_pos(from_anchor, to_bounds);
+            project_graph_port_endpoint_outside_container(
+                &conn.from_id,
+                from_anchor,
+                from_bounds,
+                &mut x1,
+                &mut y1,
+                graph_port_start_marker_clearance(conn),
+                shape_map,
+            );
+            let (mut x2, mut y2) = to_bounds.anchor_pos(to_anchor, from_bounds);
+            project_graph_port_endpoint_outside_container(
+                &conn.to_id,
+                to_anchor,
+                to_bounds,
+                &mut x2,
+                &mut y2,
+                0.0,
+                shape_map,
+            );
+            project_regular_shape_endpoint_to_graph_port_axis(
+                &conn.from_id,
+                &conn.to_id,
+                from_anchor,
+                to_anchor,
+                (x1, y1),
+                to_bounds,
+                &mut x2,
+                &mut y2,
+                shape_map,
+            );
             let obstacles =
                 connection_obstacles(&conn.from_id, &conn.to_id, x1, y1, x2, y2, shape_map);
             let dx = (x2 - x1).abs() / 2.0;
@@ -4164,6 +4266,108 @@ fn effective_endpoint_anchor(
         .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
         .map(|(anchor, _)| anchor)
         .unwrap_or(AnchorPoint::Auto)
+}
+
+fn align_graph_port_to_shape_anchors(
+    from_id: &str,
+    to_id: &str,
+    from_anchor: &mut AnchorPoint,
+    to_anchor: &mut AnchorPoint,
+    shape_map: &HashMap<String, Bounds>,
+) {
+    if *from_anchor != AnchorPoint::Auto
+        && *to_anchor == AnchorPoint::Auto
+        && nearest_container_id(from_id, shape_map).is_some()
+        && nearest_container_id(to_id, shape_map).is_none()
+    {
+        *to_anchor = opposite_anchor(*from_anchor);
+    }
+}
+
+fn project_graph_port_endpoint_outside_container(
+    id: &str,
+    anchor: AnchorPoint,
+    bounds: &Bounds,
+    x: &mut f64,
+    y: &mut f64,
+    marker_clearance: f64,
+    shape_map: &HashMap<String, Bounds>,
+) {
+    let Some(container) = nearest_container_id(id, shape_map).and_then(|id| shape_map.get(id))
+    else {
+        return;
+    };
+    let radius = (bounds.width.min(bounds.height) / 2.0).max(5.0) + marker_clearance;
+    match anchor {
+        AnchorPoint::Right => *x = (*x).max(container.x + container.width + radius),
+        AnchorPoint::Left => *x = (*x).min(container.x - radius),
+        AnchorPoint::Bottom => *y = (*y).max(container.y + container.height + radius),
+        AnchorPoint::Top => *y = (*y).min(container.y - radius),
+        AnchorPoint::Center | AnchorPoint::Auto => {}
+    }
+}
+
+fn graph_port_start_marker_clearance(conn: &Connection) -> f64 {
+    match conn.direction {
+        Direction::From | Direction::Both => GRAPH_PORT_MARKER_CLEARANCE,
+        Direction::None | Direction::To => 0.0,
+    }
+}
+
+fn project_regular_shape_endpoint_to_graph_port_axis(
+    from_id: &str,
+    to_id: &str,
+    from_anchor: AnchorPoint,
+    to_anchor: AnchorPoint,
+    start: (f64, f64),
+    to_bounds: &Bounds,
+    x2: &mut f64,
+    y2: &mut f64,
+    shape_map: &HashMap<String, Bounds>,
+) {
+    if nearest_container_id(from_id, shape_map).is_none()
+        || nearest_container_id(to_id, shape_map).is_some()
+    {
+        return;
+    }
+
+    match (from_anchor, to_anchor) {
+        (AnchorPoint::Right, AnchorPoint::Left) => {
+            if start.1 >= to_bounds.y && start.1 <= to_bounds.y + to_bounds.height {
+                *x2 = to_bounds.x;
+                *y2 = start.1;
+            }
+        }
+        (AnchorPoint::Left, AnchorPoint::Right) => {
+            if start.1 >= to_bounds.y && start.1 <= to_bounds.y + to_bounds.height {
+                *x2 = to_bounds.x + to_bounds.width;
+                *y2 = start.1;
+            }
+        }
+        (AnchorPoint::Bottom, AnchorPoint::Top) => {
+            if start.0 >= to_bounds.x && start.0 <= to_bounds.x + to_bounds.width {
+                *x2 = start.0;
+                *y2 = to_bounds.y;
+            }
+        }
+        (AnchorPoint::Top, AnchorPoint::Bottom) => {
+            if start.0 >= to_bounds.x && start.0 <= to_bounds.x + to_bounds.width {
+                *x2 = start.0;
+                *y2 = to_bounds.y + to_bounds.height;
+            }
+        }
+        _ => {}
+    }
+}
+
+fn opposite_anchor(anchor: AnchorPoint) -> AnchorPoint {
+    match anchor {
+        AnchorPoint::Top => AnchorPoint::Bottom,
+        AnchorPoint::Bottom => AnchorPoint::Top,
+        AnchorPoint::Left => AnchorPoint::Right,
+        AnchorPoint::Right => AnchorPoint::Left,
+        AnchorPoint::Center | AnchorPoint::Auto => AnchorPoint::Auto,
+    }
 }
 
 fn route_orthogonal(from: &Bounds, to: &Bounds, obstacles: &[Bounds]) -> Option<Vec<(f64, f64)>> {
@@ -8888,6 +9092,50 @@ mod tests {
         assert!(points[1].0 > points[0].0);
         assert_eq!(points.last().copied(), Some((365.0, 391.0)));
         assert!(points[points.len() - 2].0 < points[points.len() - 1].0);
+    }
+
+    #[test]
+    fn graph_node_port_to_regular_shape_uses_opposite_side_anchor() {
+        let mut shape_map = HashMap::new();
+        shape_map.insert(
+            "user_service".to_string(),
+            Bounds {
+                x: 425.0,
+                y: 30.0,
+                width: 250.0,
+                height: 194.0,
+            },
+        );
+        shape_map.insert(
+            "user_service.query".to_string(),
+            Bounds {
+                x: 670.0,
+                y: 83.0,
+                width: 10.0,
+                height: 10.0,
+            },
+        );
+        shape_map.insert(
+            "postgres".to_string(),
+            Bounds {
+                x: 720.0,
+                y: 30.0,
+                width: 122.0,
+                height: 104.0,
+            },
+        );
+
+        let mut conn = connection("user_service.query", "postgres");
+        conn.direction = Direction::Both;
+        let route = compute_connection_route(&conn, &shape_map).expect("route");
+        let points = route_polyline_points(&route.geometry);
+
+        assert_eq!(points.first().copied(), Some((692.0, 88.0)));
+        assert_eq!(points.last().copied(), Some((720.0, 88.0)));
+        assert!(matches!(route.geometry, RoutedGeometry::Line { .. }));
+        assert!(points.windows(2).all(|segment| {
+            nearly_eq(segment[0].0, segment[1].0) || nearly_eq(segment[0].1, segment[1].1)
+        }));
     }
 
     #[test]
