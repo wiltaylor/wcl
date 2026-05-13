@@ -978,12 +978,24 @@ fn substitute_in_expr(
                 next_capture_id,
             );
         }
-        Expr::Lambda(_, body, _) => {
+        Expr::Lambda(params, body, _) => {
+            let shadows_iterator = params.iter().any(|param| param.name == iterator_name);
+            let shadows_index = index_name
+                .map(|idx_name| params.iter().any(|param| param.name == *idx_name))
+                .unwrap_or(false);
+
+            if shadows_iterator && shadows_index {
+                return;
+            }
+
+            // Empty string is a non-matching sentinel: WCL identifiers cannot be empty.
+            let nested_iterator_name = if shadows_iterator { "" } else { iterator_name };
+            let nested_index_name = if shadows_index { None } else { index_name };
             substitute_in_expr(
                 body,
-                iterator_name,
+                nested_iterator_name,
                 value,
-                index_name,
+                nested_index_name,
                 index,
                 captures,
                 next_capture_id,
@@ -1633,6 +1645,69 @@ mod tests {
         match expr {
             Expr::IntLit(80, _) => {}
             other => panic!("expected IntLit(80), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn lambda_parameter_shadows_loop_iterator_during_substitution() {
+        let mut expr = Expr::Lambda(
+            vec![make_ident("x")],
+            Box::new(Expr::MemberAccess(
+                Box::new(Expr::Ident(make_ident("x"))),
+                make_ident("port"),
+                dummy_span(),
+            )),
+            dummy_span(),
+        );
+
+        let mut attrs = indexmap::IndexMap::new();
+        attrs.insert("port".to_string(), Value::Int(80));
+        let br = crate::eval::value::BlockRef {
+            kind: "foo".to_string(),
+            id: None,
+            qualified_id: None,
+            attributes: attrs,
+            children: vec![],
+            decorators: vec![],
+            span: dummy_span(),
+        };
+
+        substitute_in_expr_without_captures(&mut expr, "x", &Value::BlockRef(br), None, 0);
+
+        match expr {
+            Expr::Lambda(_, body, _) => match body.as_ref() {
+                Expr::MemberAccess(obj, field, _) => {
+                    assert!(matches!(obj.as_ref(), Expr::Ident(id) if id.name == "x"));
+                    assert_eq!(field.name, "port");
+                }
+                other => panic!("expected lambda body to remain x.port, got {:?}", other),
+            },
+            other => panic!("expected lambda expression, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn lambda_parameter_shadows_loop_index_during_substitution() {
+        let index_name = "i".to_string();
+        let mut expr = Expr::Lambda(
+            vec![make_ident("i")],
+            Box::new(Expr::Ident(make_ident("i"))),
+            dummy_span(),
+        );
+
+        substitute_in_expr_without_captures(
+            &mut expr,
+            "x",
+            &Value::String("outer".to_string()),
+            Some(&index_name),
+            3,
+        );
+
+        match expr {
+            Expr::Lambda(_, body, _) => {
+                assert!(matches!(body.as_ref(), Expr::Ident(id) if id.name == "i"));
+            }
+            other => panic!("expected lambda expression, got {:?}", other),
         }
     }
 

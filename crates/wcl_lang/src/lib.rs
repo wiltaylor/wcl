@@ -1338,6 +1338,57 @@ for sys in (..System) {
     }
 
     #[test]
+    fn map_lambda_parameter_shadows_query_for_loop_iterator() {
+        let src = r#"
+service api {
+    route r1 { tls {} }
+    route r2 {}
+}
+
+service worker {
+    route r3 {}
+}
+
+for svc in (..service) {
+    result res_${svc.id} {
+        inner_flags = map(children(svc, "route"), svc => has(svc, "tls"))
+        outer_flags = map(children(svc, "route"), route => has(svc, "route"))
+    }
+}
+        "#;
+        let doc = parse(src, ParseOptions::default());
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+
+        let api = doc
+            .values
+            .get("res_api")
+            .and_then(Value::as_block_ref)
+            .expect("res_api result block should be generated");
+        assert_eq!(
+            api.attributes.get("inner_flags"),
+            Some(&Value::List(vec![Value::Bool(true), Value::Bool(false)]))
+        );
+        assert_eq!(
+            api.attributes.get("outer_flags"),
+            Some(&Value::List(vec![Value::Bool(true), Value::Bool(true)]))
+        );
+
+        let worker = doc
+            .values
+            .get("res_worker")
+            .and_then(Value::as_block_ref)
+            .expect("res_worker result block should be generated");
+        assert_eq!(
+            worker.attributes.get("inner_flags"),
+            Some(&Value::List(vec![Value::Bool(false)]))
+        );
+        assert_eq!(
+            worker.attributes.get("outer_flags"),
+            Some(&Value::List(vec![Value::Bool(true)]))
+        );
+    }
+
+    #[test]
     fn block_ref_virtual_members_and_equality_work_in_expressions() {
         let src = r#"
 service alpha {
