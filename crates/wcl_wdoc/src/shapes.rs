@@ -354,8 +354,7 @@ pub fn render_diagram_svg(diagram: &mut Diagram) -> String {
         width: diagram.width - diagram.padding * 2.0,
         height: diagram.height - diagram.padding * 2.0,
     };
-    let mut options = diagram.options.clone();
-    options.insert("_wdoc_scale_to_fit".to_string(), "true".to_string());
+    let options = diagram.options.clone();
     resolve_children(
         &mut diagram.shapes,
         &mut diagram.connections,
@@ -368,6 +367,7 @@ pub fn render_diagram_svg(diagram: &mut Diagram) -> String {
 
     // Phase 2b: build shape map for connections
     let shape_map = build_shape_map(&diagram.shapes, 0.0, 0.0);
+    let graph_fit = graph_render_fit(&diagram.shapes, &inner, diagram.align);
 
     // Phase 3: render SVG
     let mut svg = String::new();
@@ -460,7 +460,18 @@ pub fn render_diagram_svg(diagram: &mut Diagram) -> String {
         svg.push_str(ARROW_DEFS);
     }
 
-    render_diagram_items_svg(&diagram.shapes, &diagram.connections, &shape_map, &mut svg);
+    if let Some(fit) = graph_fit {
+        write!(
+            svg,
+            "<g transform=\"translate({},{}) scale({})\">",
+            fit.translate_x, fit.translate_y, fit.scale
+        )
+        .unwrap();
+        render_diagram_items_svg(&diagram.shapes, &diagram.connections, &shape_map, &mut svg);
+        svg.push_str("</g>");
+    } else {
+        render_diagram_items_svg(&diagram.shapes, &diagram.connections, &shape_map, &mut svg);
+    }
 
     svg.push_str("</svg>");
 
@@ -475,6 +486,48 @@ pub fn render_diagram_svg(diagram: &mut Diagram) -> String {
 
     svg.push_str("</div>");
     svg
+}
+
+#[derive(Debug, Clone, Copy)]
+struct GraphRenderFit {
+    translate_x: f64,
+    translate_y: f64,
+    scale: f64,
+}
+
+fn graph_render_fit(
+    shapes: &[ShapeNode],
+    available: &Bounds,
+    align: Alignment,
+) -> Option<GraphRenderFit> {
+    if !is_graph_alignment(align) || available.width <= 0.0 || available.height <= 0.0 {
+        return None;
+    }
+
+    let bounds = children_bounds(shapes)?;
+    if bounds.width <= 0.0 || bounds.height <= 0.0 {
+        return None;
+    }
+
+    let scale = (available.width / bounds.width)
+        .min(available.height / bounds.height)
+        .min(1.0);
+    let fitted_width = bounds.width * scale;
+    let fitted_height = bounds.height * scale;
+    let target_x = available.x + (available.width - fitted_width).max(0.0) / 2.0;
+    let target_y = available.y + (available.height - fitted_height).max(0.0) / 2.0;
+    let translate_x = target_x - bounds.x * scale;
+    let translate_y = target_y - bounds.y * scale;
+
+    if scale >= 1.0 && nearly_eq(translate_x, 0.0) && nearly_eq(translate_y, 0.0) {
+        return None;
+    }
+
+    Some(GraphRenderFit {
+        translate_x,
+        translate_y,
+        scale,
+    })
 }
 
 fn apply_diagram_classes(diagram: &mut Diagram) {
@@ -1004,14 +1057,6 @@ fn resolve_children(
     for child in children.iter_mut() {
         resolve_nested_container(child, connections, scope_path);
     }
-
-    if scope_path.is_empty()
-        && align == Alignment::Layered
-        && option_enabled(options, "_wdoc_scale_to_fit")
-    {
-        crate::graph_layout::scale_children_to_parent(children, parent);
-        crate::graph_layout::fit_children_to_parent(children, parent);
-    }
 }
 
 fn prelayout_nested_graph_containers(
@@ -1060,6 +1105,7 @@ fn resolve_nested_container(
     {
         return;
     }
+    resolve_container_layout_decorations(child);
     let insets = child_content_insets(child);
     let mut inner = if child.kind == ShapeKind::Map {
         Bounds {
@@ -1077,10 +1123,7 @@ fn resolve_nested_container(
         }
     };
     let child_scope_path = scoped_child_path(scope_path, child.id.as_deref());
-    let mut options = child.attrs.clone();
-    if has_explicit_width(child) && has_explicit_height(child) {
-        options.insert("_wdoc_scale_to_fit".to_string(), "true".to_string());
-    }
+    let options = child.attrs.clone();
     resolve_children(
         &mut child.children,
         connections,
@@ -1106,8 +1149,28 @@ fn resolve_nested_container(
             inner.height = (child.resolved.height - insets.top - insets.bottom).max(0.0);
         }
     }
-    if has_explicit_width(child) && has_explicit_height(child) {
+    if has_explicit_width(child) && has_explicit_height(child) && !is_graph_alignment(child.align) {
         clamp_children_to_parent(&mut child.children, &inner);
+    }
+}
+
+fn resolve_container_layout_decorations(node: &mut ShapeNode) {
+    if node.children.is_empty() || !node.children.iter().any(is_layout_decoration) {
+        return;
+    }
+
+    let parent = decoration_parent_bounds(&Bounds {
+        x: 0.0,
+        y: 0.0,
+        width: node.resolved.width,
+        height: node.resolved.height,
+    });
+    for child in node
+        .children
+        .iter_mut()
+        .filter(|child| is_layout_decoration(child))
+    {
+        resolve_bounds(child, &parent);
     }
 }
 
@@ -1124,10 +1187,6 @@ fn is_graph_alignment(align: Alignment) -> bool {
         align,
         Alignment::Grid | Alignment::Layered | Alignment::Force | Alignment::Radial
     )
-}
-
-fn option_enabled(options: &IndexMap<String, String>, key: &str) -> bool {
-    options.get(key).map(|s| s == "true").unwrap_or(false)
 }
 
 fn bool_attr(attrs: &IndexMap<String, String>, key: &str) -> bool {
@@ -8585,14 +8644,17 @@ mod tests {
             options: IndexMap::new(),
         };
 
-        render_diagram_svg(&mut diagram);
+        let svg = render_diagram_svg(&mut diagram);
 
         for child in &diagram.shapes {
             assert!(child.resolved.x >= 30.0);
             assert!(child.resolved.y >= 30.0);
-            assert!(child.resolved.x + child.resolved.width <= 210.0);
-            assert!(child.resolved.y + child.resolved.height <= 150.0);
+            assert_eq!(child.resolved.width, 100.0);
+            assert_eq!(child.resolved.height, 60.0);
         }
+        assert!(diagram.shapes[1].resolved.y + diagram.shapes[1].resolved.height > 150.0);
+        assert!(svg.contains("<g transform=\"translate("));
+        assert!(svg.contains(" scale(0.6)"));
     }
 
     #[test]
@@ -8744,7 +8806,7 @@ mod tests {
     }
 
     #[test]
-    fn fixed_nested_layered_layout_scales_wide_rank_to_boundary() {
+    fn fixed_nested_layered_layout_expands_to_natural_wide_rank() {
         let mut boundary = shape("boundary", 120.0, 80.0);
         boundary.x = Some(20.0);
         boundary.y = Some(20.0);
@@ -8778,9 +8840,10 @@ mod tests {
 
         let boundary = &diagram.shapes[0];
         let children = &boundary.children;
-        assert_eq!(boundary.resolved.height, 80.0);
-        assert!(children[0].resolved.width < 80.0);
-        assert!(children[1].resolved.width < 80.0);
+        assert!(boundary.resolved.width >= 280.0);
+        assert!(boundary.resolved.height >= 100.0);
+        assert_eq!(children[0].resolved.width, 80.0);
+        assert_eq!(children[1].resolved.width, 80.0);
         assert!(!overlaps(&children[0], &children[1]));
         assert!(!overlaps(&children[1], &children[2]));
         for child in children {
@@ -8944,7 +9007,7 @@ mod tests {
     }
 
     #[test]
-    fn top_level_scale_to_fit_runs_after_nested_autosize() {
+    fn top_level_render_fit_runs_after_nested_autosize() {
         let mut boundary = shape("boundary", 0.0, 0.0);
         boundary.width = None;
         boundary.height = None;
@@ -8975,14 +9038,15 @@ mod tests {
             options: IndexMap::new(),
         };
 
-        render_diagram_svg(&mut diagram);
+        let svg = render_diagram_svg(&mut diagram);
 
         let boundary = &diagram.shapes[0];
         assert!(boundary.resolved.x >= 0.0);
         assert!(boundary.resolved.y >= 0.0);
-        assert!(boundary.resolved.x + boundary.resolved.width <= diagram.width);
-        assert!(boundary.resolved.y + boundary.resolved.height <= diagram.height);
-        assert!(boundary.resolved.width < 270.0);
+        assert!(boundary.resolved.x + boundary.resolved.width > diagram.width);
+        assert_eq!(boundary.resolved.width, 310.0);
+        assert!(svg.contains("<g transform=\"translate("));
+        assert!(svg.contains(" scale("));
     }
 
     #[test]

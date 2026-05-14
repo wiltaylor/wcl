@@ -7,7 +7,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use indexmap::IndexMap;
 
-use crate::shapes::{Bounds, Connection, ShapeKind, ShapeNode};
+use crate::shapes::{Bounds, Connection, ShapeNode};
 
 // ---------------------------------------------------------------------------
 // Layered (Sugiyama-style) — directed graphs, flowcharts, pipelines
@@ -71,19 +71,10 @@ pub fn layout_layered(
         &isolated,
     );
 
-    let scale_to_fit = options
-        .get("_wdoc_scale_to_fit")
-        .map(|s| s == "true")
-        .unwrap_or(false);
-
     if horizontal {
-        layout_layered_horizontal(children, &layers, parent, gap, scale_to_fit);
+        layout_layered_horizontal(children, &layers, parent, gap);
     } else {
-        layout_layered_vertical(children, &layers, parent, gap, scale_to_fit);
-    }
-    if scale_to_fit {
-        scale_children_to_parent(children, parent);
-        fit_children_to_parent(children, parent);
+        layout_layered_vertical(children, &layers, parent, gap);
     }
 }
 
@@ -126,8 +117,8 @@ pub fn layout_force(
     for attempt in 0..5 {
         let mut candidate_children = original_children.clone();
 
-        // Solve in a virtual workspace first; the final result is scaled into
-        // the requested diagram bounds after nodes and direct edges are clear.
+        // Solve in a virtual workspace first; the final render pass scales the
+        // resolved graph bounds into the requested diagram bounds.
         let workspace = force_workspace(&candidate_children, parent, gap, attempt);
         let cx = workspace.x + workspace.width / 2.0;
         let cy = workspace.y + workspace.height / 2.0;
@@ -198,37 +189,15 @@ pub fn layout_force(
             resolve_force_collisions(&mut pos, &candidate_children, gap, 1);
         }
 
-        // Scale and center the resolved node boxes to fit parent bounds.
         let box_bounds = center_box_bounds(&pos, &candidate_children);
-        let scale_x = if box_bounds.width > parent.width && box_bounds.width > 0.0 {
-            parent.width / box_bounds.width
-        } else {
-            1.0
-        };
-        let scale_y = if box_bounds.height > parent.height && box_bounds.height > 0.0 {
-            parent.height / box_bounds.height
-        } else {
-            1.0
-        };
-        let node_scale = scale_x.min(scale_y).min(1.0);
-        if node_scale < 1.0 {
-            for child in candidate_children.iter_mut() {
-                scale_node_resolved_size_and_visual_children(child, node_scale);
-            }
-        }
-
-        let scaled_width = box_bounds.width * node_scale;
-        let scaled_height = box_bounds.height * node_scale;
-        let offset_x =
-            parent.x + (parent.width - scaled_width).max(0.0) / 2.0 - box_bounds.x * node_scale;
-        let offset_y =
-            parent.y + (parent.height - scaled_height).max(0.0) / 2.0 - box_bounds.y * node_scale;
+        let offset_x = parent.x + (parent.width - box_bounds.width).max(0.0) / 2.0 - box_bounds.x;
+        let offset_y = parent.y + (parent.height - box_bounds.height).max(0.0) / 2.0 - box_bounds.y;
 
         for i in 0..n {
             let w = candidate_children[i].resolved.width;
             let h = candidate_children[i].resolved.height;
-            candidate_children[i].resolved.x = pos[i].0 * node_scale + offset_x - w / 2.0;
-            candidate_children[i].resolved.y = pos[i].1 * node_scale + offset_y - h / 2.0;
+            candidate_children[i].resolved.x = pos[i].0 + offset_x - w / 2.0;
+            candidate_children[i].resolved.y = pos[i].1 + offset_y - h / 2.0;
         }
 
         if attempt == 4 || force_layout_is_clear(&candidate_children, &edges) {
@@ -355,8 +324,6 @@ pub fn layout_radial(
             }
         }
     }
-
-    fit_children_to_parent(children, parent);
 }
 
 // ---------------------------------------------------------------------------
@@ -408,8 +375,6 @@ pub fn layout_grid(
         child.resolved.x = offset_x + col as f64 * cell_w + (max_w - child.resolved.width) / 2.0;
         child.resolved.y = offset_y + row as f64 * cell_h + (max_h - child.resolved.height) / 2.0;
     }
-
-    fit_children_to_parent(children, parent);
 }
 
 // ---------------------------------------------------------------------------
@@ -669,21 +634,15 @@ fn layout_layered_vertical(
     layers: &[Vec<usize>],
     parent: &Bounds,
     gap: f64,
-    scale_to_fit: bool,
 ) {
     let layer_rows: Vec<Vec<WrappedLine>> = layers
         .iter()
-        .map(|layer_nodes| wrap_layer_rows(children, layer_nodes, parent.width, gap))
+        .map(|layer_nodes| layer_row(children, layer_nodes))
         .collect();
     let layer_heights: Vec<f64> = layer_rows
         .iter()
         .map(|rows| layer_group_cross_size(rows, gap))
         .collect();
-    let layer_gap = if scale_to_fit {
-        gap
-    } else {
-        fit_gap(parent.height, &layer_heights, gap)
-    };
 
     let mut y = parent.y;
     for (layer_idx, rows) in layer_rows.into_iter().enumerate() {
@@ -706,7 +665,7 @@ fn layout_layered_vertical(
         }
         y -= gap;
         if layer_idx + 1 < layer_heights.len() {
-            y += layer_gap;
+            y += gap;
         }
     }
 }
@@ -716,21 +675,15 @@ fn layout_layered_horizontal(
     layers: &[Vec<usize>],
     parent: &Bounds,
     gap: f64,
-    scale_to_fit: bool,
 ) {
     let layer_columns: Vec<Vec<WrappedLine>> = layers
         .iter()
-        .map(|layer_nodes| wrap_layer_columns(children, layer_nodes, parent.height, gap))
+        .map(|layer_nodes| layer_column(children, layer_nodes))
         .collect();
     let layer_widths: Vec<f64> = layer_columns
         .iter()
         .map(|columns| layer_group_cross_size(columns, gap))
         .collect();
-    let layer_gap = if scale_to_fit {
-        gap
-    } else {
-        fit_gap(parent.width, &layer_widths, gap)
-    };
 
     let mut x = parent.x;
     for (layer_idx, columns) in layer_columns.into_iter().enumerate() {
@@ -753,7 +706,7 @@ fn layout_layered_horizontal(
         }
         x -= gap;
         if layer_idx + 1 < layer_widths.len() {
-            x += layer_gap;
+            x += gap;
         }
     }
 }
@@ -764,90 +717,32 @@ fn layer_group_cross_size(lines: &[WrappedLine], gap: f64) -> f64 {
     line_sizes + gaps
 }
 
-fn fit_gap(available: f64, group_sizes: &[f64], requested_gap: f64) -> f64 {
-    if group_sizes.len() <= 1 {
-        return 0.0;
-    }
-    let total_groups: f64 = group_sizes.iter().sum();
-    let max_gap =
-        ((available - total_groups) / group_sizes.len().saturating_sub(1) as f64).max(0.0);
-    requested_gap.min(max_gap)
-}
-
-fn wrap_layer_rows(
-    children: &[ShapeNode],
-    layer_nodes: &[usize],
-    available_width: f64,
-    gap: f64,
-) -> Vec<WrappedLine> {
-    wrap_layer(layer_nodes, gap, available_width, |node_idx| {
-        (
-            children[node_idx].resolved.width,
-            children[node_idx].resolved.height,
-        )
-    })
-}
-
-fn wrap_layer_columns(
-    children: &[ShapeNode],
-    layer_nodes: &[usize],
-    available_height: f64,
-    gap: f64,
-) -> Vec<WrappedLine> {
-    wrap_layer(layer_nodes, gap, available_height, |node_idx| {
-        (
-            children[node_idx].resolved.height,
-            children[node_idx].resolved.width,
-        )
-    })
-}
-
-fn wrap_layer<F>(
-    layer_nodes: &[usize],
-    gap: f64,
-    available_main: f64,
-    size_of: F,
-) -> Vec<WrappedLine>
-where
-    F: Fn(usize) -> (f64, f64),
-{
-    let mut lines = Vec::new();
-    let mut current = WrappedLine {
-        nodes: Vec::new(),
+fn layer_row(children: &[ShapeNode], layer_nodes: &[usize]) -> Vec<WrappedLine> {
+    let mut line = WrappedLine {
+        nodes: Vec::with_capacity(layer_nodes.len()),
         main_size: 0.0,
         cross_size: 0.0,
     };
-
     for &node_idx in layer_nodes {
-        let (node_main, node_cross) = size_of(node_idx);
-        let next_main = if current.nodes.is_empty() {
-            node_main
-        } else {
-            current.main_size + gap + node_main
-        };
-
-        if !current.nodes.is_empty() && next_main > available_main {
-            lines.push(current);
-            current = WrappedLine {
-                nodes: Vec::new(),
-                main_size: 0.0,
-                cross_size: 0.0,
-            };
-        }
-
-        if !current.nodes.is_empty() {
-            current.main_size += gap;
-        }
-        current.nodes.push(node_idx);
-        current.main_size += node_main;
-        current.cross_size = current.cross_size.max(node_cross);
+        line.nodes.push(node_idx);
+        line.main_size += children[node_idx].resolved.width;
+        line.cross_size = line.cross_size.max(children[node_idx].resolved.height);
     }
+    vec![line]
+}
 
-    if !current.nodes.is_empty() {
-        lines.push(current);
+fn layer_column(children: &[ShapeNode], layer_nodes: &[usize]) -> Vec<WrappedLine> {
+    let mut line = WrappedLine {
+        nodes: Vec::with_capacity(layer_nodes.len()),
+        main_size: 0.0,
+        cross_size: 0.0,
+    };
+    for &node_idx in layer_nodes {
+        line.nodes.push(node_idx);
+        line.main_size += children[node_idx].resolved.height;
+        line.cross_size = line.cross_size.max(children[node_idx].resolved.width);
     }
-
-    lines
+    vec![line]
 }
 
 fn center_box_bounds(positions: &[(f64, f64)], children: &[ShapeNode]) -> Bounds {
@@ -1131,248 +1026,12 @@ fn direction(a: (f64, f64), b: (f64, f64), c: (f64, f64)) -> f64 {
     (c.0 - a.0) * (b.1 - a.1) - (c.1 - a.1) * (b.0 - a.0)
 }
 
-pub(crate) fn fit_children_to_parent(children: &mut [ShapeNode], parent: &Bounds) {
-    if children.is_empty() {
-        return;
-    }
-
-    let Some(bounds) = children_bounds(children) else {
-        return;
-    };
-
-    let dx = if bounds.x < parent.x {
-        parent.x - bounds.x
-    } else if bounds.x + bounds.width > parent.x + parent.width {
-        parent.x + parent.width - bounds.width - bounds.x
-    } else {
-        0.0
-    };
-    let dy = if bounds.y < parent.y {
-        parent.y - bounds.y
-    } else if bounds.y + bounds.height > parent.y + parent.height {
-        parent.y + parent.height - bounds.height - bounds.y
-    } else {
-        0.0
-    };
-
-    for child in children.iter_mut() {
-        child.resolved.x += dx;
-        child.resolved.y += dy;
-        clamp_child_to_parent(child, parent);
-    }
-}
-
-pub(crate) fn scale_children_to_parent(children: &mut [ShapeNode], parent: &Bounds) {
-    if children.is_empty() || parent.width <= 0.0 || parent.height <= 0.0 {
-        return;
-    }
-
-    let Some(bounds) = children_bounds(children) else {
-        return;
-    };
-    if bounds.width <= parent.width && bounds.height <= parent.height {
-        return;
-    }
-
-    let scale_x = if bounds.width > 0.0 {
-        parent.width / bounds.width
-    } else {
-        1.0
-    };
-    let scale_y = if bounds.height > 0.0 {
-        parent.height / bounds.height
-    } else {
-        1.0
-    };
-    let scale = scale_x.min(scale_y).min(1.0);
-    if scale >= 1.0 {
-        return;
-    }
-
-    let scaled_width = bounds.width * scale;
-    let scaled_height = bounds.height * scale;
-    let target_x = parent.x + (parent.width - scaled_width) / 2.0;
-    let target_y = parent.y + (parent.height - scaled_height) / 2.0;
-
-    for child in children.iter_mut() {
-        child.resolved.x = target_x + (child.resolved.x - bounds.x) * scale;
-        child.resolved.y = target_y + (child.resolved.y - bounds.y) * scale;
-        scale_node_size_and_local_children(child, scale);
-    }
-}
-
-fn scale_node_size_and_local_children(node: &mut ShapeNode, scale: f64) {
-    node.resolved.width *= scale;
-    node.resolved.height *= scale;
-    node.width = node.width.map(|width| width * scale);
-    node.height = node.height.map(|height| height * scale);
-    scale_numeric_attr(&mut node.attrs, "width", scale);
-    scale_numeric_attr(&mut node.attrs, "height", scale);
-    scale_numeric_attr(&mut node.attrs, "max_width", scale);
-    scale_numeric_attr(&mut node.attrs, "font_size", scale);
-    scale_numeric_attr(&mut node.attrs, "letter_spacing", scale);
-    scale_numeric_attr(&mut node.attrs, "stroke_width", scale);
-    scale_numeric_attr(&mut node.attrs, "rx", scale);
-    scale_numeric_attr(&mut node.attrs, "ry", scale);
-    if node.kind == ShapeKind::Path {
-        scale_path_data_attr(&mut node.attrs, scale);
-    }
-
-    for child in &mut node.children {
-        child.resolved.x *= scale;
-        child.resolved.y *= scale;
-        scale_node_size_and_local_children(child, scale);
-    }
-}
-
-fn scale_node_resolved_size_and_visual_children(node: &mut ShapeNode, scale: f64) {
-    node.resolved.width *= scale;
-    node.resolved.height *= scale;
-    scale_numeric_attr(&mut node.attrs, "font_size", scale);
-    scale_numeric_attr(&mut node.attrs, "letter_spacing", scale);
-    scale_numeric_attr(&mut node.attrs, "stroke_width", scale);
-    scale_numeric_attr(&mut node.attrs, "rx", scale);
-    scale_numeric_attr(&mut node.attrs, "ry", scale);
-    if node.kind == ShapeKind::Path {
-        scale_path_data_attr(&mut node.attrs, scale);
-    }
-
-    for child in &mut node.children {
-        child.resolved.x *= scale;
-        child.resolved.y *= scale;
-        scale_node_resolved_size_and_visual_children(child, scale);
-    }
-}
-
-fn scale_numeric_attr(attrs: &mut IndexMap<String, String>, key: &str, scale: f64) {
-    let Some(value) = attrs.get(key).and_then(|s| s.parse::<f64>().ok()) else {
-        return;
-    };
-    attrs.insert(key.to_string(), format_number(value * scale));
-}
-
-fn scale_path_data_attr(attrs: &mut IndexMap<String, String>, scale: f64) {
-    let Some(d) = attrs.get("d").cloned() else {
-        return;
-    };
-    attrs.insert("d".to_string(), scale_path_data(&d, scale));
-}
-
-fn scale_path_data(d: &str, scale: f64) -> String {
-    let mut out = String::with_capacity(d.len());
-    let mut command = '\0';
-    let mut param_index = 0usize;
-    let mut chars = d.char_indices().peekable();
-
-    while let Some((start, ch)) = chars.next() {
-        if ch.is_ascii_alphabetic() {
-            command = ch;
-            param_index = 0;
-            out.push(ch);
-            continue;
-        }
-
-        if is_path_number_start(ch, chars.peek().map(|(_, next)| *next)) {
-            let mut end = start + ch.len_utf8();
-            while let Some(&(next_idx, next_ch)) = chars.peek() {
-                if is_path_number_continue(next_ch) {
-                    chars.next();
-                    end = next_idx + next_ch.len_utf8();
-                } else {
-                    break;
-                }
-            }
-            let token = &d[start..end];
-            if let Ok(value) = token.parse::<f64>() {
-                let scaled = if should_scale_path_param(command, param_index) {
-                    value * scale
-                } else {
-                    value
-                };
-                out.push_str(&format_number(scaled));
-                param_index += 1;
-                continue;
-            }
-            out.push_str(token);
-            continue;
-        }
-
-        out.push(ch);
-    }
-
-    out
-}
-
-fn is_path_number_start(ch: char, next: Option<char>) -> bool {
-    ch.is_ascii_digit()
-        || ch == '.'
-        || ((ch == '-' || ch == '+') && next.is_some_and(|c| c.is_ascii_digit() || c == '.'))
-}
-
-fn is_path_number_continue(ch: char) -> bool {
-    ch.is_ascii_digit() || ch == '.' || ch == '-' || ch == '+' || ch == 'e' || ch == 'E'
-}
-
-fn should_scale_path_param(command: char, param_index: usize) -> bool {
-    match command.to_ascii_uppercase() {
-        'H' | 'V' => true,
-        'A' => matches!(param_index % 7, 0 | 1 | 5 | 6),
-        'Z' => false,
-        _ => true,
-    }
-}
-
+#[cfg(test)]
 fn format_number(value: f64) -> String {
     if (value.fract()).abs() < 1e-9 {
         (value as i64).to_string()
     } else {
         value.to_string()
-    }
-}
-
-fn children_bounds(children: &[ShapeNode]) -> Option<Bounds> {
-    let mut min_x = f64::MAX;
-    let mut min_y = f64::MAX;
-    let mut max_x = f64::MIN;
-    let mut max_y = f64::MIN;
-    let mut found = false;
-
-    for child in children {
-        found = true;
-        min_x = min_x.min(child.resolved.x);
-        min_y = min_y.min(child.resolved.y);
-        max_x = max_x.max(child.resolved.x + child.resolved.width);
-        max_y = max_y.max(child.resolved.y + child.resolved.height);
-    }
-
-    found.then_some(Bounds {
-        x: min_x,
-        y: min_y,
-        width: (max_x - min_x).max(0.0),
-        height: (max_y - min_y).max(0.0),
-    })
-}
-
-fn clamp_child_to_parent(child: &mut ShapeNode, parent: &Bounds) {
-    child.resolved.x = clamp_origin(
-        child.resolved.x,
-        child.resolved.width,
-        parent.x,
-        parent.width,
-    );
-    child.resolved.y = clamp_origin(
-        child.resolved.y,
-        child.resolved.height,
-        parent.y,
-        parent.height,
-    );
-}
-
-fn clamp_origin(origin: f64, size: f64, parent_origin: f64, parent_size: f64) -> f64 {
-    if size >= parent_size {
-        parent_origin
-    } else {
-        origin.clamp(parent_origin, parent_origin + parent_size - size)
     }
 }
 
@@ -1461,7 +1120,7 @@ mod tests {
     }
 
     #[test]
-    fn test_layered_keeps_node_bounds_inside_parent() {
+    fn test_layered_uses_natural_bounds_even_when_parent_is_smaller() {
         let mut nodes = vec![
             make_node("a", 80.0, 40.0),
             make_node("b", 80.0, 40.0),
@@ -1474,21 +1133,19 @@ mod tests {
             width: 160.0,
             height: 120.0,
         };
-        let opts = [("_wdoc_scale_to_fit".to_string(), "true".to_string())]
-            .into_iter()
-            .collect();
-        layout_layered(&mut nodes, &conns, &parent, 40.0, &opts);
+        layout_layered(&mut nodes, &conns, &parent, 40.0, &IndexMap::new());
 
-        for node in nodes {
+        for node in &nodes {
+            assert_eq!(node.resolved.width, 80.0);
+            assert_eq!(node.resolved.height, 40.0);
             assert!(node.resolved.x >= parent.x);
             assert!(node.resolved.y >= parent.y);
-            assert!(node.resolved.x + node.resolved.width <= parent.x + parent.width);
-            assert!(node.resolved.y + node.resolved.height <= parent.y + parent.height);
         }
+        assert!(nodes[2].resolved.y + nodes[2].resolved.height > parent.y + parent.height);
     }
 
     #[test]
-    fn test_layered_scales_oversized_graph_to_parent() {
+    fn test_layered_does_not_scale_oversized_graph_to_parent() {
         let mut nodes = vec![
             make_node("a", 120.0, 60.0),
             make_node("b", 120.0, 60.0),
@@ -1525,33 +1182,28 @@ mod tests {
             width: 180.0,
             height: 180.0,
         };
-        let opts = [("_wdoc_scale_to_fit".to_string(), "true".to_string())]
-            .into_iter()
-            .collect();
-        layout_layered(&mut nodes, &conns, &parent, 48.0, &opts);
+        layout_layered(&mut nodes, &conns, &parent, 48.0, &IndexMap::new());
 
         for node in &nodes {
-            assert!(node.resolved.x >= parent.x);
-            assert!(node.resolved.y >= parent.y);
-            assert!(node.resolved.x + node.resolved.width <= parent.x + parent.width);
-            assert!(node.resolved.y + node.resolved.height <= parent.y + parent.height);
+            assert_eq!(node.resolved.width, 120.0);
+            assert_eq!(node.resolved.height, 60.0);
         }
-        assert!(nodes[0].resolved.width < 120.0);
-        assert!(nodes[0].width.unwrap() < 120.0);
-        assert!(nodes[0].height.unwrap() < 60.0);
-        assert!(nodes[0].attrs["width"].parse::<f64>().unwrap() < 120.0);
-        assert!(nodes[0].attrs["height"].parse::<f64>().unwrap() < 60.0);
-        assert!(nodes[0].attrs["max_width"].parse::<f64>().unwrap() < 160.0);
-        assert!(nodes[0].attrs["font_size"].parse::<f64>().unwrap() < 20.0);
-        assert!(nodes[0].children[0].resolved.width < 100.0);
-        assert_ne!(
+        assert_eq!(nodes[0].width, Some(120.0));
+        assert_eq!(nodes[0].height, Some(60.0));
+        assert_eq!(nodes[0].attrs["width"], "120");
+        assert_eq!(nodes[0].attrs["height"], "60");
+        assert_eq!(nodes[0].attrs["max_width"], "160");
+        assert_eq!(nodes[0].attrs["font_size"], "20");
+        assert_eq!(nodes[0].children[0].resolved.width, 100.0);
+        assert_eq!(
             nodes[0].children[1].attrs["d"],
             "M 50 0 L 100 30 L 50 60 L 0 30 Z"
         );
+        assert!(nodes[3].resolved.y + nodes[3].resolved.height > parent.y + parent.height);
     }
 
     #[test]
-    fn test_layered_scale_to_fit_preserves_layer_gap_before_scaling() {
+    fn test_layered_preserves_requested_gap_without_post_scaling() {
         let mut nodes = vec![
             make_node("a", 120.0, 50.0),
             make_node("b", 120.0, 50.0),
@@ -1573,17 +1225,17 @@ mod tests {
         layout_layered(&mut nodes, &conns, &parent, 60.0, &opts);
 
         for node in &nodes {
-            assert!(node.resolved.x >= parent.x);
-            assert!(node.resolved.x + node.resolved.width <= parent.x + parent.width);
+            assert_eq!(node.resolved.width, 120.0);
         }
         let first_gap = nodes[1].resolved.x - (nodes[0].resolved.x + nodes[0].resolved.width);
         let second_gap = nodes[2].resolved.x - (nodes[1].resolved.x + nodes[1].resolved.width);
-        assert!(first_gap > 10.0, "first gap was {first_gap}");
-        assert!(second_gap > 10.0, "second gap was {second_gap}");
+        assert_eq!(first_gap, 60.0);
+        assert_eq!(second_gap, 60.0);
+        assert!(nodes[2].resolved.x + nodes[2].resolved.width > parent.x + parent.width);
     }
 
     #[test]
-    fn test_layered_wraps_wide_rank_without_overlap() {
+    fn test_layered_keeps_wide_rank_on_one_natural_row() {
         let mut nodes = vec![
             make_node("a", 80.0, 40.0),
             make_node("b", 80.0, 40.0),
@@ -1601,7 +1253,9 @@ mod tests {
         assert_eq!(nodes[0].resolved.width, 80.0);
         assert_eq!(nodes[1].resolved.width, 80.0);
         assert!(!overlaps(&nodes[0], &nodes[1]));
-        assert!(nodes[0].resolved.y < nodes[1].resolved.y);
+        assert_eq!(nodes[0].resolved.y, nodes[1].resolved.y);
+        assert!(nodes[0].resolved.x < nodes[1].resolved.x);
+        assert!(nodes[1].resolved.x + nodes[1].resolved.width > parent.x + parent.width);
     }
 
     #[test]
@@ -1645,7 +1299,7 @@ mod tests {
     }
 
     #[test]
-    fn test_layered_horizontal_wraps_tall_rank_without_overlap() {
+    fn test_layered_horizontal_keeps_tall_rank_on_one_natural_column() {
         let mut nodes = vec![
             make_node("a", 40.0, 80.0),
             make_node("b", 40.0, 80.0),
@@ -1666,7 +1320,9 @@ mod tests {
         assert_eq!(nodes[0].resolved.height, 80.0);
         assert_eq!(nodes[1].resolved.height, 80.0);
         assert!(!overlaps(&nodes[0], &nodes[1]));
-        assert!(nodes[0].resolved.x < nodes[1].resolved.x);
+        assert_eq!(nodes[0].resolved.x, nodes[1].resolved.x);
+        assert!(nodes[0].resolved.y < nodes[1].resolved.y);
+        assert!(nodes[1].resolved.y + nodes[1].resolved.height > parent.y + parent.height);
     }
 
     #[test]
@@ -1717,7 +1373,7 @@ mod tests {
     }
 
     #[test]
-    fn test_force_scales_long_nodes_when_parent_is_too_small() {
+    fn test_force_keeps_long_node_sizes_when_parent_is_too_small() {
         let mut nodes = vec![make_node("a", 180.0, 50.0), make_node("b", 180.0, 50.0)];
         for node in &mut nodes {
             node.attrs.insert("width".to_string(), "180".to_string());
@@ -1732,8 +1388,8 @@ mod tests {
         };
         layout_force(&mut nodes, &conns, &parent, 20.0, &IndexMap::new());
 
-        assert!(nodes[0].resolved.width < 180.0);
-        assert!(nodes[1].resolved.width < 180.0);
+        assert_eq!(nodes[0].resolved.width, 180.0);
+        assert_eq!(nodes[1].resolved.width, 180.0);
         assert_eq!(nodes[0].width, Some(180.0));
         assert_eq!(nodes[0].height, Some(50.0));
         assert_eq!(nodes[0].attrs["width"], "180");
@@ -1743,12 +1399,9 @@ mod tests {
         assert_eq!(nodes[1].attrs["width"], "180");
         assert_eq!(nodes[1].attrs["height"], "50");
         assert!(!overlaps(&nodes[0], &nodes[1]));
-        for node in &nodes {
-            assert!(node.resolved.x >= parent.x);
-            assert!(node.resolved.y >= parent.y);
-            assert!(node.resolved.x + node.resolved.width <= parent.x + parent.width);
-            assert!(node.resolved.y + node.resolved.height <= parent.y + parent.height);
-        }
+        assert!(nodes
+            .iter()
+            .any(|node| node.resolved.x + node.resolved.width > parent.x + parent.width));
     }
 
     #[test]
@@ -1872,7 +1525,7 @@ mod tests {
     }
 
     #[test]
-    fn test_grid_clamps_oversized_grid_inside_parent() {
+    fn test_grid_uses_natural_bounds_when_grid_exceeds_parent() {
         let mut nodes = vec![make_node("a", 80.0, 40.0), make_node("b", 80.0, 40.0)];
         let parent = Bounds {
             x: 10.0,
@@ -1884,11 +1537,9 @@ mod tests {
         opts.insert("columns".to_string(), "2".to_string());
         layout_grid(&mut nodes, &[], &parent, 40.0, &opts);
 
-        for node in nodes {
-            assert!(node.resolved.x >= parent.x);
-            assert!(node.resolved.y >= parent.y);
-            assert!(node.resolved.x + node.resolved.width <= parent.x + parent.width);
-            assert!(node.resolved.y + node.resolved.height <= parent.y + parent.height);
-        }
+        assert_eq!(nodes[0].resolved.width, 80.0);
+        assert_eq!(nodes[1].resolved.width, 80.0);
+        assert!(!overlaps(&nodes[0], &nodes[1]));
+        assert!(nodes[1].resolved.x + nodes[1].resolved.width > parent.x + parent.width);
     }
 }
