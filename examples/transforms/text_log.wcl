@@ -1,7 +1,7 @@
-// Text codec example: parse tab-separated log entries.
+// CSV codec example: parse tab-separated log entries.
 
 transform tsv-to-json {
-    input      = "codec::text"
+    input      = "codec::csv"
     output     = "codec::json"
     separator  = "\t"
     has_header = true
@@ -13,11 +13,11 @@ transform tsv-to-json {
     }
 }
 
-// Parse space-separated data without headers
-transform space-log {
-    input      = "codec::text"
+// Parse comma-separated data without headers
+transform csv-log {
+    input      = "codec::csv"
     output     = "codec::json"
-    separator  = " "
+    separator  = ","
     has_header = false
 
     map {

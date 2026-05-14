@@ -7,7 +7,9 @@
 use crate::eval::evaluator::Evaluator;
 use crate::eval::functions::BuiltinFn;
 use crate::eval::scope::{ScopeEntry, ScopeEntryKind, ScopeKind};
-use crate::eval::value::{BlockRef, FunctionBody, FunctionValue, LambdaAttrs, Value};
+use crate::eval::value::{
+    BlockRef, FunctionBody, FunctionValue, LambdaAttrs, NativeStreamState, NativeStreamValue, Value,
+};
 use crate::lang::ast::{BodyItem, DocItem, InlineId};
 use crate::lang::span::Span;
 use crate::schema::struct_registry::StructRegistry;
@@ -229,11 +231,9 @@ pub fn decode_custom_records_with_options(
     codec: &CustomCodec,
     options: &super::CodecOptions,
 ) -> Result<Vec<Value>, TransformError> {
-    let mut data = Vec::new();
-    reader.read_to_end(&mut data).map_err(TransformError::Io)?;
-
-    let tokens = tokenize(&data, codec)?;
-    parse_records(tokens, codec, options)
+    let decoded =
+        decode_custom_file_with_options(&mut reader, codec, options, &StructRegistry::new())?;
+    materialize_decoded_records(decoded.value)
 }
 
 pub struct DecodedFile {
@@ -305,25 +305,55 @@ pub fn decode_custom_file_with_options(
 ) -> Result<DecodedFile, TransformError> {
     let mut data = Vec::new();
     reader.read_to_end(&mut data).map_err(TransformError::Io)?;
-    let decoder = codec.decoder.as_ref().ok_or_else(|| {
-        TransformError::Codec(format!("codec '{}' missing required 'decoder'", codec.name))
-    })?;
-    let source = Arc::new(Mutex::new(SourceCursor::new(&data)));
-    let (cursor, builtins) =
-        source_cursor_runtime_with_structs(source, codec.mode, Some(struct_registry.clone()));
-    let mut session = CodecEvalSession::new(codec, builtins, 1024);
-    let options = Value::Map(options.clone());
-    let value = match decoder.params.len() {
-        1 => session.call_function(decoder, &[cursor])?,
-        2 => session.call_function(decoder, &[cursor, options])?,
-        n => {
-            return Err(TransformError::Codec(format!(
-                "codec '{}' attribute 'decoder' must accept 1 or 2 arguments, got {}",
-                codec.name, n
-            )))
-        }
+
+    let (value, session) = if let Some(decoder) = codec.decoder.as_ref() {
+        let source = Arc::new(Mutex::new(SourceCursor::new(&data)));
+        let (cursor, builtins) =
+            source_cursor_runtime_with_structs(source, codec.mode, Some(struct_registry.clone()));
+        let mut session = CodecEvalSession::new(codec, builtins, 1024);
+        let options = Value::Map(options.clone());
+        let value = match decoder.params.len() {
+            1 => session.call_function(decoder, &[cursor])?,
+            2 => session.call_function(decoder, &[cursor, options])?,
+            n => {
+                return Err(TransformError::Codec(format!(
+                    "codec '{}' attribute 'decoder' must accept 1 or 2 arguments, got {}",
+                    codec.name, n
+                )))
+            }
+        };
+        (value, session)
+    } else {
+        (
+            parser_record_stream(&data, codec, options)?,
+            CodecEvalSession::new(codec, HashMap::new(), 1024),
+        )
     };
     Ok(DecodedFile { value, session })
+}
+
+fn materialize_decoded_records(value: Value) -> Result<Vec<Value>, TransformError> {
+    match value {
+        Value::List(records) => Ok(records),
+        Value::NativeStream(stream) => {
+            let mut records = Vec::new();
+            loop {
+                let mut state = stream.inner.lock().unwrap();
+                if state.exhausted {
+                    break;
+                }
+                let value = (state.next)().map_err(TransformError::Codec)?;
+                let Some(value) = value else {
+                    state.exhausted = true;
+                    break;
+                };
+                drop(state);
+                records.push(value);
+            }
+            Ok(records)
+        }
+        other => Ok(vec![other]),
+    }
 }
 
 pub fn encode_custom_records(
@@ -636,6 +666,108 @@ fn parse_records(
     }
 
     Ok(records)
+}
+
+fn parser_record_stream(
+    data: &[u8],
+    codec: &CustomCodec,
+    options: &super::CodecOptions,
+) -> Result<Value, TransformError> {
+    let tokens = tokenize(data, codec)?;
+
+    if codec.parser_all.is_some() {
+        let codec = codec.clone();
+        let options = options.clone();
+        let mut records: Option<Vec<Value>> = None;
+        let mut index = 0usize;
+        let mut tokens = Some(tokens);
+        return Ok(native_stream(move || {
+            if records.is_none() {
+                let parsed = parse_records(tokens.take().unwrap_or_default(), &codec, &options)
+                    .map_err(|e| e.to_string())?;
+                records = Some(parsed);
+            }
+            let records = records.as_ref().unwrap();
+            if index >= records.len() {
+                return Ok(None);
+            }
+            let value = records[index].clone();
+            index += 1;
+            Ok(Some(value))
+        }));
+    }
+
+    let parser = codec.parser.clone().ok_or_else(|| {
+        TransformError::Codec(format!(
+            "custom codec '{}' missing required 'parser'",
+            codec.name
+        ))
+    })?;
+    let token_cursor = Arc::new(Mutex::new(TokenCursor::new(tokens)));
+    let (cursor, builtins) = token_cursor_runtime(token_cursor.clone());
+    let options = Value::Map(options.clone());
+    let codec = codec.clone();
+    let mut session = CodecEvalSession::new(&codec, builtins, 1024);
+
+    Ok(native_stream(move || {
+        let before = token_cursor.lock().unwrap().pos;
+        let value = match parser.params.len() {
+            1 => session.call_function(&parser, &[cursor.clone()]),
+            2 => session.call_function(&parser, &[cursor.clone(), options.clone()]),
+            n => Err(TransformError::Codec(format!(
+                "codec '{}' attribute 'parser' must accept 1 or 2 arguments, got {}",
+                codec.name, n
+            ))),
+        }
+        .map_err(|e| e.to_string())?;
+
+        match value {
+            Value::Null => {
+                if !token_cursor.lock().unwrap().eof() {
+                    return Err(format!(
+                        "custom codec '{}' parser returned null before EOF at token {}",
+                        codec.name, before
+                    ));
+                }
+                Ok(None)
+            }
+            Value::Map(map) => {
+                if let Some(message) = codec_error_message(&map) {
+                    return Err(format!(
+                        "custom codec '{}' parser error at token {}: {}",
+                        codec.name, before, message
+                    ));
+                }
+                let after = token_cursor.lock().unwrap().pos;
+                if after == before {
+                    return Err(format!(
+                        "custom codec '{}' parser did not advance at token {}",
+                        codec.name, before
+                    ));
+                }
+                Ok(Some(Value::Map(map)))
+            }
+            other => {
+                let after = token_cursor.lock().unwrap().pos;
+                if after == before {
+                    return Err(format!(
+                        "custom codec '{}' parser did not advance at token {}",
+                        codec.name, before
+                    ));
+                }
+                Ok(Some(other))
+            }
+        }
+    }))
+}
+
+fn native_stream(next: impl FnMut() -> Result<Option<Value>, String> + Send + 'static) -> Value {
+    Value::NativeStream(NativeStreamValue {
+        inner: Arc::new(Mutex::new(NativeStreamState {
+            next: Box::new(next),
+            exhausted: false,
+        })),
+    })
 }
 
 fn call_codec_parser(
@@ -1351,6 +1483,19 @@ mod tests {
         decode_custom_records(input.as_bytes(), codec)
     }
 
+    fn native_stream_next_for_test(stream: &NativeStreamValue) -> Value {
+        let mut state = stream.inner.lock().unwrap();
+        if state.exhausted {
+            return Value::Null;
+        }
+        let value = (state.next)().unwrap();
+        let Some(value) = value else {
+            state.exhausted = true;
+            return Value::Null;
+        };
+        value
+    }
+
     fn test_struct(name: &str, fields: Vec<(&str, TypeExpr)>) -> ResolvedStruct {
         ResolvedStruct {
             name: name.to_string(),
@@ -1484,6 +1629,49 @@ codec chars {
             records,
             vec![Value::String("a".into()), Value::String("b".into())]
         );
+    }
+
+    #[test]
+    fn parser_codec_file_decode_returns_pull_stream() {
+        let source = r#"
+codec chars {
+    mode = :text
+    tokenizer = cursor => cursor.eof() ? null : {
+        let start = cursor.pos()
+        let ch = cursor.take(1)
+        { kind = :char, text = ch, start = start, end = cursor.pos(), value = ch }
+    }
+    parser = tokens => tokens.eof() ? null : {
+        let token = tokens.take(1)
+        token.value
+    }
+    encoder = record => record
+}
+"#;
+
+        let registry = registry_from_source(source, false).unwrap();
+        let codec = registry.get("chars").unwrap();
+        let decoded = decode_custom_file_with_options(
+            "ab".as_bytes(),
+            codec,
+            &IndexMap::new(),
+            &StructRegistry::new(),
+        )
+        .unwrap();
+        let Value::NativeStream(stream) = decoded.value else {
+            panic!("expected parser codec to decode as a stream");
+        };
+
+        assert_eq!(
+            native_stream_next_for_test(&stream),
+            Value::String("a".into())
+        );
+        assert_eq!(
+            native_stream_next_for_test(&stream),
+            Value::String("b".into())
+        );
+        assert_eq!(native_stream_next_for_test(&stream), Value::Null);
+        assert_eq!(native_stream_next_for_test(&stream), Value::Null);
     }
 
     #[test]

@@ -79,142 +79,95 @@ pub fn execute_with_custom(
     };
 
     if let Some(custom) = custom_codecs.get(input_codec) {
-        if custom.decoder.is_some() || file_transform.is_some() {
-            let ctx = context.ok_or_else(|| {
-                TransformError::Other("stream codec decoding requires transform context".into())
-            })?;
-            let mut decoded = codec::custom::decode_custom_file_with_options(
-                input_reader,
-                custom,
-                input_options,
-                ctx.struct_registry,
-            )?;
-            let value = if let Some(run) = file_transform {
-                decoded
-                    .session
-                    .call_function(run, &[decoded.value.clone()])?
-            } else {
-                decoded.value
-            };
-            let written = if let Some(output_custom) = custom_codecs.get(output_codec) {
-                if contains_stream(&value) {
-                    codec::custom::encode_custom_value_with_session(
-                        &mut decoded.session,
-                        &value,
-                        output_custom,
-                        output_options,
-                        output_writer,
-                    )?
-                } else {
-                    codec::custom::encode_custom_value(
-                        &value,
-                        output_custom,
-                        output_options,
-                        output_writer,
-                    )?
+        let empty_struct_registry;
+        let struct_registry = match context {
+            Some(ctx) => ctx.struct_registry,
+            None => {
+                empty_struct_registry = crate::schema::struct_registry::StructRegistry::new();
+                &empty_struct_registry
+            }
+        };
+        let mut decoded = codec::custom::decode_custom_file_with_options(
+            input_reader,
+            custom,
+            input_options,
+            struct_registry,
+        )?;
+        let mut value = if let Some(run) = file_transform {
+            decoded
+                .session
+                .call_function(run, &[decoded.value.clone()])?
+        } else {
+            decoded.value
+        };
+
+        let mut records_read = 1usize;
+        let mut records_filtered = 0usize;
+        if file_transform.is_none() {
+            let records = materialize_records(value)?;
+            records_read = records.len();
+            let mapped = map_records(&records, config)?;
+            records_filtered = records_read.saturating_sub(mapped.len());
+            value = Value::List(mapped);
+        }
+
+        let output_custom = custom_codecs
+            .get(output_codec)
+            .ok_or_else(|| TransformError::UnknownCodec(output_codec.to_string()))?;
+        let written = if contains_stream(&value) {
+            codec::custom::encode_custom_value_with_session(
+                &mut decoded.session,
+                &value,
+                output_custom,
+                output_options,
+                output_writer,
+            )?
+        } else {
+            codec::custom::encode_custom_value(
+                &value,
+                output_custom,
+                output_options,
+                output_writer,
+            )?
+        };
+        return Ok(TransformStats {
+            records_read,
+            records_written: written,
+            records_filtered,
+        });
+    }
+
+    Err(TransformError::UnknownCodec(input_codec.to_string()))
+}
+
+fn materialize_records(value: Value) -> Result<Vec<Value>, TransformError> {
+    match value {
+        Value::List(records) => Ok(records),
+        Value::NativeStream(stream) => {
+            let mut records = Vec::new();
+            loop {
+                let mut state = stream.inner.lock().unwrap();
+                if state.exhausted {
+                    break;
                 }
-            } else {
-                let records = match value {
-                    Value::List(records) => records,
-                    other => vec![other],
+                let value = (state.next)().map_err(TransformError::Codec)?;
+                let Some(value) = value else {
+                    state.exhausted = true;
+                    break;
                 };
-                match output_codec {
-                    "text" => {
-                        let separator = output_options
-                            .get("separator")
-                            .and_then(|v| v.as_string())
-                            .unwrap_or("\t");
-                        let header = output_options
-                            .get("header")
-                            .and_then(|v| v.as_bool())
-                            .unwrap_or(false);
-                        codec::text_codec::encode_text_records(
-                            &records,
-                            output_writer,
-                            separator,
-                            header,
-                        )?;
-                    }
-                    _ => return Err(TransformError::UnknownCodec(output_codec.to_string())),
-                }
-                records.len()
-            };
-            return Ok(TransformStats {
-                records_read: 1,
-                records_written: written,
-                records_filtered: 0,
-            });
+                drop(state);
+                records.push(value);
+            }
+            Ok(records)
         }
+        other => Ok(vec![other]),
     }
-
-    // Decode input records
-    let records = if let Some(custom) = custom_codecs.get(input_codec) {
-        codec::custom::decode_custom_records_with_options(input_reader, custom, input_options)?
-    } else {
-        match input_codec {
-            "binary" => {
-                return Err(TransformError::Other(
-                    "codec::binary layout transforms have been removed; define a custom codec decoder that returns a file object with streams".into(),
-                ));
-            }
-            "text" => {
-                let separator = input_options
-                    .get("separator")
-                    .and_then(|v| v.as_string())
-                    .unwrap_or("\t");
-                let has_header = input_options
-                    .get("has_header")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-                codec::text_codec::decode_text_records(input_reader, separator, has_header)?
-            }
-            _ => return Err(TransformError::UnknownCodec(input_codec.to_string())),
-        }
-    };
-
-    // Apply mappings
-    let transformed = map_records(&records, config)?;
-
-    // Encode output
-    if let Some(custom) = custom_codecs.get(output_codec) {
-        codec::custom::encode_custom_records(&transformed, custom, output_options, output_writer)?;
-    } else {
-        match output_codec {
-            "binary" => {
-                return Err(TransformError::Other(
-                    "codec::binary layout transforms have been removed; define a custom codec encoder that consumes a file object with streams".into(),
-                ));
-            }
-            "text" => {
-                let separator = output_options
-                    .get("separator")
-                    .and_then(|v| v.as_string())
-                    .unwrap_or("\t");
-                let header = output_options
-                    .get("header")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-                codec::text_codec::encode_text_records(
-                    &transformed,
-                    output_writer,
-                    separator,
-                    header,
-                )?;
-            }
-            _ => return Err(TransformError::UnknownCodec(output_codec.to_string())),
-        }
-    }
-
-    Ok(TransformStats {
-        records_read: records.len(),
-        records_written: transformed.len(),
-        records_filtered: records.len() - transformed.len(),
-    })
 }
 
 fn contains_stream(value: &Value) -> bool {
     match value {
         Value::Stream(_) => true,
+        Value::NativeStream(_) => true,
         Value::Lazy(_) => true,
         Value::List(items) | Value::Set(items) => items.iter().any(contains_stream),
         Value::Map(map) => map.values().any(contains_stream),

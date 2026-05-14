@@ -1440,6 +1440,7 @@ impl<'a> MacroExpander<'a> {
             Value::Function(_) => "function".to_string(),
             Value::Lazy(_) => "lazy".to_string(),
             Value::Stream(_) => "stream".to_string(),
+            Value::NativeStream(_) => "stream".to_string(),
             Value::StateHandle(_) => "state".to_string(),
             Value::Date(_) => "date".to_string(),
             Value::OffsetDateTime(_) => "offset_datetime".to_string(),

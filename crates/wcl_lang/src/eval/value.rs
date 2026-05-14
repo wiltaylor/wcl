@@ -45,6 +45,8 @@ pub enum Value {
     Lazy(LazyValue),
     /// Cursor-style lazy stream.
     Stream(StreamValue),
+    /// Host-backed stream.
+    NativeStream(NativeStreamValue),
     /// Private state handle injected while evaluating lazy/stream bodies.
     StateHandle(StateHandleValue),
     /// ISO 8601 date value (e.g. `d"2024-03-15"`)
@@ -120,6 +122,7 @@ pub struct FunctionValue {
 
 pub(crate) type SharedLazyState = Arc<Mutex<LazyState>>;
 pub(crate) type SharedStreamState = Arc<Mutex<StreamState>>;
+pub(crate) type SharedNativeStreamState = Arc<Mutex<NativeStreamState>>;
 pub(crate) type SharedStateStore = Arc<Mutex<IndexMap<String, Value>>>;
 
 #[derive(Debug, Clone)]
@@ -130,6 +133,17 @@ pub struct LazyValue {
 #[derive(Debug, Clone)]
 pub struct StreamValue {
     pub(crate) inner: SharedStreamState,
+}
+
+#[derive(Clone)]
+pub struct NativeStreamValue {
+    pub(crate) inner: SharedNativeStreamState,
+}
+
+impl fmt::Debug for NativeStreamValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("NativeStreamValue").finish_non_exhaustive()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -160,6 +174,19 @@ pub(crate) struct StreamState {
     pub closure_scope: ScopeId,
     pub store: SharedStateStore,
     pub exhausted: bool,
+}
+
+pub(crate) struct NativeStreamState {
+    pub next: Box<dyn FnMut() -> Result<Option<Value>, String> + Send>,
+    pub exhausted: bool,
+}
+
+impl fmt::Debug for NativeStreamState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("NativeStreamState")
+            .field("exhausted", &self.exhausted)
+            .finish()
+    }
 }
 
 /// Attributes derived from decorators on a let/export-let binding containing a lambda.
@@ -216,6 +243,7 @@ impl Value {
             Value::Function(_) => "function",
             Value::Lazy(_) => "lazy",
             Value::Stream(_) => "stream",
+            Value::NativeStream(_) => "stream",
             Value::StateHandle(_) => "state",
             Value::Date(_) => "date",
             Value::OffsetDateTime(_) => "offset_datetime",
@@ -399,6 +427,7 @@ impl PartialEq for Value {
             (Value::Set(a), Value::Set(b)) => a == b,
             (Value::Lazy(a), Value::Lazy(b)) => Arc::ptr_eq(&a.inner, &b.inner),
             (Value::Stream(a), Value::Stream(b)) => Arc::ptr_eq(&a.inner, &b.inner),
+            (Value::NativeStream(a), Value::NativeStream(b)) => Arc::ptr_eq(&a.inner, &b.inner),
             (Value::StateHandle(a), Value::StateHandle(b)) => Arc::ptr_eq(&a.store, &b.store),
             (Value::Date(a), Value::Date(b)) => a == b,
             (Value::OffsetDateTime(a), Value::OffsetDateTime(b)) => a == b,
@@ -523,6 +552,7 @@ impl fmt::Display for Value {
             Value::Function(_) => write!(f, "<function>"),
             Value::Lazy(_) => write!(f, "<lazy>"),
             Value::Stream(_) => write!(f, "<stream>"),
+            Value::NativeStream(_) => write!(f, "<stream>"),
             Value::StateHandle(_) => write!(f, "<state>"),
             Value::Date(s) => write!(f, "d\"{}\"", s),
             Value::OffsetDateTime(s) => write!(f, "odt\"{}\"", s),

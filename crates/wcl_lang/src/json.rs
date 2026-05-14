@@ -71,6 +71,7 @@ pub fn value_to_json(value: &Value) -> serde_json::Value {
         Value::Function(_) => serde_json::Value::Null,
         Value::Lazy(_) => serde_json::Value::Null,
         Value::Stream(_) => serde_json::Value::Null,
+        Value::NativeStream(_) => serde_json::Value::Null,
         Value::StateHandle(_) => serde_json::Value::Null,
         Value::Date(s) => json!(s),
         Value::OffsetDateTime(s) => json!(s),

@@ -1381,6 +1381,7 @@ pub(crate) fn value_type_label(value: &Value) -> &'static str {
         Value::Function(_) => "function",
         Value::Lazy(_) => "lazy",
         Value::Stream(_) => "stream",
+        Value::NativeStream(_) => "stream",
         Value::StateHandle(_) => "state",
         Value::Date(_) => "date",
         Value::OffsetDateTime(_) => "offset_datetime",

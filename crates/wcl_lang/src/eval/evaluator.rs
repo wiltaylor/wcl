@@ -1687,6 +1687,9 @@ impl Evaluator {
     ) -> Result<Value, Diagnostic> {
         match receiver {
             Value::Stream(stream) => self.eval_stream_method(&stream, method, args, span, scope_id),
+            Value::NativeStream(stream) => {
+                self.eval_native_stream_method(&stream, method, args, span, scope_id)
+            }
             Value::StateHandle(state) => {
                 self.eval_state_method(&state, method, args, span, scope_id)
             }
@@ -1750,6 +1753,84 @@ impl Evaluator {
                 let mut values = Vec::new();
                 loop {
                     let value = self.stream_next(stream, span)?;
+                    if value == Value::Null {
+                        break;
+                    }
+                    values.push(value);
+                }
+                Ok(Value::List(values))
+            }
+            _ => Err(
+                Diagnostic::error(format!("unknown stream method '{}'", method), span)
+                    .with_code("E052"),
+            ),
+        }
+    }
+
+    fn native_stream_next(
+        &mut self,
+        stream: &NativeStreamValue,
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        let mut state = stream.inner.lock().map_err(|_| {
+            Diagnostic::error("native stream state lock poisoned", span).with_code("E052")
+        })?;
+        if state.exhausted {
+            return Ok(Value::Null);
+        }
+        let value = (state.next)().map_err(|e| Diagnostic::error(e, span).with_code("E052"))?;
+        let Some(value) = value else {
+            state.exhausted = true;
+            return Ok(Value::Null);
+        };
+        Ok(value)
+    }
+
+    fn eval_native_stream_method(
+        &mut self,
+        stream: &NativeStreamValue,
+        method: &str,
+        args: &[CallArg],
+        span: Span,
+        scope_id: ScopeId,
+    ) -> Result<Value, Diagnostic> {
+        match method {
+            "next" => {
+                self.expect_ho_args(0, args.len(), "stream.next", span)?;
+                self.native_stream_next(stream, span)
+            }
+            "take" => {
+                self.expect_ho_args(1, args.len(), "stream.take", span)?;
+                let n = self.eval_call_arg(&args[0], scope_id)?;
+                let Value::Int(n) = n else {
+                    return Err(Diagnostic::error(
+                        format!("stream.take() argument must be int, got {}", n.type_name()),
+                        span,
+                    )
+                    .with_code("E052"));
+                };
+                if n < 0 {
+                    return Err(Diagnostic::error(
+                        "stream.take() argument must be non-negative",
+                        span,
+                    )
+                    .with_code("E052"));
+                }
+                let mut values = Vec::new();
+                for _ in 0..n {
+                    let value = self.native_stream_next(stream, span)?;
+                    if value == Value::Null {
+                        break;
+                    }
+                    values.push(value);
+                }
+                Ok(Value::List(values))
+            }
+            "to_list" => {
+                self.expect_ho_args(0, args.len(), "stream.to_list", span)?;
+                let mut values = Vec::new();
+                loop {
+                    let value = self.native_stream_next(stream, span)?;
                     if value == Value::Null {
                         break;
                     }
@@ -2324,6 +2405,7 @@ impl Evaluator {
     fn contains_state_handle(value: &Value) -> bool {
         match value {
             Value::StateHandle(_) => true,
+            Value::NativeStream(_) => false,
             Value::List(items) | Value::Set(items) => items.iter().any(Self::contains_state_handle),
             Value::Map(map) => map.values().any(Self::contains_state_handle),
             Value::Object(object) => object.fields.values().any(Self::contains_state_handle),
@@ -2763,49 +2845,9 @@ fn decode_import_codec(
                 bytes, custom, options,
             )
         }
-        "text" => {
-            let separator = option_string(options, "separator", "\t")?;
-            let has_header = option_bool(options, "has_header", false)?;
-            crate::transform::codec::text_codec::decode_text_records(bytes, &separator, has_header)
-        }
-        "binary" => Err(crate::transform::TransformError::Codec(
-            "import_codec() does not support binary in this version".into(),
-        )),
         other => Err(crate::transform::TransformError::UnknownCodec(
             other.to_string(),
         )),
-    }
-}
-
-fn option_bool(
-    options: &IndexMap<String, Value>,
-    key: &str,
-    default: bool,
-) -> Result<bool, crate::transform::TransformError> {
-    match options.get(key) {
-        Some(Value::Bool(value)) => Ok(*value),
-        Some(value) => Err(crate::transform::TransformError::Codec(format!(
-            "option '{}' must be bool, got {}",
-            key,
-            value.type_name()
-        ))),
-        None => Ok(default),
-    }
-}
-
-fn option_string(
-    options: &IndexMap<String, Value>,
-    key: &str,
-    default: &str,
-) -> Result<String, crate::transform::TransformError> {
-    match options.get(key) {
-        Some(Value::String(value)) => Ok(value.clone()),
-        Some(value) => Err(crate::transform::TransformError::Codec(format!(
-            "option '{}' must be string, got {}",
-            key,
-            value.type_name()
-        ))),
-        None => Ok(default.to_string()),
     }
 }
 

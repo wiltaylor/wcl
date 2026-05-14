@@ -3,9 +3,7 @@
 //! Each codec provides a Decoder (read) and Encoder (write) that operate on
 //! the unified Event stream.
 
-pub mod binary_codec;
 pub mod custom;
-pub mod text_codec;
 
 use crate::transform::error::TransformError;
 use crate::transform::event::Event;
@@ -96,9 +94,7 @@ impl Default for CodecRegistry {
 }
 
 /// All codec names supported by the transform engine.
-pub const SUPPORTED_CODECS: &[&str] = &[
-    "json", "yaml", "csv", "toml", "hcl", "xml", "msgpack", "binary", "text",
-];
+pub const SUPPORTED_CODECS: &[&str] = &["json", "yaml", "csv", "toml", "hcl", "xml", "msgpack"];
 
 /// Decode an entire input into a list of records (each record is a Value::Map).
 pub fn decode_all(decoder: &mut dyn Decoder) -> Result<Vec<Value>, TransformError> {

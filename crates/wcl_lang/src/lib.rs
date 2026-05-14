@@ -2525,8 +2525,8 @@ lt_fn = local_time("07:32")
         assert!(
             doc.diagnostics
                 .iter()
-                .any(|d| d.message.contains("does not support binary")),
-            "expected binary unsupported diagnostic, got: {:?}",
+                .any(|d| d.message.contains("unknown codec: binary")),
+            "expected binary unknown codec diagnostic, got: {:?}",
             doc.diagnostics
         );
     }

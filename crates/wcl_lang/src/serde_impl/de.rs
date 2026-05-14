@@ -111,6 +111,9 @@ impl<'de> de::Deserializer<'de> for Deserializer {
             Value::Stream(_) => Err(Error::Message(
                 "cannot deserialize stream values; call to_list() first".to_string(),
             )),
+            Value::NativeStream(_) => Err(Error::Message(
+                "cannot deserialize stream values; call to_list() first".to_string(),
+            )),
             Value::StateHandle(_) => Err(Error::Message(
                 "cannot deserialize state handles".to_string(),
             )),
