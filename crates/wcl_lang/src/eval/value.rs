@@ -1,6 +1,7 @@
 use crate::lang::Span;
 use indexmap::IndexMap;
 use std::fmt;
+use std::sync::{Arc, Mutex};
 
 /// Runtime value in WCL
 #[derive(Debug, Clone)]
@@ -38,6 +39,12 @@ pub enum Value {
     Symbol(String),
     /// Lambda/function value
     Function(FunctionValue),
+    /// One-shot lazy value.
+    Lazy(LazyValue),
+    /// Cursor-style lazy stream.
+    Stream(StreamValue),
+    /// Private state handle injected while evaluating lazy/stream bodies.
+    StateHandle(StateHandleValue),
     /// ISO 8601 date value (e.g. `d"2024-03-15"`)
     Date(String),
     /// RFC 3339 offset date-time value (e.g. `odt"1979-05-27T07:32:00Z"`)
@@ -103,6 +110,50 @@ pub struct FunctionValue {
     pub return_type: Option<String>,
 }
 
+pub(crate) type SharedLazyState = Arc<Mutex<LazyState>>;
+pub(crate) type SharedStreamState = Arc<Mutex<StreamState>>;
+pub(crate) type SharedStateStore = Arc<Mutex<IndexMap<String, Value>>>;
+
+#[derive(Debug, Clone)]
+pub struct LazyValue {
+    pub(crate) inner: SharedLazyState,
+}
+
+#[derive(Debug, Clone)]
+pub struct StreamValue {
+    pub(crate) inner: SharedStreamState,
+}
+
+#[derive(Debug, Clone)]
+pub struct StateHandleValue {
+    pub(crate) store: SharedStateStore,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct LazyState {
+    pub lets: Vec<crate::lang::ast::LetBinding>,
+    pub final_expr: Box<crate::lang::ast::Expr>,
+    pub closure_scope: ScopeId,
+    pub store: SharedStateStore,
+    pub status: LazyStatus,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum LazyStatus {
+    Pending,
+    Evaluating,
+    Ready(Value),
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct StreamState {
+    pub lets: Vec<crate::lang::ast::LetBinding>,
+    pub final_expr: Box<crate::lang::ast::Expr>,
+    pub closure_scope: ScopeId,
+    pub store: SharedStateStore,
+    pub exhausted: bool,
+}
+
 /// Attributes derived from decorators on a let/export-let binding containing a lambda.
 #[derive(Debug, Clone, Default)]
 pub struct LambdaAttrs {
@@ -154,6 +205,9 @@ impl Value {
             Value::Symbol(_) => "symbol",
             Value::BlockRef(_) => "block_ref",
             Value::Function(_) => "function",
+            Value::Lazy(_) => "lazy",
+            Value::Stream(_) => "stream",
+            Value::StateHandle(_) => "state",
             Value::Date(_) => "date",
             Value::OffsetDateTime(_) => "offset_datetime",
             Value::LocalDateTime(_) => "local_datetime",
@@ -329,6 +383,9 @@ impl PartialEq for Value {
                 },
             ) => a_seconds == b_seconds && a_nanoseconds == b_nanoseconds,
             (Value::Set(a), Value::Set(b)) => a == b,
+            (Value::Lazy(a), Value::Lazy(b)) => Arc::ptr_eq(&a.inner, &b.inner),
+            (Value::Stream(a), Value::Stream(b)) => Arc::ptr_eq(&a.inner, &b.inner),
+            (Value::StateHandle(a), Value::StateHandle(b)) => Arc::ptr_eq(&a.store, &b.store),
             (Value::Date(a), Value::Date(b)) => a == b,
             (Value::OffsetDateTime(a), Value::OffsetDateTime(b)) => a == b,
             (Value::LocalDateTime(a), Value::LocalDateTime(b)) => a == b,
@@ -440,6 +497,9 @@ impl fmt::Display for Value {
                 write!(f, " }}")
             }
             Value::Function(_) => write!(f, "<function>"),
+            Value::Lazy(_) => write!(f, "<lazy>"),
+            Value::Stream(_) => write!(f, "<stream>"),
+            Value::StateHandle(_) => write!(f, "<state>"),
             Value::Date(s) => write!(f, "d\"{}\"", s),
             Value::OffsetDateTime(s) => write!(f, "odt\"{}\"", s),
             Value::LocalDateTime(s) => write!(f, "ldt\"{}\"", s),

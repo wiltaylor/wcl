@@ -131,7 +131,7 @@ impl Parser {
             match self.peek_kind() {
                 TokenKind::Dot => {
                     self.advance(); // consume .
-                    if let Some(ident) = self.try_parse_ident() {
+                    if let Ok(ident) = self.expect_ident_or_keyword() {
                         let span = lhs.span().merge(ident.span);
                         lhs = Expr::MemberAccess(Box::new(lhs), ident, span);
                     } else {
@@ -237,11 +237,13 @@ impl Parser {
                 let name = name.clone();
                 // Check for special keyword-like functions
                 match name.as_str() {
+                    "lazy" => self.parse_lazy_expr(),
                     "import_raw" => self.parse_import_raw_expr(),
                     "import_table" => self.parse_import_table_expr(),
                     _ => self.parse_ident_or_lambda(),
                 }
             }
+            TokenKind::Stream => self.parse_stream_expr(),
             TokenKind::Ref => self.parse_ref_expr(),
             TokenKind::Hash => self.parse_ref_shorthand(),
             TokenKind::SelfKw => {
@@ -544,6 +546,36 @@ impl Parser {
     fn parse_block_expr(&mut self) -> Option<Expr> {
         let start_span = self.current_span();
         self.advance(); // consume {
+        let (lets, final_expr) = self.parse_block_expr_body()?;
+        let span = start_span.merge(self.prev_span());
+        Some(Expr::BlockExpr(lets, Box::new(final_expr), span))
+    }
+
+    fn parse_lazy_expr(&mut self) -> Option<Expr> {
+        let start_span = self.current_span();
+        self.advance(); // consume lazy
+        self.skip_newlines();
+        if self.expect(&TokenKind::LBrace).is_err() {
+            return None;
+        }
+        let (lets, final_expr) = self.parse_block_expr_body()?;
+        let span = start_span.merge(self.prev_span());
+        Some(Expr::Lazy(lets, Box::new(final_expr), span))
+    }
+
+    fn parse_stream_expr(&mut self) -> Option<Expr> {
+        let start_span = self.current_span();
+        self.advance(); // consume stream
+        self.skip_newlines();
+        if self.expect(&TokenKind::LBrace).is_err() {
+            return None;
+        }
+        let (lets, final_expr) = self.parse_block_expr_body()?;
+        let span = start_span.merge(self.prev_span());
+        Some(Expr::Stream(lets, Box::new(final_expr), span))
+    }
+
+    fn parse_block_expr_body(&mut self) -> Option<(Vec<LetBinding>, Expr)> {
         let mut lets = Vec::new();
         loop {
             self.skip_newlines();
@@ -563,8 +595,7 @@ impl Parser {
         if self.expect(&TokenKind::RBrace).is_err() {
             return None;
         }
-        let span = start_span.merge(self.prev_span());
-        Some(Expr::BlockExpr(lets, Box::new(final_expr), span))
+        Some((lets, final_expr))
     }
 
     /// Parse query pipeline: `selector [| filter]*`

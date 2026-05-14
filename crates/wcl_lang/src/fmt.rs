@@ -652,6 +652,14 @@ impl<'a> Formatter<'a> {
                 self.out.push_str(" => ");
                 self.expr(body);
             }
+            Expr::Lazy(lets, final_expr, _) => {
+                self.out.push_str("lazy ");
+                self.lazy_stream_body(lets, final_expr);
+            }
+            Expr::Stream(lets, final_expr, _) => {
+                self.out.push_str("stream ");
+                self.lazy_stream_body(lets, final_expr);
+            }
             Expr::Paren(e, _) => {
                 self.out.push('(');
                 self.expr(e);
@@ -705,20 +713,7 @@ impl<'a> Formatter<'a> {
                 self.out.push(')');
             }
             Expr::BlockExpr(lets, final_expr, _) => {
-                self.out.push_str("{\n");
-                self.indent += 1;
-                for lb in lets {
-                    self.indent();
-                    self.out.push_str(&format!("let {} = ", lb.name.name));
-                    self.expr(&lb.value);
-                    self.out.push('\n');
-                }
-                self.indent();
-                self.expr(final_expr);
-                self.out.push('\n');
-                self.indent -= 1;
-                self.indent();
-                self.out.push('}');
+                self.lazy_stream_body(lets, final_expr);
             }
             Expr::DateLit(s, _) => {
                 self.out.push_str(&format!("d\"{}\"", s));
@@ -739,6 +734,23 @@ impl<'a> Formatter<'a> {
                 self.out.push_str(&format!("/{}/", s));
             }
         }
+    }
+
+    fn lazy_stream_body(&mut self, lets: &[LetBinding], final_expr: &Expr) {
+        self.out.push_str("{\n");
+        self.indent += 1;
+        for lb in lets {
+            self.indent();
+            self.out.push_str(&format!("let {} = ", lb.name.name));
+            self.expr(&lb.value);
+            self.out.push('\n');
+        }
+        self.indent();
+        self.expr(final_expr);
+        self.out.push('\n');
+        self.indent -= 1;
+        self.indent();
+        self.out.push('}');
     }
 
     fn string_lit(&mut self, s: &StringLit) {

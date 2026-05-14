@@ -457,6 +457,12 @@ pub fn builtin_signatures() -> Vec<FunctionSignature> {
             doc: "Zip two lists".into(),
         },
         FunctionSignature {
+            name: "force".into(),
+            params: vec!["value".into()],
+            return_type: "any".into(),
+            doc: "Force a lazy value and return its result".into(),
+        },
+        FunctionSignature {
             name: "map_has".into(),
             params: vec!["map: map".into(), "key: string".into()],
             return_type: "bool".into(),

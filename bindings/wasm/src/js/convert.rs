@@ -127,7 +127,9 @@ pub fn value_to_js(value: &Value) -> JsValue {
         | Value::LocalDateTime(s)
         | Value::LocalTime(s)
         | Value::Duration(s) => JsValue::from_str(s),
-        Value::Function(_) => JsValue::NULL,
+        Value::Function(_) | Value::Lazy(_) | Value::Stream(_) | Value::StateHandle(_) => {
+            JsValue::NULL
+        }
         Value::Pattern(s) => {
             // Convert to JS RegExp
             let re = js_sys::RegExp::new(s, "");

@@ -826,6 +826,10 @@ pub enum Expr {
     FnCall(Box<Expr>, Vec<CallArg>, Span),
     /// Lambda expression: `params => body`
     Lambda(Vec<Ident>, Box<Expr>, Span),
+    /// Lazy expression: `lazy { let bindings... final_expr }`
+    Lazy(Vec<LetBinding>, Box<Expr>, Span),
+    /// Stream expression: `stream { let bindings... final_expr }`
+    Stream(Vec<LetBinding>, Box<Expr>, Span),
     /// Block expression: `{ let bindings... final_expr }`
     BlockExpr(Vec<LetBinding>, Box<Expr>, Span),
     /// Query expression: `query(pipeline)`
@@ -871,6 +875,8 @@ impl Expr {
             | Expr::IndexAccess(_, _, s)
             | Expr::FnCall(_, _, s)
             | Expr::Lambda(_, _, s)
+            | Expr::Lazy(_, _, s)
+            | Expr::Stream(_, _, s)
             | Expr::BlockExpr(_, _, s)
             | Expr::Query(_, s)
             | Expr::Ref(_, _, s)

@@ -98,6 +98,15 @@ impl<'de> de::Deserializer<'de> for Deserializer {
             Value::Function(_) => Err(Error::Message(
                 "cannot deserialize function values".to_string(),
             )),
+            Value::Lazy(_) => Err(Error::Message(
+                "cannot deserialize lazy values without forcing them first".to_string(),
+            )),
+            Value::Stream(_) => Err(Error::Message(
+                "cannot deserialize stream values; call to_list() first".to_string(),
+            )),
+            Value::StateHandle(_) => Err(Error::Message(
+                "cannot deserialize state handles".to_string(),
+            )),
             Value::Date(s) => visitor.visit_string(s),
             Value::OffsetDateTime(s) => visitor.visit_string(s),
             Value::LocalDateTime(s) => visitor.visit_string(s),

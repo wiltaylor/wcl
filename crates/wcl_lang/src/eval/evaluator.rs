@@ -5,6 +5,7 @@ use crate::lang::ast::*;
 use crate::lang::diagnostic::{Diagnostic, DiagnosticBag};
 use crate::lang::span::Span;
 use indexmap::IndexMap;
+use std::sync::{Arc, Mutex};
 
 use crate::eval::functions::{builtin_registry, BuiltinFn, FunctionRegistry};
 use crate::eval::imports::FileSystem;
@@ -63,7 +64,7 @@ impl Evaluator {
             module_blocks_by_kind: HashMap::new(),
             module_scope_id: None,
             call_depth: 0,
-            max_call_depth: 64,
+            max_call_depth: 32,
         }
     }
 
@@ -84,7 +85,7 @@ impl Evaluator {
             module_blocks_by_kind: HashMap::new(),
             module_scope_id: None,
             call_depth: 0,
-            max_call_depth: 64,
+            max_call_depth: 32,
         }
     }
 
@@ -114,7 +115,7 @@ impl Evaluator {
             module_blocks_by_kind: HashMap::new(),
             module_scope_id: None,
             call_depth: 0,
-            max_call_depth: 64,
+            max_call_depth: 32,
         }
     }
 
@@ -650,6 +651,18 @@ impl Evaluator {
                 }
             }
             Expr::Lambda(_, _, _) => {}
+            Expr::Lazy(lets, final_expr, _) | Expr::Stream(lets, final_expr, _) => {
+                let before = deps.len();
+                for lb in lets {
+                    self.collect_deps(&lb.value, deps);
+                }
+                self.collect_deps(final_expr, deps);
+                let local_names: HashSet<String> =
+                    lets.iter().map(|lb| lb.name.name.clone()).collect();
+                if deps.len() != before {
+                    deps.retain(|dep| dep != "state" && !local_names.contains(dep));
+                }
+            }
             Expr::BlockExpr(lets, final_expr, _) => {
                 for lb in lets {
                     self.collect_deps(&lb.value, deps);
@@ -754,7 +767,7 @@ impl Evaluator {
             Expr::BinaryOp(lhs, op, rhs, span) => self.eval_binary(lhs, *op, rhs, *span, scope_id),
             Expr::UnaryOp(op, inner, span) => self.eval_unary(*op, inner, *span, scope_id),
             Expr::Ternary(cond, then_expr, else_expr, span) => {
-                let cond_val = self.eval_expr(cond, scope_id)?;
+                let cond_val = self.eval_expr_for_use(cond, scope_id, *span)?;
                 match cond_val {
                     Value::Bool(true) => self.eval_expr(then_expr, scope_id),
                     Value::Bool(false) => self.eval_expr(else_expr, scope_id),
@@ -769,12 +782,12 @@ impl Evaluator {
                 }
             }
             Expr::MemberAccess(inner, field, span) => {
-                let val = self.eval_expr(inner, scope_id)?;
+                let val = self.eval_expr_for_use(inner, scope_id, *span)?;
                 self.access_member(&val, &field.name, *span)
             }
             Expr::IndexAccess(inner, index, span) => {
-                let val = self.eval_expr(inner, scope_id)?;
-                let idx = self.eval_expr(index, scope_id)?;
+                let val = self.eval_expr_for_use(inner, scope_id, *span)?;
+                let idx = self.eval_expr_for_use(index, scope_id, *span)?;
                 self.access_index(&val, &idx, *span)
             }
             Expr::FnCall(callee, args, span) => self.eval_fn_call(callee, args, *span, scope_id),
@@ -786,6 +799,24 @@ impl Evaluator {
                 lambda_attrs: LambdaAttrs::default(),
                 param_types: vec![],
                 return_type: None,
+            })),
+            Expr::Lazy(lets, final_expr, _span) => Ok(Value::Lazy(LazyValue {
+                inner: Arc::new(Mutex::new(LazyState {
+                    lets: lets.clone(),
+                    final_expr: final_expr.clone(),
+                    closure_scope: scope_id,
+                    store: Arc::new(Mutex::new(IndexMap::new())),
+                    status: LazyStatus::Pending,
+                })),
+            })),
+            Expr::Stream(lets, final_expr, _span) => Ok(Value::Stream(StreamValue {
+                inner: Arc::new(Mutex::new(StreamState {
+                    lets: lets.clone(),
+                    final_expr: final_expr.clone(),
+                    closure_scope: scope_id,
+                    store: Arc::new(Mutex::new(IndexMap::new())),
+                    exhausted: false,
+                })),
             })),
             Expr::BlockExpr(lets, final_expr, _) => {
                 let block_scope = self.scopes.create_scope(ScopeKind::Lambda, Some(scope_id));
@@ -850,6 +881,137 @@ impl Evaluator {
         }
     }
 
+    fn eval_expr_for_use(
+        &mut self,
+        expr: &Expr,
+        scope_id: ScopeId,
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        let value = self.eval_expr(expr, scope_id)?;
+        self.force_value(value, span)
+    }
+
+    fn force_value(&mut self, value: Value, span: Span) -> Result<Value, Diagnostic> {
+        match value {
+            Value::Lazy(lazy) => self.force_lazy(&lazy, span),
+            other => Ok(other),
+        }
+    }
+
+    fn force_lazy(&mut self, lazy: &LazyValue, span: Span) -> Result<Value, Diagnostic> {
+        let (lets, final_expr, closure_scope, store) = {
+            let mut state = lazy.inner.lock().map_err(|_| {
+                Diagnostic::error("lazy value state lock poisoned", span).with_code("E052")
+            })?;
+            match &state.status {
+                LazyStatus::Ready(value) => return Ok(value.clone()),
+                LazyStatus::Evaluating => {
+                    return Err(Diagnostic::error("recursive lazy value evaluation", span)
+                        .with_code("E052"))
+                }
+                LazyStatus::Pending => {
+                    state.status = LazyStatus::Evaluating;
+                    (
+                        state.lets.clone(),
+                        state.final_expr.clone(),
+                        state.closure_scope,
+                        state.store.clone(),
+                    )
+                }
+            }
+        };
+
+        let result = self.eval_lazy_stream_body(&lets, &final_expr, closure_scope, store, span);
+        let mut state = lazy.inner.lock().map_err(|_| {
+            Diagnostic::error("lazy value state lock poisoned", span).with_code("E052")
+        })?;
+        match result {
+            Ok(value) => {
+                state.status = LazyStatus::Ready(value.clone());
+                Ok(value)
+            }
+            Err(err) => {
+                state.status = LazyStatus::Pending;
+                Err(err)
+            }
+        }
+    }
+
+    fn eval_lazy_stream_body(
+        &mut self,
+        lets: &[LetBinding],
+        final_expr: &Expr,
+        closure_scope: ScopeId,
+        store: SharedStateStore,
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        let body_scope = self
+            .scopes
+            .create_scope(ScopeKind::Lambda, Some(closure_scope));
+        self.scopes.add_entry(
+            body_scope,
+            ScopeEntry {
+                name: "state".to_string(),
+                kind: ScopeEntryKind::LetBinding,
+                value: Some(Value::StateHandle(StateHandleValue { store })),
+                span,
+                dependencies: Default::default(),
+                evaluated: true,
+                read_count: 0,
+            },
+        );
+        for lb in lets {
+            let val = self.eval_expr(&lb.value, body_scope)?;
+            self.scopes.add_entry(
+                body_scope,
+                ScopeEntry {
+                    name: lb.name.name.clone(),
+                    kind: ScopeEntryKind::LetBinding,
+                    value: Some(val),
+                    span: lb.span,
+                    dependencies: Default::default(),
+                    evaluated: true,
+                    read_count: 0,
+                },
+            );
+        }
+        let value = self.eval_expr(final_expr, body_scope)?;
+        if Self::contains_state_handle(&value) {
+            return Err(Diagnostic::error(
+                "state handles cannot escape lazy or stream bodies",
+                span,
+            )
+            .with_code("E052"));
+        }
+        Ok(value)
+    }
+
+    fn stream_next(&mut self, stream: &StreamValue, span: Span) -> Result<Value, Diagnostic> {
+        let (lets, final_expr, closure_scope, store) = {
+            let state = stream.inner.lock().map_err(|_| {
+                Diagnostic::error("stream state lock poisoned", span).with_code("E052")
+            })?;
+            if state.exhausted {
+                return Ok(Value::Null);
+            }
+            (
+                state.lets.clone(),
+                state.final_expr.clone(),
+                state.closure_scope,
+                state.store.clone(),
+            )
+        };
+
+        let value = self.eval_lazy_stream_body(&lets, &final_expr, closure_scope, store, span)?;
+        if value == Value::Null {
+            let mut state = stream.inner.lock().map_err(|_| {
+                Diagnostic::error("stream state lock poisoned", span).with_code("E052")
+            })?;
+            state.exhausted = true;
+        }
+        Ok(value)
+    }
+
     // ------------------------------------------------------------------
     // String evaluation
     // ------------------------------------------------------------------
@@ -860,7 +1022,7 @@ impl Evaluator {
             match part {
                 StringPart::Literal(text) => result.push_str(text),
                 StringPart::Interpolation(expr) => {
-                    let val = self.eval_expr(expr, scope_id)?;
+                    let val = self.eval_expr_for_use(expr, scope_id, s.span)?;
                     match val.to_interp_string() {
                         Ok(s) => result.push_str(&s),
                         Err(e) => return Err(Diagnostic::error(e, s.span).with_code("E050")),
@@ -1034,30 +1196,30 @@ impl Evaluator {
     ) -> Result<Value, Diagnostic> {
         // Short-circuit for && and ||
         if op == BinOp::And {
-            let l = self.eval_expr(lhs, scope_id)?;
+            let l = self.eval_expr_for_use(lhs, scope_id, span)?;
             if l == Value::Bool(false) {
                 return Ok(Value::Bool(false));
             }
-            let r = self.eval_expr(rhs, scope_id)?;
+            let r = self.eval_expr_for_use(rhs, scope_id, span)?;
             return match (&l, &r) {
                 (Value::Bool(_), Value::Bool(b)) => Ok(Value::Bool(*b)),
                 _ => Err(Diagnostic::error("&& requires bool operands", span).with_code("E050")),
             };
         }
         if op == BinOp::Or {
-            let l = self.eval_expr(lhs, scope_id)?;
+            let l = self.eval_expr_for_use(lhs, scope_id, span)?;
             if l == Value::Bool(true) {
                 return Ok(Value::Bool(true));
             }
-            let r = self.eval_expr(rhs, scope_id)?;
+            let r = self.eval_expr_for_use(rhs, scope_id, span)?;
             return match (&l, &r) {
                 (Value::Bool(_), Value::Bool(b)) => Ok(Value::Bool(*b)),
                 _ => Err(Diagnostic::error("|| requires bool operands", span).with_code("E050")),
             };
         }
 
-        let l = self.eval_expr(lhs, scope_id)?;
-        let r = self.eval_expr(rhs, scope_id)?;
+        let l = self.eval_expr_for_use(lhs, scope_id, span)?;
+        let r = self.eval_expr_for_use(rhs, scope_id, span)?;
 
         match op {
             BinOp::Add => self.eval_add(&l, &r, span),
@@ -1255,7 +1417,7 @@ impl Evaluator {
         span: Span,
         scope_id: ScopeId,
     ) -> Result<Value, Diagnostic> {
-        let val = self.eval_expr(expr, scope_id)?;
+        let val = self.eval_expr_for_use(expr, scope_id, span)?;
         match op {
             UnaryOp::Not => match val {
                 Value::Bool(b) => Ok(Value::Bool(!b)),
@@ -1337,10 +1499,21 @@ impl Evaluator {
         span: Span,
         scope_id: ScopeId,
     ) -> Result<Value, Diagnostic> {
+        if let Expr::MemberAccess(receiver, method, _) = callee {
+            let receiver_val = self.eval_expr(receiver, scope_id)?;
+            return self.eval_method_call(receiver_val, &method.name, args, span, scope_id);
+        }
+
         // Determine function
         match callee {
             Expr::Ident(ident) => {
                 let name = &ident.name;
+
+                if name == "force" {
+                    self.expect_ho_args(1, args.len(), "force", span)?;
+                    let value = self.eval_call_arg(&args[0], scope_id)?;
+                    return self.force_value(value, span);
+                }
 
                 // Check higher-order builtins first
                 if matches!(
@@ -1477,11 +1650,190 @@ impl Evaluator {
         for arg in args {
             match arg {
                 CallArg::Positional(e) | CallArg::Named(_, e) => {
-                    eval_args.push(self.eval_expr(e, scope_id)?);
+                    eval_args.push(self.eval_expr_for_use(e, scope_id, e.span())?);
                 }
             }
         }
         Ok(eval_args)
+    }
+
+    fn eval_method_call(
+        &mut self,
+        receiver: Value,
+        method: &str,
+        args: &[CallArg],
+        span: Span,
+        scope_id: ScopeId,
+    ) -> Result<Value, Diagnostic> {
+        match receiver {
+            Value::Stream(stream) => self.eval_stream_method(&stream, method, args, span, scope_id),
+            Value::StateHandle(state) => {
+                self.eval_state_method(&state, method, args, span, scope_id)
+            }
+            Value::Lazy(lazy) => {
+                let forced = self.force_lazy(&lazy, span)?;
+                self.eval_method_call(forced, method, args, span, scope_id)
+            }
+            other => {
+                let member = self.access_member(&other, method, span)?;
+                let eval_args = self.eval_call_args(args, scope_id)?;
+                match member {
+                    Value::Function(func) => self.call_user_fn(&func, &eval_args, span),
+                    _ => Err(Diagnostic::error("not a callable value", span).with_code("E050")),
+                }
+            }
+        }
+    }
+
+    fn eval_stream_method(
+        &mut self,
+        stream: &StreamValue,
+        method: &str,
+        args: &[CallArg],
+        span: Span,
+        scope_id: ScopeId,
+    ) -> Result<Value, Diagnostic> {
+        match method {
+            "next" => {
+                self.expect_ho_args(0, args.len(), "stream.next", span)?;
+                self.stream_next(stream, span)
+            }
+            "take" => {
+                self.expect_ho_args(1, args.len(), "stream.take", span)?;
+                let n = self.eval_call_arg(&args[0], scope_id)?;
+                let Value::Int(n) = n else {
+                    return Err(Diagnostic::error(
+                        format!("stream.take() argument must be int, got {}", n.type_name()),
+                        span,
+                    )
+                    .with_code("E052"));
+                };
+                if n < 0 {
+                    return Err(Diagnostic::error(
+                        "stream.take() argument must be non-negative",
+                        span,
+                    )
+                    .with_code("E052"));
+                }
+                let mut values = Vec::new();
+                for _ in 0..n {
+                    let value = self.stream_next(stream, span)?;
+                    if value == Value::Null {
+                        break;
+                    }
+                    values.push(value);
+                }
+                Ok(Value::List(values))
+            }
+            "to_list" => {
+                self.expect_ho_args(0, args.len(), "stream.to_list", span)?;
+                let mut values = Vec::new();
+                loop {
+                    let value = self.stream_next(stream, span)?;
+                    if value == Value::Null {
+                        break;
+                    }
+                    values.push(value);
+                }
+                Ok(Value::List(values))
+            }
+            _ => Err(
+                Diagnostic::error(format!("unknown stream method '{}'", method), span)
+                    .with_code("E052"),
+            ),
+        }
+    }
+
+    fn eval_state_method(
+        &mut self,
+        state: &StateHandleValue,
+        method: &str,
+        args: &[CallArg],
+        span: Span,
+        scope_id: ScopeId,
+    ) -> Result<Value, Diagnostic> {
+        match method {
+            "get" => {
+                self.expect_ho_args(1, args.len(), "state.get", span)?;
+                let key = self.eval_call_arg(&args[0], scope_id)?;
+                let Value::String(key) = key else {
+                    return Err(
+                        Diagnostic::error("state.get() key must be string", span).with_code("E052")
+                    );
+                };
+                let store = state.store.lock().map_err(|_| {
+                    Diagnostic::error("state lock poisoned", span).with_code("E052")
+                })?;
+                Ok(store.get(&key).cloned().unwrap_or(Value::Null))
+            }
+            "set" => {
+                self.expect_ho_args(2, args.len(), "state.set", span)?;
+                let key = self.eval_call_arg(&args[0], scope_id)?;
+                let value = self.eval_call_arg(&args[1], scope_id)?;
+                let Value::String(key) = key else {
+                    return Err(
+                        Diagnostic::error("state.set() key must be string", span).with_code("E052")
+                    );
+                };
+                if Self::contains_state_handle(&value) {
+                    return Err(
+                        Diagnostic::error("state handles cannot be stored in state", span)
+                            .with_code("E052"),
+                    );
+                }
+                let mut store = state.store.lock().map_err(|_| {
+                    Diagnostic::error("state lock poisoned", span).with_code("E052")
+                })?;
+                store.insert(key, value);
+                Ok(Value::Null)
+            }
+            "delete" => {
+                self.expect_ho_args(1, args.len(), "state.delete", span)?;
+                let key = self.eval_call_arg(&args[0], scope_id)?;
+                let Value::String(key) = key else {
+                    return Err(Diagnostic::error("state.delete() key must be string", span)
+                        .with_code("E052"));
+                };
+                let mut store = state.store.lock().map_err(|_| {
+                    Diagnostic::error("state lock poisoned", span).with_code("E052")
+                })?;
+                Ok(Value::Bool(store.shift_remove(&key).is_some()))
+            }
+            "has" => {
+                self.expect_ho_args(1, args.len(), "state.has", span)?;
+                let key = self.eval_call_arg(&args[0], scope_id)?;
+                let Value::String(key) = key else {
+                    return Err(
+                        Diagnostic::error("state.has() key must be string", span).with_code("E052")
+                    );
+                };
+                let store = state.store.lock().map_err(|_| {
+                    Diagnostic::error("state lock poisoned", span).with_code("E052")
+                })?;
+                Ok(Value::Bool(store.contains_key(&key)))
+            }
+            "keys" => {
+                self.expect_ho_args(0, args.len(), "state.keys", span)?;
+                let store = state.store.lock().map_err(|_| {
+                    Diagnostic::error("state lock poisoned", span).with_code("E052")
+                })?;
+                Ok(Value::List(
+                    store.keys().cloned().map(Value::String).collect(),
+                ))
+            }
+            "clear" => {
+                self.expect_ho_args(0, args.len(), "state.clear", span)?;
+                let mut store = state.store.lock().map_err(|_| {
+                    Diagnostic::error("state lock poisoned", span).with_code("E052")
+                })?;
+                store.clear();
+                Ok(Value::Null)
+            }
+            _ => Err(
+                Diagnostic::error(format!("unknown state method '{}'", method), span)
+                    .with_code("E052"),
+            ),
+        }
     }
 
     fn call_user_fn(
@@ -1949,6 +2301,26 @@ impl Evaluator {
         }
     }
 
+    fn contains_state_handle(value: &Value) -> bool {
+        match value {
+            Value::StateHandle(_) => true,
+            Value::List(items) | Value::Set(items) => items.iter().any(Self::contains_state_handle),
+            Value::Map(map) => map.values().any(Self::contains_state_handle),
+            Value::BlockRef(block) => {
+                block.attributes.values().any(Self::contains_state_handle)
+                    || block
+                        .children
+                        .iter()
+                        .any(|child| Self::contains_state_handle(&Value::BlockRef(child.clone())))
+                    || block
+                        .decorators
+                        .iter()
+                        .any(|decorator| decorator.args.values().any(Self::contains_state_handle))
+            }
+            _ => false,
+        }
+    }
+
     /// Evaluate a single named entry from a block body (analogous to
     /// `evaluate_doc_entry` but for `BodyItem` slices).
     fn evaluate_body_entry(&mut self, body: &[BodyItem], scope_id: ScopeId, name: &str) {
@@ -2258,7 +2630,7 @@ pub fn call_lambda_with_env(
     builtins: &HashMap<String, BuiltinFn>,
     helpers: &HashMap<String, FunctionValue>,
 ) -> Result<Value, String> {
-    call_lambda_with_env_and_max_depth(func, args, builtins, helpers, 64)
+    call_lambda_with_env_and_max_depth(func, args, builtins, helpers, 32)
 }
 
 /// Call a `FunctionValue` with a custom recursion budget. This is used by

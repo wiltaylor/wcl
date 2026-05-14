@@ -4869,6 +4869,132 @@ endpoint e1 {
     }
 
     #[test]
+    fn test_lazy_value_forces_once_with_private_state() {
+        let source = r#"
+            counter = lazy {
+                let raw = state.get("calls")
+                let calls = raw == null ? 0 : raw
+                let _ = state.set("calls", calls + 1)
+                calls
+            }
+
+            result = {
+                let first = force(counter)
+                let second = force(counter)
+                [first, second]
+            }
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        assert!(
+            !has_errors(&doc.diagnostics),
+            "errors: {:?}",
+            error_diags(&doc.diagnostics)
+        );
+        assert_eq!(
+            doc.values.get("result"),
+            Some(&Value::List(vec![Value::Int(0), Value::Int(0)]))
+        );
+    }
+
+    #[test]
+    fn test_stream_next_take_and_to_list() {
+        let source = r#"
+            rows = stream {
+                let raw = state.get("i")
+                let i = raw == null ? 0 : raw
+                let _ = state.set("i", i + 1)
+                i >= 3 ? null : i
+            }
+
+            result = {
+                let first = rows.next()
+                let batch = rows.take(5)
+                let after = rows.next()
+                let rest = rows.to_list()
+                { first = first, batch = batch, after = after, rest = rest }
+            }
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        assert!(
+            !has_errors(&doc.diagnostics),
+            "errors: {:?}",
+            error_diags(&doc.diagnostics)
+        );
+        let mut expected = indexmap::IndexMap::new();
+        expected.insert("first".to_string(), Value::Int(0));
+        expected.insert(
+            "batch".to_string(),
+            Value::List(vec![Value::Int(1), Value::Int(2)]),
+        );
+        expected.insert("after".to_string(), Value::Null);
+        expected.insert("rest".to_string(), Value::List(vec![]));
+        assert_eq!(doc.values.get("result"), Some(&Value::Map(expected)));
+    }
+
+    #[test]
+    fn test_stream_state_is_per_instance() {
+        let source = r#"
+            a = stream {
+                let raw = state.get("i")
+                let i = raw == null ? 0 : raw
+                let _ = state.set("i", i + 1)
+                i
+            }
+            b = stream {
+                let raw = state.get("i")
+                let i = raw == null ? 0 : raw
+                let _ = state.set("i", i + 1)
+                i
+            }
+            result = {
+                let a0 = a.next()
+                let b0 = b.next()
+                [a0, b0]
+            }
+        "#;
+        let doc = parse(source, ParseOptions::default());
+        assert!(
+            !has_errors(&doc.diagnostics),
+            "errors: {:?}",
+            error_diags(&doc.diagnostics)
+        );
+        assert_eq!(
+            doc.values.get("result"),
+            Some(&Value::List(vec![Value::Int(0), Value::Int(0)]))
+        );
+    }
+
+    #[test]
+    fn test_state_is_not_visible_outside_lazy_or_stream_body() {
+        let doc = parse(r#"bad = state.get("x")"#, ParseOptions::default());
+        assert!(has_errors(&doc.diagnostics));
+    }
+
+    #[test]
+    fn test_state_handle_cannot_escape_body() {
+        let doc = parse(
+            r#"
+            leak = lazy { state }
+            bad = force(leak)
+            "#,
+            ParseOptions::default(),
+        );
+        assert!(has_errors(&doc.diagnostics));
+    }
+
+    #[test]
+    fn test_stream_indexing_is_not_supported() {
+        let doc = parse(
+            r#"
+            rows = stream { 1 }
+            bad = rows[0]
+            "#,
+            ParseOptions::default(),
+        );
+        assert!(has_errors(&doc.diagnostics));
+    }
+
+    #[test]
     fn test_decorated_export_let() {
         let source = r#"
             @stateful
