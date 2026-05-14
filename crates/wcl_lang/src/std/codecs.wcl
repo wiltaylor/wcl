@@ -230,7 +230,7 @@ export let __json_render = value =>
     type_of(value) == "identifier" ? __json_quote(to_string(value)) :
     type_of(value) == "symbol" ? __json_quote(substr(to_string(value), 1)) :
     type_of(value) == "list" ? "[" + join(",", map(value, item => __json_render(item))) + "]" :
-    type_of(value) == "map" ? "{" + join(",", map(keys(value), key => __json_quote(key) + ":" + __json_render(value[key]))) + "}" :
+    (type_of(value) == "map" || type_of(value) == "object") ? "{" + join(",", map(keys(value), key => __json_quote(key) + ":" + __json_render(value[key]))) + "}" :
     "null"
 
 export let __json_indent = level =>
@@ -238,7 +238,7 @@ export let __json_indent = level =>
 
 export let __json_render_pretty = (value, level) =>
     type_of(value) == "list" ? __json_render_pretty_list(value, level) :
-    type_of(value) == "map" ? __json_render_pretty_map(value, level) :
+    (type_of(value) == "map" || type_of(value) == "object") ? __json_render_pretty_map(value, level) :
     __json_render(value)
 
 export let __json_render_pretty_list = (value, level) =>

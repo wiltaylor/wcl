@@ -4,10 +4,15 @@
 //! tokenizer receives a seekable source cursor and emits token maps. The parser
 //! receives a seekable token cursor and emits WCL record values.
 
+use crate::eval::evaluator::Evaluator;
 use crate::eval::functions::BuiltinFn;
+use crate::eval::scope::{ScopeEntry, ScopeEntryKind, ScopeKind};
 use crate::eval::value::{BlockRef, FunctionBody, FunctionValue, LambdaAttrs, Value};
 use crate::lang::ast::{BodyItem, DocItem, InlineId};
+use crate::lang::span::Span;
+use crate::schema::struct_registry::StructRegistry;
 use crate::transform::error::TransformError;
+use crate::transform::struct_parser::{self, EncodingConfig, Endianness};
 use indexmap::IndexMap;
 use regex::Regex;
 use std::collections::HashMap;
@@ -27,10 +32,11 @@ pub enum CustomCodecMode {
 pub struct CustomCodec {
     pub name: String,
     pub mode: CustomCodecMode,
-    pub tokenizer: FunctionValue,
+    pub decoder: Option<FunctionValue>,
+    pub tokenizer: Option<FunctionValue>,
     pub parser: Option<FunctionValue>,
     pub parser_all: Option<FunctionValue>,
-    pub encoder: FunctionValue,
+    pub encoder: Option<FunctionValue>,
     pub encoder_all: Option<FunctionValue>,
     pub helpers: HashMap<String, FunctionValue>,
 }
@@ -165,40 +171,33 @@ pub fn custom_codec_from_block(
     let codec = CustomCodec {
         name: name.to_string(),
         mode,
-        tokenizer: required_function(name, block, "tokenizer")?,
+        decoder: optional_function(name, block, "decoder")?,
+        tokenizer: optional_function(name, block, "tokenizer")?,
         parser: optional_function(name, block, "parser")?,
         parser_all: optional_function(name, block, "parser_all")?,
-        encoder: required_function(name, block, "encoder")?,
+        encoder: optional_function(name, block, "encoder")?,
         encoder_all: optional_function(name, block, "encoder_all")?,
         helpers,
     };
-    if codec.parser.is_none() && codec.parser_all.is_none() {
+    if codec.decoder.is_none() && codec.tokenizer.is_none() {
+        return Err(TransformError::Codec(format!(
+            "codec '{}' missing required 'decoder' or 'tokenizer'",
+            name
+        )));
+    }
+    if codec.decoder.is_none() && codec.parser.is_none() && codec.parser_all.is_none() {
         return Err(TransformError::Codec(format!(
             "codec '{}' missing required 'parser' or 'parser_all'",
             name
         )));
     }
-    Ok(codec)
-}
-
-fn required_function(
-    name: &str,
-    block: &BlockRef,
-    attr: &str,
-) -> Result<FunctionValue, TransformError> {
-    match block.attributes.get(attr) {
-        Some(Value::Function(func)) => Ok(func.clone()),
-        Some(v) => Err(TransformError::Codec(format!(
-            "codec '{}' attribute '{}' must be a lambda, got {}",
-            name,
-            attr,
-            v.type_name()
-        ))),
-        None => Err(TransformError::Codec(format!(
-            "codec '{}' missing required '{}'",
-            name, attr
-        ))),
+    if codec.decoder.is_none() && codec.encoder.is_none() && codec.encoder_all.is_none() {
+        return Err(TransformError::Codec(format!(
+            "codec '{}' missing required 'encoder' or 'encoder_all'",
+            name
+        )));
     }
+    Ok(codec)
 }
 
 fn optional_function(
@@ -237,6 +236,96 @@ pub fn decode_custom_records_with_options(
     parse_records(tokens, codec, options)
 }
 
+pub struct DecodedFile {
+    pub value: Value,
+    pub session: CodecEvalSession,
+}
+
+pub struct CodecEvalSession {
+    codec_name: String,
+    eval: Evaluator,
+    helper_scope: crate::eval::value::ScopeId,
+}
+
+impl CodecEvalSession {
+    fn new(
+        codec: &CustomCodec,
+        builtins: HashMap<String, BuiltinFn>,
+        max_call_depth: usize,
+    ) -> Self {
+        let mut eval = Evaluator::new();
+        eval.set_max_call_depth(max_call_depth);
+        for (name, f) in builtins {
+            eval.register_function(name, f);
+        }
+        let helper_scope = eval.scopes_mut().create_scope(ScopeKind::Lambda, None);
+        for (name, helper) in &codec.helpers {
+            let mut helper = helper.clone();
+            helper.closure_scope = Some(helper_scope);
+            eval.scopes_mut().add_entry(
+                helper_scope,
+                ScopeEntry {
+                    name: name.clone(),
+                    kind: ScopeEntryKind::LetBinding,
+                    value: Some(Value::Function(helper)),
+                    span: Span::dummy(),
+                    dependencies: Default::default(),
+                    evaluated: true,
+                    read_count: 0,
+                },
+            );
+        }
+        Self {
+            codec_name: codec.name.clone(),
+            eval,
+            helper_scope,
+        }
+    }
+
+    pub fn call_function(
+        &mut self,
+        func: &FunctionValue,
+        args: &[Value],
+    ) -> Result<Value, TransformError> {
+        let mut func = func.clone();
+        func.closure_scope = Some(self.helper_scope);
+        self.eval
+            .call_user_fn(&func, args, Span::dummy())
+            .map_err(|e| {
+                TransformError::Codec(format!("custom codec '{}': {}", self.codec_name, e.message))
+            })
+    }
+}
+
+pub fn decode_custom_file_with_options(
+    mut reader: impl Read,
+    codec: &CustomCodec,
+    options: &super::CodecOptions,
+    struct_registry: &StructRegistry,
+) -> Result<DecodedFile, TransformError> {
+    let mut data = Vec::new();
+    reader.read_to_end(&mut data).map_err(TransformError::Io)?;
+    let decoder = codec.decoder.as_ref().ok_or_else(|| {
+        TransformError::Codec(format!("codec '{}' missing required 'decoder'", codec.name))
+    })?;
+    let source = Arc::new(Mutex::new(SourceCursor::new(&data)));
+    let (cursor, builtins) =
+        source_cursor_runtime_with_structs(source, codec.mode, Some(struct_registry.clone()));
+    let mut session = CodecEvalSession::new(codec, builtins, 1024);
+    let options = Value::Map(options.clone());
+    let value = match decoder.params.len() {
+        1 => session.call_function(decoder, &[cursor])?,
+        2 => session.call_function(decoder, &[cursor, options])?,
+        n => {
+            return Err(TransformError::Codec(format!(
+                "codec '{}' attribute 'decoder' must accept 1 or 2 arguments, got {}",
+                codec.name, n
+            )))
+        }
+    };
+    Ok(DecodedFile { value, session })
+}
+
 pub fn encode_custom_records(
     records: &[Value],
     codec: &CustomCodec,
@@ -258,18 +347,68 @@ pub fn encode_custom_records(
         return Ok(());
     }
 
+    let encoder = codec.encoder.as_ref().ok_or_else(|| {
+        TransformError::Codec(format!("codec '{}' missing required 'encoder'", codec.name))
+    })?;
     for record in records {
-        let value = call_codec_encoder(
-            codec,
-            &codec.encoder,
-            record.clone(),
-            options.clone(),
-            "encoder",
-        )?;
+        let value = call_codec_encoder(codec, encoder, record.clone(), options.clone(), "encoder")?;
         write_encoded_value(&value, codec, writer)?;
     }
     writer.flush().map_err(TransformError::Io)?;
     Ok(())
+}
+
+pub fn encode_custom_value(
+    value: &Value,
+    codec: &CustomCodec,
+    options: &super::CodecOptions,
+    writer: &mut dyn Write,
+) -> Result<usize, TransformError> {
+    if let Value::List(records) = value {
+        encode_custom_records(records, codec, options, writer)?;
+        return Ok(records.len());
+    }
+
+    let options = Value::Map(options.clone());
+    let encoder = codec.encoder.as_ref().ok_or_else(|| {
+        TransformError::Codec(format!("codec '{}' missing required 'encoder'", codec.name))
+    })?;
+    let value = call_codec_encoder(codec, encoder, value.clone(), options, "encoder")?;
+    write_encoded_value(&value, codec, writer)?;
+    writer.flush().map_err(TransformError::Io)?;
+    Ok(1)
+}
+
+pub fn encode_custom_value_with_session(
+    session: &mut CodecEvalSession,
+    value: &Value,
+    codec: &CustomCodec,
+    options: &super::CodecOptions,
+    writer: &mut dyn Write,
+) -> Result<usize, TransformError> {
+    let options = Value::Map(options.clone());
+    if let (Value::List(records), Some(encoder_all)) = (value, &codec.encoder_all) {
+        let value = call_codec_encoder_in_session(
+            session,
+            codec,
+            encoder_all,
+            Value::List(records.clone()),
+            options,
+            "encoder_all",
+        )?;
+        write_encoded_value(&value, codec, writer)?;
+        writer.flush().map_err(TransformError::Io)?;
+        return Ok(records.len());
+    }
+
+    let encoder = codec.encoder.as_ref().ok_or_else(|| {
+        TransformError::Codec(format!("codec '{}' missing required 'encoder'", codec.name))
+    })?;
+    let value =
+        call_codec_encoder_in_session(session, codec, encoder, value.clone(), options, "encoder")?;
+    write_encoded_value(&value, codec, writer)?;
+    writer.flush().map_err(TransformError::Io)?;
+    Ok(1)
 }
 
 fn call_codec_encoder(
@@ -282,6 +421,24 @@ fn call_codec_encoder(
     match func.params.len() {
         1 => call_codec_lambda(codec, func, &[value], HashMap::new()),
         2 => call_codec_lambda(codec, func, &[value, options], HashMap::new()),
+        n => Err(TransformError::Codec(format!(
+            "codec '{}' attribute '{}' must accept 1 or 2 arguments, got {}",
+            codec.name, attr, n
+        ))),
+    }
+}
+
+fn call_codec_encoder_in_session(
+    session: &mut CodecEvalSession,
+    codec: &CustomCodec,
+    func: &FunctionValue,
+    value: Value,
+    options: Value,
+    attr: &str,
+) -> Result<Value, TransformError> {
+    match func.params.len() {
+        1 => session.call_function(func, &[value]),
+        2 => session.call_function(func, &[value, options]),
         n => Err(TransformError::Codec(format!(
             "codec '{}' attribute '{}' must accept 1 or 2 arguments, got {}",
             codec.name, attr, n
@@ -319,11 +476,16 @@ fn tokenize(data: &[u8], codec: &CustomCodec) -> Result<Vec<Value>, TransformErr
     let source = Arc::new(Mutex::new(SourceCursor::new(data)));
     let (cursor, builtins) = source_cursor_runtime(source.clone(), codec.mode);
     let mut tokens = Vec::new();
+    let tokenizer = codec.tokenizer.as_ref().ok_or_else(|| {
+        TransformError::Codec(format!(
+            "codec '{}' missing required 'tokenizer'",
+            codec.name
+        ))
+    })?;
 
     loop {
         let before = source.lock().unwrap().pos;
-        let value =
-            call_codec_lambda(codec, &codec.tokenizer, &[cursor.clone()], builtins.clone())?;
+        let value = call_codec_lambda(codec, tokenizer, &[cursor.clone()], builtins.clone())?;
         match value {
             Value::Null => {
                 if !source.lock().unwrap().eof() {
@@ -625,10 +787,18 @@ fn source_cursor_runtime(
     cursor: Arc<Mutex<SourceCursor>>,
     mode: CustomCodecMode,
 ) -> (Value, HashMap<String, BuiltinFn>) {
+    source_cursor_runtime_with_structs(cursor, mode, None)
+}
+
+fn source_cursor_runtime_with_structs(
+    cursor: Arc<Mutex<SourceCursor>>,
+    mode: CustomCodecMode,
+    struct_registry: Option<StructRegistry>,
+) -> (Value, HashMap<String, BuiltinFn>) {
     let id = CURSOR_ID.fetch_add(1, Ordering::Relaxed);
     let prefix = format!("__wcl_source_cursor_{id}");
     let mut map = IndexMap::new();
-    let arities = [
+    let mut arities = vec![
         ("pos", 0),
         ("len", 0),
         ("eof", 0),
@@ -641,6 +811,9 @@ fn source_cursor_runtime(
         ("take_match", 1),
         ("take_until", 1),
     ];
+    if struct_registry.is_some() {
+        arities.push(("read_struct", 2));
+    }
     for (name, arity) in arities {
         map.insert(
             name.to_string(),
@@ -755,7 +928,7 @@ fn source_cursor_runtime(
         );
     }
     {
-        let c = cursor;
+        let c = cursor.clone();
         builtins.insert(
             format!("{prefix}_take_until"),
             Arc::new(move |args| {
@@ -770,6 +943,29 @@ fn source_cursor_runtime(
                 let value = haystack[..end].to_string();
                 c.pos = c.pos.saturating_add(value.len()).min(c.data.len());
                 Ok(Value::String(value))
+            }),
+        );
+    }
+    if let Some(registry) = struct_registry {
+        let c = cursor;
+        builtins.insert(
+            format!("{prefix}_read_struct"),
+            Arc::new(move |args| {
+                let struct_name = expect_string(args, 0, "read_struct")?;
+                let encoding = args
+                    .get(1)
+                    .map(encoding_from_value)
+                    .transpose()?
+                    .unwrap_or_default();
+                let struct_def = registry
+                    .get(struct_name)
+                    .ok_or_else(|| format!("read_struct(): unknown struct '{struct_name}'"))?;
+                let mut c = c.lock().unwrap();
+                let mut parser = struct_parser::binary::BinaryParser::new(c.remaining(), &encoding);
+                let value = parser.parse_struct(struct_def).map_err(|e| e.to_string())?;
+                let consumed = parser.consumed();
+                c.pos = c.pos.saturating_add(consumed).min(c.data.len());
+                Ok(value)
             }),
         );
     }
@@ -1005,12 +1201,43 @@ fn expect_int(args: &[Value], index: usize, name: &str) -> Result<i64, String> {
     }
 }
 
+fn expect_string<'a>(args: &'a [Value], index: usize, name: &str) -> Result<&'a str, String> {
+    match args.get(index) {
+        Some(Value::String(s)) => Ok(s),
+        Some(v) => Err(format!("{}() expects string, got {}", name, v.type_name())),
+        None => Err(format!("{}() expects argument {}", name, index + 1)),
+    }
+}
+
 fn expect_nonnegative_usize(args: &[Value], index: usize, name: &str) -> Result<usize, String> {
     let n = expect_int(args, index, name)?;
     if n < 0 {
         return Err(format!("{}() length must be non-negative", name));
     }
     Ok(n as usize)
+}
+
+fn encoding_from_value(value: &Value) -> Result<EncodingConfig, String> {
+    let Value::Map(options) = value else {
+        return Err(format!(
+            "read_struct() options must be map, got {}",
+            value.type_name()
+        ));
+    };
+    let mut encoding = EncodingConfig::default();
+    if let Some(endian) = options.get("endian") {
+        encoding.default_endian = match endian {
+            Value::Symbol(s) | Value::String(s) if s == "le" || s == "little" => Endianness::Little,
+            Value::Symbol(s) | Value::String(s) if s == "be" || s == "big" => Endianness::Big,
+            other => {
+                return Err(format!(
+                    "read_struct() endian must be :le, :little, :be, or :big, got {}",
+                    other.type_name()
+                ))
+            }
+        };
+    }
+    Ok(encoding)
 }
 
 fn expect_pattern<'a>(args: &'a [Value], index: usize, name: &str) -> Result<&'a str, String> {
@@ -1110,6 +1337,9 @@ fn tokens_slice_value(tokens: &[Value], pos: usize, n: usize) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::lang::ast::TypeExpr;
+    use crate::lang::span::Span;
+    use crate::schema::struct_registry::{ResolvedStruct, StructField, StructRegistry};
 
     fn decode_with(
         source: &str,
@@ -1119,6 +1349,116 @@ mod tests {
         let registry = registry_from_source(source, false)?;
         let codec = registry.get(codec_name).expect("codec registered");
         decode_custom_records(input.as_bytes(), codec)
+    }
+
+    fn test_struct(name: &str, fields: Vec<(&str, TypeExpr)>) -> ResolvedStruct {
+        ResolvedStruct {
+            name: name.to_string(),
+            fields: fields
+                .into_iter()
+                .map(|(name, type_expr)| StructField {
+                    name: name.to_string(),
+                    type_expr,
+                    required: true,
+                    span: Span::dummy(),
+                })
+                .collect(),
+            tag_field: None,
+            variants: vec![],
+            span: Span::dummy(),
+        }
+    }
+
+    #[test]
+    fn decoder_returns_file_object_with_captured_stream() {
+        let source = r#"
+export let pull = file => {
+    let first = file.readings.next()
+    let rest = file.readings.take(10)
+    {
+        count = file.header.count
+        first = first
+        rest = rest
+    }
+}
+
+codec sensor {
+    mode = :bytes
+    decoder = source => {
+        let header = source.read_struct("Header", { endian = :le })
+        object("SensorFile", {
+            header = header
+            readings = stream {
+                let raw = state.get("i")
+                let i = raw == null ? 0 : raw
+                i >= header.count ? null : {
+                    let _ = state.set("i", i + 1)
+                    source.read_struct("Reading", { endian = :le })
+                }
+            }
+        })
+    }
+}
+"#;
+        let doc = crate::parse(source, crate::ParseOptions::default());
+        assert!(!doc.has_errors(), "errors: {:?}", doc.errors());
+        let registry = registry_from_document(&doc, false).unwrap();
+        let codec = registry.get("sensor").unwrap();
+        let pull = match doc.values.get("pull").unwrap() {
+            Value::Function(func) => func.clone(),
+            other => panic!("expected function, got {}", other.type_name()),
+        };
+
+        let mut struct_registry = StructRegistry::new();
+        struct_registry.structs.insert(
+            "Header".into(),
+            test_struct("Header", vec![("count", TypeExpr::U32(Span::dummy()))]),
+        );
+        struct_registry.structs.insert(
+            "Reading".into(),
+            test_struct(
+                "Reading",
+                vec![
+                    ("sensor_id", TypeExpr::U16(Span::dummy())),
+                    ("value", TypeExpr::U16(Span::dummy())),
+                ],
+            ),
+        );
+
+        let mut input = Vec::new();
+        input.extend_from_slice(&2u32.to_le_bytes());
+        input.extend_from_slice(&7u16.to_le_bytes());
+        input.extend_from_slice(&100u16.to_le_bytes());
+        input.extend_from_slice(&8u16.to_le_bytes());
+        input.extend_from_slice(&200u16.to_le_bytes());
+
+        let mut decoded = decode_custom_file_with_options(
+            input.as_slice(),
+            codec,
+            &IndexMap::new(),
+            &struct_registry,
+        )
+        .unwrap();
+        let result = decoded
+            .session
+            .call_function(&pull, &[decoded.value.clone()])
+            .unwrap();
+        let Value::Map(result) = result else {
+            panic!("expected map result");
+        };
+        assert_eq!(result.get("count"), Some(&Value::Int(2)));
+        let Value::Map(first) = result.get("first").unwrap() else {
+            panic!("expected first reading map");
+        };
+        assert_eq!(first.get("sensor_id"), Some(&Value::Int(7)));
+        let Value::List(rest) = result.get("rest").unwrap() else {
+            panic!("expected rest list");
+        };
+        assert_eq!(rest.len(), 1);
+        let Value::Map(second) = &rest[0] else {
+            panic!("expected second reading map");
+        };
+        assert_eq!(second.get("sensor_id"), Some(&Value::Int(8)));
     }
 
     #[test]

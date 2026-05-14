@@ -24,6 +24,19 @@ pub fn value_to_js(value: &Value) -> JsValue {
             }
             obj.into()
         }
+        Value::Object(object) => {
+            let obj = Object::new();
+            Reflect::set(
+                &obj,
+                &JsValue::from_str("__type"),
+                &JsValue::from_str(&object.type_name),
+            )
+            .unwrap();
+            for (k, v) in &object.fields {
+                Reflect::set(&obj, &JsValue::from_str(k), &value_to_js(v)).unwrap();
+            }
+            obj.into()
+        }
         Value::Set(items) => {
             let set = Set::new(&JsValue::UNDEFINED);
             for item in items {

@@ -39,6 +39,13 @@ impl<'de> de::Deserializer<'de> for Deserializer {
                 };
                 visitor.visit_map(map_de)
             }
+            Value::Object(object) => {
+                let map_de = MapDeserializer {
+                    iter: object.fields.into_iter(),
+                    value: None,
+                };
+                visitor.visit_map(map_de)
+            }
             Value::Bytes(bytes) => visitor.visit_byte_buf(bytes),
             Value::MsgPackExt { type_id, data } => {
                 let mut map = IndexMap::new();

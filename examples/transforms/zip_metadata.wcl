@@ -16,7 +16,7 @@
 //   extra_field:      list(u8)[extra_length]  (skipped)
 //   data:             list(u8)[compressed_size]  (skipped)
 
-struct "ZipLocalEntry" {
+struct "ZipLocalEntryHeader" {
     signature        : u32
     version_needed   : u16
     flags            : u16
@@ -28,34 +28,45 @@ struct "ZipLocalEntry" {
     uncompressed_size : u32
     filename_length  : u16
     extra_length     : u16
-    filename         : string
-    extra_field      : list(u8)
 }
 
-layout zip-entries {
-    // Stream 3 entries (for sample.zip — in practice the count would
-    // come from parsing the end-of-central-directory record first).
-    // @length reads variable-length fields using a prior field's value.
-    // @skip jumps over binary payload data without storing it.
-    @le @stream @count(3)
-    @length("filename", "filename_length")
-    @length("extra_field", "extra_length")
-    @skip("extra_field", "compressed_size")
-    ZipLocalEntry entries {
-    }
+codec zip_local {
+    mode = :bytes
+    decoder = source => object("ZipLocalFile", {
+        entries = stream {
+            source.eof() ? null : {
+                let header = source.read_struct("ZipLocalEntryHeader", { endian = :le })
+                header.signature != 67324752 ? null : {
+                    let filename = bytes_to_utf8(source.take(header.filename_length))
+                    let _extra = source.take(header.extra_length)
+                    let _payload = source.take(header.compressed_size)
+                    {
+                        signature = header.signature
+                        version_needed = header.version_needed
+                        flags = header.flags
+                        compression = header.compression
+                        mod_time = header.mod_time
+                        mod_date = header.mod_date
+                        crc32 = header.crc32
+                        compressed_size = header.compressed_size
+                        uncompressed_size = header.uncompressed_size
+                        filename = filename
+                    }
+                }
+            }
+        }
+    })
 }
 
 transform zip-to-json {
-    input        = "codec::binary"
-    input_layout = "zip-entries"
-    output       = "codec::json"
+    input  = "codec::zip_local"
+    output = "codec::json"
 
-    @where(in.signature == 67324752)
-    map {
-        filename          = in.filename
-        compressed_size   = in.compressed_size
-        uncompressed_size = in.uncompressed_size
-        compression       = in.compression == 0 ? "stored" : "deflate"
-        crc32             = in.crc32
-    }
+    run = file => map(file.entries.to_list(), entry => {
+        filename          = entry.filename
+        compressed_size   = entry.compressed_size
+        uncompressed_size = entry.uncompressed_size
+        compression       = entry.compression == 0 ? "stored" : "deflate"
+        crc32             = entry.crc32
+    })
 }

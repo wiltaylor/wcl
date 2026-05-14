@@ -1431,6 +1431,7 @@ impl<'a> MacroExpander<'a> {
             Value::Symbol(_) => "symbol".to_string(),
             Value::List(_) => "list".to_string(),
             Value::Map(_) => "map".to_string(),
+            Value::Object(object) => object.type_name.clone(),
             Value::Bytes(_) => "bytes".to_string(),
             Value::MsgPackExt { .. } => "msgpack_ext".to_string(),
             Value::MsgPackTimestamp { .. } => "msgpack_timestamp".to_string(),

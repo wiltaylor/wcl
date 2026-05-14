@@ -1371,6 +1371,7 @@ pub(crate) fn value_type_label(value: &Value) -> &'static str {
         Value::Identifier(_) => "identifier",
         Value::List(_) => "list",
         Value::Map(_) => "map",
+        Value::Object(_) => "object",
         Value::Bytes(_) => "bytes",
         Value::MsgPackExt { .. } => "msgpack_ext",
         Value::MsgPackTimestamp { .. } => "msgpack_timestamp",

@@ -38,6 +38,11 @@ impl<'a> BinaryParser<'a> {
         self.data.len().saturating_sub(self.cursor)
     }
 
+    /// How many bytes have been consumed.
+    pub fn consumed(&self) -> usize {
+        self.cursor
+    }
+
     /// Parse one struct instance and return as Value::Map.
     pub fn parse_struct(&mut self, struct_def: &ResolvedStruct) -> Result<Value, TransformError> {
         let mut map = IndexMap::new();

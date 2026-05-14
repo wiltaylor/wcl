@@ -520,33 +520,36 @@ page guide_transforms {
 
                 heading h2_layouts {
                     level = 2
-                    content = "Layouts and Binary Parsing"
+                    content = "Stream Codecs and Binary Parsing"
                 }
 
                 paragraph p26 {
-                    content = "Layouts define how " + link("structs", "guide-structs.html") + " compose into complete format descriptions. They distinguish between " + bold("structured") + " (fully buffered) and " + bold("stream") + " (one-record-at-a-time) sections."
+                    content = "Binary file transforms are modeled as codecs that return a file object. The object can contain eager metadata fields plus stream fields that pull records from the source as consumers ask for them."
                 }
 
                 heading h3_layout_def {
                     level = 3
-                    content = "Layout Definition"
+                    content = "File Object Decoder"
                 }
 
                 code c15 {
                     language = "wcl"
                     content = <<-'WCL'
-                    layout pcap {
-                        // Structured: fully buffered, fields available to stream sections
-                        header : PcapGlobalHeader {
-                            @le
-                            @be("magic")
-                            @magic("magic", 0xA1B2C3D4)
-                        }
-
-                        // Streamed: records flow through one at a time
-                        @stream @count(header.record_count)
-                        packets : PcapPacket {
-                            @le
+                    codec pcap {
+                        mode = :bytes
+                        decoder = source => {
+                            let header = source.read_struct("PcapGlobalHeader", { endian = :le })
+                            object("PcapFile", {
+                                header = header
+                                packets = stream {
+                                    let raw = state.get("i")
+                                    let i = raw == null ? 0 : raw
+                                    i >= header.record_count ? null : {
+                                        let _ = state.set("i", i + 1)
+                                        source.read_struct("PcapPacket", { endian = :le })
+                                    }
+                                }
+                            })
                         }
                     }
                     WCL
@@ -554,34 +557,31 @@ page guide_transforms {
 
                 heading h3_encoding {
                     level = 3
-                    content = "Encoding Decorators"
+                    content = "Struct Reads"
                 }
 
                 paragraph p27 {
-                    content = "Encoding details live on layout sections, not on struct definitions. This keeps structs as pure data shapes:"
+                    content = "Encoding details are supplied when the codec reads or writes a struct. This keeps structs as pure data shapes:"
                 }
 
                 data_table t_encoding {
-                    caption = "Encoding Decorators"
+                    caption = "Struct Read Options"
                     rows = [
-                        { decorator = "@le", purpose = "Default little-endian for all fields", example = "@le" },
-                        { decorator = "@be", purpose = "Default big-endian, or per-field override", example = "@be(\"magic\")" },
-                        { decorator = "@magic", purpose = "Assert a field equals an expected value", example = "@magic(\"magic\", 0xA1B2C3D4)" },
-                        { decorator = "@padding", purpose = "Skip N bytes after a field", example = "@padding(4)" },
-                        { decorator = "@align", purpose = "Align to N-byte boundary", example = "@align(16)" },
-                        { decorator = "@encoding", purpose = "String encoding for a field", example = "@encoding(\"payload\", \"raw\")" }
+                        { decorator = "endian = :le", purpose = "Read numeric fields as little-endian", example = "source.read_struct(\"Header\", { endian = :le })" },
+                        { decorator = "endian = :be", purpose = "Read numeric fields as big-endian", example = "source.read_struct(\"Header\", { endian = :be })" },
+                        { decorator = "source.take(n)", purpose = "Read or skip variable-length byte ranges", example = "source.take(header.payload_size)" }
                     ]
                 }
 
                 heading h3_structured_stream {
                     level = 3
-                    content = "Structured vs Stream Sections"
+                    content = "Metadata and Streams"
                 }
 
                 paragraph p28 {
                     content = "<ul>" +
-                        "<li>" + bold("Structured") + " sections are fully parsed into memory and available for random access by later sections (e.g., a file header with record counts).</li>" +
-                        "<li>" + bold("Stream") + " sections iterate one record at a time with bounded memory.</li>" +
+                        "<li>" + bold("Metadata") + " fields are read eagerly and stored on the returned file object.</li>" +
+                        "<li>" + bold("Stream") + " fields capture the source and iterate one record at a time with bounded memory.</li>" +
                         "</ul>"
                 }
 
@@ -597,17 +597,20 @@ page guide_transforms {
                 code c16 {
                     language = "wcl"
                     content = <<-'WCL'
-                    // Fixed count from a structured field
-                    @stream @count(header.record_count)
-                    records : Record
+                    // Fixed count from a header field
+                    records = stream {
+                        let raw = state.get("i")
+                        let i = raw == null ? 0 : raw
+                        i >= header.record_count ? null : {
+                            let _ = state.set("i", i + 1)
+                            source.read_struct("Record", { endian = :le })
+                        }
+                    }
 
                     // End of input (default)
-                    @stream
-                    lines : TextLine
-
-                    // Size-bounded
-                    @stream @max_bytes(header.data_size)
-                    chunks : DataChunk
+                    lines = stream {
+                        source.eof() ? null : source.take_until("\n")
+                    }
                     WCL
                 }
 

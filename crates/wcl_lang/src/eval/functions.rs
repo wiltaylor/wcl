@@ -1,4 +1,4 @@
-use crate::eval::value::Value;
+use crate::eval::value::{ObjectValue, Value};
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -795,6 +795,7 @@ pub fn builtin_registry() -> HashMap<String, BuiltinFn> {
     m.insert("zip".into(), wrap_builtin(zip));
     m.insert("map_has".into(), wrap_builtin(map_has));
     m.insert("map_set".into(), wrap_builtin(map_set));
+    m.insert("object".into(), wrap_builtin(object));
 
     // Table manipulation functions (Section 14.3b)
     m.insert("find".into(), wrap_builtin(fn_find));
@@ -1733,9 +1734,10 @@ fn len(args: &[Value]) -> Result<Value, String> {
     match &args[0] {
         Value::List(l) => Ok(Value::Int(l.len() as i64)),
         Value::Map(m) => Ok(Value::Int(m.len() as i64)),
+        Value::Object(o) => Ok(Value::Int(o.fields.len() as i64)),
         Value::Set(s) => Ok(Value::Int(s.len() as i64)),
         other => Err(format!(
-            "len: argument must be list, map, or set, got {}",
+            "len: argument must be list, map, object, or set, got {}",
             other.type_name()
         )),
     }
@@ -1748,8 +1750,12 @@ fn keys(args: &[Value]) -> Result<Value, String> {
             let ks: Vec<Value> = m.keys().map(|k| Value::String(k.clone())).collect();
             Ok(Value::List(ks))
         }
+        Value::Object(o) => {
+            let ks: Vec<Value> = o.fields.keys().map(|k| Value::String(k.clone())).collect();
+            Ok(Value::List(ks))
+        }
         other => Err(format!(
-            "keys: argument must be map, got {}",
+            "keys: argument must be map or object, got {}",
             other.type_name()
         )),
     }
@@ -1762,8 +1768,12 @@ fn fn_values(args: &[Value]) -> Result<Value, String> {
             let vs: Vec<Value> = m.values().cloned().collect();
             Ok(Value::List(vs))
         }
+        Value::Object(o) => {
+            let vs: Vec<Value> = o.fields.values().cloned().collect();
+            Ok(Value::List(vs))
+        }
         other => Err(format!(
-            "values: argument must be map, got {}",
+            "values: argument must be map or object, got {}",
             other.type_name()
         )),
     }
@@ -1902,9 +1912,10 @@ fn map_has(args: &[Value]) -> Result<Value, String> {
     expect_args(args, 2, "map_has")?;
     let map = match &args[0] {
         Value::Map(m) => m,
+        Value::Object(o) => &o.fields,
         other => {
             return Err(format!(
-                "map_has: argument 1 must be map, got {}",
+                "map_has: argument 1 must be map or object, got {}",
                 other.type_name()
             ))
         }
@@ -1928,6 +1939,24 @@ fn map_set(args: &[Value]) -> Result<Value, String> {
     let mut result = map.clone();
     result.insert(key.to_string(), args[2].clone());
     Ok(Value::Map(result))
+}
+
+fn object(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 2, "object")?;
+    let type_name = get_string(&args[0], 1, "object")?;
+    let fields = match &args[1] {
+        Value::Map(m) => m.clone(),
+        other => {
+            return Err(format!(
+                "object: argument 2 must be map, got {}",
+                other.type_name()
+            ))
+        }
+    };
+    Ok(Value::Object(ObjectValue {
+        type_name: type_name.to_string(),
+        fields,
+    }))
 }
 
 // ---------------------------------------------------------------------------

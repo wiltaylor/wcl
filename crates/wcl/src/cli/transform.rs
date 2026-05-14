@@ -75,6 +75,7 @@ pub fn run(
 
     // Build the MapConfig from the transform's map sub-blocks
     let map_config = build_map_config(transform_block)?;
+    let file_transform = extract_run_function(&doc, name)?;
     let custom_codecs = build_custom_codec_registry(&doc)?;
 
     // Open input
@@ -108,16 +109,16 @@ pub fn run(
             let value_str = extract_string_value(&attr.value);
             match attr.name.name.as_str() {
                 "input_layout" => {
-                    if let Some(s) = value_str {
-                        input_options
-                            .insert("layout".to_string(), crate::eval::value::Value::String(s));
-                    }
+                    return Err(
+                        "input_layout is no longer supported; use a codec decoder with streams"
+                            .to_string(),
+                    );
                 }
                 "output_layout" => {
-                    if let Some(s) = value_str {
-                        output_options
-                            .insert("layout".to_string(), crate::eval::value::Value::String(s));
-                    }
+                    return Err(
+                        "output_layout is no longer supported; use a codec encoder with streams"
+                            .to_string(),
+                    );
                 }
                 "separator" => {
                     if let Some(s) = value_str {
@@ -174,7 +175,6 @@ pub fn run(
 
     let ctx = transform::TransformContext {
         struct_registry: &doc.struct_registry,
-        layout_registry: &doc.layout_registry,
     };
 
     let stats = transform::execute_with_custom(
@@ -186,6 +186,7 @@ pub fn run(
         &input_options,
         &output_options,
         Some(&ctx),
+        file_transform.as_ref(),
         Some(&custom_codecs),
     )
     .map_err(|e| format!("transform error: {}", e))?;
@@ -208,6 +209,27 @@ pub fn run(
     );
 
     Ok(())
+}
+
+fn extract_run_function(
+    doc: &crate::Document,
+    transform_name: &str,
+) -> Result<Option<FunctionValue>, String> {
+    let Some(value) = doc.values.get(transform_name) else {
+        return Ok(None);
+    };
+    let Value::BlockRef(block) = value else {
+        return Ok(None);
+    };
+    match block.attributes.get("run") {
+        Some(Value::Function(func)) => Ok(Some(func.clone())),
+        Some(other) => Err(format!(
+            "transform '{}' attribute 'run' must be a lambda, got {}",
+            transform_name,
+            other.type_name()
+        )),
+        None => Ok(None),
+    }
 }
 
 fn build_custom_codec_registry(
@@ -342,6 +364,7 @@ fn build_map_config(block: &crate::lang::ast::Block) -> Result<MapConfig, String
                     attr.name.name.as_str(),
                     "input"
                         | "output"
+                        | "run"
                         | "auto_map"
                         | "input_layout"
                         | "output_layout"

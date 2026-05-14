@@ -29,6 +29,15 @@ pub fn value_to_json(value: &Value) -> serde_json::Value {
                 .collect();
             serde_json::Value::Object(obj)
         }
+        Value::Object(object) => {
+            let mut obj: serde_json::Map<String, serde_json::Value> = object
+                .fields
+                .iter()
+                .map(|(k, v)| (k.clone(), value_to_json(v)))
+                .collect();
+            obj.insert("__type".to_string(), json!(object.type_name));
+            serde_json::Value::Object(obj)
+        }
         Value::Bytes(bytes) => {
             json!({
                 "__type": "bytes",

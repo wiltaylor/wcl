@@ -124,6 +124,10 @@ impl Evaluator {
         self.builtins.insert(name.into(), f);
     }
 
+    pub fn set_max_call_depth(&mut self, max_call_depth: usize) {
+        self.max_call_depth = max_call_depth;
+    }
+
     /// Set external variables to inject before evaluation.
     pub fn set_variables(&mut self, vars: IndexMap<String, Value>) {
         self.variables = vars;
@@ -1445,6 +1449,13 @@ impl Evaluator {
                 Diagnostic::error(format!("key '{}' not found in map", field), span)
                     .with_code("E054")
             }),
+            Value::Object(object) => object.fields.get(field).cloned().ok_or_else(|| {
+                Diagnostic::error(
+                    format!("field '{}' not found on {}", field, object.type_name),
+                    span,
+                )
+                .with_code("E054")
+            }),
             Value::BlockRef(br) => match field {
                 "id" => Ok(br
                     .id
@@ -1480,6 +1491,15 @@ impl Evaluator {
             (Value::Map(m), Value::String(key)) => m.get(key).cloned().ok_or_else(|| {
                 Diagnostic::error(format!("key '{}' not found in map", key), span).with_code("E054")
             }),
+            (Value::Object(object), Value::String(key)) => {
+                object.fields.get(key).cloned().ok_or_else(|| {
+                    Diagnostic::error(
+                        format!("field '{}' not found on {}", key, object.type_name),
+                        span,
+                    )
+                    .with_code("E054")
+                })
+            }
             _ => Err(Diagnostic::error(
                 format!("cannot index {} with {}", val.type_name(), idx.type_name()),
                 span,
@@ -1836,7 +1856,7 @@ impl Evaluator {
         }
     }
 
-    fn call_user_fn(
+    pub(crate) fn call_user_fn(
         &mut self,
         func: &FunctionValue,
         args: &[Value],
@@ -2306,6 +2326,7 @@ impl Evaluator {
             Value::StateHandle(_) => true,
             Value::List(items) | Value::Set(items) => items.iter().any(Self::contains_state_handle),
             Value::Map(map) => map.values().any(Self::contains_state_handle),
+            Value::Object(object) => object.fields.values().any(Self::contains_state_handle),
             Value::BlockRef(block) => {
                 block.attributes.values().any(Self::contains_state_handle)
                     || block

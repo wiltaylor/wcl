@@ -151,7 +151,7 @@ page guide_structs {
                 }
 
                 paragraph p7 {
-                    content = "Structs are pure data shapes — they define " + italic("what") + " data looks like, not " + italic("how") + " it's encoded. Encoding details (endianness, padding, alignment) are specified in " + link("layout", "guide-transforms.html") + " definitions, not in the struct itself."
+                    content = "Structs are pure data shapes — they define " + italic("what") + " data looks like, not " + italic("how") + " it's encoded. Encoding details such as endianness are supplied by stream codecs when they read or write structs."
                 }
 
                 code c5 {
@@ -178,29 +178,34 @@ page guide_structs {
                 }
 
                 paragraph p8 {
-                    content = "Encoding is specified in the layout:"
+                    content = "Encoding is specified by the codec:"
                 }
 
                 code c6 {
                     language = "wcl"
                     content = <<-'WCL'
-                    layout pcap {
-                        header : PcapGlobalHeader {
-                            @le                              // default little-endian
-                            @be("magic")                     // magic field is big-endian
-                            @magic("magic", 0xA1B2C3D4)     // assert constant value
-                        }
-
-                        @stream @count(header.record_count)
-                        packets : PcapPacket {
-                            @le
+                    codec pcap {
+                        mode = :bytes
+                        decoder = source => {
+                            let header = source.read_struct("PcapGlobalHeader", { endian = :le })
+                            object("PcapFile", {
+                                header = header
+                                packets = stream {
+                                    let raw = state.get("i")
+                                    let i = raw == null ? 0 : raw
+                                    i >= header.record_count ? null : {
+                                        let _ = state.set("i", i + 1)
+                                        source.read_struct("PcapPacket", { endian = :le })
+                                    }
+                                }
+                            })
                         }
                     }
                     WCL
                 }
 
                 paragraph p9 {
-                    content = "This separation means the same struct can be reused with different encodings (e.g., little-endian pcap vs big-endian pcap)."
+                    content = "This separation means the same struct can be reused by different codecs or with different read options."
                 }
 
                 heading h2_pattern {
@@ -246,7 +251,7 @@ page guide_structs {
                         { feature = "Syntax", schema_col = "schema \"name\" { ... }", struct_col = "struct \"name\" { ... }" },
                         { feature = "Fields", schema_col = "name : type @decorators", struct_col = "name : type @decorators" },
                         { feature = "Variants", schema_col = "Supported", struct_col = "Supported" },
-                        { feature = "Binary encoding", schema_col = "N/A", struct_col = "Via layout decorators" }
+                        { feature = "Binary encoding", schema_col = "N/A", struct_col = "Via stream codecs" }
                     ]
                 }
 

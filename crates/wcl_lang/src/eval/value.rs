@@ -19,6 +19,8 @@ pub enum Value {
     List(Vec<Value>),
     /// Ordered map (preserves insertion order)
     Map(IndexMap<String, Value>),
+    /// Named runtime object with map-like fields.
+    Object(ObjectValue),
     /// Raw bytes.
     Bytes(Vec<u8>),
     /// MessagePack extension value.
@@ -93,6 +95,12 @@ impl BlockRef {
 pub struct DecoratorValue {
     pub name: String,
     pub args: IndexMap<String, Value>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ObjectValue {
+    pub type_name: String,
+    pub fields: IndexMap<String, Value>,
 }
 
 #[derive(Debug, Clone)]
@@ -198,6 +206,7 @@ impl Value {
             Value::Identifier(_) => "identifier",
             Value::List(_) => "list",
             Value::Map(_) => "map",
+            Value::Object(_) => "object",
             Value::Bytes(_) => "bytes",
             Value::MsgPackExt { .. } => "msgpack_ext",
             Value::MsgPackTimestamp { .. } => "msgpack_timestamp",
@@ -262,6 +271,7 @@ impl Value {
     pub fn as_map(&self) -> Option<&IndexMap<String, Value>> {
         match self {
             Value::Map(m) => Some(m),
+            Value::Object(o) => Some(&o.fields),
             _ => None,
         }
     }
@@ -332,6 +342,7 @@ impl Value {
             Value::Null => Ok("null".to_string()),
             Value::Identifier(s) => Ok(s.clone()),
             Value::Symbol(s) => Ok(format!(":{}", s)),
+            Value::Object(object) => Ok(object.type_name.clone()),
             Value::Date(s) => Ok(s.clone()),
             Value::OffsetDateTime(s) => Ok(s.clone()),
             Value::LocalDateTime(s) => Ok(s.clone()),
@@ -361,6 +372,9 @@ impl PartialEq for Value {
             (Value::Symbol(a), Value::Symbol(b)) => a == b,
             (Value::List(a), Value::List(b)) => a == b,
             (Value::Map(a), Value::Map(b)) => a == b,
+            (Value::Object(a), Value::Object(b)) => {
+                a.type_name == b.type_name && a.fields == b.fields
+            }
             (Value::Bytes(a), Value::Bytes(b)) => a == b,
             (
                 Value::MsgPackExt {
@@ -440,6 +454,16 @@ impl fmt::Display for Value {
                     write!(f, "{} = {}", k, v)?;
                 }
                 write!(f, "}}")
+            }
+            Value::Object(object) => {
+                write!(f, "{} {{", object.type_name)?;
+                for (i, (k, v)) in object.fields.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ",")?;
+                    }
+                    write!(f, " {} = {}", k, v)?;
+                }
+                write!(f, " }}")
             }
             Value::Bytes(bytes) => {
                 write!(f, "{{__type = bytes, bytes = [")?;
