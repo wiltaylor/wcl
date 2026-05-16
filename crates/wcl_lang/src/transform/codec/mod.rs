@@ -4,6 +4,7 @@
 //! the unified Event stream.
 
 pub mod custom;
+pub mod native;
 
 use crate::transform::error::TransformError;
 use crate::transform::event::Event;
@@ -95,7 +96,7 @@ impl Default for CodecRegistry {
 
 /// All codec names supported by the transform engine.
 pub const SUPPORTED_CODECS: &[&str] = &[
-    "json", "yaml", "csv", "toml", "hcl", "xml", "msgpack", "elf",
+    "json", "yaml", "csv", "toml", "hcl", "xml", "msgpack", "elf", "svg", "html",
 ];
 
 /// Decode an entire input into a list of records (each record is a Value::Map).

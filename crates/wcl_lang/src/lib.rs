@@ -8,6 +8,7 @@ pub mod eval;
 pub mod fmt;
 pub mod fmt_value;
 pub mod lang;
+pub mod render;
 pub mod schema;
 pub mod serde_impl;
 pub mod standard_lib;

@@ -20,6 +20,7 @@ pub use mapper::{map_record, map_records, FieldMapping, MapConfig, MapResult, Wh
 
 use crate::eval::value::{FunctionValue, Value};
 use std::io::{Read, Write};
+use std::path::Path;
 
 /// Context for transforms that need access to struct definitions.
 pub struct TransformContext<'a> {
@@ -55,6 +56,62 @@ pub fn execute(
     )
 }
 
+/// Execute a transform and write to a directory-capable output target.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_with_custom_to_target(
+    input_codec: &str,
+    input_reader: impl Read,
+    output_codec: &str,
+    output_target: codec::native::OutputTarget<'_>,
+    config: &MapConfig,
+    input_options: &codec::CodecOptions,
+    output_options: &codec::CodecOptions,
+    context: Option<&TransformContext>,
+    file_transform: Option<&FunctionValue>,
+    custom_codecs: Option<&codec::custom::CustomCodecRegistry>,
+) -> Result<TransformStats, TransformError> {
+    execute_with_custom_internal(
+        input_codec,
+        input_reader,
+        output_codec,
+        output_target,
+        config,
+        input_options,
+        output_options,
+        context,
+        file_transform,
+        custom_codecs,
+    )
+}
+
+/// Execute a transform and write output into a directory target.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_with_custom_to_directory(
+    input_codec: &str,
+    input_reader: impl Read,
+    output_codec: &str,
+    output_dir: &Path,
+    config: &MapConfig,
+    input_options: &codec::CodecOptions,
+    output_options: &codec::CodecOptions,
+    context: Option<&TransformContext>,
+    file_transform: Option<&FunctionValue>,
+    custom_codecs: Option<&codec::custom::CustomCodecRegistry>,
+) -> Result<TransformStats, TransformError> {
+    execute_with_custom_to_target(
+        input_codec,
+        input_reader,
+        output_codec,
+        codec::native::OutputTarget::Directory(output_dir),
+        config,
+        input_options,
+        output_options,
+        context,
+        file_transform,
+        custom_codecs,
+    )
+}
+
 /// Execute a transform with optional WCL-authored custom codecs.
 #[allow(clippy::too_many_arguments)]
 pub fn execute_with_custom(
@@ -62,6 +119,33 @@ pub fn execute_with_custom(
     input_reader: impl Read,
     output_codec: &str,
     output_writer: &mut dyn Write,
+    config: &MapConfig,
+    input_options: &codec::CodecOptions,
+    output_options: &codec::CodecOptions,
+    context: Option<&TransformContext>,
+    file_transform: Option<&FunctionValue>,
+    custom_codecs: Option<&codec::custom::CustomCodecRegistry>,
+) -> Result<TransformStats, TransformError> {
+    execute_with_custom_internal(
+        input_codec,
+        input_reader,
+        output_codec,
+        codec::native::OutputTarget::Stream(output_writer),
+        config,
+        input_options,
+        output_options,
+        context,
+        file_transform,
+        custom_codecs,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn execute_with_custom_internal(
+    input_codec: &str,
+    input_reader: impl Read,
+    output_codec: &str,
+    output_target: codec::native::OutputTarget<'_>,
     config: &MapConfig,
     input_options: &codec::CodecOptions,
     output_options: &codec::CodecOptions,
@@ -111,24 +195,39 @@ pub fn execute_with_custom(
             value = Value::List(mapped);
         }
 
-        let output_custom = custom_codecs
-            .get(output_codec)
-            .ok_or_else(|| TransformError::UnknownCodec(output_codec.to_string()))?;
-        let written = if contains_stream(&value) {
-            codec::custom::encode_custom_value_with_session(
-                &mut decoded.session,
-                &value,
-                output_custom,
-                output_options,
-                output_writer,
-            )?
+        let native_codecs = codec::native::NativeCodecRegistry::standard();
+        let written = if let Some(native) = native_codecs.get(output_codec) {
+            codec::native::encode_native_value(&value, native, output_options, output_target)?
         } else {
-            codec::custom::encode_custom_value(
-                &value,
-                output_custom,
-                output_options,
-                output_writer,
-            )?
+            let output_custom = custom_codecs
+                .get(output_codec)
+                .ok_or_else(|| TransformError::UnknownCodec(output_codec.to_string()))?;
+            match output_target {
+                codec::native::OutputTarget::Stream(output_writer) => {
+                    if contains_stream(&value) {
+                        codec::custom::encode_custom_value_with_session(
+                            &mut decoded.session,
+                            &value,
+                            output_custom,
+                            output_options,
+                            output_writer,
+                        )?
+                    } else {
+                        codec::custom::encode_custom_value(
+                            &value,
+                            output_custom,
+                            output_options,
+                            output_writer,
+                        )?
+                    }
+                }
+                codec::native::OutputTarget::Directory(_) => {
+                    return Err(TransformError::Codec(format!(
+                        "codec '{}' does not support directory output",
+                        output_codec
+                    )));
+                }
+            }
         };
         return Ok(TransformStats {
             records_read,

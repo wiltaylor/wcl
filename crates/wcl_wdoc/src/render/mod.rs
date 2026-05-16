@@ -7,6 +7,8 @@ use std::fs;
 use std::path::{Component, Path, PathBuf};
 
 use crate::model::WdocDocument;
+use wcl_lang::transform::codec;
+use wcl_lang::Value;
 
 /// Render a `WdocDocument` to an output directory as static HTML files.
 /// `asset_dirs` are source directories to scan for image/asset files to copy.
@@ -92,8 +94,7 @@ pub fn render_document(
         let html = page::render_page(doc, p, "styles.css");
         collect_referenced_image_assets(&html, &asset_extensions, &mut referenced_assets);
         let filename = format!("{}.html", p.id);
-        fs::write(output.join(&filename), &html)
-            .map_err(|e| format!("failed to write {filename}: {e}"))?;
+        write_html_with_codec(output, &filename, &html)?;
     }
 
     // index.html redirects to the first page by section order
@@ -104,8 +105,7 @@ pub fn render_document(
              <meta http-equiv=\"refresh\" content=\"0;url={target}\">\
              </head><body></body></html>"
         );
-        fs::write(output.join("index.html"), redirect)
-            .map_err(|e| format!("failed to write index.html: {e}"))?;
+        write_html_with_codec(output, "index.html", &redirect)?;
     }
 
     // Copy referenced assets first so deep paths used by images work in previews.
@@ -135,6 +135,23 @@ pub fn render_document(
     }
 
     Ok(())
+}
+
+fn write_html_with_codec(output: &Path, filename: &str, html: &str) -> Result<(), String> {
+    let registry = codec::native::NativeCodecRegistry::standard();
+    let html_codec = registry
+        .get("html")
+        .ok_or_else(|| "native html codec is not registered".to_string())?;
+    let mut options = codec::CodecOptions::new();
+    options.insert("filename".to_string(), Value::String(filename.to_string()));
+    codec::native::encode_native_value(
+        &Value::String(html.to_string()),
+        html_codec,
+        &options,
+        codec::native::OutputTarget::Directory(output),
+    )
+    .map(|_| ())
+    .map_err(|e| format!("failed to write {filename}: {e}"))
 }
 
 /// Walk the section tree in declaration order and return the first page found.

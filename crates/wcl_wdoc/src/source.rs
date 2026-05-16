@@ -877,7 +877,7 @@ fn render_diagram_with_ctx(br: &BlockRef, ctx: &ExtractCtx) -> String {
         source_order += 1;
     }
 
-    let mut diagram = Diagram {
+    let diagram = Diagram {
         id: br.id.clone(),
         width: diagram_w,
         height: diagram_h,
@@ -890,7 +890,7 @@ fn render_diagram_with_ctx(br: &BlockRef, ctx: &ExtractCtx) -> String {
         options: str_attrs,
     };
 
-    render_diagram_svg(&mut diagram)
+    wcl_lang::transform::codec::native::encode_svg_diagram_to_string(diagram)
 }
 
 fn design_system_class(scope: &str) -> String {

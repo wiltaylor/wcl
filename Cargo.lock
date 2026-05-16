@@ -2369,6 +2369,7 @@ dependencies = [
  "indexmap",
  "miette",
  "nom",
+ "quick-xml",
  "regex",
  "rmp-serde",
  "serde",
@@ -2377,6 +2378,7 @@ dependencies = [
  "sha2",
  "thiserror",
  "toml 1.1.1+spec-1.1.0",
+ "unicode-width 0.2.2",
 ]
 
 [[package]]

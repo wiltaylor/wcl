@@ -695,6 +695,24 @@ pub fn builtin_signatures() -> Vec<FunctionSignature> {
             return_type: "duration".into(),
             doc: "Parse ISO 8601 duration (PnYnMnDTnHnMnS)".into(),
         },
+        FunctionSignature {
+            name: "diagram_layout".into(),
+            params: vec!["diagram: map".into()],
+            return_type: "map".into(),
+            doc: "Resolve diagram shape layout and return natural bounds".into(),
+        },
+        FunctionSignature {
+            name: "diagram_intrinsic_size".into(),
+            params: vec!["diagram: map".into()],
+            return_type: "map".into(),
+            doc: "Return diagram natural bounds after layout".into(),
+        },
+        FunctionSignature {
+            name: "diagram_fit".into(),
+            params: vec!["bounds: map".into(), "canvas: map".into()],
+            return_type: "map".into(),
+            doc: "Return a scale and translation that fits bounds into a canvas".into(),
+        },
     ]
 }
 
@@ -841,6 +859,12 @@ pub fn builtin_registry() -> HashMap<String, BuiltinFn> {
     m.insert("local_datetime".into(), wrap_builtin(fn_local_datetime));
     m.insert("local_time".into(), wrap_builtin(fn_local_time));
     m.insert("duration".into(), wrap_builtin(fn_duration));
+    m.insert("diagram_layout".into(), wrap_builtin(diagram_layout));
+    m.insert(
+        "diagram_intrinsic_size".into(),
+        wrap_builtin(diagram_intrinsic_size),
+    );
+    m.insert("diagram_fit".into(), wrap_builtin(diagram_fit));
 
     m
 }
@@ -859,6 +883,82 @@ fn expect_args(args: &[Value], n: usize, name: &str) -> Result<(), String> {
         ))
     } else {
         Ok(())
+    }
+}
+
+fn diagram_layout(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 1, "diagram_layout")?;
+    crate::transform::codec::native::layout_diagram_value(
+        &args[0],
+        &crate::transform::codec::CodecOptions::new(),
+    )
+    .map_err(|e| e.to_string())
+}
+
+fn diagram_intrinsic_size(args: &[Value]) -> Result<Value, String> {
+    let layout = diagram_layout(args)?;
+    let Value::Map(layout) = layout else {
+        return Err("diagram_intrinsic_size: layout did not return a map".into());
+    };
+    let mut out = indexmap::IndexMap::new();
+    for key in ["x", "y", "width", "height"] {
+        if let Some(value) = layout.get(key) {
+            out.insert(key.to_string(), value.clone());
+        }
+    }
+    Ok(Value::Map(out))
+}
+
+fn diagram_fit(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 2, "diagram_fit")?;
+    let bounds = expect_map(&args[0], "diagram_fit bounds")?;
+    let canvas = expect_map(&args[1], "diagram_fit canvas")?;
+    let bx = map_number(bounds, "x").unwrap_or(0.0);
+    let by = map_number(bounds, "y").unwrap_or(0.0);
+    let bw = map_number(bounds, "width").ok_or("diagram_fit bounds missing width")?;
+    let bh = map_number(bounds, "height").ok_or("diagram_fit bounds missing height")?;
+    let cx = map_number(canvas, "x").unwrap_or(0.0);
+    let cy = map_number(canvas, "y").unwrap_or(0.0);
+    let cw = map_number(canvas, "width").ok_or("diagram_fit canvas missing width")?;
+    let ch = map_number(canvas, "height").ok_or("diagram_fit canvas missing height")?;
+    if bw <= 0.0 || bh <= 0.0 || cw <= 0.0 || ch <= 0.0 {
+        return Err("diagram_fit: width and height must be positive".into());
+    }
+    let scale = (cw / bw).min(ch / bh).min(1.0);
+    let fitted_width = bw * scale;
+    let fitted_height = bh * scale;
+    let target_x = cx + (cw - fitted_width).max(0.0) / 2.0;
+    let target_y = cy + (ch - fitted_height).max(0.0) / 2.0;
+    let mut out = indexmap::IndexMap::new();
+    out.insert(
+        "translate_x".to_string(),
+        Value::Float(target_x - bx * scale),
+    );
+    out.insert(
+        "translate_y".to_string(),
+        Value::Float(target_y - by * scale),
+    );
+    out.insert("scale".to_string(), Value::Float(scale));
+    Ok(Value::Map(out))
+}
+
+fn expect_map<'a>(
+    value: &'a Value,
+    name: &str,
+) -> Result<&'a indexmap::IndexMap<String, Value>, String> {
+    match value {
+        Value::Map(map) => Ok(map),
+        other => Err(format!("{name}: expected map, got {}", other.type_name())),
+    }
+}
+
+fn map_number(map: &indexmap::IndexMap<String, Value>, key: &str) -> Option<f64> {
+    match map.get(key)? {
+        Value::Int(n) => Some(*n as f64),
+        Value::BigInt(n) => Some(*n as f64),
+        Value::Float(n) => Some(*n),
+        Value::String(s) => s.parse().ok(),
+        _ => None,
     }
 }
 
