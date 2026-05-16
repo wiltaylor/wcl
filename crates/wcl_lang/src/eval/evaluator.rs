@@ -1078,13 +1078,24 @@ impl Evaluator {
             .map_err(|e| Diagnostic::error(format!("cannot read file '{}': {}", path_str, e), span))
     }
 
-    fn read_file_bytes_checked(&self, path_str: &str, span: Span) -> Result<Vec<u8>, Diagnostic> {
-        let fs = self
-            .fs
-            .as_ref()
-            .ok_or_else(|| Diagnostic::error("import_codec not available in this context", span))?;
-        let base = self.base_dir.as_ref().unwrap();
-        let resolved = base.join(path_str);
+    fn resolve_file_path_checked(
+        &self,
+        path_str: &str,
+        allow_absolute: bool,
+        span: Span,
+    ) -> Result<std::path::PathBuf, Diagnostic> {
+        let path = std::path::Path::new(path_str);
+        if allow_absolute && path.is_absolute() {
+            return Ok(crate::eval::imports::normalize_path(path));
+        }
+        let base = self.base_dir.as_ref().ok_or_else(|| {
+            Diagnostic::error("file access is not available in this context", span)
+        })?;
+        let resolved = if allow_absolute && path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            base.join(path_str)
+        };
         let normalized = crate::eval::imports::normalize_path(&resolved);
         let canonical_base = crate::eval::imports::normalize_path(base);
         if !normalized.starts_with(&canonical_base) {
@@ -1093,6 +1104,20 @@ impl Evaluator {
                 span,
             ));
         }
+        Ok(normalized)
+    }
+
+    fn read_file_bytes_checked(
+        &self,
+        path_str: &str,
+        allow_absolute: bool,
+        span: Span,
+    ) -> Result<Vec<u8>, Diagnostic> {
+        let fs = self
+            .fs
+            .as_ref()
+            .ok_or_else(|| Diagnostic::error("import_codec not available in this context", span))?;
+        let normalized = self.resolve_file_path_checked(path_str, allow_absolute, span)?;
 
         fs.read_file_bytes(&normalized)
             .map_err(|e| Diagnostic::error(format!("cannot read file '{}': {}", path_str, e), span))
@@ -1125,12 +1150,54 @@ impl Evaluator {
             }
         };
 
+        let allow_absolute = option_bool(options, "allow_absolute").map_err(|e| {
+            Diagnostic::error(format!("import_codec() option error: {}", e), span).with_code("E052")
+        })?;
         let codec = codec.strip_prefix("codec::").unwrap_or(codec);
-        let bytes = self.read_file_bytes_checked(path, span)?;
+        let bytes = self.read_file_bytes_checked(path, allow_absolute, span)?;
         let records = decode_import_codec(codec, &bytes, options).map_err(|e| {
             Diagnostic::error(format!("in import_codec(): {}", e), span).with_code("E052")
         })?;
         Ok(Value::List(records))
+    }
+
+    fn eval_file_exists(&self, args: &[Value], span: Span) -> Result<Value, Diagnostic> {
+        if args.is_empty() || args.len() > 2 {
+            return Err(
+                Diagnostic::error("file_exists() expects 1 or 2 arguments", span).with_code("E052"),
+            );
+        }
+        let path = args[0].as_string().ok_or_else(|| {
+            Diagnostic::error("file_exists() argument 1 must be a string", span).with_code("E052")
+        })?;
+        let options = match args.get(1) {
+            Some(Value::Map(options)) => options,
+            Some(other) => {
+                return Err(Diagnostic::error(
+                    format!(
+                        "file_exists() argument 2 must be a map, got {}",
+                        other.type_name()
+                    ),
+                    span,
+                )
+                .with_code("E052"))
+            }
+            None => {
+                let normalized = self.resolve_file_path_checked(path, false, span)?;
+                let Some(fs) = self.fs.as_ref() else {
+                    return Ok(Value::Bool(false));
+                };
+                return Ok(Value::Bool(fs.exists(&normalized)));
+            }
+        };
+        let allow_absolute = option_bool(options, "allow_absolute").map_err(|e| {
+            Diagnostic::error(format!("file_exists() option error: {}", e), span).with_code("E052")
+        })?;
+        let normalized = self.resolve_file_path_checked(path, allow_absolute, span)?;
+        let Some(fs) = self.fs.as_ref() else {
+            return Ok(Value::Bool(false));
+        };
+        Ok(Value::Bool(fs.exists(&normalized)))
     }
 
     // ------------------------------------------------------------------
@@ -1598,6 +1665,11 @@ impl Evaluator {
                 if name == "import_codec" {
                     let eval_args = self.eval_call_args(args, scope_id)?;
                     return self.eval_import_codec(&eval_args, span);
+                }
+
+                if name == "file_exists" {
+                    let eval_args = self.eval_call_args(args, scope_id)?;
+                    return self.eval_file_exists(&eval_args, span);
                 }
 
                 // Evaluate arguments eagerly for normal builtins and user fns
@@ -2833,7 +2905,7 @@ fn decode_import_codec(
     options: &IndexMap<String, Value>,
 ) -> Result<Vec<Value>, crate::transform::TransformError> {
     match codec {
-        "json" | "yaml" | "toml" | "csv" | "hcl" | "xml" | "msgpack" => {
+        "json" | "yaml" | "toml" | "csv" | "hcl" | "xml" | "msgpack" | "elf" => {
             let registry = crate::transform::codec::custom::standard_registry()?;
             let custom = registry.get(codec).ok_or_else(|| {
                 crate::transform::TransformError::Codec(format!(
@@ -2848,6 +2920,14 @@ fn decode_import_codec(
         other => Err(crate::transform::TransformError::UnknownCodec(
             other.to_string(),
         )),
+    }
+}
+
+fn option_bool(options: &IndexMap<String, Value>, key: &str) -> Result<bool, String> {
+    match options.get(key) {
+        Some(Value::Bool(value)) => Ok(*value),
+        Some(other) => Err(format!("'{key}' must be bool, got {}", other.type_name())),
+        None => Ok(false),
     }
 }
 

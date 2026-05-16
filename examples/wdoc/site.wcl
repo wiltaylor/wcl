@@ -27,6 +27,7 @@ doc my_docs {
         section basics "Language Basics" {}
         section inline_icon_examples "Inline Icons" {}
         section advanced "Advanced Features" {}
+        section elf_binary_example "ELF Binary Example" {}
     }
 
     section diagrams "Diagrams" {

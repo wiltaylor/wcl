@@ -43,6 +43,39 @@ pub struct CustomCodec {
     pub helpers: HashMap<String, FunctionValue>,
 }
 
+impl CustomCodec {
+    pub fn supports_decode(&self) -> bool {
+        self.decoder.is_some()
+            || (self.tokenizer.is_some() && (self.parser.is_some() || self.parser_all.is_some()))
+    }
+
+    pub fn supports_encode(&self) -> bool {
+        self.encoder.is_some() || self.encoder_all.is_some()
+    }
+
+    pub fn require_decode(&self) -> Result<(), TransformError> {
+        if self.supports_decode() {
+            Ok(())
+        } else {
+            Err(TransformError::Codec(format!(
+                "codec '{}' does not support decoding",
+                self.name
+            )))
+        }
+    }
+
+    pub fn require_encode(&self) -> Result<(), TransformError> {
+        if self.supports_encode() {
+            Ok(())
+        } else {
+            Err(TransformError::Codec(format!(
+                "codec '{}' does not support encoding",
+                self.name
+            )))
+        }
+    }
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct CustomCodecRegistry {
     codecs: HashMap<String, CustomCodec>,
@@ -181,21 +214,29 @@ pub fn custom_codec_from_block(
         encoder_all: optional_function(name, block, "encoder_all")?,
         helpers,
     };
-    if codec.decoder.is_none() && codec.tokenizer.is_none() {
+    let has_decode_parts = codec.decoder.is_some()
+        || codec.tokenizer.is_some()
+        || codec.parser.is_some()
+        || codec.parser_all.is_some();
+    if has_decode_parts && codec.decoder.is_none() && codec.tokenizer.is_none() {
         return Err(TransformError::Codec(format!(
             "codec '{}' missing required 'decoder' or 'tokenizer'",
             name
         )));
     }
-    if codec.decoder.is_none() && codec.parser.is_none() && codec.parser_all.is_none() {
+    if has_decode_parts
+        && codec.decoder.is_none()
+        && codec.parser.is_none()
+        && codec.parser_all.is_none()
+    {
         return Err(TransformError::Codec(format!(
             "codec '{}' missing required 'parser' or 'parser_all'",
             name
         )));
     }
-    if codec.decoder.is_none() && codec.encoder.is_none() && codec.encoder_all.is_none() {
+    if !codec.supports_decode() && !codec.supports_encode() {
         return Err(TransformError::Codec(format!(
-            "codec '{}' missing required 'encoder' or 'encoder_all'",
+            "codec '{}' must support decoding or encoding",
             name
         )));
     }
@@ -303,6 +344,8 @@ pub fn decode_custom_file_with_options(
     options: &super::CodecOptions,
     struct_registry: &StructRegistry,
 ) -> Result<DecodedFile, TransformError> {
+    codec.require_decode()?;
+
     let mut data = Vec::new();
     reader.read_to_end(&mut data).map_err(TransformError::Io)?;
 
@@ -322,6 +365,14 @@ pub fn decode_custom_file_with_options(
                 )))
             }
         };
+        if let Value::Map(map) = &value {
+            if let Some(message) = codec_error_message(map) {
+                return Err(TransformError::Codec(format!(
+                    "custom codec '{}': {}",
+                    codec.name, message
+                )));
+            }
+        }
         (value, session)
     } else {
         (
@@ -362,6 +413,8 @@ pub fn encode_custom_records(
     options: &super::CodecOptions,
     writer: &mut dyn Write,
 ) -> Result<(), TransformError> {
+    codec.require_encode()?;
+
     let options = Value::Map(options.clone());
 
     if let Some(encoder_all) = &codec.encoder_all {
@@ -378,7 +431,10 @@ pub fn encode_custom_records(
     }
 
     let encoder = codec.encoder.as_ref().ok_or_else(|| {
-        TransformError::Codec(format!("codec '{}' missing required 'encoder'", codec.name))
+        TransformError::Codec(format!(
+            "codec '{}' does not support per-record encoding",
+            codec.name
+        ))
     })?;
     for record in records {
         let value = call_codec_encoder(codec, encoder, record.clone(), options.clone(), "encoder")?;
@@ -394,6 +450,8 @@ pub fn encode_custom_value(
     options: &super::CodecOptions,
     writer: &mut dyn Write,
 ) -> Result<usize, TransformError> {
+    codec.require_encode()?;
+
     if let Value::List(records) = value {
         encode_custom_records(records, codec, options, writer)?;
         return Ok(records.len());
@@ -401,7 +459,10 @@ pub fn encode_custom_value(
 
     let options = Value::Map(options.clone());
     let encoder = codec.encoder.as_ref().ok_or_else(|| {
-        TransformError::Codec(format!("codec '{}' missing required 'encoder'", codec.name))
+        TransformError::Codec(format!(
+            "codec '{}' does not support single-value encoding",
+            codec.name
+        ))
     })?;
     let value = call_codec_encoder(codec, encoder, value.clone(), options, "encoder")?;
     write_encoded_value(&value, codec, writer)?;
@@ -416,6 +477,8 @@ pub fn encode_custom_value_with_session(
     options: &super::CodecOptions,
     writer: &mut dyn Write,
 ) -> Result<usize, TransformError> {
+    codec.require_encode()?;
+
     let options = Value::Map(options.clone());
     if let (Value::List(records), Some(encoder_all)) = (value, &codec.encoder_all) {
         let value = call_codec_encoder_in_session(
@@ -432,7 +495,10 @@ pub fn encode_custom_value_with_session(
     }
 
     let encoder = codec.encoder.as_ref().ok_or_else(|| {
-        TransformError::Codec(format!("codec '{}' missing required 'encoder'", codec.name))
+        TransformError::Codec(format!(
+            "codec '{}' does not support single-value encoding",
+            codec.name
+        ))
     })?;
     let value =
         call_codec_encoder_in_session(session, codec, encoder, value.clone(), options, "encoder")?;
@@ -1629,6 +1695,114 @@ codec chars {
             records,
             vec![Value::String("a".into()), Value::String("b".into())]
         );
+    }
+
+    #[test]
+    fn parser_codec_can_be_decode_only() {
+        let source = r#"
+codec chars {
+    mode = :text
+    tokenizer = cursor => cursor.eof() ? null : {
+        let start = cursor.pos()
+        let ch = cursor.take(1)
+        { kind = :char, text = ch, start = start, end = cursor.pos(), value = ch }
+    }
+    parser = tokens => tokens.eof() ? null : {
+        let token = tokens.take(1)
+        { text = token.value }
+    }
+}
+"#;
+
+        let registry = registry_from_source(source, false).unwrap();
+        let codec = registry.get("chars").unwrap();
+        assert!(codec.supports_decode());
+        assert!(!codec.supports_encode());
+
+        let records = decode_custom_records("ab".as_bytes(), codec).unwrap();
+        assert_eq!(records.len(), 2);
+    }
+
+    #[test]
+    fn parser_all_codec_can_be_decode_only() {
+        let source = r#"
+codec pairs {
+    mode = :text
+    tokenizer = cursor => cursor.eof() ? null : {
+        let start = cursor.pos()
+        let ch = cursor.take(1)
+        { kind = :char, text = ch, start = start, end = cursor.pos(), value = ch }
+    }
+    parser_all = tokens => {
+        let first = tokens.take(1)
+        let second = tokens.take(1)
+        [{ text = first.value + second.value }]
+    }
+}
+"#;
+
+        let registry = registry_from_source(source, false).unwrap();
+        let codec = registry.get("pairs").unwrap();
+        assert!(codec.supports_decode());
+        assert!(!codec.supports_encode());
+
+        let records = decode_custom_records("ab".as_bytes(), codec).unwrap();
+        assert_eq!(records.len(), 1);
+    }
+
+    #[test]
+    fn codec_can_be_encode_only() {
+        let source = r#"
+codec text_out {
+    mode = :text
+    encoder = record => record.text
+}
+"#;
+
+        let registry = registry_from_source(source, false).unwrap();
+        let codec = registry.get("text_out").unwrap();
+        assert!(!codec.supports_decode());
+        assert!(codec.supports_encode());
+
+        let err = decode_custom_records("ab".as_bytes(), codec).unwrap_err();
+        assert!(err.to_string().contains("does not support decoding"));
+    }
+
+    #[test]
+    fn codec_with_no_direction_is_rejected() {
+        let source = r#"
+codec empty {
+    mode = :text
+}
+"#;
+
+        let err = registry_from_source(source, false).unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("must support decoding or encoding"));
+    }
+
+    #[test]
+    fn decode_only_codec_rejects_encoding() {
+        let source = r#"
+codec chars {
+    mode = :text
+    tokenizer = cursor => null
+    parser = tokens => null
+}
+"#;
+
+        let registry = registry_from_source(source, false).unwrap();
+        let codec = registry.get("chars").unwrap();
+        let mut output = Vec::new();
+        let err = encode_custom_value(
+            &Value::Map(IndexMap::new()),
+            codec,
+            &IndexMap::new(),
+            &mut output,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("does not support encoding"));
     }
 
     #[test]

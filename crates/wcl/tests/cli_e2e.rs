@@ -61,6 +61,44 @@ fn eval_expr_json(content: &str, expr: &str) -> serde_json::Value {
     serde_json::from_str(stdout.trim()).expect("stdout should be valid JSON")
 }
 
+fn sample_elf64_le() -> Vec<u8> {
+    let mut data = vec![0u8; 0x100 + 64 * 3];
+    data[0..4].copy_from_slice(&[0x7f, b'E', b'L', b'F']);
+    data[4] = 2;
+    data[5] = 1;
+    data[6] = 1;
+    data[16..18].copy_from_slice(&3u16.to_le_bytes());
+    data[18..20].copy_from_slice(&62u16.to_le_bytes());
+    data[20..24].copy_from_slice(&1u32.to_le_bytes());
+    data[24..32].copy_from_slice(&0x401000u64.to_le_bytes());
+    data[40..48].copy_from_slice(&0x100u64.to_le_bytes());
+    data[52..54].copy_from_slice(&64u16.to_le_bytes());
+    data[58..60].copy_from_slice(&64u16.to_le_bytes());
+    data[60..62].copy_from_slice(&3u16.to_le_bytes());
+    data[62..64].copy_from_slice(&2u16.to_le_bytes());
+
+    data[0x80..0x84].copy_from_slice(&[1, 2, 3, 4]);
+    data[0x90..0xa1].copy_from_slice(b"\0.text\0.shstrtab\0");
+
+    let text = 0x100 + 64;
+    data[text..text + 4].copy_from_slice(&1u32.to_le_bytes());
+    data[text + 4..text + 8].copy_from_slice(&1u32.to_le_bytes());
+    data[text + 8..text + 16].copy_from_slice(&6u64.to_le_bytes());
+    data[text + 16..text + 24].copy_from_slice(&0x401000u64.to_le_bytes());
+    data[text + 24..text + 32].copy_from_slice(&0x80u64.to_le_bytes());
+    data[text + 32..text + 40].copy_from_slice(&4u64.to_le_bytes());
+    data[text + 48..text + 56].copy_from_slice(&16u64.to_le_bytes());
+
+    let names = 0x100 + 64 * 2;
+    data[names..names + 4].copy_from_slice(&7u32.to_le_bytes());
+    data[names + 4..names + 8].copy_from_slice(&3u32.to_le_bytes());
+    data[names + 24..names + 32].copy_from_slice(&0x90u64.to_le_bytes());
+    data[names + 32..names + 40].copy_from_slice(&17u64.to_le_bytes());
+    data[names + 48..names + 56].copy_from_slice(&1u64.to_le_bytes());
+
+    data
+}
+
 fn run_transform_stdout(
     transform: &std::path::Path,
     name: &str,
@@ -1192,6 +1230,234 @@ transform bytes-to-json {
         .stdout(predicate::str::contains(r#""kind":"byte""#))
         .stdout(predicate::str::contains(r#""value":65"#))
         .stdout(predicate::str::contains(r#""value":66"#));
+}
+
+#[test]
+fn transform_standard_elf_codec_decodes_section_streams() {
+    let dir = tempdir().expect("tempdir");
+    let transform = dir.path().join("elf.wcl");
+    let input = dir.path().join("bash");
+
+    std::fs::write(&input, sample_elf64_le()).expect("write input");
+    std::fs::write(
+        &transform,
+        r#"
+transform elf-to-json {
+    input = "codec::elf"
+    output = "codec::json"
+
+    run = file => map(file.sections, section => {
+        name = section.name
+        type = section.type_name
+        size = section.size
+        first_chunk = section.name == ".text" ? section.data.next() : []
+    })
+}
+"#,
+    )
+    .expect("write transform");
+
+    Command::cargo_bin("wcl")
+        .unwrap()
+        .args([
+            "transform",
+            "run",
+            "elf-to-json",
+            "-f",
+            transform.to_str().unwrap(),
+            "--input",
+            input.to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(r#""name":".text""#))
+        .stdout(predicate::str::contains(r#""first_chunk":[1,2,3,4]"#));
+}
+
+#[test]
+fn transform_decode_only_custom_codec_decodes_records() {
+    let dir = tempdir().expect("tempdir");
+    let transform = dir.path().join("decode_only.wcl");
+    let input = dir.path().join("input.txt");
+
+    std::fs::write(&input, "ab").expect("write input");
+    std::fs::write(
+        &transform,
+        r#"
+codec chars {
+    mode = :text
+
+    tokenizer = cursor => cursor.eof() ? null : {
+        let start = cursor.pos()
+        let ch = cursor.take(1)
+        { kind = :char, text = ch, start = start, end = cursor.pos(), value = ch }
+    }
+
+    parser = tokens => tokens.eof() ? null : {
+        let t = tokens.take(1)
+        { text = t.text, kind = t.kind }
+    }
+}
+
+transform chars-to-json {
+    input = "codec::chars"
+    output = "codec::json"
+
+    map {
+        text = in.text
+        kind = in.kind
+    }
+}
+"#,
+    )
+    .expect("write transform");
+
+    Command::cargo_bin("wcl")
+        .unwrap()
+        .args([
+            "transform",
+            "run",
+            "chars-to-json",
+            "-f",
+            transform.to_str().unwrap(),
+            "--input",
+            input.to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(r#""kind":"char""#))
+        .stdout(predicate::str::contains(r#""text":"a""#))
+        .stdout(predicate::str::contains(r#""text":"b""#));
+}
+
+#[test]
+fn transform_decode_only_custom_codec_rejects_output_use() {
+    let dir = tempdir().expect("tempdir");
+    let transform = dir.path().join("decode_only_output.wcl");
+    let input = dir.path().join("input.json");
+
+    std::fs::write(&input, r#"[{"text":"x"}]"#).expect("write input");
+    std::fs::write(
+        &transform,
+        r#"
+codec chars {
+    mode = :text
+    tokenizer = cursor => null
+    parser = tokens => null
+}
+
+transform json-to-chars {
+    input = "codec::json"
+    output = "codec::chars"
+
+    map {
+        text = in.text
+    }
+}
+"#,
+    )
+    .expect("write transform");
+
+    Command::cargo_bin("wcl")
+        .unwrap()
+        .args([
+            "transform",
+            "run",
+            "json-to-chars",
+            "-f",
+            transform.to_str().unwrap(),
+            "--input",
+            input.to_str().unwrap(),
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("does not support encoding"));
+}
+
+#[test]
+fn transform_encode_only_custom_codec_encodes_records() {
+    let dir = tempdir().expect("tempdir");
+    let transform = dir.path().join("encode_only.wcl");
+    let input = dir.path().join("input.json");
+
+    std::fs::write(&input, r#"[{"text":"x"},{"text":"y"}]"#).expect("write input");
+    std::fs::write(
+        &transform,
+        r#"
+codec chars {
+    mode = :text
+    encoder = record => record.text
+}
+
+transform json-to-chars {
+    input = "codec::json"
+    output = "codec::chars"
+
+    map {
+        text = in.text
+    }
+}
+"#,
+    )
+    .expect("write transform");
+
+    Command::cargo_bin("wcl")
+        .unwrap()
+        .args([
+            "transform",
+            "run",
+            "json-to-chars",
+            "-f",
+            transform.to_str().unwrap(),
+            "--input",
+            input.to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("xy"));
+}
+
+#[test]
+fn transform_encode_only_custom_codec_rejects_input_use() {
+    let dir = tempdir().expect("tempdir");
+    let transform = dir.path().join("encode_only_input.wcl");
+    let input = dir.path().join("input.txt");
+
+    std::fs::write(&input, "xy").expect("write input");
+    std::fs::write(
+        &transform,
+        r#"
+codec chars {
+    mode = :text
+    encoder = record => record.text
+}
+
+transform chars-to-json {
+    input = "codec::chars"
+    output = "codec::json"
+
+    map {
+        text = in.text
+    }
+}
+"#,
+    )
+    .expect("write transform");
+
+    Command::cargo_bin("wcl")
+        .unwrap()
+        .args([
+            "transform",
+            "run",
+            "chars-to-json",
+            "-f",
+            transform.to_str().unwrap(),
+            "--input",
+            input.to_str().unwrap(),
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("does not support decoding"));
 }
 
 #[test]

@@ -2469,6 +2469,114 @@ lt_fn = local_time("07:32")
         assert_eq!(row.get("port"), Some(&Value::Int(8080)));
     }
 
+    fn sample_elf64_le() -> Vec<u8> {
+        let mut data = vec![0u8; 0x100 + 64 * 3];
+        data[0..4].copy_from_slice(&[0x7f, b'E', b'L', b'F']);
+        data[4] = 2;
+        data[5] = 1;
+        data[6] = 1;
+        data[7] = 0;
+        data[16..18].copy_from_slice(&3u16.to_le_bytes());
+        data[18..20].copy_from_slice(&62u16.to_le_bytes());
+        data[20..24].copy_from_slice(&1u32.to_le_bytes());
+        data[24..32].copy_from_slice(&0x401000u64.to_le_bytes());
+        data[40..48].copy_from_slice(&0x100u64.to_le_bytes());
+        data[52..54].copy_from_slice(&64u16.to_le_bytes());
+        data[58..60].copy_from_slice(&64u16.to_le_bytes());
+        data[60..62].copy_from_slice(&3u16.to_le_bytes());
+        data[62..64].copy_from_slice(&2u16.to_le_bytes());
+
+        data[0x80..0x84].copy_from_slice(&[1, 2, 3, 4]);
+        data[0x90..0xa1].copy_from_slice(b"\0.text\0.shstrtab\0");
+
+        let text = 0x100 + 64;
+        data[text..text + 4].copy_from_slice(&1u32.to_le_bytes());
+        data[text + 4..text + 8].copy_from_slice(&1u32.to_le_bytes());
+        data[text + 8..text + 16].copy_from_slice(&6u64.to_le_bytes());
+        data[text + 16..text + 24].copy_from_slice(&0x401000u64.to_le_bytes());
+        data[text + 24..text + 32].copy_from_slice(&0x80u64.to_le_bytes());
+        data[text + 32..text + 40].copy_from_slice(&4u64.to_le_bytes());
+        data[text + 48..text + 56].copy_from_slice(&16u64.to_le_bytes());
+
+        let names = 0x100 + 64 * 2;
+        data[names..names + 4].copy_from_slice(&7u32.to_le_bytes());
+        data[names + 4..names + 8].copy_from_slice(&3u32.to_le_bytes());
+        data[names + 24..names + 32].copy_from_slice(&0x90u64.to_le_bytes());
+        data[names + 32..names + 40].copy_from_slice(&17u64.to_le_bytes());
+        data[names + 48..names + 56].copy_from_slice(&1u64.to_le_bytes());
+
+        data
+    }
+
+    #[test]
+    fn test_import_codec_elf_decodes_sections() {
+        use std::sync::Arc;
+
+        let mut fs = InMemoryFs::new();
+        fs.add_file_bytes(std::path::PathBuf::from("/project/bash"), sample_elf64_le());
+        let mut opts = ParseOptions::default();
+        opts.root_dir = std::path::PathBuf::from("/project");
+        opts.fs = Some(Arc::new(fs));
+
+        let doc = parse(
+            r#"
+rows = import_codec("bash", "elf", { chunk_size = 2 })
+elf = rows[0]
+sections = elf.sections
+            "#,
+            opts,
+        );
+        assert!(
+            doc.diagnostics.is_empty(),
+            "expected no errors, got: {:?}",
+            doc.diagnostics
+        );
+        let Value::Object(elf) = doc.values.get("elf").expect("elf value") else {
+            panic!("expected ELF object");
+        };
+        assert_eq!(
+            elf.fields.get("format"),
+            Some(&Value::String("ELF64".into()))
+        );
+        assert_eq!(
+            elf.fields.get("machine_name"),
+            Some(&Value::String("x86-64".into()))
+        );
+        let Value::List(sections) = doc.values.get("sections").expect("sections value") else {
+            panic!("expected section list");
+        };
+        assert_eq!(sections.len(), 3);
+        let Value::Map(text) = &sections[1] else {
+            panic!("expected section map");
+        };
+        assert_eq!(text.get("name"), Some(&Value::String(".text".into())));
+        assert_eq!(text.get("size"), Some(&Value::Int(4)));
+        assert!(matches!(text.get("data"), Some(Value::Stream(_))));
+    }
+
+    #[test]
+    fn test_import_codec_elf_invalid_magic_errors() {
+        use std::sync::Arc;
+
+        let mut fs = InMemoryFs::new();
+        fs.add_file_bytes(
+            std::path::PathBuf::from("/project/not-elf"),
+            vec![1, 2, 3, 4],
+        );
+        let mut opts = ParseOptions::default();
+        opts.root_dir = std::path::PathBuf::from("/project");
+        opts.fs = Some(Arc::new(fs));
+
+        let doc = parse(r#"rows = import_codec("not-elf", "elf", {})"#, opts);
+        assert!(
+            doc.diagnostics
+                .iter()
+                .any(|d| d.message.contains("input is too short for an ELF header")),
+            "expected ELF diagnostic, got: {:?}",
+            doc.diagnostics
+        );
+    }
+
     #[test]
     fn test_import_codec_missing_file_errors() {
         use std::sync::Arc;
@@ -2509,6 +2617,83 @@ lt_fn = local_time("07:32")
             "expected jail diagnostic, got: {:?}",
             doc.diagnostics
         );
+    }
+
+    #[test]
+    fn test_import_codec_absolute_path_requires_opt_in() {
+        use std::sync::Arc;
+
+        let mut fs = InMemoryFs::new();
+        fs.add_file(std::path::PathBuf::from("/bin/data.json"), "[]");
+        let mut opts = ParseOptions::default();
+        opts.root_dir = std::path::PathBuf::from("/project");
+        opts.fs = Some(Arc::new(fs));
+
+        let doc = parse(r#"rows = import_codec("/bin/data.json", "json", {})"#, opts);
+        assert!(
+            doc.diagnostics
+                .iter()
+                .any(|d| d.message.contains("escapes root directory")),
+            "expected absolute path jail diagnostic, got: {:?}",
+            doc.diagnostics
+        );
+    }
+
+    #[test]
+    fn test_import_codec_absolute_path_allowed_with_option() {
+        use std::sync::Arc;
+
+        let mut fs = InMemoryFs::new();
+        fs.add_file(
+            std::path::PathBuf::from("/bin/data.json"),
+            r#"[{"ok":true}]"#,
+        );
+        let mut opts = ParseOptions::default();
+        opts.root_dir = std::path::PathBuf::from("/project");
+        opts.fs = Some(Arc::new(fs));
+
+        let doc = parse(
+            r#"rows = import_codec("/bin/data.json", "json", { allow_absolute = true })"#,
+            opts,
+        );
+        assert!(
+            doc.diagnostics.is_empty(),
+            "expected no errors, got: {:?}",
+            doc.diagnostics
+        );
+        let Value::List(rows) = doc.values.get("rows").expect("rows value") else {
+            panic!("expected rows list");
+        };
+        let Value::Map(row) = &rows[0] else {
+            panic!("expected row map");
+        };
+        assert_eq!(row.get("ok"), Some(&Value::Bool(true)));
+    }
+
+    #[test]
+    fn test_file_exists_honors_absolute_opt_in() {
+        use std::sync::Arc;
+
+        let mut fs = InMemoryFs::new();
+        fs.add_file(std::path::PathBuf::from("/bin/bash"), "");
+        let mut opts = ParseOptions::default();
+        opts.root_dir = std::path::PathBuf::from("/project");
+        opts.fs = Some(Arc::new(fs));
+
+        let doc = parse(
+            r#"
+outside = file_exists("/bin/bash", { allow_absolute = true })
+inside = file_exists("missing.txt")
+            "#,
+            opts,
+        );
+        assert!(
+            doc.diagnostics.is_empty(),
+            "expected no errors, got: {:?}",
+            doc.diagnostics
+        );
+        assert_eq!(doc.values.get("outside"), Some(&Value::Bool(true)));
+        assert_eq!(doc.values.get("inside"), Some(&Value::Bool(false)));
     }
 
     #[test]

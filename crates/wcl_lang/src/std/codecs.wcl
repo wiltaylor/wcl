@@ -1359,6 +1359,193 @@ codec toml {
     encoder_all = records => __toml_encoder_all(records)
 }
 
+export let __elf_error = message => __codec_error(message)
+
+export let __elf_uint = (bytes, endian) =>
+    endian == :le ? bytes_to_uint_be(reverse(bytes)) : bytes_to_uint_be(bytes)
+
+export let __elf_read_bytes = (source, offset, size) => {
+    let _ = source.seek_to(offset)
+    source.take(size)
+}
+
+export let __elf_read_uint = (source, offset, size, endian) =>
+    __elf_uint(__elf_read_bytes(source, offset, size), endian)
+
+export let __elf_c_string_loop = (bytes, i, acc) =>
+    i >= len(bytes) || bytes[i] == 0 ? acc :
+    __elf_c_string_loop(bytes, i + 1, acc + char_from_codepoint(bytes[i]))
+
+export let __elf_c_string = (bytes, offset) =>
+    offset < 0 || offset >= len(bytes) ? "" : __elf_c_string_loop(bytes, offset, "")
+
+export let __elf_class_name = value =>
+    value == 1 ? "ELF32" :
+    value == 2 ? "ELF64" :
+    "unknown"
+
+export let __elf_endian_name = endian =>
+    endian == :le ? "little" : "big"
+
+export let __elf_type_name = value =>
+    value == 0 ? "none" :
+    value == 1 ? "relocatable" :
+    value == 2 ? "executable" :
+    value == 3 ? "shared" :
+    value == 4 ? "core" :
+    "other"
+
+export let __elf_machine_name = value =>
+    value == 3 ? "x86" :
+    value == 40 ? "ARM" :
+    value == 62 ? "x86-64" :
+    value == 183 ? "AArch64" :
+    value == 243 ? "RISC-V" :
+    "other"
+
+export let __elf_section_type_name = value =>
+    value == 0 ? "null" :
+    value == 1 ? "progbits" :
+    value == 2 ? "symtab" :
+    value == 3 ? "strtab" :
+    value == 4 ? "rela" :
+    value == 5 ? "hash" :
+    value == 6 ? "dynamic" :
+    value == 7 ? "note" :
+    value == 8 ? "nobits" :
+    value == 9 ? "rel" :
+    value == 11 ? "dynsym" :
+    "other"
+
+export let __elf_header = (source, endian, class) =>
+    class == 2 ? {
+        type = __elf_read_uint(source, 16, 2, endian)
+        machine = __elf_read_uint(source, 18, 2, endian)
+        version = __elf_read_uint(source, 20, 4, endian)
+        entry = __elf_read_uint(source, 24, 8, endian)
+        phoff = __elf_read_uint(source, 32, 8, endian)
+        shoff = __elf_read_uint(source, 40, 8, endian)
+        flags = __elf_read_uint(source, 48, 4, endian)
+        ehsize = __elf_read_uint(source, 52, 2, endian)
+        phentsize = __elf_read_uint(source, 54, 2, endian)
+        phnum = __elf_read_uint(source, 56, 2, endian)
+        shentsize = __elf_read_uint(source, 58, 2, endian)
+        shnum = __elf_read_uint(source, 60, 2, endian)
+        shstrndx = __elf_read_uint(source, 62, 2, endian)
+    } : {
+        type = __elf_read_uint(source, 16, 2, endian)
+        machine = __elf_read_uint(source, 18, 2, endian)
+        version = __elf_read_uint(source, 20, 4, endian)
+        entry = __elf_read_uint(source, 24, 4, endian)
+        phoff = __elf_read_uint(source, 28, 4, endian)
+        shoff = __elf_read_uint(source, 32, 4, endian)
+        flags = __elf_read_uint(source, 36, 4, endian)
+        ehsize = __elf_read_uint(source, 40, 2, endian)
+        phentsize = __elf_read_uint(source, 42, 2, endian)
+        phnum = __elf_read_uint(source, 44, 2, endian)
+        shentsize = __elf_read_uint(source, 46, 2, endian)
+        shnum = __elf_read_uint(source, 48, 2, endian)
+        shstrndx = __elf_read_uint(source, 50, 2, endian)
+    }
+
+export let __elf_section_header = (source, offset, class, endian) =>
+    class == 2 ? {
+        name_offset = __elf_read_uint(source, offset, 4, endian)
+        type = __elf_read_uint(source, offset + 4, 4, endian)
+        flags = __elf_read_uint(source, offset + 8, 8, endian)
+        address = __elf_read_uint(source, offset + 16, 8, endian)
+        offset = __elf_read_uint(source, offset + 24, 8, endian)
+        size = __elf_read_uint(source, offset + 32, 8, endian)
+        link = __elf_read_uint(source, offset + 40, 4, endian)
+        info = __elf_read_uint(source, offset + 44, 4, endian)
+        addralign = __elf_read_uint(source, offset + 48, 8, endian)
+        entsize = __elf_read_uint(source, offset + 56, 8, endian)
+    } : {
+        name_offset = __elf_read_uint(source, offset, 4, endian)
+        type = __elf_read_uint(source, offset + 4, 4, endian)
+        flags = __elf_read_uint(source, offset + 8, 4, endian)
+        address = __elf_read_uint(source, offset + 12, 4, endian)
+        offset = __elf_read_uint(source, offset + 16, 4, endian)
+        size = __elf_read_uint(source, offset + 20, 4, endian)
+        link = __elf_read_uint(source, offset + 24, 4, endian)
+        info = __elf_read_uint(source, offset + 28, 4, endian)
+        addralign = __elf_read_uint(source, offset + 32, 4, endian)
+        entsize = __elf_read_uint(source, offset + 36, 4, endian)
+    }
+
+export let __elf_section_data = (source, offset, size, chunk_size, key) => stream {
+    let raw = state.get(key)
+    let pos = raw == null ? 0 : raw
+    pos >= size ? null : {
+        let chunk = min(chunk_size, size - pos)
+        let _seek = source.seek_to(offset + pos)
+        let data = source.take(chunk)
+        let _next = state.set(key, pos + chunk)
+        data
+    }
+}
+
+export let __elf_section_record = (source, header, class, endian, names, index, chunk_size) => {
+    let offset = header.shoff + index * header.shentsize
+    let section = __elf_section_header(source, offset, class, endian)
+    {
+        index = index
+        name = __elf_c_string(names, section.name_offset)
+        type = section.type
+        type_name = __elf_section_type_name(section.type)
+        flags = section.flags
+        address = section.address
+        offset = section.offset
+        size = section.size
+        link = section.link
+        info = section.info
+        addralign = section.addralign
+        entsize = section.entsize
+        data = __elf_section_data(source, section.offset, section.size, chunk_size, "elf-section-" + to_string(index))
+    }
+}
+
+export let __elf_sections = (source, header, class, endian, names, chunk_size, index, acc) =>
+    index >= header.shnum ? acc : {
+        let section = __elf_section_record(source, header, class, endian, names, index, chunk_size)
+        __elf_sections(source, header, class, endian, names, chunk_size, index + 1, concat(acc, [section]))
+    }
+
+export let __elf_decode = (source, options) => {
+    let ident = source.take(16)
+    len(ident) < 16 ? __elf_error("input is too short for an ELF header") :
+    ident[0] != 127 || ident[1] != 69 || ident[2] != 76 || ident[3] != 70 ? __elf_error("not an ELF binary") : {
+        let class = ident[4]
+        let data = ident[5]
+        class != 1 && class != 2 ? __elf_error("unsupported ELF class") :
+        data != 1 && data != 2 ? __elf_error("unsupported ELF byte order") : {
+            let endian = data == 1 ? :le : :be
+            let header = __elf_header(source, endian, class)
+            let shstr_header_offset = header.shoff + header.shstrndx * header.shentsize
+            let shstr_header = __elf_section_header(source, shstr_header_offset, class, endian)
+            let names = __elf_read_bytes(source, shstr_header.offset, shstr_header.size)
+            let chunk_size = type_of(options) == "map" && map_has(options, "chunk_size") ? options.chunk_size : 4096
+            object("ElfFile", {
+                format = __elf_class_name(class)
+                endian = __elf_endian_name(endian)
+                os_abi = ident[7]
+                type = header.type
+                type_name = __elf_type_name(header.type)
+                machine = header.machine
+                machine_name = __elf_machine_name(header.machine)
+                entry = header.entry
+                header = header
+                sections = __elf_sections(source, header, class, endian, names, chunk_size, 0, [])
+            })
+        }
+    }
+}
+
+codec elf {
+    mode = :bytes
+    decoder = (source, options) => __elf_decode(source, options)
+}
+
 export let __msgpack_tokenizer = cursor =>
     cursor.eof() ? null : {
         let start = cursor.pos()

@@ -94,7 +94,9 @@ impl Default for CodecRegistry {
 }
 
 /// All codec names supported by the transform engine.
-pub const SUPPORTED_CODECS: &[&str] = &["json", "yaml", "csv", "toml", "hcl", "xml", "msgpack"];
+pub const SUPPORTED_CODECS: &[&str] = &[
+    "json", "yaml", "csv", "toml", "hcl", "xml", "msgpack", "elf",
+];
 
 /// Decode an entire input into a list of records (each record is a Value::Map).
 pub fn decode_all(decoder: &mut dyn Decoder) -> Result<Vec<Value>, TransformError> {
