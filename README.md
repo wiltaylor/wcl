@@ -1,6 +1,8 @@
 [![CI](https://github.com/wiltaylor/wcl/actions/workflows/ci.yml/badge.svg)](https://github.com/wiltaylor/wcl/actions/workflows/ci.yml)
 [![Deploy Site](https://github.com/wiltaylor/wcl/actions/workflows/deploy-site.yml/badge.svg)](https://github.com/wiltaylor/wcl/actions/workflows/deploy-site.yml)
 
+WARNING: This is still under heavy development so expect lots of breaking changes and weird bugs.
+
 # WCL — Wil's Configuration Language
 
 A statically-typed, block-structured configuration language with first-class support for composition, validation, and tooling.
