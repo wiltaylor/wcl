@@ -3726,6 +3726,33 @@ mod wdoc_draw_tests {
     }
 
     #[test]
+    fn equation_block_renders_display_mathjax_wrapper() {
+        let ctx = wdoc_library_ctx();
+        let mut attrs = IndexMap::new();
+        string_attr(&mut attrs, "content", "E = mc^2 <script>");
+        let html = ctx
+            .render_block(&block("wdoc::equation", None, attrs, vec![]))
+            .unwrap();
+        assert!(html.contains("class=\"wdoc-equation\""));
+        assert!(html.contains("data-wdoc-equation=\"display\""));
+        assert!(html.contains("\\[E = mc^2 &lt;script&gt;\\]"));
+        assert!(!html.contains("<script>"));
+    }
+
+    #[test]
+    fn paragraph_renders_inline_equation_markup() {
+        let ctx = wdoc_library_ctx();
+        let mut attrs = IndexMap::new();
+        string_attr(&mut attrs, "content", "Use $E = mc^2$ carefully.");
+        let html = ctx
+            .render_block(&block("wdoc::paragraph", None, attrs, vec![]))
+            .unwrap();
+        assert!(html.contains("class=\"wdoc-equation-inline\""));
+        assert!(html.contains("data-wdoc-equation=\"inline\""));
+        assert!(html.contains("\\(E = mc^2\\)"));
+    }
+
+    #[test]
     fn inline_icon_set_renders_normalized_svg_with_custom_properties() {
         let temp = tempfile::tempdir().unwrap();
         let icon_dir = temp.path().join("icons");
@@ -7178,6 +7205,17 @@ fn render_markup_string(text: &str, ctx: &ExtractCtx) -> Result<String, String> 
                 continue;
             }
         }
+        if rest.starts_with('$') {
+            if let Some((end, tex)) = match_inline_equation(text, pos) {
+                out.push_str(
+                    "<span class=\"wdoc-equation-inline\" data-wdoc-equation=\"inline\">\\(",
+                );
+                out.push_str(&html_escape(tex));
+                out.push_str("\\)</span>");
+                pos = end;
+                continue;
+            }
+        }
 
         let mut matched = false;
         for rule in &ctx.markup_rules {
@@ -7217,6 +7255,43 @@ fn render_markup_string(text: &str, ctx: &ExtractCtx) -> Result<String, String> 
         pos += ch.len_utf8();
     }
     Ok(resolve_icon_placeholders(&out, ctx))
+}
+
+fn match_inline_equation(text: &str, start: usize) -> Option<(usize, &str)> {
+    let rest = text.get(start..)?;
+    if !rest.starts_with('$') {
+        return None;
+    }
+    let content_start = start + 1;
+    let first = text.get(content_start..)?.chars().next()?;
+    if first.is_whitespace() {
+        return None;
+    }
+
+    let mut pos = content_start;
+    let mut escaped = false;
+    while pos < text.len() {
+        let ch = text[pos..].chars().next()?;
+        if escaped {
+            escaped = false;
+            pos += ch.len_utf8();
+            continue;
+        }
+        if ch == '\\' {
+            escaped = true;
+            pos += ch.len_utf8();
+            continue;
+        }
+        if ch == '$' {
+            let tex = &text[content_start..pos];
+            if tex.is_empty() || tex.chars().last().is_some_and(char::is_whitespace) {
+                return None;
+            }
+            return Some((pos + 1, tex));
+        }
+        pos += ch.len_utf8();
+    }
+    None
 }
 
 fn resolve_icon_placeholders(html: &str, ctx: &ExtractCtx) -> String {

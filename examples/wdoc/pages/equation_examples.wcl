@@ -1,0 +1,40 @@
+import "./shared.wcl"
+
+page equation_examples {
+    section = "my_docs.guide.equation_examples"
+    title = "Equations"
+
+    layout {
+        vsplit main {
+            split content {
+                size = 100
+
+                heading title {
+                    level = 1
+                    content = "Equations"
+                }
+
+                paragraph intro {
+                    content = "WDoc supports inline TeX such as $E = mc^2$ inside regular text, and display equations as their own blocks."
+                }
+
+                equation mass_energy <<'TEX'
+E = mc^2
+TEX
+
+                paragraph quadratic_intro {
+                    content = "Longer expressions are easier to read as display equations."
+                }
+
+                equation quadratic <<'TEX'
+x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}
+TEX
+
+                code syntax {
+                    language = "wcl"
+                    content = "paragraph intro {\n    content = \"Inline math uses $E = mc^2$ in text.\"\n}\n\nequation mass_energy <<'TEX'\nE = mc^2\nTEX"
+                }
+            }
+        }
+    }
+}

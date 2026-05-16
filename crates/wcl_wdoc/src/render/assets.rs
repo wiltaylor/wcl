@@ -174,6 +174,20 @@ h6.wdoc-heading { font-size: 0.9rem; }
 /* Override highlight.js background to match our code box */
 .wdoc-code .hljs { background: transparent; padding: 0; }
 
+/* Equations */
+.wdoc-equation {
+    margin: 1.25rem 0;
+    overflow-x: auto;
+    text-align: center;
+}
+.wdoc-equation-inline {
+    display: inline;
+    white-space: nowrap;
+}
+.wdoc-equation mjx-container {
+    min-width: 0;
+}
+
 /* Diagrams */
 .wdoc-diagram {
     margin-bottom: 1rem;

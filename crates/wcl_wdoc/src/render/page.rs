@@ -9,6 +9,20 @@ const HLJS_HEAD: &str = r#"<link rel="stylesheet" href="highlight-light.min.css"
 <script defer src="highlight.min.js"></script>
 <script defer src="wcl-grammar.js"></script>"#;
 
+const MATHJAX_HEAD: &str = r#"<script>
+window.MathJax = {
+    tex: {
+        inlineMath: [['\\(', '\\)']],
+        displayMath: [['\\[', '\\]']],
+        processEscapes: true
+    },
+    options: {
+        skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+    }
+};
+</script>
+<script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>"#;
+
 /// Theme detection + highlight.js init + toggle logic.
 const THEME_SCRIPT: &str = r#"<script>
 (function() {
@@ -74,6 +88,13 @@ const THEME_SCRIPT: &str = r#"<script>
 /// Render a single page as a complete HTML document.
 pub fn render_page(doc: &WdocDocument, page: &Page, css_path: &str) -> String {
     let mut html = String::with_capacity(4096);
+    let mut content_html = String::new();
+    render_layout_items(&page.layout.children, &mut content_html);
+    let mathjax_head = if content_html.contains("data-wdoc-equation=") {
+        MATHJAX_HEAD
+    } else {
+        ""
+    };
 
     // DOCTYPE + head
     write!(
@@ -86,12 +107,14 @@ pub fn render_page(doc: &WdocDocument, page: &Page, css_path: &str) -> String {
 <title>{title} — {doc_title}</title>
 <link rel="stylesheet" href="{css_path}">
 {HLJS_HEAD}
+{mathjax_head}
 </head>
 <body>
 "#,
         title = page.title,
         doc_title = doc.title,
         HLJS_HEAD = HLJS_HEAD,
+        mathjax_head = mathjax_head,
     )
     .unwrap();
 
@@ -100,7 +123,7 @@ pub fn render_page(doc: &WdocDocument, page: &Page, css_path: &str) -> String {
 
     // Main content
     html.push_str("<main class=\"wdoc-content\">\n");
-    render_layout_items(&page.layout.children, &mut html);
+    html.push_str(&content_html);
     html.push_str("</main>\n");
 
     // Theme + highlight.js script
@@ -110,6 +133,63 @@ pub fn render_page(doc: &WdocDocument, page: &Page, css_path: &str) -> String {
     html.push_str(THEME_SCRIPT);
     html.push_str("\n</body>\n</html>\n");
     html
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn page_with_html(rendered_html: &str) -> Page {
+        Page {
+            id: "test".to_string(),
+            section_id: "section".to_string(),
+            title: "Test".to_string(),
+            layout: Layout {
+                children: vec![LayoutItem::Content(ContentBlock {
+                    kind: "wdoc::paragraph".to_string(),
+                    id: None,
+                    rendered_html: rendered_html.to_string(),
+                    style: None,
+                })],
+            },
+            signals: Vec::new(),
+            bindings: Vec::new(),
+        }
+    }
+
+    fn doc_with_page(page: Page) -> WdocDocument {
+        WdocDocument {
+            name: "doc".to_string(),
+            title: "Doc".to_string(),
+            version: None,
+            author: None,
+            sections: vec![Section {
+                id: "section".to_string(),
+                short_id: "section".to_string(),
+                title: "Section".to_string(),
+                children: Vec::new(),
+            }],
+            pages: vec![page],
+            styles: Vec::new(),
+            extra_css: String::new(),
+        }
+    }
+
+    #[test]
+    fn mathjax_is_loaded_only_when_page_contains_equations() {
+        let page = page_with_html(
+            "<div class=\"wdoc-equation\" data-wdoc-equation=\"display\">\\[x\\]</div>",
+        );
+        let doc = doc_with_page(page.clone());
+        let html = render_page(&doc, &page, "styles.css");
+        assert!(html.contains("MathJax"));
+        assert!(html.contains("tex-mml-chtml.js"));
+
+        let plain_page = page_with_html("<p class=\"wdoc-paragraph\">No math</p>");
+        let plain_doc = doc_with_page(plain_page.clone());
+        let plain_html = render_page(&plain_doc, &plain_page, "styles.css");
+        assert!(!plain_html.contains("tex-mml-chtml.js"));
+    }
 }
 
 fn page_has_runtime(page: &Page) -> bool {

@@ -61,6 +61,7 @@ namespace wdoc {
     @parent(["wdoc::style"]) @open schema "paragraph" { }
     @parent(["wdoc::style"]) @open schema "image" { }
     @parent(["wdoc::style"]) @open schema "code" { }
+    @parent(["wdoc::style"]) @open schema "equation" { }
     @parent(["wdoc::style"]) @open schema "data_table" { }
     @parent(["wdoc::style"]) @open schema "callout" { }
 
@@ -110,6 +111,12 @@ namespace wdoc {
     schema "code" {
         language: string @optional
         content: string
+    }
+
+    @template("html", "wdoc::render_equation")
+    @auto_id @open
+    schema "equation" {
+        content: string @text
     }
 
     @template("html", "wdoc::render_table")
@@ -715,6 +722,11 @@ namespace wdoc {
         let language = attr_or(b, "language", "")
         let lang_attr = language != "" ? " class=\"language-" + wdoc::html_escape(language) + "\"" : ""
         "<pre class=\"wdoc-code\"><code" + lang_attr + ">" + wdoc::html_escape(content) + "</code></pre>"
+    }
+
+    export let render_equation = (b) => {
+        let content = attr_or(b, "content", "")
+        "<div class=\"wdoc-equation\" data-wdoc-equation=\"display\">\\[" + wdoc::html_escape(content) + "\\]</div>"
     }
 
     export let render_table = (b) => {
