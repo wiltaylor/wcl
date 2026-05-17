@@ -5925,6 +5925,47 @@ mod wdoc_draw_tests {
     }
 
     #[test]
+    fn extracts_document_and_page_templates() {
+        let mut doc_attrs = IndexMap::new();
+        string_attr(&mut doc_attrs, "title", "Docs");
+        string_attr(&mut doc_attrs, "template", "presentation");
+        let doc = block("wdoc::doc", Some("docs"), doc_attrs, vec![]);
+
+        let mut page_attrs = IndexMap::new();
+        string_attr(&mut page_attrs, "section", "docs.overview");
+        string_attr(&mut page_attrs, "title", "Overview");
+        string_attr(&mut page_attrs, "template", "book");
+        let page = block("wdoc::page", Some("overview"), page_attrs, vec![]);
+
+        let mut values = IndexMap::new();
+        values.insert("docs".to_string(), Value::BlockRef(doc));
+        values.insert("overview".to_string(), Value::BlockRef(page));
+        let ctx = empty_ctx();
+
+        let document = extract(&values, &ctx).expect("extract");
+
+        assert_eq!(document.template, WdocTemplate::Presentation);
+        assert_eq!(document.pages[0].template, Some(WdocTemplate::Book));
+    }
+
+    #[test]
+    fn unknown_wdoc_template_reports_supported_names() {
+        let mut doc_attrs = IndexMap::new();
+        string_attr(&mut doc_attrs, "title", "Docs");
+        string_attr(&mut doc_attrs, "template", "slides");
+        let doc = block("wdoc::doc", Some("docs"), doc_attrs, vec![]);
+
+        let mut values = IndexMap::new();
+        values.insert("docs".to_string(), Value::BlockRef(doc));
+        let ctx = empty_ctx();
+
+        let err = extract(&values, &ctx).expect_err("unknown template should fail");
+
+        assert!(err.contains("unknown wdoc template 'slides'"));
+        assert!(err.contains("supported: book, presentation"));
+    }
+
+    #[test]
     fn font_asset_and_global_css_register_extra_css_once() {
         let mut doc_attrs = IndexMap::new();
         string_attr(&mut doc_attrs, "title", "Docs");
@@ -7552,6 +7593,7 @@ fn extract(values: &IndexMap<String, Value>, ctx: &ExtractCtx) -> Result<WdocDoc
         .get("author")
         .and_then(|v| v.as_string())
         .map(|s| s.to_string());
+    let template = extract_template_attr(wdoc, "doc")?.unwrap_or(WdocTemplate::DEFAULT);
 
     let mut sections = Vec::new();
     for child in all_child_blocks(wdoc) {
@@ -7566,6 +7608,7 @@ fn extract(values: &IndexMap<String, Value>, ctx: &ExtractCtx) -> Result<WdocDoc
     Ok(WdocDocument {
         name,
         title,
+        template,
         version,
         author,
         sections,
@@ -7634,6 +7677,7 @@ fn extract_page(block: &BlockRef, ctx: &ExtractCtx) -> Result<Page, String> {
         .and_then(|v| v.as_string())
         .ok_or_else(|| format!("page '{id}' missing 'title' attribute"))?
         .to_string();
+    let template = extract_template_attr(block, &format!("page '{id}'"))?;
 
     let all_children = all_child_blocks(block);
     let signals = extract_page_signals(&all_children);
@@ -7658,10 +7702,21 @@ fn extract_page(block: &BlockRef, ctx: &ExtractCtx) -> Result<Page, String> {
         id,
         section_id,
         title,
+        template,
         layout,
         signals,
         bindings,
     })
+}
+
+fn extract_template_attr(block: &BlockRef, label: &str) -> Result<Option<WdocTemplate>, String> {
+    block
+        .attributes
+        .get("template")
+        .and_then(|v| v.as_string())
+        .map(WdocTemplate::parse)
+        .transpose()
+        .map_err(|e| format!("{label} has {e}"))
 }
 
 fn extract_page_signals(blocks: &[&BlockRef]) -> Vec<WdocSignal> {

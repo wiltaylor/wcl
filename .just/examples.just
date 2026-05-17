@@ -52,6 +52,10 @@ wdoc-serve: build-local
 # Backward-compatible alias for local-first default
 wdoc-serve-local: wdoc-serve
 
+# Serve the wdoc presentation example using locally-built binary
+wdoc-presentation: build-local
+    ./target/debug/wcl wdoc serve examples/wdoc/presentation.wcl --port 3001 --open
+
 # Run CLI examples using locally-built binary
 cli: run-local-cli
 

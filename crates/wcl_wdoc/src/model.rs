@@ -5,6 +5,7 @@ use indexmap::IndexMap;
 pub struct WdocDocument {
     pub name: String,
     pub title: String,
+    pub template: WdocTemplate,
     pub version: Option<String>,
     pub author: Option<String>,
     pub sections: Vec<Section>,
@@ -31,9 +32,37 @@ pub struct Page {
     pub id: String,
     pub section_id: String,
     pub title: String,
+    pub template: Option<WdocTemplate>,
     pub layout: Layout,
     pub signals: Vec<WdocSignal>,
     pub bindings: Vec<WdocBinding>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WdocTemplate {
+    Book,
+    Presentation,
+}
+
+impl WdocTemplate {
+    pub const DEFAULT: Self = Self::Book;
+
+    pub fn parse(value: &str) -> Result<Self, String> {
+        match value {
+            "book" => Ok(Self::Book),
+            "presentation" => Ok(Self::Presentation),
+            other => Err(format!(
+                "unknown wdoc template '{other}' (supported: book, presentation)"
+            )),
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Book => "book",
+            Self::Presentation => "presentation",
+        }
+    }
 }
 
 /// The layout container for a page.

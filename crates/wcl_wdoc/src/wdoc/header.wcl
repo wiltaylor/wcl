@@ -24,6 +24,7 @@ namespace wdoc {
     @open
     schema "doc" {
         title: string
+        template: string @optional
         version: string @optional
         author: string @optional
     }
@@ -32,6 +33,7 @@ namespace wdoc {
     schema "page" {
         section: string
         title: string
+        template: string @optional
     }
 
     @parent(["wdoc::page"]) @open

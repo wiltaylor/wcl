@@ -343,12 +343,65 @@ h6.wdoc-heading { font-size: 0.9rem; }
 a { color: var(--color-link); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
+/* Presentation template */
+body.wdoc-template-presentation {
+    display: block;
+    min-height: 100vh;
+    overflow: hidden;
+}
+.wdoc-presentation {
+    min-height: 100vh;
+    display: flex;
+    background: var(--color-bg);
+}
+.wdoc-presentation-nav {
+    display: none;
+}
+.wdoc-slide {
+    width: min(100vw, 1280px);
+    height: min(100vh, 720px);
+    margin: auto;
+    padding: clamp(1.5rem, 4vw, 4rem);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    overflow: auto;
+}
+.wdoc-slide > *:last-child { margin-bottom: 0; }
+.wdoc-slide h1.wdoc-heading { font-size: 3.5rem; }
+.wdoc-slide h2.wdoc-heading { font-size: 2.35rem; }
+.wdoc-slide .wdoc-paragraph,
+.wdoc-slide .wdoc-callout,
+.wdoc-slide .wdoc-table {
+    font-size: 1.22rem;
+}
+.wdoc-slide .wdoc-code {
+    max-height: 46vh;
+}
+.wdoc-slide .wdoc-diagram svg {
+    max-height: 58vh;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     .wdoc-nav { display: none; }
     .wdoc-content { margin-left: 0; padding: 1rem; }
     .wdoc-vsplit { flex-direction: column; }
     .wdoc-split { flex: 1 1 auto !important; }
+    body.wdoc-template-presentation { overflow: auto; }
+    .wdoc-slide {
+        width: 100%;
+        height: auto;
+        min-height: 100vh;
+        padding: 1rem;
+    }
+    .wdoc-slide h1.wdoc-heading { font-size: 2.25rem; }
+    .wdoc-slide h2.wdoc-heading { font-size: 1.65rem; }
+    .wdoc-slide .wdoc-paragraph,
+    .wdoc-slide .wdoc-callout,
+    .wdoc-slide .wdoc-table {
+        font-size: 1rem;
+    }
 }
 "#;
 

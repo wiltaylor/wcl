@@ -85,38 +85,50 @@ const THEME_SCRIPT: &str = r#"<script>
 })();
 </script>"#;
 
+const PRESENTATION_SCRIPT: &str = r#"<script>
+(function() {
+    function go(selector) {
+        var link = document.querySelector(selector);
+        if (!link) return false;
+        window.location.href = link.getAttribute('href');
+        return true;
+    }
+    document.addEventListener('keydown', function(event) {
+        if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+        var tag = event.target && event.target.tagName ? event.target.tagName.toLowerCase() : '';
+        if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+        var handled = false;
+        if (event.key === 'ArrowRight' || event.key === 'PageDown' || event.key === ' ') {
+            handled = go('[data-wdoc-slide-right]');
+        } else if (event.key === 'ArrowLeft' || event.key === 'Backspace') {
+            handled = go('[data-wdoc-slide-left]');
+        } else if (event.key === 'ArrowDown') {
+            handled = go('[data-wdoc-slide-down]');
+        } else if (event.key === 'ArrowUp' || event.key === 'PageUp') {
+            handled = go('[data-wdoc-slide-up]');
+        }
+        if (handled) {
+            event.preventDefault();
+        }
+    });
+})();
+</script>"#;
+
 /// Render a single page as a complete HTML document.
 pub fn render_page(doc: &WdocDocument, page: &Page, css_path: &str) -> String {
+    match page.template.unwrap_or(doc.template) {
+        WdocTemplate::Book => render_book_page(doc, page, css_path),
+        WdocTemplate::Presentation => render_presentation_page(doc, page, css_path),
+    }
+}
+
+fn render_book_page(doc: &WdocDocument, page: &Page, css_path: &str) -> String {
     let mut html = String::with_capacity(4096);
     let mut content_html = String::new();
     render_layout_items(&page.layout.children, &mut content_html);
-    let mathjax_head = if content_html.contains("data-wdoc-equation=") {
-        MATHJAX_HEAD
-    } else {
-        ""
-    };
 
-    // DOCTYPE + head
-    write!(
-        html,
-        r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{title} — {doc_title}</title>
-<link rel="stylesheet" href="{css_path}">
-{HLJS_HEAD}
-{mathjax_head}
-</head>
-<body>
-"#,
-        title = page.title,
-        doc_title = doc.title,
-        HLJS_HEAD = HLJS_HEAD,
-        mathjax_head = mathjax_head,
-    )
-    .unwrap();
+    render_document_head(doc, page, css_path, &content_html, &mut html);
+    html.push_str("<body class=\"wdoc-template-book\">\n");
 
     // Nav sidebar
     render_nav(doc, &page.section_id, &mut html);
@@ -135,6 +147,162 @@ pub fn render_page(doc: &WdocDocument, page: &Page, css_path: &str) -> String {
     html
 }
 
+fn render_presentation_page(doc: &WdocDocument, page: &Page, css_path: &str) -> String {
+    let mut html = String::with_capacity(4096);
+    let mut content_html = String::new();
+    render_layout_items(&page.layout.children, &mut content_html);
+    let nav = presentation_nav(doc, page);
+
+    render_document_head(doc, page, css_path, &content_html, &mut html);
+    html.push_str("<body class=\"wdoc-template-presentation\">\n");
+    html.push_str("<main class=\"wdoc-presentation\" aria-label=\"Presentation slide\">\n");
+    html.push_str("<nav class=\"wdoc-presentation-nav\" aria-hidden=\"true\">\n");
+    render_presentation_nav_link(&mut html, nav.up, "up", "Previous section");
+    render_presentation_nav_link(&mut html, nav.left, "left", "Previous slide");
+    render_presentation_nav_link(&mut html, nav.right, "right", "Next slide");
+    render_presentation_nav_link(&mut html, nav.down, "down", "Next section");
+    html.push_str("</nav>\n");
+    html.push_str("<section class=\"wdoc-slide\">\n");
+    html.push_str(&content_html);
+    html.push_str("</section>\n</main>\n");
+    if page_has_runtime(page) {
+        html.push_str(&page_signal_runtime(page));
+    }
+    html.push_str(THEME_SCRIPT);
+    html.push_str(PRESENTATION_SCRIPT);
+    html.push_str("\n</body>\n</html>\n");
+    html
+}
+
+fn render_presentation_nav_link(
+    html: &mut String,
+    target: Option<&Page>,
+    direction: &str,
+    aria_label: &str,
+) {
+    if let Some(target) = target {
+        writeln!(
+            html,
+            "<a href=\"{}.html\" data-wdoc-slide-{} aria-label=\"{}\"></a>",
+            target.id, direction, aria_label
+        )
+        .unwrap();
+    }
+}
+
+fn render_document_head(
+    doc: &WdocDocument,
+    page: &Page,
+    css_path: &str,
+    content_html: &str,
+    html: &mut String,
+) {
+    let mathjax_head = if content_html.contains("data-wdoc-equation=") {
+        MATHJAX_HEAD
+    } else {
+        ""
+    };
+
+    write!(
+        html,
+        r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{title} — {doc_title}</title>
+<link rel="stylesheet" href="{css_path}">
+{HLJS_HEAD}
+{mathjax_head}
+</head>
+"#,
+        title = page.title,
+        doc_title = doc.title,
+        HLJS_HEAD = HLJS_HEAD,
+        mathjax_head = mathjax_head,
+    )
+    .unwrap();
+}
+
+#[derive(Debug)]
+struct PresentationNav<'a> {
+    left: Option<&'a Page>,
+    right: Option<&'a Page>,
+    up: Option<&'a Page>,
+    down: Option<&'a Page>,
+}
+
+fn presentation_nav<'a>(doc: &'a WdocDocument, page: &Page) -> PresentationNav<'a> {
+    let grid = presentation_grid(doc);
+    let (row, col) = grid
+        .iter()
+        .enumerate()
+        .find_map(|(row, group)| {
+            group
+                .iter()
+                .position(|candidate| candidate.id == page.id)
+                .map(|col| (row, col))
+        })
+        .unwrap_or((0, 0));
+    let row_pages = grid.get(row).map(Vec::as_slice).unwrap_or(&[]);
+
+    PresentationNav {
+        left: col
+            .checked_sub(1)
+            .and_then(|idx| row_pages.get(idx).copied()),
+        right: row_pages.get(col + 1).copied(),
+        up: row
+            .checked_sub(1)
+            .and_then(|idx| nearest_slide_in_group(grid.get(idx), col)),
+        down: nearest_slide_in_group(grid.get(row + 1), col),
+    }
+}
+
+fn nearest_slide_in_group<'a>(group: Option<&Vec<&'a Page>>, col: usize) -> Option<&'a Page> {
+    let group = group?;
+    let idx = col.min(group.len().saturating_sub(1));
+    group.get(idx).copied()
+}
+
+fn presentation_grid(doc: &WdocDocument) -> Vec<Vec<&Page>> {
+    let mut groups = Vec::new();
+    for section in &doc.sections {
+        let mut pages = Vec::new();
+        collect_pages_by_section(std::slice::from_ref(section), &doc.pages, &mut pages);
+        if !pages.is_empty() {
+            groups.push(pages);
+        }
+    }
+
+    let mut uncategorized = Vec::new();
+    for page in &doc.pages {
+        if !groups
+            .iter()
+            .flatten()
+            .any(|candidate| candidate.id == page.id)
+        {
+            uncategorized.push(page);
+        }
+    }
+    if !uncategorized.is_empty() {
+        groups.push(uncategorized);
+    }
+    groups
+}
+
+fn collect_pages_by_section<'a>(
+    sections: &[Section],
+    all_pages: &'a [Page],
+    out: &mut Vec<&'a Page>,
+) {
+    for section in sections {
+        if let Some(page) = all_pages.iter().find(|p| p.section_id == section.id) {
+            out.push(page);
+        }
+        collect_pages_by_section(&section.children, all_pages, out);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -144,6 +312,7 @@ mod tests {
             id: "test".to_string(),
             section_id: "section".to_string(),
             title: "Test".to_string(),
+            template: None,
             layout: Layout {
                 children: vec![LayoutItem::Content(ContentBlock {
                     kind: "wdoc::paragraph".to_string(),
@@ -161,6 +330,7 @@ mod tests {
         WdocDocument {
             name: "doc".to_string(),
             title: "Doc".to_string(),
+            template: WdocTemplate::Book,
             version: None,
             author: None,
             sections: vec![Section {
@@ -172,6 +342,29 @@ mod tests {
             pages: vec![page],
             styles: Vec::new(),
             extra_css: String::new(),
+        }
+    }
+
+    fn presentation_page(id: &str, section_id: &str) -> Page {
+        Page {
+            id: id.to_string(),
+            section_id: section_id.to_string(),
+            title: id.to_string(),
+            template: None,
+            layout: Layout {
+                children: Vec::new(),
+            },
+            signals: Vec::new(),
+            bindings: Vec::new(),
+        }
+    }
+
+    fn section_with_children(id: &str, children: Vec<Section>) -> Section {
+        Section {
+            id: id.to_string(),
+            short_id: id.rsplit('.').next().unwrap_or(id).to_string(),
+            title: id.to_string(),
+            children,
         }
     }
 
@@ -189,6 +382,64 @@ mod tests {
         let plain_doc = doc_with_page(plain_page.clone());
         let plain_html = render_page(&plain_doc, &plain_page, "styles.css");
         assert!(!plain_html.contains("tex-mml-chtml.js"));
+    }
+
+    #[test]
+    fn presentation_template_renders_slide_shell_without_book_nav() {
+        let mut page = page_with_html("<h1 class=\"wdoc-heading\">Slide</h1>");
+        page.template = Some(WdocTemplate::Presentation);
+        let doc = doc_with_page(page.clone());
+
+        let html = render_page(&doc, &page, "styles.css");
+
+        assert!(html.contains("wdoc-template-presentation"));
+        assert!(html.contains("wdoc-slide"));
+        assert!(!html.contains("wdoc-nav"));
+        assert!(!html.contains("wdoc-presentation-chrome"));
+        assert!(!html.contains("wdoc-presentation-count"));
+    }
+
+    #[test]
+    fn presentation_navigation_moves_within_and_between_section_rows() {
+        let doc = WdocDocument {
+            name: "deck".to_string(),
+            title: "Deck".to_string(),
+            template: WdocTemplate::Presentation,
+            version: None,
+            author: None,
+            sections: vec![
+                section_with_children(
+                    "deck.row_a",
+                    vec![
+                        section_with_children("deck.row_a.a1", vec![]),
+                        section_with_children("deck.row_a.a2", vec![]),
+                    ],
+                ),
+                section_with_children(
+                    "deck.row_b",
+                    vec![
+                        section_with_children("deck.row_b.b1", vec![]),
+                        section_with_children("deck.row_b.b2", vec![]),
+                    ],
+                ),
+            ],
+            pages: vec![
+                presentation_page("a1", "deck.row_a.a1"),
+                presentation_page("a2", "deck.row_a.a2"),
+                presentation_page("b1", "deck.row_b.b1"),
+                presentation_page("b2", "deck.row_b.b2"),
+            ],
+            styles: Vec::new(),
+            extra_css: String::new(),
+        };
+
+        let html = render_page(&doc, &doc.pages[1], "styles.css");
+
+        assert!(html.contains("class=\"wdoc-presentation-nav\""));
+        assert!(html.contains("href=\"a1.html\" data-wdoc-slide-left"));
+        assert!(html.contains("href=\"b2.html\" data-wdoc-slide-down"));
+        assert!(!html.contains("href=\"a2.html\" data-wdoc-slide-up"));
+        assert!(!html.contains("href=\"b1.html\" data-wdoc-slide-right"));
     }
 }
 

@@ -318,6 +318,7 @@ mod tests {
         WdocDocument {
             name: "docs".to_string(),
             title: "Docs".to_string(),
+            template: crate::model::WdocTemplate::Book,
             version: None,
             author: None,
             sections: vec![Section {
@@ -330,6 +331,7 @@ mod tests {
                 id: "home".to_string(),
                 section_id: "docs.overview".to_string(),
                 title: "Home".to_string(),
+                template: None,
                 layout: Layout {
                     children: vec![LayoutItem::Content(ContentBlock {
                         kind: "wdoc::draw::diagram".to_string(),
