@@ -199,6 +199,7 @@ namespace html {
         name == "class_name" ? "class" :
         name == "for_" ? "for" :
         name == "type_" ? "type" :
+        name == "content_attr" ? "content" :
         replace(name, "_", "-")
 
     export let __style_value = value =>
@@ -212,7 +213,9 @@ namespace html {
         contains(["allowfullscreen", "async", "autofocus", "autoplay", "checked", "controls", "default", "defer", "disabled", "formnovalidate", "hidden", "inert", "ismap", "itemscope", "loop", "multiple", "muted", "nomodule", "novalidate", "open", "playsinline", "readonly", "required", "reversed", "selected"], name)
 
     export let __render_attr = (name, value) =>
-        html::__skip_attr(name) || type_of(value) == "null" || value == false ? "" : {
+        html::__skip_attr(name) ? "" :
+        type_of(value) == "null" ? "" :
+        type_of(value) == "bool" && value == false ? "" : {
             let attr = html::__attr_name(name)
             let rendered = attr == "style" ? html::__style_value(value) : to_string(value)
             type_of(value) == "bool" && value == true && html::__boolean_attr(attr) ? " " + attr :

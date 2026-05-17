@@ -674,13 +674,13 @@ fn icon_placeholder(
     set: Option<&str>,
     props: IndexMap<String, String>,
 ) -> String {
-    let mut attrs = vec![
-        ("data-wdoc-icon", "true".to_string()),
-        ("data-name", name.to_string()),
-        ("data-size", size.to_string()),
-    ];
+    let mut attrs = IndexMap::new();
+    attrs.insert("tag".to_string(), crate::markup::s("span"));
+    attrs.insert("data_wdoc_icon".to_string(), crate::markup::s("true"));
+    attrs.insert("data_name".to_string(), crate::markup::s(name));
+    attrs.insert("data_size".to_string(), crate::markup::s(size));
     if let Some(set) = set.filter(|set| !set.trim().is_empty()) {
-        attrs.push(("data-set", set.to_string()));
+        attrs.insert("data_set".to_string(), crate::markup::s(set));
     }
     if !props.is_empty() {
         let encoded = props
@@ -694,18 +694,10 @@ fn icon_placeholder(
             })
             .collect::<Vec<_>>()
             .join("&");
-        attrs.push(("data-props", encoded));
+        attrs.insert("data_props".to_string(), crate::markup::s(encoded));
     }
-    let mut html = String::from("<span");
-    for (name, value) in attrs {
-        html.push(' ');
-        html.push_str(name);
-        html.push_str("=\"");
-        html.push_str(&html_escape(&value));
-        html.push('"');
-    }
-    html.push_str("></span>");
-    html
+    crate::markup::render_html(&Value::Map(attrs))
+        .expect("wdoc icon placeholder should serialize as HTML")
 }
 
 fn url_component_escape(value: &str) -> String {
@@ -3189,22 +3181,23 @@ impl DiagramCssRegistry {
         let mut blocks = Vec::new();
         for css in &self.font_faces {
             if !css.trim().is_empty() {
-                blocks.push(css.trim());
+                blocks.push(crate::markup::raw_css(css.trim()));
             }
         }
         for css in &self.global_css {
             if !css.trim().is_empty() {
-                blocks.push(css.trim());
+                blocks.push(crate::markup::raw_css(css.trim()));
             }
         }
         for set in self.css_by_scope.values() {
             for css in set {
                 if !css.trim().is_empty() {
-                    blocks.push(css.trim());
+                    blocks.push(crate::markup::raw_css(css.trim()));
                 }
             }
         }
-        blocks.join("\n")
+        crate::markup::render_css(&crate::markup::css_stylesheet(blocks))
+            .expect("wdoc diagram CSS should serialize as CSS")
     }
 }
 
@@ -3318,15 +3311,34 @@ fn register_font_asset(block: &BlockRef, ctx: &ExtractCtx) -> Result<(), String>
         .filter(|value| !value.is_empty())
         .unwrap_or("swap");
 
-    let css = format!(
-        "@font-face {{\n  font-family: \"{}\";\n  src: url(\"{}\") format(\"{}\");\n  font-weight: {};\n  font-style: {};\n  font-display: {};\n}}",
-        css_string_escape(family),
-        css_string_escape(src),
-        css_string_escape(format),
-        css_declaration_value(weight),
-        css_declaration_value(style),
-        css_declaration_value(display)
-    );
+    let css = crate::markup::render_css(&crate::markup::css_at(
+        "font_face",
+        &[
+            (
+                "font_family",
+                crate::markup::s(format!("\"{}\"", css_string_escape(family))),
+            ),
+            (
+                "src",
+                crate::markup::s(format!(
+                    "url(\"{}\") format(\"{}\")",
+                    css_string_escape(src),
+                    css_string_escape(format)
+                )),
+            ),
+            (
+                "font_weight",
+                crate::markup::s(css_declaration_value(weight)),
+            ),
+            ("font_style", crate::markup::s(css_declaration_value(style))),
+            (
+                "font_display",
+                crate::markup::s(css_declaration_value(display)),
+            ),
+        ],
+        vec![],
+    ))
+    .expect("wdoc font asset CSS should serialize as CSS");
 
     ctx.css_registry.borrow_mut().register_font_face(&css);
     Ok(())
@@ -7298,11 +7310,14 @@ fn render_markup_string(text: &str, ctx: &ExtractCtx) -> Result<String, String> 
         }
         if rest.starts_with('$') {
             if let Some((end, tex)) = match_inline_equation(text, pos) {
-                out.push_str(
-                    "<span class=\"wdoc-equation-inline\" data-wdoc-equation=\"inline\">\\(",
-                );
-                out.push_str(&html_escape(tex));
-                out.push_str("\\)</span>");
+                out.push_str(&crate::markup::render_html(&crate::markup::elem(
+                    "span",
+                    &[
+                        ("class_name", crate::markup::s("wdoc-equation-inline")),
+                        ("data_wdoc_equation", crate::markup::s("inline")),
+                    ],
+                    vec![crate::markup::text(format!("\\({tex}\\)"))],
+                ))?);
                 pos = end;
                 continue;
             }
@@ -7448,12 +7463,18 @@ fn render_inline_icon(
 ) -> String {
     match resolve_icon_reference(&ctx.icon_registry, set, name, None, None, None) {
         Ok(icon) => render_inline_icon_svg(&icon, size, &props),
-        Err(_) => {
-            let label = html_escape(name);
-            format!(
-                "<span class=\"wdoc-icon wdoc-icon-missing\" aria-hidden=\"true\">{label}</span>"
-            )
-        }
+        Err(_) => crate::markup::render_html(&crate::markup::elem(
+            "span",
+            &[
+                (
+                    "class_name",
+                    crate::markup::s("wdoc-icon wdoc-icon-missing"),
+                ),
+                ("aria_hidden", crate::markup::s("true")),
+            ],
+            vec![crate::markup::text(name)],
+        ))
+        .expect("missing icon fallback should serialize as HTML"),
     }
 }
 
@@ -7492,23 +7513,44 @@ fn render_inline_icon_svg(
                 0.0,
                 norm_width,
                 norm_height,
-                format!(" transform=\"translate({tx},{ty}) scale({scale})\""),
+                format!("translate({tx},{ty}) scale({scale})"),
             )
         };
     let mut style = String::from("vertical-align:-0.125em;");
     style.push_str(&icon_style_vars(props));
-    let size = html_escape(size);
-    let style = html_escape(&style);
-    let label = html_escape(&icon.name);
     let css = icon.css.replace("</style", "<\\/style");
     let body = if transform.is_empty() {
-        sanitized
+        crate::markup::raw_svg(sanitized)
     } else {
-        format!("<g{transform}>{sanitized}</g>")
+        crate::markup::svg_elem(
+            "g",
+            &[("transform", crate::markup::s(transform))],
+            vec![crate::markup::raw_svg(sanitized)],
+        )
     };
-    format!(
-        "<svg class=\"wdoc-icon\" width=\"{size}\" height=\"{size}\" viewBox=\"{view_min_x} {view_min_y} {view_width} {view_height}\" style=\"{style}\" aria-hidden=\"true\" data-wdoc-icon-name=\"{label}\"><style>{css}</style>{body}</svg>"
-    )
+    crate::markup::render_svg(&crate::markup::svg_elem(
+        "svg",
+        &[
+            ("class_name", crate::markup::s("wdoc-icon")),
+            ("xmlns", crate::markup::s("http://www.w3.org/2000/svg")),
+            ("width", crate::markup::s(size)),
+            ("height", crate::markup::s(size)),
+            (
+                "viewBox",
+                crate::markup::s(format!(
+                    "{view_min_x} {view_min_y} {view_width} {view_height}"
+                )),
+            ),
+            ("style", crate::markup::s(style)),
+            ("aria_hidden", crate::markup::s("true")),
+            ("data_wdoc_icon_name", crate::markup::s(&icon.name)),
+        ],
+        vec![
+            crate::markup::svg_elem("style", &[("raw", crate::markup::s(css))], vec![]),
+            body,
+        ],
+    ))
+    .expect("inline icon svg should serialize as SVG")
 }
 
 fn icon_style_vars(props: &IndexMap<String, String>) -> String {

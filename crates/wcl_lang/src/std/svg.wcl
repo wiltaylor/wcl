@@ -123,7 +123,9 @@ namespace svg {
         contains(["tag", "kind", "element", "children", "content", "text", "raw"], name)
 
     export let __render_attr = (name, value) =>
-        svg::__skip_attr(name) || type_of(value) == "null" || value == false ? "" : {
+        svg::__skip_attr(name) ? "" :
+        type_of(value) == "null" ? "" :
+        type_of(value) == "bool" && value == false ? "" : {
             let attr = svg::__attr_name(name)
             let rendered = attr == "style" ? svg::__style_value(value) : to_string(value)
             " " + attr + "=\"" + svg::__escape_attr(rendered) + "\""

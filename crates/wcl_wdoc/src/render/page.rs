@@ -1,16 +1,11 @@
-use std::fmt::Write;
-
+use crate::markup::{self, b, elem, raw_html, s, text};
 use crate::model::*;
 use crate::render::layout::render_layout_items;
+use indexmap::IndexMap;
+use wcl_lang::Value;
 
 /// highlight.js local assets injected into <head>.
-const HLJS_HEAD: &str = r#"<link rel="stylesheet" href="highlight-light.min.css" id="hljs-light">
-<link rel="stylesheet" href="highlight-dark.min.css" id="hljs-dark" disabled>
-<script defer src="highlight.min.js"></script>
-<script defer src="wcl-grammar.js"></script>"#;
-
-const MATHJAX_HEAD: &str = r#"<script>
-window.MathJax = {
+const MATHJAX_CONFIG_SCRIPT: &str = r#"window.MathJax = {
     tex: {
         inlineMath: [['\\(', '\\)']],
         displayMath: [['\\[', '\\]']],
@@ -19,13 +14,10 @@ window.MathJax = {
     options: {
         skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
     }
-};
-</script>
-<script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>"#;
+};"#;
 
 /// Theme detection + highlight.js init + toggle logic.
-const THEME_SCRIPT: &str = r#"<script>
-(function() {
+const THEME_SCRIPT: &str = r#"(function() {
     // Determine initial theme: saved preference > system preference > light
     function getPreferred() {
         var saved = localStorage.getItem('wdoc-theme');
@@ -82,11 +74,9 @@ const THEME_SCRIPT: &str = r#"<script>
             });
         }
     });
-})();
-</script>"#;
+})();"#;
 
-const PRESENTATION_SCRIPT: &str = r#"<script>
-(function() {
+const PRESENTATION_SCRIPT: &str = r#"(function() {
     function go(selector) {
         var link = document.querySelector(selector);
         if (!link) return false;
@@ -111,8 +101,7 @@ const PRESENTATION_SCRIPT: &str = r#"<script>
             event.preventDefault();
         }
     });
-})();
-</script>"#;
+})();"#;
 
 /// Render a single page as a complete HTML document.
 pub fn render_page(doc: &WdocDocument, page: &Page, css_path: &str) -> String {
@@ -267,107 +256,186 @@ struct SiteShell<'a> {
 }
 
 fn render_site_shell(shell: SiteShell<'_>) -> String {
-    let mut html = String::with_capacity(4096);
-    render_document_head(
+    let mut body_children = Vec::new();
+    if let Some(before_main) = shell.before_main {
+        body_children.push(raw_html(before_main));
+    }
+    body_children.push(elem(
+        "main",
+        &[("class_name", s(shell.main_class))],
+        vec![raw_html(shell.content_html)],
+    ));
+    if let Some(after_main) = shell.after_main {
+        body_children.push(raw_html(after_main));
+    }
+    if let Some(runtime) = shell.runtime {
+        body_children.push(script_node(&runtime));
+    }
+    body_children.push(script_node(THEME_SCRIPT));
+
+    render_document_html(
         shell.doc,
         shell.title,
         shell.css_path,
         shell.content_html,
-        &mut html,
-    );
-    writeln!(html, "<body class=\"{}\">", shell.body_class).unwrap();
-    if let Some(before_main) = shell.before_main {
-        html.push_str(&before_main);
-    }
-    writeln!(html, "<main class=\"{}\">", shell.main_class).unwrap();
-    html.push_str(shell.content_html);
-    html.push_str("</main>\n");
-    if let Some(after_main) = shell.after_main {
-        html.push_str(&after_main);
-    }
-    if let Some(runtime) = shell.runtime {
-        html.push_str(&runtime);
-    }
-    html.push_str(THEME_SCRIPT);
-    html.push_str("\n</body>\n</html>\n");
-    html
+        shell.body_class,
+        body_children,
+    )
 }
 
 fn render_presentation_page(doc: &WdocDocument, page: &Page, css_path: &str) -> String {
-    let mut html = String::with_capacity(4096);
     let mut content_html = String::new();
     render_layout_items(&page.layout.children, &mut content_html);
     let nav = presentation_nav(doc, page);
 
-    render_document_head(doc, &page.title, css_path, &content_html, &mut html);
-    html.push_str("<body class=\"wdoc-template-presentation\">\n");
-    html.push_str("<main class=\"wdoc-presentation\" aria-label=\"Presentation slide\">\n");
-    html.push_str("<nav class=\"wdoc-presentation-nav\" aria-hidden=\"true\">\n");
-    render_presentation_nav_link(&mut html, nav.up, "up", "Previous section");
-    render_presentation_nav_link(&mut html, nav.left, "left", "Previous slide");
-    render_presentation_nav_link(&mut html, nav.right, "right", "Next slide");
-    render_presentation_nav_link(&mut html, nav.down, "down", "Next section");
-    html.push_str("</nav>\n");
-    html.push_str("<section class=\"wdoc-slide\">\n");
-    html.push_str(&content_html);
-    html.push_str("</section>\n</main>\n");
+    let mut body_children = vec![elem(
+        "main",
+        &[
+            ("class_name", s("wdoc-presentation")),
+            ("aria_label", s("Presentation slide")),
+        ],
+        vec![
+            elem(
+                "nav",
+                &[
+                    ("class_name", s("wdoc-presentation-nav")),
+                    ("aria_hidden", s("true")),
+                ],
+                presentation_nav_links(nav),
+            ),
+            elem(
+                "section",
+                &[("class_name", s("wdoc-slide"))],
+                vec![raw_html(content_html.clone())],
+            ),
+        ],
+    )];
     if page_has_runtime(page) {
-        html.push_str(&page_signal_runtime(page));
+        body_children.push(script_node(&page_signal_runtime(page)));
     }
-    html.push_str(THEME_SCRIPT);
-    html.push_str(PRESENTATION_SCRIPT);
-    html.push_str("\n</body>\n</html>\n");
-    html
+    body_children.push(script_node(THEME_SCRIPT));
+    body_children.push(script_node(PRESENTATION_SCRIPT));
+
+    render_document_html(
+        doc,
+        &page.title,
+        css_path,
+        &content_html,
+        "wdoc-template-presentation",
+        body_children,
+    )
 }
 
-fn render_presentation_nav_link(
-    html: &mut String,
-    target: Option<&Page>,
-    direction: &str,
-    aria_label: &str,
-) {
-    if let Some(target) = target {
-        writeln!(
-            html,
-            "<a href=\"{}.html\" data-wdoc-slide-{} aria-label=\"{}\"></a>",
-            target.id, direction, aria_label
-        )
-        .unwrap();
-    }
+fn presentation_nav_links(nav: PresentationNav<'_>) -> Vec<Value> {
+    [
+        (nav.up, "up", "Previous section"),
+        (nav.left, "left", "Previous slide"),
+        (nav.right, "right", "Next slide"),
+        (nav.down, "down", "Next section"),
+    ]
+    .into_iter()
+    .filter_map(|(target, direction, aria_label)| {
+        target.map(|target| {
+            let mut attrs = IndexMap::new();
+            attrs.insert("tag".to_string(), s("a"));
+            attrs.insert("href".to_string(), s(format!("{}.html", target.id)));
+            attrs.insert(format!("data_wdoc_slide_{direction}"), b(true));
+            attrs.insert("aria_label".to_string(), s(aria_label));
+            Value::Map(attrs)
+        })
+    })
+    .collect()
 }
 
-fn render_document_head(
+fn render_document_html(
     doc: &WdocDocument,
     title: &str,
     css_path: &str,
     content_html: &str,
-    html: &mut String,
-) {
-    let mathjax_head = if content_html.contains("data-wdoc-equation=") {
-        MATHJAX_HEAD
-    } else {
-        ""
-    };
+    body_class: &str,
+    body_children: Vec<Value>,
+) -> String {
+    let head = markup::render_html(&document_head(doc, title, css_path, content_html))
+        .expect("wdoc document head should serialize as HTML");
+    let body = markup::render_html(&elem(
+        "body",
+        &[("class_name", s(body_class))],
+        body_children,
+    ))
+    .expect("wdoc document body should serialize as HTML");
+    format!("<!DOCTYPE html><html lang=\"en\">{head}{body}</html>\n")
+}
 
-    write!(
-        html,
-        r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{title} — {doc_title}</title>
-<link rel="stylesheet" href="{css_path}">
-{HLJS_HEAD}
-{mathjax_head}
-</head>
-"#,
-        title = title,
-        doc_title = doc.title,
-        HLJS_HEAD = HLJS_HEAD,
-        mathjax_head = mathjax_head,
+fn document_head(doc: &WdocDocument, title: &str, css_path: &str, content_html: &str) -> Value {
+    let mut children = vec![
+        elem("meta", &[("charset", s("utf-8"))], vec![]),
+        elem(
+            "meta",
+            &[
+                ("name", s("viewport")),
+                ("content_attr", s("width=device-width, initial-scale=1")),
+            ],
+            vec![],
+        ),
+        elem("title", &[], vec![text(format!("{title} — {}", doc.title))]),
+        elem(
+            "link",
+            &[("rel", s("stylesheet")), ("href", s(css_path))],
+            vec![],
+        ),
+        elem(
+            "link",
+            &[
+                ("rel", s("stylesheet")),
+                ("href", s("highlight-light.min.css")),
+                ("id", s("hljs-light")),
+            ],
+            vec![],
+        ),
+        elem(
+            "link",
+            &[
+                ("rel", s("stylesheet")),
+                ("href", s("highlight-dark.min.css")),
+                ("id", s("hljs-dark")),
+                ("disabled", b(true)),
+            ],
+            vec![],
+        ),
+        elem(
+            "script",
+            &[("defer", b(true)), ("src", s("highlight.min.js"))],
+            vec![],
+        ),
+        elem(
+            "script",
+            &[("defer", b(true)), ("src", s("wcl-grammar.js"))],
+            vec![],
+        ),
+    ];
+    if content_html.contains("data-wdoc-equation=") {
+        children.push(script_node(MATHJAX_CONFIG_SCRIPT));
+        children.push(elem(
+            "script",
+            &[
+                ("defer", b(true)),
+                (
+                    "src",
+                    s("https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"),
+                ),
+            ],
+            vec![],
+        ));
+    }
+    elem("head", &[], children)
+}
+
+fn script_node(source: &str) -> Value {
+    elem(
+        "script",
+        &[("html", s(source.replace("</", "<\\/")))],
+        vec![],
     )
-    .unwrap();
 }
 
 #[derive(Debug)]
@@ -643,63 +711,88 @@ fn page_signal_runtime(page: &Page) -> String {
     })
     .to_string()
     .replace("</", "<\\/");
-    format!("<script>(function(cfg){{if(window.__wdocPageSignalsInit){{window.__wdocPageSignalsInit(cfg);return;}}function val(v){{return v&&typeof v==='object'&&Object.prototype.hasOwnProperty.call(v,'initial')?v.initial:v;}}function clone(v){{return v==null||typeof v!=='object'?v:JSON.parse(JSON.stringify(v));}}function text(v){{if(v==null)return'';return typeof v==='string'?v:JSON.stringify(v);}}function readPath(v,p){{if(!p)return v;return String(p).replace(/\\[(\\d+)\\]/g,'.$1').split('.').filter(Boolean).reduce(function(a,k){{return a==null?undefined:a[k];}},v);}}function writePath(v,p,n){{if(!p)return n;var root=clone(v),cur=root,parts=String(p).replace(/\\[(\\d+)\\]/g,'.$1').split('.').filter(Boolean);for(var i=0;i<parts.length-1;i++){{var k=parts[i];if(cur[k]==null)cur[k]=/^\\d+$/.test(parts[i+1])?[]:{{}};cur=cur[k];}}cur[parts[parts.length-1]]=n;return root;}}function fmt(v,f){{var s=text(v);return f?String(f).replace(/\\{{value\\}}/g,s):s;}}function findTarget(id){{return document.querySelector('[data-wdoc-id=\"'+css(id)+'\"]')||document.querySelector('[data-wdoc-content-id=\"'+css(id)+'\"]')||document.getElementById(id);}}function css(s){{return String(s).replace(/\\\\/g,'\\\\\\\\').replace(/\"/g,'\\\\\"');}}function applyProp(el,prop,value){{if(!el)return;var s=text(value);if(prop==='text'||prop==='content'){{el.textContent=s;return;}}if(prop==='html'){{el.innerHTML=s;return;}}if(prop==='class'){{el.setAttribute('class',s);return;}}if(prop.indexOf('style.')===0){{el.style.setProperty(prop.slice(6).replace(/_/g,'-'),s);return;}}if(window.__wdocDiagramApplyProperty&&el.hasAttribute('data-wdoc-id')&&window.__wdocDiagramApplyProperty(el,prop,value))return;el.setAttribute(prop.replace(/_/g,'-'),s);}}function apply(){{bindings.forEach(function(b){{applyProp(findTarget(b.target),b.property,fmt(readPath(signals[b.signal],b.path),b.format));}});}}function setSignal(name,value,path){{signals[name]=writePath(signals[name],path,value);apply();document.dispatchEvent(new CustomEvent('wdoc:signal-change',{{detail:{{name:name,value:signals[name]}}}}));}}var signals={{}},bindings=cfg.bindings||[];(cfg.signals||[]).forEach(function(s){{signals[s.name]=clone(val(s));}});window.__wdocSignals=signals;window.__wdocSetSignal=setSignal;window.__wdocPageSignalsInit=function(next){{cfg=next||cfg;bindings=cfg.bindings||[];signals={{}};(cfg.signals||[]).forEach(function(s){{signals[s.name]=clone(val(s));}});window.__wdocSignals=signals;apply();}};if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',apply);else apply();}})({data});</script>\n")
+    format!("(function(cfg){{if(window.__wdocPageSignalsInit){{window.__wdocPageSignalsInit(cfg);return;}}function val(v){{return v&&typeof v==='object'&&Object.prototype.hasOwnProperty.call(v,'initial')?v.initial:v;}}function clone(v){{return v==null||typeof v!=='object'?v:JSON.parse(JSON.stringify(v));}}function text(v){{if(v==null)return'';return typeof v==='string'?v:JSON.stringify(v);}}function readPath(v,p){{if(!p)return v;return String(p).replace(/\\[(\\d+)\\]/g,'.$1').split('.').filter(Boolean).reduce(function(a,k){{return a==null?undefined:a[k];}},v);}}function writePath(v,p,n){{if(!p)return n;var root=clone(v),cur=root,parts=String(p).replace(/\\[(\\d+)\\]/g,'.$1').split('.').filter(Boolean);for(var i=0;i<parts.length-1;i++){{var k=parts[i];if(cur[k]==null)cur[k]=/^\\d+$/.test(parts[i+1])?[]:{{}};cur=cur[k];}}cur[parts[parts.length-1]]=n;return root;}}function fmt(v,f){{var s=text(v);return f?String(f).replace(/\\{{value\\}}/g,s):s;}}function findTarget(id){{return document.querySelector('[data-wdoc-id=\"'+css(id)+'\"]')||document.querySelector('[data-wdoc-content-id=\"'+css(id)+'\"]')||document.getElementById(id);}}function css(s){{return String(s).replace(/\\\\/g,'\\\\\\\\').replace(/\"/g,'\\\\\"');}}function applyProp(el,prop,value){{if(!el)return;var s=text(value);if(prop==='text'||prop==='content'){{el.textContent=s;return;}}if(prop==='html'){{el.innerHTML=s;return;}}if(prop==='class'){{el.setAttribute('class',s);return;}}if(prop.indexOf('style.')===0){{el.style.setProperty(prop.slice(6).replace(/_/g,'-'),s);return;}}if(window.__wdocDiagramApplyProperty&&el.hasAttribute('data-wdoc-id')&&window.__wdocDiagramApplyProperty(el,prop,value))return;el.setAttribute(prop.replace(/_/g,'-'),s);}}function apply(){{bindings.forEach(function(b){{applyProp(findTarget(b.target),b.property,fmt(readPath(signals[b.signal],b.path),b.format));}});}}function setSignal(name,value,path){{signals[name]=writePath(signals[name],path,value);apply();document.dispatchEvent(new CustomEvent('wdoc:signal-change',{{detail:{{name:name,value:signals[name]}}}}));}}var signals={{}},bindings=cfg.bindings||[];(cfg.signals||[]).forEach(function(s){{signals[s.name]=clone(val(s));}});window.__wdocSignals=signals;window.__wdocSetSignal=setSignal;window.__wdocPageSignalsInit=function(next){{cfg=next||cfg;bindings=cfg.bindings||[];signals={{}};(cfg.signals||[]).forEach(function(s){{signals[s.name]=clone(val(s));}});window.__wdocSignals=signals;apply();}};if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',apply);else apply();}})({data});")
 }
 
 fn render_book_nav(doc: &WdocDocument, active_section: &str) -> String {
-    let mut html = String::new();
-    html.push_str("<nav class=\"wdoc-nav\">\n");
-    writeln!(html, "<div class=\"wdoc-nav-title\">{}</div>", doc.title).unwrap();
-    html.push_str("<ul>\n");
-    render_nav_sections(&doc.sections, &doc.pages, active_section, &mut html);
-    html.push_str("</ul>\n");
-
-    // Theme toggle at bottom of nav
-    html.push_str(
-        r#"<div class="wdoc-theme-toggle" id="wdoc-theme-toggle">
-<span id="wdoc-theme-icon" class="wdoc-theme-icon">&#x1F319;</span>
-<div class="wdoc-theme-toggle-track"><div class="wdoc-theme-toggle-knob"></div></div>
-<span>Dark mode</span>
-</div>
-"#,
-    );
-
-    html.push_str("</nav>\n");
-    html
+    markup::render_html(&elem(
+        "nav",
+        &[("class_name", s("wdoc-nav"))],
+        vec![
+            elem(
+                "div",
+                &[("class_name", s("wdoc-nav-title"))],
+                vec![text(&doc.title)],
+            ),
+            elem(
+                "ul",
+                &[],
+                render_nav_sections(&doc.sections, &doc.pages, active_section),
+            ),
+            elem(
+                "div",
+                &[
+                    ("class_name", s("wdoc-theme-toggle")),
+                    ("id", s("wdoc-theme-toggle")),
+                ],
+                vec![
+                    elem(
+                        "span",
+                        &[
+                            ("id", s("wdoc-theme-icon")),
+                            ("class_name", s("wdoc-theme-icon")),
+                        ],
+                        vec![raw_html("&#x1F319;")],
+                    ),
+                    elem(
+                        "div",
+                        &[("class_name", s("wdoc-theme-toggle-track"))],
+                        vec![elem(
+                            "div",
+                            &[("class_name", s("wdoc-theme-toggle-knob"))],
+                            vec![],
+                        )],
+                    ),
+                    elem("span", &[], vec![text("Dark mode")]),
+                ],
+            ),
+        ],
+    ))
+    .expect("wdoc book nav should serialize as HTML")
 }
 
-fn render_nav_sections(
-    sections: &[Section],
-    pages: &[Page],
-    active_section: &str,
-    html: &mut String,
-) {
-    for section in sections {
-        let active_class = if active_section == section.id {
-            " class=\"active\""
-        } else {
-            ""
-        };
-
-        // Find the first page for this section
-        let page_file = pages
-            .iter()
-            .find(|p| p.section_id == section.id)
-            .map(|p| format!("{}.html", p.id))
-            .unwrap_or_else(|| "#".to_string());
-
-        writeln!(
-            html,
-            "<li><a href=\"{page_file}\"{active_class}>{title}</a>",
-            title = section.title,
-        )
-        .unwrap();
-
-        if !section.children.is_empty() {
-            html.push_str("<ul>\n");
-            render_nav_sections(&section.children, pages, active_section, html);
-            html.push_str("</ul>\n");
-        }
-        html.push_str("</li>\n");
-    }
+fn render_nav_sections(sections: &[Section], pages: &[Page], active_section: &str) -> Vec<Value> {
+    sections
+        .iter()
+        .map(|section| {
+            let page_file = pages
+                .iter()
+                .find(|p| p.section_id == section.id)
+                .map(|p| format!("{}.html", p.id))
+                .unwrap_or_else(|| "#".to_string());
+            let mut children = vec![elem(
+                "a",
+                &[
+                    ("href", s(page_file)),
+                    (
+                        "class_name",
+                        if active_section == section.id {
+                            s("active")
+                        } else {
+                            Value::Null
+                        },
+                    ),
+                ],
+                vec![text(&section.title)],
+            )];
+            if !section.children.is_empty() {
+                children.push(elem(
+                    "ul",
+                    &[],
+                    render_nav_sections(&section.children, pages, active_section),
+                ));
+            }
+            elem("li", &[], children)
+        })
+        .collect()
 }

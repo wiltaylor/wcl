@@ -1,5 +1,6 @@
 pub mod graph_layout;
 pub mod library;
+pub mod markup;
 pub mod model;
 pub mod render;
 pub mod serve;

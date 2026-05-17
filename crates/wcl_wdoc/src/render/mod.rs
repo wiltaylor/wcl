@@ -3,10 +3,10 @@ pub mod layout;
 pub mod page;
 
 use std::collections::{BTreeMap, HashSet};
-use std::fmt::Write;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
+use crate::markup::{self, elem, raw_html, s, text};
 use crate::model::{Page, Section, WdocDocument, WdocTemplate};
 use wcl_lang::transform::codec;
 use wcl_lang::Value;
@@ -22,7 +22,7 @@ pub fn render_document(
     fs::create_dir_all(output).map_err(|e| format!("failed to create output directory: {e}"))?;
 
     // Generate CSS: base + user styles
-    let mut css = assets::BASE_CSS.to_string();
+    let mut css = assets::base_css()?;
     css.push('\n');
     css.push_str(&assets::generate_style_css(&doc.styles));
     let extra_css = doc.extra_css.trim();
@@ -121,11 +121,29 @@ pub fn render_document(
             .or_else(|| doc.pages.iter().find(|page| !page.draft));
         if let Some(first) = first {
             let target = page_output_path(first);
-            let redirect = format!(
-                "<!DOCTYPE html><html><head>\
-                 <meta http-equiv=\"refresh\" content=\"0;url={target}\">\
-                 </head><body></body></html>"
-            );
+            let redirect = markup::render_html(&Value::List(vec![
+                raw_html("<!DOCTYPE html>"),
+                elem(
+                    "html",
+                    &[],
+                    vec![
+                        elem(
+                            "head",
+                            &[],
+                            vec![elem(
+                                "meta",
+                                &[
+                                    ("http_equiv", s("refresh")),
+                                    ("content_attr", s(format!("0;url={target}"))),
+                                ],
+                                vec![],
+                            )],
+                        ),
+                        elem("body", &[], vec![]),
+                    ],
+                ),
+            ]))
+            .expect("wdoc redirect should serialize as HTML");
             write_html_with_codec(output, "index.html", &redirect)?;
         }
     }
@@ -185,31 +203,39 @@ fn collect_section_pages(
             .children
             .iter()
             .map(|child| {
-                format!(
-                    "<a class=\"wdoc-site-list-item\" href=\"{}\"><h3>{}</h3></a>",
-                    html_escape(&relative_href(&output_path, &section_output_path(child))),
-                    html_escape(&child.title)
+                elem(
+                    "a",
+                    &[
+                        ("class_name", s("wdoc-site-list-item")),
+                        (
+                            "href",
+                            s(relative_href(&output_path, &section_output_path(child))),
+                        ),
+                    ],
+                    vec![elem("h3", &[], vec![text(&child.title)])],
                 )
             })
-            .collect::<String>();
+            .collect::<Vec<_>>();
         if !section_pages.is_empty() || !section.children.is_empty() {
             let cards = section_pages
                 .iter()
                 .map(|page| {
-                    site_page_card(page, &relative_href(&output_path, &page_output_path(page)))
+                    site_page_card_value(
+                        page,
+                        &relative_href(&output_path, &page_output_path(page)),
+                    )
                 })
-                .collect::<String>();
-            let mut html = String::new();
-            writeln!(
-                html,
-                "<section class=\"wdoc-site-list\"><h1>{}</h1>",
-                html_escape(&section.title)
-            )
-            .unwrap();
-            html.push_str(&section_children);
-            html.push_str("<div class=\"wdoc-site-card-grid\">");
-            html.push_str(&cards);
-            html.push_str("</div></section>");
+                .collect::<Vec<_>>();
+            let html = markup::render_html(&elem(
+                "section",
+                &[("class_name", s("wdoc-site-list"))],
+                vec![
+                    elem("h1", &[], vec![text(&section.title)]),
+                    Value::List(section_children),
+                    elem("div", &[("class_name", s("wdoc-site-card-grid"))], cards),
+                ],
+            ))
+            .expect("wdoc section page should serialize as HTML");
             out.push(GeneratedSitePage {
                 path: output_path,
                 title: section.title.clone(),
@@ -255,39 +281,40 @@ fn taxonomy_pages(doc: &WdocDocument, kind: &str) -> Vec<GeneratedSitePage> {
             pages.sort_by(|a, b| a.title.cmp(&b.title));
             let cards = pages
                 .iter()
-                .map(|page| site_page_card(page, &relative_href(&path, &page_output_path(page))))
-                .collect::<String>();
+                .map(|page| {
+                    site_page_card_value(page, &relative_href(&path, &page_output_path(page)))
+                })
+                .collect::<Vec<_>>();
             let title = format!("{kind}: {term}");
             GeneratedSitePage {
                 path,
                 title: title.clone(),
-                html: format!(
-                    "<section class=\"wdoc-site-list\"><h1>{}</h1><div class=\"wdoc-site-card-grid\">{}</div></section>",
-                    html_escape(&title),
-                    cards
-                ),
+                html: markup::render_html(&elem(
+                    "section",
+                    &[("class_name", s("wdoc-site-list"))],
+                    vec![
+                        elem("h1", &[], vec![text(&title)]),
+                        elem("div", &[("class_name", s("wdoc-site-card-grid"))], cards),
+                    ],
+                ))
+                .expect("wdoc taxonomy page should serialize as HTML"),
             }
         })
         .collect()
 }
 
-fn site_page_card(page: &Page, href: &str) -> String {
-    let summary = page
-        .summary
-        .as_ref()
-        .map(|summary| format!("<p>{}</p>", html_escape(summary)))
-        .unwrap_or_default();
-    let date = page
-        .date
-        .as_ref()
-        .map(|date| format!("<span>{}</span>", html_escape(date)))
-        .unwrap_or_default();
-    format!(
-        "<a class=\"wdoc-site-card\" href=\"{}\"><h3>{}</h3>{}{}</a>",
-        html_escape(href),
-        html_escape(&page.title),
-        summary,
-        date
+fn site_page_card_value(page: &Page, href: &str) -> Value {
+    let mut children = vec![elem("h3", &[], vec![text(&page.title)])];
+    if let Some(summary) = &page.summary {
+        children.push(elem("p", &[], vec![text(summary)]));
+    }
+    if let Some(date) = &page.date {
+        children.push(elem("span", &[], vec![text(date)]));
+    }
+    elem(
+        "a",
+        &[("class_name", s("wdoc-site-card")), ("href", s(href))],
+        children,
     )
 }
 
@@ -350,14 +377,6 @@ fn slug(value: &str) -> String {
         }
     }
     slug.trim_matches('-').to_string()
-}
-
-fn html_escape(value: &str) -> String {
-    value
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
 }
 
 fn write_html_with_codec(output: &Path, filename: &str, html: &str) -> Result<(), String> {

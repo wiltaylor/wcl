@@ -1,3 +1,4 @@
+use crate::markup;
 use crate::model::{StyleRule, WdocStyle};
 use indexmap::IndexMap;
 use wcl_lang::eval::value::Value;
@@ -529,6 +530,10 @@ body.wdoc-template-presentation {
 }
 "#;
 
+pub fn base_css() -> Result<String, String> {
+    markup::render_css(&markup::css_stylesheet(vec![markup::raw_css(BASE_CSS)]))
+}
+
 /// Generate CSS from wdoc-style definitions.
 pub fn generate_style_css(styles: &[WdocStyle]) -> String {
     let mut css = String::new();
@@ -564,23 +569,6 @@ fn write_rule(css: &mut String, selector: &str, rule: &StyleRule) {
         map.insert(prop.clone(), Value::String(val.clone()));
     }
     let rendered =
-        render_css_value(&Value::Map(map)).expect("wdoc style rule should serialize as CSS");
+        markup::render_css(&Value::Map(map)).expect("wdoc style rule should serialize as CSS");
     css.push_str(&rendered);
-}
-
-fn render_css_value(value: &Value) -> Result<String, String> {
-    let registry =
-        wcl_lang::transform::codec::custom::standard_registry().map_err(|err| err.to_string())?;
-    let codec = registry
-        .get("css")
-        .ok_or_else(|| "standard css codec is not registered".to_string())?;
-    let mut out = Vec::new();
-    wcl_lang::transform::codec::custom::encode_custom_value(
-        value,
-        codec,
-        &IndexMap::new(),
-        &mut out,
-    )
-    .map_err(|err| err.to_string())?;
-    String::from_utf8(out).map_err(|err| err.to_string())
 }
