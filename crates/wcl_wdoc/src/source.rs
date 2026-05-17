@@ -477,6 +477,42 @@ fn register_renderer_helpers(reg: &mut FunctionRegistry) {
         },
     );
 
+    reg.register(
+        "wdoc::render_html_node",
+        std::sync::Arc::new(|args: &[Value]| {
+            if args.len() != 1 {
+                return Err("wdoc::render_html_node() expects 1 argument".into());
+            }
+            wcl_lang::transform::codec::native::encode_html_value_to_string(&args[0])
+                .map_err(|err| err.to_string())
+                .map(Value::String)
+        }) as BuiltinFn,
+        FunctionSignature {
+            name: "wdoc::render_html_node".into(),
+            params: vec!["node: any".into()],
+            return_type: "string".into(),
+            doc: "Serialize a structured HTML element tree".into(),
+        },
+    );
+
+    reg.register(
+        "wdoc::render_svg_node",
+        std::sync::Arc::new(|args: &[Value]| {
+            if args.len() != 1 {
+                return Err("wdoc::render_svg_node() expects 1 argument".into());
+            }
+            wcl_lang::transform::codec::native::encode_svg_value_to_string(&args[0])
+                .map_err(|err| err.to_string())
+                .map(Value::String)
+        }) as BuiltinFn,
+        FunctionSignature {
+            name: "wdoc::render_svg_node".into(),
+            params: vec!["node: any".into()],
+            return_type: "string".into(),
+            doc: "Serialize a structured SVG element tree".into(),
+        },
+    );
+
     register_icon_helper(
         reg,
         "wdoc::icon",

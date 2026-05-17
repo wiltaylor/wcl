@@ -568,8 +568,9 @@ pub fn main() {
 }
 
 fn run_install_library(force: bool) -> Result<(), String> {
-    let codecs = crate::standard_lib::install_codecs_library(force)?;
-    println!("installed codecs library to {}", codecs.display());
+    for target in crate::standard_lib::install_codecs_library(force)? {
+        println!("installed standard library to {}", target.display());
+    }
 
     #[cfg(feature = "wdoc")]
     {

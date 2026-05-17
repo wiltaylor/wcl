@@ -1,0 +1,162 @@
+// Standard HTML element schemas for structured native html codec output.
+
+namespace html {
+    @open schema "document" { }
+
+    @open schema "text" {
+        content: string @text
+    }
+
+    @open schema "raw" {
+        content: string @text
+    }
+
+    @open schema "element" {
+        tag: string
+    }
+
+    @open schema "html" { }
+    @open schema "head" { }
+    @open schema "body" { }
+    @open schema "title" { content: string @optional }
+    @open schema "meta" { }
+    @open schema "link" { }
+    @open schema "script" { content: string @optional }
+    @open schema "style" { content: string @optional }
+
+    @open schema "header" { }
+    @open schema "footer" { }
+    @open schema "main" { }
+    @open schema "nav" { }
+    @open schema "section" { }
+    @open schema "article" { }
+    @open schema "aside" { }
+    @open schema "div" { }
+    @open schema "span" { content: string @optional }
+
+    @open schema "h1" { content: string @optional }
+    @open schema "h2" { content: string @optional }
+    @open schema "h3" { content: string @optional }
+    @open schema "h4" { content: string @optional }
+    @open schema "h5" { content: string @optional }
+    @open schema "h6" { content: string @optional }
+    @open schema "p" { content: string @optional }
+    @open schema "a" { href: string @optional }
+    @open schema "img" {
+        src: string @optional
+        alt: string @optional
+    }
+    @open schema "figure" { }
+    @open schema "figcaption" { content: string @optional }
+
+    @open schema "ul" { }
+    @open schema "ol" { }
+    @open schema "li" { content: string @optional }
+    @open schema "dl" { }
+    @open schema "dt" { content: string @optional }
+    @open schema "dd" { content: string @optional }
+
+    @open schema "table" { }
+    @open schema "caption" { content: string @optional }
+    @open schema "thead" { }
+    @open schema "tbody" { }
+    @open schema "tfoot" { }
+    @open schema "tr" { }
+    @open schema "th" { content: string @optional }
+    @open schema "td" { content: string @optional }
+
+    @open schema "pre" { content: string @optional }
+    @open schema "code" { content: string @optional }
+    @open schema "blockquote" { }
+    @open schema "strong" { content: string @optional }
+    @open schema "em" { content: string @optional }
+    @open schema "small" { content: string @optional }
+    @open schema "br" { }
+    @open schema "hr" { }
+
+    @open schema "form" { }
+    @open schema "label" { content: string @optional }
+    @open schema "input" { }
+    @open schema "button" { content: string @optional }
+    @open schema "select" { }
+    @open schema "option" { content: string @optional }
+    @open schema "textarea" { content: string @optional }
+
+    // Element coverage from MDN browser-compat-data html/elements.
+    @open schema "abbr" { content: string @optional }
+    @open schema "acronym" { content: string @optional }
+    @open schema "address" { content: string @optional }
+    @open schema "area" { }
+    @open schema "audio" { }
+    @open schema "b" { content: string @optional }
+    @open schema "base" { }
+    @open schema "bdi" { content: string @optional }
+    @open schema "bdo" { content: string @optional }
+    @open schema "big" { content: string @optional }
+    @open schema "canvas" { content: string @optional }
+    @open schema "center" { content: string @optional }
+    @open schema "cite" { content: string @optional }
+    @open schema "col" { }
+    @open schema "colgroup" { }
+    @open schema "data" { content: string @optional }
+    @open schema "datalist" { }
+    @open schema "del" { content: string @optional }
+    @open schema "details" { }
+    @open schema "dfn" { content: string @optional }
+    @open schema "dialog" { }
+    @open schema "dir" { }
+    @open schema "embed" { }
+    @open schema "fencedframe" { }
+    @open schema "fieldset" { }
+    @open schema "font" { content: string @optional }
+    @open schema "frame" { }
+    @open schema "frameset" { }
+    @open schema "geolocation" { }
+    @open schema "hgroup" { }
+    @open schema "i" { content: string @optional }
+    @open schema "iframe" { }
+    @open schema "ins" { content: string @optional }
+    @open schema "kbd" { content: string @optional }
+    @open schema "legend" { content: string @optional }
+    @open schema "map" { }
+    @open schema "mark" { content: string @optional }
+    @open schema "marquee" { content: string @optional }
+    @open schema "menu" { }
+    @open schema "meter" { content: string @optional }
+    @open schema "nobr" { content: string @optional }
+    @open schema "noembed" { content: string @optional }
+    @open schema "noframes" { content: string @optional }
+    @open schema "noscript" { content: string @optional }
+    @open schema "object" { }
+    @open schema "optgroup" { }
+    @open schema "output" { content: string @optional }
+    @open schema "param" { }
+    @open schema "picture" { }
+    @open schema "plaintext" { content: string @optional }
+    @open schema "progress" { content: string @optional }
+    @open schema "q" { content: string @optional }
+    @open schema "rb" { content: string @optional }
+    @open schema "rp" { content: string @optional }
+    @open schema "rt" { content: string @optional }
+    @open schema "rtc" { content: string @optional }
+    @open schema "ruby" { }
+    @open schema "s" { content: string @optional }
+    @open schema "samp" { content: string @optional }
+    @open schema "search" { }
+    @open schema "selectedcontent" { }
+    @open schema "slot" { }
+    @open schema "source" { }
+    @open schema "strike" { content: string @optional }
+    @open schema "sub" { content: string @optional }
+    @open schema "summary" { content: string @optional }
+    @open schema "sup" { content: string @optional }
+    @open schema "template" { }
+    @open schema "time" { content: string @optional }
+    @open schema "track" { }
+    @open schema "tt" { content: string @optional }
+    @open schema "u" { content: string @optional }
+    @open schema "var" { content: string @optional }
+    @open schema "video" { }
+    @open schema "wbr" { }
+    @open schema "xmp" { content: string @optional }
+}

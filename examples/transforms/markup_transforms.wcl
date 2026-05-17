@@ -1,0 +1,85 @@
+// Structured HTML and SVG codec examples.
+// Run from a checkout with:
+//   wcl transform run json-to-html -f examples/transforms/markup_transforms.wcl --input examples/transforms/employees.json --lib-path crates/wcl_lang/src/std
+//   wcl transform run json-to-svg  -f examples/transforms/markup_transforms.wcl --input examples/transforms/employees.json --lib-path crates/wcl_lang/src/std
+
+import <html.wcl>
+import <svg.wcl>
+
+use html::{document, html, head, title, body, main, h1, p, input}
+use svg::{svg, rect, text}
+
+document example_page {
+    html {
+        head {
+            title { content = "Structured HTML" }
+        }
+
+        body {
+            main {
+                class_name = "page"
+
+                h1 { content = "Structured HTML" }
+                p { content = "This page is assembled from WCL element blocks and serialized by codec::html." }
+                input {
+                    type_ = "checkbox"
+                    checked = true
+                }
+            }
+        }
+    }
+}
+
+svg example_badge {
+    width = 240
+    height = 72
+    viewBox = "0 0 240 72"
+
+    rect {
+        x = 1
+        y = 1
+        width = 238
+        height = 70
+        rx = 8
+        fill = "#f8fafc"
+        stroke = "#2563eb"
+    }
+
+    text {
+        x = 18
+        y = 43
+        fill = "#0f172a"
+        content = "Structured SVG"
+    }
+}
+
+transform json-to-html {
+    input = "codec::json"
+    output = "codec::html"
+    run = rows => {
+        tag = "html"
+        children = [
+            { tag = "head", children = [{ tag = "title", content = "Structured HTML" }] },
+            { tag = "body", children = [{ tag = "main", class_name = "page", children = [
+                { tag = "h1", content = "Structured HTML" },
+                { tag = "p", content = "This page is assembled from WCL element data and serialized by codec::html." },
+                { tag = "input", type_ = "checkbox", checked = true }
+            ] }] }
+        ]
+    }
+}
+
+transform json-to-svg {
+    input = "codec::json"
+    output = "codec::svg"
+    run = rows => {
+        tag = "svg"
+        width = 240
+        height = 72
+        viewBox = "0 0 240 72"
+        children = [
+            { tag = "rect", x = 1, y = 1, width = 238, height = 70, rx = 8, fill = "#f8fafc", stroke = "#2563eb" },
+            { tag = "text", x = 18, y = 43, fill = "#0f172a", content = "Structured SVG" }
+        ]
+    }
+}

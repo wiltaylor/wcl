@@ -1275,6 +1275,62 @@ transform elf-to-json {
 }
 
 #[test]
+fn transform_html_and_svg_codecs_encode_structured_elements() {
+    let dir = tempdir().expect("tempdir");
+    let input = dir.path().join("input.json");
+    std::fs::write(&input, r#"[{"title":"Structured output"}]"#).expect("write input");
+
+    let transform = dir.path().join("markup.wcl");
+    std::fs::write(
+        &transform,
+        r##"
+transform json-to-html {
+    input = "codec::json"
+    output = "codec::html"
+    run = rows => {
+        tag = "html"
+        children = [
+            { tag = "head", children = [{ tag = "title", content = "Structured output" }] },
+            { tag = "body", children = [{ tag = "main", class_name = "page", children = [
+                { tag = "h1", content = "Structured output" },
+                { tag = "input", type_ = "checkbox", checked = true }
+            ] }] }
+        ]
+    }
+}
+
+transform json-to-svg {
+    input = "codec::json"
+    output = "codec::svg"
+    run = rows => {
+        tag = "svg"
+        width = 120
+        height = 48
+        viewBox = "0 0 120 48"
+        children = [
+            { tag = "rect", x = 1, y = 1, width = 118, height = 46, rx = 6, fill = "#f8fafc", stroke = "#2563eb" },
+            { tag = "text", x = 12, y = 29, content = "Structured output", fill = "#0f172a" }
+        ]
+    }
+}
+"##,
+    )
+    .expect("write transform");
+
+    let html = run_transform_stdout(&transform, "json-to-html", &input);
+    assert!(html.contains("<main class=\"page\">"));
+    assert!(html.contains("<h1>Structured output</h1>"));
+    assert!(html.contains("<input type=\"checkbox\" checked>"));
+
+    let svg = run_transform_stdout(&transform, "json-to-svg", &input);
+    assert!(svg.contains("<svg"));
+    assert!(svg.contains("xmlns=\"http://www.w3.org/2000/svg\""));
+    assert!(svg.contains("viewBox=\"0 0 120 48\""));
+    assert!(svg.contains("<rect"));
+    assert!(svg.contains(">Structured output</text>"));
+}
+
+#[test]
 fn transform_decode_only_custom_codec_decodes_records() {
     let dir = tempdir().expect("tempdir");
     let transform = dir.path().join("decode_only.wcl");
@@ -1993,11 +2049,13 @@ fn install_library_writes_codecs_file() {
         .args(["install-library"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("installed codecs library"));
+        .stdout(predicate::str::contains("installed standard library"));
 
     let codecs = data_home.join("wcl/lib/codecs.wcl");
     let source = std::fs::read_to_string(codecs).expect("read codecs");
     assert!(source.contains("codec json"));
+    assert!(data_home.join("wcl/lib/html.wcl").exists());
+    assert!(data_home.join("wcl/lib/svg.wcl").exists());
 }
 
 // ===========================================================================

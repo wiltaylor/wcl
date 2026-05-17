@@ -71,6 +71,27 @@ pub fn encode_svg_diagram_to_string(mut diagram: Diagram) -> String {
     render_diagram_svg(&mut diagram)
 }
 
+pub fn encode_html_value_to_string(value: &Value) -> Result<String, TransformError> {
+    match value {
+        Value::String(s) => Ok(s.clone()),
+        Value::Map(map) if !is_structured_element(value) => Ok(map
+            .get("html")
+            .or_else(|| map.get("body"))
+            .map(value_string)
+            .unwrap_or_default()),
+        _ => serialize_element_value(value, MarkupKind::Html),
+    }
+}
+
+pub fn encode_svg_value_to_string(value: &Value) -> Result<String, TransformError> {
+    if is_structured_element(value) {
+        serialize_element_value(value, MarkupKind::Svg)
+    } else {
+        let mut diagram = diagram_from_value(value, &CodecOptions::new())?;
+        Ok(render_diagram_svg(&mut diagram))
+    }
+}
+
 pub fn layout_diagram_value(
     value: &Value,
     options: &CodecOptions,
@@ -95,8 +116,18 @@ fn encode_svg(
     options: &CodecOptions,
     target: OutputTarget<'_>,
 ) -> Result<usize, TransformError> {
-    let mut diagram = diagram_from_value(value, options)?;
-    let svg = render_diagram_svg(&mut diagram);
+    let svg = if is_structured_element(value) {
+        let svg = serialize_element_value(value, MarkupKind::Svg)?;
+        if !svg.trim_start().starts_with("<svg") {
+            return Err(TransformError::Codec(
+                "svg codec expects a root svg element or a diagram map".to_string(),
+            ));
+        }
+        svg
+    } else {
+        let mut diagram = diagram_from_value(value, options)?;
+        render_diagram_svg(&mut diagram)
+    };
     let filename = output_filename(options, "diagram.svg");
     write_text_output(&filename, &svg, target)?;
     Ok(1)
@@ -163,18 +194,339 @@ fn encode_html(
     options: &CodecOptions,
     target: OutputTarget<'_>,
 ) -> Result<usize, TransformError> {
-    let html = match value {
-        Value::String(s) => s.clone(),
-        Value::Map(map) => map
-            .get("html")
-            .or_else(|| map.get("body"))
-            .map(value_string)
-            .unwrap_or_default(),
-        other => value_string(other),
-    };
+    let html = encode_html_value_to_string(value)?;
     let filename = output_filename(options, "index.html");
     write_text_output(&filename, &html, target)?;
     Ok(1)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum MarkupKind {
+    Html,
+    Svg,
+}
+
+fn is_structured_element(value: &Value) -> bool {
+    match value {
+        Value::BlockRef(_) | Value::List(_) => true,
+        Value::Map(map) => {
+            map.contains_key("tag")
+                || map.contains_key("element")
+                || map.contains_key("name")
+                || matches!(map.get("kind"), Some(Value::String(kind)) if kind == "html" || kind == "document" || kind == "svg")
+        }
+        _ => false,
+    }
+}
+
+fn serialize_element_value(value: &Value, kind: MarkupKind) -> Result<String, TransformError> {
+    match value {
+        Value::String(value) => Ok(escape_text(value)),
+        Value::Int(_)
+        | Value::BigInt(_)
+        | Value::Float(_)
+        | Value::Bool(_)
+        | Value::Identifier(_)
+        | Value::Symbol(_)
+        | Value::Date(_)
+        | Value::OffsetDateTime(_)
+        | Value::LocalDateTime(_)
+        | Value::LocalTime(_)
+        | Value::Duration(_)
+        | Value::Pattern(_) => Ok(escape_text(&value_string(value))),
+        Value::Null => Ok(String::new()),
+        Value::List(items) => {
+            let mut out = String::new();
+            for item in items {
+                out.push_str(&serialize_element_value(item, kind)?);
+            }
+            Ok(out)
+        }
+        Value::BlockRef(block) => serialize_block_element(block, kind),
+        Value::Map(map) => serialize_map_element(map, kind),
+        other => Err(TransformError::Codec(format!(
+            "cannot serialize {} as {:?} element",
+            value_type_name(other),
+            kind
+        ))),
+    }
+}
+
+fn serialize_block_element(
+    block: &crate::eval::BlockRef,
+    kind: MarkupKind,
+) -> Result<String, TransformError> {
+    let tag = element_tag_from_kind(&block.kind);
+    let mut attrs = block.attributes.clone();
+    if let Some(id) = &block.id {
+        attrs
+            .entry("id".to_string())
+            .or_insert_with(|| Value::String(id.clone()));
+    }
+    serialize_element_parts(&tag, &attrs, Some(&block.children), kind)
+}
+
+fn serialize_map_element(
+    map: &IndexMap<String, Value>,
+    kind: MarkupKind,
+) -> Result<String, TransformError> {
+    let tag = map
+        .get("tag")
+        .or_else(|| map.get("element"))
+        .or_else(|| map.get("name"))
+        .or_else(|| map.get("kind"))
+        .map(value_string)
+        .filter(|tag| !tag.is_empty())
+        .ok_or_else(|| TransformError::Codec("element map missing tag".to_string()))?;
+    serialize_element_parts(&tag, map, None, kind)
+}
+
+fn serialize_element_parts(
+    tag: &str,
+    attrs: &IndexMap<String, Value>,
+    block_children: Option<&[crate::eval::BlockRef]>,
+    kind: MarkupKind,
+) -> Result<String, TransformError> {
+    let tag = normalize_tag(tag);
+    if kind == MarkupKind::Html && tag == "text" {
+        return Ok(attrs
+            .get("content")
+            .or_else(|| attrs.get("text"))
+            .map(value_string)
+            .map(|value| escape_text(&value))
+            .unwrap_or_default());
+    }
+    if tag == "raw" {
+        return Ok(attrs
+            .get("content")
+            .or_else(|| attrs.get("html"))
+            .or_else(|| attrs.get("text"))
+            .map(value_string)
+            .unwrap_or_default());
+    }
+    if tag == "document" && kind == MarkupKind::Html {
+        return Ok(format!(
+            "<!doctype html>{}",
+            serialize_children(attrs, block_children, kind)?
+        ));
+    }
+
+    let mut out = String::new();
+    out.push('<');
+    out.push_str(&tag);
+    let attr_string = serialize_attrs(&tag, attrs, kind)?;
+    out.push_str(&attr_string);
+    if kind == MarkupKind::Svg && tag == "svg" && !has_attr(attrs, "xmlns") {
+        out.push_str(" xmlns=\"http://www.w3.org/2000/svg\"");
+    }
+
+    if kind == MarkupKind::Html && is_html_void_element(&tag) {
+        out.push('>');
+        return Ok(out);
+    }
+
+    out.push('>');
+    out.push_str(&serialize_children(attrs, block_children, kind)?);
+    out.push_str("</");
+    out.push_str(&tag);
+    out.push('>');
+    Ok(out)
+}
+
+fn serialize_children(
+    attrs: &IndexMap<String, Value>,
+    block_children: Option<&[crate::eval::BlockRef]>,
+    kind: MarkupKind,
+) -> Result<String, TransformError> {
+    let mut out = String::new();
+    if let Some(content) = attrs.get("content").or_else(|| attrs.get("text")) {
+        out.push_str(&escape_text(&value_string(content)));
+    }
+    if let Some(raw) = attrs.get("html").or_else(|| attrs.get("raw")) {
+        out.push_str(&value_string(raw));
+    }
+    if let Some(Value::List(children)) = attrs.get("children") {
+        for child in children {
+            out.push_str(&serialize_element_value(child, kind)?);
+        }
+    }
+    if let Some(children) = block_children {
+        for child in children {
+            out.push_str(&serialize_block_element(child, kind)?);
+        }
+    }
+    Ok(out)
+}
+
+fn serialize_attrs(
+    tag: &str,
+    attrs: &IndexMap<String, Value>,
+    kind: MarkupKind,
+) -> Result<String, TransformError> {
+    let mut out = String::new();
+    for (name, value) in attrs {
+        if is_structural_element_attr(name) {
+            continue;
+        }
+        match value {
+            Value::Null => continue,
+            Value::Bool(false) => continue,
+            Value::Bool(true) if kind == MarkupKind::Html && is_html_boolean_attr(name) => {
+                out.push(' ');
+                out.push_str(&normalize_attr_name(name));
+            }
+            Value::Map(map) if name == "style" => {
+                let style = map
+                    .iter()
+                    .filter(|(_, value)| !matches!(value, Value::Null | Value::Bool(false)))
+                    .map(|(key, value)| {
+                        format!("{}:{}", normalize_attr_name(key), value_string(value))
+                    })
+                    .collect::<Vec<_>>()
+                    .join(";");
+                if !style.is_empty() {
+                    write_attr(&mut out, "style", &style);
+                }
+            }
+            Value::List(_) | Value::Map(_) => {
+                return Err(TransformError::Codec(format!(
+                    "attribute '{}' on <{}> must be scalar",
+                    name, tag
+                )));
+            }
+            other => write_attr(&mut out, &normalize_attr_name(name), &value_string(other)),
+        }
+    }
+    Ok(out)
+}
+
+fn write_attr(out: &mut String, name: &str, value: &str) {
+    out.push(' ');
+    out.push_str(name);
+    out.push_str("=\"");
+    out.push_str(&escape_attr(value));
+    out.push('"');
+}
+
+fn element_tag_from_kind(kind: &str) -> String {
+    kind.rsplit("::").next().unwrap_or(kind).to_string()
+}
+
+fn normalize_tag(tag: &str) -> String {
+    tag.strip_prefix("html::")
+        .or_else(|| tag.strip_prefix("svg::"))
+        .unwrap_or(tag)
+        .replace('_', "-")
+}
+
+fn normalize_attr_name(name: &str) -> String {
+    match name {
+        "class_name" => "class".to_string(),
+        "for_" => "for".to_string(),
+        "type_" => "type".to_string(),
+        _ => name.replace('_', "-"),
+    }
+}
+
+fn has_attr(attrs: &IndexMap<String, Value>, name: &str) -> bool {
+    attrs.keys().any(|key| normalize_attr_name(key) == name)
+}
+
+fn is_structural_element_attr(name: &str) -> bool {
+    matches!(
+        name,
+        "tag" | "element" | "name" | "kind" | "children" | "content" | "text" | "html" | "raw"
+    )
+}
+
+fn is_html_void_element(tag: &str) -> bool {
+    matches!(
+        tag,
+        "area"
+            | "base"
+            | "br"
+            | "col"
+            | "embed"
+            | "hr"
+            | "img"
+            | "input"
+            | "link"
+            | "meta"
+            | "param"
+            | "source"
+            | "track"
+            | "wbr"
+    )
+}
+
+fn is_html_boolean_attr(name: &str) -> bool {
+    matches!(
+        normalize_attr_name(name).as_str(),
+        "allowfullscreen"
+            | "async"
+            | "autofocus"
+            | "autoplay"
+            | "checked"
+            | "controls"
+            | "default"
+            | "defer"
+            | "disabled"
+            | "formnovalidate"
+            | "hidden"
+            | "ismap"
+            | "loop"
+            | "multiple"
+            | "muted"
+            | "novalidate"
+            | "open"
+            | "readonly"
+            | "required"
+            | "reversed"
+            | "selected"
+    )
+}
+
+fn escape_text(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+fn escape_attr(value: &str) -> String {
+    escape_text(value).replace('"', "&quot;")
+}
+
+fn value_type_name(value: &Value) -> &'static str {
+    match value {
+        Value::String(_) => "string",
+        Value::Int(_) => "int",
+        Value::BigInt(_) => "bigint",
+        Value::Float(_) => "float",
+        Value::Bool(_) => "bool",
+        Value::Null => "null",
+        Value::Identifier(_) => "identifier",
+        Value::List(_) => "list",
+        Value::Map(_) => "map",
+        Value::Object(_) => "object",
+        Value::Bytes(_) => "bytes",
+        Value::MsgPackExt { .. } => "msgpack_ext",
+        Value::MsgPackTimestamp { .. } => "msgpack_timestamp",
+        Value::Set(_) => "set",
+        Value::BlockRef(_) => "block",
+        Value::Symbol(_) => "symbol",
+        Value::Function(_) => "function",
+        Value::Lazy(_) => "lazy",
+        Value::Stream(_) => "stream",
+        Value::NativeStream(_) => "native_stream",
+        Value::StateHandle(_) => "state_handle",
+        Value::Date(_) => "date",
+        Value::OffsetDateTime(_) => "offset_datetime",
+        Value::LocalDateTime(_) => "local_datetime",
+        Value::LocalTime(_) => "local_time",
+        Value::Duration(_) => "duration",
+        Value::Pattern(_) => "pattern",
+    }
 }
 
 fn output_filename(options: &CodecOptions, default: &str) -> String {
@@ -453,6 +805,24 @@ fn value_string(value: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Span;
+
+    fn block(
+        kind: &str,
+        id: Option<&str>,
+        attrs: IndexMap<String, Value>,
+        children: Vec<crate::eval::BlockRef>,
+    ) -> crate::eval::BlockRef {
+        crate::eval::BlockRef {
+            kind: kind.to_string(),
+            id: id.map(str::to_string),
+            qualified_id: id.map(str::to_string),
+            attributes: attrs,
+            children,
+            decorators: Vec::new(),
+            span: Span::dummy(),
+        }
+    }
 
     #[test]
     fn svg_codec_encodes_diagram_value_to_stream() {
@@ -517,5 +887,67 @@ mod tests {
         let html = std::fs::read_to_string(dir.join("page.html")).expect("read html");
         assert!(html.contains("<html>"));
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn html_codec_serializes_structured_element_tree() {
+        let mut h1_attrs = IndexMap::new();
+        h1_attrs.insert(
+            "content".to_string(),
+            Value::String("Hello <world>".to_string()),
+        );
+        let h1 = block("html::h1", None, h1_attrs, vec![]);
+
+        let mut input_attrs = IndexMap::new();
+        input_attrs.insert("disabled".to_string(), Value::Bool(true));
+        input_attrs.insert("class_name".to_string(), Value::String("field".to_string()));
+        let input = block("html::input", None, input_attrs, vec![]);
+
+        let root = block("html::div", Some("app"), IndexMap::new(), vec![h1, input]);
+        let codec = NativeCodecRegistry::standard().get("html").unwrap().clone();
+        let mut out = Vec::new();
+
+        encode_native_value(
+            &Value::BlockRef(root),
+            &codec,
+            &CodecOptions::new(),
+            OutputTarget::Stream(&mut out),
+        )
+        .expect("encode html");
+
+        let html = String::from_utf8(out).unwrap();
+        assert!(html.contains("<div id=\"app\">"));
+        assert!(html.contains("<h1>Hello &lt;world&gt;</h1>"));
+        assert!(html.contains("<input disabled class=\"field\">"));
+    }
+
+    #[test]
+    fn svg_codec_serializes_structured_svg_root() {
+        let mut rect_attrs = IndexMap::new();
+        rect_attrs.insert("x".to_string(), Value::Int(4));
+        rect_attrs.insert("y".to_string(), Value::Int(6));
+        rect_attrs.insert("stroke_width".to_string(), Value::Int(2));
+        let rect = block("svg::rect", None, rect_attrs, vec![]);
+
+        let mut svg_attrs = IndexMap::new();
+        svg_attrs.insert("width".to_string(), Value::Int(120));
+        svg_attrs.insert("height".to_string(), Value::Int(80));
+        let svg_root = block("svg::svg", None, svg_attrs, vec![rect]);
+        let codec = NativeCodecRegistry::standard().get("svg").unwrap().clone();
+        let mut out = Vec::new();
+
+        encode_native_value(
+            &Value::BlockRef(svg_root),
+            &codec,
+            &CodecOptions::new(),
+            OutputTarget::Stream(&mut out),
+        )
+        .expect("encode svg");
+
+        let svg = String::from_utf8(out).unwrap();
+        assert!(
+            svg.contains("<svg width=\"120\" height=\"80\" xmlns=\"http://www.w3.org/2000/svg\">")
+        );
+        assert!(svg.contains("<rect x=\"4\" y=\"6\" stroke-width=\"2\"></rect>"));
     }
 }

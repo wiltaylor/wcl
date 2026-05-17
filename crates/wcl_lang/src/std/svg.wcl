@@ -1,0 +1,78 @@
+// Standard SVG element schemas for structured native svg codec output.
+
+namespace svg {
+    @open schema "svg" { }
+    @open schema "g" { }
+    @open schema "defs" { }
+    @open schema "style" { content: string @optional }
+    @open schema "title" { content: string @optional }
+    @open schema "desc" { content: string @optional }
+
+    @open schema "rect" { }
+    @open schema "circle" { }
+    @open schema "ellipse" { }
+    @open schema "line" { }
+    @open schema "polyline" { }
+    @open schema "polygon" { }
+    @open schema "path" { }
+    @open schema "text" { content: string @optional }
+    @open schema "tspan" { content: string @optional }
+    @open schema "image" { href: string @optional }
+    @open schema "use" { href: string @optional }
+    @open schema "symbol" { }
+    @open schema "marker" { }
+    @open schema "clipPath" { }
+    @open schema "mask" { }
+    @open schema "pattern" { }
+    @open schema "linearGradient" { }
+    @open schema "radialGradient" { }
+    @open schema "stop" { }
+    @open schema "filter" { }
+
+    // Element coverage from MDN browser-compat-data svg/elements.
+    @open schema "a" { }
+    @open schema "animate" { }
+    @open schema "animateMotion" { }
+    @open schema "animateTransform" { }
+    @open schema "feBlend" { }
+    @open schema "feColorMatrix" { }
+    @open schema "feComponentTransfer" { }
+    @open schema "feComposite" { }
+    @open schema "feConvolveMatrix" { }
+    @open schema "feDiffuseLighting" { }
+    @open schema "feDisplacementMap" { }
+    @open schema "feDistantLight" { }
+    @open schema "feDropShadow" { }
+    @open schema "feFlood" { }
+    @open schema "feFuncA" { }
+    @open schema "feFuncB" { }
+    @open schema "feFuncG" { }
+    @open schema "feFuncR" { }
+    @open schema "feGaussianBlur" { }
+    @open schema "feImage" { }
+    @open schema "feMerge" { }
+    @open schema "feMergeNode" { }
+    @open schema "feMorphology" { }
+    @open schema "feOffset" { }
+    @open schema "fePointLight" { }
+    @open schema "feSpecularLighting" { }
+    @open schema "feSpotLight" { }
+    @open schema "feTile" { }
+    @open schema "feTurbulence" { }
+    @open schema "foreignObject" { }
+    @open schema "metadata" { }
+    @open schema "mpath" { }
+    @open schema "script" { content: string @optional }
+    @open schema "set" { }
+    @open schema "switch" { }
+    @open schema "textPath" { content: string @optional }
+    @open schema "view" { }
+
+    @open schema "element" {
+        tag: string
+    }
+
+    @open schema "raw" {
+        content: string @text
+    }
+}
