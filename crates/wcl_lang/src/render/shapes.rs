@@ -3477,6 +3477,9 @@ enum RoutedGeometry {
     },
 }
 
+type Point = (f64, f64);
+type RouteSegment = (Point, Point);
+
 #[derive(Clone)]
 struct RoutedConnection {
     conn: Connection,
@@ -3515,14 +3518,8 @@ fn compute_connection_route(
     conn: &Connection,
     shape_map: &HashMap<String, Bounds>,
 ) -> Option<RoutedConnection> {
-    let from_bounds = match shape_map.get(&conn.from_id) {
-        Some(b) => b,
-        None => return None,
-    };
-    let to_bounds = match shape_map.get(&conn.to_id) {
-        Some(b) => b,
-        None => return None,
-    };
+    let from_bounds = shape_map.get(&conn.from_id)?;
+    let to_bounds = shape_map.get(&conn.to_id)?;
 
     let geometry = match conn.curve {
         CurveStyle::Straight => {
@@ -3567,17 +3564,16 @@ fn compute_connection_route(
                     0.0,
                     shape_map,
                 );
+                let mut end = (x2, y2);
                 project_regular_shape_endpoint_to_graph_port_axis(
-                    &conn.from_id,
-                    &conn.to_id,
-                    from_anchor,
-                    to_anchor,
+                    (&conn.from_id, &conn.to_id),
+                    (from_anchor, to_anchor),
                     (x1, y1),
                     to_bounds,
-                    &mut x2,
-                    &mut y2,
+                    &mut end,
                     shape_map,
                 );
+                (x2, y2) = end;
                 if connection_uses_direct_route(conn) {
                     RoutedGeometry::Line {
                         start: (x1, y1),
@@ -3668,17 +3664,16 @@ fn compute_connection_route(
                     0.0,
                     shape_map,
                 );
+                let mut end = (x2, y2);
                 project_regular_shape_endpoint_to_graph_port_axis(
-                    &conn.from_id,
-                    &conn.to_id,
-                    from_anchor,
-                    to_anchor,
+                    (&conn.from_id, &conn.to_id),
+                    (from_anchor, to_anchor),
                     (x1, y1),
                     to_bounds,
-                    &mut x2,
-                    &mut y2,
+                    &mut end,
                     shape_map,
                 );
+                (x2, y2) = end;
                 let obstacles =
                     connection_obstacles(&conn.from_id, &conn.to_id, x1, y1, x2, y2, shape_map);
 
@@ -3786,17 +3781,16 @@ fn compute_connection_route(
                 0.0,
                 shape_map,
             );
+            let mut end = (x2, y2);
             project_regular_shape_endpoint_to_graph_port_axis(
-                &conn.from_id,
-                &conn.to_id,
-                from_anchor,
-                to_anchor,
+                (&conn.from_id, &conn.to_id),
+                (from_anchor, to_anchor),
                 (x1, y1),
                 to_bounds,
-                &mut x2,
-                &mut y2,
+                &mut end,
                 shape_map,
             );
+            (x2, y2) = end;
             let obstacles =
                 connection_obstacles(&conn.from_id, &conn.to_id, x1, y1, x2, y2, shape_map);
             let dx = (x2 - x1).abs() / 2.0;
@@ -3945,9 +3939,7 @@ fn route_polyline_points(geometry: &RoutedGeometry) -> Vec<(f64, f64)> {
     }
 }
 
-fn polyline_midpoint_segment(
-    points: &[(f64, f64)],
-) -> (f64, f64, Option<((f64, f64), (f64, f64))>) {
+fn polyline_midpoint_segment(points: &[Point]) -> (f64, f64, Option<RouteSegment>) {
     if points.is_empty() {
         return (0.0, 0.0, None);
     }
@@ -4515,45 +4507,40 @@ fn graph_port_start_marker_clearance(conn: &Connection) -> f64 {
 }
 
 fn project_regular_shape_endpoint_to_graph_port_axis(
-    from_id: &str,
-    to_id: &str,
-    from_anchor: AnchorPoint,
-    to_anchor: AnchorPoint,
-    start: (f64, f64),
+    ids: (&str, &str),
+    anchors: (AnchorPoint, AnchorPoint),
+    start: Point,
     to_bounds: &Bounds,
-    x2: &mut f64,
-    y2: &mut f64,
+    end: &mut Point,
     shape_map: &HashMap<String, Bounds>,
 ) {
+    let (from_id, to_id) = ids;
     if nearest_container_id(from_id, shape_map).is_none()
         || nearest_container_id(to_id, shape_map).is_some()
     {
         return;
     }
 
+    let (from_anchor, to_anchor) = anchors;
     match (from_anchor, to_anchor) {
         (AnchorPoint::Right, AnchorPoint::Left) => {
             if start.1 >= to_bounds.y && start.1 <= to_bounds.y + to_bounds.height {
-                *x2 = to_bounds.x;
-                *y2 = start.1;
+                *end = (to_bounds.x, start.1);
             }
         }
         (AnchorPoint::Left, AnchorPoint::Right) => {
             if start.1 >= to_bounds.y && start.1 <= to_bounds.y + to_bounds.height {
-                *x2 = to_bounds.x + to_bounds.width;
-                *y2 = start.1;
+                *end = (to_bounds.x + to_bounds.width, start.1);
             }
         }
         (AnchorPoint::Bottom, AnchorPoint::Top) => {
             if start.0 >= to_bounds.x && start.0 <= to_bounds.x + to_bounds.width {
-                *x2 = start.0;
-                *y2 = to_bounds.y;
+                *end = (start.0, to_bounds.y);
             }
         }
         (AnchorPoint::Top, AnchorPoint::Bottom) => {
             if start.0 >= to_bounds.x && start.0 <= to_bounds.x + to_bounds.width {
-                *x2 = start.0;
-                *y2 = to_bounds.y + to_bounds.height;
+                *end = (start.0, to_bounds.y + to_bounds.height);
             }
         }
         _ => {}

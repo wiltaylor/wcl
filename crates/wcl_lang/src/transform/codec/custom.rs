@@ -588,7 +588,12 @@ fn tokenize(data: &[u8], codec: &CustomCodec) -> Result<Vec<Value>, TransformErr
 
     loop {
         let before = source.lock().unwrap().pos;
-        let value = call_codec_lambda(codec, tokenizer, &[cursor.clone()], builtins.clone())?;
+        let value = call_codec_lambda(
+            codec,
+            tokenizer,
+            std::slice::from_ref(&cursor),
+            builtins.clone(),
+        )?;
         match value {
             Value::Null => {
                 if !source.lock().unwrap().eof() {
@@ -785,7 +790,7 @@ fn parser_record_stream(
     Ok(native_stream(move || {
         let before = token_cursor.lock().unwrap().pos;
         let value = match parser.params.len() {
-            1 => session.call_function(&parser, &[cursor.clone()]),
+            1 => session.call_function(&parser, std::slice::from_ref(&cursor)),
             2 => session.call_function(&parser, &[cursor.clone(), options.clone()]),
             n => Err(TransformError::Codec(format!(
                 "codec '{}' attribute 'parser' must accept 1 or 2 arguments, got {}",

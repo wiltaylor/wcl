@@ -917,11 +917,11 @@ fn force_layout_is_clear(children: &[ShapeNode], edges: &[(usize, usize)]) -> bo
     for &(from, to) in edges {
         let (start, end) =
             closest_force_anchor_pair(&children[from].resolved, &children[to].resolved);
-        for node in 0..children.len() {
+        for (node, child) in children.iter().enumerate() {
             if node == from || node == to {
                 continue;
             }
-            let obstacle = expand_bounds(children[node].resolved, margin);
+            let obstacle = expand_bounds(child.resolved, margin);
             if segment_intersects_bounds(start, end, &obstacle) {
                 return false;
             }
