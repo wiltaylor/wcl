@@ -118,29 +118,175 @@ const PRESENTATION_SCRIPT: &str = r#"<script>
 pub fn render_page(doc: &WdocDocument, page: &Page, css_path: &str) -> String {
     match page.template.unwrap_or(doc.template) {
         WdocTemplate::Book => render_book_page(doc, page, css_path),
+        WdocTemplate::Site => render_site_page(doc, page, css_path),
         WdocTemplate::Presentation => render_presentation_page(doc, page, css_path),
     }
 }
 
 fn render_book_page(doc: &WdocDocument, page: &Page, css_path: &str) -> String {
-    let mut html = String::with_capacity(4096);
     let mut content_html = String::new();
     render_layout_items(&page.layout.children, &mut content_html);
+    render_site_shell(SiteShell {
+        doc,
+        title: &page.title,
+        css_path,
+        content_html: &content_html,
+        body_class: "wdoc-template-book",
+        main_class: "wdoc-content",
+        before_main: Some(render_book_nav(doc, &page.section_id)),
+        after_main: None,
+        runtime: if page_has_runtime(page) {
+            Some(page_signal_runtime(page))
+        } else {
+            None
+        },
+    })
+}
 
-    render_document_head(doc, page, css_path, &content_html, &mut html);
-    html.push_str("<body class=\"wdoc-template-book\">\n");
+fn render_site_page(doc: &WdocDocument, page: &Page, css_path: &str) -> String {
+    let mut content_html = String::new();
+    render_layout_items(&page.layout.children, &mut content_html);
+    render_site_content_page(
+        doc,
+        &page.title,
+        &content_html,
+        css_path,
+        if page_has_runtime(page) {
+            Some(page_signal_runtime(page))
+        } else {
+            None
+        },
+    )
+}
 
-    // Nav sidebar
-    render_nav(doc, &page.section_id, &mut html);
+pub fn render_generated_site_page(
+    doc: &WdocDocument,
+    title: &str,
+    content_html: &str,
+    css_path: &str,
+) -> String {
+    render_site_content_page(doc, title, content_html, css_path, None)
+}
 
-    // Main content
-    html.push_str("<main class=\"wdoc-content\">\n");
-    html.push_str(&content_html);
+fn render_site_content_page(
+    doc: &WdocDocument,
+    title: &str,
+    content_html: &str,
+    css_path: &str,
+    runtime: Option<String>,
+) -> String {
+    let before_main = site_before_main(doc, css_path);
+    let after_main = doc
+        .site
+        .footer_html
+        .as_ref()
+        .map(|html| relativize_chrome_links(html, css_path));
+    render_site_shell(SiteShell {
+        doc,
+        title,
+        css_path,
+        content_html,
+        body_class: "wdoc-template-site",
+        main_class: "wdoc-site-main",
+        before_main,
+        after_main,
+        runtime,
+    })
+}
+
+fn site_before_main(doc: &WdocDocument, css_path: &str) -> Option<String> {
+    let mut html = String::new();
+    if let Some(header) = &doc.site.header_html {
+        html.push_str(&relativize_chrome_links(header, css_path));
+        html.push('\n');
+    }
+    if let Some(nav) = &doc.site.nav_html {
+        html.push_str(&relativize_chrome_links(nav, css_path));
+        html.push('\n');
+    }
+    if html.is_empty() {
+        None
+    } else {
+        Some(html)
+    }
+}
+
+fn relativize_chrome_links(html: &str, css_path: &str) -> String {
+    let prefix = css_path.strip_suffix("styles.css").unwrap_or_default();
+    if prefix.is_empty() {
+        return html.to_string();
+    }
+    let html = relativize_attr(html, "href", prefix);
+    relativize_attr(&html, "src", prefix)
+}
+
+fn relativize_attr(html: &str, attr: &str, prefix: &str) -> String {
+    let mut out = String::with_capacity(html.len());
+    let mut rest = html;
+    let needle = format!("{attr}=\"");
+    while let Some(idx) = rest.find(&needle) {
+        let (before, after_before) = rest.split_at(idx);
+        out.push_str(before);
+        out.push_str(&needle);
+        let value_start = needle.len();
+        let after = &after_before[value_start..];
+        let Some(value_end) = after.find('"') else {
+            out.push_str(after);
+            return out;
+        };
+        let value = &after[..value_end];
+        if should_rewrite_chrome_url(value) {
+            out.push_str(prefix);
+        }
+        out.push_str(value);
+        rest = &after[value_end..];
+    }
+    out.push_str(rest);
+    out
+}
+
+fn should_rewrite_chrome_url(value: &str) -> bool {
+    !value.is_empty()
+        && !value.starts_with('#')
+        && !value.starts_with('/')
+        && !value.starts_with("./")
+        && !value.starts_with("../")
+        && !value.contains(':')
+}
+
+struct SiteShell<'a> {
+    doc: &'a WdocDocument,
+    title: &'a str,
+    css_path: &'a str,
+    content_html: &'a str,
+    body_class: &'a str,
+    main_class: &'a str,
+    before_main: Option<String>,
+    after_main: Option<String>,
+    runtime: Option<String>,
+}
+
+fn render_site_shell(shell: SiteShell<'_>) -> String {
+    let mut html = String::with_capacity(4096);
+    render_document_head(
+        shell.doc,
+        shell.title,
+        shell.css_path,
+        shell.content_html,
+        &mut html,
+    );
+    writeln!(html, "<body class=\"{}\">", shell.body_class).unwrap();
+    if let Some(before_main) = shell.before_main {
+        html.push_str(&before_main);
+    }
+    writeln!(html, "<main class=\"{}\">", shell.main_class).unwrap();
+    html.push_str(shell.content_html);
     html.push_str("</main>\n");
-
-    // Theme + highlight.js script
-    if page_has_runtime(page) {
-        html.push_str(&page_signal_runtime(page));
+    if let Some(after_main) = shell.after_main {
+        html.push_str(&after_main);
+    }
+    if let Some(runtime) = shell.runtime {
+        html.push_str(&runtime);
     }
     html.push_str(THEME_SCRIPT);
     html.push_str("\n</body>\n</html>\n");
@@ -153,7 +299,7 @@ fn render_presentation_page(doc: &WdocDocument, page: &Page, css_path: &str) -> 
     render_layout_items(&page.layout.children, &mut content_html);
     let nav = presentation_nav(doc, page);
 
-    render_document_head(doc, page, css_path, &content_html, &mut html);
+    render_document_head(doc, &page.title, css_path, &content_html, &mut html);
     html.push_str("<body class=\"wdoc-template-presentation\">\n");
     html.push_str("<main class=\"wdoc-presentation\" aria-label=\"Presentation slide\">\n");
     html.push_str("<nav class=\"wdoc-presentation-nav\" aria-hidden=\"true\">\n");
@@ -192,7 +338,7 @@ fn render_presentation_nav_link(
 
 fn render_document_head(
     doc: &WdocDocument,
-    page: &Page,
+    title: &str,
     css_path: &str,
     content_html: &str,
     html: &mut String,
@@ -216,7 +362,7 @@ fn render_document_head(
 {mathjax_head}
 </head>
 "#,
-        title = page.title,
+        title = title,
         doc_title = doc.title,
         HLJS_HEAD = HLJS_HEAD,
         mathjax_head = mathjax_head,
@@ -313,6 +459,14 @@ mod tests {
             section_id: "section".to_string(),
             title: "Test".to_string(),
             template: None,
+            path: None,
+            date: None,
+            draft: false,
+            weight: None,
+            summary: None,
+            tags: Vec::new(),
+            categories: Vec::new(),
+            params: Default::default(),
             layout: Layout {
                 children: vec![LayoutItem::Content(ContentBlock {
                     kind: "wdoc::paragraph".to_string(),
@@ -333,6 +487,7 @@ mod tests {
             template: WdocTemplate::Book,
             version: None,
             author: None,
+            site: SiteConfig::default(),
             sections: vec![Section {
                 id: "section".to_string(),
                 short_id: "section".to_string(),
@@ -351,6 +506,14 @@ mod tests {
             section_id: section_id.to_string(),
             title: id.to_string(),
             template: None,
+            path: None,
+            date: None,
+            draft: false,
+            weight: None,
+            summary: None,
+            tags: Vec::new(),
+            categories: Vec::new(),
+            params: Default::default(),
             layout: Layout {
                 children: Vec::new(),
             },
@@ -407,6 +570,7 @@ mod tests {
             template: WdocTemplate::Presentation,
             version: None,
             author: None,
+            site: SiteConfig::default(),
             sections: vec![
                 section_with_children(
                     "deck.row_a",
@@ -482,11 +646,12 @@ fn page_signal_runtime(page: &Page) -> String {
     format!("<script>(function(cfg){{if(window.__wdocPageSignalsInit){{window.__wdocPageSignalsInit(cfg);return;}}function val(v){{return v&&typeof v==='object'&&Object.prototype.hasOwnProperty.call(v,'initial')?v.initial:v;}}function clone(v){{return v==null||typeof v!=='object'?v:JSON.parse(JSON.stringify(v));}}function text(v){{if(v==null)return'';return typeof v==='string'?v:JSON.stringify(v);}}function readPath(v,p){{if(!p)return v;return String(p).replace(/\\[(\\d+)\\]/g,'.$1').split('.').filter(Boolean).reduce(function(a,k){{return a==null?undefined:a[k];}},v);}}function writePath(v,p,n){{if(!p)return n;var root=clone(v),cur=root,parts=String(p).replace(/\\[(\\d+)\\]/g,'.$1').split('.').filter(Boolean);for(var i=0;i<parts.length-1;i++){{var k=parts[i];if(cur[k]==null)cur[k]=/^\\d+$/.test(parts[i+1])?[]:{{}};cur=cur[k];}}cur[parts[parts.length-1]]=n;return root;}}function fmt(v,f){{var s=text(v);return f?String(f).replace(/\\{{value\\}}/g,s):s;}}function findTarget(id){{return document.querySelector('[data-wdoc-id=\"'+css(id)+'\"]')||document.querySelector('[data-wdoc-content-id=\"'+css(id)+'\"]')||document.getElementById(id);}}function css(s){{return String(s).replace(/\\\\/g,'\\\\\\\\').replace(/\"/g,'\\\\\"');}}function applyProp(el,prop,value){{if(!el)return;var s=text(value);if(prop==='text'||prop==='content'){{el.textContent=s;return;}}if(prop==='html'){{el.innerHTML=s;return;}}if(prop==='class'){{el.setAttribute('class',s);return;}}if(prop.indexOf('style.')===0){{el.style.setProperty(prop.slice(6).replace(/_/g,'-'),s);return;}}if(window.__wdocDiagramApplyProperty&&el.hasAttribute('data-wdoc-id')&&window.__wdocDiagramApplyProperty(el,prop,value))return;el.setAttribute(prop.replace(/_/g,'-'),s);}}function apply(){{bindings.forEach(function(b){{applyProp(findTarget(b.target),b.property,fmt(readPath(signals[b.signal],b.path),b.format));}});}}function setSignal(name,value,path){{signals[name]=writePath(signals[name],path,value);apply();document.dispatchEvent(new CustomEvent('wdoc:signal-change',{{detail:{{name:name,value:signals[name]}}}}));}}var signals={{}},bindings=cfg.bindings||[];(cfg.signals||[]).forEach(function(s){{signals[s.name]=clone(val(s));}});window.__wdocSignals=signals;window.__wdocSetSignal=setSignal;window.__wdocPageSignalsInit=function(next){{cfg=next||cfg;bindings=cfg.bindings||[];signals={{}};(cfg.signals||[]).forEach(function(s){{signals[s.name]=clone(val(s));}});window.__wdocSignals=signals;apply();}};if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',apply);else apply();}})({data});</script>\n")
 }
 
-fn render_nav(doc: &WdocDocument, active_section: &str, html: &mut String) {
+fn render_book_nav(doc: &WdocDocument, active_section: &str) -> String {
+    let mut html = String::new();
     html.push_str("<nav class=\"wdoc-nav\">\n");
     writeln!(html, "<div class=\"wdoc-nav-title\">{}</div>", doc.title).unwrap();
     html.push_str("<ul>\n");
-    render_nav_sections(&doc.sections, &doc.pages, active_section, html);
+    render_nav_sections(&doc.sections, &doc.pages, active_section, &mut html);
     html.push_str("</ul>\n");
 
     // Theme toggle at bottom of nav
@@ -500,6 +665,7 @@ fn render_nav(doc: &WdocDocument, active_section: &str, html: &mut String) {
     );
 
     html.push_str("</nav>\n");
+    html
 }
 
 fn render_nav_sections(

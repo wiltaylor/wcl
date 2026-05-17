@@ -2,11 +2,12 @@ pub mod assets;
 pub mod layout;
 pub mod page;
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
+use std::fmt::Write;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
-use crate::model::WdocDocument;
+use crate::model::{Page, Section, WdocDocument, WdocTemplate};
 use wcl_lang::transform::codec;
 use wcl_lang::Value;
 
@@ -90,22 +91,43 @@ pub fn render_document(
     }
 
     // Render each page
+    let mut written_html = HashSet::new();
     for p in &doc.pages {
-        let html = page::render_page(doc, p, "styles.css");
+        if p.draft {
+            continue;
+        }
+        let filename = page_output_path(p);
+        let css_path = css_path_for(&filename);
+        let html = page::render_page(doc, p, &css_path);
         collect_referenced_image_assets(&html, &asset_extensions, &mut referenced_assets);
-        let filename = format!("{}.html", p.id);
         write_html_with_codec(output, &filename, &html)?;
+        written_html.insert(filename);
+    }
+
+    if doc.template == WdocTemplate::Site {
+        for generated in generated_site_pages(doc) {
+            let css_path = css_path_for(&generated.path);
+            let html =
+                page::render_generated_site_page(doc, &generated.title, &generated.html, &css_path);
+            collect_referenced_image_assets(&html, &asset_extensions, &mut referenced_assets);
+            write_html_with_codec(output, &generated.path, &html)?;
+            written_html.insert(generated.path);
+        }
     }
 
     // index.html redirects to the first page by section order
-    if let Some(first) = first_page_by_section_order(&doc.sections, &doc.pages) {
-        let target = format!("{}.html", first.id);
-        let redirect = format!(
-            "<!DOCTYPE html><html><head>\
-             <meta http-equiv=\"refresh\" content=\"0;url={target}\">\
-             </head><body></body></html>"
-        );
-        write_html_with_codec(output, "index.html", &redirect)?;
+    if !written_html.contains("index.html") {
+        let first = first_page_by_section_order(&doc.sections, &doc.pages)
+            .or_else(|| doc.pages.iter().find(|page| !page.draft));
+        if let Some(first) = first {
+            let target = page_output_path(first);
+            let redirect = format!(
+                "<!DOCTYPE html><html><head>\
+                 <meta http-equiv=\"refresh\" content=\"0;url={target}\">\
+                 </head><body></body></html>"
+            );
+            write_html_with_codec(output, "index.html", &redirect)?;
+        }
     }
 
     // Copy referenced assets first so deep paths used by images work in previews.
@@ -135,6 +157,207 @@ pub fn render_document(
     }
 
     Ok(())
+}
+
+struct GeneratedSitePage {
+    path: String,
+    title: String,
+    html: String,
+}
+
+fn generated_site_pages(doc: &WdocDocument) -> Vec<GeneratedSitePage> {
+    let mut pages = Vec::new();
+    collect_section_pages(doc, &doc.sections, &mut pages);
+    pages.extend(taxonomy_pages(doc, "tags"));
+    pages.extend(taxonomy_pages(doc, "categories"));
+    pages
+}
+
+fn collect_section_pages(
+    doc: &WdocDocument,
+    sections: &[Section],
+    out: &mut Vec<GeneratedSitePage>,
+) {
+    for section in sections {
+        let output_path = section_output_path(section);
+        let section_pages = pages_for_section(doc, section);
+        let section_children = section
+            .children
+            .iter()
+            .map(|child| {
+                format!(
+                    "<a class=\"wdoc-site-list-item\" href=\"{}\"><h3>{}</h3></a>",
+                    html_escape(&relative_href(&output_path, &section_output_path(child))),
+                    html_escape(&child.title)
+                )
+            })
+            .collect::<String>();
+        if !section_pages.is_empty() || !section.children.is_empty() {
+            let cards = section_pages
+                .iter()
+                .map(|page| {
+                    site_page_card(page, &relative_href(&output_path, &page_output_path(page)))
+                })
+                .collect::<String>();
+            let mut html = String::new();
+            writeln!(
+                html,
+                "<section class=\"wdoc-site-list\"><h1>{}</h1>",
+                html_escape(&section.title)
+            )
+            .unwrap();
+            html.push_str(&section_children);
+            html.push_str("<div class=\"wdoc-site-card-grid\">");
+            html.push_str(&cards);
+            html.push_str("</div></section>");
+            out.push(GeneratedSitePage {
+                path: output_path,
+                title: section.title.clone(),
+                html,
+            });
+        }
+        collect_section_pages(doc, &section.children, out);
+    }
+}
+
+fn pages_for_section<'a>(doc: &'a WdocDocument, section: &Section) -> Vec<&'a Page> {
+    let mut pages = doc
+        .pages
+        .iter()
+        .filter(|page| !page.draft && page.section_id == section.id)
+        .collect::<Vec<_>>();
+    pages.sort_by(|a, b| {
+        a.weight
+            .unwrap_or(i64::MAX)
+            .cmp(&b.weight.unwrap_or(i64::MAX))
+            .then_with(|| a.title.cmp(&b.title))
+    });
+    pages
+}
+
+fn taxonomy_pages(doc: &WdocDocument, kind: &str) -> Vec<GeneratedSitePage> {
+    let mut terms: BTreeMap<String, Vec<&Page>> = BTreeMap::new();
+    for page in doc.pages.iter().filter(|page| !page.draft) {
+        let values = if kind == "tags" {
+            &page.tags
+        } else {
+            &page.categories
+        };
+        for value in values {
+            terms.entry(value.clone()).or_default().push(page);
+        }
+    }
+
+    terms
+        .into_iter()
+        .map(|(term, mut pages)| {
+            let path = format!("{}/{}.html", kind, slug(&term));
+            pages.sort_by(|a, b| a.title.cmp(&b.title));
+            let cards = pages
+                .iter()
+                .map(|page| site_page_card(page, &relative_href(&path, &page_output_path(page))))
+                .collect::<String>();
+            let title = format!("{kind}: {term}");
+            GeneratedSitePage {
+                path,
+                title: title.clone(),
+                html: format!(
+                    "<section class=\"wdoc-site-list\"><h1>{}</h1><div class=\"wdoc-site-card-grid\">{}</div></section>",
+                    html_escape(&title),
+                    cards
+                ),
+            }
+        })
+        .collect()
+}
+
+fn site_page_card(page: &Page, href: &str) -> String {
+    let summary = page
+        .summary
+        .as_ref()
+        .map(|summary| format!("<p>{}</p>", html_escape(summary)))
+        .unwrap_or_default();
+    let date = page
+        .date
+        .as_ref()
+        .map(|date| format!("<span>{}</span>", html_escape(date)))
+        .unwrap_or_default();
+    format!(
+        "<a class=\"wdoc-site-card\" href=\"{}\"><h3>{}</h3>{}{}</a>",
+        html_escape(href),
+        html_escape(&page.title),
+        summary,
+        date
+    )
+}
+
+fn page_output_path(page: &Page) -> String {
+    page.path
+        .as_deref()
+        .map(normalize_html_path)
+        .unwrap_or_else(|| format!("{}.html", page.id))
+}
+
+fn section_output_path(section: &Section) -> String {
+    format!("sections/{}.html", slug(&section.id))
+}
+
+fn normalize_html_path(path: &str) -> String {
+    let trimmed = path.trim().trim_start_matches('/').to_string();
+    if trimmed.is_empty() {
+        return "index.html".to_string();
+    }
+    if trimmed.ends_with('/') {
+        return format!("{trimmed}index.html");
+    }
+    if trimmed.ends_with(".html") {
+        trimmed
+    } else {
+        format!("{trimmed}.html")
+    }
+}
+
+fn css_path_for(filename: &str) -> String {
+    let depth = Path::new(filename)
+        .parent()
+        .map(|parent| parent.components().count())
+        .unwrap_or(0);
+    format!("{}styles.css", "../".repeat(depth))
+}
+
+fn relative_href(from_file: &str, to_file: &str) -> String {
+    if to_file.starts_with("http://") || to_file.starts_with("https://") || to_file.starts_with('/')
+    {
+        return to_file.to_string();
+    }
+    let depth = Path::new(from_file)
+        .parent()
+        .map(|parent| parent.components().count())
+        .unwrap_or(0);
+    format!("{}{}", "../".repeat(depth), to_file)
+}
+
+fn slug(value: &str) -> String {
+    let mut slug = String::new();
+    let mut last_dash = false;
+    for ch in value.chars() {
+        if ch.is_ascii_alphanumeric() {
+            slug.push(ch.to_ascii_lowercase());
+            last_dash = false;
+        } else if !last_dash {
+            slug.push('-');
+            last_dash = true;
+        }
+    }
+    slug.trim_matches('-').to_string()
+}
+
+fn html_escape(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 fn write_html_with_codec(output: &Path, filename: &str, html: &str) -> Result<(), String> {
@@ -312,7 +535,7 @@ fn html_unescape_attr(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{ContentBlock, Layout, LayoutItem, Page, Section, WdocDocument};
+    use crate::model::{ContentBlock, Layout, LayoutItem, Page, Section, SiteConfig, WdocDocument};
 
     fn doc_with_html(html: &str) -> WdocDocument {
         WdocDocument {
@@ -321,6 +544,7 @@ mod tests {
             template: crate::model::WdocTemplate::Book,
             version: None,
             author: None,
+            site: SiteConfig::default(),
             sections: vec![Section {
                 id: "docs.overview".to_string(),
                 short_id: "overview".to_string(),
@@ -332,6 +556,14 @@ mod tests {
                 section_id: "docs.overview".to_string(),
                 title: "Home".to_string(),
                 template: None,
+                path: None,
+                date: None,
+                draft: false,
+                weight: None,
+                summary: None,
+                tags: Vec::new(),
+                categories: Vec::new(),
+                params: Default::default(),
                 layout: Layout {
                     children: vec![LayoutItem::Content(ContentBlock {
                         kind: "wdoc::draw::diagram".to_string(),
@@ -418,6 +650,40 @@ mod tests {
         assert!(output
             .join("fonts/JetBrainsMonoNerdFontMono-BoldItalic.ttf")
             .exists());
+    }
+
+    #[test]
+    fn site_template_writes_page_paths_sections_and_taxonomies() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let output = temp.path().join("out");
+        let mut doc = doc_with_html("<p>Site page</p>");
+        doc.template = WdocTemplate::Site;
+        doc.site.header_html =
+            Some("<header class=\"wdoc-site-header\">Header</header>".to_string());
+        doc.sections[0].children.push(Section {
+            id: "docs.overview.child".to_string(),
+            short_id: "child".to_string(),
+            title: "Child".to_string(),
+            children: vec![],
+        });
+        doc.pages[0].template = None;
+        doc.pages[0].path = Some("guides/home".to_string());
+        doc.pages[0].summary = Some("A page summary".to_string());
+        doc.pages[0].tags = vec!["alpha".to_string()];
+        doc.pages[0].categories = vec!["docs".to_string()];
+
+        render_document(&doc, &output, &[]).expect("render");
+
+        let page_html =
+            std::fs::read_to_string(output.join("guides/home.html")).expect("site page");
+        let section_html = std::fs::read_to_string(output.join("sections/docs-overview.html"))
+            .expect("section page");
+        let tag_html = std::fs::read_to_string(output.join("tags/alpha.html")).expect("tag page");
+
+        assert!(page_html.contains("wdoc-template-site"));
+        assert!(page_html.contains("wdoc-site-header"));
+        assert!(section_html.contains("A page summary"));
+        assert!(tag_html.contains("../guides/home.html"));
     }
 
     #[test]

@@ -56,6 +56,10 @@ wdoc-serve-local: wdoc-serve
 wdoc-presentation: build-local
     ./target/debug/wcl wdoc serve examples/wdoc/presentation.wcl --port 3001 --open
 
+# Serve the wdoc site-builder example using locally-built binary
+wdoc-site-builder: build-local
+    ./target/debug/wcl wdoc serve examples/wdoc/site_builder.wcl --port 3002 --open
+
 # Run CLI examples using locally-built binary
 cli: run-local-cli
 

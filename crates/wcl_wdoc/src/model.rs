@@ -8,6 +8,7 @@ pub struct WdocDocument {
     pub template: WdocTemplate,
     pub version: Option<String>,
     pub author: Option<String>,
+    pub site: SiteConfig,
     pub sections: Vec<Section>,
     pub pages: Vec<Page>,
     pub styles: Vec<WdocStyle>,
@@ -33,14 +34,30 @@ pub struct Page {
     pub section_id: String,
     pub title: String,
     pub template: Option<WdocTemplate>,
+    pub path: Option<String>,
+    pub date: Option<String>,
+    pub draft: bool,
+    pub weight: Option<i64>,
+    pub summary: Option<String>,
+    pub tags: Vec<String>,
+    pub categories: Vec<String>,
+    pub params: IndexMap<String, String>,
     pub layout: Layout,
     pub signals: Vec<WdocSignal>,
     pub bindings: Vec<WdocBinding>,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct SiteConfig {
+    pub header_html: Option<String>,
+    pub nav_html: Option<String>,
+    pub footer_html: Option<String>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WdocTemplate {
     Book,
+    Site,
     Presentation,
 }
 
@@ -50,9 +67,10 @@ impl WdocTemplate {
     pub fn parse(value: &str) -> Result<Self, String> {
         match value {
             "book" => Ok(Self::Book),
+            "site" => Ok(Self::Site),
             "presentation" => Ok(Self::Presentation),
             other => Err(format!(
-                "unknown wdoc template '{other}' (supported: book, presentation)"
+                "unknown wdoc template '{other}' (supported: book, site, presentation)"
             )),
         }
     }
@@ -60,6 +78,7 @@ impl WdocTemplate {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Book => "book",
+            Self::Site => "site",
             Self::Presentation => "presentation",
         }
     }

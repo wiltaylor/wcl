@@ -5949,6 +5949,56 @@ mod wdoc_draw_tests {
     }
 
     #[test]
+    fn extracts_site_template_and_page_metadata() {
+        let mut doc_attrs = IndexMap::new();
+        string_attr(&mut doc_attrs, "title", "Docs");
+        string_attr(&mut doc_attrs, "template", "site");
+        let doc = block("wdoc::doc", Some("docs"), doc_attrs, vec![]);
+
+        let mut params = IndexMap::new();
+        params.insert("audience".to_string(), Value::String("users".to_string()));
+        let mut page_attrs = IndexMap::new();
+        string_attr(&mut page_attrs, "section", "docs.overview");
+        string_attr(&mut page_attrs, "title", "Overview");
+        string_attr(&mut page_attrs, "path", "guides/overview");
+        string_attr(&mut page_attrs, "date", "2026-05-17");
+        page_attrs.insert("draft".to_string(), Value::Bool(true));
+        page_attrs.insert("weight".to_string(), Value::Int(10));
+        string_attr(&mut page_attrs, "summary", "Short summary");
+        page_attrs.insert(
+            "tags".to_string(),
+            Value::List(vec![Value::String("wdoc".to_string())]),
+        );
+        page_attrs.insert(
+            "categories".to_string(),
+            Value::List(vec![Value::String("docs".to_string())]),
+        );
+        page_attrs.insert("params".to_string(), Value::Map(params));
+        let page = block("wdoc::page", Some("overview"), page_attrs, vec![]);
+
+        let mut values = IndexMap::new();
+        values.insert("docs".to_string(), Value::BlockRef(doc));
+        values.insert("overview".to_string(), Value::BlockRef(page));
+        let ctx = empty_ctx();
+
+        let document = extract(&values, &ctx).expect("extract");
+        let page = &document.pages[0];
+
+        assert_eq!(document.template, WdocTemplate::Site);
+        assert_eq!(page.path.as_deref(), Some("guides/overview"));
+        assert_eq!(page.date.as_deref(), Some("2026-05-17"));
+        assert!(page.draft);
+        assert_eq!(page.weight, Some(10));
+        assert_eq!(page.summary.as_deref(), Some("Short summary"));
+        assert_eq!(page.tags, vec!["wdoc"]);
+        assert_eq!(page.categories, vec!["docs"]);
+        assert_eq!(
+            page.params.get("audience").map(String::as_str),
+            Some("users")
+        );
+    }
+
+    #[test]
     fn unknown_wdoc_template_reports_supported_names() {
         let mut doc_attrs = IndexMap::new();
         string_attr(&mut doc_attrs, "title", "Docs");
@@ -5962,7 +6012,7 @@ mod wdoc_draw_tests {
         let err = extract(&values, &ctx).expect_err("unknown template should fail");
 
         assert!(err.contains("unknown wdoc template 'slides'"));
-        assert!(err.contains("supported: book, presentation"));
+        assert!(err.contains("supported: book, site, presentation"));
     }
 
     #[test]
@@ -7594,6 +7644,7 @@ fn extract(values: &IndexMap<String, Value>, ctx: &ExtractCtx) -> Result<WdocDoc
         .and_then(|v| v.as_string())
         .map(|s| s.to_string());
     let template = extract_template_attr(wdoc, "doc")?.unwrap_or(WdocTemplate::DEFAULT);
+    let mut site = SiteConfig::default();
 
     let mut sections = Vec::new();
     for child in all_child_blocks(wdoc) {
@@ -7601,6 +7652,9 @@ fn extract(values: &IndexMap<String, Value>, ctx: &ExtractCtx) -> Result<WdocDoc
             "wdoc::section" => sections.push(extract_section(child, &name)?),
             "wdoc::page" => pages.push(extract_page(child, ctx)?),
             "wdoc::style" => styles.push(extract_style(child)),
+            "wdoc::site_header" => site.header_html = Some(ctx.render_block(child)?),
+            "wdoc::site_nav" => site.nav_html = Some(ctx.render_block(child)?),
+            "wdoc::site_footer" => site.footer_html = Some(ctx.render_block(child)?),
             _ => {}
         }
     }
@@ -7611,6 +7665,7 @@ fn extract(values: &IndexMap<String, Value>, ctx: &ExtractCtx) -> Result<WdocDoc
         template,
         version,
         author,
+        site,
         sections,
         pages,
         styles,
@@ -7678,6 +7733,14 @@ fn extract_page(block: &BlockRef, ctx: &ExtractCtx) -> Result<Page, String> {
         .ok_or_else(|| format!("page '{id}' missing 'title' attribute"))?
         .to_string();
     let template = extract_template_attr(block, &format!("page '{id}'"))?;
+    let path = string_attr(block, "path");
+    let date = string_attr(block, "date");
+    let draft = value_as_bool(block.attributes.get("draft")).unwrap_or(false);
+    let weight = block.attributes.get("weight").and_then(value_as_i64);
+    let summary = string_attr(block, "summary");
+    let tags = string_list_attr(block, "tags");
+    let categories = string_list_attr(block, "categories");
+    let params = string_map_attr(block, "params");
 
     let all_children = all_child_blocks(block);
     let signals = extract_page_signals(&all_children);
@@ -7703,10 +7766,52 @@ fn extract_page(block: &BlockRef, ctx: &ExtractCtx) -> Result<Page, String> {
         section_id,
         title,
         template,
+        path,
+        date,
+        draft,
+        weight,
+        summary,
+        tags,
+        categories,
+        params,
         layout,
         signals,
         bindings,
     })
+}
+
+fn string_attr(block: &BlockRef, key: &str) -> Option<String> {
+    block
+        .attributes
+        .get(key)
+        .and_then(|v| v.as_string())
+        .map(str::to_string)
+}
+
+fn string_list_attr(block: &BlockRef, key: &str) -> Vec<String> {
+    match block.attributes.get(key) {
+        Some(Value::List(items)) => items
+            .iter()
+            .filter_map(|value| value.as_string().map(str::to_string))
+            .collect(),
+        Some(Value::String(value)) => value
+            .split(',')
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn string_map_attr(block: &BlockRef, key: &str) -> IndexMap<String, String> {
+    match block.attributes.get(key) {
+        Some(Value::Map(map)) => map
+            .iter()
+            .filter_map(|(key, value)| value.as_string().map(|s| (key.clone(), s.to_string())))
+            .collect(),
+        _ => IndexMap::new(),
+    }
 }
 
 fn extract_template_attr(block: &BlockRef, label: &str) -> Result<Option<WdocTemplate>, String> {

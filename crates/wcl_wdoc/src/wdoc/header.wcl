@@ -34,6 +34,61 @@ namespace wdoc {
         section: string
         title: string
         template: string @optional
+        path: string @optional
+        date: string @optional
+        draft: bool @optional
+        weight: i64 @optional
+        summary: string @optional
+        tags: list(string) @optional
+        categories: list(string) @optional
+        params: map(string, string) @optional
+    }
+
+    @template("html", "wdoc::render_site_header")
+    @open
+    schema "site_header" {
+        title: string @optional
+        logo: string @optional
+    }
+
+    @template("html", "wdoc::render_site_nav")
+    @open
+    schema "site_nav" { }
+
+    @template("html", "wdoc::render_site_footer")
+    @open
+    schema "site_footer" {
+        text: string @optional
+    }
+
+    @template("html", "wdoc::render_site_main")
+    @open
+    schema "site_main" { }
+
+    @template("html", "wdoc::render_site_section")
+    @auto_id @open
+    schema "site_section" {
+        title: string @optional
+    }
+
+    @template("html", "wdoc::render_site_hero")
+    @auto_id @open
+    schema "site_hero" {
+        title: string
+        subtitle: string @optional
+        image: string @optional
+    }
+
+    @template("html", "wdoc::render_site_card_grid")
+    @auto_id @open
+    schema "site_card_grid" { }
+
+    @template("html", "wdoc::render_site_card")
+    @auto_id @open
+    schema "site_card" {
+        title: string
+        href: string @optional
+        summary: string @optional
     }
 
     @parent(["wdoc::page"]) @open
@@ -750,6 +805,66 @@ namespace wdoc {
         let icon_html = icon != "" ? wdoc::icon_styled(icon, "1em", color) + " " : ""
         let header_html = (header != "" || icon != "") ? "<div class=\"wdoc-callout-header\" style=\"color:" + color + ";\">" + icon_html + wdoc::render_markup(header) + "</div>" : ""
         "<div class=\"wdoc-callout\" style=\"border-left-color:" + color + ";\">" + header_html + "<div class=\"wdoc-callout-body\">" + wdoc::render_children(b) + "</div></div>"
+    }
+
+    export let render_site_header = (b) => {
+        let title = attr_or(b, "title", "")
+        let logo = attr_or(b, "logo", "")
+        let brand = logo != "" ? "<img class=\"wdoc-site-logo\" src=\"" + wdoc::html_escape(logo) + "\" alt=\"\">" : ""
+        let title_html = title != "" ? "<div class=\"wdoc-site-title\">" + wdoc::render_markup(title) + "</div>" : ""
+        let children_html = wdoc::render_children(b)
+        "<header class=\"wdoc-site-header\"><div class=\"wdoc-site-header-inner\">" + brand + title_html + children_html + "</div></header>"
+    }
+
+    export let render_site_nav = (b) => {
+        let children_html = wdoc::render_children(b)
+        "<nav class=\"wdoc-site-nav\">" + children_html + "</nav>"
+    }
+
+    export let render_site_footer = (b) => {
+        let text = attr_or(b, "text", "")
+        let text_html = text != "" ? "<p>" + wdoc::render_markup(text) + "</p>" : ""
+        let children_html = wdoc::render_children(b)
+        "<footer class=\"wdoc-site-footer\">" + text_html + children_html + "</footer>"
+    }
+
+    export let render_site_main = (b) => {
+        let children_html = wdoc::render_children(b)
+        "<main class=\"wdoc-site-main\">" + children_html + "</main>"
+    }
+
+    export let render_site_section = (b) => {
+        let title = attr_or(b, "title", "")
+        let id = attr_or(b, "id", "")
+        let id_attr = id != "" ? " id=\"" + wdoc::html_escape(id) + "\"" : ""
+        let title_html = title != "" ? "<h2 class=\"wdoc-site-section-title\">" + wdoc::render_markup(title) + "</h2>" : ""
+        let children_html = wdoc::render_children(b)
+        "<section class=\"wdoc-site-section\"" + id_attr + ">" + title_html + children_html + "</section>"
+    }
+
+    export let render_site_hero = (b) => {
+        let title = attr_or(b, "title", "")
+        let subtitle = attr_or(b, "subtitle", "")
+        let image = attr_or(b, "image", "")
+        let style = image != "" ? " style=\"background-image:linear-gradient(rgba(0,0,0,.40),rgba(0,0,0,.40)),url('" + wdoc::html_escape(image) + "')\"" : ""
+        let subtitle_html = subtitle != "" ? "<p>" + wdoc::render_markup(subtitle) + "</p>" : ""
+        let children_html = wdoc::render_children(b)
+        "<section class=\"wdoc-site-hero\"" + style + "><div class=\"wdoc-site-hero-inner\"><h1>" + wdoc::render_markup(title) + "</h1>" + subtitle_html + children_html + "</div></section>"
+    }
+
+    export let render_site_card_grid = (b) => {
+        let children_html = wdoc::render_children(b)
+        "<div class=\"wdoc-site-card-grid\">" + children_html + "</div>"
+    }
+
+    export let render_site_card = (b) => {
+        let title = attr_or(b, "title", "")
+        let href = attr_or(b, "href", "")
+        let summary = attr_or(b, "summary", "")
+        let summary_html = summary != "" ? "<p>" + wdoc::render_markup(summary) + "</p>" : ""
+        let children_html = wdoc::render_children(b)
+        let body = "<h3>" + wdoc::render_markup(title) + "</h3>" + summary_html + children_html
+        href != "" ? "<a class=\"wdoc-site-card\" href=\"" + wdoc::html_escape(href) + "\">" + body + "</a>" : "<div class=\"wdoc-site-card\">" + body + "</div>"
     }
 
     export let render_content_block = (b) => {
