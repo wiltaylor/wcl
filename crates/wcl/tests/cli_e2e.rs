@@ -1353,6 +1353,7 @@ transform json-to-css {
                 margin_block = "1rem"
                 _webkit_appearance = "none"
                 vars = map_set({}, "--card-accent", "#2563eb")
+                props = map_set({}, "transform", "translateX(1rem)")
             },
             {
                 kind = "media"
@@ -1382,6 +1383,9 @@ transform json-to-css {
     assert!(css.contains("  font-family: system-ui;"));
     assert!(css.contains("  margin-block: 1rem;"));
     assert!(css.contains("  -webkit-appearance: none;"));
+    assert!(css.contains("  transform: translateX(1rem);"));
+    assert!(!css.contains("  vars:"));
+    assert!(!css.contains("  props:"));
     assert!(css.contains("@media (min-width: 48rem) {"));
     assert!(css.contains("    display: grid;"));
     assert!(css.contains("@keyframes fade {"));

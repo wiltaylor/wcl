@@ -1,537 +1,38 @@
 use crate::markup;
 use crate::model::{StyleRule, WdocStyle};
 use indexmap::IndexMap;
+use std::sync::OnceLock;
 use wcl_lang::eval::value::Value;
 
-/// Base CSS for wdoc HTML output.
-pub const BASE_CSS: &str = r#"/* wdoc base styles */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+static WCL_BASE_STYLES_CACHE: OnceLock<Result<String, String>> = OnceLock::new();
 
-/* Light theme (default) */
-:root {
-    --nav-width: 260px;
-    --content-max-width: 960px;
-    --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    --font-heading: var(--font-body);
-    --font-terminal: "JetBrainsMono Nerd Font", "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", monospace;
-    --color-bg: #ffffff;
-    --color-text: #1a1a1a;
-    --color-nav-bg: #f5f5f5;
-    --color-nav-border: #e0e0e0;
-    --color-link: #0366d6;
-    --color-nav-hover: #e8e8e8;
-    --color-nav-active: #dbeafe;
-    --color-code-bg: #f6f8fa;
-    --color-code-border: #e1e4e8;
-    --color-toggle-bg: #e0e0e0;
-    --color-toggle-knob: #ffffff;
-    --color-table-border: #d0d7de;
-    --color-table-header-bg: #f0f3f6;
-    --color-table-stripe: #f6f8fa;
-}
-
-/* Dark theme */
-[data-theme="dark"] {
-    --color-bg: #0d1117;
-    --color-text: #e6edf3;
-    --color-nav-bg: #161b22;
-    --color-nav-border: #30363d;
-    --color-link: #58a6ff;
-    --color-nav-hover: #1f2937;
-    --color-nav-active: #1c3a5f;
-    --color-code-bg: #161b22;
-    --color-code-border: #30363d;
-    --color-toggle-bg: #30363d;
-    --color-toggle-knob: #e6edf3;
-    --color-table-border: #30363d;
-    --color-table-header-bg: #161b22;
-    --color-table-stripe: #0d1117;
-}
-
-html { font-size: 16px; }
-body {
-    font-family: var(--font-body);
-    color: var(--color-text);
-    background: var(--color-bg);
-    line-height: 1.6;
-    display: flex;
-    min-height: 100vh;
-}
-
-/* Navigation sidebar */
-.wdoc-nav {
-    width: var(--nav-width);
-    min-width: var(--nav-width);
-    background: var(--color-nav-bg);
-    border-right: 1px solid var(--color-nav-border);
-    padding: 1.5rem 0;
-    overflow-y: auto;
-    position: fixed;
-    top: 0;
-    left: 0;
-    bottom: 0;
-    display: flex;
-    flex-direction: column;
-}
-.wdoc-nav-title {
-    font-size: 1.1rem;
-    font-weight: 700;
-    padding: 0 1.25rem 1rem;
-    border-bottom: 1px solid var(--color-nav-border);
-    margin-bottom: 0.75rem;
-}
-.wdoc-nav ul { list-style: none; flex: 1; }
-.wdoc-nav li a {
-    display: block;
-    padding: 0.35rem 1.25rem;
-    color: var(--color-text);
-    text-decoration: none;
-    font-size: 0.9rem;
-}
-.wdoc-nav li a:hover { background: var(--color-nav-hover); }
-.wdoc-nav li a.active { background: var(--color-nav-active); font-weight: 600; }
-.wdoc-nav li ul { padding-left: 1rem; }
-
-/* Theme toggle */
-.wdoc-theme-toggle {
-    padding: 0.75rem 1.25rem;
-    border-top: 1px solid var(--color-nav-border);
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.8rem;
-    color: var(--color-text);
-    cursor: pointer;
-    user-select: none;
-}
-.wdoc-theme-toggle-track {
-    width: 36px;
-    height: 20px;
-    background: var(--color-toggle-bg);
-    border-radius: 10px;
-    position: relative;
-    transition: background 0.2s;
-}
-.wdoc-theme-toggle-knob {
-    width: 16px;
-    height: 16px;
-    background: var(--color-toggle-knob);
-    border-radius: 50%;
-    position: absolute;
-    top: 2px;
-    left: 2px;
-    transition: transform 0.2s;
-}
-[data-theme="dark"] .wdoc-theme-toggle-knob {
-    transform: translateX(16px);
-}
-.wdoc-theme-icon { font-size: 1rem; }
-
-/* Main content area — centered in the space right of the nav */
-.wdoc-content {
-    margin-left: var(--nav-width);
-    max-width: var(--content-max-width);
-    padding: 2rem 2.5rem;
-    /* Center horizontally in remaining viewport space */
-    margin-right: auto;
-    margin-left: calc(var(--nav-width) + max(0px, (100vw - var(--nav-width) - var(--content-max-width)) / 2));
-}
-
-/* Splits (flexbox layout) */
-.wdoc-vsplit { display: flex; flex-direction: row; gap: 1.5rem; width: 100%; }
-.wdoc-hsplit { display: flex; flex-direction: column; gap: 1.5rem; width: 100%; }
-.wdoc-split { min-width: 0; }
-
-/* Content blocks */
-.wdoc-heading { margin-top: 1.5rem; margin-bottom: 0.5rem; font-family: var(--font-heading); }
-h1.wdoc-heading { font-size: 2rem; margin-top: 0; }
-h2.wdoc-heading { font-size: 1.5rem; }
-h3.wdoc-heading { font-size: 1.25rem; }
-h4.wdoc-heading { font-size: 1.1rem; }
-h5.wdoc-heading { font-size: 1rem; }
-h6.wdoc-heading { font-size: 0.9rem; }
-
-.wdoc-paragraph { margin-bottom: 1rem; }
-.wdoc-paragraph ul, .wdoc-paragraph ol,
-.wdoc-callout-body ul, .wdoc-callout-body ol { padding-left: 0; margin-bottom: 0.5rem; list-style-position: inside; }
-.wdoc-paragraph li, .wdoc-callout-body li { margin-bottom: 0.25rem; }
-
-/* Code blocks */
-.wdoc-code {
-    background: var(--color-code-bg);
-    border: 1px solid var(--color-code-border);
-    border-radius: 6px;
-    padding: 1rem;
-    margin-bottom: 1rem;
-    overflow-x: auto;
-    font-size: 0.875rem;
-    line-height: 1.5;
-}
-.wdoc-code code {
-    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-    background: none;
-    padding: 0;
-}
-/* Override highlight.js background to match our code box */
-.wdoc-code .hljs { background: transparent; padding: 0; }
-
-/* Equations */
-.wdoc-equation {
-    margin: 1.25rem 0;
-    overflow-x: auto;
-    text-align: center;
-}
-.wdoc-equation-inline {
-    display: inline;
-    white-space: nowrap;
-}
-.wdoc-equation mjx-container {
-    min-width: 0;
-}
-
-/* Diagrams */
-.wdoc-diagram {
-    margin-bottom: 1rem;
-    text-align: center;
-}
-
-@font-face {
-    font-family: "JetBrainsMono Nerd Font";
-    src: url("fonts/JetBrainsMonoNerdFontMono-Regular.ttf") format("truetype");
-    font-weight: 400;
-    font-style: normal;
-    font-display: swap;
-}
-@font-face {
-    font-family: "JetBrainsMono Nerd Font";
-    src: url("fonts/JetBrainsMonoNerdFontMono-Bold.ttf") format("truetype");
-    font-weight: 700;
-    font-style: normal;
-    font-display: swap;
-}
-@font-face {
-    font-family: "JetBrainsMono Nerd Font";
-    src: url("fonts/JetBrainsMonoNerdFontMono-Italic.ttf") format("truetype");
-    font-weight: 400;
-    font-style: italic;
-    font-display: swap;
-}
-@font-face {
-    font-family: "JetBrainsMono Nerd Font";
-    src: url("fonts/JetBrainsMonoNerdFontMono-BoldItalic.ttf") format("truetype");
-    font-weight: 700;
-    font-style: italic;
-    font-display: swap;
-}
-@keyframes wdoc-terminal-blink {
-    0%, 49% { opacity: 1; }
-    50%, 100% { opacity: 0; }
-}
-.wdoc-terminal-blink {
-    animation: wdoc-terminal-blink 1s steps(1, end) infinite;
-}
-.wdoc-terminal-menu-item-bg,
-.wdoc-terminal-menu-item-label-hover {
-    opacity: 0;
-    transition: opacity 120ms ease;
-}
-.wdoc-terminal-menu-item.wdoc-state-hovered .wdoc-terminal-menu-item-bg,
-.wdoc-terminal-menu-item.wdoc-state-hovered .wdoc-terminal-menu-item-label-hover {
-    opacity: 1;
-}
-.wdoc-terminal-menu[visibility="hidden"]:not(.wdoc-state-shown) .wdoc-terminal-menu-item,
-.wdoc-terminal-menu[pointer-events="none"]:not(.wdoc-state-shown) .wdoc-terminal-menu-item,
-.wdoc-terminal-dropdown-menu:not(.wdoc-state-shown) .wdoc-terminal-menu-item {
-    pointer-events: none !important;
-    cursor: default !important;
-}
-.wdoc-terminal-menu-item-disabled {
-    opacity: .45;
-}
-.wdoc-terminal-menu-item-disabled .wdoc-terminal-menu-item-bg,
-.wdoc-terminal-menu-item-disabled .wdoc-terminal-menu-item-label-hover {
-    opacity: 0 !important;
-}
-.wdoc-terminal-control-hover {
-    opacity: 0;
-    transition: opacity 120ms ease;
-}
-.wdoc-terminal-control.wdoc-state-hovered .wdoc-terminal-control-hover {
-    opacity: 1;
-}
-.wdoc-terminal-control-disabled {
-    opacity: .45;
-}
-.wdoc-terminal-control-disabled .wdoc-terminal-control-hover {
-    opacity: 0 !important;
-}
-.wdoc-terminal-dropdown-menu {
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-    transition: opacity 120ms ease;
-}
-.wdoc-terminal-dropdown-menu.wdoc-state-shown {
-    opacity: 1;
-    visibility: visible;
-    pointer-events: all;
-}
-.wdoc-diagram svg {
-    max-width: 100%;
-    height: auto;
-}
-
-/* Callout blocks */
-.wdoc-callout {
-    border-left: 4px solid var(--color-nav-border);
-    border-radius: 6px;
-    padding: 1rem 1.25rem;
-    margin-bottom: 1rem;
-    background: var(--color-code-bg);
-}
-.wdoc-callout-header {
-    font-weight: 600;
-    margin-bottom: 0.5rem;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 1rem;
-}
-.wdoc-callout-body > *:last-child { margin-bottom: 0; }
-
-/* Clickable diagram shapes */
-.wdoc-diagram svg a { cursor: pointer; }
-.wdoc-diagram svg a:hover rect,
-.wdoc-diagram svg a:hover circle,
-.wdoc-diagram svg a:hover ellipse { opacity: 0.85; }
-
-/* Images */
-.wdoc-image {
-    max-width: 100%;
-    height: auto;
-    border-radius: 6px;
-    margin-bottom: 1rem;
-    display: block;
-}
-
-/* Tables */
-.wdoc-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-bottom: 1rem;
-    font-size: 0.9rem;
-}
-.wdoc-table caption {
-    caption-side: top;
-    text-align: left;
-    font-weight: 600;
-    padding-bottom: 0.5rem;
-    color: var(--color-text);
-}
-.wdoc-table th, .wdoc-table td {
-    border: 1px solid var(--color-table-border);
-    padding: 0.5rem 0.75rem;
-    text-align: left;
-}
-.wdoc-table th {
-    background: var(--color-table-header-bg);
-    font-weight: 600;
-}
-.wdoc-table tbody tr:nth-child(even) {
-    background: var(--color-table-stripe);
-}
-
-a { color: var(--color-link); text-decoration: none; }
-a:hover { text-decoration: underline; }
-
-/* Site template */
-body.wdoc-template-site {
-    display: block;
-    min-height: 100vh;
-}
-.wdoc-site-header {
-    border-bottom: 1px solid var(--color-nav-border);
-    background: var(--color-bg);
-}
-.wdoc-site-header-inner {
-    width: min(1120px, 100%);
-    margin: 0 auto;
-    padding: 1rem 1.5rem;
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-}
-.wdoc-site-logo {
-    width: 2.25rem;
-    height: 2.25rem;
-    object-fit: contain;
-}
-.wdoc-site-title {
-    font-weight: 700;
-    font-size: 1.05rem;
-}
-.wdoc-site-nav {
-    border-bottom: 1px solid var(--color-nav-border);
-    background: var(--color-nav-bg);
-}
-.wdoc-site-nav > * {
-    width: min(1120px, 100%);
-    margin: 0 auto;
-    padding: 0.75rem 1.5rem;
-}
-.wdoc-site-main {
-    width: min(1120px, 100%);
-    margin: 0 auto;
-    padding: 2rem 1.5rem 3rem;
-}
-.wdoc-site-footer {
-    width: min(1120px, 100%);
-    margin: 0 auto;
-    padding: 2rem 1.5rem;
-    border-top: 1px solid var(--color-nav-border);
-    color: var(--color-text);
-    opacity: 0.8;
-}
-.wdoc-site-hero {
-    min-height: 22rem;
-    margin: -2rem calc(50% - 50vw) 2rem;
-    padding: 4rem max(1.5rem, calc((100vw - 1120px) / 2));
-    background: var(--color-nav-bg);
-    background-size: cover;
-    background-position: center;
-    color: var(--color-text);
-    display: flex;
-    align-items: center;
-}
-.wdoc-site-hero[style*="background-image"] {
-    color: #fff;
-}
-.wdoc-site-hero-inner {
-    width: min(720px, 100%);
-}
-.wdoc-site-hero h1 {
-    font-size: 3rem;
-    line-height: 1.1;
-    margin-bottom: 1rem;
-}
-.wdoc-site-hero p {
-    font-size: 1.2rem;
-}
-.wdoc-site-section {
-    margin: 2.5rem 0;
-}
-.wdoc-site-section-title,
-.wdoc-site-list h1 {
-    font-size: 2rem;
-    margin-bottom: 1rem;
-}
-.wdoc-site-card-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
-    gap: 1rem;
-    margin: 1rem 0;
-}
-.wdoc-site-card,
-.wdoc-site-list-item {
-    display: block;
-    border: 1px solid var(--color-nav-border);
-    border-radius: 8px;
-    padding: 1rem;
-    background: var(--color-bg);
-    color: var(--color-text);
-}
-.wdoc-site-card:hover,
-.wdoc-site-list-item:hover {
-    border-color: var(--color-link);
-    text-decoration: none;
-}
-.wdoc-site-card h3,
-.wdoc-site-list-item h3 {
-    margin-bottom: 0.4rem;
-}
-.wdoc-site-card span {
-    display: block;
-    margin-top: 0.75rem;
-    font-size: 0.85rem;
-    opacity: 0.72;
-}
-
-/* Presentation template */
-body.wdoc-template-presentation {
-    display: block;
-    min-height: 100vh;
-    overflow: hidden;
-}
-.wdoc-presentation {
-    min-height: 100vh;
-    display: flex;
-    background: var(--color-bg);
-}
-.wdoc-presentation-nav {
-    display: none;
-}
-.wdoc-slide {
-    width: min(100vw, 1280px);
-    height: min(100vh, 720px);
-    margin: auto;
-    padding: clamp(1.5rem, 4vw, 4rem);
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    overflow: auto;
-}
-.wdoc-slide > *:last-child { margin-bottom: 0; }
-.wdoc-slide h1.wdoc-heading { font-size: 3.5rem; }
-.wdoc-slide h2.wdoc-heading { font-size: 2.35rem; }
-.wdoc-slide .wdoc-paragraph,
-.wdoc-slide .wdoc-callout,
-.wdoc-slide .wdoc-table {
-    font-size: 1.22rem;
-}
-.wdoc-slide .wdoc-code {
-    max-height: 46vh;
-}
-.wdoc-slide .wdoc-diagram svg {
-    max-height: 58vh;
-}
-
-/* Responsive */
-@media (max-width: 768px) {
-    .wdoc-nav { display: none; }
-    .wdoc-content { margin-left: 0; padding: 1rem; }
-    .wdoc-site-header-inner,
-    .wdoc-site-nav > *,
-    .wdoc-site-main,
-    .wdoc-site-footer {
-        padding-left: 1rem;
-        padding-right: 1rem;
-    }
-    .wdoc-site-hero {
-        min-height: 18rem;
-        padding: 2rem 1rem;
-    }
-    .wdoc-site-hero h1 { font-size: 2.25rem; }
-    .wdoc-vsplit { flex-direction: column; }
-    .wdoc-split { flex: 1 1 auto !important; }
-    body.wdoc-template-presentation { overflow: auto; }
-    .wdoc-slide {
-        width: 100%;
-        height: auto;
-        min-height: 100vh;
-        padding: 1rem;
-    }
-    .wdoc-slide h1.wdoc-heading { font-size: 2.25rem; }
-    .wdoc-slide h2.wdoc-heading { font-size: 1.65rem; }
-    .wdoc-slide .wdoc-paragraph,
-    .wdoc-slide .wdoc-callout,
-    .wdoc-slide .wdoc-table {
-        font-size: 1rem;
-    }
-}
-"#;
-
+/// Render the bundled WCL-authored base stylesheet.
 pub fn base_css() -> Result<String, String> {
-    markup::render_css(&markup::css_stylesheet(vec![markup::raw_css(BASE_CSS)]))
+    WCL_BASE_STYLES_CACHE
+        .get_or_init(render_base_css_from_wcl)
+        .clone()
+}
+
+fn render_base_css_from_wcl() -> Result<String, String> {
+    let doc = wcl_lang::parse(
+        crate::library::WDOC_LIBRARY_WCL,
+        wcl_lang::ParseOptions::default(),
+    );
+    if doc.has_errors() {
+        let errors = doc
+            .errors()
+            .into_iter()
+            .map(|diagnostic| diagnostic.message.clone())
+            .collect::<Vec<_>>()
+            .join("; ");
+        return Err(format!("failed to parse bundled wdoc stylesheet: {errors}"));
+    }
+
+    let stylesheet = doc
+        .values
+        .get("__wdoc_base_styles")
+        .ok_or_else(|| "bundled wdoc stylesheet '__wdoc_base_styles' was not found".to_string())?;
+    markup::render_css(stylesheet)
 }
 
 /// Generate CSS from wdoc-style definitions.
@@ -571,4 +72,20 @@ fn write_rule(css: &mut String, selector: &str, rule: &StyleRule) {
     let rendered =
         markup::render_css(&Value::Map(map)).expect("wdoc style rule should serialize as CSS");
     css.push_str(&rendered);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn base_css_renders_from_bundled_wcl_stylesheet() {
+        let css = base_css().expect("base css");
+
+        assert!(css.contains(":root"));
+        assert!(css.contains("@font-face {"));
+        assert!(css.contains("@keyframes wdoc-terminal-blink"));
+        assert!(css.contains("@media (max-width: 768px)"));
+        assert!(css.contains(".wdoc-content"));
+    }
 }

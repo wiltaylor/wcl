@@ -1464,7 +1464,7 @@ namespace css {
         starts_with(name, "--") ? name : replace(name, "_", "-")
 
     export let __structural = name =>
-        contains(["kind", "children", "selector", "query", "condition", "name", "id", "value", "content", "frames", "prelude"], name)
+        contains(["kind", "children", "selector", "query", "condition", "name", "id", "value", "content", "frames", "prelude", "vars", "props"], name)
 
     export let __declaration_value = value =>
         type_of(value) == "list" ? join(" ", map(value, item => to_string(item))) :
@@ -1478,10 +1478,15 @@ namespace css {
         type_of(vars) == "map" ? map(keys(vars), key => "  " + key + ": " + css::__declaration_value(vars[key]) + ";") :
         []
 
+    export let __prop_decls = props =>
+        type_of(props) == "map" ? map(keys(props), key => "  " + css::__property_name(key) + ": " + css::__declaration_value(props[key]) + ";") :
+        []
+
     export let __decls = attrs => {
         let regular = map(keys(attrs), key => css::__decl(key, attrs[key]))
         let vars = map_has(attrs, "vars") ? css::__var_decls(attrs.vars) : []
-        join("\n", filter(concat(regular, vars), line => line != ""))
+        let props = map_has(attrs, "props") ? css::__prop_decls(attrs.props) : []
+        join("\n", filter(concat(concat(regular, props), vars), line => line != ""))
     }
 
     export let __block_body = (attrs, children) => {
@@ -1515,6 +1520,7 @@ namespace css {
         kind == "supports" ? (map_has(attrs, "condition") ? to_string(attrs.condition) : "") :
         kind == "container" ? (map_has(attrs, "query") ? to_string(attrs.query) : "") :
         kind == "scope" ? (map_has(attrs, "prelude") ? to_string(attrs.prelude) : "") :
+        kind == "font_face" ? "" :
         map_has(attrs, "name") ? to_string(attrs.name) :
         map_has(attrs, "id") ? to_string(attrs.id) :
         ""

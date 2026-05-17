@@ -56,3 +56,4 @@ widgets/infra/database.wcl
 widgets/infra/cloud.wcl
 widgets/infra/user.wcl
 footer.wcl
+base_styles.wcl
