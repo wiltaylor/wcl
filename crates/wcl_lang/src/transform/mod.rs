@@ -8,7 +8,6 @@ pub mod accumulator;
 pub mod codec;
 pub mod error;
 pub mod event;
-pub mod layout;
 pub mod mapper;
 pub mod pipeline;
 pub mod state;

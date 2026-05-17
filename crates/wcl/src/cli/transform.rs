@@ -103,23 +103,11 @@ pub fn run(
     let mut output_options: indexmap::IndexMap<String, crate::eval::value::Value> =
         indexmap::IndexMap::new();
 
-    // Extract layout and text codec options from AST attributes
+    // Extract codec options from AST attributes.
     for item in &transform_block.body {
         if let crate::lang::ast::BodyItem::Attribute(attr) = item {
             let value_str = extract_string_value(&attr.value);
             match attr.name.name.as_str() {
-                "input_layout" => {
-                    return Err(
-                        "input_layout is no longer supported; use a codec decoder with streams"
-                            .to_string(),
-                    );
-                }
-                "output_layout" => {
-                    return Err(
-                        "output_layout is no longer supported; use a codec encoder with streams"
-                            .to_string(),
-                    );
-                }
                 "separator" => {
                     if let Some(s) = value_str {
                         input_options.insert(
@@ -370,8 +358,6 @@ fn build_map_config(block: &crate::lang::ast::Block) -> Result<MapConfig, String
                         | "output"
                         | "run"
                         | "auto_map"
-                        | "input_layout"
-                        | "output_layout"
                         | "separator"
                         | "has_header"
                         | "header"

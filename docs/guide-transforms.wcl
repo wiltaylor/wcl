@@ -198,7 +198,7 @@ page guide_transforms {
                         { codec_name = "hcl", description = "HCL (HashiCorp Configuration Language) — fully buffered" },
                         { codec_name = "xml", description = "XML — fully buffered, elements become fields" },
                         { codec_name = "msgpack", description = "MessagePack — binary format, arrays are multi-record" },
-                        { codec_name = "binary", description = "Custom binary formats — uses struct definitions + layout for parsing/writing" },
+                        { codec_name = "elf", description = "ELF metadata and sections — byte codec implemented in WCL" },
                         { codec_name = "text", description = "Line-oriented text — configurable separator, optional header row" }
                     ]
                 }
@@ -274,7 +274,7 @@ page guide_transforms {
                 }
 
                 paragraph p15 {
-                    content = "Structs can be used as field types in schemas and other structs, and will be used by the layout engine for binary format parsing."
+                    content = "Structs can be used as field types in schemas and other structs. Byte-oriented codecs can read them directly with <code>source.read_struct(...)</code>."
                 }
 
                 heading h2_stateful {
