@@ -1,13 +1,16 @@
-// Structured HTML and SVG codec examples.
+// Structured HTML, SVG, and CSS codec examples.
 // Run from a checkout with:
 //   wcl transform run json-to-html -f examples/transforms/markup_transforms.wcl --input examples/transforms/employees.json --lib-path crates/wcl_lang/src/std
 //   wcl transform run json-to-svg  -f examples/transforms/markup_transforms.wcl --input examples/transforms/employees.json --lib-path crates/wcl_lang/src/std
+//   wcl transform run json-to-css  -f examples/transforms/markup_transforms.wcl --input examples/transforms/employees.json --lib-path crates/wcl_lang/src/std
 
 import <html.wcl>
 import <svg.wcl>
+import <css.wcl>
 
 use html::{document, html, head, title, body, main, h1, p, input}
 use svg::{svg, rect, text}
+use css::{stylesheet, rule, media}
 
 document example_page {
     html {
@@ -53,6 +56,23 @@ svg example_badge {
     }
 }
 
+stylesheet example_styles {
+    rule {
+        selector = ".page"
+        font_family = "system-ui"
+        margin_block = "1rem"
+    }
+
+    media {
+        query = "(min-width: 48rem)"
+
+        rule {
+            selector = ".page"
+            display = "grid"
+        }
+    }
+}
+
 transform json-to-html {
     input = "codec::json"
     output = "codec::html"
@@ -80,6 +100,20 @@ transform json-to-svg {
         children = [
             { tag = "rect", x = 1, y = 1, width = 238, height = 70, rx = 8, fill = "#f8fafc", stroke = "#2563eb" },
             { tag = "text", x = 18, y = 43, fill = "#0f172a", content = "Structured SVG" }
+        ]
+    }
+}
+
+transform json-to-css {
+    input = "codec::json"
+    output = "codec::css"
+    run = rows => {
+        kind = "stylesheet"
+        children = [
+            { kind = "rule", selector = ".page", font_family = "system-ui", margin_block = "1rem" },
+            { kind = "media", query = "(min-width: 48rem)", children = [
+                { kind = "rule", selector = ".page", display = "grid" }
+            ] }
         ]
     }
 }

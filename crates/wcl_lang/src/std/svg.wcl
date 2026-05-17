@@ -1,4 +1,4 @@
-// Standard SVG element schemas for structured native svg codec output.
+// Standard SVG element schemas and WCL-authored svg codec output.
 
 namespace svg {
     @open schema "svg" { }
@@ -75,4 +75,86 @@ namespace svg {
     @open schema "raw" {
         content: string @text
     }
+
+    export let __escape_text = value => {
+        let text = to_string(value)
+        replace(replace(replace(text, "&", "&amp;"), "<", "&lt;"), ">", "&gt;")
+    }
+
+    export let __escape_attr = value => {
+        let text = to_string(value)
+        let escaped = svg::__escape_text(text)
+        let quoted = replace(escaped, "\"", "&quot;")
+        let apos = replace(quoted, "'", "&apos;")
+        replace(apos, "\n", "&#10;")
+    }
+
+    export let __plain_kind = kind =>
+        starts_with(kind, "svg::") ? substr(kind, 5) :
+        starts_with(kind, "wdoc::svg::") ? substr(kind, 11) :
+        kind
+
+    export let __kind = value =>
+        type_of(value) == "block_ref" ? svg::__plain_kind(block_kind(value)) :
+        type_of(value) == "map" ? (map_has(value, "tag") ? to_string(value.tag) : (map_has(value, "kind") ? svg::__plain_kind(to_string(value.kind)) : (map_has(value, "element") ? to_string(value.element) : ""))) :
+        ""
+
+    export let __attrs = value =>
+        type_of(value) == "block_ref" ? block_attrs(value) :
+        type_of(value) == "map" ? value :
+        {}
+
+    export let __children = value => {
+        let attrs = svg::__attrs(value)
+        let direct = type_of(value) == "block_ref" ? block_children(value) : []
+        let mapped = map_has(attrs, "children") && type_of(attrs.children) == "list" ? attrs.children : []
+        concat(direct, mapped)
+    }
+
+    export let __attr_name = name =>
+        name == "class_name" ? "class" :
+        replace(name, "_", "-")
+
+    export let __style_value = value =>
+        type_of(value) == "map" ? join("; ", map(keys(value), key => replace(key, "_", "-") + ": " + to_string(value[key]))) :
+        to_string(value)
+
+    export let __skip_attr = name =>
+        contains(["tag", "kind", "element", "children", "content", "text", "raw"], name)
+
+    export let __render_attr = (name, value) =>
+        svg::__skip_attr(name) || type_of(value) == "null" || value == false ? "" : {
+            let attr = svg::__attr_name(name)
+            let rendered = attr == "style" ? svg::__style_value(value) : to_string(value)
+            " " + attr + "=\"" + svg::__escape_attr(rendered) + "\""
+        }
+
+    export let __render_attrs = (tag, attrs) =>
+        tag == "svg" && !map_has(attrs, "xmlns") ?
+            " xmlns=\"http://www.w3.org/2000/svg\"" + join("", map(keys(attrs), key => svg::__render_attr(key, attrs[key]))) :
+            join("", map(keys(attrs), key => svg::__render_attr(key, attrs[key])))
+
+    export let __content = attrs =>
+        map_has(attrs, "raw") ? to_string(attrs.raw) :
+        map_has(attrs, "text") ? svg::__escape_text(attrs.text) :
+        map_has(attrs, "content") ? svg::__escape_text(attrs.content) :
+        ""
+
+    export let render = value =>
+        type_of(value) == "null" ? "" :
+        type_of(value) == "string" ? value :
+        type_of(value) == "list" ? join("", map(value, item => svg::render(item))) : {
+            let tag = svg::__kind(value)
+            let attrs = svg::__attrs(value)
+            let children = svg::__children(value)
+            tag == "raw" ? (map_has(attrs, "raw") ? to_string(attrs.raw) : (map_has(attrs, "content") ? to_string(attrs.content) : "")) :
+            tag == "" ? "" :
+            "<" + tag + svg::__render_attrs(tag, attrs) + ">" + svg::__content(attrs) + join("", map(children, item => svg::render(item))) + "</" + tag + ">"
+        }
+}
+
+codec svg {
+    mode = :text
+    encoder = value => svg::render(value)
+    encoder_all = values => join("", map(values, value => svg::render(value)))
 }

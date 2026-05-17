@@ -112,7 +112,14 @@ impl CustomCodecRegistry {
 }
 
 pub fn standard_registry() -> Result<CustomCodecRegistry, TransformError> {
-    registry_from_source(crate::standard_lib::CODECS_LIBRARY_WCL, true)
+    let source = [
+        crate::standard_lib::CODECS_LIBRARY_WCL,
+        crate::standard_lib::HTML_LIBRARY_WCL,
+        crate::standard_lib::SVG_LIBRARY_WCL,
+        crate::standard_lib::CSS_LIBRARY_WCL,
+    ]
+    .join("\n\n");
+    registry_from_source(&source, true)
 }
 
 pub fn registry_from_source(

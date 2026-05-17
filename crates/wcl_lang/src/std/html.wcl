@@ -1,4 +1,4 @@
-// Standard HTML element schemas for structured native html codec output.
+// Standard HTML element schemas and WCL-authored html codec output.
 
 namespace html {
     @open schema "document" { }
@@ -159,4 +159,97 @@ namespace html {
     @open schema "video" { }
     @open schema "wbr" { }
     @open schema "xmp" { content: string @optional }
+
+    export let __escape_text = value => {
+        let text = to_string(value)
+        replace(replace(replace(text, "&", "&amp;"), "<", "&lt;"), ">", "&gt;")
+    }
+
+    export let __escape_attr = value => {
+        let text = to_string(value)
+        let escaped = html::__escape_text(text)
+        let quoted = replace(escaped, "\"", "&quot;")
+        let apos = replace(quoted, "'", "&#39;")
+        replace(apos, "\n", "&#10;")
+    }
+
+    export let __plain_kind = kind =>
+        starts_with(kind, "html::") ? substr(kind, 6) :
+        starts_with(kind, "wdoc::html::") ? substr(kind, 12) :
+        kind
+
+    export let __kind = value =>
+        type_of(value) == "block_ref" ? html::__plain_kind(block_kind(value)) :
+        type_of(value) == "map" ? (map_has(value, "tag") ? to_string(value.tag) : (map_has(value, "kind") ? html::__plain_kind(to_string(value.kind)) : (map_has(value, "element") ? to_string(value.element) : ""))) :
+        ""
+
+    export let __attrs = value =>
+        type_of(value) == "block_ref" ? block_attrs(value) :
+        type_of(value) == "map" ? value :
+        {}
+
+    export let __children = value => {
+        let attrs = html::__attrs(value)
+        let direct = type_of(value) == "block_ref" ? block_children(value) : []
+        let mapped = map_has(attrs, "children") && type_of(attrs.children) == "list" ? attrs.children : []
+        concat(direct, mapped)
+    }
+
+    export let __attr_name = name =>
+        name == "class_name" ? "class" :
+        name == "for_" ? "for" :
+        name == "type_" ? "type" :
+        replace(name, "_", "-")
+
+    export let __style_value = value =>
+        type_of(value) == "map" ? join("; ", map(keys(value), key => replace(key, "_", "-") + ": " + to_string(value[key]))) :
+        to_string(value)
+
+    export let __skip_attr = name =>
+        contains(["tag", "kind", "element", "children", "content", "text", "html", "raw"], name)
+
+    export let __boolean_attr = name =>
+        contains(["allowfullscreen", "async", "autofocus", "autoplay", "checked", "controls", "default", "defer", "disabled", "formnovalidate", "hidden", "inert", "ismap", "itemscope", "loop", "multiple", "muted", "nomodule", "novalidate", "open", "playsinline", "readonly", "required", "reversed", "selected"], name)
+
+    export let __render_attr = (name, value) =>
+        html::__skip_attr(name) || type_of(value) == "null" || value == false ? "" : {
+            let attr = html::__attr_name(name)
+            let rendered = attr == "style" ? html::__style_value(value) : to_string(value)
+            type_of(value) == "bool" && value == true && html::__boolean_attr(attr) ? " " + attr :
+            " " + attr + "=\"" + html::__escape_attr(rendered) + "\""
+        }
+
+    export let __render_attrs = attrs =>
+        join("", map(keys(attrs), key => html::__render_attr(key, attrs[key])))
+
+    export let __void = tag =>
+        contains(["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"], tag)
+
+    export let __content = attrs =>
+        map_has(attrs, "html") ? to_string(attrs.html) :
+        map_has(attrs, "raw") ? to_string(attrs.raw) :
+        map_has(attrs, "text") ? html::__escape_text(attrs.text) :
+        map_has(attrs, "content") ? html::__escape_text(attrs.content) :
+        ""
+
+    export let render = value =>
+        type_of(value) == "null" ? "" :
+        type_of(value) == "string" ? value :
+        type_of(value) == "list" ? join("", map(value, item => html::render(item))) : {
+            let tag = html::__kind(value)
+            let attrs = html::__attrs(value)
+            let children = html::__children(value)
+            tag == "document" ? join("", map(children, item => html::render(item))) :
+            tag == "raw" ? (map_has(attrs, "html") ? to_string(attrs.html) : (map_has(attrs, "raw") ? to_string(attrs.raw) : (map_has(attrs, "content") ? to_string(attrs.content) : ""))) :
+            tag == "text" ? (map_has(attrs, "content") ? html::__escape_text(attrs.content) : "") :
+            tag == "" ? (map_has(attrs, "html") ? to_string(attrs.html) : (map_has(attrs, "body") ? to_string(attrs.body) : "")) :
+            html::__void(tag) ? "<" + tag + html::__render_attrs(attrs) + ">" :
+            "<" + tag + html::__render_attrs(attrs) + ">" + html::__content(attrs) + join("", map(children, item => html::render(item))) + "</" + tag + ">"
+        }
+}
+
+codec html {
+    mode = :text
+    encoder = value => html::render(value)
+    encoder_all = values => join("", map(values, value => html::render(value)))
 }

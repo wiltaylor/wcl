@@ -730,8 +730,6 @@ namespace wdoc {
     declare measure_text(text: any) -> map(string, any)
     declare render_markup(text: string) -> string
     declare render_children(block: any) -> string
-    declare render_html_node(node: any) -> string
-    declare render_svg_node(node: any) -> string
     declare block_children(block: any) -> list(any)
     declare table_rows(block: any) -> map(string, any)
 
@@ -742,7 +740,7 @@ namespace wdoc {
     export let render_heading_at = (b, level) => {
         let content = attr_or(b, "content", "")
         let id = wdoc::slugify(content)
-        wdoc::render_html_node({ tag = "h" + to_string(level), id = id, class_name = "wdoc-heading", html = wdoc::render_markup(content) })
+        html::render({ tag = "h" + to_string(level), id = id, class_name = "wdoc-heading", html = wdoc::render_markup(content) })
     }
 
     export let render_heading = (b) => {
@@ -762,7 +760,7 @@ namespace wdoc {
         let content = attr_or(b, "content", "")
         let rendered = wdoc::render_markup(content)
         let has_block = contains(rendered, "<ul") || contains(rendered, "<ol") || contains(rendered, "<table") || contains(rendered, "<div")
-        wdoc::render_html_node({ tag = has_block ? "div" : "p", class_name = "wdoc-paragraph", html = rendered })
+        html::render({ tag = has_block ? "div" : "p", class_name = "wdoc-paragraph", html = rendered })
     }
 
     export let render_image = (b) => {
@@ -770,14 +768,14 @@ namespace wdoc {
         let alt = attr_or(b, "alt", "")
         let width = attr_or(b, "width", "")
         let height = attr_or(b, "height", "")
-        wdoc::render_html_node({ tag = "img", src = src, alt = alt != "" ? alt : null, width = width != "" ? width : null, height = height != "" ? height : null, class_name = "wdoc-image" })
+        html::render({ tag = "img", src = src, alt = alt != "" ? alt : null, width = width != "" ? width : null, height = height != "" ? height : null, class_name = "wdoc-image" })
     }
 
     export let render_code = (b) => {
         let content = attr_or(b, "content", "")
         let language = attr_or(b, "language", "")
         let code_class = language != "" ? "language-" + language : null
-        wdoc::render_html_node({ tag = "pre", class_name = "wdoc-code", children = [{ tag = "code", class_name = code_class, content = content }] })
+        html::render({ tag = "pre", class_name = "wdoc-code", children = [{ tag = "code", class_name = code_class, content = content }] })
     }
 
     export let render_equation = (b) => {
@@ -803,7 +801,7 @@ namespace wdoc {
         let icon = attr_or(b, "icon", "")
         let icon_html = icon != "" ? wdoc::icon_styled(icon, "1em", color) + " " : ""
         let header_html = (header != "" || icon != "") ? "<div class=\"wdoc-callout-header\" style=\"color:" + color + ";\">" + icon_html + wdoc::render_markup(header) + "</div>" : ""
-        wdoc::render_html_node({
+        html::render({
             tag = "div",
             class_name = "wdoc-callout",
             style = { border_left_color = color },

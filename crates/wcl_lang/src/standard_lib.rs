@@ -3,6 +3,7 @@ use std::path::PathBuf;
 pub const CODECS_LIBRARY_WCL: &str = include_str!("std/codecs.wcl");
 pub const HTML_LIBRARY_WCL: &str = include_str!("std/html.wcl");
 pub const SVG_LIBRARY_WCL: &str = include_str!("std/svg.wcl");
+pub const CSS_LIBRARY_WCL: &str = include_str!("std/css.wcl");
 
 pub fn install_codecs_library(force: bool) -> Result<Vec<PathBuf>, String> {
     let lib_dir = crate::library::user_library_dir();
@@ -12,6 +13,7 @@ pub fn install_codecs_library(force: bool) -> Result<Vec<PathBuf>, String> {
         ("codecs.wcl", CODECS_LIBRARY_WCL),
         ("html.wcl", HTML_LIBRARY_WCL),
         ("svg.wcl", SVG_LIBRARY_WCL),
+        ("css.wcl", CSS_LIBRARY_WCL),
     ];
     for (name, _) in libraries {
         let target = lib_dir.join(name);
@@ -248,6 +250,7 @@ mod tests {
             ("codecs.wcl", super::CODECS_LIBRARY_WCL),
             ("html.wcl", super::HTML_LIBRARY_WCL),
             ("svg.wcl", super::SVG_LIBRARY_WCL),
+            ("css.wcl", super::CSS_LIBRARY_WCL),
         ] {
             let doc = parse(source, ParseOptions::default());
             assert!(
@@ -264,6 +267,35 @@ mod tests {
         assert_schema_source_covers("svg.wcl", super::SVG_LIBRARY_WCL, MDN_SVG_ELEMENTS);
     }
 
+    #[test]
+    fn css_library_covers_mdn_reference_data() {
+        assert_wcl_list_count("mdn_properties", 663);
+        assert_wcl_list_count("mdn_at_rules", 19);
+        assert_wcl_list_count("mdn_selectors", 144);
+        assert_wcl_list_count("mdn_functions", 105);
+        assert_wcl_list_count("mdn_syntaxes", 378);
+        assert_wcl_list_count("mdn_types", 39);
+        assert_wcl_list_count("mdn_units", 30);
+
+        for expected in [
+            "\"anchor-name\"",
+            "\"font-family\"",
+            "\"view-transition-name\"",
+            "\"@media\"",
+            "\"@keyframes\"",
+            "\"::backdrop\"",
+            "\":has()\"",
+            "\"color-mix()\"",
+            "\"length-percentage\"",
+            "\"dppx\"",
+        ] {
+            assert!(
+                super::CSS_LIBRARY_WCL.contains(expected),
+                "css.wcl should include MDN CSS reference item {expected}"
+            );
+        }
+    }
+
     fn assert_schema_source_covers(name: &str, source: &str, elements: &[&str]) {
         let missing = elements
             .iter()
@@ -274,5 +306,21 @@ mod tests {
             missing.is_empty(),
             "{name} is missing element schemas from MDN browser-compat-data: {missing:?}"
         );
+    }
+
+    fn assert_wcl_list_count(name: &str, expected: usize) {
+        let needle = format!("export let {name} = [");
+        let start = super::CSS_LIBRARY_WCL
+            .find(&needle)
+            .unwrap_or_else(|| panic!("missing {name} list"));
+        let list = &super::CSS_LIBRARY_WCL[start + needle.len()..];
+        let end = list
+            .find("\n    ]")
+            .unwrap_or_else(|| panic!("unterminated {name} list"));
+        let count = list[..end]
+            .lines()
+            .filter(|line| line.trim_start().starts_with('"'))
+            .count();
+        assert_eq!(count, expected, "{name} should match MDN data count");
     }
 }

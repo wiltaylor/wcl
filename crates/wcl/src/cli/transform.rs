@@ -284,7 +284,11 @@ fn build_custom_codec_registry(
 }
 
 fn is_standard_codecs_source(doc: &crate::Document, file: crate::lang::FileId) -> bool {
-    doc.source_map.get_file(file).path.ends_with("codecs.wcl")
+    let path = &doc.source_map.get_file(file).path;
+    path.ends_with("codecs.wcl")
+        || path.ends_with("html.wcl")
+        || path.ends_with("svg.wcl")
+        || path.ends_with("css.wcl")
 }
 
 /// Extract input/output codec names from the transform block's AST.

@@ -1331,6 +1331,64 @@ transform json-to-svg {
 }
 
 #[test]
+fn transform_css_codec_encodes_structured_stylesheet() {
+    let dir = tempdir().expect("tempdir");
+    let input = dir.path().join("input.json");
+    std::fs::write(&input, r#"[{"title":"Structured output"}]"#).expect("write input");
+
+    let transform = dir.path().join("styles.wcl");
+    std::fs::write(
+        &transform,
+        r##"
+transform json-to-css {
+    input = "codec::json"
+    output = "codec::css"
+    run = rows => {
+        kind = "stylesheet"
+        children = [
+            {
+                kind = "rule"
+                selector = ".card"
+                font_family = "system-ui"
+                margin_block = "1rem"
+                _webkit_appearance = "none"
+                vars = map_set({}, "--card-accent", "#2563eb")
+            },
+            {
+                kind = "media"
+                query = "(min-width: 48rem)"
+                children = [
+                    { kind = "rule", selector = ".card", display = "grid" }
+                ]
+            },
+            {
+                kind = "keyframes"
+                name = "fade"
+                frames = [
+                    { selector = "from", opacity = 0 },
+                    { selector = "to", opacity = 1 }
+                ]
+            }
+        ]
+    }
+}
+"##,
+    )
+    .expect("write transform");
+
+    let css = run_transform_stdout(&transform, "json-to-css", &input);
+    assert!(css.contains(".card {\n"));
+    assert!(css.contains("  --card-accent: #2563eb;"));
+    assert!(css.contains("  font-family: system-ui;"));
+    assert!(css.contains("  margin-block: 1rem;"));
+    assert!(css.contains("  -webkit-appearance: none;"));
+    assert!(css.contains("@media (min-width: 48rem) {"));
+    assert!(css.contains("    display: grid;"));
+    assert!(css.contains("@keyframes fade {"));
+    assert!(css.contains("    opacity: 1;"));
+}
+
+#[test]
 fn transform_decode_only_custom_codec_decodes_records() {
     let dir = tempdir().expect("tempdir");
     let transform = dir.path().join("decode_only.wcl");
@@ -2056,6 +2114,7 @@ fn install_library_writes_codecs_file() {
     assert!(source.contains("codec json"));
     assert!(data_home.join("wcl/lib/html.wcl").exists());
     assert!(data_home.join("wcl/lib/svg.wcl").exists());
+    assert!(data_home.join("wcl/lib/css.wcl").exists());
 }
 
 // ===========================================================================

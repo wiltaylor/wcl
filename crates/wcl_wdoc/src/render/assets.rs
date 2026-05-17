@@ -1,6 +1,6 @@
-use std::fmt::Write;
-
 use crate::model::{StyleRule, WdocStyle};
+use indexmap::IndexMap;
+use wcl_lang::eval::value::Value;
 
 /// Base CSS for wdoc HTML output.
 pub const BASE_CSS: &str = r#"/* wdoc base styles */
@@ -557,11 +557,30 @@ fn write_rule(css: &mut String, selector: &str, rule: &StyleRule) {
     if rule.properties.is_empty() {
         return;
     }
-    writeln!(css, "{selector} {{").unwrap();
+    let mut map = IndexMap::new();
+    map.insert("kind".to_string(), Value::String("rule".to_string()));
+    map.insert("selector".to_string(), Value::String(selector.to_string()));
     for (prop, val) in &rule.properties {
-        // Convert WCL underscores to CSS hyphens (font_family → font-family)
-        let css_prop = prop.replace('_', "-");
-        writeln!(css, "    {css_prop}: {val};").unwrap();
+        map.insert(prop.clone(), Value::String(val.clone()));
     }
-    css.push_str("}\n");
+    let rendered =
+        render_css_value(&Value::Map(map)).expect("wdoc style rule should serialize as CSS");
+    css.push_str(&rendered);
+}
+
+fn render_css_value(value: &Value) -> Result<String, String> {
+    let registry =
+        wcl_lang::transform::codec::custom::standard_registry().map_err(|err| err.to_string())?;
+    let codec = registry
+        .get("css")
+        .ok_or_else(|| "standard css codec is not registered".to_string())?;
+    let mut out = Vec::new();
+    wcl_lang::transform::codec::custom::encode_custom_value(
+        value,
+        codec,
+        &IndexMap::new(),
+        &mut out,
+    )
+    .map_err(|err| err.to_string())?;
+    String::from_utf8(out).map_err(|err| err.to_string())
 }

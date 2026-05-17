@@ -469,6 +469,30 @@ pub fn builtin_signatures() -> Vec<FunctionSignature> {
             doc: "Check map key existence".into(),
         },
         FunctionSignature {
+            name: "block_kind".into(),
+            params: vec!["block: block_ref".into()],
+            return_type: "string".into(),
+            doc: "Return a block reference kind name".into(),
+        },
+        FunctionSignature {
+            name: "block_id".into(),
+            params: vec!["block: block_ref".into()],
+            return_type: "string|null".into(),
+            doc: "Return a block reference id, or null if it has none".into(),
+        },
+        FunctionSignature {
+            name: "block_attrs".into(),
+            params: vec!["block: block_ref".into()],
+            return_type: "map".into(),
+            doc: "Return a block reference attribute map".into(),
+        },
+        FunctionSignature {
+            name: "block_children".into(),
+            params: vec!["block: block_ref".into()],
+            return_type: "list".into(),
+            doc: "Return a block reference child block list".into(),
+        },
+        FunctionSignature {
             name: "map_set".into(),
             params: vec!["map: map".into(), "key: string".into(), "value".into()],
             return_type: "map".into(),
@@ -812,6 +836,10 @@ pub fn builtin_registry() -> HashMap<String, BuiltinFn> {
     m.insert("range".into(), wrap_builtin(range));
     m.insert("zip".into(), wrap_builtin(zip));
     m.insert("map_has".into(), wrap_builtin(map_has));
+    m.insert("block_kind".into(), wrap_builtin(block_kind));
+    m.insert("block_id".into(), wrap_builtin(block_id));
+    m.insert("block_attrs".into(), wrap_builtin(block_attrs));
+    m.insert("block_children".into(), wrap_builtin(block_children));
     m.insert("map_set".into(), wrap_builtin(map_set));
     m.insert("object".into(), wrap_builtin(object));
 
@@ -2022,6 +2050,69 @@ fn map_has(args: &[Value]) -> Result<Value, String> {
     };
     let key = get_string(&args[1], 2, "map_has")?;
     Ok(Value::Bool(map.contains_key(key)))
+}
+
+fn block_kind(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 1, "block_kind")?;
+    match &args[0] {
+        Value::BlockRef(block) => Ok(Value::String(block.kind.clone())),
+        other => Err(format!(
+            "block_kind: argument 1 must be block_ref, got {}",
+            other.type_name()
+        )),
+    }
+}
+
+fn block_id(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 1, "block_id")?;
+    match &args[0] {
+        Value::BlockRef(block) => Ok(block
+            .id
+            .as_ref()
+            .map(|id| Value::String(id.clone()))
+            .unwrap_or(Value::Null)),
+        other => Err(format!(
+            "block_id: argument 1 must be block_ref, got {}",
+            other.type_name()
+        )),
+    }
+}
+
+fn block_attrs(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 1, "block_attrs")?;
+    match &args[0] {
+        Value::BlockRef(block) => {
+            let mut attrs = block.attributes.clone();
+            if let Some(id) = &block.id {
+                attrs
+                    .entry("id".to_string())
+                    .or_insert_with(|| Value::String(id.clone()));
+            }
+            Ok(Value::Map(attrs))
+        }
+        other => Err(format!(
+            "block_attrs: argument 1 must be block_ref, got {}",
+            other.type_name()
+        )),
+    }
+}
+
+fn block_children(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 1, "block_children")?;
+    match &args[0] {
+        Value::BlockRef(block) => Ok(Value::List(
+            block
+                .children
+                .iter()
+                .cloned()
+                .map(Value::BlockRef)
+                .collect(),
+        )),
+        other => Err(format!(
+            "block_children: argument 1 must be block_ref, got {}",
+            other.type_name()
+        )),
+    }
 }
 
 fn map_set(args: &[Value]) -> Result<Value, String> {
@@ -3560,6 +3651,31 @@ mod tests {
                 .collect(),
             other => panic!("expected list, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn test_block_introspection_functions() {
+        let child = block_ref("item", Some("first"), vec![]);
+        let mut block = block_ref("html::section", Some("intro"), vec![child.clone()]);
+        block.attributes.insert("class".to_string(), s("hero"));
+        let value = Value::BlockRef(block);
+
+        assert_eq!(block_kind(&[value.clone()]).unwrap(), s("html::section"));
+        assert_eq!(block_id(&[value.clone()]).unwrap(), s("intro"));
+        let children = block_children(&[value.clone()]).unwrap();
+        let Value::List(children) = children else {
+            panic!("expected child list");
+        };
+        assert_eq!(children.len(), 1);
+        assert!(
+            matches!(&children[0], Value::BlockRef(block) if block.kind == child.kind && block.id == child.id)
+        );
+        let attrs = block_attrs(&[value]).unwrap();
+        let Value::Map(attrs) = attrs else {
+            panic!("expected attrs map");
+        };
+        assert_eq!(attrs.get("class"), Some(&s("hero")));
+        assert_eq!(attrs.get("id"), Some(&s("intro")));
     }
 
     #[test]

@@ -361,19 +361,14 @@ fn html_escape(value: &str) -> String {
 }
 
 fn write_html_with_codec(output: &Path, filename: &str, html: &str) -> Result<(), String> {
-    let registry = codec::native::NativeCodecRegistry::standard();
-    let html_codec = registry
-        .get("html")
-        .ok_or_else(|| "native html codec is not registered".to_string())?;
     let mut options = codec::CodecOptions::new();
     options.insert("filename".to_string(), Value::String(filename.to_string()));
-    codec::native::encode_native_value(
-        &Value::String(html.to_string()),
-        html_codec,
-        &options,
+    let resolved = codec::native::output_filename(&options, filename);
+    codec::native::write_text_output(
+        &resolved,
+        html,
         codec::native::OutputTarget::Directory(output),
     )
-    .map(|_| ())
     .map_err(|e| format!("failed to write {filename}: {e}"))
 }
 

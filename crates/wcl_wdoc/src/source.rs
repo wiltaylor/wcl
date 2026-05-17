@@ -477,42 +477,6 @@ fn register_renderer_helpers(reg: &mut FunctionRegistry) {
         },
     );
 
-    reg.register(
-        "wdoc::render_html_node",
-        std::sync::Arc::new(|args: &[Value]| {
-            if args.len() != 1 {
-                return Err("wdoc::render_html_node() expects 1 argument".into());
-            }
-            wcl_lang::transform::codec::native::encode_html_value_to_string(&args[0])
-                .map_err(|err| err.to_string())
-                .map(Value::String)
-        }) as BuiltinFn,
-        FunctionSignature {
-            name: "wdoc::render_html_node".into(),
-            params: vec!["node: any".into()],
-            return_type: "string".into(),
-            doc: "Serialize a structured HTML element tree".into(),
-        },
-    );
-
-    reg.register(
-        "wdoc::render_svg_node",
-        std::sync::Arc::new(|args: &[Value]| {
-            if args.len() != 1 {
-                return Err("wdoc::render_svg_node() expects 1 argument".into());
-            }
-            wcl_lang::transform::codec::native::encode_svg_value_to_string(&args[0])
-                .map_err(|err| err.to_string())
-                .map(Value::String)
-        }) as BuiltinFn,
-        FunctionSignature {
-            name: "wdoc::render_svg_node".into(),
-            params: vec!["node: any".into()],
-            return_type: "string".into(),
-            doc: "Serialize a structured SVG element tree".into(),
-        },
-    );
-
     register_icon_helper(
         reg,
         "wdoc::icon",
@@ -8053,6 +8017,21 @@ fn setup_lib_dir() -> Result<PathBuf, String> {
     std::fs::create_dir_all(&lib_dir).map_err(|e| format!("failed to create wdoc lib dir: {e}"))?;
     std::fs::write(lib_dir.join("wdoc.wcl"), crate::library::WDOC_LIBRARY_WCL)
         .map_err(|e| format!("failed to write wdoc.wcl: {e}"))?;
+    std::fs::write(
+        lib_dir.join("html.wcl"),
+        wcl_lang::standard_lib::HTML_LIBRARY_WCL,
+    )
+    .map_err(|e| format!("failed to write html.wcl: {e}"))?;
+    std::fs::write(
+        lib_dir.join("svg.wcl"),
+        wcl_lang::standard_lib::SVG_LIBRARY_WCL,
+    )
+    .map_err(|e| format!("failed to write svg.wcl: {e}"))?;
+    std::fs::write(
+        lib_dir.join("css.wcl"),
+        wcl_lang::standard_lib::CSS_LIBRARY_WCL,
+    )
+    .map_err(|e| format!("failed to write css.wcl: {e}"))?;
     Ok(lib_dir)
 }
 
@@ -8213,6 +8192,17 @@ pub fn install_library(force: bool) -> Result<PathBuf, String> {
     }
     std::fs::write(&target, crate::library::WDOC_LIBRARY_WCL)
         .map_err(|e| format!("failed to write {}: {e}", target.display()))?;
+    for (name, source) in [
+        ("html.wcl", wcl_lang::standard_lib::HTML_LIBRARY_WCL),
+        ("svg.wcl", wcl_lang::standard_lib::SVG_LIBRARY_WCL),
+        ("css.wcl", wcl_lang::standard_lib::CSS_LIBRARY_WCL),
+    ] {
+        let path = lib_dir.join(name);
+        if !path.exists() || force {
+            std::fs::write(&path, source)
+                .map_err(|e| format!("failed to write {}: {e}", path.display()))?;
+        }
+    }
     Ok(target)
 }
 

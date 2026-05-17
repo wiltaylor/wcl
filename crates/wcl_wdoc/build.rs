@@ -13,6 +13,23 @@ fn main() {
         .unwrap_or_else(|err| panic!("failed to read {}: {err}", manifest_path.display()));
 
     let mut bundled = String::new();
+    let wcl_lang_std = manifest_dir
+        .parent()
+        .and_then(Path::parent)
+        .map(|root| root.join("crates").join("wcl_lang").join("src").join("std"))
+        .unwrap_or_else(|| manifest_dir.join("../wcl_lang/src/std"));
+    for entry in ["html.wcl", "svg.wcl", "css.wcl"] {
+        let path = wcl_lang_std.join(entry);
+        println!("cargo:rerun-if-changed={}", path.display());
+        let fragment = fs::read_to_string(&path)
+            .unwrap_or_else(|err| panic!("failed to read {}: {err}", path.display()));
+        bundled.push_str(&fragment);
+        if !bundled.ends_with('\n') {
+            bundled.push('\n');
+        }
+        bundled.push('\n');
+    }
+
     for line in manifest.lines() {
         let entry = line.trim();
         if entry.is_empty() || entry.starts_with('#') {

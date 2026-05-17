@@ -196,7 +196,10 @@ fn execute_with_custom_internal(
         }
 
         let native_codecs = codec::native::NativeCodecRegistry::standard();
-        let written = if let Some(native) = native_codecs.get(output_codec) {
+        let written = if output_codec == "svg" && codec::native::is_svg_diagram_value(&value) {
+            let native = native_codecs
+                .get(output_codec)
+                .ok_or_else(|| TransformError::UnknownCodec(output_codec.to_string()))?;
             codec::native::encode_native_value(&value, native, output_options, output_target)?
         } else {
             let output_custom = custom_codecs
@@ -221,11 +224,48 @@ fn execute_with_custom_internal(
                         )?
                     }
                 }
-                codec::native::OutputTarget::Directory(_) => {
-                    return Err(TransformError::Codec(format!(
-                        "codec '{}' does not support directory output",
-                        output_codec
-                    )));
+                codec::native::OutputTarget::Directory(dir) => {
+                    let mut buffer = Vec::new();
+                    if contains_stream(&value) {
+                        codec::custom::encode_custom_value_with_session(
+                            &mut decoded.session,
+                            &value,
+                            output_custom,
+                            output_options,
+                            &mut buffer,
+                        )?
+                    } else {
+                        codec::custom::encode_custom_value(
+                            &value,
+                            output_custom,
+                            output_options,
+                            &mut buffer,
+                        )?
+                    };
+                    let text = String::from_utf8(buffer).map_err(|err| {
+                        TransformError::Codec(format!(
+                            "codec '{}' produced non-UTF-8 output: {}",
+                            output_codec, err
+                        ))
+                    })?;
+                    let default_name = match output_codec {
+                        "html" => "index.html",
+                        "svg" => "diagram.svg",
+                        "css" => "styles.css",
+                        other => {
+                            return Err(TransformError::Codec(format!(
+                                "codec '{}' does not support directory output",
+                                other
+                            )))
+                        }
+                    };
+                    let filename = codec::native::output_filename(output_options, default_name);
+                    codec::native::write_text_output(
+                        &filename,
+                        &text,
+                        codec::native::OutputTarget::Directory(dir),
+                    )?;
+                    1
                 }
             }
         };
