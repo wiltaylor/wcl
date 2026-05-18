@@ -754,7 +754,9 @@ fn substitute_in_expr(
                 }
             }
         }
-        Expr::BinaryOp(lhs, _, rhs, _) => {
+        Expr::BinaryOp(lhs, op, rhs, _) => {
+            let lhs_is_iterator_id = expr_is_iterator_id_access(lhs, iterator_name);
+            let rhs_is_iterator_id = expr_is_iterator_id_access(rhs, iterator_name);
             substitute_in_expr(
                 lhs,
                 iterator_name,
@@ -773,6 +775,14 @@ fn substitute_in_expr(
                 captures,
                 next_capture_id,
             );
+            if matches!(op, BinOp::Eq | BinOp::Neq) {
+                if lhs_is_iterator_id {
+                    identifier_lit_to_string_lit(lhs);
+                }
+                if rhs_is_iterator_id {
+                    identifier_lit_to_string_lit(rhs);
+                }
+            }
         }
         Expr::UnaryOp(_, operand, _) => {
             substitute_in_expr(
@@ -1036,6 +1046,25 @@ fn capture_value_expr(
     *next_capture_id += 1;
     captures.insert(name.clone(), value.clone());
     Expr::Ident(Ident { name, span })
+}
+
+fn expr_is_iterator_id_access(expr: &Expr, iterator_name: &str) -> bool {
+    matches!(
+        expr,
+        Expr::MemberAccess(obj, field, _)
+            if field.name == "id"
+                && matches!(obj.as_ref(), Expr::Ident(ident) if ident.name == iterator_name)
+    )
+}
+
+fn identifier_lit_to_string_lit(expr: &mut Expr) {
+    if let Expr::IdentifierLit(lit) = expr {
+        *expr = Expr::StringLit(StringLit {
+            parts: vec![StringPart::Literal(lit.value.clone())],
+            heredoc: None,
+            span: lit.span,
+        });
+    }
 }
 
 #[cfg(test)]

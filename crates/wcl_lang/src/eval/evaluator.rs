@@ -10,8 +10,20 @@ use std::sync::{Arc, Mutex};
 use crate::eval::functions::{builtin_registry, BuiltinFn, FunctionRegistry};
 use crate::eval::imports::FileSystem;
 use crate::eval::namespaces::NamespaceAliases;
+use crate::eval::query::QueryIndex;
 use crate::eval::scope::*;
 use crate::eval::value::*;
+
+#[derive(Default)]
+struct QueryCache {
+    revision: u64,
+    indexes: HashMap<ScopeId, CachedQueryIndex>,
+}
+
+struct CachedQueryIndex {
+    revision: u64,
+    index: Arc<QueryIndex>,
+}
 
 pub struct Evaluator {
     scopes: ScopeArena,
@@ -42,6 +54,7 @@ pub struct Evaluator {
     /// pipeline can use this evaluator's `eval_expr` as a callback during
     /// the post-evaluation control-flow retry pass.
     module_scope_id: Option<ScopeId>,
+    query_cache: QueryCache,
     call_depth: usize,
     max_call_depth: usize,
 }
@@ -63,6 +76,7 @@ impl Evaluator {
             scope_qualified_ids: HashMap::new(),
             module_blocks_by_kind: HashMap::new(),
             module_scope_id: None,
+            query_cache: QueryCache::default(),
             call_depth: 0,
             max_call_depth: 32,
         }
@@ -84,6 +98,7 @@ impl Evaluator {
             scope_qualified_ids: HashMap::new(),
             module_blocks_by_kind: HashMap::new(),
             module_scope_id: None,
+            query_cache: QueryCache::default(),
             call_depth: 0,
             max_call_depth: 32,
         }
@@ -114,6 +129,7 @@ impl Evaluator {
             scope_qualified_ids: HashMap::new(),
             module_blocks_by_kind: HashMap::new(),
             module_scope_id: None,
+            query_cache: QueryCache::default(),
             call_depth: 0,
             max_call_depth: 32,
         }
@@ -151,6 +167,19 @@ impl Evaluator {
     /// Set namespace aliases from `use` declarations.
     pub fn set_namespace_aliases(&mut self, aliases: NamespaceAliases) {
         self.namespace_aliases = aliases;
+    }
+
+    fn invalidate_query_cache(&mut self) {
+        self.query_cache.revision = self.query_cache.revision.wrapping_add(1);
+        self.query_cache.indexes.clear();
+    }
+
+    fn set_entry_value(&mut self, scope_id: ScopeId, name: &str, value: Value) {
+        if let Some((_, entry)) = self.scopes.resolve_mut(scope_id, name) {
+            entry.value = Some(value);
+            entry.evaluated = true;
+            self.invalidate_query_cache();
+        }
     }
 
     /// Evaluate a full document. Returns the evaluated document as a list of
@@ -511,12 +540,7 @@ impl Evaluator {
                 DocItem::Body(BodyItem::Attribute(attr)) if attr.name.name == name => {
                     let val = self.eval_expr(&attr.value, scope_id);
                     match val {
-                        Ok(v) => {
-                            if let Some((_, entry)) = self.scopes.resolve_mut(scope_id, name) {
-                                entry.value = Some(v);
-                                entry.evaluated = true;
-                            }
-                        }
+                        Ok(v) => self.set_entry_value(scope_id, name, v),
                         Err(diag) => self.diagnostics.add(diag),
                     }
                     return;
@@ -526,10 +550,7 @@ impl Evaluator {
                     match val {
                         Ok(mut v) => {
                             self.attach_function_decorators(&mut v, &lb.decorators, scope_id);
-                            if let Some((_, entry)) = self.scopes.resolve_mut(scope_id, name) {
-                                entry.value = Some(v);
-                                entry.evaluated = true;
-                            }
+                            self.set_entry_value(scope_id, name, v);
                         }
                         Err(diag) => self.diagnostics.add(diag),
                     }
@@ -540,10 +561,7 @@ impl Evaluator {
                     match val {
                         Ok(mut v) => {
                             self.attach_function_decorators(&mut v, &el.decorators, scope_id);
-                            if let Some((_, entry)) = self.scopes.resolve_mut(scope_id, name) {
-                                entry.value = Some(v);
-                                entry.evaluated = true;
-                            }
+                            self.set_entry_value(scope_id, name, v);
                         }
                         Err(diag) => self.diagnostics.add(diag),
                     }
@@ -561,10 +579,7 @@ impl Evaluator {
                     if block_name == name {
                         // Evaluate the block's child scope and build a BlockRef
                         let block_ref = self.build_block_ref(block, scope_id);
-                        if let Some((_, entry)) = self.scopes.resolve_mut(scope_id, name) {
-                            entry.value = Some(Value::BlockRef(block_ref));
-                            entry.evaluated = true;
-                        }
+                        self.set_entry_value(scope_id, name, Value::BlockRef(block_ref));
                         return;
                     }
                 }
@@ -579,12 +594,7 @@ impl Evaluator {
                         .unwrap_or_else(|| "__table".to_string());
                     if table_name == name {
                         match self.eval_inline_table(table, scope_id) {
-                            Ok(v) => {
-                                if let Some((_, entry)) = self.scopes.resolve_mut(scope_id, name) {
-                                    entry.value = Some(v);
-                                    entry.evaluated = true;
-                                }
-                            }
+                            Ok(v) => self.set_entry_value(scope_id, name, v),
                             Err(diag) => self.diagnostics.add(diag),
                         }
                         return;
@@ -1302,13 +1312,27 @@ impl Evaluator {
             }
             BinOp::Div => self.eval_div(&l, &r, span),
             BinOp::Mod => self.eval_mod(&l, &r, span),
-            BinOp::Eq => Ok(Value::Bool(values_equal_for_expr(&l, &r))),
-            BinOp::Neq => Ok(Value::Bool(!values_equal_for_expr(&l, &r))),
+            BinOp::Eq => Ok(Value::Bool(self.values_equal_for_binary(lhs, &l, rhs, &r))),
+            BinOp::Neq => Ok(Value::Bool(!self.values_equal_for_binary(lhs, &l, rhs, &r))),
             BinOp::Lt | BinOp::Gt | BinOp::Lte | BinOp::Gte => {
                 self.eval_comparison(&l, op, &r, span)
             }
             BinOp::Match => self.eval_regex_match(&l, &r, span),
             BinOp::And | BinOp::Or => unreachable!(),
+        }
+    }
+
+    fn values_equal_for_binary(
+        &self,
+        lhs: &Expr,
+        lhs_value: &Value,
+        rhs: &Expr,
+        rhs_value: &Value,
+    ) -> bool {
+        if expr_is_id_member_access(lhs) || expr_is_id_member_access(rhs) {
+            values_equal_for_id_expr(lhs_value, rhs_value)
+        } else {
+            values_equal_for_expr(lhs_value, rhs_value)
         }
     }
 
@@ -2504,12 +2528,7 @@ impl Evaluator {
                 BodyItem::Attribute(attr) if attr.name.name == name => {
                     let val = self.eval_expr(&attr.value, scope_id);
                     match val {
-                        Ok(v) => {
-                            if let Some((_, entry)) = self.scopes.resolve_mut(scope_id, name) {
-                                entry.value = Some(v);
-                                entry.evaluated = true;
-                            }
-                        }
+                        Ok(v) => self.set_entry_value(scope_id, name, v),
                         Err(diag) => self.diagnostics.add(diag),
                     }
                     return;
@@ -2517,12 +2536,7 @@ impl Evaluator {
                 BodyItem::LetBinding(lb) if lb.name.name == name => {
                     let val = self.eval_expr(&lb.value, scope_id);
                     match val {
-                        Ok(v) => {
-                            if let Some((_, entry)) = self.scopes.resolve_mut(scope_id, name) {
-                                entry.value = Some(v);
-                                entry.evaluated = true;
-                            }
-                        }
+                        Ok(v) => self.set_entry_value(scope_id, name, v),
                         Err(diag) => self.diagnostics.add(diag),
                     }
                     return;
@@ -2538,10 +2552,7 @@ impl Evaluator {
                         .unwrap_or_else(|| format!("__block_{}", block.kind.name));
                     if block_name == name {
                         let block_ref = self.build_block_ref(block, scope_id);
-                        if let Some((_, entry)) = self.scopes.resolve_mut(scope_id, name) {
-                            entry.value = Some(Value::BlockRef(block_ref));
-                            entry.evaluated = true;
-                        }
+                        self.set_entry_value(scope_id, name, Value::BlockRef(block_ref));
                         return;
                     }
                 }
@@ -2556,12 +2567,7 @@ impl Evaluator {
                         .unwrap_or_else(|| "__table".to_string());
                     if table_name == name {
                         match self.eval_inline_table(table, scope_id) {
-                            Ok(v) => {
-                                if let Some((_, entry)) = self.scopes.resolve_mut(scope_id, name) {
-                                    entry.value = Some(v);
-                                    entry.evaluated = true;
-                                }
-                            }
+                            Ok(v) => self.set_entry_value(scope_id, name, v),
                             Err(diag) => self.diagnostics.add(diag),
                         }
                         return;
@@ -2657,11 +2663,30 @@ impl Evaluator {
         span: Span,
         scope_id: ScopeId,
     ) -> Result<Value, Diagnostic> {
-        let blocks = self.collect_blocks(scope_id);
+        let index = self.query_index(scope_id);
         let engine = super::query::QueryEngine::new();
         engine
-            .execute(pipeline, &blocks, self, scope_id)
+            .execute_indexed(pipeline, &index, self, scope_id)
             .map_err(|e| Diagnostic::error(e, span).with_code("E050"))
+    }
+
+    fn query_index(&mut self, scope_id: ScopeId) -> Arc<QueryIndex> {
+        if let Some(cached) = self.query_cache.indexes.get(&scope_id) {
+            if cached.revision == self.query_cache.revision {
+                return Arc::clone(&cached.index);
+            }
+        }
+
+        let blocks = self.collect_blocks(scope_id);
+        let index = Arc::new(QueryIndex::new(blocks));
+        self.query_cache.indexes.insert(
+            scope_id,
+            CachedQueryIndex {
+                revision: self.query_cache.revision,
+                index: Arc::clone(&index),
+            },
+        );
+        index
     }
 
     fn collect_blocks(&self, scope_id: ScopeId) -> Vec<BlockRef> {
@@ -3016,6 +3041,10 @@ fn remap_table_rows(records: Vec<Value>, columns: &[String]) -> Vec<Value> {
             Some(Value::Map(remapped))
         })
         .collect()
+}
+
+fn expr_is_id_member_access(expr: &Expr) -> bool {
+    matches!(expr, Expr::MemberAccess(_, field, _) if field.name == "id")
 }
 
 // =====================================================================
@@ -4565,5 +4594,77 @@ mod tests {
             }
             other => panic!("expected BlockRef, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn query_index_cache_invalidates_when_scope_entry_is_evaluated() {
+        let mut ev = Evaluator::new();
+        let scope = ev.scopes.create_scope(ScopeKind::Module, None);
+        let span = ds();
+
+        let block_a = Value::BlockRef(BlockRef {
+            kind: "person".to_string(),
+            id: Some("a".to_string()),
+            qualified_id: Some("a".to_string()),
+            attributes: IndexMap::new(),
+            children: Vec::new(),
+            decorators: Vec::new(),
+            span,
+        });
+        let block_b = Value::BlockRef(BlockRef {
+            kind: "person".to_string(),
+            id: Some("b".to_string()),
+            qualified_id: Some("b".to_string()),
+            attributes: IndexMap::new(),
+            children: Vec::new(),
+            decorators: Vec::new(),
+            span,
+        });
+
+        ev.scopes.add_entry(
+            scope,
+            ScopeEntry {
+                name: "a".to_string(),
+                kind: ScopeEntryKind::BlockChild,
+                value: Some(block_a),
+                span,
+                dependencies: Default::default(),
+                evaluated: true,
+                read_count: 0,
+            },
+        );
+        ev.scopes.add_entry(
+            scope,
+            ScopeEntry {
+                name: "b".to_string(),
+                kind: ScopeEntryKind::BlockChild,
+                value: None,
+                span,
+                dependencies: Default::default(),
+                evaluated: false,
+                read_count: 0,
+            },
+        );
+
+        let pipeline = QueryPipeline {
+            selector: QuerySelector::Recursive(mk_ident("person")),
+            filters: vec![],
+            span,
+        };
+
+        let index = ev.query_index(scope);
+        let engine = crate::eval::query::QueryEngine::new();
+        let first = engine
+            .execute_indexed(&pipeline, &index, &mut ev, scope)
+            .unwrap();
+        assert!(matches!(first, Value::List(items) if items.len() == 1));
+
+        ev.set_entry_value(scope, "b", block_b);
+
+        let index = ev.query_index(scope);
+        let second = engine
+            .execute_indexed(&pipeline, &index, &mut ev, scope)
+            .unwrap();
+        assert!(matches!(second, Value::List(items) if items.len() == 2));
     }
 }

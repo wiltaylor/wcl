@@ -6165,4 +6165,85 @@ container page {
             Some("Button")
         );
     }
+
+    #[test]
+    fn filter_can_compare_string_field_to_block_id_without_to_string() {
+        let doc = parse(
+            r#"
+schema "UiComponent" {
+    label: string
+}
+
+UiComponent ds_button {
+    label = "Button"
+}
+
+let items = [
+    { id = "first", component = "ds_button" },
+    { id = "skip", component = "other" },
+]
+
+container page {
+    for component in (..UiComponent) {
+        matches = filter(items, item => item.component == component.id)
+    }
+}
+"#,
+            ParseOptions::default(),
+        );
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+
+        let Value::BlockRef(container) = doc.values.get("page").expect("page block") else {
+            panic!("expected page block");
+        };
+        let matches = container
+            .attributes
+            .get("matches")
+            .and_then(Value::as_list)
+            .expect("matches list");
+        assert_eq!(matches.len(), 1);
+        let Value::Map(item) = &matches[0] else {
+            panic!("expected matched item map");
+        };
+        assert_eq!(item.get("id").and_then(Value::as_string), Some("first"));
+    }
+
+    #[test]
+    fn filter_can_match_block_ids_against_identifier_list_attribute() {
+        let doc = parse(
+            r#"
+service api-id {}
+service worker {}
+
+group allowed {
+    identities = [api-id]
+}
+
+raw_equal = "api-id" == api-id
+"#,
+            ParseOptions::default(),
+        );
+        assert!(!doc.has_errors(), "errors: {:?}", doc.diagnostics);
+
+        let Value::BlockRef(group) = doc.values.get("allowed").expect("allowed group") else {
+            panic!("expected allowed group");
+        };
+        assert!(matches!(
+            group.attributes.get("identities"),
+            Some(Value::List(items)) if items == &vec![Value::Identifier("api-id".to_string())]
+        ));
+
+        let matched_value = doc
+            .eval_expression(
+                "filter((..service), svc => some(allowed.identities, id => svc.id == id))",
+            )
+            .expect("filter expression should evaluate");
+        let matched = matched_value.as_list().expect("matched list");
+        assert_eq!(matched.len(), 1);
+        let Value::BlockRef(block) = &matched[0] else {
+            panic!("expected matched block");
+        };
+        assert_eq!(block.id.as_deref(), Some("api-id"));
+        assert_eq!(doc.values.get("raw_equal"), Some(&Value::Bool(false)));
+    }
 }

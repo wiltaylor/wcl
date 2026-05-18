@@ -2,6 +2,72 @@ use crate::lang::ast::*;
 
 use crate::eval::value::values_equal_for_expr;
 use crate::eval::value::*;
+use std::collections::HashMap;
+
+#[derive(Debug, Clone)]
+pub(crate) struct QueryIndex {
+    pub(crate) blocks: Vec<BlockRef>,
+    by_kind: HashMap<String, Vec<BlockRef>>,
+    by_kind_id: HashMap<(String, String), Vec<BlockRef>>,
+    recursive_by_kind: HashMap<String, Vec<BlockRef>>,
+    recursive_by_kind_id: HashMap<(String, String), Vec<BlockRef>>,
+    table_rows_by_id: HashMap<String, Vec<BlockRef>>,
+}
+
+impl QueryIndex {
+    pub(crate) fn new(blocks: Vec<BlockRef>) -> Self {
+        let mut index = Self {
+            blocks,
+            by_kind: HashMap::new(),
+            by_kind_id: HashMap::new(),
+            recursive_by_kind: HashMap::new(),
+            recursive_by_kind_id: HashMap::new(),
+            table_rows_by_id: HashMap::new(),
+        };
+
+        for block in index.blocks.clone() {
+            index.index_top_level_block(&block);
+            index.index_recursive_block(&block);
+        }
+
+        index
+    }
+
+    fn index_top_level_block(&mut self, block: &BlockRef) {
+        self.by_kind
+            .entry(block.kind.clone())
+            .or_default()
+            .push(block.clone());
+        if let Some(id) = &block.id {
+            self.by_kind_id
+                .entry((block.kind.clone(), id.clone()))
+                .or_default()
+                .push(block.clone());
+        }
+    }
+
+    fn index_recursive_block(&mut self, block: &BlockRef) {
+        self.recursive_by_kind
+            .entry(block.kind.clone())
+            .or_default()
+            .push(block.clone());
+        if let Some(id) = &block.id {
+            self.recursive_by_kind_id
+                .entry((block.kind.clone(), id.clone()))
+                .or_default()
+                .push(block.clone());
+            if block.kind == "table" {
+                self.table_rows_by_id
+                    .entry(id.clone())
+                    .or_default()
+                    .extend(block.children.clone());
+            }
+        }
+        for child in &block.children {
+            self.index_recursive_block(child);
+        }
+    }
+}
 
 /// The query engine executes query pipelines against a set of block references.
 pub struct QueryEngine;
@@ -22,8 +88,19 @@ impl QueryEngine {
         evaluator: &mut super::evaluator::Evaluator,
         scope_id: ScopeId,
     ) -> Result<Value, String> {
+        let index = QueryIndex::new(blocks.to_vec());
+        self.execute_indexed(pipeline, &index, evaluator, scope_id)
+    }
+
+    pub(crate) fn execute_indexed(
+        &self,
+        pipeline: &QueryPipeline,
+        index: &QueryIndex,
+        evaluator: &mut super::evaluator::Evaluator,
+        scope_id: ScopeId,
+    ) -> Result<Value, String> {
         // 1. Apply selector to get initial set
-        let mut results = self.apply_selector(&pipeline.selector, blocks)?;
+        let mut results = self.apply_selector(&pipeline.selector, index)?;
 
         // 2. Apply filters in sequence
         let mut projection = None;
@@ -59,33 +136,31 @@ impl QueryEngine {
     fn apply_selector(
         &self,
         selector: &QuerySelector,
-        blocks: &[BlockRef],
+        index: &QueryIndex,
     ) -> Result<Vec<BlockRef>, String> {
         match selector {
-            QuerySelector::Kind(kind) => Ok(blocks
-                .iter()
-                .filter(|b| b.kind == kind.name)
-                .cloned()
-                .collect()),
-            QuerySelector::KindId(kind, id) => Ok(blocks
-                .iter()
-                .filter(|b| b.kind == kind.name && b.id.as_deref() == Some(&id.value))
-                .cloned()
-                .collect()),
-            QuerySelector::Recursive(kind) => {
-                let mut results = Vec::new();
-                self.find_recursive(blocks, &kind.name, None, &mut results);
-                Ok(results)
+            QuerySelector::Kind(kind) => {
+                Ok(index.by_kind.get(&kind.name).cloned().unwrap_or_default())
             }
-            QuerySelector::RecursiveId(kind, id) => {
-                let mut results = Vec::new();
-                self.find_recursive(blocks, &kind.name, Some(&id.value), &mut results);
-                Ok(results)
-            }
-            QuerySelector::Wildcard => Ok(blocks.to_vec()),
-            QuerySelector::Root => Ok(blocks.to_vec()),
+            QuerySelector::KindId(kind, id) => Ok(index
+                .by_kind_id
+                .get(&(kind.name.clone(), id.value.clone()))
+                .cloned()
+                .unwrap_or_default()),
+            QuerySelector::Recursive(kind) => Ok(index
+                .recursive_by_kind
+                .get(&kind.name)
+                .cloned()
+                .unwrap_or_default()),
+            QuerySelector::RecursiveId(kind, id) => Ok(index
+                .recursive_by_kind_id
+                .get(&(kind.name.clone(), id.value.clone()))
+                .cloned()
+                .unwrap_or_default()),
+            QuerySelector::Wildcard => Ok(index.blocks.clone()),
+            QuerySelector::Root => Ok(index.blocks.clone()),
             QuerySelector::Path(segments) => {
-                let mut current = blocks.to_vec();
+                let mut current = index.blocks.clone();
                 for (i, segment) in segments.iter().enumerate() {
                     match segment {
                         PathSegment::Ident(ident) => {
@@ -109,35 +184,11 @@ impl QueryEngine {
                 }
                 Ok(current)
             }
-            QuerySelector::TableId(id) => {
-                let mut results = Vec::new();
-                self.find_table_by_id(blocks, &id.value, &mut results);
-                Ok(results)
-            }
-        }
-    }
-
-    fn find_recursive(
-        &self,
-        blocks: &[BlockRef],
-        kind: &str,
-        id: Option<&str>,
-        results: &mut Vec<BlockRef>,
-    ) {
-        for block in blocks {
-            if block.kind == kind && id.is_none_or(|i| block.id.as_deref() == Some(i)) {
-                results.push(block.clone());
-            }
-            self.find_recursive(&block.children, kind, id, results);
-        }
-    }
-
-    fn find_table_by_id(&self, blocks: &[BlockRef], id: &str, results: &mut Vec<BlockRef>) {
-        for block in blocks {
-            if block.kind == "table" && block.id.as_deref() == Some(id) {
-                results.extend(block.children.clone());
-            }
-            self.find_table_by_id(&block.children, id, results);
+            QuerySelector::TableId(id) => Ok(index
+                .table_rows_by_id
+                .get(&id.value)
+                .cloned()
+                .unwrap_or_default()),
         }
     }
 
@@ -166,8 +217,8 @@ impl QueryEngine {
                             .map(|s| Value::String(s.clone()))
                             .unwrap_or(Value::Null);
                         let matches = match op {
-                            BinOp::Eq => id_val == rhs_val,
-                            BinOp::Neq => id_val != rhs_val,
+                            BinOp::Eq => values_equal_for_id_expr(&id_val, &rhs_val),
+                            BinOp::Neq => !values_equal_for_id_expr(&id_val, &rhs_val),
                             _ => false,
                         };
                         if matches {
@@ -506,6 +557,83 @@ mod tests {
     }
 
     #[test]
+    fn query_id_filter_matches_string_rhs() {
+        let mut ev = Evaluator::new();
+        let scope = ev.scopes_mut().create_scope(ScopeKind::Module, None);
+
+        let blocks = vec![
+            mk_block("service", Some("web"), vec![]),
+            mk_block("service", Some("api"), vec![]),
+        ];
+
+        let engine = QueryEngine::new();
+        let pipeline = QueryPipeline {
+            selector: QuerySelector::Kind(mk_ident("service")),
+            filters: vec![QueryFilter::AttrComparison(
+                mk_ident("id"),
+                BinOp::Eq,
+                Expr::StringLit(StringLit {
+                    parts: vec![StringPart::Literal("api".to_string())],
+                    heredoc: None,
+                    span: ds(),
+                }),
+            )],
+            span: ds(),
+        };
+
+        let result = engine.execute(&pipeline, &blocks, &mut ev, scope).unwrap();
+        match result {
+            Value::List(items) => {
+                assert_eq!(items.len(), 1);
+                if let Value::BlockRef(br) = &items[0] {
+                    assert_eq!(br.id.as_deref(), Some("api"));
+                } else {
+                    panic!("expected BlockRef");
+                }
+            }
+            _ => panic!("expected list"),
+        }
+    }
+
+    #[test]
+    fn query_id_filter_matches_identifier_rhs() {
+        let mut ev = Evaluator::new();
+        let scope = ev.scopes_mut().create_scope(ScopeKind::Module, None);
+
+        let blocks = vec![
+            mk_block("service", Some("web"), vec![]),
+            mk_block("service", Some("api"), vec![]),
+        ];
+
+        let engine = QueryEngine::new();
+        let pipeline = QueryPipeline {
+            selector: QuerySelector::Kind(mk_ident("service")),
+            filters: vec![QueryFilter::AttrComparison(
+                mk_ident("id"),
+                BinOp::Eq,
+                Expr::IdentifierLit(IdentifierLit {
+                    value: "api".to_string(),
+                    span: ds(),
+                }),
+            )],
+            span: ds(),
+        };
+
+        let result = engine.execute(&pipeline, &blocks, &mut ev, scope).unwrap();
+        match result {
+            Value::List(items) => {
+                assert_eq!(items.len(), 1);
+                if let Value::BlockRef(br) = &items[0] {
+                    assert_eq!(br.id.as_deref(), Some("api"));
+                } else {
+                    panic!("expected BlockRef");
+                }
+            }
+            _ => panic!("expected list"),
+        }
+    }
+
+    #[test]
     fn query_recursive_selector() {
         let mut ev = Evaluator::new();
         let scope = ev.scopes_mut().create_scope(ScopeKind::Module, None);
@@ -538,6 +666,51 @@ mod tests {
         match result {
             Value::List(items) => {
                 assert_eq!(items.len(), 2);
+            }
+            _ => panic!("expected list"),
+        }
+    }
+
+    #[test]
+    fn query_recursive_id_selector_uses_indexed_descendants() {
+        let mut ev = Evaluator::new();
+        let scope = ev.scopes_mut().create_scope(ScopeKind::Module, None);
+
+        let inner = mk_block("endpoint", Some("health"), vec![]);
+        let mut outer = mk_block("service", Some("web"), vec![]);
+        outer.children.push(inner);
+
+        let blocks = vec![
+            outer,
+            mk_block(
+                "endpoint",
+                Some("root"),
+                vec![("path", Value::String("/".to_string()))],
+            ),
+        ];
+
+        let engine = QueryEngine::new();
+        let pipeline = QueryPipeline {
+            selector: QuerySelector::RecursiveId(
+                mk_ident("endpoint"),
+                IdentifierLit {
+                    value: "health".to_string(),
+                    span: ds(),
+                },
+            ),
+            filters: vec![],
+            span: ds(),
+        };
+
+        let result = engine.execute(&pipeline, &blocks, &mut ev, scope).unwrap();
+        match result {
+            Value::List(items) => {
+                assert_eq!(items.len(), 1);
+                if let Value::BlockRef(br) = &items[0] {
+                    assert_eq!(br.id.as_deref(), Some("health"));
+                } else {
+                    panic!("expected BlockRef");
+                }
             }
             _ => panic!("expected list"),
         }

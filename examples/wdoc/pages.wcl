@@ -5,6 +5,7 @@
 import "./pages/overview.wcl"
 import "./pages/install.wcl"
 import "./pages/basics.wcl"
+import "./pages/id_list_examples.wcl"
 import "./pages/inline_icon_examples.wcl"
 import "./pages/equation_examples.wcl"
 import "./pages/advanced.wcl"

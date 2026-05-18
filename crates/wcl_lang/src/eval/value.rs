@@ -453,6 +453,21 @@ pub(crate) fn values_equal_for_expr(a: &Value, b: &Value) -> bool {
     }
 }
 
+pub(crate) fn values_equal_for_id_expr(a: &Value, b: &Value) -> bool {
+    match (id_text(a), id_text(b)) {
+        (Some(left), Some(right)) => left == right,
+        _ => values_equal_for_expr(a, b),
+    }
+}
+
+fn id_text(value: &Value) -> Option<&str> {
+    match value {
+        Value::String(s) | Value::Identifier(s) => Some(s),
+        Value::BlockRef(block) => block.id.as_deref(),
+        _ => None,
+    }
+}
+
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
