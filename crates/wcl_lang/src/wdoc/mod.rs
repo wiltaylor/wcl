@@ -1,14 +1,13 @@
-pub mod graph_layout;
 pub mod library;
 pub mod markup;
 pub mod model;
 pub mod render;
 #[cfg(feature = "wdoc-serve")]
 pub mod serve;
-pub mod shapes;
 pub mod source;
-pub mod terminal;
 pub mod validate;
+
+pub use crate::render::{graph_layout, shapes, terminal};
 
 use crate::wdoc::model::WdocDocument;
 use crate::wdoc::validate::{WdocDiagnostic, WdocSeverity};
