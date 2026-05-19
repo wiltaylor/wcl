@@ -951,6 +951,27 @@ namespace wdoc {
 
     export let render_layout_items = (items) => join("", map(items, (item) => wdoc::render_layout_item(item)))
 
+    export let style_target_leaf = target => {
+        let parts = split("::", target)
+        len(parts) == 0 ? target : parts[len(parts) - 1]
+    }
+
+    export let style_rule_selector = (style_name, target) => {
+        let leaf = wdoc::style_target_leaf(target)
+        style_name == "default" ? ".wdoc-" + leaf : ".wdoc-style-" + style_name + "--" + leaf
+    }
+
+    export let style_rule_asset = (style, rule) => {
+        kind = "rule",
+        selector = wdoc::style_rule_selector(style.name, rule.target),
+        props = rule.properties
+    }
+
+    export let style_css = styles => {
+        kind = "stylesheet",
+        children = flatten(map(styles, style => map(style.rules, rule => wdoc::style_rule_asset(style, rule))))
+    }
+
     // ----------------------------------------------------------------------
     // Widget shape templates
     // ----------------------------------------------------------------------

@@ -1,3 +1,4 @@
+pub(crate) mod assets;
 pub mod codec;
 pub mod markup;
 pub mod model;

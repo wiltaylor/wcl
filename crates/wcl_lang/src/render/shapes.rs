@@ -5979,7 +5979,7 @@ fn runtime_field_escape(value: &str) -> String {
 }
 
 fn diagram_runtime_js() -> String {
-    crate::assets::wdoc_diagram_runtime_js()
+    crate::wdoc::assets::diagram_runtime_js()
         .expect("bundled wdoc diagram runtime")
         .to_string()
 }

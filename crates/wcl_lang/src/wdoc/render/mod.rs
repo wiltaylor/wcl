@@ -1,4 +1,3 @@
-pub mod assets;
 pub mod layout;
 pub mod page;
 
@@ -22,9 +21,9 @@ pub fn render_document(
     fs::create_dir_all(output).map_err(|e| format!("failed to create output directory: {e}"))?;
 
     // Generate CSS: base + user styles
-    let mut css = assets::base_css()?;
+    let mut css = crate::wdoc::assets::base_css()?;
     css.push('\n');
-    css.push_str(&assets::generate_style_css(&doc.styles));
+    css.push_str(&crate::wdoc::assets::style_css(&doc.styles)?);
     let extra_css = doc.extra_css.trim();
     if !extra_css.is_empty() {
         css.push('\n');
