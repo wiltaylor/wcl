@@ -345,17 +345,23 @@ pub fn measure_text_attrs(attrs: &IndexMap<String, String>) -> TextMetrics {
 
 /// Resolve layout and render a diagram to an inline SVG string.
 pub fn render_diagram_svg(diagram: &mut Diagram) -> String {
-    apply_diagram_classes(diagram);
+    resolve_diagram_layout_with(diagram, |children, connections, request| {
+        apply_builtin_layout(children, connections, request);
+        Ok(())
+    })
+    .expect("built-in WDoc layout should not fail");
+    render_resolved_diagram_svg(diagram)
+}
 
-    // Phase 2: resolve layout
-    let inner = Bounds {
-        x: diagram.padding,
-        y: diagram.padding,
-        width: diagram.width - diagram.padding * 2.0,
-        height: diagram.height - diagram.padding * 2.0,
-    };
+/// Resolve a diagram using caller-provided layout dispatch.
+pub fn resolve_diagram_layout_with<F>(diagram: &mut Diagram, mut layout: F) -> Result<(), String>
+where
+    F: FnMut(&mut [ShapeNode], &mut [Connection], LayoutRequest<'_>) -> Result<(), String>,
+{
+    apply_diagram_classes(diagram);
+    let inner = diagram_inner_bounds(diagram);
     let options = diagram.options.clone();
-    resolve_children(
+    resolve_children_with_layout(
         &mut diagram.shapes,
         &mut diagram.connections,
         &inner,
@@ -363,8 +369,13 @@ pub fn render_diagram_svg(diagram: &mut Diagram) -> String {
         diagram.align,
         diagram.gap,
         &options,
-    );
+        &mut layout,
+    )
+}
 
+/// Render a diagram whose shapes have already had layout resolved.
+pub fn render_resolved_diagram_svg(diagram: &mut Diagram) -> String {
+    let inner = diagram_inner_bounds(diagram);
     // Phase 2b: build shape map for connections
     let shape_map = build_shape_map(&diagram.shapes, 0.0, 0.0);
     let graph_fit = graph_render_fit(&diagram.shapes, &inner, diagram.align);
@@ -486,6 +497,15 @@ pub fn render_diagram_svg(diagram: &mut Diagram) -> String {
 
     svg.push_str("</div>");
     svg
+}
+
+fn diagram_inner_bounds(diagram: &Diagram) -> Bounds {
+    Bounds {
+        x: diagram.padding,
+        y: diagram.padding,
+        width: diagram.width - diagram.padding * 2.0,
+        height: diagram.height - diagram.padding * 2.0,
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -952,7 +972,17 @@ pub fn parse_shape_kind(kind: &str) -> Option<ShapeKind> {
 // Layout resolution
 // ---------------------------------------------------------------------------
 
-fn resolve_children(
+#[derive(Clone, Copy)]
+pub struct LayoutRequest<'a> {
+    pub indices: &'a [usize],
+    pub parent: &'a Bounds,
+    pub scope_path: &'a str,
+    pub align: Alignment,
+    pub gap: f64,
+    pub options: &'a IndexMap<String, String>,
+}
+
+fn resolve_children_with_layout<F>(
     children: &mut [ShapeNode],
     connections: &mut [Connection],
     parent: &Bounds,
@@ -960,7 +990,11 @@ fn resolve_children(
     align: Alignment,
     gap: f64,
     options: &IndexMap<String, String>,
-) {
+    layout: &mut F,
+) -> Result<(), String>
+where
+    F: FnMut(&mut [ShapeNode], &mut [Connection], LayoutRequest<'_>) -> Result<(), String>,
+{
     // First pass: resolve anchored/absolute children
     for child in children.iter_mut() {
         let bounds_parent = if is_layout_decoration(child) {
@@ -972,7 +1006,7 @@ fn resolve_children(
         apply_intrinsic_container_size(child, connections);
     }
 
-    prelayout_nested_graph_containers(children, connections, parent, scope_path);
+    prelayout_nested_graph_containers(children, connections, parent, scope_path, layout)?;
 
     // Second pass: position unpositioned children via alignment engine
     let unpositioned: Vec<usize> = children
@@ -997,18 +1031,10 @@ fn resolve_children(
 
     match align {
         Alignment::Stack | Alignment::Flow | Alignment::Center if !unpositioned.is_empty() => {
-            match align {
-                Alignment::Stack => layout_stack(children, &unpositioned, parent, gap),
-                Alignment::Flow => layout_flow(children, &unpositioned, parent, gap),
-                Alignment::Center => layout_center(children, &unpositioned, parent),
-                _ => {}
-            }
-        }
-        Alignment::Grid if !unpositioned.is_empty() => {
-            layout_graph_subset(
+            layout(
                 children,
                 connections,
-                GraphSubsetLayout {
+                LayoutRequest {
                     indices: &unpositioned,
                     parent,
                     scope_path,
@@ -1016,13 +1042,27 @@ fn resolve_children(
                     gap,
                     options,
                 },
-            );
+            )?;
         }
-        Alignment::Layered | Alignment::Force | Alignment::Radial if !layoutable.is_empty() => {
-            layout_graph_subset(
+        Alignment::Grid if !unpositioned.is_empty() => {
+            layout(
                 children,
                 connections,
-                GraphSubsetLayout {
+                LayoutRequest {
+                    indices: &unpositioned,
+                    parent,
+                    scope_path,
+                    align,
+                    gap,
+                    options,
+                },
+            )?;
+        }
+        Alignment::Layered | Alignment::Force | Alignment::Radial if !layoutable.is_empty() => {
+            layout(
+                children,
+                connections,
+                LayoutRequest {
                     indices: &layoutable,
                     parent,
                     scope_path,
@@ -1030,23 +1070,28 @@ fn resolve_children(
                     gap,
                     options,
                 },
-            );
+            )?;
         }
         _ => {}
     }
 
     // Recurse into children
     for child in children.iter_mut() {
-        resolve_nested_container(child, connections, scope_path);
+        resolve_nested_container(child, connections, scope_path, layout)?;
     }
+    Ok(())
 }
 
-fn prelayout_nested_graph_containers(
+fn prelayout_nested_graph_containers<F>(
     children: &mut [ShapeNode],
     connections: &mut [Connection],
     parent: &Bounds,
     scope_path: &str,
-) {
+    layout: &mut F,
+) -> Result<(), String>
+where
+    F: FnMut(&mut [ShapeNode], &mut [Connection], LayoutRequest<'_>) -> Result<(), String>,
+{
     for child in children.iter_mut() {
         if is_layout_decoration(child)
             || child.children.is_empty()
@@ -1065,27 +1110,32 @@ fn prelayout_nested_graph_containers(
             apply_intrinsic_container_size(child, connections);
         }
 
-        resolve_nested_container(child, connections, scope_path);
+        resolve_nested_container(child, connections, scope_path, layout)?;
         if is_graph_alignment(child.align) {
             child
                 .attrs
                 .insert(SIZE_LOCKED_ATTR.to_string(), "true".to_string());
         }
     }
+    Ok(())
 }
 
-fn resolve_nested_container(
+fn resolve_nested_container<F>(
     child: &mut ShapeNode,
     connections: &mut [Connection],
     scope_path: &str,
-) {
+    layout: &mut F,
+) -> Result<(), String>
+where
+    F: FnMut(&mut [ShapeNode], &mut [Connection], LayoutRequest<'_>) -> Result<(), String>,
+{
     if child
         .attrs
         .get(SIZE_LOCKED_ATTR)
         .map(|v| v == "true")
         .unwrap_or(false)
     {
-        return;
+        return Ok(());
     }
     resolve_container_layout_decorations(child);
     let insets = child_content_insets(child);
@@ -1106,7 +1156,7 @@ fn resolve_nested_container(
     };
     let child_scope_path = scoped_child_path(scope_path, child.id.as_deref());
     let options = child.attrs.clone();
-    resolve_children(
+    resolve_children_with_layout(
         &mut child.children,
         connections,
         &inner,
@@ -1114,7 +1164,8 @@ fn resolve_nested_container(
         child.align,
         child.gap,
         &options,
-    );
+        layout,
+    )?;
     apply_post_layout_container_size(child);
     if is_graph_alignment(child.align) {
         expand_container_to_fit_layout_children(child);
@@ -1134,6 +1185,7 @@ fn resolve_nested_container(
     if has_explicit_width(child) && has_explicit_height(child) && !is_graph_alignment(child.align) {
         clamp_children_to_parent(&mut child.children, &inner);
     }
+    Ok(())
 }
 
 fn resolve_container_layout_decorations(node: &mut ShapeNode) {
@@ -1329,6 +1381,57 @@ fn layout_graph_subset(
     // propagates to the original tree.
     for (layout_child, &original_idx) in layout_children.into_iter().zip(indices) {
         children[original_idx] = layout_child;
+    }
+}
+
+pub fn apply_builtin_layout(
+    children: &mut [ShapeNode],
+    connections: &mut [Connection],
+    request: LayoutRequest<'_>,
+) {
+    match request.align {
+        Alignment::Stack => layout_stack(children, request.indices, request.parent, request.gap),
+        Alignment::Flow => layout_flow(children, request.indices, request.parent, request.gap),
+        Alignment::Center => layout_center(children, request.indices, request.parent),
+        Alignment::Layered | Alignment::Force | Alignment::Radial | Alignment::Grid => {
+            layout_graph_subset(
+                children,
+                connections,
+                GraphSubsetLayout {
+                    indices: request.indices,
+                    parent: request.parent,
+                    scope_path: request.scope_path,
+                    align: request.align,
+                    gap: request.gap,
+                    options: request.options,
+                },
+            );
+        }
+        Alignment::None => {}
+    }
+}
+
+pub fn prepare_layout_inputs(
+    children: &mut [ShapeNode],
+    connections: &[Connection],
+    parent: &Bounds,
+) {
+    for child in children {
+        resolve_bounds(child, parent);
+        apply_intrinsic_container_size(child, connections);
+    }
+}
+
+pub fn alignment_name(align: Alignment) -> &'static str {
+    match align {
+        Alignment::None => "none",
+        Alignment::Flow => "flow",
+        Alignment::Stack => "stack",
+        Alignment::Center => "center",
+        Alignment::Layered => "layered",
+        Alignment::Force => "force",
+        Alignment::Radial => "radial",
+        Alignment::Grid => "grid",
     }
 }
 
@@ -3487,6 +3590,39 @@ fn routed_connections(
     routed
         .into_iter()
         .map(|route| (connection_render_key(&route.conn), route))
+        .collect()
+}
+
+#[derive(Debug, Clone)]
+pub struct ConnectionRouteInfo {
+    pub from_id: String,
+    pub to_id: String,
+    pub d: String,
+    pub points: Vec<(f64, f64)>,
+    pub label_x: f64,
+    pub label_y: f64,
+}
+
+pub fn route_connection_infos(
+    shapes: &[ShapeNode],
+    connections: &[Connection],
+) -> Vec<ConnectionRouteInfo> {
+    let shape_map = build_shape_map(shapes, 0.0, 0.0);
+    routed_connections(connections, &shape_map)
+        .into_values()
+        .map(|route| {
+            let points = route_polyline_points(&route.geometry);
+            let d = path_data(&points);
+            let (label_x, label_y) = connection_label_point(&route.geometry, &route.conn.attrs);
+            ConnectionRouteInfo {
+                from_id: route.conn.from_id,
+                to_id: route.conn.to_id,
+                d,
+                points,
+                label_x,
+                label_y,
+            }
+        })
         .collect()
 }
 

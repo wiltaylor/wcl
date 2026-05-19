@@ -164,6 +164,40 @@ pub(crate) fn collect_template_helpers(doc: &crate::Document) -> HashMap<String,
         .collect()
 }
 
+fn collect_layout_helpers(doc: &crate::Document) -> Result<HashMap<String, FunctionValue>, String> {
+    let mut helpers: HashMap<String, (String, FunctionValue)> = HashMap::new();
+    for (fn_name, value) in &doc.values {
+        let Value::Function(func) = value else {
+            continue;
+        };
+        for decorator in &func.decorators {
+            if decorator.name != "layout" {
+                continue;
+            }
+            let Some(layout_name) = decorator
+                .args
+                .get("_0")
+                .or_else(|| decorator.args.values().next())
+                .and_then(|value| value.as_string())
+                .map(str::to_string)
+            else {
+                continue;
+            };
+            if let Some((existing_name, _)) =
+                helpers.insert(layout_name.clone(), (fn_name.clone(), func.clone()))
+            {
+                return Err(format!(
+                    "duplicate @layout(\"{layout_name}\") definition on '{fn_name}' and '{existing_name}'; layout names must be unique"
+                ));
+            }
+        }
+    }
+    Ok(helpers
+        .into_iter()
+        .map(|(layout_name, (_, func))| (layout_name, func))
+        .collect())
+}
+
 #[derive(Clone, Debug)]
 struct MarkupRule {
     name: String,
@@ -392,6 +426,48 @@ mod lsp_parse_options_tests {
 }
 
 fn register_renderer_helpers(reg: &mut FunctionRegistry) {
+    for (name, align) in [
+        ("wdoc::layout_stack", crate::wdoc::shapes::Alignment::Stack),
+        ("wdoc::layout_flow", crate::wdoc::shapes::Alignment::Flow),
+        (
+            "wdoc::layout_center",
+            crate::wdoc::shapes::Alignment::Center,
+        ),
+        ("wdoc::layout_grid", crate::wdoc::shapes::Alignment::Grid),
+        (
+            "wdoc::layout_layered",
+            crate::wdoc::shapes::Alignment::Layered,
+        ),
+        ("wdoc::layout_force", crate::wdoc::shapes::Alignment::Force),
+        (
+            "wdoc::layout_radial",
+            crate::wdoc::shapes::Alignment::Radial,
+        ),
+    ] {
+        let builtin_name = name.to_string();
+        reg.register(
+            name,
+            std::sync::Arc::new(move |args: &[Value]| wdoc_layout_helper(align, args)) as BuiltinFn,
+            FunctionSignature {
+                name: builtin_name,
+                params: vec!["ctx: map".into()],
+                return_type: "map".into(),
+                doc: "Resolve a WDoc diagram layout request".into(),
+            },
+        );
+    }
+
+    reg.register(
+        "wdoc::route_connections",
+        std::sync::Arc::new(wdoc_route_connections_helper) as BuiltinFn,
+        FunctionSignature {
+            name: "wdoc::route_connections".into(),
+            params: vec!["ctx: map".into()],
+            return_type: "list(map)".into(),
+            doc: "Route WDoc diagram connections for resolved shapes".into(),
+        },
+    );
+
     reg.register(
         "wdoc::table_rows",
         std::sync::Arc::new(|args: &[Value]| {
@@ -790,7 +866,7 @@ fn table_rows_result(
 /// Render a `wdoc::draw::diagram` block to inline SVG. Walks the diagram's child
 /// blocks, dispatching shape templates via `ctx`, and feeds the resulting
 /// `ShapeNode` tree to `shapes::render_diagram_svg`.
-fn render_diagram_with_ctx(br: &BlockRef, ctx: &ExtractCtx) -> String {
+fn render_diagram_with_ctx(br: &BlockRef, ctx: &ExtractCtx) -> Result<String, String> {
     use crate::wdoc::shapes::*;
 
     let mut str_attrs = value_map_to_string_map_lossy(&br.attributes);
@@ -867,7 +943,7 @@ fn render_diagram_with_ctx(br: &BlockRef, ctx: &ExtractCtx) -> String {
         source_order += 1;
     }
 
-    let diagram = Diagram {
+    let mut diagram = Diagram {
         id: br.id.clone(),
         width: diagram_w,
         height: diagram_h,
@@ -880,7 +956,344 @@ fn render_diagram_with_ctx(br: &BlockRef, ctx: &ExtractCtx) -> String {
         options: str_attrs,
     };
 
-    crate::transform::codec::native::encode_svg_diagram_to_string(diagram)
+    apply_wcl_layouts(&mut diagram, ctx)?;
+    Ok(crate::wdoc::shapes::render_resolved_diagram_svg(
+        &mut diagram,
+    ))
+}
+
+fn apply_wcl_layouts(
+    diagram: &mut crate::wdoc::shapes::Diagram,
+    ctx: &ExtractCtx,
+) -> Result<(), String> {
+    crate::wdoc::shapes::resolve_diagram_layout_with(diagram, |children, connections, request| {
+        let layout_name = crate::wdoc::shapes::alignment_name(request.align);
+        let Some(func) = ctx.layout_helpers.get(layout_name) else {
+            return Err(format!(
+                "no @layout(\"{layout_name}\") registered for WDoc diagram layout"
+            ));
+        };
+        let request_value = layout_request_to_value(children, connections, request);
+        let result = crate::call_lambda_with_env(
+            func,
+            &[request_value],
+            &ctx.builtins,
+            &ctx.template_helpers,
+        )?;
+        apply_layout_result(children, request.indices, result)
+    })
+}
+
+fn wdoc_layout_helper(
+    align: crate::wdoc::shapes::Alignment,
+    args: &[Value],
+) -> Result<Value, String> {
+    if args.len() != 1 {
+        return Err("wdoc layout helper expects 1 argument".into());
+    }
+    let Value::Map(ctx) = &args[0] else {
+        return Err("wdoc layout helper argument must be a map".into());
+    };
+    let mut children = value_shapes(ctx.get("shapes"))?;
+    let mut connections = value_connections(ctx.get("connections"))?;
+    let indices: Vec<usize> = (0..children.len()).collect();
+    let parent = value_bounds(ctx.get("parent")).unwrap_or_default();
+    let gap = ctx.get("gap").and_then(value_as_f64).unwrap_or(0.0);
+    let options = value_string_map(ctx.get("options"));
+    crate::wdoc::shapes::prepare_layout_inputs(&mut children, &connections, &parent);
+    crate::wdoc::shapes::apply_builtin_layout(
+        &mut children,
+        &mut connections,
+        crate::wdoc::shapes::LayoutRequest {
+            indices: &indices,
+            parent: &parent,
+            scope_path: ctx
+                .get("scope_path")
+                .and_then(|value| value.as_string())
+                .unwrap_or(""),
+            align,
+            gap,
+            options: &options,
+        },
+    );
+    let mut result = IndexMap::new();
+    result.insert(
+        "shapes".to_string(),
+        Value::List(children.iter().map(shape_node_to_value).collect()),
+    );
+    result.insert(
+        "connections".to_string(),
+        Value::List(connections.iter().map(connection_to_value).collect()),
+    );
+    Ok(Value::Map(result))
+}
+
+fn wdoc_route_connections_helper(args: &[Value]) -> Result<Value, String> {
+    if args.len() != 1 {
+        return Err("wdoc::route_connections() expects 1 argument".into());
+    }
+    let Value::Map(ctx) = &args[0] else {
+        return Err("wdoc::route_connections() argument must be a map".into());
+    };
+    let shapes = value_shapes(ctx.get("shapes"))?;
+    let connections = value_connections(ctx.get("connections"))?;
+    Ok(Value::List(
+        crate::wdoc::shapes::route_connection_infos(&shapes, &connections)
+            .into_iter()
+            .map(|route| {
+                let mut map = IndexMap::new();
+                map.insert("from".to_string(), Value::String(route.from_id));
+                map.insert("to".to_string(), Value::String(route.to_id));
+                map.insert("d".to_string(), Value::String(route.d));
+                map.insert(
+                    "points".to_string(),
+                    Value::List(
+                        route
+                            .points
+                            .into_iter()
+                            .map(|(x, y)| Value::List(vec![Value::Float(x), Value::Float(y)]))
+                            .collect(),
+                    ),
+                );
+                map.insert("label_x".to_string(), Value::Float(route.label_x));
+                map.insert("label_y".to_string(), Value::Float(route.label_y));
+                Value::Map(map)
+            })
+            .collect(),
+    ))
+}
+
+fn layout_request_to_value(
+    children: &[crate::wdoc::shapes::ShapeNode],
+    connections: &[crate::wdoc::shapes::Connection],
+    request: crate::wdoc::shapes::LayoutRequest<'_>,
+) -> Value {
+    let mut map = IndexMap::new();
+    map.insert(
+        "layout".to_string(),
+        Value::String(crate::wdoc::shapes::alignment_name(request.align).to_string()),
+    );
+    map.insert("gap".to_string(), Value::Float(request.gap));
+    map.insert(
+        "scope_path".to_string(),
+        Value::String(request.scope_path.to_string()),
+    );
+    map.insert("parent".to_string(), bounds_to_value(request.parent));
+    map.insert(
+        "options".to_string(),
+        Value::Map(
+            request
+                .options
+                .iter()
+                .map(|(key, value)| (key.clone(), Value::String(value.clone())))
+                .collect(),
+        ),
+    );
+    map.insert(
+        "shapes".to_string(),
+        Value::List(
+            request
+                .indices
+                .iter()
+                .filter_map(|idx| children.get(*idx))
+                .map(shape_node_to_value)
+                .collect(),
+        ),
+    );
+    map.insert(
+        "connections".to_string(),
+        Value::List(connections.iter().map(connection_to_value).collect()),
+    );
+    Value::Map(map)
+}
+
+fn bounds_to_value(bounds: &crate::wdoc::shapes::Bounds) -> Value {
+    Value::Map(IndexMap::from([
+        ("x".to_string(), Value::Float(bounds.x)),
+        ("y".to_string(), Value::Float(bounds.y)),
+        ("width".to_string(), Value::Float(bounds.width)),
+        ("height".to_string(), Value::Float(bounds.height)),
+    ]))
+}
+
+fn shape_node_to_value(node: &crate::wdoc::shapes::ShapeNode) -> Value {
+    let mut map: IndexMap<String, Value> = node
+        .attrs
+        .iter()
+        .map(|(key, value)| (key.clone(), Value::String(value.clone())))
+        .collect();
+    map.insert("kind".to_string(), Value::String(node.kind_name.clone()));
+    if let Some(id) = &node.id {
+        map.insert("id".to_string(), Value::String(id.clone()));
+    }
+    map.insert("x".to_string(), Value::Float(node.resolved.x));
+    map.insert("y".to_string(), Value::Float(node.resolved.y));
+    map.insert("width".to_string(), Value::Float(node.resolved.width));
+    map.insert("height".to_string(), Value::Float(node.resolved.height));
+    map.insert(
+        "align".to_string(),
+        Value::String(crate::wdoc::shapes::alignment_name(node.align).to_string()),
+    );
+    map.insert("gap".to_string(), Value::Float(node.gap));
+    map.insert("padding".to_string(), Value::Float(node.padding));
+    map.insert(
+        "children".to_string(),
+        Value::List(node.children.iter().map(shape_node_to_value).collect()),
+    );
+    Value::Map(map)
+}
+
+fn connection_to_value(conn: &crate::wdoc::shapes::Connection) -> Value {
+    let mut map: IndexMap<String, Value> = conn
+        .attrs
+        .iter()
+        .map(|(key, value)| (key.clone(), Value::String(value.clone())))
+        .collect();
+    map.insert("kind".to_string(), Value::String("connection".to_string()));
+    map.insert("from".to_string(), Value::String(conn.from_id.clone()));
+    map.insert("to".to_string(), Value::String(conn.to_id.clone()));
+    if let Some(label) = &conn.label {
+        map.insert("label".to_string(), Value::String(label.clone()));
+    }
+    Value::Map(map)
+}
+
+fn value_shapes(value: Option<&Value>) -> Result<Vec<crate::wdoc::shapes::ShapeNode>, String> {
+    let Some(Value::List(items)) = value else {
+        return Ok(Vec::new());
+    };
+    let mut shapes = Vec::new();
+    for (idx, item) in items.iter().enumerate() {
+        let Some((mut shape, _)) =
+            descriptor_to_shape_node_and_connections(item, idx, None, None, &HashMap::new())
+        else {
+            return Err("layout shape descriptors must be maps with a kind".into());
+        };
+        shape.resolved.x = shape.x.unwrap_or(shape.resolved.x);
+        shape.resolved.y = shape.y.unwrap_or(shape.resolved.y);
+        shape.resolved.width = shape.width.unwrap_or(shape.resolved.width);
+        shape.resolved.height = shape.height.unwrap_or(shape.resolved.height);
+        shapes.push(shape);
+    }
+    Ok(shapes)
+}
+
+fn value_connections(
+    value: Option<&Value>,
+) -> Result<Vec<crate::wdoc::shapes::Connection>, String> {
+    let Some(Value::List(items)) = value else {
+        return Ok(Vec::new());
+    };
+    Ok(items
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, item)| descriptor_to_connection_with_order(item, idx))
+        .collect())
+}
+
+fn value_bounds(value: Option<&Value>) -> Option<crate::wdoc::shapes::Bounds> {
+    let Some(Value::Map(map)) = value else {
+        return None;
+    };
+    Some(crate::wdoc::shapes::Bounds {
+        x: map.get("x").and_then(value_as_f64).unwrap_or(0.0),
+        y: map.get("y").and_then(value_as_f64).unwrap_or(0.0),
+        width: map.get("width").and_then(value_as_f64).unwrap_or(0.0),
+        height: map.get("height").and_then(value_as_f64).unwrap_or(0.0),
+    })
+}
+
+fn value_string_map(value: Option<&Value>) -> IndexMap<String, String> {
+    let Some(Value::Map(map)) = value else {
+        return IndexMap::new();
+    };
+    map.iter()
+        .map(|(key, value)| (key.clone(), value_to_string(value)))
+        .collect()
+}
+
+fn apply_layout_result(
+    children: &mut [crate::wdoc::shapes::ShapeNode],
+    indices: &[usize],
+    result: Value,
+) -> Result<(), String> {
+    let shapes = match result {
+        Value::Map(mut map) => map.shift_remove("shapes").unwrap_or(Value::Null),
+        Value::List(_) => result,
+        Value::Null => return Ok(()),
+        other => {
+            return Err(format!(
+                "@layout lambda must return a map or list, got {}",
+                other.type_name()
+            ))
+        }
+    };
+    let Value::List(items) = shapes else {
+        return Ok(());
+    };
+    for (position, item) in items.iter().enumerate() {
+        let Some(child_index) = indices.get(position).copied() else {
+            break;
+        };
+        let Some(child) = children.get_mut(child_index) else {
+            continue;
+        };
+        apply_shape_layout_value(child, item)?;
+    }
+    Ok(())
+}
+
+fn apply_shape_layout_value(
+    node: &mut crate::wdoc::shapes::ShapeNode,
+    value: &Value,
+) -> Result<(), String> {
+    let Value::Map(map) = value else {
+        return Err("@layout shape results must be maps".into());
+    };
+    if let Some(x) = map.get("x").and_then(value_as_f64) {
+        node.resolved.x = x;
+    }
+    if let Some(y) = map.get("y").and_then(value_as_f64) {
+        node.resolved.y = y;
+    }
+    if let Some(width) = map.get("width").and_then(value_as_f64) {
+        node.resolved.width = width;
+    }
+    if let Some(height) = map.get("height").and_then(value_as_f64) {
+        node.resolved.height = height;
+    }
+    for (key, value) in map {
+        if matches!(
+            key.as_str(),
+            "kind" | "id" | "x" | "y" | "width" | "height" | "children"
+        ) {
+            continue;
+        }
+        match value {
+            Value::String(s) => {
+                node.attrs.insert(key.clone(), s.clone());
+            }
+            Value::Int(i) => {
+                node.attrs.insert(key.clone(), i.to_string());
+            }
+            Value::Float(f) => {
+                node.attrs.insert(key.clone(), f.to_string());
+            }
+            Value::Bool(b) => {
+                node.attrs.insert(key.clone(), b.to_string());
+            }
+            Value::Null => {}
+            _ => {}
+        }
+    }
+    if let Some(Value::List(items)) = map.get("children") {
+        for (idx, item) in items.iter().enumerate() {
+            if let Some(child) = node.children.get_mut(idx) {
+                apply_shape_layout_value(child, item)?;
+            }
+        }
+    }
+    Ok(())
 }
 
 fn design_system_class(scope: &str) -> String {
@@ -3085,6 +3498,7 @@ struct ExtractCtx {
     draw_schema_names: HashSet<String>,
     structural_shape_schema_names: HashSet<String>,
     template_helpers: HashMap<String, FunctionValue>,
+    layout_helpers: HashMap<String, FunctionValue>,
     markup_rules: Vec<MarkupRule>,
     builtins: HashMap<String, BuiltinFn>,
     css_registry: Rc<RefCell<DiagramCssRegistry>>,
@@ -3449,6 +3863,7 @@ mod wdoc_draw_tests {
             draw_schema_names: HashSet::new(),
             structural_shape_schema_names: HashSet::new(),
             template_helpers: HashMap::new(),
+            layout_helpers: HashMap::new(),
             markup_rules: Vec::new(),
             builtins: HashMap::new(),
             css_registry: Rc::new(RefCell::new(DiagramCssRegistry::default())),
@@ -3643,6 +4058,7 @@ mod wdoc_draw_tests {
                 .insert((*kind).to_string(), (*base_kind).to_string());
         }
         ctx.template_helpers = collect_template_helpers(&doc);
+        ctx.layout_helpers = collect_layout_helpers(&doc).unwrap();
         ctx.markup_rules = collect_markup_rules(&doc, &ctx.template_helpers).unwrap();
         ctx.builtins = functions.functions;
         ctx.draw_schema_names = collect_draw_schema_names(&doc);
@@ -3670,6 +4086,7 @@ mod wdoc_draw_tests {
         ctx.template_map = collect_template_map(&doc);
         ctx.template_extends_map = collect_template_extends_map(&doc);
         ctx.template_helpers = template_helpers;
+        ctx.layout_helpers = collect_layout_helpers(&doc).unwrap();
         ctx.markup_rules = collect_markup_rules(&doc, &ctx.template_helpers).unwrap();
         ctx.builtins = functions.functions;
         ctx.draw_schema_names = collect_draw_schema_names(&doc);
@@ -3694,6 +4111,7 @@ mod wdoc_draw_tests {
         );
 
         let template_helpers = collect_template_helpers(&doc);
+        let layout_helpers = collect_layout_helpers(&doc).unwrap();
         let markup_rules = collect_markup_rules(&doc, &template_helpers).unwrap();
         ExtractCtx {
             template_map: collect_template_map(&doc),
@@ -3701,6 +4119,7 @@ mod wdoc_draw_tests {
             draw_schema_names: collect_draw_schema_names(&doc),
             structural_shape_schema_names: collect_structural_shape_schema_names(&doc),
             template_helpers,
+            layout_helpers,
             markup_rules,
             builtins: functions.functions,
             css_registry: Rc::new(RefCell::new(DiagramCssRegistry::default())),
@@ -3828,6 +4247,7 @@ mod wdoc_draw_tests {
             doc.diagnostics
         );
         let template_helpers = collect_template_helpers(&doc);
+        let layout_helpers = collect_layout_helpers(&doc).unwrap();
         let ctx = ExtractCtx {
             template_map: collect_template_map(&doc),
             template_extends_map: collect_template_extends_map(&doc),
@@ -3835,6 +4255,7 @@ mod wdoc_draw_tests {
             structural_shape_schema_names: collect_structural_shape_schema_names(&doc),
             markup_rules: collect_markup_rules(&doc, &template_helpers).unwrap(),
             template_helpers,
+            layout_helpers,
             builtins: functions.functions,
             css_registry: Rc::new(RefCell::new(DiagramCssRegistry::default())),
             diagram_classes: Rc::new(RefCell::new(IndexMap::new())),
@@ -4308,7 +4729,7 @@ mod wdoc_draw_tests {
             ],
         );
 
-        let html = render_diagram_with_ctx(&diagram, &ctx);
+        let html = render_diagram_with_ctx(&diagram, &ctx).expect("render diagram");
         assert!(html.contains(">API</text>"));
         assert!(html.contains(">Repository</text>"));
         assert!(html.contains("data-wdoc-conn-from=\"api.out\""));
@@ -4372,7 +4793,7 @@ mod wdoc_draw_tests {
             )],
         );
 
-        let html = render_diagram_with_ctx(&diagram, &ctx);
+        let html = render_diagram_with_ctx(&diagram, &ctx).expect("render diagram");
         assert!(html.contains("height=\"128\""));
         assert!(html.contains("x1=\"12\" y1=\"81\" x2=\"208\" y2=\"81\""));
         assert!(html.contains("stroke=\"#ff00aa\""));
@@ -4425,7 +4846,7 @@ mod wdoc_draw_tests {
             )],
         );
 
-        let html = render_diagram_with_ctx(&diagram, &ctx);
+        let html = render_diagram_with_ctx(&diagram, &ctx).expect("render diagram");
         assert!(html.contains("class=\"wdoc-widget-bar_chart\""));
         assert!(html.contains(">Revenue</text>"));
         assert!(html.contains(">Q1</text>"));
@@ -4489,7 +4910,7 @@ mod wdoc_draw_tests {
             )],
         );
 
-        let html = render_diagram_with_ctx(&diagram, &ctx);
+        let html = render_diagram_with_ctx(&diagram, &ctx).expect("render diagram");
         assert!(html.contains("font-weight=\"700\""));
         assert!(html.contains("font-style=\"italic\""));
         assert!(html.contains("text-decoration=\"underline\""));
@@ -4551,7 +4972,7 @@ mod wdoc_draw_tests {
             )],
         );
 
-        let html = render_diagram_with_ctx(&diagram, &ctx);
+        let html = render_diagram_with_ctx(&diagram, &ctx).expect("render diagram");
         let height_prefix = "<rect x=\"20\" y=\"20\" width=\"150\" height=\"";
         let start = html.find(height_prefix).expect("parent rect") + height_prefix.len();
         let end = html[start..].find('"').expect("height end") + start;
@@ -4605,7 +5026,7 @@ mod wdoc_draw_tests {
             )],
         );
 
-        let html = render_diagram_with_ctx(&diagram, &ctx);
+        let html = render_diagram_with_ctx(&diagram, &ctx).expect("render diagram");
         assert!(html.contains("fill=\"#0f766e\""));
         assert!(html.contains("class=\"wdoc-widget-button\""));
         assert!(!html.contains("background_fill"));
@@ -4746,7 +5167,7 @@ mod wdoc_draw_tests {
             vec![terminal],
         );
 
-        let html = render_diagram_with_ctx(&diagram, &ctx);
+        let html = render_diagram_with_ctx(&diagram, &ctx).expect("render diagram");
         assert!(html.contains("brand_terminal wdoc-terminal-control"));
         assert!(html.contains("data-wdoc-id=\"deploy_surface\""));
         assert!(html.contains("data-wdoc-id=\"deploy_label\""));
@@ -4801,7 +5222,7 @@ mod wdoc_draw_tests {
             vec![panel],
         );
 
-        let html = render_diagram_with_ctx(&diagram, &ctx);
+        let html = render_diagram_with_ctx(&diagram, &ctx).expect("render diagram");
         assert!(html.contains("data-wdoc-id=\"filters\""));
         assert!(html.contains("data-wdoc-collapsible-panel=\"true\""));
         assert!(html.contains("data-wdoc-collapse-group=\"settings\""));
@@ -4867,7 +5288,7 @@ mod wdoc_draw_tests {
             vec![rect],
         );
 
-        let html = render_diagram_with_ctx(&diagram, &ctx);
+        let html = render_diagram_with_ctx(&diagram, &ctx).expect("render diagram");
         assert!(html.contains("data-wdoc-id=\"server\""));
         assert!(html.contains("data-wdoc-tooltip-id=\"server_tip\""));
         assert!(html.contains("data-wdoc-tooltip-delay-ms=\"650\""));
@@ -4920,7 +5341,7 @@ mod wdoc_draw_tests {
             )],
         );
 
-        let html = render_diagram_with_ctx(&diagram, &ctx);
+        let html = render_diagram_with_ctx(&diagram, &ctx).expect("render diagram");
         assert!(html.contains("Ada"));
         assert!(html.contains("Role"));
         assert!(html.contains("Pending"));
@@ -5022,7 +5443,7 @@ mod wdoc_draw_tests {
             )],
         );
 
-        let html = render_diagram_with_ctx(&diagram, &ctx);
+        let html = render_diagram_with_ctx(&diagram, &ctx).expect("render diagram");
         assert!(html.contains("Ada"));
         assert!(html.contains("font-weight=\"700\""));
         assert!(html.contains("Active"));
@@ -5278,7 +5699,7 @@ mod wdoc_draw_tests {
             vec![terminal],
         );
 
-        let html = render_diagram_with_ctx(&diagram, &ctx);
+        let html = render_diagram_with_ctx(&diagram, &ctx).expect("render diagram");
         assert!(html.contains("data-wdoc-id=\"animated\""));
         assert!(html.contains("class=\"term_animated_button wdoc-terminal-control\""));
         assert!(html.contains("data-wdoc-terminal-grid-group=\"true\""));
@@ -5491,7 +5912,7 @@ mod wdoc_draw_tests {
             vec![block("my::danger_button", Some("danger"), attrs, vec![])],
         );
 
-        let html = render_diagram_with_ctx(&diagram, &ctx);
+        let html = render_diagram_with_ctx(&diagram, &ctx).expect("render diagram");
 
         assert!(html.contains("fill=\"#111111\""));
         assert!(html.contains(">Danger</text>"));
@@ -5530,7 +5951,7 @@ mod wdoc_draw_tests {
             )],
         );
 
-        let html = render_diagram_with_ctx(&diagram, &ctx);
+        let html = render_diagram_with_ctx(&diagram, &ctx).expect("render diagram");
 
         assert!(html.contains("fill=\"#445566\""));
         assert!(html.contains("fill=\"#abcdef\""));
@@ -5564,7 +5985,7 @@ mod wdoc_draw_tests {
             )],
         );
 
-        let html = render_diagram_with_ctx(&diagram, &ctx);
+        let html = render_diagram_with_ctx(&diagram, &ctx).expect("render diagram");
 
         assert!(html.contains("fill=\"#222222\""));
         assert!(html.contains(">1</text>"));
@@ -5602,7 +6023,7 @@ mod wdoc_draw_tests {
             vec![block("my::final_box", Some("box"), IndexMap::new(), vec![])],
         );
 
-        let html = render_diagram_with_ctx(&diagram, &ctx);
+        let html = render_diagram_with_ctx(&diagram, &ctx).expect("render diagram");
 
         assert!(html.contains("fill=\"#101010\""));
         assert!(html.contains("fill=\"#202020\""));
@@ -5687,7 +6108,7 @@ mod wdoc_draw_tests {
             )],
         );
 
-        let html = render_diagram_with_ctx(&diagram, &ctx);
+        let html = render_diagram_with_ctx(&diagram, &ctx).expect("render diagram");
         assert!(html.contains("#123456"));
         assert!(!html.contains("metadata"));
     }
@@ -5734,7 +6155,7 @@ mod wdoc_draw_tests {
             ],
         );
 
-        let html = render_diagram_with_ctx(&diagram, &ctx);
+        let html = render_diagram_with_ctx(&diagram, &ctx).expect("render diagram");
         assert!(html.contains(">out</text>"));
     }
 
@@ -5877,7 +6298,7 @@ mod wdoc_draw_tests {
 
         let ctx = empty_ctx();
 
-        let html = render_diagram_with_ctx(&diagram, &ctx);
+        let html = render_diagram_with_ctx(&diagram, &ctx).expect("render diagram");
         assert!(html.contains("id=\"wdoc-diagram-button-preview\""));
         assert!(html.contains("<g transform=\"translate(20,16)\" class=\"ui-button\""));
         assert!(html.contains("pointer-events=\"all\""));
@@ -5911,8 +6332,8 @@ mod wdoc_draw_tests {
         );
         let ctx = empty_ctx();
 
-        let first = render_diagram_with_ctx(&diagram, &ctx);
-        let second = render_diagram_with_ctx(&diagram, &ctx);
+        let first = render_diagram_with_ctx(&diagram, &ctx).expect("render diagram");
+        let second = render_diagram_with_ctx(&diagram, &ctx).expect("render diagram");
         let css = ctx.css_registry.borrow().render_css();
 
         assert!(first.contains("class=\"wad-ds-wad_interface\""));
@@ -6137,7 +6558,7 @@ mod wdoc_draw_tests {
 
         let ctx = empty_ctx();
 
-        let html = render_diagram_with_ctx(&diagram, &ctx);
+        let html = render_diagram_with_ctx(&diagram, &ctx).expect("render diagram");
         assert!(html.find("fill=\"blue\"").unwrap() < html.find("fill=\"red\"").unwrap());
         assert!(!html.contains("z-index"));
         assert!(!html.contains("z_index"));
@@ -6157,6 +6578,9 @@ mod wdoc_draw_tests {
                     fill = "#bada55"
                 }
             ]
+
+            @layout("layered")
+            export let test_layered_layout = ctx => wdoc::layout_layered(ctx)
             "##,
             "my::task",
             "my_task_template",
@@ -6188,9 +6612,59 @@ mod wdoc_draw_tests {
             ],
         );
 
-        let html = render_diagram_with_ctx(&diagram, &ctx);
+        let html = render_diagram_with_ctx(&diagram, &ctx).expect("render diagram");
         assert_eq!(html.matches("fill=\"#bada55\"").count(), 2);
         assert!(html.contains("marker-end=\"url(#wdoc-arrow)\""));
+    }
+
+    #[test]
+    fn duplicate_layout_lambdas_are_rejected() {
+        let doc = crate::parse(
+            r#"
+            @layout("flow")
+            export let flow_a = ctx => ctx
+
+            @layout("flow")
+            export let flow_b = ctx => ctx
+            "#,
+            crate::ParseOptions {
+                functions: wdoc_functions(),
+                ..Default::default()
+            },
+        );
+        assert!(
+            !doc.has_errors(),
+            "unexpected diagnostics: {:?}",
+            doc.diagnostics
+        );
+
+        let err = collect_layout_helpers(&doc).expect_err("duplicate layout should fail");
+        assert!(err.contains("duplicate @layout(\"flow\")"));
+    }
+
+    #[test]
+    fn missing_layout_lambda_is_render_error() {
+        let mut a_attrs = IndexMap::new();
+        int_attr(&mut a_attrs, "width", 40);
+        int_attr(&mut a_attrs, "height", 20);
+        let mut b_attrs = IndexMap::new();
+        int_attr(&mut b_attrs, "width", 40);
+        int_attr(&mut b_attrs, "height", 20);
+        let mut diagram_attrs = IndexMap::new();
+        string_attr(&mut diagram_attrs, "align", "flow");
+
+        let diagram = block(
+            "wdoc::draw::diagram",
+            Some("missing_layout"),
+            diagram_attrs,
+            vec![
+                block("wdoc::draw::rect", Some("a"), a_attrs, vec![]),
+                block("wdoc::draw::rect", Some("b"), b_attrs, vec![]),
+            ],
+        );
+
+        let err = render_diagram_with_ctx(&diagram, &empty_ctx()).expect_err("layout should fail");
+        assert!(err.contains("no @layout(\"flow\") registered"));
     }
 
     #[test]
@@ -6633,7 +7107,7 @@ mod wdoc_draw_tests {
                 Value::BlockRef(card_class),
             )])));
 
-        let html = render_diagram_with_ctx(&diagram, &ctx);
+        let html = render_diagram_with_ctx(&diagram, &ctx).expect("render diagram");
         assert!(html.contains("fill=\"#ffffff\""));
         assert!(html.contains("stroke=\"#94a3b8\""));
         assert!(html.contains(".card.wdoc-state-hovered"));
@@ -6724,7 +7198,7 @@ mod wdoc_draw_tests {
                 Value::BlockRef(card_class),
             )])));
 
-        let html = render_diagram_with_ctx(&diagram, &ctx);
+        let html = render_diagram_with_ctx(&diagram, &ctx).expect("render diagram");
         assert!(html.contains("data-wdoc-state-animation=\"active:slide\""));
         assert!(html.contains("slide|750|0|ease|infinite|alternate|both|"));
         assert!(html.contains("100,90,30,50,35,180,80,40"));
@@ -6845,7 +7319,7 @@ mod wdoc_draw_tests {
 
         let ctx = empty_ctx();
 
-        let html = render_diagram_with_ctx(&diagram, &ctx);
+        let html = render_diagram_with_ctx(&diagram, &ctx).expect("render diagram");
         assert!(html.contains("<image href=\"images/hero.png\""));
         assert!(html.contains("preserveAspectRatio=\"xMidYMid slice\""));
         assert!(html.contains("role=\"img\" aria-label=\"Hero image\""));
@@ -6887,7 +7361,7 @@ mod wdoc_draw_tests {
 
         let ctx = empty_ctx();
 
-        let html = render_diagram_with_ctx(&diagram, &ctx);
+        let html = render_diagram_with_ctx(&diagram, &ctx).expect("render diagram");
         assert!(html.contains("data-wdoc-map=\"true\""));
         assert!(html.contains("<image href=\"images/world.png\""));
         assert!(html.contains("viewBox=\"300 200 300 180\""));
@@ -6982,7 +7456,7 @@ mod wdoc_draw_tests {
             ],
         );
 
-        let html = render_diagram_with_ctx(&diagram, &ctx);
+        let html = render_diagram_with_ctx(&diagram, &ctx).expect("render diagram");
         assert!(html.contains("data-wdoc-sprite=\"true\""));
         assert!(html.contains("viewBox=\"100 0 100 100\""));
         assert!(html.contains("href=\"images/explosion.png\""));
@@ -7036,7 +7510,7 @@ mod wdoc_draw_tests {
             ],
         );
 
-        let html = render_diagram_with_ctx(&diagram, &ctx);
+        let html = render_diagram_with_ctx(&diagram, &ctx).expect("render diagram");
         assert!(html.contains("data-wdoc-dopesheet-view=\"true\""));
         assert!(html.contains("href=\"images/player.png\""));
         assert!(html.contains("viewBox=\"0 0 16 8\""));
@@ -7094,7 +7568,7 @@ mod wdoc_draw_tests {
             ],
         );
 
-        let html = render_diagram_with_ctx(&diagram, &ctx);
+        let html = render_diagram_with_ctx(&diagram, &ctx).expect("render diagram");
         assert!(html.contains("data-wdoc-tilemap=\"true\""));
         assert!(html.contains("width=\"96\" height=\"48\""));
         assert!(html.contains("href=\"images/terrain.png\""));
@@ -7159,7 +7633,7 @@ mod wdoc_draw_tests {
             ],
         );
 
-        let html = render_diagram_with_ctx(&diagram, &ctx);
+        let html = render_diagram_with_ctx(&diagram, &ctx).expect("render diagram");
         assert!(html.contains("data-wdoc-tilemap=\"true\""));
         assert!(html.contains("width=\"192\" height=\"96\""));
         assert!(html.contains("x=\"74\" y=\"20\" width=\"64\" height=\"32\""));
@@ -7222,7 +7696,7 @@ mod wdoc_draw_tests {
             ],
         );
 
-        let html = render_diagram_with_ctx(&diagram, &ctx);
+        let html = render_diagram_with_ctx(&diagram, &ctx).expect("render diagram");
         assert!(html.contains("width=\"128\" height=\"96\""));
         assert!(html.contains("x=\"42\" y=\"20\" width=\"64\" height=\"64\""));
         assert!(html.contains("x=\"74\" y=\"36\" width=\"64\" height=\"64\""));
@@ -7264,7 +7738,7 @@ mod wdoc_draw_tests {
 
         let ctx = empty_ctx();
 
-        let html = render_diagram_with_ctx(&diagram, &ctx);
+        let html = render_diagram_with_ctx(&diagram, &ctx).expect("render diagram");
         assert!(html.contains("class=\"inline-mark\""));
         assert!(html.contains("<path d=\"M1 1L2 2\""));
         assert!(html.contains("transform=\"translate(5,6) scale(1,1) translate(-0,-0)\""));
@@ -7298,7 +7772,7 @@ fn wdoc_render_children(value: &Value) -> Result<String, String> {
         // the template call returns, so it remains valid for this synchronous
         // helper invocation.
         let ctx = unsafe { &*ctx_ptr };
-        Ok(render_child_content(block, ctx))
+        render_child_content(block, ctx)
     })
 }
 
@@ -7658,13 +8132,13 @@ fn match_markup_rule(
     Some((pos, captures))
 }
 
-fn render_child_content(block: &BlockRef, ctx: &ExtractCtx) -> String {
+fn render_child_content(block: &BlockRef, ctx: &ExtractCtx) -> Result<String, String> {
     let mut html = String::new();
     for child in all_child_blocks(block) {
         match child.kind.as_str() {
             "wdoc::layout" | "wdoc::section" | "wdoc::page" | "wdoc::doc" | "wdoc::style" => {}
             "wdoc::draw::diagram" => {
-                html.push_str(&render_diagram_with_ctx(child, ctx));
+                html.push_str(&render_diagram_with_ctx(child, ctx)?);
                 html.push('\n');
             }
             _ => {
@@ -7675,7 +8149,7 @@ fn render_child_content(block: &BlockRef, ctx: &ExtractCtx) -> String {
             }
         }
     }
-    html
+    Ok(html)
 }
 
 fn extract(values: &IndexMap<String, Value>, ctx: &ExtractCtx) -> Result<WdocDocument, String> {
@@ -7829,6 +8303,7 @@ fn extract_page(block: &BlockRef, ctx: &ExtractCtx) -> Result<Page, String> {
         .iter()
         .find(|c| c.kind == "wdoc::layout")
         .map(|c| extract_layout(c, ctx))
+        .transpose()?
         .unwrap_or(Layout {
             children: Vec::new(),
         });
@@ -7961,13 +8436,13 @@ fn collect_bindings_in_block(block: &BlockRef, bindings: &mut Vec<WdocBinding>) 
     }
 }
 
-fn extract_layout(block: &BlockRef, ctx: &ExtractCtx) -> Layout {
-    Layout {
-        children: extract_layout_children(block, ctx),
-    }
+fn extract_layout(block: &BlockRef, ctx: &ExtractCtx) -> Result<Layout, String> {
+    Ok(Layout {
+        children: extract_layout_children(block, ctx)?,
+    })
 }
 
-fn extract_layout_children(block: &BlockRef, ctx: &ExtractCtx) -> Vec<LayoutItem> {
+fn extract_layout_children(block: &BlockRef, ctx: &ExtractCtx) -> Result<Vec<LayoutItem>, String> {
     let mut items = Vec::new();
     for child in all_child_blocks(block) {
         match child.kind.as_str() {
@@ -7975,12 +8450,12 @@ fn extract_layout_children(block: &BlockRef, ctx: &ExtractCtx) -> Vec<LayoutItem
                 child,
                 SplitDirection::Vertical,
                 ctx,
-            ))),
+            )?)),
             "hsplit" => items.push(LayoutItem::SplitGroup(extract_split_group(
                 child,
                 SplitDirection::Horizontal,
                 ctx,
-            ))),
+            )?)),
             // Known structural blocks are not content
             "wdoc::layout" | "wdoc::section" | "wdoc::page" | "wdoc::doc" | "wdoc::style"
             | "wdoc::signal" | "wdoc::binding" | "signal" | "binding" | "split" => {}
@@ -7988,7 +8463,7 @@ fn extract_layout_children(block: &BlockRef, ctx: &ExtractCtx) -> Vec<LayoutItem
             // Cannot go through the html template path because templates can't
             // see ctx.
             "wdoc::draw::diagram" => {
-                let html = render_diagram_with_ctx(child, ctx);
+                let html = render_diagram_with_ctx(child, ctx)?;
                 items.push(LayoutItem::Content(ContentBlock {
                     kind: "wdoc::draw::diagram".to_string(),
                     id: child.id.clone(),
@@ -8013,24 +8488,24 @@ fn extract_layout_children(block: &BlockRef, ctx: &ExtractCtx) -> Vec<LayoutItem
             }
         }
     }
-    items
+    Ok(items)
 }
 
 fn extract_split_group(
     block: &BlockRef,
     direction: SplitDirection,
     ctx: &ExtractCtx,
-) -> SplitGroup {
+) -> Result<SplitGroup, String> {
     let mut splits = Vec::new();
     for child in all_child_blocks(block) {
         if child.kind == "split" {
-            splits.push(extract_split(child, ctx));
+            splits.push(extract_split(child, ctx)?);
         }
     }
-    SplitGroup { direction, splits }
+    Ok(SplitGroup { direction, splits })
 }
 
-fn extract_split(block: &BlockRef, ctx: &ExtractCtx) -> Split {
+fn extract_split(block: &BlockRef, ctx: &ExtractCtx) -> Result<Split, String> {
     let size_percent = block
         .attributes
         .get("size")
@@ -8041,10 +8516,10 @@ fn extract_split(block: &BlockRef, ctx: &ExtractCtx) -> Split {
         })
         .unwrap_or(0.0);
 
-    Split {
+    Ok(Split {
         size_percent,
-        children: extract_layout_children(block, ctx),
-    }
+        children: extract_layout_children(block, ctx)?,
+    })
 }
 
 fn get_style_decorator(block: &BlockRef) -> Option<String> {
@@ -8174,6 +8649,7 @@ pub fn parse_extract_from_files(
     let template_extends_map = collect_template_extends_map(&doc);
     let builtins: HashMap<String, BuiltinFn> = functions.functions;
     let template_helpers = collect_template_helpers(&doc);
+    let layout_helpers = collect_layout_helpers(&doc)?;
     let markup_rules = collect_markup_rules(&doc, &template_helpers)?;
     let svg_search_dirs = wdoc_source_dirs(files, &doc.imported_paths);
     let icon_registry = collect_icon_sets(&all_values, &svg_search_dirs)?;
@@ -8183,6 +8659,7 @@ pub fn parse_extract_from_files(
         draw_schema_names,
         structural_shape_schema_names,
         template_helpers,
+        layout_helpers,
         markup_rules,
         builtins,
         css_registry: Rc::new(RefCell::new(DiagramCssRegistry::default())),

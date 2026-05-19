@@ -753,6 +753,35 @@ namespace wdoc {
     declare render_children(block: any) -> string
     declare block_children(block: any) -> list(any)
     declare table_rows(block: any) -> map(string, any)
+    declare layout_stack(ctx: map(string, any)) -> map(string, any)
+    declare layout_flow(ctx: map(string, any)) -> map(string, any)
+    declare layout_center(ctx: map(string, any)) -> map(string, any)
+    declare layout_grid(ctx: map(string, any)) -> map(string, any)
+    declare layout_layered(ctx: map(string, any)) -> map(string, any)
+    declare layout_force(ctx: map(string, any)) -> map(string, any)
+    declare layout_radial(ctx: map(string, any)) -> map(string, any)
+    declare route_connections(ctx: map(string, any)) -> list(map(string, any))
+
+    @layout("stack")
+    export let default_layout_stack = ctx => wdoc::layout_stack(ctx)
+
+    @layout("flow")
+    export let default_layout_flow = ctx => wdoc::layout_flow(ctx)
+
+    @layout("center")
+    export let default_layout_center = ctx => wdoc::layout_center(ctx)
+
+    @layout("grid")
+    export let default_layout_grid = ctx => wdoc::layout_grid(ctx)
+
+    @layout("layered")
+    export let default_layout_layered = ctx => wdoc::layout_layered(ctx)
+
+    @layout("force")
+    export let default_layout_force = ctx => wdoc::layout_force(ctx)
+
+    @layout("radial")
+    export let default_layout_radial = ctx => wdoc::layout_radial(ctx)
 
     // --- Template rendering functions ---
 

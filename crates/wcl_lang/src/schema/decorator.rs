@@ -479,6 +479,19 @@ impl DecoratorSchemaRegistry {
             constraints: vec![],
             span: Span::dummy(),
         });
+        self.insert(ResolvedDecoratorSchema {
+            name: "layout".to_string(),
+            targets: vec![DecoratorTarget::Let],
+            params: vec![DecoratorParam {
+                name: "name".to_string(),
+                type_expr: TypeExpr::String(Span::dummy()),
+                required: true,
+                default: None,
+                span: Span::dummy(),
+            }],
+            constraints: vec![],
+            span: Span::dummy(),
+        });
     }
 
     fn insert(&mut self, schema: ResolvedDecoratorSchema) {
@@ -538,7 +551,7 @@ impl DecoratorSchemaRegistry {
 
     /// Validate all decorators in the document
     pub fn validate_all(&self, doc: &Document, diagnostics: &mut DiagnosticBag) {
-        let block_ids = collect_block_ids(&doc.items);
+        let block_ids = collect_block_ids(&doc.items, &self.namespace_aliases);
         self.validate_items(&doc.items, &block_ids, diagnostics);
     }
 
@@ -825,11 +838,24 @@ struct DecoratorBlockIdIndex {
     qualified_by_kind: HashMap<String, HashSet<String>>,
 }
 
-fn collect_block_ids(items: &[DocItem]) -> DecoratorBlockIdIndex {
+fn collect_block_ids(
+    items: &[DocItem],
+    aliases: &HashMap<String, String>,
+) -> DecoratorBlockIdIndex {
     let mut index = DecoratorBlockIdIndex::default();
     for item in items {
-        if let DocItem::Body(BodyItem::Block(block)) = item {
-            collect_block_ids_recursive(block, None, &mut index);
+        match item {
+            DocItem::Body(BodyItem::Block(block)) => {
+                collect_block_ids_recursive(block, None, aliases, &mut index);
+            }
+            DocItem::Namespace(ns) => {
+                for item in &ns.items {
+                    if let DocItem::Body(BodyItem::Block(block)) = item {
+                        collect_block_ids_recursive(block, None, aliases, &mut index);
+                    }
+                }
+            }
+            _ => {}
         }
     }
     index
@@ -838,23 +864,26 @@ fn collect_block_ids(items: &[DocItem]) -> DecoratorBlockIdIndex {
 fn collect_block_ids_recursive(
     block: &Block,
     parent_path: Option<&str>,
+    aliases: &HashMap<String, String>,
     index: &mut DecoratorBlockIdIndex,
 ) {
     let child_path = if let Some(ref inline_id) = block.inline_id {
         if let Some(id) = inline_id_to_string(inline_id) {
-            index
-                .by_kind
-                .entry(block.kind.name.clone())
-                .or_default()
-                .insert(id.clone());
             let qid = parent_path
                 .map(|parent| format!("{parent}.{id}"))
-                .unwrap_or(id);
-            index
-                .qualified_by_kind
-                .entry(block.kind.name.clone())
-                .or_default()
-                .insert(qid.clone());
+                .unwrap_or_else(|| id.clone());
+            for kind in aliased_block_kinds(&block.kind.name, aliases) {
+                index
+                    .by_kind
+                    .entry(kind.clone())
+                    .or_default()
+                    .insert(id.clone());
+                index
+                    .qualified_by_kind
+                    .entry(kind)
+                    .or_default()
+                    .insert(qid.clone());
+            }
             Some(qid)
         } else {
             parent_path.map(str::to_string)
@@ -865,9 +894,19 @@ fn collect_block_ids_recursive(
 
     for item in &block.body {
         if let BodyItem::Block(child) = item {
-            collect_block_ids_recursive(child, child_path.as_deref(), index);
+            collect_block_ids_recursive(child, child_path.as_deref(), aliases, index);
         }
     }
+}
+
+fn aliased_block_kinds(kind: &str, aliases: &HashMap<String, String>) -> Vec<String> {
+    let mut kinds = vec![kind.to_string()];
+    if let Some(qualified) = aliases.get(kind) {
+        if qualified != kind {
+            kinds.push(qualified.clone());
+        }
+    }
+    kinds
 }
 
 fn inline_id_to_string(id: &InlineId) -> Option<String> {

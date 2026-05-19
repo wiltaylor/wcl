@@ -988,6 +988,14 @@ impl Parser {
                     span,
                 }
             }
+            TokenKind::Layout => {
+                let span = self.current_span();
+                self.advance();
+                Ident {
+                    name: "layout".to_string(),
+                    span,
+                }
+            }
             TokenKind::Struct => {
                 let span = self.current_span();
                 self.advance();
