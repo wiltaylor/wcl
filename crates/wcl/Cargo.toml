@@ -14,9 +14,14 @@ name = "wcl"
 path = "src/bin/wcl.rs"
 
 [features]
-default = ["wdoc", "wdoc-serve"]
-wdoc = []
-wdoc-serve = ["wdoc", "wcl_lang/wdoc-serve"]
+default = ["wdoc"]
+wdoc = [
+    "dep:async-stream",
+    "dep:axum",
+    "dep:futures-core",
+    "dep:notify",
+    "dep:tower-http",
+]
 
 [dependencies]
 # Language library
@@ -39,6 +44,11 @@ wcl_lsp = { workspace = true }
 clap = { workspace = true }
 tokio = { workspace = true }
 miette = { workspace = true }
+async-stream = { version = "0.3", optional = true }
+axum = { version = "0.8", optional = true }
+futures-core = { version = "0.3", optional = true }
+notify = { version = "8", optional = true }
+tower-http = { version = "0.6", features = ["fs"], optional = true }
 
 [dev-dependencies]
 criterion = { workspace = true }

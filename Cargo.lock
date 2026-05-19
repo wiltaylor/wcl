@@ -2334,10 +2334,14 @@ name = "wcl"
 version = "0.0.0-local"
 dependencies = [
  "assert_cmd",
+ "async-stream",
+ "axum",
  "clap",
  "criterion",
+ "futures-core",
  "indexmap",
  "miette",
+ "notify",
  "predicates",
  "serde",
  "serde_json",
@@ -2345,6 +2349,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "toml 1.1.1+spec-1.1.0",
+ "tower-http",
  "wcl_lang",
  "wcl_lsp",
 ]
@@ -2363,15 +2368,11 @@ dependencies = [
 name = "wcl_lang"
 version = "0.0.0-local"
 dependencies = [
- "async-stream",
- "axum",
  "base64",
- "futures-core",
  "glob",
  "indexmap",
  "miette",
  "nom",
- "notify",
  "quick-xml",
  "regex",
  "rmp-serde",
@@ -2381,9 +2382,7 @@ dependencies = [
  "sha2",
  "tempfile",
  "thiserror",
- "tokio",
  "toml 1.1.1+spec-1.1.0",
- "tower-http",
  "unicode-width 0.2.2",
 ]
 

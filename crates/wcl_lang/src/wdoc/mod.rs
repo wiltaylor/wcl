@@ -2,8 +2,6 @@ pub mod library;
 pub mod markup;
 pub mod model;
 pub mod render;
-#[cfg(feature = "wdoc-serve")]
-pub mod serve;
 pub mod source;
 
 pub use crate::render::{graph_layout, shapes, terminal};

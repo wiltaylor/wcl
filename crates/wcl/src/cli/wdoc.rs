@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use crate::cli::vars::parse_var_args;
 use crate::cli::LibraryArgs;
 
-fn source_options(
+pub(crate) fn source_options(
     vars: &[String],
     lib_args: &LibraryArgs,
 ) -> Result<wcl_lang::wdoc::source::SourceOptions, String> {
@@ -44,7 +44,6 @@ pub fn run_validate(
     Ok(())
 }
 
-#[cfg(feature = "wdoc-serve")]
 pub fn run_serve(
     files: &[PathBuf],
     port: u16,
@@ -52,6 +51,5 @@ pub fn run_serve(
     vars: &[String],
     lib_args: &LibraryArgs,
 ) -> Result<(), String> {
-    let options = source_options(vars, lib_args)?;
-    wcl_lang::wdoc::source::serve_from_files(files, port, open, &options)
+    crate::cli::wdoc_serve::run_serve(files, port, open, vars, lib_args)
 }

@@ -8737,50 +8737,6 @@ pub fn validate_from_files(
     })
 }
 
-#[cfg(feature = "wdoc-serve")]
-pub fn serve_from_files(
-    files: &[PathBuf],
-    port: u16,
-    open: bool,
-    options: &SourceOptions,
-) -> Result<(), String> {
-    let files = files.to_vec();
-    let options = options.clone();
-
-    let output_dir = std::env::temp_dir().join(format!("wdoc-serve-{}", std::process::id()));
-
-    // Watch the specific input files, not entire directories
-    let watch_paths: Vec<PathBuf> = files.clone();
-
-    // Asset directories = parent dirs of input files
-    let asset_dirs: Vec<PathBuf> = files
-        .iter()
-        .filter_map(|f| f.parent().map(|p| p.to_path_buf()))
-        .collect::<std::collections::HashSet<_>>()
-        .into_iter()
-        .collect();
-
-    let build_fn = move || {
-        let extracted = parse_extract_from_files(&files, &options)?;
-        Ok(crate::wdoc::serve::ServeBuild {
-            document: extracted.document,
-            watch_paths: extracted.watch_paths.into_iter().collect(),
-        })
-    };
-
-    let rt = tokio::runtime::Runtime::new()
-        .map_err(|e| format!("failed to create tokio runtime: {e}"))?;
-
-    rt.block_on(crate::wdoc::serve::serve(
-        build_fn,
-        watch_paths,
-        asset_dirs,
-        output_dir,
-        port,
-        open,
-    ))
-}
-
 fn count_sections(sections: &[Section]) -> usize {
     sections
         .iter()

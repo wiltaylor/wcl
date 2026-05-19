@@ -10,8 +10,10 @@ use axum::Router;
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use tokio::sync::watch;
 use tower_http::services::ServeDir;
+use wcl_lang::wdoc::model::WdocDocument;
 
-use crate::wdoc::model::WdocDocument;
+use crate::cli::wdoc::source_options;
+use crate::cli::LibraryArgs;
 
 /// Result of a wdoc serve build, including the document and any extra source
 /// paths discovered during parsing that should be watched for rebuilds.
@@ -25,12 +27,52 @@ struct ServeState {
     reload_rx: watch::Receiver<u64>,
 }
 
+pub fn run_serve(
+    files: &[PathBuf],
+    port: u16,
+    open: bool,
+    vars: &[String],
+    lib_args: &LibraryArgs,
+) -> Result<(), String> {
+    let options = source_options(vars, lib_args)?;
+    let files = files.to_vec();
+
+    let output_dir = std::env::temp_dir().join(format!("wdoc-serve-{}", std::process::id()));
+    let watch_paths = files.clone();
+    let asset_dirs: Vec<PathBuf> = files
+        .iter()
+        .filter_map(|f| f.parent().map(|p| p.to_path_buf()))
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
+
+    let build_fn = move || {
+        let extracted = wcl_lang::wdoc::source::parse_extract_from_files(&files, &options)?;
+        Ok(ServeBuild {
+            document: extracted.document,
+            watch_paths: extracted.watch_paths.into_iter().collect(),
+        })
+    };
+
+    let rt = tokio::runtime::Runtime::new()
+        .map_err(|e| format!("failed to create tokio runtime: {e}"))?;
+
+    rt.block_on(serve(
+        build_fn,
+        watch_paths,
+        asset_dirs,
+        output_dir,
+        port,
+        open,
+    ))
+}
+
 /// Start a dev server with live reload.
 ///
 /// `build_fn` is called to produce the document (re-called on file changes).
 /// `watch_paths` are the root source files/directories to watch. Additional
 /// paths may be returned from each build.
-pub async fn serve(
+async fn serve(
     build_fn: impl Fn() -> Result<ServeBuild, String> + Send + Sync + 'static,
     watch_paths: Vec<PathBuf>,
     asset_dirs: Vec<PathBuf>,
@@ -45,7 +87,7 @@ pub async fn serve(
     let initial_asset_dirs = combined_asset_dirs(&asset_dirs, &initial.watch_paths);
     let asset_dir_refs: Vec<&std::path::Path> =
         initial_asset_dirs.iter().map(|p| p.as_path()).collect();
-    crate::wdoc::render::render_document(&initial.document, &output_dir, &asset_dir_refs)?;
+    wcl_lang::wdoc::render::render_document(&initial.document, &output_dir, &asset_dir_refs)?;
     eprintln!("wdoc: built to {}", output_dir.display());
 
     // Reload signal
@@ -99,7 +141,7 @@ pub async fn serve(
                     let render_asset_dirs = combined_asset_dirs(&asset_dirs, &build.watch_paths);
                     let arefs: Vec<&std::path::Path> =
                         render_asset_dirs.iter().map(|p| p.as_path()).collect();
-                    if let Err(e) = crate::wdoc::render::render_document(
+                    if let Err(e) = wcl_lang::wdoc::render::render_document(
                         &build.document,
                         &output_dir_watch,
                         &arefs,
