@@ -192,7 +192,7 @@ const CallbackEntry = struct {
     allocator: Allocator,
 };
 
-var callback_mutex: std.Thread.Mutex = .{};
+var callback_mutex: std.atomic.Mutex = .unlocked;
 var callback_map: ?std.AutoHashMap(usize, CallbackEntry) = null;
 var callback_next_id: usize = 1;
 
@@ -204,7 +204,7 @@ fn getCallbackMap() *std.AutoHashMap(usize, CallbackEntry) {
 }
 
 fn registerCallback(entry: CallbackEntry) usize {
-    callback_mutex.lock();
+    lockCallbackMutex();
     defer callback_mutex.unlock();
     const id = callback_next_id;
     callback_next_id += 1;
@@ -213,7 +213,7 @@ fn registerCallback(entry: CallbackEntry) usize {
 }
 
 fn unregisterCallback(id: usize) void {
-    callback_mutex.lock();
+    lockCallbackMutex();
     defer callback_mutex.unlock();
     if (callback_map) |*map| {
         _ = map.remove(id);
@@ -221,12 +221,18 @@ fn unregisterCallback(id: usize) void {
 }
 
 fn lookupCallback(id: usize) ?CallbackEntry {
-    callback_mutex.lock();
+    lockCallbackMutex();
     defer callback_mutex.unlock();
     if (callback_map) |*map| {
         return map.get(id);
     }
     return null;
+}
+
+fn lockCallbackMutex() void {
+    while (!callback_mutex.tryLock()) {
+        std.atomic.spinLoopHint();
+    }
 }
 
 /// C-callable trampoline that bridges FFI callbacks to Zig functions.
