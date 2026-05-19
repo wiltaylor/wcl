@@ -23,6 +23,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 static CURSOR_ID: AtomicU64 = AtomicU64::new(1);
+const CODEC_MAX_CALL_DEPTH: usize = 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CustomCodecMode {
@@ -360,7 +361,7 @@ pub fn decode_custom_file_with_options(
         let source = Arc::new(Mutex::new(SourceCursor::new(&data)));
         let (cursor, builtins) =
             source_cursor_runtime_with_structs(source, codec.mode, Some(struct_registry.clone()));
-        let mut session = CodecEvalSession::new(codec, builtins, 1024);
+        let mut session = CodecEvalSession::new(codec, builtins, CODEC_MAX_CALL_DEPTH);
         let options = Value::Map(options.clone());
         let value = match decoder.params.len() {
             1 => session.call_function(decoder, &[cursor])?,
@@ -384,7 +385,7 @@ pub fn decode_custom_file_with_options(
     } else {
         (
             parser_record_stream(&data, codec, options)?,
-            CodecEvalSession::new(codec, HashMap::new(), 1024),
+            CodecEvalSession::new(codec, HashMap::new(), CODEC_MAX_CALL_DEPTH),
         )
     };
     Ok(DecodedFile { value, session })
@@ -785,7 +786,7 @@ fn parser_record_stream(
     let (cursor, builtins) = token_cursor_runtime(token_cursor.clone());
     let options = Value::Map(options.clone());
     let codec = codec.clone();
-    let mut session = CodecEvalSession::new(&codec, builtins, 1024);
+    let mut session = CodecEvalSession::new(&codec, builtins, CODEC_MAX_CALL_DEPTH);
 
     Ok(native_stream(move || {
         let before = token_cursor.lock().unwrap().pos;
@@ -877,7 +878,7 @@ fn call_codec_lambda(
         args,
         &builtins,
         &codec.helpers,
-        1024,
+        CODEC_MAX_CALL_DEPTH,
     )
     .map_err(|e| TransformError::Codec(format!("custom codec '{}': {}", codec.name, e)))
 }

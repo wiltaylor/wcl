@@ -26,9 +26,9 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 quick-xml = "0.37"
 unicode-width = "0.2"
+rmp-serde = "1"
 
 [dev-dependencies]
 serde_json = { workspace = true }
 serde_yaml_ng = "0.10"
 toml = "1"
-rmp-serde = "1"

@@ -668,6 +668,12 @@ pub fn builtin_signatures() -> Vec<FunctionSignature> {
             doc: "Check decorator".into(),
         },
         FunctionSignature {
+            name: "find_decorators".into(),
+            params: vec!["name: string".into(), "target: string".into()],
+            return_type: "list".into(),
+            doc: "Find decorator usages by name and optional target".into(),
+        },
+        FunctionSignature {
             name: "is_imported".into(),
             params: vec!["path: string".into()],
             return_type: "bool".into(),
@@ -3621,6 +3627,7 @@ mod tests {
             id: id.map(str::to_string),
             qualified_id: id.map(str::to_string),
             attributes: IndexMap::new(),
+            attribute_decorators: IndexMap::new(),
             children,
             decorators: vec![],
             span: crate::lang::Span::dummy(),
@@ -3688,6 +3695,7 @@ mod tests {
             id: Some("svc-api".to_string()),
             qualified_id: None,
             attributes: attrs,
+            attribute_decorators: IndexMap::new(),
             children: vec![],
             decorators: vec![],
             span: crate::lang::Span::dummy(),
@@ -3704,6 +3712,7 @@ mod tests {
             id: None,
             qualified_id: None,
             attributes: IndexMap::new(),
+            attribute_decorators: IndexMap::new(),
             children: vec![],
             decorators: vec![],
             span: crate::lang::Span::dummy(),
@@ -3713,6 +3722,7 @@ mod tests {
             id: Some("svc-api".to_string()),
             qualified_id: None,
             attributes: IndexMap::new(),
+            attribute_decorators: IndexMap::new(),
             children: vec![child],
             decorators: vec![],
             span: crate::lang::Span::dummy(),
@@ -3790,6 +3800,7 @@ mod tests {
             id: Some("svc-api".to_string()),
             qualified_id: None,
             attributes: IndexMap::new(),
+            attribute_decorators: IndexMap::new(),
             children: vec![],
             decorators: vec![
                 crate::eval::value::DecoratorValue {

@@ -49,6 +49,7 @@ mod tests {
             id: Some("main".to_string()),
             qualified_id: None,
             attributes: IndexMap::new(),
+            attribute_decorators: IndexMap::new(),
             children: vec![],
             decorators: vec![],
             span: wcl_lang::Span::dummy(),

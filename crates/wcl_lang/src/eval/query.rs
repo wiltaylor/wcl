@@ -370,6 +370,7 @@ mod tests {
             id: id.map(|s| s.to_string()),
             qualified_id: None,
             attributes,
+            attribute_decorators: IndexMap::new(),
             children: Vec::new(),
             decorators: Vec::new(),
             span: ds(),

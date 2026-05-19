@@ -253,6 +253,7 @@ impl Document {
             id: name,
             qualified_id: None,
             attributes: indexmap::IndexMap::new(),
+            attribute_decorators: indexmap::IndexMap::new(),
             children,
             decorators: Vec::new(),
             span: table.span,
@@ -286,6 +287,7 @@ impl Document {
                         id: None,
                         qualified_id: None,
                         attributes: m.clone(),
+                        attribute_decorators: indexmap::IndexMap::new(),
                         children: Vec::new(),
                         decorators: Vec::new(),
                         span: Span::dummy(),
@@ -311,6 +313,7 @@ impl Document {
                         id: None,
                         qualified_id: None,
                         attributes: m.clone(),
+                        attribute_decorators: indexmap::IndexMap::new(),
                         children: Vec::new(),
                         decorators: Vec::new(),
                         span: Span::dummy(),
@@ -364,6 +367,45 @@ impl Document {
                 }
             }
         }
+        let attribute_decorators = block
+            .body
+            .iter()
+            .filter_map(|body_item| {
+                let ast::BodyItem::Attribute(attr) = body_item else {
+                    return None;
+                };
+                let decorators: Vec<DecoratorValue> = attr
+                    .decorators
+                    .iter()
+                    .map(|d| {
+                        let mut args = indexmap::IndexMap::new();
+                        for arg in &d.args {
+                            match arg {
+                                ast::DecoratorArg::Named(name, expr) => {
+                                    if let Ok(val) = evaluator.eval_expr(expr, scope) {
+                                        args.insert(name.name.clone(), val);
+                                    }
+                                }
+                                ast::DecoratorArg::Positional(expr) => {
+                                    if let Ok(val) = evaluator.eval_expr(expr, scope) {
+                                        args.insert(format!("_{}", args.len()), val);
+                                    }
+                                }
+                            }
+                        }
+                        DecoratorValue {
+                            name: d.name.name.clone(),
+                            args,
+                        }
+                    })
+                    .collect();
+                if decorators.is_empty() {
+                    None
+                } else {
+                    Some((attr.name.name.clone(), decorators))
+                }
+            })
+            .collect();
 
         let mut children: Vec<BlockRef> = block
             .body
@@ -399,6 +441,7 @@ impl Document {
                     id: table_name,
                     qualified_id: None,
                     attributes: indexmap::IndexMap::new(),
+                    attribute_decorators: indexmap::IndexMap::new(),
                     children: row_children,
                     decorators: Vec::new(),
                     span: table.span,
@@ -437,6 +480,7 @@ impl Document {
             id,
             qualified_id,
             attributes,
+            attribute_decorators,
             children,
             decorators,
             span: block.span,
@@ -1710,6 +1754,91 @@ service beta {}
     }
 
     #[test]
+    fn test_find_decorators_all_supported_targets() {
+        let doc = parse(
+            r#"
+            @open
+            schema "service" {}
+
+            @markup("local")
+            let local = 1
+
+            @markup("exported")
+            export let exported = 2
+
+            @table_index(columns = ["port"])
+            table ports {
+                port : i64
+                | 8080 |
+            }
+
+            @deprecated("use api_v2")
+            component api {
+                @sensitive
+                password = "secret"
+            }
+
+            block_hits = find_decorators("deprecated", "block")
+            attribute_hits = find_decorators("sensitive", "attribute")
+            table_hits = find_decorators("table_index", "table")
+            schema_hits = find_decorators("open", "schema")
+            let_hits = find_decorators("markup", "let")
+            "#,
+            ParseOptions::default(),
+        );
+        assert!(
+            !doc.has_errors(),
+            "unexpected diagnostics: {:?}",
+            doc.diagnostics
+        );
+
+        for name in [
+            "block_hits",
+            "attribute_hits",
+            "table_hits",
+            "schema_hits",
+            "let_hits",
+        ] {
+            match doc.values.get(name) {
+                Some(Value::List(items)) => assert!(!items.is_empty(), "{} was empty", name),
+                other => panic!("expected {} list, got {:?}", name, other),
+            }
+        }
+
+        let attribute_hits = match doc.values.get("attribute_hits") {
+            Some(Value::List(items)) => items,
+            other => panic!("expected attribute_hits list, got {:?}", other),
+        };
+        assert_eq!(attribute_hits.len(), 1);
+        let Value::Map(attr_hit) = &attribute_hits[0] else {
+            panic!("expected map hit");
+        };
+        assert_eq!(
+            attr_hit.get("attribute"),
+            Some(&Value::String("password".to_string()))
+        );
+        assert!(matches!(attr_hit.get("block"), Some(Value::BlockRef(_))));
+        assert_eq!(
+            attr_hit.get("value"),
+            Some(&Value::String("secret".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_find_decorators_rejects_invalid_target() {
+        let doc = parse(
+            r#"
+            hits = find_decorators("tag", "field")
+            "#,
+            ParseOptions::default(),
+        );
+        assert!(doc
+            .diagnostics
+            .iter()
+            .any(|d| d.message.contains("invalid decorator target filter")));
+    }
+
+    #[test]
     fn test_qualified_ids_for_nested_blocks() {
         let doc = parse(
             r#"
@@ -2431,10 +2560,14 @@ lt_fn = local_time("07:32")
     fn test_import_codec_msgpack_bytes() {
         use std::sync::Arc;
 
-        let packed = rmp_serde::to_vec(&serde_json::json!([
-            {"name": "alice", "port": 8080}
-        ]))
-        .expect("pack msgpack");
+        let packed = vec![
+            0x91, // array(1)
+            0x82, // map(2)
+            0xa4, b'n', b'a', b'm', b'e', // "name"
+            0xa5, b'a', b'l', b'i', b'c', b'e', // "alice"
+            0xa4, b'p', b'o', b'r', b't', // "port"
+            0xcd, 0x1f, 0x90, // uint16(8080)
+        ];
         let mut fs = InMemoryFs::new();
         fs.add_file_bytes(std::path::PathBuf::from("/project/data.msgpack"), packed);
 

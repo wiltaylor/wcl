@@ -89,6 +89,7 @@ mod tests {
             id: Some("wad".to_string()),
             qualified_id: Some("wad".to_string()),
             attributes,
+            attribute_decorators: IndexMap::new(),
             children: vec![],
             decorators: vec![],
             span: crate::Span::dummy(),

@@ -100,6 +100,30 @@ pub fn block_ref_to_json(br: &BlockRef) -> serde_json::Value {
             .collect();
         obj.insert("attributes".to_string(), serde_json::Value::Object(attrs));
     }
+    if !br.attribute_decorators.is_empty() {
+        let attr_decorators: serde_json::Map<String, serde_json::Value> = br
+            .attribute_decorators
+            .iter()
+            .map(|(attr, decorators)| {
+                let decorators: Vec<serde_json::Value> = decorators
+                    .iter()
+                    .map(|d| {
+                        let args: serde_json::Map<String, serde_json::Value> = d
+                            .args
+                            .iter()
+                            .map(|(k, v)| (k.clone(), value_to_json(v)))
+                            .collect();
+                        json!({ "name": d.name, "args": args })
+                    })
+                    .collect();
+                (attr.clone(), serde_json::Value::Array(decorators))
+            })
+            .collect();
+        obj.insert(
+            "attribute_decorators".to_string(),
+            serde_json::Value::Object(attr_decorators),
+        );
+    }
     if !br.children.is_empty() {
         let children: Vec<serde_json::Value> = br.children.iter().map(block_ref_to_json).collect();
         obj.insert("children".to_string(), serde_json::Value::Array(children));
@@ -257,6 +281,7 @@ mod tests {
             id: Some("main".to_string()),
             qualified_id: None,
             attributes: IndexMap::new(),
+            attribute_decorators: IndexMap::new(),
             children: vec![],
             decorators: vec![],
             span: Span::dummy(),

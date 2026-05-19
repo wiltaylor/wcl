@@ -71,6 +71,7 @@ pub struct BlockRef {
     /// Built from ancestor inline IDs joined by `.`.
     pub qualified_id: Option<String>,
     pub attributes: IndexMap<String, Value>,
+    pub attribute_decorators: IndexMap<String, Vec<DecoratorValue>>,
     pub children: Vec<BlockRef>,
     pub decorators: Vec<DecoratorValue>,
     pub span: Span,

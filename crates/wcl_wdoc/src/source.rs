@@ -3414,6 +3414,7 @@ mod wdoc_draw_tests {
             id: id.map(str::to_string),
             qualified_id: id.map(str::to_string),
             attributes,
+            attribute_decorators: IndexMap::new(),
             children,
             decorators: vec![],
             span: Span::dummy(),

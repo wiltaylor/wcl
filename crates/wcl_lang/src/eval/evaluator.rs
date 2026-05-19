@@ -54,6 +54,7 @@ pub struct Evaluator {
     /// pipeline can use this evaluator's `eval_expr` as a callback during
     /// the post-evaluation control-flow retry pass.
     module_scope_id: Option<ScopeId>,
+    source_items: Vec<DocItem>,
     query_cache: QueryCache,
     call_depth: usize,
     max_call_depth: usize,
@@ -76,6 +77,7 @@ impl Evaluator {
             scope_qualified_ids: HashMap::new(),
             module_blocks_by_kind: HashMap::new(),
             module_scope_id: None,
+            source_items: Vec::new(),
             query_cache: QueryCache::default(),
             call_depth: 0,
             max_call_depth: 32,
@@ -98,6 +100,7 @@ impl Evaluator {
             scope_qualified_ids: HashMap::new(),
             module_blocks_by_kind: HashMap::new(),
             module_scope_id: None,
+            source_items: Vec::new(),
             query_cache: QueryCache::default(),
             call_depth: 0,
             max_call_depth: 32,
@@ -129,6 +132,7 @@ impl Evaluator {
             scope_qualified_ids: HashMap::new(),
             module_blocks_by_kind: HashMap::new(),
             module_scope_id: None,
+            source_items: Vec::new(),
             query_cache: QueryCache::default(),
             call_depth: 0,
             max_call_depth: 32,
@@ -187,6 +191,7 @@ impl Evaluator {
     pub fn evaluate(&mut self, doc: &Document) -> IndexMap<String, Value> {
         let module_scope = self.scopes.create_scope(ScopeKind::Module, None);
         self.module_scope_id = Some(module_scope);
+        self.source_items = doc.items.clone();
 
         // Phase 1: Register all names in scope (let bindings, attributes, blocks)
         self.register_doc_items(&doc.items, module_scope);
@@ -1686,6 +1691,11 @@ impl Evaluator {
                     return Ok(Value::Bool(self.schema_names.contains(&schema_name)));
                 }
 
+                if name == "find_decorators" {
+                    let eval_args = self.eval_call_args(args, scope_id)?;
+                    return self.eval_find_decorators(&eval_args, scope_id, span);
+                }
+
                 if name == "import_codec" {
                     let eval_args = self.eval_call_args(args, scope_id)?;
                     return self.eval_import_codec(&eval_args, span);
@@ -2342,6 +2352,25 @@ impl Evaluator {
                 }
             }
         }
+        let attribute_decorators = block
+            .body
+            .iter()
+            .filter_map(|item| {
+                let BodyItem::Attribute(attr) = item else {
+                    return None;
+                };
+                let decorators = attr
+                    .decorators
+                    .iter()
+                    .map(|d| self.decorator_to_runtime(d, child_scope.unwrap_or(parent_scope)))
+                    .collect::<Vec<_>>();
+                if decorators.is_empty() {
+                    None
+                } else {
+                    Some((attr.name.name.clone(), decorators))
+                }
+            })
+            .collect();
 
         // Inject text content as "content" attribute
         if let Some(ref tc) = block.text_content {
@@ -2406,6 +2435,7 @@ impl Evaluator {
             id: inline_id,
             qualified_id,
             attributes,
+            attribute_decorators,
             children,
             decorators,
             span: block.span,
@@ -2708,6 +2738,7 @@ impl Evaluator {
                                     id: None,
                                     qualified_id: None,
                                     attributes: m.clone(),
+                                    attribute_decorators: IndexMap::new(),
                                     children: Vec::new(),
                                     decorators: Vec::new(),
                                     span: Span::dummy(),
@@ -2722,6 +2753,7 @@ impl Evaluator {
                         id: Some(entry.name.clone()),
                         qualified_id: None,
                         attributes: indexmap::IndexMap::new(),
+                        attribute_decorators: indexmap::IndexMap::new(),
                         children,
                         decorators: Vec::new(),
                         span: entry.span,
@@ -2735,6 +2767,312 @@ impl Evaluator {
             blocks.extend(self.collect_blocks(parent));
         }
         blocks
+    }
+
+    fn eval_find_decorators(
+        &mut self,
+        args: &[Value],
+        scope_id: ScopeId,
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        if args.is_empty() || args.len() > 2 {
+            return Err(
+                Diagnostic::error("find_decorators() expects 1 or 2 arguments", span)
+                    .with_code("E052"),
+            );
+        }
+        let decorator_name = match &args[0] {
+            Value::String(s) => s.as_str(),
+            other => {
+                return Err(Diagnostic::error(
+                    format!(
+                        "find_decorators() argument 1 must be string, got {}",
+                        other.type_name()
+                    ),
+                    span,
+                )
+                .with_code("E052"))
+            }
+        };
+        let target = match args.get(1) {
+            Some(Value::String(s)) => s.as_str(),
+            Some(other) => {
+                return Err(Diagnostic::error(
+                    format!(
+                        "find_decorators() argument 2 must be string, got {}",
+                        other.type_name()
+                    ),
+                    span,
+                )
+                .with_code("E052"))
+            }
+            None => "all",
+        };
+        if !matches!(
+            target,
+            "all" | "block" | "attribute" | "table" | "schema" | "let"
+        ) {
+            return Err(Diagnostic::error(
+                format!("invalid decorator target filter '{}'", target),
+                span,
+            )
+            .with_code("E052"));
+        }
+
+        let items = self.source_items.clone();
+        let mut hits = Vec::new();
+        self.find_decorators_in_doc_items(
+            &items,
+            scope_id,
+            decorator_name,
+            target,
+            None,
+            &mut hits,
+        );
+        Ok(Value::List(hits))
+    }
+
+    fn find_decorators_in_doc_items(
+        &mut self,
+        items: &[DocItem],
+        scope_id: ScopeId,
+        decorator_name: &str,
+        target: &str,
+        owner_block: Option<BlockRef>,
+        hits: &mut Vec<Value>,
+    ) {
+        for item in items {
+            match item {
+                DocItem::Body(body_item) => self.find_decorators_in_body_item(
+                    body_item,
+                    scope_id,
+                    decorator_name,
+                    target,
+                    owner_block.clone(),
+                    hits,
+                ),
+                DocItem::ExportLet(export) => {
+                    if target == "all" || target == "let" {
+                        for decorator in export
+                            .decorators
+                            .iter()
+                            .filter(|d| d.name.name == decorator_name)
+                        {
+                            let mut result = self.decorator_hit_base("let", decorator, scope_id);
+                            result
+                                .insert("let".to_string(), Value::String(export.name.name.clone()));
+                            if let Some((_, entry)) =
+                                self.scopes.resolve(scope_id, &export.name.name)
+                            {
+                                if let Some(value) = &entry.value {
+                                    result.insert("value".to_string(), value.clone());
+                                }
+                            }
+                            hits.push(Value::Map(result));
+                        }
+                    }
+                }
+                DocItem::Namespace(ns) => {
+                    self.find_decorators_in_doc_items(
+                        &ns.items,
+                        scope_id,
+                        decorator_name,
+                        target,
+                        owner_block.clone(),
+                        hits,
+                    );
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn find_decorators_in_body_item(
+        &mut self,
+        item: &BodyItem,
+        scope_id: ScopeId,
+        decorator_name: &str,
+        target: &str,
+        owner_block: Option<BlockRef>,
+        hits: &mut Vec<Value>,
+    ) {
+        match item {
+            BodyItem::Block(block) => {
+                let block_ref = if target == "all" || target == "block" || target == "attribute" {
+                    Some(self.build_block_ref(block, scope_id))
+                } else {
+                    None
+                };
+                if target == "all" || target == "block" {
+                    for decorator in block
+                        .decorators
+                        .iter()
+                        .filter(|d| d.name.name == decorator_name)
+                    {
+                        let mut result = self.decorator_hit_base("block", decorator, scope_id);
+                        if let Some(block_ref) = &block_ref {
+                            result.insert("block".to_string(), Value::BlockRef(block_ref.clone()));
+                        }
+                        hits.push(Value::Map(result));
+                    }
+                }
+
+                let child_scope = self
+                    .child_scope_for_block(block, scope_id)
+                    .unwrap_or(scope_id);
+                self.find_decorators_in_body_items(
+                    &block.body,
+                    child_scope,
+                    decorator_name,
+                    target,
+                    block_ref.clone(),
+                    hits,
+                );
+            }
+            BodyItem::Attribute(attr) => {
+                if target == "all" || target == "attribute" {
+                    for decorator in attr
+                        .decorators
+                        .iter()
+                        .filter(|d| d.name.name == decorator_name)
+                    {
+                        let mut result = self.decorator_hit_base("attribute", decorator, scope_id);
+                        if let Some(block_ref) = &owner_block {
+                            result.insert("block".to_string(), Value::BlockRef(block_ref.clone()));
+                        }
+                        result.insert(
+                            "attribute".to_string(),
+                            Value::String(attr.name.name.clone()),
+                        );
+                        if let Some((_, entry)) = self.scopes.resolve(scope_id, &attr.name.name) {
+                            if let Some(value) = &entry.value {
+                                result.insert("value".to_string(), value.clone());
+                            }
+                        }
+                        hits.push(Value::Map(result));
+                    }
+                }
+            }
+            BodyItem::Table(table) => {
+                if target == "all" || target == "table" {
+                    for decorator in table
+                        .decorators
+                        .iter()
+                        .filter(|d| d.name.name == decorator_name)
+                    {
+                        let mut result = self.decorator_hit_base("table", decorator, scope_id);
+                        let table_name = table_runtime_name(table);
+                        result.insert("table".to_string(), Value::String(table_name.clone()));
+                        if let Some((_, entry)) = self.scopes.resolve(scope_id, &table_name) {
+                            if let Some(value) = &entry.value {
+                                result.insert("rows".to_string(), value.clone());
+                            }
+                        }
+                        hits.push(Value::Map(result));
+                    }
+                }
+            }
+            BodyItem::Schema(schema) => {
+                if target == "all" || target == "schema" {
+                    for decorator in schema
+                        .decorators
+                        .iter()
+                        .filter(|d| d.name.name == decorator_name)
+                    {
+                        let mut result = self.decorator_hit_base("schema", decorator, scope_id);
+                        result.insert(
+                            "schema".to_string(),
+                            Value::String(string_lit_static(&schema.name)),
+                        );
+                        hits.push(Value::Map(result));
+                    }
+                }
+            }
+            BodyItem::LetBinding(binding) => {
+                if target == "all" || target == "let" {
+                    for decorator in binding
+                        .decorators
+                        .iter()
+                        .filter(|d| d.name.name == decorator_name)
+                    {
+                        let mut result = self.decorator_hit_base("let", decorator, scope_id);
+                        result.insert("let".to_string(), Value::String(binding.name.name.clone()));
+                        if let Some((_, entry)) = self.scopes.resolve(scope_id, &binding.name.name)
+                        {
+                            if let Some(value) = &entry.value {
+                                result.insert("value".to_string(), value.clone());
+                            }
+                        }
+                        hits.push(Value::Map(result));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn find_decorators_in_body_items(
+        &mut self,
+        body: &[BodyItem],
+        scope_id: ScopeId,
+        decorator_name: &str,
+        target: &str,
+        owner_block: Option<BlockRef>,
+        hits: &mut Vec<Value>,
+    ) {
+        for item in body {
+            self.find_decorators_in_body_item(
+                item,
+                scope_id,
+                decorator_name,
+                target,
+                owner_block.clone(),
+                hits,
+            );
+        }
+    }
+
+    fn decorator_hit_base(
+        &mut self,
+        target: &str,
+        decorator: &Decorator,
+        scope_id: ScopeId,
+    ) -> IndexMap<String, Value> {
+        let mut result = IndexMap::new();
+        result.insert("target".to_string(), Value::String(target.to_string()));
+        result.insert(
+            "decorator".to_string(),
+            decorator_value_to_map(self.decorator_to_runtime(decorator, scope_id)),
+        );
+        result
+    }
+
+    fn decorator_to_runtime(&mut self, decorator: &Decorator, scope_id: ScopeId) -> DecoratorValue {
+        let mut args = IndexMap::new();
+        for (i, arg) in decorator.args.iter().enumerate() {
+            match arg {
+                DecoratorArg::Positional(expr) => {
+                    if let Ok(value) = self.eval_expr(expr, scope_id) {
+                        args.insert(format!("_{}", i), value);
+                    }
+                }
+                DecoratorArg::Named(name, expr) => {
+                    if let Ok(value) = self.eval_expr(expr, scope_id) {
+                        args.insert(name.name.clone(), value);
+                    }
+                }
+            }
+        }
+        DecoratorValue {
+            name: decorator.name.name.clone(),
+            args,
+        }
+    }
+
+    fn child_scope_for_block(&self, block: &Block, parent_scope: ScopeId) -> Option<ScopeId> {
+        self.block_scope_map
+            .get(&(parent_scope, block_runtime_name(block)))
+            .copied()
     }
 
     // ------------------------------------------------------------------
@@ -2904,6 +3242,45 @@ fn has_allow_decorator(decorators: &[Decorator], arg_name: &str) -> bool {
     })
 }
 
+fn decorator_value_to_map(decorator: DecoratorValue) -> Value {
+    let mut map = IndexMap::new();
+    map.insert("name".to_string(), Value::String(decorator.name));
+    map.insert("args".to_string(), Value::Map(decorator.args));
+    Value::Map(map)
+}
+
+fn block_runtime_name(block: &Block) -> String {
+    block
+        .inline_id
+        .as_ref()
+        .map(|id| match id {
+            InlineId::Literal(lit) => lit.value.clone(),
+            InlineId::Interpolated(_) => "?interpolated?".to_string(),
+        })
+        .unwrap_or_else(|| format!("__block_{}", block.kind.name))
+}
+
+fn table_runtime_name(table: &Table) -> String {
+    table
+        .inline_id
+        .as_ref()
+        .map(|id| match id {
+            InlineId::Literal(lit) => lit.value.clone(),
+            InlineId::Interpolated(_) => "?interpolated?".to_string(),
+        })
+        .unwrap_or_else(|| "__table".to_string())
+}
+
+fn string_lit_static(s: &StringLit) -> String {
+    s.parts
+        .iter()
+        .filter_map(|part| match part {
+            StringPart::Literal(s) => Some(s.as_str()),
+            StringPart::Interpolation(_) => None,
+        })
+        .collect()
+}
+
 fn compare_ord<T: Ord>(a: &T, b: &T, op: BinOp) -> bool {
     match op {
         BinOp::Lt => a < b,
@@ -2930,7 +3307,8 @@ fn decode_import_codec(
     options: &IndexMap<String, Value>,
 ) -> Result<Vec<Value>, crate::transform::TransformError> {
     match codec {
-        "json" | "yaml" | "toml" | "csv" | "hcl" | "xml" | "msgpack" | "elf" => {
+        "msgpack" => decode_msgpack_import(bytes),
+        "json" | "yaml" | "toml" | "csv" | "hcl" | "xml" | "elf" => {
             let registry = crate::transform::codec::custom::standard_registry()?;
             let custom = registry.get(codec).ok_or_else(|| {
                 crate::transform::TransformError::Codec(format!(
@@ -2945,6 +3323,17 @@ fn decode_import_codec(
         other => Err(crate::transform::TransformError::UnknownCodec(
             other.to_string(),
         )),
+    }
+}
+
+fn decode_msgpack_import(bytes: &[u8]) -> Result<Vec<Value>, crate::transform::TransformError> {
+    let json: serde_json::Value = rmp_serde::from_slice(bytes).map_err(|e| {
+        crate::transform::TransformError::Codec(format!("failed to decode MessagePack: {}", e))
+    })?;
+    let value = crate::json::json_value_to_wcl(&json);
+    match value {
+        Value::List(records) => Ok(records),
+        other => Ok(vec![other]),
     }
 }
 
@@ -4607,6 +4996,7 @@ mod tests {
             id: Some("a".to_string()),
             qualified_id: Some("a".to_string()),
             attributes: IndexMap::new(),
+            attribute_decorators: IndexMap::new(),
             children: Vec::new(),
             decorators: Vec::new(),
             span,
@@ -4616,6 +5006,7 @@ mod tests {
             id: Some("b".to_string()),
             qualified_id: Some("b".to_string()),
             attributes: IndexMap::new(),
+            attribute_decorators: IndexMap::new(),
             children: Vec::new(),
             decorators: Vec::new(),
             span,
