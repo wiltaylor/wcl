@@ -3403,6 +3403,15 @@ mod wdoc_draw_tests {
     use crate::library::WDOC_LIBRARY_WCL;
     use wcl_lang::Span;
 
+    fn with_large_stack(test: impl FnOnce() + Send + 'static) {
+        std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(test)
+            .expect("spawn large-stack test thread")
+            .join()
+            .expect("large-stack test thread panicked");
+    }
+
     fn block(
         kind: &str,
         id: Option<&str>,
@@ -3958,66 +3967,68 @@ mod wdoc_draw_tests {
 
     #[test]
     fn wcl_html_templates_render_standard_content() {
-        let ctx = wdoc_library_ctx();
+        with_large_stack(|| {
+            let ctx = wdoc_library_ctx();
 
-        let mut heading_attrs = IndexMap::new();
-        int_attr(&mut heading_attrs, "level", 2);
-        string_attr(&mut heading_attrs, "content", "Hello World");
-        assert_eq!(
-            ctx.render_block(&block("wdoc::heading", Some("h"), heading_attrs, vec![]))
+            let mut heading_attrs = IndexMap::new();
+            int_attr(&mut heading_attrs, "level", 2);
+            string_attr(&mut heading_attrs, "content", "Hello World");
+            assert_eq!(
+                ctx.render_block(&block("wdoc::heading", Some("h"), heading_attrs, vec![]))
+                    .unwrap(),
+                "<h2 id=\"hello-world\" class=\"wdoc-heading\">Hello World</h2>"
+            );
+
+            let mut paragraph_attrs = IndexMap::new();
+            string_attr(&mut paragraph_attrs, "content", "<div>Block</div>");
+            assert_eq!(
+                ctx.render_block(&block(
+                    "wdoc::paragraph",
+                    Some("p"),
+                    paragraph_attrs,
+                    vec![]
+                ))
                 .unwrap(),
-            "<h2 id=\"hello-world\" class=\"wdoc-heading\">Hello World</h2>"
-        );
+                "<div class=\"wdoc-paragraph\"><div>Block</div></div>"
+            );
 
-        let mut paragraph_attrs = IndexMap::new();
-        string_attr(&mut paragraph_attrs, "content", "<div>Block</div>");
-        assert_eq!(
-            ctx.render_block(&block(
-                "wdoc::paragraph",
-                Some("p"),
-                paragraph_attrs,
-                vec![]
-            ))
-            .unwrap(),
-            "<div class=\"wdoc-paragraph\"><div>Block</div></div>"
-        );
+            let mut code_attrs = IndexMap::new();
+            string_attr(&mut code_attrs, "language", "html");
+            string_attr(&mut code_attrs, "content", "<div>hi</div>");
+            let code_html = ctx
+                .render_block(&block("wdoc::code", Some("c"), code_attrs, vec![]))
+                .unwrap();
+            assert!(code_html.contains("language-html"));
+            assert!(code_html.contains("&lt;div&gt;hi&lt;/div&gt;"));
 
-        let mut code_attrs = IndexMap::new();
-        string_attr(&mut code_attrs, "language", "html");
-        string_attr(&mut code_attrs, "content", "<div>hi</div>");
-        let code_html = ctx
-            .render_block(&block("wdoc::code", Some("c"), code_attrs, vec![]))
-            .unwrap();
-        assert!(code_html.contains("language-html"));
-        assert!(code_html.contains("&lt;div&gt;hi&lt;/div&gt;"));
+            let mut row = IndexMap::new();
+            string_attr(&mut row, "Name", "Ada");
+            int_attr(&mut row, "Age", 37);
+            let mut table_attrs = IndexMap::new();
+            string_attr(&mut table_attrs, "caption", "People");
+            table_attrs.insert("rows".to_string(), Value::List(vec![Value::Map(row)]));
+            let table_html = ctx
+                .render_block(&block("wdoc::data_table", Some("tbl"), table_attrs, vec![]))
+                .unwrap();
+            assert!(table_html.contains("<caption>People</caption>"));
+            assert!(table_html.contains("<th>Name</th><th>Age</th>"));
+            assert!(table_html.contains("<td>Ada</td><td>37</td>"));
 
-        let mut row = IndexMap::new();
-        string_attr(&mut row, "Name", "Ada");
-        int_attr(&mut row, "Age", 37);
-        let mut table_attrs = IndexMap::new();
-        string_attr(&mut table_attrs, "caption", "People");
-        table_attrs.insert("rows".to_string(), Value::List(vec![Value::Map(row)]));
-        let table_html = ctx
-            .render_block(&block("wdoc::data_table", Some("tbl"), table_attrs, vec![]))
-            .unwrap();
-        assert!(table_html.contains("<caption>People</caption>"));
-        assert!(table_html.contains("<th>Name</th><th>Age</th>"));
-        assert!(table_html.contains("<td>Ada</td><td>37</td>"));
-
-        let mut child_attrs = IndexMap::new();
-        string_attr(&mut child_attrs, "content", "Nested");
-        let mut callout_attrs = IndexMap::new();
-        string_attr(&mut callout_attrs, "header", "Note");
-        let callout_html = ctx
-            .render_block(&block(
-                "wdoc::callout",
-                Some("call"),
-                callout_attrs,
-                vec![block("wdoc::paragraph", Some("child"), child_attrs, vec![])],
-            ))
-            .unwrap();
-        assert!(callout_html.contains("wdoc-callout-header"));
-        assert!(callout_html.contains("<p class=\"wdoc-paragraph\">Nested</p>"));
+            let mut child_attrs = IndexMap::new();
+            string_attr(&mut child_attrs, "content", "Nested");
+            let mut callout_attrs = IndexMap::new();
+            string_attr(&mut callout_attrs, "header", "Note");
+            let callout_html = ctx
+                .render_block(&block(
+                    "wdoc::callout",
+                    Some("call"),
+                    callout_attrs,
+                    vec![block("wdoc::paragraph", Some("child"), child_attrs, vec![])],
+                ))
+                .unwrap();
+            assert!(callout_html.contains("wdoc-callout-header"));
+            assert!(callout_html.contains("<p class=\"wdoc-paragraph\">Nested</p>"));
+        });
     }
 
     #[test]
