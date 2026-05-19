@@ -46,6 +46,7 @@ pub fn check_type(value: &Value, type_expr: &TypeExpr) -> bool {
         (Value::Bool(_), TypeExpr::Bool(_)) => true,
         (Value::Null, TypeExpr::Null(_)) => true,
         (Value::Identifier(_), TypeExpr::Identifier(_)) => true,
+        (Value::BlockRef(_), TypeExpr::Ref(_, _)) => true,
         (Value::Symbol(_), TypeExpr::Symbol(_)) => true,
         (Value::List(items), TypeExpr::List(inner, _)) => {
             items.iter().all(|item| check_type(item, inner))

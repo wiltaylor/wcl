@@ -104,7 +104,7 @@ class ex_moving_token {
 }
 
 page interactions {
-    section = "my_docs.diagrams.interactions"
+    section = ref("my_docs.diagrams.interactions")
     title = "Diagram Interactions"
 
     layout {

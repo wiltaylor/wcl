@@ -2,7 +2,7 @@ import <wdoc.wcl>
 use wdoc::{page, layout, heading, paragraph, code, data_table}
 
 page wdoc_drawing_shapes {
-    section = "wcl_docs.wdoc.wdoc_drawing_shapes"
+    section = ref("wcl_docs.wdoc.wdoc_drawing_shapes")
     title = "Drawing — Shapes"
 
     layout {

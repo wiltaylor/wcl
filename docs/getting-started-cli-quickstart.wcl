@@ -2,7 +2,7 @@ import <wdoc.wcl>
 use wdoc::{page, layout, heading, paragraph, code, callout, bold, italic, link}
 
 page cli_quickstart {
-    section = "wcl_docs.getting_started.cli_quickstart"
+    section = ref("wcl_docs.getting_started.cli_quickstart")
     title = "CLI Quickstart"
 
     layout {

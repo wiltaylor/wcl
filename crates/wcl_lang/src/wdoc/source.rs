@@ -7795,7 +7795,7 @@ fn extract_page(block: &BlockRef, ctx: &ExtractCtx) -> Result<Page, String> {
     let section_id = block
         .attributes
         .get("section")
-        .and_then(|v| v.as_string())
+        .and_then(value_ref_id)
         .ok_or_else(|| format!("page '{id}' missing 'section' attribute"))?
         .to_string();
 
@@ -8056,9 +8056,17 @@ fn get_style_decorator(block: &BlockRef) -> Option<String> {
             d.args
                 .get("_0")
                 .or_else(|| d.args.values().next())
-                .and_then(|v| v.as_string())
+                .and_then(value_ref_id)
                 .map(|s| s.to_string())
         })
+}
+
+fn value_ref_id(value: &Value) -> Option<&str> {
+    match value {
+        Value::BlockRef(block) => block.qualified_id.as_deref().or(block.id.as_deref()),
+        Value::Identifier(value) | Value::String(value) => Some(value.as_str()),
+        _ => None,
+    }
 }
 
 fn extract_style(block: &BlockRef) -> WdocStyle {
@@ -8188,10 +8196,6 @@ pub fn parse_extract_from_files(
     };
 
     let wdoc_doc = extract(&all_values, &ctx)?;
-    let warnings = crate::wdoc::validate_doc(&wdoc_doc)?;
-    for w in &warnings {
-        eprintln!("{w}");
-    }
 
     Ok(ExtractedWdoc {
         document: wdoc_doc,

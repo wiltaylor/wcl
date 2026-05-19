@@ -2,7 +2,7 @@ import <wdoc.wcl>
 use wdoc::{page, layout, heading, paragraph, code, data_table, callout, bold, italic, link}
 
 page cli_lsp {
-    section = "wcl_docs.cli.cli_lsp"
+    section = ref("wcl_docs.cli.cli_lsp")
     title = "wcl lsp"
 
     layout {

@@ -2,7 +2,7 @@ import <wdoc.wcl>
 use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
 
 page decorators_builtin {
-    section = "wcl_docs.guide.decorators.decorators_builtin"
+    section = ref("wcl_docs.guide.decorators.decorators_builtin")
     title = "Built-in Decorators"
 
     layout {

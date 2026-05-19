@@ -737,7 +737,15 @@ impl Evaluator {
                 }
             }
             Expr::Ref(target, _, _) => {
-                deps.insert(target.value().to_string());
+                let path = target.value();
+                let root = path
+                    .trim_start_matches("../")
+                    .split('.')
+                    .next()
+                    .unwrap_or(path);
+                if !root.is_empty() {
+                    deps.insert(root.to_string());
+                }
             }
             _ => {} // literals, etc.
         }
@@ -2650,7 +2658,7 @@ impl Evaluator {
         let mut current_scope = resolved_scope;
 
         for (i, segment) in segments.iter().enumerate() {
-            if let Some((_, entry)) = self.scopes.resolve(current_scope, segment) {
+            if let Some((entry_scope, entry)) = self.scopes.resolve(current_scope, segment) {
                 if entry.kind == ScopeEntryKind::BlockChild {
                     if let Some(ref val) = entry.value {
                         if i == segments.len() - 1 {
@@ -2659,7 +2667,7 @@ impl Evaluator {
                         // Navigate into this block's child scope for next segment.
                         if let Some(&child_scope) = self
                             .block_scope_map
-                            .get(&(current_scope, segment.to_string()))
+                            .get(&(entry_scope, segment.to_string()))
                         {
                             current_scope = child_scope;
                             continue;

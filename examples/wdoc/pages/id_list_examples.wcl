@@ -25,7 +25,7 @@ team runtime {
 }
 
 page id_list_examples {
-    section = "my_docs.guide.id_list_examples"
+    section = ref("my_docs.guide.id_list_examples")
     title = "ID List References"
     let runtime_members = filter(
         (..person),

@@ -2,7 +2,7 @@ import <wdoc.wcl>
 use wdoc::{page, layout, heading, paragraph, code, callout, bold}
 
 page wdoc_drawing_layouts {
-    section = "wcl_docs.wdoc.wdoc_drawing_layouts"
+    section = ref("wcl_docs.wdoc.wdoc_drawing_layouts")
     title = "Drawing — Layouts"
 
     layout {

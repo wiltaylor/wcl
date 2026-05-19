@@ -2,7 +2,7 @@ import <wdoc.wcl>
 use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
 
 page guide_variables_and_scoping {
-    section = "wcl_docs.guide.variables_and_scoping"
+    section = ref("wcl_docs.guide.variables_and_scoping")
     title = "Variables and Scoping"
 
     layout {

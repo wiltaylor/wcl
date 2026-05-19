@@ -30,7 +30,7 @@ style default {
 }
 
 page intro {
-    section = "presentation_demo.overview.intro"
+    section = ref("presentation_demo.overview.intro")
     title = "Presentation Template"
 
     layout {
@@ -42,7 +42,7 @@ page intro {
 }
 
 page building_blocks {
-    section = "presentation_demo.overview.building_blocks"
+    section = ref("presentation_demo.overview.building_blocks")
     title = "Built From WDoc Blocks"
 
     layout {
@@ -57,7 +57,7 @@ page building_blocks {
 }
 
 page full_slide {
-    section = "presentation_demo.overview.full_slide"
+    section = ref("presentation_demo.overview.full_slide")
     title = "Full Slide"
 
     layout {
@@ -67,7 +67,7 @@ page full_slide {
 }
 
 page navigation {
-    section = "presentation_demo.details.navigation"
+    section = ref("presentation_demo.details.navigation")
     title = "Directional Navigation"
 
     layout {
@@ -82,7 +82,7 @@ page navigation {
 }
 
 page sections {
-    section = "presentation_demo.details.sections"
+    section = ref("presentation_demo.details.sections")
     title = "Section Rows"
 
     layout {

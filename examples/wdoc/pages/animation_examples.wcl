@@ -208,7 +208,7 @@ class ex_anim_rotate_move {
 }
 
 page animation_examples {
-    section = "my_docs.diagrams.animation_examples"
+    section = ref("my_docs.diagrams.animation_examples")
     title = "Keyframe Animations"
 
     layout {

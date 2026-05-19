@@ -2165,7 +2165,7 @@ use wdoc::{page, layout}
 use wdoc::draw::{diagram, image}
 
 page home {
-    section = "my_docs.overview"
+    section = ref("my_docs.overview")
     title = "Home"
 
     layout {
@@ -2241,7 +2241,7 @@ use wdoc::{page, layout}
 use wdoc::draw::{diagram, inline_svg}
 
 page home {
-    section = "my_docs.overview"
+    section = ref("my_docs.overview")
     title = "Home"
 
     layout {
@@ -2301,7 +2301,7 @@ doc my_docs {
 }
 
 page home {
-    section = "my_docs.overview"
+    section = ref("my_docs.overview")
     title = "Home"
 
     layout {
@@ -2381,7 +2381,7 @@ doc my_docs {
 }
 
 page home {
-    section = "my_docs.overview"
+    section = ref("my_docs.overview")
     title = "Home"
 
     layout {
@@ -2475,7 +2475,7 @@ doc my_docs {
 }
 
 page home {
-    section = "my_docs.overview"
+    section = ref("my_docs.overview")
     title = "Home"
 
     layout {
@@ -2602,7 +2602,7 @@ use wdoc::{page, layout}
 use wdoc::draw::{diagram}
 
 page home {
-    section = "my_docs.overview"
+    section = ref("my_docs.overview")
     title = "Home"
 
     layout {
@@ -2716,7 +2716,7 @@ use wdoc::{page, layout}
 use wdoc::draw::{diagram}
 
 page home {
-    section = "my_docs.overview"
+    section = ref("my_docs.overview")
     title = "Home"
 
     layout {
@@ -2781,7 +2781,7 @@ doc d {
     let page = r#"
 for component in components {
     page p-${component.id} {
-        section = "d.s"
+        section = ref("d.s")
         title = "P"
 
         layout {
@@ -2871,7 +2871,7 @@ doc d {
     let page = r#"
 for component in components {
     page p-${component.id} {
-        section = "d.s"
+        section = ref("d.s")
         title = "P"
 
         layout {
@@ -2978,7 +2978,7 @@ doc d {
     let page = r#"
 for component in (..UiComponent) {
     page p-${component.id} {
-        section = "d.s"
+        section = ref("d.s")
         title = "P"
 
         layout {

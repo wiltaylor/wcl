@@ -2,7 +2,7 @@ import <wdoc.wcl>
 use wdoc::{page, layout, heading, paragraph, code, data_table, callout}
 
 page wdoc_cli {
-    section = "wcl_docs.wdoc.wdoc_cli"
+    section = ref("wcl_docs.wdoc.wdoc_cli")
     title = "wcl wdoc"
 
     layout {

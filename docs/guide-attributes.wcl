@@ -4,7 +4,7 @@ use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, it
 let D = "$"
 
 page guide_attributes {
-    section = "wcl_docs.guide.attributes"
+    section = ref("wcl_docs.guide.attributes")
     title = "Attributes"
 
     layout {

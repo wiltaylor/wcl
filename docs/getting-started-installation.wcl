@@ -2,7 +2,7 @@ import <wdoc.wcl>
 use wdoc::{page, layout, heading, paragraph, code, callout, bold, italic, link}
 
 page installation {
-    section = "wcl_docs.getting_started.installation"
+    section = ref("wcl_docs.getting_started.installation")
     title = "Installation"
 
     layout {

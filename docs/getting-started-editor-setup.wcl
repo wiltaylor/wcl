@@ -2,7 +2,7 @@ import <wdoc.wcl>
 use wdoc::{page, layout, heading, paragraph, code, callout, bold, italic, link}
 
 page editor_setup {
-    section = "wcl_docs.getting_started.editor_setup"
+    section = ref("wcl_docs.getting_started.editor_setup")
     title = "Editor Setup"
 
     layout {

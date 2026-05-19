@@ -2,7 +2,7 @@ import <wdoc.wcl>
 use wdoc::{page, layout, heading, paragraph, code, data_table, callout, bold, italic, link}
 
 page appendix_ebnf {
-    section = "wcl_docs.appendix.appendix_ebnf"
+    section = ref("wcl_docs.appendix.appendix_ebnf")
     title = "EBNF Grammar"
 
     layout {

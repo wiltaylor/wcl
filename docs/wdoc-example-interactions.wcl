@@ -86,7 +86,7 @@ class demo_moving_token {
 }
 
 page wdoc_example_interactions {
-    section = "wcl_docs.wdoc.wdoc_example_interactions"
+    section = ref("wcl_docs.wdoc.wdoc_example_interactions")
     title = "Example — Diagram Interactions"
 
     layout {

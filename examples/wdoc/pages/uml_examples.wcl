@@ -3,7 +3,7 @@ import "./shared.wcl"
 // ── UML Shapes page ──
 
 page uml_examples {
-    section = "my_docs.diagrams.uml_examples"
+    section = ref("my_docs.diagrams.uml_examples")
     title = "UML Shapes"
 
     layout {

@@ -3,7 +3,7 @@ use wdoc::{page, layout, h1, h2, p, paragraph, code, callout, bold}
 use wdoc::draw::{diagram, flow_terminal, flow_io, flow_process, flow_decision, flow_subprocess, connection}
 
 page wdoc_example_flowchart {
-    section = "wcl_docs.wdoc.wdoc_example_flowchart"
+    section = ref("wcl_docs.wdoc.wdoc_example_flowchart")
     title = "Example — Flowchart"
 
     layout {

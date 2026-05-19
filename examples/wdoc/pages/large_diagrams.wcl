@@ -5,7 +5,7 @@ import "./shared.wcl"
 export let grid_items = ["auth", "users", "posts", "media", "search", "notify", "billing", "analytics", "config", "logging", "metrics", "cache", "queue", "storage", "gateway"]
 
 page large_diagrams {
-    section = "my_docs.diagrams.large_diagrams"
+    section = ref("my_docs.diagrams.large_diagrams")
     title = "Large Diagrams"
 
     layout {

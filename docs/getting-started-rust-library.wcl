@@ -2,7 +2,7 @@ import <wdoc.wcl>
 use wdoc::{page, layout, heading, paragraph, code, callout, bold, italic, link}
 
 page rust_library {
-    section = "wcl_docs.getting_started.rust_library"
+    section = ref("wcl_docs.getting_started.rust_library")
     title = "Using WCL as a Rust Library"
 
     layout {

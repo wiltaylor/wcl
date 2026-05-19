@@ -4,7 +4,7 @@ use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, it
 let D = "$"
 
 page functions_type_coercion {
-    section = "wcl_docs.guide.functions.functions_type_coercion"
+    section = ref("wcl_docs.guide.functions.functions_type_coercion")
     title = "Type Coercion Functions"
 
     layout {

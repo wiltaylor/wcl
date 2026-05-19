@@ -2,7 +2,7 @@ import <wdoc.wcl>
 use wdoc::{page, layout, heading, paragraph, code, data_table, callout}
 
 page wdoc_drawing_connections {
-    section = "wcl_docs.wdoc.wdoc_drawing_connections"
+    section = ref("wcl_docs.wdoc.wdoc_drawing_connections")
     title = "Drawing — Connections"
 
     layout {

@@ -39,7 +39,7 @@ class nested_flow_success {
 }
 
 page nested_diagrams {
-    section = "my_docs.diagrams.nested_diagrams"
+    section = ref("my_docs.diagrams.nested_diagrams")
     title = "Nested Diagrams"
 
     layout {

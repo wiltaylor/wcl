@@ -18,7 +18,7 @@ class wf_popup_menu {
 }
 
 page wireframes {
-    section = "my_docs.diagrams.wireframes"
+    section = ref("my_docs.diagrams.wireframes")
     title = "UI Wireframes"
 
     layout {

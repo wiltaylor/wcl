@@ -4,7 +4,7 @@ use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, it
 let D = "$"
 
 page for_loops {
-    section = "wcl_docs.guide.control_flow.for_loops"
+    section = ref("wcl_docs.guide.control_flow.for_loops")
     title = "For Loops"
 
     layout {

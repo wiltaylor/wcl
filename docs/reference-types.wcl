@@ -4,7 +4,7 @@ use wdoc::{page, layout, heading, paragraph, code, data_table, callout, bold, it
 let D = "$"
 
 page ref_types {
-    section = "wcl_docs.reference.ref_types"
+    section = ref("wcl_docs.reference.ref_types")
     title = "Type System"
 
     layout {

@@ -1,7 +1,7 @@
 import "./shared.wcl"
 
 page inline_icon_examples {
-    section = "my_docs.guide.inline_icon_examples"
+    section = ref("my_docs.guide.inline_icon_examples")
     title = "Inline Icon Examples"
 
     layout {

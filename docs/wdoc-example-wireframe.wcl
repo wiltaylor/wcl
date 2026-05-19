@@ -3,7 +3,7 @@ use wdoc::{page, layout, h1, h2, paragraph, code, callout, bold}
 use wdoc::draw::{diagram, card, avatar, input, button, text}
 
 page wdoc_example_wireframe {
-    section = "wcl_docs.wdoc.wdoc_example_wireframe"
+    section = ref("wcl_docs.wdoc.wdoc_example_wireframe")
     title = "Example — UI Wireframe"
 
     layout {

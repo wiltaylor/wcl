@@ -2,7 +2,7 @@ use crate::eval::value::Value;
 use crate::lang::ast::*;
 use crate::lang::diagnostic::DiagnosticBag;
 use crate::lang::span::Span;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// A resolved decorator schema
 #[derive(Debug, Clone)]
@@ -169,6 +169,35 @@ impl DecoratorSchemaRegistry {
                 "pattern".to_string(),
                 "one_of".to_string(),
             ])],
+            span: Span::dummy(),
+        });
+        self.insert(ResolvedDecoratorSchema {
+            name: "assert".to_string(),
+            targets: vec![DecoratorTarget::Schema],
+            params: vec![
+                DecoratorParam {
+                    name: "check".to_string(),
+                    type_expr: TypeExpr::Any(Span::dummy()),
+                    required: true,
+                    default: None,
+                    span: Span::dummy(),
+                },
+                DecoratorParam {
+                    name: "message".to_string(),
+                    type_expr: TypeExpr::String(Span::dummy()),
+                    required: true,
+                    default: None,
+                    span: Span::dummy(),
+                },
+                DecoratorParam {
+                    name: "severity".to_string(),
+                    type_expr: TypeExpr::String(Span::dummy()),
+                    required: false,
+                    default: None,
+                    span: Span::dummy(),
+                },
+            ],
+            constraints: vec![],
             span: Span::dummy(),
         });
         self.insert(ResolvedDecoratorSchema {
@@ -509,57 +538,111 @@ impl DecoratorSchemaRegistry {
 
     /// Validate all decorators in the document
     pub fn validate_all(&self, doc: &Document, diagnostics: &mut DiagnosticBag) {
-        self.validate_items(&doc.items, diagnostics);
+        let block_ids = collect_block_ids(&doc.items);
+        self.validate_items(&doc.items, &block_ids, diagnostics);
     }
 
-    fn validate_items(&self, items: &[DocItem], diagnostics: &mut DiagnosticBag) {
+    fn validate_items(
+        &self,
+        items: &[DocItem],
+        block_ids: &DecoratorBlockIdIndex,
+        diagnostics: &mut DiagnosticBag,
+    ) {
         for item in items {
             match item {
-                DocItem::Body(body_item) => self.validate_body_item(body_item, diagnostics),
+                DocItem::Body(body_item) => {
+                    self.validate_body_item(body_item, block_ids, diagnostics)
+                }
                 DocItem::ExportLet(export) => {
                     for dec in &export.decorators {
-                        self.validate_decorator(dec, DecoratorTarget::Let, diagnostics);
+                        self.validate_decorator_with_refs(
+                            dec,
+                            DecoratorTarget::Let,
+                            block_ids,
+                            diagnostics,
+                        );
                     }
                 }
-                DocItem::Namespace(ns) => self.validate_items(&ns.items, diagnostics),
+                DocItem::Namespace(ns) => self.validate_items(&ns.items, block_ids, diagnostics),
                 _ => {}
             }
         }
     }
 
-    fn validate_body_item(&self, item: &BodyItem, diagnostics: &mut DiagnosticBag) {
+    fn validate_body_item(
+        &self,
+        item: &BodyItem,
+        block_ids: &DecoratorBlockIdIndex,
+        diagnostics: &mut DiagnosticBag,
+    ) {
         match item {
             BodyItem::Block(block) => {
                 for dec in &block.decorators {
-                    self.validate_decorator(dec, DecoratorTarget::Block, diagnostics);
+                    self.validate_decorator_with_refs(
+                        dec,
+                        DecoratorTarget::Block,
+                        block_ids,
+                        diagnostics,
+                    );
                 }
                 for child in &block.body {
-                    self.validate_body_item(child, diagnostics);
+                    self.validate_body_item(child, block_ids, diagnostics);
                 }
             }
             BodyItem::Attribute(attr) => {
                 for dec in &attr.decorators {
-                    self.validate_decorator(dec, DecoratorTarget::Attribute, diagnostics);
+                    self.validate_decorator_with_refs(
+                        dec,
+                        DecoratorTarget::Attribute,
+                        block_ids,
+                        diagnostics,
+                    );
                 }
             }
             BodyItem::Table(table) => {
                 for dec in &table.decorators {
-                    self.validate_decorator(dec, DecoratorTarget::Table, diagnostics);
+                    self.validate_decorator_with_refs(
+                        dec,
+                        DecoratorTarget::Table,
+                        block_ids,
+                        diagnostics,
+                    );
                 }
             }
             BodyItem::LetBinding(binding) => {
                 for dec in &binding.decorators {
-                    self.validate_decorator(dec, DecoratorTarget::Let, diagnostics);
+                    self.validate_decorator_with_refs(
+                        dec,
+                        DecoratorTarget::Let,
+                        block_ids,
+                        diagnostics,
+                    );
                 }
             }
             _ => {}
         }
     }
 
+    #[cfg(test)]
     fn validate_decorator(
         &self,
         decorator: &Decorator,
         target: DecoratorTarget,
+        diagnostics: &mut DiagnosticBag,
+    ) {
+        self.validate_decorator_with_refs(
+            decorator,
+            target,
+            &DecoratorBlockIdIndex::default(),
+            diagnostics,
+        );
+    }
+
+    fn validate_decorator_with_refs(
+        &self,
+        decorator: &Decorator,
+        target: DecoratorTarget,
+        block_ids: &DecoratorBlockIdIndex,
         diagnostics: &mut DiagnosticBag,
     ) {
         let name = &decorator.name.name;
@@ -710,6 +793,17 @@ impl DecoratorSchemaRegistry {
                                 );
                             }
                         }
+                        if let TypeExpr::Ref(target_kind, _) = &param.type_expr {
+                            validate_ref_arg(
+                                name,
+                                pname,
+                                expr,
+                                target_kind,
+                                block_ids,
+                                &self.namespace_aliases,
+                                diagnostics,
+                            );
+                        }
                     }
                 }
             }
@@ -723,6 +817,112 @@ impl DecoratorSchemaRegistry {
             );
         }
     }
+}
+
+#[derive(Default)]
+struct DecoratorBlockIdIndex {
+    by_kind: HashMap<String, HashSet<String>>,
+    qualified_by_kind: HashMap<String, HashSet<String>>,
+}
+
+fn collect_block_ids(items: &[DocItem]) -> DecoratorBlockIdIndex {
+    let mut index = DecoratorBlockIdIndex::default();
+    for item in items {
+        if let DocItem::Body(BodyItem::Block(block)) = item {
+            collect_block_ids_recursive(block, None, &mut index);
+        }
+    }
+    index
+}
+
+fn collect_block_ids_recursive(
+    block: &Block,
+    parent_path: Option<&str>,
+    index: &mut DecoratorBlockIdIndex,
+) {
+    let child_path = if let Some(ref inline_id) = block.inline_id {
+        if let Some(id) = inline_id_to_string(inline_id) {
+            index
+                .by_kind
+                .entry(block.kind.name.clone())
+                .or_default()
+                .insert(id.clone());
+            let qid = parent_path
+                .map(|parent| format!("{parent}.{id}"))
+                .unwrap_or(id);
+            index
+                .qualified_by_kind
+                .entry(block.kind.name.clone())
+                .or_default()
+                .insert(qid.clone());
+            Some(qid)
+        } else {
+            parent_path.map(str::to_string)
+        }
+    } else {
+        parent_path.map(str::to_string)
+    };
+
+    for item in &block.body {
+        if let BodyItem::Block(child) = item {
+            collect_block_ids_recursive(child, child_path.as_deref(), index);
+        }
+    }
+}
+
+fn inline_id_to_string(id: &InlineId) -> Option<String> {
+    match id {
+        InlineId::Literal(lit) => Some(lit.value.clone()),
+        InlineId::Interpolated(parts) => {
+            let value = parts
+                .iter()
+                .map(|part| match part {
+                    StringPart::Literal(text) => Some(text.as_str()),
+                    StringPart::Interpolation(_) => None,
+                })
+                .collect::<Option<Vec<_>>>()?
+                .join("");
+            Some(value)
+        }
+    }
+}
+
+fn validate_ref_arg(
+    decorator_name: &str,
+    param_name: &str,
+    expr: &Expr,
+    target_kind: &StringLit,
+    block_ids: &DecoratorBlockIdIndex,
+    aliases: &HashMap<String, String>,
+    diagnostics: &mut DiagnosticBag,
+) {
+    let Expr::Ref(target, _, span) = expr else {
+        return;
+    };
+    let target_kind = crate::schema::schema::string_lit_to_string(target_kind);
+    let target_kind = aliases
+        .get(&target_kind)
+        .map(String::as_str)
+        .unwrap_or(&target_kind);
+    let ref_id = target.value();
+    if block_ids
+        .by_kind
+        .get(target_kind)
+        .is_some_and(|ids| ids.contains(ref_id))
+        || block_ids
+            .qualified_by_kind
+            .get(target_kind)
+            .is_some_and(|ids| ids.contains(ref_id))
+    {
+        return;
+    }
+    diagnostics.error_with_code(
+        format!(
+            "decorator @{decorator_name}: reference '{ref_id}' in parameter '{param_name}' does not match any '{target_kind}' block ID"
+        ),
+        *span,
+        "E076",
+    );
 }
 
 impl Default for DecoratorSchemaRegistry {
@@ -759,6 +959,7 @@ mod tests {
             "text",
             "children",
             "parent",
+            "assert",
         ] {
             assert!(
                 reg.schemas.contains_key(*name),
@@ -1382,5 +1583,52 @@ mod tests {
         // Check if int-vs-float is a mismatch. If check_type allows int for float, this won't emit.
         // We just verify no panics and the mechanism works.
         let _errors = diags.into_diagnostics();
+    }
+
+    #[test]
+    fn decorator_ref_param_accepts_matching_block_ref() {
+        let doc = crate::parse(
+            r#"
+            decorator_schema "mark" {
+                target = [block]
+                name: ref("style")
+            }
+
+            style primary {}
+
+            @mark(name = #primary)
+            widget card {}
+            "#,
+            crate::ParseOptions::default(),
+        );
+        assert!(
+            !doc.has_errors(),
+            "unexpected diagnostics: {:?}",
+            doc.diagnostics
+        );
+    }
+
+    #[test]
+    fn decorator_ref_param_rejects_wrong_qualified_kind() {
+        let doc = crate::parse(
+            r#"
+            decorator_schema "mark" {
+                target = [block]
+                name: ref("style")
+            }
+
+            container parent {
+                widget primary {}
+            }
+
+            @mark(name = ref("parent.primary"))
+            widget card {}
+            "#,
+            crate::ParseOptions::default(),
+        );
+        assert!(doc.diagnostics.iter().any(|diag| {
+            diag.code.as_deref() == Some("E076")
+                && diag.message.contains("does not match any 'style' block ID")
+        }));
     }
 }

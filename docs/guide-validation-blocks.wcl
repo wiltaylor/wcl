@@ -2,7 +2,7 @@ import <wdoc.wcl>
 use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
 
 page guide_validation_blocks {
-    section = "wcl_docs.guide.validation_blocks"
+    section = ref("wcl_docs.guide.validation_blocks")
     title = "Validation Blocks"
 
     layout {

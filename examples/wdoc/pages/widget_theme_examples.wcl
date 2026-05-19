@@ -94,7 +94,7 @@ class wdoc-widget-graph_node {
 }
 
 page widget_theme_examples {
-    section = "my_docs.diagrams.widget_theme_examples"
+    section = ref("my_docs.diagrams.widget_theme_examples")
     title = "Widget Theme Properties"
 
     layout {

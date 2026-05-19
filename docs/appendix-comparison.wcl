@@ -4,7 +4,7 @@ use wdoc::{page, layout, heading, paragraph, code, data_table, callout, bold, it
 let D = "$"
 
 page appendix_comparison {
-    section = "wcl_docs.appendix.appendix_comparison"
+    section = ref("wcl_docs.appendix.appendix_comparison")
     title = "Comparison with Other Formats"
 
     layout {

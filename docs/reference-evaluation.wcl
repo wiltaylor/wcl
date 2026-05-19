@@ -4,7 +4,7 @@ use wdoc::{page, layout, heading, paragraph, code, data_table, callout, bold, it
 let D = "$"
 
 page ref_evaluation {
-    section = "wcl_docs.reference.ref_evaluation"
+    section = ref("wcl_docs.reference.ref_evaluation")
     title = "Expression Evaluation"
 
     layout {

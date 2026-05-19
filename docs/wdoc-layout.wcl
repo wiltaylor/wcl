@@ -2,7 +2,7 @@ import <wdoc.wcl>
 use wdoc::{page, layout, heading, paragraph, code, callout, bold}
 
 page wdoc_layout {
-    section = "wcl_docs.wdoc.wdoc_layout"
+    section = ref("wcl_docs.wdoc.wdoc_layout")
     title = "Layouts and Splits"
 
     layout {

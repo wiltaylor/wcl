@@ -3,7 +3,7 @@ import "./shared.wcl"
 // ── Swim Lane Diagrams page ──
 
 page swimlane_diagrams {
-    section = "my_docs.diagrams.swimlane_diagrams"
+    section = ref("my_docs.diagrams.swimlane_diagrams")
     title = "Swim Lane Diagrams"
 
     layout {

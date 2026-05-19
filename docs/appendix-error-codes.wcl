@@ -2,7 +2,7 @@ import <wdoc.wcl>
 use wdoc::{page, layout, heading, paragraph, code, data_table, callout, bold, italic, link}
 
 page appendix_error_codes {
-    section = "wcl_docs.appendix.appendix_error_codes"
+    section = ref("wcl_docs.appendix.appendix_error_codes")
     title = "Error Codes"
 
     layout {

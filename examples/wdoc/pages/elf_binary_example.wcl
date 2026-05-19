@@ -1,7 +1,7 @@
 import "./shared.wcl"
 
 page elf_binary_example {
-    section = "my_docs.guide.elf_binary_example"
+    section = ref("my_docs.guide.elf_binary_example")
     title = "ELF Binary Example"
     let bash_path = "/bin/bash"
     let bash_available = file_exists(bash_path, { allow_absolute = true })

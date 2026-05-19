@@ -3,7 +3,7 @@ import "./shared.wcl"
 // ── Overview page ──
 
 page overview {
-    section = "my_docs.getting_started.overview"
+    section = ref("my_docs.getting_started.overview")
     title = "Overview"
 
     layout {
@@ -16,13 +16,13 @@ page overview {
                     alt = "WCL Documentation"
                 }
 
-                @style("hero")
+                @style(#hero)
                 heading h1 {
                     level = 1
                     content = "WCL - Wils Configuration Language"
                 }
 
-                @style("hero")
+                @style(#hero)
                 paragraph p1 {
                     content = "A typed, block-structured configuration language with schemas, validation, and powerful expressions."
                 }

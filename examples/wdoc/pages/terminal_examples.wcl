@@ -147,7 +147,7 @@ class term_example_slide {
 }
 
 page terminal_examples {
-    section = "my_docs.diagrams.terminal_examples"
+    section = ref("my_docs.diagrams.terminal_examples")
     title = "Terminal Diagrams"
 
     layout {

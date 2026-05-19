@@ -2,7 +2,7 @@ import <wdoc.wcl>
 use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
 
 page functions_math {
-    section = "wcl_docs.guide.functions.functions_math"
+    section = ref("wcl_docs.guide.functions.functions_math")
     title = "Math Functions"
 
     layout {

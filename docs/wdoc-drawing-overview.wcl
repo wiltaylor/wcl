@@ -2,7 +2,7 @@ import <wdoc.wcl>
 use wdoc::{page, layout, heading, paragraph, code, data_table, callout, bold, link}
 
 page wdoc_drawing_overview {
-    section = "wcl_docs.wdoc.wdoc_drawing_overview"
+    section = ref("wcl_docs.wdoc.wdoc_drawing_overview")
     title = "Drawing — Overview"
 
     layout {

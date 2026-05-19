@@ -3,7 +3,7 @@ use wdoc::{page, layout, h1, h2, p, paragraph, code, callout, bold}
 use wdoc::draw::{diagram, rect, text, connection}
 
 page wdoc_example_swimlane {
-    section = "wcl_docs.wdoc.wdoc_example_swimlane"
+    section = ref("wcl_docs.wdoc.wdoc_example_swimlane")
     title = "Example — Swimlane Diagram"
 
     layout {

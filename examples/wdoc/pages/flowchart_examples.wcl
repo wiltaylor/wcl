@@ -3,7 +3,7 @@ import "./shared.wcl"
 // -- Flowchart Shapes page --
 
 page flowchart_examples {
-    section = "my_docs.diagrams.flowchart_examples"
+    section = ref("my_docs.diagrams.flowchart_examples")
     title = "Flowchart Shapes"
 
     layout {

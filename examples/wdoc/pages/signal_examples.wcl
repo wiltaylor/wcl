@@ -3,7 +3,7 @@ import "./shared.wcl"
 // ── Signal Examples page ──
 
 page signal_examples {
-    section = "my_docs.diagrams.signal_examples"
+    section = ref("my_docs.diagrams.signal_examples")
     title = "Signals and Bindings"
 
     signal progress {

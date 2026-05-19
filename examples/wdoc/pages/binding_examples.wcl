@@ -3,7 +3,7 @@ import "./shared.wcl"
 // ── Language Bindings page ──
 
 page binding_examples {
-    section = "my_docs.bindings.binding_examples"
+    section = ref("my_docs.bindings.binding_examples")
     title = "Binding Examples"
 
     layout {

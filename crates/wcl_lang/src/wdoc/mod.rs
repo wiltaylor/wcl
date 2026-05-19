@@ -5,30 +5,10 @@ pub mod render;
 #[cfg(feature = "wdoc-serve")]
 pub mod serve;
 pub mod source;
-pub mod validate;
 
 pub use crate::render::{graph_layout, shapes, terminal};
 
 use crate::wdoc::model::WdocDocument;
-use crate::wdoc::validate::{WdocDiagnostic, WdocSeverity};
-
-/// Validate a `WdocDocument` and return any diagnostics.
-/// Returns the document and warnings, or an error string if validation fails.
-pub fn validate_doc(doc: &WdocDocument) -> Result<Vec<WdocDiagnostic>, String> {
-    let diags = validate::validate(doc);
-
-    let has_errors = diags.iter().any(|d| d.severity == WdocSeverity::Error);
-    if has_errors {
-        let msg = diags
-            .iter()
-            .map(|d| d.to_string())
-            .collect::<Vec<_>>()
-            .join("\n");
-        return Err(msg);
-    }
-
-    Ok(diags)
-}
 
 /// Render a `WdocDocument` to HTML in the given output directory.
 /// `asset_dirs` are source directories containing images/assets to copy.

@@ -36,7 +36,7 @@ style default {
 }
 
 page home {
-    section = "site_builder_demo.home"
+    section = ref("site_builder_demo.home")
     title = "Home"
     path = "index.html"
     summary = "A Hugo-style WDoc site home page."
@@ -73,7 +73,7 @@ page home {
 }
 
 page getting_started {
-    section = "site_builder_demo.guide.getting_started"
+    section = ref("site_builder_demo.guide.getting_started")
     title = "Getting Started"
     path = "guide/getting-started.html"
     date = "2026-05-17"
@@ -91,7 +91,7 @@ page getting_started {
 }
 
 page layouts {
-    section = "site_builder_demo.guide.layouts"
+    section = ref("site_builder_demo.guide.layouts")
     title = "Layouts"
     path = "guide/layouts.html"
     weight = 2

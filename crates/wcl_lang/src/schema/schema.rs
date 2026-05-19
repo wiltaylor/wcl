@@ -1,4 +1,6 @@
-use crate::eval::value::Value;
+use crate::eval::scope::{ScopeEntry, ScopeEntryKind, ScopeKind};
+use crate::eval::value::{BlockRef, Value};
+use crate::eval::Evaluator;
 use crate::lang::ast::*;
 use crate::lang::diagnostic::DiagnosticBag;
 use crate::lang::span::Span;
@@ -162,6 +164,7 @@ pub struct ResolvedSchema {
     pub allowed_children: Option<Vec<String>>,
     pub allowed_parents: Option<Vec<String>>,
     pub child_constraints: Vec<ChildConstraint>,
+    pub assertions: Vec<SchemaAssertion>,
     pub tag_field: Option<String>,
     pub variants: Vec<ResolvedVariant>,
     pub span: Span,
@@ -177,6 +180,20 @@ pub struct ChildConstraint {
     pub span: Span,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AssertionSeverity {
+    Error,
+    Warning,
+}
+
+#[derive(Debug, Clone)]
+pub struct SchemaAssertion {
+    pub check: Expr,
+    pub message: String,
+    pub severity: AssertionSeverity,
+    pub span: Span,
+}
+
 /// A resolved tagged variant arm inside a schema.
 #[derive(Debug, Clone)]
 pub struct ResolvedVariant {
@@ -185,6 +202,7 @@ pub struct ResolvedVariant {
     pub fields: Vec<ResolvedField>,
     pub allowed_children: Option<Vec<String>>,
     pub child_constraints: Vec<ChildConstraint>,
+    pub assertions: Vec<SchemaAssertion>,
     pub span: Span,
 }
 
@@ -355,6 +373,7 @@ impl SchemaRegistry {
         let allowed_children = get_decorator_string_list_arg(&schema.decorators, "children");
         let allowed_parents = get_decorator_string_list_arg(&schema.decorators, "parent");
         let tag_field = get_decorator_string_arg(&schema.decorators, "tagged");
+        let assertions = get_assertions(&schema.decorators, diagnostics);
 
         // Resolve @parent/@children values through namespace aliases
         let aliases = &self.namespace_aliases;
@@ -401,6 +420,7 @@ impl SchemaRegistry {
                 .filter(|d| d.name.name == "child")
                 .filter_map(parse_child_decorator)
                 .collect();
+            let variant_assertions = get_assertions(&variant.decorators, diagnostics);
             let variant_doc = get_decorator_string_arg(&variant.decorators, "doc");
             variants.push(ResolvedVariant {
                 tag_value: string_lit_to_string(&variant.tag_value),
@@ -408,6 +428,7 @@ impl SchemaRegistry {
                 fields: variant_fields,
                 allowed_children: variant_allowed_children,
                 child_constraints: variant_child_constraints,
+                assertions: variant_assertions,
                 span: variant.span,
             });
         }
@@ -514,6 +535,7 @@ impl SchemaRegistry {
             allowed_children,
             allowed_parents,
             child_constraints,
+            assertions,
             tag_field,
             variants,
             span: schema.span,
@@ -882,10 +904,16 @@ impl SchemaRegistry {
                     }
                 }
             }
-        }
 
-        // Child cardinality validation (E097/E098) and tagged variant validation
-        if let Some(schema) = self.get_schema(&block.kind.name, parent_kind) {
+            validate_schema_assertions(
+                &schema.assertions,
+                block,
+                block_values,
+                block_qid.as_deref(),
+                diagnostics,
+            );
+
+            // Child cardinality validation (E097/E098) and tagged variant validation
             // E097/E098: @child cardinality constraints
             // Determine which constraints to use (variant may override)
             let active_constraints = &schema.child_constraints;
@@ -996,6 +1024,13 @@ impl SchemaRegistry {
                         if variant.allowed_children.is_some() {
                             active_children_override = Some(&variant.allowed_children);
                         }
+                        validate_schema_assertions(
+                            &variant.assertions,
+                            block,
+                            block_values,
+                            block_qid.as_deref(),
+                            diagnostics,
+                        );
                     }
                 }
             }
@@ -1085,6 +1120,100 @@ impl SchemaRegistry {
     }
 }
 
+fn validate_schema_assertions(
+    assertions: &[SchemaAssertion],
+    block: &Block,
+    block_values: Option<&IndexMap<String, Value>>,
+    qualified_id: Option<&str>,
+    diagnostics: &mut DiagnosticBag,
+) {
+    if assertions.is_empty() {
+        return;
+    }
+    let block_ref = schema_block_ref(block, block_values, qualified_id);
+    for assertion in assertions {
+        let mut evaluator = Evaluator::new();
+        let scope = evaluator.scopes_mut().create_scope(ScopeKind::Lambda, None);
+        evaluator.scopes_mut().add_entry(
+            scope,
+            ScopeEntry {
+                name: "self".to_string(),
+                kind: ScopeEntryKind::LetBinding,
+                value: Some(Value::BlockRef(block_ref.clone())),
+                span: block.span,
+                dependencies: Default::default(),
+                evaluated: true,
+                read_count: 0,
+            },
+        );
+        match evaluator.eval_expr(&assertion.check, scope) {
+            Ok(Value::Bool(true)) => {}
+            Ok(Value::Bool(false)) => emit_assertion_diagnostic(assertion, diagnostics),
+            Ok(other) => diagnostics.error_with_code(
+                format!(
+                    "@assert check must return bool for block '{}', got {}",
+                    block.kind.name,
+                    value_type_label(&other)
+                ),
+                assertion.span,
+                "E100",
+            ),
+            Err(err) => diagnostics.error_with_code(
+                format!("@assert check failed to evaluate: {}", err.message),
+                assertion.span,
+                "E100",
+            ),
+        }
+    }
+}
+
+fn emit_assertion_diagnostic(assertion: &SchemaAssertion, diagnostics: &mut DiagnosticBag) {
+    match assertion.severity {
+        AssertionSeverity::Error => {
+            diagnostics.error_with_code(assertion.message.clone(), assertion.span, "E100")
+        }
+        AssertionSeverity::Warning => {
+            diagnostics.warning(assertion.message.clone(), assertion.span)
+        }
+    }
+}
+
+fn schema_block_ref(
+    block: &Block,
+    block_values: Option<&IndexMap<String, Value>>,
+    qualified_id: Option<&str>,
+) -> BlockRef {
+    let mut attributes = block_values.cloned().unwrap_or_default();
+    for item in &block.body {
+        if let BodyItem::Attribute(attr) = item {
+            attributes
+                .entry(attr.name.name.clone())
+                .or_insert_with(|| expr_to_value(&attr.value).unwrap_or(Value::Null));
+        }
+    }
+    BlockRef {
+        kind: block.kind.name.clone(),
+        id: block.inline_id.as_ref().and_then(inline_id_to_string),
+        qualified_id: qualified_id.map(str::to_string),
+        attributes,
+        attribute_decorators: IndexMap::new(),
+        children: block
+            .body
+            .iter()
+            .filter_map(|item| match item {
+                BodyItem::Block(child) => {
+                    let child_values =
+                        block_values.and_then(|values| resolve_block_values(child, values));
+                    Some(schema_block_ref(child, child_values.as_ref(), None))
+                }
+                _ => None,
+            })
+            .collect(),
+        decorators: Vec::new(),
+        span: block.span,
+    }
+}
+
 /// Parse a `@child("kind", min=N, max=N, max_depth=N)` decorator.
 fn parse_child_decorator(d: &Decorator) -> Option<ChildConstraint> {
     let kind = d.args.first().and_then(|arg| match arg {
@@ -1115,6 +1244,58 @@ fn parse_child_decorator(d: &Decorator) -> Option<ChildConstraint> {
         max_depth,
         span: d.span,
     })
+}
+
+fn get_assertions(
+    decorators: &[Decorator],
+    diagnostics: &mut DiagnosticBag,
+) -> Vec<SchemaAssertion> {
+    decorators
+        .iter()
+        .filter(|decorator| decorator.name.name == "assert")
+        .filter_map(|decorator| {
+            let check = decorator.args.iter().find_map(|arg| match arg {
+                DecoratorArg::Named(name, expr) if name.name == "check" => Some(expr.clone()),
+                _ => None,
+            });
+            let message = decorator.args.iter().find_map(|arg| match arg {
+                DecoratorArg::Named(name, Expr::StringLit(value)) if name.name == "message" => {
+                    Some(string_lit_to_string(value))
+                }
+                _ => None,
+            });
+            let severity = decorator
+                .args
+                .iter()
+                .find_map(|arg| match arg {
+                    DecoratorArg::Named(name, Expr::StringLit(value))
+                        if name.name == "severity" =>
+                    {
+                        Some(string_lit_to_string(value))
+                    }
+                    _ => None,
+                })
+                .unwrap_or_else(|| "error".to_string());
+            let severity = match severity.as_str() {
+                "error" => AssertionSeverity::Error,
+                "warning" => AssertionSeverity::Warning,
+                other => {
+                    diagnostics.error_with_code(
+                        format!("@assert severity must be 'error' or 'warning', got '{other}'"),
+                        decorator.span,
+                        "E100",
+                    );
+                    AssertionSeverity::Error
+                }
+            };
+            Some(SchemaAssertion {
+                check: check?,
+                message: message?,
+                severity,
+                span: decorator.span,
+            })
+        })
+        .collect()
 }
 
 /// Resolve a list of schema fields (shared by base schema and variants).
@@ -1492,6 +1673,19 @@ fn validate_ref(
     current_qualified_id: Option<&str>,
     diagnostics: &mut DiagnosticBag,
 ) {
+    if let Value::BlockRef(block) = value {
+        if block.kind != target_kind {
+            diagnostics.error_with_code(
+                format!(
+                    "reference in field '{}' points to '{}' block, expected '{}'",
+                    field_name, block.kind, target_kind,
+                ),
+                span,
+                "E076",
+            );
+        }
+        return;
+    }
     let ref_id = match value {
         Value::String(s) => Some(s.clone()),
         Value::Identifier(s) => Some(s.clone()),
@@ -1842,6 +2036,106 @@ mod tests {
         };
         assert!(has_decorator(&[dec.clone()], "optional"));
         assert!(!has_decorator(&[dec], "required"));
+    }
+
+    #[test]
+    fn schema_assert_true_passes() {
+        let doc = crate::parse(
+            r#"
+            @assert(check = len(children(self, "item")) == 2, message = "expected two items")
+            schema "group" { }
+            schema "item" { }
+            group g {
+                item a {}
+                item b {}
+            }
+            "#,
+            crate::ParseOptions::default(),
+        );
+        assert!(
+            !doc.has_errors(),
+            "unexpected diagnostics: {:?}",
+            doc.diagnostics
+        );
+    }
+
+    #[test]
+    fn schema_assert_false_errors_by_default() {
+        let doc = crate::parse(
+            r#"
+            @assert(check = len(children(self, "item")) == 2, message = "expected two items")
+            schema "group" { }
+            schema "item" { }
+            group g {
+                item a {}
+            }
+            "#,
+            crate::ParseOptions::default(),
+        );
+        assert!(doc
+            .diagnostics
+            .iter()
+            .any(|diag| diag.code.as_deref() == Some("E100")
+                && diag.message.contains("expected two items")));
+    }
+
+    #[test]
+    fn schema_assert_warning_severity_warns() {
+        let doc = crate::parse(
+            r#"
+            @assert(check = false, message = "soft failure", severity = "warning")
+            schema "group" { }
+            group g {}
+            "#,
+            crate::ParseOptions::default(),
+        );
+        assert!(!doc.has_errors());
+        assert!(doc
+            .diagnostics
+            .iter()
+            .any(|diag| diag.message.contains("soft failure")));
+    }
+
+    #[test]
+    fn schema_assert_non_bool_errors() {
+        let doc = crate::parse(
+            r#"
+            @assert(check = "not bool", message = "bad assertion")
+            schema "group" { }
+            group g {}
+            "#,
+            crate::ParseOptions::default(),
+        );
+        assert!(doc
+            .diagnostics
+            .iter()
+            .any(|diag| diag.code.as_deref() == Some("E100")
+                && diag.message.contains("must return bool")));
+    }
+
+    #[test]
+    fn schema_assert_can_sum_child_attributes() {
+        let doc = crate::parse(
+            r#"
+            @assert(
+                check = abs(sum(map(children(self, "split"), s => s.size)) - 100) <= 0.01,
+                message = "split sizes should sum to 100%",
+                severity = "warning"
+            )
+            schema "vsplit" { }
+            schema "split" { size: f64 }
+            vsplit main {
+                split left { size = 25 }
+                split right { size = 50 }
+            }
+            "#,
+            crate::ParseOptions::default(),
+        );
+        assert!(!doc.has_errors());
+        assert!(doc
+            .diagnostics
+            .iter()
+            .any(|diag| diag.message.contains("split sizes should sum to 100%")));
     }
 
     // ── @text schema tests ────────────────────────────────────────────────

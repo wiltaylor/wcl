@@ -3,7 +3,7 @@ import "./shared.wcl"
 // ── Language Basics page ──
 
 page basics {
-    section = "my_docs.guide.basics"
+    section = ref("my_docs.guide.basics")
     title = "Language Basics"
 
     layout {

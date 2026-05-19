@@ -25,7 +25,7 @@ class example_status_blocked {
 }
 
 page diagram_examples {
-    section = "my_docs.diagrams.diagram_examples"
+    section = ref("my_docs.diagrams.diagram_examples")
     title = "Diagram Examples"
 
     layout {

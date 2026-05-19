@@ -3,7 +3,7 @@ use wdoc::{page, layout, heading, paragraph, code, data_table, callout, bold, li
 use wdoc::draw::{diagram, rect, terminal, terminal_box, terminal_text, terminal_menu, terminal_cursor, graph_node, graph_row, graph_divider, text_block, tooltip, connection, database, pie_chart, bar_chart, line_chart, chart_point, collapsible_panel, input, checkbox, button}
 
 page wdoc_drawing_widgets {
-    section = "wcl_docs.wdoc.wdoc_drawing_widgets"
+    section = ref("wcl_docs.wdoc.wdoc_drawing_widgets")
     title = "Drawing — Widgets"
 
     layout {

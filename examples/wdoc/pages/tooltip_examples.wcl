@@ -1,7 +1,7 @@
 import "./shared.wcl"
 
 page tooltip_examples {
-    section = "my_docs.diagrams.tooltip_examples"
+    section = ref("my_docs.diagrams.tooltip_examples")
     title = "Interactive Tooltips"
 
     layout {

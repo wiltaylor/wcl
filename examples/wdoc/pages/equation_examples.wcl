@@ -1,7 +1,7 @@
 import "./shared.wcl"
 
 page equation_examples {
-    section = "my_docs.guide.equation_examples"
+    section = ref("my_docs.guide.equation_examples")
     title = "Equations"
 
     layout {

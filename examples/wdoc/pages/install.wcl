@@ -3,7 +3,7 @@ import "./shared.wcl"
 // ── Installation page ──
 
 page install {
-    section = "my_docs.getting_started.installation"
+    section = ref("my_docs.getting_started.installation")
     title = "Installation"
 
     layout {

@@ -3,7 +3,7 @@ import "./shared.wcl"
 // ── CLI Reference page ──
 
 page cli_ref {
-    section = "my_docs.reference.cli_ref"
+    section = ref("my_docs.reference.cli_ref")
     title = "CLI Reference"
 
     layout {

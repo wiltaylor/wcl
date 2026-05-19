@@ -31,7 +31,7 @@ namespace wdoc {
 
     @open
     schema "page" {
-        section: string
+        section: ref("wdoc::section") @ref("wdoc::section")
         title: string
         template: string @optional
         path: string @optional
@@ -124,6 +124,27 @@ namespace wdoc {
 
     @open
     schema "layout" { }
+
+    @assert(
+        check = len(children(self, "split")) == 0 || abs(sum(map(children(self, "split"), s => has(s, "size") ? s.size : 0)) - 100) <= 0.01,
+        message = "split sizes should sum to 100%",
+        severity = "warning"
+    )
+    @open
+    schema "vsplit" { }
+
+    @assert(
+        check = len(children(self, "split")) == 0 || abs(sum(map(children(self, "split"), s => has(s, "size") ? s.size : 0)) - 100) <= 0.01,
+        message = "split sizes should sum to 100%",
+        severity = "warning"
+    )
+    @open
+    schema "hsplit" { }
+
+    @open
+    schema "split" {
+        size: f64 @optional
+    }
 
     // --- Content element schemas ---
 
@@ -642,7 +663,7 @@ namespace wdoc {
 
     decorator_schema "style" {
         target = [block]
-        name: string
+        name: ref("wdoc::style")
     }
 
     // --- Inline formatting functions ---

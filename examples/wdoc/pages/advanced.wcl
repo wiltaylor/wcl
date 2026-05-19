@@ -4,7 +4,7 @@ use wdoc::{bold}
 // ── Advanced Features page ──
 
 page advanced {
-    section = "my_docs.guide.advanced"
+    section = ref("my_docs.guide.advanced")
     title = "Advanced Features"
 
     layout {

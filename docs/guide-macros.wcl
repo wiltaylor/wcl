@@ -2,7 +2,7 @@ import <wdoc.wcl>
 use wdoc::{page, layout, heading, paragraph, code, callout, data_table, bold, italic, link}
 
 page macros {
-    section = "wcl_docs.guide.macros"
+    section = ref("wcl_docs.guide.macros")
     title = "Macros"
 
     layout {
