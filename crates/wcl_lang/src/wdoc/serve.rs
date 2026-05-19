@@ -11,7 +11,7 @@ use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use tokio::sync::watch;
 use tower_http::services::ServeDir;
 
-use crate::model::WdocDocument;
+use crate::wdoc::model::WdocDocument;
 
 /// Result of a wdoc serve build, including the document and any extra source
 /// paths discovered during parsing that should be watched for rebuilds.
@@ -45,7 +45,7 @@ pub async fn serve(
     let initial_asset_dirs = combined_asset_dirs(&asset_dirs, &initial.watch_paths);
     let asset_dir_refs: Vec<&std::path::Path> =
         initial_asset_dirs.iter().map(|p| p.as_path()).collect();
-    crate::render::render_document(&initial.document, &output_dir, &asset_dir_refs)?;
+    crate::wdoc::render::render_document(&initial.document, &output_dir, &asset_dir_refs)?;
     eprintln!("wdoc: built to {}", output_dir.display());
 
     // Reload signal
@@ -99,9 +99,11 @@ pub async fn serve(
                     let render_asset_dirs = combined_asset_dirs(&asset_dirs, &build.watch_paths);
                     let arefs: Vec<&std::path::Path> =
                         render_asset_dirs.iter().map(|p| p.as_path()).collect();
-                    if let Err(e) =
-                        crate::render::render_document(&build.document, &output_dir_watch, &arefs)
-                    {
+                    if let Err(e) = crate::wdoc::render::render_document(
+                        &build.document,
+                        &output_dir_watch,
+                        &arefs,
+                    ) {
                         eprintln!("wdoc: render error: {e}");
                         cooldown_after_build(&mut notify_rx).await;
                         continue;

@@ -14,6 +14,7 @@ pub mod schema;
 pub mod serde_impl;
 pub mod standard_lib;
 pub mod transform;
+pub mod wdoc;
 
 pub mod json;
 pub mod library;

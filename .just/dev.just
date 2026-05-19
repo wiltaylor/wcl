@@ -24,11 +24,9 @@ bench:
 bench-crate crate:
     cargo bench -p {{crate}}
 
-# Build and install the CLI locally, then install the wdoc stdlib so editors
-# and the LSP can resolve `import <wdoc.wcl>`.
+# Build and install the CLI locally.
 install:
     cargo install --path crates/wcl
-    wcl wdoc install-library --force
 
 # Uninstall the CLI
 uninstall:

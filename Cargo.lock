@@ -2347,7 +2347,6 @@ dependencies = [
  "toml 1.1.1+spec-1.1.0",
  "wcl_lang",
  "wcl_lsp",
- "wcl_wdoc",
 ]
 
 [[package]]
@@ -2364,11 +2363,15 @@ dependencies = [
 name = "wcl_lang"
 version = "0.0.0-local"
 dependencies = [
+ "async-stream",
+ "axum",
  "base64",
+ "futures-core",
  "glob",
  "indexmap",
  "miette",
  "nom",
+ "notify",
  "quick-xml",
  "regex",
  "rmp-serde",
@@ -2376,8 +2379,11 @@ dependencies = [
  "serde_json",
  "serde_yaml_ng",
  "sha2",
+ "tempfile",
  "thiserror",
+ "tokio",
  "toml 1.1.1+spec-1.1.0",
+ "tower-http",
  "unicode-width 0.2.2",
 ]
 
@@ -2406,25 +2412,6 @@ dependencies = [
  "serde_json",
  "wasm-bindgen",
  "wasm-bindgen-test",
- "wcl_lang",
-]
-
-[[package]]
-name = "wcl_wdoc"
-version = "0.0.0-local"
-dependencies = [
- "async-stream",
- "axum",
- "futures-core",
- "indexmap",
- "notify",
- "quick-xml",
- "serde_json",
- "tempfile",
- "thiserror",
- "tokio",
- "tower-http",
- "unicode-width 0.2.2",
  "wcl_lang",
 ]
 

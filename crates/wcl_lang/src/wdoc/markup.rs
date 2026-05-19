@@ -1,5 +1,5 @@
+use crate::eval::value::Value;
 use indexmap::IndexMap;
-use wcl_lang::eval::value::Value;
 
 pub fn render_html(value: &Value) -> Result<String, String> {
     match value {
@@ -31,13 +31,13 @@ fn render_with_codec(codec_name: &str, value: &Value) -> Result<String, String> 
         .name(format!("wdoc-{codec_name}-codec"))
         .stack_size(32 * 1024 * 1024)
         .spawn(move || {
-            let registry = wcl_lang::transform::codec::custom::standard_registry()
+            let registry = crate::transform::codec::custom::standard_registry()
                 .map_err(|err| err.to_string())?;
             let codec = registry
                 .get(&codec_name)
                 .ok_or_else(|| format!("standard {codec_name} codec is not registered"))?;
             let mut out = Vec::new();
-            wcl_lang::transform::codec::custom::encode_custom_value(
+            crate::transform::codec::custom::encode_custom_value(
                 &value,
                 codec,
                 &IndexMap::new(),

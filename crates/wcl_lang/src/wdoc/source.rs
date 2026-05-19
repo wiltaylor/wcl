@@ -5,9 +5,9 @@ use std::rc::Rc;
 
 use indexmap::IndexMap;
 
-use crate::model::*;
-use wcl_lang::ast;
-use wcl_lang::{
+use crate::ast;
+use crate::wdoc::model::*;
+use crate::{
     BlockRef, BuiltinFn, FileId, FunctionRegistry, FunctionSignature, FunctionValue, Value,
 };
 
@@ -45,7 +45,7 @@ pub struct ValidationResult {
 // ---------------------------------------------------------------------------
 
 /// Map from (format, schema_name) → function_name, built from AST @template decorators.
-fn collect_template_map(doc: &wcl_lang::Document) -> HashMap<(String, String), String> {
+fn collect_template_map(doc: &crate::Document) -> HashMap<(String, String), String> {
     let mut map = HashMap::new();
     for item in &doc.ast.items {
         if let ast::DocItem::Body(ast::BodyItem::Schema(schema)) = item {
@@ -66,7 +66,7 @@ fn collect_template_map(doc: &wcl_lang::Document) -> HashMap<(String, String), S
 }
 
 /// Map from schema_name → base_schema_name, built from AST @extends decorators.
-fn collect_template_extends_map(doc: &wcl_lang::Document) -> HashMap<String, String> {
+fn collect_template_extends_map(doc: &crate::Document) -> HashMap<String, String> {
     let mut map = HashMap::new();
     for item in &doc.ast.items {
         if let ast::DocItem::Body(ast::BodyItem::Schema(schema)) = item {
@@ -84,7 +84,7 @@ fn collect_template_extends_map(doc: &wcl_lang::Document) -> HashMap<String, Str
     map
 }
 
-fn collect_draw_schema_names(doc: &wcl_lang::Document) -> HashSet<String> {
+fn collect_draw_schema_names(doc: &crate::Document) -> HashSet<String> {
     let mut names = HashSet::new();
     for item in &doc.ast.items {
         if let ast::DocItem::Body(ast::BodyItem::Schema(schema)) = item {
@@ -97,7 +97,7 @@ fn collect_draw_schema_names(doc: &wcl_lang::Document) -> HashSet<String> {
     names
 }
 
-fn collect_structural_shape_schema_names(doc: &wcl_lang::Document) -> HashSet<String> {
+fn collect_structural_shape_schema_names(doc: &crate::Document) -> HashSet<String> {
     let mut names = HashSet::new();
     for item in &doc.ast.items {
         if let ast::DocItem::Body(ast::BodyItem::Schema(schema)) = item {
@@ -154,7 +154,7 @@ fn extract_string_expr(expr: &ast::Expr) -> Option<String> {
     }
 }
 
-pub(crate) fn collect_template_helpers(doc: &wcl_lang::Document) -> HashMap<String, FunctionValue> {
+pub(crate) fn collect_template_helpers(doc: &crate::Document) -> HashMap<String, FunctionValue> {
     doc.values
         .iter()
         .filter_map(|(name, value)| match value {
@@ -180,7 +180,7 @@ enum MarkupPatternPart {
 }
 
 fn collect_markup_rules(
-    doc: &wcl_lang::Document,
+    doc: &crate::Document,
     helpers: &HashMap<String, FunctionValue>,
 ) -> Result<Vec<MarkupRule>, String> {
     let mut rules = Vec::new();
@@ -331,7 +331,7 @@ pub fn wdoc_functions() -> FunctionRegistry {
             return Err("measure_text() expects 1 argument (text attributes or text block)".into());
         }
         let attrs = value_map_to_string_map(args.first())?;
-        let metrics = crate::shapes::measure_text_attrs(&attrs);
+        let metrics = crate::wdoc::shapes::measure_text_attrs(&attrs);
         let mut map = IndexMap::new();
         map.insert("width".to_string(), Value::Float(metrics.width));
         map.insert("height".to_string(), Value::Float(metrics.height));
@@ -364,8 +364,8 @@ pub fn wdoc_functions() -> FunctionRegistry {
 ///
 /// This registers WDoc host functions and exposes the embedded `wdoc.wcl`
 /// library, so `import <wdoc.wcl>` works without a separate install step.
-pub fn lsp_parse_options() -> Result<wcl_lang::ParseOptions, String> {
-    let options = wcl_lang::ParseOptions {
+pub fn lsp_parse_options() -> Result<crate::ParseOptions, String> {
+    let options = crate::ParseOptions {
         functions: wdoc_functions(),
         ..Default::default()
     };
@@ -379,7 +379,7 @@ mod lsp_parse_options_tests {
     #[test]
     fn lsp_parse_options_resolve_embedded_wdoc_library_and_icons() {
         let options = lsp_parse_options().unwrap();
-        let doc = wcl_lang::parse(
+        let doc = crate::parse(
             "import <wdoc.wcl>\nuse wdoc::{icon}\nlet x = icon(\"home\")",
             options,
         );
@@ -673,12 +673,12 @@ fn icon_placeholder(
     props: IndexMap<String, String>,
 ) -> String {
     let mut attrs = IndexMap::new();
-    attrs.insert("tag".to_string(), crate::markup::s("span"));
-    attrs.insert("data_wdoc_icon".to_string(), crate::markup::s("true"));
-    attrs.insert("data_name".to_string(), crate::markup::s(name));
-    attrs.insert("data_size".to_string(), crate::markup::s(size));
+    attrs.insert("tag".to_string(), crate::wdoc::markup::s("span"));
+    attrs.insert("data_wdoc_icon".to_string(), crate::wdoc::markup::s("true"));
+    attrs.insert("data_name".to_string(), crate::wdoc::markup::s(name));
+    attrs.insert("data_size".to_string(), crate::wdoc::markup::s(size));
     if let Some(set) = set.filter(|set| !set.trim().is_empty()) {
-        attrs.insert("data_set".to_string(), crate::markup::s(set));
+        attrs.insert("data_set".to_string(), crate::wdoc::markup::s(set));
     }
     if !props.is_empty() {
         let encoded = props
@@ -692,9 +692,9 @@ fn icon_placeholder(
             })
             .collect::<Vec<_>>()
             .join("&");
-        attrs.insert("data_props".to_string(), crate::markup::s(encoded));
+        attrs.insert("data_props".to_string(), crate::wdoc::markup::s(encoded));
     }
-    crate::markup::render_html(&Value::Map(attrs))
+    crate::wdoc::markup::render_html(&Value::Map(attrs))
         .expect("wdoc icon placeholder should serialize as HTML")
 }
 
@@ -791,7 +791,7 @@ fn table_rows_result(
 /// blocks, dispatching shape templates via `ctx`, and feeds the resulting
 /// `ShapeNode` tree to `shapes::render_diagram_svg`.
 fn render_diagram_with_ctx(br: &BlockRef, ctx: &ExtractCtx) -> String {
-    use crate::shapes::*;
+    use crate::wdoc::shapes::*;
 
     let mut str_attrs = value_map_to_string_map_lossy(&br.attributes);
     if let Some(scope) = str_attrs
@@ -880,7 +880,7 @@ fn render_diagram_with_ctx(br: &BlockRef, ctx: &ExtractCtx) -> String {
         options: str_attrs,
     };
 
-    wcl_lang::transform::codec::native::encode_svg_diagram_to_string(diagram)
+    crate::transform::codec::native::encode_svg_diagram_to_string(diagram)
 }
 
 fn design_system_class(scope: &str) -> String {
@@ -1059,13 +1059,13 @@ fn collect_dopesheet(block: &BlockRef, sheets: &mut HashMap<String, IndexMap<Str
 
 fn collect_shape_or_connection(
     br: &BlockRef,
-    shapes: &mut Vec<crate::shapes::ShapeNode>,
-    connections: &mut Vec<crate::shapes::Connection>,
+    shapes: &mut Vec<crate::wdoc::shapes::ShapeNode>,
+    connections: &mut Vec<crate::wdoc::shapes::Connection>,
     ctx: &ExtractCtx,
     source_order: usize,
     dopesheets: &HashMap<String, IndexMap<String, String>>,
 ) {
-    use crate::shapes::*;
+    use crate::wdoc::shapes::*;
 
     if br.kind == "wdoc::draw::connection" {
         let a = value_map_to_string_map_lossy(&br.attributes);
@@ -1313,8 +1313,8 @@ fn tooltip_overlay_shape(
     dopesheets: &HashMap<String, IndexMap<String, String>>,
     source_order: usize,
     source_z: f64,
-) -> crate::shapes::ShapeNode {
-    use crate::shapes::*;
+) -> crate::wdoc::shapes::ShapeNode {
+    use crate::wdoc::shapes::*;
 
     let attrs = value_map_to_string_map_lossy(&tooltip.attributes);
     let width = attrs
@@ -1448,10 +1448,10 @@ fn tooltip_attr_string(block: &BlockRef, key: &str, default: &str) -> String {
 fn text_block_items_from_block(
     br: &BlockRef,
     ctx: &ExtractCtx,
-) -> Vec<crate::shapes::TextBlockItem> {
+) -> Vec<crate::wdoc::shapes::TextBlockItem> {
     let mut items = Vec::new();
     if let Some(content) = value_as_string(br.attributes.get("content")) {
-        items.push(crate::shapes::TextBlockItem::Paragraph {
+        items.push(crate::wdoc::shapes::TextBlockItem::Paragraph {
             html: render_markup_string(content, ctx).unwrap_or_else(|_| html_escape(content)),
         });
     }
@@ -1460,7 +1460,7 @@ fn text_block_items_from_block(
         match child.kind.as_str() {
             "wdoc::paragraph" | "paragraph" | "wdoc::p" | "p" => {
                 if let Some(content) = value_as_string(child.attributes.get("content")) {
-                    items.push(crate::shapes::TextBlockItem::Paragraph {
+                    items.push(crate::wdoc::shapes::TextBlockItem::Paragraph {
                         html: render_markup_string(content, ctx)
                             .unwrap_or_else(|_| html_escape(content)),
                     });
@@ -1468,7 +1468,7 @@ fn text_block_items_from_block(
             }
             "wdoc::code" | "code" => {
                 if let Some(content) = value_as_string(child.attributes.get("content")) {
-                    items.push(crate::shapes::TextBlockItem::Code {
+                    items.push(crate::wdoc::shapes::TextBlockItem::Code {
                         content: content.to_string(),
                         language: value_as_string(child.attributes.get("language"))
                             .map(str::to_string),
@@ -1485,10 +1485,10 @@ fn text_block_items_from_block(
 fn text_block_items_from_descriptor(
     map: &IndexMap<String, Value>,
     ctx: Option<&ExtractCtx>,
-) -> Vec<crate::shapes::TextBlockItem> {
+) -> Vec<crate::wdoc::shapes::TextBlockItem> {
     let mut items = Vec::new();
     if let Some(content) = value_as_string(map.get("content")) {
-        items.push(crate::shapes::TextBlockItem::Paragraph {
+        items.push(crate::wdoc::shapes::TextBlockItem::Paragraph {
             html: ctx
                 .and_then(|ctx| render_markup_string(content, ctx).ok())
                 .unwrap_or_else(|| html_escape(content)),
@@ -1507,7 +1507,7 @@ fn text_block_items_from_descriptor(
             {
                 "code" | "wdoc::code" => {
                     if let Some(content) = value_as_string(item_map.get("content")) {
-                        items.push(crate::shapes::TextBlockItem::Code {
+                        items.push(crate::wdoc::shapes::TextBlockItem::Code {
                             content: content.to_string(),
                             language: value_as_string(item_map.get("language")).map(str::to_string),
                         });
@@ -1515,7 +1515,7 @@ fn text_block_items_from_descriptor(
                 }
                 _ => {
                     if let Some(content) = value_as_string(item_map.get("content")) {
-                        items.push(crate::shapes::TextBlockItem::Paragraph {
+                        items.push(crate::wdoc::shapes::TextBlockItem::Paragraph {
                             html: ctx
                                 .and_then(|ctx| render_markup_string(content, ctx).ok())
                                 .unwrap_or_else(|| html_escape(content)),
@@ -1676,7 +1676,7 @@ fn apply_wcl_shape_default_attrs(
         return;
     };
 
-    let Ok(Value::Map(defaults)) = wcl_lang::call_lambda_with_env(
+    let Ok(Value::Map(defaults)) = crate::call_lambda_with_env(
         func,
         &[Value::BlockRef(br.clone())],
         &ctx.builtins,
@@ -2137,8 +2137,8 @@ fn is_safe_css_value(value: &str) -> bool {
 
 #[derive(Debug)]
 struct ShapeTemplateResult {
-    shapes: Vec<crate::shapes::ShapeNode>,
-    connections: Vec<crate::shapes::Connection>,
+    shapes: Vec<crate::wdoc::shapes::ShapeNode>,
+    connections: Vec<crate::wdoc::shapes::Connection>,
 }
 
 /// Look up a `@template("shape", "fn")` function for `br.kind` and call it.
@@ -2206,7 +2206,7 @@ fn dispatch_shape_template_descriptors(
         let mut base_block = themed_block.clone();
         base_block.kind = base_kind.clone();
         let base_descriptors = dispatch_shape_template_descriptors(&base_block, ctx, stack)?;
-        wcl_lang::call_lambda_with_env(
+        crate::call_lambda_with_env(
             func,
             &[
                 Value::BlockRef(themed_block),
@@ -2216,7 +2216,7 @@ fn dispatch_shape_template_descriptors(
             &ctx.template_helpers,
         )
     } else {
-        wcl_lang::call_lambda_with_env(
+        crate::call_lambda_with_env(
             func,
             &[Value::BlockRef(themed_block)],
             &ctx.builtins,
@@ -2285,7 +2285,7 @@ fn widget_theme_class_names(br: &BlockRef) -> Vec<String> {
 fn descriptor_to_shape_node_with_order(
     val: &Value,
     source_order: usize,
-) -> Option<crate::shapes::ShapeNode> {
+) -> Option<crate::wdoc::shapes::ShapeNode> {
     descriptor_to_shape_node_and_connections(val, source_order, None, None, &HashMap::new())
         .map(|(node, _)| node)
 }
@@ -2296,8 +2296,11 @@ fn descriptor_to_shape_node_and_connections(
     draw_schema_names: Option<&HashSet<String>>,
     ctx: Option<&ExtractCtx>,
     dopesheets: &HashMap<String, IndexMap<String, String>>,
-) -> Option<(crate::shapes::ShapeNode, Vec<crate::shapes::Connection>)> {
-    use crate::shapes::*;
+) -> Option<(
+    crate::wdoc::shapes::ShapeNode,
+    Vec<crate::wdoc::shapes::Connection>,
+)> {
+    use crate::wdoc::shapes::*;
 
     let map = match val {
         Value::Map(m) => m,
@@ -2457,7 +2460,7 @@ fn descriptor_to_shape_node_and_connections(
     Some((node, scope_connections(connections, id.as_deref())))
 }
 
-fn descriptor_events(map: &IndexMap<String, Value>) -> Vec<crate::shapes::DiagramEvent> {
+fn descriptor_events(map: &IndexMap<String, Value>) -> Vec<crate::wdoc::shapes::DiagramEvent> {
     let Some(Value::List(items)) = map.get("events") else {
         return Vec::new();
     };
@@ -2500,7 +2503,7 @@ fn descriptor_events(map: &IndexMap<String, Value>) -> Vec<crate::shapes::Diagra
                 .get("guard_targets")
                 .and_then(|v| v.as_string())
                 .map(str::to_string);
-            Some(crate::shapes::DiagramEvent {
+            Some(crate::wdoc::shapes::DiagramEvent {
                 name: event
                     .get("name")
                     .and_then(|v| v.as_string())
@@ -2519,7 +2522,9 @@ fn descriptor_events(map: &IndexMap<String, Value>) -> Vec<crate::shapes::Diagra
         .collect()
 }
 
-fn descriptor_signal_actions(event: &IndexMap<String, Value>) -> Vec<crate::shapes::SignalAction> {
+fn descriptor_signal_actions(
+    event: &IndexMap<String, Value>,
+) -> Vec<crate::wdoc::shapes::SignalAction> {
     let mut actions = Vec::new();
     if let Some(value) = event.get("set_signal") {
         match value {
@@ -2559,12 +2564,14 @@ fn descriptor_signal_actions(event: &IndexMap<String, Value>) -> Vec<crate::shap
     actions
 }
 
-fn descriptor_signal_action(map: &IndexMap<String, Value>) -> Option<crate::shapes::SignalAction> {
-    Some(crate::shapes::SignalAction {
+fn descriptor_signal_action(
+    map: &IndexMap<String, Value>,
+) -> Option<crate::wdoc::shapes::SignalAction> {
+    Some(crate::wdoc::shapes::SignalAction {
         signal: map.get("signal")?.as_string()?.to_string(),
         value: map
             .get("value")
-            .map(wcl_lang::json::value_to_json)
+            .map(crate::json::value_to_json)
             .unwrap_or(serde_json::Value::Null),
         path: map
             .get("path")
@@ -2576,8 +2583,8 @@ fn descriptor_signal_action(map: &IndexMap<String, Value>) -> Option<crate::shap
 fn descriptor_to_connection_with_order(
     val: &Value,
     source_order: usize,
-) -> Option<crate::shapes::Connection> {
-    use crate::shapes::*;
+) -> Option<crate::wdoc::shapes::Connection> {
+    use crate::wdoc::shapes::*;
 
     let map = match val {
         Value::Map(m) => m,
@@ -2621,7 +2628,7 @@ fn descriptor_to_connection_with_order(
     })
 }
 
-fn mark_template_layout_decoration(node: &mut crate::shapes::ShapeNode) {
+fn mark_template_layout_decoration(node: &mut crate::wdoc::shapes::ShapeNode) {
     let role = node.attrs.shift_remove("_wdoc_layout_role");
     if role.as_deref() != Some("node") {
         node.attrs
@@ -2633,9 +2640,9 @@ fn mark_template_layout_decoration(node: &mut crate::shapes::ShapeNode) {
 }
 
 fn scope_connections(
-    connections: Vec<crate::shapes::Connection>,
+    connections: Vec<crate::wdoc::shapes::Connection>,
     scope: Option<&str>,
-) -> Vec<crate::shapes::Connection> {
+) -> Vec<crate::wdoc::shapes::Connection> {
     let Some(scope) = scope.filter(|scope| !scope.is_empty()) else {
         return connections;
     };
@@ -2689,7 +2696,7 @@ fn value_map_to_string_map_lossy(map: &IndexMap<String, Value>) -> IndexMap<Stri
 
 fn collect_diagram_classes(
     values: &IndexMap<String, Value>,
-) -> IndexMap<String, crate::shapes::DiagramClass> {
+) -> IndexMap<String, crate::wdoc::shapes::DiagramClass> {
     let mut classes = IndexMap::new();
     for value in values.values() {
         if let Value::BlockRef(block) = value {
@@ -2701,7 +2708,7 @@ fn collect_diagram_classes(
 
 fn collect_diagram_classes_by_file(
     values: &IndexMap<String, Value>,
-) -> HashMap<FileId, IndexMap<String, crate::shapes::DiagramClass>> {
+) -> HashMap<FileId, IndexMap<String, crate::wdoc::shapes::DiagramClass>> {
     let mut classes = HashMap::new();
     for value in values.values() {
         if let Value::BlockRef(block) = value {
@@ -2713,7 +2720,7 @@ fn collect_diagram_classes_by_file(
 
 fn collect_diagram_classes_by_file_in_block(
     block: &BlockRef,
-    classes: &mut HashMap<FileId, IndexMap<String, crate::shapes::DiagramClass>>,
+    classes: &mut HashMap<FileId, IndexMap<String, crate::wdoc::shapes::DiagramClass>>,
 ) {
     if let Some(class) = diagram_class_from_block(block) {
         classes
@@ -2729,7 +2736,7 @@ fn collect_diagram_classes_by_file_in_block(
 
 fn collect_diagram_classes_in_block(
     block: &BlockRef,
-    classes: &mut IndexMap<String, crate::shapes::DiagramClass>,
+    classes: &mut IndexMap<String, crate::wdoc::shapes::DiagramClass>,
 ) {
     if let Some(class) = diagram_class_from_block(block) {
         classes.insert(class.name.clone(), class);
@@ -2740,7 +2747,7 @@ fn collect_diagram_classes_in_block(
     }
 }
 
-fn diagram_class_from_block(block: &BlockRef) -> Option<crate::shapes::DiagramClass> {
+fn diagram_class_from_block(block: &BlockRef) -> Option<crate::wdoc::shapes::DiagramClass> {
     if !is_draw_class_block(block) {
         return None;
     }
@@ -2753,7 +2760,7 @@ fn diagram_class_from_block(block: &BlockRef) -> Option<crate::shapes::DiagramCl
             if let Some(state_name) = child.id.clone() {
                 states.insert(
                     state_name.clone(),
-                    crate::shapes::DiagramState {
+                    crate::wdoc::shapes::DiagramState {
                         name: state_name,
                         attrs: value_map_to_string_map_lossy(&child.attributes),
                     },
@@ -2767,7 +2774,7 @@ fn diagram_class_from_block(block: &BlockRef) -> Option<crate::shapes::DiagramCl
     }
     attrs.shift_remove("state");
     attrs.shift_remove("animation");
-    Some(crate::shapes::DiagramClass {
+    Some(crate::wdoc::shapes::DiagramClass {
         name,
         attrs,
         states,
@@ -2778,7 +2785,7 @@ fn diagram_class_from_block(block: &BlockRef) -> Option<crate::shapes::DiagramCl
 fn diagram_classes_for_file(
     ctx: &ExtractCtx,
     file: FileId,
-) -> IndexMap<String, crate::shapes::DiagramClass> {
+) -> IndexMap<String, crate::wdoc::shapes::DiagramClass> {
     let classes_by_file = ctx.diagram_classes_by_file.borrow();
     if classes_by_file.is_empty() {
         ctx.diagram_classes.borrow().clone()
@@ -2787,7 +2794,7 @@ fn diagram_classes_for_file(
     }
 }
 
-fn collect_diagram_events(block: &BlockRef) -> Vec<crate::shapes::DiagramEvent> {
+fn collect_diagram_events(block: &BlockRef) -> Vec<crate::wdoc::shapes::DiagramEvent> {
     all_child_blocks(block)
         .into_iter()
         .filter(|child| is_draw_event_block(child))
@@ -2833,7 +2840,7 @@ fn collect_diagram_events(block: &BlockRef) -> Vec<crate::shapes::DiagramEvent> 
                 .get("guard_targets")
                 .and_then(|v| v.as_string())
                 .map(str::to_string);
-            Some(crate::shapes::DiagramEvent {
+            Some(crate::wdoc::shapes::DiagramEvent {
                 name: child.id.clone(),
                 trigger,
                 state,
@@ -2849,7 +2856,7 @@ fn collect_diagram_events(block: &BlockRef) -> Vec<crate::shapes::DiagramEvent> 
         .collect()
 }
 
-fn collect_signal_actions(block: &BlockRef) -> Vec<crate::shapes::SignalAction> {
+fn collect_signal_actions(block: &BlockRef) -> Vec<crate::wdoc::shapes::SignalAction> {
     all_child_blocks(block)
         .into_iter()
         .filter(|child| is_draw_set_signal_block(child))
@@ -2858,14 +2865,14 @@ fn collect_signal_actions(block: &BlockRef) -> Vec<crate::shapes::SignalAction> 
             let value = child
                 .attributes
                 .get("value")
-                .map(wcl_lang::json::value_to_json)
+                .map(crate::json::value_to_json)
                 .unwrap_or(serde_json::Value::Null);
             let path = child
                 .attributes
                 .get("path")
                 .and_then(|value| value.as_string())
                 .map(str::to_string);
-            Some(crate::shapes::SignalAction {
+            Some(crate::wdoc::shapes::SignalAction {
                 signal,
                 value,
                 path,
@@ -2874,7 +2881,7 @@ fn collect_signal_actions(block: &BlockRef) -> Vec<crate::shapes::SignalAction> 
         .collect()
 }
 
-fn parse_diagram_animation(block: &BlockRef) -> Option<crate::shapes::DiagramAnimation> {
+fn parse_diagram_animation(block: &BlockRef) -> Option<crate::wdoc::shapes::DiagramAnimation> {
     let name = block.id.clone()?;
     let attrs = &block.attributes;
     let frames = attrs
@@ -2898,7 +2905,7 @@ fn parse_diagram_animation(block: &BlockRef) -> Option<crate::shapes::DiagramAni
             .filter(|duration| *duration > 0)
             .unwrap_or(1000)
     });
-    Some(crate::shapes::DiagramAnimation {
+    Some(crate::wdoc::shapes::DiagramAnimation {
         name,
         duration_ms,
         delay_ms: value_as_i32(attrs.get("delay_ms")).unwrap_or(0),
@@ -2920,7 +2927,7 @@ fn parse_diagram_animation(block: &BlockRef) -> Option<crate::shapes::DiagramAni
     })
 }
 
-fn parse_diagram_keyframe(block: &BlockRef) -> Option<crate::shapes::DiagramKeyframe> {
+fn parse_diagram_keyframe(block: &BlockRef) -> Option<crate::wdoc::shapes::DiagramKeyframe> {
     let offset = block
         .attributes
         .get("offset")
@@ -2933,7 +2940,7 @@ fn parse_diagram_keyframe(block: &BlockRef) -> Option<crate::shapes::DiagramKeyf
             })
         })
         .filter(|offset| (0.0..=100.0).contains(offset))?;
-    Some(crate::shapes::DiagramKeyframe {
+    Some(crate::wdoc::shapes::DiagramKeyframe {
         offset,
         x: block.attributes.get("x").and_then(value_as_f64),
         y: block.attributes.get("y").and_then(value_as_f64),
@@ -3081,9 +3088,9 @@ struct ExtractCtx {
     markup_rules: Vec<MarkupRule>,
     builtins: HashMap<String, BuiltinFn>,
     css_registry: Rc<RefCell<DiagramCssRegistry>>,
-    diagram_classes: Rc<RefCell<IndexMap<String, crate::shapes::DiagramClass>>>,
+    diagram_classes: Rc<RefCell<IndexMap<String, crate::wdoc::shapes::DiagramClass>>>,
     diagram_classes_by_file:
-        Rc<RefCell<HashMap<FileId, IndexMap<String, crate::shapes::DiagramClass>>>>,
+        Rc<RefCell<HashMap<FileId, IndexMap<String, crate::wdoc::shapes::DiagramClass>>>>,
     binding_targets: Rc<RefCell<HashSet<String>>>,
     svg_search_dirs: Vec<PathBuf>,
     icon_registry: IconRegistry,
@@ -3106,7 +3113,7 @@ impl ExtractCtx {
         })?;
 
         let _guard = enter_current_wdoc_ctx(self);
-        let result = wcl_lang::call_lambda_with_env(
+        let result = crate::call_lambda_with_env(
             func,
             &[Value::BlockRef(block.clone())],
             &self.builtins,
@@ -3154,7 +3161,7 @@ impl DiagramCssRegistry {
         if css.is_empty() {
             return;
         }
-        let scoped = crate::shapes::scope_css_to_selector(css, &format!(".{scope_class}"));
+        let scoped = crate::wdoc::shapes::scope_css_to_selector(css, &format!(".{scope_class}"));
         self.css_by_scope
             .entry(scope_class.to_string())
             .or_default()
@@ -3179,22 +3186,22 @@ impl DiagramCssRegistry {
         let mut blocks = Vec::new();
         for css in &self.font_faces {
             if !css.trim().is_empty() {
-                blocks.push(crate::markup::raw_css(css.trim()));
+                blocks.push(crate::wdoc::markup::raw_css(css.trim()));
             }
         }
         for css in &self.global_css {
             if !css.trim().is_empty() {
-                blocks.push(crate::markup::raw_css(css.trim()));
+                blocks.push(crate::wdoc::markup::raw_css(css.trim()));
             }
         }
         for set in self.css_by_scope.values() {
             for css in set {
                 if !css.trim().is_empty() {
-                    blocks.push(crate::markup::raw_css(css.trim()));
+                    blocks.push(crate::wdoc::markup::raw_css(css.trim()));
                 }
             }
         }
-        crate::markup::render_css(&crate::markup::css_stylesheet(blocks))
+        crate::wdoc::markup::render_css(&crate::wdoc::markup::css_stylesheet(blocks))
             .expect("wdoc diagram CSS should serialize as CSS")
     }
 }
@@ -3309,16 +3316,16 @@ fn register_font_asset(block: &BlockRef, ctx: &ExtractCtx) -> Result<(), String>
         .filter(|value| !value.is_empty())
         .unwrap_or("swap");
 
-    let css = crate::markup::render_css(&crate::markup::css_at(
+    let css = crate::wdoc::markup::render_css(&crate::wdoc::markup::css_at(
         "font_face",
         &[
             (
                 "font_family",
-                crate::markup::s(format!("\"{}\"", css_string_escape(family))),
+                crate::wdoc::markup::s(format!("\"{}\"", css_string_escape(family))),
             ),
             (
                 "src",
-                crate::markup::s(format!(
+                crate::wdoc::markup::s(format!(
                     "url(\"{}\") format(\"{}\")",
                     css_string_escape(src),
                     css_string_escape(format)
@@ -3326,12 +3333,15 @@ fn register_font_asset(block: &BlockRef, ctx: &ExtractCtx) -> Result<(), String>
             ),
             (
                 "font_weight",
-                crate::markup::s(css_declaration_value(weight)),
+                crate::wdoc::markup::s(css_declaration_value(weight)),
             ),
-            ("font_style", crate::markup::s(css_declaration_value(style))),
+            (
+                "font_style",
+                crate::wdoc::markup::s(css_declaration_value(style)),
+            ),
             (
                 "font_display",
-                crate::markup::s(css_declaration_value(display)),
+                crate::wdoc::markup::s(css_declaration_value(display)),
             ),
         ],
         vec![],
@@ -3398,8 +3408,8 @@ fn register_css_assets(values: &IndexMap<String, Value>, ctx: &ExtractCtx) -> Re
 #[cfg(test)]
 mod wdoc_draw_tests {
     use super::*;
-    use crate::library::WDOC_LIBRARY_WCL;
-    use wcl_lang::Span;
+    use crate::wdoc::library::WDOC_LIBRARY_WCL;
+    use crate::Span;
 
     fn with_large_stack(test: impl FnOnce() + Send + 'static) {
         std::thread::Builder::new()
@@ -3608,9 +3618,9 @@ mod wdoc_draw_tests {
         extends: &[(&str, &str)],
     ) -> ExtractCtx {
         let functions = wdoc_functions();
-        let doc = wcl_lang::parse(
+        let doc = crate::parse(
             source,
-            wcl_lang::ParseOptions {
+            crate::ParseOptions {
                 functions: functions.clone(),
                 ..Default::default()
             },
@@ -3642,9 +3652,9 @@ mod wdoc_draw_tests {
 
     fn custom_shape_ctx_from_source(source: &str) -> ExtractCtx {
         let functions = wdoc_functions();
-        let doc = wcl_lang::parse(
+        let doc = crate::parse(
             source,
-            wcl_lang::ParseOptions {
+            crate::ParseOptions {
                 functions: functions.clone(),
                 ..Default::default()
             },
@@ -3669,10 +3679,10 @@ mod wdoc_draw_tests {
 
     fn wdoc_library_ctx() -> ExtractCtx {
         let functions = wdoc_functions();
-        let doc = wcl_lang::parse(
+        let doc = crate::parse(
             WDOC_LIBRARY_WCL,
-            wcl_lang::ParseOptions {
-                root_dir: PathBuf::from(wcl_lang::eval::imports::EMBEDDED_LIBRARY_ROOT),
+            crate::ParseOptions {
+                root_dir: PathBuf::from(crate::eval::imports::EMBEDDED_LIBRARY_ROOT),
                 functions: functions.clone(),
                 ..Default::default()
             },
@@ -3804,10 +3814,10 @@ mod wdoc_draw_tests {
             "{}\nnamespace wdoc {{\n@markup(\"=={{text}}==\")\nexport let mark = text => \"<mark>\" + wdoc::html_escape(text) + \"</mark>\"\n}}\n",
             WDOC_LIBRARY_WCL
         );
-        let doc = wcl_lang::parse(
+        let doc = crate::parse(
             &source,
-            wcl_lang::ParseOptions {
-                root_dir: PathBuf::from(wcl_lang::eval::imports::EMBEDDED_LIBRARY_ROOT),
+            crate::ParseOptions {
+                root_dir: PathBuf::from(crate::eval::imports::EMBEDDED_LIBRARY_ROOT),
                 functions: functions.clone(),
                 ..Default::default()
             },
@@ -3873,10 +3883,10 @@ mod wdoc_draw_tests {
     #[test]
     fn bundled_templates_resolve_to_wcl_lambdas() {
         let functions = wdoc_functions();
-        let doc = wcl_lang::parse(
+        let doc = crate::parse(
             WDOC_LIBRARY_WCL,
-            wcl_lang::ParseOptions {
-                root_dir: PathBuf::from(wcl_lang::eval::imports::EMBEDDED_LIBRARY_ROOT),
+            crate::ParseOptions {
+                root_dir: PathBuf::from(crate::eval::imports::EMBEDDED_LIBRARY_ROOT),
                 functions: functions.clone(),
                 ..Default::default()
             },
@@ -4155,7 +4165,7 @@ mod wdoc_draw_tests {
             IndexMap::new(),
             vec![],
         );
-        let mut class = crate::shapes::DiagramClass {
+        let mut class = crate::wdoc::shapes::DiagramClass {
             name: "wdoc-widget-button".to_string(),
             attrs: IndexMap::new(),
             states: IndexMap::new(),
@@ -4187,7 +4197,7 @@ mod wdoc_draw_tests {
         string_attr(&mut button_attrs, "background_fill", "#b91c1c");
         let button = block("wdoc::draw::button", Some("delete"), button_attrs, vec![]);
 
-        let mut default_class = crate::shapes::DiagramClass {
+        let mut default_class = crate::wdoc::shapes::DiagramClass {
             name: "wdoc-widget-button".to_string(),
             attrs: IndexMap::new(),
             states: IndexMap::new(),
@@ -4197,7 +4207,7 @@ mod wdoc_draw_tests {
             .attrs
             .insert("background_fill".to_string(), "#0f766e".to_string());
 
-        let mut brand_class = crate::shapes::DiagramClass {
+        let mut brand_class = crate::wdoc::shapes::DiagramClass {
             name: "brand_button".to_string(),
             attrs: IndexMap::new(),
             states: IndexMap::new(),
@@ -4567,7 +4577,7 @@ mod wdoc_draw_tests {
             "wdoc::draw::button",
             "test_button_template",
         );
-        let mut class = crate::shapes::DiagramClass {
+        let mut class = crate::wdoc::shapes::DiagramClass {
             name: "wdoc-widget-button".to_string(),
             attrs: IndexMap::new(),
             states: IndexMap::new(),
@@ -5336,7 +5346,7 @@ mod wdoc_draw_tests {
     #[test]
     fn measure_text_can_drive_inline_drawing_position_expression() {
         let functions = wdoc_functions();
-        let doc = wcl_lang::parse(
+        let doc = crate::parse(
             r#"
             text label {
                 content = "Inline text"
@@ -5345,7 +5355,7 @@ mod wdoc_draw_tests {
 
             export let icon_x = 20 + measure_text(label).width + 8
             "#,
-            wcl_lang::ParseOptions {
+            crate::ParseOptions {
                 functions,
                 ..Default::default()
             },
@@ -5367,12 +5377,12 @@ mod wdoc_draw_tests {
     #[test]
     fn wdoc_template_lambda_can_read_filtered_children() {
         let functions = wdoc_functions();
-        let doc = wcl_lang::parse(
+        let doc = crate::parse(
             r#"
             export let menu_labels = (b) =>
                 join("|", map(children(b, "UiMenuItem"), item => item.label))
             "#,
-            wcl_lang::ParseOptions {
+            crate::ParseOptions {
                 functions: functions.clone(),
                 ..Default::default()
             },
@@ -5406,7 +5416,7 @@ mod wdoc_draw_tests {
             ],
         );
 
-        let rendered = wcl_lang::call_lambda_with_env(
+        let rendered = crate::call_lambda_with_env(
             func,
             &[Value::BlockRef(menu)],
             &functions.functions,
@@ -5443,10 +5453,13 @@ mod wdoc_draw_tests {
         );
 
         assert_eq!(shapes.len(), 1);
-        assert_eq!(shapes[0].kind, crate::shapes::ShapeKind::Custom);
+        assert_eq!(shapes[0].kind, crate::wdoc::shapes::ShapeKind::Custom);
         assert_eq!(shapes[0].kind_name, "my::task");
         assert_eq!(shapes[0].children.len(), 1);
-        assert_eq!(shapes[0].children[0].kind, crate::shapes::ShapeKind::Rect);
+        assert_eq!(
+            shapes[0].children[0].kind,
+            crate::wdoc::shapes::ShapeKind::Rect
+        );
     }
 
     #[test]
@@ -5766,10 +5779,10 @@ mod wdoc_draw_tests {
             &HashMap::new(),
         )
         .expect("custom container descriptor");
-        assert_eq!(node.kind, crate::shapes::ShapeKind::Custom);
+        assert_eq!(node.kind, crate::wdoc::shapes::ShapeKind::Custom);
         assert_eq!(node.kind_name, "wdoc::draw::callout_badge");
         assert_eq!(node.children.len(), 1);
-        assert_eq!(node.children[0].kind, crate::shapes::ShapeKind::Rect);
+        assert_eq!(node.children[0].kind, crate::wdoc::shapes::ShapeKind::Rect);
         assert!(connections.is_empty());
     }
 
@@ -5807,7 +5820,7 @@ mod wdoc_draw_tests {
             &HashMap::new(),
         )
         .expect("declared draw descriptor");
-        assert_eq!(node.kind, crate::shapes::ShapeKind::Custom);
+        assert_eq!(node.kind, crate::wdoc::shapes::ShapeKind::Custom);
         assert_eq!(node.kind_name, "wdoc::draw::terminal_text");
     }
 
@@ -6281,19 +6294,19 @@ mod wdoc_draw_tests {
             .attrs
             .contains_key("_wdoc_layout_decoration"));
 
-        let mut diagram = crate::shapes::Diagram {
+        let mut diagram = crate::wdoc::shapes::Diagram {
             id: None,
             width: 220.0,
             height: 160.0,
             padding: 0.0,
-            align: crate::shapes::Alignment::None,
+            align: crate::wdoc::shapes::Alignment::None,
             gap: 0.0,
             options: IndexMap::new(),
             shapes,
             connections,
             classes: IndexMap::new(),
         };
-        crate::shapes::render_diagram_svg(&mut diagram);
+        crate::wdoc::shapes::render_diagram_svg(&mut diagram);
         let flow_children = &diagram.shapes[0].children;
         assert!(flow_children[0].resolved.y < flow_children[1].resolved.y);
     }
@@ -6359,19 +6372,19 @@ mod wdoc_draw_tests {
             Some("36")
         );
 
-        let mut diagram = crate::shapes::Diagram {
+        let mut diagram = crate::wdoc::shapes::Diagram {
             id: None,
             width: 220.0,
             height: 190.0,
             padding: 0.0,
-            align: crate::shapes::Alignment::None,
+            align: crate::wdoc::shapes::Alignment::None,
             gap: 0.0,
             options: IndexMap::new(),
             shapes,
             connections,
             classes: IndexMap::new(),
         };
-        crate::shapes::render_diagram_svg(&mut diagram);
+        crate::wdoc::shapes::render_diagram_svg(&mut diagram);
         let flow_children = &diagram.shapes[0].children;
         let start = flow_children
             .iter()
@@ -6501,7 +6514,7 @@ mod wdoc_draw_tests {
         let label = shapes[0]
             .children
             .iter()
-            .find(|child| child.kind == crate::shapes::ShapeKind::Text)
+            .find(|child| child.kind == crate::wdoc::shapes::ShapeKind::Text)
             .expect("label text should be present");
         assert!(label.width.unwrap() <= 150.0);
         assert!(label.height.unwrap() > 50.0);
@@ -6745,12 +6758,12 @@ mod wdoc_draw_tests {
             Value::List(vec![Value::Map(high), Value::Map(low)]),
         );
 
-        let mut diagram = crate::shapes::Diagram {
+        let mut diagram = crate::wdoc::shapes::Diagram {
             id: None,
             width: 80.0,
             height: 80.0,
             padding: 0.0,
-            align: crate::shapes::Alignment::None,
+            align: crate::wdoc::shapes::Alignment::None,
             gap: 0.0,
             options: IndexMap::new(),
             shapes: vec![
@@ -6760,7 +6773,7 @@ mod wdoc_draw_tests {
             classes: IndexMap::new(),
         };
 
-        let svg = crate::shapes::render_diagram_svg(&mut diagram);
+        let svg = crate::wdoc::shapes::render_diagram_svg(&mut diagram);
         assert!(svg.find("fill=\"blue\"").unwrap() < svg.find("fill=\"red\"").unwrap());
         assert!(!svg.contains("z_index"));
     }
@@ -6785,12 +6798,12 @@ mod wdoc_draw_tests {
             ),
         );
 
-        let mut diagram = crate::shapes::Diagram {
+        let mut diagram = crate::wdoc::shapes::Diagram {
             id: None,
             width: 24.0,
             height: 24.0,
             padding: 0.0,
-            align: crate::shapes::Alignment::None,
+            align: crate::wdoc::shapes::Alignment::None,
             gap: 0.0,
             options: IndexMap::new(),
             shapes: vec![
@@ -6801,7 +6814,7 @@ mod wdoc_draw_tests {
             classes: IndexMap::new(),
         };
 
-        let svg = crate::shapes::render_diagram_svg(&mut diagram);
+        let svg = crate::wdoc::shapes::render_diagram_svg(&mut diagram);
         assert!(svg.contains("class=\"generated-icon\""));
         assert!(svg.contains("<path d=\"M0 0L24 24\""));
         assert!(!svg.contains("onclick"));
@@ -6895,7 +6908,7 @@ mod wdoc_draw_tests {
         let mut states = IndexMap::new();
         states.insert(
             "active".to_string(),
-            crate::shapes::DiagramState {
+            crate::wdoc::shapes::DiagramState {
                 name: "active".to_string(),
                 attrs: IndexMap::from([("animation".to_string(), "explode".to_string())]),
             },
@@ -6903,7 +6916,7 @@ mod wdoc_draw_tests {
         let mut animations = IndexMap::new();
         animations.insert(
             "explode".to_string(),
-            crate::shapes::DiagramAnimation {
+            crate::wdoc::shapes::DiagramAnimation {
                 name: "explode".to_string(),
                 duration_ms: 150,
                 delay_ms: 0,
@@ -6918,7 +6931,7 @@ mod wdoc_draw_tests {
         );
         ctx.diagram_classes.borrow_mut().insert(
             "sprite_fx".to_string(),
-            crate::shapes::DiagramClass {
+            crate::wdoc::shapes::DiagramClass {
                 name: "sprite_fx".to_string(),
                 attrs: IndexMap::new(),
                 states,
@@ -7323,14 +7336,16 @@ fn render_markup_string(text: &str, ctx: &ExtractCtx) -> Result<String, String> 
         }
         if rest.starts_with('$') {
             if let Some((end, tex)) = match_inline_equation(text, pos) {
-                out.push_str(&crate::markup::render_html(&crate::markup::elem(
-                    "span",
-                    &[
-                        ("class_name", crate::markup::s("wdoc-equation-inline")),
-                        ("data_wdoc_equation", crate::markup::s("inline")),
-                    ],
-                    vec![crate::markup::text(format!("\\({tex}\\)"))],
-                ))?);
+                out.push_str(&crate::wdoc::markup::render_html(
+                    &crate::wdoc::markup::elem(
+                        "span",
+                        &[
+                            ("class_name", crate::wdoc::markup::s("wdoc-equation-inline")),
+                            ("data_wdoc_equation", crate::wdoc::markup::s("inline")),
+                        ],
+                        vec![crate::wdoc::markup::text(format!("\\({tex}\\)"))],
+                    ),
+                )?);
                 pos = end;
                 continue;
             }
@@ -7353,7 +7368,7 @@ fn render_markup_string(text: &str, ctx: &ExtractCtx) -> Result<String, String> 
                         .unwrap_or(Value::Null)
                 })
                 .collect::<Vec<_>>();
-            let value = wcl_lang::call_lambda_with_env(
+            let value = crate::call_lambda_with_env(
                 &rule.func,
                 &args,
                 &ctx.builtins,
@@ -7476,16 +7491,16 @@ fn render_inline_icon(
 ) -> String {
     match resolve_icon_reference(&ctx.icon_registry, set, name, None, None, None) {
         Ok(icon) => render_inline_icon_svg(&icon, size, &props),
-        Err(_) => crate::markup::render_html(&crate::markup::elem(
+        Err(_) => crate::wdoc::markup::render_html(&crate::wdoc::markup::elem(
             "span",
             &[
                 (
                     "class_name",
-                    crate::markup::s("wdoc-icon wdoc-icon-missing"),
+                    crate::wdoc::markup::s("wdoc-icon wdoc-icon-missing"),
                 ),
-                ("aria_hidden", crate::markup::s("true")),
+                ("aria_hidden", crate::wdoc::markup::s("true")),
             ],
-            vec![crate::markup::text(name)],
+            vec![crate::wdoc::markup::text(name)],
         ))
         .expect("missing icon fallback should serialize as HTML"),
     }
@@ -7496,9 +7511,9 @@ fn render_inline_icon_svg(
     size: &str,
     props: &IndexMap<String, String>,
 ) -> String {
-    let sanitized = crate::shapes::sanitize_inline_svg(&icon.content).unwrap_or_default();
-    let native_view_box = crate::shapes::svg_source_view_box(&icon.content)
-        .and_then(|view_box| crate::shapes::parse_svg_view_box(&view_box))
+    let sanitized = crate::wdoc::shapes::sanitize_inline_svg(&icon.content).unwrap_or_default();
+    let native_view_box = crate::wdoc::shapes::svg_source_view_box(&icon.content)
+        .and_then(|view_box| crate::wdoc::shapes::parse_svg_view_box(&view_box))
         .unwrap_or((0.0, 0.0, 24.0, 24.0));
     let (min_x, min_y, native_width, native_height) = native_view_box;
     let native_width = native_width.max(1.0);
@@ -7533,33 +7548,36 @@ fn render_inline_icon_svg(
     style.push_str(&icon_style_vars(props));
     let css = icon.css.replace("</style", "<\\/style");
     let body = if transform.is_empty() {
-        crate::markup::raw_svg(sanitized)
+        crate::wdoc::markup::raw_svg(sanitized)
     } else {
-        crate::markup::svg_elem(
+        crate::wdoc::markup::svg_elem(
             "g",
-            &[("transform", crate::markup::s(transform))],
-            vec![crate::markup::raw_svg(sanitized)],
+            &[("transform", crate::wdoc::markup::s(transform))],
+            vec![crate::wdoc::markup::raw_svg(sanitized)],
         )
     };
-    crate::markup::render_svg(&crate::markup::svg_elem(
+    crate::wdoc::markup::render_svg(&crate::wdoc::markup::svg_elem(
         "svg",
         &[
-            ("class_name", crate::markup::s("wdoc-icon")),
-            ("xmlns", crate::markup::s("http://www.w3.org/2000/svg")),
-            ("width", crate::markup::s(size)),
-            ("height", crate::markup::s(size)),
+            ("class_name", crate::wdoc::markup::s("wdoc-icon")),
+            (
+                "xmlns",
+                crate::wdoc::markup::s("http://www.w3.org/2000/svg"),
+            ),
+            ("width", crate::wdoc::markup::s(size)),
+            ("height", crate::wdoc::markup::s(size)),
             (
                 "viewBox",
-                crate::markup::s(format!(
+                crate::wdoc::markup::s(format!(
                     "{view_min_x} {view_min_y} {view_width} {view_height}"
                 )),
             ),
-            ("style", crate::markup::s(style)),
-            ("aria_hidden", crate::markup::s("true")),
-            ("data_wdoc_icon_name", crate::markup::s(&icon.name)),
+            ("style", crate::wdoc::markup::s(style)),
+            ("aria_hidden", crate::wdoc::markup::s("true")),
+            ("data_wdoc_icon_name", crate::wdoc::markup::s(&icon.name)),
         ],
         vec![
-            crate::markup::svg_elem("style", &[("raw", crate::markup::s(css))], vec![]),
+            crate::wdoc::markup::svg_elem("style", &[("raw", crate::wdoc::markup::s(css))], vec![]),
             body,
         ],
     ))
@@ -7888,7 +7906,7 @@ fn extract_page_signals(blocks: &[&BlockRef]) -> Vec<WdocSignal> {
             let initial = block
                 .attributes
                 .get("initial")
-                .map(wcl_lang::json::value_to_json)
+                .map(crate::json::value_to_json)
                 .unwrap_or(serde_json::Value::Null);
             let type_name = block
                 .attributes
@@ -8072,8 +8090,8 @@ fn parse_and_extract(files: &[PathBuf], options: &SourceOptions) -> Result<WdocD
 }
 
 fn format_diagnostic(
-    diag: &wcl_lang::Diagnostic,
-    source_map: &wcl_lang::SourceMap,
+    diag: &crate::Diagnostic,
+    source_map: &crate::SourceMap,
     fallback_path: &Path,
 ) -> String {
     let code = diag
@@ -8101,14 +8119,14 @@ pub fn parse_extract_from_files(
     let functions = wdoc_functions();
 
     let mut all_values = IndexMap::new();
-    let mut last_doc: Option<wcl_lang::Document> = None;
+    let mut last_doc: Option<crate::Document> = None;
     let mut watch_paths = HashSet::new();
 
     for file in files {
         let source = std::fs::read_to_string(file)
             .map_err(|e| format!("cannot read {}: {}", file.display(), e))?;
 
-        let mut options = wcl_lang::ParseOptions {
+        let mut options = crate::ParseOptions {
             root_dir: file.parent().unwrap_or(Path::new(".")).to_path_buf(),
             variables: source_options.variables.clone(),
             functions: functions.clone(),
@@ -8117,7 +8135,7 @@ pub fn parse_extract_from_files(
         options.lib_paths.clone_from(&source_options.lib_paths);
         options.no_default_lib_paths = source_options.no_default_lib_paths;
 
-        let doc = wcl_lang::parse(&source, options);
+        let doc = crate::parse(&source, options);
 
         let errors: Vec<_> = doc.diagnostics.iter().filter(|d| d.is_error()).collect();
         if !errors.is_empty() {
@@ -8132,7 +8150,7 @@ pub fn parse_extract_from_files(
         watch_paths.extend(
             doc.imported_paths
                 .iter()
-                .filter(|path| !path.starts_with(wcl_lang::eval::imports::EMBEDDED_LIBRARY_ROOT))
+                .filter(|path| !path.starts_with(crate::eval::imports::EMBEDDED_LIBRARY_ROOT))
                 .cloned(),
         );
         all_values.extend(doc.values.clone());
@@ -8170,7 +8188,7 @@ pub fn parse_extract_from_files(
     };
 
     let wdoc_doc = extract(&all_values, &ctx)?;
-    let warnings = crate::validate_doc(&wdoc_doc)?;
+    let warnings = crate::wdoc::validate_doc(&wdoc_doc)?;
     for w in &warnings {
         eprintln!("{w}");
     }
@@ -8196,7 +8214,7 @@ pub fn build_from_files(
         .collect::<std::collections::HashSet<_>>()
         .into_iter()
         .collect();
-    crate::render_to(&doc, output, &asset_dirs)?;
+    crate::wdoc::render_to(&doc, output, &asset_dirs)?;
     Ok(BuildResult {
         pages,
         output: output.to_path_buf(),
@@ -8214,7 +8232,7 @@ fn wdoc_source_dirs(files: &[PathBuf], imported_paths: &HashSet<PathBuf>) -> Vec
     }
     let mut imported_dirs: Vec<PathBuf> = imported_paths
         .iter()
-        .filter(|path| !path.starts_with(wcl_lang::eval::imports::EMBEDDED_LIBRARY_ROOT))
+        .filter(|path| !path.starts_with(crate::eval::imports::EMBEDDED_LIBRARY_ROOT))
         .filter_map(|path| path.parent().map(Path::to_path_buf))
         .collect();
     imported_dirs.sort();
@@ -8238,6 +8256,7 @@ pub fn validate_from_files(
     })
 }
 
+#[cfg(feature = "wdoc-serve")]
 pub fn serve_from_files(
     files: &[PathBuf],
     port: u16,
@@ -8262,7 +8281,7 @@ pub fn serve_from_files(
 
     let build_fn = move || {
         let extracted = parse_extract_from_files(&files, &options)?;
-        Ok(crate::serve::ServeBuild {
+        Ok(crate::wdoc::serve::ServeBuild {
             document: extracted.document,
             watch_paths: extracted.watch_paths.into_iter().collect(),
         })
@@ -8271,7 +8290,7 @@ pub fn serve_from_files(
     let rt = tokio::runtime::Runtime::new()
         .map_err(|e| format!("failed to create tokio runtime: {e}"))?;
 
-    rt.block_on(crate::serve::serve(
+    rt.block_on(crate::wdoc::serve::serve(
         build_fn,
         watch_paths,
         asset_dirs,

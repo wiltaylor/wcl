@@ -186,7 +186,7 @@ page terminal_examples {
                     terminal shell {
                         x = 20
                         y = 18
-                        title = "wcl_wdoc tests"
+                        title = "wcl_lang wdoc tests"
                         rows = 18
                         cols = 86
                         font_size = 13
@@ -195,7 +195,7 @@ page terminal_examples {
                         background_fill = "#08111f"
                         foreground_fill = "#d7e0ff"
                         rx = 10
-                        content = "$ cargo test -p wcl_wdoc\n\u001b[32mPASS\u001b[0m terminal::ansi_parser_supports_sgr_colors_and_styles\n\u001b[32mPASS\u001b[0m terminal::terminal_svg_renders_ansi_and_tui_children\n\u001b[33mWARN\u001b[0m docs examples include generated terminal assets"
+                        content = "$ cargo test -p wcl_lang wdoc::\n\u001b[32mPASS\u001b[0m terminal::ansi_parser_supports_sgr_colors_and_styles\n\u001b[32mPASS\u001b[0m terminal::terminal_svg_renders_ansi_and_tui_children\n\u001b[33mWARN\u001b[0m docs examples include generated terminal assets"
 
                         terminal_menubar app_menu {
                             row = 5
@@ -425,7 +425,7 @@ page terminal_examples {
 
                 code basic_code {
                     language = "wcl"
-                    content = "diagram terminal_capture {\n    width = 780\n    height = 380\n\n    terminal shell {\n        x = 20\n        y = 18\n        title = \"wcl_wdoc tests\"\n        rows = 18\n        cols = 86\n        font_size = 13\n        background_fill = \"#08111f\"\n        foreground_fill = \"#d7e0ff\"\n\n        terminal_textbox filter_input {\n            row = 11\n            col = 43\n            rows = 2\n            cols = 34\n            value = \"deploy --env prod\"\n            cursor_col = 17\n            accent_fill = \"#38bdf8\"\n        }\n\n        terminal_checkbox dry_run {\n            row = 14\n            col = 43\n            label = \"Dry run\"\n            checked = \"true\"\n            accent_fill = \"#22c55e\"\n        }\n\n        terminal_radio target_prod {\n            row = 15\n            col = 43\n            label = \"Production\"\n            selected = \"true\"\n        }\n\n        terminal_dropdown deploy_env {\n            row = 14\n            col = 62\n            cols = 15\n            value = \"prod\"\n            menu_item dev_item { label = \"dev\" }\n            menu_item stage_item { label = \"stage\" }\n            menu_item prod_item { label = \"prod\" }\n        }\n\n        terminal_button deploy_button {\n            row = 16\n            col = 43\n            cols = 15\n            label = \"Deploy\"\n            accent_fill = \"#22c55e\"\n        }\n    }\n\n    terminal raw_output {\n        chrome = \"none\"\n        rows = 8\n        cols = 48\n    }\n}"
+                    content = "diagram terminal_capture {\n    width = 780\n    height = 380\n\n    terminal shell {\n        x = 20\n        y = 18\n        title = \"wcl_lang wdoc tests\"\n        rows = 18\n        cols = 86\n        font_size = 13\n        background_fill = \"#08111f\"\n        foreground_fill = \"#d7e0ff\"\n\n        terminal_textbox filter_input {\n            row = 11\n            col = 43\n            rows = 2\n            cols = 34\n            value = \"deploy --env prod\"\n            cursor_col = 17\n            accent_fill = \"#38bdf8\"\n        }\n\n        terminal_checkbox dry_run {\n            row = 14\n            col = 43\n            label = \"Dry run\"\n            checked = \"true\"\n            accent_fill = \"#22c55e\"\n        }\n\n        terminal_radio target_prod {\n            row = 15\n            col = 43\n            label = \"Production\"\n            selected = \"true\"\n        }\n\n        terminal_dropdown deploy_env {\n            row = 14\n            col = 62\n            cols = 15\n            value = \"prod\"\n            menu_item dev_item { label = \"dev\" }\n            menu_item stage_item { label = \"stage\" }\n            menu_item prod_item { label = \"prod\" }\n        }\n\n        terminal_button deploy_button {\n            row = 16\n            col = 43\n            cols = 15\n            label = \"Deploy\"\n            accent_fill = \"#22c55e\"\n        }\n    }\n\n    terminal raw_output {\n        chrome = \"none\"\n        rows = 8\n        cols = 48\n    }\n}"
                 }
             }
         }

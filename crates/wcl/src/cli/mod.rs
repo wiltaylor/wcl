@@ -367,6 +367,7 @@ enum WdocAction {
         lib_args: LibraryArgs,
     },
     /// Start a dev server with live reload
+    #[cfg(feature = "wdoc-serve")]
     Serve {
         /// Input WCL file(s)
         #[arg(required = true)]
@@ -446,10 +447,11 @@ pub fn main() {
             match rt {
                 Ok(rt) => {
                     #[cfg(feature = "wdoc")]
-                    let lsp_options = wcl_wdoc::source::lsp_parse_options().unwrap_or_else(|e| {
-                        eprintln!("error: {}", e);
-                        process::exit(1);
-                    });
+                    let lsp_options =
+                        wcl_lang::wdoc::source::lsp_parse_options().unwrap_or_else(|e| {
+                            eprintln!("error: {}", e);
+                            process::exit(1);
+                        });
                     #[cfg(not(feature = "wdoc"))]
                     let lsp_options = crate::ParseOptions::default();
 
@@ -519,6 +521,7 @@ pub fn main() {
                 vars,
                 lib_args,
             } => wdoc::run_validate(&files, &vars, &lib_args),
+            #[cfg(feature = "wdoc-serve")]
             WdocAction::Serve {
                 files,
                 port,

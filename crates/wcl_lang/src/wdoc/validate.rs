@@ -1,4 +1,4 @@
-use crate::model::*;
+use crate::wdoc::model::*;
 
 /// Severity of a validation diagnostic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

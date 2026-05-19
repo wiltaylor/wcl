@@ -6,8 +6,8 @@ use crate::cli::LibraryArgs;
 fn source_options(
     vars: &[String],
     lib_args: &LibraryArgs,
-) -> Result<wcl_wdoc::source::SourceOptions, String> {
-    Ok(wcl_wdoc::source::SourceOptions {
+) -> Result<wcl_lang::wdoc::source::SourceOptions, String> {
+    Ok(wcl_lang::wdoc::source::SourceOptions {
         variables: parse_var_args(vars)?,
         lib_paths: lib_args.lib_paths.clone(),
         no_default_lib_paths: lib_args.no_default_lib_paths,
@@ -21,7 +21,7 @@ pub fn run_build(
     lib_args: &LibraryArgs,
 ) -> Result<(), String> {
     let options = source_options(vars, lib_args)?;
-    let result = wcl_wdoc::source::build_from_files(files, output, &options)?;
+    let result = wcl_lang::wdoc::source::build_from_files(files, output, &options)?;
     println!(
         "wdoc: built {} page(s) to {}",
         result.pages,
@@ -36,7 +36,7 @@ pub fn run_validate(
     lib_args: &LibraryArgs,
 ) -> Result<(), String> {
     let options = source_options(vars, lib_args)?;
-    let result = wcl_wdoc::source::validate_from_files(files, &options)?;
+    let result = wcl_lang::wdoc::source::validate_from_files(files, &options)?;
     println!(
         "wdoc: valid ({} section(s), {} page(s))",
         result.sections, result.pages
@@ -44,6 +44,7 @@ pub fn run_validate(
     Ok(())
 }
 
+#[cfg(feature = "wdoc-serve")]
 pub fn run_serve(
     files: &[PathBuf],
     port: u16,
@@ -52,5 +53,5 @@ pub fn run_serve(
     lib_args: &LibraryArgs,
 ) -> Result<(), String> {
     let options = source_options(vars, lib_args)?;
-    wcl_wdoc::source::serve_from_files(files, port, open, &options)
+    wcl_lang::wdoc::source::serve_from_files(files, port, open, &options)
 }

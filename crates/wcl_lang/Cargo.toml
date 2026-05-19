@@ -8,6 +8,17 @@ documentation.workspace = true
 repository.workspace = true
 description = "WCL (Wil's Configuration Language) — language library: parser, evaluator, schema, serde"
 
+[features]
+default = []
+wdoc-serve = [
+    "dep:async-stream",
+    "dep:axum",
+    "dep:futures-core",
+    "dep:notify",
+    "dep:tokio",
+    "dep:tower-http",
+]
+
 [dependencies]
 # Core deps
 nom = { workspace = true }
@@ -28,7 +39,16 @@ quick-xml = "0.37"
 unicode-width = "0.2"
 rmp-serde = "1"
 
+# WDoc dev server deps
+async-stream = { version = "0.3", optional = true }
+axum = { version = "0.8", optional = true }
+futures-core = { version = "0.3", optional = true }
+notify = { version = "8", optional = true }
+tokio = { workspace = true, optional = true }
+tower-http = { version = "0.6", features = ["fs"], optional = true }
+
 [dev-dependencies]
 serde_json = { workspace = true }
 serde_yaml_ng = "0.10"
+tempfile = "3"
 toml = "1"

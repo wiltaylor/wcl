@@ -1,8 +1,8 @@
-use crate::markup::{self, b, elem, raw_html, s, text};
-use crate::model::*;
-use crate::render::layout::render_layout_items;
+use crate::wdoc::markup::{self, b, elem, raw_html, s, text};
+use crate::wdoc::model::*;
+use crate::wdoc::render::layout::render_layout_items;
+use crate::Value;
 use indexmap::IndexMap;
-use wcl_lang::Value;
 
 /// highlight.js local assets injected into <head>.
 const MATHJAX_CONFIG_SCRIPT: &str = r#"window.MathJax = {

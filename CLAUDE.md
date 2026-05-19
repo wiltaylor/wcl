@@ -66,8 +66,7 @@ When the language, CLI, wdoc format, or bindings change, update the matching ref
 - `crates/wcl_lang/src/lang/ast.rs` / parser → `reference/syntax.md`
 - `docs/appendix-error-codes.wcl` → `reference/error-codes.md`
 - `crates/wcl/src/cli/*.rs` → `reference/cli.md`
-- `crates/wcl_wdoc/src/wdoc.wcl` → `reference/wdoc.md` and/or `reference/wdoc-drawings.md`
-- `crates/wcl_wdoc/src/shapes.rs` / `graph_layout.rs` → `reference/wdoc-drawings.md`
+- `crates/wcl_lang/src/std/wdoc*.wcl` / `crates/wcl_lang/src/wdoc/**` → `reference/wdoc.md` and/or `reference/wdoc-drawings.md`
 - `bindings/{python,wasm,go,dotnet,jvm,ruby,zig}/**` → `reference/bindings/<lang>.md`
 - `crates/wcl_ffi/**` → `reference/bindings/c.md`
 - `crates/wcl_lang/src/lib.rs` public API → `reference/bindings/rust.md`

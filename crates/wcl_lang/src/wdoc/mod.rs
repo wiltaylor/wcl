@@ -3,14 +3,15 @@ pub mod library;
 pub mod markup;
 pub mod model;
 pub mod render;
+#[cfg(feature = "wdoc-serve")]
 pub mod serve;
 pub mod shapes;
 pub mod source;
 pub mod terminal;
 pub mod validate;
 
-use crate::model::WdocDocument;
-use crate::validate::{WdocDiagnostic, WdocSeverity};
+use crate::wdoc::model::WdocDocument;
+use crate::wdoc::validate::{WdocDiagnostic, WdocSeverity};
 
 /// Validate a `WdocDocument` and return any diagnostics.
 /// Returns the document and warnings, or an error string if validation fails.

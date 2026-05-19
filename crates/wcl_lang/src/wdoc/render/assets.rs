@@ -1,8 +1,8 @@
-use crate::markup;
-use crate::model::{StyleRule, WdocStyle};
+use crate::eval::value::Value;
+use crate::wdoc::markup;
+use crate::wdoc::model::{StyleRule, WdocStyle};
 use indexmap::IndexMap;
 use std::sync::OnceLock;
-use wcl_lang::eval::value::Value;
 
 static WCL_BASE_STYLES_CACHE: OnceLock<Result<String, String>> = OnceLock::new();
 
@@ -14,10 +14,10 @@ pub fn base_css() -> Result<String, String> {
 }
 
 fn render_base_css_from_wcl() -> Result<String, String> {
-    let doc = wcl_lang::parse(
-        crate::library::WDOC_LIBRARY_WCL,
-        wcl_lang::ParseOptions {
-            root_dir: std::path::PathBuf::from(wcl_lang::eval::imports::EMBEDDED_LIBRARY_ROOT),
+    let doc = crate::parse(
+        crate::wdoc::library::WDOC_LIBRARY_WCL,
+        crate::ParseOptions {
+            root_dir: std::path::PathBuf::from(crate::eval::imports::EMBEDDED_LIBRARY_ROOT),
             ..Default::default()
         },
     );

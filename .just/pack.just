@@ -278,7 +278,7 @@ set-version ver:
 
     # Rust: workspace version + workspace dependency versions
     sed -i "0,/^version = .*/s/^version = .*/version = \"$V\"/" Cargo.toml
-    for crate in wcl wcl_lang wcl_lsp wcl_wdoc; do
+    for crate in wcl wcl_lang wcl_lsp; do
         sed -i "s|$crate = { path = \"crates/$crate\", version = \"[^\"]*\" }|$crate = { path = \"crates/$crate\", version = \"$V\" }|" Cargo.toml
     done
 

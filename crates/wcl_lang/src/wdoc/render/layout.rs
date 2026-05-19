@@ -1,8 +1,8 @@
+use crate::Value;
 use indexmap::IndexMap;
 use std::path::PathBuf;
-use wcl_lang::Value;
 
-use crate::model::*;
+use crate::wdoc::model::*;
 
 /// Render layout items to HTML through the bundled WDoc WCL layout helpers.
 pub fn render_layout_items(items: &[LayoutItem], out: &mut String) {
@@ -13,11 +13,11 @@ pub fn render_layout_items(items: &[LayoutItem], out: &mut String) {
 }
 
 fn render_layout_items_html(items: &[LayoutItem]) -> Result<String, String> {
-    let functions = crate::source::wdoc_functions();
-    let doc = wcl_lang::parse(
-        crate::library::WDOC_LIBRARY_WCL,
-        wcl_lang::ParseOptions {
-            root_dir: PathBuf::from(wcl_lang::eval::imports::EMBEDDED_LIBRARY_ROOT),
+    let functions = crate::wdoc::source::wdoc_functions();
+    let doc = crate::parse(
+        crate::wdoc::library::WDOC_LIBRARY_WCL,
+        crate::ParseOptions {
+            root_dir: PathBuf::from(crate::eval::imports::EMBEDDED_LIBRARY_ROOT),
             functions: functions.clone(),
             ..Default::default()
         },
@@ -29,11 +29,11 @@ fn render_layout_items_html(items: &[LayoutItem]) -> Result<String, String> {
         ));
     }
 
-    let helpers = crate::source::collect_template_helpers(&doc);
+    let helpers = crate::wdoc::source::collect_template_helpers(&doc);
     let func = helpers
         .get("wdoc::render_layout_items")
         .ok_or("missing wdoc::render_layout_items helper")?;
-    let rendered = wcl_lang::call_lambda_with_env(
+    let rendered = crate::call_lambda_with_env(
         func,
         &[Value::List(items.iter().map(layout_item_value).collect())],
         &functions.functions,

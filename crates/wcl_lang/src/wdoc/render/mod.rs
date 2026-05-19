@@ -6,10 +6,10 @@ use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
-use crate::markup::{self, elem, raw_html, s, text};
-use crate::model::{Page, Section, WdocDocument, WdocTemplate};
-use wcl_lang::transform::codec;
-use wcl_lang::Value;
+use crate::transform::codec;
+use crate::wdoc::markup::{self, elem, raw_html, s, text};
+use crate::wdoc::model::{Page, Section, WdocDocument, WdocTemplate};
+use crate::Value;
 
 /// Render a `WdocDocument` to an output directory as static HTML files.
 /// `asset_dirs` are source directories to scan for image/asset files to copy.
@@ -44,25 +44,25 @@ pub fn render_document(
     // Write highlight.js assets (bundled locally so file:// works)
     fs::write(
         output.join("highlight.min.js"),
-        crate::library::HIGHLIGHTJS_CORE,
+        crate::wdoc::library::HIGHLIGHTJS_CORE,
     )
     .map_err(|e| format!("failed to write highlight.min.js: {e}"))?;
 
     fs::write(
         output.join("highlight-light.min.css"),
-        crate::library::HIGHLIGHTJS_THEME_LIGHT_CSS,
+        crate::wdoc::library::HIGHLIGHTJS_THEME_LIGHT_CSS,
     )
     .map_err(|e| format!("failed to write highlight-light.min.css: {e}"))?;
 
     fs::write(
         output.join("highlight-dark.min.css"),
-        crate::library::HIGHLIGHTJS_THEME_DARK_CSS,
+        crate::wdoc::library::HIGHLIGHTJS_THEME_DARK_CSS,
     )
     .map_err(|e| format!("failed to write highlight-dark.min.css: {e}"))?;
 
     fs::write(
         output.join("wcl-grammar.js"),
-        crate::library::WCL_HIGHLIGHTJS_GRAMMAR,
+        crate::wdoc::library::WCL_HIGHLIGHTJS_GRAMMAR,
     )
     .map_err(|e| format!("failed to write wcl-grammar.js: {e}"))?;
 
@@ -71,19 +71,19 @@ pub fn render_document(
     for (name, bytes) in [
         (
             "JetBrainsMonoNerdFontMono-Regular.ttf",
-            crate::library::JETBRAINS_MONO_NERD_REGULAR,
+            crate::wdoc::library::JETBRAINS_MONO_NERD_REGULAR,
         ),
         (
             "JetBrainsMonoNerdFontMono-Bold.ttf",
-            crate::library::JETBRAINS_MONO_NERD_BOLD,
+            crate::wdoc::library::JETBRAINS_MONO_NERD_BOLD,
         ),
         (
             "JetBrainsMonoNerdFontMono-Italic.ttf",
-            crate::library::JETBRAINS_MONO_NERD_ITALIC,
+            crate::wdoc::library::JETBRAINS_MONO_NERD_ITALIC,
         ),
         (
             "JetBrainsMonoNerdFontMono-BoldItalic.ttf",
-            crate::library::JETBRAINS_MONO_NERD_BOLD_ITALIC,
+            crate::wdoc::library::JETBRAINS_MONO_NERD_BOLD_ITALIC,
         ),
     ] {
         fs::write(font_dir.join(name), bytes)
@@ -393,9 +393,9 @@ fn write_html_with_codec(output: &Path, filename: &str, html: &str) -> Result<()
 
 /// Walk the section tree in declaration order and return the first page found.
 fn first_page_by_section_order<'a>(
-    sections: &[crate::model::Section],
-    pages: &'a [crate::model::Page],
-) -> Option<&'a crate::model::Page> {
+    sections: &[crate::wdoc::model::Section],
+    pages: &'a [crate::wdoc::model::Page],
+) -> Option<&'a crate::wdoc::model::Page> {
     for section in sections {
         if let Some(page) = pages.iter().find(|p| p.section_id == section.id) {
             return Some(page);
@@ -549,13 +549,15 @@ fn html_unescape_attr(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{ContentBlock, Layout, LayoutItem, Page, Section, SiteConfig, WdocDocument};
+    use crate::wdoc::model::{
+        ContentBlock, Layout, LayoutItem, Page, Section, SiteConfig, WdocDocument,
+    };
 
     fn doc_with_html(html: &str) -> WdocDocument {
         WdocDocument {
             name: "docs".to_string(),
             title: "Docs".to_string(),
-            template: crate::model::WdocTemplate::Book,
+            template: crate::wdoc::model::WdocTemplate::Book,
             version: None,
             author: None,
             site: SiteConfig::default(),
