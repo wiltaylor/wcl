@@ -20,9 +20,6 @@ impl LibraryArgs {
     pub fn apply(&self, opts: &mut crate::ParseOptions) {
         opts.lib_paths.clone_from(&self.lib_paths);
         opts.no_default_lib_paths = self.no_default_lib_paths;
-        #[cfg(feature = "wdoc")]
-        opts.embedded_libraries
-            .extend(wcl_wdoc::library::embedded_libraries());
     }
 }
 

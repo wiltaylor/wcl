@@ -16,7 +16,10 @@ pub fn base_css() -> Result<String, String> {
 fn render_base_css_from_wcl() -> Result<String, String> {
     let doc = wcl_lang::parse(
         crate::library::WDOC_LIBRARY_WCL,
-        wcl_lang::ParseOptions::default(),
+        wcl_lang::ParseOptions {
+            root_dir: std::path::PathBuf::from(wcl_lang::eval::imports::EMBEDDED_LIBRARY_ROOT),
+            ..Default::default()
+        },
     );
     if doc.has_errors() {
         let errors = doc

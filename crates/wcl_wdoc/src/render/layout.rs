@@ -1,4 +1,5 @@
 use indexmap::IndexMap;
+use std::path::PathBuf;
 use wcl_lang::Value;
 
 use crate::model::*;
@@ -16,6 +17,7 @@ fn render_layout_items_html(items: &[LayoutItem]) -> Result<String, String> {
     let doc = wcl_lang::parse(
         crate::library::WDOC_LIBRARY_WCL,
         wcl_lang::ParseOptions {
+            root_dir: PathBuf::from(wcl_lang::eval::imports::EMBEDDED_LIBRARY_ROOT),
             functions: functions.clone(),
             ..Default::default()
         },

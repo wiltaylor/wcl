@@ -9,13 +9,16 @@ pub const EMBEDDED_LIBRARY_ROOT: &str = "<wcl-embedded>";
 
 #[derive(Debug, Clone, Copy)]
 pub struct EmbeddedLibrary {
+    /// Name used by `import <name>`.
     pub name: &'static str,
+    /// Path under the embedded virtual root.
+    pub path: &'static str,
     pub source: &'static str,
 }
 
 impl EmbeddedLibrary {
     pub fn virtual_path(&self) -> PathBuf {
-        PathBuf::from(EMBEDDED_LIBRARY_ROOT).join(self.name)
+        PathBuf::from(EMBEDDED_LIBRARY_ROOT).join(self.path)
     }
 }
 

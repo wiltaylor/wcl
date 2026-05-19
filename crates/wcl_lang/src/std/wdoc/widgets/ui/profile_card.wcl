@@ -1,0 +1,47 @@
+namespace wdoc {
+    export let widget_profile_card = (b) => {
+        let w = attr_or(b, "width", 200)
+        let h = attr_or(b, "height", 220)
+        let title = attr_or(b, "title", "Profile")
+        let name = attr_or(b, "name", "Jane Doe")
+        let role = attr_or(b, "role", "Team member")
+        let initials = attr_or(b, "initials", "?")
+        let avatar_color = attr_or(b, "avatar_color", "var(--color-link)")
+        let status_label = attr_or(b, "status_label", "")
+        let status_color = attr_or(b, "status_color", "var(--color-link)")
+        let surface_fill = attr_or(b, "surface_fill", "var(--color-bg)")
+        let border_stroke = attr_or(b, "border_stroke", "var(--color-nav-border)")
+        let text_fill = attr_or(b, "text_fill", "currentColor")
+        let title_fill = attr_or(b, "title_fill", text_fill)
+        let radius = attr_or(b, "radius", 8)
+        let avatar_size = attr_or(b, "avatar_size", 60)
+        let avatar_x = (w - avatar_size) / 2
+        let status_w = attr_or(b, "status_width", 92)
+        let status_h = attr_or(b, "status_height", 22)
+        let status = status_label != "" ? [
+            { kind = "rect", x = (w - status_w) / 2, y = h - 54,
+              width = status_w, height = status_h, rx = status_h / 2,
+              fill = status_color, opacity = 0.15 },
+            { kind = "text", x = (w - status_w) / 2, y = h - 54,
+              width = status_w, height = status_h, content = status_label,
+              font_size = 11, fill = status_color }
+        ] : []
+        concat([
+            { kind = "rect", x = 0, y = 0, width = w, height = h, rx = radius,
+              fill = surface_fill, stroke = border_stroke, stroke_width = 1.5 },
+            { kind = "text", x = 12, y = 6, width = w - 24, height = 20,
+              content = title, font_size = 14, anchor = "start", fill = title_fill },
+            { kind = "line", x1 = 0, y1 = 30, x2 = w, y2 = 30,
+              stroke = border_stroke, stroke_width = 1 },
+            { kind = "circle", x = avatar_x, y = 46, r = avatar_size / 2,
+              fill = avatar_color },
+            { kind = "text", x = avatar_x, y = 46, width = avatar_size, height = avatar_size,
+              content = initials, font_size = avatar_size / 2, fill = "#fff" },
+            { kind = "text", x = 20, y = 120, width = w - 40, height = 22,
+              content = name, font_size = 14, fill = text_fill },
+            { kind = "text", x = 20, y = 142, width = w - 40, height = 18,
+              content = role, font_size = 11, fill = text_fill, opacity = 0.6 }
+        ], status)
+    }
+
+}

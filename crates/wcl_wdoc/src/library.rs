@@ -1,12 +1,5 @@
 /// The standard wdoc library WCL source.
-pub const WDOC_LIBRARY_WCL: &str = include_str!(concat!(env!("OUT_DIR"), "/wdoc.wcl"));
-
-pub fn embedded_libraries() -> Vec<wcl_lang::EmbeddedLibrary> {
-    vec![wcl_lang::EmbeddedLibrary {
-        name: "wdoc.wcl",
-        source: WDOC_LIBRARY_WCL,
-    }]
-}
+pub const WDOC_LIBRARY_WCL: &str = wcl_lang::standard_lib::WDOC_LIBRARY_WCL;
 
 /// The WCL highlight.js grammar.
 pub const WCL_HIGHLIGHTJS_GRAMMAR: &str = include_str!("../../../extras/highlightjs/wcl.js");
@@ -39,7 +32,20 @@ mod tests {
     use super::WDOC_LIBRARY_WCL;
 
     #[test]
-    fn wireframe_widget_schemas_are_bundled() {
+    fn wireframe_widget_schemas_are_reachable_from_bundled_entrypoint() {
+        let doc = wcl_lang::parse(
+            WDOC_LIBRARY_WCL,
+            wcl_lang::ParseOptions {
+                root_dir: PathBuf::from(wcl_lang::eval::imports::EMBEDDED_LIBRARY_ROOT),
+                ..Default::default()
+            },
+        );
+        assert!(
+            !doc.has_errors(),
+            "unexpected diagnostics: {:?}",
+            doc.errors()
+        );
+
         for widget in [
             "checkbox",
             "radio",
@@ -64,24 +70,25 @@ mod tests {
             "line_chart",
         ] {
             assert!(
-                WDOC_LIBRARY_WCL.contains(&format!("schema \"{widget}\"")),
+                doc.schemas
+                    .get_schema(&format!("wdoc::draw::{widget}"), None)
+                    .is_some(),
                 "missing schema for {widget}"
             );
             assert!(
-                WDOC_LIBRARY_WCL.contains(&format!("widget_{widget}")),
+                doc.values.contains_key(&format!("wdoc::widget_{widget}")),
                 "missing template for {widget}"
             );
         }
     }
 
     #[test]
-    fn widget_manifest_uses_categories() {
-        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("src")
-            .join("wdoc");
-        let manifest = std::fs::read_to_string(manifest_dir.join("manifest.txt"))
-            .expect("manifest should be readable");
-
+    fn widget_sources_use_categories() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(|path| path.parent())
+            .expect("workspace root")
+            .join("crates/wcl_lang/src/std/wdoc");
         for path in [
             "widgets/ui/button.wcl",
             "widgets/graph/graph_node.wcl",
@@ -92,9 +99,8 @@ mod tests {
             "widgets/uml/uml_class.wcl",
             "widgets/infra/server.wcl",
         ] {
-            assert!(manifest.contains(path), "missing categorized path {path}");
             assert!(
-                manifest_dir.join(path).is_file(),
+                root.join(path).is_file(),
                 "categorized widget file should exist: {path}"
             );
         }

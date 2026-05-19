@@ -365,13 +365,10 @@ pub fn wdoc_functions() -> FunctionRegistry {
 /// This registers WDoc host functions and exposes the embedded `wdoc.wcl`
 /// library, so `import <wdoc.wcl>` works without a separate install step.
 pub fn lsp_parse_options() -> Result<wcl_lang::ParseOptions, String> {
-    let mut options = wcl_lang::ParseOptions {
+    let options = wcl_lang::ParseOptions {
         functions: wdoc_functions(),
         ..Default::default()
     };
-    options
-        .embedded_libraries
-        .extend(crate::library::embedded_libraries());
     Ok(options)
 }
 
@@ -3675,6 +3672,7 @@ mod wdoc_draw_tests {
         let doc = wcl_lang::parse(
             WDOC_LIBRARY_WCL,
             wcl_lang::ParseOptions {
+                root_dir: PathBuf::from(wcl_lang::eval::imports::EMBEDDED_LIBRARY_ROOT),
                 functions: functions.clone(),
                 ..Default::default()
             },
@@ -3809,6 +3807,7 @@ mod wdoc_draw_tests {
         let doc = wcl_lang::parse(
             &source,
             wcl_lang::ParseOptions {
+                root_dir: PathBuf::from(wcl_lang::eval::imports::EMBEDDED_LIBRARY_ROOT),
                 functions: functions.clone(),
                 ..Default::default()
             },
@@ -3877,6 +3876,7 @@ mod wdoc_draw_tests {
         let doc = wcl_lang::parse(
             WDOC_LIBRARY_WCL,
             wcl_lang::ParseOptions {
+                root_dir: PathBuf::from(wcl_lang::eval::imports::EMBEDDED_LIBRARY_ROOT),
                 functions: functions.clone(),
                 ..Default::default()
             },
@@ -8116,9 +8116,6 @@ pub fn parse_extract_from_files(
         };
         options.lib_paths.clone_from(&source_options.lib_paths);
         options.no_default_lib_paths = source_options.no_default_lib_paths;
-        options
-            .embedded_libraries
-            .extend(crate::library::embedded_libraries());
 
         let doc = wcl_lang::parse(&source, options);
 

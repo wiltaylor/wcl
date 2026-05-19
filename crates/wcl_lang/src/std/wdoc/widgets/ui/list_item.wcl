@@ -1,0 +1,42 @@
+namespace wdoc {
+    export let widget_list_item = (b) => {
+        let w = attr_or(b, "width", 220)
+        let h = attr_or(b, "height", 48)
+        let label = attr_or(b, "label", "Item")
+        let description = attr_or(b, "description", "")
+        let leading = attr_or(b, "leading", "")
+        let trailing = attr_or(b, "trailing", "")
+        let selected = attr_or(b, "selected", "false") == "true"
+        let surface_fill = attr_or(b, "surface_fill", selected ? "var(--color-nav-active)" : "var(--color-bg)")
+        let border_stroke = attr_or(b, "border_stroke", "var(--color-nav-border)")
+        let label_fill = attr_or(b, "label_fill", "currentColor")
+        let muted_fill = attr_or(b, "muted_fill", "currentColor")
+        let radius = attr_or(b, "radius", 6)
+        let leading_w = leading != "" ? 28 : 0
+        let trailing_w = trailing != "" ? 58 : 0
+        let text_x = 12 + leading_w
+        let label_h = description != "" ? 20 : h
+        let label_y = description != "" ? 7 : 0
+        let desc_part = description != "" ? [
+            { kind = "text", x = text_x, y = 26, width = w - text_x - trailing_w - 12, height = 16,
+              content = description, font_size = 10, anchor = "start",
+              fill = muted_fill, opacity = 0.55 }
+        ] : []
+        let leading_part = leading != "" ? [
+            { kind = "text", x = 10, y = 0, width = 22, height = h,
+              content = leading, font_size = 14, fill = muted_fill }
+        ] : []
+        let trailing_part = trailing != "" ? [
+            { kind = "text", x = w - trailing_w, y = 0, width = trailing_w - 10, height = h,
+              content = trailing, font_size = 11, anchor = "end",
+              fill = muted_fill, opacity = 0.65 }
+        ] : []
+        concat(concat(concat([
+            { kind = "rect", x = 0, y = 0, width = w, height = h, rx = radius,
+              fill = surface_fill, stroke = border_stroke, stroke_width = 1 },
+            { kind = "text", x = text_x, y = label_y, width = w - text_x - trailing_w - 12, height = label_h,
+              content = label, font_size = 12, anchor = "start", fill = label_fill }
+        ], desc_part), leading_part), trailing_part)
+    }
+
+}

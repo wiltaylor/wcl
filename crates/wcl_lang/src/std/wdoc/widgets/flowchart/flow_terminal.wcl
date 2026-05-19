@@ -1,0 +1,18 @@
+namespace wdoc {
+    export let widget_flow_terminal = (b) => {
+        let label = attr_or(b, "label", "Start")
+        let box = wdoc::flow_label_box(b, label, 13, 110, 180, 40, 22, 12)
+        let w = box.width
+        let h = box.height
+        let color = attr_or(b, "color", "var(--color-link)")
+        let bg_fill = attr_or(b, "background_fill", color)
+        let label_fill = attr_or(b, "label_fill", "#fff")
+        [
+            { kind = "rect", x = 0, y = 0, width = w, height = h, rx = h / 2, fill = bg_fill },
+            { kind = "text", x = 0, y = 0, width = w, height = h,
+              content = label, font_size = box.font_size, line_height = box.line_height,
+              max_width = box.label_width, fill = label_fill }
+        ]
+    }
+
+}

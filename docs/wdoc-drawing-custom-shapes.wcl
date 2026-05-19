@@ -374,7 +374,7 @@ page wdoc_drawing_custom {
                 }
 
                 paragraph p_bi1 {
-                    content = "Every built-in widget is implemented this way. The full set lives in <code>crates/wcl_wdoc/src/wdoc.wcl</code> in the WCL repo — opening it is the fastest way to see how the more elaborate shapes (database, UML class, navbar, C4 person) are assembled. Each one is just an exported lambda."
+                    content = "Every built-in widget is implemented this way. The full set lives under <code>crates/wcl_lang/src/std/wdoc/</code> in the WCL repo — opening those files is the fastest way to see how the more elaborate shapes (database, UML class, navbar, C4 person) are assembled. Each one is just an exported lambda."
                 }
             }
         }

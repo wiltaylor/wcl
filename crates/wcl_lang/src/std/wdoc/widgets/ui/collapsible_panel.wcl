@@ -1,0 +1,42 @@
+namespace wdoc {
+    export let widget_collapsible_panel = (b) => {
+        let w = attr_or(b, "width", 300)
+        let h = attr_or(b, "height", 220)
+        let title = attr_or(b, "title", "Panel")
+        let header_h = attr_or(b, "header_height", 36)
+        let surface_fill = attr_or(b, "surface_fill", "var(--color-bg)")
+        let header_fill = attr_or(b, "header_fill", "var(--color-nav-bg)")
+        let border_stroke = attr_or(b, "border_stroke", "var(--color-nav-border)")
+        let title_fill = attr_or(b, "title_fill", "currentColor")
+        let separator_stroke = attr_or(b, "separator_stroke", border_stroke)
+        let radius = attr_or(b, "radius", 8)
+        let border_width = attr_or(b, "border_width", 1.5)
+        [
+            { kind = "rect", id = to_string(b.id) + "_frame", x = 0, y = 0, width = w, height = h, rx = radius,
+              fill = surface_fill, stroke = border_stroke, stroke_width = border_width,
+              data_wdoc_collapse_keep = "true", data_wdoc_collapse_frame = "true" },
+            { kind = "group", id = to_string(b.id) + "_header", x = 0, y = 0, width = w, height = header_h,
+              cursor = "pointer", pointer_events = "all",
+              data_wdoc_collapse_keep = "true", data_wdoc_collapse_header = "true",
+              children = [
+                { kind = "rect", x = 0, y = 0, width = w, height = header_h, rx = radius,
+                  fill = header_fill, stroke = "none", pointer_events = "all" },
+                { kind = "text", x = 12, y = 0, width = w - 48, height = header_h,
+                  content = title, font_size = 14, anchor = "start", fill = title_fill,
+                  pointer_events = "none" },
+                { kind = "line", x1 = w - 24, y1 = (header_h / 2) - 3,
+                  x2 = w - 18, y2 = (header_h / 2) + 3,
+                  stroke = title_fill, stroke_width = 1.8, pointer_events = "none",
+                  data_wdoc_collapse_chevron_left = "true" },
+                { kind = "line", x1 = w - 18, y1 = (header_h / 2) + 3,
+                  x2 = w - 12, y2 = (header_h / 2) - 3,
+                  stroke = title_fill, stroke_width = 1.8, pointer_events = "none",
+                  data_wdoc_collapse_chevron_right = "true" }
+              ] },
+            { kind = "line", id = to_string(b.id) + "_separator", x1 = 0, y1 = header_h, x2 = w, y2 = header_h,
+              stroke = separator_stroke, stroke_width = 1,
+              data_wdoc_collapse_keep = "true", data_wdoc_collapse_separator = "true" }
+        ]
+    }
+
+}
