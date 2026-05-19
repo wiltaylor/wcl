@@ -1,5 +1,8 @@
 //! Bundled static assets used by WCL standard tooling.
 
+use std::path::PathBuf;
+use std::sync::OnceLock;
+
 /// The WCL highlight.js grammar.
 pub const WCL_HIGHLIGHTJS_GRAMMAR: &str = include_str!("assets/highlightjs/wcl.js");
 
@@ -25,6 +28,82 @@ pub const JETBRAINS_MONO_NERD_ITALIC: &[u8] =
 pub const JETBRAINS_MONO_NERD_BOLD_ITALIC: &[u8] =
     include_bytes!("assets/fonts/JetBrainsMonoNerdFontMono-BoldItalic.ttf");
 
+#[derive(Clone)]
+struct WdocRuntimeAssets {
+    mathjax_config: String,
+    theme: String,
+    presentation: String,
+    page_signal_template: String,
+    diagram: String,
+}
+
+static WDOC_RUNTIME_ASSETS: OnceLock<Result<WdocRuntimeAssets, String>> = OnceLock::new();
+
+pub fn wdoc_mathjax_config_js() -> Result<&'static str, String> {
+    wdoc_runtime_assets().map(|assets| assets.mathjax_config.as_str())
+}
+
+pub fn wdoc_theme_runtime_js() -> Result<&'static str, String> {
+    wdoc_runtime_assets().map(|assets| assets.theme.as_str())
+}
+
+pub fn wdoc_presentation_runtime_js() -> Result<&'static str, String> {
+    wdoc_runtime_assets().map(|assets| assets.presentation.as_str())
+}
+
+pub fn wdoc_page_signal_runtime_js(config_json: &str) -> Result<String, String> {
+    let template = wdoc_runtime_assets()?.page_signal_template.as_str();
+    Ok(template.replace("__WDOC_SIGNAL_CONFIG_JSON__", config_json))
+}
+
+pub fn wdoc_diagram_runtime_js() -> Result<&'static str, String> {
+    wdoc_runtime_assets().map(|assets| assets.diagram.as_str())
+}
+
+fn wdoc_runtime_assets() -> Result<&'static WdocRuntimeAssets, String> {
+    WDOC_RUNTIME_ASSETS
+        .get_or_init(load_wdoc_runtime_assets)
+        .as_ref()
+        .map_err(Clone::clone)
+}
+
+fn load_wdoc_runtime_assets() -> Result<WdocRuntimeAssets, String> {
+    let doc = crate::parse(
+        crate::standard_lib::WDOC_LIBRARY_WCL,
+        crate::ParseOptions {
+            root_dir: PathBuf::from(crate::eval::imports::EMBEDDED_LIBRARY_ROOT),
+            ..Default::default()
+        },
+    );
+    if doc.has_errors() {
+        let errors = doc
+            .errors()
+            .into_iter()
+            .map(|diagnostic| diagnostic.message.clone())
+            .collect::<Vec<_>>()
+            .join("; ");
+        return Err(format!(
+            "failed to parse bundled wdoc runtime assets: {errors}"
+        ));
+    }
+
+    Ok(WdocRuntimeAssets {
+        mathjax_config: runtime_string(&doc, "__wdoc_mathjax_config_js")?,
+        theme: runtime_string(&doc, "__wdoc_theme_runtime_js")?,
+        presentation: runtime_string(&doc, "__wdoc_presentation_runtime_js")?,
+        page_signal_template: runtime_string(&doc, "__wdoc_page_signal_runtime_js_template")?,
+        diagram: runtime_string(&doc, "__wdoc_diagram_runtime_js")?,
+    })
+}
+
+fn runtime_string(doc: &crate::Document, name: &str) -> Result<String, String> {
+    doc.values
+        .get(name)
+        .and_then(|value| value.as_string())
+        .map(str::to_string)
+        .ok_or_else(|| format!("bundled wdoc runtime asset '{name}' was not found"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -40,5 +119,101 @@ mod tests {
         assert!(JETBRAINS_MONO_NERD_BOLD.len() > 1024);
         assert!(JETBRAINS_MONO_NERD_ITALIC.len() > 1024);
         assert!(JETBRAINS_MONO_NERD_BOLD_ITALIC.len() > 1024);
+    }
+
+    #[test]
+    fn wireframe_widget_schemas_are_reachable_from_bundled_entrypoint() {
+        let doc = crate::parse(
+            crate::standard_lib::WDOC_LIBRARY_WCL,
+            crate::ParseOptions {
+                root_dir: PathBuf::from(crate::eval::imports::EMBEDDED_LIBRARY_ROOT),
+                ..Default::default()
+            },
+        );
+        assert!(
+            !doc.has_errors(),
+            "unexpected diagnostics: {:?}",
+            doc.errors()
+        );
+
+        for widget in [
+            "checkbox",
+            "radio",
+            "slider",
+            "button_group",
+            "textbox",
+            "dropdown",
+            "inline_image",
+            "menubar",
+            "context_menu",
+            "stat_card",
+            "profile_card",
+            "action_panel",
+            "list_item",
+            "window",
+            "tablet",
+            "phone_landscape",
+            "tablet_landscape",
+            "graph_node",
+            "pie_chart",
+            "bar_chart",
+            "line_chart",
+        ] {
+            assert!(
+                doc.schemas
+                    .get_schema(&format!("wdoc::draw::{widget}"), None)
+                    .is_some(),
+                "missing schema for {widget}"
+            );
+            assert!(
+                doc.values.contains_key(&format!("wdoc::widget_{widget}")),
+                "missing template for {widget}"
+            );
+        }
+    }
+
+    #[test]
+    fn wdoc_widget_sources_use_categories() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(|path| path.parent())
+            .expect("workspace root")
+            .join("crates/wcl_lang/src/std/wdoc");
+        for path in [
+            "widgets/ui/button.wcl",
+            "widgets/graph/graph_node.wcl",
+            "widgets/chart/charts.wcl",
+            "widgets/flowchart/flowchart.wcl",
+            "widgets/flowchart/flow_process.wcl",
+            "widgets/c4/c4_person.wcl",
+            "widgets/uml/uml_class.wcl",
+            "widgets/infra/server.wcl",
+        ] {
+            assert!(
+                root.join(path).is_file(),
+                "categorized widget file should exist: {path}"
+            );
+        }
+    }
+
+    #[test]
+    fn wdoc_runtime_assets_are_exposed_by_bundled_entrypoint() {
+        assert!(wdoc_theme_runtime_js()
+            .expect("theme runtime")
+            .contains("wdoc-theme"));
+        assert!(wdoc_presentation_runtime_js()
+            .expect("presentation runtime")
+            .contains("data-wdoc-slide-right"));
+        assert!(wdoc_mathjax_config_js()
+            .expect("mathjax config")
+            .contains("MathJax"));
+        assert!(wdoc_diagram_runtime_js()
+            .expect("diagram runtime")
+            .contains("__wdocDiagramRuntimeInit"));
+        assert!(
+            wdoc_page_signal_runtime_js("{\"signals\":[],\"bindings\":[]}")
+                .expect("page signal runtime")
+                .contains("__wdocPageSignalsInit")
+        );
     }
 }

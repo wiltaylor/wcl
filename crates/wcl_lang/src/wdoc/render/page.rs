@@ -173,7 +173,7 @@ fn render_site_shell(shell: SiteShell<'_>) -> String {
         body_children.push(script_node(&runtime));
     }
     body_children.push(script_node(
-        crate::wdoc::library::theme_runtime_js().expect("bundled wdoc theme runtime"),
+        crate::assets::wdoc_theme_runtime_js().expect("bundled wdoc theme runtime"),
     ));
 
     render_document_html(
@@ -217,10 +217,10 @@ fn render_presentation_page(doc: &WdocDocument, page: &Page, css_path: &str) -> 
         body_children.push(script_node(&page_signal_runtime(page)));
     }
     body_children.push(script_node(
-        crate::wdoc::library::theme_runtime_js().expect("bundled wdoc theme runtime"),
+        crate::assets::wdoc_theme_runtime_js().expect("bundled wdoc theme runtime"),
     ));
     body_children.push(script_node(
-        crate::wdoc::library::presentation_runtime_js().expect("bundled wdoc presentation runtime"),
+        crate::assets::wdoc_presentation_runtime_js().expect("bundled wdoc presentation runtime"),
     ));
 
     render_document_html(
@@ -322,7 +322,7 @@ fn document_head(doc: &WdocDocument, title: &str, css_path: &str, content_html: 
     ];
     if content_html.contains("data-wdoc-equation=") {
         children.push(script_node(
-            crate::wdoc::library::mathjax_config_js().expect("bundled wdoc mathjax config"),
+            crate::assets::wdoc_mathjax_config_js().expect("bundled wdoc mathjax config"),
         ));
         children.push(elem(
             "script",
@@ -620,7 +620,7 @@ fn page_signal_runtime(page: &Page) -> String {
     })
     .to_string()
     .replace("</", "<\\/");
-    crate::wdoc::library::page_signal_runtime_js(&data).expect("bundled wdoc page signal runtime")
+    crate::assets::wdoc_page_signal_runtime_js(&data).expect("bundled wdoc page signal runtime")
 }
 
 fn render_book_nav(doc: &WdocDocument, active_section: &str) -> String {

@@ -1,5 +1,4 @@
 pub mod codec;
-pub mod library;
 pub mod markup;
 pub mod model;
 mod render;

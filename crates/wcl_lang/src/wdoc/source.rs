@@ -3822,7 +3822,7 @@ fn register_css_assets(values: &IndexMap<String, Value>, ctx: &ExtractCtx) -> Re
 #[cfg(test)]
 mod wdoc_draw_tests {
     use super::*;
-    use crate::wdoc::library::WDOC_LIBRARY_WCL;
+    use crate::standard_lib::WDOC_LIBRARY_WCL;
     use crate::Span;
 
     fn with_large_stack(test: impl FnOnce() + Send + 'static) {

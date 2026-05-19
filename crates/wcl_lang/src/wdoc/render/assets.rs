@@ -15,7 +15,7 @@ pub fn base_css() -> Result<String, String> {
 
 fn render_base_css_from_wcl() -> Result<String, String> {
     let doc = crate::parse(
-        crate::wdoc::library::WDOC_LIBRARY_WCL,
+        crate::standard_lib::WDOC_LIBRARY_WCL,
         crate::ParseOptions {
             root_dir: std::path::PathBuf::from(crate::eval::imports::EMBEDDED_LIBRARY_ROOT),
             ..Default::default()

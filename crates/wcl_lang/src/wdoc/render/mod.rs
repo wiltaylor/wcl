@@ -44,25 +44,25 @@ pub fn render_document(
     // Write highlight.js assets (bundled locally so file:// works)
     fs::write(
         output.join("highlight.min.js"),
-        crate::wdoc::library::HIGHLIGHTJS_CORE,
+        crate::assets::HIGHLIGHTJS_CORE,
     )
     .map_err(|e| format!("failed to write highlight.min.js: {e}"))?;
 
     fs::write(
         output.join("highlight-light.min.css"),
-        crate::wdoc::library::HIGHLIGHTJS_THEME_LIGHT_CSS,
+        crate::assets::HIGHLIGHTJS_THEME_LIGHT_CSS,
     )
     .map_err(|e| format!("failed to write highlight-light.min.css: {e}"))?;
 
     fs::write(
         output.join("highlight-dark.min.css"),
-        crate::wdoc::library::HIGHLIGHTJS_THEME_DARK_CSS,
+        crate::assets::HIGHLIGHTJS_THEME_DARK_CSS,
     )
     .map_err(|e| format!("failed to write highlight-dark.min.css: {e}"))?;
 
     fs::write(
         output.join("wcl-grammar.js"),
-        crate::wdoc::library::WCL_HIGHLIGHTJS_GRAMMAR,
+        crate::assets::WCL_HIGHLIGHTJS_GRAMMAR,
     )
     .map_err(|e| format!("failed to write wcl-grammar.js: {e}"))?;
 
@@ -71,19 +71,19 @@ pub fn render_document(
     for (name, bytes) in [
         (
             "JetBrainsMonoNerdFontMono-Regular.ttf",
-            crate::wdoc::library::JETBRAINS_MONO_NERD_REGULAR,
+            crate::assets::JETBRAINS_MONO_NERD_REGULAR,
         ),
         (
             "JetBrainsMonoNerdFontMono-Bold.ttf",
-            crate::wdoc::library::JETBRAINS_MONO_NERD_BOLD,
+            crate::assets::JETBRAINS_MONO_NERD_BOLD,
         ),
         (
             "JetBrainsMonoNerdFontMono-Italic.ttf",
-            crate::wdoc::library::JETBRAINS_MONO_NERD_ITALIC,
+            crate::assets::JETBRAINS_MONO_NERD_ITALIC,
         ),
         (
             "JetBrainsMonoNerdFontMono-BoldItalic.ttf",
-            crate::wdoc::library::JETBRAINS_MONO_NERD_BOLD_ITALIC,
+            crate::assets::JETBRAINS_MONO_NERD_BOLD_ITALIC,
         ),
     ] {
         fs::write(font_dir.join(name), bytes)

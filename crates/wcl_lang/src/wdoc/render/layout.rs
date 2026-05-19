@@ -1,8 +1,7 @@
-use crate::Value;
-use indexmap::IndexMap;
 use std::path::PathBuf;
 
 use crate::wdoc::model::*;
+use crate::Value;
 
 /// Render layout items to HTML through the bundled WDoc WCL layout helpers.
 pub fn render_layout_items(items: &[LayoutItem], out: &mut String) {
@@ -15,7 +14,7 @@ pub fn render_layout_items(items: &[LayoutItem], out: &mut String) {
 fn render_layout_items_html(items: &[LayoutItem]) -> Result<String, String> {
     let functions = crate::wdoc::source::wdoc_functions();
     let doc = crate::parse(
-        crate::wdoc::library::WDOC_LIBRARY_WCL,
+        crate::standard_lib::WDOC_LIBRARY_WCL,
         crate::ParseOptions {
             root_dir: PathBuf::from(crate::eval::imports::EMBEDDED_LIBRARY_ROOT),
             functions: functions.clone(),
@@ -35,7 +34,7 @@ fn render_layout_items_html(items: &[LayoutItem]) -> Result<String, String> {
         .ok_or("missing wdoc::render_layout_items helper")?;
     let rendered = crate::call_lambda_with_env(
         func,
-        &[Value::List(items.iter().map(layout_item_value).collect())],
+        &[crate::wdoc::model::layout_items_to_value(items)],
         &functions.functions,
         &helpers,
     )?;
@@ -43,88 +42,6 @@ fn render_layout_items_html(items: &[LayoutItem]) -> Result<String, String> {
         Value::String(html) => Ok(html),
         other => Ok(format!("{other}")),
     }
-}
-
-fn layout_item_value(item: &LayoutItem) -> Value {
-    match item {
-        LayoutItem::SplitGroup(group) => split_group_value(group),
-        LayoutItem::Content(block) => content_block_value(block),
-    }
-}
-
-fn split_group_value(group: &SplitGroup) -> Value {
-    let mut map = IndexMap::new();
-    map.insert(
-        "item_kind".to_string(),
-        Value::String("split_group".to_string()),
-    );
-    map.insert(
-        "direction".to_string(),
-        Value::String(
-            match group.direction {
-                SplitDirection::Vertical => "vertical",
-                SplitDirection::Horizontal => "horizontal",
-            }
-            .to_string(),
-        ),
-    );
-    map.insert(
-        "splits".to_string(),
-        Value::List(group.splits.iter().map(split_value).collect()),
-    );
-    Value::Map(map)
-}
-
-fn split_value(split: &Split) -> Value {
-    let mut map = IndexMap::new();
-    map.insert("item_kind".to_string(), Value::String("split".to_string()));
-    map.insert("size_percent".to_string(), Value::Float(split.size_percent));
-    map.insert(
-        "children".to_string(),
-        Value::List(split.children.iter().map(layout_item_value).collect()),
-    );
-    Value::Map(map)
-}
-
-fn content_block_value(block: &ContentBlock) -> Value {
-    let mut map = IndexMap::new();
-    map.insert(
-        "item_kind".to_string(),
-        Value::String("content".to_string()),
-    );
-    map.insert("kind".to_string(), Value::String(block.kind.clone()));
-    map.insert(
-        "css_kind".to_string(),
-        Value::String(
-            block
-                .kind
-                .rsplit("::")
-                .next()
-                .unwrap_or(&block.kind)
-                .to_string(),
-        ),
-    );
-    map.insert(
-        "id".to_string(),
-        block
-            .id
-            .as_ref()
-            .map(|id| Value::String(id.clone()))
-            .unwrap_or(Value::Null),
-    );
-    map.insert(
-        "html".to_string(),
-        Value::String(block.rendered_html.clone()),
-    );
-    map.insert(
-        "style".to_string(),
-        block
-            .style
-            .as_ref()
-            .map(|style| Value::String(style.clone()))
-            .unwrap_or(Value::Null),
-    );
-    Value::Map(map)
 }
 
 #[cfg(test)]
