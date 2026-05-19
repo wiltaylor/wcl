@@ -1,7 +1,10 @@
 use indexmap::IndexMap;
+use serde::{Deserialize, Serialize};
+
+use crate::eval::value::Value;
 
 /// A complete wdoc document with sections, pages, and styles.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WdocDocument {
     pub name: String,
     pub title: String,
@@ -16,7 +19,7 @@ pub struct WdocDocument {
 }
 
 /// A section in the document outline. Ordering matches declaration order.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Section {
     /// Fully-qualified dotted path (e.g. "my-docs.getting-started.installation")
     pub id: String,
@@ -28,7 +31,7 @@ pub struct Section {
 }
 
 /// A page of content, belonging to a section.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Page {
     pub id: String,
     pub section_id: String,
@@ -47,14 +50,15 @@ pub struct Page {
     pub bindings: Vec<WdocBinding>,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SiteConfig {
     pub header_html: Option<String>,
     pub nav_html: Option<String>,
     pub footer_html: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum WdocTemplate {
     Book,
     Site,
@@ -85,20 +89,22 @@ impl WdocTemplate {
 }
 
 /// The layout container for a page.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Layout {
     pub children: Vec<LayoutItem>,
 }
 
 /// An item inside a layout or split — either a split group or a content block.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "item_kind", rename_all = "snake_case")]
 pub enum LayoutItem {
     SplitGroup(SplitGroup),
     Content(ContentBlock),
 }
 
 /// Direction of a split group.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum SplitDirection {
     /// Columns side-by-side (flex-direction: row)
     Vertical,
@@ -107,21 +113,21 @@ pub enum SplitDirection {
 }
 
 /// A group of splits in a given direction (vsplit or hsplit).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SplitGroup {
     pub direction: SplitDirection,
     pub splits: Vec<Split>,
 }
 
 /// A single split pane with a size percentage and nested content.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Split {
     pub size_percent: f64,
     pub children: Vec<LayoutItem>,
 }
 
 /// A content block inside a split, rendered by a template function.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContentBlock {
     /// Block kind (e.g. "heading", "paragraph", "image", "code")
     pub kind: String,
@@ -134,7 +140,7 @@ pub struct ContentBlock {
 }
 
 /// A page-scoped dynamic value available to wdoc runtime bindings.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WdocSignal {
     pub name: String,
     pub initial: serde_json::Value,
@@ -142,7 +148,7 @@ pub struct WdocSignal {
 }
 
 /// A declarative runtime binding from a signal value to an HTML/SVG property.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WdocBinding {
     pub name: Option<String>,
     pub signal: String,
@@ -153,7 +159,7 @@ pub struct WdocBinding {
 }
 
 /// A named style definition.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WdocStyle {
     /// Style name ("default" is auto-applied to all content blocks)
     pub name: String,
@@ -161,10 +167,21 @@ pub struct WdocStyle {
 }
 
 /// A CSS rule targeting a specific content block kind.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StyleRule {
     /// Target content block kind (e.g. "heading", "paragraph")
     pub target: String,
     /// CSS properties (name → value)
     pub properties: IndexMap<String, String>,
+}
+
+pub fn document_to_value(doc: &WdocDocument) -> Result<Value, String> {
+    let json = serde_json::to_value(doc)
+        .map_err(|e| format!("failed to convert wdoc document to value: {e}"))?;
+    Ok(crate::json::json_value_to_wcl(&json))
+}
+
+pub fn document_from_value(value: &Value) -> Result<WdocDocument, String> {
+    let json = crate::json::value_to_json(value);
+    serde_json::from_value(json).map_err(|e| format!("failed to decode wdoc document value: {e}"))
 }

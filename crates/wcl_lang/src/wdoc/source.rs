@@ -8688,18 +8688,28 @@ pub fn build_from_files(
     let extracted = parse_extract_from_files(files, options)?;
     let doc = extracted.document;
     let pages = doc.pages.len();
-    let asset_dirs: Vec<&Path> = files
-        .iter()
-        .filter_map(|f| f.parent())
-        .chain(extracted.watch_paths.iter().filter_map(|f| f.parent()))
-        .collect::<std::collections::HashSet<_>>()
-        .into_iter()
-        .collect();
-    crate::wdoc::render_to(&doc, output, &asset_dirs)?;
+    let asset_dirs = wdoc_asset_dirs(files, &extracted.watch_paths);
+    crate::wdoc::codec::encode_html_document(&doc, output, &asset_dirs)?;
     Ok(BuildResult {
         pages,
         output: output.to_path_buf(),
     })
+}
+
+fn wdoc_asset_dirs(files: &[PathBuf], watch_paths: &HashSet<PathBuf>) -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    let mut seen = HashSet::new();
+    for dir in files
+        .iter()
+        .filter_map(|path| path.parent())
+        .chain(watch_paths.iter().filter_map(|path| path.parent()))
+    {
+        let dir = dir.to_path_buf();
+        if seen.insert(dir.clone()) {
+            dirs.push(dir);
+        }
+    }
+    dirs
 }
 
 fn wdoc_source_dirs(files: &[PathBuf], imported_paths: &HashSet<PathBuf>) -> Vec<PathBuf> {

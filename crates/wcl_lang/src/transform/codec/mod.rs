@@ -96,7 +96,18 @@ impl Default for CodecRegistry {
 
 /// All codec names supported by the transform engine.
 pub const SUPPORTED_CODECS: &[&str] = &[
-    "json", "yaml", "csv", "toml", "hcl", "xml", "msgpack", "elf", "svg", "html", "css",
+    "json",
+    "yaml",
+    "csv",
+    "toml",
+    "hcl",
+    "xml",
+    "msgpack",
+    "elf",
+    "svg",
+    "html",
+    "css",
+    "wdoc-html",
 ];
 
 /// Decode an entire input into a list of records (each record is a Value::Map).

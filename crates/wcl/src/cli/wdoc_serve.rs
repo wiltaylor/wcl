@@ -85,9 +85,11 @@ async fn serve(
     // Initial build
     let initial = build_fn().map_err(|e| format!("initial build failed: {e}"))?;
     let initial_asset_dirs = combined_asset_dirs(&asset_dirs, &initial.watch_paths);
-    let asset_dir_refs: Vec<&std::path::Path> =
-        initial_asset_dirs.iter().map(|p| p.as_path()).collect();
-    wcl_lang::wdoc::render::render_document(&initial.document, &output_dir, &asset_dir_refs)?;
+    wcl_lang::wdoc::codec::encode_html_document(
+        &initial.document,
+        &output_dir,
+        &initial_asset_dirs,
+    )?;
     eprintln!("wdoc: built to {}", output_dir.display());
 
     // Reload signal
@@ -139,12 +141,10 @@ async fn serve(
                     }
 
                     let render_asset_dirs = combined_asset_dirs(&asset_dirs, &build.watch_paths);
-                    let arefs: Vec<&std::path::Path> =
-                        render_asset_dirs.iter().map(|p| p.as_path()).collect();
-                    if let Err(e) = wcl_lang::wdoc::render::render_document(
+                    if let Err(e) = wcl_lang::wdoc::codec::encode_html_document(
                         &build.document,
                         &output_dir_watch,
-                        &arefs,
+                        &render_asset_dirs,
                     ) {
                         eprintln!("wdoc: render error: {e}");
                         cooldown_after_build(&mut notify_rx).await;

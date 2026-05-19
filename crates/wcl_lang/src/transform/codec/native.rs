@@ -42,6 +42,10 @@ impl NativeCodecRegistry {
             name: "svg",
             encode: encode_svg,
         });
+        registry.insert(NativeCodec {
+            name: crate::wdoc::codec::HTML_CODEC,
+            encode: crate::wdoc::codec::encode_html_value,
+        });
         registry
     }
 
@@ -467,5 +471,11 @@ mod tests {
         assert!(svg.contains("<svg"));
         assert!(svg.contains("width=\"120\""));
         assert!(svg.contains("height=\"80\""));
+    }
+
+    #[test]
+    fn standard_registry_includes_wdoc_html_codec() {
+        let registry = NativeCodecRegistry::standard();
+        assert!(registry.get(crate::wdoc::codec::HTML_CODEC).is_some());
     }
 }

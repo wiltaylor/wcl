@@ -195,7 +195,9 @@ fn execute_with_custom_internal(
         }
 
         let native_codecs = codec::native::NativeCodecRegistry::standard();
-        let written = if output_codec == "svg" && codec::native::is_svg_diagram_value(&value) {
+        let written = if output_codec == crate::wdoc::codec::HTML_CODEC
+            || (output_codec == "svg" && codec::native::is_svg_diagram_value(&value))
+        {
             let native = native_codecs
                 .get(output_codec)
                 .ok_or_else(|| TransformError::UnknownCodec(output_codec.to_string()))?;
