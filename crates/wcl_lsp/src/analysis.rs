@@ -57,6 +57,7 @@ pub fn analyze(source: &str, options: &wcl_lang::ParseOptions) -> AnalysisResult
         let library_config = wcl_lang::eval::LibraryConfig {
             extra_paths: options.lib_paths.clone(),
             no_default_paths: options.no_default_lib_paths,
+            embedded_libraries: options.embedded_libraries.clone(),
         };
         let mut resolver = ImportResolver::new(
             &fs,

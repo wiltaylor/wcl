@@ -1,6 +1,13 @@
 /// The standard wdoc library WCL source.
 pub const WDOC_LIBRARY_WCL: &str = include_str!(concat!(env!("OUT_DIR"), "/wdoc.wcl"));
 
+pub fn embedded_libraries() -> Vec<wcl_lang::EmbeddedLibrary> {
+    vec![wcl_lang::EmbeddedLibrary {
+        name: "wdoc.wcl",
+        source: WDOC_LIBRARY_WCL,
+    }]
+}
+
 /// The WCL highlight.js grammar.
 pub const WCL_HIGHLIGHTJS_GRAMMAR: &str = include_str!("../../../extras/highlightjs/wcl.js");
 

@@ -25,7 +25,7 @@ pub use crate::lang::{
 
 pub use crate::eval::{
     builtin_signatures, call_lambda_with_env, BlockRef, BuiltinFn, ConflictMode,
-    ControlFlowExpander, DecoratorValue, Evaluator, FileSystem, FunctionRegistry,
+    ControlFlowExpander, DecoratorValue, EmbeddedLibrary, Evaluator, FileSystem, FunctionRegistry,
     FunctionSignature, FunctionValue, ImportResolver, InMemoryFs, LibraryConfig, MacroExpander,
     MacroRegistry, PartialMerger, QueryEngine, RealFileSystem, Scope, ScopeArena, ScopeEntry,
     ScopeEntryKind, ScopeId, ScopeKind, Value,
@@ -74,6 +74,8 @@ pub struct ParseOptions {
     pub lib_paths: Vec<PathBuf>,
     /// If true, skip the default XDG/system library search paths
     pub no_default_lib_paths: bool,
+    /// Built-in libraries resolved directly from memory.
+    pub embedded_libraries: Vec<EmbeddedLibrary>,
 }
 
 impl std::fmt::Debug for ParseOptions {
@@ -107,6 +109,7 @@ impl Default for ParseOptions {
             variables: indexmap::IndexMap::new(),
             lib_paths: Vec::new(),
             no_default_lib_paths: false,
+            embedded_libraries: crate::standard_lib::embedded_libraries(),
         }
     }
 }
@@ -602,6 +605,7 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
     let library_config = LibraryConfig {
         extra_paths: options.lib_paths.clone(),
         no_default_paths: options.no_default_lib_paths,
+        embedded_libraries: options.embedded_libraries.clone(),
     };
     let mut imported_paths = std::collections::HashSet::new();
     if options.allow_imports {

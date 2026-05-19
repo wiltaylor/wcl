@@ -2047,16 +2047,9 @@ transform hcl-copy {
 #[test]
 fn transform_imported_codecs_library_does_not_duplicate_json() {
     let dir = tempdir().expect("tempdir");
-    let lib_dir = dir.path().join("lib");
     let transform = dir.path().join("json.wcl");
     let input = dir.path().join("input.json");
 
-    std::fs::create_dir_all(&lib_dir).expect("create lib");
-    std::fs::write(
-        lib_dir.join("codecs.wcl"),
-        wcl::standard_lib::CODECS_LIBRARY_WCL,
-    )
-    .expect("write codecs");
     std::fs::write(&input, r#"[{"name":"Alice"}]"#).expect("write input");
     std::fs::write(
         &transform,
@@ -2074,9 +2067,11 @@ transform json-copy {
 "#,
     )
     .expect("write transform");
+    let data_home = dir.path().join("empty-data-home");
 
     let output = Command::cargo_bin("wcl")
         .unwrap()
+        .env("XDG_DATA_HOME", &data_home)
         .args([
             "transform",
             "run",
@@ -2085,8 +2080,6 @@ transform json-copy {
             transform.to_str().unwrap(),
             "--input",
             input.to_str().unwrap(),
-            "--lib-path",
-            lib_dir.to_str().unwrap(),
         ])
         .output()
         .expect("run transform");
@@ -2101,24 +2094,46 @@ transform json-copy {
 }
 
 #[test]
-fn install_library_writes_codecs_file() {
-    let dir = tempdir().expect("tempdir");
-    let data_home = dir.path().join("data");
+fn install_library_commands_are_removed() {
+    Command::cargo_bin("wcl")
+        .unwrap()
+        .args(["--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("install-library").not());
 
     Command::cargo_bin("wcl")
         .unwrap()
-        .env("XDG_DATA_HOME", &data_home)
-        .args(["install-library"])
+        .args(["wdoc", "--help"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("installed standard library"));
+        .stdout(predicate::str::contains("install-library").not());
+}
 
-    let codecs = data_home.join("wcl/lib/codecs.wcl");
-    let source = std::fs::read_to_string(codecs).expect("read codecs");
-    assert!(source.contains("codec json"));
-    assert!(data_home.join("wcl/lib/html.wcl").exists());
-    assert!(data_home.join("wcl/lib/svg.wcl").exists());
-    assert!(data_home.join("wcl/lib/css.wcl").exists());
+#[test]
+fn validate_resolves_embedded_wdoc_library_without_install() {
+    let dir = tempdir().expect("tempdir");
+    let input = dir.path().join("site.wcl");
+    std::fs::write(
+        &input,
+        r#"
+import <wdoc.wcl>
+use wdoc::{doc, section}
+
+doc my_docs {
+    title = "Embedded"
+    section intro "Intro" {}
+}
+"#,
+    )
+    .expect("write wdoc input");
+
+    Command::cargo_bin("wcl")
+        .unwrap()
+        .env("XDG_DATA_HOME", dir.path().join("empty-data-home"))
+        .args(["validate", input.to_str().unwrap()])
+        .assert()
+        .success();
 }
 
 // ===========================================================================

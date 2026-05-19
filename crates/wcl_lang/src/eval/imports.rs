@@ -5,6 +5,20 @@ use crate::lang::trivia::Trivia;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
+pub const EMBEDDED_LIBRARY_ROOT: &str = "<wcl-embedded>";
+
+#[derive(Debug, Clone, Copy)]
+pub struct EmbeddedLibrary {
+    pub name: &'static str,
+    pub source: &'static str,
+}
+
+impl EmbeddedLibrary {
+    pub fn virtual_path(&self) -> PathBuf {
+        PathBuf::from(EMBEDDED_LIBRARY_ROOT).join(self.name)
+    }
+}
+
 /// Trait for file system access (enables testing with in-memory FS).
 pub trait FileSystem: Send + Sync {
     fn read_file(&self, path: &Path) -> Result<String, String>;
@@ -141,12 +155,24 @@ pub fn normalize_path(path: &Path) -> PathBuf {
 }
 
 /// Configuration for library import search paths.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct LibraryConfig {
     /// Extra library search paths (searched before defaults).
     pub extra_paths: Vec<PathBuf>,
     /// If true, skip the default XDG/system search paths entirely.
     pub no_default_paths: bool,
+    /// Built-in libraries resolved directly from memory.
+    pub embedded_libraries: Vec<EmbeddedLibrary>,
+}
+
+impl Default for LibraryConfig {
+    fn default() -> Self {
+        Self {
+            extra_paths: Vec::new(),
+            no_default_paths: false,
+            embedded_libraries: crate::standard_lib::embedded_libraries(),
+        }
+    }
 }
 
 /// Return the search paths for well-known WCL library files.
@@ -208,6 +234,14 @@ pub fn resolve_library_import(
     fs: &(impl FileSystem + ?Sized),
     config: &LibraryConfig,
 ) -> Option<PathBuf> {
+    if let Some(library) = config
+        .embedded_libraries
+        .iter()
+        .find(|library| library.name == name)
+    {
+        return Some(library.virtual_path());
+    }
+
     for dir in library_search_paths(config) {
         let candidate = dir.join(name);
         if fs.exists(&candidate) {
@@ -505,6 +539,10 @@ pub struct ImportResolver<'a, FS: FileSystem + ?Sized> {
     diagnostics: DiagnosticBag,
     /// Library search paths computed once from `LibraryConfig` at construction.
     library_paths: Vec<PathBuf>,
+    /// Embedded libraries keyed by virtual path.
+    embedded_by_path: HashMap<PathBuf, &'static str>,
+    /// Embedded libraries keyed by import name.
+    embedded_by_name: HashMap<&'static str, PathBuf>,
     /// Directories containing resolved library files (used to relax jail checks).
     library_roots: HashSet<PathBuf>,
     /// Lazy imports collected during resolution, to be loaded on demand.
@@ -521,6 +559,16 @@ impl<'a, FS: FileSystem + ?Sized> ImportResolver<'a, FS> {
         library_config: LibraryConfig,
     ) -> Self {
         let library_paths = library_search_paths(&library_config);
+        let embedded_by_path: HashMap<PathBuf, &'static str> = library_config
+            .embedded_libraries
+            .iter()
+            .map(|library| (library.virtual_path(), library.source))
+            .collect();
+        let embedded_by_name: HashMap<&'static str, PathBuf> = library_config
+            .embedded_libraries
+            .iter()
+            .map(|library| (library.name, library.virtual_path()))
+            .collect();
         ImportResolver {
             fs,
             source_map,
@@ -530,6 +578,8 @@ impl<'a, FS: FileSystem + ?Sized> ImportResolver<'a, FS> {
             loaded: HashSet::new(),
             diagnostics: DiagnosticBag::new(),
             library_paths,
+            embedded_by_path,
+            embedded_by_name,
             library_roots: HashSet::new(),
             lazy_imports: Vec::new(),
         }
@@ -537,6 +587,9 @@ impl<'a, FS: FileSystem + ?Sized> ImportResolver<'a, FS> {
 
     /// Resolve a library name using this resolver's cached search paths.
     fn resolve_library(&self, name: &str) -> Option<PathBuf> {
+        if let Some(path) = self.embedded_by_name.get(name) {
+            return Some(path.clone());
+        }
         for dir in &self.library_paths {
             let candidate = dir.join(name);
             if self.fs.exists(&candidate) {
@@ -546,9 +599,22 @@ impl<'a, FS: FileSystem + ?Sized> ImportResolver<'a, FS> {
         None
     }
 
+    fn embedded_source(&self, path: &Path) -> Option<&'static str> {
+        self.embedded_by_path.get(path).copied()
+    }
+
+    fn read_source(&self, path: &Path) -> Result<String, String> {
+        if let Some(source) = self.embedded_source(path) {
+            Ok(source.to_string())
+        } else {
+            self.fs.read_file(path)
+        }
+    }
+
     /// Check if a path is within any known library root directory.
     fn is_within_library_root(&self, path: &Path) -> bool {
-        self.library_roots.iter().any(|root| path.starts_with(root))
+        path.starts_with(EMBEDDED_LIBRARY_ROOT)
+            || self.library_roots.iter().any(|root| path.starts_with(root))
     }
 
     /// Resolve all imports in a document, returning accumulated diagnostics.
@@ -721,7 +787,7 @@ impl<'a, FS: FileSystem + ?Sized> ImportResolver<'a, FS> {
                 self.loaded.insert(resolved.clone());
 
                 // Read the file
-                let source = match self.fs.read_file(&resolved) {
+                let source = match self.read_source(&resolved) {
                     Ok(s) => s,
                     Err(e) => {
                         if !import.optional {
@@ -862,9 +928,15 @@ impl<'a, FS: FileSystem + ?Sized> ImportResolver<'a, FS> {
         // Resolve relative to importing file's directory
         let base_dir = current_file.parent().unwrap_or_else(|| Path::new("."));
         let resolved = base_dir.join(import_path);
+        let normalized = normalize_path(&resolved);
+        if normalized.starts_with(EMBEDDED_LIBRARY_ROOT)
+            && self.embedded_by_path.contains_key(&normalized)
+        {
+            return Ok(normalized);
+        }
 
         // Canonicalize
-        self.fs.canonicalize(&resolved).map_err(|e| {
+        self.fs.canonicalize(&normalized).map_err(|e| {
             Diagnostic::error(
                 format!("cannot resolve import path '{}': {}", import_path, e),
                 dummy_span,
@@ -1026,7 +1098,7 @@ impl<'a, FS: FileSystem + ?Sized> ImportResolver<'a, FS> {
                 }
                 self.loaded.insert(resolved.clone());
 
-                let source = match self.fs.read_file(&resolved) {
+                let source = match self.read_source(&resolved) {
                     Ok(s) => s,
                     Err(e) => {
                         if !import.optional {
@@ -1811,6 +1883,7 @@ mod tests {
         let config = LibraryConfig {
             extra_paths: vec![PathBuf::from("/custom/lib")],
             no_default_paths: false,
+            embedded_libraries: Vec::new(),
         };
         let result = resolve_library_import("mylib.wcl", &fs, &config);
         assert_eq!(result, Some(PathBuf::from("/custom/lib/mylib.wcl")));
@@ -1821,6 +1894,7 @@ mod tests {
         let config = LibraryConfig {
             extra_paths: vec![],
             no_default_paths: true,
+            embedded_libraries: Vec::new(),
         };
         let paths = library_search_paths(&config);
         assert!(paths.is_empty(), "expected no paths, got: {:?}", paths);
@@ -1835,6 +1909,7 @@ mod tests {
         let config = LibraryConfig {
             extra_paths: vec![PathBuf::from("/first"), PathBuf::from("/second")],
             no_default_paths: true,
+            embedded_libraries: Vec::new(),
         };
         let result = resolve_library_import("mylib.wcl", &fs, &config);
         assert_eq!(result, Some(PathBuf::from("/first/mylib.wcl")));
@@ -1868,6 +1943,7 @@ mod tests {
         let config = LibraryConfig {
             extra_paths: vec![PathBuf::from("/libdir")],
             no_default_paths: true,
+            embedded_libraries: Vec::new(),
         };
         let mut resolver =
             ImportResolver::new(&fs, &mut sm, PathBuf::from("/project"), 32, true, config);
@@ -1899,6 +1975,7 @@ mod tests {
         let config = LibraryConfig {
             extra_paths: vec![PathBuf::from("/libdir")],
             no_default_paths: true,
+            embedded_libraries: Vec::new(),
         };
         let mut resolver =
             ImportResolver::new(&fs, &mut sm, PathBuf::from("/project"), 32, true, config);

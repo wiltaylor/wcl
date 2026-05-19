@@ -18,8 +18,8 @@ pub use evaluator::{call_lambda_with_env, parse_table, Evaluator};
 pub use functions::{builtin_signatures, BuiltinFn, FunctionRegistry, FunctionSignature};
 pub use imports::{
     find_lazy_namespace_references, library_search_paths, resolve_import_tables,
-    resolve_library_import, FileSystem, ImportResolver, InMemoryFs, LazyImport, LibraryConfig,
-    RealFileSystem,
+    resolve_library_import, EmbeddedLibrary, FileSystem, ImportResolver, InMemoryFs, LazyImport,
+    LibraryConfig, RealFileSystem,
 };
 pub use macros::{MacroExpander, MacroRegistry};
 pub use merge::{ConflictMode, PartialMerger};

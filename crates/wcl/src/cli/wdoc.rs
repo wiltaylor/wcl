@@ -54,12 +54,3 @@ pub fn run_serve(
     let options = source_options(vars, lib_args)?;
     wcl_wdoc::source::serve_from_files(files, port, open, &options)
 }
-
-/// Install the embedded wdoc standard library (`wdoc.wcl`) into the user's
-/// library directory so editors, LSP, and `wcl validate` can resolve
-/// `import <wdoc.wcl>`.
-pub fn run_install_library(force: bool) -> Result<(), String> {
-    let target = wcl_wdoc::source::install_library(force)?;
-    println!("installed wdoc library to {}", target.display());
-    Ok(())
-}

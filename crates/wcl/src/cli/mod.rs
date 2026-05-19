@@ -20,6 +20,9 @@ impl LibraryArgs {
     pub fn apply(&self, opts: &mut crate::ParseOptions) {
         opts.lib_paths.clone_from(&self.lib_paths);
         opts.no_default_lib_paths = self.no_default_lib_paths;
+        #[cfg(feature = "wdoc")]
+        opts.embedded_libraries
+            .extend(wcl_wdoc::library::embedded_libraries());
     }
 }
 
@@ -250,12 +253,6 @@ enum Commands {
         #[command(flatten)]
         lib_args: LibraryArgs,
     },
-    /// Install standard WCL libraries into the user library directory
-    InstallLibrary {
-        /// Overwrite existing installations
-        #[arg(long)]
-        force: bool,
-    },
     /// Start the WCL language server
     Lsp {
         /// Listen on a TCP address instead of stdio (e.g. 127.0.0.1:9257)
@@ -389,13 +386,6 @@ enum WdocAction {
         #[command(flatten)]
         lib_args: LibraryArgs,
     },
-    /// Install the wdoc standard library into the user library directory so
-    /// editors, LSP, and `wcl validate` can resolve `import <wdoc.wcl>`.
-    InstallLibrary {
-        /// Overwrite an existing installation
-        #[arg(long)]
-        force: bool,
-    },
 }
 
 #[derive(Subcommand)]
@@ -453,7 +443,6 @@ pub fn main() {
             vars,
             lib_args,
         } => eval::run(&file, expression.as_deref(), &format, &vars, &lib_args),
-        Commands::InstallLibrary { force } => run_install_library(force),
         Commands::Lsp { tcp } => {
             let rt = tokio::runtime::Runtime::new()
                 .map_err(|e| format!("failed to create tokio runtime: {}", e));
@@ -540,7 +529,6 @@ pub fn main() {
                 vars,
                 lib_args,
             } => wdoc::run_serve(&files, port, open, &vars, &lib_args),
-            WdocAction::InstallLibrary { force } => wdoc::run_install_library(force),
         },
         Commands::Transform { action } => match action {
             TransformAction::Run {
@@ -565,18 +553,4 @@ pub fn main() {
         eprintln!("error: {}", e);
         process::exit(1);
     }
-}
-
-fn run_install_library(force: bool) -> Result<(), String> {
-    for target in crate::standard_lib::install_codecs_library(force)? {
-        println!("installed standard library to {}", target.display());
-    }
-
-    #[cfg(feature = "wdoc")]
-    {
-        let wdoc = wcl_wdoc::source::install_library(force)?;
-        println!("installed wdoc library to {}", wdoc.display());
-    }
-
-    Ok(())
 }

@@ -1,37 +1,29 @@
-use std::path::PathBuf;
+use crate::eval::EmbeddedLibrary;
 
 pub const CODECS_LIBRARY_WCL: &str = include_str!("std/codecs.wcl");
 pub const HTML_LIBRARY_WCL: &str = include_str!("std/html.wcl");
 pub const SVG_LIBRARY_WCL: &str = include_str!("std/svg.wcl");
 pub const CSS_LIBRARY_WCL: &str = include_str!("std/css.wcl");
 
-pub fn install_codecs_library(force: bool) -> Result<Vec<PathBuf>, String> {
-    let lib_dir = crate::library::user_library_dir();
-    std::fs::create_dir_all(&lib_dir)
-        .map_err(|e| format!("failed to create library dir {}: {e}", lib_dir.display()))?;
-    let libraries = [
-        ("codecs.wcl", CODECS_LIBRARY_WCL),
-        ("html.wcl", HTML_LIBRARY_WCL),
-        ("svg.wcl", SVG_LIBRARY_WCL),
-        ("css.wcl", CSS_LIBRARY_WCL),
-    ];
-    for (name, _) in libraries {
-        let target = lib_dir.join(name);
-        if target.exists() && !force {
-            return Err(format!(
-                "{} already exists (use --force to overwrite)",
-                target.display()
-            ));
-        }
-    }
-    let mut installed = Vec::new();
-    for (name, content) in libraries {
-        let target = lib_dir.join(name);
-        std::fs::write(&target, content)
-            .map_err(|e| format!("failed to write {}: {e}", target.display()))?;
-        installed.push(target);
-    }
-    Ok(installed)
+pub fn embedded_libraries() -> Vec<EmbeddedLibrary> {
+    vec![
+        EmbeddedLibrary {
+            name: "codecs.wcl",
+            source: CODECS_LIBRARY_WCL,
+        },
+        EmbeddedLibrary {
+            name: "html.wcl",
+            source: HTML_LIBRARY_WCL,
+        },
+        EmbeddedLibrary {
+            name: "svg.wcl",
+            source: SVG_LIBRARY_WCL,
+        },
+        EmbeddedLibrary {
+            name: "css.wcl",
+            source: CSS_LIBRARY_WCL,
+        },
+    ]
 }
 
 #[cfg(test)]
@@ -259,6 +251,36 @@ mod tests {
                 doc.errors()
             );
         }
+    }
+
+    #[test]
+    fn embedded_standard_libraries_resolve_without_filesystem_install() {
+        let mut options = ParseOptions {
+            no_default_lib_paths: true,
+            ..Default::default()
+        };
+        let doc = parse("import <codecs.wcl>", options.clone());
+        assert!(
+            !doc.has_errors(),
+            "codecs import should resolve from embedded library: {:?}",
+            doc.errors()
+        );
+        assert!(doc
+            .imported_paths
+            .iter()
+            .any(|path| path.ends_with("codecs.wcl")));
+
+        options.lib_paths.push("/definitely/missing".into());
+        let doc = parse("import <html.wcl>", options);
+        assert!(
+            !doc.has_errors(),
+            "html import should resolve from embedded library: {:?}",
+            doc.errors()
+        );
+        assert!(doc
+            .imported_paths
+            .iter()
+            .any(|path| path.ends_with("html.wcl")));
     }
 
     #[test]

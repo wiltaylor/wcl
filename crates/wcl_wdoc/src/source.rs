@@ -363,14 +363,15 @@ pub fn wdoc_functions() -> FunctionRegistry {
 /// Parse options for editor/LSP tooling that should understand WDoc files.
 ///
 /// This registers WDoc host functions and exposes the embedded `wdoc.wcl`
-/// library through a temporary library directory, so `import <wdoc.wcl>` works
-/// without requiring a prior `wcl wdoc install-library`.
+/// library, so `import <wdoc.wcl>` works without a separate install step.
 pub fn lsp_parse_options() -> Result<wcl_lang::ParseOptions, String> {
     let mut options = wcl_lang::ParseOptions {
         functions: wdoc_functions(),
         ..Default::default()
     };
-    options.lib_paths.push(setup_lib_dir()?);
+    options
+        .embedded_libraries
+        .extend(crate::library::embedded_libraries());
     Ok(options)
 }
 
@@ -8066,29 +8067,6 @@ fn extract_style(block: &BlockRef) -> WdocStyle {
 // Source entry points
 // ---------------------------------------------------------------------------
 
-fn setup_lib_dir() -> Result<PathBuf, String> {
-    let lib_dir = std::env::temp_dir().join(format!("wdoc-lib-{}", std::process::id()));
-    std::fs::create_dir_all(&lib_dir).map_err(|e| format!("failed to create wdoc lib dir: {e}"))?;
-    std::fs::write(lib_dir.join("wdoc.wcl"), crate::library::WDOC_LIBRARY_WCL)
-        .map_err(|e| format!("failed to write wdoc.wcl: {e}"))?;
-    std::fs::write(
-        lib_dir.join("html.wcl"),
-        wcl_lang::standard_lib::HTML_LIBRARY_WCL,
-    )
-    .map_err(|e| format!("failed to write html.wcl: {e}"))?;
-    std::fs::write(
-        lib_dir.join("svg.wcl"),
-        wcl_lang::standard_lib::SVG_LIBRARY_WCL,
-    )
-    .map_err(|e| format!("failed to write svg.wcl: {e}"))?;
-    std::fs::write(
-        lib_dir.join("css.wcl"),
-        wcl_lang::standard_lib::CSS_LIBRARY_WCL,
-    )
-    .map_err(|e| format!("failed to write css.wcl: {e}"))?;
-    Ok(lib_dir)
-}
-
 fn parse_and_extract(files: &[PathBuf], options: &SourceOptions) -> Result<WdocDocument, String> {
     parse_extract_from_files(files, options).map(|extracted| extracted.document)
 }
@@ -8121,7 +8099,6 @@ pub fn parse_extract_from_files(
     source_options: &SourceOptions,
 ) -> Result<ExtractedWdoc, String> {
     let functions = wdoc_functions();
-    let lib_dir = setup_lib_dir()?;
 
     let mut all_values = IndexMap::new();
     let mut last_doc: Option<wcl_lang::Document> = None;
@@ -8139,7 +8116,9 @@ pub fn parse_extract_from_files(
         };
         options.lib_paths.clone_from(&source_options.lib_paths);
         options.no_default_lib_paths = source_options.no_default_lib_paths;
-        options.lib_paths.push(lib_dir.clone());
+        options
+            .embedded_libraries
+            .extend(crate::library::embedded_libraries());
 
         let doc = wcl_lang::parse(&source, options);
 
@@ -8156,7 +8135,7 @@ pub fn parse_extract_from_files(
         watch_paths.extend(
             doc.imported_paths
                 .iter()
-                .filter(|path| !path.starts_with(&lib_dir))
+                .filter(|path| !path.starts_with(wcl_lang::eval::imports::EMBEDDED_LIBRARY_ROOT))
                 .cloned(),
         );
         all_values.extend(doc.values.clone());
@@ -8173,7 +8152,7 @@ pub fn parse_extract_from_files(
     let builtins: HashMap<String, BuiltinFn> = functions.functions;
     let template_helpers = collect_template_helpers(&doc);
     let markup_rules = collect_markup_rules(&doc, &template_helpers)?;
-    let svg_search_dirs = wdoc_source_dirs(files, &doc.imported_paths, &lib_dir);
+    let svg_search_dirs = wdoc_source_dirs(files, &doc.imported_paths);
     let icon_registry = collect_icon_sets(&all_values, &svg_search_dirs)?;
     let ctx = ExtractCtx {
         template_map,
@@ -8198,9 +8177,6 @@ pub fn parse_extract_from_files(
     for w in &warnings {
         eprintln!("{w}");
     }
-
-    // Clean up temp lib dir
-    let _ = std::fs::remove_dir_all(&lib_dir);
 
     Ok(ExtractedWdoc {
         document: wdoc_doc,
@@ -8230,41 +8206,7 @@ pub fn build_from_files(
     })
 }
 
-/// Install the embedded wdoc standard library (`wdoc.wcl`) into the user's
-/// library directory so editors, LSP, and `wcl validate` can resolve
-/// `import <wdoc.wcl>` without the `wdoc` subcommand's temp-dir bootstrap.
-pub fn install_library(force: bool) -> Result<PathBuf, String> {
-    let lib_dir = wcl_lang::library::user_library_dir();
-    std::fs::create_dir_all(&lib_dir)
-        .map_err(|e| format!("failed to create library dir {}: {e}", lib_dir.display()))?;
-    let target = lib_dir.join("wdoc.wcl");
-    if target.exists() && !force {
-        return Err(format!(
-            "{} already exists (use --force to overwrite)",
-            target.display()
-        ));
-    }
-    std::fs::write(&target, crate::library::WDOC_LIBRARY_WCL)
-        .map_err(|e| format!("failed to write {}: {e}", target.display()))?;
-    for (name, source) in [
-        ("html.wcl", wcl_lang::standard_lib::HTML_LIBRARY_WCL),
-        ("svg.wcl", wcl_lang::standard_lib::SVG_LIBRARY_WCL),
-        ("css.wcl", wcl_lang::standard_lib::CSS_LIBRARY_WCL),
-    ] {
-        let path = lib_dir.join(name);
-        if !path.exists() || force {
-            std::fs::write(&path, source)
-                .map_err(|e| format!("failed to write {}: {e}", path.display()))?;
-        }
-    }
-    Ok(target)
-}
-
-fn wdoc_source_dirs(
-    files: &[PathBuf],
-    imported_paths: &HashSet<PathBuf>,
-    lib_dir: &Path,
-) -> Vec<PathBuf> {
+fn wdoc_source_dirs(files: &[PathBuf], imported_paths: &HashSet<PathBuf>) -> Vec<PathBuf> {
     let mut dirs = Vec::new();
     let mut seen = HashSet::new();
     for dir in files.iter().filter_map(|file| file.parent()) {
@@ -8275,7 +8217,7 @@ fn wdoc_source_dirs(
     }
     let mut imported_dirs: Vec<PathBuf> = imported_paths
         .iter()
-        .filter(|path| !path.starts_with(lib_dir))
+        .filter(|path| !path.starts_with(wcl_lang::eval::imports::EMBEDDED_LIBRARY_ROOT))
         .filter_map(|path| path.parent().map(Path::to_path_buf))
         .collect();
     imported_dirs.sort();
