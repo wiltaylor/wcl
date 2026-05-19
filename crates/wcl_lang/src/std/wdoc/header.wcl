@@ -951,6 +951,203 @@ namespace wdoc {
 
     export let render_layout_items = (items) => join("", map(items, (item) => wdoc::render_layout_item(item)))
 
+    export let script_node = source => { tag = "script", html = replace(to_string(source), "</", "<\\/") }
+
+    export let document_head = (doc, title, css_path, content_html) => {
+        let math_nodes = contains(content_html, "data-wdoc-equation=") ? [
+            wdoc::script_node(doc.runtime.mathjax_config),
+            { tag = "script", defer = true, src = "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" }
+        ] : []
+        { tag = "head", children = concat([
+            { tag = "meta", charset = "utf-8" },
+            { tag = "meta", name = "viewport", content_attr = "width=device-width, initial-scale=1" },
+            { tag = "title", content = title + " — " + doc.title },
+            { tag = "link", rel = "stylesheet", href = css_path },
+            { tag = "link", rel = "stylesheet", href = "highlight-light.min.css", id = "hljs-light" },
+            { tag = "link", rel = "stylesheet", href = "highlight-dark.min.css", id = "hljs-dark", disabled = true },
+            { tag = "script", defer = true, src = "highlight.min.js" },
+            { tag = "script", defer = true, src = "wcl-grammar.js" }
+        ], math_nodes) }
+    }
+
+    export let document_html = (doc, title, css_path, content_html, body_class, body_children) => {
+        let head_html = html::render(wdoc::document_head(doc, title, css_path, content_html))
+        let body_html = html::render({ tag = "body", class_name = body_class, children = body_children })
+        "<!DOCTYPE html><html lang=\"en\">" + head_html + body_html + "</html>\n"
+    }
+
+    export let site_page_card = page => {
+        tag = "a",
+        class_name = "wdoc-site-card",
+        href = page.href,
+        children = concat(
+            [{ tag = "h3", content = page.title }],
+            concat(
+                page.summary != null ? [{ tag = "p", content = page.summary }] : [],
+                page.date != null ? [{ tag = "span", content = page.date }] : []
+            )
+        )
+    }
+
+    export let site_before_main = doc => {
+        let header = doc.site.header_html != null ? doc.site.header_html + "\n" : ""
+        let nav = doc.site.nav_html != null ? doc.site.nav_html + "\n" : ""
+        header + nav
+    }
+
+    export let site_after_main = doc => doc.site.footer_html != null ? doc.site.footer_html : ""
+
+    export let site_shell = (doc, title, css_path, content_html, body_class, main_class, before_main, after_main, runtime) => {
+        let before_nodes = before_main != "" ? [{ tag = "raw", html = before_main }] : []
+        let after_nodes = after_main != "" ? [{ tag = "raw", html = after_main }] : []
+        let runtime_nodes = runtime != null ? [wdoc::script_node(runtime)] : []
+        let body_nodes = concat(
+            before_nodes,
+            concat(
+                [{ tag = "main", class_name = main_class, html = content_html }],
+                concat(after_nodes, concat(runtime_nodes, [wdoc::script_node(doc.runtime.theme)]))
+            )
+        )
+        wdoc::document_html(doc, title, css_path, content_html, body_class, body_nodes)
+    }
+
+    export let nav_section_item = (section, active_section) => {
+        let child_nodes = len(section.children) > 0 ? [{ tag = "ul", children = map(section.children, child => wdoc::nav_section_item(child, active_section)) }] : []
+        {
+            tag = "li",
+            children = concat([{
+                tag = "a",
+                href = section.first_page_path != null ? section.first_page_path : "#",
+                class_name = active_section == section.id ? "active" : null,
+                content = section.title
+            }], child_nodes)
+        }
+    }
+
+    export let book_nav = (doc, active_section) => html::render({
+        tag = "nav",
+        class_name = "wdoc-nav",
+        children = [
+            { tag = "div", class_name = "wdoc-nav-title", content = doc.title },
+            { tag = "ul", children = map(doc.sections, section => wdoc::nav_section_item(section, active_section)) },
+            {
+                tag = "div",
+                class_name = "wdoc-theme-toggle",
+                id = "wdoc-theme-toggle",
+                children = [
+                    { tag = "span", id = "wdoc-theme-icon", class_name = "wdoc-theme-icon", html = "&#x1F319;" },
+                    { tag = "div", class_name = "wdoc-theme-toggle-track", children = [{ tag = "div", class_name = "wdoc-theme-toggle-knob" }] },
+                    { tag = "span", content = "Dark mode" }
+                ]
+            }
+        ]
+    })
+
+    @page_template("book")
+    export let page_template_book = (ctx, page) => {
+        let content_html = wdoc::render_layout_items(page.layout_items)
+        wdoc::site_shell(ctx.doc, page.title, page.css_path, content_html, "wdoc-template-book", "wdoc-content", wdoc::book_nav(ctx.doc, page.section_id), "", page.signal_runtime)
+    }
+
+    @page_template("site")
+    export let page_template_site = (ctx, page) => {
+        let content_html = wdoc::render_layout_items(page.layout_items)
+        wdoc::site_shell(ctx.doc, page.title, page.css_path, content_html, "wdoc-template-site", "wdoc-site-main", wdoc::site_before_main(ctx.doc), wdoc::site_after_main(ctx.doc), page.signal_runtime)
+    }
+
+    export let presentation_nav_link = (href, direction, label) => href == null ? null : {
+        tag = "a",
+        href = href,
+        data_wdoc_slide_up = direction == "up" ? true : null,
+        data_wdoc_slide_left = direction == "left" ? true : null,
+        data_wdoc_slide_right = direction == "right" ? true : null,
+        data_wdoc_slide_down = direction == "down" ? true : null,
+        aria_label = label
+    }
+
+    export let presentation_nav_links = nav => filter([
+        wdoc::presentation_nav_link(nav.up, "up", "Previous section"),
+        wdoc::presentation_nav_link(nav.left, "left", "Previous slide"),
+        wdoc::presentation_nav_link(nav.right, "right", "Next slide"),
+        wdoc::presentation_nav_link(nav.down, "down", "Next section")
+    ], item => item != null)
+
+    @page_template("presentation")
+    export let page_template_presentation = (ctx, page) => {
+        let content_html = wdoc::render_layout_items(page.layout_items)
+        let body_nodes = concat([{
+            tag = "main",
+            class_name = "wdoc-presentation",
+            aria_label = "Presentation slide",
+            children = [
+                { tag = "nav", class_name = "wdoc-presentation-nav", aria_hidden = "true", children = wdoc::presentation_nav_links(page.presentation_nav) },
+                { tag = "section", class_name = "wdoc-slide", html = content_html }
+            ]
+        }], concat(page.signal_runtime != null ? [wdoc::script_node(page.signal_runtime)] : [], [
+            wdoc::script_node(ctx.runtime.theme),
+            wdoc::script_node(ctx.runtime.presentation)
+        ]))
+        wdoc::document_html(ctx.doc, page.title, page.css_path, content_html, "wdoc-template-presentation", body_nodes)
+    }
+
+    export let page_template_html = (ctx, page) => {
+        let template_name = page["template"]
+        template_name == "book" ? wdoc::page_template_book(ctx, page) : (
+            template_name == "site" ? wdoc::page_template_site(ctx, page) : (
+                template_name == "presentation" ? wdoc::page_template_presentation(ctx, page) : ""
+            )
+        )
+    }
+
+    export let render_page_output = (ctx, page) => {
+        path = page.output_path,
+        html = wdoc::page_template_html(ctx, page)
+    }
+
+    export let section_output_html = (ctx, section) => {
+        let child_links = map(section.children, child => {
+            tag = "a",
+            class_name = "wdoc-site-list-item",
+            href = child.output_path,
+            children = [{ tag = "h3", content = child.title }]
+        })
+        let cards = map(section.pages, page => wdoc::site_page_card(page))
+        html::render({
+            tag = "section",
+            class_name = "wdoc-site-list",
+            children = [
+                { tag = "h1", content = section.title },
+                { tag = "raw", html = html::render(child_links) },
+                { tag = "div", class_name = "wdoc-site-card-grid", children = cards }
+            ]
+        })
+    }
+
+    export let taxonomy_output_html = output => html::render({
+        tag = "section",
+        class_name = "wdoc-site-list",
+        children = [
+            { tag = "h1", content = output.title },
+            { tag = "div", class_name = "wdoc-site-card-grid", children = map(output.pages, page => wdoc::site_page_card(page)) }
+        ]
+    })
+
+    export let render_site_output = (ctx, output) => {
+        let path = output.kind == "section" ? output.section.output_path : output.path
+        let title = output.kind == "section" ? output.section.title : output.title
+        let css_path = output.kind == "section" ? output.section.css_path : "../styles.css"
+        let content_html = output.kind == "section" ? wdoc::section_output_html(ctx, output.section) : wdoc::taxonomy_output_html(output)
+        {
+            path = path,
+            html = wdoc::site_shell(ctx.doc, title, css_path, content_html, "wdoc-template-site", "wdoc-site-main", wdoc::site_before_main(ctx.doc), wdoc::site_after_main(ctx.doc), null)
+        }
+    }
+
+    export let render_html_outputs = ctx => concat(
+        map(ctx.doc.pages, page => wdoc::render_page_output(ctx, page)),
+        ctx.doc.template == "site" ? map(ctx.site_outputs, output => wdoc::render_site_output(ctx, output)) : []
+    )
+
     export let style_target_leaf = target => {
         let parts = split("::", target)
         len(parts) == 0 ? target : parts[len(parts) - 1]

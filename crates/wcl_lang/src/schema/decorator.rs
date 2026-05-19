@@ -492,6 +492,19 @@ impl DecoratorSchemaRegistry {
             constraints: vec![],
             span: Span::dummy(),
         });
+        self.insert(ResolvedDecoratorSchema {
+            name: "page_template".to_string(),
+            targets: vec![DecoratorTarget::Let],
+            params: vec![DecoratorParam {
+                name: "name".to_string(),
+                type_expr: TypeExpr::String(Span::dummy()),
+                required: true,
+                default: None,
+                span: Span::dummy(),
+            }],
+            constraints: vec![],
+            span: Span::dummy(),
+        });
     }
 
     fn insert(&mut self, schema: ResolvedDecoratorSchema) {

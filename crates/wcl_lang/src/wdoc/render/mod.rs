@@ -1,14 +1,12 @@
-pub mod layout;
-pub mod page;
-
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
 use crate::transform::codec;
-use crate::wdoc::markup::{self, elem, raw_html, s, text};
-use crate::wdoc::model::{Page, Section, WdocDocument, WdocTemplate};
+use crate::wdoc::markup::{self, elem, raw_html, s};
+use crate::wdoc::model::{self, Page, Section, WdocDocument};
 use crate::Value;
+use indexmap::IndexMap;
 
 /// Render a `WdocDocument` to an output directory as static HTML files.
 /// `asset_dirs` are source directories to scan for image/asset files to copy.
@@ -89,29 +87,14 @@ pub fn render_document(
             .map_err(|e| format!("failed to write bundled font {name}: {e}"))?;
     }
 
-    // Render each page
+    // Render HTML outputs through the bundled WDoc template library.
     let mut written_html = HashSet::new();
-    for p in &doc.pages {
-        if p.draft {
-            continue;
-        }
-        let filename = page_output_path(p);
-        let css_path = css_path_for(&filename);
-        let html = page::render_page(doc, p, &css_path);
+    let context = render_context_value(doc)?;
+    let used_templates = used_page_templates(doc);
+    for (filename, html) in crate::wdoc::assets::render_html_outputs(context, &used_templates)? {
         collect_referenced_image_assets(&html, &asset_extensions, &mut referenced_assets);
         write_html_with_codec(output, &filename, &html)?;
         written_html.insert(filename);
-    }
-
-    if doc.template == WdocTemplate::Site {
-        for generated in generated_site_pages(doc) {
-            let css_path = css_path_for(&generated.path);
-            let html =
-                page::render_generated_site_page(doc, &generated.title, &generated.html, &css_path);
-            collect_referenced_image_assets(&html, &asset_extensions, &mut referenced_assets);
-            write_html_with_codec(output, &generated.path, &html)?;
-            written_html.insert(generated.path);
-        }
     }
 
     // index.html redirects to the first page by section order
@@ -176,72 +159,461 @@ pub fn render_document(
     Ok(())
 }
 
-struct GeneratedSitePage {
-    path: String,
-    title: String,
-    html: String,
+fn used_page_templates(doc: &WdocDocument) -> Vec<String> {
+    let mut templates = BTreeSet::new();
+    for page in doc.pages.iter().filter(|page| !page.draft) {
+        templates.insert(page.template.unwrap_or(doc.template).as_str().to_string());
+    }
+    templates.into_iter().collect()
 }
 
-fn generated_site_pages(doc: &WdocDocument) -> Vec<GeneratedSitePage> {
-    let mut pages = Vec::new();
-    collect_section_pages(doc, &doc.sections, &mut pages);
-    pages.extend(taxonomy_pages(doc, "tags"));
-    pages.extend(taxonomy_pages(doc, "categories"));
-    pages
+fn render_context_value(doc: &WdocDocument) -> Result<Value, String> {
+    let mut root = IndexMap::new();
+    let runtime = runtime_context_value()?;
+    let mut doc_value = document_context_value(doc)?;
+    if let Value::Map(doc_map) = &mut doc_value {
+        doc_map.insert("runtime".to_string(), runtime.clone());
+    }
+    root.insert("doc".to_string(), doc_value);
+    root.insert("runtime".to_string(), runtime);
+    root.insert(
+        "site_outputs".to_string(),
+        Value::List(site_output_contexts(doc)?),
+    );
+    Ok(Value::Map(root))
 }
 
-fn collect_section_pages(
+fn runtime_context_value() -> Result<Value, String> {
+    let mut map = IndexMap::new();
+    map.insert(
+        "mathjax_config".to_string(),
+        Value::String(crate::wdoc::assets::mathjax_config_js()?.to_string()),
+    );
+    map.insert(
+        "theme".to_string(),
+        Value::String(crate::wdoc::assets::theme_runtime_js()?.to_string()),
+    );
+    map.insert(
+        "presentation".to_string(),
+        Value::String(crate::wdoc::assets::presentation_runtime_js()?.to_string()),
+    );
+    Ok(Value::Map(map))
+}
+
+fn document_context_value(doc: &WdocDocument) -> Result<Value, String> {
+    let mut map = IndexMap::new();
+    map.insert("name".to_string(), Value::String(doc.name.clone()));
+    map.insert("title".to_string(), Value::String(doc.title.clone()));
+    map.insert(
+        "template".to_string(),
+        Value::String(doc.template.as_str().to_string()),
+    );
+    map.insert(
+        "version".to_string(),
+        doc.version
+            .as_ref()
+            .map(|value| Value::String(value.clone()))
+            .unwrap_or(Value::Null),
+    );
+    map.insert(
+        "author".to_string(),
+        doc.author
+            .as_ref()
+            .map(|value| Value::String(value.clone()))
+            .unwrap_or(Value::Null),
+    );
+    map.insert("site".to_string(), site_context_value(doc));
+    map.insert(
+        "sections".to_string(),
+        Value::List(
+            doc.sections
+                .iter()
+                .map(|section| section_context_value(doc, section))
+                .collect::<Result<Vec<_>, _>>()?,
+        ),
+    );
+    map.insert(
+        "pages".to_string(),
+        Value::List(
+            doc.pages
+                .iter()
+                .filter(|page| !page.draft)
+                .map(|page| page_context_value(doc, page))
+                .collect::<Result<Vec<_>, _>>()?,
+        ),
+    );
+    Ok(Value::Map(map))
+}
+
+fn site_context_value(doc: &WdocDocument) -> Value {
+    let mut map = IndexMap::new();
+    map.insert(
+        "header_html".to_string(),
+        doc.site
+            .header_html
+            .as_ref()
+            .map(|html| Value::String(html.clone()))
+            .unwrap_or(Value::Null),
+    );
+    map.insert(
+        "nav_html".to_string(),
+        doc.site
+            .nav_html
+            .as_ref()
+            .map(|html| Value::String(html.clone()))
+            .unwrap_or(Value::Null),
+    );
+    map.insert(
+        "footer_html".to_string(),
+        doc.site
+            .footer_html
+            .as_ref()
+            .map(|html| Value::String(html.clone()))
+            .unwrap_or(Value::Null),
+    );
+    Value::Map(map)
+}
+
+fn section_context_value(doc: &WdocDocument, section: &Section) -> Result<Value, String> {
+    let output_path = section_output_path(section);
+    let mut map = IndexMap::new();
+    map.insert("id".to_string(), Value::String(section.id.clone()));
+    map.insert(
+        "short_id".to_string(),
+        Value::String(section.short_id.clone()),
+    );
+    map.insert("title".to_string(), Value::String(section.title.clone()));
+    map.insert(
+        "output_path".to_string(),
+        Value::String(output_path.clone()),
+    );
+    map.insert(
+        "css_path".to_string(),
+        Value::String(css_path_for(&output_path)),
+    );
+    map.insert(
+        "pages".to_string(),
+        Value::List(
+            pages_for_section(doc, section)
+                .into_iter()
+                .map(|page| page_summary_context_value(page, &output_path))
+                .collect(),
+        ),
+    );
+    map.insert(
+        "first_page_path".to_string(),
+        doc.pages
+            .iter()
+            .find(|page| !page.draft && page.section_id == section.id)
+            .map(|page| Value::String(page_output_path(page)))
+            .unwrap_or(Value::Null),
+    );
+    map.insert(
+        "children".to_string(),
+        Value::List(
+            section
+                .children
+                .iter()
+                .map(|child| section_context_value(doc, child))
+                .collect::<Result<Vec<_>, _>>()?,
+        ),
+    );
+    Ok(Value::Map(map))
+}
+
+fn page_context_value(doc: &WdocDocument, page: &Page) -> Result<Value, String> {
+    let output_path = page_output_path(page);
+    let mut map = page_base_context_value(page);
+    map.insert(
+        "template".to_string(),
+        Value::String(page.template.unwrap_or(doc.template).as_str().to_string()),
+    );
+    map.insert(
+        "output_path".to_string(),
+        Value::String(output_path.clone()),
+    );
+    map.insert(
+        "css_path".to_string(),
+        Value::String(css_path_for(&output_path)),
+    );
+    map.insert(
+        "layout_items".to_string(),
+        model::layout_items_to_value(&page.layout.children),
+    );
+    map.insert(
+        "signal_runtime".to_string(),
+        if page_has_runtime(page) {
+            Value::String(page_signal_runtime(page)?)
+        } else {
+            Value::Null
+        },
+    );
+    map.insert(
+        "presentation_nav".to_string(),
+        presentation_nav_context_value(doc, page),
+    );
+    Ok(Value::Map(map))
+}
+
+fn page_summary_context_value(page: &Page, from_path: &str) -> Value {
+    let mut map = page_base_context_value(page);
+    let output_path = page_output_path(page);
+    map.insert(
+        "output_path".to_string(),
+        Value::String(output_path.clone()),
+    );
+    map.insert(
+        "href".to_string(),
+        Value::String(relative_href(from_path, &output_path)),
+    );
+    Value::Map(map)
+}
+
+fn page_base_context_value(page: &Page) -> IndexMap<String, Value> {
+    let mut map = IndexMap::new();
+    map.insert("id".to_string(), Value::String(page.id.clone()));
+    map.insert(
+        "section_id".to_string(),
+        Value::String(page.section_id.clone()),
+    );
+    map.insert("title".to_string(), Value::String(page.title.clone()));
+    map.insert(
+        "date".to_string(),
+        page.date
+            .as_ref()
+            .map(|date| Value::String(date.clone()))
+            .unwrap_or(Value::Null),
+    );
+    map.insert(
+        "summary".to_string(),
+        page.summary
+            .as_ref()
+            .map(|summary| Value::String(summary.clone()))
+            .unwrap_or(Value::Null),
+    );
+    map.insert(
+        "tags".to_string(),
+        Value::List(page.tags.iter().cloned().map(Value::String).collect()),
+    );
+    map.insert(
+        "categories".to_string(),
+        Value::List(page.categories.iter().cloned().map(Value::String).collect()),
+    );
+    map.insert(
+        "params".to_string(),
+        Value::Map(
+            page.params
+                .iter()
+                .map(|(key, value)| (key.clone(), Value::String(value.clone())))
+                .collect(),
+        ),
+    );
+    map
+}
+
+fn site_output_contexts(doc: &WdocDocument) -> Result<Vec<Value>, String> {
+    let mut outputs = Vec::new();
+    collect_section_output_contexts(doc, &doc.sections, &mut outputs)?;
+    outputs.extend(taxonomy_output_contexts(doc, "tags"));
+    outputs.extend(taxonomy_output_contexts(doc, "categories"));
+    Ok(outputs)
+}
+
+fn collect_section_output_contexts(
     doc: &WdocDocument,
     sections: &[Section],
-    out: &mut Vec<GeneratedSitePage>,
+    out: &mut Vec<Value>,
+) -> Result<(), String> {
+    for section in sections {
+        let section_value = section_context_value(doc, section)?;
+        let section_pages = pages_for_section(doc, section);
+        if !section_pages.is_empty() || !section.children.is_empty() {
+            let mut map = IndexMap::new();
+            map.insert("kind".to_string(), Value::String("section".to_string()));
+            map.insert("section".to_string(), section_value);
+            out.push(Value::Map(map));
+        }
+        collect_section_output_contexts(doc, &section.children, out)?;
+    }
+    Ok(())
+}
+
+fn taxonomy_output_contexts(doc: &WdocDocument, kind: &str) -> Vec<Value> {
+    let mut terms: BTreeMap<String, Vec<&Page>> = BTreeMap::new();
+    for page in doc.pages.iter().filter(|page| !page.draft) {
+        let values = if kind == "tags" {
+            &page.tags
+        } else {
+            &page.categories
+        };
+        for value in values {
+            terms.entry(value.clone()).or_default().push(page);
+        }
+    }
+    terms
+        .into_iter()
+        .map(|(term, mut pages)| {
+            let path = format!("{}/{}.html", kind, slug(&term));
+            pages.sort_by(|a, b| a.title.cmp(&b.title));
+            let mut map = IndexMap::new();
+            map.insert("kind".to_string(), Value::String("taxonomy".to_string()));
+            map.insert("path".to_string(), Value::String(path.clone()));
+            map.insert(
+                "title".to_string(),
+                Value::String(format!("{kind}: {term}")),
+            );
+            map.insert(
+                "pages".to_string(),
+                Value::List(
+                    pages
+                        .iter()
+                        .map(|page| page_summary_context_value(page, &path))
+                        .collect(),
+                ),
+            );
+            Value::Map(map)
+        })
+        .collect()
+}
+
+fn page_has_runtime(page: &Page) -> bool {
+    !page.signals.is_empty() || !page.bindings.is_empty()
+}
+
+fn page_signal_runtime(page: &Page) -> Result<String, String> {
+    let signals = page
+        .signals
+        .iter()
+        .map(|signal| {
+            serde_json::json!({
+                "name": signal.name,
+                "initial": signal.initial,
+                "type": signal.type_name,
+            })
+        })
+        .collect::<Vec<_>>();
+    let bindings = page
+        .bindings
+        .iter()
+        .map(|binding| {
+            serde_json::json!({
+                "name": binding.name,
+                "signal": binding.signal,
+                "target": binding.target,
+                "property": binding.property,
+                "path": binding.path,
+                "format": binding.format,
+            })
+        })
+        .collect::<Vec<_>>();
+    let data = serde_json::json!({
+        "signals": signals,
+        "bindings": bindings,
+    })
+    .to_string()
+    .replace("</", "<\\/");
+    crate::wdoc::assets::page_signal_runtime_js(&data)
+}
+
+fn presentation_nav_context_value(doc: &WdocDocument, page: &Page) -> Value {
+    let nav = presentation_nav(doc, page);
+    let mut map = IndexMap::new();
+    for (key, target) in [
+        ("left", nav.left),
+        ("right", nav.right),
+        ("up", nav.up),
+        ("down", nav.down),
+    ] {
+        map.insert(
+            key.to_string(),
+            target
+                .map(|page| Value::String(page_output_path(page)))
+                .unwrap_or(Value::Null),
+        );
+    }
+    Value::Map(map)
+}
+
+#[derive(Debug)]
+struct PresentationNav<'a> {
+    left: Option<&'a Page>,
+    right: Option<&'a Page>,
+    up: Option<&'a Page>,
+    down: Option<&'a Page>,
+}
+
+fn presentation_nav<'a>(doc: &'a WdocDocument, page: &Page) -> PresentationNav<'a> {
+    let grid = presentation_grid(doc);
+    let (row, col) = grid
+        .iter()
+        .enumerate()
+        .find_map(|(row, group)| {
+            group
+                .iter()
+                .position(|candidate| candidate.id == page.id)
+                .map(|col| (row, col))
+        })
+        .unwrap_or((0, 0));
+    let row_pages = grid.get(row).map(Vec::as_slice).unwrap_or(&[]);
+
+    PresentationNav {
+        left: col
+            .checked_sub(1)
+            .and_then(|idx| row_pages.get(idx).copied()),
+        right: row_pages.get(col + 1).copied(),
+        up: row
+            .checked_sub(1)
+            .and_then(|idx| nearest_slide_in_group(grid.get(idx), col)),
+        down: nearest_slide_in_group(grid.get(row + 1), col),
+    }
+}
+
+fn nearest_slide_in_group<'a>(group: Option<&Vec<&'a Page>>, col: usize) -> Option<&'a Page> {
+    let group = group?;
+    let idx = col.min(group.len().saturating_sub(1));
+    group.get(idx).copied()
+}
+
+fn presentation_grid(doc: &WdocDocument) -> Vec<Vec<&Page>> {
+    let mut groups = Vec::new();
+    for section in &doc.sections {
+        let mut pages = Vec::new();
+        collect_pages_by_section(std::slice::from_ref(section), &doc.pages, &mut pages);
+        if !pages.is_empty() {
+            groups.push(pages);
+        }
+    }
+
+    let mut uncategorized = Vec::new();
+    for page in &doc.pages {
+        if !page.draft
+            && !groups
+                .iter()
+                .flatten()
+                .any(|candidate| candidate.id == page.id)
+        {
+            uncategorized.push(page);
+        }
+    }
+    if !uncategorized.is_empty() {
+        groups.push(uncategorized);
+    }
+    groups
+}
+
+fn collect_pages_by_section<'a>(
+    sections: &[Section],
+    all_pages: &'a [Page],
+    out: &mut Vec<&'a Page>,
 ) {
     for section in sections {
-        let output_path = section_output_path(section);
-        let section_pages = pages_for_section(doc, section);
-        let section_children = section
-            .children
+        if let Some(page) = all_pages
             .iter()
-            .map(|child| {
-                elem(
-                    "a",
-                    &[
-                        ("class_name", s("wdoc-site-list-item")),
-                        (
-                            "href",
-                            s(relative_href(&output_path, &section_output_path(child))),
-                        ),
-                    ],
-                    vec![elem("h3", &[], vec![text(&child.title)])],
-                )
-            })
-            .collect::<Vec<_>>();
-        if !section_pages.is_empty() || !section.children.is_empty() {
-            let cards = section_pages
-                .iter()
-                .map(|page| {
-                    site_page_card_value(
-                        page,
-                        &relative_href(&output_path, &page_output_path(page)),
-                    )
-                })
-                .collect::<Vec<_>>();
-            let html = markup::render_html(&elem(
-                "section",
-                &[("class_name", s("wdoc-site-list"))],
-                vec![
-                    elem("h1", &[], vec![text(&section.title)]),
-                    Value::List(section_children),
-                    elem("div", &[("class_name", s("wdoc-site-card-grid"))], cards),
-                ],
-            ))
-            .expect("wdoc section page should serialize as HTML");
-            out.push(GeneratedSitePage {
-                path: output_path,
-                title: section.title.clone(),
-                html,
-            });
+            .find(|p| !p.draft && p.section_id == section.id)
+        {
+            out.push(page);
         }
-        collect_section_pages(doc, &section.children, out);
+        collect_pages_by_section(&section.children, all_pages, out);
     }
 }
 
@@ -258,63 +630,6 @@ fn pages_for_section<'a>(doc: &'a WdocDocument, section: &Section) -> Vec<&'a Pa
             .then_with(|| a.title.cmp(&b.title))
     });
     pages
-}
-
-fn taxonomy_pages(doc: &WdocDocument, kind: &str) -> Vec<GeneratedSitePage> {
-    let mut terms: BTreeMap<String, Vec<&Page>> = BTreeMap::new();
-    for page in doc.pages.iter().filter(|page| !page.draft) {
-        let values = if kind == "tags" {
-            &page.tags
-        } else {
-            &page.categories
-        };
-        for value in values {
-            terms.entry(value.clone()).or_default().push(page);
-        }
-    }
-
-    terms
-        .into_iter()
-        .map(|(term, mut pages)| {
-            let path = format!("{}/{}.html", kind, slug(&term));
-            pages.sort_by(|a, b| a.title.cmp(&b.title));
-            let cards = pages
-                .iter()
-                .map(|page| {
-                    site_page_card_value(page, &relative_href(&path, &page_output_path(page)))
-                })
-                .collect::<Vec<_>>();
-            let title = format!("{kind}: {term}");
-            GeneratedSitePage {
-                path,
-                title: title.clone(),
-                html: markup::render_html(&elem(
-                    "section",
-                    &[("class_name", s("wdoc-site-list"))],
-                    vec![
-                        elem("h1", &[], vec![text(&title)]),
-                        elem("div", &[("class_name", s("wdoc-site-card-grid"))], cards),
-                    ],
-                ))
-                .expect("wdoc taxonomy page should serialize as HTML"),
-            }
-        })
-        .collect()
-}
-
-fn site_page_card_value(page: &Page, href: &str) -> Value {
-    let mut children = vec![elem("h3", &[], vec![text(&page.title)])];
-    if let Some(summary) = &page.summary {
-        children.push(elem("p", &[], vec![text(summary)]));
-    }
-    if let Some(date) = &page.date {
-        children.push(elem("span", &[], vec![text(date)]));
-    }
-    elem(
-        "a",
-        &[("class_name", s("wdoc-site-card")), ("href", s(href))],
-        children,
-    )
 }
 
 fn page_output_path(page: &Page) -> String {
@@ -549,7 +864,7 @@ fn html_unescape_attr(value: &str) -> String {
 mod tests {
     use super::*;
     use crate::wdoc::model::{
-        ContentBlock, Layout, LayoutItem, Page, Section, SiteConfig, WdocDocument,
+        ContentBlock, Layout, LayoutItem, Page, Section, SiteConfig, WdocDocument, WdocTemplate,
     };
 
     fn doc_with_html(html: &str) -> WdocDocument {
