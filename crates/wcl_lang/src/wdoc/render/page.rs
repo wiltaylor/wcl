@@ -4,105 +4,6 @@ use crate::wdoc::render::layout::render_layout_items;
 use crate::Value;
 use indexmap::IndexMap;
 
-/// highlight.js local assets injected into <head>.
-const MATHJAX_CONFIG_SCRIPT: &str = r#"window.MathJax = {
-    tex: {
-        inlineMath: [['\\(', '\\)']],
-        displayMath: [['\\[', '\\]']],
-        processEscapes: true
-    },
-    options: {
-        skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
-    }
-};"#;
-
-/// Theme detection + highlight.js init + toggle logic.
-const THEME_SCRIPT: &str = r#"(function() {
-    // Determine initial theme: saved preference > system preference > light
-    function getPreferred() {
-        var saved = localStorage.getItem('wdoc-theme');
-        if (saved === 'dark' || saved === 'light') return saved;
-        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) return 'dark';
-        return 'light';
-    }
-
-    function applyTheme(theme) {
-        document.documentElement.setAttribute('data-theme', theme);
-        var light = document.getElementById('hljs-light');
-        var dark = document.getElementById('hljs-dark');
-        if (light && dark) {
-            light.disabled = (theme === 'dark');
-            dark.disabled = (theme !== 'dark');
-        }
-        var icon = document.getElementById('wdoc-theme-icon');
-        if (icon) icon.textContent = (theme === 'dark') ? '\u{2600}\u{FE0F}' : '\u{1F319}';
-        localStorage.setItem('wdoc-theme', theme);
-    }
-
-    // Apply immediately (before DOM ready) to prevent flash
-    applyTheme(getPreferred());
-
-    document.addEventListener('DOMContentLoaded', function() {
-        // highlight.js init
-        if (typeof hljs !== 'undefined') {
-            if (typeof hljsDefineWcl !== 'undefined') hljs.registerLanguage('wcl', hljsDefineWcl);
-            hljs.highlightAll();
-        }
-
-        // Toggle button
-        var toggle = document.getElementById('wdoc-theme-toggle');
-        if (toggle) {
-            toggle.addEventListener('click', function() {
-                var current = document.documentElement.getAttribute('data-theme') || 'light';
-                applyTheme(current === 'dark' ? 'light' : 'dark');
-                // Re-highlight with new theme
-                if (typeof hljs !== 'undefined') {
-                    document.querySelectorAll('pre code').forEach(function(el) {
-                        el.removeAttribute('data-highlighted');
-                        hljs.highlightElement(el);
-                    });
-                }
-            });
-        }
-
-        // Listen for system theme changes
-        if (window.matchMedia) {
-            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(e) {
-                if (!localStorage.getItem('wdoc-theme')) {
-                    applyTheme(e.matches ? 'dark' : 'light');
-                }
-            });
-        }
-    });
-})();"#;
-
-const PRESENTATION_SCRIPT: &str = r#"(function() {
-    function go(selector) {
-        var link = document.querySelector(selector);
-        if (!link) return false;
-        window.location.href = link.getAttribute('href');
-        return true;
-    }
-    document.addEventListener('keydown', function(event) {
-        if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
-        var tag = event.target && event.target.tagName ? event.target.tagName.toLowerCase() : '';
-        if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
-        var handled = false;
-        if (event.key === 'ArrowRight' || event.key === 'PageDown' || event.key === ' ') {
-            handled = go('[data-wdoc-slide-right]');
-        } else if (event.key === 'ArrowLeft' || event.key === 'Backspace') {
-            handled = go('[data-wdoc-slide-left]');
-        } else if (event.key === 'ArrowDown') {
-            handled = go('[data-wdoc-slide-down]');
-        } else if (event.key === 'ArrowUp' || event.key === 'PageUp') {
-            handled = go('[data-wdoc-slide-up]');
-        }
-        if (handled) {
-            event.preventDefault();
-        }
-    });
-})();"#;
-
 /// Render a single page as a complete HTML document.
 pub fn render_page(doc: &WdocDocument, page: &Page, css_path: &str) -> String {
     match page.template.unwrap_or(doc.template) {
@@ -271,7 +172,9 @@ fn render_site_shell(shell: SiteShell<'_>) -> String {
     if let Some(runtime) = shell.runtime {
         body_children.push(script_node(&runtime));
     }
-    body_children.push(script_node(THEME_SCRIPT));
+    body_children.push(script_node(
+        crate::wdoc::library::theme_runtime_js().expect("bundled wdoc theme runtime"),
+    ));
 
     render_document_html(
         shell.doc,
@@ -313,8 +216,12 @@ fn render_presentation_page(doc: &WdocDocument, page: &Page, css_path: &str) -> 
     if page_has_runtime(page) {
         body_children.push(script_node(&page_signal_runtime(page)));
     }
-    body_children.push(script_node(THEME_SCRIPT));
-    body_children.push(script_node(PRESENTATION_SCRIPT));
+    body_children.push(script_node(
+        crate::wdoc::library::theme_runtime_js().expect("bundled wdoc theme runtime"),
+    ));
+    body_children.push(script_node(
+        crate::wdoc::library::presentation_runtime_js().expect("bundled wdoc presentation runtime"),
+    ));
 
     render_document_html(
         doc,
@@ -414,7 +321,9 @@ fn document_head(doc: &WdocDocument, title: &str, css_path: &str, content_html: 
         ),
     ];
     if content_html.contains("data-wdoc-equation=") {
-        children.push(script_node(MATHJAX_CONFIG_SCRIPT));
+        children.push(script_node(
+            crate::wdoc::library::mathjax_config_js().expect("bundled wdoc mathjax config"),
+        ));
         children.push(elem(
             "script",
             &[
@@ -711,7 +620,7 @@ fn page_signal_runtime(page: &Page) -> String {
     })
     .to_string()
     .replace("</", "<\\/");
-    format!("(function(cfg){{if(window.__wdocPageSignalsInit){{window.__wdocPageSignalsInit(cfg);return;}}function val(v){{return v&&typeof v==='object'&&Object.prototype.hasOwnProperty.call(v,'initial')?v.initial:v;}}function clone(v){{return v==null||typeof v!=='object'?v:JSON.parse(JSON.stringify(v));}}function text(v){{if(v==null)return'';return typeof v==='string'?v:JSON.stringify(v);}}function readPath(v,p){{if(!p)return v;return String(p).replace(/\\[(\\d+)\\]/g,'.$1').split('.').filter(Boolean).reduce(function(a,k){{return a==null?undefined:a[k];}},v);}}function writePath(v,p,n){{if(!p)return n;var root=clone(v),cur=root,parts=String(p).replace(/\\[(\\d+)\\]/g,'.$1').split('.').filter(Boolean);for(var i=0;i<parts.length-1;i++){{var k=parts[i];if(cur[k]==null)cur[k]=/^\\d+$/.test(parts[i+1])?[]:{{}};cur=cur[k];}}cur[parts[parts.length-1]]=n;return root;}}function fmt(v,f){{var s=text(v);return f?String(f).replace(/\\{{value\\}}/g,s):s;}}function findTarget(id){{return document.querySelector('[data-wdoc-id=\"'+css(id)+'\"]')||document.querySelector('[data-wdoc-content-id=\"'+css(id)+'\"]')||document.getElementById(id);}}function css(s){{return String(s).replace(/\\\\/g,'\\\\\\\\').replace(/\"/g,'\\\\\"');}}function applyProp(el,prop,value){{if(!el)return;var s=text(value);if(prop==='text'||prop==='content'){{el.textContent=s;return;}}if(prop==='html'){{el.innerHTML=s;return;}}if(prop==='class'){{el.setAttribute('class',s);return;}}if(prop.indexOf('style.')===0){{el.style.setProperty(prop.slice(6).replace(/_/g,'-'),s);return;}}if(window.__wdocDiagramApplyProperty&&el.hasAttribute('data-wdoc-id')&&window.__wdocDiagramApplyProperty(el,prop,value))return;el.setAttribute(prop.replace(/_/g,'-'),s);}}function apply(){{bindings.forEach(function(b){{applyProp(findTarget(b.target),b.property,fmt(readPath(signals[b.signal],b.path),b.format));}});}}function setSignal(name,value,path){{signals[name]=writePath(signals[name],path,value);apply();document.dispatchEvent(new CustomEvent('wdoc:signal-change',{{detail:{{name:name,value:signals[name]}}}}));}}var signals={{}},bindings=cfg.bindings||[];(cfg.signals||[]).forEach(function(s){{signals[s.name]=clone(val(s));}});window.__wdocSignals=signals;window.__wdocSetSignal=setSignal;window.__wdocPageSignalsInit=function(next){{cfg=next||cfg;bindings=cfg.bindings||[];signals={{}};(cfg.signals||[]).forEach(function(s){{signals[s.name]=clone(val(s));}});window.__wdocSignals=signals;apply();}};if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',apply);else apply();}})({data});")
+    crate::wdoc::library::page_signal_runtime_js(&data).expect("bundled wdoc page signal runtime")
 }
 
 fn render_book_nav(doc: &WdocDocument, active_section: &str) -> String {

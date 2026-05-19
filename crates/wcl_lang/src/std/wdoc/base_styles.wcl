@@ -308,6 +308,62 @@ stylesheet __wdoc_base_styles {
         text_align = "center"
     }
 
+    rule rule_diagram_pan_zoom_controls {
+        selector = ".wdoc-diagram-pan-zoom-controls"
+        position = "absolute"
+        top = "8px"
+        left = "8px"
+        z_index = "1"
+        display = "flex"
+        gap = "4px"
+        background = "rgba(13, 17, 23, 0.76)"
+        border = "1px solid rgba(148, 163, 184, 0.45)"
+        border_radius = "6px"
+        padding = "4px"
+        box_shadow = "0 4px 12px rgba(0, 0, 0, 0.22)"
+    }
+
+    rule rule_diagram_pan_zoom_button {
+        selector = ".wdoc-diagram-pan-zoom-button"
+        width = "28px"
+        height = "28px"
+        border = "0"
+        border_radius = "4px"
+        background = "#f8fafc"
+        color = "#0f172a"
+        font = "600 16px/1 system-ui, sans-serif"
+        cursor = "pointer"
+    }
+
+    rule rule_diagram_pan_zoom_reset {
+        selector = ".wdoc-diagram-pan-zoom-reset"
+        width = "auto"
+        font = "600 12px/1 system-ui, sans-serif"
+        padding = "0 8px"
+    }
+
+    rule rule_diagram_menu_item_bg {
+        selector = ".wdoc-menu-item .wdoc-menu-item-bg"
+        opacity = "0"
+        transition = "opacity 120ms ease"
+    }
+
+    rule rule_diagram_menu_item_hover {
+        selector = ".wdoc-menu-item.wdoc-state-hovered .wdoc-menu-item-bg"
+        opacity = "1"
+    }
+
+    rule rule_diagram_menu_item_disabled {
+        selector = ".wdoc-menu-item-disabled"
+        opacity = ".45"
+        cursor = "default"
+    }
+
+    rule rule_diagram_menu_item_disabled_bg {
+        selector = ".wdoc-menu-item-disabled .wdoc-menu-item-bg"
+        opacity = "0 !important"
+    }
+
     font_face font_040 {
         font_family = "\"JetBrainsMono Nerd Font\""
         src = "url(\"fonts/JetBrainsMonoNerdFontMono-Regular.ttf\") format(\"truetype\")"

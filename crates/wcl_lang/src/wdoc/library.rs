@@ -1,3 +1,6 @@
+use std::path::PathBuf;
+use std::sync::OnceLock;
+
 /// The standard wdoc library WCL source.
 pub const WDOC_LIBRARY_WCL: &str = crate::standard_lib::WDOC_LIBRARY_WCL;
 
@@ -20,11 +23,85 @@ pub const JETBRAINS_MONO_NERD_ITALIC: &[u8] = crate::assets::JETBRAINS_MONO_NERD
 pub const JETBRAINS_MONO_NERD_BOLD_ITALIC: &[u8] = crate::assets::JETBRAINS_MONO_NERD_BOLD_ITALIC;
 pub const JETBRAINS_MONO_NERD_OFL: &str = crate::assets::JETBRAINS_MONO_NERD_OFL;
 
+#[derive(Clone)]
+struct RuntimeAssets {
+    mathjax_config: String,
+    theme: String,
+    presentation: String,
+    page_signal_template: String,
+    diagram: String,
+}
+
+static RUNTIME_ASSETS: OnceLock<Result<RuntimeAssets, String>> = OnceLock::new();
+
+pub fn mathjax_config_js() -> Result<&'static str, String> {
+    runtime_assets().map(|assets| assets.mathjax_config.as_str())
+}
+
+pub fn theme_runtime_js() -> Result<&'static str, String> {
+    runtime_assets().map(|assets| assets.theme.as_str())
+}
+
+pub fn presentation_runtime_js() -> Result<&'static str, String> {
+    runtime_assets().map(|assets| assets.presentation.as_str())
+}
+
+pub fn page_signal_runtime_js(config_json: &str) -> Result<String, String> {
+    let template = runtime_assets()?.page_signal_template.as_str();
+    Ok(template.replace("__WDOC_SIGNAL_CONFIG_JSON__", config_json))
+}
+
+pub fn diagram_runtime_js() -> Result<&'static str, String> {
+    runtime_assets().map(|assets| assets.diagram.as_str())
+}
+
+fn runtime_assets() -> Result<&'static RuntimeAssets, String> {
+    RUNTIME_ASSETS
+        .get_or_init(load_runtime_assets)
+        .as_ref()
+        .map_err(Clone::clone)
+}
+
+fn load_runtime_assets() -> Result<RuntimeAssets, String> {
+    let doc = crate::parse(
+        WDOC_LIBRARY_WCL,
+        crate::ParseOptions {
+            root_dir: PathBuf::from(crate::eval::imports::EMBEDDED_LIBRARY_ROOT),
+            ..Default::default()
+        },
+    );
+    if doc.has_errors() {
+        let errors = doc
+            .errors()
+            .into_iter()
+            .map(|diagnostic| diagnostic.message.clone())
+            .collect::<Vec<_>>()
+            .join("; ");
+        return Err(format!(
+            "failed to parse bundled wdoc runtime assets: {errors}"
+        ));
+    }
+
+    Ok(RuntimeAssets {
+        mathjax_config: runtime_string(&doc, "__wdoc_mathjax_config_js")?,
+        theme: runtime_string(&doc, "__wdoc_theme_runtime_js")?,
+        presentation: runtime_string(&doc, "__wdoc_presentation_runtime_js")?,
+        page_signal_template: runtime_string(&doc, "__wdoc_page_signal_runtime_js_template")?,
+        diagram: runtime_string(&doc, "__wdoc_diagram_runtime_js")?,
+    })
+}
+
+fn runtime_string(doc: &crate::Document, name: &str) -> Result<String, String> {
+    doc.values
+        .get(name)
+        .and_then(|value| value.as_string())
+        .map(str::to_string)
+        .ok_or_else(|| format!("bundled wdoc runtime asset '{name}' was not found"))
+}
+
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
-    use super::WDOC_LIBRARY_WCL;
+    use super::*;
 
     #[test]
     fn wireframe_widget_schemas_are_reachable_from_bundled_entrypoint() {
@@ -99,5 +176,24 @@ mod tests {
                 "categorized widget file should exist: {path}"
             );
         }
+    }
+
+    #[test]
+    fn runtime_assets_are_exposed_by_bundled_entrypoint() {
+        assert!(theme_runtime_js()
+            .expect("theme runtime")
+            .contains("wdoc-theme"));
+        assert!(presentation_runtime_js()
+            .expect("presentation runtime")
+            .contains("data-wdoc-slide-right"));
+        assert!(mathjax_config_js()
+            .expect("mathjax config")
+            .contains("MathJax"));
+        assert!(diagram_runtime_js()
+            .expect("diagram runtime")
+            .contains("__wdocDiagramRuntimeInit"));
+        assert!(page_signal_runtime_js("{\"signals\":[],\"bindings\":[]}")
+            .expect("page signal runtime")
+            .contains("__wdocPageSignalsInit"));
     }
 }

@@ -36,6 +36,11 @@ pub fn embedded_libraries() -> Vec<EmbeddedLibrary> {
             include_str!("std/wdoc/header.wcl")
         ),
         embedded_library!(
+            "wdoc/runtime.wcl",
+            "wdoc/runtime.wcl",
+            include_str!("std/wdoc/runtime.wcl")
+        ),
+        embedded_library!(
             "wdoc/widgets/ui/button.wcl",
             "wdoc/widgets/ui/button.wcl",
             include_str!("std/wdoc/widgets/ui/button.wcl")
