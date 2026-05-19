@@ -130,7 +130,7 @@ highlightjs:
     set -euo pipefail
     mkdir -p "{{pkg}}/highlightjs"
     tar czf "{{pkg}}/highlightjs/wcl-highlightjs.tar.gz" \
-        -C extras/highlightjs wcl.js
+        -C crates/wcl_lang/src/assets/highlightjs wcl.js
     echo "highlight.js grammar packaged to {{pkg}}/highlightjs/"
 
 # Package Chroma XML lexer into .packages/chroma/

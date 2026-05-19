@@ -4,6 +4,7 @@
 //! This crate contains the core language pipeline without CLI or LSP.
 #![allow(clippy::result_large_err, clippy::large_enum_variant)]
 
+pub mod assets;
 pub mod eval;
 pub mod fmt;
 pub mod fmt_value;

@@ -609,7 +609,10 @@ mod tests {
             .imported_paths
             .iter()
             .any(|path| path.ends_with("wdoc/header.wcl")));
-        assert!(doc.schemas.get_schema("wdoc::draw::graph_node", None).is_some());
+        assert!(doc
+            .schemas
+            .get_schema("wdoc::draw::graph_node", None)
+            .is_some());
         assert!(doc.values.contains_key("wdoc::widget_graph_node"));
     }
 

@@ -246,7 +246,7 @@ page syntax_highlighting {
                 }
 
                 paragraph p17 {
-                    content = "The highlight.js grammar (<code>extras/highlightjs/wcl.js</code>) provides syntax highlighting for any site using " + link("highlight.js", "https://highlightjs.org/") + ", including " + link("mdbook", "https://rust-lang.github.io/mdBook/") + " (which uses highlight.js by default)."
+                    content = "The highlight.js grammar (<code>crates/wcl_lang/src/assets/highlightjs/wcl.js</code>) provides syntax highlighting for any site using " + link("highlight.js", "https://highlightjs.org/") + ", including " + link("mdbook", "https://rust-lang.github.io/mdBook/") + " (which uses highlight.js by default)."
                 }
 
                 heading h3_mdbook {
@@ -266,7 +266,7 @@ page syntax_highlighting {
                     language = "bash"
                     content = <<-'BASH'
                     mkdir -p docs/book/theme
-                    cp extras/highlightjs/wcl.js docs/book/theme/
+                    cp crates/wcl_lang/src/assets/highlightjs/wcl.js docs/book/theme/
                     BASH
                 }
 

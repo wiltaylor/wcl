@@ -2,28 +2,24 @@
 pub const WDOC_LIBRARY_WCL: &str = wcl_lang::standard_lib::WDOC_LIBRARY_WCL;
 
 /// The WCL highlight.js grammar.
-pub const WCL_HIGHLIGHTJS_GRAMMAR: &str = include_str!("../../../extras/highlightjs/wcl.js");
+pub const WCL_HIGHLIGHTJS_GRAMMAR: &str = wcl_lang::assets::WCL_HIGHLIGHTJS_GRAMMAR;
 
 /// highlight.js core library (minified).
-pub const HIGHLIGHTJS_CORE: &str = include_str!("../../../extras/highlightjs/highlight.min.js");
+pub const HIGHLIGHTJS_CORE: &str = wcl_lang::assets::HIGHLIGHTJS_CORE;
 
 /// highlight.js GitHub light theme CSS (minified).
-pub const HIGHLIGHTJS_THEME_LIGHT_CSS: &str =
-    include_str!("../../../extras/highlightjs/github.min.css");
+pub const HIGHLIGHTJS_THEME_LIGHT_CSS: &str = wcl_lang::assets::HIGHLIGHTJS_THEME_LIGHT_CSS;
 
 /// highlight.js GitHub dark theme CSS (minified).
-pub const HIGHLIGHTJS_THEME_DARK_CSS: &str =
-    include_str!("../../../extras/highlightjs/github-dark.min.css");
+pub const HIGHLIGHTJS_THEME_DARK_CSS: &str = wcl_lang::assets::HIGHLIGHTJS_THEME_DARK_CSS;
 
 /// Bundled JetBrainsMono Nerd Font assets for terminal diagrams.
-pub const JETBRAINS_MONO_NERD_REGULAR: &[u8] =
-    include_bytes!("../assets/fonts/JetBrainsMonoNerdFontMono-Regular.ttf");
-pub const JETBRAINS_MONO_NERD_BOLD: &[u8] =
-    include_bytes!("../assets/fonts/JetBrainsMonoNerdFontMono-Bold.ttf");
-pub const JETBRAINS_MONO_NERD_ITALIC: &[u8] =
-    include_bytes!("../assets/fonts/JetBrainsMonoNerdFontMono-Italic.ttf");
+pub const JETBRAINS_MONO_NERD_REGULAR: &[u8] = wcl_lang::assets::JETBRAINS_MONO_NERD_REGULAR;
+pub const JETBRAINS_MONO_NERD_BOLD: &[u8] = wcl_lang::assets::JETBRAINS_MONO_NERD_BOLD;
+pub const JETBRAINS_MONO_NERD_ITALIC: &[u8] = wcl_lang::assets::JETBRAINS_MONO_NERD_ITALIC;
 pub const JETBRAINS_MONO_NERD_BOLD_ITALIC: &[u8] =
-    include_bytes!("../assets/fonts/JetBrainsMonoNerdFontMono-BoldItalic.ttf");
+    wcl_lang::assets::JETBRAINS_MONO_NERD_BOLD_ITALIC;
+pub const JETBRAINS_MONO_NERD_OFL: &str = wcl_lang::assets::JETBRAINS_MONO_NERD_OFL;
 
 #[cfg(test)]
 mod tests {

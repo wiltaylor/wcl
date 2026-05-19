@@ -21,14 +21,14 @@ wdoc-serve-local: wdoc-serve
 
 # Build full website (Hugo + wdoc merged)
 web-build: wdoc-build
-    cp extras/highlightjs/wcl.js site/static/js/wcl.js
+    cp crates/wcl_lang/src/assets/highlightjs/wcl.js site/static/js/wcl.js
     cd site && hugo --minify
     mkdir -p site/public/docs
     cp -r docs/build/* site/public/docs/
 
 # Serve website locally (Hugo dev server with wdoc at /docs/)
 web-serve: wdoc-build
-    cp extras/highlightjs/wcl.js site/static/js/wcl.js
+    cp crates/wcl_lang/src/assets/highlightjs/wcl.js site/static/js/wcl.js
     mkdir -p site/static/docs
     cp -r docs/build/* site/static/docs/
     cd site && hugo server --buildDrafts --navigateToChanged
