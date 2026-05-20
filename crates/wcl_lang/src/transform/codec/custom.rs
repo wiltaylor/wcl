@@ -4,7 +4,7 @@
 //! tokenizer receives a seekable source cursor and emits token maps. The parser
 //! receives a seekable token cursor and emits WCL record values.
 
-use crate::eval::evaluator::Evaluator;
+use crate::eval::evaluator::{print_function_profile, reset_function_profile, Evaluator};
 use crate::eval::functions::BuiltinFn;
 use crate::eval::imports::RealFileSystem;
 use crate::eval::scope::{ScopeEntry, ScopeEntryKind, ScopeKind};
@@ -24,9 +24,55 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 static CURSOR_ID: AtomicU64 = AtomicU64::new(1);
 const CODEC_MAX_CALL_DEPTH: usize = 1024;
+
+struct CodecProfiler {
+    enabled: bool,
+    label: String,
+    started: Instant,
+    last: Instant,
+    entries: Vec<(&'static str, Duration)>,
+}
+
+impl CodecProfiler {
+    fn from_env(label: impl Into<String>) -> Self {
+        let now = Instant::now();
+        Self {
+            enabled: std::env::var_os("WCL_PROFILE").is_some(),
+            label: label.into(),
+            started: now,
+            last: now,
+            entries: Vec::new(),
+        }
+    }
+
+    fn checkpoint(&mut self, name: &'static str) {
+        if !self.enabled {
+            return;
+        }
+        let now = Instant::now();
+        self.entries.push((name, now.duration_since(self.last)));
+        self.last = now;
+    }
+
+    fn finish(&self) {
+        if !self.enabled {
+            return;
+        }
+        eprintln!("WCL_PROFILE {label}", label = self.label);
+        for (name, duration) in &self.entries {
+            eprintln!("  {name:<36} {duration:>10.3?}");
+        }
+        eprintln!(
+            "  {name:<36} {duration:>10.3?}",
+            name = "total",
+            duration = self.started.elapsed()
+        );
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CustomCodecMode {
@@ -499,12 +545,16 @@ pub fn decode_custom_file_with_options(
             CodecEvalSession::new(codec, HashMap::new(), CODEC_MAX_CALL_DEPTH),
         )
     };
-    Ok(DecodedFile { value, session })
+    Ok(DecodedFile {
+        value: value.into_unshared(),
+        session,
+    })
 }
 
 fn materialize_decoded_records(value: Value) -> Result<Vec<Value>, TransformError> {
     match value {
-        Value::List(records) => Ok(records),
+        Value::Shared(value) => materialize_decoded_records((*value).clone()),
+        Value::List(records) => Ok(records.into_iter().map(Value::into_unshared).collect()),
         Value::NativeStream(stream) => {
             let mut records = Vec::new();
             loop {
@@ -520,9 +570,9 @@ fn materialize_decoded_records(value: Value) -> Result<Vec<Value>, TransformErro
                 drop(state);
                 records.push(value);
             }
-            Ok(records)
+            Ok(records.into_iter().map(Value::into_unshared).collect())
         }
-        other => Ok(vec![other]),
+        other => Ok(vec![other.into_unshared()]),
     }
 }
 
@@ -682,25 +732,44 @@ pub fn encode_custom_value_with_session_and_registry(
     target: super::native::OutputTarget<'_>,
     registry: Arc<CustomCodecRegistry>,
 ) -> Result<usize, TransformError> {
+    let mut profiler = CodecProfiler::from_env(format!("codec {}", codec.name));
+    if profiler.enabled {
+        reset_function_profile();
+    }
     session.register_builtins(encoder_builtins(registry.clone(), Arc::new(Mutex::new(0))));
     codec.require_encode()?;
-    if let Value::List(records) = value {
-        return match target {
+    if let Some(records) = value.as_list() {
+        let written = match target {
             super::native::OutputTarget::Stream(writer) => {
                 encode_custom_records_with_session_and_registry(
                     session, records, codec, options, writer, registry,
                 )?;
-                Ok(records.len())
+                records.len()
             }
             super::native::OutputTarget::Directory(dir) => {
                 let output = call_records_encoder(session, records, codec, options)?;
-                write_output_to_directory(session, &output, codec, dir, options)
+                profiler.checkpoint("call encoder_all");
+                if profiler.enabled {
+                    print_function_profile(&codec.name, 30);
+                }
+                let written = write_output_to_directory(session, &output, codec, dir, options)?;
+                profiler.checkpoint("write output");
+                written
             }
         };
+        profiler.finish();
+        return Ok(written);
     }
 
     let output = call_single_encoder(session, value, codec, options)?;
-    write_output_to_target(session, &output, codec, target, options).map(|count| count.max(1))
+    profiler.checkpoint("call encoder");
+    if profiler.enabled {
+        print_function_profile(&codec.name, 30);
+    }
+    let written = write_output_to_target(session, &output, codec, target, options)?;
+    profiler.checkpoint("write output");
+    profiler.finish();
+    Ok(written.max(1))
 }
 
 pub fn encode_custom_value_with_session_and_registry_and_builtins(
@@ -832,6 +901,7 @@ fn write_files_value(
     dir: &Path,
 ) -> Result<usize, TransformError> {
     match files {
+        Value::Shared(value) => write_files_value(session, value, codec, dir),
         Value::Map(map) => {
             let mut count = 0;
             for (path, content) in map {
@@ -908,6 +978,9 @@ fn write_output_to_stream(
     writer: &mut dyn Write,
     byte_chunk: bool,
 ) -> Result<(), TransformError> {
+    if let Value::Shared(value) = value {
+        return write_output_to_stream(session, value, codec, writer, byte_chunk);
+    }
     if output_files(value).is_some() || output_file(value).is_some() {
         return Err(TransformError::Codec(format!(
             "custom codec '{}' returned file output for a stream target",
@@ -1046,13 +1119,33 @@ fn codec_encode_value(
     registry: Arc<CustomCodecRegistry>,
     depth: Arc<Mutex<usize>>,
 ) -> Result<Value, TransformError> {
+    let use_native =
+        codec_name == "html" || (codec_name == "svg" && super::native::is_svg_diagram_value(value));
+    if use_native {
+        let native_registry = super::native::NativeCodecRegistry::standard();
+        let native = native_registry
+            .get(codec_name)
+            .ok_or_else(|| TransformError::UnknownCodec(codec_name.to_string()))?;
+        let mut out = Vec::new();
+        super::native::encode_native_value(
+            value,
+            native,
+            options,
+            super::native::OutputTarget::Stream(&mut out),
+        )?;
+        return match String::from_utf8(out) {
+            Ok(text) => Ok(Value::String(text)),
+            Err(err) => Ok(Value::Bytes(err.into_bytes())),
+        };
+    }
+
     if let Some(custom) = registry.get(codec_name) {
         let mut session = CodecEvalSession::new(
             custom,
             encoder_builtins(registry.clone(), depth),
             CODEC_MAX_CALL_DEPTH,
         );
-        let output = if let Value::List(records) = value {
+        let output = if let Some(records) = value.as_list() {
             if custom.encoder_all.is_some() {
                 call_records_encoder(&mut session, records, custom, options)?
             } else {
@@ -1064,21 +1157,7 @@ fn codec_encode_value(
         return Ok(rehost_wcl_streams(output, session));
     }
 
-    let native_registry = super::native::NativeCodecRegistry::standard();
-    let native = native_registry
-        .get(codec_name)
-        .ok_or_else(|| TransformError::UnknownCodec(codec_name.to_string()))?;
-    let mut out = Vec::new();
-    super::native::encode_native_value(
-        value,
-        native,
-        options,
-        super::native::OutputTarget::Stream(&mut out),
-    )?;
-    match String::from_utf8(out) {
-        Ok(text) => Ok(Value::String(text)),
-        Err(err) => Ok(Value::Bytes(err.into_bytes())),
-    }
+    Err(TransformError::UnknownCodec(codec_name.to_string()))
 }
 
 fn rehost_wcl_streams(value: Value, session: CodecEvalSession) -> Value {
@@ -1087,6 +1166,7 @@ fn rehost_wcl_streams(value: Value, session: CodecEvalSession) -> Value {
 
 fn rehost_wcl_streams_with_session(value: Value, session: Arc<Mutex<CodecEvalSession>>) -> Value {
     match value {
+        Value::Shared(value) => rehost_wcl_streams_with_session((*value).clone(), session),
         Value::Stream(stream) => Value::NativeStream(NativeStreamValue {
             inner: Arc::new(Mutex::new(NativeStreamState {
                 next: Box::new(move || {
@@ -1237,14 +1317,14 @@ fn parse_records(
                 codec.name
             )));
         }
-        let Value::List(records) = value else {
+        let Some(records) = value.as_list() else {
             return Err(TransformError::Codec(format!(
                 "custom codec '{}' parser_all must return a list of records, got {}",
                 codec.name,
                 value.type_name()
             )));
         };
-        for record in &records {
+        for record in records {
             if let Value::Map(map) = record {
                 if let Some(message) = codec_error_message(map) {
                     return Err(TransformError::Codec(format!(
@@ -1254,7 +1334,7 @@ fn parse_records(
                 }
             }
         }
-        return Ok(records);
+        return Ok(records.iter().cloned().map(Value::into_unshared).collect());
     }
 
     let parser = codec.parser.as_ref().ok_or_else(|| {
@@ -1275,42 +1355,39 @@ fn parse_records(
             builtins.clone(),
             "parser",
         )?;
-        match value {
-            Value::Null => {
-                if !token_cursor.lock().unwrap().eof() {
-                    return Err(TransformError::Codec(format!(
-                        "custom codec '{}' parser returned null before EOF at token {}",
-                        codec.name, before
-                    )));
-                }
-                break;
+        if value == Value::Null {
+            if !token_cursor.lock().unwrap().eof() {
+                return Err(TransformError::Codec(format!(
+                    "custom codec '{}' parser returned null before EOF at token {}",
+                    codec.name, before
+                )));
             }
-            Value::Map(map) => {
-                if let Some(message) = codec_error_message(&map) {
-                    return Err(TransformError::Codec(format!(
-                        "custom codec '{}' parser error at token {}: {}",
-                        codec.name, before, message
-                    )));
-                }
-                let after = token_cursor.lock().unwrap().pos;
-                if after == before {
-                    return Err(TransformError::Codec(format!(
-                        "custom codec '{}' parser did not advance at token {}",
-                        codec.name, before
-                    )));
-                }
-                records.push(Value::Map(map));
+            break;
+        }
+        if let Some(map) = value.as_map() {
+            if let Some(message) = codec_error_message(&map) {
+                return Err(TransformError::Codec(format!(
+                    "custom codec '{}' parser error at token {}: {}",
+                    codec.name, before, message
+                )));
             }
-            other => {
-                let after = token_cursor.lock().unwrap().pos;
-                if after == before {
-                    return Err(TransformError::Codec(format!(
-                        "custom codec '{}' parser did not advance at token {}",
-                        codec.name, before
-                    )));
-                }
-                records.push(other);
+            let after = token_cursor.lock().unwrap().pos;
+            if after == before {
+                return Err(TransformError::Codec(format!(
+                    "custom codec '{}' parser did not advance at token {}",
+                    codec.name, before
+                )));
             }
+            records.push(value.into_unshared());
+        } else {
+            let after = token_cursor.lock().unwrap().pos;
+            if after == before {
+                return Err(TransformError::Codec(format!(
+                    "custom codec '{}' parser did not advance at token {}",
+                    codec.name, before
+                )));
+            }
+            records.push(value.into_unshared());
         }
     }
 
@@ -1370,42 +1447,39 @@ fn parser_record_stream(
         }
         .map_err(|e| e.to_string())?;
 
-        match value {
-            Value::Null => {
-                if !token_cursor.lock().unwrap().eof() {
-                    return Err(format!(
-                        "custom codec '{}' parser returned null before EOF at token {}",
-                        codec.name, before
-                    ));
-                }
-                Ok(None)
+        if value == Value::Null {
+            if !token_cursor.lock().unwrap().eof() {
+                return Err(format!(
+                    "custom codec '{}' parser returned null before EOF at token {}",
+                    codec.name, before
+                ));
             }
-            Value::Map(map) => {
-                if let Some(message) = codec_error_message(&map) {
-                    return Err(format!(
-                        "custom codec '{}' parser error at token {}: {}",
-                        codec.name, before, message
-                    ));
-                }
-                let after = token_cursor.lock().unwrap().pos;
-                if after == before {
-                    return Err(format!(
-                        "custom codec '{}' parser did not advance at token {}",
-                        codec.name, before
-                    ));
-                }
-                Ok(Some(Value::Map(map)))
+            return Ok(None);
+        }
+        if let Some(map) = value.as_map() {
+            if let Some(message) = codec_error_message(&map) {
+                return Err(format!(
+                    "custom codec '{}' parser error at token {}: {}",
+                    codec.name, before, message
+                ));
             }
-            other => {
-                let after = token_cursor.lock().unwrap().pos;
-                if after == before {
-                    return Err(format!(
-                        "custom codec '{}' parser did not advance at token {}",
-                        codec.name, before
-                    ));
-                }
-                Ok(Some(other))
+            let after = token_cursor.lock().unwrap().pos;
+            if after == before {
+                return Err(format!(
+                    "custom codec '{}' parser did not advance at token {}",
+                    codec.name, before
+                ));
             }
+            Ok(Some(value.into_unshared()))
+        } else {
+            let after = token_cursor.lock().unwrap().pos;
+            if after == before {
+                return Err(format!(
+                    "custom codec '{}' parser did not advance at token {}",
+                    codec.name, before
+                ));
+            }
+            Ok(Some(value.into_unshared()))
         }
     }))
 }
@@ -1933,6 +2007,7 @@ fn builtin_value(name: String, arity: usize) -> Value {
         params: (0..arity).map(|i| format!("arg{i}")).collect(),
         body: FunctionBody::Builtin(name),
         closure_scope: None,
+        debug_name: None,
         decorators: Vec::new(),
         lambda_attrs: LambdaAttrs::default(),
         param_types: vec![],
@@ -1952,7 +2027,7 @@ fn bytes_to_mode_value(bytes: &[u8], mode: CustomCodecMode) -> Result<Value, Str
 }
 
 fn value_to_bytes(value: &Value) -> Result<Vec<u8>, String> {
-    let Value::List(items) = value else {
+    let Some(items) = value.as_list() else {
         return Err(format!("expected list(i64), got {}", value.type_name()));
     };
     let mut bytes = Vec::with_capacity(items.len());

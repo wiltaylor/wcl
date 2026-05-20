@@ -50,6 +50,8 @@ pub enum Value {
     NativeStream(NativeStreamValue),
     /// Private state handle injected while evaluating lazy/stream bodies.
     StateHandle(StateHandleValue),
+    /// Shared immutable value used to pass large values through call scopes cheaply.
+    Shared(Arc<Value>),
     /// ISO 8601 date value (e.g. `d"2024-03-15"`)
     Date(String),
     /// RFC 3339 offset date-time value (e.g. `odt"1979-05-27T07:32:00Z"`)
@@ -137,6 +139,8 @@ pub struct FunctionValue {
     pub params: Vec<String>,
     pub body: FunctionBody,
     pub closure_scope: Option<ScopeId>,
+    /// Best-effort source binding name used for diagnostics and profiling.
+    pub debug_name: Option<String>,
     /// Decorators applied to the let/export-let binding that produced this function.
     pub decorators: Vec<DecoratorValue>,
     /// Attributes from decorators on the let binding (e.g. @stateful, @accumulator)
@@ -249,8 +253,32 @@ pub enum FunctionBody {
 pub struct ScopeId(pub u32);
 
 impl Value {
+    pub fn into_unshared(self) -> Self {
+        match self {
+            Value::Shared(value) => Arc::unwrap_or_clone(value).into_unshared(),
+            Value::List(items) => {
+                Value::List(items.into_iter().map(Value::into_unshared).collect())
+            }
+            Value::Map(map) => Value::Map(
+                map.into_iter()
+                    .map(|(key, value)| (key, value.into_unshared()))
+                    .collect(),
+            ),
+            Value::Object(mut object) => {
+                object.fields = object
+                    .fields
+                    .into_iter()
+                    .map(|(key, value)| (key, value.into_unshared()))
+                    .collect();
+                Value::Object(object)
+            }
+            other => other,
+        }
+    }
+
     pub fn type_name(&self) -> &'static str {
         match self {
+            Value::Shared(value) => value.type_name(),
             Value::String(_) => "string",
             Value::Int(_) => "int",
             Value::BigInt(_) => "bigint",
@@ -283,6 +311,7 @@ impl Value {
 
     pub fn is_truthy(&self) -> Option<bool> {
         match self {
+            Value::Shared(value) => value.is_truthy(),
             Value::Bool(b) => Some(*b),
             _ => None,
         }
@@ -290,6 +319,7 @@ impl Value {
 
     pub fn as_string(&self) -> Option<&str> {
         match self {
+            Value::Shared(value) => value.as_string(),
             Value::String(s) => Some(s),
             _ => None,
         }
@@ -297,6 +327,7 @@ impl Value {
 
     pub fn as_int(&self) -> Option<i64> {
         match self {
+            Value::Shared(value) => value.as_int(),
             Value::Int(i) => Some(*i),
             _ => None,
         }
@@ -304,6 +335,7 @@ impl Value {
 
     pub fn as_float(&self) -> Option<f64> {
         match self {
+            Value::Shared(value) => value.as_float(),
             Value::Float(f) => Some(*f),
             _ => None,
         }
@@ -311,6 +343,7 @@ impl Value {
 
     pub fn as_bool(&self) -> Option<bool> {
         match self {
+            Value::Shared(value) => value.as_bool(),
             Value::Bool(b) => Some(*b),
             _ => None,
         }
@@ -318,6 +351,7 @@ impl Value {
 
     pub fn as_list(&self) -> Option<&[Value]> {
         match self {
+            Value::Shared(value) => value.as_list(),
             Value::List(l) => Some(l),
             _ => None,
         }
@@ -325,6 +359,7 @@ impl Value {
 
     pub fn as_map(&self) -> Option<&IndexMap<String, Value>> {
         match self {
+            Value::Shared(value) => value.as_map(),
             Value::Map(m) => Some(m),
             Value::Object(o) => Some(&o.fields),
             _ => None,
@@ -333,6 +368,7 @@ impl Value {
 
     pub fn as_identifier(&self) -> Option<&str> {
         match self {
+            Value::Shared(value) => value.as_identifier(),
             Value::Identifier(s) => Some(s),
             _ => None,
         }
@@ -340,6 +376,7 @@ impl Value {
 
     pub fn as_symbol(&self) -> Option<&str> {
         match self {
+            Value::Shared(value) => value.as_symbol(),
             Value::Symbol(s) => Some(s),
             _ => None,
         }
@@ -347,17 +384,23 @@ impl Value {
 
     pub fn as_block_ref(&self) -> Option<&BlockRef> {
         match self {
+            Value::Shared(value) => value.as_block_ref(),
             Value::BlockRef(b) => Some(b),
             _ => None,
         }
     }
 
     pub fn is_null(&self) -> bool {
-        matches!(self, Value::Null)
+        match self {
+            Value::Shared(value) => value.is_null(),
+            Value::Null => true,
+            _ => false,
+        }
     }
 
     pub fn as_bigint(&self) -> Option<i128> {
         match self {
+            Value::Shared(value) => value.as_bigint(),
             Value::BigInt(i) => Some(*i),
             Value::Int(i) => Some(*i as i128),
             _ => None,
@@ -366,6 +409,7 @@ impl Value {
 
     pub fn as_date(&self) -> Option<&str> {
         match self {
+            Value::Shared(value) => value.as_date(),
             Value::Date(s) => Some(s),
             Value::OffsetDateTime(s) => Some(s),
             Value::LocalDateTime(s) => Some(s),
@@ -375,6 +419,7 @@ impl Value {
 
     pub fn as_local_time(&self) -> Option<&str> {
         match self {
+            Value::Shared(value) => value.as_local_time(),
             Value::LocalTime(s) => Some(s),
             _ => None,
         }
@@ -382,6 +427,7 @@ impl Value {
 
     pub fn as_duration(&self) -> Option<&str> {
         match self {
+            Value::Shared(value) => value.as_duration(),
             Value::Duration(s) => Some(s),
             _ => None,
         }
@@ -389,6 +435,7 @@ impl Value {
 
     pub fn to_interp_string(&self) -> Result<String, String> {
         match self {
+            Value::Shared(value) => value.to_interp_string(),
             Value::String(s) => Ok(s.clone()),
             Value::Int(i) => Ok(i.to_string()),
             Value::BigInt(i) => Ok(i.to_string()),
@@ -415,6 +462,9 @@ impl Value {
 impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
+            (Value::Shared(a), Value::Shared(b)) => a == b,
+            (Value::Shared(a), b) => a.as_ref() == b,
+            (a, Value::Shared(b)) => a == b.as_ref(),
             (Value::String(a), Value::String(b)) => a == b,
             (Value::Int(a), Value::Int(b)) => a == b,
             (Value::BigInt(a), Value::BigInt(b)) => a == b,
@@ -489,6 +539,7 @@ pub(crate) fn values_equal_for_id_expr(a: &Value, b: &Value) -> bool {
 
 fn id_text(value: &Value) -> Option<&str> {
     match value {
+        Value::Shared(value) => id_text(value),
         Value::String(s) | Value::Identifier(s) => Some(s),
         Value::BlockRef(block) => block.id.as_deref(),
         _ => None,
@@ -498,6 +549,7 @@ fn id_text(value: &Value) -> Option<&str> {
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Value::Shared(value) => write!(f, "{value}"),
             Value::String(s) => write!(f, "{}", s),
             Value::Int(i) => write!(f, "{}", i),
             Value::BigInt(i) => write!(f, "{}", i),
@@ -634,6 +686,7 @@ mod tests {
             params: vec![],
             body: FunctionBody::Builtin("len".into()),
             closure_scope: None,
+            debug_name: Some("len".to_string()),
             decorators: Vec::new(),
             lambda_attrs: LambdaAttrs::default(),
             param_types: vec![],

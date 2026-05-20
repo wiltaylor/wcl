@@ -8,6 +8,7 @@ use crate::{BlockRef, Diagnostic, Severity, Value};
 /// Convert a WCL Value to a serde_json::Value.
 pub fn value_to_json(value: &Value) -> serde_json::Value {
     match value {
+        Value::Shared(value) => value_to_json(value),
         Value::String(s) => json!(s),
         Value::Int(i) => json!(i),
         Value::BigInt(i) => {

@@ -18,6 +18,9 @@ impl<'de> de::Deserializer<'de> for Deserializer {
 
     fn deserialize_any<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Error> {
         match self.value {
+            Value::Shared(value) => {
+                Deserializer::from_value((*value).clone()).deserialize_any(visitor)
+            }
             Value::String(s) => visitor.visit_string(s),
             Value::Int(i) => visitor.visit_i64(i),
             Value::BigInt(i) => visitor.visit_i128(i),

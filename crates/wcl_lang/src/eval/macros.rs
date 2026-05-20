@@ -1421,6 +1421,7 @@ impl<'a> MacroExpander<'a> {
     /// Human-readable name for a Value's runtime type.
     fn value_type_name(value: &Value) -> String {
         match value {
+            Value::Shared(value) => Self::value_type_name(value),
             Value::String(_) => "string".to_string(),
             Value::Int(_) => "int".to_string(),
             Value::BigInt(_) => "bigint".to_string(),

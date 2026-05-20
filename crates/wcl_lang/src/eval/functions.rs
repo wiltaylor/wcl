@@ -841,6 +841,12 @@ pub fn builtin_signatures() -> Vec<FunctionSignature> {
             doc: "Render a diagram map to SVG".into(),
         },
         FunctionSignature {
+            name: "html_render".into(),
+            params: vec!["value".into()],
+            return_type: "string".into(),
+            doc: "Render a WCL HTML value to HTML markup".into(),
+        },
+        FunctionSignature {
             name: "byte_stream".into(),
             params: vec!["value".into()],
             return_type: "stream".into(),
@@ -1041,6 +1047,7 @@ pub fn builtin_registry() -> HashMap<String, BuiltinFn> {
     );
     m.insert("diagram_fit".into(), wrap_builtin(diagram_fit));
     m.insert("diagram_svg".into(), wrap_builtin(diagram_svg));
+    m.insert("html_render".into(), wrap_builtin(html_render));
     m.insert("byte_stream".into(), wrap_builtin(byte_stream));
 
     m
@@ -1121,12 +1128,31 @@ fn diagram_fit(args: &[Value]) -> Result<Value, String> {
 
 fn diagram_svg(args: &[Value]) -> Result<Value, String> {
     expect_args(args, 1, "diagram_svg")?;
-    crate::transform::codec::native::encode_svg_value_to_string(
+    let started = std::time::Instant::now();
+    let result = crate::transform::codec::native::encode_svg_value_to_string(
         &args[0],
         &crate::transform::codec::CodecOptions::new(),
-    )
-    .map(Value::String)
-    .map_err(|e| e.to_string())
+    );
+    if std::env::var_os("WCL_PROFILE").is_some() {
+        let id = args[0]
+            .as_map()
+            .and_then(|map| map.get("id"))
+            .map(value_to_plain_string)
+            .filter(|id| !id.is_empty())
+            .unwrap_or_else(|| "(anonymous)".to_string());
+        eprintln!(
+            "WCL_PROFILE builtin diagram_svg {id} {duration:>10.3?}",
+            duration = started.elapsed()
+        );
+    }
+    result.map(Value::String).map_err(|e| e.to_string())
+}
+
+fn html_render(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 1, "html_render")?;
+    Ok(Value::String(
+        crate::transform::codec::native::encode_html_value_to_string(&args[0]),
+    ))
 }
 
 fn byte_stream(args: &[Value]) -> Result<Value, String> {
@@ -1165,10 +1191,9 @@ fn expect_map<'a>(
     value: &'a Value,
     name: &str,
 ) -> Result<&'a indexmap::IndexMap<String, Value>, String> {
-    match value {
-        Value::Map(map) => Ok(map),
-        other => Err(format!("{name}: expected map, got {}", other.type_name())),
-    }
+    value
+        .as_map()
+        .ok_or_else(|| format!("{name}: expected map, got {}", value.type_name()))
 }
 
 fn map_number(map: &indexmap::IndexMap<String, Value>, key: &str) -> Option<f64> {
@@ -1195,15 +1220,14 @@ fn expect_min_args(args: &[Value], n: usize, name: &str) -> Result<(), String> {
 }
 
 fn get_string<'a>(v: &'a Value, pos: usize, fn_name: &str) -> Result<&'a str, String> {
-    match v {
-        Value::String(s) => Ok(s.as_str()),
-        other => Err(format!(
+    v.as_string().ok_or_else(|| {
+        format!(
             "{}: argument {} must be string, got {}",
             fn_name,
             pos,
-            other.type_name()
-        )),
-    }
+            v.type_name()
+        )
+    })
 }
 
 fn get_int(v: &Value, pos: usize, fn_name: &str) -> Result<i64, String> {
@@ -1229,15 +1253,14 @@ fn get_int(v: &Value, pos: usize, fn_name: &str) -> Result<i64, String> {
 }
 
 fn get_list<'a>(v: &'a Value, pos: usize, fn_name: &str) -> Result<&'a [Value], String> {
-    match v {
-        Value::List(l) => Ok(l.as_slice()),
-        other => Err(format!(
+    v.as_list().ok_or_else(|| {
+        format!(
             "{}: argument {} must be list, got {}",
             fn_name,
             pos,
-            other.type_name()
-        )),
-    }
+            v.type_name()
+        )
+    })
 }
 
 fn value_to_plain_string(value: &Value) -> String {
@@ -1475,6 +1498,7 @@ fn ends_with(args: &[Value]) -> Result<Value, String> {
 fn fn_contains(args: &[Value]) -> Result<Value, String> {
     expect_args(args, 2, "contains")?;
     match &args[0] {
+        Value::Shared(value) => fn_contains(&[value.as_ref().clone(), args[1].clone()]),
         Value::String(s) => {
             let substr = get_string(&args[1], 2, "contains")?;
             Ok(Value::Bool(s.contains(substr)))
@@ -2063,6 +2087,16 @@ fn pi(args: &[Value]) -> Result<Value, String> {
 fn len(args: &[Value]) -> Result<Value, String> {
     expect_args(args, 1, "len")?;
     match &args[0] {
+        Value::Shared(value) => match value.as_ref() {
+            Value::List(l) => Ok(Value::Int(l.len() as i64)),
+            Value::Map(m) => Ok(Value::Int(m.len() as i64)),
+            Value::Object(o) => Ok(Value::Int(o.fields.len() as i64)),
+            Value::Set(s) => Ok(Value::Int(s.len() as i64)),
+            other => Err(format!(
+                "len: argument must be list, map, object, or set, got {}",
+                other.type_name()
+            )),
+        },
         Value::List(l) => Ok(Value::Int(l.len() as i64)),
         Value::Map(m) => Ok(Value::Int(m.len() as i64)),
         Value::Object(o) => Ok(Value::Int(o.fields.len() as i64)),
@@ -2077,6 +2111,20 @@ fn len(args: &[Value]) -> Result<Value, String> {
 fn keys(args: &[Value]) -> Result<Value, String> {
     expect_args(args, 1, "keys")?;
     match &args[0] {
+        Value::Shared(value) => match value.as_ref() {
+            Value::Map(m) => {
+                let ks: Vec<Value> = m.keys().map(|k| Value::String(k.clone())).collect();
+                Ok(Value::List(ks))
+            }
+            Value::Object(o) => {
+                let ks: Vec<Value> = o.fields.keys().map(|k| Value::String(k.clone())).collect();
+                Ok(Value::List(ks))
+            }
+            other => Err(format!(
+                "keys: argument must be map or object, got {}",
+                other.type_name()
+            )),
+        },
         Value::Map(m) => {
             let ks: Vec<Value> = m.keys().map(|k| Value::String(k.clone())).collect();
             Ok(Value::List(ks))
@@ -2095,6 +2143,20 @@ fn keys(args: &[Value]) -> Result<Value, String> {
 fn fn_values(args: &[Value]) -> Result<Value, String> {
     expect_args(args, 1, "values")?;
     match &args[0] {
+        Value::Shared(value) => match value.as_ref() {
+            Value::Map(m) => {
+                let vs: Vec<Value> = m.values().cloned().collect();
+                Ok(Value::List(vs))
+            }
+            Value::Object(o) => {
+                let vs: Vec<Value> = o.fields.values().cloned().collect();
+                Ok(Value::List(vs))
+            }
+            other => Err(format!(
+                "values: argument must be map or object, got {}",
+                other.type_name()
+            )),
+        },
         Value::Map(m) => {
             let vs: Vec<Value> = m.values().cloned().collect();
             Ok(Value::List(vs))
@@ -2241,16 +2303,12 @@ fn zip(args: &[Value]) -> Result<Value, String> {
 
 fn map_has(args: &[Value]) -> Result<Value, String> {
     expect_args(args, 2, "map_has")?;
-    let map = match &args[0] {
-        Value::Map(m) => m,
-        Value::Object(o) => &o.fields,
-        other => {
-            return Err(format!(
-                "map_has: argument 1 must be map or object, got {}",
-                other.type_name()
-            ))
-        }
-    };
+    let map = args[0].as_map().ok_or_else(|| {
+        format!(
+            "map_has: argument 1 must be map or object, got {}",
+            args[0].type_name()
+        )
+    })?;
     let key = get_string(&args[1], 2, "map_has")?;
     Ok(Value::Bool(map.contains_key(key)))
 }
@@ -2458,6 +2516,7 @@ fn attr_or(args: &[Value]) -> Result<Value, String> {
     expect_args(args, 3, "attr_or")?;
     let key = get_string(&args[1], 2, "attr_or")?;
     let value = match &args[0] {
+        Value::Shared(value) => attr_value(value, key).cloned(),
         Value::BlockRef(block) => block.attributes.get(key).cloned(),
         Value::Map(map) => map.get(key).cloned(),
         Value::Object(object) => object.fields.get(key).cloned(),
@@ -2484,15 +2543,12 @@ fn url_component_encode(args: &[Value]) -> Result<Value, String> {
 
 fn map_set(args: &[Value]) -> Result<Value, String> {
     expect_args(args, 3, "map_set")?;
-    let map = match &args[0] {
-        Value::Map(m) => m,
-        other => {
-            return Err(format!(
-                "map_set: argument 1 must be map, got {}",
-                other.type_name()
-            ))
-        }
-    };
+    let map = args[0].as_map().ok_or_else(|| {
+        format!(
+            "map_set: argument 1 must be map, got {}",
+            args[0].type_name()
+        )
+    })?;
     let key = get_string(&args[1], 2, "map_set")?;
     let mut result = map.clone();
     result.insert(key.to_string(), args[2].clone());
@@ -2501,25 +2557,18 @@ fn map_set(args: &[Value]) -> Result<Value, String> {
 
 fn map_merge(args: &[Value]) -> Result<Value, String> {
     expect_args(args, 2, "map_merge")?;
-    let map = match &args[0] {
-        Value::Map(m) => m,
-        other => {
-            return Err(format!(
-                "map_merge: argument 1 must be map, got {}",
-                other.type_name()
-            ))
-        }
-    };
-    let values = match &args[1] {
-        Value::Map(m) => m,
-        Value::Object(o) => &o.fields,
-        other => {
-            return Err(format!(
-                "map_merge: argument 2 must be map or object, got {}",
-                other.type_name()
-            ))
-        }
-    };
+    let map = args[0].as_map().ok_or_else(|| {
+        format!(
+            "map_merge: argument 1 must be map, got {}",
+            args[0].type_name()
+        )
+    })?;
+    let values = args[1].as_map().ok_or_else(|| {
+        format!(
+            "map_merge: argument 2 must be map or object, got {}",
+            args[1].type_name()
+        )
+    })?;
     let mut result = map.clone();
     result.extend(
         values
@@ -2531,6 +2580,7 @@ fn map_merge(args: &[Value]) -> Result<Value, String> {
 
 fn attr_value<'a>(value: &'a Value, key: &str) -> Option<&'a Value> {
     match value {
+        Value::Shared(value) => attr_value(value, key),
         Value::BlockRef(block) => block.attributes.get(key),
         Value::Map(map) => map.get(key),
         Value::Object(object) => object.fields.get(key),
@@ -3978,6 +4028,7 @@ mod tests {
             "diagram_intrinsic_size",
             "diagram_fit",
             "diagram_svg",
+            "html_render",
         ];
         for name in &expected {
             assert!(registry.contains_key(*name), "missing builtin: {}", name);

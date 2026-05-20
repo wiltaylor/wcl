@@ -39,6 +39,10 @@ impl NativeCodecRegistry {
     pub fn standard() -> Self {
         let mut registry = Self::default();
         registry.insert(NativeCodec {
+            name: "html",
+            encode: encode_html,
+        });
+        registry.insert(NativeCodec {
             name: "svg",
             encode: encode_svg,
         });
@@ -106,8 +110,284 @@ fn encode_svg(
     Ok(1)
 }
 
+fn encode_html(
+    value: &Value,
+    options: &CodecOptions,
+    target: OutputTarget<'_>,
+) -> Result<usize, TransformError> {
+    let html = render_html_value(value);
+    let filename = output_filename(options, "index.html");
+    write_text_output(&filename, &html, target)?;
+    Ok(1)
+}
+
+pub fn encode_html_value_to_string(value: &Value) -> String {
+    render_html_value(value)
+}
+
+fn render_html_value(value: &Value) -> String {
+    match value {
+        Value::Shared(value) => render_html_value(value),
+        Value::Null => String::new(),
+        Value::String(text) => text.clone(),
+        Value::List(items) => {
+            let mut out = String::new();
+            for item in items {
+                out.push_str(&render_html_value(item));
+            }
+            out
+        }
+        Value::BlockRef(block) => render_html_node(
+            html_plain_kind(&block.kind),
+            &block_attrs_with_id(block),
+            &block_children_values(block),
+        ),
+        Value::Map(map) => {
+            let tag = map
+                .get("tag")
+                .map(value_string)
+                .or_else(|| {
+                    map.get("kind")
+                        .map(value_string)
+                        .map(|kind| html_plain_kind(&kind))
+                })
+                .or_else(|| map.get("element").map(value_string))
+                .unwrap_or_default();
+            let children = mapped_children(map);
+            render_html_node(tag, map, &children)
+        }
+        _ => String::new(),
+    }
+}
+
+fn render_html_node(tag: String, attrs: &IndexMap<String, Value>, children: &[Value]) -> String {
+    match tag.as_str() {
+        "document" => render_html_children(children),
+        "raw" => attrs
+            .get("html")
+            .or_else(|| attrs.get("raw"))
+            .or_else(|| attrs.get("content"))
+            .map(value_string)
+            .unwrap_or_default(),
+        "text" => attrs
+            .get("content")
+            .map(escape_html_text)
+            .unwrap_or_default(),
+        "" => attrs
+            .get("html")
+            .or_else(|| attrs.get("body"))
+            .map(value_string)
+            .unwrap_or_default(),
+        _ if html_void_tag(&tag) => {
+            let mut out = String::new();
+            out.push('<');
+            out.push_str(&tag);
+            render_html_attrs(attrs, &mut out);
+            out.push('>');
+            out
+        }
+        _ => {
+            let mut out = String::new();
+            out.push('<');
+            out.push_str(&tag);
+            render_html_attrs(attrs, &mut out);
+            out.push('>');
+            out.push_str(&html_content(attrs));
+            out.push_str(&render_html_children(children));
+            out.push_str("</");
+            out.push_str(&tag);
+            out.push('>');
+            out
+        }
+    }
+}
+
+fn render_html_children(children: &[Value]) -> String {
+    let mut out = String::new();
+    for child in children {
+        out.push_str(&render_html_value(child));
+    }
+    out
+}
+
+fn render_html_attrs(attrs: &IndexMap<String, Value>, out: &mut String) {
+    for (name, value) in attrs {
+        if html_skip_attr(name) || matches!(value, Value::Null) {
+            continue;
+        }
+        if matches!(value, Value::Bool(false)) {
+            continue;
+        }
+        let attr = html_attr_name(name);
+        if matches!(value, Value::Bool(true)) && html_boolean_attr(&attr) {
+            out.push(' ');
+            out.push_str(&attr);
+            continue;
+        }
+        let rendered = if attr == "style" {
+            html_style_value(value)
+        } else {
+            value_string(value)
+        };
+        out.push(' ');
+        out.push_str(&attr);
+        out.push_str("=\"");
+        out.push_str(&escape_html_attr(&rendered));
+        out.push('"');
+    }
+}
+
+fn html_content(attrs: &IndexMap<String, Value>) -> String {
+    if let Some(value) = attrs.get("html").or_else(|| attrs.get("raw")) {
+        value_string(value)
+    } else if let Some(value) = attrs.get("text").or_else(|| attrs.get("content")) {
+        escape_html_text(value)
+    } else {
+        String::new()
+    }
+}
+
+fn mapped_children(attrs: &IndexMap<String, Value>) -> Vec<Value> {
+    match attrs.get("children") {
+        Some(Value::Shared(value)) => match value.as_list() {
+            Some(children) => children.to_vec(),
+            None => Vec::new(),
+        },
+        Some(Value::List(children)) => children.clone(),
+        _ => Vec::new(),
+    }
+}
+
+fn block_attrs_with_id(block: &crate::eval::value::BlockRef) -> IndexMap<String, Value> {
+    let mut attrs = block.attributes.clone();
+    if let Some(id) = &block.id {
+        attrs
+            .entry("id".to_string())
+            .or_insert_with(|| Value::String(id.clone()));
+    }
+    attrs
+}
+
+fn block_children_values(block: &crate::eval::value::BlockRef) -> Vec<Value> {
+    let mut children: Vec<Value> = block
+        .attributes
+        .values()
+        .filter_map(|value| match value {
+            Value::BlockRef(child) => Some(Value::BlockRef(child.clone())),
+            _ => None,
+        })
+        .collect();
+    children.extend(block.children.iter().cloned().map(Value::BlockRef));
+    if let Some(Value::List(mapped)) = block.attributes.get("children") {
+        children.extend(mapped.iter().cloned());
+    }
+    children
+}
+
+fn html_plain_kind(kind: &str) -> String {
+    kind.strip_prefix("html::")
+        .or_else(|| kind.strip_prefix("wdoc::html::"))
+        .unwrap_or(kind)
+        .to_string()
+}
+
+fn html_attr_name(name: &str) -> String {
+    match name {
+        "class_name" => "class".to_string(),
+        "for_" => "for".to_string(),
+        "type_" => "type".to_string(),
+        "content_attr" => "content".to_string(),
+        _ => name.replace('_', "-"),
+    }
+}
+
+fn html_style_value(value: &Value) -> String {
+    match value {
+        Value::Shared(value) => html_style_value(value),
+        Value::Map(map) => map
+            .iter()
+            .map(|(key, value)| format!("{}: {}", key.replace('_', "-"), value_string(value)))
+            .collect::<Vec<_>>()
+            .join("; "),
+        _ => value_string(value),
+    }
+}
+
+fn escape_html_text(value: &Value) -> String {
+    let text = value_string(value);
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+fn escape_html_attr(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+fn html_skip_attr(name: &str) -> bool {
+    matches!(
+        name,
+        "tag" | "kind" | "element" | "children" | "content" | "text" | "html" | "raw"
+    )
+}
+
+fn html_boolean_attr(name: &str) -> bool {
+    matches!(
+        name,
+        "allowfullscreen"
+            | "async"
+            | "autofocus"
+            | "autoplay"
+            | "checked"
+            | "controls"
+            | "default"
+            | "defer"
+            | "disabled"
+            | "formnovalidate"
+            | "hidden"
+            | "inert"
+            | "ismap"
+            | "itemscope"
+            | "loop"
+            | "multiple"
+            | "muted"
+            | "nomodule"
+            | "novalidate"
+            | "open"
+            | "playsinline"
+            | "readonly"
+            | "required"
+            | "reversed"
+            | "selected"
+    )
+}
+
+fn html_void_tag(tag: &str) -> bool {
+    matches!(
+        tag,
+        "area"
+            | "base"
+            | "br"
+            | "col"
+            | "embed"
+            | "hr"
+            | "img"
+            | "input"
+            | "link"
+            | "meta"
+            | "param"
+            | "source"
+            | "track"
+            | "wbr"
+    )
+}
+
 pub fn is_svg_diagram_value(value: &Value) -> bool {
     match value {
+        Value::Shared(value) => is_svg_diagram_value(value),
         Value::Map(map) => map.contains_key("shapes") || map.contains_key("connections"),
         _ => false,
     }
@@ -267,7 +547,7 @@ fn diagram_from_value(value: &Value, options: &CodecOptions) -> Result<Diagram, 
 }
 
 pub fn shape_nodes_from_value(value: &Value) -> Result<Vec<ShapeNode>, TransformError> {
-    let Value::List(items) = value else {
+    let Some(items) = value.as_list() else {
         return Err(TransformError::Codec(
             "diagram shapes must be a list".into(),
         ));
@@ -280,6 +560,13 @@ pub fn shape_nodes_from_value(value: &Value) -> Result<Vec<ShapeNode>, Transform
 fn push_shape_values(items: &[Value], shapes: &mut Vec<ShapeNode>) -> Result<(), TransformError> {
     for item in items {
         match item {
+            Value::Shared(value) => match value.as_ref() {
+                Value::List(nested) => push_shape_values(nested, shapes)?,
+                other => {
+                    let source_order = shapes.len();
+                    shapes.push(shape_from_value(other, source_order)?);
+                }
+            },
             Value::List(nested) => push_shape_values(nested, shapes)?,
             other => {
                 let source_order = shapes.len();
@@ -347,7 +634,7 @@ fn shape_map_error(value: &Value) -> String {
 }
 
 pub fn connections_from_value(value: &Value) -> Result<Vec<Connection>, TransformError> {
-    let Value::List(items) = value else {
+    let Some(items) = value.as_list() else {
         return Err(TransformError::Codec(
             "diagram connections must be a list".into(),
         ));
@@ -407,6 +694,7 @@ fn value_map<'a>(
     message: &str,
 ) -> Result<&'a IndexMap<String, Value>, TransformError> {
     match value {
+        Value::Shared(value) => value_map(value, message),
         Value::Map(map) => Ok(map),
         Value::Object(object) => Ok(&object.fields),
         _ => Err(TransformError::Codec(message.into())),
@@ -443,6 +731,7 @@ pub fn bounds_from_value(value: Option<&Value>) -> Option<Bounds> {
 
 pub fn value_number(value: &Value) -> Option<f64> {
     match value {
+        Value::Shared(value) => value_number(value),
         Value::Int(n) => Some(*n as f64),
         Value::BigInt(n) => n.to_string().parse().ok(),
         Value::Float(n) => Some(*n),
@@ -528,6 +817,7 @@ fn non_zero_or(value: f64, fallback: Option<f64>) -> f64 {
 
 fn value_string(value: &Value) -> String {
     match value {
+        Value::Shared(value) => value_string(value),
         Value::String(s) => s.clone(),
         Value::Symbol(s) => s.clone(),
         Value::Identifier(s) => s.clone(),
@@ -542,6 +832,66 @@ fn value_string(value: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::eval::value::{BlockRef, BlockRefData};
+    use crate::lang::Span;
+
+    #[test]
+    fn html_codec_renders_maps_lists_and_attrs() {
+        let mut link = IndexMap::new();
+        link.insert("tag".to_string(), Value::String("a".to_string()));
+        link.insert("href".to_string(), Value::String("/a?x=1&y=2".to_string()));
+        link.insert("class_name".to_string(), Value::String("nav".to_string()));
+        link.insert("disabled".to_string(), Value::Bool(false));
+        link.insert("content".to_string(), Value::String("A < B".to_string()));
+
+        let html = encode_html_value_to_string(&Value::Map(link));
+
+        assert_eq!(
+            html,
+            "<a href=\"/a?x=1&amp;y=2\" class=\"nav\">A &lt; B</a>"
+        );
+    }
+
+    #[test]
+    fn html_codec_renders_raw_void_and_boolean_attrs() {
+        let mut input = IndexMap::new();
+        input.insert("tag".to_string(), Value::String("input".to_string()));
+        input.insert("checked".to_string(), Value::Bool(true));
+        input.insert("type_".to_string(), Value::String("checkbox".to_string()));
+
+        let mut raw = IndexMap::new();
+        raw.insert("tag".to_string(), Value::String("raw".to_string()));
+        raw.insert(
+            "content".to_string(),
+            Value::String("<span>x</span>".to_string()),
+        );
+
+        let html =
+            encode_html_value_to_string(&Value::List(vec![Value::Map(input), Value::Map(raw)]));
+
+        assert_eq!(html, "<input checked type=\"checkbox\"><span>x</span>");
+    }
+
+    #[test]
+    fn html_codec_renders_block_refs() {
+        let mut attrs = IndexMap::new();
+        attrs.insert("content".to_string(), Value::String("Hello".to_string()));
+        let block = BlockRef::new(BlockRefData {
+            kind: "html::p".to_string(),
+            id: Some("intro".to_string()),
+            qualified_id: None,
+            attributes: attrs,
+            attribute_decorators: IndexMap::new(),
+            children: Vec::new(),
+            decorators: Vec::new(),
+            span: Span::dummy(),
+        });
+
+        let html = encode_html_value_to_string(&Value::BlockRef(block));
+
+        assert_eq!(html, "<p id=\"intro\">Hello</p>");
+    }
+
     #[test]
     fn svg_codec_encodes_diagram_value_to_stream() {
         let mut shape = IndexMap::new();

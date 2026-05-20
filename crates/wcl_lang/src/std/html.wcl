@@ -235,20 +235,7 @@ namespace html {
         map_has(attrs, "content") ? html::__escape_text(attrs.content) :
         ""
 
-    export let render = value =>
-        type_of(value) == "null" ? "" :
-        type_of(value) == "string" ? value :
-        type_of(value) == "list" ? join("", map(value, item => html::render(item))) : {
-            let tag = html::__kind(value)
-            let attrs = html::__attrs(value)
-            let children = html::__children(value)
-            tag == "document" ? join("", map(children, item => html::render(item))) :
-            tag == "raw" ? (map_has(attrs, "html") ? to_string(attrs.html) : (map_has(attrs, "raw") ? to_string(attrs.raw) : (map_has(attrs, "content") ? to_string(attrs.content) : ""))) :
-            tag == "text" ? (map_has(attrs, "content") ? html::__escape_text(attrs.content) : "") :
-            tag == "" ? (map_has(attrs, "html") ? to_string(attrs.html) : (map_has(attrs, "body") ? to_string(attrs.body) : "")) :
-            html::__void(tag) ? "<" + tag + html::__render_attrs(attrs) + ">" :
-            "<" + tag + html::__render_attrs(attrs) + ">" + html::__content(attrs) + join("", map(children, item => html::render(item))) + "</" + tag + ">"
-        }
+    export let render = value => html_render(value)
 }
 
 codec html {

@@ -350,6 +350,13 @@ fn encode_value_with_custom_to_target_internal(
     };
 
     let native_codecs = codec::native::NativeCodecRegistry::standard();
+    if output_codec == "html" {
+        let native = native_codecs
+            .get(output_codec)
+            .ok_or_else(|| TransformError::UnknownCodec(output_codec.to_string()))?;
+        return codec::native::encode_native_value(value, native, output_options, output_target);
+    }
+
     if output_codec == "svg" && codec::native::is_svg_diagram_value(value) {
         let native = native_codecs
             .get(output_codec)

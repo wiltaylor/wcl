@@ -292,7 +292,7 @@ fn wdoc_primitive_diagram_value_helper(args: &[Value]) -> Result<Value, String> 
     if args.len() != 2 {
         return Err("wdoc::primitive_diagram_value() expects 2 arguments".into());
     }
-    let Value::Map(project) = &args[0] else {
+    let Some(project) = args[0].as_map() else {
         return Err("wdoc::primitive_diagram_value() project argument must be a map".into());
     };
     let Value::BlockRef(block) = &args[1] else {
@@ -512,7 +512,7 @@ fn wdoc_media_assets_helper(args: &[Value]) -> Result<Value, String> {
     if args.len() != 1 {
         return Err("wdoc::media_assets() expects 1 argument".into());
     }
-    let Value::Map(project) = &args[0] else {
+    let Some(project) = args[0].as_map() else {
         return Err("wdoc::media_assets() project argument must be a map".into());
     };
     let source_dirs = project_source_dirs(project);
@@ -591,7 +591,7 @@ fn wdoc_project_template_name_helper(args: &[Value]) -> Result<Value, String> {
     if args.len() != 3 {
         return Err("wdoc::project_template_name_native() expects 3 arguments".into());
     }
-    let Value::Map(project) = &args[0] else {
+    let Some(project) = args[0].as_map() else {
         return Err("wdoc::project_template_name_native() project argument must be a map".into());
     };
     let Some(format) = args[1].as_string() else {
@@ -617,7 +617,7 @@ fn wdoc_project_extends_name_helper(args: &[Value]) -> Result<Value, String> {
     if args.len() != 2 {
         return Err("wdoc::project_extends_name_native() expects 2 arguments".into());
     }
-    let Value::Map(project) = &args[0] else {
+    let Some(project) = args[0].as_map() else {
         return Err("wdoc::project_extends_name_native() project argument must be a map".into());
     };
     let Some(schema_name) = args[1].as_string() else {

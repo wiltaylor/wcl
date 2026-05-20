@@ -1543,6 +1543,7 @@ pub(crate) fn get_validate_constraints(decorators: &[Decorator]) -> Option<Valid
 /// Return a human-readable label for a Value's runtime type.
 pub(crate) fn value_type_label(value: &Value) -> &'static str {
     match value {
+        Value::Shared(value) => value_type_label(value),
         Value::String(_) => "string",
         Value::Int(_) => "int",
         Value::BigInt(_) => "bigint",

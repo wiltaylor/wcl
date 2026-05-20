@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
@@ -5,7 +6,8 @@ use crate::lang::ast::*;
 use crate::lang::diagnostic::{Diagnostic, DiagnosticBag};
 use crate::lang::span::Span;
 use indexmap::IndexMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 use crate::eval::functions::{builtin_registry, BuiltinFn, FunctionRegistry};
 use crate::eval::imports::{is_wcl_embedded_path, wcl_embedded_relative_path, FileSystem};
@@ -13,6 +15,92 @@ use crate::eval::namespaces::NamespaceAliases;
 use crate::eval::query::QueryIndex;
 use crate::eval::scope::*;
 use crate::eval::value::*;
+
+#[derive(Debug, Clone, Copy, Default)]
+struct FunctionProfileEntry {
+    calls: u64,
+    total: Duration,
+    self_time: Duration,
+}
+
+static FUNCTION_PROFILE: OnceLock<Mutex<HashMap<String, FunctionProfileEntry>>> = OnceLock::new();
+
+struct FunctionProfileFrame {
+    name: String,
+    started: Instant,
+    child_time: Duration,
+}
+
+thread_local! {
+    static FUNCTION_PROFILE_STACK: RefCell<Vec<FunctionProfileFrame>> = const { RefCell::new(Vec::new()) };
+}
+
+pub(crate) fn reset_function_profile() {
+    if let Some(profile) = FUNCTION_PROFILE.get() {
+        profile.lock().unwrap().clear();
+    }
+}
+
+pub(crate) fn print_function_profile(label: &str, limit: usize) {
+    let Some(profile) = FUNCTION_PROFILE.get() else {
+        return;
+    };
+    let profile = profile.lock().unwrap();
+    if profile.is_empty() {
+        return;
+    }
+
+    let mut entries = profile.iter().collect::<Vec<_>>();
+    entries.sort_by(|(_, a), (_, b)| b.self_time.cmp(&a.self_time));
+    eprintln!("WCL_PROFILE functions {label}");
+    for (name, entry) in entries.into_iter().take(limit) {
+        eprintln!(
+            "  self {self_time:>10.3?} total {total:>10.3?} {calls:>8} calls  {name}",
+            self_time = entry.self_time,
+            total = entry.total,
+            calls = entry.calls,
+        );
+    }
+}
+
+fn push_function_profile_frame(name: String) {
+    FUNCTION_PROFILE_STACK.with(|stack| {
+        stack.borrow_mut().push(FunctionProfileFrame {
+            name,
+            started: Instant::now(),
+            child_time: Duration::ZERO,
+        });
+    });
+}
+
+fn pop_function_profile_frame() {
+    let Some((name, total, self_time)) = FUNCTION_PROFILE_STACK.with(|stack| {
+        let mut stack = stack.borrow_mut();
+        let frame = stack.pop()?;
+        let total = frame.started.elapsed();
+        if let Some(parent) = stack.last_mut() {
+            parent.child_time += total;
+        }
+        Some((frame.name, total, total.saturating_sub(frame.child_time)))
+    }) else {
+        return;
+    };
+
+    let profile = FUNCTION_PROFILE.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut profile = profile.lock().unwrap();
+    let entry = profile.entry(name).or_default();
+    entry.calls += 1;
+    entry.total += total;
+    entry.self_time += self_time;
+}
+
+fn shared_call_arg(value: &Value) -> Value {
+    match value {
+        Value::Shared(_) => value.clone(),
+        Value::List(_) | Value::Map(_) | Value::Object(_) => Value::Shared(Arc::new(value.clone())),
+        _ => value.clone(),
+    }
+}
 
 #[derive(Default)]
 struct QueryCache {
@@ -184,6 +272,10 @@ impl Evaluator {
     }
 
     fn set_entry_value(&mut self, scope_id: ScopeId, name: &str, value: Value) {
+        let value = match self.scopes.get(scope_id).kind {
+            ScopeKind::Lambda => value,
+            _ => value.into_unshared(),
+        };
         if let Some((_, entry)) = self.scopes.resolve_mut(scope_id, name) {
             entry.value = Some(value);
             entry.evaluated = true;
@@ -280,6 +372,7 @@ impl Evaluator {
                                     &el.decorators,
                                     scope_id,
                                 );
+                                self.attach_function_name(&mut value, &el.name.name);
                                 (Some(value), true)
                             }
                             Err(diag) => {
@@ -352,6 +445,7 @@ impl Evaluator {
                     match self.eval_expr(&lb.value, scope_id) {
                         Ok(mut value) => {
                             self.attach_function_decorators(&mut value, &lb.decorators, scope_id);
+                            self.attach_function_name(&mut value, &lb.name.name);
                             (Some(value), true)
                         }
                         Err(diag) => {
@@ -560,6 +654,7 @@ impl Evaluator {
                     match val {
                         Ok(mut v) => {
                             self.attach_function_decorators(&mut v, &lb.decorators, scope_id);
+                            self.attach_function_name(&mut v, name);
                             self.set_entry_value(scope_id, name, v);
                         }
                         Err(diag) => self.diagnostics.add(diag),
@@ -571,6 +666,7 @@ impl Evaluator {
                     match val {
                         Ok(mut v) => {
                             self.attach_function_decorators(&mut v, &el.decorators, scope_id);
+                            self.attach_function_name(&mut v, name);
                             self.set_entry_value(scope_id, name, v);
                         }
                         Err(diag) => self.diagnostics.add(diag),
@@ -827,6 +923,7 @@ impl Evaluator {
                 params: params.iter().map(|p| p.name.clone()).collect(),
                 body: FunctionBody::UserDefined(body.clone()),
                 closure_scope: Some(scope_id),
+                debug_name: None,
                 decorators: Vec::new(),
                 lambda_attrs: LambdaAttrs::default(),
                 param_types: vec![],
@@ -1629,17 +1726,24 @@ impl Evaluator {
 
     fn access_member(&self, val: &Value, field: &str, span: Span) -> Result<Value, Diagnostic> {
         match val {
-            Value::Map(m) => m.get(field).cloned().ok_or_else(|| {
+            Value::Shared(value) => self.access_member(value, field, span),
+            Value::Map(m) => m.get(field).map(shared_call_arg).ok_or_else(|| {
                 Diagnostic::error(format!("key '{}' not found in map", field), span)
                     .with_code("E054")
             }),
-            Value::Object(object) => object.fields.get(field).cloned().ok_or_else(|| {
-                Diagnostic::error(
-                    format!("field '{}' not found on {}", field, object.type_name),
-                    span,
-                )
-                .with_code("E054")
-            }),
+            Value::Object(object) => {
+                object
+                    .fields
+                    .get(field)
+                    .map(shared_call_arg)
+                    .ok_or_else(|| {
+                        Diagnostic::error(
+                            format!("field '{}' not found on {}", field, object.type_name),
+                            span,
+                        )
+                        .with_code("E054")
+                    })
+            }
             Value::BlockRef(br) => match field {
                 "id" => Ok(br
                     .id
@@ -1647,10 +1751,14 @@ impl Evaluator {
                     .map(|id| Value::Identifier(id.clone()))
                     .unwrap_or(Value::Null)),
                 "kind" => Ok(Value::String(br.kind.clone())),
-                _ => br.attributes.get(field).cloned().ok_or_else(|| {
-                    Diagnostic::error(format!("attribute '{}' not found in block", field), span)
-                        .with_code("E054")
-                }),
+                _ => br
+                    .attributes
+                    .get(field)
+                    .map(shared_call_arg)
+                    .ok_or_else(|| {
+                        Diagnostic::error(format!("attribute '{}' not found in block", field), span)
+                            .with_code("E054")
+                    }),
             },
             _ => Err(Diagnostic::error(
                 format!("cannot access member on {}", val.type_name()),
@@ -1662,9 +1770,11 @@ impl Evaluator {
 
     fn access_index(&self, val: &Value, idx: &Value, span: Span) -> Result<Value, Diagnostic> {
         match (val, idx) {
+            (Value::Shared(value), idx) => self.access_index(value, idx, span),
+            (val, Value::Shared(idx)) => self.access_index(val, idx, span),
             (Value::List(items), Value::Int(i)) => {
                 let i = *i as usize;
-                items.get(i).cloned().ok_or_else(|| {
+                items.get(i).map(shared_call_arg).ok_or_else(|| {
                     Diagnostic::error(
                         format!("index {} out of bounds (length {})", i, items.len()),
                         span,
@@ -1672,11 +1782,14 @@ impl Evaluator {
                     .with_code("E054")
                 })
             }
-            (Value::Map(m), Value::String(key)) => m.get(key).cloned().ok_or_else(|| {
-                Diagnostic::error(format!("key '{}' not found in map", key), span).with_code("E054")
-            }),
+            (Value::Map(m), Value::String(key)) => {
+                m.get(key).map(shared_call_arg).ok_or_else(|| {
+                    Diagnostic::error(format!("key '{}' not found in map", key), span)
+                        .with_code("E054")
+                })
+            }
             (Value::Object(object), Value::String(key)) => {
-                object.fields.get(key).cloned().ok_or_else(|| {
+                object.fields.get(key).map(shared_call_arg).ok_or_else(|| {
                     Diagnostic::error(
                         format!("field '{}' not found on {}", key, object.type_name),
                         span,
@@ -2170,6 +2283,12 @@ impl Evaluator {
             .with_code("E052"));
         }
 
+        let profile_enabled = std::env::var_os("WCL_PROFILE").is_some();
+        if profile_enabled {
+            push_function_profile_frame(
+                func.debug_name.as_deref().unwrap_or("<lambda>").to_string(),
+            );
+        }
         self.call_depth += 1;
         let parent_scope = func.closure_scope.unwrap_or(ScopeId(0));
         let call_scope = self
@@ -2182,7 +2301,7 @@ impl Evaluator {
                 ScopeEntry {
                     name: param.clone(),
                     kind: ScopeEntryKind::LetBinding,
-                    value: Some(arg.clone()),
+                    value: Some(shared_call_arg(arg)),
                     span,
                     dependencies: Default::default(),
                     evaluated: true,
@@ -2226,6 +2345,9 @@ impl Evaluator {
             }
         })();
         self.call_depth -= 1;
+        if profile_enabled {
+            pop_function_profile_frame();
+        }
         result
     }
 
@@ -2449,6 +2571,17 @@ impl Evaluator {
     fn expect_list(&self, val: Value, fn_name: &str, span: Span) -> Result<Vec<Value>, Diagnostic> {
         match val {
             Value::List(l) => Ok(l),
+            Value::Shared(value) => match value.as_ref() {
+                Value::List(items) => Ok(items.clone()),
+                other => Err(Diagnostic::error(
+                    format!(
+                        "{}() first argument must be a list, got {}",
+                        fn_name,
+                        other.type_name()
+                    ),
+                    span,
+                )),
+            },
             _ => Err(Diagnostic::error(
                 format!(
                     "{}() first argument must be a list, got {}",
@@ -2677,6 +2810,12 @@ impl Evaluator {
                 }
             })
             .collect();
+    }
+
+    fn attach_function_name(&self, value: &mut Value, name: &str) {
+        if let Value::Function(func) = value {
+            func.debug_name = Some(name.to_string());
+        }
     }
 
     /// Evaluate all entries in a block scope (attributes, let-bindings, child blocks).
@@ -4477,6 +4616,7 @@ has_group = block_any(ref(root), b => block_kind(b) == "group")
                         ds(),
                     ))),
                     closure_scope: Some(scope),
+                    debug_name: Some("f".to_string()),
                     decorators: Vec::new(),
                     lambda_attrs: crate::eval::value::LambdaAttrs::default(),
                     param_types: vec![],
@@ -4507,6 +4647,7 @@ has_group = block_any(ref(root), b => block_kind(b) == "group")
                 ds(),
             ))),
             closure_scope: None,
+            debug_name: Some("loop".to_string()),
             decorators: Vec::new(),
             lambda_attrs: crate::eval::value::LambdaAttrs::default(),
             param_types: vec![],

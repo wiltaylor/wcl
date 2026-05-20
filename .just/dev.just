@@ -24,6 +24,37 @@ bench:
 bench-crate crate:
     cargo bench -p {{crate}}
 
+# Run WCL parse/eval microbenchmarks
+bench-wcl:
+    cargo bench -p wcl --bench e2e
+
+# Run WDoc project/render benchmarks
+bench-wdoc: bench-wdoc-load bench-wdoc-codec
+
+# Run WDoc project loading benchmark
+bench-wdoc-load:
+    cargo bench -p wcl --bench wdoc "load example project"
+
+# Run WDoc codec registry benchmark
+bench-wdoc-codec:
+    cargo bench -p wcl --bench wdoc "codec registry"
+
+# Run the long WDoc render benchmark
+bench-wdoc-render:
+    cargo bench -p wcl --bench wdoc "render example project"
+
+# Run all WDoc benchmarks, including long render/full-build measurements
+bench-wdoc-all:
+    cargo bench -p wcl --bench wdoc
+
+# Profile the WDoc example build with phase timings
+perf-wdoc:
+    cargo build --quiet -p wcl
+    WCL_PROFILE=1 ./target/debug/wcl wdoc build examples/wdoc/site.wcl --output /tmp/wcl-perf-wdoc
+
+# Run the focused WCL performance checks
+perf: perf-wdoc bench-wdoc
+
 # Build and install the CLI locally.
 install:
     cargo install --path crates/wcl
