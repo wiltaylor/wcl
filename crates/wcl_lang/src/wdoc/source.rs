@@ -485,6 +485,22 @@ fn register_renderer_helpers(reg: &mut FunctionRegistry) {
     );
 
     reg.register(
+        "wdoc::project_document",
+        std::sync::Arc::new(|args: &[Value]| {
+            if args.is_empty() || args.len() > 2 {
+                return Err("wdoc::project_document() expects 1 or 2 arguments".into());
+            }
+            wdoc_project_document(&args[0])
+        }) as BuiltinFn,
+        FunctionSignature {
+            name: "wdoc::project_document".into(),
+            params: vec!["doc: any".into(), "options: map".into()],
+            return_type: "map".into(),
+            doc: "Convert a loaded WDoc project block into the WDoc render model".into(),
+        },
+    );
+
+    reg.register(
         "wdoc::render_children",
         std::sync::Arc::new(|args: &[Value]| {
             if args.len() != 1 {
@@ -3543,6 +3559,7 @@ impl ExtractCtx {
 
 thread_local! {
     static CURRENT_WDOC_CTX: RefCell<Vec<*const ExtractCtx>> = const { RefCell::new(Vec::new()) };
+    static CURRENT_WDOC_VALUES: RefCell<Vec<*const IndexMap<String, Value>>> = const { RefCell::new(Vec::new()) };
 }
 
 struct CurrentWdocCtxGuard;
@@ -3552,12 +3569,33 @@ impl Drop for CurrentWdocCtxGuard {
         CURRENT_WDOC_CTX.with(|stack| {
             stack.borrow_mut().pop();
         });
+        CURRENT_WDOC_VALUES.with(|stack| {
+            stack.borrow_mut().pop();
+        });
     }
 }
 
 fn enter_current_wdoc_ctx(ctx: &ExtractCtx) -> CurrentWdocCtxGuard {
     CURRENT_WDOC_CTX.with(|stack| {
         stack.borrow_mut().push(ctx as *const ExtractCtx);
+    });
+    CURRENT_WDOC_VALUES.with(|stack| {
+        stack.borrow_mut().push(std::ptr::null());
+    });
+    CurrentWdocCtxGuard
+}
+
+fn enter_current_wdoc_project(
+    ctx: &ExtractCtx,
+    values: &IndexMap<String, Value>,
+) -> CurrentWdocCtxGuard {
+    CURRENT_WDOC_CTX.with(|stack| {
+        stack.borrow_mut().push(ctx as *const ExtractCtx);
+    });
+    CURRENT_WDOC_VALUES.with(|stack| {
+        stack
+            .borrow_mut()
+            .push(values as *const IndexMap<String, Value>);
     });
     CurrentWdocCtxGuard
 }
@@ -7776,6 +7814,52 @@ fn wdoc_render_children(value: &Value) -> Result<String, String> {
     })
 }
 
+fn current_wdoc_ctx() -> Result<*const ExtractCtx, String> {
+    CURRENT_WDOC_CTX.with(|stack| {
+        stack
+            .borrow()
+            .last()
+            .copied()
+            .filter(|ptr| !ptr.is_null())
+            .ok_or_else(|| "WDoc helper requires an active WDoc render context".to_string())
+    })
+}
+
+fn current_wdoc_values() -> Result<*const IndexMap<String, Value>, String> {
+    CURRENT_WDOC_VALUES.with(|stack| {
+        stack
+            .borrow()
+            .last()
+            .copied()
+            .filter(|ptr| !ptr.is_null())
+            .ok_or_else(|| {
+                "wdoc::project_document() requires an active loaded WCL project".to_string()
+            })
+    })
+}
+
+fn wdoc_project_document(value: &Value) -> Result<Value, String> {
+    let Value::BlockRef(doc_block) = value else {
+        return Err("wdoc::project_document() expects a wdoc::doc block".into());
+    };
+    if doc_block.kind != "wdoc::doc" {
+        return Err(format!(
+            "wdoc::project_document() expects a wdoc::doc block, got {}",
+            doc_block.kind
+        ));
+    }
+
+    let ctx_ptr = current_wdoc_ctx()?;
+    let values_ptr = current_wdoc_values()?;
+    // These pointers are scoped to the synchronous codec encode call.
+    let ctx = unsafe { &*ctx_ptr };
+    let values = unsafe { &*values_ptr };
+    let doc = extract(values, ctx)?;
+    let mut value = crate::wdoc::model::document_to_value(&doc)?;
+    crate::wdoc::codec::prepare_document_value(&mut value)?;
+    Ok(value)
+}
+
 fn wdoc_render_markup(text: &str) -> Result<String, String> {
     CURRENT_WDOC_CTX.with(|stack| {
         let Some(ctx_ptr) = stack.borrow().last().copied() else {
@@ -8677,6 +8761,51 @@ pub fn parse_extract_from_files(
     Ok(ExtractedWdoc {
         document: wdoc_doc,
         watch_paths,
+    })
+}
+
+pub fn with_loaded_project_context<T>(
+    document: &crate::Document,
+    source_dirs: &[PathBuf],
+    f: impl FnOnce() -> Result<T, crate::transform::TransformError>,
+) -> Result<T, crate::transform::TransformError> {
+    let ctx = extract_ctx_from_loaded_document(document, source_dirs)
+        .map_err(crate::transform::TransformError::Codec)?;
+    let _guard = enter_current_wdoc_project(&ctx, &document.values);
+    f()
+}
+
+fn extract_ctx_from_loaded_document(
+    doc: &crate::Document,
+    source_dirs: &[PathBuf],
+) -> Result<ExtractCtx, String> {
+    let template_map = collect_template_map(doc);
+    let draw_schema_names = collect_draw_schema_names(doc);
+    let structural_shape_schema_names = collect_structural_shape_schema_names(doc);
+    let template_extends_map = collect_template_extends_map(doc);
+    let builtins: HashMap<String, BuiltinFn> = wdoc_functions().functions;
+    let template_helpers = collect_template_helpers(doc);
+    let layout_helpers = collect_layout_helpers(doc)?;
+    let markup_rules = collect_markup_rules(doc, &template_helpers)?;
+    let svg_search_dirs = source_dirs.to_vec();
+    let icon_registry = collect_icon_sets(&doc.values, &svg_search_dirs)?;
+    Ok(ExtractCtx {
+        template_map,
+        template_extends_map,
+        draw_schema_names,
+        structural_shape_schema_names,
+        template_helpers,
+        layout_helpers,
+        markup_rules,
+        builtins,
+        css_registry: Rc::new(RefCell::new(DiagramCssRegistry::default())),
+        diagram_classes: Rc::new(RefCell::new(collect_diagram_classes(&doc.values))),
+        diagram_classes_by_file: Rc::new(RefCell::new(collect_diagram_classes_by_file(
+            &doc.values,
+        ))),
+        binding_targets: Rc::new(RefCell::new(HashSet::new())),
+        svg_search_dirs,
+        icon_registry,
     })
 }
 

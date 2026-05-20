@@ -63,5 +63,5 @@ import "<WCL>:/wdoc/base_styles.wcl"
 
 codec wdoc-html {
     mode = :text
-    encoder = doc => { files = wdoc::render_site_files(doc) }
+    encoder = (doc, options) => { files = wdoc::render_project_site_files(doc, options) }
 }

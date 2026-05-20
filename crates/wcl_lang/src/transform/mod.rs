@@ -316,8 +316,8 @@ fn encode_value_with_custom_to_target_internal(
     }
 
     let wdoc_codecs;
-    let uses_bundled_wdoc_codec =
-        output_codec == crate::wdoc::codec::HTML_CODEC && custom_codecs.get(output_codec).is_none();
+    let uses_wdoc_codec = output_codec == crate::wdoc::codec::HTML_CODEC;
+    let uses_bundled_wdoc_codec = uses_wdoc_codec && custom_codecs.get(output_codec).is_none();
     let active_codecs = if uses_bundled_wdoc_codec {
         wdoc_codecs = crate::wdoc::codec::custom_registry().map_err(TransformError::Codec)?;
         &wdoc_codecs
@@ -338,7 +338,7 @@ fn encode_value_with_custom_to_target_internal(
     };
 
     let mut prepared_value;
-    let value = if uses_bundled_wdoc_codec {
+    let value = if uses_wdoc_codec {
         prepared_value = value.clone();
         crate::wdoc::codec::prepare_document_value(&mut prepared_value)
             .map_err(TransformError::Codec)?;
@@ -354,7 +354,7 @@ fn encode_value_with_custom_to_target_internal(
                     .to_string(),
             )
         })?;
-        if uses_bundled_wdoc_codec {
+        if uses_wdoc_codec {
             codec::custom::encode_custom_value_with_session_and_registry_and_builtins(
                 session,
                 value,
@@ -374,7 +374,7 @@ fn encode_value_with_custom_to_target_internal(
                 registry,
             )?
         }
-    } else if uses_bundled_wdoc_codec {
+    } else if uses_wdoc_codec {
         codec::custom::encode_custom_value_with_registry_and_builtins(
             value,
             output_custom,

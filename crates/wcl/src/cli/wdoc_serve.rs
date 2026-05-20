@@ -10,15 +10,14 @@ use axum::Router;
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use tokio::sync::watch;
 use tower_http::services::ServeDir;
-use wcl_lang::wdoc::model::WdocDocument;
 
-use crate::cli::wdoc::source_options;
+use crate::cli::wdoc::{load_project, render_project, LoadedWdocCliProject};
 use crate::cli::LibraryArgs;
 
 /// Result of a wdoc serve build, including the document and any extra source
 /// paths discovered during parsing that should be watched for rebuilds.
 pub struct ServeBuild {
-    pub document: WdocDocument,
+    pub project: LoadedWdocCliProject,
     pub watch_paths: Vec<PathBuf>,
 }
 
@@ -34,37 +33,25 @@ pub fn run_serve(
     vars: &[String],
     lib_args: &LibraryArgs,
 ) -> Result<(), String> {
-    let options = source_options(vars, lib_args)?;
     let files = files.to_vec();
+    let vars = vars.to_vec();
+    let lib_args = lib_args.clone();
 
     let output_dir = std::env::temp_dir().join(format!("wdoc-serve-{}", std::process::id()));
     let watch_paths = files.clone();
-    let asset_dirs: Vec<PathBuf> = files
-        .iter()
-        .filter_map(|f| f.parent().map(|p| p.to_path_buf()))
-        .collect::<HashSet<_>>()
-        .into_iter()
-        .collect();
 
     let build_fn = move || {
-        let extracted = wcl_lang::wdoc::source::parse_extract_from_files(&files, &options)?;
+        let project = load_project(&files, &vars, &lib_args)?;
         Ok(ServeBuild {
-            document: extracted.document,
-            watch_paths: extracted.watch_paths.into_iter().collect(),
+            watch_paths: project.watch_paths.clone(),
+            project,
         })
     };
 
     let rt = tokio::runtime::Runtime::new()
         .map_err(|e| format!("failed to create tokio runtime: {e}"))?;
 
-    rt.block_on(serve(
-        build_fn,
-        watch_paths,
-        asset_dirs,
-        output_dir,
-        port,
-        open,
-    ))
+    rt.block_on(serve(build_fn, watch_paths, output_dir, port, open))
 }
 
 /// Start a dev server with live reload.
@@ -75,7 +62,6 @@ pub fn run_serve(
 async fn serve(
     build_fn: impl Fn() -> Result<ServeBuild, String> + Send + Sync + 'static,
     watch_paths: Vec<PathBuf>,
-    asset_dirs: Vec<PathBuf>,
     output_dir: PathBuf,
     port: u16,
     open_browser: bool,
@@ -84,8 +70,7 @@ async fn serve(
 
     // Initial build
     let initial = build_fn().map_err(|e| format!("initial build failed: {e}"))?;
-    let initial_asset_dirs = combined_asset_dirs(&asset_dirs, &initial.watch_paths);
-    render_wdoc_document(&initial.document, &output_dir, &initial_asset_dirs)?;
+    render_project(&initial.project, &output_dir)?;
     eprintln!("wdoc: built to {}", output_dir.display());
 
     // Reload signal
@@ -136,10 +121,7 @@ async fn serve(
                         eprintln!("wdoc: watch error: {e}");
                     }
 
-                    let render_asset_dirs = combined_asset_dirs(&asset_dirs, &build.watch_paths);
-                    if let Err(e) =
-                        render_wdoc_document(&build.document, &output_dir_watch, &render_asset_dirs)
-                    {
+                    if let Err(e) = render_project(&build.project, &output_dir_watch) {
                         eprintln!("wdoc: render error: {e}");
                         cooldown_after_build(&mut notify_rx).await;
                         continue;
@@ -180,53 +162,12 @@ async fn serve(
     Ok(())
 }
 
-fn render_wdoc_document(
-    document: &WdocDocument,
-    output_dir: &std::path::Path,
-    asset_dirs: &[PathBuf],
-) -> Result<(), String> {
-    let value = wcl_lang::wdoc::model::document_to_value(document)?;
-    let mut options = wcl_lang::transform::codec::CodecOptions::new();
-    options.insert(
-        "asset_dirs".to_string(),
-        wcl_lang::Value::List(
-            asset_dirs
-                .iter()
-                .map(|path| wcl_lang::Value::String(path.display().to_string()))
-                .collect(),
-        ),
-    );
-    wcl_lang::transform::encode_value_with_custom_to_directory(
-        &value,
-        wcl_lang::wdoc::codec::HTML_CODEC,
-        output_dir,
-        &options,
-        None,
-    )
-    .map(|_| ())
-    .map_err(|e| e.to_string())
-}
-
 fn combined_watch_paths(root_paths: &[PathBuf], build_paths: &[PathBuf]) -> HashSet<PathBuf> {
     root_paths
         .iter()
         .chain(build_paths.iter())
         .filter(|p| !p.as_os_str().is_empty())
         .cloned()
-        .collect()
-}
-
-fn combined_asset_dirs(root_dirs: &[PathBuf], build_paths: &[PathBuf]) -> Vec<PathBuf> {
-    root_dirs
-        .iter()
-        .cloned()
-        .chain(
-            build_paths
-                .iter()
-                .filter_map(|path| path.parent().map(PathBuf::from)),
-        )
-        .collect::<HashSet<_>>()
-        .into_iter()
         .collect()
 }
 

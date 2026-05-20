@@ -112,6 +112,16 @@ impl CustomCodecRegistry {
     pub fn get(&self, name: &str) -> Option<&CustomCodec> {
         self.codecs.get(name)
     }
+
+    pub fn contains(&self, name: &str) -> bool {
+        self.codecs.contains_key(name)
+    }
+
+    pub fn names(&self) -> Vec<String> {
+        let mut names: Vec<String> = self.codecs.keys().cloned().collect();
+        names.sort();
+        names
+    }
 }
 
 pub fn standard_registry() -> Result<CustomCodecRegistry, TransformError> {
