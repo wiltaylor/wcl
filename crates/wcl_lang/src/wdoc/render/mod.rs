@@ -1,41 +1,42 @@
-use std::collections::{BTreeSet, HashSet};
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
-use crate::transform::codec;
-use crate::wdoc::model::{self, WdocDocument};
-use crate::Value;
-use indexmap::IndexMap;
+#[cfg(test)]
+use crate::wdoc::model::WdocDocument;
 
 /// Render a `WdocDocument` to an output directory as static HTML files.
 /// `asset_dirs` are source directories to scan for image/asset files to copy.
+#[cfg(test)]
 pub fn render_document(
     doc: &WdocDocument,
     output: &Path,
     asset_dirs: &[&Path],
 ) -> Result<(), String> {
+    let doc = doc.clone();
+    let output = output.to_path_buf();
+    let asset_dirs: Vec<PathBuf> = asset_dirs.iter().map(|path| path.to_path_buf()).collect();
+    std::thread::Builder::new()
+        .name("wdoc-render-test".to_string())
+        .stack_size(32 * 1024 * 1024)
+        .spawn(move || crate::wdoc::codec::encode_html_document(&doc, &output, &asset_dirs))
+        .map_err(|e| format!("failed to start WDoc render test thread: {e}"))?
+        .join()
+        .map_err(|_| "WDoc render test thread panicked".to_string())??;
+    Ok(())
+}
+
+pub(crate) fn finalize_assets(output: &Path, asset_dirs: &[&Path]) -> Result<(), String> {
     // Create output directory
     fs::create_dir_all(output).map_err(|e| format!("failed to create output directory: {e}"))?;
-
-    // Generate CSS: base + user styles
-    let mut css = crate::wdoc::assets::base_css()?;
-    css.push('\n');
-    css.push_str(&crate::wdoc::assets::style_css(&doc.styles)?);
-    let extra_css = doc.extra_css.trim();
-    if !extra_css.is_empty() {
-        css.push('\n');
-        css.push_str(extra_css);
-        css.push('\n');
-    }
 
     let asset_extensions = [
         "png", "jpg", "jpeg", "gif", "svg", "webp", "ico", "woff2", "woff", "ttf", "otf", "eot",
     ];
     let mut referenced_assets = HashSet::new();
-    collect_referenced_css_assets(&css, &asset_extensions, &mut referenced_assets);
-
-    fs::write(output.join("styles.css"), &css)
-        .map_err(|e| format!("failed to write styles.css: {e}"))?;
+    if let Ok(css) = fs::read_to_string(output.join("styles.css")) {
+        collect_referenced_css_assets(&css, &asset_extensions, &mut referenced_assets);
+    }
 
     // Write highlight.js assets (bundled locally so file:// works)
     write_embedded_text_asset(
@@ -78,13 +79,7 @@ pub fn render_document(
         write_embedded_bytes_asset(&font_dir, name, path)?;
     }
 
-    // Render HTML outputs through the bundled WDoc template library.
-    let context = render_context_value(doc)?;
-    let used_templates = used_page_templates(doc);
-    for (filename, html) in crate::wdoc::assets::render_html_outputs(context, &used_templates)? {
-        collect_referenced_image_assets(&html, &asset_extensions, &mut referenced_assets);
-        write_html_with_codec(output, &filename, &html)?;
-    }
+    collect_generated_html_assets(output, &asset_extensions, &mut referenced_assets)?;
 
     // Copy referenced assets first so deep paths used by images work in previews.
     copy_referenced_assets(asset_dirs, output, &referenced_assets, &asset_extensions);
@@ -115,59 +110,6 @@ pub fn render_document(
     Ok(())
 }
 
-fn used_page_templates(doc: &WdocDocument) -> Vec<String> {
-    let mut templates = BTreeSet::new();
-    for page in doc.pages.iter().filter(|page| !page.draft) {
-        templates.insert(page.template.unwrap_or(doc.template).as_str().to_string());
-    }
-    templates.into_iter().collect()
-}
-
-fn render_context_value(doc: &WdocDocument) -> Result<Value, String> {
-    let mut root = IndexMap::new();
-    let runtime = runtime_context_value()?;
-    let mut doc_value = model::document_to_value(doc)?;
-    if let Value::Map(doc_map) = &mut doc_value {
-        doc_map.insert("runtime".to_string(), runtime.clone());
-    }
-    root.insert("doc".to_string(), doc_value);
-    root.insert("runtime".to_string(), runtime);
-    Ok(Value::Map(root))
-}
-
-fn runtime_context_value() -> Result<Value, String> {
-    let mut map = IndexMap::new();
-    map.insert(
-        "mathjax_config".to_string(),
-        Value::String(crate::wdoc::assets::mathjax_config_js()?.to_string()),
-    );
-    map.insert(
-        "theme".to_string(),
-        Value::String(crate::wdoc::assets::theme_runtime_js()?.to_string()),
-    );
-    map.insert(
-        "presentation".to_string(),
-        Value::String(crate::wdoc::assets::presentation_runtime_js()?.to_string()),
-    );
-    map.insert(
-        "page_signal_template".to_string(),
-        Value::String(crate::wdoc::assets::page_signal_runtime_template_js()?.to_string()),
-    );
-    Ok(Value::Map(map))
-}
-
-fn write_html_with_codec(output: &Path, filename: &str, html: &str) -> Result<(), String> {
-    let mut options = codec::CodecOptions::new();
-    options.insert("filename".to_string(), Value::String(filename.to_string()));
-    let resolved = codec::native::output_filename(&options, filename);
-    codec::native::write_text_output(
-        &resolved,
-        html,
-        codec::native::OutputTarget::Directory(output),
-    )
-    .map_err(|e| format!("failed to write {filename}: {e}"))
-}
-
 fn write_embedded_text_asset(output: &Path, filename: &str, path: &str) -> Result<(), String> {
     let relative = crate::eval::imports::wcl_embedded_relative_path(path)?;
     let content = crate::assets::embedded_asset_text(&relative)
@@ -182,6 +124,50 @@ fn write_embedded_bytes_asset(output: &Path, filename: &str, path: &str) -> Resu
         .ok_or_else(|| format!("bundled binary asset not found: {path}"))?;
     fs::write(output.join(filename), content)
         .map_err(|e| format!("failed to write bundled asset {filename}: {e}"))
+}
+
+fn collect_generated_html_assets(
+    output: &Path,
+    extensions: &[&str],
+    out: &mut HashSet<PathBuf>,
+) -> Result<(), String> {
+    collect_generated_html_assets_in(output, output, extensions, out)
+}
+
+fn collect_generated_html_assets_in(
+    root: &Path,
+    dir: &Path,
+    extensions: &[&str],
+    out: &mut HashSet<PathBuf>,
+) -> Result<(), String> {
+    for entry in fs::read_dir(dir).map_err(|e| format!("read {}: {e}", dir.display()))? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        if path.is_dir() {
+            collect_generated_html_assets_in(root, &path, extensions, out)?;
+            continue;
+        }
+        if !path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("html"))
+        {
+            continue;
+        }
+        let html = fs::read_to_string(&path)
+            .map_err(|e| format!("failed to read generated HTML {}: {e}", path.display()))?;
+        let mut local_refs = HashSet::new();
+        collect_referenced_image_assets(&html, extensions, &mut local_refs);
+        let parent = path.parent().unwrap_or(root);
+        let base = parent.strip_prefix(root).unwrap_or(Path::new(""));
+        for asset in local_refs {
+            let resolved = crate::eval::imports::normalize_path(&base.join(asset));
+            if is_safe_relative_path(&resolved) {
+                out.insert(resolved);
+            }
+        }
+    }
+    Ok(())
 }
 
 fn copy_dir_assets(src: &Path, dest: &Path, extensions: &[&str]) -> Result<(), String> {

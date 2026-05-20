@@ -60,3 +60,8 @@ import "<WCL>:/wdoc/widgets/infra/cloud.wcl"
 import "<WCL>:/wdoc/widgets/infra/user.wcl"
 import "<WCL>:/wdoc/runtime.wcl"
 import "<WCL>:/wdoc/base_styles.wcl"
+
+codec wdoc-html {
+    mode = :text
+    encoder = doc => { files = wdoc::render_site_files(doc) }
+}

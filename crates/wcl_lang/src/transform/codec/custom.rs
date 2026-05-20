@@ -519,6 +519,27 @@ pub fn encode_custom_value_with_registry(
     )
 }
 
+pub fn encode_custom_value_with_registry_and_builtins(
+    value: &Value,
+    codec: &CustomCodec,
+    options: &super::CodecOptions,
+    target: super::native::OutputTarget<'_>,
+    registry: Arc<CustomCodecRegistry>,
+    mut builtins: HashMap<String, BuiltinFn>,
+) -> Result<usize, TransformError> {
+    let depth = Arc::new(Mutex::new(0));
+    builtins.extend(encoder_builtins(registry.clone(), depth));
+    let mut session = CodecEvalSession::new(codec, builtins, CODEC_MAX_CALL_DEPTH);
+    encode_custom_value_with_session_and_registry(
+        &mut session,
+        value,
+        codec,
+        options,
+        target,
+        registry,
+    )
+}
+
 pub fn encode_custom_value_with_session_and_registry(
     session: &mut CodecEvalSession,
     value: &Value,
@@ -546,6 +567,19 @@ pub fn encode_custom_value_with_session_and_registry(
 
     let output = call_single_encoder(session, value, codec, options)?;
     write_output_to_target(session, &output, codec, target, options).map(|count| count.max(1))
+}
+
+pub fn encode_custom_value_with_session_and_registry_and_builtins(
+    session: &mut CodecEvalSession,
+    value: &Value,
+    codec: &CustomCodec,
+    options: &super::CodecOptions,
+    target: super::native::OutputTarget<'_>,
+    registry: Arc<CustomCodecRegistry>,
+    builtins: HashMap<String, BuiltinFn>,
+) -> Result<usize, TransformError> {
+    session.register_builtins(builtins);
+    encode_custom_value_with_session_and_registry(session, value, codec, options, target, registry)
 }
 
 fn encode_custom_records_with_session_and_registry(

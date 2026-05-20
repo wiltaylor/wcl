@@ -196,26 +196,63 @@ fn execute_with_custom_internal(
         }
 
         let native_codecs = codec::native::NativeCodecRegistry::standard();
-        let written = if output_codec == crate::wdoc::codec::HTML_CODEC
-            || (output_codec == "svg" && codec::native::is_svg_diagram_value(&value))
-        {
+        let written = if output_codec == "svg" && codec::native::is_svg_diagram_value(&value) {
             let native = native_codecs
                 .get(output_codec)
                 .ok_or_else(|| TransformError::UnknownCodec(output_codec.to_string()))?;
             codec::native::encode_native_value(&value, native, output_options, output_target)?
         } else {
-            let output_custom = custom_codecs
+            let wdoc_codecs;
+            let uses_bundled_wdoc_codec = output_codec == crate::wdoc::codec::HTML_CODEC
+                && custom_codecs.get(output_codec).is_none();
+            let active_codecs = if uses_bundled_wdoc_codec {
+                wdoc_codecs =
+                    crate::wdoc::codec::custom_registry().map_err(TransformError::Codec)?;
+                &wdoc_codecs
+            } else {
+                custom_codecs
+            };
+            let output_custom = active_codecs
                 .get(output_codec)
                 .ok_or_else(|| TransformError::UnknownCodec(output_codec.to_string()))?;
-            let registry = Arc::new(custom_codecs.clone());
-            if contains_stream(&value) {
-                codec::custom::encode_custom_value_with_session_and_registry(
-                    &mut decoded.session,
+            let registry = Arc::new(active_codecs.clone());
+            let wdoc_output_dir = if uses_bundled_wdoc_codec {
+                match &output_target {
+                    codec::native::OutputTarget::Directory(dir) => Some(*dir),
+                    codec::native::OutputTarget::Stream(_) => None,
+                }
+            } else {
+                None
+            };
+            let written = if contains_stream(&value) {
+                if uses_bundled_wdoc_codec {
+                    codec::custom::encode_custom_value_with_session_and_registry_and_builtins(
+                        &mut decoded.session,
+                        &value,
+                        output_custom,
+                        output_options,
+                        output_target,
+                        registry,
+                        crate::wdoc::source::wdoc_functions().functions,
+                    )?
+                } else {
+                    codec::custom::encode_custom_value_with_session_and_registry(
+                        &mut decoded.session,
+                        &value,
+                        output_custom,
+                        output_options,
+                        output_target,
+                        registry,
+                    )?
+                }
+            } else if uses_bundled_wdoc_codec {
+                codec::custom::encode_custom_value_with_registry_and_builtins(
                     &value,
                     output_custom,
                     output_options,
                     output_target,
                     registry,
+                    crate::wdoc::source::wdoc_functions().functions,
                 )?
             } else {
                 codec::custom::encode_custom_value_with_registry(
@@ -225,7 +262,11 @@ fn execute_with_custom_internal(
                     output_target,
                     registry,
                 )?
+            };
+            if let Some(output_dir) = wdoc_output_dir {
+                crate::wdoc::codec::finalize_html_assets_from_options(output_dir, output_options)?;
             }
+            written
         };
         return Ok(TransformStats {
             records_read,

@@ -1119,9 +1119,15 @@ namespace wdoc {
     }
 
     export let document_html = (doc, title, css_path, content_html, body_class, body_children) => {
-        let head_html = html::render(wdoc::document_head(doc, title, css_path, content_html))
-        let body_html = html::render({ tag = "body", class_name = body_class, children = body_children })
-        "<!DOCTYPE html><html lang=\"en\">" + head_html + body_html + "</html>\n"
+        let node = {
+            tag = "html",
+            lang = "en",
+            children = [
+                wdoc::document_head(doc, title, css_path, content_html),
+                { tag = "body", class_name = body_class, children = body_children }
+            ]
+        }
+        "<!DOCTYPE html>" + codec_encode("html", node, {}) + "\n"
     }
 
     export let site_page_card = page => {
@@ -1306,6 +1312,32 @@ namespace wdoc {
             concat(map(prepared.doc.pages, page => wdoc::render_page_output(prepared, page)), prepared.doc.template == "site" ? map(prepared.site_outputs, output => wdoc::render_site_output(prepared, output)) : []),
             wdoc::redirect_output(prepared)
         )
+    }
+
+    export let render_context = doc => {
+        let runtime = map_has(doc, "runtime") ? doc.runtime : {}
+        let doc_with_runtime = map_set(doc, "runtime", runtime)
+        { doc = doc_with_runtime, runtime = runtime }
+    }
+
+    export let site_css = doc => {
+        kind = "stylesheet",
+        children = [
+            map_has(doc, "base_styles") ? doc.base_styles : { kind = "stylesheet", children = [] },
+            wdoc::style_css(map_has(doc, "styles") ? doc.styles : []),
+            { kind = "raw", content = map_has(doc, "extra_css") ? doc.extra_css : "" }
+        ]
+    }
+
+    export let html_output_file = output => {
+        path = output.path,
+        content = output.html
+    }
+
+    export let render_site_files = doc => {
+        let ctx = wdoc::render_context(doc)
+        let html_files = map(wdoc::render_html_outputs(ctx), output => wdoc::html_output_file(output))
+        concat([{ path = "styles.css", content = codec_encode("css", wdoc::site_css(doc), {}) }], html_files)
     }
 
     export let style_target_leaf = target => {
