@@ -141,10 +141,7 @@ fn wdoc_project_value(
         "values".to_string(),
         wcl_lang::Value::Map(wdoc_project_values(document)),
     );
-    map.insert(
-        "metadata".to_string(),
-        wcl_lang::wdoc::source::project_metadata_value(document),
-    );
+    map.insert("metadata".to_string(), document.schema_metadata_value());
     map.insert(
         "source_dirs".to_string(),
         wcl_lang::Value::List(

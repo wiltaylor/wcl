@@ -46,7 +46,7 @@ pub use crate::serde_impl::{
     to_string_pretty as value_to_string_pretty, Error as SerdeError,
 };
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -140,7 +140,190 @@ pub struct Document {
     pub imported_paths: HashSet<PathBuf>,
 }
 
+fn collect_template_map(doc: &Document) -> HashMap<(String, String), String> {
+    let mut map = HashMap::new();
+    collect_template_map_items(&doc.ast.items, &[], &mut map);
+    map
+}
+
+fn collect_template_map_items(
+    items: &[ast::DocItem],
+    namespace: &[String],
+    map: &mut HashMap<(String, String), String>,
+) {
+    for item in items {
+        match item {
+            ast::DocItem::Body(ast::BodyItem::Schema(schema)) => {
+                let schema_name = qualified_schema_name(namespace, schema);
+                for dec in &schema.decorators {
+                    if dec.name.name == "template" && dec.args.len() >= 2 {
+                        let format = extract_string_arg(&dec.args[0]);
+                        let fn_name = extract_string_arg(&dec.args[1]);
+                        if let (Some(format), Some(function)) = (format, fn_name) {
+                            map.insert((format, schema_name.clone()), function);
+                        }
+                    }
+                }
+            }
+            ast::DocItem::Namespace(ns) => {
+                let mut child_namespace = namespace.to_vec();
+                child_namespace.extend(ns.path.iter().map(|part| part.name.clone()));
+                collect_template_map_items(&ns.items, &child_namespace, map);
+            }
+            _ => {}
+        }
+    }
+}
+
+fn collect_template_extends_map(doc: &Document) -> HashMap<String, String> {
+    let mut map = HashMap::new();
+    collect_template_extends_map_items(&doc.ast.items, &[], &mut map);
+    map
+}
+
+fn collect_template_extends_map_items(
+    items: &[ast::DocItem],
+    namespace: &[String],
+    map: &mut HashMap<String, String>,
+) {
+    for item in items {
+        match item {
+            ast::DocItem::Body(ast::BodyItem::Schema(schema)) => {
+                let schema_name = qualified_schema_name(namespace, schema);
+                for dec in &schema.decorators {
+                    if dec.name.name == "extends" && !dec.args.is_empty() {
+                        if let Some(base_name) = extract_string_arg(&dec.args[0]) {
+                            map.insert(schema_name.clone(), base_name);
+                        }
+                    }
+                }
+            }
+            ast::DocItem::Namespace(ns) => {
+                let mut child_namespace = namespace.to_vec();
+                child_namespace.extend(ns.path.iter().map(|part| part.name.clone()));
+                collect_template_extends_map_items(&ns.items, &child_namespace, map);
+            }
+            _ => {}
+        }
+    }
+}
+
+fn collect_structural_schema_names(doc: &Document) -> HashSet<String> {
+    let mut names = HashSet::new();
+    collect_structural_schema_names_items(&doc.ast.items, &[], &mut names);
+    names
+}
+
+fn collect_structural_schema_names_items(
+    items: &[ast::DocItem],
+    namespace: &[String],
+    names: &mut HashSet<String>,
+) {
+    for item in items {
+        match item {
+            ast::DocItem::Body(ast::BodyItem::Schema(schema)) => {
+                if schema
+                    .decorators
+                    .iter()
+                    .any(|dec| dec.name.name == "structural")
+                {
+                    names.insert(qualified_schema_name(namespace, schema));
+                }
+            }
+            ast::DocItem::Namespace(ns) => {
+                let mut child_namespace = namespace.to_vec();
+                child_namespace.extend(ns.path.iter().map(|part| part.name.clone()));
+                collect_structural_schema_names_items(&ns.items, &child_namespace, names);
+            }
+            _ => {}
+        }
+    }
+}
+
+fn qualified_schema_name(namespace: &[String], schema: &ast::Schema) -> String {
+    let schema_name = schema_name_literal(schema);
+    if schema_name.contains("::") || namespace.is_empty() {
+        schema_name
+    } else {
+        format!("{}::{}", namespace.join("::"), schema_name)
+    }
+}
+
+fn schema_name_literal(schema: &ast::Schema) -> String {
+    schema
+        .name
+        .parts
+        .iter()
+        .filter_map(|part| match part {
+            ast::StringPart::Literal(value) => Some(value.as_str()),
+            _ => None,
+        })
+        .collect::<String>()
+}
+
+fn extract_string_arg(arg: &ast::DecoratorArg) -> Option<String> {
+    match arg {
+        ast::DecoratorArg::Positional(expr) => extract_string_expr(expr),
+        ast::DecoratorArg::Named(_, expr) => extract_string_expr(expr),
+    }
+}
+
+fn extract_string_expr(expr: &ast::Expr) -> Option<String> {
+    match expr {
+        ast::Expr::StringLit(lit) => Some(
+            lit.parts
+                .iter()
+                .filter_map(|part| match part {
+                    ast::StringPart::Literal(value) => Some(value.as_str()),
+                    _ => None,
+                })
+                .collect(),
+        ),
+        _ => None,
+    }
+}
+
 impl Document {
+    /// Return schema decorator metadata in a WCL-friendly shape.
+    ///
+    /// This is intentionally generic over the loaded document. Consumers such
+    /// as WDoc can query template, inheritance, and structural schema metadata
+    /// without depending on a WDoc-specific Rust loader.
+    pub fn schema_metadata_value(&self) -> Value {
+        let templates = collect_template_map(self)
+            .into_iter()
+            .map(|((format, schema), function)| {
+                let mut item = indexmap::IndexMap::new();
+                item.insert("format".to_string(), Value::String(format));
+                item.insert("schema".to_string(), Value::String(schema));
+                item.insert("fn_name".to_string(), Value::String(function));
+                Value::Map(item)
+            })
+            .collect::<Vec<_>>();
+        let extends = collect_template_extends_map(self)
+            .into_iter()
+            .map(|(schema, base)| {
+                let mut item = indexmap::IndexMap::new();
+                item.insert("schema".to_string(), Value::String(schema));
+                item.insert("base".to_string(), Value::String(base));
+                Value::Map(item)
+            })
+            .collect::<Vec<_>>();
+        let structural_schemas = collect_structural_schema_names(self)
+            .into_iter()
+            .map(Value::String)
+            .collect::<Vec<_>>();
+
+        let mut map = indexmap::IndexMap::new();
+        map.insert("templates".to_string(), Value::List(templates));
+        map.insert("extends".to_string(), Value::List(extends));
+        map.insert(
+            "structural_schemas".to_string(),
+            Value::List(structural_schemas),
+        );
+        Value::Map(map)
+    }
+
     /// Get all top-level blocks of a given type
     pub fn blocks_of_type(&self, kind: &str) -> Vec<&ast::Block> {
         self.ast
