@@ -20,36 +20,91 @@ pub fn lsp_parse_options() -> Result<crate::ParseOptions, String> {
 }
 
 fn register_layout_helpers(reg: &mut FunctionRegistry) {
-    for (name, align) in [
-        ("wdoc::layout_stack", crate::wdoc::shapes::Alignment::Stack),
-        ("wdoc::layout_flow", crate::wdoc::shapes::Alignment::Flow),
-        (
-            "wdoc::layout_center",
-            crate::wdoc::shapes::Alignment::Center,
-        ),
-        ("wdoc::layout_grid", crate::wdoc::shapes::Alignment::Grid),
-        (
-            "wdoc::layout_layered",
-            crate::wdoc::shapes::Alignment::Layered,
-        ),
-        ("wdoc::layout_force", crate::wdoc::shapes::Alignment::Force),
-        (
-            "wdoc::layout_radial",
-            crate::wdoc::shapes::Alignment::Radial,
-        ),
-    ] {
-        let builtin_name = name.to_string();
-        reg.register(
-            name,
-            std::sync::Arc::new(move |args: &[Value]| wdoc_layout_helper(align, args)) as BuiltinFn,
-            FunctionSignature {
-                name: builtin_name,
-                params: vec!["ctx: map".into()],
-                return_type: "map".into(),
-                doc: "Resolve a WDoc diagram layout request".into(),
-            },
-        );
-    }
+    use crate::wdoc::shapes::Alignment;
+
+    reg.register(
+        "wdoc::layout_stack",
+        std::sync::Arc::new(|args: &[Value]| wdoc_layout_helper(Alignment::Stack, args))
+            as BuiltinFn,
+        FunctionSignature {
+            name: "wdoc::layout_stack".into(),
+            params: vec!["ctx: map".into()],
+            return_type: "map".into(),
+            doc: "Resolve a WDoc stack layout request".into(),
+        },
+    );
+
+    reg.register(
+        "wdoc::layout_flow",
+        std::sync::Arc::new(|args: &[Value]| wdoc_layout_helper(Alignment::Flow, args))
+            as BuiltinFn,
+        FunctionSignature {
+            name: "wdoc::layout_flow".into(),
+            params: vec!["ctx: map".into()],
+            return_type: "map".into(),
+            doc: "Resolve a WDoc flow layout request".into(),
+        },
+    );
+
+    reg.register(
+        "wdoc::layout_center",
+        std::sync::Arc::new(|args: &[Value]| wdoc_layout_helper(Alignment::Center, args))
+            as BuiltinFn,
+        FunctionSignature {
+            name: "wdoc::layout_center".into(),
+            params: vec!["ctx: map".into()],
+            return_type: "map".into(),
+            doc: "Resolve a WDoc center layout request".into(),
+        },
+    );
+
+    reg.register(
+        "wdoc::layout_grid",
+        std::sync::Arc::new(|args: &[Value]| wdoc_layout_helper(Alignment::Grid, args))
+            as BuiltinFn,
+        FunctionSignature {
+            name: "wdoc::layout_grid".into(),
+            params: vec!["ctx: map".into()],
+            return_type: "map".into(),
+            doc: "Resolve a WDoc grid layout request".into(),
+        },
+    );
+
+    reg.register(
+        "wdoc::layout_layered",
+        std::sync::Arc::new(|args: &[Value]| wdoc_layout_helper(Alignment::Layered, args))
+            as BuiltinFn,
+        FunctionSignature {
+            name: "wdoc::layout_layered".into(),
+            params: vec!["ctx: map".into()],
+            return_type: "map".into(),
+            doc: "Resolve a WDoc layered layout request".into(),
+        },
+    );
+
+    reg.register(
+        "wdoc::layout_force",
+        std::sync::Arc::new(|args: &[Value]| wdoc_layout_helper(Alignment::Force, args))
+            as BuiltinFn,
+        FunctionSignature {
+            name: "wdoc::layout_force".into(),
+            params: vec!["ctx: map".into()],
+            return_type: "map".into(),
+            doc: "Resolve a WDoc force layout request".into(),
+        },
+    );
+
+    reg.register(
+        "wdoc::layout_radial",
+        std::sync::Arc::new(|args: &[Value]| wdoc_layout_helper(Alignment::Radial, args))
+            as BuiltinFn,
+        FunctionSignature {
+            name: "wdoc::layout_radial".into(),
+            params: vec!["ctx: map".into()],
+            return_type: "map".into(),
+            doc: "Resolve a WDoc radial layout request".into(),
+        },
+    );
 
     reg.register(
         "wdoc::route_connections",
