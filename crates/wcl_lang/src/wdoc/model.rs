@@ -15,7 +15,14 @@ pub struct WdocDocument {
     pub sections: Vec<Section>,
     pub pages: Vec<Page>,
     pub styles: Vec<WdocStyle>,
+    pub assets: Vec<WdocAsset>,
     pub extra_css: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WdocAsset {
+    pub path: String,
+    pub src: String,
 }
 
 /// A section in the document outline. Ordering matches declaration order.

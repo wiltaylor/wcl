@@ -110,14 +110,20 @@ pub(crate) fn render_project(
     let doc_value = find_wdoc_document_value(document)?.clone();
     let imported_files = document.imported_file_paths();
     let source_dirs = source_dirs(files, &imported_files);
+    let file_base_dir = files
+        .first()
+        .and_then(|path| path.parent())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."));
     let options = wcl_lang::transform::codec::CodecOptions::new();
     wcl_lang::wdoc::source::with_loaded_project_context(document, &source_dirs, || {
-        wcl_lang::transform::encode_value_with_custom_to_directory(
+        wcl_lang::transform::encode_value_with_custom_to_directory_with_file_access(
             &doc_value,
             "wdoc-html",
             output,
             &options,
             Some(&registry),
+            file_base_dir,
         )
     })
     .map(|_| ())

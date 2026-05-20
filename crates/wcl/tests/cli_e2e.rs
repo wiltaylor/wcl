@@ -2274,6 +2274,73 @@ page home {
 }
 
 #[test]
+fn wdoc_build_copies_dopesheet_image_assets() {
+    let dir = tempdir().expect("tempdir");
+    let images_dir = dir.path().join("images");
+    std::fs::create_dir_all(&images_dir).expect("create images dir");
+    std::fs::write(images_dir.join("sprites.png"), [0x89, b'P', b'N', b'G']).expect("write image");
+
+    let site = r#"
+import <wdoc.wcl>
+use wdoc::{doc, section, page, layout}
+use wdoc::draw::{diagram, dopesheet, sprite}
+
+doc my_docs {
+    title = "Sprite Docs"
+    section sprites "Sprites" {}
+}
+
+page home {
+    section = ref("my_docs.sprites")
+    title = "Home"
+
+    layout {
+        vsplit main {
+            split body {
+                size = 100
+
+                diagram sprites {
+                    width = 200
+                    height = 140
+
+                    dopesheet sheet {
+                        src = "images/sprites.png"
+                        columns = 1
+                        frame_width = 16
+                        frame_height = 16
+                        frame_count = 1
+                    }
+
+                    sprite hero {
+                        x = 10
+                        y = 10
+                        width = 32
+                        height = 32
+                        sheet = "sheet"
+                    }
+                }
+            }
+        }
+    }
+}
+"#;
+    let input = dir.path().join("site.wcl");
+    std::fs::write(&input, site).expect("write wdoc file");
+    let output = dir.path().join("out");
+
+    Command::cargo_bin("wcl")
+        .unwrap()
+        .current_dir(dir.path())
+        .args(["wdoc", "build", "site.wcl", "--output", "out"])
+        .assert()
+        .success();
+
+    let html = std::fs::read_to_string(output.join("home.html")).expect("read rendered page");
+    assert!(html.contains("href=\"images/sprites.png\""));
+    assert!(output.join("images/sprites.png").exists());
+}
+
+#[test]
 fn wdoc_build_renders_drawing_image_and_copies_asset() {
     let dir = tempdir().expect("tempdir");
     let pages_dir = dir.path().join("pages");
@@ -2328,13 +2395,8 @@ page home {
 
     Command::cargo_bin("wcl")
         .unwrap()
-        .args([
-            "wdoc",
-            "build",
-            input.to_str().unwrap(),
-            "--output",
-            output.to_str().unwrap(),
-        ])
+        .current_dir(dir.path())
+        .args(["wdoc", "build", "site.wcl", "--output", "out"])
         .assert()
         .success();
 

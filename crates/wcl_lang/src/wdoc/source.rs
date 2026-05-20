@@ -1286,6 +1286,18 @@ fn collect_shape_or_connection(
         if kind == ShapeKind::Tilemap {
             apply_tilemap_rows_attrs(&mut a, br);
         }
+        if matches!(
+            kind,
+            ShapeKind::Image
+                | ShapeKind::Map
+                | ShapeKind::Sprite
+                | ShapeKind::DopesheetView
+                | ShapeKind::Tilemap
+        ) {
+            if let Some(src) = a.get("_wdoc_sheet_src").or_else(|| a.get("src")).cloned() {
+                register_media_asset(&src, ctx);
+            }
+        }
 
         // Composite shape: any block whose schema declares @template("shape", "fn").
         // Call the function and convert its returned shape descriptors into the
@@ -1737,6 +1749,61 @@ fn apply_sprite_dopesheet_attrs(
             attrs.insert(dest.to_string(), value);
         }
     }
+}
+
+fn register_media_asset(src: &str, ctx: &ExtractCtx) {
+    if src.is_empty() || is_remote_or_data_url(src) {
+        return;
+    }
+    let Some(output_path) = normalize_asset_output_path(src) else {
+        return;
+    };
+    let Some(source_path) = resolve_local_asset_src(src, &ctx.svg_search_dirs) else {
+        eprintln!("wdoc: warning: asset '{src}' could not be found and was skipped");
+        return;
+    };
+    ctx.asset_registry
+        .borrow_mut()
+        .entry(output_path)
+        .or_insert_with(|| source_path.to_string_lossy().replace('\\', "/"));
+}
+
+fn normalize_asset_output_path(src: &str) -> Option<String> {
+    let path = src.split(['?', '#']).next().unwrap_or(src).trim();
+    if path.is_empty() {
+        return None;
+    }
+    let candidate = Path::new(path);
+    if candidate.is_absolute() {
+        return candidate
+            .file_name()
+            .map(|name| name.to_string_lossy().replace('\\', "/"));
+    }
+    let mut parts = Vec::new();
+    for component in candidate.components() {
+        match component {
+            std::path::Component::Normal(part) => parts.push(part.to_string_lossy().to_string()),
+            std::path::Component::CurDir => {}
+            _ => return None,
+        }
+    }
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join("/"))
+    }
+}
+
+fn resolve_local_asset_src(src: &str, search_dirs: &[PathBuf]) -> Option<PathBuf> {
+    let path = src.split(['?', '#']).next().unwrap_or(src);
+    let src_path = Path::new(path);
+    if src_path.is_absolute() {
+        return src_path.exists().then(|| src_path.to_path_buf());
+    }
+    search_dirs
+        .iter()
+        .map(|dir| dir.join(src_path))
+        .find(|candidate| candidate.exists())
 }
 
 fn apply_tilemap_rows_attrs(attrs: &mut IndexMap<String, String>, br: &BlockRef) {
@@ -3255,6 +3322,7 @@ struct ExtractCtx {
     diagram_classes: Rc<RefCell<IndexMap<String, crate::wdoc::shapes::DiagramClass>>>,
     diagram_classes_by_file:
         Rc<RefCell<HashMap<FileId, IndexMap<String, crate::wdoc::shapes::DiagramClass>>>>,
+    asset_registry: Rc<RefCell<BTreeMap<String, String>>>,
     binding_targets: Rc<RefCell<HashSet<String>>>,
     svg_search_dirs: Vec<PathBuf>,
     icon_registry: IconRegistry,
@@ -3641,6 +3709,7 @@ mod wdoc_draw_tests {
             css_registry: Rc::new(RefCell::new(DiagramCssRegistry::default())),
             diagram_classes: Rc::new(RefCell::new(IndexMap::new())),
             diagram_classes_by_file: Rc::new(RefCell::new(HashMap::new())),
+            asset_registry: Rc::new(RefCell::new(BTreeMap::new())),
             binding_targets: Rc::new(RefCell::new(HashSet::new())),
             svg_search_dirs: Vec::new(),
             icon_registry: IconRegistry::default(),
@@ -3897,6 +3966,7 @@ mod wdoc_draw_tests {
             css_registry: Rc::new(RefCell::new(DiagramCssRegistry::default())),
             diagram_classes: Rc::new(RefCell::new(IndexMap::new())),
             diagram_classes_by_file: Rc::new(RefCell::new(HashMap::new())),
+            asset_registry: Rc::new(RefCell::new(BTreeMap::new())),
             binding_targets: Rc::new(RefCell::new(HashSet::new())),
             svg_search_dirs: Vec::new(),
             icon_registry: IconRegistry::default(),
@@ -4032,6 +4102,7 @@ mod wdoc_draw_tests {
             css_registry: Rc::new(RefCell::new(DiagramCssRegistry::default())),
             diagram_classes: Rc::new(RefCell::new(IndexMap::new())),
             diagram_classes_by_file: Rc::new(RefCell::new(HashMap::new())),
+            asset_registry: Rc::new(RefCell::new(BTreeMap::new())),
             binding_targets: Rc::new(RefCell::new(HashSet::new())),
             svg_search_dirs: Vec::new(),
             icon_registry: IconRegistry::default(),
@@ -8081,6 +8152,15 @@ fn extract(values: &IndexMap<String, Value>, ctx: &ExtractCtx) -> Result<WdocDoc
         sections,
         pages,
         styles,
+        assets: ctx
+            .asset_registry
+            .borrow()
+            .iter()
+            .map(|(path, src)| WdocAsset {
+                path: path.clone(),
+                src: src.clone(),
+            })
+            .collect(),
         extra_css: ctx.css_registry.borrow().render_css(),
     })
 }
@@ -8472,6 +8552,7 @@ fn extract_ctx_from_loaded_document(
         diagram_classes_by_file: Rc::new(RefCell::new(collect_diagram_classes_by_file(
             &doc.values,
         ))),
+        asset_registry: Rc::new(RefCell::new(BTreeMap::new())),
         binding_targets: Rc::new(RefCell::new(HashSet::new())),
         svg_search_dirs,
         icon_registry,

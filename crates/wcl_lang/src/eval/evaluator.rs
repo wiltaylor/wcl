@@ -139,6 +139,11 @@ impl Evaluator {
         }
     }
 
+    pub fn set_file_access(&mut self, fs: Box<dyn FileSystem>, base_dir: PathBuf) {
+        self.fs = Some(fs);
+        self.base_dir = Some(base_dir);
+    }
+
     /// Register a custom function at runtime.
     pub fn register_function(&mut self, name: impl Into<String>, f: BuiltinFn) {
         self.builtins.insert(name.into(), f);

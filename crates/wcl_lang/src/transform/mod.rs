@@ -19,7 +19,7 @@ pub use mapper::{map_record, map_records, FieldMapping, MapConfig, MapResult, Wh
 
 use crate::eval::value::{FunctionValue, Value};
 use std::io::{Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 /// Context for transforms that need access to struct definitions.
@@ -155,6 +155,27 @@ pub fn encode_value_with_custom_to_target(
         output_options,
         custom_codecs,
         None,
+        None,
+    )
+}
+
+/// Encode an evaluated value while allowing WCL codec functions to read files.
+pub fn encode_value_with_custom_to_target_with_file_access(
+    value: &Value,
+    output_codec: &str,
+    output_target: codec::native::OutputTarget<'_>,
+    output_options: &codec::CodecOptions,
+    custom_codecs: Option<&codec::custom::CustomCodecRegistry>,
+    base_dir: PathBuf,
+) -> Result<usize, TransformError> {
+    encode_value_with_custom_to_target_internal(
+        value,
+        output_codec,
+        output_target,
+        output_options,
+        custom_codecs,
+        None,
+        Some(base_dir),
     )
 }
 
@@ -172,6 +193,25 @@ pub fn encode_value_with_custom_to_directory(
         codec::native::OutputTarget::Directory(output_dir),
         output_options,
         custom_codecs,
+    )
+}
+
+/// Encode an evaluated value into a directory while allowing WCL codec file reads.
+pub fn encode_value_with_custom_to_directory_with_file_access(
+    value: &Value,
+    output_codec: &str,
+    output_dir: &Path,
+    output_options: &codec::CodecOptions,
+    custom_codecs: Option<&codec::custom::CustomCodecRegistry>,
+    base_dir: PathBuf,
+) -> Result<usize, TransformError> {
+    encode_value_with_custom_to_target_with_file_access(
+        value,
+        output_codec,
+        codec::native::OutputTarget::Directory(output_dir),
+        output_options,
+        custom_codecs,
+        base_dir,
     )
 }
 
@@ -279,6 +319,7 @@ fn execute_with_custom_internal(
             output_options,
             Some(custom_codecs),
             Some(&mut decoded.session),
+            None,
         )?;
         return Ok(TransformStats {
             records_read,
@@ -297,6 +338,7 @@ fn encode_value_with_custom_to_target_internal(
     output_options: &codec::CodecOptions,
     custom_codecs: Option<&codec::custom::CustomCodecRegistry>,
     mut source_session: Option<&mut codec::custom::CodecEvalSession>,
+    file_base_dir: Option<PathBuf>,
 ) -> Result<usize, TransformError> {
     let standard_codecs;
     let custom_codecs = match custom_codecs {
@@ -328,6 +370,9 @@ fn encode_value_with_custom_to_target_internal(
                     .to_string(),
             )
         })?;
+        if let Some(base_dir) = file_base_dir.as_ref() {
+            session.enable_file_access(base_dir.clone());
+        }
         if uses_wdoc_codec {
             codec::custom::encode_custom_value_with_session_and_registry_and_builtins(
                 session,
@@ -348,6 +393,16 @@ fn encode_value_with_custom_to_target_internal(
                 registry,
             )?
         }
+    } else if uses_wdoc_codec && file_base_dir.is_some() {
+        codec::custom::encode_custom_value_with_registry_and_builtins_and_file_access(
+            value,
+            output_custom,
+            output_options,
+            output_target,
+            registry,
+            crate::wdoc::source::wdoc_functions().functions,
+            file_base_dir.expect("checked above"),
+        )?
     } else if uses_wdoc_codec {
         codec::custom::encode_custom_value_with_registry_and_builtins(
             value,

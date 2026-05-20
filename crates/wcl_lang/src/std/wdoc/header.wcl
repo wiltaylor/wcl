@@ -1484,6 +1484,13 @@ namespace wdoc {
         content = file_stream(src)
     }
 
+    export let local_asset_file = asset => {
+        path = asset.path,
+        content = file_stream(asset.src, { allow_absolute = true })
+    }
+
+    export let local_asset_files = doc => map(attr_or(doc, "assets", []), asset => wdoc::local_asset_file(asset))
+
     export let embedded_asset_files = () => [
         wdoc::embedded_asset_file("highlight.min.js", "<WCL>:/assets/highlightjs/highlight.min.js"),
         wdoc::embedded_asset_file("highlight-light.min.css", "<WCL>:/assets/highlightjs/github.min.css"),
@@ -1500,7 +1507,7 @@ namespace wdoc {
         let prepared_doc = wdoc::prepare_site_document(project_doc)
         let ctx = wdoc::render_context(prepared_doc)
         let html_files = map(wdoc::render_html_outputs(ctx), output => wdoc::html_output_file(output))
-        concat([{ path = "styles.css", content = codec_encode("css", wdoc::site_css(prepared_doc), {}) }], concat(html_files, wdoc::embedded_asset_files()))
+        concat([{ path = "styles.css", content = codec_encode("css", wdoc::site_css(prepared_doc), {}) }], concat(html_files, concat(wdoc::local_asset_files(prepared_doc), wdoc::embedded_asset_files())))
     }
 
     export let render_project_site_files = (doc, options) => {

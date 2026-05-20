@@ -6,6 +6,7 @@
 
 use crate::eval::evaluator::Evaluator;
 use crate::eval::functions::BuiltinFn;
+use crate::eval::imports::RealFileSystem;
 use crate::eval::scope::{ScopeEntry, ScopeEntryKind, ScopeKind};
 use crate::eval::value::{
     BlockRef, FunctionBody, FunctionValue, LambdaAttrs, NativeStreamState, NativeStreamValue, Value,
@@ -20,7 +21,7 @@ use regex::Regex;
 use std::collections::HashMap;
 use std::fs;
 use std::io::{Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -393,6 +394,11 @@ impl CodecEvalSession {
         }
     }
 
+    pub fn enable_file_access(&mut self, base_dir: PathBuf) {
+        self.eval
+            .set_file_access(Box::new(RealFileSystem), base_dir);
+    }
+
     fn stream_next(&mut self, value: &Value) -> Result<Value, TransformError> {
         match value {
             Value::Stream(stream) => self
@@ -570,6 +576,29 @@ pub fn encode_custom_value_with_registry_and_builtins(
     let depth = Arc::new(Mutex::new(0));
     builtins.extend(encoder_builtins(registry.clone(), depth));
     let mut session = CodecEvalSession::new(codec, builtins, CODEC_MAX_CALL_DEPTH);
+    encode_custom_value_with_session_and_registry(
+        &mut session,
+        value,
+        codec,
+        options,
+        target,
+        registry,
+    )
+}
+
+pub fn encode_custom_value_with_registry_and_builtins_and_file_access(
+    value: &Value,
+    codec: &CustomCodec,
+    options: &super::CodecOptions,
+    target: super::native::OutputTarget<'_>,
+    registry: Arc<CustomCodecRegistry>,
+    mut builtins: HashMap<String, BuiltinFn>,
+    base_dir: PathBuf,
+) -> Result<usize, TransformError> {
+    let depth = Arc::new(Mutex::new(0));
+    builtins.extend(encoder_builtins(registry.clone(), depth));
+    let mut session = CodecEvalSession::new(codec, builtins, CODEC_MAX_CALL_DEPTH);
+    session.enable_file_access(base_dir);
     encode_custom_value_with_session_and_registry(
         &mut session,
         value,
