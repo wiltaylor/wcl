@@ -49,6 +49,7 @@ pub use crate::serde_impl::{
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 /// Options for parsing a WCL document
 #[derive(Clone)]
@@ -138,6 +139,51 @@ pub struct Document {
     pub struct_registry: StructRegistry,
     /// Files loaded through WCL import resolution.
     pub imported_paths: HashSet<PathBuf>,
+}
+
+struct ParseProfiler {
+    enabled: bool,
+    label: &'static str,
+    started: Instant,
+    last: Instant,
+    entries: Vec<(&'static str, Duration)>,
+}
+
+impl ParseProfiler {
+    fn from_env(label: &'static str) -> Self {
+        let now = Instant::now();
+        Self {
+            enabled: std::env::var_os("WCL_PROFILE").is_some(),
+            label,
+            started: now,
+            last: now,
+            entries: Vec::new(),
+        }
+    }
+
+    fn checkpoint(&mut self, name: &'static str) {
+        if !self.enabled {
+            return;
+        }
+        let now = Instant::now();
+        self.entries.push((name, now.duration_since(self.last)));
+        self.last = now;
+    }
+
+    fn finish(&self) {
+        if !self.enabled {
+            return;
+        }
+        eprintln!("WCL_PROFILE {label}", label = self.label);
+        for (name, duration) in &self.entries {
+            eprintln!("  {name:<36} {duration:>10.3?}");
+        }
+        eprintln!(
+            "  {name:<36} {duration:>10.3?}",
+            name = "total",
+            duration = self.started.elapsed()
+        );
+    }
 }
 
 fn collect_template_map(doc: &Document) -> HashMap<(String, String), String> {
@@ -803,6 +849,7 @@ impl Document {
 /// 9. Schema validation
 /// 10. ID uniqueness check
 pub fn parse(source: &str, options: ParseOptions) -> Document {
+    let mut profiler = ParseProfiler::from_env("parse");
     let mut source_map = SourceMap::new();
     let file_id = source_map.add_file("<input>".to_string(), source.to_string());
     let mut all_diagnostics = Vec::new();
@@ -810,6 +857,7 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
     // Phase 1: Parse
     let (mut doc, parse_diags) = crate::lang::parse(source, file_id);
     all_diagnostics.extend(parse_diags.into_diagnostics());
+    profiler.checkpoint("parse source");
 
     // Phase 2: Import resolution
     let fs: Arc<dyn FileSystem> = options
@@ -855,6 +903,7 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
 
         imported_paths = resolver.loaded_paths().clone();
     }
+    profiler.checkpoint("resolve imports");
 
     // Phase 2a: Resolve import_table() expressions into inline tables
     {
@@ -862,6 +911,7 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
         crate::eval::resolve_import_tables(&mut doc, fs.as_ref(), &options.root_dir, &mut diag_bag);
         all_diagnostics.extend(diag_bag.into_diagnostics());
     }
+    profiler.checkpoint("resolve import_table");
 
     // Phase 2b: Namespace resolution — qualify names, flatten namespace wrappers
     let namespace_aliases = {
@@ -870,6 +920,7 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
         all_diagnostics.extend(diag_bag.into_diagnostics());
         aliases
     };
+    profiler.checkpoint("resolve namespaces");
 
     // Phase 3: Macro collection, after imports and namespace flattening so
     // imported and namespaced macros are visible at expansion time.
@@ -877,6 +928,7 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
     let mut diag_bag = DiagnosticBag::new();
     macro_registry.collect(&mut doc, &mut diag_bag);
     all_diagnostics.extend(diag_bag.into_diagnostics());
+    profiler.checkpoint("collect macros");
 
     // Phase 4: Macro expansion
     let mut expander = MacroExpander::with_namespace_aliases(
@@ -886,6 +938,7 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
     );
     expander.expand(&mut doc);
     all_diagnostics.extend(expander.into_diagnostics().into_diagnostics());
+    profiler.checkpoint("expand macros");
 
     // Phase 5: Control flow expansion
     // Tolerate missing-name iterable errors on this first pass — ForLoops
@@ -1018,16 +1071,19 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
         post_macro_cf_expander.captures(),
     );
     all_diagnostics.extend(post_macro_cf_expander.into_diagnostics().into_diagnostics());
+    profiler.checkpoint("expand control flow");
 
     // Phase 6: Partial merge
     let mut merger = PartialMerger::new(options.merge_conflict_mode);
     merger.merge(&mut doc);
     all_diagnostics.extend(merger.into_diagnostics().into_diagnostics());
+    profiler.checkpoint("merge partials");
 
     // Phase 6a: Assign auto-ids to anonymous blocks whose schema opts in
     // via `@auto_id`. Runs before scope construction so every downstream
     // consumer sees the minted id as a real `inline_id`.
     crate::eval::auto_id::assign_auto_ids(&mut doc, &namespace_aliases);
+    profiler.checkpoint("assign auto ids");
 
     // Phase 7: Scope construction + Expression evaluation
     // Wrap the Arc in a newtype so we can pass it as Box<dyn FileSystem>
@@ -1097,6 +1153,7 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
 
     let mut evaluator = build_evaluator(&control_flow_captures);
     let mut values = evaluator.evaluate(&doc);
+    profiler.checkpoint("evaluate");
 
     // Phase 7a: retry control-flow expansion for ForLoops whose iterables
     // depend on blocks (e.g. `for x in (..foo)`). Phase 5 left them in
@@ -1161,6 +1218,7 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
         let mut new_evaluator = build_evaluator(&control_flow_captures);
         values = new_evaluator.evaluate(&doc);
         all_diagnostics.extend(new_evaluator.into_diagnostics().into_diagnostics());
+        profiler.checkpoint("retry control flow");
     } else {
         all_diagnostics.extend(evaluator.into_diagnostics().into_diagnostics());
     }
@@ -1172,6 +1230,7 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
     decorator_schemas.collect(&doc, &mut diag_bag);
     decorator_schemas.validate_all(&doc, &mut diag_bag);
     all_diagnostics.extend(diag_bag.into_diagnostics());
+    profiler.checkpoint("validate decorators");
 
     // Phase 9: Schema validation
     let mut schemas = SchemaRegistry::new();
@@ -1188,17 +1247,20 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
 
     schemas.validate(&doc, &values, &symbol_sets, &mut diag_bag);
     all_diagnostics.extend(diag_bag.into_diagnostics());
+    profiler.checkpoint("validate schemas");
 
     // Phase 9b: Table column validation
     let mut diag_bag = DiagnosticBag::new();
     crate::schema::table::validate_tables(&doc, &mut diag_bag);
     all_diagnostics.extend(diag_bag.into_diagnostics());
+    profiler.checkpoint("validate tables");
 
     // Phase 10: ID uniqueness check
     let mut id_registry = IdRegistry::new();
     let mut diag_bag = DiagnosticBag::new();
     id_registry.check_document(&doc, &mut diag_bag);
     all_diagnostics.extend(diag_bag.into_diagnostics());
+    profiler.checkpoint("check ids");
 
     // Phase 11: Document validation
     let mut diag_bag = DiagnosticBag::new();
@@ -1208,14 +1270,16 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
         &mut diag_bag,
     );
     all_diagnostics.extend(diag_bag.into_diagnostics());
+    profiler.checkpoint("validate document");
 
     // Phase 9d: Collect struct definitions
     let mut struct_registry = StructRegistry::new();
     let mut struct_diag_bag = DiagnosticBag::new();
     struct_registry.collect(&doc, &mut struct_diag_bag);
     all_diagnostics.extend(struct_diag_bag.into_diagnostics());
+    profiler.checkpoint("collect structs");
 
-    Document {
+    let document = Document {
         ast: doc,
         values,
         diagnostics: all_diagnostics,
@@ -1225,7 +1289,9 @@ pub fn parse(source: &str, options: ParseOptions) -> Document {
         symbol_sets,
         struct_registry,
         imported_paths,
-    }
+    };
+    profiler.finish();
+    document
 }
 
 fn eval_with_captures(

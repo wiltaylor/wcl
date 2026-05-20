@@ -60,3 +60,7 @@ predicates = "3"
 [[bench]]
 name = "e2e"
 harness = false
+
+[[bench]]
+name = "wdoc"
+harness = false

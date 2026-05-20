@@ -1,9 +1,55 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use crate::cli::vars::parse_var_args;
 use crate::cli::LibraryArgs;
 use indexmap::IndexMap;
+
+struct WdocProfiler {
+    enabled: bool,
+    label: &'static str,
+    started: Instant,
+    last: Instant,
+    entries: Vec<(&'static str, Duration)>,
+}
+
+impl WdocProfiler {
+    fn from_env(label: &'static str) -> Self {
+        let now = Instant::now();
+        Self {
+            enabled: std::env::var_os("WCL_PROFILE").is_some(),
+            label,
+            started: now,
+            last: now,
+            entries: Vec::new(),
+        }
+    }
+
+    fn checkpoint(&mut self, name: &'static str) {
+        if !self.enabled {
+            return;
+        }
+        let now = Instant::now();
+        self.entries.push((name, now.duration_since(self.last)));
+        self.last = now;
+    }
+
+    fn finish(&self) {
+        if !self.enabled {
+            return;
+        }
+        eprintln!("WCL_PROFILE {label}", label = self.label);
+        for (name, duration) in &self.entries {
+            eprintln!("  {name:<36} {duration:>10.3?}");
+        }
+        eprintln!(
+            "  {name:<36} {duration:>10.3?}",
+            name = "total",
+            duration = self.started.elapsed()
+        );
+    }
+}
 
 pub(crate) fn source_options(
     vars: &[String],
@@ -59,7 +105,13 @@ pub(crate) fn load_project(
     vars: &[String],
     lib_args: &LibraryArgs,
 ) -> Result<wcl_lang::Document, String> {
-    wcl_lang::project::load_files(files, source_options(vars, lib_args)?)
+    let mut profiler = WdocProfiler::from_env("wdoc load_project");
+    let options = source_options(vars, lib_args)?;
+    profiler.checkpoint("build parse options");
+    let document = wcl_lang::project::load_files(files, options)?;
+    profiler.checkpoint("load files");
+    profiler.finish();
+    Ok(document)
 }
 
 fn require_wdoc_html_codec(
@@ -108,7 +160,9 @@ pub(crate) fn render_project(
     document: &wcl_lang::Document,
     output: &Path,
 ) -> Result<(), String> {
+    let mut profiler = WdocProfiler::from_env("wdoc render_project");
     let registry = require_wdoc_html_codec(document)?;
+    profiler.checkpoint("codec registry");
     let root = find_wdoc_document_value(document)?.clone();
     let imported_files = document.imported_file_paths();
     let source_dirs = source_dirs(files, &imported_files);
@@ -118,6 +172,7 @@ pub(crate) fn render_project(
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."));
     let doc_value = wdoc_project_value(root, document, &source_dirs);
+    profiler.checkpoint("prepare project value");
     let options = wcl_lang::transform::codec::CodecOptions::new();
     let codec = registry
         .get("wdoc-html")
@@ -132,8 +187,10 @@ pub(crate) fn render_project(
         wcl_lang::wdoc::source::wdoc_functions().functions,
         file_base_dir,
     )
-    .map(|_| ())
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?;
+    profiler.checkpoint("encode wdoc-html");
+    profiler.finish();
+    Ok(())
 }
 
 fn wdoc_project_value(
