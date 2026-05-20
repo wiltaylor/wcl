@@ -523,6 +523,34 @@ impl Document {
         self.diagnostics.iter().filter(|d| d.is_error()).collect()
     }
 
+    /// Files loaded through import resolution, excluding embedded WCL libraries.
+    pub fn imported_file_paths(&self) -> Vec<PathBuf> {
+        let mut paths: Vec<PathBuf> = self
+            .imported_paths
+            .iter()
+            .filter(|path| !path.starts_with(crate::eval::imports::EMBEDDED_LIBRARY_ROOT))
+            .cloned()
+            .collect();
+        paths.sort();
+        paths.dedup();
+        paths
+    }
+
+    /// Build a transform codec registry from codecs declared in this document.
+    pub fn codec_registry(
+        &self,
+    ) -> Result<
+        crate::transform::codec::custom::CustomCodecRegistry,
+        crate::transform::TransformError,
+    > {
+        crate::transform::codec::custom::registry_from_document(self, true)
+    }
+
+    /// List codec names declared in this document.
+    pub fn codec_names(&self) -> Result<Vec<String>, crate::transform::TransformError> {
+        Ok(self.codec_registry()?.names())
+    }
+
     /// List names of exported functions.
     pub fn exported_function_names(&self) -> Vec<&str> {
         self.values
@@ -4432,6 +4460,40 @@ partial symbol_set multi {
         assert!(doc
             .imported_paths
             .contains(&std::path::PathBuf::from("/project/schemas/b.wcl")));
+    }
+
+    #[test]
+    fn test_imported_file_paths_excludes_embedded_imports() {
+        let mut fs = InMemoryFs::new();
+        fs.add_file(
+            std::path::PathBuf::from("/project/main.wcl"),
+            "import <wdoc.wcl>\nanswer = 42",
+        );
+        let opts = ParseOptions {
+            root_dir: std::path::PathBuf::from("/project"),
+            fs: Some(Arc::new(fs)),
+            ..ParseOptions::default()
+        };
+        let doc = parse("import \"./main.wcl\"", opts);
+        assert!(!doc.has_errors(), "errors: {:?}", doc.errors());
+
+        let files = doc.imported_file_paths();
+        assert!(files.contains(&std::path::PathBuf::from("/project/main.wcl")));
+        assert!(files
+            .iter()
+            .all(|path| { !path.starts_with(crate::eval::imports::EMBEDDED_LIBRARY_ROOT) }));
+    }
+
+    #[test]
+    fn test_codec_registry_is_built_from_document_on_demand() {
+        let doc = parse("import <wdoc.wcl>", ParseOptions::default());
+        assert!(!doc.has_errors(), "errors: {:?}", doc.errors());
+
+        let registry = doc.codec_registry().expect("codec registry should build");
+        assert!(registry.contains(crate::wdoc::codec::HTML_CODEC));
+
+        let names = doc.codec_names().expect("codec names should build");
+        assert!(names.contains(&crate::wdoc::codec::HTML_CODEC.to_string()));
     }
 
     #[test]

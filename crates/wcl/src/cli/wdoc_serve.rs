@@ -11,13 +11,13 @@ use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use tokio::sync::watch;
 use tower_http::services::ServeDir;
 
-use crate::cli::wdoc::{load_project, render_project, LoadedWdocCliProject};
+use crate::cli::wdoc::{load_project, render_project};
 use crate::cli::LibraryArgs;
 
 /// Result of a wdoc serve build, including the document and any extra source
 /// paths discovered during parsing that should be watched for rebuilds.
 pub struct ServeBuild {
-    pub project: LoadedWdocCliProject,
+    pub document: wcl_lang::Document,
     pub watch_paths: Vec<PathBuf>,
 }
 
@@ -41,10 +41,10 @@ pub fn run_serve(
     let watch_paths = files.clone();
 
     let build_fn = move || {
-        let project = load_project(&files, &vars, &lib_args)?;
+        let document = load_project(&files, &vars, &lib_args)?;
         Ok(ServeBuild {
-            watch_paths: project.watch_paths.clone(),
-            project,
+            watch_paths: document.imported_file_paths(),
+            document,
         })
     };
 
@@ -70,7 +70,7 @@ async fn serve(
 
     // Initial build
     let initial = build_fn().map_err(|e| format!("initial build failed: {e}"))?;
-    render_project(&initial.project, &output_dir)?;
+    render_project(&watch_paths, &initial.document, &output_dir)?;
     eprintln!("wdoc: built to {}", output_dir.display());
 
     // Reload signal
@@ -121,7 +121,8 @@ async fn serve(
                         eprintln!("wdoc: watch error: {e}");
                     }
 
-                    if let Err(e) = render_project(&build.project, &output_dir_watch) {
+                    if let Err(e) = render_project(&watch_paths, &build.document, &output_dir_watch)
+                    {
                         eprintln!("wdoc: render error: {e}");
                         cooldown_after_build(&mut notify_rx).await;
                         continue;

@@ -2,19 +2,10 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::transform::codec::custom::{self, CustomCodecRegistry};
-
-/// A WCL project loaded from one or more root files.
-pub struct LoadedProject {
-    pub document: crate::Document,
-    pub loaded_files: Vec<PathBuf>,
-    pub codecs: CustomCodecRegistry,
-}
-
 pub fn load_files(
     files: &[PathBuf],
     options: crate::ParseOptions,
-) -> Result<LoadedProject, String> {
+) -> Result<crate::Document, String> {
     if files.is_empty() {
         return Err("no input files".to_string());
     }
@@ -47,26 +38,7 @@ pub fn load_files(
         return Err(msg);
     }
 
-    let mut loaded_files: Vec<PathBuf> = document
-        .imported_paths
-        .iter()
-        .filter(|path| !path.starts_with(crate::eval::imports::EMBEDDED_LIBRARY_ROOT))
-        .cloned()
-        .collect();
-    loaded_files.sort();
-    loaded_files.dedup();
-
-    let codecs = custom::registry_from_document(&document, true).map_err(|e| e.to_string())?;
-
-    Ok(LoadedProject {
-        document,
-        loaded_files,
-        codecs,
-    })
-}
-
-pub fn codec_names(project: &LoadedProject) -> Vec<String> {
-    project.codecs.names()
+    Ok(document)
 }
 
 fn project_import_path(file: &Path, root_dir: &Path) -> String {
@@ -76,6 +48,35 @@ fn project_import_path(file: &Path, root_dir: &Path) -> String {
         file
     };
     path.to_string_lossy().replace('\\', "/")
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+    use std::sync::Arc;
+
+    use crate::{InMemoryFs, ParseOptions};
+
+    #[test]
+    fn load_files_returns_document_for_root_files() {
+        let mut fs = InMemoryFs::new();
+        fs.add_file(PathBuf::from("/project/main.wcl"), "answer = 42");
+        let doc = super::load_files(
+            &[PathBuf::from("/project/main.wcl")],
+            ParseOptions {
+                root_dir: PathBuf::from("/project"),
+                fs: Some(Arc::new(fs)),
+                ..ParseOptions::default()
+            },
+        )
+        .expect("project should load");
+
+        assert!(!doc.has_errors(), "errors: {:?}", doc.errors());
+        assert!(doc.values.contains_key("answer"));
+        assert!(doc
+            .imported_paths
+            .contains(&PathBuf::from("/project/main.wcl")));
+    }
 }
 
 fn escape_wcl_string(value: &str) -> String {
