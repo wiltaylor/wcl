@@ -15,6 +15,7 @@ declare attr_or(block: any, key: string, default: any) -> any
 declare children(block: any) -> list(any)
 declare children(block: any, kind: string) -> list(any)
 declare block_children(block: any) -> list(any)
+declare block_body_children(block: any) -> list(any)
 declare url_component_encode(value: any) -> string
 
 namespace wdoc {
@@ -744,8 +745,19 @@ namespace wdoc {
     @markup(":{name}:")
     export let icon_markup = name => wdoc::icon(name)
 
-    declare render_markup(text: string) -> string
-    declare render_children(block: any) -> string
+    export let render_markup = text => {
+        let escaped = wdoc::html_escape(text)
+        let code = regex_replace_all(escaped, "`([^`]+)`", "<code>$1</code>")
+        let bolded = regex_replace_all(code, "\\*\\*([^*]+)\\*\\*", "<strong>$1</strong>")
+        let italicized = regex_replace_all(bolded, "_([^_]+)_", "<em>$1</em>")
+        let linked = regex_replace_all(italicized, "\\[([^\\]]+)\\]\\(([^\\)]+)\\)", "<a href=\"$2\">$1</a>")
+        regex_replace_all(linked, ":([A-Za-z0-9_:-]+):", "<span data-wdoc-icon=\"true\" data-name=\"$1\" data-size=\"1em\"></span>")
+    }
+
+    export let render_children = block => {
+        let project = attr_or(block, "_wdoc_project", null)
+        project == null ? "" : join("", map(block_body_children(block), child => wdoc::render_project_block(project, child) + "\n"))
+    }
     declare layout_stack(ctx: map(string, any)) -> map(string, any)
     declare layout_flow(ctx: map(string, any)) -> map(string, any)
     declare layout_center(ctx: map(string, any)) -> map(string, any)
@@ -1054,8 +1066,8 @@ namespace wdoc {
         let id = attr_or(b, "id", "")
         let style = attr_or(b, "style", "")
         let kind = attr_or(b, "css_kind", wdoc::style_target_leaf(attr_or(b, "kind", "")))
-        let html = attr_or(b, "html", attr_or(b, "rendered_html", ""))
-        let wrapped = (id != "" || style != "") ? html::render({ tag = "div", id = id != "" ? id : null, data_wdoc_content_id = id != "" ? id : null, class_name = style != "" ? "wdoc-style-" + style + "--" + kind : null, html = html }) : html
+        let content_html = attr_or(b, "html", attr_or(b, "rendered_html", ""))
+        let wrapped = (id != "" || style != "") ? html::render({ tag = "div", id = id != "" ? id : null, data_wdoc_content_id = id != "" ? id : null, class_name = style != "" ? "wdoc-style-" + style + "--" + kind : null, html = content_html }) : content_html
         wrapped + "\n"
     }
 
@@ -1500,6 +1512,384 @@ namespace wdoc {
         wdoc::embedded_asset_file("fonts/JetBrainsMonoNerdFontMono-BoldItalic.ttf", "<WCL>:/assets/fonts/JetBrainsMonoNerdFontMono-BoldItalic.ttf")
     ]
 
+    export let project_template_name = (project, fmt, schema_name) => {
+        let matches = filter(project.metadata.templates, item => item.format == fmt && item.schema == schema_name)
+        len(matches) > 0 ? matches[0].fn_name : null
+    }
+
+    export let project_extends_name = (project, schema_name) => {
+        let matches = filter(project.metadata.extends, item => item.schema == schema_name)
+        len(matches) > 0 ? matches[0].base : null
+    }
+
+    export let kind_leaf = kind => {
+        let parts = split("::", to_string(kind))
+        len(parts) == 0 ? to_string(kind) : parts[len(parts) - 1]
+    }
+
+    export let kind_matches = (kind, name) => kind == name || kind == "wdoc::" + name
+
+    export let block_is = (block, name) => wdoc::kind_matches(block_kind(block), name)
+
+    export let block_attr_map = block => block_attrs(block)
+
+    export let block_title = block => {
+        let attrs = block_attrs(block)
+        let args = attr_or(attrs, "_args", [])
+        attr_or(attrs, "title", len(args) > 0 ? args[0] : attr_or(attrs, "id", ""))
+    }
+
+    export let child_blocks_matching = (block, name) => filter(block_body_children(block), child => wdoc::block_is(child, name))
+
+    export let top_level_blocks_matching = (project, name) => filter(values(project.values), value => type_of(value) == "block_ref" && wdoc::block_is(value, name))
+
+    export let source_path = (project, path) => {
+        let raw = to_string(path)
+        let candidates = map(project.source_dirs, dir => dir + "/" + raw)
+        let matches = filter(candidates, candidate => file_exists(candidate, { allow_absolute = true }))
+        len(matches) > 0 ? matches[0] : raw
+    }
+
+    export let read_text_file = (project, path) => {
+        let src = wdoc::source_path(project, path)
+        let chunks = file_stream(src, { allow_absolute = true }).to_list()
+        len(chunks) == 0 ? "" : bytes_to_utf8(bytes_data(chunks[0]))
+    }
+
+    export let icon_sets_in_block = block => {
+        let own = wdoc::block_is(block, "icon_set") ? [block] : []
+        concat(own, flatten(map(block_body_children(block), child => wdoc::icon_sets_in_block(child))))
+    }
+
+    export let icon_part_value = part => {
+        let attrs = block_attrs(part)
+        {
+            name = attr_or(attrs, "id", ""),
+            selector = attr_or(attrs, "selector", ""),
+            property = attr_or(attrs, "property", ""),
+            default = attr_or(attrs, "default", null)
+        }
+    }
+
+    export let icon_set_value = icon_set_block => {
+        let attrs = block_attrs(icon_set_block)
+        {
+            id = attr_or(attrs, "id", ""),
+            path = attr_or(attrs, "path", ""),
+            default = attr_or(attrs, "default", false),
+            normalize_width = attr_or(attrs, "normalize_width", null),
+            normalize_height = attr_or(attrs, "normalize_height", null),
+            normalize_mode = attr_or(attrs, "normalize_mode", "viewbox"),
+            parts = map(filter(block_body_children(icon_set_block), child => wdoc::block_is(child, "icon_part")), part => wdoc::icon_part_value(part))
+        }
+    }
+
+    export let collect_icon_sets = project => map(wdoc::icon_sets_in_block(project.root), icon_set_block => wdoc::icon_set_value(icon_set_block))
+
+    export let split_icon_set = name => {
+        let parts = split(":", to_string(name))
+        len(parts) > 1 ? { set_name = parts[0], name = parts[1] } : { set_name = null, name = to_string(name) }
+    }
+
+    export let default_icon_set = icon_sets => {
+        let defaults = filter(icon_sets, icon_set_item => icon_set_item.default == true)
+        len(defaults) > 0 ? defaults[0] : (len(icon_sets) > 0 ? icon_sets[0] : null)
+    }
+
+    export let find_icon_set = (icon_sets, requested) => {
+        let matches = filter(icon_sets, icon_set_item => icon_set_item.id == requested)
+        len(matches) > 0 ? matches[0] : null
+    }
+
+    export let icon_part_css = part => part.selector != "" && part.property != "" ? part.selector + "{" + part.property + ":var(--wdoc-icon-" + part.name + (part.default != null ? "," + part.default : "") + ");}" : ""
+
+    export let icon_css = icon_set_item => ":where(path,rect,circle,ellipse,polygon,polyline,line,text,tspan):not([fill]){fill:var(--wdoc-icon-fill,currentColor);}:where(path,rect,circle,ellipse,polygon,polyline,line,text,tspan):not([stroke]){stroke:var(--wdoc-icon-stroke,none);}" + join("", map(icon_set_item.parts, part => wdoc::icon_part_css(part)))
+
+    export let icon_style_vars = props => join("", map(keys(props), key => "--wdoc-icon-" + key + ":" + to_string(props[key]) + ";"))
+
+    export let resolve_icon = (project, name, set_name, normalize_width, normalize_height, normalize_mode) => {
+        let icon_sets = attr_or(project, "_wdoc_icon_sets", wdoc::collect_icon_sets(project))
+        let split_name = wdoc::split_icon_set(name)
+        let chosen_name = set_name != null && to_string(set_name) != "" ? set_name : split_name.set_name
+        let icon_set_item = chosen_name != null ? wdoc::find_icon_set(icon_sets, chosen_name) : wdoc::default_icon_set(icon_sets)
+        icon_set_item == null ? null : {
+            name = split_name.name,
+            content = wdoc::read_text_file(project, icon_set_item.path + "/" + split_name.name + ".svg"),
+            css = wdoc::icon_css(icon_set_item),
+            normalize_width = normalize_width != null ? normalize_width : icon_set_item.normalize_width,
+            normalize_height = normalize_height != null ? normalize_height : icon_set_item.normalize_height,
+            normalize_mode = normalize_mode != null ? normalize_mode : icon_set_item.normalize_mode
+        }
+    }
+
+    export let render_inline_icon_svg = (icon, size, props) => {
+        let svg = icon.content
+        let style = wdoc::icon_style_vars(props)
+        let open = "<svg class=\"wdoc-icon\" width=\"" + size + "\" height=\"" + size + "\" style=\"" + wdoc::html_escape(style) + "\" "
+        contains(svg, "<svg ") ? replace(svg, "<svg ", open) : svg
+    }
+
+    export let render_inline_icon_from_tag = (project, tag) => {
+        let names = regex_capture(tag, "data-name=\"([^\"]*)\"")
+        let sizes = regex_capture(tag, "data-size=\"([^\"]*)\"")
+        let sets = regex_capture(tag, "data-set=\"([^\"]*)\"")
+        let props_values = regex_capture(tag, "data-props=\"([^\"]*)\"")
+        let name = len(names) > 0 ? names[0] : ""
+        let size = len(sizes) > 0 ? sizes[0] : "1em"
+        let set_name = len(sets) > 0 ? sets[0] : null
+        let props = {}
+        let icon = wdoc::resolve_icon(project, name, set_name, null, null, null)
+        icon == null ? html::render({ tag = "span", class_name = "wdoc-icon wdoc-icon-missing", aria_hidden = "true", content = name }) : wdoc::render_inline_icon_svg(icon, size, props)
+    }
+
+    export let resolve_icons = (project, html) => {
+        let tags = distinct(regex_find_all(html, "<span data-wdoc-icon=\"true\"[^>]*></span>"))
+        len(tags) == 0 ? html : reduce(tags, html, (acc, tag) => replace(acc, tag, wdoc::render_inline_icon_from_tag(project, tag)))
+    }
+
+    export let render_project_block = (project, block) => {
+        let kind = block_kind(block)
+        let is_structural = wdoc::block_is(block, "layout") || wdoc::block_is(block, "section") || wdoc::block_is(block, "page") || wdoc::block_is(block, "doc") || wdoc::block_is(block, "style")
+        is_structural ? "" : (
+            wdoc::kind_leaf(kind) == "diagram" ? wdoc::render_project_diagram(project, block) : {
+                let fn_name = wdoc::project_template_name(project, "html", kind)
+                let needs_project = contains(["wdoc::callout", "wdoc::site_header", "wdoc::site_nav", "wdoc::site_footer", "wdoc::site_main", "wdoc::site_section", "wdoc::site_hero", "wdoc::site_card_grid", "wdoc::site_card"], kind)
+                let template_block = needs_project ? block_set_attr(block, "_wdoc_project", project) : block
+                fn_name == null || !map_has(project.values, fn_name) ? "" : wdoc::resolve_icons(project, project.values[fn_name](template_block))
+            }
+        )
+    }
+
+    export let shape_descriptor_with_project = (project, item) => {
+        let item_type = type_of(item)
+        item_type != "map" && item_type != "object" ? item : (
+            map_has(item, "children") ? map_set(item, "children", map(item.children, child => wdoc::shape_descriptor_with_project(project, child))) : item
+        )
+    }
+
+    export let shape_template_result = (project, block, schema_name, stack) => {
+        let has_cycle = contains(stack, schema_name)
+        has_cycle ? [] : {
+            let fn_name = wdoc::project_template_name(project, "shape", schema_name)
+            let missing = fn_name == null || !map_has(project.values, fn_name)
+            missing ? [] : {
+                let base_schema = wdoc::project_extends_name(project, schema_name)
+                let base = base_schema != null ? wdoc::shape_template_result(project, block, base_schema, concat(stack, [schema_name])) : null
+                let result = base_schema != null ? project.values[fn_name](block, base) : project.values[fn_name](block)
+                let result_type = type_of(result)
+                result_type == "list" ? result : (result_type == "map" || result_type == "object" ? attr_or(result, "shapes", []) : [])
+            }
+        }
+    }
+
+    export let is_structural_shape = (project, block) => contains(project.metadata.structural_schemas, block_kind(block))
+
+    export let is_connection_block = block => block_kind(block) == "wdoc::draw::connection"
+
+    export let is_shape_skip_block = (project, block) =>
+        wdoc::is_connection_block(block) || wdoc::is_structural_shape(project, block) ||
+        contains(["wdoc::draw::event", "wdoc::draw::class", "wdoc::draw::state", "wdoc::draw::animation", "wdoc::draw::keyframe", "wdoc::draw::dopesheet"], block_kind(block))
+
+    export let dopesheet_blocks_in = block => concat(wdoc::kind_leaf(block_kind(block)) == "dopesheet" ? [block] : [], flatten(map(block_body_children(block), child => wdoc::dopesheet_blocks_in(child))))
+
+    export let dopesheet_value = block => {
+        let attrs = block_attrs(block)
+        map_set(attrs, "id", attr_or(attrs, "id", block_id(block)))
+    }
+
+    export let dopesheets_for_diagram = diagram => map(wdoc::dopesheet_blocks_in(diagram), sheet => wdoc::dopesheet_value(sheet))
+
+    export let find_dopesheet = (sheets, id) => {
+        let matches = filter(sheets, sheet => sheet.id == id)
+        len(matches) > 0 ? matches[0] : null
+    }
+
+    export let apply_dopesheet_attrs = (attrs, sheets) => {
+        let kind = attr_or(attrs, "kind", "")
+        let sheet_id = attr_or(attrs, "sheet", attr_or(attrs, "dopesheet", ""))
+        let sheet = sheet_id != "" ? wdoc::find_dopesheet(sheets, sheet_id) : null
+        sheet == null || !(kind == "sprite" || kind == "dopesheet_view" || kind == "tilemap") ? attrs : (
+            map_set(map_set(map_set(map_set(map_set(map_set(attrs,
+                "_wdoc_sheet_src", attr_or(sheet, "src", "")),
+                "_wdoc_sheet_columns", attr_or(sheet, "columns", "")),
+                "_wdoc_sheet_frame_width", attr_or(sheet, "frame_width", "")),
+                "_wdoc_sheet_frame_height", attr_or(sheet, "frame_height", "")),
+                "_wdoc_sheet_rows", attr_or(sheet, "rows", "")),
+                "_wdoc_sheet_frames", attr_or(sheet, "frames", ""))
+        )
+    }
+
+    export let hydrate_inline_svg_shape = (project, attrs) => {
+        let src = attr_or(attrs, "src", "")
+        src != "" && !map_has(attrs, "_wdoc_inline_svg_content") && !map_has(attrs, "content") ? map_set(attrs, "_wdoc_inline_svg_content", wdoc::read_text_file(project, src)) : attrs
+    }
+
+    export let hydrate_icon_shape = (project, attrs) => {
+        let name = attr_or(attrs, "name", "")
+        let icon = name == "" ? null : wdoc::resolve_icon(project, name, attr_or(attrs, "icon_set", attr_or(attrs, "set", null)), attr_or(attrs, "normalize_width", null), attr_or(attrs, "normalize_height", null), attr_or(attrs, "normalize_mode", null))
+        icon == null ? map_set(attrs, "_wdoc_icon_missing", name) : map_set(map_set(map_set(map_set(map_set(attrs, "_wdoc_icon_content", icon.content), "_wdoc_icon_css", icon.css), "_wdoc_icon_normalize_mode", icon.normalize_mode), "_wdoc_icon_normalize_width", icon.normalize_width), "_wdoc_icon_normalize_height", icon.normalize_height)
+    }
+
+    export let shape_attrs = (project, block, sheets) => {
+        let attrs = block_attrs(block)
+        let kind = wdoc::kind_leaf(block_kind(block))
+        let with_kind = wdoc::apply_dopesheet_attrs(map_set(map_set(attrs, "kind", kind), "id", attr_or(attrs, "id", block_id(block))), sheets)
+        kind == "inline_svg" ? wdoc::hydrate_inline_svg_shape(project, with_kind) : (kind == "icon" ? wdoc::hydrate_icon_shape(project, with_kind) : with_kind)
+    }
+
+    export let shape_from_block = (project, block, sheets) => {
+        let kind = block_kind(block)
+        let is_composite = wdoc::project_template_name(project, "shape", kind) != null
+        let template_shapes = is_composite ? wdoc::shape_template_result(project, block, kind, []) : []
+        let child_shapes = wdoc::shape_blocks(project, block, sheets)
+        let attrs = wdoc::shape_attrs(project, block, sheets)
+        let base = is_composite ? map_set(map_set(attrs, "fill", attr_or(attrs, "fill", "none")), "stroke", attr_or(attrs, "stroke", "none")) : attrs
+        map_set(base, "children", concat(template_shapes, child_shapes))
+    }
+
+    export let shape_blocks = (project, block, sheets) => map(filter(block_body_children(block), child => !wdoc::is_shape_skip_block(project, child)), child => wdoc::shape_from_block(project, child, sheets))
+
+    export let connection_from_block = block => {
+        let attrs = block_attrs(block)
+        map_set(map_set(attrs, "from", attr_or(attrs, "from", "")), "to", attr_or(attrs, "to", ""))
+    }
+
+    export let connections_in_block = block => concat(
+        map(filter(block_body_children(block), child => wdoc::is_connection_block(child)), child => wdoc::connection_from_block(child)),
+        flatten(map(filter(block_body_children(block), child => !wdoc::is_connection_block(child)), child => wdoc::connections_in_block(child)))
+    )
+
+    export let diagram_value = (project, block) => {
+        let attrs = block_attrs(block)
+        let sheets = wdoc::dopesheets_for_diagram(block)
+        {
+            id = block_id(block),
+            width = attr_or(attrs, "width", 600),
+            height = attr_or(attrs, "height", 400),
+            align = attr_or(attrs, "align", "none"),
+            gap = attr_or(attrs, "gap", 40),
+            padding = attr_or(attrs, "padding", 0),
+            shapes = wdoc::shape_blocks(project, block, sheets),
+            connections = wdoc::connections_in_block(block)
+        }
+    }
+
+    export let render_project_diagram = (project, block) => diagram_svg(wdoc::diagram_value(project, block))
+
+    export let extract_section = (project, block, parent_path) => {
+        let short_id = attr_or(block_attrs(block), "id", "")
+        let id = parent_path == "" ? short_id : parent_path + "." + short_id
+        {
+            id = id,
+            short_id = short_id,
+            title = wdoc::block_title(block),
+            children = map(wdoc::child_blocks_matching(block, "section"), child => wdoc::extract_section(project, child, id))
+        }
+    }
+
+    export let extract_signal = block => {
+        let attrs = block_attrs(block)
+        { name = attr_or(attrs, "id", ""), initial = attr_or(attrs, "initial", null), type_name = attr_or(attrs, "type", null) }
+    }
+
+    export let binding_blocks_in = block => concat(wdoc::block_is(block, "binding") ? [block] : [], flatten(map(block_body_children(block), child => wdoc::binding_blocks_in(child))))
+
+    export let extract_binding = block => {
+        let attrs = block_attrs(block)
+        { name = attr_or(attrs, "id", null), signal = attr_or(attrs, "signal", ""), target = attr_or(attrs, "target", ""), property = attr_or(attrs, "property", ""), path = attr_or(attrs, "path", null), format = attr_or(attrs, "format", null) }
+    }
+
+    export let content_item = (kind, id, content_html, style) => { item_kind = "content", kind = kind, id = id, rendered_html = content_html + "", style = style }
+
+    export let split_item = (direction, splits) => { item_kind = "split_group", direction = direction, splits = splits }
+
+    export let extract_layout_child = (project, child) => {
+        let is_vsplit = wdoc::block_is(child, "vsplit")
+        let is_hsplit = wdoc::block_is(child, "hsplit")
+        let is_structural = wdoc::block_is(child, "split") || wdoc::block_is(child, "signal") || wdoc::block_is(child, "binding") || wdoc::block_is(child, "section") || wdoc::block_is(child, "page") || wdoc::block_is(child, "style")
+        is_vsplit ? wdoc::split_item("vertical", map(wdoc::child_blocks_matching(child, "split"), split => wdoc::extract_split(project, split))) : (
+            is_hsplit ? wdoc::split_item("horizontal", map(wdoc::child_blocks_matching(child, "split"), split => wdoc::extract_split(project, split))) : (
+                is_structural ? null : wdoc::content_item(block_kind(child), block_id(child), wdoc::render_project_block(project, child), attr_or(block_attrs(child), "style", null))
+            )
+        )
+    }
+
+    export let extract_layout_children = (project, block) => filter(map(block_body_children(block), child => wdoc::extract_layout_child(project, child)), item => item != null)
+
+    export let extract_split = (project, block) => {
+        let attrs = block_attrs(block)
+        { size_percent = attr_or(attrs, "size", 0.0), children = wdoc::extract_layout_children(project, block) }
+    }
+
+    export let extract_layout = (project, block) => { children = wdoc::extract_layout_children(project, block) }
+
+    export let extract_page = (project, block) => {
+        let attrs = block_attrs(block)
+        let children = block_body_children(block)
+        let layout_blocks = wdoc::child_blocks_matching(block, "layout")
+        {
+            id = attr_or(attrs, "id", ""),
+            section_id = attr_or(attrs, "section", ""),
+            title = attr_or(attrs, "title", ""),
+            template = attr_or(attrs, "template", null),
+            path = attr_or(attrs, "path", null),
+            date = attr_or(attrs, "date", null),
+            draft = attr_or(attrs, "draft", false),
+            weight = attr_or(attrs, "weight", null),
+            summary = attr_or(attrs, "summary", null),
+            tags = attr_or(attrs, "tags", []),
+            categories = attr_or(attrs, "categories", []),
+            params = attr_or(attrs, "params", {}),
+            "layout" = len(layout_blocks) > 0 ? wdoc::extract_layout(project, layout_blocks[0]) : { children = [] },
+            signals = map(filter(children, child => wdoc::block_is(child, "signal")), signal => wdoc::extract_signal(signal)),
+            bindings = map(wdoc::binding_blocks_in(block), binding => wdoc::extract_binding(binding))
+        }
+    }
+
+    export let extract_style_rule = block => {
+        let attrs = block_attrs(block)
+        { target = block_kind(block), properties = attrs }
+    }
+
+    export let extract_style = block => {
+        let attrs = block_attrs(block)
+        { name = attr_or(attrs, "id", "default"), rules = map(block_body_children(block), child => wdoc::extract_style_rule(child)) }
+    }
+
+    export let asset_from_src = (project, src) => { path = src, src = wdoc::source_path(project, src) }
+
+    export let media_assets_in_block = (project, block) => {
+        let attrs = block_attrs(block)
+        let kind = block_kind(block)
+        let own = map_has(attrs, "src") && contains(["wdoc::image", "wdoc::draw::image", "wdoc::draw::map", "wdoc::draw::sprite", "wdoc::draw::dopesheet", "wdoc::draw::dopesheet_view", "wdoc::draw::tilemap"], kind) ? [wdoc::asset_from_src(project, attrs.src)] : []
+        concat(own, flatten(map(block_body_children(block), child => wdoc::media_assets_in_block(project, child))))
+    }
+
+    export let project_document = project => {
+        let root = project.root
+        let attrs = block_attrs(root)
+        let project_with_icons = map_set(project, "_wdoc_icon_sets", wdoc::collect_icon_sets(project))
+        let child_pages = wdoc::child_blocks_matching(root, "page")
+        let top_pages = filter(wdoc::top_level_blocks_matching(project, "page"), page => !contains(map(child_pages, p => block_id(p)), block_id(page)))
+        {
+            name = attr_or(attrs, "id", ""),
+            title = attr_or(attrs, "title", ""),
+            template = attr_or(attrs, "template", "book"),
+            version = attr_or(attrs, "version", null),
+            author = attr_or(attrs, "author", null),
+            site = {
+                header_html = len(wdoc::child_blocks_matching(root, "site_header")) > 0 ? wdoc::render_project_block(project_with_icons, wdoc::child_blocks_matching(root, "site_header")[0]) : null,
+                nav_html = len(wdoc::child_blocks_matching(root, "site_nav")) > 0 ? wdoc::render_project_block(project_with_icons, wdoc::child_blocks_matching(root, "site_nav")[0]) : null,
+                footer_html = len(wdoc::child_blocks_matching(root, "site_footer")) > 0 ? wdoc::render_project_block(project_with_icons, wdoc::child_blocks_matching(root, "site_footer")[0]) : null
+            },
+            sections = map(wdoc::child_blocks_matching(root, "section"), section => wdoc::extract_section(project_with_icons, section, attr_or(attrs, "id", ""))),
+            pages = map(concat(top_pages, child_pages), page => wdoc::extract_page(project_with_icons, page)),
+            styles = map(concat(wdoc::top_level_blocks_matching(project, "style"), wdoc::child_blocks_matching(root, "style")), style => wdoc::extract_style(style)),
+            assets = distinct(flatten(map(values(project.values), value => type_of(value) == "block_ref" ? wdoc::media_assets_in_block(project_with_icons, value) : []))),
+            extra_css = ""
+        }
+    }
+
     export let render_site_files = doc => {
         let prepared_doc = wdoc::prepare_site_document(doc)
         let ctx = wdoc::render_context(prepared_doc)
@@ -1507,7 +1897,7 @@ namespace wdoc {
         concat([{ path = "styles.css", content = codec_encode("css", wdoc::site_css(prepared_doc), {}) }], concat(html_files, concat(wdoc::local_asset_files(prepared_doc), wdoc::embedded_asset_files())))
     }
 
-    export let render_project_site_files = (doc, options) => wdoc::render_site_files(doc)
+    export let render_project_site_files = (doc, options) => wdoc::render_site_files(map_has(doc, "root") ? wdoc::project_document(doc) : doc)
 
     export let style_target_leaf = target => {
         let parts = split("::", target)

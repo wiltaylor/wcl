@@ -381,11 +381,80 @@ impl CodecEvalSession {
     ) -> Result<Value, TransformError> {
         let mut func = func.clone();
         func.closure_scope = Some(self.helper_scope);
+        let args = args
+            .iter()
+            .map(|arg| self.rehost_function_values(arg.clone()))
+            .collect::<Vec<_>>();
         self.eval
-            .call_user_fn(&func, args, Span::dummy())
+            .call_user_fn(&func, &args, Span::dummy())
             .map_err(|e| {
                 TransformError::Codec(format!("custom codec '{}': {}", self.codec_name, e.message))
             })
+    }
+
+    fn rehost_function_values(&self, value: Value) -> Value {
+        match value {
+            Value::Function(mut func) => {
+                func.closure_scope = Some(self.helper_scope);
+                Value::Function(func)
+            }
+            Value::List(items) => Value::List(
+                items
+                    .into_iter()
+                    .map(|item| self.rehost_function_values(item))
+                    .collect(),
+            ),
+            Value::Set(items) => Value::Set(
+                items
+                    .into_iter()
+                    .map(|item| self.rehost_function_values(item))
+                    .collect(),
+            ),
+            Value::Map(map) => Value::Map(
+                map.into_iter()
+                    .map(|(key, value)| (key, self.rehost_function_values(value)))
+                    .collect(),
+            ),
+            Value::Object(mut object) => {
+                object.fields = object
+                    .fields
+                    .into_iter()
+                    .map(|(key, value)| (key, self.rehost_function_values(value)))
+                    .collect();
+                Value::Object(object)
+            }
+            Value::BlockRef(mut block) => {
+                block.attributes = block
+                    .attributes
+                    .into_iter()
+                    .map(|(key, value)| (key, self.rehost_function_values(value)))
+                    .collect();
+                block.children = block
+                    .children
+                    .into_iter()
+                    .map(
+                        |child| match self.rehost_function_values(Value::BlockRef(child)) {
+                            Value::BlockRef(child) => child,
+                            _ => unreachable!("block rehost returns block"),
+                        },
+                    )
+                    .collect();
+                block.decorators = block
+                    .decorators
+                    .into_iter()
+                    .map(|mut decorator| {
+                        decorator.args = decorator
+                            .args
+                            .into_iter()
+                            .map(|(key, value)| (key, self.rehost_function_values(value)))
+                            .collect();
+                        decorator
+                    })
+                    .collect();
+                Value::BlockRef(block)
+            }
+            other => other,
+        }
     }
 
     fn register_builtins(&mut self, builtins: HashMap<String, BuiltinFn>) {

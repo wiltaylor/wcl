@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -53,6 +55,41 @@ fn collect_template_extends_map(doc: &crate::Document) -> HashMap<String, String
         }
     }
     map
+}
+
+pub fn project_metadata_value(doc: &crate::Document) -> Value {
+    let templates = collect_template_map(doc)
+        .into_iter()
+        .map(|((format, schema), function)| {
+            let mut item = IndexMap::new();
+            item.insert("format".to_string(), Value::String(format));
+            item.insert("schema".to_string(), Value::String(schema));
+            item.insert("fn_name".to_string(), Value::String(function));
+            Value::Map(item)
+        })
+        .collect::<Vec<_>>();
+    let extends = collect_template_extends_map(doc)
+        .into_iter()
+        .map(|(schema, base)| {
+            let mut item = IndexMap::new();
+            item.insert("schema".to_string(), Value::String(schema));
+            item.insert("base".to_string(), Value::String(base));
+            Value::Map(item)
+        })
+        .collect::<Vec<_>>();
+    let structural_schemas = collect_structural_shape_schema_names(doc)
+        .into_iter()
+        .map(Value::String)
+        .collect::<Vec<_>>();
+
+    let mut map = IndexMap::new();
+    map.insert("templates".to_string(), Value::List(templates));
+    map.insert("extends".to_string(), Value::List(extends));
+    map.insert(
+        "structural_schemas".to_string(),
+        Value::List(structural_schemas),
+    );
+    Value::Map(map)
 }
 
 fn collect_draw_schema_names(doc: &crate::Document) -> HashSet<String> {
@@ -8105,51 +8142,4 @@ fn extract_style(block: &BlockRef) -> WdocStyle {
     }
 
     WdocStyle { name, rules }
-}
-
-// ---------------------------------------------------------------------------
-// Loaded project bridge
-// ---------------------------------------------------------------------------
-
-pub fn project_document_from_loaded_document(
-    document: &crate::Document,
-    source_dirs: &[PathBuf],
-) -> Result<Value, crate::transform::TransformError> {
-    let ctx = extract_ctx_from_loaded_document(document, source_dirs)
-        .map_err(crate::transform::TransformError::Codec)?;
-    let doc = extract(&document.values, &ctx).map_err(crate::transform::TransformError::Codec)?;
-    crate::wdoc::model::document_to_value(&doc).map_err(crate::transform::TransformError::Codec)
-}
-
-fn extract_ctx_from_loaded_document(
-    doc: &crate::Document,
-    source_dirs: &[PathBuf],
-) -> Result<ExtractCtx, String> {
-    let template_map = collect_template_map(doc);
-    let draw_schema_names = collect_draw_schema_names(doc);
-    let structural_shape_schema_names = collect_structural_shape_schema_names(doc);
-    let template_extends_map = collect_template_extends_map(doc);
-    let builtins: HashMap<String, BuiltinFn> = wdoc_functions().functions;
-    let template_helpers = collect_template_helpers(doc);
-    let markup_rules = collect_markup_rules(doc, &template_helpers)?;
-    let svg_search_dirs = source_dirs.to_vec();
-    let icon_registry = collect_icon_sets(&doc.values, &svg_search_dirs)?;
-    Ok(ExtractCtx {
-        template_map,
-        template_extends_map,
-        draw_schema_names,
-        structural_shape_schema_names,
-        template_helpers,
-        markup_rules,
-        builtins,
-        css_registry: Rc::new(RefCell::new(DiagramCssRegistry::default())),
-        diagram_classes: Rc::new(RefCell::new(collect_diagram_classes(&doc.values))),
-        diagram_classes_by_file: Rc::new(RefCell::new(collect_diagram_classes_by_file(
-            &doc.values,
-        ))),
-        asset_registry: Rc::new(RefCell::new(BTreeMap::new())),
-        binding_targets: Rc::new(RefCell::new(HashSet::new())),
-        svg_search_dirs,
-        icon_registry,
-    })
 }

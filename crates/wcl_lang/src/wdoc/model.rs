@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 

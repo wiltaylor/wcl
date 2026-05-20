@@ -67,6 +67,14 @@ pub fn encode_svg_diagram_to_string(mut diagram: Diagram) -> String {
     render_diagram_svg(&mut diagram)
 }
 
+pub fn encode_svg_value_to_string(
+    value: &Value,
+    options: &CodecOptions,
+) -> Result<String, TransformError> {
+    let mut diagram = diagram_from_value(value, options)?;
+    Ok(render_diagram_svg(&mut diagram))
+}
+
 pub fn layout_diagram_value(
     value: &Value,
     options: &CodecOptions,

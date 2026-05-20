@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use crate::cli::vars::parse_var_args;
 use crate::cli::LibraryArgs;
+use indexmap::IndexMap;
 
 pub(crate) fn source_options(
     vars: &[String],
@@ -107,7 +108,7 @@ pub(crate) fn render_project(
     output: &Path,
 ) -> Result<(), String> {
     let registry = require_wdoc_html_codec(document)?;
-    find_wdoc_document_value(document)?;
+    let root = find_wdoc_document_value(document)?.clone();
     let imported_files = document.imported_file_paths();
     let source_dirs = source_dirs(files, &imported_files);
     let file_base_dir = files
@@ -115,9 +116,7 @@ pub(crate) fn render_project(
         .and_then(|path| path.parent())
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."));
-    let doc_value =
-        wcl_lang::wdoc::source::project_document_from_loaded_document(document, &source_dirs)
-            .map_err(|e| e.to_string())?;
+    let doc_value = wdoc_project_value(root, document, &source_dirs);
     let options = wcl_lang::transform::codec::CodecOptions::new();
     wcl_lang::transform::encode_value_with_custom_to_directory_with_file_access(
         &doc_value,
@@ -129,4 +128,44 @@ pub(crate) fn render_project(
     )
     .map(|_| ())
     .map_err(|e| e.to_string())
+}
+
+fn wdoc_project_value(
+    root: wcl_lang::Value,
+    document: &wcl_lang::Document,
+    source_dirs: &[PathBuf],
+) -> wcl_lang::Value {
+    let mut map = IndexMap::new();
+    map.insert("root".to_string(), root);
+    map.insert(
+        "values".to_string(),
+        wcl_lang::Value::Map(wdoc_project_values(document)),
+    );
+    map.insert(
+        "metadata".to_string(),
+        wcl_lang::wdoc::source::project_metadata_value(document),
+    );
+    map.insert(
+        "source_dirs".to_string(),
+        wcl_lang::Value::List(
+            source_dirs
+                .iter()
+                .map(|path| wcl_lang::Value::String(path.display().to_string()))
+                .collect(),
+        ),
+    );
+    wcl_lang::Value::Map(map)
+}
+
+fn wdoc_project_values(document: &wcl_lang::Document) -> IndexMap<String, wcl_lang::Value> {
+    document
+        .values
+        .iter()
+        .filter_map(|(name, value)| match value {
+            wcl_lang::Value::BlockRef(_) | wcl_lang::Value::Function(_) => {
+                Some((name.clone(), value.clone()))
+            }
+            _ => None,
+        })
+        .collect()
 }

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::eval::value::Value;
 use indexmap::IndexMap;
 

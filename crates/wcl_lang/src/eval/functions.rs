@@ -493,6 +493,23 @@ pub fn builtin_signatures() -> Vec<FunctionSignature> {
             doc: "Return all direct child blocks, including named child block attributes".into(),
         },
         FunctionSignature {
+            name: "block_body_children".into(),
+            params: vec!["block: block_ref".into()],
+            return_type: "list".into(),
+            doc: "Return direct child blocks from a block body, excluding block-valued attributes"
+                .into(),
+        },
+        FunctionSignature {
+            name: "block_set_attr".into(),
+            params: vec![
+                "block: block_ref".into(),
+                "key: string".into(),
+                "value".into(),
+            ],
+            return_type: "block_ref".into(),
+            doc: "Return a block reference clone with one attribute set".into(),
+        },
+        FunctionSignature {
             name: "attr_or".into(),
             params: vec!["value".into(), "key: string".into(), "default".into()],
             return_type: "any".into(),
@@ -756,6 +773,12 @@ pub fn builtin_signatures() -> Vec<FunctionSignature> {
             doc: "Return a scale and translation that fits bounds into a canvas".into(),
         },
         FunctionSignature {
+            name: "diagram_svg".into(),
+            params: vec!["diagram: map".into()],
+            return_type: "string".into(),
+            doc: "Render a diagram map to SVG".into(),
+        },
+        FunctionSignature {
             name: "byte_stream".into(),
             params: vec!["value".into()],
             return_type: "stream".into(),
@@ -870,6 +893,11 @@ pub fn builtin_registry() -> HashMap<String, BuiltinFn> {
     m.insert("block_id".into(), wrap_builtin(block_id));
     m.insert("block_attrs".into(), wrap_builtin(block_attrs));
     m.insert("block_children".into(), wrap_builtin(block_children));
+    m.insert(
+        "block_body_children".into(),
+        wrap_builtin(block_body_children),
+    );
+    m.insert("block_set_attr".into(), wrap_builtin(block_set_attr));
     m.insert("attr_or".into(), wrap_builtin(attr_or));
     m.insert(
         "url_component_encode".into(),
@@ -928,6 +956,7 @@ pub fn builtin_registry() -> HashMap<String, BuiltinFn> {
         wrap_builtin(diagram_intrinsic_size),
     );
     m.insert("diagram_fit".into(), wrap_builtin(diagram_fit));
+    m.insert("diagram_svg".into(), wrap_builtin(diagram_svg));
     m.insert("byte_stream".into(), wrap_builtin(byte_stream));
 
     m
@@ -1004,6 +1033,16 @@ fn diagram_fit(args: &[Value]) -> Result<Value, String> {
     );
     out.insert("scale".to_string(), Value::Float(scale));
     Ok(Value::Map(out))
+}
+
+fn diagram_svg(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 1, "diagram_svg")?;
+    crate::transform::codec::native::encode_svg_value_to_string(
+        &args[0],
+        &crate::transform::codec::CodecOptions::new(),
+    )
+    .map(Value::String)
+    .map_err(|e| e.to_string())
 }
 
 fn byte_stream(args: &[Value]) -> Result<Value, String> {
@@ -2197,6 +2236,40 @@ fn block_children(args: &[Value]) -> Result<Value, String> {
             other.type_name()
         )),
     }
+}
+
+fn block_body_children(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 1, "block_body_children")?;
+    match &args[0] {
+        Value::BlockRef(block) => Ok(Value::List(
+            block
+                .children
+                .iter()
+                .cloned()
+                .map(Value::BlockRef)
+                .collect(),
+        )),
+        other => Err(format!(
+            "block_body_children: argument 1 must be block_ref, got {}",
+            other.type_name()
+        )),
+    }
+}
+
+fn block_set_attr(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 3, "block_set_attr")?;
+    let mut block = match &args[0] {
+        Value::BlockRef(block) => block.clone(),
+        other => {
+            return Err(format!(
+                "block_set_attr: argument 1 must be block_ref, got {}",
+                other.type_name()
+            ))
+        }
+    };
+    let key = get_string(&args[1], 2, "block_set_attr")?;
+    block.attributes.insert(key.to_string(), args[2].clone());
+    Ok(Value::BlockRef(block))
 }
 
 fn attr_or(args: &[Value]) -> Result<Value, String> {
@@ -3571,11 +3644,23 @@ mod tests {
             "has",
             "children",
             "has_decorator",
+            "block_kind",
+            "block_id",
+            "block_attrs",
+            "block_children",
+            "block_body_children",
+            "block_set_attr",
+            "attr_or",
+            "url_component_encode",
             "date",
             "offset_datetime",
             "local_datetime",
             "local_time",
             "duration",
+            "diagram_layout",
+            "diagram_intrinsic_size",
+            "diagram_fit",
+            "diagram_svg",
         ];
         for name in &expected {
             assert!(registry.contains_key(*name), "missing builtin: {}", name);
