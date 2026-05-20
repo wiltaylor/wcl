@@ -3,7 +3,7 @@ use crate::eval::value::BlockRefData;
 use crate::eval::value::{BlockRef, NativeStreamState, NativeStreamValue, ObjectValue, Value};
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine};
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
 /// A callable built-in function. Supports both plain `fn` pointers and closures.
@@ -530,10 +530,28 @@ pub fn builtin_signatures() -> Vec<FunctionSignature> {
             doc: "Return a map with a key set".into(),
         },
         FunctionSignature {
+            name: "map_merge".into(),
+            params: vec!["map: map".into(), "values: map".into()],
+            return_type: "map".into(),
+            doc: "Return a map with multiple keys set".into(),
+        },
+        FunctionSignature {
             name: "map".into(),
             params: vec!["list: list".into(), "fn: lambda".into()],
             return_type: "list".into(),
             doc: "Map over list".into(),
+        },
+        FunctionSignature {
+            name: "flat_map".into(),
+            params: vec!["list: list".into(), "fn: lambda".into()],
+            return_type: "list".into(),
+            doc: "Map over a list and flatten list results".into(),
+        },
+        FunctionSignature {
+            name: "filter_map".into(),
+            params: vec!["list: list".into(), "fn: lambda".into()],
+            return_type: "list".into(),
+            doc: "Map over a list and keep non-null results".into(),
         },
         FunctionSignature {
             name: "filter".into(),
@@ -588,6 +606,24 @@ pub fn builtin_signatures() -> Vec<FunctionSignature> {
             params: vec!["list: list".into(), "fn: lambda".into()],
             return_type: "i64".into(),
             doc: "Count matching elements".into(),
+        },
+        FunctionSignature {
+            name: "block_collect".into(),
+            params: vec!["block: block_ref".into(), "fn: lambda".into()],
+            return_type: "list".into(),
+            doc: "Walk a block tree and collect non-null callback results".into(),
+        },
+        FunctionSignature {
+            name: "block_collect_kinds".into(),
+            params: vec!["block: block_ref".into(), "kinds: list(string)".into()],
+            return_type: "list(block_ref)".into(),
+            doc: "Walk a block tree and collect blocks with matching kind names".into(),
+        },
+        FunctionSignature {
+            name: "block_any".into(),
+            params: vec!["block: block_ref".into(), "fn: lambda".into()],
+            return_type: "bool".into(),
+            doc: "Walk a block tree until the callback returns true".into(),
         },
         FunctionSignature {
             name: "find".into(),
@@ -899,6 +935,10 @@ pub fn builtin_registry() -> HashMap<String, BuiltinFn> {
         "block_body_children".into(),
         wrap_builtin(block_body_children),
     );
+    m.insert(
+        "block_collect_kinds".into(),
+        wrap_builtin(block_collect_kinds),
+    );
     m.insert("block_set_attr".into(), wrap_builtin(block_set_attr));
     m.insert("attr_or".into(), wrap_builtin(attr_or));
     m.insert(
@@ -906,6 +946,7 @@ pub fn builtin_registry() -> HashMap<String, BuiltinFn> {
         wrap_builtin(url_component_encode),
     );
     m.insert("map_set".into(), wrap_builtin(map_set));
+    m.insert("map_merge".into(), wrap_builtin(map_merge));
     m.insert("object".into(), wrap_builtin(object));
 
     // Table manipulation functions (Section 14.3b)
@@ -916,10 +957,17 @@ pub fn builtin_registry() -> HashMap<String, BuiltinFn> {
 
     // Higher-order functions (Section 14.4) — require special evaluator support
     m.insert("map".into(), wrap_builtin(higher_order_placeholder));
+    m.insert("flat_map".into(), wrap_builtin(higher_order_placeholder));
+    m.insert("filter_map".into(), wrap_builtin(higher_order_placeholder));
     m.insert("filter".into(), wrap_builtin(higher_order_placeholder));
     m.insert("every".into(), wrap_builtin(higher_order_placeholder));
     m.insert("some".into(), wrap_builtin(higher_order_placeholder));
     m.insert("reduce".into(), wrap_builtin(higher_order_placeholder));
+    m.insert(
+        "block_collect".into(),
+        wrap_builtin(higher_order_placeholder),
+    );
+    m.insert("block_any".into(), wrap_builtin(higher_order_placeholder));
 
     // Aggregate functions (Section 14.5)
     m.insert("sum".into(), wrap_builtin(sum));
@@ -2258,6 +2306,47 @@ fn block_body_children(args: &[Value]) -> Result<Value, String> {
     }
 }
 
+fn block_collect_kinds(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 2, "block_collect_kinds")?;
+    let root = match &args[0] {
+        Value::BlockRef(block) => block,
+        other => {
+            return Err(format!(
+                "block_collect_kinds: argument 1 must be block_ref, got {}",
+                other.type_name()
+            ))
+        }
+    };
+    let kind_values = get_list(&args[1], 2, "block_collect_kinds")?;
+    let mut kinds = HashSet::with_capacity(kind_values.len());
+    for value in kind_values {
+        match value {
+            Value::String(kind) => {
+                kinds.insert(kind.as_str());
+            }
+            other => {
+                return Err(format!(
+                    "block_collect_kinds: argument 2 must contain only strings, got {}",
+                    other.type_name()
+                ))
+            }
+        }
+    }
+
+    fn collect(block: &BlockRef, kinds: &HashSet<&str>, results: &mut Vec<Value>) {
+        if kinds.contains(block.kind.as_str()) {
+            results.push(Value::BlockRef(block.clone()));
+        }
+        for child in &block.children {
+            collect(child, kinds, results);
+        }
+    }
+
+    let mut results = Vec::new();
+    collect(root, &kinds, &mut results);
+    Ok(Value::List(results))
+}
+
 fn block_set_attr(args: &[Value]) -> Result<Value, String> {
     expect_args(args, 3, "block_set_attr")?;
     let mut block = match &args[0] {
@@ -2316,6 +2405,36 @@ fn map_set(args: &[Value]) -> Result<Value, String> {
     let key = get_string(&args[1], 2, "map_set")?;
     let mut result = map.clone();
     result.insert(key.to_string(), args[2].clone());
+    Ok(Value::Map(result))
+}
+
+fn map_merge(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 2, "map_merge")?;
+    let map = match &args[0] {
+        Value::Map(m) => m,
+        other => {
+            return Err(format!(
+                "map_merge: argument 1 must be map, got {}",
+                other.type_name()
+            ))
+        }
+    };
+    let values = match &args[1] {
+        Value::Map(m) => m,
+        Value::Object(o) => &o.fields,
+        other => {
+            return Err(format!(
+                "map_merge: argument 2 must be map or object, got {}",
+                other.type_name()
+            ))
+        }
+    };
+    let mut result = map.clone();
+    result.extend(
+        values
+            .iter()
+            .map(|(key, value)| (key.clone(), value.clone())),
+    );
     Ok(Value::Map(result))
 }
 
@@ -3372,6 +3491,25 @@ mod tests {
     }
 
     #[test]
+    fn test_map_merge() {
+        let mut base = IndexMap::new();
+        base.insert("x".to_string(), i(1));
+        base.insert("y".to_string(), i(2));
+        let mut values = IndexMap::new();
+        values.insert("y".to_string(), i(20));
+        values.insert("z".to_string(), i(30));
+        let mut expected = IndexMap::new();
+        expected.insert("x".to_string(), i(1));
+        expected.insert("y".to_string(), i(20));
+        expected.insert("z".to_string(), i(30));
+
+        assert_eq!(
+            map_merge(&[Value::Map(base), Value::Map(values)]).unwrap(),
+            Value::Map(expected)
+        );
+    }
+
+    #[test]
     fn test_sort() {
         let result = fn_sort(&[list(vec![i(3), i(1), i(2)])]).unwrap();
         assert_eq!(result, list(vec![i(1), i(2), i(3)]));
@@ -3620,16 +3758,21 @@ mod tests {
             "zip",
             "map_has",
             "map_set",
+            "map_merge",
             "find",
             "insert_row",
             "remove_rows",
             "update_rows",
             "map",
+            "flat_map",
+            "filter_map",
             "filter",
             "every",
             "some",
             "reduce",
             "count",
+            "block_collect",
+            "block_any",
             "sum",
             "avg",
             "min_of",
@@ -3651,6 +3794,7 @@ mod tests {
             "block_attrs",
             "block_children",
             "block_body_children",
+            "block_collect_kinds",
             "block_set_attr",
             "attr_or",
             "url_component_encode",

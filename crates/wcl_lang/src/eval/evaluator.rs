@@ -1722,7 +1722,16 @@ impl Evaluator {
                 // Check higher-order builtins first
                 if matches!(
                     name.as_str(),
-                    "map" | "filter" | "every" | "some" | "reduce" | "count"
+                    "map"
+                        | "flat_map"
+                        | "filter_map"
+                        | "filter"
+                        | "every"
+                        | "some"
+                        | "reduce"
+                        | "count"
+                        | "block_collect"
+                        | "block_any"
                 ) {
                     return self.eval_higher_order(name, args, span, scope_id);
                 }
@@ -2243,6 +2252,35 @@ impl Evaluator {
                 }
                 Ok(Value::List(results))
             }
+            "flat_map" => {
+                self.expect_ho_args(2, args.len(), "flat_map", span)?;
+                let list = self.eval_call_arg(&args[0], scope_id)?;
+                let func = self.eval_call_arg_as_fn(&args[1], scope_id, "flat_map", span)?;
+                let items = self.expect_list(list, "flat_map", span)?;
+                let mut results = Vec::new();
+                for item in &items {
+                    match self.call_user_fn(&func, std::slice::from_ref(item), span)? {
+                        Value::List(values) => results.extend(values),
+                        Value::Null => {}
+                        value => results.push(value),
+                    }
+                }
+                Ok(Value::List(results))
+            }
+            "filter_map" => {
+                self.expect_ho_args(2, args.len(), "filter_map", span)?;
+                let list = self.eval_call_arg(&args[0], scope_id)?;
+                let func = self.eval_call_arg_as_fn(&args[1], scope_id, "filter_map", span)?;
+                let items = self.expect_list(list, "filter_map", span)?;
+                let mut results = Vec::new();
+                for item in &items {
+                    let value = self.call_user_fn(&func, std::slice::from_ref(item), span)?;
+                    if !matches!(value, Value::Null) {
+                        results.push(value);
+                    }
+                }
+                Ok(Value::List(results))
+            }
             "filter" => {
                 self.expect_ho_args(2, args.len(), "filter", span)?;
                 let list = self.eval_call_arg(&args[0], scope_id)?;
@@ -2309,8 +2347,59 @@ impl Evaluator {
                 }
                 Ok(Value::Int(n))
             }
+            "block_collect" => {
+                self.expect_ho_args(2, args.len(), "block_collect", span)?;
+                let root = self.eval_call_arg(&args[0], scope_id)?;
+                let func = self.eval_call_arg_as_fn(&args[1], scope_id, "block_collect", span)?;
+                let root = self.expect_block_ref(root, "block_collect", span)?;
+                let mut results = Vec::new();
+                self.collect_block_tree(&root, &func, span, &mut results)?;
+                Ok(Value::List(results))
+            }
+            "block_any" => {
+                self.expect_ho_args(2, args.len(), "block_any", span)?;
+                let root = self.eval_call_arg(&args[0], scope_id)?;
+                let func = self.eval_call_arg_as_fn(&args[1], scope_id, "block_any", span)?;
+                let root = self.expect_block_ref(root, "block_any", span)?;
+                Ok(Value::Bool(self.any_block_tree(&root, &func, span)?))
+            }
             _ => unreachable!(),
         }
+    }
+
+    fn collect_block_tree(
+        &mut self,
+        block: &BlockRef,
+        func: &FunctionValue,
+        span: Span,
+        results: &mut Vec<Value>,
+    ) -> Result<(), Diagnostic> {
+        match self.call_user_fn(func, &[Value::BlockRef(block.clone())], span)? {
+            Value::Null => {}
+            Value::List(values) => results.extend(values),
+            value => results.push(value),
+        }
+        for child in &block.children {
+            self.collect_block_tree(child, func, span, results)?;
+        }
+        Ok(())
+    }
+
+    fn any_block_tree(
+        &mut self,
+        block: &BlockRef,
+        func: &FunctionValue,
+        span: Span,
+    ) -> Result<bool, Diagnostic> {
+        if self.call_user_fn(func, &[Value::BlockRef(block.clone())], span)? == Value::Bool(true) {
+            return Ok(true);
+        }
+        for child in &block.children {
+            if self.any_block_tree(child, func, span)? {
+                return Ok(true);
+            }
+        }
+        Ok(false)
     }
 
     fn expect_ho_args(
@@ -2363,6 +2452,25 @@ impl Evaluator {
             _ => Err(Diagnostic::error(
                 format!(
                     "{}() first argument must be a list, got {}",
+                    fn_name,
+                    val.type_name()
+                ),
+                span,
+            )),
+        }
+    }
+
+    fn expect_block_ref(
+        &self,
+        val: Value,
+        fn_name: &str,
+        span: Span,
+    ) -> Result<BlockRef, Diagnostic> {
+        match val {
+            Value::BlockRef(block) => Ok(block),
+            _ => Err(Diagnostic::error(
+                format!(
+                    "{}() first argument must be a block_ref, got {}",
                     fn_name,
                     val.type_name()
                 ),
@@ -4225,6 +4333,78 @@ mod tests {
             ds(),
         );
         assert_eq!(ev.eval_expr(&expr, scope).unwrap(), Value::Int(2));
+    }
+
+    #[test]
+    fn eval_flat_map_ho() {
+        let expr =
+            crate::lang::parse_expression("flat_map([1, 2], n => [n, n + 10])", FileId(0)).unwrap();
+        let mut ev = Evaluator::new();
+        let scope = ev.scopes.create_scope(ScopeKind::Module, None);
+        assert_eq!(
+            ev.eval_expr(&expr, scope).unwrap(),
+            Value::List(vec![
+                Value::Int(1),
+                Value::Int(11),
+                Value::Int(2),
+                Value::Int(12)
+            ])
+        );
+    }
+
+    #[test]
+    fn eval_filter_map_ho() {
+        let expr = crate::lang::parse_expression(
+            "filter_map([1, 2, 3], n => n % 2 == 0 ? n : null)",
+            FileId(0),
+        )
+        .unwrap();
+        let mut ev = Evaluator::new();
+        let scope = ev.scopes.create_scope(ScopeKind::Module, None);
+        assert_eq!(
+            ev.eval_expr(&expr, scope).unwrap(),
+            Value::List(vec![Value::Int(2)])
+        );
+    }
+
+    #[test]
+    fn eval_block_collect_and_block_any() {
+        let source = r#"
+root root {
+    item a {}
+    group g {
+        item b {}
+    }
+}
+ids = block_collect(ref(root), b => block_kind(b) == "item" ? block_id(b) : null)
+kind_ids = map(block_collect_kinds(ref(root), ["item"]), b => block_id(b))
+has_group = block_any(ref(root), b => block_kind(b) == "group")
+"#;
+        let (doc, diags) = crate::lang::parse(source, FileId(0));
+        assert!(!diags.has_errors(), "unexpected errors: {:?}", diags);
+
+        let mut ev = Evaluator::new();
+        let result = ev.evaluate(&doc);
+        assert!(
+            !ev.diagnostics.has_errors(),
+            "unexpected errors: {:?}",
+            ev.diagnostics.diagnostics()
+        );
+        assert_eq!(
+            result.get("ids"),
+            Some(&Value::List(vec![
+                Value::String("a".to_string()),
+                Value::String("b".to_string())
+            ]))
+        );
+        assert_eq!(
+            result.get("kind_ids"),
+            Some(&Value::List(vec![
+                Value::String("a".to_string()),
+                Value::String("b".to_string())
+            ]))
+        );
+        assert_eq!(result.get("has_group"), Some(&Value::Bool(true)));
     }
 
     // ── Block expressions ────────────────────────────────────────────

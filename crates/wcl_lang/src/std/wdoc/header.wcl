@@ -1566,10 +1566,7 @@ namespace wdoc {
         len(chunks) == 0 ? "" : bytes_to_utf8(bytes_data(chunks[0]))
     }
 
-    export let icon_sets_in_block = block => {
-        let own = wdoc::block_is(block, "icon_set") ? [block] : []
-        concat(own, flatten(map(block_body_children(block), child => wdoc::icon_sets_in_block(child))))
-    }
+    export let icon_sets_in_block = block => block_collect_kinds(block, ["wdoc::icon_set", "icon_set"])
 
     export let icon_part_value = part => {
         let attrs = block_attrs(part)
@@ -1590,7 +1587,7 @@ namespace wdoc {
             normalize_width = attr_or(attrs, "normalize_width", null),
             normalize_height = attr_or(attrs, "normalize_height", null),
             normalize_mode = attr_or(attrs, "normalize_mode", "viewbox"),
-            parts = map(filter(block_body_children(icon_set_block), child => wdoc::block_is(child, "icon_part")), part => wdoc::icon_part_value(part))
+            parts = filter_map(block_body_children(icon_set_block), child => wdoc::block_is(child, "icon_part") ? wdoc::icon_part_value(child) : null)
         }
     }
 
@@ -1706,7 +1703,7 @@ namespace wdoc {
         wdoc::is_connection_block(block) || wdoc::is_structural_shape(project, block) ||
         contains(["wdoc::draw::event", "wdoc::draw::class", "wdoc::draw::state", "wdoc::draw::animation", "wdoc::draw::keyframe", "wdoc::draw::dopesheet"], block_kind(block))
 
-    export let dopesheet_blocks_in = block => concat(wdoc::kind_leaf(block_kind(block)) == "dopesheet" ? [block] : [], flatten(map(block_body_children(block), child => wdoc::dopesheet_blocks_in(child))))
+    export let dopesheet_blocks_in = block => block_collect_kinds(block, ["wdoc::draw::dopesheet", "dopesheet"])
 
     export let dopesheet_value = block => {
         let attrs = block_attrs(block)
@@ -1725,31 +1722,38 @@ namespace wdoc {
         let sheet_id = attr_or(attrs, "sheet", attr_or(attrs, "dopesheet", ""))
         let sheet = sheet_id != "" ? wdoc::find_dopesheet(sheets, sheet_id) : null
         sheet == null || !(kind == "sprite" || kind == "dopesheet_view" || kind == "tilemap") ? attrs : (
-            map_set(map_set(map_set(map_set(map_set(map_set(attrs,
-                "_wdoc_sheet_src", attr_or(sheet, "src", "")),
-                "_wdoc_sheet_columns", attr_or(sheet, "columns", "")),
-                "_wdoc_sheet_frame_width", attr_or(sheet, "frame_width", "")),
-                "_wdoc_sheet_frame_height", attr_or(sheet, "frame_height", "")),
-                "_wdoc_sheet_rows", attr_or(sheet, "rows", "")),
-                "_wdoc_sheet_frames", attr_or(sheet, "frames", ""))
+            map_merge(attrs, {
+                _wdoc_sheet_src = attr_or(sheet, "src", ""),
+                _wdoc_sheet_columns = attr_or(sheet, "columns", ""),
+                _wdoc_sheet_frame_width = attr_or(sheet, "frame_width", ""),
+                _wdoc_sheet_frame_height = attr_or(sheet, "frame_height", ""),
+                _wdoc_sheet_rows = attr_or(sheet, "rows", ""),
+                _wdoc_sheet_frames = attr_or(sheet, "frames", "")
+            })
         )
     }
 
     export let hydrate_inline_svg_shape = (project, attrs) => {
         let src = attr_or(attrs, "src", "")
-        src != "" && !map_has(attrs, "_wdoc_inline_svg_content") && !map_has(attrs, "content") ? map_set(attrs, "_wdoc_inline_svg_content", wdoc::read_text_file(project, src)) : attrs
+        src != "" && !map_has(attrs, "_wdoc_inline_svg_content") && !map_has(attrs, "content") ? map_merge(attrs, { _wdoc_inline_svg_content = wdoc::read_text_file(project, src) }) : attrs
     }
 
     export let hydrate_icon_shape = (project, attrs) => {
         let name = attr_or(attrs, "name", "")
         let icon = name == "" ? null : wdoc::resolve_icon(project, name, attr_or(attrs, "icon_set", attr_or(attrs, "set", null)), attr_or(attrs, "normalize_width", null), attr_or(attrs, "normalize_height", null), attr_or(attrs, "normalize_mode", null))
-        icon == null ? map_set(attrs, "_wdoc_icon_missing", name) : map_set(map_set(map_set(map_set(map_set(attrs, "_wdoc_icon_content", icon.content), "_wdoc_icon_css", icon.css), "_wdoc_icon_normalize_mode", icon.normalize_mode), "_wdoc_icon_normalize_width", icon.normalize_width), "_wdoc_icon_normalize_height", icon.normalize_height)
+        icon == null ? map_merge(attrs, { _wdoc_icon_missing = name }) : map_merge(attrs, {
+            _wdoc_icon_content = icon.content,
+            _wdoc_icon_css = icon.css,
+            _wdoc_icon_normalize_mode = icon.normalize_mode,
+            _wdoc_icon_normalize_width = icon.normalize_width,
+            _wdoc_icon_normalize_height = icon.normalize_height
+        })
     }
 
     export let shape_attrs = (project, block, sheets) => {
         let attrs = block_attrs(block)
         let kind = wdoc::kind_leaf(block_kind(block))
-        let with_kind = wdoc::apply_dopesheet_attrs(map_set(map_set(attrs, "kind", kind), "id", attr_or(attrs, "id", block_id(block))), sheets)
+        let with_kind = wdoc::apply_dopesheet_attrs(map_merge(attrs, { kind = kind, id = attr_or(attrs, "id", block_id(block)) }), sheets)
         kind == "inline_svg" ? wdoc::hydrate_inline_svg_shape(project, with_kind) : (kind == "icon" ? wdoc::hydrate_icon_shape(project, with_kind) : with_kind)
     }
 
@@ -1759,7 +1763,7 @@ namespace wdoc {
         let template_shapes = is_composite ? wdoc::shape_template_result(project, block, kind, [], sheets) : []
         let child_shapes = wdoc::shape_blocks(project, block, sheets)
         let attrs = wdoc::shape_attrs(project, block, sheets)
-        let base = is_composite ? map_set(map_set(attrs, "fill", attr_or(attrs, "fill", "none")), "stroke", attr_or(attrs, "stroke", "none")) : attrs
+        let base = is_composite ? map_merge(attrs, { fill = attr_or(attrs, "fill", "none"), stroke = attr_or(attrs, "stroke", "none") }) : attrs
         map_set(base, "children", concat(template_shapes, child_shapes))
     }
 
@@ -1767,13 +1771,10 @@ namespace wdoc {
 
     export let connection_from_block = block => {
         let attrs = block_attrs(block)
-        map_set(map_set(attrs, "from", attr_or(attrs, "from", "")), "to", attr_or(attrs, "to", ""))
+        map_merge(attrs, { from = attr_or(attrs, "from", ""), to = attr_or(attrs, "to", "") })
     }
 
-    export let connections_in_block = block => concat(
-        map(filter(block_body_children(block), child => wdoc::is_connection_block(child)), child => wdoc::connection_from_block(child)),
-        flatten(map(filter(block_body_children(block), child => !wdoc::is_connection_block(child)), child => wdoc::connections_in_block(child)))
-    )
+    export let connections_in_block = block => map(block_collect_kinds(block, ["wdoc::draw::connection"]), child => wdoc::connection_from_block(child))
 
     export let diagram_value = (project, block) => {
         let attrs = block_attrs(block)
@@ -1813,7 +1814,7 @@ namespace wdoc {
         { name = attr_or(attrs, "id", ""), initial = attr_or(attrs, "initial", null), type_name = attr_or(attrs, "type", null) }
     }
 
-    export let binding_blocks_in = block => concat(wdoc::block_is(block, "binding") ? [block] : [], flatten(map(block_body_children(block), child => wdoc::binding_blocks_in(child))))
+    export let binding_blocks_in = block => block_collect_kinds(block, ["wdoc::binding", "binding"])
 
     export let extract_binding = block => {
         let attrs = block_attrs(block)
@@ -1835,7 +1836,7 @@ namespace wdoc {
         )
     }
 
-    export let extract_layout_children = (project, block) => filter(map(block_body_children(block), child => wdoc::extract_layout_child(project, child)), item => item != null)
+    export let extract_layout_children = (project, block) => filter_map(block_body_children(block), child => wdoc::extract_layout_child(project, child))
 
     export let extract_split = (project, block) => {
         let attrs = block_attrs(block)
@@ -1881,12 +1882,8 @@ namespace wdoc {
 
     declare media_assets(project: map(string, any)) -> list(map(string, any))
 
-    export let media_assets_in_block = (project, block) => {
-        let attrs = block_attrs(block)
-        let kind = block_kind(block)
-        let own = map_has(attrs, "src") && contains(["wdoc::image", "wdoc::draw::image", "wdoc::draw::map", "wdoc::draw::sprite", "wdoc::draw::dopesheet", "wdoc::draw::dopesheet_view", "wdoc::draw::tilemap"], kind) ? [wdoc::asset_from_src(project, attrs.src)] : []
-        concat(own, flatten(map(block_body_children(block), child => wdoc::media_assets_in_block(project, child))))
-    }
+    export let media_assets_in_block = (project, block) =>
+        map(filter(block_collect_kinds(block, ["wdoc::image", "image", "wdoc::draw::image", "wdoc::draw::map", "wdoc::draw::sprite", "wdoc::draw::dopesheet", "wdoc::draw::dopesheet_view", "wdoc::draw::tilemap"]), child => map_has(block_attrs(child), "src")), child => wdoc::asset_from_src(project, block_attrs(child).src))
 
     export let project_document = project => {
         let root = project.root
