@@ -1135,62 +1135,52 @@ namespace wdoc {
         len(signals) == 0 && len(bindings) == 0 ? null : replace(import_raw("<WCL>:/assets/wdoc/runtime/page_signal_template.js"), "__WDOC_SIGNAL_CONFIG_JSON__", json_encode({ signals = signals, bindings = bindings }))
     }
 
-    export let page_view = (ctx, page) => map_set(
-        map_set(
-            map_set(
-                map_set(
-                    map_set(
-                        map_set(page, "template", wdoc::page_effective_template(ctx.doc, page)),
-                        "output_path", wdoc::page_output_path(page)
-                    ),
-                    "css_path", wdoc::css_path_for(wdoc::page_output_path(page))
-                ),
-                "layout_items", wdoc::page_layout_items(page)
-            ),
-            "signal_runtime", wdoc::page_signal_runtime(ctx, page)
-        ),
-        "href", wdoc::page_output_path(page)
-    )
+    export let page_view = (ctx, page) => {
+        let output_path = wdoc::page_output_path(page)
+        map_merge(page, {
+            template = wdoc::page_effective_template(ctx.doc, page),
+            output_path = output_path,
+            css_path = wdoc::css_path_for(output_path),
+            layout_items = wdoc::page_layout_items(page),
+            signal_runtime = wdoc::page_signal_runtime(ctx, page),
+            href = output_path
+        })
+    }
 
     export let page_views = ctx => map(filter(ctx.doc.pages, page => attr_or(page, "draft", false) != true), page => wdoc::page_view(ctx, page))
 
-    export let pages_for_section = (pages, section, from_path) => map(filter(pages, page => page.section_id == section.id), page => map_set(page, "href", wdoc::relative_href(from_path, page.output_path)))
+    export let pages_for_section = (pages_by_section, section, from_path) =>
+        map(attr_or(pages_by_section, section.id, []), page => map_merge(page, { href = wdoc::relative_href(from_path, page.output_path) }))
 
-    export let first_page_for_section = (pages, section) => {
-        let direct = filter(pages, page => page.section_id == section.id)
+    export let first_page_for_section = (pages_by_section, section) => {
+        let direct = attr_or(pages_by_section, section.id, [])
         len(direct) > 0 ? direct[0] : null
     }
 
-    export let first_page_path_for_section = (pages, section) => {
-        let page = wdoc::first_page_for_section(pages, section)
+    export let first_page_path_for_section = (pages_by_section, section) => {
+        let page = wdoc::first_page_for_section(pages_by_section, section)
         page != null ? page.output_path : "#"
     }
 
-    export let section_view = (pages, section) => {
+    export let section_view = (pages_by_section, section) => {
         let output_path = wdoc::section_output_path(section)
-        map_set(
-            map_set(
-                map_set(
-                    map_set(
-                        map_set(section, "output_path", output_path),
-                        "css_path", wdoc::css_path_for(output_path)
-                    ),
-                    "pages", wdoc::pages_for_section(pages, section, output_path)
-                ),
-                "first_page_path", wdoc::first_page_path_for_section(pages, section)
-            ),
-            "children", map(section.children, child => wdoc::section_view(pages, child))
-        )
+        map_merge(section, {
+            output_path = output_path,
+            css_path = wdoc::css_path_for(output_path),
+            pages = wdoc::pages_for_section(pages_by_section, section, output_path),
+            first_page_path = wdoc::first_page_path_for_section(pages_by_section, section),
+            children = map(section.children, child => wdoc::section_view(pages_by_section, child))
+        })
     }
 
-    export let section_views = (pages, sections) => map(sections, section => wdoc::section_view(pages, section))
+    export let section_views = (pages_by_section, sections) => map(sections, section => wdoc::section_view(pages_by_section, section))
 
-    export let collect_section_outputs = sections => flatten(map(sections, section => {
+    export let collect_section_outputs = sections => flat_map(sections, section => {
         let own = (len(section.pages) > 0 || len(section.children) > 0) ? [{ kind = "section", section = section }] : []
         concat(own, wdoc::collect_section_outputs(section.children))
-    }))
+    })
 
-    export let term_values = (pages, kind) => distinct(flatten(map(pages, page => kind == "tags" ? attr_or(page, "tags", []) : attr_or(page, "categories", []))))
+    export let term_values = (pages, kind) => distinct(flat_map(pages, page => kind == "tags" ? attr_or(page, "tags", []) : attr_or(page, "categories", [])))
 
     export let taxonomy_outputs = (pages, kind) => map(wdoc::term_values(pages, kind), term => {
         let path = kind + "/" + wdoc::slugify(term) + ".html"
@@ -1202,29 +1192,31 @@ namespace wdoc {
         }
     })
 
-    export let section_presentation_pages = (section, pages) => {
-        let own = filter(pages, page => page.section_id == section.id)
+    export let section_presentation_pages = (section, pages_by_section) => {
+        let own = attr_or(pages_by_section, section.id, [])
         let first = len(own) > 0 ? [own[0]] : []
-        concat(first, flatten(map(section.children, child => wdoc::section_presentation_pages(child, pages))))
+        concat(first, flat_map(section.children, child => wdoc::section_presentation_pages(child, pages_by_section)))
     }
 
-    export let presentation_grid = (doc, pages) => {
-        let rows = filter(map(doc.sections, section => wdoc::section_presentation_pages(section, pages)), row => len(row) > 0)
-        let row_ids = flatten(map(rows, row => map(row, page => page.id)))
+    export let presentation_grid = (doc, pages, pages_by_section) => {
+        let rows = filter_map(doc.sections, section => {
+            let row = wdoc::section_presentation_pages(section, pages_by_section)
+            len(row) > 0 ? row : null
+        })
+        let row_ids = flat_map(rows, row => list_attr(row, "id"))
         let uncategorized = filter(pages, page => !contains(row_ids, page.id))
         len(uncategorized) > 0 ? concat(rows, [uncategorized]) : rows
     }
 
     export let row_index_for_page = (grid, page_id, i) =>
-        i >= len(grid) ? -1 : (contains(map(grid[i], page => page.id), page_id) ? i : wdoc::row_index_for_page(grid, page_id, i + 1))
+        i >= len(grid) ? -1 : (contains(list_attr(grid[i], "id"), page_id) ? i : wdoc::row_index_for_page(grid, page_id, i + 1))
 
-    export let page_index_in_row = (row, page_id) => index_of(map(row, page => page.id), page_id)
+    export let page_index_in_row = (row, page_id) => index_of(list_attr(row, "id"), page_id)
 
     export let nearest_slide = (grid, row, col) =>
         row < 0 || row >= len(grid) || len(grid[row]) == 0 ? null : grid[row][min(col, len(grid[row]) - 1)]
 
-    export let presentation_nav = (doc, pages, page) => {
-        let grid = wdoc::presentation_grid(doc, pages)
+    export let presentation_nav_from_grid = (grid, page) => {
         let row = wdoc::row_index_for_page(grid, page.id, 0)
         let col = row < 0 ? -1 : wdoc::page_index_in_row(grid[row], page.id)
         {
@@ -1237,14 +1229,17 @@ namespace wdoc {
 
     export let prepare_pages = ctx => {
         let pages = wdoc::page_views(ctx)
-        map(pages, page => map_set(page, "presentation_nav", wdoc::presentation_nav(ctx.doc, pages, page)))
+        let pages_by_section = group_by_attr(pages, "section_id")
+        let grid = wdoc::presentation_grid(ctx.doc, pages, pages_by_section)
+        map(pages, page => map_merge(page, { presentation_nav = wdoc::presentation_nav_from_grid(grid, page) }))
     }
 
     export let prepare_render_context = ctx => {
         let pages = wdoc::prepare_pages(ctx)
-        let sections = wdoc::section_views(pages, ctx.doc.sections)
-        let doc = map_set(map_set(ctx.doc, "pages", pages), "sections", sections)
-        map_set(map_set(ctx, "doc", doc), "site_outputs", concat(wdoc::collect_section_outputs(sections), concat(wdoc::taxonomy_outputs(pages, "tags"), wdoc::taxonomy_outputs(pages, "categories"))))
+        let pages_by_section = group_by_attr(pages, "section_id")
+        let sections = wdoc::section_views(pages_by_section, ctx.doc.sections)
+        let doc = map_merge(ctx.doc, { pages = pages, sections = sections })
+        map_merge(ctx, { doc = doc, site_outputs = concat(wdoc::collect_section_outputs(sections), concat(wdoc::taxonomy_outputs(pages, "tags"), wdoc::taxonomy_outputs(pages, "categories"))) })
     }
 
     export let document_head = (doc, title, css_path, content_html) => {
@@ -1462,7 +1457,7 @@ namespace wdoc {
 
     export let render_context = doc => {
         let runtime = map_has(doc, "runtime") ? doc.runtime : {}
-        let doc_with_runtime = map_set(doc, "runtime", runtime)
+        let doc_with_runtime = map_merge(doc, { runtime = runtime })
         { doc = doc_with_runtime, runtime = runtime }
     }
 
@@ -1472,7 +1467,7 @@ namespace wdoc {
         presentation = "wdoc-presentation.js"
     }
 
-    export let prepare_site_document = doc => map_set(doc, "runtime", wdoc::runtime_assets())
+    export let prepare_site_document = doc => map_merge(doc, { runtime = wdoc::runtime_assets() })
 
     export let site_css = doc => {
         kind = "stylesheet",
@@ -1549,7 +1544,7 @@ namespace wdoc {
         attr_or(attrs, "title", len(args) > 0 ? args[0] : attr_or(attrs, "id", ""))
     }
 
-    export let child_blocks_matching = (block, name) => filter(block_body_children(block), child => wdoc::block_is(child, name))
+    export let child_blocks_matching = (block, name) => block_body_children_kinds(block, [name, "wdoc::" + name])
 
     export let top_level_blocks_matching = (project, name) => filter(values(project.values), value => type_of(value) == "block_ref" && wdoc::block_is(value, name))
 
@@ -1703,6 +1698,23 @@ namespace wdoc {
         wdoc::is_connection_block(block) || wdoc::is_structural_shape(project, block) ||
         contains(["wdoc::draw::event", "wdoc::draw::class", "wdoc::draw::state", "wdoc::draw::animation", "wdoc::draw::keyframe", "wdoc::draw::dopesheet"], block_kind(block))
 
+    export let shape_skip_kinds = project => concat(project.metadata.structural_schemas, [
+        "wdoc::draw::connection",
+        "wdoc::draw::event",
+        "wdoc::draw::class",
+        "wdoc::draw::state",
+        "wdoc::draw::animation",
+        "wdoc::draw::keyframe",
+        "wdoc::draw::dopesheet",
+        "connection",
+        "event",
+        "class",
+        "state",
+        "animation",
+        "keyframe",
+        "dopesheet"
+    ])
+
     export let dopesheet_blocks_in = block => block_collect_kinds(block, ["wdoc::draw::dopesheet", "dopesheet"])
 
     export let dopesheet_value = block => {
@@ -1767,7 +1779,8 @@ namespace wdoc {
         map_set(base, "children", concat(template_shapes, child_shapes))
     }
 
-    export let shape_blocks = (project, block, sheets) => map(filter(block_body_children(block), child => !wdoc::is_shape_skip_block(project, child)), child => wdoc::shape_from_block(project, child, sheets))
+    export let shape_blocks = (project, block, sheets) =>
+        map(block_body_children_except_kinds(block, wdoc::shape_skip_kinds(project)), child => wdoc::shape_from_block(project, child, sheets))
 
     export let connection_from_block = block => {
         let attrs = block_attrs(block)
@@ -1891,6 +1904,11 @@ namespace wdoc {
         let project_with_icons = map_set(project, "_wdoc_icon_sets", wdoc::collect_icon_sets(project))
         let child_pages = wdoc::child_blocks_matching(root, "page")
         let top_pages = filter(wdoc::top_level_blocks_matching(project, "page"), page => !contains(map(child_pages, p => block_id(p)), block_id(page)))
+        let site_headers = wdoc::child_blocks_matching(root, "site_header")
+        let site_navs = wdoc::child_blocks_matching(root, "site_nav")
+        let site_footers = wdoc::child_blocks_matching(root, "site_footer")
+        let child_sections = wdoc::child_blocks_matching(root, "section")
+        let child_styles = wdoc::child_blocks_matching(root, "style")
         {
             name = attr_or(attrs, "id", ""),
             title = attr_or(attrs, "title", ""),
@@ -1898,13 +1916,13 @@ namespace wdoc {
             version = attr_or(attrs, "version", null),
             author = attr_or(attrs, "author", null),
             site = {
-                header_html = len(wdoc::child_blocks_matching(root, "site_header")) > 0 ? wdoc::render_project_block(project_with_icons, wdoc::child_blocks_matching(root, "site_header")[0]) : null,
-                nav_html = len(wdoc::child_blocks_matching(root, "site_nav")) > 0 ? wdoc::render_project_block(project_with_icons, wdoc::child_blocks_matching(root, "site_nav")[0]) : null,
-                footer_html = len(wdoc::child_blocks_matching(root, "site_footer")) > 0 ? wdoc::render_project_block(project_with_icons, wdoc::child_blocks_matching(root, "site_footer")[0]) : null
+                header_html = len(site_headers) > 0 ? wdoc::render_project_block(project_with_icons, site_headers[0]) : null,
+                nav_html = len(site_navs) > 0 ? wdoc::render_project_block(project_with_icons, site_navs[0]) : null,
+                footer_html = len(site_footers) > 0 ? wdoc::render_project_block(project_with_icons, site_footers[0]) : null
             },
-            sections = map(wdoc::child_blocks_matching(root, "section"), section => wdoc::extract_section(project_with_icons, section, attr_or(attrs, "id", ""))),
+            sections = map(child_sections, section => wdoc::extract_section(project_with_icons, section, attr_or(attrs, "id", ""))),
             pages = map(concat(top_pages, child_pages), page => wdoc::extract_page(project_with_icons, page)),
-            styles = map(concat(wdoc::top_level_blocks_matching(project, "style"), wdoc::child_blocks_matching(root, "style")), style => wdoc::extract_style(style)),
+            styles = map(concat(wdoc::top_level_blocks_matching(project, "style"), child_styles), style => wdoc::extract_style(style)),
             assets = wdoc::media_assets(project_with_icons),
             extra_css = ""
         }
@@ -1939,7 +1957,7 @@ namespace wdoc {
 
     export let style_css = styles => {
         kind = "stylesheet",
-        children = flatten(map(styles, style => map(style.rules, rule => wdoc::style_rule_asset(style, rule))))
+        children = flat_map(styles, style => map(style.rules, rule => wdoc::style_rule_asset(style, rule)))
     }
 
     // ----------------------------------------------------------------------

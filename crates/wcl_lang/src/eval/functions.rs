@@ -502,6 +502,18 @@ pub fn builtin_signatures() -> Vec<FunctionSignature> {
                 .into(),
         },
         FunctionSignature {
+            name: "block_body_children_kinds".into(),
+            params: vec!["block: block_ref".into(), "kinds: list(string)".into()],
+            return_type: "list(block_ref)".into(),
+            doc: "Return direct child blocks with matching kind names".into(),
+        },
+        FunctionSignature {
+            name: "block_body_children_except_kinds".into(),
+            params: vec!["block: block_ref".into(), "kinds: list(string)".into()],
+            return_type: "list(block_ref)".into(),
+            doc: "Return direct child blocks without matching kind names".into(),
+        },
+        FunctionSignature {
             name: "block_set_attr".into(),
             params: vec![
                 "block: block_ref".into(),
@@ -534,6 +546,18 @@ pub fn builtin_signatures() -> Vec<FunctionSignature> {
             params: vec!["map: map".into(), "values: map".into()],
             return_type: "map".into(),
             doc: "Return a map with multiple keys set".into(),
+        },
+        FunctionSignature {
+            name: "list_attr".into(),
+            params: vec!["list: list".into(), "attr: string".into()],
+            return_type: "list".into(),
+            doc: "Return non-null attribute values from list items".into(),
+        },
+        FunctionSignature {
+            name: "group_by_attr".into(),
+            params: vec!["list: list".into(), "attr: string".into()],
+            return_type: "map(string, list)".into(),
+            doc: "Group list items by a non-null attribute value".into(),
         },
         FunctionSignature {
             name: "map".into(),
@@ -936,6 +960,14 @@ pub fn builtin_registry() -> HashMap<String, BuiltinFn> {
         wrap_builtin(block_body_children),
     );
     m.insert(
+        "block_body_children_kinds".into(),
+        wrap_builtin(block_body_children_kinds),
+    );
+    m.insert(
+        "block_body_children_except_kinds".into(),
+        wrap_builtin(block_body_children_except_kinds),
+    );
+    m.insert(
         "block_collect_kinds".into(),
         wrap_builtin(block_collect_kinds),
     );
@@ -947,6 +979,8 @@ pub fn builtin_registry() -> HashMap<String, BuiltinFn> {
     );
     m.insert("map_set".into(), wrap_builtin(map_set));
     m.insert("map_merge".into(), wrap_builtin(map_merge));
+    m.insert("list_attr".into(), wrap_builtin(list_attr));
+    m.insert("group_by_attr".into(), wrap_builtin(group_by_attr));
     m.insert("object".into(), wrap_builtin(object));
 
     // Table manipulation functions (Section 14.3b)
@@ -2306,6 +2340,76 @@ fn block_body_children(args: &[Value]) -> Result<Value, String> {
     }
 }
 
+fn string_set_from_list<'a>(
+    values: &'a [Value],
+    pos: usize,
+    fn_name: &str,
+) -> Result<HashSet<&'a str>, String> {
+    let mut strings = HashSet::with_capacity(values.len());
+    for value in values {
+        match value {
+            Value::String(s) => {
+                strings.insert(s.as_str());
+            }
+            other => {
+                return Err(format!(
+                    "{fn_name}: argument {pos} must contain only strings, got {}",
+                    other.type_name()
+                ))
+            }
+        }
+    }
+    Ok(strings)
+}
+
+fn block_body_children_kinds(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 2, "block_body_children_kinds")?;
+    let block = match &args[0] {
+        Value::BlockRef(block) => block,
+        other => {
+            return Err(format!(
+                "block_body_children_kinds: argument 1 must be block_ref, got {}",
+                other.type_name()
+            ))
+        }
+    };
+    let kind_values = get_list(&args[1], 2, "block_body_children_kinds")?;
+    let kinds = string_set_from_list(kind_values, 2, "block_body_children_kinds")?;
+    Ok(Value::List(
+        block
+            .children
+            .iter()
+            .filter(|child| kinds.contains(child.kind.as_str()))
+            .cloned()
+            .map(Value::BlockRef)
+            .collect(),
+    ))
+}
+
+fn block_body_children_except_kinds(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 2, "block_body_children_except_kinds")?;
+    let block = match &args[0] {
+        Value::BlockRef(block) => block,
+        other => {
+            return Err(format!(
+                "block_body_children_except_kinds: argument 1 must be block_ref, got {}",
+                other.type_name()
+            ))
+        }
+    };
+    let kind_values = get_list(&args[1], 2, "block_body_children_except_kinds")?;
+    let kinds = string_set_from_list(kind_values, 2, "block_body_children_except_kinds")?;
+    Ok(Value::List(
+        block
+            .children
+            .iter()
+            .filter(|child| !kinds.contains(child.kind.as_str()))
+            .cloned()
+            .map(Value::BlockRef)
+            .collect(),
+    ))
+}
+
 fn block_collect_kinds(args: &[Value]) -> Result<Value, String> {
     expect_args(args, 2, "block_collect_kinds")?;
     let root = match &args[0] {
@@ -2318,20 +2422,7 @@ fn block_collect_kinds(args: &[Value]) -> Result<Value, String> {
         }
     };
     let kind_values = get_list(&args[1], 2, "block_collect_kinds")?;
-    let mut kinds = HashSet::with_capacity(kind_values.len());
-    for value in kind_values {
-        match value {
-            Value::String(kind) => {
-                kinds.insert(kind.as_str());
-            }
-            other => {
-                return Err(format!(
-                    "block_collect_kinds: argument 2 must contain only strings, got {}",
-                    other.type_name()
-                ))
-            }
-        }
-    }
+    let kinds = string_set_from_list(kind_values, 2, "block_collect_kinds")?;
 
     fn collect(block: &BlockRef, kinds: &HashSet<&str>, results: &mut Vec<Value>) {
         if kinds.contains(block.kind.as_str()) {
@@ -2436,6 +2527,50 @@ fn map_merge(args: &[Value]) -> Result<Value, String> {
             .map(|(key, value)| (key.clone(), value.clone())),
     );
     Ok(Value::Map(result))
+}
+
+fn attr_value<'a>(value: &'a Value, key: &str) -> Option<&'a Value> {
+    match value {
+        Value::BlockRef(block) => block.attributes.get(key),
+        Value::Map(map) => map.get(key),
+        Value::Object(object) => object.fields.get(key),
+        _ => None,
+    }
+    .filter(|value| !matches!(value, Value::Null))
+}
+
+fn list_attr(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 2, "list_attr")?;
+    let list = get_list(&args[0], 1, "list_attr")?;
+    let key = get_string(&args[1], 2, "list_attr")?;
+    Ok(Value::List(
+        list.iter()
+            .filter_map(|item| attr_value(item, key).cloned())
+            .collect(),
+    ))
+}
+
+fn group_by_attr(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 2, "group_by_attr")?;
+    let list = get_list(&args[0], 1, "group_by_attr")?;
+    let key = get_string(&args[1], 2, "group_by_attr")?;
+    let mut groups: indexmap::IndexMap<String, Value> = indexmap::IndexMap::new();
+    for item in list {
+        let Some(attr) = attr_value(item, key) else {
+            continue;
+        };
+        let group_key = value_to_plain_string(attr);
+        if group_key.is_empty() {
+            continue;
+        }
+        let entry = groups
+            .entry(group_key)
+            .or_insert_with(|| Value::List(Vec::new()));
+        if let Value::List(values) = entry {
+            values.push(item.clone());
+        }
+    }
+    Ok(Value::Map(groups))
 }
 
 fn object(args: &[Value]) -> Result<Value, String> {
@@ -3510,6 +3645,38 @@ mod tests {
     }
 
     #[test]
+    fn test_list_attr_and_group_by_attr() {
+        let mut first = IndexMap::new();
+        first.insert("section_id".to_string(), s("intro"));
+        first.insert("id".to_string(), s("a"));
+        let mut second = IndexMap::new();
+        second.insert("section_id".to_string(), s("intro"));
+        second.insert("id".to_string(), s("b"));
+        let mut third = IndexMap::new();
+        third.insert("section_id".to_string(), Value::Null);
+        third.insert("id".to_string(), s("c"));
+        let items = list(vec![
+            Value::Map(first.clone()),
+            Value::Map(second.clone()),
+            Value::Map(third),
+        ]);
+
+        assert_eq!(
+            list_attr(&[items.clone(), s("section_id")]).unwrap(),
+            list(vec![s("intro"), s("intro")])
+        );
+
+        let grouped = group_by_attr(&[items, s("section_id")]).unwrap();
+        let Value::Map(grouped) = grouped else {
+            panic!("expected grouped map");
+        };
+        assert_eq!(
+            grouped.get("intro"),
+            Some(&list(vec![Value::Map(first), Value::Map(second)]))
+        );
+    }
+
+    #[test]
     fn test_sort() {
         let result = fn_sort(&[list(vec![i(3), i(1), i(2)])]).unwrap();
         assert_eq!(result, list(vec![i(1), i(2), i(3)]));
@@ -3759,6 +3926,8 @@ mod tests {
             "map_has",
             "map_set",
             "map_merge",
+            "list_attr",
+            "group_by_attr",
             "find",
             "insert_row",
             "remove_rows",
@@ -3794,6 +3963,8 @@ mod tests {
             "block_attrs",
             "block_children",
             "block_body_children",
+            "block_body_children_kinds",
+            "block_body_children_except_kinds",
             "block_collect_kinds",
             "block_set_attr",
             "attr_or",
@@ -4033,6 +4204,36 @@ mod tests {
 
         let ids = block_ids(block_children(&[Value::BlockRef(BlockRef::new(block))]).unwrap());
         assert_eq!(ids, vec!["named".to_string(), "anonymous".to_string()]);
+    }
+
+    #[test]
+    fn block_body_children_kinds_filters_direct_children() {
+        let first = block_ref("page", Some("first"), vec![]);
+        let nested = block_ref("page", Some("nested"), vec![]);
+        let group = block_ref("group", Some("group"), vec![nested]);
+        let second = block_ref("style", Some("second"), vec![]);
+        let block = block_ref("container", Some("root"), vec![first, group, second]);
+
+        let ids = block_ids(
+            block_body_children_kinds(&[Value::BlockRef(block), list(vec![s("page"), s("style")])])
+                .unwrap(),
+        );
+        assert_eq!(ids, vec!["first".to_string(), "second".to_string()]);
+    }
+
+    #[test]
+    fn block_body_children_except_kinds_filters_direct_children() {
+        let first = block_ref("page", Some("first"), vec![]);
+        let nested = block_ref("page", Some("nested"), vec![]);
+        let group = block_ref("group", Some("group"), vec![nested]);
+        let second = block_ref("style", Some("second"), vec![]);
+        let block = block_ref("container", Some("root"), vec![first, group, second]);
+
+        let ids = block_ids(
+            block_body_children_except_kinds(&[Value::BlockRef(block), list(vec![s("group")])])
+                .unwrap(),
+        );
+        assert_eq!(ids, vec!["first".to_string(), "second".to_string()]);
     }
 
     #[test]

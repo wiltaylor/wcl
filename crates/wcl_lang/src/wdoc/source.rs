@@ -424,9 +424,8 @@ fn has_shape_template(kind: &str, shape_templates: &HashSet<String>) -> bool {
     shape_templates.contains(kind) || shape_templates.contains(kind_leaf(kind))
 }
 
-fn primitive_skip_block(block: &BlockRef, shape_templates: &HashSet<String>) -> bool {
+fn primitive_skip_block(block: &BlockRef, _shape_templates: &HashSet<String>) -> bool {
     primitive_connection_block(block)
-        || has_shape_template(&block.kind, shape_templates)
         || matches!(
             block.kind.as_str(),
             "wdoc::draw::event"
