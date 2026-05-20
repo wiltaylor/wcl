@@ -2193,6 +2193,87 @@ page home {
 }
 
 #[test]
+fn wdoc_build_renders_auto_sized_nested_flowcharts() {
+    let dir = tempdir().expect("tempdir");
+    let site = r#"
+import <wdoc.wcl>
+use wdoc::{doc, section, page, layout}
+use wdoc::draw::{diagram, flowchart, flow_terminal, flow_process, connection}
+
+doc my_docs {
+    title = "Nested Docs"
+    section diagrams "Diagrams" {}
+}
+
+page home {
+    section = ref("my_docs.diagrams")
+    title = "Home"
+
+    layout {
+        vsplit main {
+            split body {
+                size = 100
+
+                diagram nested {
+                    width = 640
+                    height = 360
+                    align = "layered"
+                    direction = "horizontal"
+                    gap = 48
+
+                    flow_terminal entry {
+                        label = "Request"
+                    }
+
+                    flowchart frontend {
+                        label = "Frontend"
+
+                        flow_terminal start {
+                            label = "Start"
+                        }
+
+                        flow_process process {
+                            label = "Process"
+                        }
+
+                        connection inner {
+                            from = "start"
+                            to = "process"
+                            direction = "to"
+                        }
+                    }
+
+                    connection outer {
+                        from = "entry"
+                        to = "frontend.start"
+                        direction = "to"
+                    }
+                }
+            }
+        }
+    }
+}
+"#;
+    let input = dir.path().join("site.wcl");
+    std::fs::write(&input, site).expect("write wdoc file");
+    let output = dir.path().join("out");
+
+    Command::cargo_bin("wcl")
+        .unwrap()
+        .current_dir(dir.path())
+        .args(["wdoc", "build", "site.wcl", "--output", "out"])
+        .assert()
+        .success();
+
+    let html = std::fs::read_to_string(output.join("home.html")).expect("read rendered page");
+    assert!(html.contains("Frontend"));
+    assert!(html.contains("Start"));
+    assert!(html.contains("Process"));
+    assert!(!html.contains("<rect x=\"0\" y=\"0\" width=\"0\" height=\"0\""));
+    assert!(!html.contains("<text x=\"0\" y=\"0\" font-size"));
+}
+
+#[test]
 fn wdoc_build_renders_drawing_image_and_copies_asset() {
     let dir = tempdir().expect("tempdir");
     let pages_dir = dir.path().join("pages");

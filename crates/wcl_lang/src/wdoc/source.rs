@@ -742,7 +742,7 @@ fn layout_request_to_value(
                 .indices
                 .iter()
                 .filter_map(|idx| children.get(*idx))
-                .map(shape_node_to_value)
+                .map(shape_node_to_layout_input_value)
                 .collect(),
         ),
     );
@@ -772,10 +772,16 @@ fn shape_node_to_value(node: &crate::wdoc::shapes::ShapeNode) -> Value {
     if let Some(id) = &node.id {
         map.insert("id".to_string(), Value::String(id.clone()));
     }
-    map.insert("x".to_string(), Value::Float(node.resolved.x));
-    map.insert("y".to_string(), Value::Float(node.resolved.y));
-    map.insert("width".to_string(), Value::Float(node.resolved.width));
-    map.insert("height".to_string(), Value::Float(node.resolved.height));
+    map.insert("x".to_string(), Value::Float(shape_node_layout_x(node)));
+    map.insert("y".to_string(), Value::Float(shape_node_layout_y(node)));
+    map.insert(
+        "width".to_string(),
+        Value::Float(shape_node_layout_width(node)),
+    );
+    map.insert(
+        "height".to_string(),
+        Value::Float(shape_node_layout_height(node)),
+    );
     map.insert(
         "align".to_string(),
         Value::String(crate::wdoc::shapes::alignment_name(node.align).to_string()),
@@ -787,6 +793,104 @@ fn shape_node_to_value(node: &crate::wdoc::shapes::ShapeNode) -> Value {
         Value::List(node.children.iter().map(shape_node_to_value).collect()),
     );
     Value::Map(map)
+}
+
+fn shape_node_to_layout_input_value(node: &crate::wdoc::shapes::ShapeNode) -> Value {
+    let mut map: IndexMap<String, Value> = node
+        .attrs
+        .iter()
+        .map(|(key, value)| (key.clone(), Value::String(value.clone())))
+        .collect();
+    map.insert("kind".to_string(), Value::String(node.kind_name.clone()));
+    if let Some(id) = &node.id {
+        map.insert("id".to_string(), Value::String(id.clone()));
+    }
+
+    if node.x.is_some() || node.left.is_some() || node.right.is_some() || node.resolved.x != 0.0 {
+        map.insert("x".to_string(), Value::Float(shape_node_layout_x(node)));
+    }
+    if node.y.is_some() || node.top.is_some() || node.bottom.is_some() || node.resolved.y != 0.0 {
+        map.insert("y".to_string(), Value::Float(shape_node_layout_y(node)));
+    }
+    if node.width.is_some()
+        || (node.left.is_some() && node.right.is_some())
+        || node.resolved.width != 0.0
+    {
+        map.insert(
+            "width".to_string(),
+            Value::Float(shape_node_layout_width(node)),
+        );
+    }
+    if node.height.is_some()
+        || (node.top.is_some() && node.bottom.is_some())
+        || node.resolved.height != 0.0
+    {
+        map.insert(
+            "height".to_string(),
+            Value::Float(shape_node_layout_height(node)),
+        );
+    }
+    if let Some(top) = node.top {
+        map.insert("top".to_string(), Value::Float(top));
+    }
+    if let Some(bottom) = node.bottom {
+        map.insert("bottom".to_string(), Value::Float(bottom));
+    }
+    if let Some(left) = node.left {
+        map.insert("left".to_string(), Value::Float(left));
+    }
+    if let Some(right) = node.right {
+        map.insert("right".to_string(), Value::Float(right));
+    }
+
+    map.insert(
+        "align".to_string(),
+        Value::String(crate::wdoc::shapes::alignment_name(node.align).to_string()),
+    );
+    map.insert("gap".to_string(), Value::Float(node.gap));
+    map.insert("padding".to_string(), Value::Float(node.padding));
+    map.insert(
+        "children".to_string(),
+        Value::List(
+            node.children
+                .iter()
+                .map(shape_node_to_layout_input_value)
+                .collect(),
+        ),
+    );
+    Value::Map(map)
+}
+
+fn shape_node_layout_x(node: &crate::wdoc::shapes::ShapeNode) -> f64 {
+    if node.resolved.x != 0.0 {
+        node.resolved.x
+    } else {
+        node.x.unwrap_or(node.resolved.x)
+    }
+}
+
+fn shape_node_layout_y(node: &crate::wdoc::shapes::ShapeNode) -> f64 {
+    if node.resolved.y != 0.0 {
+        node.resolved.y
+    } else {
+        node.y.unwrap_or(node.resolved.y)
+    }
+}
+
+fn shape_node_layout_width(node: &crate::wdoc::shapes::ShapeNode) -> f64 {
+    if node.resolved.width != 0.0 {
+        node.resolved.width
+    } else {
+        node.width.unwrap_or(node.resolved.width)
+    }
+}
+
+fn shape_node_layout_height(node: &crate::wdoc::shapes::ShapeNode) -> f64 {
+    if node.resolved.height != 0.0 {
+        node.resolved.height
+    } else {
+        node.height.unwrap_or(node.resolved.height)
+    }
 }
 
 fn connection_to_value(conn: &crate::wdoc::shapes::Connection) -> Value {
