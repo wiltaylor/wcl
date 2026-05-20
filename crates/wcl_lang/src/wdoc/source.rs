@@ -9,6 +9,8 @@ use indexmap::IndexMap;
 
 use crate::ast;
 use crate::wdoc::model::*;
+#[cfg(test)]
+use crate::BlockRefData;
 use crate::{
     BlockRef, BuiltinFn, FileId, FunctionRegistry, FunctionSignature, FunctionValue, Value,
 };
@@ -943,12 +945,12 @@ fn block_with_connected_ports(
         return None;
     }
 
-    let mut annotated = block.clone();
+    let mut annotated = block.to_data();
     annotated.attributes.insert(
         "_wdoc_connected_ports".to_string(),
         Value::String(ports.join(",")),
     );
-    Some(annotated)
+    Some(BlockRef::new(annotated))
 }
 
 fn diagram_dopesheets(diagram: &BlockRef) -> HashMap<String, IndexMap<String, String>> {
@@ -2192,8 +2194,9 @@ fn dispatch_shape_template_descriptors(
 
     let themed_block = apply_widget_theme_class_attrs(br, ctx);
     let result = if let Some(base_kind) = ctx.template_extends_map.get(&schema_name) {
-        let mut base_block = themed_block.clone();
+        let mut base_block = themed_block.to_data();
         base_block.kind = base_kind.clone();
+        let base_block = BlockRef::new(base_block);
         let base_descriptors = dispatch_shape_template_descriptors(&base_block, ctx, stack)?;
         crate::call_lambda_with_env(
             func,
@@ -2229,12 +2232,12 @@ fn dispatch_shape_template_descriptors(
 }
 
 fn apply_widget_theme_class_attrs(br: &BlockRef, ctx: &ExtractCtx) -> BlockRef {
-    let mut themed = br.clone();
     let class_names = widget_theme_class_names(br);
     if class_names.is_empty() {
-        return themed;
+        return br.clone();
     }
 
+    let mut themed = br.to_data();
     let classes = diagram_classes_for_file(ctx, br.span.file);
     for class_name in class_names {
         let Some(class) = classes.get(&class_name) else {
@@ -2247,7 +2250,7 @@ fn apply_widget_theme_class_attrs(br: &BlockRef, ctx: &ExtractCtx) -> BlockRef {
                 .or_insert_with(|| Value::String(value.clone()));
         }
     }
-    themed
+    BlockRef::new(themed)
 }
 
 fn widget_theme_class_names(br: &BlockRef) -> Vec<String> {
@@ -3416,7 +3419,7 @@ mod wdoc_draw_tests {
         attributes: IndexMap<String, Value>,
         children: Vec<BlockRef>,
     ) -> BlockRef {
-        BlockRef {
+        BlockRef::new(BlockRefData {
             kind: kind.to_string(),
             id: id.map(str::to_string),
             qualified_id: id.map(str::to_string),
@@ -3425,7 +3428,7 @@ mod wdoc_draw_tests {
             children,
             decorators: vec![],
             span: Span::dummy(),
-        }
+        })
     }
 
     fn string_attr(attrs: &mut IndexMap<String, Value>, key: &str, value: &str) {

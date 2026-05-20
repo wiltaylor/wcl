@@ -365,7 +365,7 @@ mod tests {
         for (k, v) in attrs {
             attributes.insert(k.to_string(), v);
         }
-        BlockRef {
+        BlockRef::new(BlockRefData {
             kind: kind.to_string(),
             id: id.map(|s| s.to_string()),
             qualified_id: None,
@@ -374,7 +374,7 @@ mod tests {
             children: Vec::new(),
             decorators: Vec::new(),
             span: ds(),
-        }
+        })
     }
 
     #[test]
@@ -644,11 +644,12 @@ mod tests {
             Some("health"),
             vec![("path", Value::String("/health".to_string()))],
         );
-        let mut outer = mk_block("service", Some("web"), vec![("port", Value::Int(8080))]);
+        let mut outer =
+            mk_block("service", Some("web"), vec![("port", Value::Int(8080))]).to_data();
         outer.children.push(inner);
 
         let blocks = vec![
-            outer,
+            BlockRef::new(outer),
             mk_block(
                 "endpoint",
                 Some("root"),
@@ -678,11 +679,11 @@ mod tests {
         let scope = ev.scopes_mut().create_scope(ScopeKind::Module, None);
 
         let inner = mk_block("endpoint", Some("health"), vec![]);
-        let mut outer = mk_block("service", Some("web"), vec![]);
+        let mut outer = mk_block("service", Some("web"), vec![]).to_data();
         outer.children.push(inner);
 
         let blocks = vec![
-            outer,
+            BlockRef::new(outer),
             mk_block(
                 "endpoint",
                 Some("root"),
@@ -727,10 +728,13 @@ mod tests {
             Some("fw1"),
             vec![("enabled", Value::Bool(true))],
         );
-        let mut network = mk_block("network", None, vec![]);
+        let mut network = mk_block("network", None, vec![]).to_data();
         network.children.push(firewall);
 
-        let blocks = vec![network, mk_block("service", Some("web"), vec![])];
+        let blocks = vec![
+            BlockRef::new(network),
+            mk_block("service", Some("web"), vec![]),
+        ];
 
         let engine = QueryEngine::new();
         let pipeline = QueryPipeline {
@@ -763,9 +767,9 @@ mod tests {
         attrs: Vec<(&str, Value)>,
         decorators: Vec<DecoratorValue>,
     ) -> BlockRef {
-        let mut b = mk_block(kind, id, attrs);
-        b.decorators = decorators;
-        b
+        let mut data = mk_block(kind, id, attrs).to_data();
+        data.decorators = decorators;
+        BlockRef::new(data)
     }
 
     fn mk_decorator(name: &str, args: Vec<(&str, Value)>) -> DecoratorValue {
@@ -999,10 +1003,10 @@ mod tests {
         let scope = ev.scopes_mut().create_scope(ScopeKind::Module, None);
 
         let row1 = mk_block("row", None, vec![("port", Value::Int(80))]);
-        let mut table = mk_block("table", Some("ports"), vec![]);
+        let mut table = mk_block("table", Some("ports"), vec![]).to_data();
         table.children.push(row1);
 
-        let blocks = vec![table];
+        let blocks = vec![BlockRef::new(table)];
 
         let engine = QueryEngine::new();
         let pipeline = QueryPipeline {

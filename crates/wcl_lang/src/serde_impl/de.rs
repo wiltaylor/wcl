@@ -84,11 +84,11 @@ impl<'de> de::Deserializer<'de> for Deserializer {
             Value::BlockRef(br) => {
                 // Deserialize block as a map with id and attributes
                 let mut map = IndexMap::new();
-                if let Some(id) = br.id {
-                    map.insert("id".to_string(), Value::String(id));
+                if let Some(id) = &br.id {
+                    map.insert("id".to_string(), Value::String(id.clone()));
                 }
-                for (k, v) in br.attributes {
-                    map.insert(k, v);
+                for (k, v) in &br.attributes {
+                    map.insert(k.clone(), v.clone());
                 }
                 let map_de = MapDeserializer {
                     iter: map.into_iter(),
@@ -354,11 +354,11 @@ impl<'de> de::Deserializer<'de> for Deserializer {
             }
             Value::BlockRef(br) => {
                 let mut map = IndexMap::new();
-                if let Some(id) = br.id {
-                    map.insert("id".to_string(), Value::String(id));
+                if let Some(id) = &br.id {
+                    map.insert("id".to_string(), Value::String(id.clone()));
                 }
-                for (k, v) in br.attributes {
-                    map.insert(k, v);
+                for (k, v) in &br.attributes {
+                    map.insert(k.clone(), v.clone());
                 }
                 let map_de = MapDeserializer {
                     iter: map.into_iter(),

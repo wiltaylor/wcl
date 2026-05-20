@@ -5,6 +5,8 @@
 //! - `value_to_wcl`: render a `Value` as WCL source text (block/attribute
 //!   syntax where applicable).
 
+#[cfg(test)]
+use crate::eval::value::BlockRefData;
 use crate::eval::value::{BlockRef, Value};
 
 // ── JSON ────────────────────────────────────────────────────────────────────
@@ -84,7 +86,7 @@ mod tests {
     fn blockref_to_json_preserves_id_with_attributes() {
         let mut attributes = IndexMap::new();
         attributes.insert("name".to_string(), Value::String("WAD".to_string()));
-        let block = BlockRef {
+        let block = BlockRef::new(BlockRefData {
             kind: "system".to_string(),
             id: Some("wad".to_string()),
             qualified_id: Some("wad".to_string()),
@@ -93,7 +95,7 @@ mod tests {
             children: vec![],
             decorators: vec![],
             span: crate::Span::dummy(),
-        };
+        });
 
         let json = blockref_to_json(&block);
         assert_eq!(json["id"], "wad");

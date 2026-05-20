@@ -1,5 +1,5 @@
 use crate::eval::scope::{ScopeEntry, ScopeEntryKind, ScopeKind};
-use crate::eval::value::{BlockRef, Value};
+use crate::eval::value::{BlockRef, BlockRefData, Value};
 use crate::eval::Evaluator;
 use crate::lang::ast::*;
 use crate::lang::diagnostic::DiagnosticBag;
@@ -1191,7 +1191,7 @@ fn schema_block_ref(
                 .or_insert_with(|| expr_to_value(&attr.value).unwrap_or(Value::Null));
         }
     }
-    BlockRef {
+    BlockRef::new(BlockRefData {
         kind: block.kind.name.clone(),
         id: block.inline_id.as_ref().and_then(inline_id_to_string),
         qualified_id: qualified_id.map(str::to_string),
@@ -1211,7 +1211,7 @@ fn schema_block_ref(
             .collect(),
         decorators: Vec::new(),
         span: block.span,
-    }
+    })
 }
 
 /// Parse a `@child("kind", min=N, max=N, max_depth=N)` decorator.

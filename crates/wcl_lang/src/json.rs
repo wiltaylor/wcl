@@ -1,6 +1,8 @@
 use indexmap::IndexMap;
 use serde_json::json;
 
+#[cfg(test)]
+use crate::BlockRefData;
 use crate::{BlockRef, Diagnostic, Severity, Value};
 
 /// Convert a WCL Value to a serde_json::Value.
@@ -276,7 +278,7 @@ mod tests {
 
     #[test]
     fn test_block_ref_to_json() {
-        let br = BlockRef {
+        let br = BlockRef::new(BlockRefData {
             kind: "server".to_string(),
             id: Some("main".to_string()),
             qualified_id: None,
@@ -285,7 +287,7 @@ mod tests {
             children: vec![],
             decorators: vec![],
             span: Span::dummy(),
-        };
+        });
         let json = block_ref_to_json(&br);
         assert_eq!(json["kind"], "server");
         assert_eq!(json["id"], "main");

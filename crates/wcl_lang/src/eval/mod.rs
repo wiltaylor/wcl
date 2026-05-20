@@ -26,4 +26,6 @@ pub use merge::{ConflictMode, PartialMerger};
 pub use namespaces::NamespaceAliases;
 pub use query::QueryEngine;
 pub use scope::{Scope, ScopeArena, ScopeEntry, ScopeEntryKind, ScopeKind};
-pub use value::{BlockRef, DecoratorValue, FunctionBody, FunctionValue, ScopeId, Value};
+pub use value::{
+    BlockRef, BlockRefData, DecoratorValue, FunctionBody, FunctionValue, ScopeId, Value,
+};

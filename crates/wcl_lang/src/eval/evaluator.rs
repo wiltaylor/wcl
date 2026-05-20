@@ -2518,7 +2518,7 @@ impl Evaluator {
             attributes.insert("_args".to_string(), Value::List(evaluated_args));
         }
 
-        BlockRef {
+        BlockRef::new(BlockRefData {
             kind: self
                 .namespace_aliases
                 .aliases
@@ -2532,7 +2532,7 @@ impl Evaluator {
             children,
             decorators,
             span: block.span,
-        }
+        })
     }
 
     fn attach_function_decorators(
@@ -2826,7 +2826,7 @@ impl Evaluator {
                         .iter()
                         .filter_map(|row| {
                             if let Value::Map(m) = row {
-                                Some(BlockRef {
+                                Some(BlockRef::new(BlockRefData {
                                     kind: "__row".to_string(),
                                     id: None,
                                     qualified_id: None,
@@ -2835,13 +2835,13 @@ impl Evaluator {
                                     children: Vec::new(),
                                     decorators: Vec::new(),
                                     span: Span::dummy(),
-                                })
+                                }))
                             } else {
                                 None
                             }
                         })
                         .collect();
-                    blocks.push(BlockRef {
+                    blocks.push(BlockRef::new(BlockRefData {
                         kind: "table".to_string(),
                         id: Some(entry.name.clone()),
                         qualified_id: None,
@@ -2850,7 +2850,7 @@ impl Evaluator {
                         children,
                         decorators: Vec::new(),
                         span: entry.span,
-                    });
+                    }));
                 }
                 _ => {}
             }
@@ -5204,7 +5204,7 @@ mod tests {
         let scope = ev.scopes.create_scope(ScopeKind::Module, None);
         let span = ds();
 
-        let block_a = Value::BlockRef(BlockRef {
+        let block_a = Value::BlockRef(BlockRef::new(BlockRefData {
             kind: "person".to_string(),
             id: Some("a".to_string()),
             qualified_id: Some("a".to_string()),
@@ -5213,8 +5213,8 @@ mod tests {
             children: Vec::new(),
             decorators: Vec::new(),
             span,
-        });
-        let block_b = Value::BlockRef(BlockRef {
+        }));
+        let block_b = Value::BlockRef(BlockRef::new(BlockRefData {
             kind: "person".to_string(),
             id: Some("b".to_string()),
             qualified_id: Some("b".to_string()),
@@ -5223,7 +5223,7 @@ mod tests {
             children: Vec::new(),
             decorators: Vec::new(),
             span,
-        });
+        }));
 
         ev.scopes.add_entry(
             scope,

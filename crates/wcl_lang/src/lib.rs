@@ -27,7 +27,7 @@ pub use crate::lang::{
 };
 
 pub use crate::eval::{
-    builtin_signatures, call_lambda_with_env, BlockRef, BuiltinFn, ConflictMode,
+    builtin_signatures, call_lambda_with_env, BlockRef, BlockRefData, BuiltinFn, ConflictMode,
     ControlFlowExpander, DecoratorValue, EmbeddedLibrary, Evaluator, FileSystem, FunctionRegistry,
     FunctionSignature, FunctionValue, ImportResolver, InMemoryFs, LibraryConfig, MacroExpander,
     MacroRegistry, PartialMerger, QueryEngine, RealFileSystem, Scope, ScopeArena, ScopeEntry,
@@ -254,7 +254,7 @@ impl Document {
         });
 
         let children = self.table_rows_to_refs(name.as_deref());
-        BlockRef {
+        BlockRef::new(BlockRefData {
             kind: "table".to_string(),
             id: name,
             qualified_id: None,
@@ -263,7 +263,7 @@ impl Document {
             children,
             decorators: Vec::new(),
             span: table.span,
-        }
+        })
     }
 
     /// Build row BlockRefs for a table nested inside a block.
@@ -288,7 +288,7 @@ impl Document {
         rows.iter()
             .filter_map(|row| {
                 if let Value::Map(m) = row {
-                    Some(BlockRef {
+                    Some(BlockRef::new(BlockRefData {
                         kind: "__row".to_string(),
                         id: None,
                         qualified_id: None,
@@ -297,7 +297,7 @@ impl Document {
                         children: Vec::new(),
                         decorators: Vec::new(),
                         span: Span::dummy(),
-                    })
+                    }))
                 } else {
                     None
                 }
@@ -314,7 +314,7 @@ impl Document {
         rows.iter()
             .filter_map(|row| {
                 if let Value::Map(m) = row {
-                    Some(BlockRef {
+                    Some(BlockRef::new(BlockRefData {
                         kind: "__row".to_string(),
                         id: None,
                         qualified_id: None,
@@ -323,7 +323,7 @@ impl Document {
                         children: Vec::new(),
                         decorators: Vec::new(),
                         span: Span::dummy(),
-                    })
+                    }))
                 } else {
                     None
                 }
@@ -442,7 +442,7 @@ impl Document {
                 });
                 let row_children =
                     self.nested_table_rows_to_refs(block_id_str.as_deref(), table_name.as_deref());
-                children.push(BlockRef {
+                children.push(BlockRef::new(BlockRefData {
                     kind: "table".to_string(),
                     id: table_name,
                     qualified_id: None,
@@ -451,7 +451,7 @@ impl Document {
                     children: row_children,
                     decorators: Vec::new(),
                     span: table.span,
-                });
+                }));
             }
         }
 
@@ -481,7 +481,7 @@ impl Document {
             })
             .collect();
 
-        BlockRef {
+        BlockRef::new(BlockRefData {
             kind,
             id,
             qualified_id,
@@ -490,7 +490,7 @@ impl Document {
             children,
             decorators,
             span: block.span,
-        }
+        })
     }
 
     /// Get all blocks as BlockRef values (convenience for iteration)
@@ -1103,7 +1103,10 @@ fn apply_inline_mappings(schemas: &SchemaRegistry, values: &mut indexmap::IndexM
 
 fn apply_inline_to_value(schemas: &SchemaRegistry, value: &mut Value, parent_kind: Option<&str>) {
     match value {
-        Value::BlockRef(br) => apply_inline_to_blockref(schemas, br, parent_kind),
+        Value::BlockRef(br) => {
+            let updated = apply_inline_to_blockref(schemas, br, parent_kind);
+            *br = updated;
+        }
         Value::List(items) => {
             for item in items {
                 apply_inline_to_value(schemas, item, parent_kind);
@@ -1115,14 +1118,17 @@ fn apply_inline_to_value(schemas: &SchemaRegistry, value: &mut Value, parent_kin
 
 fn apply_inline_to_blockref(
     schemas: &SchemaRegistry,
-    br: &mut BlockRef,
+    br: &BlockRef,
     parent_kind: Option<&str>,
-) {
+) -> BlockRef {
+    let mut data = br.to_data();
     // Recurse into children (current block is their parent)
-    let kind = br.kind.clone();
-    for child in &mut br.children {
-        apply_inline_to_blockref(schemas, child, Some(&kind));
-    }
+    let kind = data.kind.clone();
+    data.children = data
+        .children
+        .iter()
+        .map(|child| apply_inline_to_blockref(schemas, child, Some(&kind)))
+        .collect();
 
     // Look up schema for this block kind, scoped to parent
     if let Some(schema) = schemas.get_schema(&kind, parent_kind) {
@@ -1136,22 +1142,22 @@ fn apply_inline_to_blockref(
         if !inline_fields.is_empty() {
             // Build the full positional args: inline_id at index 0, then _args
             let mut all_args: Vec<Value> = Vec::new();
-            if let Some(ref id_str) = br.id {
+            if let Some(ref id_str) = data.id {
                 all_args.push(Value::Identifier(id_str.clone()));
             }
-            if let Some(Value::List(args)) = br.attributes.shift_remove("_args") {
+            if let Some(Value::List(args)) = data.attributes.shift_remove("_args") {
                 all_args.extend(args);
             }
 
             for (field_name, idx) in &inline_fields {
                 if let Some(val) = all_args.get(*idx) {
-                    br.attributes.insert(field_name.clone(), val.clone());
+                    data.attributes.insert(field_name.clone(), val.clone());
                 }
             }
             // Remaining unmapped args go back as _args (excluding index 0 if it was the id)
             let mapped_indices: std::collections::HashSet<usize> =
                 inline_fields.iter().map(|(_, idx)| *idx).collect();
-            let id_index = if br.id.is_some() { 0 } else { usize::MAX };
+            let id_index = if data.id.is_some() { 0 } else { usize::MAX };
             let remaining: Vec<Value> = all_args
                 .into_iter()
                 .enumerate()
@@ -1159,11 +1165,12 @@ fn apply_inline_to_blockref(
                 .map(|(_, v)| v)
                 .collect();
             if !remaining.is_empty() {
-                br.attributes
+                data.attributes
                     .insert("_args".to_string(), Value::List(remaining));
             }
         }
     }
+    BlockRef::new(data)
 }
 
 /// Parse a WCL string and deserialize into a Rust type

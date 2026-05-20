@@ -1,6 +1,7 @@
 use crate::lang::Span;
 use indexmap::IndexMap;
 use std::fmt;
+use std::ops::Deref;
 use std::sync::{Arc, Mutex};
 
 /// Runtime value in WCL
@@ -64,7 +65,32 @@ pub enum Value {
 }
 
 #[derive(Debug, Clone)]
-pub struct BlockRef {
+pub struct BlockRef(Arc<BlockRefData>);
+
+impl BlockRef {
+    pub fn new(data: BlockRefData) -> Self {
+        Self(Arc::new(data))
+    }
+
+    pub fn into_data(self) -> BlockRefData {
+        Arc::unwrap_or_clone(self.0)
+    }
+
+    pub fn to_data(&self) -> BlockRefData {
+        (*self.0).clone()
+    }
+}
+
+impl Deref for BlockRef {
+    type Target = BlockRefData;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct BlockRefData {
     pub kind: String,
     pub id: Option<String>,
     /// Fully qualified dotted ID path (e.g. `"alpha.http.health"`).

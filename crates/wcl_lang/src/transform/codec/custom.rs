@@ -423,36 +423,7 @@ impl CodecEvalSession {
                     .collect();
                 Value::Object(object)
             }
-            Value::BlockRef(mut block) => {
-                block.attributes = block
-                    .attributes
-                    .into_iter()
-                    .map(|(key, value)| (key, self.rehost_function_values(value)))
-                    .collect();
-                block.children = block
-                    .children
-                    .into_iter()
-                    .map(
-                        |child| match self.rehost_function_values(Value::BlockRef(child)) {
-                            Value::BlockRef(child) => child,
-                            _ => unreachable!("block rehost returns block"),
-                        },
-                    )
-                    .collect();
-                block.decorators = block
-                    .decorators
-                    .into_iter()
-                    .map(|mut decorator| {
-                        decorator.args = decorator
-                            .args
-                            .into_iter()
-                            .map(|(key, value)| (key, self.rehost_function_values(value)))
-                            .collect();
-                        decorator
-                    })
-                    .collect();
-                Value::BlockRef(block)
-            }
+            Value::BlockRef(block) => Value::BlockRef(block),
             other => other,
         }
     }

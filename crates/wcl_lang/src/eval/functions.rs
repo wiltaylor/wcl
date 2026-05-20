@@ -1,4 +1,6 @@
-use crate::eval::value::{NativeStreamState, NativeStreamValue, ObjectValue, Value};
+#[cfg(test)]
+use crate::eval::value::BlockRefData;
+use crate::eval::value::{BlockRef, NativeStreamState, NativeStreamValue, ObjectValue, Value};
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -2259,7 +2261,7 @@ fn block_body_children(args: &[Value]) -> Result<Value, String> {
 fn block_set_attr(args: &[Value]) -> Result<Value, String> {
     expect_args(args, 3, "block_set_attr")?;
     let mut block = match &args[0] {
-        Value::BlockRef(block) => block.clone(),
+        Value::BlockRef(block) => block.to_data(),
         other => {
             return Err(format!(
                 "block_set_attr: argument 1 must be block_ref, got {}",
@@ -2269,7 +2271,7 @@ fn block_set_attr(args: &[Value]) -> Result<Value, String> {
     };
     let key = get_string(&args[1], 2, "block_set_attr")?;
     block.attributes.insert(key.to_string(), args[2].clone());
-    Ok(Value::BlockRef(block))
+    Ok(Value::BlockRef(BlockRef::new(block)))
 }
 
 fn attr_or(args: &[Value]) -> Result<Value, String> {
@@ -3813,7 +3815,7 @@ mod tests {
         id: Option<&str>,
         children: Vec<crate::eval::value::BlockRef>,
     ) -> crate::eval::value::BlockRef {
-        crate::eval::value::BlockRef {
+        BlockRef::new(BlockRefData {
             kind: kind.to_string(),
             id: id.map(str::to_string),
             qualified_id: id.map(str::to_string),
@@ -3822,7 +3824,7 @@ mod tests {
             children,
             decorators: vec![],
             span: crate::lang::Span::dummy(),
-        }
+        })
     }
 
     fn block_ids(value: Value) -> Vec<String> {
@@ -3830,7 +3832,7 @@ mod tests {
             Value::List(items) => items
                 .into_iter()
                 .map(|item| match item {
-                    Value::BlockRef(block) => block.id.unwrap_or_default(),
+                    Value::BlockRef(block) => block.id.clone().unwrap_or_default(),
                     other => panic!("expected block ref, got {other:?}"),
                 })
                 .collect(),
@@ -3843,7 +3845,7 @@ mod tests {
             Value::List(items) => items
                 .into_iter()
                 .map(|item| match item {
-                    Value::BlockRef(block) => block.kind,
+                    Value::BlockRef(block) => block.kind.clone(),
                     other => panic!("expected block ref, got {other:?}"),
                 })
                 .collect(),
@@ -3854,9 +3856,9 @@ mod tests {
     #[test]
     fn test_block_introspection_functions() {
         let child = block_ref("item", Some("first"), vec![]);
-        let mut block = block_ref("html::section", Some("intro"), vec![child.clone()]);
+        let mut block = block_ref("html::section", Some("intro"), vec![child.clone()]).to_data();
         block.attributes.insert("class".to_string(), s("hero"));
-        let value = Value::BlockRef(block);
+        let value = Value::BlockRef(BlockRef::new(block));
 
         assert_eq!(block_kind(&[value.clone()]).unwrap(), s("html::section"));
         assert_eq!(block_id(&[value.clone()]).unwrap(), s("intro"));
@@ -3880,12 +3882,12 @@ mod tests {
     fn block_children_includes_named_child_block_attributes() {
         let named = block_ref("item", Some("named"), vec![]);
         let anonymous = block_ref("item", Some("anonymous"), vec![]);
-        let mut block = block_ref("container", Some("root"), vec![anonymous]);
+        let mut block = block_ref("container", Some("root"), vec![anonymous]).to_data();
         block
             .attributes
             .insert("named".to_string(), Value::BlockRef(named));
 
-        let ids = block_ids(block_children(&[Value::BlockRef(block)]).unwrap());
+        let ids = block_ids(block_children(&[Value::BlockRef(BlockRef::new(block))]).unwrap());
         assert_eq!(ids, vec!["named".to_string(), "anonymous".to_string()]);
     }
 
@@ -3909,12 +3911,17 @@ mod tests {
             attr_or(&[Value::Object(object), s("present"), s("fallback")]).unwrap(),
             s("object-value")
         );
-        let mut block = block_ref("item", Some("item"), vec![]);
+        let mut block = block_ref("item", Some("item"), vec![]).to_data();
         block
             .attributes
             .insert("present".to_string(), s("block-value"));
         assert_eq!(
-            attr_or(&[Value::BlockRef(block), s("present"), s("fallback")]).unwrap(),
+            attr_or(&[
+                Value::BlockRef(BlockRef::new(block)),
+                s("present"),
+                s("fallback")
+            ])
+            .unwrap(),
             s("block-value")
         );
         assert_eq!(
@@ -3936,7 +3943,7 @@ mod tests {
         let mut attrs = IndexMap::new();
         attrs.insert("port".to_string(), i(8080));
         attrs.insert("tls".to_string(), Value::Bool(true));
-        let br = Value::BlockRef(crate::eval::value::BlockRef {
+        let br = Value::BlockRef(BlockRef::new(BlockRefData {
             kind: "service".to_string(),
             id: Some("svc-api".to_string()),
             qualified_id: None,
@@ -3945,7 +3952,7 @@ mod tests {
             children: vec![],
             decorators: vec![],
             span: crate::lang::Span::dummy(),
-        });
+        }));
         assert_eq!(fn_has(&[br.clone(), s("port")]).unwrap(), Value::Bool(true));
         assert_eq!(fn_has(&[br.clone(), s("tls")]).unwrap(), Value::Bool(true));
         assert_eq!(fn_has(&[br, s("missing")]).unwrap(), Value::Bool(false));
@@ -3953,7 +3960,7 @@ mod tests {
 
     #[test]
     fn test_has_child_block() {
-        let child = crate::eval::value::BlockRef {
+        let child = BlockRef::new(BlockRefData {
             kind: "monitoring".to_string(),
             id: None,
             qualified_id: None,
@@ -3962,8 +3969,8 @@ mod tests {
             children: vec![],
             decorators: vec![],
             span: crate::lang::Span::dummy(),
-        };
-        let br = Value::BlockRef(crate::eval::value::BlockRef {
+        });
+        let br = Value::BlockRef(BlockRef::new(BlockRefData {
             kind: "service".to_string(),
             id: Some("svc-api".to_string()),
             qualified_id: None,
@@ -3972,7 +3979,7 @@ mod tests {
             children: vec![child],
             decorators: vec![],
             span: crate::lang::Span::dummy(),
-        });
+        }));
         assert_eq!(
             fn_has(&[br.clone(), s("monitoring")]).unwrap(),
             Value::Bool(true)
@@ -4041,7 +4048,7 @@ mod tests {
 
     #[test]
     fn test_has_decorator_present() {
-        let br = Value::BlockRef(crate::eval::value::BlockRef {
+        let br = Value::BlockRef(BlockRef::new(BlockRefData {
             kind: "service".to_string(),
             id: Some("svc-api".to_string()),
             qualified_id: None,
@@ -4059,7 +4066,7 @@ mod tests {
                 },
             ],
             span: crate::lang::Span::dummy(),
-        });
+        }));
         assert_eq!(
             fn_has_decorator(&[br.clone(), s("deprecated")]).unwrap(),
             Value::Bool(true)

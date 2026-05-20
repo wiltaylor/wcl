@@ -1632,13 +1632,13 @@ mod tests {
 
     #[test]
     fn blockref_member_access_substitutes_through_id() {
-        use crate::eval::value::BlockRef;
+        use crate::eval::value::{BlockRef, BlockRefData};
         let mut expr = Expr::MemberAccess(
             Box::new(Expr::Ident(make_ident("x"))),
             make_ident("id"),
             dummy_span(),
         );
-        let br = BlockRef {
+        let br = BlockRef::new(BlockRefData {
             kind: "foo".to_string(),
             id: Some("alpha".to_string()),
             qualified_id: Some("alpha".to_string()),
@@ -1647,7 +1647,7 @@ mod tests {
             children: vec![],
             decorators: vec![],
             span: dummy_span(),
-        };
+        });
         substitute_in_expr_without_captures(&mut expr, "x", &Value::BlockRef(br), None, 0);
         match expr {
             Expr::IdentifierLit(lit) => assert_eq!(lit.value, "alpha"),
@@ -1657,7 +1657,7 @@ mod tests {
 
     #[test]
     fn blockref_member_access_substitutes_attribute() {
-        use crate::eval::value::BlockRef;
+        use crate::eval::value::{BlockRef, BlockRefData};
         let mut expr = Expr::MemberAccess(
             Box::new(Expr::Ident(make_ident("x"))),
             make_ident("port"),
@@ -1665,7 +1665,7 @@ mod tests {
         );
         let mut attrs = indexmap::IndexMap::new();
         attrs.insert("port".to_string(), Value::Int(80));
-        let br = BlockRef {
+        let br = BlockRef::new(BlockRefData {
             kind: "foo".to_string(),
             id: None,
             qualified_id: None,
@@ -1674,7 +1674,7 @@ mod tests {
             children: vec![],
             decorators: vec![],
             span: dummy_span(),
-        };
+        });
         substitute_in_expr_without_captures(&mut expr, "x", &Value::BlockRef(br), None, 0);
         match expr {
             Expr::IntLit(80, _) => {}
@@ -1696,7 +1696,7 @@ mod tests {
 
         let mut attrs = indexmap::IndexMap::new();
         attrs.insert("port".to_string(), Value::Int(80));
-        let br = crate::eval::value::BlockRef {
+        let br = crate::eval::value::BlockRef::new(crate::eval::value::BlockRefData {
             kind: "foo".to_string(),
             id: None,
             qualified_id: None,
@@ -1705,7 +1705,7 @@ mod tests {
             children: vec![],
             decorators: vec![],
             span: dummy_span(),
-        };
+        });
 
         substitute_in_expr_without_captures(&mut expr, "x", &Value::BlockRef(br), None, 0);
 
