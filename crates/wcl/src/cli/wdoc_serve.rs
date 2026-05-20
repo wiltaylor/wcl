@@ -85,11 +85,7 @@ async fn serve(
     // Initial build
     let initial = build_fn().map_err(|e| format!("initial build failed: {e}"))?;
     let initial_asset_dirs = combined_asset_dirs(&asset_dirs, &initial.watch_paths);
-    wcl_lang::wdoc::codec::encode_html_document(
-        &initial.document,
-        &output_dir,
-        &initial_asset_dirs,
-    )?;
+    render_wdoc_document(&initial.document, &output_dir, &initial_asset_dirs)?;
     eprintln!("wdoc: built to {}", output_dir.display());
 
     // Reload signal
@@ -141,11 +137,9 @@ async fn serve(
                     }
 
                     let render_asset_dirs = combined_asset_dirs(&asset_dirs, &build.watch_paths);
-                    if let Err(e) = wcl_lang::wdoc::codec::encode_html_document(
-                        &build.document,
-                        &output_dir_watch,
-                        &render_asset_dirs,
-                    ) {
+                    if let Err(e) =
+                        render_wdoc_document(&build.document, &output_dir_watch, &render_asset_dirs)
+                    {
                         eprintln!("wdoc: render error: {e}");
                         cooldown_after_build(&mut notify_rx).await;
                         continue;
@@ -184,6 +178,33 @@ async fn serve(
         .map_err(|e| format!("server error: {e}"))?;
 
     Ok(())
+}
+
+fn render_wdoc_document(
+    document: &WdocDocument,
+    output_dir: &std::path::Path,
+    asset_dirs: &[PathBuf],
+) -> Result<(), String> {
+    let value = wcl_lang::wdoc::model::document_to_value(document)?;
+    let mut options = wcl_lang::transform::codec::CodecOptions::new();
+    options.insert(
+        "asset_dirs".to_string(),
+        wcl_lang::Value::List(
+            asset_dirs
+                .iter()
+                .map(|path| wcl_lang::Value::String(path.display().to_string()))
+                .collect(),
+        ),
+    );
+    wcl_lang::transform::encode_value_with_custom_to_directory(
+        &value,
+        wcl_lang::wdoc::codec::HTML_CODEC,
+        output_dir,
+        &options,
+        None,
+    )
+    .map(|_| ())
+    .map_err(|e| e.to_string())
 }
 
 fn combined_watch_paths(root_paths: &[PathBuf], build_paths: &[PathBuf]) -> HashSet<PathBuf> {

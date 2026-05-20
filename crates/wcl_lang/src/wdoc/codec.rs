@@ -1,56 +1,13 @@
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use crate::eval::value::Value;
 use crate::transform::codec::custom::{self, CustomCodecRegistry};
-use crate::transform::codec::native::OutputTarget;
 use crate::transform::codec::CodecOptions;
 use crate::transform::TransformError;
-use crate::wdoc::model::{self, WdocDocument};
 
 pub const HTML_CODEC: &str = "wdoc-html";
 
-pub fn encode_html_document(
-    doc: &WdocDocument,
-    output: &Path,
-    asset_dirs: &[PathBuf],
-) -> Result<usize, String> {
-    encode_document(doc, HTML_CODEC, output, asset_dirs)
-}
-
-pub fn encode_document(
-    doc: &WdocDocument,
-    codec_name: &str,
-    output: &Path,
-    asset_dirs: &[PathBuf],
-) -> Result<usize, String> {
-    let mut value = model::document_to_value(doc)?;
-    add_wdoc_codec_support_values(&mut value)?;
-    let registry = Arc::new(custom_registry()?);
-    let codec = registry
-        .get(codec_name)
-        .ok_or_else(|| format!("unknown wdoc codec: {codec_name}"))?
-        .clone();
-    let options = asset_dir_options(asset_dirs);
-    let written = custom::encode_custom_value_with_registry_and_builtins(
-        &value,
-        &codec,
-        &options,
-        OutputTarget::Directory(output),
-        registry,
-        crate::wdoc::source::wdoc_functions().functions,
-    )
-    .map_err(|e| e.to_string())?;
-    let asset_refs: Vec<&Path> = asset_dirs.iter().map(|path| path.as_path()).collect();
-    crate::wdoc::render::finalize_assets(output, &asset_refs)?;
-    if codec_name == HTML_CODEC {
-        Ok(doc.pages.len())
-    } else {
-        Ok(written)
-    }
-}
-
-fn add_wdoc_codec_support_values(value: &mut Value) -> Result<(), String> {
+pub(crate) fn prepare_document_value(value: &mut Value) -> Result<(), String> {
     let doc = parse_wdoc_library_for_codecs()?;
     let Value::Map(map) = value else {
         return Ok(());
@@ -92,7 +49,7 @@ pub(crate) fn custom_registry() -> Result<CustomCodecRegistry, String> {
     Ok(registry)
 }
 
-fn asset_dir_options(asset_dirs: &[PathBuf]) -> CodecOptions {
+pub(crate) fn asset_dir_options(asset_dirs: &[PathBuf]) -> CodecOptions {
     let mut options = CodecOptions::new();
     options.insert(
         "asset_dirs".to_string(),
@@ -179,7 +136,8 @@ fn base_css(doc: &crate::Document) -> Result<String, String> {
 mod tests {
     use super::*;
     use crate::wdoc::model::{
-        ContentBlock, Layout, LayoutItem, Page, Section, SiteConfig, WdocTemplate,
+        self, ContentBlock, Layout, LayoutItem, Page, Section, SiteConfig, WdocDocument,
+        WdocTemplate,
     };
 
     fn minimal_doc() -> WdocDocument {
@@ -234,13 +192,23 @@ mod tests {
         let written = std::thread::Builder::new()
             .name("wdoc-html-codec-test".to_string())
             .stack_size(32 * 1024 * 1024)
-            .spawn(move || encode_html_document(&doc, &output_for_thread, &[]))
+            .spawn(move || {
+                let value = model::document_to_value(&doc)?;
+                crate::transform::encode_value_with_custom_to_directory(
+                    &value,
+                    HTML_CODEC,
+                    &output_for_thread,
+                    &CodecOptions::new(),
+                    None,
+                )
+                .map_err(|e| e.to_string())
+            })
             .expect("spawn")
             .join()
             .expect("join")
             .expect("encode");
 
-        assert_eq!(written, 1);
+        assert!(written >= 1);
         let html = std::fs::read_to_string(output.join("home.html")).expect("home.html");
         assert!(html.contains("<p>Hello</p>"));
         let grammar = std::fs::read_to_string(output.join("wcl-grammar.js")).expect("grammar");

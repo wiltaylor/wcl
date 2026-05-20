@@ -19,7 +19,19 @@ pub fn render_document(
     std::thread::Builder::new()
         .name("wdoc-render-test".to_string())
         .stack_size(32 * 1024 * 1024)
-        .spawn(move || crate::wdoc::codec::encode_html_document(&doc, &output, &asset_dirs))
+        .spawn(move || {
+            let value = crate::wdoc::model::document_to_value(&doc)?;
+            let options = crate::wdoc::codec::asset_dir_options(&asset_dirs);
+            crate::transform::encode_value_with_custom_to_directory(
+                &value,
+                crate::wdoc::codec::HTML_CODEC,
+                &output,
+                &options,
+                None,
+            )
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+        })
         .map_err(|e| format!("failed to start WDoc render test thread: {e}"))?
         .join()
         .map_err(|_| "WDoc render test thread panicked".to_string())??;

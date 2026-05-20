@@ -8689,7 +8689,16 @@ pub fn build_from_files(
     let doc = extracted.document;
     let pages = doc.pages.len();
     let asset_dirs = wdoc_asset_dirs(files, &extracted.watch_paths);
-    crate::wdoc::codec::encode_html_document(&doc, output, &asset_dirs)?;
+    let value = crate::wdoc::model::document_to_value(&doc)?;
+    let options = crate::wdoc::codec::asset_dir_options(&asset_dirs);
+    crate::transform::encode_value_with_custom_to_directory(
+        &value,
+        crate::wdoc::codec::HTML_CODEC,
+        output,
+        &options,
+        None,
+    )
+    .map_err(|e| e.to_string())?;
     Ok(BuildResult {
         pages,
         output: output.to_path_buf(),

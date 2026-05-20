@@ -140,6 +140,83 @@ pub fn execute_with_custom(
     )
 }
 
+/// Encode an already evaluated WCL value through an output codec.
+pub fn encode_value_with_custom_to_target(
+    value: &Value,
+    output_codec: &str,
+    output_target: codec::native::OutputTarget<'_>,
+    output_options: &codec::CodecOptions,
+    custom_codecs: Option<&codec::custom::CustomCodecRegistry>,
+) -> Result<usize, TransformError> {
+    encode_value_with_custom_to_target_internal(
+        value,
+        output_codec,
+        output_target,
+        output_options,
+        custom_codecs,
+        None,
+    )
+}
+
+/// Encode an already evaluated WCL value into a directory-capable output codec.
+pub fn encode_value_with_custom_to_directory(
+    value: &Value,
+    output_codec: &str,
+    output_dir: &Path,
+    output_options: &codec::CodecOptions,
+    custom_codecs: Option<&codec::custom::CustomCodecRegistry>,
+) -> Result<usize, TransformError> {
+    encode_value_with_custom_to_target(
+        value,
+        output_codec,
+        codec::native::OutputTarget::Directory(output_dir),
+        output_options,
+        custom_codecs,
+    )
+}
+
+/// Look up a named value or block from a loaded WCL document and encode it.
+pub fn encode_document_value_with_custom_to_target(
+    document: &crate::Document,
+    value_name: &str,
+    output_codec: &str,
+    output_target: codec::native::OutputTarget<'_>,
+    output_options: &codec::CodecOptions,
+    custom_codecs: Option<&codec::custom::CustomCodecRegistry>,
+) -> Result<usize, TransformError> {
+    let value = document.values.get(value_name).ok_or_else(|| {
+        TransformError::Codec(format!(
+            "loaded WCL document does not contain value or block '{value_name}'"
+        ))
+    })?;
+    encode_value_with_custom_to_target(
+        value,
+        output_codec,
+        output_target,
+        output_options,
+        custom_codecs,
+    )
+}
+
+/// Look up a named value or block from a loaded WCL document and encode it into a directory.
+pub fn encode_document_value_with_custom_to_directory(
+    document: &crate::Document,
+    value_name: &str,
+    output_codec: &str,
+    output_dir: &Path,
+    output_options: &codec::CodecOptions,
+    custom_codecs: Option<&codec::custom::CustomCodecRegistry>,
+) -> Result<usize, TransformError> {
+    encode_document_value_with_custom_to_target(
+        document,
+        value_name,
+        output_codec,
+        codec::native::OutputTarget::Directory(output_dir),
+        output_options,
+        custom_codecs,
+    )
+}
+
 #[allow(clippy::too_many_arguments)]
 fn execute_with_custom_internal(
     input_codec: &str,
@@ -195,79 +272,14 @@ fn execute_with_custom_internal(
             value = Value::List(mapped);
         }
 
-        let native_codecs = codec::native::NativeCodecRegistry::standard();
-        let written = if output_codec == "svg" && codec::native::is_svg_diagram_value(&value) {
-            let native = native_codecs
-                .get(output_codec)
-                .ok_or_else(|| TransformError::UnknownCodec(output_codec.to_string()))?;
-            codec::native::encode_native_value(&value, native, output_options, output_target)?
-        } else {
-            let wdoc_codecs;
-            let uses_bundled_wdoc_codec = output_codec == crate::wdoc::codec::HTML_CODEC
-                && custom_codecs.get(output_codec).is_none();
-            let active_codecs = if uses_bundled_wdoc_codec {
-                wdoc_codecs =
-                    crate::wdoc::codec::custom_registry().map_err(TransformError::Codec)?;
-                &wdoc_codecs
-            } else {
-                custom_codecs
-            };
-            let output_custom = active_codecs
-                .get(output_codec)
-                .ok_or_else(|| TransformError::UnknownCodec(output_codec.to_string()))?;
-            let registry = Arc::new(active_codecs.clone());
-            let wdoc_output_dir = if uses_bundled_wdoc_codec {
-                match &output_target {
-                    codec::native::OutputTarget::Directory(dir) => Some(*dir),
-                    codec::native::OutputTarget::Stream(_) => None,
-                }
-            } else {
-                None
-            };
-            let written = if contains_stream(&value) {
-                if uses_bundled_wdoc_codec {
-                    codec::custom::encode_custom_value_with_session_and_registry_and_builtins(
-                        &mut decoded.session,
-                        &value,
-                        output_custom,
-                        output_options,
-                        output_target,
-                        registry,
-                        crate::wdoc::source::wdoc_functions().functions,
-                    )?
-                } else {
-                    codec::custom::encode_custom_value_with_session_and_registry(
-                        &mut decoded.session,
-                        &value,
-                        output_custom,
-                        output_options,
-                        output_target,
-                        registry,
-                    )?
-                }
-            } else if uses_bundled_wdoc_codec {
-                codec::custom::encode_custom_value_with_registry_and_builtins(
-                    &value,
-                    output_custom,
-                    output_options,
-                    output_target,
-                    registry,
-                    crate::wdoc::source::wdoc_functions().functions,
-                )?
-            } else {
-                codec::custom::encode_custom_value_with_registry(
-                    &value,
-                    output_custom,
-                    output_options,
-                    output_target,
-                    registry,
-                )?
-            };
-            if let Some(output_dir) = wdoc_output_dir {
-                crate::wdoc::codec::finalize_html_assets_from_options(output_dir, output_options)?;
-            }
-            written
-        };
+        let written = encode_value_with_custom_to_target_internal(
+            &value,
+            output_codec,
+            output_target,
+            output_options,
+            Some(custom_codecs),
+            Some(&mut decoded.session),
+        )?;
         return Ok(TransformStats {
             records_read,
             records_written: written,
@@ -276,6 +288,114 @@ fn execute_with_custom_internal(
     }
 
     Err(TransformError::UnknownCodec(input_codec.to_string()))
+}
+
+fn encode_value_with_custom_to_target_internal(
+    value: &Value,
+    output_codec: &str,
+    output_target: codec::native::OutputTarget<'_>,
+    output_options: &codec::CodecOptions,
+    custom_codecs: Option<&codec::custom::CustomCodecRegistry>,
+    mut source_session: Option<&mut codec::custom::CodecEvalSession>,
+) -> Result<usize, TransformError> {
+    let standard_codecs;
+    let custom_codecs = match custom_codecs {
+        Some(registry) => registry,
+        None => {
+            standard_codecs = codec::custom::standard_registry()?;
+            &standard_codecs
+        }
+    };
+
+    let native_codecs = codec::native::NativeCodecRegistry::standard();
+    if output_codec == "svg" && codec::native::is_svg_diagram_value(value) {
+        let native = native_codecs
+            .get(output_codec)
+            .ok_or_else(|| TransformError::UnknownCodec(output_codec.to_string()))?;
+        return codec::native::encode_native_value(value, native, output_options, output_target);
+    }
+
+    let wdoc_codecs;
+    let uses_bundled_wdoc_codec =
+        output_codec == crate::wdoc::codec::HTML_CODEC && custom_codecs.get(output_codec).is_none();
+    let active_codecs = if uses_bundled_wdoc_codec {
+        wdoc_codecs = crate::wdoc::codec::custom_registry().map_err(TransformError::Codec)?;
+        &wdoc_codecs
+    } else {
+        custom_codecs
+    };
+    let output_custom = active_codecs
+        .get(output_codec)
+        .ok_or_else(|| TransformError::UnknownCodec(output_codec.to_string()))?;
+    let registry = Arc::new(active_codecs.clone());
+    let wdoc_output_dir = if uses_bundled_wdoc_codec {
+        match &output_target {
+            codec::native::OutputTarget::Directory(dir) => Some(*dir),
+            codec::native::OutputTarget::Stream(_) => None,
+        }
+    } else {
+        None
+    };
+
+    let mut prepared_value;
+    let value = if uses_bundled_wdoc_codec {
+        prepared_value = value.clone();
+        crate::wdoc::codec::prepare_document_value(&mut prepared_value)
+            .map_err(TransformError::Codec)?;
+        &prepared_value
+    } else {
+        value
+    };
+
+    let written = if contains_session_stream(value) {
+        let session = source_session.as_deref_mut().ok_or_else(|| {
+            TransformError::Codec(
+                "cannot encode WCL stream values without the source codec evaluation session"
+                    .to_string(),
+            )
+        })?;
+        if uses_bundled_wdoc_codec {
+            codec::custom::encode_custom_value_with_session_and_registry_and_builtins(
+                session,
+                value,
+                output_custom,
+                output_options,
+                output_target,
+                registry,
+                crate::wdoc::source::wdoc_functions().functions,
+            )?
+        } else {
+            codec::custom::encode_custom_value_with_session_and_registry(
+                session,
+                value,
+                output_custom,
+                output_options,
+                output_target,
+                registry,
+            )?
+        }
+    } else if uses_bundled_wdoc_codec {
+        codec::custom::encode_custom_value_with_registry_and_builtins(
+            value,
+            output_custom,
+            output_options,
+            output_target,
+            registry,
+            crate::wdoc::source::wdoc_functions().functions,
+        )?
+    } else {
+        codec::custom::encode_custom_value_with_registry(
+            value,
+            output_custom,
+            output_options,
+            output_target,
+            registry,
+        )?
+    };
+    if let Some(output_dir) = wdoc_output_dir {
+        crate::wdoc::codec::finalize_html_assets_from_options(output_dir, output_options)?;
+    }
+    Ok(written)
 }
 
 fn materialize_records(value: Value) -> Result<Vec<Value>, TransformError> {
@@ -302,24 +422,23 @@ fn materialize_records(value: Value) -> Result<Vec<Value>, TransformError> {
     }
 }
 
-fn contains_stream(value: &Value) -> bool {
+fn contains_session_stream(value: &Value) -> bool {
     match value {
         Value::Stream(_) => true,
-        Value::NativeStream(_) => true,
         Value::Lazy(_) => true,
-        Value::List(items) | Value::Set(items) => items.iter().any(contains_stream),
-        Value::Map(map) => map.values().any(contains_stream),
-        Value::Object(object) => object.fields.values().any(contains_stream),
+        Value::List(items) | Value::Set(items) => items.iter().any(contains_session_stream),
+        Value::Map(map) => map.values().any(contains_session_stream),
+        Value::Object(object) => object.fields.values().any(contains_session_stream),
         Value::BlockRef(block) => {
-            block.attributes.values().any(contains_stream)
+            block.attributes.values().any(contains_session_stream)
                 || block
                     .children
                     .iter()
-                    .any(|child| contains_stream(&Value::BlockRef(child.clone())))
+                    .any(|child| contains_session_stream(&Value::BlockRef(child.clone())))
                 || block
                     .decorators
                     .iter()
-                    .any(|decorator| decorator.args.values().any(contains_stream))
+                    .any(|decorator| decorator.args.values().any(contains_session_stream))
         }
         _ => false,
     }
@@ -355,6 +474,45 @@ mod tests {
             },
             Span::dummy(),
         )
+    }
+
+    #[test]
+    fn encodes_named_block_from_loaded_document() {
+        let doc = crate::parse(
+            r#"
+import <html.wcl>
+
+namespace html {
+    p intro {
+        content = "Hello"
+    }
+}
+"#,
+            crate::ParseOptions::default(),
+        );
+        assert!(
+            !doc.has_errors(),
+            "parse errors: {:?}",
+            doc.errors()
+                .into_iter()
+                .map(|diagnostic| diagnostic.message.clone())
+                .collect::<Vec<_>>()
+        );
+
+        let mut out = Vec::new();
+        let written = encode_document_value_with_custom_to_target(
+            &doc,
+            "intro",
+            "html",
+            codec::native::OutputTarget::Stream(&mut out),
+            &codec::CodecOptions::new(),
+            None,
+        )
+        .expect("encode");
+
+        assert_eq!(written, 1);
+        let html = String::from_utf8(out).expect("utf8");
+        assert!(html.contains("<p id=\"intro\">Hello</p>"), "{html}");
     }
 
     #[test]
