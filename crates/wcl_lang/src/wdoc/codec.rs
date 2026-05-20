@@ -51,6 +51,7 @@ pub fn encode_document(
 }
 
 fn add_wdoc_codec_support_values(value: &mut Value) -> Result<(), String> {
+    let doc = parse_wdoc_library_for_codecs()?;
     let Value::Map(map) = value else {
         return Ok(());
     };
@@ -59,26 +60,23 @@ fn add_wdoc_codec_support_values(value: &mut Value) -> Result<(), String> {
         Value::Map(indexmap::IndexMap::from([
             (
                 "mathjax_config".to_string(),
-                Value::String(crate::wdoc::assets::mathjax_config_js()?.to_string()),
+                runtime_string(&doc, "__wdoc_mathjax_config_js")?,
             ),
             (
                 "theme".to_string(),
-                Value::String(crate::wdoc::assets::theme_runtime_js()?.to_string()),
+                runtime_string(&doc, "__wdoc_theme_runtime_js")?,
             ),
             (
                 "presentation".to_string(),
-                Value::String(crate::wdoc::assets::presentation_runtime_js()?.to_string()),
+                runtime_string(&doc, "__wdoc_presentation_runtime_js")?,
             ),
             (
                 "page_signal_template".to_string(),
-                Value::String(crate::wdoc::assets::page_signal_runtime_template_js()?.to_string()),
+                runtime_string(&doc, "__wdoc_page_signal_runtime_js_template")?,
             ),
         ])),
     );
-    map.insert(
-        "base_styles".to_string(),
-        Value::String(crate::wdoc::assets::base_css()?),
-    );
+    map.insert("base_styles".to_string(), Value::String(base_css(&doc)?));
     Ok(())
 }
 
@@ -161,6 +159,22 @@ fn parse_wdoc_library_for_codecs() -> Result<crate::Document, String> {
     Ok(doc)
 }
 
+fn runtime_string(doc: &crate::Document, name: &str) -> Result<Value, String> {
+    doc.values
+        .get(name)
+        .and_then(Value::as_string)
+        .map(|value| Value::String(value.to_string()))
+        .ok_or_else(|| format!("bundled WDoc runtime asset '{name}' was not found"))
+}
+
+fn base_css(doc: &crate::Document) -> Result<String, String> {
+    let stylesheet = doc
+        .values
+        .get("__wdoc_base_styles")
+        .ok_or_else(|| "bundled WDoc stylesheet '__wdoc_base_styles' was not found".to_string())?;
+    crate::wdoc::markup::render_css(stylesheet)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -229,6 +243,18 @@ mod tests {
         assert_eq!(written, 1);
         let html = std::fs::read_to_string(output.join("home.html")).expect("home.html");
         assert!(html.contains("<p>Hello</p>"));
+        let grammar = std::fs::read_to_string(output.join("wcl-grammar.js")).expect("grammar");
+        assert!(grammar.contains("WCL"));
+        assert!(
+            std::fs::metadata(
+                output
+                    .join("fonts")
+                    .join("JetBrainsMonoNerdFontMono-Regular.ttf")
+            )
+            .expect("font")
+            .len()
+                > 1024
+        );
     }
 
     #[test]

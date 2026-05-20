@@ -1216,6 +1216,39 @@ impl Evaluator {
         Ok(Value::List(records))
     }
 
+    fn eval_file_stream(&self, args: &[Value], span: Span) -> Result<Value, Diagnostic> {
+        if args.is_empty() || args.len() > 2 {
+            return Err(
+                Diagnostic::error("file_stream() expects 1 or 2 arguments", span).with_code("E052"),
+            );
+        }
+        let path = args[0].as_string().ok_or_else(|| {
+            Diagnostic::error("file_stream() argument 1 must be a string", span).with_code("E052")
+        })?;
+        let options = match args.get(1) {
+            Some(Value::Map(options)) => options,
+            Some(other) => {
+                return Err(Diagnostic::error(
+                    format!(
+                        "file_stream() argument 2 must be a map, got {}",
+                        other.type_name()
+                    ),
+                    span,
+                )
+                .with_code("E052"))
+            }
+            None => {
+                let bytes = self.read_file_bytes_checked(path, false, span)?;
+                return Ok(native_stream_from_bytes(bytes));
+            }
+        };
+        let allow_absolute = option_bool(options, "allow_absolute").map_err(|e| {
+            Diagnostic::error(format!("file_stream() option error: {}", e), span).with_code("E052")
+        })?;
+        let bytes = self.read_file_bytes_checked(path, allow_absolute, span)?;
+        Ok(native_stream_from_bytes(bytes))
+    }
+
     fn eval_file_exists(&self, args: &[Value], span: Span) -> Result<Value, Diagnostic> {
         if args.is_empty() || args.len() > 2 {
             return Err(
@@ -1749,6 +1782,11 @@ impl Evaluator {
                 if name == "import_codec" {
                     let eval_args = self.eval_call_args(args, scope_id)?;
                     return self.eval_import_codec(&eval_args, span);
+                }
+
+                if name == "file_stream" {
+                    let eval_args = self.eval_call_args(args, scope_id)?;
+                    return self.eval_file_stream(&eval_args, span);
                 }
 
                 if name == "file_exists" {
@@ -3395,6 +3433,16 @@ fn option_bool(options: &IndexMap<String, Value>, key: &str) -> Result<bool, Str
     }
 }
 
+fn native_stream_from_bytes(bytes: Vec<u8>) -> Value {
+    let mut chunk = Some(Value::Bytes(bytes));
+    Value::NativeStream(NativeStreamValue {
+        inner: Arc::new(Mutex::new(NativeStreamState {
+            next: Box::new(move || Ok(chunk.take())),
+            exhausted: false,
+        })),
+    })
+}
+
 /// Parse CSV/TSV content into a `Value::List(Vec<Value::Map>)`.
 ///
 /// This is a pure function extracted from `Evaluator` so it can be reused
@@ -4512,6 +4560,103 @@ mod tests {
 
         let expr = Expr::ImportRaw(mk_string_lit("../../etc/passwd"), ds());
         let err = ev.eval_expr(&expr, scope).unwrap_err();
+        assert!(
+            err.message.contains("escapes root"),
+            "expected jail escape error, got: {}",
+            err.message
+        );
+    }
+
+    fn file_stream_expr(path: &str, options: Option<Expr>) -> Expr {
+        let mut args = vec![CallArg::Positional(Expr::StringLit(mk_string_lit(path)))];
+        if let Some(options) = options {
+            args.push(CallArg::Positional(options));
+        }
+        Expr::FnCall(Box::new(Expr::Ident(mk_ident("file_stream"))), args, ds())
+    }
+
+    fn read_native_stream_bytes(value: Value) -> Vec<u8> {
+        let Value::NativeStream(stream) = value else {
+            panic!("expected native stream");
+        };
+        let first = {
+            let mut state = stream.inner.lock().unwrap();
+            (state.next)().expect("stream next").expect("first chunk")
+        };
+        let Value::Bytes(bytes) = first else {
+            panic!("expected bytes chunk");
+        };
+        let end = {
+            let mut state = stream.inner.lock().unwrap();
+            (state.next)().expect("stream next")
+        };
+        assert_eq!(end, None);
+        bytes
+    }
+
+    #[test]
+    fn test_file_stream_reads_embedded_text_asset() {
+        let mut ev = Evaluator::new();
+        let scope = ev.scopes.create_scope(ScopeKind::Module, None);
+
+        let result = ev
+            .eval_expr(
+                &file_stream_expr("<WCL>:/assets/highlightjs/wcl.js", None),
+                scope,
+            )
+            .unwrap();
+        let bytes = read_native_stream_bytes(result);
+        let text = String::from_utf8(bytes).expect("utf8");
+        assert!(text.contains("WCL"));
+    }
+
+    #[test]
+    fn test_file_stream_reads_embedded_binary_asset() {
+        let mut ev = Evaluator::new();
+        let scope = ev.scopes.create_scope(ScopeKind::Module, None);
+
+        let result = ev
+            .eval_expr(
+                &file_stream_expr(
+                    "<WCL>:/assets/fonts/JetBrainsMonoNerdFontMono-Regular.ttf",
+                    None,
+                ),
+                scope,
+            )
+            .unwrap();
+        let bytes = read_native_stream_bytes(result);
+        assert!(bytes.len() > 1024);
+    }
+
+    #[test]
+    fn test_file_stream_reads_filesystem_bytes() {
+        use crate::eval::imports::InMemoryFs;
+        use std::path::PathBuf;
+
+        let mut fs = InMemoryFs::new();
+        fs.add_file_bytes(PathBuf::from("/project/data.bin"), vec![0, 1, 2, 255]);
+        let mut ev = Evaluator::with_fs(Box::new(fs), PathBuf::from("/project"));
+        let scope = ev.scopes.create_scope(ScopeKind::Module, None);
+
+        let result = ev
+            .eval_expr(&file_stream_expr("data.bin", None), scope)
+            .unwrap();
+        assert_eq!(read_native_stream_bytes(result), vec![0, 1, 2, 255]);
+    }
+
+    #[test]
+    fn test_file_stream_jail_escape_rejected() {
+        use crate::eval::imports::InMemoryFs;
+        use std::path::PathBuf;
+
+        let mut fs = InMemoryFs::new();
+        fs.add_file_bytes(PathBuf::from("/etc/passwd"), vec![0]);
+        let mut ev = Evaluator::with_fs(Box::new(fs), PathBuf::from("/project"));
+        let scope = ev.scopes.create_scope(ScopeKind::Module, None);
+
+        let err = ev
+            .eval_expr(&file_stream_expr("../../etc/passwd", None), scope)
+            .unwrap_err();
         assert!(
             err.message.contains("escapes root"),
             "expected jail escape error, got: {}",

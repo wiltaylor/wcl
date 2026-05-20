@@ -6,6 +6,8 @@
 use std::collections::HashMap;
 use std::fmt::Write;
 use std::hash::{DefaultHasher, Hash, Hasher};
+use std::path::PathBuf;
+use std::sync::OnceLock;
 
 use indexmap::IndexMap;
 use quick_xml::events::{BytesStart, Event};
@@ -5979,9 +5981,39 @@ fn runtime_field_escape(value: &str) -> String {
 }
 
 fn diagram_runtime_js() -> String {
-    crate::wdoc::assets::diagram_runtime_js()
+    static DIAGRAM_RUNTIME: OnceLock<Result<String, String>> = OnceLock::new();
+    DIAGRAM_RUNTIME
+        .get_or_init(load_diagram_runtime_js)
+        .as_ref()
         .expect("bundled wdoc diagram runtime")
-        .to_string()
+        .clone()
+}
+
+fn load_diagram_runtime_js() -> Result<String, String> {
+    let doc = crate::parse(
+        crate::standard_lib::WDOC_LIBRARY_WCL,
+        crate::ParseOptions {
+            root_dir: PathBuf::from(crate::eval::imports::EMBEDDED_LIBRARY_ROOT),
+            functions: crate::wdoc::source::wdoc_functions(),
+            ..Default::default()
+        },
+    );
+    if doc.has_errors() {
+        let errors = doc
+            .errors()
+            .into_iter()
+            .map(|diagnostic| diagnostic.message.clone())
+            .collect::<Vec<_>>()
+            .join("; ");
+        return Err(format!("failed to parse bundled WDoc runtime: {errors}"));
+    }
+    doc.values
+        .get("__wdoc_diagram_runtime_js")
+        .and_then(crate::Value::as_string)
+        .map(str::to_string)
+        .ok_or_else(|| {
+            "bundled WDoc runtime asset '__wdoc_diagram_runtime_js' was not found".to_string()
+        })
 }
 
 pub fn sanitize_inline_svg(source: &str) -> Result<String, String> {

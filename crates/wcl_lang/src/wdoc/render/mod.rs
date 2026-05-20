@@ -38,47 +38,6 @@ pub(crate) fn finalize_assets(output: &Path, asset_dirs: &[&Path]) -> Result<(),
         collect_referenced_css_assets(&css, &asset_extensions, &mut referenced_assets);
     }
 
-    // Write highlight.js assets (bundled locally so file:// works)
-    write_embedded_text_asset(
-        output,
-        "highlight.min.js",
-        "<WCL>:/assets/highlightjs/highlight.min.js",
-    )?;
-    write_embedded_text_asset(
-        output,
-        "highlight-light.min.css",
-        "<WCL>:/assets/highlightjs/github.min.css",
-    )?;
-    write_embedded_text_asset(
-        output,
-        "highlight-dark.min.css",
-        "<WCL>:/assets/highlightjs/github-dark.min.css",
-    )?;
-    write_embedded_text_asset(output, "wcl-grammar.js", "<WCL>:/assets/highlightjs/wcl.js")?;
-
-    let font_dir = output.join("fonts");
-    fs::create_dir_all(&font_dir).map_err(|e| format!("failed to create fonts directory: {e}"))?;
-    for (name, path) in [
-        (
-            "JetBrainsMonoNerdFontMono-Regular.ttf",
-            "<WCL>:/assets/fonts/JetBrainsMonoNerdFontMono-Regular.ttf",
-        ),
-        (
-            "JetBrainsMonoNerdFontMono-Bold.ttf",
-            "<WCL>:/assets/fonts/JetBrainsMonoNerdFontMono-Bold.ttf",
-        ),
-        (
-            "JetBrainsMonoNerdFontMono-Italic.ttf",
-            "<WCL>:/assets/fonts/JetBrainsMonoNerdFontMono-Italic.ttf",
-        ),
-        (
-            "JetBrainsMonoNerdFontMono-BoldItalic.ttf",
-            "<WCL>:/assets/fonts/JetBrainsMonoNerdFontMono-BoldItalic.ttf",
-        ),
-    ] {
-        write_embedded_bytes_asset(&font_dir, name, path)?;
-    }
-
     collect_generated_html_assets(output, &asset_extensions, &mut referenced_assets)?;
 
     // Copy referenced assets first so deep paths used by images work in previews.
@@ -108,22 +67,6 @@ pub(crate) fn finalize_assets(output: &Path, asset_dirs: &[&Path]) -> Result<(),
     }
 
     Ok(())
-}
-
-fn write_embedded_text_asset(output: &Path, filename: &str, path: &str) -> Result<(), String> {
-    let relative = crate::eval::imports::wcl_embedded_relative_path(path)?;
-    let content = crate::assets::embedded_asset_text(&relative)
-        .ok_or_else(|| format!("bundled text asset not found: {path}"))?;
-    fs::write(output.join(filename), content)
-        .map_err(|e| format!("failed to write {filename}: {e}"))
-}
-
-fn write_embedded_bytes_asset(output: &Path, filename: &str, path: &str) -> Result<(), String> {
-    let relative = crate::eval::imports::wcl_embedded_relative_path(path)?;
-    let content = crate::assets::embedded_asset_bytes(&relative)
-        .ok_or_else(|| format!("bundled binary asset not found: {path}"))?;
-    fs::write(output.join(filename), content)
-        .map_err(|e| format!("failed to write bundled asset {filename}: {e}"))
 }
 
 fn collect_generated_html_assets(

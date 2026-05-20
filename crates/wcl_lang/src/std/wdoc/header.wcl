@@ -1334,10 +1334,26 @@ namespace wdoc {
         content = output.html
     }
 
+    export let embedded_asset_file = (path, src) => {
+        path = path,
+        content = file_stream(src)
+    }
+
+    export let embedded_asset_files = () => [
+        wdoc::embedded_asset_file("highlight.min.js", "<WCL>:/assets/highlightjs/highlight.min.js"),
+        wdoc::embedded_asset_file("highlight-light.min.css", "<WCL>:/assets/highlightjs/github.min.css"),
+        wdoc::embedded_asset_file("highlight-dark.min.css", "<WCL>:/assets/highlightjs/github-dark.min.css"),
+        wdoc::embedded_asset_file("wcl-grammar.js", "<WCL>:/assets/highlightjs/wcl.js"),
+        wdoc::embedded_asset_file("fonts/JetBrainsMonoNerdFontMono-Regular.ttf", "<WCL>:/assets/fonts/JetBrainsMonoNerdFontMono-Regular.ttf"),
+        wdoc::embedded_asset_file("fonts/JetBrainsMonoNerdFontMono-Bold.ttf", "<WCL>:/assets/fonts/JetBrainsMonoNerdFontMono-Bold.ttf"),
+        wdoc::embedded_asset_file("fonts/JetBrainsMonoNerdFontMono-Italic.ttf", "<WCL>:/assets/fonts/JetBrainsMonoNerdFontMono-Italic.ttf"),
+        wdoc::embedded_asset_file("fonts/JetBrainsMonoNerdFontMono-BoldItalic.ttf", "<WCL>:/assets/fonts/JetBrainsMonoNerdFontMono-BoldItalic.ttf")
+    ]
+
     export let render_site_files = doc => {
         let ctx = wdoc::render_context(doc)
         let html_files = map(wdoc::render_html_outputs(ctx), output => wdoc::html_output_file(output))
-        concat([{ path = "styles.css", content = codec_encode("css", wdoc::site_css(doc), {}) }], html_files)
+        concat([{ path = "styles.css", content = codec_encode("css", wdoc::site_css(doc), {}) }], concat(html_files, wdoc::embedded_asset_files()))
     }
 
     export let style_target_leaf = target => {

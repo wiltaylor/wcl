@@ -749,6 +749,12 @@ pub fn builtin_signatures() -> Vec<FunctionSignature> {
             return_type: "stream".into(),
             doc: "Wrap bytes or a list of byte chunks as a stream".into(),
         },
+        FunctionSignature {
+            name: "file_stream".into(),
+            params: vec!["path: string".into(), "options: map".into()],
+            return_type: "stream".into(),
+            doc: "Read a file as a byte stream".into(),
+        },
     ]
 }
 
