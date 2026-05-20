@@ -10,6 +10,18 @@ pub const SVG_LIBRARY_WCL: &str = include_str!("std/svg.wcl");
 pub const CSS_LIBRARY_WCL: &str = include_str!("std/css.wcl");
 pub const WDOC_LIBRARY_WCL: &str = include_str!("std/wdoc.wcl");
 
+/// WDoc base stylesheet.
+pub const WDOC_BASE_STYLES_CSS: &str = include_str!("assets/wdoc/base_styles.css");
+
+/// WDoc browser runtime assets.
+pub const WDOC_RUNTIME_MATHJAX_CONFIG_JS: &str =
+    include_str!("assets/wdoc/runtime/mathjax_config.js");
+pub const WDOC_RUNTIME_THEME_JS: &str = include_str!("assets/wdoc/runtime/theme.js");
+pub const WDOC_RUNTIME_PRESENTATION_JS: &str = include_str!("assets/wdoc/runtime/presentation.js");
+pub const WDOC_RUNTIME_PAGE_SIGNAL_TEMPLATE_JS: &str =
+    include_str!("assets/wdoc/runtime/page_signal_template.js");
+pub const WDOC_RUNTIME_DIAGRAM_JS: &str = include_str!("assets/wdoc/runtime/diagram.js");
+
 /// The WCL highlight.js grammar.
 pub const WCL_HIGHLIGHTJS_GRAMMAR: &str = include_str!("assets/highlightjs/wcl.js");
 
@@ -69,7 +81,6 @@ pub const EMBEDDED_TEXT_ASSETS: &[EmbeddedTextAsset] = &[
     text_asset!("css.wcl", CSS_LIBRARY_WCL),
     text_asset!("wdoc.wcl", WDOC_LIBRARY_WCL),
     wcl_asset!("wdoc/header.wcl"),
-    wcl_asset!("wdoc/runtime.wcl"),
     wcl_asset!("wdoc/widgets/ui/button.wcl"),
     wcl_asset!("wdoc/widgets/ui/slider.wcl"),
     wcl_asset!("wdoc/widgets/ui/phone.wcl"),
@@ -126,7 +137,21 @@ pub const EMBEDDED_TEXT_ASSETS: &[EmbeddedTextAsset] = &[
     wcl_asset!("wdoc/widgets/infra/database.wcl"),
     wcl_asset!("wdoc/widgets/infra/cloud.wcl"),
     wcl_asset!("wdoc/widgets/infra/user.wcl"),
-    wcl_asset!("wdoc/base_styles.wcl"),
+    text_asset!("assets/wdoc/base_styles.css", WDOC_BASE_STYLES_CSS),
+    text_asset!(
+        "assets/wdoc/runtime/mathjax_config.js",
+        WDOC_RUNTIME_MATHJAX_CONFIG_JS
+    ),
+    text_asset!("assets/wdoc/runtime/theme.js", WDOC_RUNTIME_THEME_JS),
+    text_asset!(
+        "assets/wdoc/runtime/presentation.js",
+        WDOC_RUNTIME_PRESENTATION_JS
+    ),
+    text_asset!(
+        "assets/wdoc/runtime/page_signal_template.js",
+        WDOC_RUNTIME_PAGE_SIGNAL_TEMPLATE_JS
+    ),
+    text_asset!("assets/wdoc/runtime/diagram.js", WDOC_RUNTIME_DIAGRAM_JS),
     text_asset!("assets/highlightjs/wcl.js", WCL_HIGHLIGHTJS_GRAMMAR),
     text_asset!("assets/highlightjs/highlight.min.js", HIGHLIGHTJS_CORE),
     text_asset!(
@@ -206,6 +231,9 @@ mod tests {
         assert!(HIGHLIGHTJS_CORE.contains("highlight"));
         assert!(HIGHLIGHTJS_THEME_LIGHT_CSS.contains(".hljs"));
         assert!(HIGHLIGHTJS_THEME_DARK_CSS.contains(".hljs"));
+        assert!(WDOC_BASE_STYLES_CSS.contains(".wdoc-content"));
+        assert!(WDOC_RUNTIME_THEME_JS.contains("wdoc-theme"));
+        assert!(WDOC_RUNTIME_DIAGRAM_JS.contains("__wdocDiagramRuntimeInit"));
         assert!(JETBRAINS_MONO_NERD_OFL.contains("SIL OPEN FONT LICENSE"));
         assert!(JETBRAINS_MONO_NERD_REGULAR.len() > 1024);
         assert!(JETBRAINS_MONO_NERD_BOLD.len() > 1024);
@@ -214,6 +242,16 @@ mod tests {
         assert!(embedded_asset_text(Path::new("assets/highlightjs/wcl.js"))
             .expect("wcl highlight asset")
             .contains("WCL"));
+        assert!(
+            embedded_asset_text(Path::new("assets/wdoc/base_styles.css"))
+                .expect("wdoc base styles asset")
+                .contains(".wdoc-content")
+        );
+        assert!(
+            embedded_asset_text(Path::new("assets/wdoc/runtime/diagram.js"))
+                .expect("wdoc diagram runtime asset")
+                .contains("__wdocDiagramRuntimeInit")
+        );
         assert!(
             embedded_asset_bytes(Path::new(
                 "assets/fonts/JetBrainsMonoNerdFontMono-Regular.ttf"

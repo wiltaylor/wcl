@@ -1095,6 +1095,8 @@ namespace wdoc {
 
     export let script_node = source => { tag = "script", html = replace(to_string(source), "</", "<\\/") }
 
+    export let script_src_node = src => { tag = "script", defer = true, src = src }
+
     export let path_parent_depth = path => {
         let parts = filter(split("/", to_string(path)), part => part != "")
         len(parts) <= 1 ? 0 : len(parts) - 1
@@ -1103,6 +1105,8 @@ namespace wdoc {
     export let repeat_text = (text, count) => count <= 0 ? "" : text + wdoc::repeat_text(text, count - 1)
 
     export let css_path_for = path => wdoc::repeat_text("../", wdoc::path_parent_depth(path)) + "styles.css"
+
+    export let asset_href_for = (css_path, asset) => trim_suffix(css_path, "styles.css") + asset
 
     export let normalize_html_path = path => {
         let trimmed = trim_prefix(trim(to_string(path)), "/")
@@ -1128,7 +1132,7 @@ namespace wdoc {
     export let page_signal_runtime = (ctx, page) => {
         let signals = attr_or(page, "signals", [])
         let bindings = attr_or(page, "bindings", [])
-        len(signals) == 0 && len(bindings) == 0 ? null : replace(ctx.runtime.page_signal_template, "__WDOC_SIGNAL_CONFIG_JSON__", json_encode({ signals = signals, bindings = bindings }))
+        len(signals) == 0 && len(bindings) == 0 ? null : replace(import_raw("<WCL>:/assets/wdoc/runtime/page_signal_template.js"), "__WDOC_SIGNAL_CONFIG_JSON__", json_encode({ signals = signals, bindings = bindings }))
     }
 
     export let page_view = (ctx, page) => map_set(
@@ -1245,7 +1249,7 @@ namespace wdoc {
 
     export let document_head = (doc, title, css_path, content_html) => {
         let math_nodes = contains(content_html, "data-wdoc-equation=") ? [
-            wdoc::script_node(doc.runtime.mathjax_config),
+            wdoc::script_src_node(wdoc::asset_href_for(css_path, doc.runtime.mathjax_config)),
             { tag = "script", defer = true, src = "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" }
         ] : []
         { tag = "head", children = concat([
@@ -1253,10 +1257,10 @@ namespace wdoc {
             { tag = "meta", name = "viewport", content_attr = "width=device-width, initial-scale=1" },
             { tag = "title", content = title + " — " + doc.title },
             { tag = "link", rel = "stylesheet", href = css_path },
-            { tag = "link", rel = "stylesheet", href = "highlight-light.min.css", id = "hljs-light" },
-            { tag = "link", rel = "stylesheet", href = "highlight-dark.min.css", id = "hljs-dark", disabled = true },
-            { tag = "script", defer = true, src = "highlight.min.js" },
-            { tag = "script", defer = true, src = "wcl-grammar.js" }
+            { tag = "link", rel = "stylesheet", href = wdoc::asset_href_for(css_path, "highlight-light.min.css"), id = "hljs-light" },
+            { tag = "link", rel = "stylesheet", href = wdoc::asset_href_for(css_path, "highlight-dark.min.css"), id = "hljs-dark", disabled = true },
+            wdoc::script_src_node(wdoc::asset_href_for(css_path, "highlight.min.js")),
+            wdoc::script_src_node(wdoc::asset_href_for(css_path, "wcl-grammar.js"))
         ], math_nodes) }
     }
 
@@ -1301,7 +1305,7 @@ namespace wdoc {
             before_nodes,
             concat(
                 [{ tag = "main", class_name = main_class, html = content_html }],
-                concat(after_nodes, concat(runtime_nodes, [wdoc::script_node(doc.runtime.theme)]))
+                concat(after_nodes, concat(runtime_nodes, [wdoc::script_src_node(wdoc::asset_href_for(css_path, doc.runtime.theme))]))
             )
         )
         wdoc::document_html(doc, title, css_path, content_html, body_class, body_nodes)
@@ -1380,8 +1384,8 @@ namespace wdoc {
                 { tag = "section", class_name = "wdoc-slide", html = content_html }
             ]
         }], concat(page.signal_runtime != null ? [wdoc::script_node(page.signal_runtime)] : [], [
-            wdoc::script_node(ctx.runtime.theme),
-            wdoc::script_node(ctx.runtime.presentation)
+            wdoc::script_src_node(wdoc::asset_href_for(page.css_path, ctx.runtime.theme)),
+            wdoc::script_src_node(wdoc::asset_href_for(page.css_path, ctx.runtime.presentation))
         ]))
         wdoc::document_html(ctx.doc, page.title, page.css_path, content_html, "wdoc-template-presentation", body_nodes)
     }
@@ -1463,22 +1467,16 @@ namespace wdoc {
     }
 
     export let runtime_assets = () => {
-        mathjax_config = __wdoc_mathjax_config_js
-        theme = __wdoc_theme_runtime_js
-        presentation = __wdoc_presentation_runtime_js
-        page_signal_template = __wdoc_page_signal_runtime_js_template
+        mathjax_config = "wdoc-mathjax-config.js"
+        theme = "wdoc-theme.js"
+        presentation = "wdoc-presentation.js"
     }
 
-    export let prepare_site_document = doc => map_set(
-        map_set(doc, "runtime", wdoc::runtime_assets()),
-        "base_styles",
-        __wdoc_base_styles
-    )
+    export let prepare_site_document = doc => map_set(doc, "runtime", wdoc::runtime_assets())
 
     export let site_css = doc => {
         kind = "stylesheet",
         children = [
-            map_has(doc, "base_styles") ? doc.base_styles : { kind = "stylesheet", children = [] },
             wdoc::style_css(map_has(doc, "styles") ? doc.styles : []),
             { kind = "raw", content = map_has(doc, "extra_css") ? doc.extra_css : "" }
         ]
@@ -1506,6 +1504,9 @@ namespace wdoc {
         wdoc::embedded_asset_file("highlight-light.min.css", "<WCL>:/assets/highlightjs/github.min.css"),
         wdoc::embedded_asset_file("highlight-dark.min.css", "<WCL>:/assets/highlightjs/github-dark.min.css"),
         wdoc::embedded_asset_file("wcl-grammar.js", "<WCL>:/assets/highlightjs/wcl.js"),
+        wdoc::embedded_asset_file("wdoc-theme.js", "<WCL>:/assets/wdoc/runtime/theme.js"),
+        wdoc::embedded_asset_file("wdoc-presentation.js", "<WCL>:/assets/wdoc/runtime/presentation.js"),
+        wdoc::embedded_asset_file("wdoc-mathjax-config.js", "<WCL>:/assets/wdoc/runtime/mathjax_config.js"),
         wdoc::embedded_asset_file("fonts/JetBrainsMonoNerdFontMono-Regular.ttf", "<WCL>:/assets/fonts/JetBrainsMonoNerdFontMono-Regular.ttf"),
         wdoc::embedded_asset_file("fonts/JetBrainsMonoNerdFontMono-Bold.ttf", "<WCL>:/assets/fonts/JetBrainsMonoNerdFontMono-Bold.ttf"),
         wdoc::embedded_asset_file("fonts/JetBrainsMonoNerdFontMono-Italic.ttf", "<WCL>:/assets/fonts/JetBrainsMonoNerdFontMono-Italic.ttf"),
@@ -1894,7 +1895,9 @@ namespace wdoc {
         let prepared_doc = wdoc::prepare_site_document(doc)
         let ctx = wdoc::render_context(prepared_doc)
         let html_files = map(wdoc::render_html_outputs(ctx), output => wdoc::html_output_file(output))
-        concat([{ path = "styles.css", content = codec_encode("css", wdoc::site_css(prepared_doc), {}) }], concat(html_files, concat(wdoc::local_asset_files(prepared_doc), wdoc::embedded_asset_files())))
+        let generated_css = codec_encode("css", wdoc::site_css(prepared_doc), {})
+        let styles_content = byte_stream([file_stream("<WCL>:/assets/wdoc/base_styles.css"), utf8_to_bytes(generated_css)])
+        concat([{ path = "styles.css", content = styles_content }], concat(html_files, concat(wdoc::local_asset_files(prepared_doc), wdoc::embedded_asset_files())))
     }
 
     export let render_project_site_files = (doc, options) => wdoc::render_site_files(map_has(doc, "root") ? wdoc::project_document(doc) : doc)
