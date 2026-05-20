@@ -9,8 +9,8 @@ use indexmap::IndexMap;
 
 use crate::eval::value::Value;
 use crate::render::shapes::{
-    parse_alignment_str, render_diagram_svg, Alignment, AnchorPoint, Bounds, Connection,
-    CurveStyle, Diagram, Direction, ShapeKind, ShapeNode,
+    parse_alignment_str, parse_shape_kind, render_diagram_svg, Alignment, AnchorPoint, Bounds,
+    Connection, CurveStyle, Diagram, Direction, ShapeKind, ShapeNode,
 };
 use crate::transform::error::TransformError;
 
@@ -244,12 +244,12 @@ fn diagram_from_value(value: &Value, options: &CodecOptions) -> Result<Diagram, 
         .unwrap_or(Alignment::None);
     let shapes = map
         .get("shapes")
-        .map(shape_list)
+        .map(shape_nodes_from_value)
         .transpose()?
         .unwrap_or_default();
     let connections = map
         .get("connections")
-        .map(connection_list)
+        .map(connections_from_value)
         .transpose()?
         .unwrap_or_default();
     Ok(Diagram {
@@ -266,7 +266,7 @@ fn diagram_from_value(value: &Value, options: &CodecOptions) -> Result<Diagram, 
     })
 }
 
-fn shape_list(value: &Value) -> Result<Vec<ShapeNode>, TransformError> {
+pub fn shape_nodes_from_value(value: &Value) -> Result<Vec<ShapeNode>, TransformError> {
     let Value::List(items) = value else {
         return Err(TransformError::Codec(
             "diagram shapes must be a list".into(),
@@ -299,7 +299,7 @@ fn shape_from_value(value: &Value, source_order: usize) -> Result<ShapeNode, Tra
     let kind = shape_kind(&kind_name);
     let children = map
         .get("children")
-        .map(shape_list)
+        .map(shape_nodes_from_value)
         .transpose()?
         .unwrap_or_default();
     let align = map
@@ -346,7 +346,7 @@ fn shape_map_error(value: &Value) -> String {
     )
 }
 
-fn connection_list(value: &Value) -> Result<Vec<Connection>, TransformError> {
+pub fn connections_from_value(value: &Value) -> Result<Vec<Connection>, TransformError> {
     let Value::List(items) = value else {
         return Err(TransformError::Codec(
             "diagram connections must be a list".into(),
@@ -386,25 +386,9 @@ fn connection_from_value(
 }
 
 fn shape_kind(kind: &str) -> ShapeKind {
-    match kind {
-        "circle" => ShapeKind::Circle,
-        "ellipse" => ShapeKind::Ellipse,
-        "line" => ShapeKind::Line,
-        "path" => ShapeKind::Path,
-        "text" => ShapeKind::Text,
-        "text_block" => ShapeKind::TextBlock,
-        "inline_svg" => ShapeKind::InlineSvg,
-        "icon" => ShapeKind::Icon,
-        "image" => ShapeKind::Image,
-        "map" => ShapeKind::Map,
-        "sprite" => ShapeKind::Sprite,
-        "dopesheet_view" => ShapeKind::DopesheetView,
-        "tilemap" => ShapeKind::Tilemap,
-        "game_layer" => ShapeKind::GameLayer,
-        "group" => ShapeKind::Group,
-        "rect" => ShapeKind::Rect,
-        _ => ShapeKind::Custom,
-    }
+    parse_shape_kind(kind)
+        .or_else(|| parse_shape_kind(&format!("wdoc::draw::{kind}")))
+        .unwrap_or(ShapeKind::Custom)
 }
 
 fn anchor_attr(map: &IndexMap<String, Value>, key: &str) -> AnchorPoint {
@@ -444,22 +428,102 @@ fn number_option(map: &CodecOptions, key: &str) -> Option<f64> {
     map.get(key).and_then(value_number)
 }
 
-fn value_number(value: &Value) -> Option<f64> {
+pub fn bounds_from_value(value: Option<&Value>) -> Option<Bounds> {
+    let Some(value) = value else {
+        return None;
+    };
+    let map = value_map(value, "").ok()?;
+    Some(Bounds {
+        x: number_attr(map, "x").unwrap_or(0.0),
+        y: number_attr(map, "y").unwrap_or(0.0),
+        width: number_attr(map, "width").unwrap_or(0.0),
+        height: number_attr(map, "height").unwrap_or(0.0),
+    })
+}
+
+pub fn value_number(value: &Value) -> Option<f64> {
     match value {
         Value::Int(n) => Some(*n as f64),
+        Value::BigInt(n) => n.to_string().parse().ok(),
         Value::Float(n) => Some(*n),
         Value::String(s) => s.parse().ok(),
         _ => None,
     }
 }
 
-fn string_map(map: &IndexMap<String, Value>) -> IndexMap<String, String> {
+pub fn string_map(map: &IndexMap<String, Value>) -> IndexMap<String, String> {
     map.iter()
         .filter(|(key, _)| {
             key.as_str() != "shapes" && key.as_str() != "connections" && key.as_str() != "children"
         })
         .map(|(key, value)| (key.clone(), value_string(value)))
         .collect()
+}
+
+pub fn shape_node_to_value(node: &ShapeNode) -> Value {
+    let mut map: IndexMap<String, Value> = node
+        .attrs
+        .iter()
+        .map(|(key, value)| (key.clone(), Value::String(value.clone())))
+        .collect();
+    map.insert("kind".to_string(), Value::String(node.kind_name.clone()));
+    if let Some(id) = &node.id {
+        map.insert("id".to_string(), Value::String(id.clone()));
+    }
+    map.insert("x".to_string(), Value::Float(layout_x(node)));
+    map.insert("y".to_string(), Value::Float(layout_y(node)));
+    map.insert("width".to_string(), Value::Float(layout_width(node)));
+    map.insert("height".to_string(), Value::Float(layout_height(node)));
+    map.insert(
+        "align".to_string(),
+        Value::String(crate::render::shapes::alignment_name(node.align).to_string()),
+    );
+    map.insert("gap".to_string(), Value::Float(node.gap));
+    map.insert("padding".to_string(), Value::Float(node.padding));
+    map.insert(
+        "children".to_string(),
+        Value::List(node.children.iter().map(shape_node_to_value).collect()),
+    );
+    Value::Map(map)
+}
+
+pub fn connection_to_value(conn: &Connection) -> Value {
+    let mut map: IndexMap<String, Value> = conn
+        .attrs
+        .iter()
+        .map(|(key, value)| (key.clone(), Value::String(value.clone())))
+        .collect();
+    map.insert("kind".to_string(), Value::String("connection".to_string()));
+    map.insert("from".to_string(), Value::String(conn.from_id.clone()));
+    map.insert("to".to_string(), Value::String(conn.to_id.clone()));
+    if let Some(label) = &conn.label {
+        map.insert("label".to_string(), Value::String(label.clone()));
+    }
+    Value::Map(map)
+}
+
+fn layout_x(node: &ShapeNode) -> f64 {
+    non_zero_or(node.resolved.x, node.x)
+}
+
+fn layout_y(node: &ShapeNode) -> f64 {
+    non_zero_or(node.resolved.y, node.y)
+}
+
+fn layout_width(node: &ShapeNode) -> f64 {
+    non_zero_or(node.resolved.width, node.width)
+}
+
+fn layout_height(node: &ShapeNode) -> f64 {
+    non_zero_or(node.resolved.height, node.height)
+}
+
+fn non_zero_or(value: f64, fallback: Option<f64>) -> f64 {
+    if value != 0.0 {
+        value
+    } else {
+        fallback.unwrap_or(value)
+    }
 }
 
 fn value_string(value: &Value) -> String {
