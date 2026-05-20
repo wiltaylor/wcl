@@ -13,10 +13,6 @@ pub fn render_html(value: &Value) -> Result<String, String> {
     }
 }
 
-pub fn render_svg(value: &Value) -> Result<String, String> {
-    render_with_codec("svg", value)
-}
-
 pub fn render_css(value: &Value) -> Result<String, String> {
     match value {
         Value::List(items) => render_with_codec("css", &css_stylesheet(items.clone())),
@@ -24,7 +20,7 @@ pub fn render_css(value: &Value) -> Result<String, String> {
     }
 }
 
-fn render_with_codec(codec_name: &str, value: &Value) -> Result<String, String> {
+pub(crate) fn render_with_codec(codec_name: &str, value: &Value) -> Result<String, String> {
     let codec_name = codec_name.to_string();
     let value = value.clone();
     std::thread::Builder::new()
@@ -58,13 +54,6 @@ pub fn text(value: impl Into<String>) -> Value {
     Value::Map(map)
 }
 
-pub fn raw_html(value: impl Into<String>) -> Value {
-    let mut map = IndexMap::new();
-    map.insert("tag".to_string(), Value::String("raw".to_string()));
-    map.insert("html".to_string(), Value::String(value.into()));
-    Value::Map(map)
-}
-
 pub fn raw_svg(value: impl Into<String>) -> Value {
     let mut map = IndexMap::new();
     map.insert("tag".to_string(), Value::String("raw".to_string()));
@@ -95,24 +84,6 @@ pub fn svg_elem(tag: &str, attrs: &[(&str, Value)], children: Vec<Value>) -> Val
     elem(tag, attrs, children)
 }
 
-pub fn style_map(entries: &[(&str, &str)]) -> Value {
-    let mut map = IndexMap::new();
-    for (key, value) in entries {
-        map.insert((*key).to_string(), Value::String((*value).to_string()));
-    }
-    Value::Map(map)
-}
-
-pub fn css_rule(selector: &str, declarations: &[(&str, &str)]) -> Value {
-    let mut map = IndexMap::new();
-    map.insert("kind".to_string(), Value::String("rule".to_string()));
-    map.insert("selector".to_string(), Value::String(selector.to_string()));
-    for (key, value) in declarations {
-        map.insert((*key).to_string(), Value::String((*value).to_string()));
-    }
-    Value::Map(map)
-}
-
 pub fn css_stylesheet(children: Vec<Value>) -> Value {
     let mut map = IndexMap::new();
     map.insert("kind".to_string(), Value::String("stylesheet".to_string()));
@@ -134,12 +105,4 @@ pub fn css_at(kind: &str, attrs: &[(&str, Value)], children: Vec<Value>) -> Valu
 
 pub fn s(value: impl Into<String>) -> Value {
     Value::String(value.into())
-}
-
-pub fn b(value: bool) -> Value {
-    Value::Bool(value)
-}
-
-pub fn i(value: i64) -> Value {
-    Value::Int(value)
 }

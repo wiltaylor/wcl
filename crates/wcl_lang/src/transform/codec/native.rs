@@ -479,6 +479,6 @@ mod tests {
     #[test]
     fn standard_registry_does_not_include_wdoc_html_codec() {
         let registry = NativeCodecRegistry::standard();
-        assert!(registry.get(crate::wdoc::codec::HTML_CODEC).is_none());
+        assert!(registry.get("wdoc-html").is_none());
     }
 }

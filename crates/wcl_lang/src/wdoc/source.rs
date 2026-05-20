@@ -11,35 +11,6 @@ use crate::{
     BlockRef, BuiltinFn, FileId, FunctionRegistry, FunctionSignature, FunctionValue, Value,
 };
 
-/// Options for parsing WCL source files into a WDoc document.
-#[derive(Clone, Debug, Default)]
-pub struct SourceOptions {
-    /// External variables injected before evaluation.
-    pub variables: IndexMap<String, Value>,
-    /// Extra WCL library search paths.
-    pub lib_paths: Vec<PathBuf>,
-    /// Disable default XDG/system WCL library search paths.
-    pub no_default_lib_paths: bool,
-}
-
-/// Result of parsing and extracting WDoc source files.
-pub struct ExtractedWdoc {
-    pub document: WdocDocument,
-    pub watch_paths: HashSet<PathBuf>,
-}
-
-/// Result of rendering a WDoc build.
-pub struct BuildResult {
-    pub pages: usize,
-    pub output: PathBuf,
-}
-
-/// Result of validating WDoc source.
-pub struct ValidationResult {
-    pub sections: usize,
-    pub pages: usize,
-}
-
 // ---------------------------------------------------------------------------
 // Template function dispatch
 // ---------------------------------------------------------------------------
@@ -7855,9 +7826,7 @@ fn wdoc_project_document(value: &Value) -> Result<Value, String> {
     let ctx = unsafe { &*ctx_ptr };
     let values = unsafe { &*values_ptr };
     let doc = extract(values, ctx)?;
-    let mut value = crate::wdoc::model::document_to_value(&doc)?;
-    crate::wdoc::codec::prepare_document_value(&mut value)?;
-    Ok(value)
+    crate::wdoc::model::document_to_value(&doc)
 }
 
 fn wdoc_render_markup(text: &str) -> Result<String, String> {
@@ -8114,7 +8083,7 @@ fn render_inline_icon_svg(
             vec![crate::wdoc::markup::raw_svg(sanitized)],
         )
     };
-    crate::wdoc::markup::render_svg(&crate::wdoc::markup::svg_elem(
+    let value = &crate::wdoc::markup::svg_elem(
         "svg",
         &[
             ("class_name", crate::wdoc::markup::s("wdoc-icon")),
@@ -8138,8 +8107,9 @@ fn render_inline_icon_svg(
             crate::wdoc::markup::svg_elem("style", &[("raw", crate::wdoc::markup::s(css))], vec![]),
             body,
         ],
-    ))
-    .expect("inline icon svg should serialize as SVG")
+    );
+    crate::wdoc::markup::render_with_codec("svg", value)
+        .expect("inline icon svg should serialize as SVG")
 }
 
 fn icon_style_vars(props: &IndexMap<String, String>) -> String {
@@ -8649,120 +8619,8 @@ fn extract_style(block: &BlockRef) -> WdocStyle {
 }
 
 // ---------------------------------------------------------------------------
-// Source entry points
+// Loaded project bridge
 // ---------------------------------------------------------------------------
-
-fn parse_and_extract(files: &[PathBuf], options: &SourceOptions) -> Result<WdocDocument, String> {
-    parse_extract_from_files(files, options).map(|extracted| extracted.document)
-}
-
-fn format_diagnostic(
-    diag: &crate::Diagnostic,
-    source_map: &crate::SourceMap,
-    fallback_path: &Path,
-) -> String {
-    let code = diag
-        .code
-        .as_deref()
-        .map(|code| format!("[{code}]"))
-        .unwrap_or_default();
-    let sf = source_map.get_file(diag.span.file);
-    let path = if sf.path.is_empty() || sf.path == "<input>" {
-        fallback_path.display().to_string()
-    } else {
-        sf.path.clone()
-    };
-    let (line, col) = sf.line_col(diag.span.start);
-    format!(
-        "{:?}{code}: {}\n  --> {path}:{line}:{col}",
-        diag.severity, diag.message
-    )
-}
-
-pub fn parse_extract_from_files(
-    files: &[PathBuf],
-    source_options: &SourceOptions,
-) -> Result<ExtractedWdoc, String> {
-    let functions = wdoc_functions();
-
-    let mut all_values = IndexMap::new();
-    let mut last_doc: Option<crate::Document> = None;
-    let mut watch_paths = HashSet::new();
-
-    for file in files {
-        let source = std::fs::read_to_string(file)
-            .map_err(|e| format!("cannot read {}: {}", file.display(), e))?;
-
-        let mut options = crate::ParseOptions {
-            root_dir: file.parent().unwrap_or(Path::new(".")).to_path_buf(),
-            variables: source_options.variables.clone(),
-            functions: functions.clone(),
-            ..Default::default()
-        };
-        options.lib_paths.clone_from(&source_options.lib_paths);
-        options.no_default_lib_paths = source_options.no_default_lib_paths;
-
-        let doc = crate::parse(&source, options);
-
-        let errors: Vec<_> = doc.diagnostics.iter().filter(|d| d.is_error()).collect();
-        if !errors.is_empty() {
-            let mut msg = String::new();
-            for diag in &errors {
-                msg.push_str(&format_diagnostic(diag, &doc.source_map, file));
-                msg.push('\n');
-            }
-            return Err(msg);
-        }
-
-        watch_paths.extend(
-            doc.imported_paths
-                .iter()
-                .filter(|path| !path.starts_with(crate::eval::imports::EMBEDDED_LIBRARY_ROOT))
-                .cloned(),
-        );
-        all_values.extend(doc.values.clone());
-        last_doc = Some(doc);
-    }
-
-    let doc = last_doc.ok_or("no input files")?;
-
-    // Build template dispatch context
-    let template_map = collect_template_map(&doc);
-    let draw_schema_names = collect_draw_schema_names(&doc);
-    let structural_shape_schema_names = collect_structural_shape_schema_names(&doc);
-    let template_extends_map = collect_template_extends_map(&doc);
-    let builtins: HashMap<String, BuiltinFn> = functions.functions;
-    let template_helpers = collect_template_helpers(&doc);
-    let layout_helpers = collect_layout_helpers(&doc)?;
-    let markup_rules = collect_markup_rules(&doc, &template_helpers)?;
-    let svg_search_dirs = wdoc_source_dirs(files, &doc.imported_paths);
-    let icon_registry = collect_icon_sets(&all_values, &svg_search_dirs)?;
-    let ctx = ExtractCtx {
-        template_map,
-        template_extends_map,
-        draw_schema_names,
-        structural_shape_schema_names,
-        template_helpers,
-        layout_helpers,
-        markup_rules,
-        builtins,
-        css_registry: Rc::new(RefCell::new(DiagramCssRegistry::default())),
-        diagram_classes: Rc::new(RefCell::new(collect_diagram_classes(&all_values))),
-        diagram_classes_by_file: Rc::new(RefCell::new(collect_diagram_classes_by_file(
-            &all_values,
-        ))),
-        binding_targets: Rc::new(RefCell::new(HashSet::new())),
-        svg_search_dirs,
-        icon_registry,
-    };
-
-    let wdoc_doc = extract(&all_values, &ctx)?;
-
-    Ok(ExtractedWdoc {
-        document: wdoc_doc,
-        watch_paths,
-    })
-}
 
 pub fn with_loaded_project_context<T>(
     document: &crate::Document,
@@ -8807,87 +8665,4 @@ fn extract_ctx_from_loaded_document(
         svg_search_dirs,
         icon_registry,
     })
-}
-
-pub fn build_from_files(
-    files: &[PathBuf],
-    output: &Path,
-    options: &SourceOptions,
-) -> Result<BuildResult, String> {
-    let extracted = parse_extract_from_files(files, options)?;
-    let doc = extracted.document;
-    let pages = doc.pages.len();
-    let asset_dirs = wdoc_asset_dirs(files, &extracted.watch_paths);
-    let value = crate::wdoc::model::document_to_value(&doc)?;
-    let options = crate::wdoc::codec::asset_dir_options(&asset_dirs);
-    crate::transform::encode_value_with_custom_to_directory(
-        &value,
-        crate::wdoc::codec::HTML_CODEC,
-        output,
-        &options,
-        None,
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(BuildResult {
-        pages,
-        output: output.to_path_buf(),
-    })
-}
-
-fn wdoc_asset_dirs(files: &[PathBuf], watch_paths: &HashSet<PathBuf>) -> Vec<PathBuf> {
-    let mut dirs = Vec::new();
-    let mut seen = HashSet::new();
-    for dir in files
-        .iter()
-        .filter_map(|path| path.parent())
-        .chain(watch_paths.iter().filter_map(|path| path.parent()))
-    {
-        let dir = dir.to_path_buf();
-        if seen.insert(dir.clone()) {
-            dirs.push(dir);
-        }
-    }
-    dirs
-}
-
-fn wdoc_source_dirs(files: &[PathBuf], imported_paths: &HashSet<PathBuf>) -> Vec<PathBuf> {
-    let mut dirs = Vec::new();
-    let mut seen = HashSet::new();
-    for dir in files.iter().filter_map(|file| file.parent()) {
-        let dir = dir.to_path_buf();
-        if seen.insert(dir.clone()) {
-            dirs.push(dir);
-        }
-    }
-    let mut imported_dirs: Vec<PathBuf> = imported_paths
-        .iter()
-        .filter(|path| !path.starts_with(crate::eval::imports::EMBEDDED_LIBRARY_ROOT))
-        .filter_map(|path| path.parent().map(Path::to_path_buf))
-        .collect();
-    imported_dirs.sort();
-    imported_dirs.dedup();
-    for dir in imported_dirs {
-        if seen.insert(dir.clone()) {
-            dirs.push(dir);
-        }
-    }
-    dirs
-}
-
-pub fn validate_from_files(
-    files: &[PathBuf],
-    options: &SourceOptions,
-) -> Result<ValidationResult, String> {
-    let doc = parse_and_extract(files, options)?;
-    Ok(ValidationResult {
-        sections: count_sections(&doc.sections),
-        pages: doc.pages.len(),
-    })
-}
-
-fn count_sections(sections: &[Section]) -> usize {
-    sections
-        .iter()
-        .map(|s| 1 + count_sections(&s.children))
-        .sum()
 }

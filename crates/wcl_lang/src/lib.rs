@@ -4490,10 +4490,10 @@ partial symbol_set multi {
         assert!(!doc.has_errors(), "errors: {:?}", doc.errors());
 
         let registry = doc.codec_registry().expect("codec registry should build");
-        assert!(registry.contains(crate::wdoc::codec::HTML_CODEC));
+        assert!(registry.contains("wdoc-html"));
 
         let names = doc.codec_names().expect("codec names should build");
-        assert!(names.contains(&crate::wdoc::codec::HTML_CODEC.to_string()));
+        assert!(names.contains(&"wdoc-html".to_string()));
     }
 
     #[test]

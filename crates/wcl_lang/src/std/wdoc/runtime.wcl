@@ -1,4 +1,4 @@
-// WDoc browser/runtime assets. Rust loads these from the embedded WDoc library.
+// WDoc browser/runtime assets. The WDoc WCL codec adds these to rendered pages.
 export let __wdoc_mathjax_config_js = <<-'JS'
 window.MathJax = {
     tex: {
@@ -168,4 +168,3 @@ function init(root){(root||document).querySelectorAll('svg').forEach(function(sv
 window.__wdocDiagramRuntimeInit=init;var s=document.currentScript;if(s&&s.parentNode)init(s.parentNode);if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){init(document);});else init(document);
 })();
 JS
-

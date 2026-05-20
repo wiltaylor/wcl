@@ -315,37 +315,11 @@ fn encode_value_with_custom_to_target_internal(
         return codec::native::encode_native_value(value, native, output_options, output_target);
     }
 
-    let wdoc_codecs;
-    let uses_wdoc_codec = output_codec == crate::wdoc::codec::HTML_CODEC;
-    let uses_bundled_wdoc_codec = uses_wdoc_codec && custom_codecs.get(output_codec).is_none();
-    let active_codecs = if uses_bundled_wdoc_codec {
-        wdoc_codecs = crate::wdoc::codec::custom_registry().map_err(TransformError::Codec)?;
-        &wdoc_codecs
-    } else {
-        custom_codecs
-    };
-    let output_custom = active_codecs
+    let uses_wdoc_codec = output_codec == "wdoc-html";
+    let output_custom = custom_codecs
         .get(output_codec)
         .ok_or_else(|| TransformError::UnknownCodec(output_codec.to_string()))?;
-    let registry = Arc::new(active_codecs.clone());
-    let wdoc_output_dir = if uses_bundled_wdoc_codec {
-        match &output_target {
-            codec::native::OutputTarget::Directory(dir) => Some(*dir),
-            codec::native::OutputTarget::Stream(_) => None,
-        }
-    } else {
-        None
-    };
-
-    let mut prepared_value;
-    let value = if uses_wdoc_codec {
-        prepared_value = value.clone();
-        crate::wdoc::codec::prepare_document_value(&mut prepared_value)
-            .map_err(TransformError::Codec)?;
-        &prepared_value
-    } else {
-        value
-    };
+    let registry = Arc::new(custom_codecs.clone());
 
     let written = if contains_session_stream(value) {
         let session = source_session.as_deref_mut().ok_or_else(|| {
@@ -392,9 +366,6 @@ fn encode_value_with_custom_to_target_internal(
             registry,
         )?
     };
-    if let Some(output_dir) = wdoc_output_dir {
-        crate::wdoc::codec::finalize_html_assets_from_options(output_dir, output_options)?;
-    }
     Ok(written)
 }
 
@@ -513,6 +484,21 @@ namespace html {
         assert_eq!(written, 1);
         let html = String::from_utf8(out).expect("utf8");
         assert!(html.contains("<p id=\"intro\">Hello</p>"), "{html}");
+    }
+
+    #[test]
+    fn wdoc_html_requires_loaded_document_codec_registry() {
+        let mut out = Vec::new();
+        let err = encode_value_with_custom_to_target(
+            &Value::Map(Default::default()),
+            "wdoc-html",
+            codec::native::OutputTarget::Stream(&mut out),
+            &codec::CodecOptions::new(),
+            None,
+        )
+        .expect_err("wdoc-html should not be available without a loaded registry");
+
+        assert!(matches!(err, TransformError::UnknownCodec(name) if name == "wdoc-html"));
     }
 
     #[test]

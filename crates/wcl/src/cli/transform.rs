@@ -233,6 +233,14 @@ fn build_custom_codec_registry(
             _ => None,
         })
         .collect();
+    let helper_values: HashMap<String, Value> = doc
+        .values
+        .iter()
+        .filter_map(|(name, value)| match value {
+            Value::Function(_) => None,
+            other => Some((name.clone(), other.clone())),
+        })
+        .collect();
 
     for block in doc.blocks_of_type("codec") {
         let codec_name = block
@@ -263,6 +271,7 @@ fn build_custom_codec_registry(
             &codec_name,
             codec_ref,
             helpers.clone(),
+            helper_values.clone(),
         )
         .map_err(|e| e.to_string())?;
         registry.insert(codec).map_err(|e| e.to_string())?;

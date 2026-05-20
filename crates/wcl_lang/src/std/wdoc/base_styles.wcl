@@ -1,4 +1,4 @@
-// WDoc base stylesheet. Rendered by the Rust WDoc renderer through codec::css.
+// WDoc base stylesheet. Rendered by the WDoc WCL codec through codec::css.
 stylesheet __wdoc_base_styles {
 
     rule rule_001 {

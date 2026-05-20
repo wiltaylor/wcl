@@ -44,6 +44,7 @@ pub struct CustomCodec {
     pub encoder: Option<FunctionValue>,
     pub encoder_all: Option<FunctionValue>,
     pub helpers: HashMap<String, FunctionValue>,
+    pub helper_values: HashMap<String, Value>,
 }
 
 impl CustomCodec {
@@ -168,6 +169,14 @@ pub fn registry_from_document(
             _ => None,
         })
         .collect();
+    let helper_values: HashMap<String, Value> = doc
+        .values
+        .iter()
+        .filter_map(|(name, value)| match value {
+            Value::Function(_) => None,
+            other => Some((name.clone(), other.clone())),
+        })
+        .collect();
 
     for item in &doc.ast.items {
         let DocItem::Body(BodyItem::Block(block)) = item else {
@@ -194,7 +203,12 @@ pub fn registry_from_document(
             )));
         };
 
-        let codec = custom_codec_from_block(&codec_name, codec_ref, helpers.clone())?;
+        let codec = custom_codec_from_block(
+            &codec_name,
+            codec_ref,
+            helpers.clone(),
+            helper_values.clone(),
+        )?;
         if standard {
             registry.insert_standard(codec)?;
         } else {
@@ -209,6 +223,7 @@ pub fn custom_codec_from_block(
     name: &str,
     block: &BlockRef,
     helpers: HashMap<String, FunctionValue>,
+    helper_values: HashMap<String, Value>,
 ) -> Result<CustomCodec, TransformError> {
     let mode = match block.attributes.get("mode") {
         Some(Value::Symbol(s)) if s == "text" => CustomCodecMode::Text,
@@ -233,6 +248,7 @@ pub fn custom_codec_from_block(
         encoder: optional_function(name, block, "encoder")?,
         encoder_all: optional_function(name, block, "encoder_all")?,
         helpers,
+        helper_values,
     };
     let has_decode_parts = codec.decoder.is_some()
         || codec.tokenizer.is_some()
@@ -320,6 +336,20 @@ impl CodecEvalSession {
             eval.register_function(name, f);
         }
         let helper_scope = eval.scopes_mut().create_scope(ScopeKind::Lambda, None);
+        for (name, value) in &codec.helper_values {
+            eval.scopes_mut().add_entry(
+                helper_scope,
+                ScopeEntry {
+                    name: name.clone(),
+                    kind: ScopeEntryKind::LetBinding,
+                    value: Some(value.clone()),
+                    span: Span::dummy(),
+                    dependencies: Default::default(),
+                    evaluated: true,
+                    read_count: 0,
+                },
+            );
+        }
         for (name, helper) in &codec.helpers {
             let mut helper = helper.clone();
             helper.closure_scope = Some(helper_scope);
@@ -1319,14 +1349,8 @@ fn call_codec_lambda(
     args: &[Value],
     builtins: HashMap<String, BuiltinFn>,
 ) -> Result<Value, TransformError> {
-    crate::eval::evaluator::call_lambda_with_env_and_max_depth(
-        func,
-        args,
-        &builtins,
-        &codec.helpers,
-        CODEC_MAX_CALL_DEPTH,
-    )
-    .map_err(|e| TransformError::Codec(format!("custom codec '{}': {}", codec.name, e)))
+    let mut session = CodecEvalSession::new(codec, builtins, CODEC_MAX_CALL_DEPTH);
+    session.call_function(func, args)
 }
 
 fn validate_token(name: &str, map: &IndexMap<String, Value>) -> Result<(), TransformError> {

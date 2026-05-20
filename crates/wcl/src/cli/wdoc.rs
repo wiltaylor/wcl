@@ -64,11 +64,11 @@ fn require_wdoc_html_codec(
     document: &wcl_lang::Document,
 ) -> Result<wcl_lang::transform::codec::custom::CustomCodecRegistry, String> {
     let registry = document.codec_registry().map_err(|e| e.to_string())?;
-    if !registry.contains(wcl_lang::wdoc::codec::HTML_CODEC) {
+    if !registry.contains("wdoc-html") {
         let names = registry.names().join(", ");
         return Err(format!(
             "loaded WCL project does not define codec '{}'. Please add `import <wdoc.wcl>` to your files. Loaded codecs: {}",
-            wcl_lang::wdoc::codec::HTML_CODEC,
+            "wdoc-html",
             if names.is_empty() { "(none)" } else { &names }
         ));
     }
@@ -110,20 +110,11 @@ pub(crate) fn render_project(
     let doc_value = find_wdoc_document_value(document)?.clone();
     let imported_files = document.imported_file_paths();
     let source_dirs = source_dirs(files, &imported_files);
-    let mut options = wcl_lang::transform::codec::CodecOptions::new();
-    options.insert(
-        "asset_dirs".to_string(),
-        wcl_lang::Value::List(
-            source_dirs
-                .iter()
-                .map(|path| wcl_lang::Value::String(path.display().to_string()))
-                .collect(),
-        ),
-    );
+    let options = wcl_lang::transform::codec::CodecOptions::new();
     wcl_lang::wdoc::source::with_loaded_project_context(document, &source_dirs, || {
         wcl_lang::transform::encode_value_with_custom_to_directory(
             &doc_value,
-            wcl_lang::wdoc::codec::HTML_CODEC,
+            "wdoc-html",
             output,
             &options,
             Some(&registry),

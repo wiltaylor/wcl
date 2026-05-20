@@ -1322,6 +1322,19 @@ namespace wdoc {
         { doc = doc_with_runtime, runtime = runtime }
     }
 
+    export let runtime_assets = () => {
+        mathjax_config = __wdoc_mathjax_config_js
+        theme = __wdoc_theme_runtime_js
+        presentation = __wdoc_presentation_runtime_js
+        page_signal_template = __wdoc_page_signal_runtime_js_template
+    }
+
+    export let prepare_site_document = doc => map_set(
+        map_set(doc, "runtime", wdoc::runtime_assets()),
+        "base_styles",
+        __wdoc_base_styles
+    )
+
     export let site_css = doc => {
         kind = "stylesheet",
         children = [
@@ -1354,9 +1367,10 @@ namespace wdoc {
 
     export let render_site_files = doc => {
         let project_doc = type_of(doc) == "block_ref" && doc.kind == "wdoc::doc" ? wdoc::project_document(doc) : doc
-        let ctx = wdoc::render_context(project_doc)
+        let prepared_doc = wdoc::prepare_site_document(project_doc)
+        let ctx = wdoc::render_context(prepared_doc)
         let html_files = map(wdoc::render_html_outputs(ctx), output => wdoc::html_output_file(output))
-        concat([{ path = "styles.css", content = codec_encode("css", wdoc::site_css(project_doc), {}) }], concat(html_files, wdoc::embedded_asset_files()))
+        concat([{ path = "styles.css", content = codec_encode("css", wdoc::site_css(prepared_doc), {}) }], concat(html_files, wdoc::embedded_asset_files()))
     }
 
     export let render_project_site_files = (doc, options) => {

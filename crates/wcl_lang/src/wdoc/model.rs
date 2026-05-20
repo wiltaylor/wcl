@@ -78,14 +78,6 @@ impl WdocTemplate {
             )),
         }
     }
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Book => "book",
-            Self::Site => "site",
-            Self::Presentation => "presentation",
-        }
-    }
 }
 
 /// The layout container for a page.
@@ -179,9 +171,4 @@ pub fn document_to_value(doc: &WdocDocument) -> Result<Value, String> {
     let json = serde_json::to_value(doc)
         .map_err(|e| format!("failed to convert wdoc document to value: {e}"))?;
     Ok(crate::json::json_value_to_wcl(&json))
-}
-
-pub fn document_from_value(value: &Value) -> Result<WdocDocument, String> {
-    let json = crate::json::value_to_json(value);
-    serde_json::from_value(json).map_err(|e| format!("failed to decode wdoc document value: {e}"))
 }

@@ -1,7 +1,5 @@
-pub mod codec;
-pub mod markup;
-pub mod model;
-mod render;
+mod markup;
+mod model;
 pub mod source;
 
 pub use crate::render::{graph_layout, shapes, terminal};
