@@ -6,7 +6,7 @@ pub use wcl_lang::json::{
 mod tests {
     use super::*;
     use indexmap::IndexMap;
-    use wcl_lang::Value;
+    use wcl_lang::{BlockRef, BlockRefData, Value};
 
     #[test]
     fn test_value_roundtrip_primitives() {
@@ -44,7 +44,7 @@ mod tests {
 
     #[test]
     fn test_block_ref_to_json() {
-        let br = wcl_lang::BlockRef {
+        let br = BlockRef::new(BlockRefData {
             kind: "server".to_string(),
             id: Some("main".to_string()),
             qualified_id: None,
@@ -53,7 +53,7 @@ mod tests {
             children: vec![],
             decorators: vec![],
             span: wcl_lang::Span::dummy(),
-        };
+        });
         let json = block_ref_to_json(&br);
         assert_eq!(json["kind"], "server");
         assert_eq!(json["id"], "main");

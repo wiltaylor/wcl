@@ -1469,12 +1469,25 @@ namespace wdoc {
 
     export let prepare_site_document = doc => map_merge(doc, { runtime = wdoc::runtime_assets() })
 
+    export let raw_css_node = content => { kind = "raw", content = content }
+
+    export let site_css_children = doc => concat(
+        [wdoc::style_css(map_has(doc, "styles") ? doc.styles : [])],
+        concat(
+            map(attr_or(doc, "font_css", []), css => wdoc::raw_css_node(css)),
+            concat(
+                map(attr_or(doc, "global_css", []), css => wdoc::raw_css_node(css)),
+                concat(
+                    map(attr_or(doc, "css_fragments", []), css => wdoc::raw_css_node(css)),
+                    [wdoc::raw_css_node(map_has(doc, "extra_css") ? doc.extra_css : "")]
+                )
+            )
+        )
+    )
+
     export let site_css = doc => {
         kind = "stylesheet",
-        children = [
-            wdoc::style_css(map_has(doc, "styles") ? doc.styles : []),
-            { kind = "raw", content = map_has(doc, "extra_css") ? doc.extra_css : "" }
-        ]
+        children = wdoc::site_css_children(doc)
     }
 
     export let html_output_file = output => {
@@ -1547,6 +1560,13 @@ namespace wdoc {
     export let child_blocks_matching = (block, name) => block_body_children_kinds(block, [name, "wdoc::" + name])
 
     export let top_level_blocks_matching = (project, name) => filter(values(project.values), value => type_of(value) == "block_ref" && wdoc::block_is(value, name))
+
+    export let project_block_values = project => filter(values(project.values), value => type_of(value) == "block_ref")
+
+    export let project_blocks_collecting = (project, names) => {
+        let qualified = concat(names, map(names, name => "wdoc::" + name))
+        flat_map(wdoc::project_block_values(project), block => block_collect_kinds(block, qualified))
+    }
 
     export let source_path = (project, path) => {
         let raw = to_string(path)
@@ -1808,7 +1828,12 @@ namespace wdoc {
 
     export let render_project_diagram = (project, block) => {
         let native = wdoc::primitive_diagram_value(project, block)
-        diagram_svg(native == null ? wdoc::diagram_value(project, block) : native)
+        let attrs = block_attrs(block)
+        let diagram = native == null ? wdoc::diagram_value(project, block) : native
+        let without_inline_css = map_set(diagram, "css", "")
+        let html = diagram_svg(without_inline_css)
+        let design_system = attr_or(attrs, "design_system", "")
+        design_system == "" ? html : "<div class=\"wad-ds-" + design_system + "\">" + html + "</div>"
     }
 
     export let extract_section = (project, block, parent_path) => {
@@ -1898,6 +1923,65 @@ namespace wdoc {
     export let media_assets_in_block = (project, block) =>
         map(filter(block_collect_kinds(block, ["wdoc::image", "image", "wdoc::draw::image", "wdoc::draw::map", "wdoc::draw::sprite", "wdoc::draw::dopesheet", "wdoc::draw::dopesheet_view", "wdoc::draw::tilemap"]), child => map_has(block_attrs(child), "src")), child => wdoc::asset_from_src(project, block_attrs(child).src))
 
+    export let scope_css = (scope, css) => {
+        let trimmed = trim(to_string(css))
+        scope == "" || trimmed == "" ? trimmed : ".wad-ds-" + scope + " " + trimmed
+    }
+
+    export let css_fragment_css = block => {
+        let attrs = block_attrs(block)
+        wdoc::scope_css(attr_or(attrs, "scope", ""), attr_or(attrs, "css", ""))
+    }
+
+    export let diagram_css_fragment = block => {
+        let attrs = block_attrs(block)
+        wdoc::scope_css(attr_or(attrs, "design_system", ""), attr_or(attrs, "css", ""))
+    }
+
+    export let project_css_fragments = project => {
+        let explicit = map(wdoc::top_level_blocks_matching(project, "css_fragment"), block => wdoc::css_fragment_css(block))
+        let diagrams = map(wdoc::project_blocks_collecting(project, ["diagram", "draw::diagram"]), block => wdoc::diagram_css_fragment(block))
+        distinct(filter(concat(explicit, diagrams), css => css != ""))
+    }
+
+    export let global_css_value = block => attr_or(block_attrs(block), "css", "")
+
+    export let project_global_css = project => distinct(filter(map(wdoc::top_level_blocks_matching(project, "global_css"), block => wdoc::global_css_value(block)), css => css != ""))
+
+    export let font_asset_value = (project, block) => {
+        let attrs = block_attrs(block)
+        let src = attr_or(attrs, "src", "")
+        {
+            family = attr_or(attrs, "family", ""),
+            src = src,
+            path = src,
+            weight = attr_or(attrs, "weight", null),
+            style = attr_or(attrs, "style", null),
+            display = attr_or(attrs, "display", null),
+            source = wdoc::source_path(project, src)
+        }
+    }
+
+    export let project_font_assets = project => distinct(filter(map(wdoc::top_level_blocks_matching(project, "font_asset"), block => wdoc::font_asset_value(project, block)), font => font.family != "" && font.src != ""))
+
+    export let font_format = src =>
+        ends_with(src, ".woff2") ? "woff2" :
+        ends_with(src, ".woff") ? "woff" :
+        ends_with(src, ".ttf") ? "truetype" :
+        ends_with(src, ".otf") ? "opentype" :
+        ""
+
+    export let font_asset_css = font => {
+        let fmt = wdoc::font_format(font.src)
+        "@font-face {\n  font-family: \"" + font.family + "\";\n  src: url(\"" + font.src + "\")" + (fmt == "" ? "" : " format(\"" + fmt + "\")") + ";\n" +
+        (font.weight == null ? "" : "  font-weight: " + font.weight + ";\n") +
+        (font.style == null ? "" : "  font-style: " + font.style + ";\n") +
+        (font.display == null ? "" : "  font-display: " + font.display + ";\n") +
+        "}"
+    }
+
+    export let font_asset_files = fonts => map(fonts, font => { path = font.path, src = font.source })
+
     export let project_document = project => {
         let root = project.root
         let attrs = block_attrs(root)
@@ -1909,6 +1993,7 @@ namespace wdoc {
         let site_footers = wdoc::child_blocks_matching(root, "site_footer")
         let child_sections = wdoc::child_blocks_matching(root, "section")
         let child_styles = wdoc::child_blocks_matching(root, "style")
+        let font_assets = wdoc::project_font_assets(project_with_icons)
         {
             name = attr_or(attrs, "id", ""),
             title = attr_or(attrs, "title", ""),
@@ -1923,7 +2008,10 @@ namespace wdoc {
             sections = map(child_sections, section => wdoc::extract_section(project_with_icons, section, attr_or(attrs, "id", ""))),
             pages = map(concat(top_pages, child_pages), page => wdoc::extract_page(project_with_icons, page)),
             styles = map(concat(wdoc::top_level_blocks_matching(project, "style"), child_styles), style => wdoc::extract_style(style)),
-            assets = wdoc::media_assets(project_with_icons),
+            assets = distinct(concat(wdoc::media_assets(project_with_icons), wdoc::font_asset_files(font_assets))),
+            css_fragments = wdoc::project_css_fragments(project_with_icons),
+            global_css = wdoc::project_global_css(project_with_icons),
+            font_css = map(font_assets, font => wdoc::font_asset_css(font)),
             extra_css = ""
         }
     }

@@ -592,7 +592,7 @@ pub struct LazyImport {
 pub struct ImportResolver<'a, FS: FileSystem + ?Sized> {
     fs: &'a FS,
     source_map: &'a mut SourceMap,
-    root_dir: PathBuf,
+    _root_dir: PathBuf,
     max_depth: u32,
     allow_imports: bool,
     loaded: HashSet<PathBuf>,
@@ -632,7 +632,7 @@ impl<'a, FS: FileSystem + ?Sized> ImportResolver<'a, FS> {
         ImportResolver {
             fs,
             source_map,
-            root_dir,
+            _root_dir: root_dir,
             max_depth,
             allow_imports,
             loaded: HashSet::new(),
@@ -908,7 +908,6 @@ impl<'a, FS: FileSystem + ?Sized> ImportResolver<'a, FS> {
                 // Collect mergeable items from the imported document
                 for item in imported_doc.items {
                     match &item {
-                        DocItem::Body(BodyItem::LetBinding(_)) => {}
                         DocItem::Import(_) => {}
                         DocItem::ExportLet(_)
                         | DocItem::ExportMacro(_)
@@ -970,14 +969,6 @@ impl<'a, FS: FileSystem + ?Sized> ImportResolver<'a, FS> {
             .with_code("E010"));
         }
 
-        // Reject absolute paths
-        if import_path.starts_with('/') {
-            return Err(Diagnostic::error(
-                format!("absolute import paths are forbidden: '{}'", import_path),
-                dummy_span,
-            ));
-        }
-
         // Reject home-relative paths
         if import_path.starts_with('~') {
             return Err(Diagnostic::error(
@@ -1017,24 +1008,9 @@ impl<'a, FS: FileSystem + ?Sized> ImportResolver<'a, FS> {
         })
     }
 
-    /// Check that a resolved path is within the root directory (jail check).
-    pub fn check_jail(&self, resolved: &Path, span: Span) -> Result<(), Diagnostic> {
-        let canonical_root = self
-            .fs
-            .canonicalize(&self.root_dir)
-            .unwrap_or_else(|_| self.root_dir.clone());
-
-        if !resolved.starts_with(&canonical_root) {
-            return Err(Diagnostic::error(
-                format!(
-                    "import path '{}' escapes root directory '{}'",
-                    resolved.display(),
-                    canonical_root.display()
-                ),
-                span,
-            )
-            .with_code("E011"));
-        }
+    /// Import path jail checks are currently disabled so absolute and
+    /// outside-root local imports can be used by CLI/project loaders.
+    pub fn check_jail(&self, _resolved: &Path, _span: Span) -> Result<(), Diagnostic> {
         Ok(())
     }
 
@@ -1201,7 +1177,6 @@ impl<'a, FS: FileSystem + ?Sized> ImportResolver<'a, FS> {
                 // Collect mergeable items (same filter as regular imports)
                 for item in imported_doc.items {
                     match &item {
-                        DocItem::Body(BodyItem::LetBinding(_)) => {}
                         DocItem::Import(_) => {}
                         DocItem::ExportLet(_)
                         | DocItem::ExportMacro(_)
@@ -1638,8 +1613,9 @@ mod tests {
     }
 
     #[test]
-    fn resolve_path_rejects_absolute() {
-        let fs = InMemoryFs::new();
+    fn resolve_path_accepts_absolute() {
+        let mut fs = InMemoryFs::new();
+        fs.add_file("/etc/passwd", "root");
         let mut sm = make_source_map();
         let resolver = ImportResolver::new(
             &fs,
@@ -1651,11 +1627,7 @@ mod tests {
         );
 
         let result = resolver.resolve_path("/etc/passwd", Path::new("/project/main.wcl"));
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .message
-            .contains("absolute import paths are forbidden"));
+        assert_eq!(result.unwrap(), PathBuf::from("/etc/passwd"));
     }
 
     #[test]
@@ -1718,7 +1690,7 @@ mod tests {
     }
 
     #[test]
-    fn jail_check_rejects_outside_root() {
+    fn jail_check_allows_outside_root() {
         let fs = InMemoryFs::new();
         let mut sm = make_source_map();
         let resolver = ImportResolver::new(
@@ -1731,15 +1703,11 @@ mod tests {
         );
 
         let result = resolver.check_jail(Path::new("/other/file.wcl"), Span::dummy());
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .message
-            .contains("escapes root directory"));
+        assert!(result.is_ok());
     }
 
     #[test]
-    fn jail_check_rejects_parent_traversal() {
+    fn jail_check_allows_parent_traversal_after_normalization() {
         let mut fs = InMemoryFs::new();
         fs.add_file(PathBuf::from("/project/sub/../../../etc/passwd"), "bad");
         let mut sm = make_source_map();
@@ -1755,7 +1723,7 @@ mod tests {
         // After normalization, /project/sub/../../../etc/passwd becomes /etc/passwd
         let normalized = normalize_path(Path::new("/project/sub/../../../etc/passwd"));
         let result = resolver.check_jail(&normalized, Span::dummy());
-        assert!(result.is_err());
+        assert!(result.is_ok());
     }
 
     #[test]
