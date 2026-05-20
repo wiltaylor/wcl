@@ -15,11 +15,11 @@ namespace wdoc {
         let requested_w = attr_or(b, "width", 0)
         let requested_h = attr_or(b, "height", 0)
         let max_label_w = max_w - pad_x * 2
-        let initial = measure_text({ content = label, font_size = font_size, line_height = line_height, max_width = max_label_w })
+        let initial = wdoc::measure_text({ content = label, font_size = font_size, line_height = line_height, max_width = max_label_w })
         let auto_w = wdoc::flow_clamp(initial.width + pad_x * 2, min_w, max_w)
         let w = requested_w > 0 ? requested_w : auto_w
         let label_w = w - pad_x * 2
-        let final_metrics = measure_text({ content = label, font_size = font_size, line_height = line_height, max_width = label_w })
+        let final_metrics = wdoc::measure_text({ content = label, font_size = font_size, line_height = line_height, max_width = label_w })
         let auto_h = final_metrics.height + pad_y * 2
         let h = requested_h > 0 ? requested_h : (auto_h < min_h ? min_h : auto_h)
         { width = w, height = h, label_width = label_w, font_size = font_size, line_height = line_height }

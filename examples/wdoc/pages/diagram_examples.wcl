@@ -995,7 +995,7 @@ page diagram_examples {
                     }
                 }
 
-                paragraph pd8c { content = "This force layout sizes nodes from <code>measure_text()</code> using default text sizing, including nodes generated inside a <code>for</code> loop." }
+                paragraph pd8c { content = "This force layout sizes nodes from <code>wdoc::measure_text()</code> using default text sizing, including nodes generated inside a <code>for</code> loop." }
 
                 diagram force_measured_nodes {
                     width = 760
@@ -1004,8 +1004,8 @@ page diagram_examples {
                     gap = 24
 
                     rect measured_short {
-                        width = measure_text({ content = "API" }).width + 44
-                        height = measure_text({ content = "API" }).height + 28
+                        width = wdoc::measure_text({ content = "API" }).width + 44
+                        height = wdoc::measure_text({ content = "API" }).height + 28
                         rx = 8
                         fill = color_success_bg
                         stroke = color_success
@@ -1016,8 +1016,8 @@ page diagram_examples {
                     }
 
                     rect measured_long {
-                        width = measure_text({ content = "Measured Width From Text" }).width + 44
-                        height = measure_text({ content = "Measured Width From Text" }).height + 28
+                        width = wdoc::measure_text({ content = "Measured Width From Text" }).width + 44
+                        height = wdoc::measure_text({ content = "Measured Width From Text" }).height + 28
                         rx = 8
                         fill = color_code_bg
                         stroke = color_link
@@ -1035,8 +1035,8 @@ page diagram_examples {
 
                     for label, i in loop_labels {
                         rect loop-${i} {
-                            width = measure_text({ content = label }).width + 44
-                            height = measure_text({ content = label }).height + 28
+                            width = wdoc::measure_text({ content = label }).width + 44
+                            height = wdoc::measure_text({ content = label }).height + 28
                             rx = 8
                             fill = color_nav_bg
                             stroke = color_nav_border

@@ -331,35 +331,6 @@ fn validate_markup_pattern(
 
 pub fn wdoc_functions() -> FunctionRegistry {
     let mut reg = FunctionRegistry::new();
-    let measure_text = std::sync::Arc::new(|args: &[Value]| {
-        if args.len() != 1 {
-            return Err("measure_text() expects 1 argument (text attributes or text block)".into());
-        }
-        let attrs = value_map_to_string_map(args.first())?;
-        let metrics = crate::wdoc::shapes::measure_text_attrs(&attrs);
-        let mut map = IndexMap::new();
-        map.insert("width".to_string(), Value::Float(metrics.width));
-        map.insert("height".to_string(), Value::Float(metrics.height));
-        map.insert("baseline".to_string(), Value::Float(metrics.baseline));
-        Ok(Value::Map(map))
-    }) as BuiltinFn;
-    let measure_sig = |name: &str| FunctionSignature {
-        name: name.into(),
-        params: vec!["text: any".into()],
-        return_type: "map".into(),
-        doc: "Measure text using WDoc's deterministic fallback metrics".into(),
-    };
-    reg.register(
-        "measure_text",
-        measure_text.clone(),
-        measure_sig("measure_text"),
-    );
-    reg.register(
-        "wdoc::measure_text",
-        measure_text,
-        measure_sig("wdoc::measure_text"),
-    );
-
     register_renderer_helpers(&mut reg);
 
     reg
@@ -440,22 +411,6 @@ fn register_renderer_helpers(reg: &mut FunctionRegistry) {
     );
 
     reg.register(
-        "wdoc::table_rows",
-        std::sync::Arc::new(|args: &[Value]| {
-            if args.len() != 1 {
-                return Err("wdoc::table_rows() expects 1 argument".into());
-            }
-            Ok(wdoc_table_rows(&args[0]))
-        }) as BuiltinFn,
-        FunctionSignature {
-            name: "wdoc::table_rows".into(),
-            params: vec!["block: any".into()],
-            return_type: "map".into(),
-            doc: "Extract headers and cell rows from a WDoc data_table block".into(),
-        },
-    );
-
-    reg.register(
         "wdoc::project_document",
         std::sync::Arc::new(|args: &[Value]| {
             if args.is_empty() || args.len() > 2 {
@@ -487,38 +442,6 @@ fn register_renderer_helpers(reg: &mut FunctionRegistry) {
         },
     );
 
-    let block_children = std::sync::Arc::new(|args: &[Value]| {
-        if args.len() != 1 {
-            return Err("block_children() expects 1 argument".into());
-        }
-        let Value::BlockRef(block) = &args[0] else {
-            return Err("block_children() expects a block argument".into());
-        };
-        Ok(Value::List(
-            all_child_blocks(block)
-                .into_iter()
-                .cloned()
-                .map(Value::BlockRef)
-                .collect(),
-        ))
-    }) as BuiltinFn;
-    let block_children_sig = |name: &str| FunctionSignature {
-        name: name.into(),
-        params: vec!["block: any".into()],
-        return_type: "list(any)".into(),
-        doc: "Return all direct child blocks, including named child blocks".into(),
-    };
-    reg.register(
-        "block_children",
-        block_children.clone(),
-        block_children_sig("block_children"),
-    );
-    reg.register(
-        "wdoc::block_children",
-        block_children,
-        block_children_sig("wdoc::block_children"),
-    );
-
     reg.register(
         "wdoc::render_markup",
         std::sync::Arc::new(|args: &[Value]| {
@@ -537,169 +460,6 @@ fn register_renderer_helpers(reg: &mut FunctionRegistry) {
             doc: "Render WDoc text markup using @markup formatter lambdas".into(),
         },
     );
-
-    register_icon_helper(
-        reg,
-        "wdoc::icon",
-        "Render a named SVG icon from the active WDoc icon set",
-        |args| {
-            if args.len() != 1 {
-                return Err("wdoc::icon() expects 1 argument".into());
-            }
-            Ok(icon_placeholder(
-                &value_to_string(&args[0]),
-                "1em",
-                None,
-                IndexMap::new(),
-            ))
-        },
-    );
-    register_icon_helper(reg, "icon", "Render a named SVG icon", |args| {
-        if args.len() != 1 {
-            return Err("icon() expects 1 argument".into());
-        }
-        Ok(icon_placeholder(
-            &value_to_string(&args[0]),
-            "1em",
-            None,
-            IndexMap::new(),
-        ))
-    });
-    register_icon_helper(
-        reg,
-        "wdoc::icon_styled",
-        "Render a named SVG icon with size and colour",
-        |args| {
-            if args.len() != 3 {
-                return Err("wdoc::icon_styled() expects 3 arguments".into());
-            }
-            let mut props = IndexMap::new();
-            props.insert("fill".to_string(), value_to_string(&args[2]));
-            Ok(icon_placeholder(
-                &value_to_string(&args[0]),
-                &value_to_string(&args[1]),
-                None,
-                props,
-            ))
-        },
-    );
-    register_icon_helper(reg, "icon_styled", "Render a styled SVG icon", |args| {
-        if args.len() != 3 {
-            return Err("icon_styled() expects 3 arguments".into());
-        }
-        let mut props = IndexMap::new();
-        props.insert("fill".to_string(), value_to_string(&args[2]));
-        Ok(icon_placeholder(
-            &value_to_string(&args[0]),
-            &value_to_string(&args[1]),
-            None,
-            props,
-        ))
-    });
-    register_icon_helper(
-        reg,
-        "wdoc::icon_props",
-        "Render a named SVG icon with CSS variable properties",
-        |args| {
-            if args.len() != 3 {
-                return Err("wdoc::icon_props() expects 3 arguments".into());
-            }
-            Ok(icon_placeholder(
-                &value_to_string(&args[0]),
-                &value_to_string(&args[1]),
-                None,
-                value_to_string_props(args.get(2)),
-            ))
-        },
-    );
-    register_icon_helper(
-        reg,
-        "icon_props",
-        "Render an SVG icon with properties",
-        |args| {
-            if args.len() != 3 {
-                return Err("icon_props() expects 3 arguments".into());
-            }
-            Ok(icon_placeholder(
-                &value_to_string(&args[0]),
-                &value_to_string(&args[1]),
-                None,
-                value_to_string_props(args.get(2)),
-            ))
-        },
-    );
-
-    // attr_or(block, "key", default) — read an attribute from a BlockRef or Map
-    // with a fallback. Used by shape template functions to handle optional widget
-    // attributes without erroring on missing keys.
-    reg.register(
-        "attr_or",
-        std::sync::Arc::new(|args: &[Value]| {
-            if args.len() != 3 {
-                return Err("attr_or() expects 3 arguments (block, key, default)".into());
-            }
-            let key = args[1]
-                .as_string()
-                .ok_or("attr_or() second argument must be a string")?;
-            let val = match &args[0] {
-                Value::BlockRef(br) => br.attributes.get(key).cloned(),
-                Value::Map(m) => m.get(key).cloned(),
-                _ => None,
-            };
-            Ok(val
-                .filter(|v| !matches!(v, Value::Null))
-                .unwrap_or_else(|| args[2].clone()))
-        }) as BuiltinFn,
-        FunctionSignature {
-            name: "attr_or".into(),
-            params: vec![
-                "block: any".into(),
-                "key: string".into(),
-                "default: any".into(),
-            ],
-            return_type: "any".into(),
-            doc: "Read an attribute from a block or map, returning a default if missing".into(),
-        },
-    );
-}
-
-fn register_icon_helper<F>(reg: &mut FunctionRegistry, name: &str, doc: &str, func: F)
-where
-    F: Fn(&[Value]) -> Result<String, String> + Send + Sync + 'static,
-{
-    let function_name = name.to_string();
-    reg.register(
-        name,
-        std::sync::Arc::new(move |args: &[Value]| func(args).map(Value::String)) as BuiltinFn,
-        FunctionSignature {
-            name: function_name,
-            params: vec!["name: string".into()],
-            return_type: "string".into(),
-            doc: doc.into(),
-        },
-    );
-}
-
-/// Convert a Value::Map to IndexMap<String, String> for template functions.
-fn value_map_to_string_map(val: Option<&Value>) -> Result<IndexMap<String, String>, String> {
-    let map = match val {
-        Some(Value::Map(m)) => m,
-        Some(Value::BlockRef(br)) => &br.attributes,
-        _ => return Err("template function expects a map argument".into()),
-    };
-    let mut result = IndexMap::new();
-    for (k, v) in map {
-        let s = match v {
-            Value::String(s) => s.clone(),
-            Value::Int(i) => i.to_string(),
-            Value::Float(f) => f.to_string(),
-            Value::Bool(b) => b.to_string(),
-            Value::Null => String::new(),
-            _ => format!("{v}"),
-        };
-        result.insert(k.clone(), s);
-    }
-    Ok(result)
 }
 
 fn value_to_string(value: &Value) -> String {
@@ -729,50 +489,6 @@ fn value_to_string_props(value: Option<&Value>) -> IndexMap<String, String> {
         .collect()
 }
 
-fn icon_placeholder(
-    name: &str,
-    size: &str,
-    set: Option<&str>,
-    props: IndexMap<String, String>,
-) -> String {
-    let mut attrs = IndexMap::new();
-    attrs.insert("tag".to_string(), crate::wdoc::markup::s("span"));
-    attrs.insert("data_wdoc_icon".to_string(), crate::wdoc::markup::s("true"));
-    attrs.insert("data_name".to_string(), crate::wdoc::markup::s(name));
-    attrs.insert("data_size".to_string(), crate::wdoc::markup::s(size));
-    if let Some(set) = set.filter(|set| !set.trim().is_empty()) {
-        attrs.insert("data_set".to_string(), crate::wdoc::markup::s(set));
-    }
-    if !props.is_empty() {
-        let encoded = props
-            .iter()
-            .map(|(key, value)| {
-                format!(
-                    "{}={}",
-                    url_component_escape(key),
-                    url_component_escape(value)
-                )
-            })
-            .collect::<Vec<_>>()
-            .join("&");
-        attrs.insert("data_props".to_string(), crate::wdoc::markup::s(encoded));
-    }
-    crate::wdoc::markup::render_html(&Value::Map(attrs))
-        .expect("wdoc icon placeholder should serialize as HTML")
-}
-
-fn url_component_escape(value: &str) -> String {
-    let mut out = String::new();
-    for byte in value.bytes() {
-        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
-            out.push(byte as char);
-        } else {
-            out.push_str(&format!("%{byte:02X}"));
-        }
-    }
-    out
-}
-
 fn url_component_unescape(value: &str) -> String {
     let bytes = value.as_bytes();
     let mut out = Vec::new();
@@ -791,63 +507,6 @@ fn url_component_unescape(value: &str) -> String {
         i += 1;
     }
     String::from_utf8_lossy(&out).to_string()
-}
-
-fn wdoc_table_rows(value: &Value) -> Value {
-    let attrs = match value {
-        Value::BlockRef(br) => &br.attributes,
-        Value::Map(map) => map,
-        _ => return table_rows_result(String::new(), true, Vec::new(), Vec::new()),
-    };
-    let caption = attrs
-        .get("caption")
-        .and_then(|v| v.as_string())
-        .unwrap_or("")
-        .to_string();
-    let rows = attrs.values().find_map(|v| match v {
-        Value::List(list) => Some(list),
-        _ => None,
-    });
-    let Some(rows) = rows.filter(|rows| !rows.is_empty()) else {
-        return table_rows_result(caption, true, Vec::new(), Vec::new());
-    };
-
-    let headers = match &rows[0] {
-        Value::Map(row) => row.keys().cloned().collect(),
-        _ => Vec::new(),
-    };
-    let body_rows = rows
-        .iter()
-        .filter_map(|row| match row {
-            Value::Map(map) => Some(map.values().map(value_to_string).collect()),
-            _ => None,
-        })
-        .collect();
-    table_rows_result(caption, false, headers, body_rows)
-}
-
-fn table_rows_result(
-    caption: String,
-    empty: bool,
-    headers: Vec<String>,
-    rows: Vec<Vec<String>>,
-) -> Value {
-    let mut result = IndexMap::new();
-    result.insert("caption".to_string(), Value::String(caption));
-    result.insert("empty".to_string(), Value::Bool(empty));
-    result.insert(
-        "headers".to_string(),
-        Value::List(headers.into_iter().map(Value::String).collect()),
-    );
-    result.insert(
-        "rows".to_string(),
-        Value::List(
-            rows.into_iter()
-                .map(|row| Value::List(row.into_iter().map(Value::String).collect()))
-                .collect(),
-        ),
-    );
-    Value::Map(result)
 }
 
 /// Render a `wdoc::draw::diagram` block to inline SVG. Walks the diagram's child
@@ -5737,30 +5396,32 @@ mod wdoc_draw_tests {
     }
 
     #[test]
-    fn measure_text_builtin_accepts_map_and_block_ref() {
-        let functions = wdoc_functions();
-        let measure = functions
-            .functions
-            .get("measure_text")
-            .expect("measure_text should be registered");
+    fn measure_text_wcl_helper_accepts_map_and_block_ref() {
+        let doc = crate::parse(
+            r#"
+            import <wdoc.wcl>
+            use wdoc::{measure_text}
 
-        let mut attrs = IndexMap::new();
-        string_attr(&mut attrs, "content", "Inline text");
-        int_attr(&mut attrs, "font_size", 14);
+            text label {
+                content = "Inline text"
+                font_size = 14
+            }
 
-        let map_result = measure(&[Value::Map(attrs.clone())]).unwrap();
-        let block_result = measure(&[Value::BlockRef(block(
-            "wdoc::draw::text",
-            Some("label"),
-            attrs,
-            vec![],
-        ))])
-        .unwrap();
+            export let map_metrics = measure_text({ content = "Inline text", font_size = 14 })
+            export let block_metrics = measure_text(label)
+            "#,
+            crate::ParseOptions::default(),
+        );
+        assert!(
+            !doc.has_errors(),
+            "unexpected diagnostics: {:?}",
+            doc.diagnostics
+        );
 
-        let Value::Map(map_metrics) = map_result else {
+        let Value::Map(map_metrics) = doc.values.get("map_metrics").unwrap() else {
             panic!("measure_text should return a map");
         };
-        let Value::Map(block_metrics) = block_result else {
+        let Value::Map(block_metrics) = doc.values.get("block_metrics").unwrap() else {
             panic!("measure_text should return a map");
         };
         assert_eq!(
@@ -5769,15 +5430,15 @@ mod wdoc_draw_tests {
         );
         assert!(map_metrics.get("height").unwrap().as_float().unwrap() > 0.0);
         assert!(map_metrics.get("baseline").unwrap().as_float().unwrap() > 0.0);
-
-        assert!(functions.functions.contains_key("wdoc::measure_text"));
     }
 
     #[test]
     fn measure_text_can_drive_inline_drawing_position_expression() {
-        let functions = wdoc_functions();
         let doc = crate::parse(
             r#"
+            import <wdoc.wcl>
+            use wdoc::{measure_text}
+
             text label {
                 content = "Inline text"
                 font_size = 14
@@ -5785,10 +5446,7 @@ mod wdoc_draw_tests {
 
             export let icon_x = 20 + measure_text(label).width + 8
             "#,
-            crate::ParseOptions {
-                functions,
-                ..Default::default()
-            },
+            crate::ParseOptions::default(),
         );
         assert!(
             !doc.has_errors(),
@@ -5802,6 +5460,55 @@ mod wdoc_draw_tests {
             other => panic!("expected icon_x to evaluate to a number, got {other:?}"),
         };
         assert!(icon_x > 28.0);
+    }
+
+    #[test]
+    fn wdoc_wcl_helpers_render_icons_and_table_rows() {
+        let doc = crate::parse(
+            r##"
+            import <wdoc.wcl>
+            use wdoc::{icon_props, table_rows}
+
+            data_table sample {
+                caption = "People"
+                rows = [
+                    { name = "Alice", role = "Admin" },
+                    { name = "Bob", role = "User" }
+                ]
+            }
+
+            export let icon_html = icon_props("map pin", "1em", { fill = "#fff", stroke = "a b" })
+            export let table_result = table_rows(sample)
+            "##,
+            crate::ParseOptions::default(),
+        );
+        assert!(
+            !doc.has_errors(),
+            "unexpected diagnostics: {:?}",
+            doc.diagnostics
+        );
+        let icon_html = doc
+            .values
+            .get("icon_html")
+            .and_then(Value::as_string)
+            .expect("icon_html should be a string");
+        assert!(icon_html.contains("data-wdoc-icon=\"true\""));
+        assert!(icon_html.contains("data-name=\"map pin\""));
+        assert!(icon_html.contains("fill=%23fff"));
+        assert!(icon_html.contains("stroke=a%20b"));
+
+        let Value::Map(table) = doc.values.get("table_result").expect("table rows") else {
+            panic!("table_rows should return a map");
+        };
+        assert_eq!(table.get("caption"), Some(&Value::String("People".into())));
+        assert_eq!(table.get("empty"), Some(&Value::Bool(false)));
+        assert_eq!(
+            table.get("headers"),
+            Some(&Value::List(vec![
+                Value::String("name".into()),
+                Value::String("role".into())
+            ]))
+        );
     }
 
     #[test]

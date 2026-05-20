@@ -1,6 +1,6 @@
 namespace wdoc {
     export let datatable_columns_from_blocks = (b) => {
-        let cols = filter(wdoc::block_children(b), (child) => child.kind == "wdoc::draw::datatable_column")
+        let cols = filter(block_children(b), (child) => child.kind == "wdoc::draw::datatable_column")
         let result = map(cols, (col) => {
             id = attr_or(col, "key", col.id),
             label = attr_or(col, "label", attr_or(col, "title", col.id)),
@@ -49,7 +49,7 @@ namespace wdoc {
     }
 
     export let datatable_cell_block = (row, col_id) => {
-        let cells = filter(wdoc::block_children(row), cell =>
+        let cells = filter(block_children(row), cell =>
             cell.kind == "wdoc::draw::datatable_cell" &&
             (to_string(cell.id) == col_id || attr_or(cell, "column", "") == col_id || attr_or(cell, "key", "") == col_id)
         )
@@ -57,7 +57,7 @@ namespace wdoc {
     }
 
     export let datatable_cell_text_items = (cell) => {
-        let cell_children = cell == null ? [] : wdoc::block_children(cell)
+        let cell_children = cell == null ? [] : block_children(cell)
         let text_children = filter(cell_children, child =>
             child.kind == "wdoc::draw::paragraph" || child.kind == "wdoc::draw::p" || child.kind == "wdoc::draw::code" ||
             child.kind == "wdoc::paragraph" || child.kind == "wdoc::p" || child.kind == "wdoc::code" ||
@@ -72,7 +72,7 @@ namespace wdoc {
     }
 
     export let datatable_cell_controls = (cell) => {
-        let cell_children = cell == null ? [] : wdoc::block_children(cell)
+        let cell_children = cell == null ? [] : block_children(cell)
         let result = filter(cell_children, child =>
             child.kind != "wdoc::draw::paragraph" && child.kind != "wdoc::draw::p" && child.kind != "wdoc::draw::code" &&
             child.kind != "wdoc::paragraph" && child.kind != "wdoc::p" && child.kind != "wdoc::code" &&
@@ -183,7 +183,7 @@ namespace wdoc {
 
     export let widget_datatable = (b) => {
         let rows = attr_or(b, "rows", [])
-        let block_rows = filter(wdoc::block_children(b), child => child.kind == "wdoc::draw::datatable_row")
+        let block_rows = filter(block_children(b), child => child.kind == "wdoc::draw::datatable_row")
         let cols = wdoc::datatable_columns(b, rows)
         let row_count = len(block_rows) + len(rows)
         let w = attr_or(b, "width", 420)

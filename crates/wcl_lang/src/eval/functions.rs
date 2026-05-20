@@ -490,7 +490,19 @@ pub fn builtin_signatures() -> Vec<FunctionSignature> {
             name: "block_children".into(),
             params: vec!["block: block_ref".into()],
             return_type: "list".into(),
-            doc: "Return a block reference child block list".into(),
+            doc: "Return all direct child blocks, including named child block attributes".into(),
+        },
+        FunctionSignature {
+            name: "attr_or".into(),
+            params: vec!["value".into(), "key: string".into(), "default".into()],
+            return_type: "any".into(),
+            doc: "Read a map, object, or block attribute with a fallback".into(),
+        },
+        FunctionSignature {
+            name: "url_component_encode".into(),
+            params: vec!["value".into()],
+            return_type: "string".into(),
+            doc: "Percent-encode a value for a URL query component".into(),
         },
         FunctionSignature {
             name: "map_set".into(),
@@ -858,6 +870,11 @@ pub fn builtin_registry() -> HashMap<String, BuiltinFn> {
     m.insert("block_id".into(), wrap_builtin(block_id));
     m.insert("block_attrs".into(), wrap_builtin(block_attrs));
     m.insert("block_children".into(), wrap_builtin(block_children));
+    m.insert("attr_or".into(), wrap_builtin(attr_or));
+    m.insert(
+        "url_component_encode".into(),
+        wrap_builtin(url_component_encode),
+    );
     m.insert("map_set".into(), wrap_builtin(map_set));
     m.insert("object".into(), wrap_builtin(object));
 
@@ -1097,6 +1114,18 @@ fn get_list<'a>(v: &'a Value, pos: usize, fn_name: &str) -> Result<&'a [Value], 
             pos,
             other.type_name()
         )),
+    }
+}
+
+fn value_to_plain_string(value: &Value) -> String {
+    match value {
+        Value::String(s) => s.clone(),
+        Value::Int(i) => i.to_string(),
+        Value::BigInt(i) => i.to_string(),
+        Value::Float(f) => f.to_string(),
+        Value::Bool(b) => b.to_string(),
+        Value::Null => String::new(),
+        other => format!("{other}"),
     }
 }
 
@@ -2151,19 +2180,51 @@ fn block_attrs(args: &[Value]) -> Result<Value, String> {
 fn block_children(args: &[Value]) -> Result<Value, String> {
     expect_args(args, 1, "block_children")?;
     match &args[0] {
-        Value::BlockRef(block) => Ok(Value::List(
-            block
-                .children
-                .iter()
-                .cloned()
-                .map(Value::BlockRef)
-                .collect(),
-        )),
+        Value::BlockRef(block) => {
+            let mut children: Vec<Value> = block
+                .attributes
+                .values()
+                .filter_map(|value| match value {
+                    Value::BlockRef(child) => Some(Value::BlockRef(child.clone())),
+                    _ => None,
+                })
+                .collect();
+            children.extend(block.children.iter().cloned().map(Value::BlockRef));
+            Ok(Value::List(children))
+        }
         other => Err(format!(
             "block_children: argument 1 must be block_ref, got {}",
             other.type_name()
         )),
     }
+}
+
+fn attr_or(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 3, "attr_or")?;
+    let key = get_string(&args[1], 2, "attr_or")?;
+    let value = match &args[0] {
+        Value::BlockRef(block) => block.attributes.get(key).cloned(),
+        Value::Map(map) => map.get(key).cloned(),
+        Value::Object(object) => object.fields.get(key).cloned(),
+        _ => None,
+    };
+    Ok(value
+        .filter(|value| !matches!(value, Value::Null))
+        .unwrap_or_else(|| args[2].clone()))
+}
+
+fn url_component_encode(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 1, "url_component_encode")?;
+    let value = value_to_plain_string(&args[0]);
+    let mut encoded = String::new();
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
+            encoded.push(byte as char);
+        } else {
+            encoded.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    Ok(Value::String(encoded))
 }
 
 fn map_set(args: &[Value]) -> Result<Value, String> {
@@ -3728,6 +3789,61 @@ mod tests {
         };
         assert_eq!(attrs.get("class"), Some(&s("hero")));
         assert_eq!(attrs.get("id"), Some(&s("intro")));
+    }
+
+    #[test]
+    fn block_children_includes_named_child_block_attributes() {
+        let named = block_ref("item", Some("named"), vec![]);
+        let anonymous = block_ref("item", Some("anonymous"), vec![]);
+        let mut block = block_ref("container", Some("root"), vec![anonymous]);
+        block
+            .attributes
+            .insert("named".to_string(), Value::BlockRef(named));
+
+        let ids = block_ids(block_children(&[Value::BlockRef(block)]).unwrap());
+        assert_eq!(ids, vec!["named".to_string(), "anonymous".to_string()]);
+    }
+
+    #[test]
+    fn attr_or_reads_maps_objects_and_block_refs() {
+        let mut map = IndexMap::new();
+        map.insert("present".to_string(), s("map-value"));
+        map.insert("empty".to_string(), Value::Null);
+        assert_eq!(
+            attr_or(&[Value::Map(map), s("present"), s("fallback")]).unwrap(),
+            s("map-value")
+        );
+        let mut object = ObjectValue {
+            type_name: "record".to_string(),
+            fields: IndexMap::new(),
+        };
+        object
+            .fields
+            .insert("present".to_string(), s("object-value"));
+        assert_eq!(
+            attr_or(&[Value::Object(object), s("present"), s("fallback")]).unwrap(),
+            s("object-value")
+        );
+        let mut block = block_ref("item", Some("item"), vec![]);
+        block
+            .attributes
+            .insert("present".to_string(), s("block-value"));
+        assert_eq!(
+            attr_or(&[Value::BlockRef(block), s("present"), s("fallback")]).unwrap(),
+            s("block-value")
+        );
+        assert_eq!(
+            attr_or(&[Value::Null, s("missing"), s("fallback")]).unwrap(),
+            s("fallback")
+        );
+    }
+
+    #[test]
+    fn url_component_encode_percent_encodes_reserved_bytes() {
+        assert_eq!(
+            url_component_encode(&[s("fill=#fff & size=1em")]).unwrap(),
+            s("fill%3D%23fff%20%26%20size%3D1em")
+        );
     }
 
     #[test]

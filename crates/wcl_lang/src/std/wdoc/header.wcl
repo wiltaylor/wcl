@@ -9,13 +9,13 @@
 // Registered globally (outside the wdoc namespace) so widget lambda bodies can
 // reference it as bare `attr_or` without qualification.
 declare attr_or(block: any, key: string, default: any) -> any
-declare measure_text(text: any) -> map(string, any)
 
 // Core helper for recursive templates. Returns direct child BlockRefs, optionally
 // filtered by exact block kind, e.g. children(item, "UiMenuItem").
 declare children(block: any) -> list(any)
 declare children(block: any, kind: string) -> list(any)
 declare block_children(block: any) -> list(any)
+declare url_component_encode(value: any) -> string
 
 namespace wdoc {
 
@@ -744,15 +744,8 @@ namespace wdoc {
     @markup(":{name}:")
     export let icon_markup = name => wdoc::icon(name)
 
-    declare icon(name: string) -> string
-    declare icon_styled(name: string, size: string, color: string) -> string
-    declare icon_props(name: string, size: string, props: map(string, any)) -> string
-
-    declare measure_text(text: any) -> map(string, any)
     declare render_markup(text: string) -> string
     declare render_children(block: any) -> string
-    declare block_children(block: any) -> list(any)
-    declare table_rows(block: any) -> map(string, any)
     declare project_document(block: any) -> map(string, any)
     declare project_document(block: any, options: map(string, any)) -> map(string, any)
     declare layout_stack(ctx: map(string, any)) -> map(string, any)
@@ -784,6 +777,143 @@ namespace wdoc {
 
     @layout("radial")
     export let default_layout_radial = ctx => wdoc::layout_radial(ctx)
+
+    // --- Generic WDoc helpers ---
+
+    export let __icon_prop_query = props => {
+        let prop_keys = keys(props)
+        join("&", map(prop_keys, key => url_component_encode(key) + "=" + url_component_encode(attr_or(props, key, ""))))
+    }
+
+    export let __icon_placeholder = (name, size, set_name, props) => {
+        let query = wdoc::__icon_prop_query(props)
+        html::render({
+            tag = "span",
+            data_wdoc_icon = "true",
+            data_name = to_string(name),
+            data_size = to_string(size),
+            data_set = set_name != null && to_string(set_name) != "" ? to_string(set_name) : null,
+            data_props = query != "" ? query : null
+        })
+    }
+
+    export let icon = name => wdoc::__icon_placeholder(name, "1em", null, {})
+
+    export let icon_styled = (name, size, color) => wdoc::__icon_placeholder(name, size, null, { fill = color })
+
+    export let icon_props = (name, size, props) => wdoc::__icon_placeholder(name, size, null, props)
+
+    export let table_rows = block => {
+        let attrs = type_of(block) == "block_ref" ? block_attrs(block) : (type_of(block) == "map" || type_of(block) == "object" ? block : {})
+        let caption = attr_or(attrs, "caption", "")
+        let row_lists = filter(values(attrs), value => type_of(value) == "list")
+        let rows = len(row_lists) > 0 ? row_lists[0] : []
+        len(rows) == 0 ? { caption = caption, empty = true, headers = [], rows = [] } : {
+            let first = rows[0]
+            let headers = type_of(first) == "map" || type_of(first) == "object" ? keys(first) : []
+            {
+                caption = caption,
+                empty = false,
+                headers = headers,
+                rows = filter(map(rows, row => (type_of(row) == "map" || type_of(row) == "object") ? map(values(row), value => to_string(value)) : null), row => row != null)
+            }
+        }
+    }
+
+    export let __text_attrs = value => type_of(value) == "block_ref" ? block_attrs(value) : ((type_of(value) == "map" || type_of(value) == "object") ? value : {})
+
+    export let __num_attr = (attrs, key, default) => {
+        let value = attr_or(attrs, key, null)
+        value == null ? default : to_float(value)
+    }
+
+    export let __css_length = (value, font_size) => {
+        let text = trim(to_string(value))
+        ends_with(text, "em") ? to_float(substr(text, 0, length(text) - 2)) * font_size :
+        ends_with(text, "px") ? to_float(substr(text, 0, length(text) - 2)) :
+        to_float(text)
+    }
+
+    export let __char_advance_factor = ch =>
+        ch == " " || ch == "\n" || ch == "\r" || ch == "\t" ? 0.33 :
+        contains("ijlI!|.,:;'", ch) ? 0.28 :
+        contains("frt()[]{}", ch) ? 0.38 :
+        contains("mwMW@#%&", ch) ? 0.88 :
+        regex_match(ch, "^[0-9]$") ? 0.56 :
+        regex_match(ch, "^[\\x00-\\x7F]$") ? 0.54 :
+        1.0
+
+    export let __font_style_width_factor = attrs => {
+        let font_style = lower(to_string(attr_or(attrs, "font_style", "")))
+        let font_weight = attr_or(attrs, "font_weight", "")
+        let weight_text = lower(to_string(font_weight))
+        let numeric_weight = regex_match(weight_text, "^[0-9]+$") ? to_int(weight_text) : 0
+        1.0 + (font_style == "italic" || font_style == "oblique" ? 0.02 : 0.0) + (weight_text == "bold" || numeric_weight >= 600 ? 0.03 : 0.0)
+    }
+
+    export let __line_width = (line, font_size, letter_spacing, attrs) => {
+        let indexes = range(0, length(line))
+        let width = sum(map(indexes, i => wdoc::__char_advance_factor(substr(line, i, i + 1)) * font_size))
+        (width + (length(line) > 1 ? letter_spacing * (length(line) - 1) : 0)) * wdoc::__font_style_width_factor(attrs)
+    }
+
+    export let __push_wrapped_word = (word, max_width, font_size, letter_spacing, attrs, i, current, lines) =>
+        i >= length(word) ? { current = current, lines = lines } : {
+            let ch = substr(word, i, i + 1)
+            let candidate = current + ch
+            current == "" || wdoc::__line_width(candidate, font_size, letter_spacing, attrs) <= max_width ?
+                wdoc::__push_wrapped_word(word, max_width, font_size, letter_spacing, attrs, i + 1, candidate, lines) :
+                wdoc::__push_wrapped_word(word, max_width, font_size, letter_spacing, attrs, i + 1, ch, concat(lines, [current]))
+        }
+
+    export let __wrap_words = (words, max_width, font_size, letter_spacing, attrs, i, current, lines) =>
+        i >= len(words) ? (current != "" ? concat(lines, [current]) : lines) : {
+            let word = words[i]
+            let candidate = current == "" ? word : current + " " + word
+            wdoc::__line_width(candidate, font_size, letter_spacing, attrs) <= max_width ?
+                wdoc::__wrap_words(words, max_width, font_size, letter_spacing, attrs, i + 1, candidate, lines) :
+                current != "" ?
+                    wdoc::__wrap_words(words, max_width, font_size, letter_spacing, attrs, i, "", concat(lines, [current])) :
+                    {
+                        let wrapped = wdoc::__push_wrapped_word(word, max_width, font_size, letter_spacing, attrs, 0, "", lines)
+                        wdoc::__wrap_words(words, max_width, font_size, letter_spacing, attrs, i + 1, wrapped.current, wrapped.lines)
+                    }
+        }
+
+    export let __wrap_segment = (segment, max_width, font_size, letter_spacing, attrs) =>
+        segment == "" ? [""] : wdoc::__wrap_words(filter(split(" ", segment), word => trim(word) != ""), max_width, font_size, letter_spacing, attrs, 0, "", [])
+
+    export let __text_lines_loop = (segments, max_width, font_size, letter_spacing, attrs, i, lines) =>
+        i >= len(segments) ? (len(lines) == 0 ? [""] : lines) :
+            wdoc::__text_lines_loop(
+                segments,
+                max_width,
+                font_size,
+                letter_spacing,
+                attrs,
+                i + 1,
+                concat(lines, max_width > 0 ? wdoc::__wrap_segment(segments[i], max_width, font_size, letter_spacing, attrs) : [segments[i]])
+            )
+
+    export let __text_lines = (content, max_width, font_size, letter_spacing, attrs) =>
+        wdoc::__text_lines_loop(split("\n", content), max_width, font_size, letter_spacing, attrs, 0, [])
+
+    export let measure_text = text => {
+        let attrs = wdoc::__text_attrs(text)
+        let content = to_string(attr_or(attrs, "content", ""))
+        let font_size = wdoc::__num_attr(attrs, "font_size", 14.0)
+        let line_height = wdoc::__num_attr(attrs, "line_height", 1.2)
+        let letter_spacing = attr_or(attrs, "letter_spacing", null) == null ? 0.0 : wdoc::__css_length(attr_or(attrs, "letter_spacing", 0), font_size)
+        let width_value = attr_or(attrs, "max_width", attr_or(attrs, "width", null))
+        let max_width = width_value == null ? 0.0 : to_float(width_value)
+        let lines = wdoc::__text_lines(content, max_width, font_size, letter_spacing, attrs)
+        let line_step = font_size * line_height
+        {
+            width = len(lines) == 0 ? 0.0 : max_of(map(lines, line => wdoc::__line_width(line, font_size, letter_spacing, attrs))),
+            height = line_step * len(lines),
+            baseline = max((line_step - font_size), 0.0) / 2.0 + font_size * 0.8
+        }
+    }
 
     // --- Template rendering functions ---
 
