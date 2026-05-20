@@ -18,7 +18,9 @@ use crate::transform::struct_parser::{self, EncodingConfig, Endianness};
 use indexmap::IndexMap;
 use regex::Regex;
 use std::collections::HashMap;
+use std::fs;
 use std::io::{Read, Write};
+use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -344,6 +346,29 @@ impl CodecEvalSession {
                 TransformError::Codec(format!("custom codec '{}': {}", self.codec_name, e.message))
             })
     }
+
+    fn register_builtins(&mut self, builtins: HashMap<String, BuiltinFn>) {
+        for (name, f) in builtins {
+            self.eval.register_function(name, f);
+        }
+    }
+
+    fn stream_next(&mut self, value: &Value) -> Result<Value, TransformError> {
+        match value {
+            Value::Stream(stream) => self
+                .eval
+                .stream_next(stream, Span::dummy())
+                .map_err(|e| TransformError::Codec(e.message)),
+            Value::NativeStream(stream) => self
+                .eval
+                .native_stream_next(stream, Span::dummy())
+                .map_err(|e| TransformError::Codec(e.message)),
+            other => Err(TransformError::Codec(format!(
+                "expected stream, got {}",
+                other.type_name()
+            ))),
+        }
+    }
 }
 
 pub fn decode_custom_file_with_options(
@@ -421,35 +446,20 @@ pub fn encode_custom_records(
     options: &super::CodecOptions,
     writer: &mut dyn Write,
 ) -> Result<(), TransformError> {
-    codec.require_encode()?;
-
-    let options = Value::Map(options.clone());
-
-    if let Some(encoder_all) = &codec.encoder_all {
-        let value = call_codec_encoder(
-            codec,
-            encoder_all,
-            Value::List(records.to_vec()),
-            options.clone(),
-            "encoder_all",
-        )?;
-        write_encoded_value(&value, codec, writer)?;
-        writer.flush().map_err(TransformError::Io)?;
-        return Ok(());
-    }
-
-    let encoder = codec.encoder.as_ref().ok_or_else(|| {
-        TransformError::Codec(format!(
-            "codec '{}' does not support per-record encoding",
-            codec.name
-        ))
-    })?;
-    for record in records {
-        let value = call_codec_encoder(codec, encoder, record.clone(), options.clone(), "encoder")?;
-        write_encoded_value(&value, codec, writer)?;
-    }
-    writer.flush().map_err(TransformError::Io)?;
-    Ok(())
+    let registry = Arc::new(standard_registry()?);
+    let mut session = CodecEvalSession::new(
+        codec,
+        encoder_builtins(registry.clone(), Arc::new(Mutex::new(0))),
+        CODEC_MAX_CALL_DEPTH,
+    );
+    encode_custom_records_with_session_and_registry(
+        &mut session,
+        records,
+        codec,
+        options,
+        writer,
+        registry,
+    )
 }
 
 pub fn encode_custom_value(
@@ -458,24 +468,14 @@ pub fn encode_custom_value(
     options: &super::CodecOptions,
     writer: &mut dyn Write,
 ) -> Result<usize, TransformError> {
-    codec.require_encode()?;
-
-    if let Value::List(records) = value {
-        encode_custom_records(records, codec, options, writer)?;
-        return Ok(records.len());
-    }
-
-    let options = Value::Map(options.clone());
-    let encoder = codec.encoder.as_ref().ok_or_else(|| {
-        TransformError::Codec(format!(
-            "codec '{}' does not support single-value encoding",
-            codec.name
-        ))
-    })?;
-    let value = call_codec_encoder(codec, encoder, value.clone(), options, "encoder")?;
-    write_encoded_value(&value, codec, writer)?;
-    writer.flush().map_err(TransformError::Io)?;
-    Ok(1)
+    let registry = Arc::new(standard_registry()?);
+    encode_custom_value_with_registry(
+        value,
+        codec,
+        options,
+        super::native::OutputTarget::Stream(writer),
+        registry,
+    )
 }
 
 pub fn encode_custom_value_with_session(
@@ -485,50 +485,478 @@ pub fn encode_custom_value_with_session(
     options: &super::CodecOptions,
     writer: &mut dyn Write,
 ) -> Result<usize, TransformError> {
-    codec.require_encode()?;
+    let registry = Arc::new(standard_registry()?);
+    encode_custom_value_with_session_and_registry(
+        session,
+        value,
+        codec,
+        options,
+        super::native::OutputTarget::Stream(writer),
+        registry,
+    )
+}
 
-    let options = Value::Map(options.clone());
-    if let (Value::List(records), Some(encoder_all)) = (value, &codec.encoder_all) {
-        let value = call_codec_encoder_in_session(
-            session,
-            codec,
-            encoder_all,
-            Value::List(records.clone()),
-            options,
-            "encoder_all",
-        )?;
-        write_encoded_value(&value, codec, writer)?;
-        writer.flush().map_err(TransformError::Io)?;
-        return Ok(records.len());
+pub fn encode_custom_value_with_registry(
+    value: &Value,
+    codec: &CustomCodec,
+    options: &super::CodecOptions,
+    target: super::native::OutputTarget<'_>,
+    registry: Arc<CustomCodecRegistry>,
+) -> Result<usize, TransformError> {
+    let depth = Arc::new(Mutex::new(0));
+    let mut session = CodecEvalSession::new(
+        codec,
+        encoder_builtins(registry.clone(), depth),
+        CODEC_MAX_CALL_DEPTH,
+    );
+    encode_custom_value_with_session_and_registry(
+        &mut session,
+        value,
+        codec,
+        options,
+        target,
+        registry,
+    )
+}
+
+pub fn encode_custom_value_with_session_and_registry(
+    session: &mut CodecEvalSession,
+    value: &Value,
+    codec: &CustomCodec,
+    options: &super::CodecOptions,
+    target: super::native::OutputTarget<'_>,
+    registry: Arc<CustomCodecRegistry>,
+) -> Result<usize, TransformError> {
+    session.register_builtins(encoder_builtins(registry.clone(), Arc::new(Mutex::new(0))));
+    codec.require_encode()?;
+    if let Value::List(records) = value {
+        return match target {
+            super::native::OutputTarget::Stream(writer) => {
+                encode_custom_records_with_session_and_registry(
+                    session, records, codec, options, writer, registry,
+                )?;
+                Ok(records.len())
+            }
+            super::native::OutputTarget::Directory(dir) => {
+                let output = call_records_encoder(session, records, codec, options)?;
+                write_output_to_directory(session, &output, codec, dir, options)
+            }
+        };
     }
 
+    let output = call_single_encoder(session, value, codec, options)?;
+    write_output_to_target(session, &output, codec, target, options).map(|count| count.max(1))
+}
+
+fn encode_custom_records_with_session_and_registry(
+    session: &mut CodecEvalSession,
+    records: &[Value],
+    codec: &CustomCodec,
+    options: &super::CodecOptions,
+    writer: &mut dyn Write,
+    _registry: Arc<CustomCodecRegistry>,
+) -> Result<(), TransformError> {
+    codec.require_encode()?;
+    if codec.encoder_all.is_some() {
+        let output = call_records_encoder(session, records, codec, options)?;
+        write_output_to_stream(session, &output, codec, writer, false)?;
+        writer.flush().map_err(TransformError::Io)?;
+        return Ok(());
+    }
+
+    for record in records {
+        let output = call_single_encoder(session, record, codec, options)?;
+        write_output_to_stream(session, &output, codec, writer, false)?;
+    }
+    writer.flush().map_err(TransformError::Io)?;
+    Ok(())
+}
+
+fn call_records_encoder(
+    session: &mut CodecEvalSession,
+    records: &[Value],
+    codec: &CustomCodec,
+    options: &super::CodecOptions,
+) -> Result<Value, TransformError> {
+    let options = Value::Map(options.clone());
+    let encoder_all = codec.encoder_all.as_ref().ok_or_else(|| {
+        TransformError::Codec(format!(
+            "codec '{}' does not support all-record encoding",
+            codec.name
+        ))
+    })?;
+    call_codec_encoder_in_session(
+        session,
+        codec,
+        encoder_all,
+        Value::List(records.to_vec()),
+        options,
+        "encoder_all",
+    )
+}
+
+fn call_single_encoder(
+    session: &mut CodecEvalSession,
+    value: &Value,
+    codec: &CustomCodec,
+    options: &super::CodecOptions,
+) -> Result<Value, TransformError> {
+    let options = Value::Map(options.clone());
     let encoder = codec.encoder.as_ref().ok_or_else(|| {
         TransformError::Codec(format!(
             "codec '{}' does not support single-value encoding",
             codec.name
         ))
     })?;
-    let value =
-        call_codec_encoder_in_session(session, codec, encoder, value.clone(), options, "encoder")?;
-    write_encoded_value(&value, codec, writer)?;
-    writer.flush().map_err(TransformError::Io)?;
+    call_codec_encoder_in_session(session, codec, encoder, value.clone(), options, "encoder")
+}
+
+fn write_output_to_target(
+    session: &mut CodecEvalSession,
+    value: &Value,
+    codec: &CustomCodec,
+    target: super::native::OutputTarget<'_>,
+    options: &super::CodecOptions,
+) -> Result<usize, TransformError> {
+    match target {
+        super::native::OutputTarget::Stream(writer) => {
+            write_output_to_stream(session, value, codec, writer, false)?;
+            writer.flush().map_err(TransformError::Io)?;
+            Ok(1)
+        }
+        super::native::OutputTarget::Directory(dir) => {
+            write_output_to_directory(session, value, codec, dir, options)
+        }
+    }
+}
+
+fn write_output_to_directory(
+    session: &mut CodecEvalSession,
+    value: &Value,
+    codec: &CustomCodec,
+    dir: &Path,
+    options: &super::CodecOptions,
+) -> Result<usize, TransformError> {
+    if let Some(files) = output_files(value) {
+        return write_files_value(session, files, codec, dir);
+    }
+    if let Some((path, content)) = output_file(value) {
+        return write_file_entry(session, path, content, codec, dir).map(|_| 1);
+    }
+
+    let filename = super::native::output_filename(options, default_output_filename(codec));
+    super::native::validate_relative_output_path(&filename)?;
+    fs::create_dir_all(dir).map_err(TransformError::Io)?;
+    let output_path = dir.join(&filename);
+    if let Some(parent) = output_path.parent() {
+        fs::create_dir_all(parent).map_err(TransformError::Io)?;
+    }
+    let mut file = fs::File::create(output_path).map_err(TransformError::Io)?;
+    write_output_to_stream(session, value, codec, &mut file, false)?;
+    file.flush().map_err(TransformError::Io)?;
     Ok(1)
 }
 
-fn call_codec_encoder(
+fn write_files_value(
+    session: &mut CodecEvalSession,
+    files: &Value,
     codec: &CustomCodec,
-    func: &FunctionValue,
-    value: Value,
-    options: Value,
-    attr: &str,
-) -> Result<Value, TransformError> {
-    match func.params.len() {
-        1 => call_codec_lambda(codec, func, &[value], HashMap::new()),
-        2 => call_codec_lambda(codec, func, &[value, options], HashMap::new()),
-        n => Err(TransformError::Codec(format!(
-            "codec '{}' attribute '{}' must accept 1 or 2 arguments, got {}",
-            codec.name, attr, n
+    dir: &Path,
+) -> Result<usize, TransformError> {
+    match files {
+        Value::Map(map) => {
+            let mut count = 0;
+            for (path, content) in map {
+                write_file_entry(session, path, content, codec, dir)?;
+                count += 1;
+            }
+            Ok(count)
+        }
+        Value::List(items) => {
+            let mut count = 0;
+            for item in items {
+                let Some((path, content)) = output_file(item) else {
+                    return Err(TransformError::Codec(format!(
+                        "custom codec '{}' files list entries must be file maps",
+                        codec.name
+                    )));
+                };
+                write_file_entry(session, path, content, codec, dir)?;
+                count += 1;
+            }
+            Ok(count)
+        }
+        Value::Stream(_) | Value::NativeStream(_) => {
+            let mut count = 0;
+            loop {
+                let item = session.stream_next(files)?;
+                if item == Value::Null {
+                    break;
+                }
+                if let Some((path, content)) = output_file(&item) {
+                    write_file_entry(session, path, content, codec, dir)?;
+                    count += 1;
+                } else if let Some(files) = output_files(&item) {
+                    count += write_files_value(session, files, codec, dir)?;
+                } else {
+                    return Err(TransformError::Codec(format!(
+                        "custom codec '{}' files stream entries must be file maps",
+                        codec.name
+                    )));
+                }
+            }
+            Ok(count)
+        }
+        other => Err(TransformError::Codec(format!(
+            "custom codec '{}' files must be map, list, or stream, got {}",
+            codec.name,
+            other.type_name()
         ))),
+    }
+}
+
+fn write_file_entry(
+    session: &mut CodecEvalSession,
+    path: &str,
+    content: &Value,
+    codec: &CustomCodec,
+    dir: &Path,
+) -> Result<(), TransformError> {
+    super::native::validate_relative_output_path(path)?;
+    fs::create_dir_all(dir).map_err(TransformError::Io)?;
+    let output_path = dir.join(path);
+    if let Some(parent) = output_path.parent() {
+        fs::create_dir_all(parent).map_err(TransformError::Io)?;
+    }
+    let mut file = fs::File::create(output_path).map_err(TransformError::Io)?;
+    write_output_to_stream(session, content, codec, &mut file, false)?;
+    file.flush().map_err(TransformError::Io)
+}
+
+fn write_output_to_stream(
+    session: &mut CodecEvalSession,
+    value: &Value,
+    codec: &CustomCodec,
+    writer: &mut dyn Write,
+    byte_chunk: bool,
+) -> Result<(), TransformError> {
+    if output_files(value).is_some() || output_file(value).is_some() {
+        return Err(TransformError::Codec(format!(
+            "custom codec '{}' returned file output for a stream target",
+            codec.name
+        )));
+    }
+    match value {
+        Value::String(s) => writer.write_all(s.as_bytes()).map_err(TransformError::Io),
+        Value::Bytes(bytes) => writer.write_all(bytes).map_err(TransformError::Io),
+        Value::List(items) if byte_chunk && is_byte_list(items) => {
+            let bytes = value_to_bytes(value).map_err(|e| {
+                TransformError::Codec(format!("custom codec '{}' encoder: {}", codec.name, e))
+            })?;
+            writer.write_all(&bytes).map_err(TransformError::Io)
+        }
+        Value::List(items) if byte_chunk => {
+            for item in items {
+                write_output_to_stream(session, item, codec, writer, true)?;
+            }
+            Ok(())
+        }
+        Value::List(_) if codec.mode == CustomCodecMode::Bytes => Err(TransformError::Codec(format!(
+            "custom codec '{}' bytes-mode encoder must return a stream or output map; byte-list final output is no longer supported",
+            codec.name
+        ))),
+        Value::Stream(_) | Value::NativeStream(_) => loop {
+            let chunk = session.stream_next(value)?;
+            if chunk == Value::Null {
+                break Ok(());
+            }
+            write_output_to_stream(session, &chunk, codec, writer, true)?;
+        },
+        other => Err(TransformError::Codec(format!(
+            "custom codec '{}' encoder must return string, bytes, stream, or output map; got {}",
+            codec.name,
+            other.type_name()
+        ))),
+    }
+}
+
+fn output_files(value: &Value) -> Option<&Value> {
+    value.as_map()?.get("files")
+}
+
+fn output_file(value: &Value) -> Option<(&str, &Value)> {
+    let map = value.as_map()?;
+    let path = map.get("path")?.as_string()?;
+    let content = map
+        .get("stream")
+        .or_else(|| map.get("content"))
+        .or_else(|| map.get("bytes"))?;
+    Some((path, content))
+}
+
+fn default_output_filename(codec: &CustomCodec) -> &'static str {
+    match codec.name.as_str() {
+        "html" => "index.html",
+        "svg" => "diagram.svg",
+        "css" => "styles.css",
+        "json" => "data.json",
+        "msgpack" => "data.msgpack",
+        _ if codec.mode == CustomCodecMode::Bytes => "output.bin",
+        _ => "output.txt",
+    }
+}
+
+fn is_byte_list(items: &[Value]) -> bool {
+    items
+        .iter()
+        .all(|item| matches!(item, Value::Int(i) if (0..=255).contains(i)))
+}
+
+fn encoder_builtins(
+    registry: Arc<CustomCodecRegistry>,
+    depth: Arc<Mutex<usize>>,
+) -> HashMap<String, BuiltinFn> {
+    let mut builtins = HashMap::new();
+    builtins.insert(
+        "codec_encode".to_string(),
+        Arc::new(move |args: &[Value]| -> Result<Value, String> {
+            if args.len() < 2 || args.len() > 3 {
+                return Err(format!(
+                    "codec_encode: expected 2 or 3 argument(s), got {}",
+                    args.len()
+                ));
+            }
+            let codec_name = match &args[0] {
+                Value::String(s) | Value::Identifier(s) | Value::Symbol(s) => s.as_str(),
+                other => {
+                    return Err(format!(
+                        "codec_encode: argument 1 must be codec name, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            let options = match args.get(2) {
+                Some(Value::Map(map)) => map.clone(),
+                Some(other) => {
+                    return Err(format!(
+                        "codec_encode: argument 3 must be an options map, got {}",
+                        other.type_name()
+                    ))
+                }
+                None => IndexMap::new(),
+            };
+            {
+                let mut depth = depth.lock().map_err(|_| {
+                    "codec_encode: codec call depth state lock poisoned".to_string()
+                })?;
+                if *depth >= CODEC_MAX_CALL_DEPTH {
+                    return Err("codec_encode: codec call depth exceeded".to_string());
+                }
+                *depth += 1;
+            }
+            let result = codec_encode_value(
+                codec_name,
+                &args[1],
+                &options,
+                registry.clone(),
+                depth.clone(),
+            );
+            let mut locked = depth
+                .lock()
+                .map_err(|_| "codec_encode: codec call depth state lock poisoned".to_string())?;
+            *locked = locked.saturating_sub(1);
+            result.map_err(|e| e.to_string())
+        }) as BuiltinFn,
+    );
+    builtins
+}
+
+fn codec_encode_value(
+    codec_name: &str,
+    value: &Value,
+    options: &super::CodecOptions,
+    registry: Arc<CustomCodecRegistry>,
+    depth: Arc<Mutex<usize>>,
+) -> Result<Value, TransformError> {
+    if let Some(custom) = registry.get(codec_name) {
+        let mut session = CodecEvalSession::new(
+            custom,
+            encoder_builtins(registry.clone(), depth),
+            CODEC_MAX_CALL_DEPTH,
+        );
+        let output = if let Value::List(records) = value {
+            if custom.encoder_all.is_some() {
+                call_records_encoder(&mut session, records, custom, options)?
+            } else {
+                call_single_encoder(&mut session, value, custom, options)?
+            }
+        } else {
+            call_single_encoder(&mut session, value, custom, options)?
+        };
+        return Ok(rehost_wcl_streams(output, session));
+    }
+
+    let native_registry = super::native::NativeCodecRegistry::standard();
+    let native = native_registry
+        .get(codec_name)
+        .ok_or_else(|| TransformError::UnknownCodec(codec_name.to_string()))?;
+    let mut out = Vec::new();
+    super::native::encode_native_value(
+        value,
+        native,
+        options,
+        super::native::OutputTarget::Stream(&mut out),
+    )?;
+    match String::from_utf8(out) {
+        Ok(text) => Ok(Value::String(text)),
+        Err(err) => Ok(Value::Bytes(err.into_bytes())),
+    }
+}
+
+fn rehost_wcl_streams(value: Value, session: CodecEvalSession) -> Value {
+    rehost_wcl_streams_with_session(value, Arc::new(Mutex::new(session)))
+}
+
+fn rehost_wcl_streams_with_session(value: Value, session: Arc<Mutex<CodecEvalSession>>) -> Value {
+    match value {
+        Value::Stream(stream) => Value::NativeStream(NativeStreamValue {
+            inner: Arc::new(Mutex::new(NativeStreamState {
+                next: Box::new(move || {
+                    let mut session = session.lock().map_err(|_| {
+                        "codec_encode: nested stream session lock poisoned".to_string()
+                    })?;
+                    let value = session
+                        .stream_next(&Value::Stream(stream.clone()))
+                        .map_err(|e| e.to_string())?;
+                    if value == Value::Null {
+                        Ok(None)
+                    } else {
+                        Ok(Some(value))
+                    }
+                }),
+                exhausted: false,
+            })),
+        }),
+        Value::List(items) => Value::List(
+            items
+                .into_iter()
+                .map(|item| rehost_wcl_streams_with_session(item, session.clone()))
+                .collect(),
+        ),
+        Value::Map(map) => Value::Map(
+            map.into_iter()
+                .map(|(key, value)| (key, rehost_wcl_streams_with_session(value, session.clone())))
+                .collect(),
+        ),
+        Value::Object(mut object) => {
+            object.fields = object
+                .fields
+                .into_iter()
+                .map(|(key, value)| (key, rehost_wcl_streams_with_session(value, session.clone())))
+                .collect();
+            Value::Object(object)
+        }
+        other => other,
     }
 }
 
@@ -548,32 +976,6 @@ fn call_codec_encoder_in_session(
             codec.name, attr, n
         ))),
     }
-}
-
-fn write_encoded_value(
-    value: &Value,
-    codec: &CustomCodec,
-    writer: &mut dyn Write,
-) -> Result<(), TransformError> {
-    match codec.mode {
-        CustomCodecMode::Text => {
-            let Value::String(s) = value else {
-                return Err(TransformError::Codec(format!(
-                    "custom codec '{}' encoder must return string in text mode, got {}",
-                    codec.name,
-                    value.type_name()
-                )));
-            };
-            writer.write_all(s.as_bytes()).map_err(TransformError::Io)?;
-        }
-        CustomCodecMode::Bytes => {
-            let bytes = value_to_bytes(value).map_err(|e| {
-                TransformError::Codec(format!("custom codec '{}' encoder: {}", codec.name, e))
-            })?;
-            writer.write_all(&bytes).map_err(TransformError::Io)?;
-        }
-    }
-    Ok(())
 }
 
 fn tokenize(data: &[u8], codec: &CustomCodec) -> Result<Vec<Value>, TransformError> {
@@ -1859,6 +2261,171 @@ codec chars {
         );
         assert_eq!(native_stream_next_for_test(&stream), Value::Null);
         assert_eq!(native_stream_next_for_test(&stream), Value::Null);
+    }
+
+    #[test]
+    fn bytes_mode_encoder_rejects_legacy_final_byte_list() {
+        let source = r#"
+codec raw {
+    mode = :bytes
+    encoder = record => [record.value]
+}
+"#;
+        let registry = registry_from_source(source, false).unwrap();
+        let codec = registry.get("raw").unwrap();
+        let mut record = IndexMap::new();
+        record.insert("value".to_string(), Value::Int(65));
+        let mut out = Vec::new();
+        let err = encode_custom_value(&Value::Map(record), codec, &IndexMap::new(), &mut out)
+            .unwrap_err();
+        assert!(err.to_string().contains("byte-list final output"));
+    }
+
+    #[test]
+    fn bytes_mode_encoder_accepts_byte_stream() {
+        let source = r#"
+codec raw {
+    mode = :bytes
+    encoder = record => byte_stream([record.value])
+}
+"#;
+        let registry = registry_from_source(source, false).unwrap();
+        let codec = registry.get("raw").unwrap();
+        let mut record = IndexMap::new();
+        record.insert("value".to_string(), Value::Int(65));
+        let mut out = Vec::new();
+        encode_custom_value(&Value::Map(record), codec, &IndexMap::new(), &mut out).unwrap();
+        assert_eq!(out, vec![65]);
+    }
+
+    #[test]
+    fn encoder_writes_streamed_files_to_directory() {
+        let source = r#"
+codec site {
+    mode = :text
+    encoder = value => {
+        files = stream {
+            let i = state.get("i")
+            let n = i == null ? 0 : i
+            let _ = state.set("i", n + 1)
+            n == 0 ? { path = "index.html" content = "<h1>" + value.title + "</h1>" } :
+            n == 1 ? { path = "assets/app.txt" content = "ok" } :
+            null
+        }
+    }
+}
+"#;
+        let registry = Arc::new(registry_from_source(source, false).unwrap());
+        let codec = registry.get("site").unwrap().clone();
+        let temp = tempfile::tempdir().unwrap();
+        let mut value = IndexMap::new();
+        value.insert("title".to_string(), Value::String("Docs".into()));
+        let written = encode_custom_value_with_registry(
+            &Value::Map(value),
+            &codec,
+            &IndexMap::new(),
+            crate::transform::codec::native::OutputTarget::Directory(temp.path()),
+            registry,
+        )
+        .unwrap();
+        assert_eq!(written, 2);
+        assert_eq!(
+            std::fs::read_to_string(temp.path().join("index.html")).unwrap(),
+            "<h1>Docs</h1>"
+        );
+        assert_eq!(
+            std::fs::read_to_string(temp.path().join("assets/app.txt")).unwrap(),
+            "ok"
+        );
+    }
+
+    #[test]
+    fn codec_encode_composes_svg_codec_output() {
+        let source = r#"
+codec page {
+    mode = :text
+    encoder = value => "<section>" + codec_encode("svg", value.diagram, {}) + "</section>"
+}
+"#;
+        let mut registry = standard_registry().unwrap();
+        let doc_registry = registry_from_source(source, false).unwrap();
+        registry
+            .insert(doc_registry.get("page").unwrap().clone())
+            .unwrap();
+        let registry = Arc::new(registry);
+        let codec = registry.get("page").unwrap().clone();
+        let mut shape = IndexMap::new();
+        shape.insert("tag".to_string(), Value::String("svg".into()));
+        shape.insert("width".to_string(), Value::Int(10));
+        shape.insert("height".to_string(), Value::Int(10));
+        shape.insert(
+            "children".to_string(),
+            Value::List(vec![{
+                let mut rect = IndexMap::new();
+                rect.insert("tag".to_string(), Value::String("rect".into()));
+                rect.insert("width".to_string(), Value::Int(10));
+                rect.insert("height".to_string(), Value::Int(10));
+                Value::Map(rect)
+            }]),
+        );
+        let mut page = IndexMap::new();
+        page.insert("diagram".to_string(), Value::Map(shape));
+        let mut out = Vec::new();
+        encode_custom_value_with_registry(
+            &Value::Map(page),
+            &codec,
+            &IndexMap::new(),
+            crate::transform::codec::native::OutputTarget::Stream(&mut out),
+            registry,
+        )
+        .unwrap();
+        let html = String::from_utf8(out).unwrap();
+        assert!(html.contains("<section><svg"));
+        assert!(html.contains("<rect"));
+    }
+
+    #[test]
+    fn codec_encode_preserves_nested_custom_streams() {
+        let source = r#"
+codec fragment {
+    mode = :text
+    encoder = value => stream {
+        let i = state.get("i")
+        let n = i == null ? 0 : i
+        let _ = state.set("i", n + 1)
+        n == 0 ? "hello " :
+        n == 1 ? value.name :
+        null
+    }
+}
+
+codec wrapper {
+    mode = :text
+    encoder = value => stream {
+        let i = state.get("i")
+        let n = i == null ? 0 : i
+        let _ = state.set("i", n + 1)
+        n == 0 ? "[" :
+        n == 1 ? codec_encode("fragment", value, {}) :
+        n == 2 ? "]" :
+        null
+    }
+}
+"#;
+        let registry = Arc::new(registry_from_source(source, false).unwrap());
+        let codec = registry.get("wrapper").unwrap().clone();
+        let mut value = IndexMap::new();
+        value.insert("name".to_string(), Value::String("stream".into()));
+        let mut out = Vec::new();
+        encode_custom_value_with_registry(
+            &Value::Map(value),
+            &codec,
+            &IndexMap::new(),
+            crate::transform::codec::native::OutputTarget::Stream(&mut out),
+            registry,
+        )
+        .unwrap();
+        assert_eq!(String::from_utf8(out).unwrap(), "[hello stream]");
     }
 
     #[test]

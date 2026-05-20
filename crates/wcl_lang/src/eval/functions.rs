@@ -1,8 +1,8 @@
-use crate::eval::value::{ObjectValue, Value};
+use crate::eval::value::{NativeStreamState, NativeStreamValue, ObjectValue, Value};
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /// A callable built-in function. Supports both plain `fn` pointers and closures.
 pub type BuiltinFn = Arc<dyn Fn(&[Value]) -> Result<Value, String> + Send + Sync>;
@@ -743,6 +743,12 @@ pub fn builtin_signatures() -> Vec<FunctionSignature> {
             return_type: "map".into(),
             doc: "Return a scale and translation that fits bounds into a canvas".into(),
         },
+        FunctionSignature {
+            name: "byte_stream".into(),
+            params: vec!["value".into()],
+            return_type: "stream".into(),
+            doc: "Wrap bytes or a list of byte chunks as a stream".into(),
+        },
     ]
 }
 
@@ -899,6 +905,7 @@ pub fn builtin_registry() -> HashMap<String, BuiltinFn> {
         wrap_builtin(diagram_intrinsic_size),
     );
     m.insert("diagram_fit".into(), wrap_builtin(diagram_fit));
+    m.insert("byte_stream".into(), wrap_builtin(byte_stream));
 
     m
 }
@@ -974,6 +981,38 @@ fn diagram_fit(args: &[Value]) -> Result<Value, String> {
     );
     out.insert("scale".to_string(), Value::Float(scale));
     Ok(Value::Map(out))
+}
+
+fn byte_stream(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 1, "byte_stream")?;
+    match &args[0] {
+        Value::Stream(_) | Value::NativeStream(_) => Ok(args[0].clone()),
+        Value::Bytes(_) => Ok(native_stream_from_chunks(vec![args[0].clone()])),
+        Value::List(items) if is_byte_list(items) => {
+            Ok(native_stream_from_chunks(vec![args[0].clone()]))
+        }
+        Value::List(items) => Ok(native_stream_from_chunks(items.clone())),
+        other => Err(format!(
+            "byte_stream: expected bytes, byte list, stream, or list of chunks, got {}",
+            other.type_name()
+        )),
+    }
+}
+
+fn native_stream_from_chunks(chunks: Vec<Value>) -> Value {
+    let mut iter = chunks.into_iter();
+    Value::NativeStream(NativeStreamValue {
+        inner: Arc::new(Mutex::new(NativeStreamState {
+            next: Box::new(move || Ok(iter.next())),
+            exhausted: false,
+        })),
+    })
+}
+
+fn is_byte_list(items: &[Value]) -> bool {
+    items
+        .iter()
+        .all(|item| matches!(item, Value::Int(i) if (0..=255).contains(i)))
 }
 
 fn expect_map<'a>(

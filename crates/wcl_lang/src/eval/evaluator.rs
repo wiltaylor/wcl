@@ -1013,7 +1013,11 @@ impl Evaluator {
         Ok(value)
     }
 
-    fn stream_next(&mut self, stream: &StreamValue, span: Span) -> Result<Value, Diagnostic> {
+    pub(crate) fn stream_next(
+        &mut self,
+        stream: &StreamValue,
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
         let (lets, final_expr, closure_scope, store) = {
             let state = stream.inner.lock().map_err(|_| {
                 Diagnostic::error("stream state lock poisoned", span).with_code("E052")
@@ -1919,7 +1923,7 @@ impl Evaluator {
         }
     }
 
-    fn native_stream_next(
+    pub(crate) fn native_stream_next(
         &mut self,
         stream: &NativeStreamValue,
         span: Span,

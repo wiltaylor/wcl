@@ -179,11 +179,17 @@ pub fn write_text_output(
     text: &str,
     target: OutputTarget<'_>,
 ) -> Result<(), TransformError> {
+    write_bytes_output(filename, text.as_bytes(), target)
+}
+
+pub fn write_bytes_output(
+    filename: &str,
+    bytes: &[u8],
+    target: OutputTarget<'_>,
+) -> Result<(), TransformError> {
     match target {
         OutputTarget::Stream(writer) => {
-            writer
-                .write_all(text.as_bytes())
-                .map_err(TransformError::Io)?;
+            writer.write_all(bytes).map_err(TransformError::Io)?;
             writer.flush().map_err(TransformError::Io)
         }
         OutputTarget::Directory(path) => {
@@ -193,14 +199,15 @@ pub fn write_text_output(
             if let Some(parent) = output_path.parent() {
                 fs::create_dir_all(parent).map_err(TransformError::Io)?;
             }
-            fs::write(output_path, text).map_err(TransformError::Io)
+            fs::write(output_path, bytes).map_err(TransformError::Io)
         }
     }
 }
 
-fn validate_relative_output_path(filename: &str) -> Result<(), TransformError> {
+pub fn validate_relative_output_path(filename: &str) -> Result<(), TransformError> {
     let path = Path::new(filename);
-    if path.is_absolute()
+    if filename.is_empty()
+        || path.is_absolute()
         || path.components().any(|part| {
             matches!(
                 part,

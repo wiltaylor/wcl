@@ -1838,8 +1838,8 @@ codec msgpack {
     mode = :bytes
     tokenizer = cursor => __msgpack_tokenizer(cursor)
     parser_all = tokens => __msgpack_parser_all(tokens)
-    encoder = record => __msgpack_encoder_all([record])
-    encoder_all = records => __msgpack_encoder_all(records)
+    encoder = record => byte_stream(__msgpack_encoder_all([record]))
+    encoder_all = records => byte_stream(__msgpack_encoder_all(records))
 }
 
 export let __xml_tokenizer = cursor =>

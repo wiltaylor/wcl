@@ -923,8 +923,8 @@ namespace wdoc {
     export let render_content_block = (b) => {
         let id = attr_or(b, "id", "")
         let style = attr_or(b, "style", "")
-        let kind = attr_or(b, "css_kind", "")
-        let html = attr_or(b, "html", "")
+        let kind = attr_or(b, "css_kind", wdoc::style_target_leaf(attr_or(b, "kind", "")))
+        let html = attr_or(b, "html", attr_or(b, "rendered_html", ""))
         let wrapped = (id != "" || style != "") ? html::render({ tag = "div", id = id != "" ? id : null, data_wdoc_content_id = id != "" ? id : null, class_name = style != "" ? "wdoc-style-" + style + "--" + kind : null, html = html }) : html
         wrapped + "\n"
     }
@@ -952,6 +952,154 @@ namespace wdoc {
     export let render_layout_items = (items) => join("", map(items, (item) => wdoc::render_layout_item(item)))
 
     export let script_node = source => { tag = "script", html = replace(to_string(source), "</", "<\\/") }
+
+    export let path_parent_depth = path => {
+        let parts = filter(split("/", to_string(path)), part => part != "")
+        len(parts) <= 1 ? 0 : len(parts) - 1
+    }
+
+    export let repeat_text = (text, count) => count <= 0 ? "" : text + wdoc::repeat_text(text, count - 1)
+
+    export let css_path_for = path => wdoc::repeat_text("../", wdoc::path_parent_depth(path)) + "styles.css"
+
+    export let normalize_html_path = path => {
+        let trimmed = trim_prefix(trim(to_string(path)), "/")
+        trimmed == "" ? "index.html" : (
+            ends_with(trimmed, "/") ? trimmed + "index.html" : (
+                ends_with(trimmed, ".html") ? trimmed : trimmed + ".html"
+            )
+        )
+    }
+
+    export let page_output_path = page => attr_or(page, "path", null) != null ? wdoc::normalize_html_path(page.path) : page.id + ".html"
+
+    export let section_output_path = section => "sections/" + wdoc::slugify(section.id) + ".html"
+
+    export let relative_href = (from_path, to_path) =>
+        starts_with(to_path, "http://") || starts_with(to_path, "https://") || starts_with(to_path, "/") ? to_path :
+        wdoc::repeat_text("../", wdoc::path_parent_depth(from_path)) + to_path
+
+    export let page_effective_template = (doc, page) => attr_or(page, "template", null) != null ? page.template : doc.template
+
+    export let page_layout_items = page => attr_or(attr_or(page, "layout", {}), "children", [])
+
+    export let page_signal_runtime = (ctx, page) => {
+        let signals = attr_or(page, "signals", [])
+        let bindings = attr_or(page, "bindings", [])
+        len(signals) == 0 && len(bindings) == 0 ? null : replace(ctx.runtime.page_signal_template, "__WDOC_SIGNAL_CONFIG_JSON__", json_encode({ signals = signals, bindings = bindings }))
+    }
+
+    export let page_view = (ctx, page) => map_set(
+        map_set(
+            map_set(
+                map_set(
+                    map_set(
+                        map_set(page, "template", wdoc::page_effective_template(ctx.doc, page)),
+                        "output_path", wdoc::page_output_path(page)
+                    ),
+                    "css_path", wdoc::css_path_for(wdoc::page_output_path(page))
+                ),
+                "layout_items", wdoc::page_layout_items(page)
+            ),
+            "signal_runtime", wdoc::page_signal_runtime(ctx, page)
+        ),
+        "href", wdoc::page_output_path(page)
+    )
+
+    export let page_views = ctx => map(filter(ctx.doc.pages, page => attr_or(page, "draft", false) != true), page => wdoc::page_view(ctx, page))
+
+    export let pages_for_section = (pages, section, from_path) => map(filter(pages, page => page.section_id == section.id), page => map_set(page, "href", wdoc::relative_href(from_path, page.output_path)))
+
+    export let first_page_for_section = (pages, section) => {
+        let direct = filter(pages, page => page.section_id == section.id)
+        len(direct) > 0 ? direct[0] : null
+    }
+
+    export let first_page_path_for_section = (pages, section) => {
+        let page = wdoc::first_page_for_section(pages, section)
+        page != null ? page.output_path : "#"
+    }
+
+    export let section_view = (pages, section) => {
+        let output_path = wdoc::section_output_path(section)
+        map_set(
+            map_set(
+                map_set(
+                    map_set(
+                        map_set(section, "output_path", output_path),
+                        "css_path", wdoc::css_path_for(output_path)
+                    ),
+                    "pages", wdoc::pages_for_section(pages, section, output_path)
+                ),
+                "first_page_path", wdoc::first_page_path_for_section(pages, section)
+            ),
+            "children", map(section.children, child => wdoc::section_view(pages, child))
+        )
+    }
+
+    export let section_views = (pages, sections) => map(sections, section => wdoc::section_view(pages, section))
+
+    export let collect_section_outputs = sections => flatten(map(sections, section => {
+        let own = (len(section.pages) > 0 || len(section.children) > 0) ? [{ kind = "section", section = section }] : []
+        concat(own, wdoc::collect_section_outputs(section.children))
+    }))
+
+    export let term_values = (pages, kind) => distinct(flatten(map(pages, page => kind == "tags" ? attr_or(page, "tags", []) : attr_or(page, "categories", []))))
+
+    export let taxonomy_outputs = (pages, kind) => map(wdoc::term_values(pages, kind), term => {
+        let path = kind + "/" + wdoc::slugify(term) + ".html"
+        {
+            kind = "taxonomy",
+            path = path,
+            title = kind + ": " + term,
+            pages = map(filter(pages, page => contains(kind == "tags" ? attr_or(page, "tags", []) : attr_or(page, "categories", []), term)), page => map_set(page, "href", wdoc::relative_href(path, page.output_path)))
+        }
+    })
+
+    export let section_presentation_pages = (section, pages) => {
+        let own = filter(pages, page => page.section_id == section.id)
+        let first = len(own) > 0 ? [own[0]] : []
+        concat(first, flatten(map(section.children, child => wdoc::section_presentation_pages(child, pages))))
+    }
+
+    export let presentation_grid = (doc, pages) => {
+        let rows = filter(map(doc.sections, section => wdoc::section_presentation_pages(section, pages)), row => len(row) > 0)
+        let row_ids = flatten(map(rows, row => map(row, page => page.id)))
+        let uncategorized = filter(pages, page => !contains(row_ids, page.id))
+        len(uncategorized) > 0 ? concat(rows, [uncategorized]) : rows
+    }
+
+    export let row_index_for_page = (grid, page_id, i) =>
+        i >= len(grid) ? -1 : (contains(map(grid[i], page => page.id), page_id) ? i : wdoc::row_index_for_page(grid, page_id, i + 1))
+
+    export let page_index_in_row = (row, page_id) => index_of(map(row, page => page.id), page_id)
+
+    export let nearest_slide = (grid, row, col) =>
+        row < 0 || row >= len(grid) || len(grid[row]) == 0 ? null : grid[row][min(col, len(grid[row]) - 1)]
+
+    export let presentation_nav = (doc, pages, page) => {
+        let grid = wdoc::presentation_grid(doc, pages)
+        let row = wdoc::row_index_for_page(grid, page.id, 0)
+        let col = row < 0 ? -1 : wdoc::page_index_in_row(grid[row], page.id)
+        {
+            left = row >= 0 && col > 0 ? grid[row][col - 1].output_path : null,
+            right = row >= 0 && col + 1 < len(grid[row]) ? grid[row][col + 1].output_path : null,
+            up = row > 0 ? wdoc::nearest_slide(grid, row - 1, col).output_path : null,
+            down = row >= 0 && row + 1 < len(grid) ? wdoc::nearest_slide(grid, row + 1, col).output_path : null
+        }
+    }
+
+    export let prepare_pages = ctx => {
+        let pages = wdoc::page_views(ctx)
+        map(pages, page => map_set(page, "presentation_nav", wdoc::presentation_nav(ctx.doc, pages, page)))
+    }
+
+    export let prepare_render_context = ctx => {
+        let pages = wdoc::prepare_pages(ctx)
+        let sections = wdoc::section_views(pages, ctx.doc.sections)
+        let doc = map_set(map_set(ctx.doc, "pages", pages), "sections", sections)
+        map_set(map_set(ctx, "doc", doc), "site_outputs", concat(wdoc::collect_section_outputs(sections), concat(wdoc::taxonomy_outputs(pages, "tags"), wdoc::taxonomy_outputs(pages, "categories"))))
+    }
 
     export let document_head = (doc, title, css_path, content_html) => {
         let math_nodes = contains(content_html, "data-wdoc-equation=") ? [
@@ -1108,7 +1256,7 @@ namespace wdoc {
         let child_links = map(section.children, child => {
             tag = "a",
             class_name = "wdoc-site-list-item",
-            href = child.output_path,
+            href = wdoc::relative_href(section.output_path, child.output_path),
             children = [{ tag = "h3", content = child.title }]
         })
         let cards = map(section.pages, page => wdoc::site_page_card(page))
@@ -1143,10 +1291,22 @@ namespace wdoc {
         }
     }
 
-    export let render_html_outputs = ctx => concat(
-        map(ctx.doc.pages, page => wdoc::render_page_output(ctx, page)),
-        ctx.doc.template == "site" ? map(ctx.site_outputs, output => wdoc::render_site_output(ctx, output)) : []
-    )
+    export let redirect_output = ctx => {
+        let paths = map(ctx.doc.pages, page => page.output_path)
+        let first = len(ctx.doc.pages) > 0 ? ctx.doc.pages[0] : null
+        contains(paths, "index.html") || first == null ? [] : [{
+            path = "index.html",
+            html = "<!DOCTYPE html>" + html::render({ tag = "html", children = [{ tag = "head", children = [{ tag = "meta", http_equiv = "refresh", content_attr = "0;url=" + first.output_path }] }, { tag = "body" }] })
+        }]
+    }
+
+    export let render_html_outputs = ctx => {
+        let prepared = wdoc::prepare_render_context(ctx)
+        concat(
+            concat(map(prepared.doc.pages, page => wdoc::render_page_output(prepared, page)), prepared.doc.template == "site" ? map(prepared.site_outputs, output => wdoc::render_site_output(prepared, output)) : []),
+            wdoc::redirect_output(prepared)
+        )
+    }
 
     export let style_target_leaf = target => {
         let parts = split("::", target)

@@ -2,6 +2,14 @@
 
 use std::path::Path;
 
+use crate::eval::EmbeddedLibrary;
+
+pub const CODECS_LIBRARY_WCL: &str = include_str!("std/codecs.wcl");
+pub const HTML_LIBRARY_WCL: &str = include_str!("std/html.wcl");
+pub const SVG_LIBRARY_WCL: &str = include_str!("std/svg.wcl");
+pub const CSS_LIBRARY_WCL: &str = include_str!("std/css.wcl");
+pub const WDOC_LIBRARY_WCL: &str = include_str!("std/wdoc.wcl");
+
 /// The WCL highlight.js grammar.
 pub const WCL_HIGHLIGHTJS_GRAMMAR: &str = include_str!("assets/highlightjs/wcl.js");
 
@@ -27,39 +35,170 @@ pub const JETBRAINS_MONO_NERD_ITALIC: &[u8] =
 pub const JETBRAINS_MONO_NERD_BOLD_ITALIC: &[u8] =
     include_bytes!("assets/fonts/JetBrainsMonoNerdFontMono-BoldItalic.ttf");
 
+#[derive(Debug, Clone, Copy)]
+pub struct EmbeddedTextAsset {
+    pub path: &'static str,
+    pub contents: &'static str,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct EmbeddedBinaryAsset {
+    pub path: &'static str,
+    pub contents: &'static [u8],
+}
+
+macro_rules! text_asset {
+    ($path:literal, $contents:expr) => {
+        EmbeddedTextAsset {
+            path: $path,
+            contents: $contents,
+        }
+    };
+}
+
+macro_rules! wcl_asset {
+    ($path:literal) => {
+        text_asset!($path, include_str!(concat!("std/", $path)))
+    };
+}
+
+pub const EMBEDDED_TEXT_ASSETS: &[EmbeddedTextAsset] = &[
+    text_asset!("codecs.wcl", CODECS_LIBRARY_WCL),
+    text_asset!("html.wcl", HTML_LIBRARY_WCL),
+    text_asset!("svg.wcl", SVG_LIBRARY_WCL),
+    text_asset!("css.wcl", CSS_LIBRARY_WCL),
+    text_asset!("wdoc.wcl", WDOC_LIBRARY_WCL),
+    wcl_asset!("wdoc/header.wcl"),
+    wcl_asset!("wdoc/runtime.wcl"),
+    wcl_asset!("wdoc/widgets/ui/button.wcl"),
+    wcl_asset!("wdoc/widgets/ui/slider.wcl"),
+    wcl_asset!("wdoc/widgets/ui/phone.wcl"),
+    wcl_asset!("wdoc/widgets/ui/phone_landscape.wcl"),
+    wcl_asset!("wdoc/widgets/ui/browser.wcl"),
+    wcl_asset!("wdoc/widgets/ui/window.wcl"),
+    wcl_asset!("wdoc/widgets/ui/tablet.wcl"),
+    wcl_asset!("wdoc/widgets/ui/tablet_landscape.wcl"),
+    wcl_asset!("wdoc/widgets/ui/input.wcl"),
+    wcl_asset!("wdoc/widgets/ui/card.wcl"),
+    wcl_asset!("wdoc/widgets/ui/collapsible_panel.wcl"),
+    wcl_asset!("wdoc/widgets/ui/avatar.wcl"),
+    wcl_asset!("wdoc/widgets/ui/toggle.wcl"),
+    wcl_asset!("wdoc/widgets/ui/checkbox.wcl"),
+    wcl_asset!("wdoc/widgets/ui/radio.wcl"),
+    wcl_asset!("wdoc/widgets/ui/button_group.wcl"),
+    wcl_asset!("wdoc/widgets/ui/textbox.wcl"),
+    wcl_asset!("wdoc/widgets/ui/dropdown.wcl"),
+    wcl_asset!("wdoc/widgets/ui/inline_image.wcl"),
+    wcl_asset!("wdoc/widgets/ui/menubar.wcl"),
+    wcl_asset!("wdoc/widgets/ui/context_menu.wcl"),
+    wcl_asset!("wdoc/widgets/ui/badge.wcl"),
+    wcl_asset!("wdoc/widgets/ui/navbar.wcl"),
+    wcl_asset!("wdoc/widgets/ui/stat_card.wcl"),
+    wcl_asset!("wdoc/widgets/ui/profile_card.wcl"),
+    wcl_asset!("wdoc/widgets/ui/action_panel.wcl"),
+    wcl_asset!("wdoc/widgets/ui/list_item.wcl"),
+    wcl_asset!("wdoc/widgets/ui/datatable.wcl"),
+    wcl_asset!("wdoc/widgets/graph/graph_node.wcl"),
+    wcl_asset!("wdoc/widgets/chart/charts.wcl"),
+    wcl_asset!("wdoc/widgets/terminal/button.wcl"),
+    wcl_asset!("wdoc/widgets/terminal/textbox.wcl"),
+    wcl_asset!("wdoc/widgets/terminal/checkbox.wcl"),
+    wcl_asset!("wdoc/widgets/terminal/radio.wcl"),
+    wcl_asset!("wdoc/widgets/terminal/menu.wcl"),
+    wcl_asset!("wdoc/widgets/terminal/menubar.wcl"),
+    wcl_asset!("wdoc/widgets/terminal/dropdown.wcl"),
+    wcl_asset!("wdoc/widgets/flowchart/flowchart.wcl"),
+    wcl_asset!("wdoc/widgets/flowchart/flow_process.wcl"),
+    wcl_asset!("wdoc/widgets/flowchart/flow_decision.wcl"),
+    wcl_asset!("wdoc/widgets/flowchart/flow_terminal.wcl"),
+    wcl_asset!("wdoc/widgets/flowchart/flow_io.wcl"),
+    wcl_asset!("wdoc/widgets/flowchart/flow_subprocess.wcl"),
+    wcl_asset!("wdoc/widgets/c4/c4_person.wcl"),
+    wcl_asset!("wdoc/widgets/c4/c4_system.wcl"),
+    wcl_asset!("wdoc/widgets/c4/c4_container.wcl"),
+    wcl_asset!("wdoc/widgets/c4/c4_component.wcl"),
+    wcl_asset!("wdoc/widgets/c4/c4_boundary.wcl"),
+    wcl_asset!("wdoc/widgets/uml/uml_class.wcl"),
+    wcl_asset!("wdoc/widgets/uml/uml_actor.wcl"),
+    wcl_asset!("wdoc/widgets/uml/uml_package.wcl"),
+    wcl_asset!("wdoc/widgets/uml/uml_note.wcl"),
+    wcl_asset!("wdoc/widgets/infra/server.wcl"),
+    wcl_asset!("wdoc/widgets/infra/database.wcl"),
+    wcl_asset!("wdoc/widgets/infra/cloud.wcl"),
+    wcl_asset!("wdoc/widgets/infra/user.wcl"),
+    wcl_asset!("wdoc/base_styles.wcl"),
+    text_asset!("assets/highlightjs/wcl.js", WCL_HIGHLIGHTJS_GRAMMAR),
+    text_asset!("assets/highlightjs/highlight.min.js", HIGHLIGHTJS_CORE),
+    text_asset!(
+        "assets/highlightjs/github.min.css",
+        HIGHLIGHTJS_THEME_LIGHT_CSS
+    ),
+    text_asset!(
+        "assets/highlightjs/github-dark.min.css",
+        HIGHLIGHTJS_THEME_DARK_CSS
+    ),
+    text_asset!("assets/fonts/OFL.txt", JETBRAINS_MONO_NERD_OFL),
+];
+
+pub const EMBEDDED_BINARY_ASSETS: &[EmbeddedBinaryAsset] = &[
+    EmbeddedBinaryAsset {
+        path: "assets/fonts/JetBrainsMonoNerdFontMono-Regular.ttf",
+        contents: JETBRAINS_MONO_NERD_REGULAR,
+    },
+    EmbeddedBinaryAsset {
+        path: "assets/fonts/JetBrainsMonoNerdFontMono-Bold.ttf",
+        contents: JETBRAINS_MONO_NERD_BOLD,
+    },
+    EmbeddedBinaryAsset {
+        path: "assets/fonts/JetBrainsMonoNerdFontMono-Italic.ttf",
+        contents: JETBRAINS_MONO_NERD_ITALIC,
+    },
+    EmbeddedBinaryAsset {
+        path: "assets/fonts/JetBrainsMonoNerdFontMono-BoldItalic.ttf",
+        contents: JETBRAINS_MONO_NERD_BOLD_ITALIC,
+    },
+];
+
+pub fn embedded_libraries() -> Vec<EmbeddedLibrary> {
+    EMBEDDED_TEXT_ASSETS
+        .iter()
+        .filter(|asset| asset.path.ends_with(".wcl"))
+        .map(|asset| EmbeddedLibrary {
+            name: asset.path,
+            path: asset.path,
+            source: asset.contents,
+        })
+        .collect()
+}
+
 /// Return a bundled static asset by its path under the public `<WCL>:/` root.
 pub fn embedded_asset_bytes(path: &Path) -> Option<&'static [u8]> {
-    match path.to_str()? {
-        "assets/highlightjs/wcl.js" => Some(WCL_HIGHLIGHTJS_GRAMMAR.as_bytes()),
-        "assets/highlightjs/highlight.min.js" => Some(HIGHLIGHTJS_CORE.as_bytes()),
-        "assets/highlightjs/github.min.css" => Some(HIGHLIGHTJS_THEME_LIGHT_CSS.as_bytes()),
-        "assets/highlightjs/github-dark.min.css" => Some(HIGHLIGHTJS_THEME_DARK_CSS.as_bytes()),
-        "assets/fonts/OFL.txt" => Some(JETBRAINS_MONO_NERD_OFL.as_bytes()),
-        "assets/fonts/JetBrainsMonoNerdFontMono-Regular.ttf" => Some(JETBRAINS_MONO_NERD_REGULAR),
-        "assets/fonts/JetBrainsMonoNerdFontMono-Bold.ttf" => Some(JETBRAINS_MONO_NERD_BOLD),
-        "assets/fonts/JetBrainsMonoNerdFontMono-Italic.ttf" => Some(JETBRAINS_MONO_NERD_ITALIC),
-        "assets/fonts/JetBrainsMonoNerdFontMono-BoldItalic.ttf" => {
-            Some(JETBRAINS_MONO_NERD_BOLD_ITALIC)
-        }
-        _ => None,
-    }
+    let path = path.to_str()?;
+    EMBEDDED_BINARY_ASSETS
+        .iter()
+        .find(|asset| asset.path == path)
+        .map(|asset| asset.contents)
+        .or_else(|| {
+            EMBEDDED_TEXT_ASSETS
+                .iter()
+                .find(|asset| asset.path == path)
+                .map(|asset| asset.contents.as_bytes())
+        })
 }
 
 /// Return a bundled UTF-8 static asset by its path under the public `<WCL>:/` root.
 pub fn embedded_asset_text(path: &Path) -> Option<&'static str> {
-    match path.to_str()? {
-        "assets/highlightjs/wcl.js" => Some(WCL_HIGHLIGHTJS_GRAMMAR),
-        "assets/highlightjs/highlight.min.js" => Some(HIGHLIGHTJS_CORE),
-        "assets/highlightjs/github.min.css" => Some(HIGHLIGHTJS_THEME_LIGHT_CSS),
-        "assets/highlightjs/github-dark.min.css" => Some(HIGHLIGHTJS_THEME_DARK_CSS),
-        "assets/fonts/OFL.txt" => Some(JETBRAINS_MONO_NERD_OFL),
-        _ => None,
-    }
+    let path = path.to_str()?;
+    EMBEDDED_TEXT_ASSETS
+        .iter()
+        .find(|asset| asset.path == path)
+        .map(|asset| asset.contents)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
 
     #[test]
     fn bundled_assets_are_present() {
@@ -83,5 +222,74 @@ mod tests {
             .len()
                 > 1024
         );
+    }
+
+    #[test]
+    fn embedded_libraries_are_backed_by_text_assets() {
+        let text_paths = EMBEDDED_TEXT_ASSETS
+            .iter()
+            .map(|asset| asset.path)
+            .collect::<HashSet<_>>();
+        let libraries = embedded_libraries();
+
+        assert!(libraries.iter().any(|library| library.name == "wdoc.wcl"));
+        assert!(libraries
+            .iter()
+            .any(|library| library.name == "wdoc/header.wcl"));
+
+        for library in libraries {
+            assert_eq!(library.name, library.path);
+            assert!(
+                text_paths.contains(library.path),
+                "embedded library '{}' should be in the central text asset registry",
+                library.path
+            );
+            assert_eq!(
+                embedded_asset_text(Path::new(library.path)),
+                Some(library.source)
+            );
+        }
+    }
+
+    #[test]
+    fn embedded_asset_registry_covers_text_and_binary_paths() {
+        assert!(embedded_asset_text(Path::new("wdoc/header.wcl"))
+            .expect("wdoc header")
+            .contains("namespace wdoc"));
+        assert!(embedded_asset_text(Path::new("assets/highlightjs/wcl.js"))
+            .expect("wcl highlight asset")
+            .contains("WCL"));
+        assert!(
+            embedded_asset_bytes(Path::new(
+                "assets/fonts/JetBrainsMonoNerdFontMono-Regular.ttf"
+            ))
+            .expect("font asset")
+            .len()
+                > 1024
+        );
+        assert!(embedded_asset_text(Path::new(
+            "assets/fonts/JetBrainsMonoNerdFontMono-Regular.ttf"
+        ))
+        .is_none());
+        assert!(embedded_asset_bytes(Path::new("missing.asset")).is_none());
+    }
+
+    #[test]
+    fn embedded_asset_paths_are_unique() {
+        let mut paths = HashSet::new();
+        for asset in EMBEDDED_TEXT_ASSETS {
+            assert!(
+                paths.insert(asset.path),
+                "duplicate text asset {}",
+                asset.path
+            );
+        }
+        for asset in EMBEDDED_BINARY_ASSETS {
+            assert!(
+                paths.insert(asset.path),
+                "duplicate embedded asset {}",
+                asset.path
+            );
+        }
     }
 }

@@ -20,6 +20,7 @@ pub use mapper::{map_record, map_records, FieldMapping, MapConfig, MapResult, Wh
 use crate::eval::value::{FunctionValue, Value};
 use std::io::{Read, Write};
 use std::path::Path;
+use std::sync::Arc;
 
 /// Context for transforms that need access to struct definitions.
 pub struct TransformContext<'a> {
@@ -206,68 +207,24 @@ fn execute_with_custom_internal(
             let output_custom = custom_codecs
                 .get(output_codec)
                 .ok_or_else(|| TransformError::UnknownCodec(output_codec.to_string()))?;
-            match output_target {
-                codec::native::OutputTarget::Stream(output_writer) => {
-                    if contains_stream(&value) {
-                        codec::custom::encode_custom_value_with_session(
-                            &mut decoded.session,
-                            &value,
-                            output_custom,
-                            output_options,
-                            output_writer,
-                        )?
-                    } else {
-                        codec::custom::encode_custom_value(
-                            &value,
-                            output_custom,
-                            output_options,
-                            output_writer,
-                        )?
-                    }
-                }
-                codec::native::OutputTarget::Directory(dir) => {
-                    let mut buffer = Vec::new();
-                    if contains_stream(&value) {
-                        codec::custom::encode_custom_value_with_session(
-                            &mut decoded.session,
-                            &value,
-                            output_custom,
-                            output_options,
-                            &mut buffer,
-                        )?
-                    } else {
-                        codec::custom::encode_custom_value(
-                            &value,
-                            output_custom,
-                            output_options,
-                            &mut buffer,
-                        )?
-                    };
-                    let text = String::from_utf8(buffer).map_err(|err| {
-                        TransformError::Codec(format!(
-                            "codec '{}' produced non-UTF-8 output: {}",
-                            output_codec, err
-                        ))
-                    })?;
-                    let default_name = match output_codec {
-                        "html" => "index.html",
-                        "svg" => "diagram.svg",
-                        "css" => "styles.css",
-                        other => {
-                            return Err(TransformError::Codec(format!(
-                                "codec '{}' does not support directory output",
-                                other
-                            )))
-                        }
-                    };
-                    let filename = codec::native::output_filename(output_options, default_name);
-                    codec::native::write_text_output(
-                        &filename,
-                        &text,
-                        codec::native::OutputTarget::Directory(dir),
-                    )?;
-                    1
-                }
+            let registry = Arc::new(custom_codecs.clone());
+            if contains_stream(&value) {
+                codec::custom::encode_custom_value_with_session_and_registry(
+                    &mut decoded.session,
+                    &value,
+                    output_custom,
+                    output_options,
+                    output_target,
+                    registry,
+                )?
+            } else {
+                codec::custom::encode_custom_value_with_registry(
+                    &value,
+                    output_custom,
+                    output_options,
+                    output_target,
+                    registry,
+                )?
             }
         };
         return Ok(TransformStats {

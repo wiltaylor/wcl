@@ -1198,7 +1198,7 @@ codec bytes-one {
         { value = t.value, kind = t.kind }
     }
 
-    encoder = record => [record.value]
+    encoder = record => byte_stream([record.value])
 }
 
 transform bytes-to-json {

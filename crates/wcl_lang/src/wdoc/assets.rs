@@ -65,9 +65,8 @@ pub(crate) fn presentation_runtime_js() -> Result<&'static str, String> {
     runtime_assets().map(|assets| assets.presentation.as_str())
 }
 
-pub(crate) fn page_signal_runtime_js(config_json: &str) -> Result<String, String> {
-    let template = runtime_assets()?.page_signal_template.as_str();
-    Ok(template.replace("__WDOC_SIGNAL_CONFIG_JSON__", config_json))
+pub(crate) fn page_signal_runtime_template_js() -> Result<&'static str, String> {
+    runtime_assets().map(|assets| assets.page_signal_template.as_str())
 }
 
 pub(crate) fn diagram_runtime_js() -> Result<&'static str, String> {
@@ -290,7 +289,7 @@ mod tests {
         assert!(diagram_runtime_js()
             .expect("diagram runtime")
             .contains("__wdocDiagramRuntimeInit"));
-        assert!(page_signal_runtime_js("{\"signals\":[],\"bindings\":[]}")
+        assert!(page_signal_runtime_template_js()
             .expect("page signal runtime")
             .contains("__wdocPageSignalsInit"));
     }
