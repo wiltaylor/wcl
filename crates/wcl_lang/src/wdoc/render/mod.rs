@@ -39,52 +39,44 @@ pub fn render_document(
         .map_err(|e| format!("failed to write styles.css: {e}"))?;
 
     // Write highlight.js assets (bundled locally so file:// works)
-    fs::write(
-        output.join("highlight.min.js"),
-        crate::assets::HIGHLIGHTJS_CORE,
-    )
-    .map_err(|e| format!("failed to write highlight.min.js: {e}"))?;
-
-    fs::write(
-        output.join("highlight-light.min.css"),
-        crate::assets::HIGHLIGHTJS_THEME_LIGHT_CSS,
-    )
-    .map_err(|e| format!("failed to write highlight-light.min.css: {e}"))?;
-
-    fs::write(
-        output.join("highlight-dark.min.css"),
-        crate::assets::HIGHLIGHTJS_THEME_DARK_CSS,
-    )
-    .map_err(|e| format!("failed to write highlight-dark.min.css: {e}"))?;
-
-    fs::write(
-        output.join("wcl-grammar.js"),
-        crate::assets::WCL_HIGHLIGHTJS_GRAMMAR,
-    )
-    .map_err(|e| format!("failed to write wcl-grammar.js: {e}"))?;
+    write_embedded_text_asset(
+        output,
+        "highlight.min.js",
+        "<WCL>:/assets/highlightjs/highlight.min.js",
+    )?;
+    write_embedded_text_asset(
+        output,
+        "highlight-light.min.css",
+        "<WCL>:/assets/highlightjs/github.min.css",
+    )?;
+    write_embedded_text_asset(
+        output,
+        "highlight-dark.min.css",
+        "<WCL>:/assets/highlightjs/github-dark.min.css",
+    )?;
+    write_embedded_text_asset(output, "wcl-grammar.js", "<WCL>:/assets/highlightjs/wcl.js")?;
 
     let font_dir = output.join("fonts");
     fs::create_dir_all(&font_dir).map_err(|e| format!("failed to create fonts directory: {e}"))?;
-    for (name, bytes) in [
+    for (name, path) in [
         (
             "JetBrainsMonoNerdFontMono-Regular.ttf",
-            crate::assets::JETBRAINS_MONO_NERD_REGULAR,
+            "<WCL>:/assets/fonts/JetBrainsMonoNerdFontMono-Regular.ttf",
         ),
         (
             "JetBrainsMonoNerdFontMono-Bold.ttf",
-            crate::assets::JETBRAINS_MONO_NERD_BOLD,
+            "<WCL>:/assets/fonts/JetBrainsMonoNerdFontMono-Bold.ttf",
         ),
         (
             "JetBrainsMonoNerdFontMono-Italic.ttf",
-            crate::assets::JETBRAINS_MONO_NERD_ITALIC,
+            "<WCL>:/assets/fonts/JetBrainsMonoNerdFontMono-Italic.ttf",
         ),
         (
             "JetBrainsMonoNerdFontMono-BoldItalic.ttf",
-            crate::assets::JETBRAINS_MONO_NERD_BOLD_ITALIC,
+            "<WCL>:/assets/fonts/JetBrainsMonoNerdFontMono-BoldItalic.ttf",
         ),
     ] {
-        fs::write(font_dir.join(name), bytes)
-            .map_err(|e| format!("failed to write bundled font {name}: {e}"))?;
+        write_embedded_bytes_asset(&font_dir, name, path)?;
     }
 
     // Render HTML outputs through the bundled WDoc template library.
@@ -719,6 +711,22 @@ fn first_page_by_section_order<'a>(
         }
     }
     None
+}
+
+fn write_embedded_text_asset(output: &Path, filename: &str, path: &str) -> Result<(), String> {
+    let relative = crate::eval::imports::wcl_embedded_relative_path(path)?;
+    let content = crate::assets::embedded_asset_text(&relative)
+        .ok_or_else(|| format!("bundled text asset not found: {path}"))?;
+    fs::write(output.join(filename), content)
+        .map_err(|e| format!("failed to write {filename}: {e}"))
+}
+
+fn write_embedded_bytes_asset(output: &Path, filename: &str, path: &str) -> Result<(), String> {
+    let relative = crate::eval::imports::wcl_embedded_relative_path(path)?;
+    let content = crate::assets::embedded_asset_bytes(&relative)
+        .ok_or_else(|| format!("bundled binary asset not found: {path}"))?;
+    fs::write(output.join(filename), content)
+        .map_err(|e| format!("failed to write bundled asset {filename}: {e}"))
 }
 
 fn copy_dir_assets(src: &Path, dest: &Path, extensions: &[&str]) -> Result<(), String> {

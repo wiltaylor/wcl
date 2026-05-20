@@ -8,7 +8,7 @@ use indexmap::IndexMap;
 use std::sync::{Arc, Mutex};
 
 use crate::eval::functions::{builtin_registry, BuiltinFn, FunctionRegistry};
-use crate::eval::imports::FileSystem;
+use crate::eval::imports::{is_wcl_embedded_path, wcl_embedded_relative_path, FileSystem};
 use crate::eval::namespaces::NamespaceAliases;
 use crate::eval::query::QueryIndex;
 use crate::eval::scope::*;
@@ -1076,6 +1076,19 @@ impl Evaluator {
     // ------------------------------------------------------------------
 
     fn read_file_checked(&self, path_str: &str, span: Span) -> Result<String, Diagnostic> {
+        if is_wcl_embedded_path(path_str) {
+            let relative = wcl_embedded_relative_path(path_str)
+                .map_err(|e| Diagnostic::error(e, span).with_code("E052"))?;
+            return crate::assets::embedded_asset_text(&relative)
+                .map(str::to_string)
+                .ok_or_else(|| {
+                    Diagnostic::error(
+                        format!("embedded WCL asset not found: '{}'", path_str),
+                        span,
+                    )
+                });
+        }
+
         let fs = self
             .fs
             .as_ref()
@@ -1108,6 +1121,10 @@ impl Evaluator {
         span: Span,
     ) -> Result<std::path::PathBuf, Diagnostic> {
         let path = std::path::Path::new(path_str);
+        if is_wcl_embedded_path(path_str) {
+            return wcl_embedded_relative_path(path_str)
+                .map_err(|e| Diagnostic::error(e, span).with_code("E052"));
+        }
         if allow_absolute && path.is_absolute() {
             return Ok(crate::eval::imports::normalize_path(path));
         }
@@ -1136,12 +1153,23 @@ impl Evaluator {
         allow_absolute: bool,
         span: Span,
     ) -> Result<Vec<u8>, Diagnostic> {
+        let normalized = self.resolve_file_path_checked(path_str, allow_absolute, span)?;
+
+        if is_wcl_embedded_path(path_str) {
+            return crate::assets::embedded_asset_bytes(&normalized)
+                .map(<[u8]>::to_vec)
+                .ok_or_else(|| {
+                    Diagnostic::error(
+                        format!("embedded WCL asset not found: '{}'", path_str),
+                        span,
+                    )
+                });
+        }
+
         let fs = self
             .fs
             .as_ref()
             .ok_or_else(|| Diagnostic::error("import_codec not available in this context", span))?;
-        let normalized = self.resolve_file_path_checked(path_str, allow_absolute, span)?;
-
         fs.read_file_bytes(&normalized)
             .map_err(|e| Diagnostic::error(format!("cannot read file '{}': {}", path_str, e), span))
     }
@@ -1207,6 +1235,11 @@ impl Evaluator {
             }
             None => {
                 let normalized = self.resolve_file_path_checked(path, false, span)?;
+                if is_wcl_embedded_path(path) {
+                    return Ok(Value::Bool(
+                        crate::assets::embedded_asset_bytes(&normalized).is_some(),
+                    ));
+                }
                 let Some(fs) = self.fs.as_ref() else {
                     return Ok(Value::Bool(false));
                 };
@@ -1217,6 +1250,11 @@ impl Evaluator {
             Diagnostic::error(format!("file_exists() option error: {}", e), span).with_code("E052")
         })?;
         let normalized = self.resolve_file_path_checked(path, allow_absolute, span)?;
+        if is_wcl_embedded_path(path) {
+            return Ok(Value::Bool(
+                crate::assets::embedded_asset_bytes(&normalized).is_some(),
+            ));
+        }
         let Some(fs) = self.fs.as_ref() else {
             return Ok(Value::Bool(false));
         };
@@ -4425,6 +4463,19 @@ mod tests {
         let expr = Expr::ImportRaw(mk_string_lit("data.txt"), ds());
         let result = ev.eval_expr(&expr, scope).unwrap();
         assert_eq!(result, Value::String("hello world".to_string()));
+    }
+
+    #[test]
+    fn test_import_raw_reads_embedded_wcl_asset() {
+        let mut ev = Evaluator::new();
+        let scope = ev.scopes.create_scope(ScopeKind::Module, None);
+
+        let expr = Expr::ImportRaw(mk_string_lit("<WCL>:/assets/highlightjs/wcl.js"), ds());
+        let result = ev.eval_expr(&expr, scope).unwrap();
+        let Value::String(content) = result else {
+            panic!("expected string");
+        };
+        assert!(content.contains("WCL"));
     }
 
     #[test]

@@ -3,9 +3,10 @@ use crate::lang::diagnostic::{Diagnostic, DiagnosticBag};
 use crate::lang::span::{SourceMap, Span};
 use crate::lang::trivia::Trivia;
 use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 pub const EMBEDDED_LIBRARY_ROOT: &str = "<wcl-embedded>";
+pub const WCL_EMBEDDED_PATH_PREFIX: &str = "<WCL>:/";
 
 #[derive(Debug, Clone, Copy)]
 pub struct EmbeddedLibrary {
@@ -20,6 +21,49 @@ impl EmbeddedLibrary {
     pub fn virtual_path(&self) -> PathBuf {
         PathBuf::from(EMBEDDED_LIBRARY_ROOT).join(self.path)
     }
+}
+
+pub fn is_wcl_embedded_path(path: &str) -> bool {
+    path.starts_with(WCL_EMBEDDED_PATH_PREFIX)
+}
+
+pub fn wcl_embedded_relative_path(path: &str) -> Result<PathBuf, String> {
+    let Some(relative) = path.strip_prefix(WCL_EMBEDDED_PATH_PREFIX) else {
+        return Err(format!(
+            "embedded WCL path must start with '{}': '{}'",
+            WCL_EMBEDDED_PATH_PREFIX, path
+        ));
+    };
+    if relative.is_empty() {
+        return Err(format!("embedded WCL path cannot be empty: '{}'", path));
+    }
+    if relative.starts_with('/') || relative.contains("://") {
+        return Err(format!("malformed embedded WCL path: '{}'", path));
+    }
+
+    let relative_path = Path::new(relative);
+    let mut normalized = PathBuf::new();
+    for component in relative_path.components() {
+        match component {
+            Component::Normal(part) => normalized.push(part),
+            Component::CurDir => {}
+            Component::ParentDir => {
+                return Err(format!("embedded WCL path cannot contain '..': '{}'", path));
+            }
+            Component::RootDir | Component::Prefix(_) => {
+                return Err(format!("malformed embedded WCL path: '{}'", path));
+            }
+        }
+    }
+
+    if normalized.as_os_str().is_empty() {
+        return Err(format!("embedded WCL path cannot be empty: '{}'", path));
+    }
+    Ok(normalized)
+}
+
+pub fn wcl_embedded_virtual_path(path: &str) -> Result<PathBuf, String> {
+    Ok(PathBuf::from(EMBEDDED_LIBRARY_ROOT).join(wcl_embedded_relative_path(path)?))
 }
 
 /// Trait for file system access (enables testing with in-memory FS).
@@ -336,8 +380,7 @@ fn resolve_let_import_table<FS: FileSystem + ?Sized>(
         return;
     }
 
-    let resolved = base_dir.join(&path_str);
-    let content = match fs.read_file(&resolved) {
+    let content = match read_import_table_source(&path_str, fs, base_dir) {
         Ok(c) => c,
         Err(e) => {
             diagnostics.error(
@@ -416,9 +459,8 @@ fn resolve_single_import_table<FS: FileSystem + ?Sized>(
         return;
     }
 
-    // Resolve relative to base_dir
-    let resolved = base_dir.join(&path_str);
-    let content = match fs.read_file(&resolved) {
+    // Resolve relative to base_dir, or from the embedded WCL asset registry.
+    let content = match read_import_table_source(&path_str, fs, base_dir) {
         Ok(c) => c,
         Err(e) => {
             diagnostics.error(
@@ -517,6 +559,21 @@ fn resolve_single_import_table<FS: FileSystem + ?Sized>(
 
         // import_expr is already None (we took it above)
     }
+}
+
+fn read_import_table_source<FS: FileSystem + ?Sized>(
+    path_str: &str,
+    fs: &FS,
+    base_dir: &Path,
+) -> Result<String, String> {
+    if is_wcl_embedded_path(path_str) {
+        let relative = wcl_embedded_relative_path(path_str)?;
+        return crate::assets::embedded_asset_text(&relative)
+            .map(str::to_string)
+            .ok_or_else(|| format!("embedded WCL asset not found: {}", path_str));
+    }
+
+    fs.read_file(&base_dir.join(path_str))
 }
 
 /// Resolves `import` directives in WCL documents.
@@ -899,6 +956,19 @@ impl<'a, FS: FileSystem + ?Sized> ImportResolver<'a, FS> {
         current_file: &Path,
     ) -> Result<PathBuf, Diagnostic> {
         let dummy_span = Span::dummy();
+
+        if is_wcl_embedded_path(import_path) {
+            let path = wcl_embedded_virtual_path(import_path)
+                .map_err(|e| Diagnostic::error(e, dummy_span).with_code("E013"))?;
+            if self.embedded_by_path.contains_key(&path) {
+                return Ok(path);
+            }
+            return Err(Diagnostic::error(
+                format!("embedded WCL file not found: '{}'", import_path),
+                dummy_span,
+            )
+            .with_code("E010"));
+        }
 
         // Reject absolute paths
         if import_path.starts_with('/') {
@@ -1500,6 +1570,71 @@ mod tests {
             .resolve_path("./sub/file.wcl", Path::new("/project/dir/main.wcl"))
             .unwrap();
         assert_eq!(result, PathBuf::from("/project/dir/sub/file.wcl"));
+    }
+
+    #[test]
+    fn wcl_embedded_paths_normalize_and_reject_escapes() {
+        assert_eq!(
+            wcl_embedded_relative_path("<WCL>:/wdoc/header.wcl").unwrap(),
+            PathBuf::from("wdoc/header.wcl")
+        );
+        assert_eq!(
+            wcl_embedded_virtual_path("<WCL>:/wdoc/header.wcl").unwrap(),
+            PathBuf::from(EMBEDDED_LIBRARY_ROOT).join("wdoc/header.wcl")
+        );
+        assert!(wcl_embedded_relative_path("<WCL>:/../secret.wcl").is_err());
+        assert!(wcl_embedded_relative_path("<WCL>:/").is_err());
+        assert!(wcl_embedded_relative_path("<wcl>:/wdoc/header.wcl").is_err());
+    }
+
+    #[test]
+    fn resolve_path_accepts_public_wcl_embedded_prefix() {
+        let fs = InMemoryFs::new();
+        let mut sm = make_source_map();
+        let resolver = ImportResolver::new(
+            &fs,
+            &mut sm,
+            PathBuf::from("/project"),
+            32,
+            true,
+            LibraryConfig::default(),
+        );
+
+        let result = resolver
+            .resolve_path("<WCL>:/wdoc/header.wcl", Path::new("/project/main.wcl"))
+            .unwrap();
+        assert_eq!(
+            result,
+            PathBuf::from(EMBEDDED_LIBRARY_ROOT).join("wdoc/header.wcl")
+        );
+    }
+
+    #[test]
+    fn quoted_import_accepts_public_wcl_embedded_prefix() {
+        let fs = InMemoryFs::new();
+        let mut sm = make_source_map();
+        let source = "import \"<WCL>:/wdoc/header.wcl\"";
+        let file_id = sm.add_file("main.wcl".to_string(), source.to_string());
+        let (mut doc, _) = crate::lang::parse(source, file_id);
+
+        let mut resolver = ImportResolver::new(
+            &fs,
+            &mut sm,
+            PathBuf::from("/project"),
+            32,
+            true,
+            LibraryConfig::default(),
+        );
+        let diags = resolver.resolve(&mut doc, Path::new("/project/main.wcl"), 0);
+
+        assert!(
+            !diags.has_errors(),
+            "expected no errors, got: {:?}",
+            diags.diagnostics()
+        );
+        assert!(resolver
+            .loaded_paths()
+            .contains(&PathBuf::from(EMBEDDED_LIBRARY_ROOT).join("wdoc/header.wcl")));
     }
 
     #[test]

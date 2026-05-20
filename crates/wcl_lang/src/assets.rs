@@ -1,5 +1,7 @@
 //! Bundled static assets used by WCL standard tooling.
 
+use std::path::Path;
+
 /// The WCL highlight.js grammar.
 pub const WCL_HIGHLIGHTJS_GRAMMAR: &str = include_str!("assets/highlightjs/wcl.js");
 
@@ -25,6 +27,36 @@ pub const JETBRAINS_MONO_NERD_ITALIC: &[u8] =
 pub const JETBRAINS_MONO_NERD_BOLD_ITALIC: &[u8] =
     include_bytes!("assets/fonts/JetBrainsMonoNerdFontMono-BoldItalic.ttf");
 
+/// Return a bundled static asset by its path under the public `<WCL>:/` root.
+pub fn embedded_asset_bytes(path: &Path) -> Option<&'static [u8]> {
+    match path.to_str()? {
+        "assets/highlightjs/wcl.js" => Some(WCL_HIGHLIGHTJS_GRAMMAR.as_bytes()),
+        "assets/highlightjs/highlight.min.js" => Some(HIGHLIGHTJS_CORE.as_bytes()),
+        "assets/highlightjs/github.min.css" => Some(HIGHLIGHTJS_THEME_LIGHT_CSS.as_bytes()),
+        "assets/highlightjs/github-dark.min.css" => Some(HIGHLIGHTJS_THEME_DARK_CSS.as_bytes()),
+        "assets/fonts/OFL.txt" => Some(JETBRAINS_MONO_NERD_OFL.as_bytes()),
+        "assets/fonts/JetBrainsMonoNerdFontMono-Regular.ttf" => Some(JETBRAINS_MONO_NERD_REGULAR),
+        "assets/fonts/JetBrainsMonoNerdFontMono-Bold.ttf" => Some(JETBRAINS_MONO_NERD_BOLD),
+        "assets/fonts/JetBrainsMonoNerdFontMono-Italic.ttf" => Some(JETBRAINS_MONO_NERD_ITALIC),
+        "assets/fonts/JetBrainsMonoNerdFontMono-BoldItalic.ttf" => {
+            Some(JETBRAINS_MONO_NERD_BOLD_ITALIC)
+        }
+        _ => None,
+    }
+}
+
+/// Return a bundled UTF-8 static asset by its path under the public `<WCL>:/` root.
+pub fn embedded_asset_text(path: &Path) -> Option<&'static str> {
+    match path.to_str()? {
+        "assets/highlightjs/wcl.js" => Some(WCL_HIGHLIGHTJS_GRAMMAR),
+        "assets/highlightjs/highlight.min.js" => Some(HIGHLIGHTJS_CORE),
+        "assets/highlightjs/github.min.css" => Some(HIGHLIGHTJS_THEME_LIGHT_CSS),
+        "assets/highlightjs/github-dark.min.css" => Some(HIGHLIGHTJS_THEME_DARK_CSS),
+        "assets/fonts/OFL.txt" => Some(JETBRAINS_MONO_NERD_OFL),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -40,5 +72,16 @@ mod tests {
         assert!(JETBRAINS_MONO_NERD_BOLD.len() > 1024);
         assert!(JETBRAINS_MONO_NERD_ITALIC.len() > 1024);
         assert!(JETBRAINS_MONO_NERD_BOLD_ITALIC.len() > 1024);
+        assert!(embedded_asset_text(Path::new("assets/highlightjs/wcl.js"))
+            .expect("wcl highlight asset")
+            .contains("WCL"));
+        assert!(
+            embedded_asset_bytes(Path::new(
+                "assets/fonts/JetBrainsMonoNerdFontMono-Regular.ttf"
+            ))
+            .expect("font asset")
+            .len()
+                > 1024
+        );
     }
 }
