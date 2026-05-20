@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use crate::cli::vars::parse_var_args;
 use crate::cli::LibraryArgs;
@@ -118,12 +119,17 @@ pub(crate) fn render_project(
         .unwrap_or_else(|| PathBuf::from("."));
     let doc_value = wdoc_project_value(root, document, &source_dirs);
     let options = wcl_lang::transform::codec::CodecOptions::new();
-    wcl_lang::transform::encode_value_with_custom_to_directory_with_file_access(
+    let codec = registry
+        .get("wdoc-html")
+        .ok_or_else(|| "loaded WCL project does not define codec 'wdoc-html'".to_string())?
+        .clone();
+    wcl_lang::transform::codec::custom::encode_custom_value_with_registry_and_builtins_and_file_access(
         &doc_value,
-        "wdoc-html",
-        output,
+        &codec,
         &options,
-        Some(&registry),
+        wcl_lang::transform::codec::native::OutputTarget::Directory(output),
+        Arc::new(registry),
+        wcl_lang::wdoc::source::wdoc_functions().functions,
         file_base_dir,
     )
     .map(|_| ())

@@ -1,6 +1,9 @@
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
+
 use indexmap::IndexMap;
 
-use crate::{BuiltinFn, FunctionRegistry, FunctionSignature, Value};
+use crate::{BlockRef, BuiltinFn, FunctionRegistry, FunctionSignature, Value};
 
 pub fn wdoc_functions() -> FunctionRegistry {
     let mut reg = FunctionRegistry::new();
@@ -114,6 +117,54 @@ fn register_layout_helpers(reg: &mut FunctionRegistry) {
             params: vec!["ctx: map".into()],
             return_type: "list(map)".into(),
             doc: "Route WDoc diagram connections for resolved shapes".into(),
+        },
+    );
+
+    reg.register(
+        "wdoc::primitive_diagram_value",
+        std::sync::Arc::new(wdoc_primitive_diagram_value_helper) as BuiltinFn,
+        FunctionSignature {
+            name: "wdoc::primitive_diagram_value".into(),
+            params: vec!["project: map".into(), "block: block".into()],
+            return_type: "any".into(),
+            doc: "Build a diagram value natively when it only uses primitive WDoc shapes".into(),
+        },
+    );
+
+    reg.register(
+        "wdoc::media_assets",
+        std::sync::Arc::new(wdoc_media_assets_helper) as BuiltinFn,
+        FunctionSignature {
+            name: "wdoc::media_assets".into(),
+            params: vec!["project: map".into()],
+            return_type: "list(map)".into(),
+            doc: "Collect WDoc local media assets from block values".into(),
+        },
+    );
+
+    reg.register(
+        "wdoc::project_template_name_native",
+        std::sync::Arc::new(wdoc_project_template_name_helper) as BuiltinFn,
+        FunctionSignature {
+            name: "wdoc::project_template_name_native".into(),
+            params: vec![
+                "project: map".into(),
+                "format: string".into(),
+                "schema_name: string".into(),
+            ],
+            return_type: "any".into(),
+            doc: "Resolve WDoc project template metadata".into(),
+        },
+    );
+
+    reg.register(
+        "wdoc::project_extends_name_native",
+        std::sync::Arc::new(wdoc_project_extends_name_helper) as BuiltinFn,
+        FunctionSignature {
+            name: "wdoc::project_extends_name_native".into(),
+            params: vec!["project: map".into(), "schema_name: string".into()],
+            return_type: "any".into(),
+            doc: "Resolve WDoc project schema extension metadata".into(),
         },
     );
 }
@@ -235,6 +286,421 @@ fn wdoc_route_connections_helper(args: &[Value]) -> Result<Value, String> {
             })
             .collect(),
     ))
+}
+
+fn wdoc_primitive_diagram_value_helper(args: &[Value]) -> Result<Value, String> {
+    if args.len() != 2 {
+        return Err("wdoc::primitive_diagram_value() expects 2 arguments".into());
+    }
+    let Value::Map(project) = &args[0] else {
+        return Err("wdoc::primitive_diagram_value() project argument must be a map".into());
+    };
+    let Value::BlockRef(block) = &args[1] else {
+        return Err("wdoc::primitive_diagram_value() block argument must be a block".into());
+    };
+    if kind_leaf(&block.kind) != "diagram" {
+        return Ok(Value::Null);
+    }
+    let shape_templates = shape_template_schemas(project);
+    if !primitive_diagram_supported(block, &shape_templates) {
+        return Ok(Value::Null);
+    }
+
+    let mut map = IndexMap::new();
+    map.insert(
+        "id".to_string(),
+        block
+            .id
+            .as_ref()
+            .map(|id| Value::String(id.clone()))
+            .unwrap_or(Value::Null),
+    );
+    map.insert(
+        "width".to_string(),
+        block
+            .attributes
+            .get("width")
+            .cloned()
+            .unwrap_or(Value::Int(600)),
+    );
+    map.insert(
+        "height".to_string(),
+        block
+            .attributes
+            .get("height")
+            .cloned()
+            .unwrap_or(Value::Int(400)),
+    );
+    map.insert(
+        "align".to_string(),
+        block
+            .attributes
+            .get("align")
+            .cloned()
+            .unwrap_or_else(|| Value::String("none".to_string())),
+    );
+    map.insert(
+        "gap".to_string(),
+        block
+            .attributes
+            .get("gap")
+            .cloned()
+            .unwrap_or(Value::Int(40)),
+    );
+    map.insert(
+        "padding".to_string(),
+        block
+            .attributes
+            .get("padding")
+            .cloned()
+            .unwrap_or(Value::Int(0)),
+    );
+    map.insert(
+        "shapes".to_string(),
+        Value::List(
+            child_blocks(block)
+                .into_iter()
+                .filter(|child| !primitive_skip_block(child, &shape_templates))
+                .map(|child| primitive_shape_value(child, &shape_templates))
+                .collect(),
+        ),
+    );
+    map.insert(
+        "connections".to_string(),
+        Value::List(primitive_connections_in_block(block)),
+    );
+    Ok(Value::Map(map))
+}
+
+fn shape_template_schemas(project: &IndexMap<String, Value>) -> HashSet<String> {
+    let Some(Value::Map(metadata)) = project.get("metadata") else {
+        return HashSet::new();
+    };
+    let Some(Value::List(templates)) = metadata.get("templates") else {
+        return HashSet::new();
+    };
+    templates
+        .iter()
+        .filter_map(|template| {
+            let Value::Map(template) = template else {
+                return None;
+            };
+            let format = template.get("format").and_then(Value::as_string)?;
+            (format == "shape").then(|| template.get("schema").and_then(Value::as_string))?
+        })
+        .map(str::to_string)
+        .collect()
+}
+
+fn primitive_diagram_supported(block: &BlockRef, shape_templates: &HashSet<String>) -> bool {
+    child_blocks(block).into_iter().all(|child| {
+        primitive_skip_block(child, shape_templates)
+            || primitive_shape_supported(child, shape_templates)
+                && primitive_diagram_supported(child, shape_templates)
+    })
+}
+
+fn primitive_shape_supported(block: &BlockRef, shape_templates: &HashSet<String>) -> bool {
+    if has_shape_template(&block.kind, shape_templates) {
+        return false;
+    }
+    matches!(
+        kind_leaf(&block.kind),
+        "rect"
+            | "circle"
+            | "ellipse"
+            | "line"
+            | "path"
+            | "text"
+            | "text_block"
+            | "image"
+            | "map"
+            | "group"
+            | "game_layer"
+    )
+}
+
+fn has_shape_template(kind: &str, shape_templates: &HashSet<String>) -> bool {
+    shape_templates.contains(kind) || shape_templates.contains(kind_leaf(kind))
+}
+
+fn primitive_skip_block(block: &BlockRef, shape_templates: &HashSet<String>) -> bool {
+    primitive_connection_block(block)
+        || has_shape_template(&block.kind, shape_templates)
+        || matches!(
+            block.kind.as_str(),
+            "wdoc::draw::event"
+                | "wdoc::draw::class"
+                | "wdoc::draw::state"
+                | "wdoc::draw::animation"
+                | "wdoc::draw::keyframe"
+                | "wdoc::draw::dopesheet"
+        )
+}
+
+fn primitive_connection_block(block: &BlockRef) -> bool {
+    block.kind == "wdoc::draw::connection"
+}
+
+fn primitive_shape_value(block: &BlockRef, shape_templates: &HashSet<String>) -> Value {
+    let mut attrs = block.attributes.clone();
+    attrs.insert(
+        "kind".to_string(),
+        Value::String(kind_leaf(&block.kind).to_string()),
+    );
+    attrs.insert(
+        "id".to_string(),
+        block
+            .id
+            .as_ref()
+            .map(|id| Value::String(id.clone()))
+            .unwrap_or(Value::Null),
+    );
+    attrs.insert(
+        "children".to_string(),
+        Value::List(
+            child_blocks(block)
+                .into_iter()
+                .filter(|child| !primitive_skip_block(child, shape_templates))
+                .map(|child| primitive_shape_value(child, shape_templates))
+                .collect(),
+        ),
+    );
+    Value::Map(attrs)
+}
+
+fn primitive_connections_in_block(block: &BlockRef) -> Vec<Value> {
+    let mut connections = Vec::new();
+    for child in child_blocks(block) {
+        if primitive_connection_block(child) {
+            connections.push(primitive_connection_value(child));
+        } else {
+            connections.extend(primitive_connections_in_block(child));
+        }
+    }
+    connections
+}
+
+fn primitive_connection_value(block: &BlockRef) -> Value {
+    let mut attrs = block.attributes.clone();
+    attrs.insert("kind".to_string(), Value::String("connection".to_string()));
+    attrs
+        .entry("from".to_string())
+        .or_insert_with(|| Value::String(String::new()));
+    attrs
+        .entry("to".to_string())
+        .or_insert_with(|| Value::String(String::new()));
+    Value::Map(attrs)
+}
+
+fn child_blocks(block: &BlockRef) -> Vec<&BlockRef> {
+    block
+        .attributes
+        .values()
+        .filter_map(|value| match value {
+            Value::BlockRef(child) => Some(child),
+            _ => None,
+        })
+        .chain(block.children.iter())
+        .collect()
+}
+
+fn kind_leaf(kind: &str) -> &str {
+    kind.rsplit("::").next().unwrap_or(kind)
+}
+
+fn wdoc_media_assets_helper(args: &[Value]) -> Result<Value, String> {
+    if args.len() != 1 {
+        return Err("wdoc::media_assets() expects 1 argument".into());
+    }
+    let Value::Map(project) = &args[0] else {
+        return Err("wdoc::media_assets() project argument must be a map".into());
+    };
+    let source_dirs = project_source_dirs(project);
+    let mut seen = HashSet::new();
+    let mut assets = Vec::new();
+    if let Some(Value::Map(values)) = project.get("values") {
+        for value in values.values() {
+            if let Value::BlockRef(block) = value {
+                collect_media_assets(block, &source_dirs, &mut seen, &mut assets);
+            }
+        }
+    }
+    Ok(Value::List(assets))
+}
+
+fn project_source_dirs(project: &IndexMap<String, Value>) -> Vec<PathBuf> {
+    let Some(Value::List(items)) = project.get("source_dirs") else {
+        return Vec::new();
+    };
+    items
+        .iter()
+        .filter_map(|item| item.as_string().map(PathBuf::from))
+        .collect()
+}
+
+fn collect_media_assets(
+    block: &BlockRef,
+    source_dirs: &[PathBuf],
+    seen: &mut HashSet<(String, String)>,
+    assets: &mut Vec<Value>,
+) {
+    if media_asset_kind(&block.kind) {
+        if let Some(src) = block.attributes.get("src").and_then(Value::as_string) {
+            let resolved = resolve_asset_source(src, source_dirs);
+            let key = (src.to_string(), resolved.clone());
+            if seen.insert(key) {
+                let mut asset = IndexMap::new();
+                asset.insert("path".to_string(), Value::String(src.to_string()));
+                asset.insert("src".to_string(), Value::String(resolved));
+                assets.push(Value::Map(asset));
+            }
+        }
+    }
+    for child in child_blocks(block) {
+        collect_media_assets(child, source_dirs, seen, assets);
+    }
+}
+
+fn media_asset_kind(kind: &str) -> bool {
+    matches!(
+        kind,
+        "wdoc::image"
+            | "wdoc::draw::image"
+            | "wdoc::draw::map"
+            | "wdoc::draw::sprite"
+            | "wdoc::draw::dopesheet"
+            | "wdoc::draw::dopesheet_view"
+            | "wdoc::draw::tilemap"
+    )
+}
+
+fn resolve_asset_source(src: &str, source_dirs: &[PathBuf]) -> String {
+    let src_path = Path::new(src);
+    if src_path.is_absolute() {
+        return src.to_string();
+    }
+    source_dirs
+        .iter()
+        .map(|dir| dir.join(src_path))
+        .find(|candidate| candidate.exists())
+        .map(|path| path.to_string_lossy().replace('\\', "/"))
+        .unwrap_or_else(|| src.to_string())
+}
+
+fn wdoc_project_template_name_helper(args: &[Value]) -> Result<Value, String> {
+    if args.len() != 3 {
+        return Err("wdoc::project_template_name_native() expects 3 arguments".into());
+    }
+    let Value::Map(project) = &args[0] else {
+        return Err("wdoc::project_template_name_native() project argument must be a map".into());
+    };
+    let Some(format) = args[1].as_string() else {
+        return Err("wdoc::project_template_name_native() format argument must be a string".into());
+    };
+    let Some(schema_name) = args[2].as_string() else {
+        return Err(
+            "wdoc::project_template_name_native() schema_name argument must be a string".into(),
+        );
+    };
+    if let Some(function) = find_metadata_template(project, format, schema_name) {
+        return Ok(Value::String(function));
+    }
+    if format == "shape" {
+        if let Some(name) = builtin_shape_template_name(project, schema_name) {
+            return Ok(Value::String(name));
+        }
+    }
+    Ok(Value::Null)
+}
+
+fn wdoc_project_extends_name_helper(args: &[Value]) -> Result<Value, String> {
+    if args.len() != 2 {
+        return Err("wdoc::project_extends_name_native() expects 2 arguments".into());
+    }
+    let Value::Map(project) = &args[0] else {
+        return Err("wdoc::project_extends_name_native() project argument must be a map".into());
+    };
+    let Some(schema_name) = args[1].as_string() else {
+        return Err(
+            "wdoc::project_extends_name_native() schema_name argument must be a string".into(),
+        );
+    };
+    if let Some(base) = find_metadata_extends(project, schema_name) {
+        return Ok(Value::String(base));
+    }
+    Ok(Value::Null)
+}
+
+fn find_metadata_template(
+    project: &IndexMap<String, Value>,
+    format: &str,
+    schema_name: &str,
+) -> Option<String> {
+    let Some(Value::Map(metadata)) = project.get("metadata") else {
+        return None;
+    };
+    let Some(Value::List(templates)) = metadata.get("templates") else {
+        return None;
+    };
+    templates.iter().find_map(|template| {
+        let Value::Map(template) = template else {
+            return None;
+        };
+        let item_format = template.get("format")?.as_string()?;
+        let schema = template.get("schema")?.as_string()?;
+        if item_format == format && project_schema_matches(schema, schema_name) {
+            template.get("fn_name")?.as_string().map(str::to_string)
+        } else {
+            None
+        }
+    })
+}
+
+fn find_metadata_extends(project: &IndexMap<String, Value>, schema_name: &str) -> Option<String> {
+    let Some(Value::Map(metadata)) = project.get("metadata") else {
+        return None;
+    };
+    let Some(Value::List(extends)) = metadata.get("extends") else {
+        return None;
+    };
+    extends.iter().find_map(|extends| {
+        let Value::Map(extends) = extends else {
+            return None;
+        };
+        let schema = extends.get("schema")?.as_string()?;
+        if project_schema_matches(schema, schema_name) {
+            extends.get("base")?.as_string().map(str::to_string)
+        } else {
+            None
+        }
+    })
+}
+
+fn project_schema_matches(registered: &str, requested: &str) -> bool {
+    registered == requested || registered == kind_leaf(requested)
+}
+
+fn builtin_shape_template_name(
+    project: &IndexMap<String, Value>,
+    schema_name: &str,
+) -> Option<String> {
+    let values = match project.get("values") {
+        Some(Value::Map(values)) => values,
+        _ => return None,
+    };
+    let leaf = kind_leaf(schema_name);
+    let widget_name = format!("wdoc::widget_{leaf}");
+    if values.contains_key(&widget_name) {
+        return Some(widget_name);
+    }
+    if let Some(terminal_leaf) = leaf.strip_prefix("terminal_") {
+        let terminal_name = format!("wdoc::terminal_widget_{terminal_leaf}");
+        if values.contains_key(&terminal_name) {
+            return Some(terminal_name);
+        }
+    }
+    None
 }
 
 #[cfg(test)]

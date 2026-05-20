@@ -1524,15 +1524,13 @@ namespace wdoc {
         )
     }
 
-    export let project_template_name = (project, fmt, schema_name) => {
-        let matches = filter(project.metadata.templates, item => item.format == fmt && wdoc::project_schema_matches(item.schema, schema_name))
-        len(matches) > 0 ? matches[0].fn_name : (fmt == "shape" ? wdoc::builtin_shape_template_name(project, schema_name) : null)
-    }
+    declare project_template_name_native(project: map(string, any), fmt: string, schema_name: string) -> any
 
-    export let project_extends_name = (project, schema_name) => {
-        let matches = filter(project.metadata.extends, item => wdoc::project_schema_matches(item.schema, schema_name))
-        len(matches) > 0 ? matches[0].base : null
-    }
+    export let project_template_name = (project, fmt, schema_name) => wdoc::project_template_name_native(project, fmt, schema_name)
+
+    declare project_extends_name_native(project: map(string, any), schema_name: string) -> any
+
+    export let project_extends_name = (project, schema_name) => wdoc::project_extends_name_native(project, schema_name)
 
     export let kind_leaf = kind => {
         let parts = split("::", to_string(kind))
@@ -1792,7 +1790,12 @@ namespace wdoc {
         }
     }
 
-    export let render_project_diagram = (project, block) => diagram_svg(wdoc::diagram_value(project, block))
+    declare primitive_diagram_value(project: map(string, any), block: any) -> any
+
+    export let render_project_diagram = (project, block) => {
+        let native = wdoc::primitive_diagram_value(project, block)
+        diagram_svg(native == null ? wdoc::diagram_value(project, block) : native)
+    }
 
     export let extract_section = (project, block, parent_path) => {
         let short_id = attr_or(block_attrs(block), "id", "")
@@ -1876,6 +1879,8 @@ namespace wdoc {
 
     export let asset_from_src = (project, src) => { path = src, src = wdoc::source_path(project, src) }
 
+    declare media_assets(project: map(string, any)) -> list(map(string, any))
+
     export let media_assets_in_block = (project, block) => {
         let attrs = block_attrs(block)
         let kind = block_kind(block)
@@ -1903,7 +1908,7 @@ namespace wdoc {
             sections = map(wdoc::child_blocks_matching(root, "section"), section => wdoc::extract_section(project_with_icons, section, attr_or(attrs, "id", ""))),
             pages = map(concat(top_pages, child_pages), page => wdoc::extract_page(project_with_icons, page)),
             styles = map(concat(wdoc::top_level_blocks_matching(project, "style"), wdoc::child_blocks_matching(root, "style")), style => wdoc::extract_style(style)),
-            assets = distinct(flatten(map(values(project.values), value => type_of(value) == "block_ref" ? wdoc::media_assets_in_block(project_with_icons, value) : []))),
+            assets = wdoc::media_assets(project_with_icons),
             extra_css = ""
         }
     }
