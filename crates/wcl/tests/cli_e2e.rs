@@ -2141,6 +2141,58 @@ doc my_docs {
 // ===========================================================================
 
 #[test]
+fn wdoc_build_renders_content_inside_split_layout() {
+    let dir = tempdir().expect("tempdir");
+    let site = r#"
+import <wdoc.wcl>
+use wdoc::{doc, section, page, layout, heading, paragraph}
+
+doc my_docs {
+    title = "Split Docs"
+    section overview "Overview" {}
+}
+
+page home {
+    section = ref("my_docs.overview")
+    title = "Home"
+
+    layout {
+        vsplit main {
+            split body {
+                size = 100
+
+                heading title {
+                    level = 1
+                    content = "Visible Heading"
+                }
+
+                paragraph intro {
+                    content = "Visible paragraph body."
+                }
+            }
+        }
+    }
+}
+"#;
+    let input = dir.path().join("site.wcl");
+    std::fs::write(&input, site).expect("write wdoc file");
+    let output = dir.path().join("out");
+
+    Command::cargo_bin("wcl")
+        .unwrap()
+        .current_dir(dir.path())
+        .args(["wdoc", "build", "site.wcl", "--output", "out"])
+        .assert()
+        .success();
+
+    let html = std::fs::read_to_string(output.join("home.html")).expect("read rendered page");
+    assert!(html.contains("class=\"wdoc-vsplit\""));
+    assert!(html.contains("class=\"wdoc-split\""));
+    assert!(html.contains("Visible Heading"));
+    assert!(html.contains("Visible paragraph body."));
+}
+
+#[test]
 fn wdoc_build_renders_drawing_image_and_copies_asset() {
     let dir = tempdir().expect("tempdir");
     let pages_dir = dir.path().join("pages");

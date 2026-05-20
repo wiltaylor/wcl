@@ -1063,7 +1063,7 @@ namespace wdoc {
 
     export let render_split_group = (item) => {
         let dir_class = item.direction == "vertical" ? "wdoc-vsplit" : "wdoc-hsplit"
-        let children_html = wdoc::render_layout_items(item.splits)
+        let children_html = join("", map(item.splits, (split) => wdoc::render_split(split)))
         html::render({ tag = "div", class_name = dir_class, html = "\n" + children_html }) + "\n"
     }
 
