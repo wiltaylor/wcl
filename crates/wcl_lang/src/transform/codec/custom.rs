@@ -586,6 +586,31 @@ pub fn encode_custom_value_with_registry_and_builtins(
     )
 }
 
+pub fn encode_custom_value_with_registry_and_file_access(
+    value: &Value,
+    codec: &CustomCodec,
+    options: &super::CodecOptions,
+    target: super::native::OutputTarget<'_>,
+    registry: Arc<CustomCodecRegistry>,
+    base_dir: PathBuf,
+) -> Result<usize, TransformError> {
+    let depth = Arc::new(Mutex::new(0));
+    let mut session = CodecEvalSession::new(
+        codec,
+        encoder_builtins(registry.clone(), depth),
+        CODEC_MAX_CALL_DEPTH,
+    );
+    session.enable_file_access(base_dir);
+    encode_custom_value_with_session_and_registry(
+        &mut session,
+        value,
+        codec,
+        options,
+        target,
+        registry,
+    )
+}
+
 pub fn encode_custom_value_with_registry_and_builtins_and_file_access(
     value: &Value,
     codec: &CustomCodec,

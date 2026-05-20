@@ -357,7 +357,6 @@ fn encode_value_with_custom_to_target_internal(
         return codec::native::encode_native_value(value, native, output_options, output_target);
     }
 
-    let uses_wdoc_codec = output_codec == "wdoc-html";
     let output_custom = custom_codecs
         .get(output_codec)
         .ok_or_else(|| TransformError::UnknownCodec(output_codec.to_string()))?;
@@ -373,44 +372,22 @@ fn encode_value_with_custom_to_target_internal(
         if let Some(base_dir) = file_base_dir.as_ref() {
             session.enable_file_access(base_dir.clone());
         }
-        if uses_wdoc_codec {
-            codec::custom::encode_custom_value_with_session_and_registry_and_builtins(
-                session,
-                value,
-                output_custom,
-                output_options,
-                output_target,
-                registry,
-                crate::wdoc::source::wdoc_functions().functions,
-            )?
-        } else {
-            codec::custom::encode_custom_value_with_session_and_registry(
-                session,
-                value,
-                output_custom,
-                output_options,
-                output_target,
-                registry,
-            )?
-        }
-    } else if uses_wdoc_codec && file_base_dir.is_some() {
-        codec::custom::encode_custom_value_with_registry_and_builtins_and_file_access(
+        codec::custom::encode_custom_value_with_session_and_registry(
+            session,
             value,
             output_custom,
             output_options,
             output_target,
             registry,
-            crate::wdoc::source::wdoc_functions().functions,
-            file_base_dir.expect("checked above"),
         )?
-    } else if uses_wdoc_codec {
-        codec::custom::encode_custom_value_with_registry_and_builtins(
+    } else if let Some(base_dir) = file_base_dir {
+        codec::custom::encode_custom_value_with_registry_and_file_access(
             value,
             output_custom,
             output_options,
             output_target,
             registry,
-            crate::wdoc::source::wdoc_functions().functions,
+            base_dir,
         )?
     } else {
         codec::custom::encode_custom_value_with_registry(

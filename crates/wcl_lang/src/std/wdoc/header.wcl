@@ -746,8 +746,6 @@ namespace wdoc {
 
     declare render_markup(text: string) -> string
     declare render_children(block: any) -> string
-    declare project_document(block: any) -> map(string, any)
-    declare project_document(block: any, options: map(string, any)) -> map(string, any)
     declare layout_stack(ctx: map(string, any)) -> map(string, any)
     declare layout_flow(ctx: map(string, any)) -> map(string, any)
     declare layout_center(ctx: map(string, any)) -> map(string, any)
@@ -1503,17 +1501,13 @@ namespace wdoc {
     ]
 
     export let render_site_files = doc => {
-        let project_doc = type_of(doc) == "block_ref" && doc.kind == "wdoc::doc" ? wdoc::project_document(doc) : doc
-        let prepared_doc = wdoc::prepare_site_document(project_doc)
+        let prepared_doc = wdoc::prepare_site_document(doc)
         let ctx = wdoc::render_context(prepared_doc)
         let html_files = map(wdoc::render_html_outputs(ctx), output => wdoc::html_output_file(output))
         concat([{ path = "styles.css", content = codec_encode("css", wdoc::site_css(prepared_doc), {}) }], concat(html_files, concat(wdoc::local_asset_files(prepared_doc), wdoc::embedded_asset_files())))
     }
 
-    export let render_project_site_files = (doc, options) => {
-        let project_doc = type_of(doc) == "block_ref" && doc.kind == "wdoc::doc" ? wdoc::project_document(doc, options) : doc
-        wdoc::render_site_files(project_doc)
-    }
+    export let render_project_site_files = (doc, options) => wdoc::render_site_files(doc)
 
     export let style_target_leaf = target => {
         let parts = split("::", target)

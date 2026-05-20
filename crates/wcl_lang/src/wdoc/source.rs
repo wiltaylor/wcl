@@ -135,40 +135,6 @@ pub(crate) fn collect_template_helpers(doc: &crate::Document) -> HashMap<String,
         .collect()
 }
 
-fn collect_layout_helpers(doc: &crate::Document) -> Result<HashMap<String, FunctionValue>, String> {
-    let mut helpers: HashMap<String, (String, FunctionValue)> = HashMap::new();
-    for (fn_name, value) in &doc.values {
-        let Value::Function(func) = value else {
-            continue;
-        };
-        for decorator in &func.decorators {
-            if decorator.name != "layout" {
-                continue;
-            }
-            let Some(layout_name) = decorator
-                .args
-                .get("_0")
-                .or_else(|| decorator.args.values().next())
-                .and_then(|value| value.as_string())
-                .map(str::to_string)
-            else {
-                continue;
-            };
-            if let Some((existing_name, _)) =
-                helpers.insert(layout_name.clone(), (fn_name.clone(), func.clone()))
-            {
-                return Err(format!(
-                    "duplicate @layout(\"{layout_name}\") definition on '{fn_name}' and '{existing_name}'; layout names must be unique"
-                ));
-            }
-        }
-    }
-    Ok(helpers
-        .into_iter()
-        .map(|(layout_name, (_, func))| (layout_name, func))
-        .collect())
-}
-
 #[derive(Clone, Debug)]
 struct MarkupRule {
     name: String,
@@ -411,22 +377,6 @@ fn register_renderer_helpers(reg: &mut FunctionRegistry) {
     );
 
     reg.register(
-        "wdoc::project_document",
-        std::sync::Arc::new(|args: &[Value]| {
-            if args.is_empty() || args.len() > 2 {
-                return Err("wdoc::project_document() expects 1 or 2 arguments".into());
-            }
-            wdoc_project_document(&args[0])
-        }) as BuiltinFn,
-        FunctionSignature {
-            name: "wdoc::project_document".into(),
-            params: vec!["doc: any".into(), "options: map".into()],
-            return_type: "map".into(),
-            doc: "Convert a loaded WDoc project block into the WDoc render model".into(),
-        },
-    );
-
-    reg.register(
         "wdoc::render_children",
         std::sync::Arc::new(|args: &[Value]| {
             if args.len() != 1 {
@@ -602,32 +552,7 @@ fn render_diagram_with_ctx(br: &BlockRef, ctx: &ExtractCtx) -> Result<String, St
         options: str_attrs,
     };
 
-    apply_wcl_layouts(&mut diagram, ctx)?;
-    Ok(crate::wdoc::shapes::render_resolved_diagram_svg(
-        &mut diagram,
-    ))
-}
-
-fn apply_wcl_layouts(
-    diagram: &mut crate::wdoc::shapes::Diagram,
-    ctx: &ExtractCtx,
-) -> Result<(), String> {
-    crate::wdoc::shapes::resolve_diagram_layout_with(diagram, |children, connections, request| {
-        let layout_name = crate::wdoc::shapes::alignment_name(request.align);
-        let Some(func) = ctx.layout_helpers.get(layout_name) else {
-            return Err(format!(
-                "no @layout(\"{layout_name}\") registered for WDoc diagram layout"
-            ));
-        };
-        let request_value = layout_request_to_value(children, connections, request);
-        let result = crate::call_lambda_with_env(
-            func,
-            &[request_value],
-            &ctx.builtins,
-            &ctx.template_helpers,
-        )?;
-        apply_layout_result(children, request.indices, result)
-    })
+    Ok(crate::wdoc::shapes::render_diagram_svg(&mut diagram))
 }
 
 fn wdoc_layout_helper(
@@ -709,59 +634,6 @@ fn wdoc_route_connections_helper(args: &[Value]) -> Result<Value, String> {
     ))
 }
 
-fn layout_request_to_value(
-    children: &[crate::wdoc::shapes::ShapeNode],
-    connections: &[crate::wdoc::shapes::Connection],
-    request: crate::wdoc::shapes::LayoutRequest<'_>,
-) -> Value {
-    let mut map = IndexMap::new();
-    map.insert(
-        "layout".to_string(),
-        Value::String(crate::wdoc::shapes::alignment_name(request.align).to_string()),
-    );
-    map.insert("gap".to_string(), Value::Float(request.gap));
-    map.insert(
-        "scope_path".to_string(),
-        Value::String(request.scope_path.to_string()),
-    );
-    map.insert("parent".to_string(), bounds_to_value(request.parent));
-    map.insert(
-        "options".to_string(),
-        Value::Map(
-            request
-                .options
-                .iter()
-                .map(|(key, value)| (key.clone(), Value::String(value.clone())))
-                .collect(),
-        ),
-    );
-    map.insert(
-        "shapes".to_string(),
-        Value::List(
-            request
-                .indices
-                .iter()
-                .filter_map(|idx| children.get(*idx))
-                .map(shape_node_to_layout_input_value)
-                .collect(),
-        ),
-    );
-    map.insert(
-        "connections".to_string(),
-        Value::List(connections.iter().map(connection_to_value).collect()),
-    );
-    Value::Map(map)
-}
-
-fn bounds_to_value(bounds: &crate::wdoc::shapes::Bounds) -> Value {
-    Value::Map(IndexMap::from([
-        ("x".to_string(), Value::Float(bounds.x)),
-        ("y".to_string(), Value::Float(bounds.y)),
-        ("width".to_string(), Value::Float(bounds.width)),
-        ("height".to_string(), Value::Float(bounds.height)),
-    ]))
-}
-
 fn shape_node_to_value(node: &crate::wdoc::shapes::ShapeNode) -> Value {
     let mut map: IndexMap<String, Value> = node
         .attrs
@@ -791,72 +663,6 @@ fn shape_node_to_value(node: &crate::wdoc::shapes::ShapeNode) -> Value {
     map.insert(
         "children".to_string(),
         Value::List(node.children.iter().map(shape_node_to_value).collect()),
-    );
-    Value::Map(map)
-}
-
-fn shape_node_to_layout_input_value(node: &crate::wdoc::shapes::ShapeNode) -> Value {
-    let mut map: IndexMap<String, Value> = node
-        .attrs
-        .iter()
-        .map(|(key, value)| (key.clone(), Value::String(value.clone())))
-        .collect();
-    map.insert("kind".to_string(), Value::String(node.kind_name.clone()));
-    if let Some(id) = &node.id {
-        map.insert("id".to_string(), Value::String(id.clone()));
-    }
-
-    if node.x.is_some() || node.left.is_some() || node.right.is_some() || node.resolved.x != 0.0 {
-        map.insert("x".to_string(), Value::Float(shape_node_layout_x(node)));
-    }
-    if node.y.is_some() || node.top.is_some() || node.bottom.is_some() || node.resolved.y != 0.0 {
-        map.insert("y".to_string(), Value::Float(shape_node_layout_y(node)));
-    }
-    if node.width.is_some()
-        || (node.left.is_some() && node.right.is_some())
-        || node.resolved.width != 0.0
-    {
-        map.insert(
-            "width".to_string(),
-            Value::Float(shape_node_layout_width(node)),
-        );
-    }
-    if node.height.is_some()
-        || (node.top.is_some() && node.bottom.is_some())
-        || node.resolved.height != 0.0
-    {
-        map.insert(
-            "height".to_string(),
-            Value::Float(shape_node_layout_height(node)),
-        );
-    }
-    if let Some(top) = node.top {
-        map.insert("top".to_string(), Value::Float(top));
-    }
-    if let Some(bottom) = node.bottom {
-        map.insert("bottom".to_string(), Value::Float(bottom));
-    }
-    if let Some(left) = node.left {
-        map.insert("left".to_string(), Value::Float(left));
-    }
-    if let Some(right) = node.right {
-        map.insert("right".to_string(), Value::Float(right));
-    }
-
-    map.insert(
-        "align".to_string(),
-        Value::String(crate::wdoc::shapes::alignment_name(node.align).to_string()),
-    );
-    map.insert("gap".to_string(), Value::Float(node.gap));
-    map.insert("padding".to_string(), Value::Float(node.padding));
-    map.insert(
-        "children".to_string(),
-        Value::List(
-            node.children
-                .iter()
-                .map(shape_node_to_layout_input_value)
-                .collect(),
-        ),
     );
     Value::Map(map)
 }
@@ -960,90 +766,6 @@ fn value_string_map(value: Option<&Value>) -> IndexMap<String, String> {
     map.iter()
         .map(|(key, value)| (key.clone(), value_to_string(value)))
         .collect()
-}
-
-fn apply_layout_result(
-    children: &mut [crate::wdoc::shapes::ShapeNode],
-    indices: &[usize],
-    result: Value,
-) -> Result<(), String> {
-    let shapes = match result {
-        Value::Map(mut map) => map.shift_remove("shapes").unwrap_or(Value::Null),
-        Value::List(_) => result,
-        Value::Null => return Ok(()),
-        other => {
-            return Err(format!(
-                "@layout lambda must return a map or list, got {}",
-                other.type_name()
-            ))
-        }
-    };
-    let Value::List(items) = shapes else {
-        return Ok(());
-    };
-    for (position, item) in items.iter().enumerate() {
-        let Some(child_index) = indices.get(position).copied() else {
-            break;
-        };
-        let Some(child) = children.get_mut(child_index) else {
-            continue;
-        };
-        apply_shape_layout_value(child, item)?;
-    }
-    Ok(())
-}
-
-fn apply_shape_layout_value(
-    node: &mut crate::wdoc::shapes::ShapeNode,
-    value: &Value,
-) -> Result<(), String> {
-    let Value::Map(map) = value else {
-        return Err("@layout shape results must be maps".into());
-    };
-    if let Some(x) = map.get("x").and_then(value_as_f64) {
-        node.resolved.x = x;
-    }
-    if let Some(y) = map.get("y").and_then(value_as_f64) {
-        node.resolved.y = y;
-    }
-    if let Some(width) = map.get("width").and_then(value_as_f64) {
-        node.resolved.width = width;
-    }
-    if let Some(height) = map.get("height").and_then(value_as_f64) {
-        node.resolved.height = height;
-    }
-    for (key, value) in map {
-        if matches!(
-            key.as_str(),
-            "kind" | "id" | "x" | "y" | "width" | "height" | "children"
-        ) {
-            continue;
-        }
-        match value {
-            Value::String(s) => {
-                node.attrs.insert(key.clone(), s.clone());
-            }
-            Value::Int(i) => {
-                node.attrs.insert(key.clone(), i.to_string());
-            }
-            Value::Float(f) => {
-                node.attrs.insert(key.clone(), f.to_string());
-            }
-            Value::Bool(b) => {
-                node.attrs.insert(key.clone(), b.to_string());
-            }
-            Value::Null => {}
-            _ => {}
-        }
-    }
-    if let Some(Value::List(items)) = map.get("children") {
-        for (idx, item) in items.iter().enumerate() {
-            if let Some(child) = node.children.get_mut(idx) {
-                apply_shape_layout_value(child, item)?;
-            }
-        }
-    }
-    Ok(())
 }
 
 fn design_system_class(scope: &str) -> String {
@@ -3315,7 +3037,6 @@ struct ExtractCtx {
     draw_schema_names: HashSet<String>,
     structural_shape_schema_names: HashSet<String>,
     template_helpers: HashMap<String, FunctionValue>,
-    layout_helpers: HashMap<String, FunctionValue>,
     markup_rules: Vec<MarkupRule>,
     builtins: HashMap<String, BuiltinFn>,
     css_registry: Rc<RefCell<DiagramCssRegistry>>,
@@ -3361,7 +3082,6 @@ impl ExtractCtx {
 
 thread_local! {
     static CURRENT_WDOC_CTX: RefCell<Vec<*const ExtractCtx>> = const { RefCell::new(Vec::new()) };
-    static CURRENT_WDOC_VALUES: RefCell<Vec<*const IndexMap<String, Value>>> = const { RefCell::new(Vec::new()) };
 }
 
 struct CurrentWdocCtxGuard;
@@ -3371,33 +3091,12 @@ impl Drop for CurrentWdocCtxGuard {
         CURRENT_WDOC_CTX.with(|stack| {
             stack.borrow_mut().pop();
         });
-        CURRENT_WDOC_VALUES.with(|stack| {
-            stack.borrow_mut().pop();
-        });
     }
 }
 
 fn enter_current_wdoc_ctx(ctx: &ExtractCtx) -> CurrentWdocCtxGuard {
     CURRENT_WDOC_CTX.with(|stack| {
         stack.borrow_mut().push(ctx as *const ExtractCtx);
-    });
-    CURRENT_WDOC_VALUES.with(|stack| {
-        stack.borrow_mut().push(std::ptr::null());
-    });
-    CurrentWdocCtxGuard
-}
-
-fn enter_current_wdoc_project(
-    ctx: &ExtractCtx,
-    values: &IndexMap<String, Value>,
-) -> CurrentWdocCtxGuard {
-    CURRENT_WDOC_CTX.with(|stack| {
-        stack.borrow_mut().push(ctx as *const ExtractCtx);
-    });
-    CURRENT_WDOC_VALUES.with(|stack| {
-        stack
-            .borrow_mut()
-            .push(values as *const IndexMap<String, Value>);
     });
     CurrentWdocCtxGuard
 }
@@ -3703,7 +3402,6 @@ mod wdoc_draw_tests {
             draw_schema_names: HashSet::new(),
             structural_shape_schema_names: HashSet::new(),
             template_helpers: HashMap::new(),
-            layout_helpers: HashMap::new(),
             markup_rules: Vec::new(),
             builtins: HashMap::new(),
             css_registry: Rc::new(RefCell::new(DiagramCssRegistry::default())),
@@ -3899,7 +3597,6 @@ mod wdoc_draw_tests {
                 .insert((*kind).to_string(), (*base_kind).to_string());
         }
         ctx.template_helpers = collect_template_helpers(&doc);
-        ctx.layout_helpers = collect_layout_helpers(&doc).unwrap();
         ctx.markup_rules = collect_markup_rules(&doc, &ctx.template_helpers).unwrap();
         ctx.builtins = functions.functions;
         ctx.draw_schema_names = collect_draw_schema_names(&doc);
@@ -3927,7 +3624,6 @@ mod wdoc_draw_tests {
         ctx.template_map = collect_template_map(&doc);
         ctx.template_extends_map = collect_template_extends_map(&doc);
         ctx.template_helpers = template_helpers;
-        ctx.layout_helpers = collect_layout_helpers(&doc).unwrap();
         ctx.markup_rules = collect_markup_rules(&doc, &ctx.template_helpers).unwrap();
         ctx.builtins = functions.functions;
         ctx.draw_schema_names = collect_draw_schema_names(&doc);
@@ -3952,7 +3648,6 @@ mod wdoc_draw_tests {
         );
 
         let template_helpers = collect_template_helpers(&doc);
-        let layout_helpers = collect_layout_helpers(&doc).unwrap();
         let markup_rules = collect_markup_rules(&doc, &template_helpers).unwrap();
         ExtractCtx {
             template_map: collect_template_map(&doc),
@@ -3960,7 +3655,6 @@ mod wdoc_draw_tests {
             draw_schema_names: collect_draw_schema_names(&doc),
             structural_shape_schema_names: collect_structural_shape_schema_names(&doc),
             template_helpers,
-            layout_helpers,
             markup_rules,
             builtins: functions.functions,
             css_registry: Rc::new(RefCell::new(DiagramCssRegistry::default())),
@@ -4089,7 +3783,6 @@ mod wdoc_draw_tests {
             doc.diagnostics
         );
         let template_helpers = collect_template_helpers(&doc);
-        let layout_helpers = collect_layout_helpers(&doc).unwrap();
         let ctx = ExtractCtx {
             template_map: collect_template_map(&doc),
             template_extends_map: collect_template_extends_map(&doc),
@@ -4097,7 +3790,6 @@ mod wdoc_draw_tests {
             structural_shape_schema_names: collect_structural_shape_schema_names(&doc),
             markup_rules: collect_markup_rules(&doc, &template_helpers).unwrap(),
             template_helpers,
-            layout_helpers,
             builtins: functions.functions,
             css_registry: Rc::new(RefCell::new(DiagramCssRegistry::default())),
             diagram_classes: Rc::new(RefCell::new(IndexMap::new())),
@@ -6509,56 +6201,6 @@ mod wdoc_draw_tests {
     }
 
     #[test]
-    fn duplicate_layout_lambdas_are_rejected() {
-        let doc = crate::parse(
-            r#"
-            @layout("flow")
-            export let flow_a = ctx => ctx
-
-            @layout("flow")
-            export let flow_b = ctx => ctx
-            "#,
-            crate::ParseOptions {
-                functions: wdoc_functions(),
-                ..Default::default()
-            },
-        );
-        assert!(
-            !doc.has_errors(),
-            "unexpected diagnostics: {:?}",
-            doc.diagnostics
-        );
-
-        let err = collect_layout_helpers(&doc).expect_err("duplicate layout should fail");
-        assert!(err.contains("duplicate @layout(\"flow\")"));
-    }
-
-    #[test]
-    fn missing_layout_lambda_is_render_error() {
-        let mut a_attrs = IndexMap::new();
-        int_attr(&mut a_attrs, "width", 40);
-        int_attr(&mut a_attrs, "height", 20);
-        let mut b_attrs = IndexMap::new();
-        int_attr(&mut b_attrs, "width", 40);
-        int_attr(&mut b_attrs, "height", 20);
-        let mut diagram_attrs = IndexMap::new();
-        string_attr(&mut diagram_attrs, "align", "flow");
-
-        let diagram = block(
-            "wdoc::draw::diagram",
-            Some("missing_layout"),
-            diagram_attrs,
-            vec![
-                block("wdoc::draw::rect", Some("a"), a_attrs, vec![]),
-                block("wdoc::draw::rect", Some("b"), b_attrs, vec![]),
-            ],
-        );
-
-        let err = render_diagram_with_ctx(&diagram, &empty_ctx()).expect_err("layout should fail");
-        assert!(err.contains("no @layout(\"flow\") registered"));
-    }
-
-    #[test]
     fn nested_connection_blocks_are_scoped_to_parent_shape() {
         let mut a_attrs = IndexMap::new();
         int_attr(&mut a_attrs, "width", 80);
@@ -7667,50 +7309,6 @@ fn wdoc_render_children(value: &Value) -> Result<String, String> {
     })
 }
 
-fn current_wdoc_ctx() -> Result<*const ExtractCtx, String> {
-    CURRENT_WDOC_CTX.with(|stack| {
-        stack
-            .borrow()
-            .last()
-            .copied()
-            .filter(|ptr| !ptr.is_null())
-            .ok_or_else(|| "WDoc helper requires an active WDoc render context".to_string())
-    })
-}
-
-fn current_wdoc_values() -> Result<*const IndexMap<String, Value>, String> {
-    CURRENT_WDOC_VALUES.with(|stack| {
-        stack
-            .borrow()
-            .last()
-            .copied()
-            .filter(|ptr| !ptr.is_null())
-            .ok_or_else(|| {
-                "wdoc::project_document() requires an active loaded WCL project".to_string()
-            })
-    })
-}
-
-fn wdoc_project_document(value: &Value) -> Result<Value, String> {
-    let Value::BlockRef(doc_block) = value else {
-        return Err("wdoc::project_document() expects a wdoc::doc block".into());
-    };
-    if doc_block.kind != "wdoc::doc" {
-        return Err(format!(
-            "wdoc::project_document() expects a wdoc::doc block, got {}",
-            doc_block.kind
-        ));
-    }
-
-    let ctx_ptr = current_wdoc_ctx()?;
-    let values_ptr = current_wdoc_values()?;
-    // These pointers are scoped to the synchronous codec encode call.
-    let ctx = unsafe { &*ctx_ptr };
-    let values = unsafe { &*values_ptr };
-    let doc = extract(values, ctx)?;
-    crate::wdoc::model::document_to_value(&doc)
-}
-
 fn wdoc_render_markup(text: &str) -> Result<String, String> {
     CURRENT_WDOC_CTX.with(|stack| {
         let Some(ctx_ptr) = stack.borrow().last().copied() else {
@@ -8513,15 +8111,14 @@ fn extract_style(block: &BlockRef) -> WdocStyle {
 // Loaded project bridge
 // ---------------------------------------------------------------------------
 
-pub fn with_loaded_project_context<T>(
+pub fn project_document_from_loaded_document(
     document: &crate::Document,
     source_dirs: &[PathBuf],
-    f: impl FnOnce() -> Result<T, crate::transform::TransformError>,
-) -> Result<T, crate::transform::TransformError> {
+) -> Result<Value, crate::transform::TransformError> {
     let ctx = extract_ctx_from_loaded_document(document, source_dirs)
         .map_err(crate::transform::TransformError::Codec)?;
-    let _guard = enter_current_wdoc_project(&ctx, &document.values);
-    f()
+    let doc = extract(&document.values, &ctx).map_err(crate::transform::TransformError::Codec)?;
+    crate::wdoc::model::document_to_value(&doc).map_err(crate::transform::TransformError::Codec)
 }
 
 fn extract_ctx_from_loaded_document(
@@ -8534,7 +8131,6 @@ fn extract_ctx_from_loaded_document(
     let template_extends_map = collect_template_extends_map(doc);
     let builtins: HashMap<String, BuiltinFn> = wdoc_functions().functions;
     let template_helpers = collect_template_helpers(doc);
-    let layout_helpers = collect_layout_helpers(doc)?;
     let markup_rules = collect_markup_rules(doc, &template_helpers)?;
     let svg_search_dirs = source_dirs.to_vec();
     let icon_registry = collect_icon_sets(&doc.values, &svg_search_dirs)?;
@@ -8544,7 +8140,6 @@ fn extract_ctx_from_loaded_document(
         draw_schema_names,
         structural_shape_schema_names,
         template_helpers,
-        layout_helpers,
         markup_rules,
         builtins,
         css_registry: Rc::new(RefCell::new(DiagramCssRegistry::default())),
