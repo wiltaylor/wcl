@@ -22,41 +22,73 @@ use crate::{
 /// Map from (format, schema_name) → function_name, built from AST @template decorators.
 fn collect_template_map(doc: &crate::Document) -> HashMap<(String, String), String> {
     let mut map = HashMap::new();
-    for item in &doc.ast.items {
-        if let ast::DocItem::Body(ast::BodyItem::Schema(schema)) = item {
-            let schema_name = schema_name_literal(schema);
+    collect_template_map_items(&doc.ast.items, &[], &mut map);
+    map
+}
 
-            for dec in &schema.decorators {
-                if dec.name.name == "template" && dec.args.len() >= 2 {
-                    let format = extract_string_arg(&dec.args[0]);
-                    let fn_name = extract_string_arg(&dec.args[1]);
-                    if let (Some(fmt), Some(name)) = (format, fn_name) {
-                        map.insert((fmt, schema_name.clone()), name);
+fn collect_template_map_items(
+    items: &[ast::DocItem],
+    namespace: &[String],
+    map: &mut HashMap<(String, String), String>,
+) {
+    for item in items {
+        match item {
+            ast::DocItem::Body(ast::BodyItem::Schema(schema)) => {
+                let schema_name = qualified_schema_name(namespace, schema);
+
+                for dec in &schema.decorators {
+                    if dec.name.name == "template" && dec.args.len() >= 2 {
+                        let format = extract_string_arg(&dec.args[0]);
+                        let fn_name = extract_string_arg(&dec.args[1]);
+                        if let (Some(fmt), Some(name)) = (format, fn_name) {
+                            map.insert((fmt, schema_name.clone()), name);
+                        }
                     }
                 }
             }
+            ast::DocItem::Namespace(ns) => {
+                let mut child_namespace = namespace.to_vec();
+                child_namespace.extend(ns.path.iter().map(|part| part.name.clone()));
+                collect_template_map_items(&ns.items, &child_namespace, map);
+            }
+            _ => {}
         }
     }
-    map
 }
 
 /// Map from schema_name → base_schema_name, built from AST @extends decorators.
 fn collect_template_extends_map(doc: &crate::Document) -> HashMap<String, String> {
     let mut map = HashMap::new();
-    for item in &doc.ast.items {
-        if let ast::DocItem::Body(ast::BodyItem::Schema(schema)) = item {
-            let schema_name = schema_name_literal(schema);
+    collect_template_extends_map_items(&doc.ast.items, &[], &mut map);
+    map
+}
 
-            for dec in &schema.decorators {
-                if dec.name.name == "extends" && !dec.args.is_empty() {
-                    if let Some(base_name) = extract_string_arg(&dec.args[0]) {
-                        map.insert(schema_name.clone(), base_name);
+fn collect_template_extends_map_items(
+    items: &[ast::DocItem],
+    namespace: &[String],
+    map: &mut HashMap<String, String>,
+) {
+    for item in items {
+        match item {
+            ast::DocItem::Body(ast::BodyItem::Schema(schema)) => {
+                let schema_name = qualified_schema_name(namespace, schema);
+
+                for dec in &schema.decorators {
+                    if dec.name.name == "extends" && !dec.args.is_empty() {
+                        if let Some(base_name) = extract_string_arg(&dec.args[0]) {
+                            map.insert(schema_name.clone(), base_name);
+                        }
                     }
                 }
             }
+            ast::DocItem::Namespace(ns) => {
+                let mut child_namespace = namespace.to_vec();
+                child_namespace.extend(ns.path.iter().map(|part| part.name.clone()));
+                collect_template_extends_map_items(&ns.items, &child_namespace, map);
+            }
+            _ => {}
         }
     }
-    map
 }
 
 pub fn project_metadata_value(doc: &crate::Document) -> Value {
@@ -96,31 +128,73 @@ pub fn project_metadata_value(doc: &crate::Document) -> Value {
 
 fn collect_draw_schema_names(doc: &crate::Document) -> HashSet<String> {
     let mut names = HashSet::new();
-    for item in &doc.ast.items {
-        if let ast::DocItem::Body(ast::BodyItem::Schema(schema)) = item {
-            let schema_name = schema_name_literal(schema);
-            if schema_name.starts_with("wdoc::draw::") {
-                names.insert(schema_name);
+    collect_draw_schema_names_items(&doc.ast.items, &[], &mut names);
+    names
+}
+
+fn collect_draw_schema_names_items(
+    items: &[ast::DocItem],
+    namespace: &[String],
+    names: &mut HashSet<String>,
+) {
+    for item in items {
+        match item {
+            ast::DocItem::Body(ast::BodyItem::Schema(schema)) => {
+                let schema_name = qualified_schema_name(namespace, schema);
+                if schema_name.starts_with("wdoc::draw::") {
+                    names.insert(schema_name);
+                }
             }
+            ast::DocItem::Namespace(ns) => {
+                let mut child_namespace = namespace.to_vec();
+                child_namespace.extend(ns.path.iter().map(|part| part.name.clone()));
+                collect_draw_schema_names_items(&ns.items, &child_namespace, names);
+            }
+            _ => {}
         }
     }
-    names
 }
 
 fn collect_structural_shape_schema_names(doc: &crate::Document) -> HashSet<String> {
     let mut names = HashSet::new();
-    for item in &doc.ast.items {
-        if let ast::DocItem::Body(ast::BodyItem::Schema(schema)) = item {
-            if schema
-                .decorators
-                .iter()
-                .any(|dec| dec.name.name == "structural")
-            {
-                names.insert(schema_name_literal(schema));
+    collect_structural_shape_schema_names_items(&doc.ast.items, &[], &mut names);
+    names
+}
+
+fn collect_structural_shape_schema_names_items(
+    items: &[ast::DocItem],
+    namespace: &[String],
+    names: &mut HashSet<String>,
+) {
+    for item in items {
+        match item {
+            ast::DocItem::Body(ast::BodyItem::Schema(schema)) => {
+                let schema_name = qualified_schema_name(namespace, schema);
+                if schema
+                    .decorators
+                    .iter()
+                    .any(|dec| dec.name.name == "structural")
+                {
+                    names.insert(schema_name);
+                }
             }
+            ast::DocItem::Namespace(ns) => {
+                let mut child_namespace = namespace.to_vec();
+                child_namespace.extend(ns.path.iter().map(|part| part.name.clone()));
+                collect_structural_shape_schema_names_items(&ns.items, &child_namespace, names);
+            }
+            _ => {}
         }
     }
-    names
+}
+
+fn qualified_schema_name(namespace: &[String], schema: &ast::Schema) -> String {
+    let schema_name = schema_name_literal(schema);
+    if schema_name.contains("::") || namespace.is_empty() {
+        schema_name
+    } else {
+        format!("{}::{}", namespace.join("::"), schema_name)
+    }
 }
 
 fn schema_name_literal(schema: &ast::Schema) -> String {

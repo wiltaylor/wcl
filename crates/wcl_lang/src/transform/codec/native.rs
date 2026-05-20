@@ -272,15 +272,26 @@ fn shape_list(value: &Value) -> Result<Vec<ShapeNode>, TransformError> {
             "diagram shapes must be a list".into(),
         ));
     };
-    items
-        .iter()
-        .enumerate()
-        .map(|(i, item)| shape_from_value(item, i))
-        .collect()
+    let mut shapes = Vec::new();
+    push_shape_values(items, &mut shapes)?;
+    Ok(shapes)
+}
+
+fn push_shape_values(items: &[Value], shapes: &mut Vec<ShapeNode>) -> Result<(), TransformError> {
+    for item in items {
+        match item {
+            Value::List(nested) => push_shape_values(nested, shapes)?,
+            other => {
+                let source_order = shapes.len();
+                shapes.push(shape_from_value(other, source_order)?);
+            }
+        }
+    }
+    Ok(())
 }
 
 fn shape_from_value(value: &Value, source_order: usize) -> Result<ShapeNode, TransformError> {
-    let map = value_map(value, "diagram shape must be a map")?;
+    let map = value_map(value, &shape_map_error(value))?;
     let kind_name = map
         .get("kind")
         .map(value_string)
@@ -319,6 +330,20 @@ fn shape_from_value(value: &Value, source_order: usize) -> Result<ShapeNode, Tra
         z_index: number_attr(map, "z_index").unwrap_or(0.0),
         source_order,
     })
+}
+
+fn shape_map_error(value: &Value) -> String {
+    let preview = value.to_string();
+    let preview = if preview.len() > 160 {
+        format!("{}...", &preview[..160])
+    } else {
+        preview
+    };
+    format!(
+        "diagram shape must be a map, got {}: {}",
+        value.type_name(),
+        preview
+    )
 }
 
 fn connection_list(value: &Value) -> Result<Vec<Connection>, TransformError> {
@@ -399,6 +424,7 @@ fn value_map<'a>(
 ) -> Result<&'a IndexMap<String, Value>, TransformError> {
     match value {
         Value::Map(map) => Ok(map),
+        Value::Object(object) => Ok(&object.fields),
         _ => Err(TransformError::Codec(message.into())),
     }
 }
@@ -482,6 +508,35 @@ mod tests {
         assert!(svg.contains("<svg"));
         assert!(svg.contains("width=\"120\""));
         assert!(svg.contains("height=\"80\""));
+    }
+
+    #[test]
+    fn svg_codec_flattens_nested_shape_lists() {
+        let mut rect = IndexMap::new();
+        rect.insert("kind".to_string(), Value::String("rect".to_string()));
+        rect.insert("id".to_string(), Value::String("box".to_string()));
+        rect.insert("width".to_string(), Value::Int(80));
+        rect.insert("height".to_string(), Value::Int(40));
+
+        let mut text = IndexMap::new();
+        text.insert("kind".to_string(), Value::String("text".to_string()));
+        text.insert("content".to_string(), Value::String("Hello".to_string()));
+        text.insert("width".to_string(), Value::Int(80));
+        text.insert("height".to_string(), Value::Int(20));
+
+        let mut diagram = IndexMap::new();
+        diagram.insert("width".to_string(), Value::Int(120));
+        diagram.insert("height".to_string(), Value::Int(80));
+        diagram.insert(
+            "shapes".to_string(),
+            Value::List(vec![Value::Map(rect), Value::List(vec![Value::Map(text)])]),
+        );
+
+        let svg = encode_svg_value_to_string(&Value::Map(diagram), &CodecOptions::new())
+            .expect("encode svg");
+
+        assert!(svg.contains("<rect"));
+        assert!(svg.contains("Hello"));
     }
 
     #[test]

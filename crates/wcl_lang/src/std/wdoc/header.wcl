@@ -1513,13 +1513,24 @@ namespace wdoc {
         wdoc::embedded_asset_file("fonts/JetBrainsMonoNerdFontMono-BoldItalic.ttf", "<WCL>:/assets/fonts/JetBrainsMonoNerdFontMono-BoldItalic.ttf")
     ]
 
+    export let project_schema_matches = (registered, requested) => registered == requested || registered == wdoc::kind_leaf(requested)
+
+    export let builtin_shape_template_name = (project, schema_name) => {
+        let leaf = wdoc::kind_leaf(schema_name)
+        let widget_name = "wdoc::widget_" + leaf
+        let terminal_name = starts_with(leaf, "terminal_") ? "wdoc::terminal_widget_" + trim_prefix(leaf, "terminal_") : null
+        map_has(project.values, widget_name) ? widget_name : (
+            terminal_name != null && map_has(project.values, terminal_name) ? terminal_name : null
+        )
+    }
+
     export let project_template_name = (project, fmt, schema_name) => {
-        let matches = filter(project.metadata.templates, item => item.format == fmt && item.schema == schema_name)
-        len(matches) > 0 ? matches[0].fn_name : null
+        let matches = filter(project.metadata.templates, item => item.format == fmt && wdoc::project_schema_matches(item.schema, schema_name))
+        len(matches) > 0 ? matches[0].fn_name : (fmt == "shape" ? wdoc::builtin_shape_template_name(project, schema_name) : null)
     }
 
     export let project_extends_name = (project, schema_name) => {
-        let matches = filter(project.metadata.extends, item => item.schema == schema_name)
+        let matches = filter(project.metadata.extends, item => wdoc::project_schema_matches(item.schema, schema_name))
         len(matches) > 0 ? matches[0].base : null
     }
 
@@ -1661,29 +1672,35 @@ namespace wdoc {
         )
     }
 
-    export let shape_descriptor_with_project = (project, item) => {
+    export let shape_descriptor_with_project = (project, item, sheets) => {
         let item_type = type_of(item)
-        item_type != "map" && item_type != "object" ? item : (
-            map_has(item, "children") ? map_set(item, "children", map(item.children, child => wdoc::shape_descriptor_with_project(project, child))) : item
+        item_type == "block_ref" ? wdoc::shape_from_block(project, item, sheets) : (
+            item_type != "map" && item_type != "object" ? item : (
+                map_has(item, "children") ? map_set(item, "children", map(item.children, child => wdoc::shape_descriptor_with_project(project, child, sheets))) : item
+            )
         )
     }
 
-    export let shape_template_result = (project, block, schema_name, stack) => {
+    export let shape_template_result = (project, block, schema_name, stack, sheets) => {
         let has_cycle = contains(stack, schema_name)
         has_cycle ? [] : {
             let fn_name = wdoc::project_template_name(project, "shape", schema_name)
             let missing = fn_name == null || !map_has(project.values, fn_name)
             missing ? [] : {
                 let base_schema = wdoc::project_extends_name(project, schema_name)
-                let base = base_schema != null ? wdoc::shape_template_result(project, block, base_schema, concat(stack, [schema_name])) : null
+                let base = base_schema != null ? wdoc::shape_template_result(project, block, base_schema, concat(stack, [schema_name]), sheets) : null
                 let result = base_schema != null ? project.values[fn_name](block, base) : project.values[fn_name](block)
                 let result_type = type_of(result)
-                result_type == "list" ? result : (result_type == "map" || result_type == "object" ? attr_or(result, "shapes", []) : [])
+                let shapes = result_type == "list" ? result : (result_type == "map" || result_type == "object" ? attr_or(result, "shapes", []) : [])
+                map(shapes, item => wdoc::shape_descriptor_with_project(project, item, sheets))
             }
         }
     }
 
-    export let is_structural_shape = (project, block) => contains(project.metadata.structural_schemas, block_kind(block))
+    export let is_structural_shape = (project, block) => {
+        let kind = block_kind(block)
+        contains(project.metadata.structural_schemas, kind) || contains(project.metadata.structural_schemas, wdoc::kind_leaf(kind))
+    }
 
     export let is_connection_block = block => block_kind(block) == "wdoc::draw::connection"
 
@@ -1741,7 +1758,7 @@ namespace wdoc {
     export let shape_from_block = (project, block, sheets) => {
         let kind = block_kind(block)
         let is_composite = wdoc::project_template_name(project, "shape", kind) != null
-        let template_shapes = is_composite ? wdoc::shape_template_result(project, block, kind, []) : []
+        let template_shapes = is_composite ? wdoc::shape_template_result(project, block, kind, [], sheets) : []
         let child_shapes = wdoc::shape_blocks(project, block, sheets)
         let attrs = wdoc::shape_attrs(project, block, sheets)
         let base = is_composite ? map_set(map_set(attrs, "fill", attr_or(attrs, "fill", "none")), "stroke", attr_or(attrs, "stroke", "none")) : attrs
