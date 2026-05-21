@@ -16,7 +16,7 @@ fn bench_parse(c: &mut Criterion) {
     let src = fixture(100);
     c.bench_function("parse_100_blocks", |b| {
         b.iter(|| {
-            let doc = wcl_lang::parse(black_box(&src)).expect("parse ok");
+            let doc = wcl_lang::Document::open(black_box(&src), "bench").expect("open ok");
             black_box(doc);
         })
     });

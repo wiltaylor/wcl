@@ -40,3 +40,14 @@ pub struct SyntaxError {
     pub span: SourceSpan,
     pub label: String,
 }
+
+#[derive(Debug, Clone, PartialEq, Error, Diagnostic)]
+pub enum EvalError {
+    #[error("cycle while evaluating '{field}'")]
+    #[diagnostic(code(wcl::eval::cycle))]
+    Cycle {
+        field: String,
+        #[label("evaluated recursively")]
+        span: SourceSpan,
+    },
+}

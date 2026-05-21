@@ -31,8 +31,9 @@ fn parse_prints_document_tree() {
         .arg(examples_dir().join("basic.wcl"))
         .assert()
         .success()
-        .stdout(predicate::str::contains("service"))
-        .stdout(predicate::str::contains("alpha"));
+        .stdout(predicate::str::contains("service \"web\" {"))
+        .stdout(predicate::str::contains("name = \"alpha\""))
+        .stdout(predicate::str::contains("port = 8080"));
 }
 
 #[test]

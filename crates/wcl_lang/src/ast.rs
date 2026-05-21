@@ -19,7 +19,7 @@ impl Span {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Value {
+pub(crate) enum Expr {
     String(String),
     Int(i64),
     Float(f64),
@@ -27,14 +27,14 @@ pub enum Value {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Field {
+pub(crate) struct Field {
     pub name: String,
-    pub value: Value,
+    pub expr: Expr,
     pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Block {
+pub(crate) struct Block {
     pub kind: String,
     pub labels: Vec<String>,
     pub items: Vec<Item>,
@@ -42,52 +42,12 @@ pub struct Block {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Item {
+pub(crate) enum Item {
     Field(Field),
     Block(Block),
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct Document {
+pub(crate) struct Source {
     pub items: Vec<Item>,
-}
-
-impl Document {
-    pub fn fields(&self) -> impl Iterator<Item = &Field> {
-        self.items.iter().filter_map(|i| match i {
-            Item::Field(f) => Some(f),
-            Item::Block(_) => None,
-        })
-    }
-
-    pub fn blocks(&self) -> impl Iterator<Item = &Block> {
-        self.items.iter().filter_map(|i| match i {
-            Item::Block(b) => Some(b),
-            Item::Field(_) => None,
-        })
-    }
-
-    pub fn field(&self, name: &str) -> Option<&Field> {
-        self.fields().find(|f| f.name == name)
-    }
-}
-
-impl Block {
-    pub fn fields(&self) -> impl Iterator<Item = &Field> {
-        self.items.iter().filter_map(|i| match i {
-            Item::Field(f) => Some(f),
-            Item::Block(_) => None,
-        })
-    }
-
-    pub fn blocks(&self) -> impl Iterator<Item = &Block> {
-        self.items.iter().filter_map(|i| match i {
-            Item::Block(b) => Some(b),
-            Item::Field(_) => None,
-        })
-    }
-
-    pub fn field(&self, name: &str) -> Option<&Field> {
-        self.fields().find(|f| f.name == name)
-    }
 }

@@ -1,6 +1,6 @@
 use miette::{NamedSource, SourceSpan};
 
-use crate::ast::{Block, Document, Field, Item, Span, Value};
+use crate::ast::{Block, Expr, Field, Item, Source, Span};
 use crate::error::ParseError;
 use crate::lexer::{LexError, Lexer, Token, TokenKind};
 
@@ -21,12 +21,12 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn parse_document(&mut self) -> Result<Document, ParseError> {
+    pub fn parse_source(&mut self) -> Result<Source, ParseError> {
         let mut items = Vec::new();
         while !matches!(self.peek()?.kind, TokenKind::Eof) {
             items.push(self.parse_item()?);
         }
-        Ok(Document { items })
+        Ok(Source { items })
     }
 
     fn parse_item(&mut self) -> Result<Item, ParseError> {
@@ -62,11 +62,11 @@ impl<'a> Parser<'a> {
         self.bump()?; // consume '='
         let val_tok = self.bump()?;
         let span = Span::new(start, val_tok.span.end);
-        let value = match val_tok.kind {
-            TokenKind::String(s) => Value::String(s),
-            TokenKind::Int(n) => Value::Int(n),
-            TokenKind::Float(f) => Value::Float(f),
-            TokenKind::Bool(b) => Value::Bool(b),
+        let expr = match val_tok.kind {
+            TokenKind::String(s) => Expr::String(s),
+            TokenKind::Int(n) => Expr::Int(n),
+            TokenKind::Float(f) => Expr::Float(f),
+            TokenKind::Bool(b) => Expr::Bool(b),
             other => {
                 return Err(self.err(
                     format!("expected value, found {}", describe(&other)),
@@ -75,7 +75,7 @@ impl<'a> Parser<'a> {
                 ));
             }
         };
-        Ok(Item::Field(Field { name, value, span }))
+        Ok(Item::Field(Field { name, expr, span }))
     }
 
     fn parse_block(&mut self, kind: String, start: usize) -> Result<Item, ParseError> {
@@ -175,32 +175,51 @@ fn describe(t: &TokenKind) -> String {
 mod tests {
     use super::*;
 
-    fn parse(src: &str) -> Document {
-        Parser::new(src, "test").parse_document().expect("parse ok")
+    fn parse(src: &str) -> Source {
+        Parser::new(src, "test").parse_source().expect("parse ok")
     }
 
     fn parse_err(src: &str) -> ParseError {
         Parser::new(src, "test")
-            .parse_document()
+            .parse_source()
             .expect_err("expected parse error")
+    }
+
+    fn field<'a>(items: &'a [Item], name: &str) -> &'a Field {
+        items
+            .iter()
+            .find_map(|i| match i {
+                Item::Field(f) if f.name == name => Some(f),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("no field '{name}'"))
+    }
+
+    fn blocks(items: &[Item]) -> Vec<&Block> {
+        items
+            .iter()
+            .filter_map(|i| match i {
+                Item::Block(b) => Some(b),
+                _ => None,
+            })
+            .collect()
     }
 
     #[test]
     fn parse_empty_document() {
-        let doc = parse("");
-        assert!(doc.items.is_empty());
+        let s = parse("");
+        assert!(s.items.is_empty());
     }
 
     #[test]
     fn parse_single_string_field() {
-        let doc = parse(r#"name = "alpha""#);
-        let f = doc.field("name").unwrap();
-        assert_eq!(f.value, Value::String("alpha".into()));
+        let s = parse(r#"name = "alpha""#);
+        assert_eq!(field(&s.items, "name").expr, Expr::String("alpha".into()));
     }
 
     #[test]
     fn parse_mixed_scalar_fields() {
-        let doc = parse(
+        let s = parse(
             r#"
             name = "alpha"
             count = 3
@@ -208,18 +227,15 @@ mod tests {
             enabled = true
             "#,
         );
-        assert_eq!(
-            doc.field("name").unwrap().value,
-            Value::String("alpha".into())
-        );
-        assert_eq!(doc.field("count").unwrap().value, Value::Int(3));
-        assert_eq!(doc.field("ratio").unwrap().value, Value::Float(2.5));
-        assert_eq!(doc.field("enabled").unwrap().value, Value::Bool(true));
+        assert_eq!(field(&s.items, "name").expr, Expr::String("alpha".into()));
+        assert_eq!(field(&s.items, "count").expr, Expr::Int(3));
+        assert_eq!(field(&s.items, "ratio").expr, Expr::Float(2.5));
+        assert_eq!(field(&s.items, "enabled").expr, Expr::Bool(true));
     }
 
     #[test]
     fn parse_block_with_label() {
-        let doc = parse(
+        let s = parse(
             r#"
             service "web" {
               port = 8080
@@ -227,28 +243,29 @@ mod tests {
             }
             "#,
         );
-        let block = doc.blocks().next().unwrap();
+        let blks = blocks(&s.items);
+        let block = blks[0];
         assert_eq!(block.kind, "service");
         assert_eq!(block.labels, vec!["web".to_string()]);
-        assert_eq!(block.field("port").unwrap().value, Value::Int(8080));
+        assert_eq!(field(&block.items, "port").expr, Expr::Int(8080));
         assert_eq!(
-            block.field("host").unwrap().value,
-            Value::String("0.0.0.0".into())
+            field(&block.items, "host").expr,
+            Expr::String("0.0.0.0".into())
         );
     }
 
     #[test]
     fn parse_block_without_label() {
-        let doc = parse("metadata { region = \"us-east-1\" }");
-        let block = doc.blocks().next().unwrap();
+        let s = parse("metadata { region = \"us-east-1\" }");
+        let block = blocks(&s.items)[0];
         assert_eq!(block.kind, "metadata");
         assert!(block.labels.is_empty());
     }
 
     #[test]
     fn parse_block_with_multiple_labels() {
-        let doc = parse(r#"resource "aws_s3_bucket" "logs" { acl = "private" }"#);
-        let block = doc.blocks().next().unwrap();
+        let s = parse(r#"resource "aws_s3_bucket" "logs" { acl = "private" }"#);
+        let block = blocks(&s.items)[0];
         assert_eq!(block.kind, "resource");
         assert_eq!(
             block.labels,
@@ -258,7 +275,7 @@ mod tests {
 
     #[test]
     fn parse_nested_blocks() {
-        let doc = parse(
+        let s = parse(
             r#"
             service "web" {
               metadata {
@@ -267,12 +284,12 @@ mod tests {
             }
             "#,
         );
-        let outer = doc.blocks().next().unwrap();
-        let inner = outer.blocks().next().unwrap();
+        let outer = blocks(&s.items)[0];
+        let inner = blocks(&outer.items)[0];
         assert_eq!(inner.kind, "metadata");
         assert_eq!(
-            inner.field("region").unwrap().value,
-            Value::String("us-east-1".into())
+            field(&inner.items, "region").expr,
+            Expr::String("us-east-1".into())
         );
     }
 
@@ -306,8 +323,8 @@ mod tests {
     #[test]
     fn spans_cover_full_field() {
         let src = r#"name = "alpha""#;
-        let doc = parse(src);
-        let f = doc.field("name").unwrap();
+        let s = parse(src);
+        let f = field(&s.items, "name");
         assert_eq!(&src[f.span.start..f.span.end], src);
     }
 }
