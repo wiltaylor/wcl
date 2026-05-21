@@ -136,21 +136,9 @@ impl<'a> Parser<'a> {
                 "expected ':'",
             ));
         }
-        let ty_tok = self.bump()?;
-        let ty_span = ty_tok.span;
-        let TokenKind::Ident(ty_name) = ty_tok.kind else {
-            return Err(self.err(
-                format!("expected type name, found {}", describe(&ty_tok.kind)),
-                ty_tok.span,
-                "expected type",
-            ));
-        };
-        let ty = match BuiltinType::from_name(&ty_name) {
-            Some(b) => TypeRef::Builtin(b),
-            None => TypeRef::Named(ty_name),
-        };
+        let (ty, ty_span) = self.parse_type_ref()?;
         let mut optional = false;
-        let mut end = ty_tok.span.end;
+        let mut end = ty_span.end;
         if matches!(self.peek()?.kind, TokenKind::Question) {
             let q = self.bump()?;
             optional = true;
@@ -165,6 +153,41 @@ impl<'a> Parser<'a> {
         })
     }
 
+    fn parse_type_ref(&mut self) -> Result<(TypeRef, Span), ParseError> {
+        let head = self.peek()?;
+        if matches!(head.kind, TokenKind::Amp) {
+            let amp = self.bump()?;
+            let tok = self.bump()?;
+            let TokenKind::Ident(name) = tok.kind else {
+                return Err(self.err(
+                    format!(
+                        "expected type name after '&', found {}",
+                        describe(&tok.kind)
+                    ),
+                    tok.span,
+                    "expected identifier",
+                ));
+            };
+            let inner = name_to_type_ref(&name);
+            let span = Span::new(amp.span.start, tok.span.end);
+            Ok((TypeRef::Reference(Box::new(inner)), span))
+        } else if matches!(head.kind, TokenKind::Ident(_)) {
+            let tok = self.bump()?;
+            let TokenKind::Ident(name) = tok.kind else {
+                unreachable!()
+            };
+            Ok((name_to_type_ref(&name), tok.span))
+        } else {
+            let span = head.span;
+            let kind_desc = describe(&head.kind);
+            Err(self.err(
+                format!("expected type, found {kind_desc}"),
+                span,
+                "expected type",
+            ))
+        }
+    }
+
     fn parse_field(&mut self, name: String, start: usize) -> Result<Item, ParseError> {
         self.bump()?; // consume '='
         let val_tok = self.bump()?;
@@ -173,7 +196,7 @@ impl<'a> Parser<'a> {
             TokenKind::Number(n) => number_to_expr(n),
             TokenKind::Str(s) => string_to_expr(s),
             TokenKind::Bool(b) => Expr::Bool(b),
-            TokenKind::Ident(s) => Expr::Identifier(s),
+            TokenKind::Ident(s) => Expr::Reference(s),
             TokenKind::None => Expr::None,
             other => {
                 return Err(self.err(
@@ -293,9 +316,17 @@ fn describe(t: &TokenKind) -> String {
         TokenKind::Eq => "'='".to_string(),
         TokenKind::Colon => "':'".to_string(),
         TokenKind::Question => "'?'".to_string(),
+        TokenKind::Amp => "'&'".to_string(),
         TokenKind::LBrace => "'{'".to_string(),
         TokenKind::RBrace => "'}'".to_string(),
         TokenKind::Eof => "end of file".to_string(),
+    }
+}
+
+fn name_to_type_ref(name: &str) -> TypeRef {
+    match BuiltinType::from_name(name) {
+        Some(b) => TypeRef::Builtin(b),
+        None => TypeRef::Named(name.to_string()),
     }
 }
 
@@ -531,18 +562,48 @@ mod tests {
     }
 
     #[test]
-    fn parse_type_with_identifier_builtin() {
-        let s = parse("type Thing { id: identifier }");
+    fn parse_reference_type_to_named() {
+        let s = parse("type Post { author: &User? }");
         let t = type_decls(&s.items)[0];
-        assert_eq!(t.fields[0].ty, TypeRef::Builtin(BuiltinType::Identifier));
+        assert_eq!(
+            t.fields[0].ty,
+            TypeRef::Reference(Box::new(TypeRef::Named("User".into())))
+        );
+        assert!(t.fields[0].optional);
     }
 
     #[test]
-    fn parse_bare_ident_as_identifier_value() {
+    fn parse_reference_type_to_builtin() {
+        let s = parse("type Score { value: &i32 }");
+        let t = type_decls(&s.items)[0];
+        assert_eq!(
+            t.fields[0].ty,
+            TypeRef::Reference(Box::new(TypeRef::Builtin(BuiltinType::I32)))
+        );
+        assert!(!t.fields[0].optional);
+    }
+
+    #[test]
+    fn nested_reference_rejected() {
+        let err = parse_err("type X { y: &&User }");
+        match err {
+            ParseError::Syntax(e) => {
+                assert!(
+                    e.message.contains("expected type name after '&'"),
+                    "{}",
+                    e.message
+                )
+            }
+            _ => panic!("expected syntax error"),
+        }
+    }
+
+    #[test]
+    fn parse_bare_ident_as_reference_value() {
         let s = parse("owner = wil_taylor");
         assert_eq!(
             field(&s.items, "owner").expr,
-            Expr::Identifier("wil_taylor".into())
+            Expr::Reference("wil_taylor".into())
         );
     }
 

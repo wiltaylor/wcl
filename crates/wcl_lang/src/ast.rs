@@ -44,7 +44,7 @@ pub(crate) enum Expr {
     Utf16(Vec<u16>),
     Utf32(Vec<char>),
 
-    Identifier(String),
+    Reference(String),
     None,
 }
 

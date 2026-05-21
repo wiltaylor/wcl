@@ -122,6 +122,7 @@ impl Document {
                     .expect("named ref validated at Document::open");
                 ResolvedType::Named(decl)
             }
+            TypeRef::Reference(inner) => ResolvedType::Reference(Box::new(self.resolve(inner))),
         }
     }
 }
@@ -130,6 +131,7 @@ impl Document {
 pub enum ResolvedType<'a> {
     Builtin(BuiltinType),
     Named(TypeDecl<'a>),
+    Reference(Box<ResolvedType<'a>>),
 }
 
 #[derive(Debug)]
@@ -323,7 +325,7 @@ fn eval_expr(e: &ast::Expr) -> Result<Value, EvalError> {
         ast::Expr::Ascii(s) => Value::Ascii(s.clone()),
         ast::Expr::Utf16(v) => Value::Utf16(v.clone()),
         ast::Expr::Utf32(v) => Value::Utf32(v.clone()),
-        ast::Expr::Identifier(s) => Value::Identifier(s.clone()),
+        ast::Expr::Reference(s) => Value::Reference(s.clone()),
         ast::Expr::None => Value::None,
     })
 }
@@ -350,21 +352,37 @@ fn validate_type_refs(ast: &ast::Source, source: &str, file: &str) -> Result<(),
     for item in &ast.items {
         if let ast::Item::TypeDecl(t) = item {
             for f in &t.fields {
-                if let TypeRef::Named(n) = &f.ty
-                    && !declared.contains_key(n.as_str())
-                {
-                    return Err(open_error(
-                        source,
-                        file,
-                        format!("unknown type '{n}'"),
-                        f.ty_span,
-                        "type not declared",
-                    ));
-                }
+                check_type_ref(&f.ty, f.ty_span, &declared, source, file)?;
             }
         }
     }
     Ok(())
+}
+
+fn check_type_ref(
+    t: &TypeRef,
+    ty_span: Span,
+    declared: &HashMap<&str, ()>,
+    source: &str,
+    file: &str,
+) -> Result<(), ParseError> {
+    match t {
+        TypeRef::Builtin(_) => Ok(()),
+        TypeRef::Named(n) => {
+            if declared.contains_key(n.as_str()) {
+                Ok(())
+            } else {
+                Err(open_error(
+                    source,
+                    file,
+                    format!("unknown type '{n}'"),
+                    ty_span,
+                    "type not declared",
+                ))
+            }
+        }
+        TypeRef::Reference(inner) => check_type_ref(inner, ty_span, declared, source, file),
+    }
 }
 
 fn open_error(source: &str, file: &str, message: String, span: Span, label: &str) -> ParseError {
@@ -553,11 +571,11 @@ mod tests {
     }
 
     #[test]
-    fn identifier_value_resolves() {
+    fn reference_value_resolves() {
         let doc = open("owner = wil_taylor");
         assert_eq!(
             doc.field("owner").unwrap().value().unwrap(),
-            &Value::Identifier("wil_taylor".into())
+            &Value::Reference("wil_taylor".into())
         );
     }
 
@@ -573,9 +591,9 @@ mod tests {
         let doc = open(
             r#"
             type User {
-              id:   identifier
               name: utf8
               bio:  utf8?
+              link: &User?
             }
             type Empty {}
             "#,
@@ -584,14 +602,16 @@ mod tests {
         let user = doc.type_decl("User").expect("User type");
         let fields: Vec<_> = user.fields().collect();
         assert_eq!(fields.len(), 3);
-        assert_eq!(fields[0].name(), "id");
-        assert_eq!(
-            fields[0].type_ref(),
-            &TypeRef::Builtin(BuiltinType::Identifier)
-        );
+        assert_eq!(fields[0].name(), "name");
+        assert_eq!(fields[0].type_ref(), &TypeRef::Builtin(BuiltinType::Utf8));
         assert!(!fields[0].optional());
-        assert_eq!(fields[2].name(), "bio");
-        assert_eq!(fields[2].type_ref(), &TypeRef::Builtin(BuiltinType::Utf8));
+        assert_eq!(fields[1].name(), "bio");
+        assert!(fields[1].optional());
+        assert_eq!(fields[2].name(), "link");
+        assert_eq!(
+            fields[2].type_ref(),
+            &TypeRef::Reference(Box::new(TypeRef::Named("User".into())))
+        );
         assert!(fields[2].optional());
         assert!(doc.type_decl("Empty").unwrap().fields().count() == 0);
     }
@@ -667,6 +687,51 @@ mod tests {
             ParseError::Syntax(e) => {
                 assert!(
                     e.message.contains("duplicate type declaration 'Foo'"),
+                    "message: {}",
+                    e.message
+                );
+            }
+            _ => panic!("expected syntax error"),
+        }
+    }
+
+    #[test]
+    fn resolve_reference_unwraps_to_named() {
+        let doc = open("type User { name: utf8 }\ntype Post { author: &User }");
+        let post = doc.type_decl("Post").unwrap();
+        let author = post.field("author").unwrap();
+        let resolved = doc.resolve(author.type_ref());
+        let ResolvedType::Reference(inner) = resolved else {
+            panic!("expected reference");
+        };
+        let ResolvedType::Named(decl) = *inner else {
+            panic!("expected inner Named");
+        };
+        assert_eq!(decl.name(), "User");
+    }
+
+    #[test]
+    fn resolve_reference_to_builtin() {
+        let doc = open("type Score { value: &i32 }");
+        let s = doc.type_decl("Score").unwrap();
+        let v = s.field("value").unwrap();
+        let resolved = doc.resolve(v.type_ref());
+        let ResolvedType::Reference(inner) = resolved else {
+            panic!("expected reference");
+        };
+        let ResolvedType::Builtin(b) = *inner else {
+            panic!("expected inner builtin");
+        };
+        assert_eq!(b, BuiltinType::I32);
+    }
+
+    #[test]
+    fn unknown_reference_target_errors() {
+        let err = Document::open("type X { y: &NotDecl }", "test").unwrap_err();
+        match err {
+            ParseError::Syntax(e) => {
+                assert!(
+                    e.message.contains("unknown type 'NotDecl'"),
                     "message: {}",
                     e.message
                 );

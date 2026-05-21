@@ -38,15 +38,24 @@ hello32 = utf32"hello"
 
 # Type declarations
 type User {
-  id:     identifier
   name:   utf8
   age:    u32?
   bio:    utf8?
-  parent: User?
+  parent: &User?
+}
+
+type Topic {
+  name: utf8
+}
+
+type Post {
+  title:  utf8
+  author: &User
+  topic:  &Topic?
 }
 
 type Empty {}
 
-# Identifier and none values
+# Reference and none values
 owner = wil_taylor
 maybe = none

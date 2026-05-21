@@ -51,8 +51,12 @@ fn named_type_refs_resolve_in_fixture() {
     let doc = Document::from_file(&examples_dir().join("types.wcl")).expect("types fixture parses");
     let user = doc.type_decl("User").expect("User type");
     let parent = user.field("parent").expect("parent field");
-    let ResolvedType::Named(decl) = doc.resolve(parent.type_ref()) else {
-        panic!("parent should resolve to a named type");
+    // parent is now &User?
+    let ResolvedType::Reference(inner) = doc.resolve(parent.type_ref()) else {
+        panic!("parent should resolve to a reference");
+    };
+    let ResolvedType::Named(decl) = *inner else {
+        panic!("reference inner should be Named(User)");
     };
     assert_eq!(decl.name(), "User");
 }

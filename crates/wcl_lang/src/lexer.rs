@@ -11,6 +11,7 @@ pub enum TokenKind {
     Eq,
     Colon,
     Question,
+    Amp,
     LBrace,
     RBrace,
     Eof,
@@ -97,6 +98,13 @@ impl<'a> Lexer<'a> {
                 self.pos += 1;
                 Ok(Token {
                     kind: TokenKind::Question,
+                    span: Span::new(start, self.pos),
+                })
+            }
+            b'&' => {
+                self.pos += 1;
+                Ok(Token {
+                    kind: TokenKind::Amp,
                     span: Span::new(start, self.pos),
                 })
             }
@@ -724,6 +732,18 @@ mod tests {
                 TokenKind::Colon,
                 TokenKind::Ident("utf8".into()),
                 TokenKind::Question,
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn amp_lexes_as_amp() {
+        assert_eq!(
+            tokens("&User"),
+            vec![
+                TokenKind::Amp,
+                TokenKind::Ident("User".into()),
                 TokenKind::Eof,
             ]
         );

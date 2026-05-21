@@ -80,6 +80,7 @@ fn type_repr(t: &TypeRef) -> String {
     match t {
         TypeRef::Builtin(b) => b.name().to_string(),
         TypeRef::Named(s) => s.clone(),
+        TypeRef::Reference(inner) => format!("&{}", type_repr(inner)),
     }
 }
 
@@ -143,7 +144,7 @@ fn value_repr(v: &Value) -> String {
             format!("utf32\"{}\"", escape_string(&s))
         }
 
-        Value::Identifier(s) => s.clone(),
+        Value::Reference(s) => s.clone(),
         Value::None => "none".to_string(),
     }
 }

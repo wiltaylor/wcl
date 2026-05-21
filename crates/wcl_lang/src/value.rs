@@ -24,7 +24,7 @@ pub enum Value {
     Utf16(Vec<u16>),
     Utf32(Vec<char>),
 
-    Identifier(String),
+    Reference(String),
     None,
 }
 
@@ -50,7 +50,7 @@ impl Value {
             Value::Ascii(_) => "ascii",
             Value::Utf16(_) => "utf16",
             Value::Utf32(_) => "utf32",
-            Value::Identifier(_) => "identifier",
+            Value::Reference(_) => "reference",
             Value::None => "none",
         }
     }
@@ -81,8 +81,6 @@ pub enum BuiltinType {
     Ascii,
     Utf16,
     Utf32,
-
-    Identifier,
 }
 
 impl BuiltinType {
@@ -107,7 +105,6 @@ impl BuiltinType {
             "ascii" => Self::Ascii,
             "utf16" => Self::Utf16,
             "utf32" => Self::Utf32,
-            "identifier" => Self::Identifier,
             _ => return None,
         })
     }
@@ -133,7 +130,6 @@ impl BuiltinType {
             Self::Ascii => "ascii",
             Self::Utf16 => "utf16",
             Self::Utf32 => "utf32",
-            Self::Identifier => "identifier",
         }
     }
 }
@@ -142,4 +138,5 @@ impl BuiltinType {
 pub enum TypeRef {
     Builtin(BuiltinType),
     Named(String),
+    Reference(Box<TypeRef>),
 }
