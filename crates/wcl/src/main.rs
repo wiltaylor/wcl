@@ -235,7 +235,30 @@ fn dump_block(b: &Block<'_>, depth: usize, out: &mut String) {
     for inner in b.blocks() {
         dump_block(&inner, depth + 1, out);
     }
+    for t in b.tables() {
+        dump_table(&t, depth + 1, out);
+    }
     writeln!(out, "{pad}}}").unwrap();
+}
+
+fn dump_table(t: &wcl_lang::TableView<'_>, depth: usize, out: &mut String) {
+    let pad = "  ".repeat(depth);
+    writeln!(out, "{pad}{}:", t.field_name()).unwrap();
+    let row_pad = "  ".repeat(depth + 1);
+    for r in t.rows() {
+        let _ = write!(out, "{row_pad}|");
+        match r.values() {
+            Ok(vs) => {
+                for v in vs {
+                    let _ = write!(out, " {} |", value_repr(&v));
+                }
+            }
+            Err(e) => {
+                let _ = write!(out, " <row error: {e}> |");
+            }
+        }
+        writeln!(out).unwrap();
+    }
 }
 
 fn value_repr(v: &Value) -> String {

@@ -50,6 +50,12 @@ pub(crate) enum ItemCellKind {
         /// Lazy schema-content validation cache. Populated on first call
         /// to `Block::schema_errors()`.
         schema_validation: OnceLock<Vec<EvalError>>,
+        /// Synthesised `Block`s from `Item::Table` rows, built once at
+        /// cells-build time. Each entry remembers the parent field
+        /// name the row's table-header bound to; the `kind` is left
+        /// blank in the stored AST and overridden at view time using
+        /// the parent type's `@children(kind)` declaration.
+        synth_rows: Vec<SynthRow>,
     },
     TypeDecl {
         /// One inner Vec per `ast::TypeDecl.fields[i]`, holding cells for
@@ -67,6 +73,10 @@ pub(crate) enum ItemCellKind {
     },
     NamespaceDecl,
     UseDecl,
+    /// Stub variant for `Item::Table` AST entries. The actual cells
+    /// for the rows (synthesised `Block`s) live in the enclosing
+    /// block's `table_rows` projection cache, keyed by field name.
+    Table,
     /// Lazy import. Populated on first read-access of the enclosing
     /// block. Top-level imports also get this cell but are never
     /// triggered through it — they're expanded eagerly into
@@ -87,6 +97,17 @@ pub(crate) enum ItemCellKind {
 #[derive(Debug)]
 pub(crate) struct BlockCells {
     pub(crate) items: Vec<ItemCells>,
+}
+
+/// One synthesised row-Block, owned by a parent `Block` cell. Built
+/// at cells-build time from an `Item::Table` row. The `block.kind`
+/// field is intentionally blank — the kind comes from the parent
+/// type's `@children` decoration at view time.
+#[derive(Debug)]
+pub(crate) struct SynthRow {
+    pub(crate) field_name: String,
+    pub(crate) block: ast::Block,
+    pub(crate) cells: ItemCells,
 }
 
 fn make_decorator_cells(decs: &[ast::Decorator]) -> Vec<DecoratorCell> {
@@ -110,18 +131,46 @@ impl ItemCells {
                 decorators: make_decorator_cells(&f.decorators),
                 kind: ItemCellKind::Field(FieldCell::new()),
             },
-            ast::Item::Block(b) => Self {
-                decorators: make_decorator_cells(&b.decorators),
-                kind: ItemCellKind::Block {
-                    labels: OnceLock::new(),
-                    items: b
-                        .items
-                        .iter()
-                        .map(|item| ItemCells::build(item, base_dir))
-                        .collect(),
-                    schema_validation: OnceLock::new(),
-                },
-            },
+            ast::Item::Block(b) => {
+                // Eagerly synthesise per-row Blocks from Item::Table
+                // entries nested in this block. The `kind` is filled
+                // in at view time; the labels carry the row values
+                // verbatim.
+                let mut synth_rows: Vec<SynthRow> = Vec::new();
+                for item in &b.items {
+                    if let ast::Item::Table(t) = item {
+                        for r in &t.rows {
+                            let synth_block = ast::Block {
+                                kind: String::new(),
+                                labels: r.values.clone(),
+                                items: Vec::new(),
+                                decorators: Vec::new(),
+                                span: r.span,
+                            };
+                            let synth_cells =
+                                ItemCells::build(&ast::Item::Block(synth_block.clone()), None);
+                            synth_rows.push(SynthRow {
+                                field_name: t.field_name.clone(),
+                                block: synth_block,
+                                cells: synth_cells,
+                            });
+                        }
+                    }
+                }
+                Self {
+                    decorators: make_decorator_cells(&b.decorators),
+                    kind: ItemCellKind::Block {
+                        labels: OnceLock::new(),
+                        items: b
+                            .items
+                            .iter()
+                            .map(|item| ItemCells::build(item, base_dir))
+                            .collect(),
+                        schema_validation: OnceLock::new(),
+                        synth_rows,
+                    },
+                }
+            }
             ast::Item::TypeDecl(t) => Self {
                 decorators: make_decorator_cells(&t.decorators),
                 kind: ItemCellKind::TypeDecl {
@@ -179,6 +228,10 @@ impl ItemCells {
                     base_dir: base_dir.map(Path::to_path_buf),
                     loaded: OnceLock::new(),
                 },
+            },
+            ast::Item::Table(_) => Self {
+                decorators: Vec::new(),
+                kind: ItemCellKind::Table,
             },
         }
     }
@@ -461,6 +514,7 @@ impl Document {
                         ast: b,
                         cells: &src.cells[idx],
                         doc: self,
+                        kind_override: None,
                     });
                 }
             }
@@ -704,6 +758,12 @@ impl Document {
     /// Look up the type that schemas a decorator of the given name.
     pub fn decorator_schema(&self, name: &str) -> Option<TypeDecl<'_>> {
         self.find_schema("decorator", name)
+    }
+
+    /// Look up the type that schemas a table of the given name, i.e.
+    /// the first type carrying an `@table("name")` decorator.
+    pub fn table_schema(&self, name: &str) -> Option<TypeDecl<'_>> {
+        self.find_schema("table", name)
     }
 
     fn find_schema(&self, dec_name: &str, value: &str) -> Option<TypeDecl<'_>> {
@@ -1445,6 +1505,23 @@ impl<'a> TypeField<'a> {
         }
     }
 
+    /// Like [`children_block_kind`] but borrows directly from the AST
+    /// — useful when callers need a `&'a str` (e.g. to plug into a
+    /// `Block::kind_override`). `None` if the decorator isn't present
+    /// or the positional arg isn't a string literal.
+    pub fn children_block_kind_str(&self) -> Option<&'a str> {
+        let dec = self
+            .ast
+            .decorators
+            .iter()
+            .find(|d| d.name.last().map(|s| s == "children").unwrap_or(false))?;
+        let first = dec.positional.first()?;
+        match first {
+            crate::ast::Expr::Utf8(s) | crate::ast::Expr::Ascii(s) => Some(s.as_str()),
+            _ => None,
+        }
+    }
+
     /// Optional `min` cardinality on `@children(...)`.
     pub fn children_min(&self) -> Option<u64> {
         decorator_u64_named(&self.decorators().collect::<Vec<_>>(), "children", "min")
@@ -1531,6 +1608,10 @@ pub struct Block<'a> {
     ast: &'a ast::Block,
     cells: &'a ItemCells,
     doc: &'a Document,
+    /// When `Some`, overrides `ast.kind` for views derived from a
+    /// synthesised row-Block (its stored `kind` is blank). Real
+    /// blocks always have `None`.
+    kind_override: Option<&'a str>,
 }
 
 impl<'a> Block<'a> {
@@ -1551,7 +1632,7 @@ impl<'a> Block<'a> {
     }
 
     pub fn kind(&self) -> &'a str {
-        &self.ast.kind
+        self.kind_override.unwrap_or(&self.ast.kind)
     }
 
     /// Evaluated values for each label slot. Cached on first call; later
@@ -1628,6 +1709,17 @@ impl<'a> Block<'a> {
             .flat_map(move |src| iter_blocks(src.items, src.cells, doc))
     }
 
+    /// Source-order iterator over `Item::Table` entries in this block.
+    /// Each [`TableView`] carries the parent field name and the row
+    /// values as written. Hosts that want the schema-projected view
+    /// should use `typed_field`/`doc.get` instead.
+    pub fn tables(&self) -> impl Iterator<Item = TableView<'a>> + 'a {
+        let doc = self.doc;
+        self.realize_and_sources()
+            .into_iter()
+            .flat_map(move |src| iter_tables(src.items, doc))
+    }
+
     /// Return the most recently surfaced lazy-import error for this
     /// block, if any. Useful for callers that want to surface load
     /// failures explicitly rather than only seeing `None` from
@@ -1647,7 +1739,10 @@ impl<'a> Block<'a> {
 
     /// The schema (`TypeDecl`) for this block's `kind`, if any.
     pub fn schema(&self) -> Option<TypeDecl<'a>> {
-        self.doc.block_schema(&self.ast.kind)
+        let k = self.kind();
+        self.doc
+            .block_schema(k)
+            .or_else(|| self.doc.table_schema(k))
     }
 
     /// Schema-aware field lookup. Projects the block through its
@@ -1667,10 +1762,17 @@ impl<'a> Block<'a> {
         let schema = self.schema()?;
         let f = schema.field(name)?;
 
-        if let Some(kind) = f.children_block_kind() {
-            // Gather all nested blocks of this kind (raw AST scan).
-            let blocks: Vec<Block<'a>> = self.blocks().filter(|b| b.kind() == kind).collect();
-            return Some(crate::data::DataRef::from_block_list(blocks));
+        if let Some(kind) = f.children_block_kind_str() {
+            // Use the projection: combines literal nested blocks of
+            // this kind with synthesised blocks from `Item::Table`
+            // rows under the matching field name.
+            let blocks = self.children_projection(name, kind);
+            let is_table = self.doc.table_schema(kind).is_some();
+            return Some(if is_table {
+                crate::data::DataRef::from_table(blocks)
+            } else {
+                crate::data::DataRef::from_block_list(blocks)
+            });
         }
         if let Some(kind) = f.child_block_kind() {
             let block = self.blocks().find(|b| b.kind() == kind)?;
@@ -1687,6 +1789,54 @@ impl<'a> Block<'a> {
         }
         // Plain schema field → look it up in literal block items.
         self.field(name).map(crate::data::DataRef::from_field)
+    }
+
+    /// Build the list of `Block`s for one `@children(kind)` field —
+    /// combining literal nested `Block`s of the matching kind with
+    /// the parent's pre-built synthesised row-Blocks whose
+    /// `field_name` matches. The synthesised blocks store an empty
+    /// kind in the AST; we set `kind_override` here so views see the
+    /// correct kind.
+    fn children_projection(&self, field_name: &str, kind: &'a str) -> Vec<Block<'a>> {
+        let (items_cells, synth_rows) = match &self.cells.kind {
+            ItemCellKind::Block {
+                items, synth_rows, ..
+            } => (items, synth_rows),
+            _ => unreachable!("Block view wraps a Block cell"),
+        };
+        let mut out: Vec<Block<'a>> = Vec::new();
+        // Walk items + cells in source order. Real Item::Block entries
+        // contribute their own Block view; Item::Table entries are
+        // replaced (in-order) by their corresponding synthesised rows
+        // from `synth_rows`.
+        let mut synth_iter = synth_rows.iter().filter(|r| r.field_name == field_name);
+        for (item, cells) in self.ast.items.iter().zip(items_cells.iter()) {
+            match item {
+                ast::Item::Block(b) if b.kind == kind => {
+                    out.push(Block {
+                        ast: b,
+                        cells,
+                        doc: self.doc,
+                        kind_override: None,
+                    });
+                }
+                ast::Item::Table(t) if t.field_name == field_name => {
+                    // Pull one synthesised row per source row.
+                    for _ in &t.rows {
+                        if let Some(sr) = synth_iter.next() {
+                            out.push(Block {
+                                ast: &sr.block,
+                                cells: &sr.cells,
+                                doc: self.doc,
+                                kind_override: Some(kind),
+                            });
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        out
     }
 
     /// Iterate schema-projected fields in declared order. Empty for
@@ -1729,12 +1879,61 @@ fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
         return errs;
     };
 
-    // 1. Gather per-kind counts of nested blocks (raw AST).
+    // 0. Table row-form validation: if this block's schema is a
+    // `@table`, its labels are the row's column values and must
+    // match the schema field count.
+    if block.doc.table_schema(block.kind()).is_some() {
+        let label_count = block.labels().map(|v| v.len()).unwrap_or(0);
+        let field_count = schema.fields().count();
+        if label_count < field_count {
+            errs.push(EvalError::schema_violation(
+                Kind::ChildrenTooFew,
+                format!(
+                    "table row for '{}' has {} values, expected {}",
+                    block.kind(),
+                    label_count,
+                    field_count
+                ),
+                block.span(),
+            ));
+        } else if label_count > field_count {
+            errs.push(EvalError::schema_violation(
+                Kind::ChildrenTooMany,
+                format!(
+                    "table row for '{}' has {} values, expected {}",
+                    block.kind(),
+                    label_count,
+                    field_count
+                ),
+                block.span(),
+            ));
+        }
+        // Tables don't carry nested-block children themselves, so the
+        // rest of the validation doesn't apply.
+        return errs;
+    }
+
+    // 1. Gather per-kind counts of nested blocks. Both literal
+    // `Item::Block` entries and synthesised `Item::Table` rows
+    // contribute. For synth rows the kind comes from the parent
+    // schema's `@children(K)` decoration on the matching field.
     let mut counts: HashMap<String, usize> = HashMap::new();
     let mut total: usize = 0;
     for nested in block.blocks() {
         *counts.entry(nested.kind().to_string()).or_insert(0) += 1;
         total += 1;
+    }
+    if let ItemCellKind::Block { synth_rows, .. } = &block.cells.kind {
+        for sr in synth_rows {
+            // Find the schema field matching the table header's
+            // field_name and read its @children(kind).
+            if let Some(field) = schema.field(&sr.field_name)
+                && let Some(kind) = field.children_block_kind_str()
+            {
+                *counts.entry(kind.to_string()).or_insert(0) += 1;
+                total += 1;
+            }
+        }
     }
 
     // 2. Build the allowed-child set: union of @child/@children kinds
@@ -1958,9 +2157,12 @@ fn find_block<'a>(
         .iter()
         .zip(cells)
         .find_map(|(item, cells)| match (item, &cells.kind) {
-            (ast::Item::Block(b), ItemCellKind::Block { .. }) if b.kind == kind => {
-                Some(Block { ast: b, cells, doc })
-            }
+            (ast::Item::Block(b), ItemCellKind::Block { .. }) if b.kind == kind => Some(Block {
+                ast: b,
+                cells,
+                doc,
+                kind_override: None,
+            }),
             _ => None,
         })
 }
@@ -1988,9 +2190,67 @@ fn iter_blocks<'a>(
         .iter()
         .zip(cells)
         .filter_map(move |(item, cells)| match (item, &cells.kind) {
-            (ast::Item::Block(b), ItemCellKind::Block { .. }) => Some(Block { ast: b, cells, doc }),
+            (ast::Item::Block(b), ItemCellKind::Block { .. }) => Some(Block {
+                ast: b,
+                cells,
+                doc,
+                kind_override: None,
+            }),
             _ => None,
         })
+}
+
+fn iter_tables<'a>(
+    items: &'a [ast::Item],
+    doc: &'a Document,
+) -> impl Iterator<Item = TableView<'a>> + 'a {
+    items.iter().filter_map(move |item| match item {
+        ast::Item::Table(t) => Some(TableView { ast: t, doc }),
+        _ => None,
+    })
+}
+
+/// Source-level view of an `Item::Table` (a `FIELD:` header followed
+/// by one or more `| ... |` rows) within a parent block.
+#[derive(Clone, Copy)]
+pub struct TableView<'a> {
+    ast: &'a ast::TableItem,
+    doc: &'a Document,
+}
+
+impl<'a> TableView<'a> {
+    /// Name of the parent-block field that this table binds to.
+    pub fn field_name(&self) -> &'a str {
+        &self.ast.field_name
+    }
+
+    /// Iterator over the rows in source order.
+    pub fn rows(&self) -> impl Iterator<Item = RowView<'a>> + 'a {
+        let doc = self.doc;
+        self.ast.rows.iter().map(move |r| RowView { ast: r, doc })
+    }
+
+    pub fn span(&self) -> Span {
+        self.ast.span
+    }
+}
+
+/// Source-level view of a single `| ... |` row inside a [`TableView`].
+#[derive(Clone, Copy)]
+pub struct RowView<'a> {
+    ast: &'a ast::Row,
+    doc: &'a Document,
+}
+
+impl<'a> RowView<'a> {
+    /// Evaluate each cell expression and return the row as values.
+    pub fn values(&self) -> Result<Vec<Value>, EvalError> {
+        self.ast.values.iter().map(|e| self.doc.eval(e)).collect()
+    }
+
+    pub fn span(&self) -> Span {
+        self.ast.span
+    }
 }
 
 struct EvalCtx {
@@ -4419,6 +4679,167 @@ mod tests {
                 } if message.contains("required child kind 'config'")
             )),
             "expected MissingRequired for kind 'config', got {errs:?}"
+        );
+    }
+
+    // ─── Tables (`@table` + pipe-row syntax) ─────────────────────────
+
+    fn open_table_doc() -> Document {
+        Document::open(
+            r#"
+            @table("user")
+            type User { name: utf8  age: u32  active: bool }
+
+            @block("db")
+            type DB { @children("user") users: list<User> }
+
+            db production {
+              users:
+                | "alice" | 30 | true |
+                | "bob"   | 25 | false |
+                | "cara"  | 42 | true |
+            }
+            "#,
+            "test",
+        )
+        .expect("open")
+    }
+
+    #[test]
+    fn table_schema_lookup() {
+        let doc = open_table_doc();
+        assert!(doc.table_schema("user").is_some());
+        assert!(doc.table_schema("nope").is_none());
+    }
+
+    #[test]
+    fn child_kind_table_yields_data_kind_table() {
+        let doc = open_table_doc();
+        let users = doc.get("db.users").expect("db.users");
+        assert_eq!(users.kind(), "table");
+    }
+
+    #[test]
+    fn row_count_matches_source_rows() {
+        let doc = open_table_doc();
+        let users = doc.get("db.users").unwrap();
+        assert_eq!(users.row_count(), Some(3));
+        assert_eq!(users.len(), Some(3));
+    }
+
+    #[test]
+    fn row_returns_block_with_labels() {
+        let doc = open_table_doc();
+        let users = doc.get("db.users").unwrap();
+        let alice = users.row(0).expect("row 0");
+        assert_eq!(alice.kind(), "block");
+        let block = alice.as_block().unwrap();
+        let labels = block.labels().unwrap();
+        assert_eq!(labels.len(), 3);
+        assert_eq!(labels[0], Value::Utf8("alice".into()));
+        // Number literals default to i64 — element-type coercion to the
+        // schema's u32 isn't done in this pass.
+        assert_eq!(labels[1], Value::I64(30));
+        assert_eq!(labels[2], Value::Bool(true));
+    }
+
+    #[test]
+    fn column_projects_named_field() {
+        let doc = open_table_doc();
+        let users = doc.get("db.users").unwrap();
+        let names = users.column("name").unwrap();
+        assert_eq!(
+            names,
+            vec![
+                Value::Utf8("alice".into()),
+                Value::Utf8("bob".into()),
+                Value::Utf8("cara".into()),
+            ]
+        );
+        let ages = users.column("age").unwrap();
+        assert_eq!(ages, vec![Value::I64(30), Value::I64(25), Value::I64(42)]);
+    }
+
+    #[test]
+    fn child_kind_block_still_yields_blocklist() {
+        // When the kind isn't @table-schema'd, @children still returns
+        // a plain DataKind::BlockList.
+        let doc = Document::open(
+            r#"
+            @block("route") type Route { @inline(0) path: utf8 }
+            @block("service") type Service { @children("route") routes: list<Route> }
+            service web { route "/api" {} route "/healthz" {} }
+            "#,
+            "test",
+        )
+        .expect("open");
+        let routes = doc.get("service.routes").unwrap();
+        assert_eq!(routes.kind(), "block_list");
+    }
+
+    #[test]
+    fn mixed_rows_and_blocks_in_same_children_field() {
+        // Both literal `user { name=...; ... }` blocks and pipe-row
+        // entries under `users:` contribute to the same projection.
+        let doc = Document::open(
+            r#"
+            @table("user") type User { name: utf8  age: u32 }
+            @block("db") type DB { @children("user") users: list<User> }
+            db x {
+              users:
+                | "row-a" | 1 |
+                | "row-b" | 2 |
+              user { name = "block-c"  age = 3 }
+            }
+            "#,
+            "test",
+        )
+        .expect("open");
+        let users = doc.get("db.users").unwrap();
+        // BlockList because mixing with a `@block`-form? No — User is
+        // @table; result is still Table.
+        assert_eq!(users.kind(), "table");
+        // Three entries total: two synthesised rows + one literal
+        // block.
+        assert_eq!(users.row_count(), Some(3));
+        let names = users.column("name").unwrap();
+        assert_eq!(
+            names,
+            vec![
+                Value::Utf8("row-a".into()),
+                Value::Utf8("row-b".into()),
+                Value::Utf8("block-c".into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn row_column_count_mismatch_errors() {
+        let doc = Document::open(
+            r#"
+            @table("user") type User { name: utf8  age: u32 }
+            @block("db") type DB { @children("user") users: list<User> }
+            db x {
+              users:
+                | "alice" | 30 |
+                | "bob"   |
+            }
+            "#,
+            "test",
+        )
+        .expect("open");
+        let users = doc.get("db.users").unwrap();
+        let bob = users.row(1).unwrap().as_block().unwrap();
+        let errs = bob.schema_errors();
+        assert!(
+            errs.iter().any(|e| matches!(
+                e,
+                EvalError::SchemaViolation {
+                    kind: crate::error::SchemaViolationKind::ChildrenTooFew,
+                    ..
+                }
+            )),
+            "expected ChildrenTooFew for short row, got {errs:?}"
         );
     }
 

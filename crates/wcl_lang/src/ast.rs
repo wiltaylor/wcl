@@ -253,6 +253,19 @@ pub(crate) struct ImportDecl {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Row {
+    pub values: Vec<Expr>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct TableItem {
+    pub field_name: String,
+    pub rows: Vec<Row>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Item {
     Field(Field),
     Block(Block),
@@ -262,6 +275,7 @@ pub(crate) enum Item {
     UseDecl(UseDecl),
     SymbolSetDecl(SymbolSetDecl),
     Import(ImportDecl),
+    Table(TableItem),
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]

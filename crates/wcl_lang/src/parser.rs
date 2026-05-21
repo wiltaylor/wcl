@@ -54,6 +54,7 @@ impl<'a> Parser<'a> {
             }
             Item::UseDecl(_) => {}
             Item::Import(_) => {}
+            Item::Table(_) => {}
             Item::TypeDecl(t) => {
                 let parent_fqn = self.join_fqn(&t.name);
                 self.try_insert(SymbolRecord {
@@ -225,6 +226,19 @@ impl<'a> Parser<'a> {
                 ));
             }
             return self.parse_import_decl();
+        }
+        // Table-header form: `IDENT : | ... |` opens a table bound to
+        // the parent's named field.
+        if first_ident.is_some() && matches!(self.peek2()?.kind, TokenKind::Colon) {
+            if !decorators.is_empty() {
+                let span = decorators[0].span;
+                return Err(self.err(
+                    "decorators are not allowed on table headers",
+                    span,
+                    "remove decorator",
+                ));
+            }
+            return self.parse_table_item();
         }
         if let Some(first) = first_ident
             && matches!(self.peek2()?.kind, TokenKind::Ident(_))
@@ -782,6 +796,64 @@ impl<'a> Parser<'a> {
             path,
             span: Span::new(start, path_span.end),
         }))
+    }
+
+    fn parse_table_item(&mut self) -> Result<Item, ParseError> {
+        // Already peeked: IDENT followed by Colon. Consume both.
+        let name_tok = self.bump()?;
+        let start = name_tok.span.start;
+        let field_name = match name_tok.kind {
+            TokenKind::Ident(s) => s,
+            _ => unreachable!("parse_table_item entered with non-Ident first token"),
+        };
+        self.expect(TokenKind::Colon, "expected ':' after table field name")?;
+
+        let mut rows = Vec::new();
+        let mut end = name_tok.span.end;
+        while matches!(self.peek()?.kind, TokenKind::Pipe) {
+            let row = self.parse_table_row()?;
+            end = row.span.end;
+            rows.push(row);
+        }
+
+        Ok(Item::Table(crate::ast::TableItem {
+            field_name,
+            rows,
+            span: Span::new(start, end),
+        }))
+    }
+
+    fn parse_table_row(&mut self) -> Result<crate::ast::Row, ParseError> {
+        // Row grammar: `| (expr |)* (expr)?`
+        //
+        // The leading `|` is required. Each value is followed by a
+        // `|` (which acts as either a separator or the trailing pipe;
+        // we don't need to distinguish — the loop ends as soon as the
+        // next token can't start an expression). Trailing pipe is
+        // therefore effectively optional: after the last value, if no
+        // `|` follows, the row ends without one.
+        let lead = self.bump()?; // leading '|'
+        let start = lead.span.start;
+        let mut values = Vec::new();
+        let mut end = lead.span.end;
+        loop {
+            if !is_expr_start(&self.peek()?.kind) {
+                break;
+            }
+            let (v, v_span) = self.parse_expr()?;
+            values.push(v);
+            end = v_span.end;
+            if matches!(self.peek()?.kind, TokenKind::Pipe) {
+                let sep = self.bump()?;
+                end = sep.span.end;
+            } else {
+                break;
+            }
+        }
+        Ok(crate::ast::Row {
+            values,
+            span: Span::new(start, end),
+        })
     }
 
     fn parse_import_decl(&mut self) -> Result<Item, ParseError> {
@@ -1456,6 +1528,28 @@ impl<'a> Parser<'a> {
             label.into(),
         )
     }
+}
+
+/// Heuristic for "could this token start a row-value expression?".
+///
+/// Notably **excludes** `Ident` and `LBrace`: bare identifiers in a
+/// row position are ambiguous with the start of the next item
+/// (`meta { ... }` or `port = ...`), and `{` is similarly ambiguous
+/// with a block. Hosts that need a textual literal in a row should
+/// quote it (`| "alice" |`) or use a symbol (`| :alice |`).
+fn is_expr_start(t: &TokenKind) -> bool {
+    matches!(
+        t,
+        TokenKind::Number(_)
+            | TokenKind::Str(_)
+            | TokenKind::Bool(_)
+            | TokenKind::Symbol(_)
+            | TokenKind::None
+            | TokenKind::LParen
+            | TokenKind::LBracket
+            | TokenKind::Dash
+            | TokenKind::Bang
+    )
 }
 
 fn describe(t: &TokenKind) -> String {
@@ -2712,6 +2806,109 @@ mod tests {
             panic!("expected list literal")
         };
         assert_eq!(elements.len(), 2);
+    }
+
+    fn table_items(items: &[Item]) -> Vec<&crate::ast::TableItem> {
+        items
+            .iter()
+            .filter_map(|i| match i {
+                Item::Table(t) => Some(t),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn parse_table_with_one_row() {
+        let s = parse(r#"db x { users: | "a" | 30 | true | }"#);
+        let b = blocks(&s.items)[0];
+        let tables = table_items(&b.items);
+        assert_eq!(tables.len(), 1);
+        assert_eq!(tables[0].field_name, "users");
+        assert_eq!(tables[0].rows.len(), 1);
+        assert_eq!(tables[0].rows[0].values.len(), 3);
+    }
+
+    #[test]
+    fn parse_table_with_multiple_rows() {
+        let s = parse(
+            r#"
+            db x {
+              users:
+                | "a" | 30 | true |
+                | "b" | 25 | false |
+                | "c" | 42 | true |
+            }
+            "#,
+        );
+        let b = blocks(&s.items)[0];
+        let tables = table_items(&b.items);
+        assert_eq!(tables.len(), 1);
+        assert_eq!(tables[0].rows.len(), 3);
+    }
+
+    #[test]
+    fn parse_table_trailing_pipe_optional() {
+        let s = parse(r#"db x { users: | "a" | 30 }"#);
+        let b = blocks(&s.items)[0];
+        let tables = table_items(&b.items);
+        assert_eq!(tables.len(), 1);
+        assert_eq!(tables[0].rows[0].values.len(), 2);
+    }
+
+    #[test]
+    fn parse_empty_table_header() {
+        let s = parse(r#"db x { users: }"#);
+        let b = blocks(&s.items)[0];
+        let tables = table_items(&b.items);
+        assert_eq!(tables.len(), 1);
+        assert!(tables[0].rows.is_empty());
+    }
+
+    #[test]
+    fn parse_table_alongside_other_items() {
+        let s = parse(
+            r#"
+            db x {
+              port = 8080
+              users:
+                | "a" | 1 |
+              meta { region = "us" }
+            }
+            "#,
+        );
+        let b = blocks(&s.items)[0];
+        assert!(
+            table_items(&b.items)
+                .iter()
+                .any(|t| t.field_name == "users")
+        );
+        // Other items still parse.
+        let inner_blocks: Vec<&Block> = b
+            .items
+            .iter()
+            .filter_map(|i| {
+                if let Item::Block(b) = i {
+                    Some(b)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        assert!(inner_blocks.iter().any(|b| b.kind == "meta"));
+    }
+
+    #[test]
+    fn parser_rejects_decorator_on_table_header() {
+        let err = parse_err(r#"db x { @logged users: | 1 | }"#);
+        match err {
+            ParseError::Syntax(e) => assert!(
+                e.message.contains("decorators are not allowed on table"),
+                "{}",
+                e.message
+            ),
+            _ => panic!("expected syntax error"),
+        }
     }
 
     #[test]

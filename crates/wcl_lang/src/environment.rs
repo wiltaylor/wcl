@@ -118,6 +118,12 @@ fn builtin_decorator_schemas() -> Vec<ast::TypeDecl> {
             "kind",
             TypeRef::Builtin(BuiltinType::Utf8),
         ),
+        synth_decorator_schema(
+            "Table",
+            "table",
+            "name",
+            TypeRef::Builtin(BuiltinType::Utf8),
+        ),
     ]
 }
 

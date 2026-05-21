@@ -1,0 +1,21 @@
+// Tables: types decorated with @table become row-schemas. Instances
+// are written as `FIELD:` followed by pipe-delimited rows.
+
+@table("user")
+type User {
+  name:   utf8
+  age:    u32
+  active: bool
+}
+
+@block("db")
+type DB {
+  @children("user") users: list<User>
+}
+
+db production {
+  users:
+    | "alice" | 30 | true  |
+    | "bob"   | 25 | false |
+    | "cara"  | 42 | true  |
+}

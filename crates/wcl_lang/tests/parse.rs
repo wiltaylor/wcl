@@ -553,3 +553,36 @@ fn nested_blocks_missing_required_surfaces_error() {
         "expected MissingRequired, got {errs:?}"
     );
 }
+
+#[test]
+fn tables_example_resolves_via_schema() {
+    let path = examples_dir().join("tables.wcl");
+    let doc = Document::from_file(&path).expect("fixture parses");
+    let users = doc.get("db.users").expect("db.users present");
+    assert_eq!(users.kind(), "table");
+    assert_eq!(users.row_count(), Some(3));
+
+    let alice = users.row(0).unwrap();
+    let alice_block = alice.as_block().expect("row is a block");
+    let labels = alice_block.labels().unwrap();
+    assert_eq!(
+        labels,
+        vec![
+            Value::Utf8("alice".into()),
+            Value::I64(30),
+            Value::Bool(true)
+        ]
+    );
+
+    let names = users.column("name").unwrap();
+    assert_eq!(
+        names,
+        vec![
+            Value::Utf8("alice".into()),
+            Value::Utf8("bob".into()),
+            Value::Utf8("cara".into()),
+        ]
+    );
+    let ages = users.column("age").unwrap();
+    assert_eq!(ages, vec![Value::I64(30), Value::I64(25), Value::I64(42)]);
+}

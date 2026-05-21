@@ -30,6 +30,10 @@ pub enum DataKind<'a> {
     /// `@children("kind")`. Not name-addressable; iterate via
     /// `children()` or `len()`.
     BlockList(Vec<Block<'a>>),
+    /// A list of `Block`s acting as table rows — produced by
+    /// `@children("kind")` where the row kind is `@table`-schema'd.
+    /// Same shape as `BlockList` but exposes row/column accessors.
+    Table(Vec<Block<'a>>),
     Type(TypeDecl<'a>),
     TypeField(TypeField<'a>),
     Union(UnionDecl<'a>),
@@ -61,12 +65,16 @@ impl<'a> DataRef<'a> {
     pub fn from_block_list(blocks: Vec<Block<'a>>) -> Self {
         Self::new(DataKind::BlockList(blocks))
     }
+    pub fn from_table(blocks: Vec<Block<'a>>) -> Self {
+        Self::new(DataKind::Table(blocks))
+    }
 
     pub fn kind(&self) -> &'static str {
         match &self.inner {
             DataKind::Field(_) => "field",
             DataKind::Block(_) => "block",
             DataKind::BlockList(_) => "block_list",
+            DataKind::Table(_) => "table",
             DataKind::Type(_) => "type",
             DataKind::TypeField(_) => "type_field",
             DataKind::Union(_) => "union",
@@ -76,12 +84,73 @@ impl<'a> DataRef<'a> {
         }
     }
 
-    /// Number of entries in a `BlockList`. `None` for any other variant.
+    /// Number of entries in a `BlockList` or `Table`. `None` for any
+    /// other variant.
     pub fn len(&self) -> Option<usize> {
         match &self.inner {
-            DataKind::BlockList(v) => Some(v.len()),
+            DataKind::BlockList(v) | DataKind::Table(v) => Some(v.len()),
             _ => None,
         }
+    }
+
+    /// `Table::row_count` alias for clarity. Returns `None` for
+    /// non-table variants.
+    pub fn row_count(&self) -> Option<usize> {
+        match &self.inner {
+            DataKind::Table(v) => Some(v.len()),
+            _ => None,
+        }
+    }
+
+    /// Return the ith row as `DataRef::Block`. `None` if not a table
+    /// or index out of range.
+    pub fn row(&self, i: usize) -> Option<DataRef<'a>> {
+        match &self.inner {
+            DataKind::Table(v) => v.get(i).cloned().map(DataRef::from_block),
+            _ => None,
+        }
+    }
+
+    /// Project a single column across every row of a `Table`. Each
+    /// row's `labels()` is evaluated; the requested column index is
+    /// the schema field's declaration position.
+    pub fn column(&self, name: &str) -> Result<Vec<crate::value::Value>, EvalError> {
+        let rows = match &self.inner {
+            DataKind::Table(v) => v,
+            _ => {
+                return Err(EvalError::not_a_leaf(
+                    self.kind(),
+                    crate::ast::Span::new(0, 0),
+                ));
+            }
+        };
+        let Some(first) = rows.first() else {
+            return Ok(Vec::new());
+        };
+        let schema = first
+            .schema()
+            .ok_or_else(|| EvalError::not_a_leaf("table without schema", first.span()))?;
+        let idx = schema.fields().position(|f| f.name() == name);
+        let Some(idx) = idx else {
+            return Err(EvalError::not_a_leaf("unknown table column", first.span()));
+        };
+        let mut out = Vec::with_capacity(rows.len());
+        for r in rows {
+            let labels = r.labels()?;
+            if let Some(v) = labels.get(idx) {
+                out.push(v.clone());
+                continue;
+            }
+            // Literal block written long-form (e.g.
+            // `user { name = "..." age = ... }`) has no pipe labels;
+            // fall back to the named field.
+            if let Some(f) = r.field(name) {
+                out.push(f.value().map_err(|e| e.clone())?.clone());
+            } else {
+                out.push(Value::None);
+            }
+        }
+        Ok(out)
     }
 
     pub fn is_empty(&self) -> Option<bool> {
@@ -105,7 +174,8 @@ impl<'a> DataRef<'a> {
             DataKind::Field(_)
             | DataKind::TypeField(_)
             | DataKind::Symbol(_)
-            | DataKind::BlockList(_) => None,
+            | DataKind::BlockList(_)
+            | DataKind::Table(_) => None,
             DataKind::Block(b) => {
                 // Schema-aware first: a schema'd block projects names
                 // through its declared `@inline` / `@child` /
@@ -159,7 +229,7 @@ impl<'a> DataRef<'a> {
         match &self.inner {
             DataKind::Field(f) => f.span(),
             DataKind::Block(b) => b.span(),
-            DataKind::BlockList(v) => v
+            DataKind::BlockList(v) | DataKind::Table(v) => v
                 .first()
                 .map(|b| b.span())
                 .unwrap_or_else(|| crate::ast::Span::new(0, 0)),
@@ -230,7 +300,9 @@ impl<'a> DataRef<'a> {
     pub fn blocks(&self) -> Box<dyn Iterator<Item = DataRef<'a>> + 'a> {
         match &self.inner {
             DataKind::Block(b) => Box::new(b.blocks().map(DataRef::from_block)),
-            DataKind::BlockList(v) => Box::new(v.clone().into_iter().map(DataRef::from_block)),
+            DataKind::BlockList(v) | DataKind::Table(v) => {
+                Box::new(v.clone().into_iter().map(DataRef::from_block))
+            }
             _ => Box::new(std::iter::empty()),
         }
     }
@@ -255,7 +327,9 @@ impl<'a> DataRef<'a> {
                     )
                 }
             }
-            DataKind::BlockList(v) => Box::new(v.clone().into_iter().map(DataRef::from_block)),
+            DataKind::BlockList(v) | DataKind::Table(v) => {
+                Box::new(v.clone().into_iter().map(DataRef::from_block))
+            }
             DataKind::Type(t) => {
                 let t = *t;
                 Box::new(t.fields().map(|f| DataRef::new(DataKind::TypeField(f))))
