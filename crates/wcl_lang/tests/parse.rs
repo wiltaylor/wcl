@@ -467,3 +467,89 @@ service "web" {
     assert!(!errs.is_empty(), "expected at least one import error");
     assert!(matches!(errs[0], EvalError::ImportFailed { .. }));
 }
+
+#[test]
+fn nested_blocks_example_resolves_via_schema() {
+    let path = examples_dir().join("nested_blocks.wcl");
+    let doc = Document::from_file(&path).expect("nested_blocks fixture parses");
+
+    // Singleton @child — `config` field resolves to a Block.
+    let cfg = doc.get("service.config").expect("service.config");
+    assert_eq!(cfg.kind(), "block");
+    assert_eq!(
+        cfg.get("region").unwrap().value().unwrap(),
+        Value::Utf8("us-east-1".into())
+    );
+    assert_eq!(
+        cfg.get("tier").unwrap().value().unwrap(),
+        Value::Symbol("gold".into())
+    );
+
+    // Plural @children — `routes` field resolves to a BlockList.
+    let routes = doc.get("service.routes").expect("service.routes");
+    assert_eq!(routes.kind(), "block_list");
+    assert_eq!(routes.len(), Some(2));
+    let mut methods: Vec<Value> = routes
+        .children()
+        .map(|r| r.get("method").unwrap().value().unwrap())
+        .collect();
+    methods.sort_by_key(|v| match v {
+        Value::Utf8(s) => s.clone(),
+        _ => String::new(),
+    });
+    assert_eq!(methods, vec![Value::Utf8("GET".into()); 2]);
+
+    // No schema violations on the well-formed fixture.
+    let svc = doc.block("service").expect("service block");
+    assert!(svc.schema_errors().is_empty());
+}
+
+#[test]
+fn nested_blocks_fixture_top_level_list_field() {
+    let path = examples_dir().join("nested_blocks.wcl");
+    let doc = Document::from_file(&path).expect("nested_blocks fixture parses");
+
+    let ports = doc.get("ports").expect("ports").value().unwrap();
+    assert_eq!(
+        ports,
+        Value::List(vec![Value::I64(80), Value::I64(443), Value::I64(8080)])
+    );
+}
+
+#[test]
+fn nested_blocks_fixture_required_children_clean() {
+    let path = examples_dir().join("nested_blocks.wcl");
+    let doc = Document::from_file(&path).expect("fixture parses");
+    let svc = doc.block("service").expect("service block");
+    // required_children = ["config"] is satisfied by the fixture's
+    // `config { ... }` child.
+    assert!(svc.schema_errors().is_empty(), "{:?}", svc.schema_errors());
+}
+
+#[test]
+fn nested_blocks_missing_required_surfaces_error() {
+    let doc = Document::open(
+        r#"
+        @block("service", required_children = ["config"])
+        type Service {
+          @child("config") config: Config?
+        }
+        @block("config") type Config {}
+        service web {}
+        "#,
+        "test",
+    )
+    .expect("parses (validation is lazy)");
+    let svc = doc.block("service").unwrap();
+    let errs = svc.schema_errors();
+    assert!(
+        errs.iter().any(|e| matches!(
+            e,
+            EvalError::SchemaViolation {
+                kind: wcl_lang::SchemaViolationKind::MissingRequired,
+                ..
+            }
+        )),
+        "expected MissingRequired, got {errs:?}"
+    );
+}

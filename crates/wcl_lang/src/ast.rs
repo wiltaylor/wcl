@@ -74,6 +74,11 @@ pub(crate) enum Expr {
         inner: Box<Expr>,
         span: Span,
     },
+
+    ListLit {
+        elements: Vec<Expr>,
+        span: Span,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]

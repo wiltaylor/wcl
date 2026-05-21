@@ -161,6 +161,18 @@ where
     }
 }
 
+impl<T> FromValue for Vec<T>
+where
+    T: FromValue,
+{
+    fn from_value(v: &Value) -> Result<Self, String> {
+        match v {
+            Value::List(items) => items.iter().map(T::from_value).collect(),
+            other => Err(format!("expected list, found {}", other.type_name())),
+        }
+    }
+}
+
 // ─── IntoValue impls ─────────────────────────────────────────────────
 
 macro_rules! into_value_int {
@@ -222,6 +234,15 @@ where
             Some(t) => t.into_value(),
             None => Value::None,
         }
+    }
+}
+
+impl<T> IntoValue for Vec<T>
+where
+    T: IntoValue,
+{
+    fn into_value(self) -> Value {
+        Value::List(self.into_iter().map(T::into_value).collect())
     }
 }
 
@@ -340,5 +361,45 @@ mod tests {
         });
         assert_eq!((b.body)(&[Value::I64(3)]).unwrap(), Value::I64(6));
         assert_eq!((b.body)(&[Value::None]).unwrap(), Value::None);
+    }
+
+    #[test]
+    fn vec_from_value_round_trip() {
+        let b = from_fn(|v: Vec<i64>| v.iter().sum::<i64>());
+        let args = vec![Value::List(vec![
+            Value::I64(1),
+            Value::I64(2),
+            Value::I64(3),
+        ])];
+        assert_eq!((b.body)(&args).unwrap(), Value::I64(6));
+    }
+
+    #[test]
+    fn vec_from_value_type_mismatch() {
+        let b = from_fn(|v: Vec<i64>| v.len() as i64);
+        // Passing a non-list value should error.
+        let err = (b.body)(&[Value::I64(42)]).unwrap_err();
+        assert!(err.contains("expected list"), "{err}");
+    }
+
+    #[test]
+    fn vec_into_value_round_trip() {
+        let b = from_fn(|_n: i64| -> Vec<i64> { vec![1, 2, 3] });
+        let out = (b.body)(&[Value::I64(0)]).unwrap();
+        assert_eq!(
+            out,
+            Value::List(vec![Value::I64(1), Value::I64(2), Value::I64(3)])
+        );
+    }
+
+    #[test]
+    fn vec_of_string_round_trip() {
+        let b = from_fn(|parts: Vec<String>| parts.join(","));
+        let out = (b.body)(&[Value::List(vec![
+            Value::Utf8("a".into()),
+            Value::Utf8("b".into()),
+        ])])
+        .unwrap();
+        assert_eq!(out, Value::Utf8("a,b".into()));
     }
 }

@@ -288,6 +288,10 @@ fn value_repr(v: &Value) -> String {
                 type_repr(f.return_ty())
             )
         }
+        Value::List(items) => {
+            let parts: Vec<String> = items.iter().map(value_repr).collect();
+            format!("[{}]", parts.join(", "))
+        }
     }
 }
 

@@ -29,6 +29,7 @@ pub enum Value {
     None,
 
     Function(FnValue),
+    List(Vec<Value>),
 }
 
 /// A function value: a parameter list, a return type, and an opaque body.
@@ -112,6 +113,7 @@ impl Value {
             Value::Symbol(_) => "symbol",
             Value::None => "none",
             Value::Function(_) => "fn",
+            Value::List(_) => "list",
         }
     }
 }

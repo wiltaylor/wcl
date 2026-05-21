@@ -1,0 +1,41 @@
+// Schema-driven nested blocks. The Service type binds child blocks
+// to its declared fields via @child (singleton) and @children (list).
+
+@block("service",
+       max_children = 50,
+       required_children = ["config"])
+type Service {
+  @inline(0) id: identifier
+  @child("config")            config:  Config
+  @children("route", max = 32) routes: list<Route>
+}
+
+@block("config")
+type Config {
+  region: utf8
+  tier:   symbol
+}
+
+@block("route")
+type Route {
+  @inline(0) path: utf8
+  method:    utf8
+}
+
+// Plain list literal at the top level.
+ports = [80, 443, 8080]
+
+// Instance:
+
+service web {
+  config {
+    region = "us-east-1"
+    tier   = :gold
+  }
+  route "/api" {
+    method = "GET"
+  }
+  route "/healthz" {
+    method = "GET"
+  }
+}

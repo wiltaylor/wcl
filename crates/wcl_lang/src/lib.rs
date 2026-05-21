@@ -24,6 +24,6 @@ pub use doc::{
     VariantBodyView,
 };
 pub use environment::{BuiltType, DecoratorBuilder, Environment, TypeBuilder, TypeFieldBuilder};
-pub use error::{EvalError, ParseError, SyntaxError};
+pub use error::{EvalError, ParseError, SchemaViolationKind, SyntaxError};
 pub use symbols::{SymbolIndex, SymbolKind, SymbolPath, SymbolRecord};
 pub use value::{BuiltinType, FnParam, FnValue, TensorDim, TypeRef, Value};

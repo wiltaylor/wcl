@@ -106,6 +106,18 @@ fn builtin_decorator_schemas() -> Vec<ast::TypeDecl> {
             "value",
             TypeRef::Builtin(BuiltinType::Utf8),
         ),
+        synth_decorator_schema(
+            "Child",
+            "child",
+            "kind",
+            TypeRef::Builtin(BuiltinType::Utf8),
+        ),
+        synth_decorator_schema(
+            "Children",
+            "children",
+            "kind",
+            TypeRef::Builtin(BuiltinType::Utf8),
+        ),
     ]
 }
 
@@ -294,6 +306,10 @@ fn value_to_expr(v: Value) -> ast::Expr {
         Value::Function(_) => {
             unreachable!("function values are not constructible via the schema builder API")
         }
+        Value::List(items) => ast::Expr::ListLit {
+            elements: items.into_iter().map(value_to_expr).collect(),
+            span: synthetic_span(),
+        },
     }
 }
 

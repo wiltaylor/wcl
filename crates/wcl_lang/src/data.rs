@@ -17,15 +17,19 @@ use crate::value::Value;
 /// [`Document::get`](crate::Document::get) or by wrapping an existing
 /// view type via `DataRef::from(...)` /
 /// [`DataRef::from_field`] etc.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct DataRef<'a> {
     inner: DataKind<'a>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub enum DataKind<'a> {
     Field(Field<'a>),
     Block(Block<'a>),
+    /// A list of `Block`s — produced by schema fields decorated with
+    /// `@children("kind")`. Not name-addressable; iterate via
+    /// `children()` or `len()`.
+    BlockList(Vec<Block<'a>>),
     Type(TypeDecl<'a>),
     TypeField(TypeField<'a>),
     Union(UnionDecl<'a>),
@@ -54,11 +58,15 @@ impl<'a> DataRef<'a> {
     pub fn from_symbol_set(s: SymbolSetDecl<'a>) -> Self {
         Self::new(DataKind::Symbols(s))
     }
+    pub fn from_block_list(blocks: Vec<Block<'a>>) -> Self {
+        Self::new(DataKind::BlockList(blocks))
+    }
 
     pub fn kind(&self) -> &'static str {
-        match self.inner {
+        match &self.inner {
             DataKind::Field(_) => "field",
             DataKind::Block(_) => "block",
+            DataKind::BlockList(_) => "block_list",
             DataKind::Type(_) => "type",
             DataKind::TypeField(_) => "type_field",
             DataKind::Union(_) => "union",
@@ -66,6 +74,18 @@ impl<'a> DataRef<'a> {
             DataKind::Symbols(_) => "symbol_set",
             DataKind::Symbol(_) => "symbol_entry",
         }
+    }
+
+    /// Number of entries in a `BlockList`. `None` for any other variant.
+    pub fn len(&self) -> Option<usize> {
+        match &self.inner {
+            DataKind::BlockList(v) => Some(v.len()),
+            _ => None,
+        }
+    }
+
+    pub fn is_empty(&self) -> Option<bool> {
+        self.len().map(|n| n == 0)
     }
 
     /// Walk a single named child. Returns `None` for leaves and for
@@ -81,9 +101,18 @@ impl<'a> DataRef<'a> {
     /// - `Symbols` matches a `SymbolEntry` by name.
     /// - `Symbol` has no children; `None`.
     pub fn child(&self, name: &str) -> Option<DataRef<'a>> {
-        match self.inner {
-            DataKind::Field(_) | DataKind::TypeField(_) | DataKind::Symbol(_) => None,
+        match &self.inner {
+            DataKind::Field(_)
+            | DataKind::TypeField(_)
+            | DataKind::Symbol(_)
+            | DataKind::BlockList(_) => None,
             DataKind::Block(b) => {
+                // Schema-aware first: a schema'd block projects names
+                // through its declared `@inline` / `@child` /
+                // `@children` decorators.
+                if let Some(r) = b.typed_field(name) {
+                    return Some(r);
+                }
                 if let Some(f) = b.field(name) {
                     return Some(DataRef::from_field(f));
                 }
@@ -103,7 +132,7 @@ impl<'a> DataRef<'a> {
     /// segment is resolved lazily via `child`; missing segments yield
     /// `None`.
     pub fn get(&self, path: &str) -> Option<DataRef<'a>> {
-        let mut cur = *self;
+        let mut cur = self.clone();
         for seg in path.split('.').filter(|s| !s.is_empty()) {
             cur = cur.child(seg)?;
         }
@@ -114,7 +143,7 @@ impl<'a> DataRef<'a> {
     /// variant that isn't a `Field`. The underlying `Field::value` is
     /// cached, so repeated calls are O(1).
     pub fn value(&self) -> Result<Value, EvalError> {
-        match self.inner {
+        match &self.inner {
             DataKind::Field(f) => match f.value() {
                 Ok(v) => Ok(v.clone()),
                 Err(e) => Err(e.clone()),
@@ -124,10 +153,16 @@ impl<'a> DataRef<'a> {
     }
 
     /// Span of the underlying AST node, useful for diagnostics.
+    /// `BlockList` returns the span of its first block (or
+    /// `Span::default()` when empty).
     pub fn span(&self) -> crate::ast::Span {
-        match self.inner {
+        match &self.inner {
             DataKind::Field(f) => f.span(),
             DataKind::Block(b) => b.span(),
+            DataKind::BlockList(v) => v
+                .first()
+                .map(|b| b.span())
+                .unwrap_or_else(|| crate::ast::Span::new(0, 0)),
             DataKind::Type(t) => t.span(),
             DataKind::TypeField(f) => f.span(),
             DataKind::Union(u) => u.span(),
@@ -144,71 +179,97 @@ impl<'a> DataRef<'a> {
     /// Convenience accessors for callers that want the underlying typed
     /// view back without re-matching.
     pub fn as_field(&self) -> Option<Field<'a>> {
-        match self.inner {
-            DataKind::Field(f) => Some(f),
+        match &self.inner {
+            DataKind::Field(f) => Some(*f),
             _ => None,
         }
     }
     pub fn as_block(&self) -> Option<Block<'a>> {
-        match self.inner {
-            DataKind::Block(b) => Some(b),
+        match &self.inner {
+            DataKind::Block(b) => Some(*b),
+            _ => None,
+        }
+    }
+    pub fn as_block_list(&self) -> Option<&[Block<'a>]> {
+        match &self.inner {
+            DataKind::BlockList(v) => Some(v.as_slice()),
             _ => None,
         }
     }
     pub fn as_type(&self) -> Option<TypeDecl<'a>> {
-        match self.inner {
-            DataKind::Type(t) => Some(t),
+        match &self.inner {
+            DataKind::Type(t) => Some(*t),
             _ => None,
         }
     }
     pub fn as_union(&self) -> Option<UnionDecl<'a>> {
-        match self.inner {
-            DataKind::Union(u) => Some(u),
+        match &self.inner {
+            DataKind::Union(u) => Some(*u),
             _ => None,
         }
     }
     pub fn as_symbol_set(&self) -> Option<SymbolSetDecl<'a>> {
-        match self.inner {
-            DataKind::Symbols(s) => Some(s),
+        match &self.inner {
+            DataKind::Symbols(s) => Some(*s),
             _ => None,
         }
     }
 
     /// Iterate over fields. Only `Block` yields entries; other variants
-    /// produce an empty iterator.
+    /// produce an empty iterator. AST-level iteration (escape hatch);
+    /// for schema-projected iteration use [`children`](Self::children).
     pub fn fields(&self) -> Box<dyn Iterator<Item = DataRef<'a>> + 'a> {
-        match self.inner {
+        match &self.inner {
             DataKind::Block(b) => Box::new(b.fields().map(DataRef::from_field)),
             _ => Box::new(std::iter::empty()),
         }
     }
 
     /// Iterate over nested blocks. Only `Block` yields entries.
+    /// AST-level iteration (escape hatch).
     pub fn blocks(&self) -> Box<dyn Iterator<Item = DataRef<'a>> + 'a> {
-        match self.inner {
+        match &self.inner {
             DataKind::Block(b) => Box::new(b.blocks().map(DataRef::from_block)),
+            DataKind::BlockList(v) => Box::new(v.clone().into_iter().map(DataRef::from_block)),
             _ => Box::new(std::iter::empty()),
         }
     }
 
-    /// Walk every immediate child — fields and blocks for a `Block`,
-    /// variants for a `Union`, type-fields for a `Type`, symbol entries
-    /// for a `SymbolSet`. Order matches source order within each kind.
+    /// Walk every immediate child. For a schema'd `Block`, yields the
+    /// typed-field projection (one entry per declared field). For an
+    /// un-schema'd block, yields raw AST fields followed by raw nested
+    /// blocks. `BlockList` yields each block in order.
     pub fn children(&self) -> Box<dyn Iterator<Item = DataRef<'a>> + 'a> {
-        match self.inner {
-            DataKind::Block(b) => Box::new(
-                b.fields()
-                    .map(DataRef::from_field)
-                    .chain(b.blocks().map(DataRef::from_block)),
-            ),
-            DataKind::Type(t) => Box::new(t.fields().map(|f| DataRef::new(DataKind::TypeField(f)))),
+        match &self.inner {
+            DataKind::Block(b) => {
+                let projected: Vec<DataRef<'a>> =
+                    b.typed_fields().map(|(_, dr)| dr).collect::<Vec<_>>();
+                if !projected.is_empty() {
+                    Box::new(projected.into_iter())
+                } else {
+                    let bb = *b;
+                    Box::new(
+                        bb.fields()
+                            .map(DataRef::from_field)
+                            .chain(bb.blocks().map(DataRef::from_block)),
+                    )
+                }
+            }
+            DataKind::BlockList(v) => Box::new(v.clone().into_iter().map(DataRef::from_block)),
+            DataKind::Type(t) => {
+                let t = *t;
+                Box::new(t.fields().map(|f| DataRef::new(DataKind::TypeField(f))))
+            }
             DataKind::Union(u) => {
+                let u = *u;
                 Box::new(u.variants().map(|v| DataRef::new(DataKind::Variant(v))))
             }
             DataKind::Variant(v) => {
+                let v = *v;
                 Box::new(v.fields().map(|f| DataRef::new(DataKind::TypeField(f))))
             }
             DataKind::Symbols(s) => {
+                let s = *s;
                 Box::new(s.symbols().map(|e| DataRef::new(DataKind::Symbol(e))))
             }
             DataKind::Field(_) | DataKind::TypeField(_) | DataKind::Symbol(_) => {

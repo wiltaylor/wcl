@@ -47,6 +47,9 @@ pub(crate) enum ItemCellKind {
     Block {
         labels: OnceLock<Result<Vec<Value>, EvalError>>,
         items: Vec<ItemCells>,
+        /// Lazy schema-content validation cache. Populated on first call
+        /// to `Block::schema_errors()`.
+        schema_validation: OnceLock<Vec<EvalError>>,
     },
     TypeDecl {
         /// One inner Vec per `ast::TypeDecl.fields[i]`, holding cells for
@@ -116,6 +119,7 @@ impl ItemCells {
                         .iter()
                         .map(|item| ItemCells::build(item, base_dir))
                         .collect(),
+                    schema_validation: OnceLock::new(),
                 },
             },
             ast::Item::TypeDecl(t) => Self {
@@ -717,6 +721,30 @@ impl Document {
     }
 }
 
+/// Extract a `u64`-valued named argument from the first decorator in
+/// `decs` whose `full_name()` matches `dec_name`. Returns `None` if the
+/// decorator isn't present, the named arg isn't present, the eval
+/// failed, or the value isn't a non-negative integer.
+fn decorator_u64_named(decs: &[Decorator<'_>], dec_name: &str, arg_name: &str) -> Option<u64> {
+    let dec = decs.iter().find(|d| d.full_name() == dec_name)?;
+    let v = dec.named_arg(arg_name)?.ok()?;
+    match v {
+        Value::I8(n) if n >= 0 => Some(n as u64),
+        Value::I16(n) if n >= 0 => Some(n as u64),
+        Value::I32(n) if n >= 0 => Some(n as u64),
+        Value::I64(n) if n >= 0 => Some(n as u64),
+        Value::I128(n) if n >= 0 => Some(n as u64),
+        Value::Isize(n) if n >= 0 => Some(n as u64),
+        Value::U8(n) => Some(n as u64),
+        Value::U16(n) => Some(n as u64),
+        Value::U32(n) => Some(n as u64),
+        Value::U64(n) => Some(n),
+        Value::U128(n) => Some(n as u64),
+        Value::Usize(n) => Some(n as u64),
+        _ => None,
+    }
+}
+
 fn decl_fqn_matches(decl: &[String], target: &[&str]) -> bool {
     decl.len() == target.len() && decl.iter().zip(target.iter()).all(|(a, b)| a == b)
 }
@@ -1216,6 +1244,61 @@ impl<'a> TypeDecl<'a> {
         self.ast.span
     }
 
+    /// `max_children = N` named arg on the type's `@block(...)`. Caps
+    /// the total number of nested blocks inside an instance of this
+    /// type.
+    pub fn max_children(&self) -> Option<u64> {
+        let decs: Vec<_> = self.decorators().collect();
+        decorator_u64_named(&decs, "block", "max_children")
+    }
+
+    /// `required_children = ["kind", ...]` named arg on the type's
+    /// `@block(...)` decorator. Each listed kind must appear at least
+    /// once in any instance of this type. Non-string entries in the
+    /// list are silently dropped.
+    pub fn required_children(&self) -> Vec<String> {
+        let decs: Vec<_> = self.decorators().collect();
+        let dec = match decs.iter().find(|d| d.full_name() == "block") {
+            Some(d) => d,
+            None => return Vec::new(),
+        };
+        let arg = match dec.named_arg("required_children") {
+            Some(Ok(v)) => v,
+            _ => return Vec::new(),
+        };
+        match arg {
+            Value::List(items) => items
+                .into_iter()
+                .filter_map(|v| match v {
+                    Value::Utf8(s) | Value::Ascii(s) => Some(s),
+                    _ => None,
+                })
+                .collect(),
+            _ => Vec::new(),
+        }
+    }
+
+    /// Implicit set of allowed child block kinds: the union of all
+    /// `@child(K)` and `@children(K)` decorators across this type's
+    /// fields. Any nested block whose kind isn't in this set is a
+    /// schema violation.
+    pub fn allowed_child_kinds(&self) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for f in self.fields() {
+            if let Some(k) = f.child_block_kind()
+                && !out.contains(&k)
+            {
+                out.push(k);
+            }
+            if let Some(k) = f.children_block_kind()
+                && !out.contains(&k)
+            {
+                out.push(k);
+            }
+        }
+        out
+    }
+
     pub fn fields(&self) -> impl Iterator<Item = TypeField<'a>> + 'a {
         let doc = self.doc;
         let cells = self.field_decorator_cells();
@@ -1342,6 +1425,36 @@ impl<'a> TypeField<'a> {
         dec.positional().ok()?.into_iter().next()
     }
 
+    /// If this field carries an `@child("kind")` decorator, returns the
+    /// nested block kind it binds.
+    pub fn child_block_kind(&self) -> Option<String> {
+        let dec = self.decorators().find(|d| d.full_name() == "child")?;
+        match dec.positional().ok()?.into_iter().next()? {
+            Value::Utf8(s) | Value::Ascii(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    /// If this field carries an `@children("kind", min?, max?)` decorator,
+    /// returns the nested block kind it binds.
+    pub fn children_block_kind(&self) -> Option<String> {
+        let dec = self.decorators().find(|d| d.full_name() == "children")?;
+        match dec.positional().ok()?.into_iter().next()? {
+            Value::Utf8(s) | Value::Ascii(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    /// Optional `min` cardinality on `@children(...)`.
+    pub fn children_min(&self) -> Option<u64> {
+        decorator_u64_named(&self.decorators().collect::<Vec<_>>(), "children", "min")
+    }
+
+    /// Optional `max` cardinality on `@children(...)`.
+    pub fn children_max(&self) -> Option<u64> {
+        decorator_u64_named(&self.decorators().collect::<Vec<_>>(), "children", "max")
+    }
+
     pub fn name(&self) -> &'a str {
         &self.ast.name
     }
@@ -1422,7 +1535,7 @@ pub struct Block<'a> {
 
 impl<'a> Block<'a> {
     fn block_inner(&self) -> (&'a OnceLock<Result<Vec<Value>, EvalError>>, &'a [ItemCells]) {
-        let ItemCellKind::Block { labels, items } = &self.cells.kind else {
+        let ItemCellKind::Block { labels, items, .. } = &self.cells.kind else {
             unreachable!("Block view wraps a Block cell")
         };
         (labels, items)
@@ -1531,6 +1644,215 @@ impl<'a> Block<'a> {
         }
         out
     }
+
+    /// The schema (`TypeDecl`) for this block's `kind`, if any.
+    pub fn schema(&self) -> Option<TypeDecl<'a>> {
+        self.doc.block_schema(&self.ast.kind)
+    }
+
+    /// Schema-aware field lookup. Projects the block through its
+    /// declared type:
+    ///
+    /// - `@inline(N)` → returns a synthetic `Field` over the label slot
+    /// - `@child(K)`  → returns a `DataRef::Block` of the matching
+    ///   nested block (or `None` if absent)
+    /// - `@children(K)` → returns a `DataRef::BlockList` of all matching
+    ///   nested blocks
+    /// - any other named field on the schema → tries a literal child
+    ///   field by name
+    ///
+    /// Returns `None` if the block has no schema, or if the name
+    /// doesn't match any schema field or literal item.
+    pub fn typed_field(&self, name: &str) -> Option<crate::data::DataRef<'a>> {
+        let schema = self.schema()?;
+        let f = schema.field(name)?;
+
+        if let Some(kind) = f.children_block_kind() {
+            // Gather all nested blocks of this kind (raw AST scan).
+            let blocks: Vec<Block<'a>> = self.blocks().filter(|b| b.kind() == kind).collect();
+            return Some(crate::data::DataRef::from_block_list(blocks));
+        }
+        if let Some(kind) = f.child_block_kind() {
+            let block = self.blocks().find(|b| b.kind() == kind)?;
+            return Some(crate::data::DataRef::from_block(block));
+        }
+        if f.inline_slot().is_some() {
+            // Inline labels become a synthetic field — we don't have
+            // a `Field` view for a label, so return the typed-field
+            // view. Hosts wanting the label value should access
+            // `block.labels()` directly.
+            return Some(crate::data::DataRef::new(crate::data::DataKind::TypeField(
+                f,
+            )));
+        }
+        // Plain schema field → look it up in literal block items.
+        self.field(name).map(crate::data::DataRef::from_field)
+    }
+
+    /// Iterate schema-projected fields in declared order. Empty for
+    /// un-schema'd blocks.
+    pub fn typed_fields(
+        &self,
+    ) -> Box<dyn Iterator<Item = (&'a str, crate::data::DataRef<'a>)> + 'a> {
+        let Some(schema) = self.schema() else {
+            return Box::new(std::iter::empty());
+        };
+        let this = *self;
+        Box::new(schema.fields().filter_map(move |f| {
+            let name = f.name();
+            this.typed_field(name).map(|dr| (name, dr))
+        }))
+    }
+
+    /// Schema-content validation errors for this block. Computed and
+    /// cached on first access; subsequent calls return the cached slice.
+    pub fn schema_errors(&self) -> &'a [EvalError] {
+        let ItemCellKind::Block {
+            schema_validation, ..
+        } = &self.cells.kind
+        else {
+            unreachable!("Block view wraps a Block cell")
+        };
+        let result = schema_validation.get_or_init(|| compute_schema_errors(self));
+        result.as_slice()
+    }
+}
+
+/// Compute schema-content validation errors for a block. Called once
+/// per block via the `schema_validation` OnceLock; subsequent calls
+/// return the cached vector. No-op for blocks without a schema or for
+/// schemas that don't declare any nested-block rules.
+fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
+    use crate::error::SchemaViolationKind as Kind;
+    let mut errs = Vec::new();
+    let Some(schema) = block.schema() else {
+        return errs;
+    };
+
+    // 1. Gather per-kind counts of nested blocks (raw AST).
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    let mut total: usize = 0;
+    for nested in block.blocks() {
+        *counts.entry(nested.kind().to_string()).or_insert(0) += 1;
+        total += 1;
+    }
+
+    // 2. Build the allowed-child set: union of @child/@children kinds
+    // across this type's fields.
+    let allowed = schema.allowed_child_kinds();
+
+    // 3. Per-kind: any nested block whose kind isn't in `allowed`
+    // is a DisallowedChild.
+    for nested in block.blocks() {
+        if !allowed.iter().any(|k| k == nested.kind()) {
+            errs.push(EvalError::schema_violation(
+                Kind::DisallowedChild,
+                format!(
+                    "block kind '{}' is not allowed inside '{}'",
+                    nested.kind(),
+                    block.kind()
+                ),
+                nested.span(),
+            ));
+        }
+    }
+
+    // 4. `max_children = N` on @block: total nested-block count ≤ N.
+    if let Some(maxn) = schema.max_children()
+        && (total as u64) > maxn
+    {
+        errs.push(EvalError::schema_violation(
+            Kind::BlockChildrenOverflow,
+            format!(
+                "block '{}' contains {} children (max allowed: {})",
+                block.kind(),
+                total,
+                maxn
+            ),
+            block.span(),
+        ));
+    }
+
+    // 4b. `required_children = ["kind", ...]` on @block: each listed
+    //     kind must appear at least once.
+    for required in schema.required_children() {
+        if *counts.get(&required).unwrap_or(&0) == 0 {
+            errs.push(EvalError::schema_violation(
+                Kind::MissingRequired,
+                format!(
+                    "block '{}' is missing required child kind '{}'",
+                    block.kind(),
+                    required
+                ),
+                block.span(),
+            ));
+        }
+    }
+
+    // 5. Field-level cardinality (@child / @children).
+    for f in schema.fields() {
+        if let Some(kind) = f.child_block_kind() {
+            // @child(K): expect exactly 1 (or 0..1 if field is optional).
+            let count = *counts.get(&kind).unwrap_or(&0);
+            if count == 0 && !f.optional() {
+                errs.push(EvalError::schema_violation(
+                    Kind::MissingRequired,
+                    format!(
+                        "block '{}' is missing required child '{}' (for field '{}')",
+                        block.kind(),
+                        kind,
+                        f.name()
+                    ),
+                    block.span(),
+                ));
+            } else if count > 1 {
+                errs.push(EvalError::schema_violation(
+                    Kind::ChildrenTooMany,
+                    format!(
+                        "field '{}' expects a single '{}' child, found {}",
+                        f.name(),
+                        kind,
+                        count
+                    ),
+                    block.span(),
+                ));
+            }
+        } else if let Some(kind) = f.children_block_kind() {
+            let count = *counts.get(&kind).unwrap_or(&0) as u64;
+            if let Some(min) = f.children_min()
+                && count < min
+            {
+                errs.push(EvalError::schema_violation(
+                    Kind::ChildrenTooFew,
+                    format!(
+                        "field '{}' requires at least {} '{}' children, found {}",
+                        f.name(),
+                        min,
+                        kind,
+                        count
+                    ),
+                    block.span(),
+                ));
+            }
+            if let Some(maxn) = f.children_max()
+                && count > maxn
+            {
+                errs.push(EvalError::schema_violation(
+                    Kind::ChildrenTooMany,
+                    format!(
+                        "field '{}' allows at most {} '{}' children, found {}",
+                        f.name(),
+                        maxn,
+                        kind,
+                        count
+                    ),
+                    block.span(),
+                ));
+            }
+        }
+    }
+
+    errs
 }
 
 /// One source of (items, cells) within a block: either the block's own
@@ -1801,6 +2123,13 @@ impl Document {
                 let result = self.eval_in(tail, ctx);
                 ctx.locals.truncate(frame_base);
                 return result;
+            }
+            E::ListLit { elements, .. } => {
+                let mut out = Vec::with_capacity(elements.len());
+                for e in elements {
+                    out.push(self.eval_in(e, ctx)?);
+                }
+                Value::List(out)
             }
         })
     }
@@ -3755,5 +4084,356 @@ mod tests {
         let _ = d.named_arg("amount").unwrap().unwrap();
         let _ = d.named_arg("amount").unwrap().unwrap();
         assert_eq!(counter.load(AtomicOrdering::Relaxed), 1);
+    }
+
+    // ─── Nested-block schema (`@child` / `@children`) ─────────────────
+
+    fn open_nested() -> Document {
+        Document::open(
+            r#"
+            @block("service", max_children = 50)
+            type Service {
+              @inline(0) id: identifier
+              @child("config")             config:  Config
+              @children("route", max = 32) routes:  list<Route>
+            }
+
+            @block("config")
+            type Config { region: utf8  tier: symbol }
+
+            @block("route")
+            type Route {
+              @inline(0) path: utf8
+              method: utf8
+            }
+
+            service web {
+              config { region = "us-east-1"  tier = :gold }
+              route "/api"     { method = "GET" }
+              route "/healthz" { method = "GET" }
+            }
+            "#,
+            "test",
+        )
+        .expect("open")
+    }
+
+    #[test]
+    fn typefield_reports_child_kind() {
+        let doc = open_nested();
+        let svc = doc.type_decl("Service").unwrap();
+        assert_eq!(
+            svc.field("config").unwrap().child_block_kind().as_deref(),
+            Some("config")
+        );
+        assert_eq!(
+            svc.field("routes")
+                .unwrap()
+                .children_block_kind()
+                .as_deref(),
+            Some("route")
+        );
+        assert_eq!(svc.field("routes").unwrap().children_max(), Some(32));
+    }
+
+    #[test]
+    fn typedecl_reports_max_children_and_allowed_set() {
+        let doc = open_nested();
+        let svc = doc.type_decl("Service").unwrap();
+        assert_eq!(svc.max_children(), Some(50));
+        let mut allowed = svc.allowed_child_kinds();
+        allowed.sort();
+        assert_eq!(allowed, vec!["config".to_string(), "route".to_string()]);
+    }
+
+    #[test]
+    fn data_ref_resolves_child_field_to_nested_block() {
+        let doc = open_nested();
+        let cfg = doc.get("service.config").expect("service.config");
+        assert_eq!(cfg.kind(), "block");
+        let region = cfg.get("region").expect("region");
+        assert_eq!(region.value().unwrap(), Value::Utf8("us-east-1".into()));
+    }
+
+    #[test]
+    fn data_ref_resolves_children_field_to_block_list() {
+        let doc = open_nested();
+        let routes = doc.get("service.routes").expect("service.routes");
+        assert_eq!(routes.kind(), "block_list");
+        assert_eq!(routes.len(), Some(2));
+        let first = routes.children().next().unwrap();
+        let method = first.get("method").unwrap().value().unwrap();
+        assert_eq!(method, Value::Utf8("GET".into()));
+    }
+
+    #[test]
+    fn raw_ast_view_still_works() {
+        // Block::blocks() / Block::field() (raw AST) keep their
+        // structural semantics regardless of schema.
+        let doc = open_nested();
+        let svc = doc.block("service").unwrap();
+        let raw_kinds: Vec<&str> = svc.blocks().map(|b| b.kind()).collect();
+        assert_eq!(raw_kinds, vec!["config", "route", "route"]);
+    }
+
+    #[test]
+    fn schema_errors_empty_for_clean_block() {
+        let doc = open_nested();
+        let svc = doc.block("service").unwrap();
+        assert!(svc.schema_errors().is_empty());
+    }
+
+    #[test]
+    fn schema_errors_missing_required_child() {
+        let doc = Document::open(
+            r#"
+            @block("service") type Service {
+              @child("config") config: Config
+            }
+            @block("config") type Config {}
+            service web {}
+            "#,
+            "test",
+        )
+        .expect("open");
+        let svc = doc.block("service").unwrap();
+        let errs = svc.schema_errors();
+        assert!(
+            errs.iter().any(|e| matches!(
+                e,
+                EvalError::SchemaViolation {
+                    kind: crate::error::SchemaViolationKind::MissingRequired,
+                    ..
+                }
+            )),
+            "expected MissingRequired, got {errs:?}"
+        );
+    }
+
+    #[test]
+    fn schema_errors_disallowed_child_kind() {
+        let doc = Document::open(
+            r#"
+            @block("service") type Service {
+              @child("config") config: Config?
+            }
+            @block("config") type Config {}
+            service web { config {}  rogue {} }
+            "#,
+            "test",
+        )
+        .expect("open");
+        let svc = doc.block("service").unwrap();
+        let errs = svc.schema_errors();
+        assert!(
+            errs.iter().any(|e| matches!(
+                e,
+                EvalError::SchemaViolation {
+                    kind: crate::error::SchemaViolationKind::DisallowedChild,
+                    ..
+                }
+            )),
+            "expected DisallowedChild, got {errs:?}"
+        );
+    }
+
+    #[test]
+    fn schema_errors_children_max_violated() {
+        let doc = Document::open(
+            r#"
+            @block("service") type Service {
+              @children("route", max = 1) routes: list<Route>
+            }
+            @block("route") type Route {}
+            service web { route {} route {} }
+            "#,
+            "test",
+        )
+        .expect("open");
+        let svc = doc.block("service").unwrap();
+        let errs = svc.schema_errors();
+        assert!(
+            errs.iter().any(|e| matches!(
+                e,
+                EvalError::SchemaViolation {
+                    kind: crate::error::SchemaViolationKind::ChildrenTooMany,
+                    ..
+                }
+            )),
+            "expected ChildrenTooMany, got {errs:?}"
+        );
+    }
+
+    #[test]
+    fn schema_errors_block_max_children_violated() {
+        let doc = Document::open(
+            r#"
+            @block("service", max_children = 1) type Service {
+              @children("route") routes: list<Route>
+            }
+            @block("route") type Route {}
+            service web { route {} route {} }
+            "#,
+            "test",
+        )
+        .expect("open");
+        let svc = doc.block("service").unwrap();
+        let errs = svc.schema_errors();
+        assert!(
+            errs.iter().any(|e| matches!(
+                e,
+                EvalError::SchemaViolation {
+                    kind: crate::error::SchemaViolationKind::BlockChildrenOverflow,
+                    ..
+                }
+            )),
+            "expected BlockChildrenOverflow, got {errs:?}"
+        );
+    }
+
+    #[test]
+    fn schema_errors_cached_after_first_call() {
+        let doc = open_nested();
+        let svc = doc.block("service").unwrap();
+        let p1 = svc.schema_errors().as_ptr();
+        let p2 = svc.schema_errors().as_ptr();
+        assert_eq!(p1, p2, "schema_errors should be cached (same Vec address)");
+    }
+
+    #[test]
+    fn schema_errors_empty_for_unschemad_block() {
+        let doc = Document::open(r#"random "label" { x = 1 }"#, "test").expect("open");
+        let b = doc.block("random").unwrap();
+        assert!(b.schema_errors().is_empty());
+    }
+
+    // ─── List literals + required_children ───────────────────────────
+
+    #[test]
+    fn eval_list_literal_to_value_list() {
+        let doc = open("x = [1, 2, 3]");
+        assert_eq!(
+            doc.field("x").unwrap().value().unwrap(),
+            &Value::List(vec![Value::I64(1), Value::I64(2), Value::I64(3)])
+        );
+    }
+
+    #[test]
+    fn eval_empty_list_literal() {
+        let doc = open("x = []");
+        assert_eq!(
+            doc.field("x").unwrap().value().unwrap(),
+            &Value::List(vec![])
+        );
+    }
+
+    #[test]
+    fn eval_nested_list_literal() {
+        let doc = open("x = [[1, 2], [3, 4]]");
+        let v = doc.field("x").unwrap().value().unwrap();
+        let Value::List(outer) = v else {
+            panic!("expected outer list")
+        };
+        assert_eq!(outer.len(), 2);
+        assert_eq!(outer[0], Value::List(vec![Value::I64(1), Value::I64(2)]));
+    }
+
+    #[test]
+    fn eval_list_literal_resolves_identifiers() {
+        let doc = open("a = 1\nb = 2\nx = [a, b, 3]");
+        assert_eq!(
+            doc.field("x").unwrap().value().unwrap(),
+            &Value::List(vec![Value::I64(1), Value::I64(2), Value::I64(3)])
+        );
+    }
+
+    #[test]
+    fn eval_decorator_arg_with_list_literal() {
+        let doc = open(r#"@v(items = [1, 2, 3]) type T {}"#);
+        let t = doc.type_decl("T").unwrap();
+        let d = t.decorators().next().unwrap();
+        let arg = d.named_arg("items").unwrap().unwrap();
+        assert_eq!(
+            arg,
+            Value::List(vec![Value::I64(1), Value::I64(2), Value::I64(3)])
+        );
+    }
+
+    #[test]
+    fn required_children_reads_list_arg() {
+        let doc = open(
+            r#"
+            @block("service", required_children = ["config", "audit"])
+            type Service {
+              @child("config")  config:  Config?
+              @child("audit")   audit:   Audit?
+            }
+            @block("config") type Config {}
+            @block("audit")  type Audit {}
+            "#,
+        );
+        let svc = doc.type_decl("Service").unwrap();
+        assert_eq!(
+            svc.required_children(),
+            vec!["config".to_string(), "audit".to_string()]
+        );
+    }
+
+    #[test]
+    fn required_children_present_no_error() {
+        let doc = open(
+            r#"
+            @block("service", required_children = ["config"])
+            type Service {
+              @child("config") config: Config?
+            }
+            @block("config") type Config {}
+            service web { config {} }
+            "#,
+        );
+        let svc = doc.block("service").unwrap();
+        assert!(svc.schema_errors().is_empty(), "{:?}", svc.schema_errors());
+    }
+
+    #[test]
+    fn required_children_missing_errors() {
+        let doc = open(
+            r#"
+            @block("service", required_children = ["config"])
+            type Service {
+              @child("config") config: Config?
+            }
+            @block("config") type Config {}
+            service web {}
+            "#,
+        );
+        let svc = doc.block("service").unwrap();
+        let errs = svc.schema_errors();
+        assert!(
+            errs.iter().any(|e| matches!(
+                e,
+                EvalError::SchemaViolation {
+                    kind: crate::error::SchemaViolationKind::MissingRequired,
+                    message,
+                    ..
+                } if message.contains("required child kind 'config'")
+            )),
+            "expected MissingRequired for kind 'config', got {errs:?}"
+        );
+    }
+
+    #[test]
+    fn required_children_non_string_entries_ignored() {
+        let doc = open(
+            r#"
+            @block("service", required_children = ["config", 42, true])
+            type Service { @child("config") config: Config? }
+            @block("config") type Config {}
+            service web { config {} }
+            "#,
+        );
+        let svc = doc.type_decl("Service").unwrap();
+        // Only the string entry survives.
+        assert_eq!(svc.required_children(), vec!["config".to_string()]);
     }
 }

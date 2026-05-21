@@ -127,6 +127,25 @@ pub enum EvalError {
         #[label("import error")]
         span: SourceSpan,
     },
+
+    #[error("{message}")]
+    #[diagnostic(code(wcl::eval::schema_violation))]
+    SchemaViolation {
+        kind: SchemaViolationKind,
+        message: String,
+        #[label("schema violation")]
+        span: SourceSpan,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SchemaViolationKind {
+    DisallowedChild,
+    MissingRequired,
+    ChildrenTooFew,
+    ChildrenTooMany,
+    BlockChildrenOverflow,
+    UnexpectedExtraChild,
 }
 
 impl EvalError {
@@ -161,6 +180,18 @@ impl EvalError {
     ) -> Self {
         Self::ImportFailed {
             path: path.into(),
+            message: message.into(),
+            span: span_to_miette(span),
+        }
+    }
+
+    pub(crate) fn schema_violation(
+        kind: SchemaViolationKind,
+        message: impl Into<String>,
+        span: crate::ast::Span,
+    ) -> Self {
+        Self::SchemaViolation {
+            kind,
             message: message.into(),
             span: span_to_miette(span),
         }

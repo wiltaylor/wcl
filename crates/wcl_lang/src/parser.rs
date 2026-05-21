@@ -478,8 +478,42 @@ impl<'a> Parser<'a> {
         match kind {
             TokenKind::LParen => self.parse_paren_expr(),
             TokenKind::LBrace => self.parse_block_expr(),
+            TokenKind::LBracket => self.parse_list_literal(),
             _ => self.parse_value_expr(),
         }
+    }
+
+    fn parse_list_literal(&mut self) -> Result<(Expr, Span), ParseError> {
+        let lb = self.bump()?; // '['
+        let mut elements = Vec::new();
+        if !matches!(self.peek()?.kind, TokenKind::RBracket) {
+            loop {
+                let (e, _) = self.parse_expr()?;
+                elements.push(e);
+                match self.peek()?.kind {
+                    TokenKind::Comma => {
+                        self.bump()?;
+                        if matches!(self.peek()?.kind, TokenKind::RBracket) {
+                            break;
+                        }
+                    }
+                    TokenKind::RBracket => break,
+                    _ => {
+                        let p = self.peek()?;
+                        let span = p.span;
+                        let kind = describe(&p.kind);
+                        return Err(self.err(
+                            format!("expected ',' or ']' in list literal, found {kind}"),
+                            span,
+                            "expected ',' or ']'",
+                        ));
+                    }
+                }
+            }
+        }
+        let rb = self.expect(TokenKind::RBracket, "expected ']' to close list literal")?;
+        let span = Span::new(lb.span.start, rb.span.end);
+        Ok((Expr::ListLit { elements, span }, span))
     }
 
     fn parse_paren_expr(&mut self) -> Result<(Expr, Span), ParseError> {
@@ -2628,6 +2662,67 @@ mod tests {
     fn field_named_fn_still_parses_as_field() {
         let s = parse("fn = 1");
         assert_eq!(field(&s.items, "fn").expr, Expr::I64(1));
+    }
+
+    #[test]
+    fn parse_empty_list_literal() {
+        let s = parse("x = []");
+        let f = field(&s.items, "x");
+        let Expr::ListLit { elements, .. } = &f.expr else {
+            panic!("expected list literal, got {:?}", f.expr)
+        };
+        assert!(elements.is_empty());
+    }
+
+    #[test]
+    fn parse_list_literal_with_elements() {
+        let s = parse("x = [1, 2, 3]");
+        let f = field(&s.items, "x");
+        let Expr::ListLit { elements, .. } = &f.expr else {
+            panic!("expected list literal")
+        };
+        assert_eq!(elements.len(), 3);
+        assert_eq!(elements[0], Expr::I64(1));
+        assert_eq!(elements[2], Expr::I64(3));
+    }
+
+    #[test]
+    fn parse_nested_list_literal() {
+        let s = parse("x = [[1, 2], [3, 4]]");
+        let f = field(&s.items, "x");
+        let Expr::ListLit { elements, .. } = &f.expr else {
+            panic!("expected outer list literal")
+        };
+        assert_eq!(elements.len(), 2);
+        let Expr::ListLit {
+            elements: inner, ..
+        } = &elements[0]
+        else {
+            panic!("expected inner list literal")
+        };
+        assert_eq!(inner.len(), 2);
+        assert_eq!(inner[0], Expr::I64(1));
+    }
+
+    #[test]
+    fn parse_list_literal_trailing_comma() {
+        let s = parse("x = [1, 2,]");
+        let f = field(&s.items, "x");
+        let Expr::ListLit { elements, .. } = &f.expr else {
+            panic!("expected list literal")
+        };
+        assert_eq!(elements.len(), 2);
+    }
+
+    #[test]
+    fn parse_list_literal_of_strings() {
+        let s = parse(r#"x = ["a", "b"]"#);
+        let f = field(&s.items, "x");
+        let Expr::ListLit { elements, .. } = &f.expr else {
+            panic!("expected list literal")
+        };
+        assert_eq!(elements[0], Expr::Utf8("a".into()));
+        assert_eq!(elements[1], Expr::Utf8("b".into()));
     }
 
     // ─── Symbol index ────────────────────────────────────────────────
