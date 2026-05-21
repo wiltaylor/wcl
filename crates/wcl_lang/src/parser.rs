@@ -2,7 +2,7 @@ use miette::{NamedSource, SourceSpan};
 
 use crate::ast::{Block, Expr, Field, Item, Source, Span};
 use crate::error::ParseError;
-use crate::lexer::{LexError, Lexer, Token, TokenKind};
+use crate::lexer::{LexError, Lexer, NumberLit, StringLit, Token, TokenKind};
 
 pub struct Parser<'a> {
     src: &'a str,
@@ -45,7 +45,7 @@ impl<'a> Parser<'a> {
         let next = self.peek()?;
         match &next.kind {
             TokenKind::Eq => self.parse_field(name, span_start),
-            TokenKind::String(_) | TokenKind::LBrace => self.parse_block(name, span_start),
+            TokenKind::Str(_) | TokenKind::LBrace => self.parse_block(name, span_start),
             other => {
                 let msg = format!(
                     "expected '=', label, or '{{' after identifier '{}', found {}",
@@ -63,9 +63,8 @@ impl<'a> Parser<'a> {
         let val_tok = self.bump()?;
         let span = Span::new(start, val_tok.span.end);
         let expr = match val_tok.kind {
-            TokenKind::String(s) => Expr::String(s),
-            TokenKind::Int(n) => Expr::Int(n),
-            TokenKind::Float(f) => Expr::Float(f),
+            TokenKind::Number(n) => number_to_expr(n),
+            TokenKind::Str(s) => string_to_expr(s),
             TokenKind::Bool(b) => Expr::Bool(b),
             other => {
                 return Err(self.err(
@@ -83,10 +82,19 @@ impl<'a> Parser<'a> {
         loop {
             let p = self.peek()?;
             match &p.kind {
-                TokenKind::String(_) => {
-                    if let TokenKind::String(s) = self.bump()?.kind {
+                TokenKind::Str(StringLit::Utf8(_)) => {
+                    let tok = self.bump()?;
+                    if let TokenKind::Str(StringLit::Utf8(s)) = tok.kind {
                         labels.push(s);
                     }
+                }
+                TokenKind::Str(_) => {
+                    let span = p.span;
+                    return Err(self.err(
+                        "block labels must be plain (utf8) strings",
+                        span,
+                        "expected an unprefixed string",
+                    ));
                 }
                 TokenKind::LBrace => break,
                 other => {
@@ -160,14 +168,41 @@ impl<'a> Parser<'a> {
 fn describe(t: &TokenKind) -> String {
     match t {
         TokenKind::Ident(s) => format!("identifier '{s}'"),
-        TokenKind::String(_) => "string".to_string(),
-        TokenKind::Int(_) => "integer".to_string(),
-        TokenKind::Float(_) => "float".to_string(),
+        TokenKind::Str(_) => "string".to_string(),
+        TokenKind::Number(_) => "number".to_string(),
         TokenKind::Bool(_) => "boolean".to_string(),
         TokenKind::Eq => "'='".to_string(),
         TokenKind::LBrace => "'{'".to_string(),
         TokenKind::RBrace => "'}'".to_string(),
         TokenKind::Eof => "end of file".to_string(),
+    }
+}
+
+fn number_to_expr(n: NumberLit) -> Expr {
+    match n {
+        NumberLit::I8(v) => Expr::I8(v),
+        NumberLit::I16(v) => Expr::I16(v),
+        NumberLit::I32(v) => Expr::I32(v),
+        NumberLit::I64(v) => Expr::I64(v),
+        NumberLit::I128(v) => Expr::I128(v),
+        NumberLit::Isize(v) => Expr::Isize(v),
+        NumberLit::U8(v) => Expr::U8(v),
+        NumberLit::U16(v) => Expr::U16(v),
+        NumberLit::U32(v) => Expr::U32(v),
+        NumberLit::U64(v) => Expr::U64(v),
+        NumberLit::U128(v) => Expr::U128(v),
+        NumberLit::Usize(v) => Expr::Usize(v),
+        NumberLit::F32(v) => Expr::F32(v),
+        NumberLit::F64(v) => Expr::F64(v),
+    }
+}
+
+fn string_to_expr(s: StringLit) -> Expr {
+    match s {
+        StringLit::Utf8(s) => Expr::Utf8(s),
+        StringLit::Ascii(s) => Expr::Ascii(s),
+        StringLit::Utf16(v) => Expr::Utf16(v),
+        StringLit::Utf32(v) => Expr::Utf32(v),
     }
 }
 
@@ -214,7 +249,7 @@ mod tests {
     #[test]
     fn parse_single_string_field() {
         let s = parse(r#"name = "alpha""#);
-        assert_eq!(field(&s.items, "name").expr, Expr::String("alpha".into()));
+        assert_eq!(field(&s.items, "name").expr, Expr::Utf8("alpha".into()));
     }
 
     #[test]
@@ -227,9 +262,9 @@ mod tests {
             enabled = true
             "#,
         );
-        assert_eq!(field(&s.items, "name").expr, Expr::String("alpha".into()));
-        assert_eq!(field(&s.items, "count").expr, Expr::Int(3));
-        assert_eq!(field(&s.items, "ratio").expr, Expr::Float(2.5));
+        assert_eq!(field(&s.items, "name").expr, Expr::Utf8("alpha".into()));
+        assert_eq!(field(&s.items, "count").expr, Expr::I64(3));
+        assert_eq!(field(&s.items, "ratio").expr, Expr::F64(2.5));
         assert_eq!(field(&s.items, "enabled").expr, Expr::Bool(true));
     }
 
@@ -247,10 +282,10 @@ mod tests {
         let block = blks[0];
         assert_eq!(block.kind, "service");
         assert_eq!(block.labels, vec!["web".to_string()]);
-        assert_eq!(field(&block.items, "port").expr, Expr::Int(8080));
+        assert_eq!(field(&block.items, "port").expr, Expr::I64(8080));
         assert_eq!(
             field(&block.items, "host").expr,
-            Expr::String("0.0.0.0".into())
+            Expr::Utf8("0.0.0.0".into())
         );
     }
 
@@ -289,7 +324,7 @@ mod tests {
         assert_eq!(inner.kind, "metadata");
         assert_eq!(
             field(&inner.items, "region").expr,
-            Expr::String("us-east-1".into())
+            Expr::Utf8("us-east-1".into())
         );
     }
 

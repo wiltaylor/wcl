@@ -1,0 +1,392 @@
+//! Numeric literal parsing and range checking.
+//!
+//! The lexer calls into this module once it has carved out the textual
+//! parts of a literal (sign, base prefix, digit body, optional fractional
+//! part, optional exponent, optional suffix). All range-checking and
+//! base conversion happens here.
+
+use crate::lexer::NumberLit;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NumericParseError {
+    pub message: String,
+}
+
+impl NumericParseError {
+    fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+        }
+    }
+}
+
+/// Output of pre-suffix tokenisation: what the lexer collected before we
+/// decide a concrete type.
+#[derive(Debug)]
+pub struct ParsedNumber<'a> {
+    pub neg: bool,
+    pub base: u32,
+    /// Digits with `_` separators stripped, plus the optional fractional
+    /// part for floats (e.g. "12.5").
+    pub body: &'a str,
+    /// Optional `eN` / `e+N` / `e-N` exponent, digits only with sign.
+    pub exponent: Option<&'a str>,
+    pub is_float: bool,
+    /// Suffix text after the body (e.g. `"u8"`, `"f32"`, or empty).
+    pub suffix: &'a str,
+}
+
+/// Resolve the typed [`NumberLit`] for a tokenised number, applying
+/// suffix-driven range checks.
+pub fn finalize(parsed: ParsedNumber<'_>) -> Result<NumberLit, NumericParseError> {
+    if parsed.is_float {
+        finalize_float(&parsed)
+    } else {
+        finalize_int(&parsed)
+    }
+}
+
+fn finalize_float(p: &ParsedNumber) -> Result<NumberLit, NumericParseError> {
+    if p.base != 10 {
+        return Err(NumericParseError::new(
+            "float literals must be decimal (no 0x/0b/0o prefix)",
+        ));
+    }
+    let mut text = String::with_capacity(p.body.len() + p.exponent.map_or(0, str::len) + 2);
+    if p.neg {
+        text.push('-');
+    }
+    text.push_str(p.body);
+    if let Some(exp) = p.exponent {
+        text.push('e');
+        text.push_str(exp);
+    }
+    let f = text
+        .parse::<f64>()
+        .map_err(|e| NumericParseError::new(format!("invalid float literal: {e}")))?;
+    match p.suffix {
+        "" | "f64" => Ok(NumberLit::F64(f)),
+        "f32" => {
+            let narrowed = f as f32;
+            if !narrowed.is_finite() && f.is_finite() {
+                return Err(NumericParseError::new("literal overflows f32"));
+            }
+            Ok(NumberLit::F32(narrowed))
+        }
+        other if is_int_suffix(other) => Err(NumericParseError::new(format!(
+            "integer suffix '{other}' cannot be applied to a float literal"
+        ))),
+        other => Err(NumericParseError::new(format!(
+            "unknown numeric type suffix '{other}'"
+        ))),
+    }
+}
+
+fn finalize_int(p: &ParsedNumber) -> Result<NumberLit, NumericParseError> {
+    // Parse magnitude as u128. The body has `_` already stripped.
+    let mag = u128_from_str_radix(p.body, p.base)
+        .map_err(|e| NumericParseError::new(format!("invalid integer literal: {e}")))?;
+    if matches!(p.suffix, "f32" | "f64") {
+        return Err(NumericParseError::new(format!(
+            "float suffix '{}' cannot be applied to an integer literal",
+            p.suffix
+        )));
+    }
+    if p.neg && is_unsigned_suffix(p.suffix) {
+        return Err(NumericParseError::new(format!(
+            "negative value cannot have an unsigned suffix '{}'",
+            p.suffix
+        )));
+    }
+    match p.suffix {
+        "" | "i64" => signed::<i64>(p.neg, mag, "i64", i64::MIN as i128, i64::MAX as i128)
+            .map(|n| NumberLit::I64(n as i64)),
+        "i8" => signed::<i8>(p.neg, mag, "i8", i8::MIN as i128, i8::MAX as i128)
+            .map(|n| NumberLit::I8(n as i8)),
+        "i16" => signed::<i16>(p.neg, mag, "i16", i16::MIN as i128, i16::MAX as i128)
+            .map(|n| NumberLit::I16(n as i16)),
+        "i32" => signed::<i32>(p.neg, mag, "i32", i32::MIN as i128, i32::MAX as i128)
+            .map(|n| NumberLit::I32(n as i32)),
+        "i128" => signed_128(p.neg, mag).map(NumberLit::I128),
+        "isize" => signed::<isize>(p.neg, mag, "isize", isize::MIN as i128, isize::MAX as i128)
+            .map(|n| NumberLit::Isize(n as isize)),
+        "u8" => unsigned(mag, "u8", u8::MAX as u128).map(|n| NumberLit::U8(n as u8)),
+        "u16" => unsigned(mag, "u16", u16::MAX as u128).map(|n| NumberLit::U16(n as u16)),
+        "u32" => unsigned(mag, "u32", u32::MAX as u128).map(|n| NumberLit::U32(n as u32)),
+        "u64" => unsigned(mag, "u64", u64::MAX as u128).map(|n| NumberLit::U64(n as u64)),
+        "u128" => Ok(NumberLit::U128(mag)),
+        "usize" => unsigned(mag, "usize", usize::MAX as u128).map(|n| NumberLit::Usize(n as usize)),
+        other => Err(NumericParseError::new(format!(
+            "unknown numeric type suffix '{other}'"
+        ))),
+    }
+}
+
+fn signed<T>(
+    neg: bool,
+    mag: u128,
+    ty: &str,
+    min: i128,
+    max: i128,
+) -> Result<i128, NumericParseError> {
+    // `T` is here just to make the call site self-documenting; we work in i128.
+    let _ = std::marker::PhantomData::<T>;
+    if neg {
+        // |min| = -min, but min is INT_MIN where -min overflows i128 only when
+        // T is i128 (handled separately). For i64 and smaller, this is safe.
+        let neg_max = (-min) as u128;
+        if mag > neg_max {
+            return Err(NumericParseError::new(format!(
+                "literal out of range for {ty}"
+            )));
+        }
+        if mag == neg_max {
+            return Ok(min);
+        }
+        Ok(-(mag as i128))
+    } else {
+        if mag > max as u128 {
+            return Err(NumericParseError::new(format!(
+                "literal out of range for {ty}"
+            )));
+        }
+        Ok(mag as i128)
+    }
+}
+
+fn signed_128(neg: bool, mag: u128) -> Result<i128, NumericParseError> {
+    if neg {
+        // |i128::MIN| == 2^127; that's representable in u128.
+        let neg_max = (i128::MAX as u128) + 1;
+        if mag > neg_max {
+            return Err(NumericParseError::new(
+                "literal out of range for i128".to_string(),
+            ));
+        }
+        if mag == neg_max {
+            return Ok(i128::MIN);
+        }
+        Ok(-(mag as i128))
+    } else {
+        if mag > i128::MAX as u128 {
+            return Err(NumericParseError::new(
+                "literal out of range for i128".to_string(),
+            ));
+        }
+        Ok(mag as i128)
+    }
+}
+
+fn unsigned(mag: u128, ty: &str, max: u128) -> Result<u128, NumericParseError> {
+    if mag > max {
+        return Err(NumericParseError::new(format!(
+            "literal out of range for {ty}"
+        )));
+    }
+    Ok(mag)
+}
+
+fn u128_from_str_radix(s: &str, radix: u32) -> Result<u128, String> {
+    if s.is_empty() {
+        return Err("expected at least one digit".into());
+    }
+    let mut out: u128 = 0;
+    for c in s.chars() {
+        let digit = c
+            .to_digit(radix)
+            .ok_or_else(|| format!("invalid digit '{c}' for base {radix}"))?;
+        out = out
+            .checked_mul(radix as u128)
+            .ok_or_else(|| "literal exceeds 128-bit magnitude".to_string())?;
+        out = out
+            .checked_add(digit as u128)
+            .ok_or_else(|| "literal exceeds 128-bit magnitude".to_string())?;
+    }
+    Ok(out)
+}
+
+fn is_unsigned_suffix(s: &str) -> bool {
+    matches!(s, "u8" | "u16" | "u32" | "u64" | "u128" | "usize")
+}
+
+fn is_int_suffix(s: &str) -> bool {
+    matches!(
+        s,
+        "" | "i8"
+            | "i16"
+            | "i32"
+            | "i64"
+            | "i128"
+            | "isize"
+            | "u8"
+            | "u16"
+            | "u32"
+            | "u64"
+            | "u128"
+            | "usize"
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(
+        body: &str,
+        suffix: &str,
+        base: u32,
+        neg: bool,
+    ) -> Result<NumberLit, NumericParseError> {
+        finalize(ParsedNumber {
+            neg,
+            base,
+            body,
+            exponent: None,
+            is_float: false,
+            suffix,
+        })
+    }
+
+    fn parse_float(
+        body: &str,
+        suffix: &str,
+        exponent: Option<&str>,
+        neg: bool,
+    ) -> Result<NumberLit, NumericParseError> {
+        finalize(ParsedNumber {
+            neg,
+            base: 10,
+            body,
+            exponent,
+            is_float: true,
+            suffix,
+        })
+    }
+
+    #[test]
+    fn default_int_is_i64() {
+        assert_eq!(parse("42", "", 10, false).unwrap(), NumberLit::I64(42));
+    }
+
+    #[test]
+    fn default_float_is_f64() {
+        assert_eq!(
+            parse_float("1.25", "", None, false).unwrap(),
+            NumberLit::F64(1.25)
+        );
+    }
+
+    #[test]
+    fn signed_min_max_boundaries() {
+        assert_eq!(parse("127", "i8", 10, false).unwrap(), NumberLit::I8(127));
+        assert_eq!(parse("128", "i8", 10, true).unwrap(), NumberLit::I8(-128));
+        assert!(parse("128", "i8", 10, false).is_err());
+        assert!(parse("129", "i8", 10, true).is_err());
+    }
+
+    #[test]
+    fn unsigned_max_and_overflow() {
+        assert_eq!(parse("255", "u8", 10, false).unwrap(), NumberLit::U8(255));
+        assert!(parse("256", "u8", 10, false).is_err());
+    }
+
+    #[test]
+    fn negative_unsigned_errors() {
+        let err = parse("1", "u32", 10, true).unwrap_err();
+        assert!(err.message.contains("unsigned"));
+    }
+
+    #[test]
+    fn float_suffix_on_int_errors() {
+        let err = parse("42", "f32", 10, false).unwrap_err();
+        assert!(err.message.contains("float suffix"));
+    }
+
+    #[test]
+    fn int_suffix_on_float_errors() {
+        let err = parse_float("1.5", "u8", None, false).unwrap_err();
+        assert!(err.message.contains("integer suffix"));
+    }
+
+    #[test]
+    fn unknown_suffix_errors() {
+        let err = parse("1", "q9", 10, false).unwrap_err();
+        assert!(err.message.contains("unknown"));
+    }
+
+    #[test]
+    fn i128_min_max() {
+        assert_eq!(
+            parse(&i128::MAX.to_string(), "i128", 10, false).unwrap(),
+            NumberLit::I128(i128::MAX)
+        );
+        // |i128::MIN| is 2^127; written as the absolute value plus sign.
+        let abs_min = "170141183460469231731687303715884105728";
+        assert_eq!(
+            parse(abs_min, "i128", 10, true).unwrap(),
+            NumberLit::I128(i128::MIN)
+        );
+        assert!(parse(abs_min, "i128", 10, false).is_err());
+    }
+
+    #[test]
+    fn u128_max() {
+        let max = "340282366920938463463374607431768211455";
+        assert_eq!(
+            parse(max, "u128", 10, false).unwrap(),
+            NumberLit::U128(u128::MAX)
+        );
+        assert!(parse("340282366920938463463374607431768211456", "u128", 10, false).is_err());
+    }
+
+    #[test]
+    fn hex_bin_oct() {
+        assert_eq!(parse("ff", "u8", 16, false).unwrap(), NumberLit::U8(255));
+        assert_eq!(
+            parse("10101100", "u8", 2, false).unwrap(),
+            NumberLit::U8(0b1010_1100)
+        );
+        assert_eq!(
+            parse("755", "u16", 8, false).unwrap(),
+            NumberLit::U16(0o755)
+        );
+    }
+
+    #[test]
+    fn invalid_digit_for_base() {
+        let err = parse("2", "u8", 2, false).unwrap_err();
+        assert!(err.message.contains("invalid digit"));
+    }
+
+    #[test]
+    fn float_with_exponent() {
+        assert_eq!(
+            parse_float("1.5", "", Some("3"), false).unwrap(),
+            NumberLit::F64(1500.0)
+        );
+        assert_eq!(
+            parse_float("2", "", Some("-3"), false).unwrap(),
+            NumberLit::F64(0.002)
+        );
+    }
+
+    #[test]
+    fn float_overflowing_f32_errors() {
+        let err = parse_float("1", "f32", Some("40"), false).unwrap_err();
+        assert!(err.message.contains("overflows f32"));
+    }
+
+    #[test]
+    fn float_non_decimal_base_errors() {
+        let err = finalize(ParsedNumber {
+            neg: false,
+            base: 16,
+            body: "ff",
+            exponent: None,
+            is_float: true,
+            suffix: "",
+        })
+        .unwrap_err();
+        assert!(err.message.contains("decimal"));
+    }
+}

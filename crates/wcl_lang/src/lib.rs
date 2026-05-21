@@ -7,6 +7,7 @@ pub(crate) mod ast;
 mod doc;
 mod error;
 mod lexer;
+mod numeric;
 mod parser;
 mod value;
 

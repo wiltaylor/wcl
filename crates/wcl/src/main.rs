@@ -90,9 +90,63 @@ fn dump_block(b: &Block<'_>, depth: usize, out: &mut String) {
 
 fn value_repr(v: &Value) -> String {
     match v {
-        Value::String(s) => format!("\"{s}\""),
-        Value::Int(n) => n.to_string(),
-        Value::Float(f) => f.to_string(),
         Value::Bool(b) => b.to_string(),
+
+        // Default-typed integers/floats render without a suffix; everything
+        // else renders with its Rust-style suffix so the dump is round-trippable.
+        Value::I64(n) => n.to_string(),
+        Value::F64(n) => format_float(*n, "f64"),
+
+        Value::I8(n) => format!("{n}i8"),
+        Value::I16(n) => format!("{n}i16"),
+        Value::I32(n) => format!("{n}i32"),
+        Value::I128(n) => format!("{n}i128"),
+        Value::Isize(n) => format!("{n}isize"),
+
+        Value::U8(n) => format!("{n}u8"),
+        Value::U16(n) => format!("{n}u16"),
+        Value::U32(n) => format!("{n}u32"),
+        Value::U64(n) => format!("{n}u64"),
+        Value::U128(n) => format!("{n}u128"),
+        Value::Usize(n) => format!("{n}usize"),
+
+        Value::F32(n) => format!("{}f32", format_float(*n as f64, "f32")),
+
+        Value::Utf8(s) => format!("\"{}\"", escape_string(s)),
+        Value::Ascii(s) => format!("ascii\"{}\"", escape_string(s)),
+        Value::Utf16(units) => {
+            let s = String::from_utf16_lossy(units);
+            format!("utf16\"{}\"", escape_string(&s))
+        }
+        Value::Utf32(chars) => {
+            let s: String = chars.iter().collect();
+            format!("utf32\"{}\"", escape_string(&s))
+        }
     }
+}
+
+fn format_float(n: f64, _ty: &str) -> String {
+    // Ensure the rendered form is unambiguously a float (contains '.' or 'e')
+    // so re-parsing the dump preserves the float type.
+    let s = format!("{n}");
+    if s.contains('.') || s.contains('e') || s.contains('E') || !n.is_finite() {
+        s
+    } else {
+        format!("{s}.0")
+    }
+}
+
+fn escape_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\t' => out.push_str("\\t"),
+            '\r' => out.push_str("\\r"),
+            other => out.push(other),
+        }
+    }
+    out
 }

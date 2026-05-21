@@ -20,10 +20,29 @@ impl Span {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Expr {
-    String(String),
-    Int(i64),
-    Float(f64),
     Bool(bool),
+
+    I8(i8),
+    I16(i16),
+    I32(i32),
+    I64(i64),
+    I128(i128),
+    Isize(isize),
+
+    U8(u8),
+    U16(u16),
+    U32(u32),
+    U64(u64),
+    U128(u128),
+    Usize(usize),
+
+    F32(f32),
+    F64(f64),
+
+    Utf8(String),
+    Ascii(String),
+    Utf16(Vec<u16>),
+    Utf32(Vec<char>),
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -214,12 +214,27 @@ fn iter_blocks<'a>(
 }
 
 fn eval_expr(e: &ast::Expr) -> Result<Value, EvalError> {
-    match e {
-        ast::Expr::String(s) => Ok(Value::String(s.clone())),
-        ast::Expr::Int(n) => Ok(Value::Int(*n)),
-        ast::Expr::Float(f) => Ok(Value::Float(*f)),
-        ast::Expr::Bool(b) => Ok(Value::Bool(*b)),
-    }
+    Ok(match e {
+        ast::Expr::Bool(b) => Value::Bool(*b),
+        ast::Expr::I8(v) => Value::I8(*v),
+        ast::Expr::I16(v) => Value::I16(*v),
+        ast::Expr::I32(v) => Value::I32(*v),
+        ast::Expr::I64(v) => Value::I64(*v),
+        ast::Expr::I128(v) => Value::I128(*v),
+        ast::Expr::Isize(v) => Value::Isize(*v),
+        ast::Expr::U8(v) => Value::U8(*v),
+        ast::Expr::U16(v) => Value::U16(*v),
+        ast::Expr::U32(v) => Value::U32(*v),
+        ast::Expr::U64(v) => Value::U64(*v),
+        ast::Expr::U128(v) => Value::U128(*v),
+        ast::Expr::Usize(v) => Value::Usize(*v),
+        ast::Expr::F32(v) => Value::F32(*v),
+        ast::Expr::F64(v) => Value::F64(*v),
+        ast::Expr::Utf8(s) => Value::Utf8(s.clone()),
+        ast::Expr::Ascii(s) => Value::Ascii(s.clone()),
+        ast::Expr::Utf16(v) => Value::Utf16(v.clone()),
+        ast::Expr::Utf32(v) => Value::Utf32(v.clone()),
+    })
 }
 
 fn span_to_miette(span: Span) -> SourceSpan {
@@ -241,7 +256,7 @@ mod tests {
     }
 
     #[test]
-    fn field_value_returns_correct_scalar_for_each_variant() {
+    fn default_scalars_resolve_to_default_types() {
         let doc = open(
             r#"
             s = "alpha"
@@ -252,11 +267,75 @@ mod tests {
         );
         assert_eq!(
             doc.field("s").unwrap().value().unwrap(),
-            &Value::String("alpha".into())
+            &Value::Utf8("alpha".into())
         );
-        assert_eq!(doc.field("i").unwrap().value().unwrap(), &Value::Int(3));
-        assert_eq!(doc.field("f").unwrap().value().unwrap(), &Value::Float(2.5));
+        assert_eq!(doc.field("i").unwrap().value().unwrap(), &Value::I64(3));
+        assert_eq!(doc.field("f").unwrap().value().unwrap(), &Value::F64(2.5));
         assert_eq!(doc.field("b").unwrap().value().unwrap(), &Value::Bool(true));
+    }
+
+    #[test]
+    fn every_typed_literal_evaluates() {
+        let doc = open(
+            r#"
+            a = 1i8
+            b = 2i16
+            c = 3i32
+            d = 4i64
+            e = 5i128
+            f = 6isize
+            g = 7u8
+            h = 8u16
+            i = 9u32
+            j = 10u64
+            k = 11u128
+            l = 12usize
+            m = 1.5f32
+            n = 2.5f64
+            s_utf8  = utf8"alpha"
+            s_ascii = ascii"beta"
+            s_utf16 = utf16"gamma"
+            s_utf32 = utf32"delta"
+            "#,
+        );
+        assert_eq!(doc.field("a").unwrap().value().unwrap(), &Value::I8(1));
+        assert_eq!(doc.field("b").unwrap().value().unwrap(), &Value::I16(2));
+        assert_eq!(doc.field("c").unwrap().value().unwrap(), &Value::I32(3));
+        assert_eq!(doc.field("d").unwrap().value().unwrap(), &Value::I64(4));
+        assert_eq!(doc.field("e").unwrap().value().unwrap(), &Value::I128(5));
+        assert_eq!(doc.field("f").unwrap().value().unwrap(), &Value::Isize(6));
+        assert_eq!(doc.field("g").unwrap().value().unwrap(), &Value::U8(7));
+        assert_eq!(doc.field("h").unwrap().value().unwrap(), &Value::U16(8));
+        assert_eq!(doc.field("i").unwrap().value().unwrap(), &Value::U32(9));
+        assert_eq!(doc.field("j").unwrap().value().unwrap(), &Value::U64(10));
+        assert_eq!(doc.field("k").unwrap().value().unwrap(), &Value::U128(11));
+        assert_eq!(doc.field("l").unwrap().value().unwrap(), &Value::Usize(12));
+        assert_eq!(doc.field("m").unwrap().value().unwrap(), &Value::F32(1.5));
+        assert_eq!(doc.field("n").unwrap().value().unwrap(), &Value::F64(2.5));
+        assert_eq!(
+            doc.field("s_utf8").unwrap().value().unwrap(),
+            &Value::Utf8("alpha".into())
+        );
+        assert_eq!(
+            doc.field("s_ascii").unwrap().value().unwrap(),
+            &Value::Ascii("beta".into())
+        );
+        assert_eq!(
+            doc.field("s_utf16").unwrap().value().unwrap(),
+            &Value::Utf16("gamma".encode_utf16().collect())
+        );
+        assert_eq!(
+            doc.field("s_utf32").unwrap().value().unwrap(),
+            &Value::Utf32("delta".chars().collect())
+        );
+    }
+
+    #[test]
+    fn strict_typing_distinguishes_widths() {
+        let doc = open("a = 42i32\nb = 42i64\n");
+        let a = doc.field("a").unwrap().value().unwrap();
+        let b = doc.field("b").unwrap().value().unwrap();
+        assert_ne!(a, b);
     }
 
     #[test]
@@ -282,7 +361,7 @@ mod tests {
         let doc = open(r#"service "web" { port = 8080 }"#);
         let b = doc.block("service").unwrap();
         assert_eq!(b.labels(), &["web".to_string()]);
-        assert_eq!(b.field("port").unwrap().value().unwrap(), &Value::Int(8080));
+        assert_eq!(b.field("port").unwrap().value().unwrap(), &Value::I64(8080));
     }
 
     #[test]
@@ -300,7 +379,7 @@ mod tests {
         let meta = svc.block("metadata").unwrap();
         assert_eq!(
             meta.field("region").unwrap().value().unwrap(),
-            &Value::String("us-east-1".into())
+            &Value::Utf8("us-east-1".into())
         );
     }
 

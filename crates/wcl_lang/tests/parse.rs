@@ -18,13 +18,13 @@ fn parses_basic_example_from_disk() {
     let doc = Document::from_file(&examples_dir().join("basic.wcl")).expect("basic example parses");
     assert_eq!(
         doc.field("name").unwrap().value().unwrap(),
-        &Value::String("alpha".into())
+        &Value::Utf8("alpha".into())
     );
     let svc = doc.block("service").expect("service block");
     assert_eq!(svc.labels(), &["web".to_string()]);
     assert_eq!(
         svc.field("port").unwrap().value().unwrap(),
-        &Value::Int(8080)
+        &Value::I64(8080)
     );
 }
 
@@ -47,6 +47,28 @@ fn document_round_trips_simple_fields() {
 }
 
 #[test]
+fn typed_literals_resolve_from_disk() {
+    let doc = Document::from_file(&examples_dir().join("types.wcl")).expect("types fixture parses");
+    assert_eq!(doc.field("byte").unwrap().value().unwrap(), &Value::U8(200));
+    assert_eq!(
+        doc.field("small").unwrap().value().unwrap(),
+        &Value::I8(-120)
+    );
+    assert_eq!(
+        doc.field("ratio").unwrap().value().unwrap(),
+        &Value::F32(1.5)
+    );
+    assert_eq!(
+        doc.field("name").unwrap().value().unwrap(),
+        &Value::Ascii("alpha".into())
+    );
+    assert_eq!(
+        doc.field("hello16").unwrap().value().unwrap(),
+        &Value::Utf16("hello".encode_utf16().collect())
+    );
+}
+
+#[test]
 fn nested_blocks_preserve_structure() {
     let doc = open(
         r#"
@@ -61,12 +83,12 @@ fn nested_blocks_preserve_structure() {
     let svc = doc.block("service").unwrap();
     assert_eq!(
         svc.field("port").unwrap().value().unwrap(),
-        &Value::Int(8080)
+        &Value::I64(8080)
     );
     let meta = svc.block("metadata").unwrap();
     assert_eq!(
         meta.field("region").unwrap().value().unwrap(),
-        &Value::String("us-east-1".into())
+        &Value::Utf8("us-east-1".into())
     );
 }
 
