@@ -80,10 +80,35 @@ pub(crate) struct TypeField {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub(crate) struct UnionDecl {
+    pub name: String,
+    pub variants: Vec<UnionVariant>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct UnionVariant {
+    pub name: String,
+    pub body: VariantBody,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum VariantBody {
+    Record(Vec<TypeField>),
+    TypeRef {
+        ty: crate::value::TypeRef,
+        ty_span: Span,
+    },
+    Unit,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Item {
     Field(Field),
     Block(Block),
     TypeDecl(TypeDecl),
+    UnionDecl(UnionDecl),
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]

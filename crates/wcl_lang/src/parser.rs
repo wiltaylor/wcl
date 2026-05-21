@@ -1,6 +1,9 @@
 use miette::{NamedSource, SourceSpan};
 
-use crate::ast::{Block, Expr, Field, Item, Source, Span, TypeDecl, TypeField};
+use crate::ast::{
+    Block, Expr, Field, Item, Source, Span, TypeDecl, TypeField, UnionDecl, UnionVariant,
+    VariantBody,
+};
 use crate::error::ParseError;
 use crate::lexer::{LexError, Lexer, NumberLit, StringLit, Token, TokenKind};
 use crate::value::{BuiltinType, TypeRef};
@@ -33,12 +36,19 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_item(&mut self) -> Result<Item, ParseError> {
-        // Two-token lookahead for `type IDENT { ... }` declarations.
-        if let TokenKind::Ident(first) = &self.peek()?.kind
-            && first == "type"
+        // Two-token lookahead for `type IDENT { ... }` and `union IDENT { ... }`.
+        let first_ident = match &self.peek()?.kind {
+            TokenKind::Ident(s) => Some(s.clone()),
+            _ => None,
+        };
+        if let Some(first) = first_ident
             && matches!(self.peek2()?.kind, TokenKind::Ident(_))
         {
-            return self.parse_type_decl();
+            match first.as_str() {
+                "type" => return self.parse_type_decl(),
+                "union" => return self.parse_union_decl(),
+                _ => {}
+            }
         }
 
         let tok = self.bump()?;
@@ -151,6 +161,124 @@ impl<'a> Parser<'a> {
             optional,
             span: Span::new(field_start, end),
         })
+    }
+
+    fn parse_union_decl(&mut self) -> Result<Item, ParseError> {
+        let kw = self.bump()?; // 'union'
+        let start = kw.span.start;
+        let name_tok = self.bump()?;
+        let TokenKind::Ident(name) = name_tok.kind else {
+            return Err(self.err(
+                "expected union name after 'union'",
+                name_tok.span,
+                "expected identifier",
+            ));
+        };
+        let lbrace = self.bump()?;
+        if !matches!(lbrace.kind, TokenKind::LBrace) {
+            return Err(self.err(
+                format!(
+                    "expected '{{' after union name '{name}', found {}",
+                    describe(&lbrace.kind)
+                ),
+                lbrace.span,
+                "expected '{'",
+            ));
+        }
+        let mut variants = Vec::new();
+        loop {
+            let p = self.peek()?;
+            match p.kind {
+                TokenKind::RBrace => break,
+                TokenKind::Eof => {
+                    let span = p.span;
+                    return Err(self.err(
+                        "unexpected end of file inside union declaration",
+                        span,
+                        "expected '}'",
+                    ));
+                }
+                _ => variants.push(self.parse_variant_decl()?),
+            }
+        }
+        let rbrace = self.bump()?;
+        Ok(Item::UnionDecl(UnionDecl {
+            name,
+            variants,
+            span: Span::new(start, rbrace.span.end),
+        }))
+    }
+
+    fn parse_variant_decl(&mut self) -> Result<UnionVariant, ParseError> {
+        let name_tok = self.bump()?;
+        let variant_start = name_tok.span.start;
+        let TokenKind::Ident(variant_name) = name_tok.kind else {
+            return Err(self.err(
+                format!("expected variant name, found {}", describe(&name_tok.kind)),
+                name_tok.span,
+                "expected identifier",
+            ));
+        };
+        let (body, body_end) = self.parse_variant_body()?;
+        Ok(UnionVariant {
+            name: variant_name,
+            body,
+            span: Span::new(variant_start, body_end),
+        })
+    }
+
+    fn parse_variant_body(&mut self) -> Result<(VariantBody, usize), ParseError> {
+        let head = self.peek()?;
+        match head.kind {
+            TokenKind::LBrace => {
+                self.bump()?;
+                let mut fields = Vec::new();
+                loop {
+                    let p = self.peek()?;
+                    match p.kind {
+                        TokenKind::RBrace => break,
+                        TokenKind::Eof => {
+                            let span = p.span;
+                            return Err(self.err(
+                                "unexpected end of file inside variant body",
+                                span,
+                                "expected '}'",
+                            ));
+                        }
+                        _ => fields.push(self.parse_type_field()?),
+                    }
+                }
+                let rbrace = self.bump()?;
+                Ok((VariantBody::Record(fields), rbrace.span.end))
+            }
+            TokenKind::None => {
+                let tok = self.bump()?;
+                Ok((VariantBody::Unit, tok.span.end))
+            }
+            TokenKind::Amp | TokenKind::Ident(_) => {
+                let (ty, ty_span) = self.parse_type_ref()?;
+                // No optional `?` is permitted on a variant body type ref.
+                if matches!(self.peek()?.kind, TokenKind::Question) {
+                    let q = self.peek()?;
+                    let span = q.span;
+                    return Err(self.err(
+                        "'?' is not allowed on a variant body",
+                        span,
+                        "remove '?'",
+                    ));
+                }
+                Ok((VariantBody::TypeRef { ty, ty_span }, ty_span.end))
+            }
+            _ => {
+                let span = head.span;
+                let kind = describe(&head.kind);
+                Err(self.err(
+                    format!("expected variant body ('{{ ... }}', a type, or 'None'), found {kind}"),
+                    span,
+                    "expected variant body",
+                ))
+            }
+        }
     }
 
     fn parse_type_ref(&mut self) -> Result<(TypeRef, Span), ParseError> {
@@ -631,6 +759,87 @@ mod tests {
     #[test]
     fn type_decl_without_brace_errors() {
         let err = parse_err("type Foo = 1");
+        match err {
+            ParseError::Syntax(e) => assert!(e.message.contains("'{'"), "{}", e.message),
+            _ => panic!("expected syntax error"),
+        }
+    }
+
+    fn union_decls(items: &[Item]) -> Vec<&UnionDecl> {
+        items
+            .iter()
+            .filter_map(|i| match i {
+                Item::UnionDecl(u) => Some(u),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn parse_union_with_all_three_body_forms() {
+        let s = parse(
+            r#"
+            type Point { x: f64 y: f64 }
+            union Shape {
+              Circle { center: Point radius: f64 }
+              Polygon Point
+              Empty none
+            }
+            "#,
+        );
+        let u = union_decls(&s.items)[0];
+        assert_eq!(u.name, "Shape");
+        assert_eq!(u.variants.len(), 3);
+        assert_eq!(u.variants[0].name, "Circle");
+        assert!(matches!(u.variants[0].body, VariantBody::Record(_)));
+        assert_eq!(u.variants[1].name, "Polygon");
+        match &u.variants[1].body {
+            VariantBody::TypeRef { ty, .. } => {
+                assert_eq!(*ty, TypeRef::Named("Point".into()))
+            }
+            _ => panic!("expected TypeRef body"),
+        }
+        assert_eq!(u.variants[2].name, "Empty");
+        assert!(matches!(u.variants[2].body, VariantBody::Unit));
+    }
+
+    #[test]
+    fn parse_empty_union() {
+        let s = parse("union Nothing {}");
+        let u = union_decls(&s.items)[0];
+        assert_eq!(u.name, "Nothing");
+        assert!(u.variants.is_empty());
+    }
+
+    #[test]
+    fn parse_reference_variant_body() {
+        let s = parse("type Item {} union Wrap { Boxed &Item }");
+        let u = union_decls(&s.items)[0];
+        match &u.variants[0].body {
+            VariantBody::TypeRef { ty, .. } => assert_eq!(
+                *ty,
+                TypeRef::Reference(Box::new(TypeRef::Named("Item".into())))
+            ),
+            _ => panic!("expected TypeRef body"),
+        }
+    }
+
+    #[test]
+    fn variant_body_question_mark_rejected() {
+        let err = parse_err("type T {} union X { V T? }");
+        match err {
+            ParseError::Syntax(e) => assert!(
+                e.message.contains("'?' is not allowed on a variant body"),
+                "{}",
+                e.message
+            ),
+            _ => panic!("expected syntax error"),
+        }
+    }
+
+    #[test]
+    fn union_decl_without_brace_errors() {
+        let err = parse_err("union Foo = 1");
         match err {
             ParseError::Syntax(e) => assert!(e.message.contains("'{'"), "{}", e.message),
             _ => panic!("expected syntax error"),

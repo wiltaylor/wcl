@@ -12,6 +12,9 @@ mod parser;
 mod value;
 
 pub use ast::Span;
-pub use doc::{Block, Document, Field, ResolvedType, TypeDecl, TypeField};
+pub use doc::{
+    Block, Document, Field, ResolvedType, TypeDecl, TypeField, UnionDecl, UnionVariant,
+    VariantBodyView,
+};
 pub use error::{EvalError, ParseError, SyntaxError};
 pub use value::{BuiltinType, TypeRef, Value};

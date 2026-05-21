@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use wcl_lang::{Document, ResolvedType, Value};
+use wcl_lang::{Document, ResolvedType, TypeRef, Value, VariantBodyView};
 
 fn examples_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -44,6 +44,20 @@ fn document_round_trips_simple_fields() {
         doc.field("flag").unwrap().value().unwrap(),
         &Value::Bool(false)
     );
+}
+
+#[test]
+fn fixture_union_shape_resolves() {
+    let doc = Document::from_file(&examples_dir().join("types.wcl")).expect("types fixture parses");
+    let shape = doc.union_decl("Shape").expect("Shape union");
+    assert_eq!(shape.variants().count(), 4);
+    let polygon = shape.variant("Polygon").expect("Polygon variant");
+    match polygon.body() {
+        VariantBodyView::TypeRef(t) => assert_eq!(*t, TypeRef::Named("Point".into())),
+        _ => panic!("Polygon body should be TypeRef"),
+    }
+    let empty = shape.variant("Empty").expect("Empty variant");
+    assert!(matches!(empty.body(), VariantBodyView::Unit));
 }
 
 #[test]

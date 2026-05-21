@@ -31,6 +31,7 @@ enum ItemCells {
     Field(FieldCell),
     Block(BlockCells),
     TypeDecl,
+    UnionDecl,
 }
 
 #[derive(Debug)]
@@ -46,6 +47,7 @@ impl BlockCells {
                 ast::Item::Field(_) => ItemCells::Field(FieldCell::new()),
                 ast::Item::Block(b) => ItemCells::Block(BlockCells::build(&b.items)),
                 ast::Item::TypeDecl(_) => ItemCells::TypeDecl,
+                ast::Item::UnionDecl(_) => ItemCells::UnionDecl,
             })
             .collect();
         Self { items: cells }
@@ -110,17 +112,35 @@ impl Document {
         })
     }
 
+    pub fn union_decl(&self, name: &str) -> Option<UnionDecl<'_>> {
+        self.ast.items.iter().find_map(|item| match item {
+            ast::Item::UnionDecl(u) if u.name == name => Some(UnionDecl { ast: u }),
+            _ => None,
+        })
+    }
+
+    pub fn union_decls(&self) -> impl Iterator<Item = UnionDecl<'_>> {
+        self.ast.items.iter().filter_map(|item| match item {
+            ast::Item::UnionDecl(u) => Some(UnionDecl { ast: u }),
+            _ => None,
+        })
+    }
+
     /// Resolve a [`TypeRef`] to either its built-in tag or the user-declared
-    /// [`TypeDecl`] it points to. `Named` refs are validated at
-    /// [`Document::open`], so the lookup never fails here.
+    /// [`TypeDecl`] / [`UnionDecl`] it points to. `Named` refs are validated
+    /// at [`Document::open`], so the lookup never fails here.
     pub fn resolve(&self, t: &TypeRef) -> ResolvedType<'_> {
         match t {
             TypeRef::Builtin(b) => ResolvedType::Builtin(*b),
             TypeRef::Named(name) => {
-                let decl = self
-                    .type_decl(name)
-                    .expect("named ref validated at Document::open");
-                ResolvedType::Named(decl)
+                if let Some(decl) = self.type_decl(name) {
+                    ResolvedType::Named(decl)
+                } else {
+                    let union = self
+                        .union_decl(name)
+                        .expect("named ref validated at Document::open");
+                    ResolvedType::Union(union)
+                }
             }
             TypeRef::Reference(inner) => ResolvedType::Reference(Box::new(self.resolve(inner))),
         }
@@ -131,7 +151,82 @@ impl Document {
 pub enum ResolvedType<'a> {
     Builtin(BuiltinType),
     Named(TypeDecl<'a>),
+    Union(UnionDecl<'a>),
     Reference(Box<ResolvedType<'a>>),
+}
+
+#[derive(Debug)]
+pub struct UnionDecl<'a> {
+    ast: &'a ast::UnionDecl,
+}
+
+impl<'a> UnionDecl<'a> {
+    pub fn name(&self) -> &'a str {
+        &self.ast.name
+    }
+
+    pub fn span(&self) -> Span {
+        self.ast.span
+    }
+
+    pub fn variants(&self) -> impl Iterator<Item = UnionVariant<'a>> {
+        self.ast.variants.iter().map(|v| UnionVariant { ast: v })
+    }
+
+    pub fn variant(&self, name: &str) -> Option<UnionVariant<'a>> {
+        self.ast
+            .variants
+            .iter()
+            .find(|v| v.name == name)
+            .map(|v| UnionVariant { ast: v })
+    }
+}
+
+pub struct UnionVariant<'a> {
+    ast: &'a ast::UnionVariant,
+}
+
+impl<'a> UnionVariant<'a> {
+    pub fn name(&self) -> &'a str {
+        &self.ast.name
+    }
+
+    pub fn span(&self) -> Span {
+        self.ast.span
+    }
+
+    pub fn body(&self) -> VariantBodyView<'a> {
+        match &self.ast.body {
+            ast::VariantBody::Record(_) => VariantBodyView::Record,
+            ast::VariantBody::TypeRef { ty, .. } => VariantBodyView::TypeRef(ty),
+            ast::VariantBody::Unit => VariantBodyView::Unit,
+        }
+    }
+
+    pub fn fields(&self) -> Box<dyn Iterator<Item = TypeField<'a>> + 'a> {
+        match &self.ast.body {
+            ast::VariantBody::Record(fields) => {
+                Box::new(fields.iter().map(|f| TypeField { ast: f }))
+            }
+            _ => Box::new(std::iter::empty()),
+        }
+    }
+
+    pub fn field(&self, name: &str) -> Option<TypeField<'a>> {
+        match &self.ast.body {
+            ast::VariantBody::Record(fields) => fields
+                .iter()
+                .find(|f| f.name == name)
+                .map(|f| TypeField { ast: f }),
+            _ => None,
+        }
+    }
+}
+
+pub enum VariantBodyView<'a> {
+    Record,
+    TypeRef(&'a TypeRef),
+    Unit,
 }
 
 #[derive(Debug)]
@@ -337,23 +432,65 @@ fn span_to_miette(span: Span) -> SourceSpan {
 fn validate_type_refs(ast: &ast::Source, source: &str, file: &str) -> Result<(), ParseError> {
     let mut declared: HashMap<&str, ()> = HashMap::new();
     for item in &ast.items {
-        if let ast::Item::TypeDecl(t) = item
-            && declared.insert(t.name.as_str(), ()).is_some()
-        {
-            return Err(open_error(
-                source,
-                file,
-                format!("duplicate type declaration '{}'", t.name),
-                t.span,
-                "duplicate type",
-            ));
+        match item {
+            ast::Item::TypeDecl(t) => {
+                if declared.insert(t.name.as_str(), ()).is_some() {
+                    return Err(open_error(
+                        source,
+                        file,
+                        format!("duplicate declaration '{}'", t.name),
+                        t.span,
+                        "duplicate declaration",
+                    ));
+                }
+            }
+            ast::Item::UnionDecl(u) => {
+                if declared.insert(u.name.as_str(), ()).is_some() {
+                    return Err(open_error(
+                        source,
+                        file,
+                        format!("duplicate declaration '{}'", u.name),
+                        u.span,
+                        "duplicate declaration",
+                    ));
+                }
+            }
+            _ => {}
         }
     }
     for item in &ast.items {
-        if let ast::Item::TypeDecl(t) = item {
-            for f in &t.fields {
-                check_type_ref(&f.ty, f.ty_span, &declared, source, file)?;
+        match item {
+            ast::Item::TypeDecl(t) => {
+                for f in &t.fields {
+                    check_type_ref(&f.ty, f.ty_span, &declared, source, file)?;
+                }
             }
+            ast::Item::UnionDecl(u) => {
+                let mut seen: HashMap<&str, ()> = HashMap::new();
+                for v in &u.variants {
+                    if seen.insert(v.name.as_str(), ()).is_some() {
+                        return Err(open_error(
+                            source,
+                            file,
+                            format!("duplicate variant '{}' in union '{}'", v.name, u.name),
+                            v.span,
+                            "duplicate variant",
+                        ));
+                    }
+                    match &v.body {
+                        ast::VariantBody::Record(fields) => {
+                            for f in fields {
+                                check_type_ref(&f.ty, f.ty_span, &declared, source, file)?;
+                            }
+                        }
+                        ast::VariantBody::TypeRef { ty, ty_span } => {
+                            check_type_ref(ty, *ty_span, &declared, source, file)?;
+                        }
+                        ast::VariantBody::Unit => {}
+                    }
+                }
+            }
+            _ => {}
         }
     }
     Ok(())
@@ -686,13 +823,136 @@ mod tests {
         match err {
             ParseError::Syntax(e) => {
                 assert!(
-                    e.message.contains("duplicate type declaration 'Foo'"),
+                    e.message.contains("duplicate declaration 'Foo'"),
                     "message: {}",
                     e.message
                 );
             }
             _ => panic!("expected syntax error"),
         }
+    }
+
+    #[test]
+    fn type_and_union_with_same_name_errors() {
+        let err = Document::open("type Foo {}\nunion Foo {}", "test").unwrap_err();
+        match err {
+            ParseError::Syntax(e) => {
+                assert!(
+                    e.message.contains("duplicate declaration 'Foo'"),
+                    "message: {}",
+                    e.message
+                );
+            }
+            _ => panic!("expected syntax error"),
+        }
+    }
+
+    #[test]
+    fn duplicate_variant_name_errors() {
+        let err = Document::open("union X { A none A none }", "test").unwrap_err();
+        match err {
+            ParseError::Syntax(e) => {
+                assert!(
+                    e.message.contains("duplicate variant 'A' in union 'X'"),
+                    "message: {}",
+                    e.message
+                );
+            }
+            _ => panic!("expected syntax error"),
+        }
+    }
+
+    #[test]
+    fn union_decls_are_queryable() {
+        let doc = open(
+            r#"
+            type Point { x: f64 y: f64 }
+            union Shape {
+              Circle { radius: f64 }
+              Polygon Point
+              Empty none
+            }
+            union Maybe { Some { v: i32 } Nothing none }
+            "#,
+        );
+        assert_eq!(doc.union_decls().count(), 2);
+        let shape = doc.union_decl("Shape").expect("Shape union");
+        assert_eq!(shape.variants().count(), 3);
+        assert!(shape.variant("Circle").is_some());
+        assert!(shape.variant("missing").is_none());
+    }
+
+    #[test]
+    fn variant_record_fields_iterate() {
+        let doc = open(
+            "type Point { x: f64 y: f64 }\nunion Shape { Circle { radius: f64 center: Point } }",
+        );
+        let shape = doc.union_decl("Shape").unwrap();
+        let circle = shape.variant("Circle").unwrap();
+        assert!(matches!(circle.body(), VariantBodyView::Record));
+        let names: Vec<_> = circle.fields().map(|f| f.name().to_string()).collect();
+        assert_eq!(names, vec!["radius".to_string(), "center".to_string()]);
+    }
+
+    #[test]
+    fn variant_type_ref_body_resolves() {
+        let doc = open("type Point { x: f64 y: f64 }\nunion Shape { Polygon Point }");
+        let shape = doc.union_decl("Shape").unwrap();
+        let v = shape.variant("Polygon").unwrap();
+        match v.body() {
+            VariantBodyView::TypeRef(t) => assert_eq!(*t, TypeRef::Named("Point".into())),
+            _ => panic!("expected TypeRef body"),
+        }
+    }
+
+    #[test]
+    fn variant_unit_body() {
+        let doc = open("union Maybe { Nothing none }");
+        let m = doc.union_decl("Maybe").unwrap();
+        let n = m.variant("Nothing").unwrap();
+        assert!(matches!(n.body(), VariantBodyView::Unit));
+        assert_eq!(n.fields().count(), 0);
+    }
+
+    #[test]
+    fn resolve_union_returns_union() {
+        let doc = open("union Shape { Empty none }\ntype Box { contents: Shape }");
+        let b = doc.type_decl("Box").unwrap();
+        let contents = b.field("contents").unwrap();
+        match doc.resolve(contents.type_ref()) {
+            ResolvedType::Union(u) => assert_eq!(u.name(), "Shape"),
+            _ => panic!("expected union"),
+        }
+    }
+
+    #[test]
+    fn unknown_variant_body_type_errors() {
+        let err = Document::open("union X { V NotDecl }", "test").unwrap_err();
+        match err {
+            ParseError::Syntax(e) => {
+                assert!(
+                    e.message.contains("unknown type 'NotDecl'"),
+                    "message: {}",
+                    e.message
+                );
+            }
+            _ => panic!("expected syntax error"),
+        }
+    }
+
+    #[test]
+    fn unions_dont_appear_in_field_or_block_iteration() {
+        let doc = open(
+            r#"
+            union Shape { Empty none }
+            count = 1
+            svc {}
+            "#,
+        );
+        let field_names: Vec<_> = doc.fields().map(|f| f.name().to_string()).collect();
+        assert_eq!(field_names, vec!["count".to_string()]);
+        let block_kinds: Vec<_> = doc.blocks().map(|b| b.kind().to_string()).collect();
+        assert_eq!(block_kinds, vec!["svc".to_string()]);
     }
 
     #[test]

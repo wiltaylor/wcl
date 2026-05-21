@@ -56,6 +56,20 @@ type Post {
 
 type Empty {}
 
+type Point { x: f64 y: f64 }
+
+union Shape {
+  Circle { center: Point radius: f64 }
+  Square { center: Point side: f64 }
+  Polygon Point
+  Empty none
+}
+
+union Maybe {
+  Some { value: i32 }
+  Nothing none
+}
+
 # Reference and none values
 owner = wil_taylor
 maybe = none

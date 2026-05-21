@@ -3,7 +3,9 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
-use wcl_lang::{Block, Document, Field, TypeDecl, TypeRef, Value};
+use wcl_lang::{
+    Block, Document, Field, TypeDecl, TypeRef, UnionDecl, UnionVariant, Value, VariantBodyView,
+};
 
 #[derive(Parser)]
 #[command(name = "wcl", version, about = "WCL command-line interface")]
@@ -58,11 +60,42 @@ fn dump_document(doc: &Document, out: &mut String) {
     for t in doc.type_decls() {
         dump_type_decl(&t, out);
     }
+    for u in doc.union_decls() {
+        dump_union_decl(&u, out);
+    }
     for f in doc.fields() {
         dump_field(&f, 0, out);
     }
     for b in doc.blocks() {
         dump_block(&b, 0, out);
+    }
+}
+
+fn dump_union_decl(u: &UnionDecl<'_>, out: &mut String) {
+    writeln!(out, "union {} {{", u.name()).unwrap();
+    for v in u.variants() {
+        dump_variant(&v, out);
+    }
+    writeln!(out, "}}").unwrap();
+}
+
+fn dump_variant(v: &UnionVariant<'_>, out: &mut String) {
+    match v.body() {
+        VariantBodyView::Record => {
+            writeln!(out, "  {} {{", v.name()).unwrap();
+            for f in v.fields() {
+                let ty = type_repr(f.type_ref());
+                let q = if f.optional() { "?" } else { "" };
+                writeln!(out, "    {}: {ty}{q}", f.name()).unwrap();
+            }
+            writeln!(out, "  }}").unwrap();
+        }
+        VariantBodyView::TypeRef(t) => {
+            writeln!(out, "  {} {}", v.name(), type_repr(t)).unwrap();
+        }
+        VariantBodyView::Unit => {
+            writeln!(out, "  {} none", v.name()).unwrap();
+        }
     }
 }
 
