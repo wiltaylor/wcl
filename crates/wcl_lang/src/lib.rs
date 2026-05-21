@@ -20,4 +20,4 @@ pub use doc::{
 };
 pub use error::{EvalError, ParseError, SyntaxError};
 pub use schema::{BuiltType, DecoratorBuilder, SchemaRegistry, TypeBuilder, TypeFieldBuilder};
-pub use value::{BuiltinType, TensorDim, TypeRef, Value};
+pub use value::{BuiltinType, FnParam, FnValue, TensorDim, TypeRef, Value};

@@ -27,6 +27,63 @@ pub enum Value {
     Identifier(String),
     Symbol(String),
     None,
+
+    Function(FnValue),
+}
+
+/// A function value: a parameter list, a return type, and an opaque body.
+///
+/// The body is preserved as an AST expression internally so equality of
+/// function values takes the body into account, but it is not part of the
+/// public surface (no evaluator yet — there is nothing the consumer can do
+/// with it).
+#[derive(Debug, Clone, PartialEq)]
+pub struct FnValue {
+    params: Vec<FnParam>,
+    return_ty: TypeRef,
+    pub(crate) body: Box<crate::ast::Expr>,
+}
+
+impl FnValue {
+    pub(crate) fn new(
+        params: Vec<FnParam>,
+        return_ty: TypeRef,
+        body: Box<crate::ast::Expr>,
+    ) -> Self {
+        Self {
+            params,
+            return_ty,
+            body,
+        }
+    }
+
+    pub fn params(&self) -> &[FnParam] {
+        &self.params
+    }
+
+    pub fn return_ty(&self) -> &TypeRef {
+        &self.return_ty
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FnParam {
+    name: String,
+    ty: TypeRef,
+}
+
+impl FnParam {
+    pub(crate) fn new(name: String, ty: TypeRef) -> Self {
+        Self { name, ty }
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn ty(&self) -> &TypeRef {
+        &self.ty
+    }
 }
 
 impl Value {
@@ -54,6 +111,7 @@ impl Value {
             Value::Identifier(_) => "identifier",
             Value::Symbol(_) => "symbol",
             Value::None => "none",
+            Value::Function(_) => "fn",
         }
     }
 }
@@ -152,6 +210,10 @@ pub enum TypeRef {
     Tensor {
         element: Box<TypeRef>,
         dims: Vec<TensorDim>,
+    },
+    Function {
+        params: Vec<TypeRef>,
+        return_ty: Box<TypeRef>,
     },
 }
 

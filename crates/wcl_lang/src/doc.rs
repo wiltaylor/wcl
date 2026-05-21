@@ -10,7 +10,7 @@ use crate::ast::{self, Span};
 use crate::error::{EvalError, ParseError};
 use crate::parser::Parser;
 use crate::schema::SchemaRegistry;
-use crate::value::{BuiltinType, TensorDim, TypeRef, Value};
+use crate::value::{BuiltinType, FnParam, FnValue, TensorDim, TypeRef, Value};
 
 #[derive(Debug)]
 struct FieldCell {
@@ -270,6 +270,10 @@ impl Document {
                 element: Box::new(self.resolve(element)),
                 dims,
             },
+            TypeRef::Function { params, return_ty } => ResolvedType::Function {
+                params: params.iter().map(|p| self.resolve(p)).collect(),
+                return_ty: Box::new(self.resolve(return_ty)),
+            },
         }
     }
 
@@ -385,6 +389,10 @@ pub enum ResolvedType<'a> {
     Tensor {
         element: Box<ResolvedType<'a>>,
         dims: &'a [TensorDim],
+    },
+    Function {
+        params: Vec<ResolvedType<'a>>,
+        return_ty: Box<ResolvedType<'a>>,
     },
 }
 
@@ -948,6 +956,24 @@ fn eval_expr(e: &ast::Expr) -> Result<Value, EvalError> {
         ast::Expr::Identifier(s) => Value::Identifier(s.clone()),
         ast::Expr::Symbol(s) => Value::Symbol(s.clone()),
         ast::Expr::None => Value::None,
+        ast::Expr::Function(f) => {
+            let params: Vec<FnParam> = f
+                .params
+                .iter()
+                .map(|p| FnParam::new(p.name.clone(), p.ty.clone()))
+                .collect();
+            Value::Function(FnValue::new(params, f.return_ty.clone(), f.body.clone()))
+        }
+        ast::Expr::Paren { inner, .. } => return eval_expr(inner),
+        ast::Expr::Call { span, .. }
+        | ast::Expr::Binary { span, .. }
+        | ast::Expr::Unary { span, .. }
+        | ast::Expr::Block { span, .. } => {
+            return Err(EvalError::new(
+                "evaluation of compound expressions is not yet implemented",
+                *span,
+            ));
+        }
     })
 }
 
@@ -1303,6 +1329,32 @@ fn check_type_ref(
             source,
             file,
         ),
+        TypeRef::Function { params, return_ty } => {
+            for p in params {
+                check_type_ref(
+                    p,
+                    ty_span,
+                    declared,
+                    file_ns,
+                    item_aliases,
+                    ns_aliases,
+                    wildcards,
+                    source,
+                    file,
+                )?;
+            }
+            check_type_ref(
+                return_ty,
+                ty_span,
+                declared,
+                file_ns,
+                item_aliases,
+                ns_aliases,
+                wildcards,
+                source,
+                file,
+            )
+        }
     }
 }
 

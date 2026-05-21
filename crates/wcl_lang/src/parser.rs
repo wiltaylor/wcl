@@ -1,9 +1,9 @@
 use miette::{NamedSource, SourceSpan};
 
 use crate::ast::{
-    Block, Decorator, Expr, Field, Item, NamedArg, NamespaceDecl, Source, Span, SymbolEntry,
-    SymbolSetDecl, TypeDecl, TypeField, UnionDecl, UnionVariant, UseDecl, UseForm, UseItem,
-    VariantBody,
+    BinOp, Block, Decorator, Expr, Field, FunctionLit, Item, LetBinding, NamedArg, NamespaceDecl,
+    Parameter, Source, Span, SymbolEntry, SymbolSetDecl, TypeDecl, TypeField, UnaryOp, UnionDecl,
+    UnionVariant, UseDecl, UseForm, UseItem, VariantBody,
 };
 use crate::error::ParseError;
 use crate::lexer::{LexError, Lexer, NumberLit, StringLit, Token, TokenKind};
@@ -187,6 +187,9 @@ impl<'a> Parser<'a> {
         })
     }
 
+    /// Literal-only value parser. Used by contexts that intentionally accept
+    /// only primary tokens (decorator arguments, block labels) — full
+    /// expressions go through [`parse_expr`].
     fn parse_value_expr(&mut self) -> Result<(Expr, Span), ParseError> {
         let tok = self.bump()?;
         let span = tok.span;
@@ -206,6 +209,317 @@ impl<'a> Parser<'a> {
             }
         };
         Ok((expr, span))
+    }
+
+    /// Pratt expression parser. Used in any context where a full expression
+    /// is allowed (field RHS, function-literal bodies, `let` initialisers,
+    /// parenthesised sub-expressions, call arguments).
+    fn parse_expr(&mut self) -> Result<(Expr, Span), ParseError> {
+        self.parse_expr_bp(0)
+    }
+
+    fn parse_expr_bp(&mut self, min_bp: u8) -> Result<(Expr, Span), ParseError> {
+        let (mut lhs, mut span) = self.parse_prefix()?;
+        loop {
+            let kind = self.peek()?.kind.clone();
+            // Postfix call: `expr(args)`.
+            if matches!(kind, TokenKind::LParen) {
+                const CALL_BP: u8 = 14;
+                if CALL_BP < min_bp {
+                    break;
+                }
+                let (call_expr, call_span) = self.parse_call_tail(lhs, span)?;
+                lhs = call_expr;
+                span = call_span;
+                continue;
+            }
+            let Some((lbp, rbp, op)) = bin_op_info(&kind) else {
+                break;
+            };
+            if lbp < min_bp {
+                break;
+            }
+            self.bump()?; // consume operator
+            let (rhs, rhs_span) = self.parse_expr_bp(rbp)?;
+            let new_span = Span::new(span.start, rhs_span.end);
+            lhs = Expr::Binary {
+                op,
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+                span: new_span,
+            };
+            span = new_span;
+        }
+        Ok((lhs, span))
+    }
+
+    fn parse_prefix(&mut self) -> Result<(Expr, Span), ParseError> {
+        let kind = self.peek()?.kind.clone();
+        match kind {
+            TokenKind::Dash => {
+                let tok = self.bump()?;
+                let (operand, operand_span) = self.parse_expr_bp(13)?;
+                let span = Span::new(tok.span.start, operand_span.end);
+                Ok((
+                    Expr::Unary {
+                        op: UnaryOp::Neg,
+                        operand: Box::new(operand),
+                        span,
+                    },
+                    span,
+                ))
+            }
+            TokenKind::Bang => {
+                let tok = self.bump()?;
+                let (operand, operand_span) = self.parse_expr_bp(13)?;
+                let span = Span::new(tok.span.start, operand_span.end);
+                Ok((
+                    Expr::Unary {
+                        op: UnaryOp::Not,
+                        operand: Box::new(operand),
+                        span,
+                    },
+                    span,
+                ))
+            }
+            _ => self.parse_atom(),
+        }
+    }
+
+    fn parse_atom(&mut self) -> Result<(Expr, Span), ParseError> {
+        // `fn (` triggers a function literal.
+        if let TokenKind::Ident(s) = &self.peek()?.kind
+            && s == "fn"
+            && matches!(self.peek2()?.kind, TokenKind::LParen)
+        {
+            return self.parse_function_literal();
+        }
+        let kind = self.peek()?.kind.clone();
+        match kind {
+            TokenKind::LParen => self.parse_paren_expr(),
+            TokenKind::LBrace => self.parse_block_expr(),
+            _ => self.parse_value_expr(),
+        }
+    }
+
+    fn parse_paren_expr(&mut self) -> Result<(Expr, Span), ParseError> {
+        let lparen = self.bump()?; // '('
+        let (inner, _) = self.parse_expr()?;
+        let rparen = self.expect(TokenKind::RParen, "expected ')'")?;
+        let span = Span::new(lparen.span.start, rparen.span.end);
+        Ok((
+            Expr::Paren {
+                inner: Box::new(inner),
+                span,
+            },
+            span,
+        ))
+    }
+
+    fn parse_block_expr(&mut self) -> Result<(Expr, Span), ParseError> {
+        let lbrace = self.bump()?; // '{'
+        let mut lets = Vec::new();
+        while matches!(&self.peek()?.kind, TokenKind::Ident(s) if s == "let") {
+            lets.push(self.parse_let_binding()?);
+        }
+        // Empty `{}` is not a valid expression — we need a tail expression.
+        if matches!(self.peek()?.kind, TokenKind::RBrace) {
+            let span = self.peek()?.span;
+            return Err(self.err(
+                "block expression requires a final expression",
+                span,
+                "expected expression",
+            ));
+        }
+        let (tail, _) = self.parse_expr()?;
+        let rbrace = self.expect(TokenKind::RBrace, "expected '}' to close block")?;
+        let span = Span::new(lbrace.span.start, rbrace.span.end);
+        Ok((
+            Expr::Block {
+                lets,
+                tail: Box::new(tail),
+                span,
+            },
+            span,
+        ))
+    }
+
+    fn parse_let_binding(&mut self) -> Result<LetBinding, ParseError> {
+        let let_tok = self.bump()?; // 'let'
+        let name_tok = self.bump()?;
+        let TokenKind::Ident(name) = name_tok.kind else {
+            return Err(self.err(
+                format!(
+                    "expected name after 'let', found {}",
+                    describe(&name_tok.kind)
+                ),
+                name_tok.span,
+                "expected identifier",
+            ));
+        };
+        self.expect(TokenKind::Eq, "expected '=' after let name")?;
+        let (value, value_span) = self.parse_expr()?;
+        self.expect(TokenKind::Semi, "expected ';' after let binding")?;
+        let span = Span::new(let_tok.span.start, value_span.end);
+        Ok(LetBinding { name, value, span })
+    }
+
+    fn parse_call_tail(
+        &mut self,
+        callee: Expr,
+        callee_span: Span,
+    ) -> Result<(Expr, Span), ParseError> {
+        self.bump()?; // '('
+        let mut args = Vec::new();
+        if !matches!(self.peek()?.kind, TokenKind::RParen) {
+            loop {
+                let (arg, _) = self.parse_expr()?;
+                args.push(arg);
+                match self.peek()?.kind {
+                    TokenKind::Comma => {
+                        self.bump()?;
+                        if matches!(self.peek()?.kind, TokenKind::RParen) {
+                            break;
+                        }
+                    }
+                    TokenKind::RParen => break,
+                    _ => {
+                        let p = self.peek()?;
+                        let span = p.span;
+                        let kind = describe(&p.kind);
+                        return Err(self.err(
+                            format!("expected ',' or ')' in call arguments, found {kind}"),
+                            span,
+                            "expected ',' or ')'",
+                        ));
+                    }
+                }
+            }
+        }
+        let rparen = self.expect(TokenKind::RParen, "expected ')' to close call")?;
+        let span = Span::new(callee_span.start, rparen.span.end);
+        Ok((
+            Expr::Call {
+                callee: Box::new(callee),
+                args,
+                span,
+            },
+            span,
+        ))
+    }
+
+    fn parse_function_literal(&mut self) -> Result<(Expr, Span), ParseError> {
+        let fn_tok = self.bump()?; // 'fn'
+        self.expect(TokenKind::LParen, "expected '(' after 'fn'")?;
+        let mut params: Vec<Parameter> = Vec::new();
+        if !matches!(self.peek()?.kind, TokenKind::RParen) {
+            loop {
+                let name_tok = self.bump()?;
+                let param_start = name_tok.span.start;
+                let TokenKind::Ident(pname) = name_tok.kind else {
+                    return Err(self.err(
+                        format!(
+                            "expected parameter name, found {}",
+                            describe(&name_tok.kind)
+                        ),
+                        name_tok.span,
+                        "expected parameter name",
+                    ));
+                };
+                self.expect(TokenKind::Colon, "expected ':' after parameter name")?;
+                let (ty, ty_span) = self.parse_type_ref()?;
+                params.push(Parameter {
+                    name: pname,
+                    ty,
+                    ty_span,
+                    span: Span::new(param_start, ty_span.end),
+                });
+                match self.peek()?.kind {
+                    TokenKind::Comma => {
+                        self.bump()?;
+                        if matches!(self.peek()?.kind, TokenKind::RParen) {
+                            break;
+                        }
+                    }
+                    TokenKind::RParen => break,
+                    _ => {
+                        let p = self.peek()?;
+                        let span = p.span;
+                        let kind = describe(&p.kind);
+                        return Err(self.err(
+                            format!("expected ',' or ')' in parameter list, found {kind}"),
+                            span,
+                            "expected ',' or ')'",
+                        ));
+                    }
+                }
+            }
+        }
+        self.expect(TokenKind::RParen, "expected ')' to close parameter list")?;
+        self.expect(TokenKind::Arrow, "expected '->' before return type")?;
+        let (return_ty, return_ty_span) = self.parse_type_ref()?;
+        let (body, body_span) = if matches!(self.peek()?.kind, TokenKind::LBrace) {
+            self.parse_block_expr()?
+        } else {
+            self.parse_expr()?
+        };
+        let span = Span::new(fn_tok.span.start, body_span.end);
+        Ok((
+            Expr::Function(FunctionLit {
+                params,
+                return_ty,
+                return_ty_span,
+                body: Box::new(body),
+                span,
+            }),
+            span,
+        ))
+    }
+
+    fn parse_function_type(&mut self) -> Result<(TypeRef, Span), ParseError> {
+        let fn_tok = self.bump()?; // 'fn'
+        let start = fn_tok.span.start;
+        self.expect(TokenKind::LParen, "expected '(' in fn type")?;
+        let mut params: Vec<TypeRef> = Vec::new();
+        if !matches!(self.peek()?.kind, TokenKind::RParen) {
+            loop {
+                let (ty, _) = self.parse_type_ref()?;
+                params.push(ty);
+                match self.peek()?.kind {
+                    TokenKind::Comma => {
+                        self.bump()?;
+                        if matches!(self.peek()?.kind, TokenKind::RParen) {
+                            break;
+                        }
+                    }
+                    TokenKind::RParen => break,
+                    _ => {
+                        let p = self.peek()?;
+                        let span = p.span;
+                        let kind = describe(&p.kind);
+                        return Err(self.err(
+                            format!("expected ',' or ')' in fn type, found {kind}"),
+                            span,
+                            "expected ',' or ')'",
+                        ));
+                    }
+                }
+            }
+        }
+        self.expect(
+            TokenKind::RParen,
+            "expected ')' to close fn type parameters",
+        )?;
+        self.expect(TokenKind::Arrow, "expected '->' in fn type")?;
+        let (return_ty, ret_span) = self.parse_type_ref()?;
+        let span = Span::new(start, ret_span.end);
+        Ok((
+            TypeRef::Function {
+                params,
+                return_ty: Box::new(return_ty),
+            },
+            span,
+        ))
     }
 
     /// Greedy path parser: `IDENT (. IDENT)*`.
@@ -646,7 +960,7 @@ impl<'a> Parser<'a> {
             TokenKind::Ident(s) => Some(s.clone()),
             _ => None,
         };
-        if let Some(s) = head_ident
+        if let Some(s) = &head_ident
             && (s == "list" || s == "tensor")
             && matches!(self.peek2()?.kind, TokenKind::Lt)
         {
@@ -655,6 +969,13 @@ impl<'a> Parser<'a> {
             } else {
                 self.parse_tensor_type()
             };
+        }
+        // Contextual keyword: `fn(...) -> T`.
+        if let Some(s) = &head_ident
+            && s == "fn"
+            && matches!(self.peek2()?.kind, TokenKind::LParen)
+        {
+            return self.parse_function_type();
         }
 
         let head = self.peek()?;
@@ -785,7 +1106,7 @@ impl<'a> Parser<'a> {
         decorators: Vec<Decorator>,
     ) -> Result<Item, ParseError> {
         self.bump()?; // consume '='
-        let (expr, value_span) = self.parse_value_expr()?;
+        let (expr, value_span) = self.parse_expr()?;
         let span = Span::new(start, value_span.end);
         Ok(Item::Field(Field {
             name,
@@ -907,13 +1228,22 @@ fn describe(t: &TokenKind) -> String {
         TokenKind::Symbol(_) => "symbol literal".to_string(),
         TokenKind::None => "'none'".to_string(),
         TokenKind::Eq => "'='".to_string(),
+        TokenKind::EqEq => "'=='".to_string(),
+        TokenKind::BangEq => "'!='".to_string(),
+        TokenKind::Bang => "'!'".to_string(),
         TokenKind::Colon => "':'".to_string(),
         TokenKind::Question => "'?'".to_string(),
         TokenKind::Amp => "'&'".to_string(),
+        TokenKind::AmpAmp => "'&&'".to_string(),
+        TokenKind::Pipe => "'|'".to_string(),
+        TokenKind::PipePipe => "'||'".to_string(),
         TokenKind::Dot => "'.'".to_string(),
         TokenKind::Comma => "','".to_string(),
+        TokenKind::Semi => "';'".to_string(),
         TokenKind::Lt => "'<'".to_string(),
+        TokenKind::LtEq => "'<='".to_string(),
         TokenKind::Gt => "'>'".to_string(),
+        TokenKind::GtEq => "'>='".to_string(),
         TokenKind::LBracket => "'['".to_string(),
         TokenKind::RBracket => "']'".to_string(),
         TokenKind::At => "'@'".to_string(),
@@ -921,6 +1251,12 @@ fn describe(t: &TokenKind) -> String {
         TokenKind::RParen => "')'".to_string(),
         TokenKind::LBrace => "'{'".to_string(),
         TokenKind::RBrace => "'}'".to_string(),
+        TokenKind::Plus => "'+'".to_string(),
+        TokenKind::Dash => "'-'".to_string(),
+        TokenKind::Arrow => "'->'".to_string(),
+        TokenKind::Star => "'*'".to_string(),
+        TokenKind::Slash => "'/'".to_string(),
+        TokenKind::Percent => "'%'".to_string(),
         TokenKind::Eof => "end of file".to_string(),
     }
 }
@@ -960,6 +1296,28 @@ fn string_to_expr(s: StringLit) -> Expr {
         StringLit::Utf16(v) => Expr::Utf16(v),
         StringLit::Utf32(v) => Expr::Utf32(v),
     }
+}
+
+/// Binding powers and operator mapping for the Pratt parser. Returns
+/// `(left_bp, right_bp, op)` for binary operators; `None` for anything
+/// that doesn't bind as an infix operator.
+fn bin_op_info(k: &TokenKind) -> Option<(u8, u8, BinOp)> {
+    Some(match k {
+        TokenKind::PipePipe => (1, 2, BinOp::Or),
+        TokenKind::AmpAmp => (3, 4, BinOp::And),
+        TokenKind::EqEq => (5, 6, BinOp::Eq),
+        TokenKind::BangEq => (5, 6, BinOp::Ne),
+        TokenKind::Lt => (7, 8, BinOp::Lt),
+        TokenKind::LtEq => (7, 8, BinOp::Le),
+        TokenKind::Gt => (7, 8, BinOp::Gt),
+        TokenKind::GtEq => (7, 8, BinOp::Ge),
+        TokenKind::Plus => (9, 10, BinOp::Add),
+        TokenKind::Dash => (9, 10, BinOp::Sub),
+        TokenKind::Star => (11, 12, BinOp::Mul),
+        TokenKind::Slash => (11, 12, BinOp::Div),
+        TokenKind::Percent => (11, 12, BinOp::Mod),
+        _ => return None,
+    })
 }
 
 #[cfg(test)]
@@ -1817,5 +2175,249 @@ mod tests {
             }
             _ => panic!("expected syntax error"),
         }
+    }
+
+    // ─── Functions & expressions ────────────────────────────────────────
+
+    #[test]
+    fn parse_function_literal_bare_body() {
+        let s = parse("double = fn(x: i32) -> i32 x * 2");
+        let f = field(&s.items, "double");
+        let Expr::Function(lit) = &f.expr else {
+            panic!("expected function literal")
+        };
+        assert_eq!(lit.params.len(), 1);
+        assert_eq!(lit.params[0].name, "x");
+        assert_eq!(lit.params[0].ty, TypeRef::Builtin(BuiltinType::I32));
+        assert_eq!(lit.return_ty, TypeRef::Builtin(BuiltinType::I32));
+        let Expr::Binary { op, .. } = &*lit.body else {
+            panic!("expected binary body")
+        };
+        assert_eq!(*op, BinOp::Mul);
+    }
+
+    #[test]
+    fn parse_function_literal_block_body() {
+        let s = parse("sum_squared = fn(x: i32, y: i32) -> i32 {\n  let s = x + y;\n  s * s\n}");
+        let f = field(&s.items, "sum_squared");
+        let Expr::Function(lit) = &f.expr else {
+            panic!("expected function literal")
+        };
+        assert_eq!(lit.params.len(), 2);
+        let Expr::Block { lets, tail, .. } = &*lit.body else {
+            panic!("expected block body")
+        };
+        assert_eq!(lets.len(), 1);
+        assert_eq!(lets[0].name, "s");
+        let Expr::Binary { op, .. } = &**tail else {
+            panic!("expected binary tail")
+        };
+        assert_eq!(*op, BinOp::Mul);
+    }
+
+    #[test]
+    fn parse_function_with_no_params() {
+        let s = parse("k = fn() -> i32 42");
+        let f = field(&s.items, "k");
+        let Expr::Function(lit) = &f.expr else {
+            panic!("expected function literal")
+        };
+        assert!(lit.params.is_empty());
+        assert!(matches!(&*lit.body, Expr::I64(42)));
+    }
+
+    #[test]
+    fn parse_function_type_in_field() {
+        let s = parse("type Handler { on_click: fn(i32) -> bool on_drag: fn(i32, i32) -> bool }");
+        let t = type_decls(&s.items)[0];
+        let TypeRef::Function { params, return_ty } = &t.fields[0].ty else {
+            panic!("expected fn type")
+        };
+        assert_eq!(params.len(), 1);
+        assert_eq!(params[0], TypeRef::Builtin(BuiltinType::I32));
+        assert_eq!(**return_ty, TypeRef::Builtin(BuiltinType::Bool));
+        let TypeRef::Function { params, .. } = &t.fields[1].ty else {
+            panic!("expected fn type")
+        };
+        assert_eq!(params.len(), 2);
+    }
+
+    #[test]
+    fn parse_function_type_zero_args() {
+        let s = parse("type T { thunk: fn() -> i32 }");
+        let t = type_decls(&s.items)[0];
+        let TypeRef::Function { params, return_ty } = &t.fields[0].ty else {
+            panic!("expected fn type")
+        };
+        assert!(params.is_empty());
+        assert_eq!(**return_ty, TypeRef::Builtin(BuiltinType::I32));
+    }
+
+    #[test]
+    fn parse_call_expression() {
+        let s = parse("y = f(1, 2)");
+        let f = field(&s.items, "y");
+        let Expr::Call { callee, args, .. } = &f.expr else {
+            panic!("expected call")
+        };
+        assert!(matches!(&**callee, Expr::Identifier(n) if n == "f"));
+        assert_eq!(args.len(), 2);
+    }
+
+    #[test]
+    fn parse_arithmetic_precedence() {
+        // 1 + 2 * 3 should bind as 1 + (2 * 3).
+        let s = parse("a = 1 + 2 * 3");
+        let f = field(&s.items, "a");
+        let Expr::Binary {
+            op: BinOp::Add,
+            lhs,
+            rhs,
+            ..
+        } = &f.expr
+        else {
+            panic!("expected top-level Add")
+        };
+        assert!(matches!(&**lhs, Expr::I64(1)));
+        let Expr::Binary { op: BinOp::Mul, .. } = &**rhs else {
+            panic!("expected nested Mul on rhs")
+        };
+    }
+
+    #[test]
+    fn parse_comparison_and_logical() {
+        // x > 100 && x < 1000 should bind as (x > 100) && (x < 1000).
+        let s = parse("ok = x > 100 && x < 1000");
+        let f = field(&s.items, "ok");
+        let Expr::Binary {
+            op: BinOp::And,
+            lhs,
+            rhs,
+            ..
+        } = &f.expr
+        else {
+            panic!("expected top-level And")
+        };
+        assert!(matches!(&**lhs, Expr::Binary { op: BinOp::Gt, .. }));
+        assert!(matches!(&**rhs, Expr::Binary { op: BinOp::Lt, .. }));
+    }
+
+    #[test]
+    fn parse_unary_neg_and_not() {
+        let s = parse("a = -x\nb = !flag");
+        let a = field(&s.items, "a");
+        let Expr::Unary {
+            op: UnaryOp::Neg, ..
+        } = &a.expr
+        else {
+            panic!("expected unary neg")
+        };
+        let b = field(&s.items, "b");
+        let Expr::Unary {
+            op: UnaryOp::Not, ..
+        } = &b.expr
+        else {
+            panic!("expected unary not")
+        };
+    }
+
+    #[test]
+    fn parse_paren_expression() {
+        let s = parse("x = (1 + 2) * 3");
+        let f = field(&s.items, "x");
+        let Expr::Binary {
+            op: BinOp::Mul,
+            lhs,
+            ..
+        } = &f.expr
+        else {
+            panic!("expected top-level Mul")
+        };
+        assert!(matches!(&**lhs, Expr::Paren { .. }));
+    }
+
+    #[test]
+    fn parse_function_literal_with_call_in_body() {
+        let s = parse("apply = fn(n: i32) -> i32 add(n, 1)");
+        let f = field(&s.items, "apply");
+        let Expr::Function(lit) = &f.expr else {
+            panic!("expected function")
+        };
+        assert!(matches!(&*lit.body, Expr::Call { .. }));
+    }
+
+    #[test]
+    fn parse_function_returning_function() {
+        let s = parse("k = fn(x: i32) -> fn(i32) -> i32 fn(y: i32) -> i32 x + y");
+        let f = field(&s.items, "k");
+        let Expr::Function(outer) = &f.expr else {
+            panic!("expected outer fn")
+        };
+        let TypeRef::Function { .. } = &outer.return_ty else {
+            panic!("outer return should be fn type")
+        };
+        assert!(matches!(&*outer.body, Expr::Function(_)));
+    }
+
+    #[test]
+    fn parse_block_let_bindings_then_tail() {
+        // Standalone block expression (no surrounding fn).
+        let s = parse("x = { let a = 1; let b = 2; a + b }");
+        let f = field(&s.items, "x");
+        let Expr::Block { lets, tail, .. } = &f.expr else {
+            panic!("expected block")
+        };
+        assert_eq!(lets.len(), 2);
+        assert!(matches!(&**tail, Expr::Binary { op: BinOp::Add, .. }));
+    }
+
+    #[test]
+    fn missing_arrow_errors() {
+        let err = parse_err("f = fn(x: i32) i32 x");
+        match err {
+            ParseError::Syntax(e) => assert!(e.message.contains("'->'"), "{}", e.message),
+            _ => panic!("expected syntax error"),
+        }
+    }
+
+    #[test]
+    fn missing_return_type_errors() {
+        // `fn(x: i32) ->` with nothing after the arrow should fail to parse
+        // a type ref.
+        let err = parse_err("f = fn(x: i32) -> ");
+        match err {
+            ParseError::Syntax(e) => assert!(
+                e.message.contains("expected type") || e.message.contains("end of file"),
+                "{}",
+                e.message
+            ),
+            _ => panic!("expected syntax error"),
+        }
+    }
+
+    #[test]
+    fn trailing_semi_on_block_tail_errors() {
+        let err = parse_err("x = { let a = 1; a; }");
+        match err {
+            ParseError::Syntax(_) => {}
+            _ => panic!("expected syntax error"),
+        }
+    }
+
+    #[test]
+    fn empty_block_expression_errors() {
+        let err = parse_err("x = {}");
+        match err {
+            ParseError::Syntax(e) => {
+                assert!(e.message.contains("final expression"), "{}", e.message)
+            }
+            _ => panic!("expected syntax error"),
+        }
+    }
+
+    #[test]
+    fn field_named_fn_still_parses_as_field() {
+        let s = parse("fn = 1");
+        assert_eq!(field(&s.items, "fn").expr, Expr::I64(1));
     }
 }

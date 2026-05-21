@@ -10,13 +10,22 @@ pub enum TokenKind {
     Symbol(String),
     None,
     Eq,
+    EqEq,
+    BangEq,
+    Bang,
     Colon,
     Question,
     Amp,
+    AmpAmp,
+    Pipe,
+    PipePipe,
     Dot,
     Comma,
+    Semi,
     Lt,
+    LtEq,
     Gt,
+    GtEq,
     LBracket,
     RBracket,
     LBrace,
@@ -24,6 +33,12 @@ pub enum TokenKind {
     At,
     LParen,
     RParen,
+    Plus,
+    Dash,
+    Arrow,
+    Star,
+    Slash,
+    Percent,
     Eof,
 }
 
@@ -90,13 +105,12 @@ impl<'a> Lexer<'a> {
             });
         };
         match c {
-            b'=' => {
-                self.pos += 1;
-                Ok(Token {
-                    kind: TokenKind::Eq,
-                    span: Span::new(start, self.pos),
-                })
-            }
+            b'=' => Ok(self.two_or_one(start, b'=', TokenKind::EqEq, TokenKind::Eq)),
+            b'!' => Ok(self.two_or_one(start, b'=', TokenKind::BangEq, TokenKind::Bang)),
+            b'<' => Ok(self.two_or_one(start, b'=', TokenKind::LtEq, TokenKind::Lt)),
+            b'>' => Ok(self.two_or_one(start, b'=', TokenKind::GtEq, TokenKind::Gt)),
+            b'&' => Ok(self.two_or_one(start, b'&', TokenKind::AmpAmp, TokenKind::Amp)),
+            b'|' => Ok(self.two_or_one(start, b'|', TokenKind::PipePipe, TokenKind::Pipe)),
             b':' => {
                 // Tight `:foo` (no whitespace) → Symbol literal.
                 if matches!(self.peek_at(1), Some(c) if is_ident_start(c)) {
@@ -113,106 +127,44 @@ impl<'a> Lexer<'a> {
                         span: Span::new(start, self.pos),
                     })
                 } else {
-                    self.pos += 1;
-                    Ok(Token {
-                        kind: TokenKind::Colon,
-                        span: Span::new(start, self.pos),
-                    })
+                    Ok(self.single(start, TokenKind::Colon))
                 }
             }
-            b'?' => {
-                self.pos += 1;
-                Ok(Token {
-                    kind: TokenKind::Question,
-                    span: Span::new(start, self.pos),
-                })
-            }
-            b'&' => {
-                self.pos += 1;
-                Ok(Token {
-                    kind: TokenKind::Amp,
-                    span: Span::new(start, self.pos),
-                })
-            }
-            b'.' => {
-                self.pos += 1;
-                Ok(Token {
-                    kind: TokenKind::Dot,
-                    span: Span::new(start, self.pos),
-                })
-            }
-            b',' => {
-                self.pos += 1;
-                Ok(Token {
-                    kind: TokenKind::Comma,
-                    span: Span::new(start, self.pos),
-                })
-            }
-            b'<' => {
-                self.pos += 1;
-                Ok(Token {
-                    kind: TokenKind::Lt,
-                    span: Span::new(start, self.pos),
-                })
-            }
-            b'>' => {
-                self.pos += 1;
-                Ok(Token {
-                    kind: TokenKind::Gt,
-                    span: Span::new(start, self.pos),
-                })
-            }
-            b'[' => {
-                self.pos += 1;
-                Ok(Token {
-                    kind: TokenKind::LBracket,
-                    span: Span::new(start, self.pos),
-                })
-            }
-            b']' => {
-                self.pos += 1;
-                Ok(Token {
-                    kind: TokenKind::RBracket,
-                    span: Span::new(start, self.pos),
-                })
-            }
-            b'@' => {
-                self.pos += 1;
-                Ok(Token {
-                    kind: TokenKind::At,
-                    span: Span::new(start, self.pos),
-                })
-            }
-            b'(' => {
-                self.pos += 1;
-                Ok(Token {
-                    kind: TokenKind::LParen,
-                    span: Span::new(start, self.pos),
-                })
-            }
-            b')' => {
-                self.pos += 1;
-                Ok(Token {
-                    kind: TokenKind::RParen,
-                    span: Span::new(start, self.pos),
-                })
-            }
-            b'{' => {
-                self.pos += 1;
-                Ok(Token {
-                    kind: TokenKind::LBrace,
-                    span: Span::new(start, self.pos),
-                })
-            }
-            b'}' => {
-                self.pos += 1;
-                Ok(Token {
-                    kind: TokenKind::RBrace,
-                    span: Span::new(start, self.pos),
-                })
-            }
+            b'?' => Ok(self.single(start, TokenKind::Question)),
+            b'.' => Ok(self.single(start, TokenKind::Dot)),
+            b',' => Ok(self.single(start, TokenKind::Comma)),
+            b';' => Ok(self.single(start, TokenKind::Semi)),
+            b'[' => Ok(self.single(start, TokenKind::LBracket)),
+            b']' => Ok(self.single(start, TokenKind::RBracket)),
+            b'@' => Ok(self.single(start, TokenKind::At)),
+            b'(' => Ok(self.single(start, TokenKind::LParen)),
+            b')' => Ok(self.single(start, TokenKind::RParen)),
+            b'{' => Ok(self.single(start, TokenKind::LBrace)),
+            b'}' => Ok(self.single(start, TokenKind::RBrace)),
+            b'+' => Ok(self.single(start, TokenKind::Plus)),
+            b'*' => Ok(self.single(start, TokenKind::Star)),
+            b'/' => Ok(self.single(start, TokenKind::Slash)),
+            b'%' => Ok(self.single(start, TokenKind::Percent)),
             b'"' => self.lex_string(start, StringPrefix::Utf8),
-            b'-' if matches!(self.peek_at(1), Some(b'0'..=b'9')) => self.lex_number(start),
+            b'-' => {
+                // `->` always wins.
+                if self.peek_at(1) == Some(b'>') {
+                    self.pos += 2;
+                    Ok(Token {
+                        kind: TokenKind::Arrow,
+                        span: Span::new(start, self.pos),
+                    })
+                } else if matches!(self.peek_at(1), Some(b'0'..=b'9'))
+                    && (start == 0 || is_pre_value_separator(self.src[start - 1]))
+                {
+                    // Tight signed-number form: only when nothing value-shaped
+                    // is immediately to the left, so `a - 1` and `a-1` both
+                    // parse as subtraction once expressions are evaluated.
+                    self.lex_number(start)
+                } else {
+                    Ok(self.single(start, TokenKind::Dash))
+                }
+            }
             b'0'..=b'9' => self.lex_number(start),
             c if is_ident_start(c) => self.lex_ident_or_typed(start),
             other => Err(LexError {
@@ -234,6 +186,30 @@ impl<'a> Lexer<'a> {
         let c = self.peek()?;
         self.pos += 1;
         Some(c)
+    }
+
+    fn single(&mut self, start: usize, kind: TokenKind) -> Token {
+        self.pos += 1;
+        Token {
+            kind,
+            span: Span::new(start, self.pos),
+        }
+    }
+
+    fn two_or_one(&mut self, start: usize, follow: u8, two: TokenKind, one: TokenKind) -> Token {
+        if self.peek_at(1) == Some(follow) {
+            self.pos += 2;
+            Token {
+                kind: two,
+                span: Span::new(start, self.pos),
+            }
+        } else {
+            self.pos += 1;
+            Token {
+                kind: one,
+                span: Span::new(start, self.pos),
+            }
+        }
     }
 
     fn skip_trivia(&mut self) {
@@ -594,6 +570,40 @@ fn is_ident_cont(c: u8) -> bool {
 
 fn is_digit_in_base(c: u8, base: u32) -> bool {
     (c as char).is_digit(base)
+}
+
+/// Returns true if `b` is the kind of byte that *cannot* end a value
+/// expression — whitespace or a punctuation token that opens a fresh
+/// value context. Used to decide whether a `-` immediately followed by
+/// digits should be folded into a signed numeric literal or emitted as
+/// a standalone `Dash` (binary subtraction / unary negation handled by
+/// the parser).
+fn is_pre_value_separator(b: u8) -> bool {
+    matches!(
+        b,
+        b' ' | b'\t'
+            | b'\n'
+            | b'\r'
+            | b'='
+            | b'('
+            | b'['
+            | b'{'
+            | b':'
+            | b','
+            | b';'
+            | b'<'
+            | b'>'
+            | b'+'
+            | b'-'
+            | b'*'
+            | b'/'
+            | b'%'
+            | b'&'
+            | b'|'
+            | b'!'
+            | b'?'
+            | b'@'
+    )
 }
 
 #[cfg(test)]
@@ -966,5 +976,150 @@ mod tests {
         let mut lex = Lexer::new("ascii\"\x7F\"");
         let t = lex.next_token().unwrap();
         assert!(matches!(t.kind, TokenKind::Str(StringLit::Ascii(_))));
+    }
+
+    #[test]
+    fn lex_arithmetic_operators() {
+        assert_eq!(
+            tokens("+ - * / %"),
+            vec![
+                TokenKind::Plus,
+                TokenKind::Dash,
+                TokenKind::Star,
+                TokenKind::Slash,
+                TokenKind::Percent,
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn lex_compound_eq_and_inequality() {
+        assert_eq!(
+            tokens("= == != !"),
+            vec![
+                TokenKind::Eq,
+                TokenKind::EqEq,
+                TokenKind::BangEq,
+                TokenKind::Bang,
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn lex_compound_lt_gt() {
+        assert_eq!(
+            tokens("< <= > >="),
+            vec![
+                TokenKind::Lt,
+                TokenKind::LtEq,
+                TokenKind::Gt,
+                TokenKind::GtEq,
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn lex_logical_ops() {
+        assert_eq!(
+            tokens("&& || & |"),
+            vec![
+                TokenKind::AmpAmp,
+                TokenKind::PipePipe,
+                TokenKind::Amp,
+                TokenKind::Pipe,
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn lex_arrow_vs_dash() {
+        assert_eq!(
+            tokens("-> -"),
+            vec![TokenKind::Arrow, TokenKind::Dash, TokenKind::Eof]
+        );
+    }
+
+    #[test]
+    fn lex_semi_token() {
+        assert_eq!(
+            tokens("a ; b"),
+            vec![
+                TokenKind::Ident("a".into()),
+                TokenKind::Semi,
+                TokenKind::Ident("b".into()),
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn lex_signed_number_after_ident_is_subtraction() {
+        // `a-1` and `a - 1` should both lex with `-` as Dash so the parser
+        // can treat them as subtraction once expressions exist.
+        assert_eq!(
+            tokens("a-1"),
+            vec![
+                TokenKind::Ident("a".into()),
+                TokenKind::Dash,
+                TokenKind::Number(NumberLit::I64(1)),
+                TokenKind::Eof,
+            ]
+        );
+        assert_eq!(
+            tokens("a - 1"),
+            vec![
+                TokenKind::Ident("a".into()),
+                TokenKind::Dash,
+                TokenKind::Number(NumberLit::I64(1)),
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn lex_signed_number_at_start_or_after_separator() {
+        // After whitespace at start-of-file: signed literal.
+        assert_eq!(
+            tokens("-5"),
+            vec![TokenKind::Number(NumberLit::I64(-5)), TokenKind::Eof]
+        );
+        // After `=` (no value to its left): signed literal.
+        assert_eq!(
+            tokens("x=-5"),
+            vec![
+                TokenKind::Ident("x".into()),
+                TokenKind::Eq,
+                TokenKind::Number(NumberLit::I64(-5)),
+                TokenKind::Eof,
+            ]
+        );
+        // After `(`: signed literal.
+        assert_eq!(
+            tokens("(-5)"),
+            vec![
+                TokenKind::LParen,
+                TokenKind::Number(NumberLit::I64(-5)),
+                TokenKind::RParen,
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn lex_signed_number_after_value_terminator_is_subtraction() {
+        // After `)`: subtraction. After `]`: subtraction. After `}`: subtraction.
+        assert_eq!(
+            tokens(")-1"),
+            vec![
+                TokenKind::RParen,
+                TokenKind::Dash,
+                TokenKind::Number(NumberLit::I64(1)),
+                TokenKind::Eof,
+            ]
+        );
     }
 }

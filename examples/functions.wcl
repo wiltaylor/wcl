@@ -1,0 +1,32 @@
+// Functions are first-class values. They can be assigned to fields and
+// passed around like any other value. They can also appear as types in
+// type-decl fields.
+
+// Bare-expression body.
+double = fn(x: i32) -> i32 x * 2
+
+// Block body with let-bindings and a final tail expression.
+sum_squared = fn(x: i32, y: i32) -> i32 {
+  let s = x + y;
+  s * s
+}
+
+// Operators: arithmetic, comparison, logical.
+is_big = fn(x: i32) -> bool x > 100 && x < 1000
+
+// Function types appear in type-decl fields.
+type Handler {
+  on_click: fn(i32) -> bool
+  on_drag: fn(i32, i32) -> bool
+  thunk: fn() -> i32
+}
+
+// Higher-order: a function that returns a function.
+adder = fn(x: i32) -> fn(i32) -> i32 fn(y: i32) -> i32 x + y
+
+// Unary minus, parens, mixed precedence.
+expr = fn(x: i32, y: i32) -> i32 (x + y) * -2
+
+// Calls (the callee `add` is just an identifier reference — no evaluator
+// yet, but it parses).
+call_form = fn(n: i32) -> i32 add(n, 1)

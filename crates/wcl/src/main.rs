@@ -181,6 +181,10 @@ fn type_repr(t: &TypeRef) -> String {
             let dims_str = dims.iter().map(dim_repr).collect::<Vec<_>>().join(", ");
             format!("tensor<{}, [{}]>", type_repr(element), dims_str)
         }
+        TypeRef::Function { params, return_ty } => {
+            let parts: Vec<String> = params.iter().map(type_repr).collect();
+            format!("fn({}) -> {}", parts.join(", "), type_repr(return_ty))
+        }
     }
 }
 
@@ -256,6 +260,18 @@ fn value_repr(v: &Value) -> String {
         Value::Identifier(s) => s.clone(),
         Value::Symbol(s) => format!(":{s}"),
         Value::None => "none".to_string(),
+        Value::Function(f) => {
+            let parts: Vec<String> = f
+                .params()
+                .iter()
+                .map(|p| format!("{}: {}", p.name(), type_repr(p.ty())))
+                .collect();
+            format!(
+                "fn({}) -> {} {{ ... }}",
+                parts.join(", "),
+                type_repr(f.return_ty())
+            )
+        }
     }
 }
 

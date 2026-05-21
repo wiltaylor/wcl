@@ -47,6 +47,80 @@ pub(crate) enum Expr {
     Identifier(String),
     Symbol(String),
     None,
+
+    Function(FunctionLit),
+    Call {
+        callee: Box<Expr>,
+        args: Vec<Expr>,
+        span: Span,
+    },
+    Binary {
+        op: BinOp,
+        lhs: Box<Expr>,
+        rhs: Box<Expr>,
+        span: Span,
+    },
+    Unary {
+        op: UnaryOp,
+        operand: Box<Expr>,
+        span: Span,
+    },
+    Block {
+        lets: Vec<LetBinding>,
+        tail: Box<Expr>,
+        span: Span,
+    },
+    Paren {
+        inner: Box<Expr>,
+        span: Span,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct FunctionLit {
+    pub params: Vec<Parameter>,
+    pub return_ty: crate::value::TypeRef,
+    pub return_ty_span: Span,
+    pub body: Box<Expr>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Parameter {
+    pub name: String,
+    pub ty: crate::value::TypeRef,
+    pub ty_span: Span,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct LetBinding {
+    pub name: String,
+    pub value: Expr,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BinOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+    And,
+    Or,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum UnaryOp {
+    Neg,
+    Not,
 }
 
 #[derive(Debug, Clone, PartialEq)]

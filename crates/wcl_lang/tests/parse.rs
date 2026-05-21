@@ -196,3 +196,44 @@ fn span_is_available_without_forcing_value() {
     let span = f.span();
     assert!(span.start < span.end);
 }
+
+#[test]
+fn parses_functions_example_from_disk() {
+    use wcl_lang::BuiltinType;
+
+    let doc = Document::from_file(&examples_dir().join("functions.wcl"))
+        .expect("functions example parses");
+
+    let double = doc.field("double").unwrap();
+    let Value::Function(f) = double.value().unwrap() else {
+        panic!("expected function value")
+    };
+    assert_eq!(f.params().len(), 1);
+    assert_eq!(f.params()[0].name(), "x");
+    assert_eq!(f.params()[0].ty(), &TypeRef::Builtin(BuiltinType::I32));
+    assert_eq!(f.return_ty(), &TypeRef::Builtin(BuiltinType::I32));
+
+    let Value::Function(f) = doc.field("sum_squared").unwrap().value().unwrap() else {
+        panic!("expected function value")
+    };
+    assert_eq!(f.params().len(), 2);
+    assert_eq!(f.params()[1].name(), "y");
+
+    let handler = doc.type_decl("Handler").expect("type Handler");
+    let on_click = handler.field("on_click").unwrap();
+    let TypeRef::Function { params, return_ty } = on_click.type_ref() else {
+        panic!("on_click should be a fn type")
+    };
+    assert_eq!(params.len(), 1);
+    assert_eq!(**return_ty, TypeRef::Builtin(BuiltinType::Bool));
+    let thunk = handler.field("thunk").unwrap();
+    let TypeRef::Function { params, .. } = thunk.type_ref() else {
+        panic!("thunk should be a fn type")
+    };
+    assert!(params.is_empty());
+
+    let Value::Function(f) = doc.field("adder").unwrap().value().unwrap() else {
+        panic!("expected function value")
+    };
+    assert!(matches!(f.return_ty(), TypeRef::Function { .. }));
+}

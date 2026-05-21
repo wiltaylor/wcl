@@ -50,4 +50,21 @@ pub enum EvalError {
         #[label("evaluated recursively")]
         span: SourceSpan,
     },
+
+    #[error("{message}")]
+    #[diagnostic(code(wcl::eval::unsupported))]
+    Unsupported {
+        message: String,
+        #[label("not evaluable yet")]
+        span: SourceSpan,
+    },
+}
+
+impl EvalError {
+    pub(crate) fn new(message: impl Into<String>, span: crate::ast::Span) -> Self {
+        Self::Unsupported {
+            message: message.into(),
+            span: SourceSpan::new(span.start.into(), span.len().max(1)),
+        }
+    }
 }

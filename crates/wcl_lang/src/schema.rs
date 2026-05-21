@@ -266,6 +266,9 @@ fn value_to_expr(v: Value) -> ast::Expr {
         Value::Identifier(s) => ast::Expr::Identifier(s),
         Value::Symbol(s) => ast::Expr::Symbol(s),
         Value::None => ast::Expr::None,
+        Value::Function(_) => {
+            unreachable!("function values are not constructible via the schema builder API")
+        }
     }
 }
 
