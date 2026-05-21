@@ -1,5 +1,0 @@
-32x32 Isometric Tileset Version 0_1
-Author: hawkbirdtree
-Source: https://opengameart.org/content/32x32-isometric-tileset-version-01
-License: CC0 1.0 Universal Public Domain Dedication
-Downloaded file: big_isometric_tileset64x32.png

@@ -1,8 +1,0 @@
-__pycache__/
-*.pyc
-*.so
-*.pyd
-.venv/
-.pytest_cache/
-target/
-python/wcl/wcl_wasm.wasm

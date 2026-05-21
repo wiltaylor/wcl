@@ -1,38 +1,18 @@
 [package]
 name = "wcl_lang"
 version.workspace = true
-edition = "2021"
+edition.workspace = true
 license.workspace = true
-homepage.workspace = true
-documentation.workspace = true
 repository.workspace = true
-description = "WCL (Wil's Configuration Language) — language library: parser, evaluator, schema, serde"
-
-[features]
-default = []
+description = "WCL language library: parser and AST"
 
 [dependencies]
-# Core deps
-nom = { workspace = true }
 miette = { workspace = true }
 thiserror = { workspace = true }
 
-# Eval deps
-regex = { workspace = true }
-sha2 = { workspace = true }
-base64 = { workspace = true }
-glob = { workspace = true }
-
-# Shared deps
-indexmap = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-quick-xml = "0.37"
-unicode-width = "0.2"
-rmp-serde = "1"
-
 [dev-dependencies]
-serde_json = { workspace = true }
-serde_yaml_ng = "0.10"
-tempfile = "3"
-toml = "1"
+criterion = { workspace = true }
+
+[[bench]]
+name = "parse"
+harness = false

@@ -1,0 +1,15 @@
+# A small WCL example used by tests and CLI demos.
+
+name    = "alpha"
+count   = 3
+enabled = true
+
+service "web" {
+  port = 8080
+  host = "0.0.0.0"
+
+  metadata {
+    region = "us-east-1"
+    tier   = "prod"
+  }
+}

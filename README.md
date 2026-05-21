@@ -1,51 +1,40 @@
-[![CI](https://github.com/wiltaylor/wcl/actions/workflows/ci.yml/badge.svg)](https://github.com/wiltaylor/wcl/actions/workflows/ci.yml)
-[![Deploy Site](https://github.com/wiltaylor/wcl/actions/workflows/deploy-site.yml/badge.svg)](https://github.com/wiltaylor/wcl/actions/workflows/deploy-site.yml)
-
-WARNING: This is still under heavy development so expect lots of breaking changes and weird bugs.
-
 # WCL — Wil's Configuration Language
 
-A statically-typed, block-structured configuration language with first-class support for composition, validation, and tooling.
+A configuration language being rebuilt from scratch on the `rewrite` branch. The previous implementation lives on `main`; this branch starts over with a smaller, faster core. Expect the language surface to change while it stabilises.
+
+## Status
+
+Currently supports HCL-like fields and blocks:
 
 ```wcl
-server web-prod {
-    host = "0.0.0.0"
-    port = 8080
-    workers = max(4, 2)
-}
+name = "alpha"
+count = 3
+enabled = true
 
-schema "server" {
-    host: string @optional
-    port: int @validate(min = 1024, max = 65535)
-    workers: int
+service "web" {
+  port = 8080
+  metadata {
+    region = "us-east-1"
+  }
 }
 ```
 
-## Documentation
+## Layout
 
-- **Website** — [wcl.dev](https://wcl.dev)
-- **Docs** — [wcl.dev/docs](https://wcl.dev/docs/)
+- `crates/wcl_lang` — parser and AST library (`wcl_lang::parse`, `wcl_lang::parse_file`)
+- `crates/wcl` — `wcl` CLI binary (`wcl parse`, `wcl check`)
+- `examples/` — sample input files
 
-## Packages
+## Development
 
-| Language | Package | Install |
-|----------|---------|---------|
-| Rust | `wcl` | `cargo add wcl` |
-| Python | `pywcl` | `pip install pywcl` |
-| JavaScript | `wcl-wasm` | `npm install wcl-wasm` |
-| Go | `github.com/wiltaylor/wcl/bindings/go` | `go get github.com/wiltaylor/wcl/bindings/go` |
-| .NET | `WclLang` | `dotnet add package WclLang` |
-| Java/JVM | `io.github.wiltaylor:wcl` | Gradle/Maven |
-| Ruby | `wcl` | `gem install wcl` |
-| Zig | `wcl` | `zig fetch --save git+https://github.com/wiltaylor/wcl` |
-| C/C++ | `libwcl_ffi` | Link against static library |
-
-## Contributing
-
-Contributions are welcome! If you find a bug or have a feature request, please [open an issue](https://github.com/wiltaylor/wcl/issues).
+```bash
+just build   # cargo build --workspace
+just test    # cargo test --workspace
+just lint    # clippy with -D warnings
+just bench   # criterion benchmarks
+just run -- check examples/basic.wcl
+```
 
 ## License
 
-WCL is licensed under the [MIT License](LICENSE).
-
-Copyright (c) 2026 Wil Taylor
+WCL is licensed under the [MIT License](LICENSE). Copyright (c) 2026 Wil Taylor.

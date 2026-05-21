@@ -1,9 +1,0 @@
-node_modules/
-build/
-prebuilds/
-target/
-*.so
-*.dylib
-*.dll
-zig-out/
-zig-cache/

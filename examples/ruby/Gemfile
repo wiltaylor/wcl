@@ -1,3 +1,0 @@
-source "https://rubygems.org"
-
-gem "wcl", ">= 0.0.0.dev0", path: "../../bindings/ruby"

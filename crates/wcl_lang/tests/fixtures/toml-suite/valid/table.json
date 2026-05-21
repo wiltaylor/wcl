@@ -1,6 +1,0 @@
-{
-  "server": {
-    "host": {"type": "string", "value": "localhost"},
-    "port": {"type": "integer", "value": "8080"}
-  }
-}

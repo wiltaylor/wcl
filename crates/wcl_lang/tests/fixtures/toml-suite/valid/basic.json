@@ -1,6 +1,0 @@
-{
-  "title": {"type": "string", "value": "TOML Example"},
-  "enabled": {"type": "bool", "value": "true"},
-  "count": {"type": "integer", "value": "42"},
-  "ratio": {"type": "float", "value": "3.5"}
-}

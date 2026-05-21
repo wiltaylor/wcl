@@ -1,49 +1,22 @@
 [workspace]
 resolver = "2"
-exclude = ["extras/tree-sitter-wcl", "examples/rust"]
-members = [
-    "crates/wcl",
-    "crates/wcl_lang",
-    "crates/wcl_lsp",
-    "crates/wcl_ffi",
-    "bindings/wasm",
-]
+members = ["crates/wcl", "crates/wcl_lang"]
 
 [workspace.package]
-version = "0.0.0-local"
+version = "0.0.0"
+edition = "2024"
 license = "MIT"
-homepage = "https://wcl.dev"
-documentation = "https://wcl.dev/docs"
 repository = "https://github.com/wiltaylor/wcl"
 
 [workspace.dependencies]
-# Internal crates
-wcl = { path = "crates/wcl", version = "0.0.0-local" }
-wcl_lang = { path = "crates/wcl_lang", version = "0.0.0-local" }
-wcl_lsp = { path = "crates/wcl_lsp", version = "0.0.0-local" }
-
-# External deps
-nom = "8"
-async-lsp = { version = "0.2", features = ["omni-trait", "tracing", "stdio", "client-monitor", "tokio"] }
-futures = "0.3"
-tower = { version = "0.5", features = ["util"] }
-tokio = { version = "1", features = ["full"] }
-tokio-util = { version = "0.7", features = ["compat"] }
-ropey = "1"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-regex = "1"
-sha2 = "0.10"
-base64 = "0.22"
+wcl_lang = { path = "crates/wcl_lang", version = "0.0.0" }
 clap = { version = "4", features = ["derive"] }
 miette = { version = "7", features = ["fancy"] }
 thiserror = "2"
-glob = "0.3"
-indexmap = { version = "2", features = ["serde"] }
-criterion = { version = "0.8", features = ["html_reports"] }
+criterion = { version = "0.5", features = ["html_reports"] }
+assert_cmd = "2"
+predicates = "3"
 
-# Optimise release builds (benefits WASM size via wasm-pack)
 [profile.release]
 lto = true
 codegen-units = 1
-strip = true

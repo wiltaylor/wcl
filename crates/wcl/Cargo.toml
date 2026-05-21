@@ -1,66 +1,20 @@
 [package]
 name = "wcl"
 version.workspace = true
-edition = "2021"
+edition.workspace = true
 license.workspace = true
-homepage.workspace = true
-documentation.workspace = true
 repository.workspace = true
-description = "WCL (Wil's Configuration Language) — a typed, block-structured configuration language"
-readme = "README.md"
+description = "WCL command-line interface"
 
 [[bin]]
 name = "wcl"
-path = "src/bin/wcl.rs"
-
-[features]
-default = ["wdoc"]
-wdoc = [
-    "dep:async-stream",
-    "dep:axum",
-    "dep:futures-core",
-    "dep:notify",
-    "dep:tower-http",
-]
+path = "src/main.rs"
 
 [dependencies]
-# Language library
 wcl_lang = { workspace = true }
-
-# Shared deps (used directly by CLI)
-indexmap = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-
-# Codec deps (used by CLI eval command)
-serde_yaml_ng = "0.10"
-toml = "1"
-
-# LSP
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-wcl_lsp = { workspace = true }
-
-# CLI deps
 clap = { workspace = true }
-tokio = { workspace = true }
 miette = { workspace = true }
-async-stream = { version = "0.3", optional = true }
-axum = { version = "0.8", optional = true }
-futures-core = { version = "0.3", optional = true }
-notify = { version = "8", optional = true }
-tower-http = { version = "0.6", features = ["fs"], optional = true }
 
 [dev-dependencies]
-criterion = { workspace = true }
-serde_json = { workspace = true }
-tempfile = "3"
-assert_cmd = "2"
-predicates = "3"
-
-[[bench]]
-name = "e2e"
-harness = false
-
-[[bench]]
-name = "wdoc"
-harness = false
+assert_cmd = { workspace = true }
+predicates = { workspace = true }

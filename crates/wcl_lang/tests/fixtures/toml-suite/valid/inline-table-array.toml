@@ -1,2 +1,0 @@
-name = { first = "Tom", last = "Preston-Werner" }
-ports = [8000, 8001, 8002]

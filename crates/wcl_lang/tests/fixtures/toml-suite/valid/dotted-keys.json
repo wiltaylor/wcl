@@ -1,9 +1,0 @@
-{
-  "physical": {
-    "color": {"type": "string", "value": "orange"},
-    "shape": {"type": "string", "value": "round"}
-  },
-  "site": {
-    "google.com": {"type": "bool", "value": "true"}
-  }
-}

@@ -1,5 +1,0 @@
-Simple 32x32 Map Tileset
-Author: JohSur
-Source: https://opengameart.org/content/simple-32x32-map-tileset
-License: CC0 1.0 Universal Public Domain Dedication
-Downloaded file: Tiles32.png
