@@ -13,8 +13,8 @@ mod value;
 
 pub use ast::Span;
 pub use doc::{
-    Block, Document, Field, ResolvedType, TypeDecl, TypeField, UnionDecl, UnionVariant,
-    UseDeclView, UseFormView, UseItem, VariantBodyView,
+    Block, Document, Field, ResolvedType, SymbolEntry, SymbolSetDecl, TypeDecl, TypeField,
+    UnionDecl, UnionVariant, UseDeclView, UseFormView, UseItem, VariantBodyView,
 };
 pub use error::{EvalError, ParseError, SyntaxError};
 pub use value::{BuiltinType, TensorDim, TypeRef, Value};

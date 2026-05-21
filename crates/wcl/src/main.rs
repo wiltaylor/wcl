@@ -4,8 +4,8 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use wcl_lang::{
-    Block, Document, Field, TensorDim, TypeDecl, TypeRef, UnionDecl, UnionVariant, UseDeclView,
-    UseFormView, Value, VariantBodyView,
+    Block, Document, Field, SymbolSetDecl, TensorDim, TypeDecl, TypeRef, UnionDecl, UnionVariant,
+    UseDeclView, UseFormView, Value, VariantBodyView,
 };
 
 #[derive(Parser)]
@@ -70,6 +70,9 @@ fn dump_document(doc: &Document, out: &mut String) {
     for u in doc.union_decls() {
         dump_union_decl(&u, out);
     }
+    for s in doc.symbol_sets() {
+        dump_symbol_set_decl(&s, out);
+    }
     for f in doc.fields() {
         dump_field(&f, 0, out);
     }
@@ -94,6 +97,14 @@ fn dump_use_decl(u: &UseDeclView<'_>, out: &mut String) {
             writeln!(out, "use {prefix}.{{{}}}", parts.join(", ")).unwrap();
         }
     }
+}
+
+fn dump_symbol_set_decl(s: &SymbolSetDecl<'_>, out: &mut String) {
+    writeln!(out, "symbol_set {} {{", s.name_segments().join(".")).unwrap();
+    for entry in s.symbols() {
+        writeln!(out, "  {}", entry.name()).unwrap();
+    }
+    writeln!(out, "}}").unwrap();
 }
 
 fn dump_union_decl(u: &UnionDecl<'_>, out: &mut String) {
@@ -215,6 +226,7 @@ fn value_repr(v: &Value) -> String {
         }
 
         Value::Reference(s) => s.clone(),
+        Value::Symbol(s) => format!(":{s}"),
         Value::None => "none".to_string(),
     }
 }

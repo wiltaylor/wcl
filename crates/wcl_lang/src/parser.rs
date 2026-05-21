@@ -1,8 +1,8 @@
 use miette::{NamedSource, SourceSpan};
 
 use crate::ast::{
-    Block, Expr, Field, Item, NamespaceDecl, Source, Span, TypeDecl, TypeField, UnionDecl,
-    UnionVariant, UseDecl, UseForm, UseItem, VariantBody,
+    Block, Expr, Field, Item, NamespaceDecl, Source, Span, SymbolEntry, SymbolSetDecl, TypeDecl,
+    TypeField, UnionDecl, UnionVariant, UseDecl, UseForm, UseItem, VariantBody,
 };
 use crate::error::ParseError;
 use crate::lexer::{LexError, Lexer, NumberLit, StringLit, Token, TokenKind};
@@ -50,6 +50,7 @@ impl<'a> Parser<'a> {
                 "union" => return self.parse_union_decl(),
                 "namespace" => return self.parse_namespace_decl(),
                 "use" => return self.parse_use_decl(),
+                "symbol_set" => return self.parse_symbol_set_decl(),
                 _ => {}
             }
         }
@@ -436,6 +437,52 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn parse_symbol_set_decl(&mut self) -> Result<Item, ParseError> {
+        let kw = self.bump()?; // 'symbol_set'
+        let start = kw.span.start;
+        let (name, _) = self.parse_path()?;
+        self.expect(TokenKind::LBrace, "expected '{' after symbol_set name")?;
+        let mut symbols: Vec<SymbolEntry> = Vec::new();
+        loop {
+            let p = self.peek()?;
+            match &p.kind {
+                TokenKind::RBrace => break,
+                TokenKind::Eof => {
+                    let span = p.span;
+                    return Err(self.err(
+                        "unexpected end of file inside symbol_set declaration",
+                        span,
+                        "expected '}'",
+                    ));
+                }
+                TokenKind::Ident(_) => {
+                    let tok = self.bump()?;
+                    if let TokenKind::Ident(entry_name) = tok.kind {
+                        symbols.push(SymbolEntry {
+                            name: entry_name,
+                            span: tok.span,
+                        });
+                    }
+                }
+                other => {
+                    let span = p.span;
+                    let kind = describe(other);
+                    return Err(self.err(
+                        format!("expected symbol name or '}}', found {kind}"),
+                        span,
+                        "expected symbol name",
+                    ));
+                }
+            }
+        }
+        let rbrace = self.bump()?;
+        Ok(Item::SymbolSetDecl(SymbolSetDecl {
+            name,
+            symbols,
+            span: Span::new(start, rbrace.span.end),
+        }))
+    }
+
     fn parse_type_ref(&mut self) -> Result<(TypeRef, Span), ParseError> {
         let head = self.peek()?;
         if matches!(head.kind, TokenKind::Amp) {
@@ -595,6 +642,7 @@ impl<'a> Parser<'a> {
             TokenKind::Str(s) => string_to_expr(s),
             TokenKind::Bool(b) => Expr::Bool(b),
             TokenKind::Ident(s) => Expr::Reference(s),
+            TokenKind::Symbol(s) => Expr::Symbol(s),
             TokenKind::None => Expr::None,
             other => {
                 return Err(self.err(
@@ -710,6 +758,7 @@ fn describe(t: &TokenKind) -> String {
         TokenKind::Str(_) => "string".to_string(),
         TokenKind::Number(_) => "number".to_string(),
         TokenKind::Bool(_) => "boolean".to_string(),
+        TokenKind::Symbol(_) => "symbol literal".to_string(),
         TokenKind::None => "'none'".to_string(),
         TokenKind::Eq => "'='".to_string(),
         TokenKind::Colon => "':'".to_string(),
@@ -1252,6 +1301,80 @@ mod tests {
             .find(|t| t.name == vec!["Q".to_string()])
             .unwrap();
         assert_eq!(q.fields[0].ty, TypeRef::Named(vec!["list".into()]));
+    }
+
+    fn symbol_set_decls(items: &[Item]) -> Vec<&SymbolSetDecl> {
+        items
+            .iter()
+            .filter_map(|i| match i {
+                Item::SymbolSetDecl(s) => Some(s),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn parse_symbol_set_decl() {
+        let s = parse("symbol_set Color { red green blue }");
+        let set = symbol_set_decls(&s.items)[0];
+        assert_eq!(set.name, vec!["Color".to_string()]);
+        assert_eq!(
+            set.symbols
+                .iter()
+                .map(|e| e.name.clone())
+                .collect::<Vec<_>>(),
+            vec!["red".to_string(), "green".to_string(), "blue".to_string()]
+        );
+    }
+
+    #[test]
+    fn parse_empty_symbol_set() {
+        let s = parse("symbol_set Empty {}");
+        let set = symbol_set_decls(&s.items)[0];
+        assert!(set.symbols.is_empty());
+    }
+
+    #[test]
+    fn parse_dotted_symbol_set_name() {
+        let s = parse("symbol_set foo.bar.X { a b }");
+        let set = symbol_set_decls(&s.items)[0];
+        assert_eq!(
+            set.name,
+            vec!["foo".to_string(), "bar".to_string(), "X".to_string()]
+        );
+        assert_eq!(set.symbols.len(), 2);
+    }
+
+    #[test]
+    fn parse_symbol_value() {
+        let s = parse("tag = :wide");
+        assert_eq!(field(&s.items, "tag").expr, Expr::Symbol("wide".into()));
+    }
+
+    #[test]
+    fn parse_symbol_typed_field() {
+        let s = parse("type Q { tag: symbol }");
+        let t = type_decls(&s.items)[0];
+        assert_eq!(t.fields[0].ty, TypeRef::Builtin(BuiltinType::Symbol));
+    }
+
+    #[test]
+    fn parse_named_symbol_set_field() {
+        let s = parse("symbol_set C { x }\ntype Q { f: C }");
+        let q = type_decls(&s.items)
+            .into_iter()
+            .find(|t| t.name == vec!["Q".to_string()])
+            .unwrap();
+        assert_eq!(q.fields[0].ty, TypeRef::Named(vec!["C".into()]));
+    }
+
+    #[test]
+    fn symbol_set_requires_brace() {
+        let err = parse_err("symbol_set Foo = 1");
+        match err {
+            ParseError::Syntax(e) => assert!(e.message.contains("'{'"), "{}", e.message),
+            _ => panic!("expected syntax error"),
+        }
     }
 
     #[test]

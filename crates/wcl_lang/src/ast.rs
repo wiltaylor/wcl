@@ -45,6 +45,7 @@ pub(crate) enum Expr {
     Utf32(Vec<char>),
 
     Reference(String),
+    Symbol(String),
     None,
 }
 
@@ -130,6 +131,19 @@ pub(crate) enum VariantBody {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub(crate) struct SymbolSetDecl {
+    pub name: Vec<String>,
+    pub symbols: Vec<SymbolEntry>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct SymbolEntry {
+    pub name: String,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Item {
     Field(Field),
     Block(Block),
@@ -137,6 +151,7 @@ pub(crate) enum Item {
     UnionDecl(UnionDecl),
     NamespaceDecl(NamespaceDecl),
     UseDecl(UseDecl),
+    SymbolSetDecl(SymbolSetDecl),
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]

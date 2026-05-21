@@ -34,6 +34,7 @@ enum ItemCells {
     UnionDecl,
     NamespaceDecl,
     UseDecl,
+    SymbolSetDecl,
 }
 
 #[derive(Debug)]
@@ -52,6 +53,7 @@ impl BlockCells {
                 ast::Item::UnionDecl(_) => ItemCells::UnionDecl,
                 ast::Item::NamespaceDecl(_) => ItemCells::NamespaceDecl,
                 ast::Item::UseDecl(_) => ItemCells::UseDecl,
+                ast::Item::SymbolSetDecl(_) => ItemCells::SymbolSetDecl,
             })
             .collect();
         Self { items: cells }
@@ -180,6 +182,34 @@ impl Document {
         })
     }
 
+    pub fn symbol_set(&self, fqn: &str) -> Option<SymbolSetDecl<'_>> {
+        let target: Vec<&str> = fqn.split('.').collect();
+        self.ast.items.iter().find_map(|item| match item {
+            ast::Item::SymbolSetDecl(s) => {
+                let decl_fqn = self.compose_fqn(&s.name);
+                if decl_fqn_matches(&decl_fqn, &target) {
+                    Some(SymbolSetDecl {
+                        ast: s,
+                        file_ns: &self.file_ns,
+                    })
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        })
+    }
+
+    pub fn symbol_sets(&self) -> impl Iterator<Item = SymbolSetDecl<'_>> {
+        self.ast.items.iter().filter_map(|item| match item {
+            ast::Item::SymbolSetDecl(s) => Some(SymbolSetDecl {
+                ast: s,
+                file_ns: &self.file_ns,
+            }),
+            _ => None,
+        })
+    }
+
     /// Resolve a [`TypeRef`] to either its built-in tag or the user-declared
     /// [`TypeDecl`] / [`UnionDecl`] it points to. `Named` refs are validated
     /// at [`Document::open`], so the lookup never fails here.
@@ -193,9 +223,11 @@ impl Document {
                 let fqn_dotted = fqn.join(".");
                 if let Some(decl) = self.type_decl(&fqn_dotted) {
                     ResolvedType::Named(decl)
+                } else if let Some(union) = self.union_decl(&fqn_dotted) {
+                    ResolvedType::Union(union)
                 } else {
-                    ResolvedType::Union(
-                        self.union_decl(&fqn_dotted)
+                    ResolvedType::SymbolSet(
+                        self.symbol_set(&fqn_dotted)
                             .expect("named ref validated at Document::open"),
                     )
                 }
@@ -225,6 +257,7 @@ impl Document {
             .filter_map(|item| match item {
                 ast::Item::TypeDecl(t) => Some(self.compose_fqn(&t.name)),
                 ast::Item::UnionDecl(u) => Some(self.compose_fqn(&u.name)),
+                ast::Item::SymbolSetDecl(s) => Some(self.compose_fqn(&s.name)),
                 _ => None,
             })
             .collect();
@@ -291,6 +324,7 @@ pub enum ResolvedType<'a> {
     Builtin(BuiltinType),
     Named(TypeDecl<'a>),
     Union(UnionDecl<'a>),
+    SymbolSet(SymbolSetDecl<'a>),
     Reference(Box<ResolvedType<'a>>),
     List(Box<ResolvedType<'a>>),
     Tensor {
@@ -397,6 +431,65 @@ pub enum VariantBodyView<'a> {
     Record,
     TypeRef(&'a TypeRef),
     Unit,
+}
+
+#[derive(Debug)]
+pub struct SymbolSetDecl<'a> {
+    ast: &'a ast::SymbolSetDecl,
+    file_ns: &'a [String],
+}
+
+impl<'a> SymbolSetDecl<'a> {
+    pub fn name(&self) -> &'a str {
+        self.ast.name.last().expect("name has at least one segment")
+    }
+
+    pub fn name_segments(&self) -> &'a [String] {
+        &self.ast.name
+    }
+
+    pub fn full_name(&self) -> String {
+        self.file_ns
+            .iter()
+            .chain(self.ast.name.iter())
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(".")
+    }
+
+    pub fn namespace(&self) -> Vec<String> {
+        let mut v: Vec<String> = self.file_ns.to_vec();
+        if self.ast.name.len() > 1 {
+            v.extend(self.ast.name[..self.ast.name.len() - 1].iter().cloned());
+        }
+        v
+    }
+
+    pub fn span(&self) -> Span {
+        self.ast.span
+    }
+
+    pub fn symbols(&self) -> impl Iterator<Item = SymbolEntry<'a>> {
+        self.ast.symbols.iter().map(|s| SymbolEntry { ast: s })
+    }
+
+    pub fn has(&self, name: &str) -> bool {
+        self.ast.symbols.iter().any(|s| s.name == name)
+    }
+}
+
+pub struct SymbolEntry<'a> {
+    ast: &'a ast::SymbolEntry,
+}
+
+impl<'a> SymbolEntry<'a> {
+    pub fn name(&self) -> &'a str {
+        &self.ast.name
+    }
+
+    pub fn span(&self) -> Span {
+        self.ast.span
+    }
 }
 
 #[derive(Debug)]
@@ -665,6 +758,7 @@ fn eval_expr(e: &ast::Expr) -> Result<Value, EvalError> {
         ast::Expr::Utf16(v) => Value::Utf16(v.clone()),
         ast::Expr::Utf32(v) => Value::Utf32(v.clone()),
         ast::Expr::Reference(s) => Value::Reference(s.clone()),
+        ast::Expr::Symbol(s) => Value::Symbol(s.clone()),
         ast::Expr::None => Value::None,
     })
 }
@@ -716,12 +810,14 @@ fn validate_document(ast: &ast::Source, source: &str, file: &str) -> Result<Reso
         let fqn = match item {
             ast::Item::TypeDecl(t) => compose(&file_ns, &t.name),
             ast::Item::UnionDecl(u) => compose(&file_ns, &u.name),
+            ast::Item::SymbolSetDecl(s) => compose(&file_ns, &s.name),
             _ => continue,
         };
         if !declared.insert(fqn.clone()) {
             let span = match item {
                 ast::Item::TypeDecl(t) => t.span,
                 ast::Item::UnionDecl(u) => u.span,
+                ast::Item::SymbolSetDecl(s) => s.span,
                 _ => unreachable!(),
             };
             return Err(open_error(
@@ -908,6 +1004,24 @@ fn validate_document(ast: &ast::Source, source: &str, file: &str) -> Result<Reso
                             )?;
                         }
                         ast::VariantBody::Unit => {}
+                    }
+                }
+            }
+            ast::Item::SymbolSetDecl(s) => {
+                let mut seen: HashSet<String> = HashSet::new();
+                for entry in &s.symbols {
+                    if !seen.insert(entry.name.clone()) {
+                        return Err(open_error(
+                            source,
+                            file,
+                            format!(
+                                "duplicate symbol '{}' in symbol_set '{}'",
+                                entry.name,
+                                s.name.join(".")
+                            ),
+                            entry.span,
+                            "duplicate symbol",
+                        ));
                     }
                 }
             }
@@ -1759,6 +1873,82 @@ mod tests {
             panic!("expected Named");
         };
         assert_eq!(d.name(), "T");
+    }
+
+    #[test]
+    fn symbol_sets_are_queryable() {
+        let doc = open(
+            r#"
+            symbol_set Color { red green blue }
+            symbol_set Mood { warm cool }
+            "#,
+        );
+        assert_eq!(doc.symbol_sets().count(), 2);
+        let color = doc.symbol_set("Color").expect("Color");
+        assert_eq!(color.symbols().count(), 3);
+        assert!(color.has("red"));
+        assert!(!color.has("missing"));
+    }
+
+    #[test]
+    fn resolve_named_symbol_set() {
+        let doc = open("symbol_set Color { red green }\ntype Q { f: Color }");
+        let q = doc.type_decl("Q").unwrap();
+        let f = q.field("f").unwrap();
+        match doc.resolve(f.type_ref()) {
+            ResolvedType::SymbolSet(s) => assert_eq!(s.name(), "Color"),
+            _ => panic!("expected SymbolSet"),
+        }
+    }
+
+    #[test]
+    fn duplicate_symbol_in_set_errors() {
+        let err = Document::open("symbol_set X { a a }", "test").unwrap_err();
+        match err {
+            ParseError::Syntax(e) => assert!(
+                e.message.contains("duplicate symbol 'a' in symbol_set 'X'"),
+                "{}",
+                e.message
+            ),
+            _ => panic!("expected syntax error"),
+        }
+    }
+
+    #[test]
+    fn symbol_set_collides_with_type_name() {
+        let err = Document::open("type Foo {}\nsymbol_set Foo {}", "test").unwrap_err();
+        match err {
+            ParseError::Syntax(e) => assert!(
+                e.message.contains("duplicate declaration 'Foo'"),
+                "{}",
+                e.message
+            ),
+            _ => panic!("expected syntax error"),
+        }
+    }
+
+    #[test]
+    fn symbol_value_evaluates() {
+        let doc = open("tag = :wide");
+        assert_eq!(
+            doc.field("tag").unwrap().value().unwrap(),
+            &Value::Symbol("wide".into())
+        );
+    }
+
+    #[test]
+    fn symbol_sets_dont_appear_in_field_or_block_iteration() {
+        let doc = open(
+            r#"
+            symbol_set Color { red green }
+            count = 1
+            svc {}
+            "#,
+        );
+        let field_names: Vec<_> = doc.fields().map(|f| f.name().to_string()).collect();
+        assert_eq!(field_names, vec!["count".to_string()]);
+        let block_kinds: Vec<_> = doc.blocks().map(|b| b.kind().to_string()).collect();
+        assert_eq!(block_kinds, vec!["svc".to_string()]);
     }
 
     #[test]

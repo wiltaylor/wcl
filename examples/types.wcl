@@ -64,6 +64,20 @@ type accounts.Admin {
   level: u32
 }
 
+symbol_set Color {
+  red
+  green
+  blue
+}
+
+type Paint {
+  shade: Color
+  tag:   symbol
+}
+
+shade = :red
+tag   = :wide
+
 type ml.Layer {
   weights: tensor<f32, [N, 128]>
   biases:  tensor<f32, [128]>

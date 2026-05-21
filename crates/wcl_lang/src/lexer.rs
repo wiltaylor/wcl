@@ -7,6 +7,7 @@ pub enum TokenKind {
     Bool(bool),
     Number(NumberLit),
     Str(StringLit),
+    Symbol(String),
     None,
     Eq,
     Colon,
@@ -94,11 +95,27 @@ impl<'a> Lexer<'a> {
                 })
             }
             b':' => {
-                self.pos += 1;
-                Ok(Token {
-                    kind: TokenKind::Colon,
-                    span: Span::new(start, self.pos),
-                })
+                // Tight `:foo` (no whitespace) → Symbol literal.
+                if matches!(self.peek_at(1), Some(c) if is_ident_start(c)) {
+                    self.pos += 1; // ':'
+                    let name_start = self.pos;
+                    while matches!(self.peek(), Some(c) if is_ident_cont(c)) {
+                        self.pos += 1;
+                    }
+                    let name = std::str::from_utf8(&self.src[name_start..self.pos])
+                        .expect("ident is ASCII")
+                        .to_string();
+                    Ok(Token {
+                        kind: TokenKind::Symbol(name),
+                        span: Span::new(start, self.pos),
+                    })
+                } else {
+                    self.pos += 1;
+                    Ok(Token {
+                        kind: TokenKind::Colon,
+                        span: Span::new(start, self.pos),
+                    })
+                }
             }
             b'?' => {
                 self.pos += 1;
@@ -800,6 +817,47 @@ mod tests {
                 TokenKind::Number(NumberLit::I64(4)),
                 TokenKind::RBracket,
                 TokenKind::Gt,
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn lex_symbol_literal_tight() {
+        assert_eq!(
+            tokens(":red"),
+            vec![TokenKind::Symbol("red".into()), TokenKind::Eof]
+        );
+    }
+
+    #[test]
+    fn lex_symbol_with_underscore_and_digit() {
+        assert_eq!(
+            tokens(":foo_bar2"),
+            vec![TokenKind::Symbol("foo_bar2".into()), TokenKind::Eof]
+        );
+    }
+
+    #[test]
+    fn lex_colon_with_space() {
+        assert_eq!(
+            tokens("name: utf8"),
+            vec![
+                TokenKind::Ident("name".into()),
+                TokenKind::Colon,
+                TokenKind::Ident("utf8".into()),
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn lex_colon_alone_at_eof() {
+        assert_eq!(
+            tokens("x :"),
+            vec![
+                TokenKind::Ident("x".into()),
+                TokenKind::Colon,
                 TokenKind::Eof,
             ]
         );
