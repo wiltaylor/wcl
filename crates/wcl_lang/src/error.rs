@@ -162,6 +162,18 @@ pub enum SchemaViolationKind {
     ChildrenTooMany,
     BlockChildrenOverflow,
     UnexpectedExtraChild,
+    /// Block whose `kind` has no corresponding `@block`/`@table` type
+    /// declaration anywhere in the document.
+    UnregisteredKind,
+    /// Field whose `name` isn't declared by the parent schema (or by
+    /// the document schema, for top-level fields).
+    UnknownField,
+    /// Top-level value (field or block) but no `@document`-decorated
+    /// type exists.
+    NoDocumentSchema,
+    /// More than one `@document`-decorated type declared in the
+    /// document.
+    MultipleDocumentSchemas,
 }
 
 impl EvalError {

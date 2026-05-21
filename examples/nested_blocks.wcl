@@ -23,11 +23,11 @@ type Route {
 }
 
 // Plain list literal at the top level.
-ports = [80, 443, 8080]
+@schemaless ports = [80, 443, 8080]
 
 // Instance:
 
-service web {
+@schemaless service web {
   config {
     region = "us-east-1"
     tier   = :gold

@@ -813,6 +813,133 @@ impl Document {
         self.find_schema("table", name)
     }
 
+    /// Look up the type carrying the `@document` decorator, if any.
+    /// At most one is expected; if multiple are declared, this
+    /// returns the first and `Document::schema_errors` surfaces a
+    /// `MultipleDocumentSchemas` violation.
+    pub fn doc_schema(&self) -> Option<TypeDecl<'_>> {
+        self.find_all_decorated("document").into_iter().next()
+    }
+
+    /// Every type declaration carrying the named decorator. Used by
+    /// the document-level validator to detect duplicate `@document`
+    /// declarations.
+    pub(crate) fn find_all_decorated(&self, dec_name: &str) -> Vec<TypeDecl<'_>> {
+        self.type_decls()
+            .filter(|t| t.decorators().any(|d| d.full_name() == dec_name))
+            .collect()
+    }
+
+    /// `true` if any declared type carries `@block(kind)` or
+    /// `@table(kind)`. Used to spot un-registered block kinds in the
+    /// strict validator.
+    pub(crate) fn is_registered_kind(&self, kind: &str) -> bool {
+        self.block_schema(kind).is_some() || self.table_schema(kind).is_some()
+    }
+
+    /// Strict-mode validation: returns every schema violation across
+    /// the document.
+    ///
+    /// At the top level: detects multiple `@document` declarations,
+    /// top-level fields/blocks without a matching schema, and
+    /// top-level block kinds that aren't registered via
+    /// `@block`/`@table`. Each top-level block then has its
+    /// `Block::schema_errors()` collected recursively.
+    pub fn schema_errors(&self) -> Vec<EvalError> {
+        use crate::error::SchemaViolationKind as Kind;
+        let mut out = Vec::new();
+
+        // Detect multiple @document declarations (the first one
+        // wins for `doc_schema()` but the duplicates are surfaced
+        // as a violation).
+        let doc_schemas = self.find_all_decorated("document");
+        for extra in doc_schemas.iter().skip(1) {
+            out.push(EvalError::schema_violation(
+                Kind::MultipleDocumentSchemas,
+                format!("type '{}' declares an extra @document schema", extra.name()),
+                extra.span(),
+            ));
+        }
+        let root = doc_schemas.first().copied();
+
+        // Walk the top-level fields.
+        for f in self.fields() {
+            if has_schemaless(&f.ast.decorators) {
+                continue;
+            }
+            match root {
+                Some(schema) => {
+                    if schema.field(f.name()).is_none() {
+                        out.push(EvalError::schema_violation(
+                            Kind::UnknownField,
+                            format!(
+                                "top-level field '{}' is not declared by @document schema '{}'",
+                                f.name(),
+                                schema.name()
+                            ),
+                            f.span(),
+                        ));
+                    }
+                }
+                None => {
+                    out.push(EvalError::schema_violation(
+                        Kind::NoDocumentSchema,
+                        format!("top-level field '{}' has no @document schema", f.name()),
+                        f.span(),
+                    ));
+                }
+            }
+        }
+
+        // Walk the top-level blocks.
+        for b in self.blocks() {
+            if has_schemaless(&b.ast.decorators) {
+                continue;
+            }
+            // First: the kind must be registered.
+            if !self.is_registered_kind(b.kind()) {
+                out.push(EvalError::schema_violation(
+                    Kind::UnregisteredKind,
+                    format!(
+                        "block kind '{}' has no @block or @table declaration",
+                        b.kind()
+                    ),
+                    b.span(),
+                ));
+                // Skip nested validation — the block has no schema
+                // to validate against.
+                continue;
+            }
+            // Second: the doc schema (if any) must accept this kind.
+            if let Some(schema) = root {
+                let allowed = schema.allowed_child_kinds();
+                if !allowed.iter().any(|k| k == b.kind()) {
+                    out.push(EvalError::schema_violation(
+                        Kind::DisallowedChild,
+                        format!(
+                            "block kind '{}' is not allowed at the document root by @document schema '{}'",
+                            b.kind(),
+                            schema.name()
+                        ),
+                        b.span(),
+                    ));
+                }
+            } else {
+                out.push(EvalError::schema_violation(
+                    Kind::NoDocumentSchema,
+                    format!("top-level block '{}' has no @document schema", b.kind()),
+                    b.span(),
+                ));
+            }
+            // Third: recurse into the block's own schema errors.
+            for e in b.schema_errors() {
+                out.push(e.clone());
+            }
+        }
+
+        out
+    }
+
     fn find_schema(&self, dec_name: &str, value: &str) -> Option<TypeDecl<'_>> {
         let want = Value::Utf8(value.to_string());
         self.type_decls().find(|t| {
@@ -1634,6 +1761,20 @@ impl<'a> Field<'a> {
         if let Some(cached) = cell.value.get() {
             return cached.as_ref();
         }
+        // Strict membership check (skipped when the field is
+        // `@schemaless`). The field must be named by either the
+        // enclosing block's schema or, for top-level fields, the
+        // document's `@document` schema.
+        if !has_schemaless(&self.ast.decorators)
+            && let Some(err) = self.schema_membership_error()
+        {
+            let _ = cell.value.set(Err(err));
+            return cell
+                .value
+                .get()
+                .expect("just-set membership error")
+                .as_ref();
+        }
         if cell.evaluating.swap(true, Ordering::Acquire) {
             let _ = cell.value.set(Err(EvalError::Cycle {
                 field: self.ast.name.clone(),
@@ -1659,6 +1800,63 @@ impl<'a> Field<'a> {
         };
         cell.evaluating.store(false, Ordering::Release);
         cell.value.get_or_init(|| result).as_ref()
+    }
+
+    /// `Some(err)` if this field's name isn't accepted by the
+    /// applicable schema (parent block, or the document if top-level).
+    /// `None` means the membership check passes.
+    fn schema_membership_error(&self) -> Option<EvalError> {
+        use crate::error::SchemaViolationKind as Kind;
+        let parent_schema = match self.scope.frames().last().copied() {
+            Some(frame) => {
+                // Whole-block opt-out shadows individual fields too.
+                if has_schemaless(&frame.ast.decorators) {
+                    return None;
+                }
+                let block = Block {
+                    ast: frame.ast,
+                    cells: frame.cells,
+                    doc: self.doc,
+                    kind_override: frame.kind_override,
+                    scope: Scope::root(),
+                };
+                block.schema()
+            }
+            None => self.doc.doc_schema(),
+        };
+        match parent_schema {
+            Some(schema) => {
+                if schema.field(self.name()).is_some() {
+                    None
+                } else {
+                    Some(EvalError::schema_violation(
+                        Kind::UnknownField,
+                        format!(
+                            "field '{}' is not declared by schema '{}'",
+                            self.name(),
+                            schema.name()
+                        ),
+                        self.ast.span,
+                    ))
+                }
+            }
+            None => {
+                // Top-level field with no @document schema is fine
+                // when inside a schema'd block — we already short-
+                // circuited above. Otherwise it's NoDocumentSchema.
+                if self.scope.frames().is_empty() {
+                    Some(EvalError::schema_violation(
+                        Kind::NoDocumentSchema,
+                        format!("top-level field '{}' has no @document schema", self.name()),
+                        self.ast.span,
+                    ))
+                } else {
+                    // Inside an un-schema'd block — the enclosing
+                    // block's UnregisteredKind covers it.
+                    None
+                }
+            }
+        }
     }
 
     /// Returns the schema-declared `TypeRef` for this field, if the
@@ -1992,12 +2190,60 @@ impl<'a> Block<'a> {
 /// per block via the `schema_validation` OnceLock; subsequent calls
 /// return the cached vector. No-op for blocks without a schema or for
 /// schemas that don't declare any nested-block rules.
+/// `true` if any decorator on the item is `@schemaless` (with or
+/// without arguments). Used by the strict validator to opt a block
+/// or field out of the schema-membership checks.
+fn has_schemaless(decorators: &[ast::Decorator]) -> bool {
+    decorators
+        .iter()
+        .any(|d| d.name.len() == 1 && d.name[0] == "schemaless")
+}
+
 fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
     use crate::error::SchemaViolationKind as Kind;
     let mut errs = Vec::new();
+
+    // Whole-block opt-out — `@schemaless service web { … }` skips
+    // every check inside the block (its contents are unrestricted).
+    if has_schemaless(&block.ast.decorators) {
+        return errs;
+    }
+
     let Some(schema) = block.schema() else {
+        // Strict mode: a block whose kind has no `@block`/`@table`
+        // declaration is itself the violation.
+        errs.push(EvalError::schema_violation(
+            Kind::UnregisteredKind,
+            format!(
+                "block kind '{}' has no @block or @table declaration",
+                block.kind()
+            ),
+            block.span(),
+        ));
         return errs;
     };
+
+    // Field-membership: every literal `Item::Field` inside this
+    // block must be named by the schema. `@schemaless` on a field
+    // exempts that specific field.
+    let declared_field_names: HashSet<String> =
+        schema.fields().map(|f| f.name().to_string()).collect();
+    for f in block.fields() {
+        if has_schemaless(&f.ast.decorators) {
+            continue;
+        }
+        if !declared_field_names.contains(f.name()) {
+            errs.push(EvalError::schema_violation(
+                Kind::UnknownField,
+                format!(
+                    "field '{}' is not declared by schema '{}'",
+                    f.name(),
+                    schema.name()
+                ),
+                f.span(),
+            ));
+        }
+    }
 
     // 0. Table row-form validation: if this block's schema is a
     // `@table`, its labels are the row's column values and must
@@ -3429,14 +3675,59 @@ fn expand_top_level_imports(
 }
 
 #[cfg(test)]
+fn laxify_for_tests(src: &str) -> String {
+    // Parse the source once with an empty environment to identify
+    // the offsets of top-level `Item::Field` and `Item::Block`
+    // name tokens, then insert `@schemaless ` before each. The
+    // resulting source parses identically but exempts every
+    // top-level value from strict-validation.
+    let Ok(d) = Document::open_with(src, "tmp-laxify", &Environment::empty()) else {
+        return src.to_string();
+    };
+    // Only laxify top-level fields. Tests that use un-schema'd
+    // top-level blocks are expected to write `@schemaless` (or a
+    // real `@block` declaration) explicitly — there are far fewer
+    // of them, and most snippets that use blocks already declare
+    // matching `@block` schemas inline.
+    let mut insertions: Vec<usize> = Vec::new();
+    for item in &d.ast.items {
+        if let ast::Item::Field(f) = item
+            && !has_schemaless(&f.decorators)
+        {
+            insertions.push(f.span.start);
+        }
+    }
+    if insertions.is_empty() {
+        return src.to_string();
+    }
+    insertions.sort_unstable();
+    let mut out = String::with_capacity(src.len() + insertions.len() * 12);
+    let mut cursor = 0;
+    for pos in insertions {
+        out.push_str(&src[cursor..pos]);
+        out.push_str("@schemaless ");
+        cursor = pos;
+    }
+    out.push_str(&src[cursor..]);
+    out
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
     fn open(src: &str) -> Document {
+        // The strict-validation default rejects any top-level field
+        // or block without a `@document` schema. Most tests in this
+        // module assert parser/eval behaviour, not validation, so
+        // we wrap each top-level field/block with `@schemaless`
+        // here. Tests that exercise validation use
+        // `Document::open(_with)` directly with explicit schemas.
+        let lax = laxify_for_tests(src);
         // Use an empty registry so existing tests aren't polluted with the
         // four built-in decorator schemas. Explicit `Document::open` /
         // `open_with` behaviour is tested separately.
-        Document::open_with(src, "test", &Environment::empty()).expect("open")
+        Document::open_with(&lax, "test", &Environment::empty()).expect("open")
     }
 
     #[test]
@@ -4448,7 +4739,10 @@ mod tests {
     }
 
     fn open_with_builtins(src: &str) -> Document {
-        Document::open_with(src, "test", &env_with_test_builtins()).expect("open")
+        // Same lax wrap as `open()` so the strict-validation default
+        // doesn't fail every eval test on `NoDocumentSchema`.
+        let lax = laxify_for_tests(src);
+        Document::open_with(&lax, "test", &env_with_test_builtins()).expect("open")
     }
 
     #[test]
@@ -4946,10 +5240,32 @@ mod tests {
     }
 
     #[test]
-    fn schema_errors_empty_for_unschemad_block() {
-        let doc = Document::open(r#"random "label" { x = 1 }"#, "test").expect("open");
+    fn schemaless_block_passes_validation() {
+        // Strict mode: un-schema'd kinds normally error
+        // `UnregisteredKind`, but `@schemaless` opts out.
+        let doc = Document::open(r#"@schemaless random "label" { x = 1 }"#, "test").expect("open");
         let b = doc.block("random").unwrap();
         assert!(b.schema_errors().is_empty());
+    }
+
+    #[test]
+    fn unschemad_block_surfaces_unregistered_kind() {
+        // The opposite of `schemaless_block_passes_validation` —
+        // without `@schemaless`, the un-registered kind itself is
+        // an error.
+        let doc = Document::open(r#"random "label" { x = 1 }"#, "test").expect("open");
+        let b = doc.block("random").unwrap();
+        let errs = b.schema_errors();
+        assert!(
+            errs.iter().any(|e| matches!(
+                e,
+                EvalError::SchemaViolation {
+                    kind: crate::error::SchemaViolationKind::UnregisteredKind,
+                    ..
+                }
+            )),
+            "expected UnregisteredKind, got {errs:?}"
+        );
     }
 
     // ─── List literals + required_children ───────────────────────────
@@ -5272,9 +5588,9 @@ mod tests {
     fn parser_accepts_self_and_parent_in_expression_position() {
         let doc = Document::open(
             r#"
-            anchor = 1
-            x = parent
-            y = self
+            @schemaless anchor = 1
+            @schemaless x = parent
+            @schemaless y = self
             "#,
             "test",
         )
@@ -5333,7 +5649,7 @@ mod tests {
     #[test]
     fn non_ref_field_keeps_value_path() {
         // `count = 3` is a plain leaf assignment; no reference.
-        let doc = Document::open("count = 3", "t").unwrap();
+        let doc = Document::open("@schemaless count = 3", "t").unwrap();
         let count = doc.field("count").unwrap();
         assert_eq!(count.value().unwrap(), &Value::I64(3));
         assert!(count.reference().is_none());
@@ -5396,5 +5712,222 @@ mod tests {
         let target = up.reference().unwrap().unwrap();
         let name = target.child("name").unwrap().value().unwrap();
         assert_eq!(name, Value::Utf8("the-top".into()));
+    }
+
+    // ─── Strict schema validation ─────────────────────────────────────
+
+    #[test]
+    fn doc_schema_resolves_when_present() {
+        let doc = Document::open(
+            r#"
+            @document type Root { name: utf8 }
+            @schemaless name = "x"
+            "#,
+            "t",
+        )
+        .expect("opens");
+        assert!(doc.doc_schema().is_some());
+        assert_eq!(doc.doc_schema().unwrap().name(), "Root");
+    }
+
+    #[test]
+    fn doc_schema_absent_returns_none() {
+        let doc = Document::open("@schemaless name = \"x\"", "t").unwrap();
+        assert!(doc.doc_schema().is_none());
+    }
+
+    #[test]
+    fn multiple_document_decls_surface_error() {
+        let doc = Document::open(
+            r#"
+            @document type A { x: utf8 }
+            @document type B { y: utf8 }
+            "#,
+            "t",
+        )
+        .expect("opens");
+        let errs = doc.schema_errors();
+        assert!(
+            errs.iter().any(|e| matches!(
+                e,
+                EvalError::SchemaViolation {
+                    kind: crate::error::SchemaViolationKind::MultipleDocumentSchemas,
+                    ..
+                }
+            )),
+            "{errs:?}"
+        );
+    }
+
+    #[test]
+    fn top_level_field_without_doc_schema_errors_on_value() {
+        let doc = Document::open(r#"orphan = "x""#, "t").unwrap();
+        let err = doc.field("orphan").unwrap().value().unwrap_err();
+        assert!(
+            matches!(
+                err,
+                EvalError::SchemaViolation {
+                    kind: crate::error::SchemaViolationKind::NoDocumentSchema,
+                    ..
+                }
+            ),
+            "{err:?}"
+        );
+    }
+
+    #[test]
+    fn top_level_field_with_matching_doc_schema_resolves() {
+        let doc = Document::open(
+            r#"
+            @document type Cfg { name: utf8 }
+            name = "alpha"
+            "#,
+            "t",
+        )
+        .unwrap();
+        assert_eq!(
+            doc.field("name").unwrap().value().unwrap(),
+            &Value::Utf8("alpha".into())
+        );
+        assert!(doc.schema_errors().is_empty(), "{:?}", doc.schema_errors());
+    }
+
+    #[test]
+    fn top_level_field_with_schemaless_decorator_resolves() {
+        let doc = Document::open(r#"@schemaless port = 8080"#, "t").unwrap();
+        assert_eq!(
+            doc.field("port").unwrap().value().unwrap(),
+            &Value::I64(8080)
+        );
+    }
+
+    #[test]
+    fn top_level_unregistered_block_kind_errors() {
+        let doc = Document::open(r#"random "x" { y = 1 }"#, "t").unwrap();
+        let errs = doc.schema_errors();
+        assert!(
+            errs.iter().any(|e| matches!(
+                e,
+                EvalError::SchemaViolation {
+                    kind: crate::error::SchemaViolationKind::NoDocumentSchema
+                        | crate::error::SchemaViolationKind::UnregisteredKind,
+                    ..
+                }
+            )),
+            "{errs:?}"
+        );
+    }
+
+    #[test]
+    fn top_level_block_kind_disallowed_by_doc_schema_errors() {
+        let doc = Document::open(
+            r#"
+            @document type Cfg { @child("svc") svc: Svc }
+            @block("svc") type Svc { @inline(0) id: utf8 }
+            @block("other") type Other {}
+            other "x" {}
+            "#,
+            "t",
+        )
+        .unwrap();
+        let errs = doc.schema_errors();
+        assert!(
+            errs.iter().any(|e| matches!(
+                e,
+                EvalError::SchemaViolation {
+                    kind: crate::error::SchemaViolationKind::DisallowedChild,
+                    ..
+                }
+            )),
+            "{errs:?}"
+        );
+    }
+
+    #[test]
+    fn nested_block_kind_unregistered_errors_on_schema_errors() {
+        // Parent schema explicitly allows `unregistered` as a child
+        // (so DisallowedChild doesn't fire), but `unregistered` has
+        // no @block/@table declaration — that's the UnregisteredKind
+        // violation.
+        let doc = Document::open(
+            r#"
+            @document type Cfg { @child("svc") svc: Svc }
+            @block("svc") type Svc { @child("unregistered") nested: Whatever? }
+            type Whatever {}
+            svc "x" { unregistered { y = 1 } }
+            "#,
+            "t",
+        )
+        .unwrap();
+        let svc = doc.block("svc").unwrap();
+        let nested = svc.block("unregistered").unwrap();
+        let errs = nested.schema_errors();
+        assert!(
+            errs.iter().any(|e| matches!(
+                e,
+                EvalError::SchemaViolation {
+                    kind: crate::error::SchemaViolationKind::UnregisteredKind,
+                    ..
+                }
+            )),
+            "{errs:?}"
+        );
+    }
+
+    #[test]
+    fn nested_block_under_schemaless_parent_silently_passes() {
+        let doc = Document::open(
+            r#"
+            @document type Cfg { @child("wrapper") wrapper: Wrapper }
+            @block("wrapper") type Wrapper {}
+            @schemaless wrapper "x" { whatever { junk = 1 } }
+            "#,
+            "t",
+        )
+        .unwrap();
+        // @schemaless on `wrapper "x"` silences the kid's
+        // UnregisteredKind that would otherwise fire on `whatever`.
+        assert!(doc.schema_errors().is_empty(), "{:?}", doc.schema_errors());
+    }
+
+    #[test]
+    fn field_not_in_block_schema_errors_on_value() {
+        let doc = Document::open(
+            r#"
+            @document type Cfg { @child("svc") svc: Svc }
+            @block("svc") type Svc { name: utf8 }
+            svc "x" { name = "ok"  surprise = 1 }
+            "#,
+            "t",
+        )
+        .unwrap();
+        let svc = doc.block("svc").unwrap();
+        let err = svc.field("surprise").unwrap().value().unwrap_err();
+        assert!(
+            matches!(
+                err,
+                EvalError::SchemaViolation {
+                    kind: crate::error::SchemaViolationKind::UnknownField,
+                    ..
+                }
+            ),
+            "{err:?}"
+        );
+    }
+
+    #[test]
+    fn field_marked_schemaless_resolves_even_when_unknown() {
+        let doc = Document::open(
+            r#"
+            @document type Cfg { @child("svc") svc: Svc }
+            @block("svc") type Svc { name: utf8 }
+            svc "x" { name = "ok"  @schemaless surprise = 1 }
+            "#,
+            "t",
+        )
+        .unwrap();
+        let svc = doc.block("svc").unwrap();
+        let v = svc.field("surprise").unwrap().value().unwrap();
+        assert_eq!(v, &Value::I64(1));
     }
 }

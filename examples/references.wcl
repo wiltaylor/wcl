@@ -14,9 +14,9 @@
 }
 
 // A top-level value, addressable by bare identifier from any scope.
-fallback_user = "guest"
+@schemaless fallback_user = "guest"
 
-db production {
+@schemaless db production {
   users:
     | "alice" | 30 |
     | "bob"   | 25 |

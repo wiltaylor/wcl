@@ -1,9 +1,9 @@
 // Fixture for the lazy data-access (DataRef) tests.
 
-port = 8080
-name = "alpha"
+@schemaless port = 8080
+@schemaless name = "alpha"
 
-service "web" {
+@schemaless service "web" {
   port = 9090
   region = "us-east-1"
 

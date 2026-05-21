@@ -4,4 +4,4 @@ type Color {
   name: utf8
 }
 
-brand = "wcl"
+@schemaless brand = "wcl"

@@ -45,9 +45,17 @@ fn main() -> ExitCode {
             }
         },
         Command::Check { file } => match Document::from_file(&file) {
-            Ok(_) => {
-                println!("OK");
-                ExitCode::SUCCESS
+            Ok(doc) => {
+                let errs = doc.schema_errors();
+                if errs.is_empty() {
+                    println!("OK");
+                    ExitCode::SUCCESS
+                } else {
+                    for e in errs {
+                        eprintln!("{:?}", miette::Report::new(e));
+                    }
+                    ExitCode::FAILURE
+                }
             }
             Err(err) => {
                 eprintln!("{:?}", miette::Report::new(err));

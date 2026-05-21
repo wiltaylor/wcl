@@ -13,7 +13,7 @@ type DB {
   @children("user") users: list<User>
 }
 
-db production {
+@schemaless db production {
   users:
     | "alice" | 30 | true  |
     | "bob"   | 25 | false |

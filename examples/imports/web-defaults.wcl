@@ -1,2 +1,2 @@
-region = "us-east-1"
-tier   = :gold
+@schemaless region = "us-east-1"
+@schemaless tier   = :gold

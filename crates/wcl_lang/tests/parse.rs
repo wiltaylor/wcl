@@ -35,11 +35,11 @@ fn parses_basic_example_from_disk() {
 fn document_round_trips_simple_fields() {
     let doc = open(
         r#"
-        name  = "alpha"
-        count = 3
+        @schemaless name  = "alpha"
+        @schemaless count = 3
         # a comment
         // another comment
-        flag  = false
+        @schemaless flag  = false
         "#,
     );
     assert_eq!(doc.fields().count(), 3);
@@ -185,7 +185,7 @@ fn parse_error_has_useful_span() {
 
 #[test]
 fn field_value_address_is_stable_across_accesses() {
-    let doc = open(r#"name = "alpha""#);
+    let doc = open(r#"@schemaless name = "alpha""#);
     let f = doc.field("name").unwrap();
     let p1 = f.value().unwrap() as *const Value;
     let p2 = f.value().unwrap() as *const Value;
@@ -194,7 +194,7 @@ fn field_value_address_is_stable_across_accesses() {
 
 #[test]
 fn span_is_available_without_forcing_value() {
-    let doc = open(r#"name = "alpha""#);
+    let doc = open(r#"@schemaless name = "alpha""#);
     let f = doc.field("name").unwrap();
     let span = f.span();
     assert!(span.start < span.end);

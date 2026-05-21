@@ -124,6 +124,23 @@ fn builtin_decorator_schemas() -> Vec<ast::TypeDecl> {
             "name",
             TypeRef::Builtin(BuiltinType::Utf8),
         ),
+        // `@document` marks a type as the schema for the document
+        // root. The single declared positional arg is ignored at
+        // recognition time; only the decorator name matters.
+        synth_decorator_schema(
+            "Document",
+            "document",
+            "name",
+            TypeRef::Builtin(BuiltinType::Utf8),
+        ),
+        // `@schemaless` opts a block or field out of strict schema
+        // validation. Same shape — only the decorator name is read.
+        synth_decorator_schema(
+            "Schemaless",
+            "schemaless",
+            "reason",
+            TypeRef::Builtin(BuiltinType::Utf8),
+        ),
     ]
 }
 
