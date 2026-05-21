@@ -208,10 +208,27 @@ fn dump_field(f: &Field<'_>, depth: usize, out: &mut String) {
     dump_decorators(f.decorators(), depth, out);
     let pad = "  ".repeat(depth);
     let _ = write!(out, "{pad}{} = ", f.name());
+    if let Some(r) = f.reference() {
+        match r {
+            Ok(dr) => writeln!(out, "&{}", dataref_label(&dr)).unwrap(),
+            Err(e) => writeln!(out, "<error: {e}>").unwrap(),
+        }
+        return;
+    }
     match f.value() {
         Ok(v) => writeln!(out, "{}", value_repr(v)).unwrap(),
         Err(e) => writeln!(out, "<error: {e}>").unwrap(),
     }
+}
+
+fn dataref_label(dr: &wcl_lang::DataRef<'_>) -> String {
+    if let Some(b) = dr.as_block()
+        && let Ok(labels) = b.labels()
+        && let Some(first) = labels.first()
+    {
+        return format!("{}({})", dr.kind(), value_repr(first));
+    }
+    dr.kind().to_string()
 }
 
 fn dump_block(b: &Block<'_>, depth: usize, out: &mut String) {

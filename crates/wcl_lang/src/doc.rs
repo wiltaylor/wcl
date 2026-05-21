@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -237,6 +238,50 @@ impl ItemCells {
     }
 }
 
+/// Lexical scope of an expression's evaluation site.
+///
+/// A `Scope<'a>` is an Rc-backed chain of enclosing block frames,
+/// outermost first. Bare identifiers inside a `&T` field are resolved
+/// by walking this chain innermost → outermost, then falling through
+/// to the document root.
+#[derive(Clone)]
+pub(crate) struct Scope<'a> {
+    frames: Rc<[ScopeFrame<'a>]>,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct ScopeFrame<'a> {
+    ast: &'a ast::Block,
+    cells: &'a ItemCells,
+    kind_override: Option<&'a str>,
+}
+
+impl<'a> Scope<'a> {
+    pub(crate) fn root() -> Self {
+        Self {
+            frames: Rc::from([]),
+        }
+    }
+
+    fn push(&self, frame: ScopeFrame<'a>) -> Self {
+        let mut v: Vec<ScopeFrame<'a>> = self.frames.iter().copied().collect();
+        v.push(frame);
+        Self { frames: v.into() }
+    }
+
+    pub(crate) fn frames(&self) -> &[ScopeFrame<'a>] {
+        &self.frames
+    }
+}
+
+impl std::fmt::Debug for Scope<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Scope")
+            .field("depth", &self.frames.len())
+            .finish()
+    }
+}
+
 #[derive(Debug)]
 pub struct Document {
     src: NamedSource<String>,
@@ -409,7 +454,7 @@ impl Document {
         None
     }
 
-    fn resolve_root(&self, name: &str) -> Option<crate::data::DataRef<'_>> {
+    pub(crate) fn resolve_root(&self, name: &str) -> Option<crate::data::DataRef<'_>> {
         use crate::data::DataRef;
         if let Some(f) = self.field(name) {
             return Some(DataRef::from_field(f));
@@ -494,6 +539,7 @@ impl Document {
                             ast: f,
                             cells: &src.cells[idx],
                             doc: self,
+                            scope: Scope::root(),
                         });
                     }
                 }
@@ -515,6 +561,7 @@ impl Document {
                         cells: &src.cells[idx],
                         doc: self,
                         kind_override: None,
+                        scope: Scope::root(),
                     });
                 }
             }
@@ -526,14 +573,14 @@ impl Document {
         let doc = self;
         self.all_sources()
             .into_iter()
-            .flat_map(move |src| iter_fields(src.items, src.cells, doc))
+            .flat_map(move |src| iter_fields(src.items, src.cells, doc, Scope::root()))
     }
 
     pub fn blocks(&self) -> impl Iterator<Item = Block<'_>> + '_ {
         let doc = self;
         self.all_sources()
             .into_iter()
-            .flat_map(move |src| iter_blocks(src.items, src.cells, doc))
+            .flat_map(move |src| iter_blocks(src.items, src.cells, doc, Scope::root()))
     }
 
     /// Returns the file-level namespace path. Empty when the file declared none.
@@ -1549,11 +1596,12 @@ impl<'a> TypeField<'a> {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct Field<'a> {
     ast: &'a ast::Field,
     cells: &'a ItemCells,
     doc: &'a Document,
+    scope: Scope<'a>,
 }
 
 impl<'a> Field<'a> {
@@ -1597,13 +1645,59 @@ impl<'a> Field<'a> {
                 .expect("cycle cell was just initialised")
                 .as_ref();
         }
-        let result = self.doc.eval(&self.ast.expr);
+        // For `&T`-typed fields, evaluate the RHS as a path producing
+        // a `DataRef`, then auto-deref by reading that target's leaf
+        // value. Non-reference fields evaluate normally through
+        // `eval_in_scope`.
+        let result = if matches!(self.declared_type_ref(), Some(TypeRef::Reference(_))) {
+            let ctx = EvalCtx::new(self.scope.clone());
+            self.doc
+                .eval_to_dataref(&self.ast.expr, &ctx)
+                .and_then(|dr| materialise_dataref(dr, self.ast.span))
+        } else {
+            self.doc.eval_in_scope(&self.ast.expr, &self.scope)
+        };
         cell.evaluating.store(false, Ordering::Release);
         cell.value.get_or_init(|| result).as_ref()
     }
+
+    /// Returns the schema-declared `TypeRef` for this field, if the
+    /// field lives inside a schema'd block and that schema declares
+    /// it. Top-level fields and fields inside un-schema'd blocks
+    /// return `None`.
+    fn declared_type_ref(&self) -> Option<&'a TypeRef> {
+        let frame = self.scope.frames().last().copied()?;
+        let block = Block {
+            ast: frame.ast,
+            cells: frame.cells,
+            doc: self.doc,
+            kind_override: frame.kind_override,
+            scope: Scope::root(),
+        };
+        let schema = block.schema()?;
+        let schema_field = schema.field(self.name())?;
+        Some(schema_field.type_ref())
+    }
+
+    /// For a `&T`-typed field, return the lazy navigator pointing at
+    /// the referenced target.
+    ///
+    /// - `None` — the field is not declared as a reference.
+    /// - `Some(Ok(dr))` — the reference resolves; `dr` walks the
+    ///   target the same way `Document::get` would.
+    /// - `Some(Err(e))` — the field is `&T` but the target can't be
+    ///   resolved through the field's scope chain.
+    pub fn reference(&self) -> Option<Result<crate::data::DataRef<'a>, EvalError>> {
+        let declared = self.declared_type_ref()?;
+        if !matches!(declared, TypeRef::Reference(_)) {
+            return None;
+        }
+        let ctx = EvalCtx::new(self.scope.clone());
+        Some(self.doc.eval_to_dataref(&self.ast.expr, &ctx))
+    }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct Block<'a> {
     ast: &'a ast::Block,
     cells: &'a ItemCells,
@@ -1612,6 +1706,10 @@ pub struct Block<'a> {
     /// synthesised row-Block (its stored `kind` is blank). Real
     /// blocks always have `None`.
     kind_override: Option<&'a str>,
+    /// Lexical scope chain — outermost first, **excluding** this
+    /// block. To get the scope a child expression sees from inside
+    /// this block, push this block's frame: `self.scope.push(self_frame)`.
+    scope: Scope<'a>,
 }
 
 impl<'a> Block<'a> {
@@ -1635,12 +1733,27 @@ impl<'a> Block<'a> {
         self.kind_override.unwrap_or(&self.ast.kind)
     }
 
+    /// Scope that child expressions inside this block see — the
+    /// block's own `scope` extended with one frame for itself.
+    pub(crate) fn child_scope(&self) -> Scope<'a> {
+        self.scope.push(ScopeFrame {
+            ast: self.ast,
+            cells: self.cells,
+            kind_override: self.kind_override,
+        })
+    }
+
     /// Evaluated values for each label slot. Cached on first call; later
     /// calls return a clone of the cached `Vec`.
     pub fn labels(&self) -> Result<Vec<Value>, EvalError> {
         let (cell, _) = self.block_inner();
-        let result =
-            cell.get_or_init(|| self.ast.labels.iter().map(|e| self.doc.eval(e)).collect());
+        let result = cell.get_or_init(|| {
+            self.ast
+                .labels
+                .iter()
+                .map(|e| self.doc.eval_literal(e))
+                .collect()
+        });
         match result {
             Ok(v) => Ok(v.clone()),
             Err(e) => Err(e.clone()),
@@ -1678,8 +1791,9 @@ impl<'a> Block<'a> {
     }
 
     pub fn field(&self, name: &str) -> Option<Field<'a>> {
+        let child_scope = self.child_scope();
         for src in self.realize_and_sources() {
-            if let Some(f) = find_field(src.items, src.cells, name, self.doc) {
+            if let Some(f) = find_field(src.items, src.cells, name, self.doc, &child_scope) {
                 return Some(f);
             }
         }
@@ -1687,8 +1801,9 @@ impl<'a> Block<'a> {
     }
 
     pub fn block(&self, kind: &str) -> Option<Block<'a>> {
+        let child_scope = self.child_scope();
         for src in self.realize_and_sources() {
-            if let Some(b) = find_block(src.items, src.cells, kind, self.doc) {
+            if let Some(b) = find_block(src.items, src.cells, kind, self.doc, &child_scope) {
                 return Some(b);
             }
         }
@@ -1697,16 +1812,18 @@ impl<'a> Block<'a> {
 
     pub fn fields(&self) -> impl Iterator<Item = Field<'a>> + 'a {
         let doc = self.doc;
+        let scope = self.child_scope();
         self.realize_and_sources()
             .into_iter()
-            .flat_map(move |src| iter_fields(src.items, src.cells, doc))
+            .flat_map(move |src| iter_fields(src.items, src.cells, doc, scope.clone()))
     }
 
     pub fn blocks(&self) -> impl Iterator<Item = Block<'a>> + 'a {
         let doc = self.doc;
+        let scope = self.child_scope();
         self.realize_and_sources()
             .into_iter()
-            .flat_map(move |src| iter_blocks(src.items, src.cells, doc))
+            .flat_map(move |src| iter_blocks(src.items, src.cells, doc, scope.clone()))
     }
 
     /// Source-order iterator over `Item::Table` entries in this block.
@@ -1809,6 +1926,7 @@ impl<'a> Block<'a> {
         // contribute their own Block view; Item::Table entries are
         // replaced (in-order) by their corresponding synthesised rows
         // from `synth_rows`.
+        let child_scope = self.child_scope();
         let mut synth_iter = synth_rows.iter().filter(|r| r.field_name == field_name);
         for (item, cells) in self.ast.items.iter().zip(items_cells.iter()) {
             match item {
@@ -1818,6 +1936,7 @@ impl<'a> Block<'a> {
                         cells,
                         doc: self.doc,
                         kind_override: None,
+                        scope: child_scope.clone(),
                     });
                 }
                 ast::Item::Table(t) if t.field_name == field_name => {
@@ -1829,6 +1948,7 @@ impl<'a> Block<'a> {
                                 cells: &sr.cells,
                                 doc: self.doc,
                                 kind_override: Some(kind),
+                                scope: child_scope.clone(),
                             });
                         }
                     }
@@ -1847,7 +1967,7 @@ impl<'a> Block<'a> {
         let Some(schema) = self.schema() else {
             return Box::new(std::iter::empty());
         };
-        let this = *self;
+        let this = self.clone();
         Box::new(schema.fields().filter_map(move |f| {
             let name = f.name();
             this.typed_field(name).map(|dr| (name, dr))
@@ -2135,14 +2255,18 @@ fn find_field<'a>(
     cells: &'a [ItemCells],
     name: &str,
     doc: &'a Document,
+    scope: &Scope<'a>,
 ) -> Option<Field<'a>> {
     items
         .iter()
         .zip(cells)
         .find_map(|(item, cells)| match (item, &cells.kind) {
-            (ast::Item::Field(f), ItemCellKind::Field(_)) if f.name == name => {
-                Some(Field { ast: f, cells, doc })
-            }
+            (ast::Item::Field(f), ItemCellKind::Field(_)) if f.name == name => Some(Field {
+                ast: f,
+                cells,
+                doc,
+                scope: scope.clone(),
+            }),
             _ => None,
         })
 }
@@ -2152,6 +2276,7 @@ fn find_block<'a>(
     cells: &'a [ItemCells],
     kind: &str,
     doc: &'a Document,
+    scope: &Scope<'a>,
 ) -> Option<Block<'a>> {
     items
         .iter()
@@ -2162,6 +2287,7 @@ fn find_block<'a>(
                 cells,
                 doc,
                 kind_override: None,
+                scope: scope.clone(),
             }),
             _ => None,
         })
@@ -2171,12 +2297,18 @@ fn iter_fields<'a>(
     items: &'a [ast::Item],
     cells: &'a [ItemCells],
     doc: &'a Document,
+    scope: Scope<'a>,
 ) -> impl Iterator<Item = Field<'a>> + 'a {
     items
         .iter()
         .zip(cells)
         .filter_map(move |(item, cells)| match (item, &cells.kind) {
-            (ast::Item::Field(f), ItemCellKind::Field(_)) => Some(Field { ast: f, cells, doc }),
+            (ast::Item::Field(f), ItemCellKind::Field(_)) => Some(Field {
+                ast: f,
+                cells,
+                doc,
+                scope: scope.clone(),
+            }),
             _ => None,
         })
 }
@@ -2185,6 +2317,7 @@ fn iter_blocks<'a>(
     items: &'a [ast::Item],
     cells: &'a [ItemCells],
     doc: &'a Document,
+    scope: Scope<'a>,
 ) -> impl Iterator<Item = Block<'a>> + 'a {
     items
         .iter()
@@ -2195,6 +2328,7 @@ fn iter_blocks<'a>(
                 cells,
                 doc,
                 kind_override: None,
+                scope: scope.clone(),
             }),
             _ => None,
         })
@@ -2244,8 +2378,14 @@ pub struct RowView<'a> {
 
 impl<'a> RowView<'a> {
     /// Evaluate each cell expression and return the row as values.
+    /// Cells are treated as literals: bare identifiers materialise as
+    /// `Value::Identifier`, not resolved through the enclosing scope.
     pub fn values(&self) -> Result<Vec<Value>, EvalError> {
-        self.ast.values.iter().map(|e| self.doc.eval(e)).collect()
+        self.ast
+            .values
+            .iter()
+            .map(|e| self.doc.eval_literal(e))
+            .collect()
     }
 
     pub fn span(&self) -> Span {
@@ -2253,15 +2393,21 @@ impl<'a> RowView<'a> {
     }
 }
 
-struct EvalCtx {
+pub(crate) struct EvalCtx<'a> {
     /// Stack of name → value bindings introduced by `Block` let-bindings.
     /// Searched right-to-left so the most recent binding shadows older ones.
     locals: Vec<(String, Value)>,
+    /// Lexical scope of the expression's evaluation site. Used to
+    /// resolve bare identifiers and `self`/`parent`.
+    scope: Scope<'a>,
 }
 
-impl EvalCtx {
-    fn new() -> Self {
-        Self { locals: Vec::new() }
+impl<'a> EvalCtx<'a> {
+    fn new(scope: Scope<'a>) -> Self {
+        Self {
+            locals: Vec::new(),
+            scope,
+        }
     }
 
     fn lookup(&self, name: &str) -> Option<&Value> {
@@ -2273,12 +2419,38 @@ impl EvalCtx {
 }
 
 impl Document {
-    pub(crate) fn eval(&self, expr: &ast::Expr) -> Result<Value, EvalError> {
-        let mut ctx = EvalCtx::new();
+    /// Scope-aware expression evaluator. Bare identifiers and path
+    /// expressions resolve via the supplied [`Scope`] chain, falling
+    /// through to the document root. Unresolved names error with
+    /// [`EvalError::UnresolvedReference`].
+    pub(crate) fn eval_in_scope(
+        &self,
+        expr: &ast::Expr,
+        scope: &Scope<'_>,
+    ) -> Result<Value, EvalError> {
+        let mut ctx = EvalCtx::new(scope.clone());
         self.eval_in(expr, &mut ctx)
     }
 
-    fn eval_in(&self, expr: &ast::Expr, ctx: &mut EvalCtx) -> Result<Value, EvalError> {
+    /// Literal-mode evaluator for contexts that intentionally treat
+    /// bare identifiers as opaque names (block labels). Any
+    /// non-identifier expression is evaluated through the root scope.
+    pub(crate) fn eval_literal(&self, expr: &ast::Expr) -> Result<Value, EvalError> {
+        if let ast::Expr::Identifier(s) = expr {
+            return Ok(Value::Identifier(s.clone()));
+        }
+        self.eval_in_scope(expr, &Scope::root())
+    }
+
+    /// Back-compat shim — same as `eval_literal`. Used by call sites
+    /// that pre-date the scope distinction (decorator args). Bare
+    /// identifiers fall through; everything else evaluates at the
+    /// document root.
+    pub(crate) fn eval(&self, expr: &ast::Expr) -> Result<Value, EvalError> {
+        self.eval_literal(expr)
+    }
+
+    fn eval_in<'a>(&'a self, expr: &ast::Expr, ctx: &mut EvalCtx<'a>) -> Result<Value, EvalError> {
         use ast::Expr as E;
         Ok(match expr {
             E::Bool(b) => Value::Bool(*b),
@@ -2311,22 +2483,32 @@ impl Document {
                 Value::Function(FnValue::new(params, f.return_ty.clone(), f.body.clone()))
             }
             E::Identifier(name) => {
-                // Locals (let-binding scope) shadow top-level fields.
+                // Locals (let-binding scope) shadow scope-walked names.
                 if let Some(v) = ctx.lookup(name) {
                     return Ok(v.clone());
                 }
-                let fqn = self.qualified_name(name);
-                if let Some(rec) = self.symbols.lookup(&fqn)
-                    && matches!(rec.kind, SymbolKind::Field)
-                    && let Some(field) = self.field(name)
-                {
-                    return field.value().cloned().map_err(|e| e.clone());
-                }
-                // Unresolved identifiers pass through as `Value::Identifier`.
-                // Builtin arguments that need a real value will surface a
-                // type-mismatch from the `FromValue` impl; block labels (which
-                // legitimately use bare identifiers) keep working.
-                Value::Identifier(name.clone())
+                let dr = self
+                    .scope_lookup(&ctx.scope, name)
+                    .ok_or_else(|| EvalError::unresolved_reference(name, span_of(expr)))?;
+                return materialise_dataref(dr, span_of(expr));
+            }
+            E::SelfKw(span) => {
+                let dr = self.self_dataref(&ctx.scope);
+                return materialise_dataref(dr, *span);
+            }
+            E::ParentKw(span) => {
+                let dr = self.parent_dataref(&ctx.scope).ok_or_else(|| {
+                    EvalError::unresolved_reference("parent at document root", *span)
+                })?;
+                return materialise_dataref(dr, *span);
+            }
+            E::Member {
+                recv: _,
+                name: _,
+                span,
+            } => {
+                let dr = self.eval_to_dataref(expr, ctx)?;
+                return materialise_dataref(dr, *span);
             }
             E::Paren { inner, .. } => return self.eval_in(inner, ctx),
             E::Unary { op, operand, span } => {
@@ -2394,14 +2576,212 @@ impl Document {
         })
     }
 
-    /// Compose `name` with the document's file namespace into a dotted
-    /// FQN suitable for [`SymbolIndex::lookup`].
-    fn qualified_name(&self, name: &str) -> String {
-        if self.file_ns.is_empty() {
-            name.to_string()
-        } else {
-            format!("{}.{}", self.file_ns.join("."), name)
+    /// Walk a path expression and return the navigator for its
+    /// resolved target.
+    pub(crate) fn eval_to_dataref<'a>(
+        &'a self,
+        expr: &ast::Expr,
+        ctx: &EvalCtx<'a>,
+    ) -> Result<crate::data::DataRef<'a>, EvalError> {
+        use ast::Expr as E;
+        match expr {
+            E::Identifier(name) => self
+                .scope_lookup(&ctx.scope, name)
+                .ok_or_else(|| EvalError::unresolved_reference(name, span_of(expr))),
+            E::SelfKw(_) => Ok(self.self_dataref(&ctx.scope)),
+            E::ParentKw(span) => self
+                .parent_dataref(&ctx.scope)
+                .ok_or_else(|| EvalError::unresolved_reference("parent at document root", *span)),
+            E::Member { recv, name, span } => {
+                let recv_dr = self.eval_to_dataref(recv, ctx)?;
+                recv_dr.child(name).ok_or_else(|| {
+                    let full_path = format_member_path(expr);
+                    EvalError::unresolved_reference(full_path, *span)
+                })
+            }
+            E::Paren { inner, .. } => self.eval_to_dataref(inner, ctx),
+            other => Err(EvalError::not_a_reference(
+                describe_expr(other),
+                span_of(other),
+            )),
         }
+    }
+
+    /// Resolve a single name against the scope chain (innermost
+    /// frame first) and fall through to the document root.
+    pub(crate) fn scope_lookup<'a>(
+        &'a self,
+        scope: &Scope<'a>,
+        name: &str,
+    ) -> Option<crate::data::DataRef<'a>> {
+        let frames = scope.frames();
+        for i in (0..frames.len()).rev() {
+            let scope_before = Scope {
+                frames: frames[..i].to_vec().into(),
+            };
+            let block = Block {
+                ast: frames[i].ast,
+                cells: frames[i].cells,
+                doc: self,
+                kind_override: frames[i].kind_override,
+                scope: scope_before,
+            };
+            let dr = crate::data::DataRef::from_block(block);
+            if let Some(child) = dr.child(name) {
+                return Some(child);
+            }
+        }
+        self.resolve_root(name)
+    }
+
+    fn self_dataref<'a>(&'a self, scope: &Scope<'a>) -> crate::data::DataRef<'a> {
+        let frames = scope.frames();
+        if let Some(last_idx) = frames.len().checked_sub(1) {
+            let scope_before = Scope {
+                frames: frames[..last_idx].to_vec().into(),
+            };
+            let block = Block {
+                ast: frames[last_idx].ast,
+                cells: frames[last_idx].cells,
+                doc: self,
+                kind_override: frames[last_idx].kind_override,
+                scope: scope_before,
+            };
+            crate::data::DataRef::from_block(block)
+        } else {
+            crate::data::DataRef::from_document(self)
+        }
+    }
+
+    fn parent_dataref<'a>(&'a self, scope: &Scope<'a>) -> Option<crate::data::DataRef<'a>> {
+        let frames = scope.frames();
+        match frames.len() {
+            0 => None,
+            1 => Some(crate::data::DataRef::from_document(self)),
+            n => {
+                let target_idx = n - 2;
+                let scope_before = Scope {
+                    frames: frames[..target_idx].to_vec().into(),
+                };
+                let block = Block {
+                    ast: frames[target_idx].ast,
+                    cells: frames[target_idx].cells,
+                    doc: self,
+                    kind_override: frames[target_idx].kind_override,
+                    scope: scope_before,
+                };
+                Some(crate::data::DataRef::from_block(block))
+            }
+        }
+    }
+}
+
+/// Take a navigator returned from path evaluation and reduce it to a
+/// concrete `Value`. For `Field` targets, this evaluates the field
+/// (auto-deref); for any other target, it errors `NotALeaf`.
+fn materialise_dataref(dr: crate::data::DataRef<'_>, span: Span) -> Result<Value, EvalError> {
+    use crate::data::DataKind;
+    match dr.inner() {
+        DataKind::Field(f) => f.value().cloned().map_err(|e| e.clone()),
+        other => Err(EvalError::not_a_leaf(describe_datakind(other), span)),
+    }
+}
+
+fn describe_datakind(k: &crate::data::DataKind<'_>) -> &'static str {
+    use crate::data::DataKind;
+    match k {
+        DataKind::Document(_) => "document",
+        DataKind::Field(_) => "field",
+        DataKind::Block(_) => "block",
+        DataKind::BlockList(_) => "block list",
+        DataKind::Table(_) => "table",
+        DataKind::Type(_) => "type",
+        DataKind::TypeField(_) => "type field",
+        DataKind::Union(_) => "union",
+        DataKind::Variant(_) => "variant",
+        DataKind::Symbols(_) => "symbol set",
+        DataKind::Symbol(_) => "symbol",
+    }
+}
+
+fn span_of(expr: &ast::Expr) -> Span {
+    use ast::Expr as E;
+    match expr {
+        E::Bool(_)
+        | E::I8(_)
+        | E::I16(_)
+        | E::I32(_)
+        | E::I64(_)
+        | E::I128(_)
+        | E::Isize(_)
+        | E::U8(_)
+        | E::U16(_)
+        | E::U32(_)
+        | E::U64(_)
+        | E::U128(_)
+        | E::Usize(_)
+        | E::F32(_)
+        | E::F64(_)
+        | E::Utf8(_)
+        | E::Ascii(_)
+        | E::Utf16(_)
+        | E::Utf32(_)
+        | E::Identifier(_)
+        | E::Symbol(_)
+        | E::None => Span::new(0, 0),
+        E::Function(f) => f.span,
+        E::Call { span, .. }
+        | E::Binary { span, .. }
+        | E::Unary { span, .. }
+        | E::Block { span, .. }
+        | E::Paren { span, .. }
+        | E::ListLit { span, .. }
+        | E::Member { span, .. } => *span,
+        E::SelfKw(s) | E::ParentKw(s) => *s,
+    }
+}
+
+fn format_member_path(expr: &ast::Expr) -> String {
+    use ast::Expr as E;
+    fn walk(e: &ast::Expr, out: &mut String) {
+        match e {
+            E::Identifier(s) => out.push_str(s),
+            E::SelfKw(_) => out.push_str("self"),
+            E::ParentKw(_) => out.push_str("parent"),
+            E::Member { recv, name, .. } => {
+                walk(recv, out);
+                out.push('.');
+                out.push_str(name);
+            }
+            _ => out.push_str("<expr>"),
+        }
+    }
+    let mut s = String::new();
+    walk(expr, &mut s);
+    s
+}
+
+fn describe_expr(expr: &ast::Expr) -> &'static str {
+    use ast::Expr as E;
+    match expr {
+        E::Bool(_) => "bool",
+        E::I8(_) | E::I16(_) | E::I32(_) | E::I64(_) | E::I128(_) | E::Isize(_) => "integer",
+        E::U8(_) | E::U16(_) | E::U32(_) | E::U64(_) | E::U128(_) | E::Usize(_) => "integer",
+        E::F32(_) | E::F64(_) => "float",
+        E::Utf8(_) | E::Ascii(_) | E::Utf16(_) | E::Utf32(_) => "string",
+        E::Identifier(_) => "identifier",
+        E::Symbol(_) => "symbol",
+        E::None => "none",
+        E::Function(_) => "function literal",
+        E::Call { .. } => "call",
+        E::Binary { .. } => "binary expression",
+        E::Unary { .. } => "unary expression",
+        E::Block { .. } => "block expression",
+        E::Paren { .. } => "parenthesised expression",
+        E::ListLit { .. } => "list literal",
+        E::Member { .. } => "member access",
+        E::SelfKw(_) => "self",
+        E::ParentKw(_) => "parent",
     }
 }
 
@@ -3228,11 +3608,16 @@ mod tests {
     }
 
     #[test]
-    fn reference_value_resolves() {
+    fn unresolved_bare_identifier_in_field_rhs_errors() {
+        // Bare identifiers in expression position must resolve via
+        // the scope chain or the document root, otherwise we surface
+        // an UnresolvedReference. This replaces the old
+        // Value::Identifier pass-through behaviour.
         let doc = open("owner = wil_taylor");
-        assert_eq!(
-            doc.field("owner").unwrap().value().unwrap(),
-            &Value::Identifier("wil_taylor".into())
+        let err = doc.field("owner").unwrap().value().unwrap_err();
+        assert!(
+            matches!(err, EvalError::UnresolvedReference { .. }),
+            "{err:?}"
         );
     }
 
@@ -4856,5 +5241,160 @@ mod tests {
         let svc = doc.type_decl("Service").unwrap();
         // Only the string entry survives.
         assert_eq!(svc.required_children(), vec!["config".to_string()]);
+    }
+
+    // ─── References (scope-aware lookup + parent/self) ────────────────
+
+    fn open_refs() -> Document {
+        Document::open(
+            r#"
+            @table("user") type User { name: utf8  age: u32 }
+            @block("db") type DB {
+              @children("user") users: list<User>
+              active: &User
+              pinned: &User
+            }
+            db production {
+              users:
+                | "alice" | 30 |
+                | "bob"   | 25 |
+                | "cara"  | 42 |
+              active = users.alice
+              pinned = users.bob
+            }
+            "#,
+            "refs",
+        )
+        .expect("open refs")
+    }
+
+    #[test]
+    fn parser_accepts_self_and_parent_in_expression_position() {
+        let doc = Document::open(
+            r#"
+            anchor = 1
+            x = parent
+            y = self
+            "#,
+            "test",
+        )
+        .expect("parses");
+        // Just confirm the field eval path triggers — `parent` at
+        // doc root errors, `self` resolves to the document.
+        let parent_err = doc.field("x").unwrap().value().unwrap_err();
+        assert!(
+            matches!(parent_err, EvalError::UnresolvedReference { .. }),
+            "{parent_err:?}"
+        );
+        // `self` at the doc root yields the document, which is not a
+        // leaf so materialise_dataref returns NotALeaf.
+        let self_err = doc.field("y").unwrap().value().unwrap_err();
+        assert!(
+            matches!(self_err, EvalError::NotALeaf { .. }),
+            "{self_err:?}"
+        );
+    }
+
+    #[test]
+    fn parent_keyword_remains_valid_as_type_field_name() {
+        // Existing source like `type User { parent: &User? }` must
+        // keep parsing — `parent`/`self` are contextual keywords,
+        // only special in expression atom position.
+        let doc = Document::open(r#"type User { parent: &User? }"#, "test").expect("parses");
+        let user = doc.type_decl("User").unwrap();
+        assert!(user.field("parent").is_some());
+    }
+
+    #[test]
+    fn ref_field_reference_returns_dataref_navigator() {
+        let doc = open_refs();
+        let active = doc.get("db.active").expect("db.active present");
+        let target = active
+            .reference()
+            .expect("reference() returns Some for &T field")
+            .expect("ref resolves");
+        // The target is the synthesised row block for "alice".
+        let labels = target.as_block().unwrap().labels().unwrap();
+        assert_eq!(labels.first(), Some(&Value::Utf8("alice".into())));
+    }
+
+    #[test]
+    fn ref_field_value_auto_derefs_to_target_leaf() {
+        // `pinned = bob` resolves via the scope chain to the bob row
+        // (a Block), which isn't a leaf, so `.value()` errors. This
+        // is the expected behaviour for `&User` — host code should
+        // use `.reference()` to navigate further.
+        let doc = open_refs();
+        let pinned = doc.get("db.pinned").expect("db.pinned present");
+        let err = pinned.value().unwrap_err();
+        assert!(matches!(err, EvalError::NotALeaf { .. }), "{err:?}");
+    }
+
+    #[test]
+    fn non_ref_field_keeps_value_path() {
+        // `count = 3` is a plain leaf assignment; no reference.
+        let doc = Document::open("count = 3", "t").unwrap();
+        let count = doc.field("count").unwrap();
+        assert_eq!(count.value().unwrap(), &Value::I64(3));
+        assert!(count.reference().is_none());
+    }
+
+    #[test]
+    fn unresolved_member_path_errors_only_when_value_called() {
+        // `&User` field whose RHS dotted path points to nothing.
+        let doc = Document::open(
+            r#"
+            @block("db") type DB { dangling: &Sentinel }
+            type Sentinel {}
+            db x { dangling = somewhere.nowhere }
+            "#,
+            "t",
+        )
+        .expect("opens (validation is lazy)");
+        let db = doc.block("db").unwrap();
+        let dangling = db.field("dangling").unwrap();
+        let r = dangling.reference().expect("&T field");
+        match r {
+            Ok(_) => panic!("expected UnresolvedReference"),
+            Err(e) => assert!(matches!(e, EvalError::UnresolvedReference { .. }), "{e:?}"),
+        }
+    }
+
+    #[test]
+    fn self_inside_block_returns_current_block_dataref() {
+        // `self` inside a block resolves to the enclosing block.
+        // Reading a child of that DataRef should produce the same
+        // value as reading the child directly.
+        let doc = Document::open(
+            r#"
+            @block("svc") type Svc { port: u32  echo: &Svc }
+            svc web { port = 8080  echo = self }
+            "#,
+            "t",
+        )
+        .expect("opens");
+        let svc = doc.get("svc").unwrap();
+        let echo = svc.child("echo").unwrap();
+        let target = echo.reference().unwrap().unwrap();
+        // self → enclosing svc block; reading port through it.
+        let port = target.child("port").unwrap().value().unwrap();
+        assert_eq!(port, Value::I64(8080));
+    }
+
+    #[test]
+    fn parent_in_nested_block_walks_up_one_level() {
+        let doc = Document::open(
+            r#"
+            @block("outer") type Outer { name: utf8 @child("inner") inner: Inner? }
+            @block("inner") type Inner { up: &Outer }
+            outer top { name = "the-top"  inner { up = parent } }
+            "#,
+            "t",
+        )
+        .expect("opens");
+        let up = doc.get("outer.inner.up").unwrap();
+        let target = up.reference().unwrap().unwrap();
+        let name = target.child("name").unwrap().value().unwrap();
+        assert_eq!(name, Value::Utf8("the-top".into()));
     }
 }

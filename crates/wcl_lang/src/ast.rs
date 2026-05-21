@@ -79,6 +79,14 @@ pub(crate) enum Expr {
         elements: Vec<Expr>,
         span: Span,
     },
+
+    SelfKw(Span),
+    ParentKw(Span),
+    Member {
+        recv: Box<Expr>,
+        name: String,
+        span: Span,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]

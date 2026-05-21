@@ -427,6 +427,33 @@ impl<'a> Parser<'a> {
                 span = call_span;
                 continue;
             }
+            // Postfix member access: `expr.IDENT`.
+            if matches!(kind, TokenKind::Dot) {
+                const MEMBER_BP: u8 = 15;
+                if MEMBER_BP < min_bp {
+                    break;
+                }
+                self.bump()?; // '.'
+                let name_tok = self.bump()?;
+                let name = match name_tok.kind {
+                    TokenKind::Ident(s) => s,
+                    other => {
+                        return Err(self.err(
+                            format!("expected identifier after '.', found {}", describe(&other)),
+                            name_tok.span,
+                            "expected identifier",
+                        ));
+                    }
+                };
+                let new_span = Span::new(span.start, name_tok.span.end);
+                lhs = Expr::Member {
+                    recv: Box::new(lhs),
+                    name,
+                    span: new_span,
+                };
+                span = new_span;
+                continue;
+            }
             let Some((lbp, rbp, op)) = bin_op_info(&kind) else {
                 break;
             };
@@ -487,6 +514,24 @@ impl<'a> Parser<'a> {
             && matches!(self.peek2()?.kind, TokenKind::LParen)
         {
             return self.parse_function_literal();
+        }
+        // Contextual keywords `parent` and `self` only act as keywords
+        // in expression position. Anywhere else they remain regular
+        // identifiers, so existing source (e.g. `parent: &User?` field
+        // declarations) keeps working.
+        let contextual_kw = match &self.peek()?.kind {
+            TokenKind::Ident(s) if s == "parent" => Some(false), // false = parent
+            TokenKind::Ident(s) if s == "self" => Some(true),    // true = self
+            _ => None,
+        };
+        if let Some(is_self) = contextual_kw {
+            let tok = self.bump()?;
+            let expr = if is_self {
+                Expr::SelfKw(tok.span)
+            } else {
+                Expr::ParentKw(tok.span)
+            };
+            return Ok((expr, tok.span));
         }
         let kind = self.peek()?.kind.clone();
         match kind {

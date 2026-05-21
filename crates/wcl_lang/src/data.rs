@@ -1,5 +1,11 @@
 //! Lazy data-access handle into a [`Document`].
 //!
+//! `DataRef::child(name)` resolves the dotted-path step in
+//! `Document::get` (and in reference-field evaluation). For
+//! `BlockList` and `Table` variants we treat the row's first label
+//! as a primary-key column, so `users.alice` walks the row whose
+//! `labels[0]` reads back as `"alice"`.
+//!
 //! `DataRef` is a thin borrowed wrapper over the document's view types.
 //! Each navigation step (`child`, `get`) only pays the cost of resolving
 //! that step — subtree contents stay unmaterialised until the host
@@ -8,10 +14,18 @@
 //! reads of the same leaf are O(1).
 
 use crate::doc::{
-    Block, Field, SymbolEntry, SymbolSetDecl, TypeDecl, TypeField, UnionDecl, UnionVariant,
+    Block, Document, Field, SymbolEntry, SymbolSetDecl, TypeDecl, TypeField, UnionDecl,
+    UnionVariant,
 };
 use crate::error::EvalError;
 use crate::value::Value;
+
+fn label_matches(v: &Value, name: &str) -> bool {
+    match v {
+        Value::Utf8(s) | Value::Ascii(s) | Value::Identifier(s) => s == name,
+        _ => false,
+    }
+}
 
 /// Lazy navigator into a [`Document`]. Acquire one with
 /// [`Document::get`](crate::Document::get) or by wrapping an existing
@@ -24,6 +38,10 @@ pub struct DataRef<'a> {
 
 #[derive(Clone)]
 pub enum DataKind<'a> {
+    /// The document itself — produced by `self` at the top-level and
+    /// by scope fallback. `child(name)` delegates to the same
+    /// resolution that `Document::get` uses.
+    Document(&'a Document),
     Field(Field<'a>),
     Block(Block<'a>),
     /// A list of `Block`s — produced by schema fields decorated with
@@ -68,9 +86,13 @@ impl<'a> DataRef<'a> {
     pub fn from_table(blocks: Vec<Block<'a>>) -> Self {
         Self::new(DataKind::Table(blocks))
     }
+    pub fn from_document(d: &'a Document) -> Self {
+        Self::new(DataKind::Document(d))
+    }
 
     pub fn kind(&self) -> &'static str {
         match &self.inner {
+            DataKind::Document(_) => "document",
             DataKind::Field(_) => "field",
             DataKind::Block(_) => "block",
             DataKind::BlockList(_) => "block_list",
@@ -171,11 +193,23 @@ impl<'a> DataRef<'a> {
     /// - `Symbol` has no children; `None`.
     pub fn child(&self, name: &str) -> Option<DataRef<'a>> {
         match &self.inner {
-            DataKind::Field(_)
-            | DataKind::TypeField(_)
-            | DataKind::Symbol(_)
-            | DataKind::BlockList(_)
-            | DataKind::Table(_) => None,
+            DataKind::Field(_) | DataKind::TypeField(_) | DataKind::Symbol(_) => None,
+            DataKind::BlockList(v) | DataKind::Table(v) => {
+                // Address a row/block by its first label, comparing
+                // against `Utf8`, `Ascii`, and `Identifier`. This
+                // makes `users.alice` work for both
+                // `@children`-yielded BlockLists and `@table` rows.
+                for b in v {
+                    if let Ok(labels) = b.labels()
+                        && let Some(first) = labels.first()
+                        && label_matches(first, name)
+                    {
+                        return Some(DataRef::from_block(b.clone()));
+                    }
+                }
+                None
+            }
+            DataKind::Document(d) => d.resolve_root(name),
             DataKind::Block(b) => {
                 // Schema-aware first: a schema'd block projects names
                 // through its declared `@inline` / `@child` /
@@ -222,11 +256,22 @@ impl<'a> DataRef<'a> {
         }
     }
 
+    /// For a `&T`-typed field, return the lazy navigator pointing at
+    /// the referenced target. See [`Field::reference`] for the
+    /// distinction between the three possible outcomes.
+    pub fn reference(&self) -> Option<Result<DataRef<'a>, EvalError>> {
+        match &self.inner {
+            DataKind::Field(f) => f.reference(),
+            _ => None,
+        }
+    }
+
     /// Span of the underlying AST node, useful for diagnostics.
     /// `BlockList` returns the span of its first block (or
     /// `Span::default()` when empty).
     pub fn span(&self) -> crate::ast::Span {
         match &self.inner {
+            DataKind::Document(_) => crate::ast::Span::new(0, 0),
             DataKind::Field(f) => f.span(),
             DataKind::Block(b) => b.span(),
             DataKind::BlockList(v) | DataKind::Table(v) => v
@@ -250,13 +295,13 @@ impl<'a> DataRef<'a> {
     /// view back without re-matching.
     pub fn as_field(&self) -> Option<Field<'a>> {
         match &self.inner {
-            DataKind::Field(f) => Some(*f),
+            DataKind::Field(f) => Some(f.clone()),
             _ => None,
         }
     }
     pub fn as_block(&self) -> Option<Block<'a>> {
         match &self.inner {
-            DataKind::Block(b) => Some(*b),
+            DataKind::Block(b) => Some(b.clone()),
             _ => None,
         }
     }
@@ -319,7 +364,7 @@ impl<'a> DataRef<'a> {
                 if !projected.is_empty() {
                     Box::new(projected.into_iter())
                 } else {
-                    let bb = *b;
+                    let bb = b.clone();
                     Box::new(
                         bb.fields()
                             .map(DataRef::from_field)
@@ -346,9 +391,10 @@ impl<'a> DataRef<'a> {
                 let s = *s;
                 Box::new(s.symbols().map(|e| DataRef::new(DataKind::Symbol(e))))
             }
-            DataKind::Field(_) | DataKind::TypeField(_) | DataKind::Symbol(_) => {
-                Box::new(std::iter::empty())
-            }
+            DataKind::Document(_)
+            | DataKind::Field(_)
+            | DataKind::TypeField(_)
+            | DataKind::Symbol(_) => Box::new(std::iter::empty()),
         }
     }
 }

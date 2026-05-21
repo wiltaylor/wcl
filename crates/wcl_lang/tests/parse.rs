@@ -586,3 +586,36 @@ fn tables_example_resolves_via_schema() {
     let ages = users.column("age").unwrap();
     assert_eq!(ages, vec![Value::I64(30), Value::I64(25), Value::I64(42)]);
 }
+
+#[test]
+fn references_example_resolves_via_scope() {
+    let path = examples_dir().join("references.wcl");
+    let doc = Document::from_file(&path).expect("fixture parses");
+
+    // `active = users.alice` → row block whose first label is "alice".
+    let active_ref = doc
+        .get("db.active")
+        .expect("db.active present")
+        .reference()
+        .expect("&User field exposes reference()")
+        .expect("active resolves");
+    let labels = active_ref.as_block().unwrap().labels().unwrap();
+    assert_eq!(labels.first(), Some(&Value::Utf8("alice".into())));
+
+    // `pinned = users.bob` → row whose age column is 25.
+    let pinned_ref = doc
+        .get("db.pinned")
+        .expect("db.pinned present")
+        .reference()
+        .expect("&User field exposes reference()")
+        .expect("pinned resolves");
+    let age = pinned_ref
+        .as_block()
+        .unwrap()
+        .labels()
+        .unwrap()
+        .get(1)
+        .cloned()
+        .unwrap();
+    assert_eq!(age, Value::I64(25));
+}

@@ -1,0 +1,30 @@
+// References: `&T` fields hold a lazy navigator into the document,
+// resolved through the field's lexical scope (innermost block out,
+// then the document root). `self` and `parent` walk upward.
+
+@table("user") type User {
+  name: utf8
+  age:  u32
+}
+
+@block("db") type DB {
+  @children("user") users: list<User>
+  active: &User
+  pinned: &User
+}
+
+// A top-level value, addressable by bare identifier from any scope.
+fallback_user = "guest"
+
+db production {
+  users:
+    | "alice" | 30 |
+    | "bob"   | 25 |
+    | "cara"  | 42 |
+
+  // Dotted-path lookup through the enclosing block's children.
+  // The scope chain finds `users` inside this block; `.alice`
+  // matches the row whose first label is "alice".
+  active = users.alice
+  pinned = users.bob
+}

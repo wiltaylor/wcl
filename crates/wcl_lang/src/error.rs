@@ -136,6 +136,22 @@ pub enum EvalError {
         #[label("schema violation")]
         span: SourceSpan,
     },
+
+    #[error("unresolved reference '{path}'")]
+    #[diagnostic(code(wcl::eval::unresolved_reference))]
+    UnresolvedReference {
+        path: String,
+        #[label("does not resolve")]
+        span: SourceSpan,
+    },
+
+    #[error("expected a reference, got {kind}")]
+    #[diagnostic(code(wcl::eval::not_a_reference))]
+    NotAReference {
+        kind: String,
+        #[label("not a reference")]
+        span: SourceSpan,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -232,6 +248,20 @@ impl EvalError {
 
     pub(crate) fn non_callable(span: crate::ast::Span) -> Self {
         Self::NonCallable {
+            span: span_to_miette(span),
+        }
+    }
+
+    pub(crate) fn unresolved_reference(path: impl Into<String>, span: crate::ast::Span) -> Self {
+        Self::UnresolvedReference {
+            path: path.into(),
+            span: span_to_miette(span),
+        }
+    }
+
+    pub(crate) fn not_a_reference(kind: impl Into<String>, span: crate::ast::Span) -> Self {
+        Self::NotAReference {
+            kind: kind.into(),
             span: span_to_miette(span),
         }
     }
