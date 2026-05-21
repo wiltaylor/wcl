@@ -7,7 +7,7 @@ use miette::{NamedSource, SourceSpan};
 use crate::ast::{self, Span};
 use crate::error::{EvalError, ParseError};
 use crate::parser::Parser;
-use crate::value::Value;
+use crate::value::{TypeRef, Value};
 
 #[derive(Debug)]
 struct FieldCell {
@@ -28,6 +28,7 @@ impl FieldCell {
 enum ItemCells {
     Field(FieldCell),
     Block(BlockCells),
+    TypeDecl,
 }
 
 #[derive(Debug)]
@@ -42,6 +43,7 @@ impl BlockCells {
             .map(|item| match item {
                 ast::Item::Field(_) => ItemCells::Field(FieldCell::new()),
                 ast::Item::Block(b) => ItemCells::Block(BlockCells::build(&b.items)),
+                ast::Item::TypeDecl(_) => ItemCells::TypeDecl,
             })
             .collect();
         Self { items: cells }
@@ -89,6 +91,68 @@ impl Document {
 
     pub fn blocks(&self) -> impl Iterator<Item = Block<'_>> {
         iter_blocks(&self.ast.items, &self.cells.items)
+    }
+
+    pub fn type_decl(&self, name: &str) -> Option<TypeDecl<'_>> {
+        self.ast.items.iter().find_map(|item| match item {
+            ast::Item::TypeDecl(t) if t.name == name => Some(TypeDecl { ast: t }),
+            _ => None,
+        })
+    }
+
+    pub fn type_decls(&self) -> impl Iterator<Item = TypeDecl<'_>> {
+        self.ast.items.iter().filter_map(|item| match item {
+            ast::Item::TypeDecl(t) => Some(TypeDecl { ast: t }),
+            _ => None,
+        })
+    }
+}
+
+pub struct TypeDecl<'a> {
+    ast: &'a ast::TypeDecl,
+}
+
+impl<'a> TypeDecl<'a> {
+    pub fn name(&self) -> &'a str {
+        &self.ast.name
+    }
+
+    pub fn span(&self) -> Span {
+        self.ast.span
+    }
+
+    pub fn fields(&self) -> impl Iterator<Item = TypeField<'a>> {
+        self.ast.fields.iter().map(|f| TypeField { ast: f })
+    }
+
+    pub fn field(&self, name: &str) -> Option<TypeField<'a>> {
+        self.ast
+            .fields
+            .iter()
+            .find(|f| f.name == name)
+            .map(|f| TypeField { ast: f })
+    }
+}
+
+pub struct TypeField<'a> {
+    ast: &'a ast::TypeField,
+}
+
+impl<'a> TypeField<'a> {
+    pub fn name(&self) -> &'a str {
+        &self.ast.name
+    }
+
+    pub fn span(&self) -> Span {
+        self.ast.span
+    }
+
+    pub fn optional(&self) -> bool {
+        self.ast.optional
+    }
+
+    pub fn type_ref(&self) -> &'a TypeRef {
+        &self.ast.ty
     }
 }
 
@@ -234,6 +298,8 @@ fn eval_expr(e: &ast::Expr) -> Result<Value, EvalError> {
         ast::Expr::Ascii(s) => Value::Ascii(s.clone()),
         ast::Expr::Utf16(v) => Value::Utf16(v.clone()),
         ast::Expr::Utf32(v) => Value::Utf32(v.clone()),
+        ast::Expr::Identifier(s) => Value::Identifier(s.clone()),
+        ast::Expr::None => Value::None,
     })
 }
 
@@ -415,6 +481,74 @@ mod tests {
         );
         let kinds: Vec<_> = doc.blocks().map(|b| b.kind().to_string()).collect();
         assert_eq!(kinds, vec!["b".to_string(), "d".to_string()]);
+    }
+
+    #[test]
+    fn identifier_value_resolves() {
+        let doc = open("owner = wil_taylor");
+        assert_eq!(
+            doc.field("owner").unwrap().value().unwrap(),
+            &Value::Identifier("wil_taylor".into())
+        );
+    }
+
+    #[test]
+    fn none_value_resolves() {
+        let doc = open("maybe = none");
+        assert_eq!(doc.field("maybe").unwrap().value().unwrap(), &Value::None);
+    }
+
+    #[test]
+    fn type_decls_are_queryable() {
+        use crate::value::BuiltinType;
+        let doc = open(
+            r#"
+            type User {
+              id:   identifier
+              name: utf8
+              bio:  utf8?
+            }
+            type Empty {}
+            "#,
+        );
+        assert_eq!(doc.type_decls().count(), 2);
+        let user = doc.type_decl("User").expect("User type");
+        let fields: Vec<_> = user.fields().collect();
+        assert_eq!(fields.len(), 3);
+        assert_eq!(fields[0].name(), "id");
+        assert_eq!(
+            fields[0].type_ref(),
+            &TypeRef::Builtin(BuiltinType::Identifier)
+        );
+        assert!(!fields[0].optional());
+        assert_eq!(fields[2].name(), "bio");
+        assert_eq!(fields[2].type_ref(), &TypeRef::Builtin(BuiltinType::Utf8));
+        assert!(fields[2].optional());
+        assert!(doc.type_decl("Empty").unwrap().fields().count() == 0);
+    }
+
+    #[test]
+    fn type_decl_named_field_lookup() {
+        let doc = open("type Point { x: i32 y: i32 }");
+        let t = doc.type_decl("Point").unwrap();
+        assert!(t.field("x").is_some());
+        assert!(t.field("y").is_some());
+        assert!(t.field("z").is_none());
+    }
+
+    #[test]
+    fn type_decls_dont_appear_in_field_or_block_iteration() {
+        let doc = open(
+            r#"
+            type User { name: utf8 }
+            count = 1
+            svc {}
+            "#,
+        );
+        let field_names: Vec<_> = doc.fields().map(|f| f.name().to_string()).collect();
+        assert_eq!(field_names, vec!["count".to_string()]);
+        let block_kinds: Vec<_> = doc.blocks().map(|b| b.kind().to_string()).collect();
+        assert_eq!(block_kinds, vec!["svc".to_string()]);
     }
 
     #[test]

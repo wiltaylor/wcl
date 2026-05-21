@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
-use wcl_lang::{Block, Document, Field, Value};
+use wcl_lang::{Block, Document, Field, TypeDecl, TypeRef, Value};
 
 #[derive(Parser)]
 #[command(name = "wcl", version, about = "WCL command-line interface")]
@@ -55,11 +55,31 @@ fn main() -> ExitCode {
 }
 
 fn dump_document(doc: &Document, out: &mut String) {
+    for t in doc.type_decls() {
+        dump_type_decl(&t, out);
+    }
     for f in doc.fields() {
         dump_field(&f, 0, out);
     }
     for b in doc.blocks() {
         dump_block(&b, 0, out);
+    }
+}
+
+fn dump_type_decl(t: &TypeDecl<'_>, out: &mut String) {
+    writeln!(out, "type {} {{", t.name()).unwrap();
+    for field in t.fields() {
+        let ty = type_repr(field.type_ref());
+        let q = if field.optional() { "?" } else { "" };
+        writeln!(out, "  {}: {ty}{q}", field.name()).unwrap();
+    }
+    writeln!(out, "}}").unwrap();
+}
+
+fn type_repr(t: &TypeRef) -> String {
+    match t {
+        TypeRef::Builtin(b) => b.name().to_string(),
+        TypeRef::Named(s) => s.clone(),
     }
 }
 
@@ -122,6 +142,9 @@ fn value_repr(v: &Value) -> String {
             let s: String = chars.iter().collect();
             format!("utf32\"{}\"", escape_string(&s))
         }
+
+        Value::Identifier(s) => s.clone(),
+        Value::None => "none".to_string(),
     }
 }
 

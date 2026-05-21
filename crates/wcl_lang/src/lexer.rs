@@ -7,7 +7,10 @@ pub enum TokenKind {
     Bool(bool),
     Number(NumberLit),
     Str(StringLit),
+    None,
     Eq,
+    Colon,
+    Question,
     LBrace,
     RBrace,
     Eof,
@@ -80,6 +83,20 @@ impl<'a> Lexer<'a> {
                 self.pos += 1;
                 Ok(Token {
                     kind: TokenKind::Eq,
+                    span: Span::new(start, self.pos),
+                })
+            }
+            b':' => {
+                self.pos += 1;
+                Ok(Token {
+                    kind: TokenKind::Colon,
+                    span: Span::new(start, self.pos),
+                })
+            }
+            b'?' => {
+                self.pos += 1;
+                Ok(Token {
+                    kind: TokenKind::Question,
                     span: Span::new(start, self.pos),
                 })
             }
@@ -443,6 +460,7 @@ impl<'a> Lexer<'a> {
         let kind = match text {
             "true" => TokenKind::Bool(true),
             "false" => TokenKind::Bool(false),
+            "none" => TokenKind::None,
             _ => TokenKind::Ident(text.to_string()),
         };
         Ok(Token { kind, span })
@@ -695,6 +713,26 @@ mod tests {
         assert!(matches!(lex.next_token().unwrap().kind, TokenKind::Eq));
         let err = lex.next_token().unwrap_err();
         assert!(err.message.contains("unterminated"));
+    }
+
+    #[test]
+    fn punctuation_colon_and_question() {
+        assert_eq!(
+            tokens("name: utf8?"),
+            vec![
+                TokenKind::Ident("name".into()),
+                TokenKind::Colon,
+                TokenKind::Ident("utf8".into()),
+                TokenKind::Question,
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn none_keyword_lexes_distinctly_from_ident() {
+        assert_eq!(one("none"), TokenKind::None);
+        assert_eq!(one("nonexistent"), TokenKind::Ident("nonexistent".into()));
     }
 
     #[test]

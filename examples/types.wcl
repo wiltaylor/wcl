@@ -35,3 +35,18 @@ banner  = utf8"hi"
 name    = ascii"alpha"
 hello16 = utf16"hello"
 hello32 = utf32"hello"
+
+# Type declarations
+type User {
+  id:     identifier
+  name:   utf8
+  age:    u32?
+  bio:    utf8?
+  parent: User?
+}
+
+type Empty {}
+
+# Identifier and none values
+owner = wil_taylor
+maybe = none

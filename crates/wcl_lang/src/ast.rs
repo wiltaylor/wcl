@@ -43,6 +43,9 @@ pub(crate) enum Expr {
     Ascii(String),
     Utf16(Vec<u16>),
     Utf32(Vec<char>),
+
+    Identifier(String),
+    None,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -61,9 +64,25 @@ pub(crate) struct Block {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub(crate) struct TypeDecl {
+    pub name: String,
+    pub fields: Vec<TypeField>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct TypeField {
+    pub name: String,
+    pub ty: crate::value::TypeRef,
+    pub optional: bool,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Item {
     Field(Field),
     Block(Block),
+    TypeDecl(TypeDecl),
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]

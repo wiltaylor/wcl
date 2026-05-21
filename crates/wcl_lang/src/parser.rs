@@ -1,14 +1,16 @@
 use miette::{NamedSource, SourceSpan};
 
-use crate::ast::{Block, Expr, Field, Item, Source, Span};
+use crate::ast::{Block, Expr, Field, Item, Source, Span, TypeDecl, TypeField};
 use crate::error::ParseError;
 use crate::lexer::{LexError, Lexer, NumberLit, StringLit, Token, TokenKind};
+use crate::value::{BuiltinType, TypeRef};
 
 pub struct Parser<'a> {
     src: &'a str,
     file: String,
     lexer: Lexer<'a>,
     peeked: Option<Token>,
+    peeked2: Option<Token>,
 }
 
 impl<'a> Parser<'a> {
@@ -18,6 +20,7 @@ impl<'a> Parser<'a> {
             file: file.into(),
             lexer: Lexer::new(src),
             peeked: None,
+            peeked2: None,
         }
     }
 
@@ -30,6 +33,14 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_item(&mut self) -> Result<Item, ParseError> {
+        // Two-token lookahead for `type IDENT { ... }` declarations.
+        if let TokenKind::Ident(first) = &self.peek()?.kind
+            && first == "type"
+            && matches!(self.peek2()?.kind, TokenKind::Ident(_))
+        {
+            return self.parse_type_decl();
+        }
+
         let tok = self.bump()?;
         let span_start = tok.span.start;
         let name = match tok.kind {
@@ -58,6 +69,100 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn parse_type_decl(&mut self) -> Result<Item, ParseError> {
+        let type_kw = self.bump()?; // 'type'
+        let start = type_kw.span.start;
+        let name_tok = self.bump()?;
+        let TokenKind::Ident(name) = name_tok.kind else {
+            return Err(self.err(
+                "expected type name after 'type'",
+                name_tok.span,
+                "expected identifier",
+            ));
+        };
+        let lbrace = self.bump()?;
+        if !matches!(lbrace.kind, TokenKind::LBrace) {
+            return Err(self.err(
+                format!(
+                    "expected '{{' after type name '{name}', found {}",
+                    describe(&lbrace.kind)
+                ),
+                lbrace.span,
+                "expected '{'",
+            ));
+        }
+        let mut fields = Vec::new();
+        loop {
+            let p = self.peek()?;
+            match p.kind {
+                TokenKind::RBrace => break,
+                TokenKind::Eof => {
+                    let span = p.span;
+                    return Err(self.err(
+                        "unexpected end of file inside type declaration",
+                        span,
+                        "expected '}'",
+                    ));
+                }
+                _ => fields.push(self.parse_type_field()?),
+            }
+        }
+        let rbrace = self.bump()?;
+        Ok(Item::TypeDecl(TypeDecl {
+            name,
+            fields,
+            span: Span::new(start, rbrace.span.end),
+        }))
+    }
+
+    fn parse_type_field(&mut self) -> Result<TypeField, ParseError> {
+        let name_tok = self.bump()?;
+        let field_start = name_tok.span.start;
+        let TokenKind::Ident(field_name) = name_tok.kind else {
+            return Err(self.err(
+                format!("expected field name, found {}", describe(&name_tok.kind)),
+                name_tok.span,
+                "expected identifier",
+            ));
+        };
+        let colon = self.bump()?;
+        if !matches!(colon.kind, TokenKind::Colon) {
+            return Err(self.err(
+                format!(
+                    "expected ':' after field name '{field_name}', found {}",
+                    describe(&colon.kind)
+                ),
+                colon.span,
+                "expected ':'",
+            ));
+        }
+        let ty_tok = self.bump()?;
+        let TokenKind::Ident(ty_name) = ty_tok.kind else {
+            return Err(self.err(
+                format!("expected type name, found {}", describe(&ty_tok.kind)),
+                ty_tok.span,
+                "expected type",
+            ));
+        };
+        let ty = match BuiltinType::from_name(&ty_name) {
+            Some(b) => TypeRef::Builtin(b),
+            None => TypeRef::Named(ty_name),
+        };
+        let mut optional = false;
+        let mut end = ty_tok.span.end;
+        if matches!(self.peek()?.kind, TokenKind::Question) {
+            let q = self.bump()?;
+            optional = true;
+            end = q.span.end;
+        }
+        Ok(TypeField {
+            name: field_name,
+            ty,
+            optional,
+            span: Span::new(field_start, end),
+        })
+    }
+
     fn parse_field(&mut self, name: String, start: usize) -> Result<Item, ParseError> {
         self.bump()?; // consume '='
         let val_tok = self.bump()?;
@@ -66,11 +171,13 @@ impl<'a> Parser<'a> {
             TokenKind::Number(n) => number_to_expr(n),
             TokenKind::Str(s) => string_to_expr(s),
             TokenKind::Bool(b) => Expr::Bool(b),
+            TokenKind::Ident(s) => Expr::Identifier(s),
+            TokenKind::None => Expr::None,
             other => {
                 return Err(self.err(
                     format!("expected value, found {}", describe(&other)),
                     val_tok.span,
-                    "expected string, number, or boolean",
+                    "expected value",
                 ));
             }
         };
@@ -137,8 +244,17 @@ impl<'a> Parser<'a> {
         Ok(self.peeked.as_ref().expect("just set"))
     }
 
+    fn peek2(&mut self) -> Result<&Token, ParseError> {
+        self.peek()?;
+        if self.peeked2.is_none() {
+            self.peeked2 = Some(self.next_lex()?);
+        }
+        Ok(self.peeked2.as_ref().expect("just set"))
+    }
+
     fn bump(&mut self) -> Result<Token, ParseError> {
         if let Some(t) = self.peeked.take() {
+            self.peeked = self.peeked2.take();
             Ok(t)
         } else {
             self.next_lex()
@@ -171,7 +287,10 @@ fn describe(t: &TokenKind) -> String {
         TokenKind::Str(_) => "string".to_string(),
         TokenKind::Number(_) => "number".to_string(),
         TokenKind::Bool(_) => "boolean".to_string(),
+        TokenKind::None => "'none'".to_string(),
         TokenKind::Eq => "'='".to_string(),
+        TokenKind::Colon => "':'".to_string(),
+        TokenKind::Question => "'?'".to_string(),
         TokenKind::LBrace => "'{'".to_string(),
         TokenKind::RBrace => "'}'".to_string(),
         TokenKind::Eof => "end of file".to_string(),
@@ -361,5 +480,106 @@ mod tests {
         let s = parse(src);
         let f = field(&s.items, "name");
         assert_eq!(&src[f.span.start..f.span.end], src);
+    }
+
+    fn type_decls(items: &[Item]) -> Vec<&TypeDecl> {
+        items
+            .iter()
+            .filter_map(|i| match i {
+                Item::TypeDecl(t) => Some(t),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn parse_simple_type_declaration() {
+        let s = parse("type User { name: utf8 }");
+        let t = type_decls(&s.items)[0];
+        assert_eq!(t.name, "User");
+        assert_eq!(t.fields.len(), 1);
+        assert_eq!(t.fields[0].name, "name");
+        assert_eq!(t.fields[0].ty, TypeRef::Builtin(BuiltinType::Utf8));
+        assert!(!t.fields[0].optional);
+    }
+
+    #[test]
+    fn parse_type_with_optional_field() {
+        let s = parse("type User { bio: utf8? age: u32? }");
+        let t = type_decls(&s.items)[0];
+        assert!(t.fields[0].optional);
+        assert!(t.fields[1].optional);
+        assert_eq!(t.fields[1].ty, TypeRef::Builtin(BuiltinType::U32));
+    }
+
+    #[test]
+    fn parse_empty_type_body() {
+        let s = parse("type Empty {}");
+        let t = type_decls(&s.items)[0];
+        assert_eq!(t.name, "Empty");
+        assert!(t.fields.is_empty());
+    }
+
+    #[test]
+    fn parse_type_with_named_ref() {
+        let s = parse("type Tree { parent: Tree? }");
+        let t = type_decls(&s.items)[0];
+        assert_eq!(t.fields[0].ty, TypeRef::Named("Tree".into()));
+        assert!(t.fields[0].optional);
+    }
+
+    #[test]
+    fn parse_type_with_identifier_builtin() {
+        let s = parse("type Thing { id: identifier }");
+        let t = type_decls(&s.items)[0];
+        assert_eq!(t.fields[0].ty, TypeRef::Builtin(BuiltinType::Identifier));
+    }
+
+    #[test]
+    fn parse_bare_ident_as_identifier_value() {
+        let s = parse("owner = wil_taylor");
+        assert_eq!(
+            field(&s.items, "owner").expr,
+            Expr::Identifier("wil_taylor".into())
+        );
+    }
+
+    #[test]
+    fn parse_none_as_value() {
+        let s = parse("maybe = none");
+        assert_eq!(field(&s.items, "maybe").expr, Expr::None);
+    }
+
+    #[test]
+    fn contextual_keyword_field_named_type_still_works() {
+        // `type` followed by `=` is just a field named "type".
+        let s = parse("type = 1");
+        assert_eq!(field(&s.items, "type").expr, Expr::I64(1));
+    }
+
+    #[test]
+    fn contextual_keyword_block_with_kind_type_still_works() {
+        let s = parse(r#"type "label" { x = 1 }"#);
+        let block = blocks(&s.items)[0];
+        assert_eq!(block.kind, "type");
+        assert_eq!(block.labels, vec!["label".to_string()]);
+    }
+
+    #[test]
+    fn type_decl_without_brace_errors() {
+        let err = parse_err("type Foo = 1");
+        match err {
+            ParseError::Syntax(e) => assert!(e.message.contains("'{'"), "{}", e.message),
+            _ => panic!("expected syntax error"),
+        }
+    }
+
+    #[test]
+    fn type_field_without_colon_errors() {
+        let err = parse_err("type Foo { x utf8 }");
+        match err {
+            ParseError::Syntax(e) => assert!(e.message.contains("':'"), "{}", e.message),
+            _ => panic!("expected syntax error"),
+        }
     }
 }
