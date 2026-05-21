@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet};
 use crate::ast::{self, Span};
 use crate::error::{EvalError, ParseError};
 use crate::parser::Parser;
-use crate::value::{BuiltinType, TypeRef, Value};
+use crate::value::{BuiltinType, TensorDim, TypeRef, Value};
 
 #[derive(Debug)]
 struct FieldCell {
@@ -183,7 +183,7 @@ impl Document {
     /// Resolve a [`TypeRef`] to either its built-in tag or the user-declared
     /// [`TypeDecl`] / [`UnionDecl`] it points to. `Named` refs are validated
     /// at [`Document::open`], so the lookup never fails here.
-    pub fn resolve(&self, t: &TypeRef) -> ResolvedType<'_> {
+    pub fn resolve<'a>(&'a self, t: &'a TypeRef) -> ResolvedType<'a> {
         match t {
             TypeRef::Builtin(b) => ResolvedType::Builtin(*b),
             TypeRef::Named(path) => {
@@ -201,6 +201,11 @@ impl Document {
                 }
             }
             TypeRef::Reference(inner) => ResolvedType::Reference(Box::new(self.resolve(inner))),
+            TypeRef::List(inner) => ResolvedType::List(Box::new(self.resolve(inner))),
+            TypeRef::Tensor { element, dims } => ResolvedType::Tensor {
+                element: Box::new(self.resolve(element)),
+                dims,
+            },
         }
     }
 
@@ -287,6 +292,11 @@ pub enum ResolvedType<'a> {
     Named(TypeDecl<'a>),
     Union(UnionDecl<'a>),
     Reference(Box<ResolvedType<'a>>),
+    List(Box<ResolvedType<'a>>),
+    Tensor {
+        element: Box<ResolvedType<'a>>,
+        dims: &'a [TensorDim],
+    },
 }
 
 #[derive(Debug)]
@@ -947,6 +957,28 @@ fn check_type_ref(
         }
         TypeRef::Reference(inner) => check_type_ref(
             inner,
+            ty_span,
+            declared,
+            file_ns,
+            item_aliases,
+            ns_aliases,
+            wildcards,
+            source,
+            file,
+        ),
+        TypeRef::List(inner) => check_type_ref(
+            inner,
+            ty_span,
+            declared,
+            file_ns,
+            item_aliases,
+            ns_aliases,
+            wildcards,
+            source,
+            file,
+        ),
+        TypeRef::Tensor { element, .. } => check_type_ref(
+            element,
             ty_span,
             declared,
             file_ns,
@@ -1646,6 +1678,87 @@ mod tests {
         };
         let sub_names: Vec<_> = inner_decl.fields().map(|f| f.name().to_string()).collect();
         assert_eq!(sub_names, vec!["a".to_string(), "b".to_string()]);
+    }
+
+    #[test]
+    fn resolve_list_of_named() {
+        let doc = open("type User { name: utf8 }\ntype Q { items: list<User> }");
+        let q = doc.type_decl("Q").unwrap();
+        let items = q.field("items").unwrap();
+        let resolved = doc.resolve(items.type_ref());
+        let ResolvedType::List(inner) = resolved else {
+            panic!("expected List");
+        };
+        let ResolvedType::Named(decl) = *inner else {
+            panic!("expected Named inner");
+        };
+        assert_eq!(decl.name(), "User");
+    }
+
+    #[test]
+    fn resolve_tensor_keeps_dims() {
+        let doc = open("type Q { w: tensor<f32, [3, N, 5]> }");
+        let q = doc.type_decl("Q").unwrap();
+        let w = q.field("w").unwrap();
+        let resolved = doc.resolve(w.type_ref());
+        let ResolvedType::Tensor { element, dims } = resolved else {
+            panic!("expected Tensor");
+        };
+        let ResolvedType::Builtin(b) = *element else {
+            panic!("expected Builtin element");
+        };
+        assert_eq!(b, BuiltinType::F32);
+        assert_eq!(
+            dims,
+            &[
+                TensorDim::Fixed(3),
+                TensorDim::Symbolic("N".into()),
+                TensorDim::Fixed(5),
+            ]
+        );
+    }
+
+    #[test]
+    fn unknown_list_element_type_errors() {
+        let err = Document::open("type Q { items: list<NotDecl> }", "test").unwrap_err();
+        match err {
+            ParseError::Syntax(e) => assert!(
+                e.message.contains("unknown type 'NotDecl'"),
+                "{}",
+                e.message
+            ),
+            _ => panic!("expected syntax error"),
+        }
+    }
+
+    #[test]
+    fn unknown_tensor_element_type_errors() {
+        let err = Document::open("type Q { w: tensor<NotDecl, [4]> }", "test").unwrap_err();
+        match err {
+            ParseError::Syntax(e) => assert!(
+                e.message.contains("unknown type 'NotDecl'"),
+                "{}",
+                e.message
+            ),
+            _ => panic!("expected syntax error"),
+        }
+    }
+
+    #[test]
+    fn list_of_reference_resolves() {
+        let doc = open("type T { x: i32 }\ntype Q { items: list<&T> }");
+        let q = doc.type_decl("Q").unwrap();
+        let resolved = doc.resolve(q.field("items").unwrap().type_ref());
+        let ResolvedType::List(inner) = resolved else {
+            panic!("expected List");
+        };
+        let ResolvedType::Reference(inner2) = *inner else {
+            panic!("expected Reference inner");
+        };
+        let ResolvedType::Named(d) = *inner2 else {
+            panic!("expected Named");
+        };
+        assert_eq!(d.name(), "T");
     }
 
     #[test]

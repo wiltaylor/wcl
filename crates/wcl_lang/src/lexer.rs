@@ -14,6 +14,10 @@ pub enum TokenKind {
     Amp,
     Dot,
     Comma,
+    Lt,
+    Gt,
+    LBracket,
+    RBracket,
     LBrace,
     RBrace,
     Eof,
@@ -121,6 +125,34 @@ impl<'a> Lexer<'a> {
                 self.pos += 1;
                 Ok(Token {
                     kind: TokenKind::Comma,
+                    span: Span::new(start, self.pos),
+                })
+            }
+            b'<' => {
+                self.pos += 1;
+                Ok(Token {
+                    kind: TokenKind::Lt,
+                    span: Span::new(start, self.pos),
+                })
+            }
+            b'>' => {
+                self.pos += 1;
+                Ok(Token {
+                    kind: TokenKind::Gt,
+                    span: Span::new(start, self.pos),
+                })
+            }
+            b'[' => {
+                self.pos += 1;
+                Ok(Token {
+                    kind: TokenKind::LBracket,
+                    span: Span::new(start, self.pos),
+                })
+            }
+            b']' => {
+                self.pos += 1;
+                Ok(Token {
+                    kind: TokenKind::RBracket,
                     span: Span::new(start, self.pos),
                 })
             }
@@ -748,6 +780,26 @@ mod tests {
                 TokenKind::Colon,
                 TokenKind::Ident("utf8".into()),
                 TokenKind::Question,
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn lex_generic_and_bracket_tokens() {
+        assert_eq!(
+            tokens("tensor<f32, [3, 4]>"),
+            vec![
+                TokenKind::Ident("tensor".into()),
+                TokenKind::Lt,
+                TokenKind::Ident("f32".into()),
+                TokenKind::Comma,
+                TokenKind::LBracket,
+                TokenKind::Number(NumberLit::I64(3)),
+                TokenKind::Comma,
+                TokenKind::Number(NumberLit::I64(4)),
+                TokenKind::RBracket,
+                TokenKind::Gt,
                 TokenKind::Eof,
             ]
         );

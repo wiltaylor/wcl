@@ -139,4 +139,15 @@ pub enum TypeRef {
     Builtin(BuiltinType),
     Named(Vec<String>),
     Reference(Box<TypeRef>),
+    List(Box<TypeRef>),
+    Tensor {
+        element: Box<TypeRef>,
+        dims: Vec<TensorDim>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TensorDim {
+    Fixed(u64),
+    Symbolic(String),
 }

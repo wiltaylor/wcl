@@ -6,7 +6,7 @@ use crate::ast::{
 };
 use crate::error::ParseError;
 use crate::lexer::{LexError, Lexer, NumberLit, StringLit, Token, TokenKind};
-use crate::value::{BuiltinType, TypeRef};
+use crate::value::{BuiltinType, TensorDim, TypeRef};
 
 pub struct Parser<'a> {
     src: &'a str,
@@ -440,11 +440,33 @@ impl<'a> Parser<'a> {
         let head = self.peek()?;
         if matches!(head.kind, TokenKind::Amp) {
             let amp = self.bump()?;
-            let (path, path_span) = self.parse_path()?;
-            let inner = path_to_type_ref(&path);
-            let span = Span::new(amp.span.start, path_span.end);
+            let (inner, inner_span) = self.parse_type_atom()?;
+            let span = Span::new(amp.span.start, inner_span.end);
             Ok((TypeRef::Reference(Box::new(inner)), span))
-        } else if matches!(head.kind, TokenKind::Ident(_)) {
+        } else {
+            self.parse_type_atom()
+        }
+    }
+
+    fn parse_type_atom(&mut self) -> Result<(TypeRef, Span), ParseError> {
+        // Contextual keyword: `list<...>` or `tensor<..., [...]>`.
+        let head_ident = match &self.peek()?.kind {
+            TokenKind::Ident(s) => Some(s.clone()),
+            _ => None,
+        };
+        if let Some(s) = head_ident
+            && (s == "list" || s == "tensor")
+            && matches!(self.peek2()?.kind, TokenKind::Lt)
+        {
+            return if s == "list" {
+                self.parse_list_type()
+            } else {
+                self.parse_tensor_type()
+            };
+        }
+
+        let head = self.peek()?;
+        if matches!(head.kind, TokenKind::Ident(_)) {
             let (path, path_span) = self.parse_path()?;
             Ok((path_to_type_ref(&path), path_span))
         } else {
@@ -455,6 +477,112 @@ impl<'a> Parser<'a> {
                 span,
                 "expected type",
             ))
+        }
+    }
+
+    fn parse_list_type(&mut self) -> Result<(TypeRef, Span), ParseError> {
+        let start = self.bump()?.span.start; // 'list'
+        self.expect(TokenKind::Lt, "expected '<' after 'list'")?;
+        let (inner, _) = self.parse_type_ref()?;
+        let gt = self.expect(TokenKind::Gt, "expected '>' to close list<...>")?;
+        Ok((
+            TypeRef::List(Box::new(inner)),
+            Span::new(start, gt.span.end),
+        ))
+    }
+
+    fn parse_tensor_type(&mut self) -> Result<(TypeRef, Span), ParseError> {
+        let start = self.bump()?.span.start; // 'tensor'
+        self.expect(TokenKind::Lt, "expected '<' after 'tensor'")?;
+        let (element, _) = self.parse_type_ref()?;
+        self.expect(TokenKind::Comma, "expected ',' after tensor element type")?;
+        let lbracket = self.expect(TokenKind::LBracket, "expected '[' for tensor dimensions")?;
+
+        let mut dims: Vec<TensorDim> = Vec::new();
+        loop {
+            if matches!(self.peek()?.kind, TokenKind::RBracket) {
+                break;
+            }
+            dims.push(self.parse_tensor_dim()?);
+            match self.peek()?.kind {
+                TokenKind::Comma => {
+                    self.bump()?;
+                }
+                TokenKind::RBracket => break,
+                _ => {
+                    let p = self.peek()?;
+                    let span = p.span;
+                    let kind = describe(&p.kind);
+                    return Err(self.err(
+                        format!("expected ',' or ']' in tensor dimensions, found {kind}"),
+                        span,
+                        "expected ',' or ']'",
+                    ));
+                }
+            }
+        }
+        let rbracket = self.expect(TokenKind::RBracket, "expected ']' to close tensor dims")?;
+        if dims.is_empty() {
+            return Err(self.err(
+                "tensor must have at least one dimension",
+                Span::new(lbracket.span.start, rbracket.span.end),
+                "expected at least one dimension",
+            ));
+        }
+        let gt = self.expect(TokenKind::Gt, "expected '>' to close tensor<...>")?;
+        Ok((
+            TypeRef::Tensor {
+                element: Box::new(element),
+                dims,
+            },
+            Span::new(start, gt.span.end),
+        ))
+    }
+
+    fn parse_tensor_dim(&mut self) -> Result<TensorDim, ParseError> {
+        let tok = self.bump()?;
+        let span = tok.span;
+        match tok.kind {
+            TokenKind::Number(n) => match n {
+                NumberLit::I8(v) if v >= 0 => Ok(TensorDim::Fixed(v as u64)),
+                NumberLit::I16(v) if v >= 0 => Ok(TensorDim::Fixed(v as u64)),
+                NumberLit::I32(v) if v >= 0 => Ok(TensorDim::Fixed(v as u64)),
+                NumberLit::I64(v) if v >= 0 => Ok(TensorDim::Fixed(v as u64)),
+                NumberLit::I128(v) if v >= 0 && v <= u64::MAX as i128 => {
+                    Ok(TensorDim::Fixed(v as u64))
+                }
+                NumberLit::Isize(v) if v >= 0 => Ok(TensorDim::Fixed(v as u64)),
+                NumberLit::U8(v) => Ok(TensorDim::Fixed(v as u64)),
+                NumberLit::U16(v) => Ok(TensorDim::Fixed(v as u64)),
+                NumberLit::U32(v) => Ok(TensorDim::Fixed(v as u64)),
+                NumberLit::U64(v) => Ok(TensorDim::Fixed(v)),
+                NumberLit::Usize(v) => Ok(TensorDim::Fixed(v as u64)),
+                _ => Err(self.err(
+                    "tensor dimensions must be non-negative integers or symbolic identifiers",
+                    span,
+                    "invalid dimension",
+                )),
+            },
+            TokenKind::Ident(name) => Ok(TensorDim::Symbolic(name)),
+            other => Err(self.err(
+                format!(
+                    "expected dimension (integer or identifier), found {}",
+                    describe(&other)
+                ),
+                span,
+                "expected dimension",
+            )),
+        }
+    }
+
+    fn expect(&mut self, kind: TokenKind, msg: &str) -> Result<Token, ParseError> {
+        let tok = self.bump()?;
+        if std::mem::discriminant(&tok.kind) == std::mem::discriminant(&kind) {
+            Ok(tok)
+        } else {
+            let span = tok.span;
+            let found = describe(&tok.kind);
+            Err(self.err(format!("{msg}, found {found}"), span, "unexpected token"))
         }
     }
 
@@ -589,6 +717,10 @@ fn describe(t: &TokenKind) -> String {
         TokenKind::Amp => "'&'".to_string(),
         TokenKind::Dot => "'.'".to_string(),
         TokenKind::Comma => "','".to_string(),
+        TokenKind::Lt => "'<'".to_string(),
+        TokenKind::Gt => "'>'".to_string(),
+        TokenKind::LBracket => "'['".to_string(),
+        TokenKind::RBracket => "']'".to_string(),
         TokenKind::LBrace => "'{'".to_string(),
         TokenKind::RBrace => "'}'".to_string(),
         TokenKind::Eof => "end of file".to_string(),
@@ -862,7 +994,7 @@ mod tests {
         let err = parse_err("type X { y: &&User }");
         match err {
             ParseError::Syntax(e) => {
-                assert!(e.message.contains("expected identifier"), "{}", e.message)
+                assert!(e.message.contains("expected type"), "{}", e.message)
             }
             _ => panic!("expected syntax error"),
         }
@@ -995,6 +1127,131 @@ mod tests {
             ParseError::Syntax(e) => assert!(e.message.contains("':'"), "{}", e.message),
             _ => panic!("expected syntax error"),
         }
+    }
+
+    #[test]
+    fn parse_list_type() {
+        let s = parse("type Q { items: list<i32> }");
+        let t = type_decls(&s.items)[0];
+        assert_eq!(
+            t.fields[0].ty,
+            TypeRef::List(Box::new(TypeRef::Builtin(BuiltinType::I32)))
+        );
+    }
+
+    #[test]
+    fn parse_nested_list_type() {
+        let s = parse("type Q { items: list<list<f32>> }");
+        let t = type_decls(&s.items)[0];
+        assert_eq!(
+            t.fields[0].ty,
+            TypeRef::List(Box::new(TypeRef::List(Box::new(TypeRef::Builtin(
+                BuiltinType::F32
+            )))))
+        );
+    }
+
+    #[test]
+    fn parse_list_of_reference() {
+        let s = parse("type User {}\ntype Q { items: list<&User> }");
+        let t = type_decls(&s.items)
+            .into_iter()
+            .find(|t| t.name == vec!["Q".to_string()])
+            .unwrap();
+        assert_eq!(
+            t.fields[0].ty,
+            TypeRef::List(Box::new(TypeRef::Reference(Box::new(TypeRef::Named(
+                vec!["User".into()]
+            )))))
+        );
+    }
+
+    #[test]
+    fn parse_optional_list() {
+        let s = parse("type Q { items: list<i32>? }");
+        let t = type_decls(&s.items)[0];
+        assert!(t.fields[0].optional);
+        assert_eq!(
+            t.fields[0].ty,
+            TypeRef::List(Box::new(TypeRef::Builtin(BuiltinType::I32)))
+        );
+    }
+
+    #[test]
+    fn parse_tensor_with_concrete_dims() {
+        let s = parse("type Q { w: tensor<f32, [3, 4]> }");
+        let t = type_decls(&s.items)[0];
+        let TypeRef::Tensor { element, dims } = &t.fields[0].ty else {
+            panic!("expected tensor");
+        };
+        assert_eq!(**element, TypeRef::Builtin(BuiltinType::F32));
+        assert_eq!(dims, &vec![TensorDim::Fixed(3), TensorDim::Fixed(4)]);
+    }
+
+    #[test]
+    fn parse_tensor_with_symbolic_dim() {
+        let s = parse("type Q { w: tensor<f32, [N, 128]> }");
+        let t = type_decls(&s.items)[0];
+        let TypeRef::Tensor { dims, .. } = &t.fields[0].ty else {
+            panic!("expected tensor");
+        };
+        assert_eq!(
+            dims,
+            &vec![TensorDim::Symbolic("N".into()), TensorDim::Fixed(128)]
+        );
+    }
+
+    #[test]
+    fn parse_tensor_single_dim() {
+        let s = parse("type Q { w: tensor<u8, [256]> }");
+        let t = type_decls(&s.items)[0];
+        let TypeRef::Tensor { dims, .. } = &t.fields[0].ty else {
+            panic!("expected tensor");
+        };
+        assert_eq!(dims, &vec![TensorDim::Fixed(256)]);
+    }
+
+    #[test]
+    fn parse_tensor_trailing_comma_in_dims() {
+        let s = parse("type Q { w: tensor<f32, [3, 4,]> }");
+        let t = type_decls(&s.items)[0];
+        let TypeRef::Tensor { dims, .. } = &t.fields[0].ty else {
+            panic!("expected tensor");
+        };
+        assert_eq!(dims.len(), 2);
+    }
+
+    #[test]
+    fn tensor_requires_at_least_one_dim() {
+        let err = parse_err("type Q { w: tensor<f32, []> }");
+        match err {
+            ParseError::Syntax(e) => assert!(
+                e.message.contains("at least one dimension"),
+                "{}",
+                e.message
+            ),
+            _ => panic!("expected syntax error"),
+        }
+    }
+
+    #[test]
+    fn tensor_missing_close_gt_errors() {
+        let err = parse_err("type Q { w: tensor<f32, [4] }");
+        match err {
+            ParseError::Syntax(e) => assert!(e.message.contains("'>'"), "{}", e.message),
+            _ => panic!("expected syntax error"),
+        }
+    }
+
+    #[test]
+    fn list_keyword_as_type_name_still_works() {
+        // A user type named `list` is OK; field: list (no '<') resolves to it.
+        let s = parse("type list {}\ntype Q { x: list }");
+        let q = type_decls(&s.items)
+            .into_iter()
+            .find(|t| t.name == vec!["Q".to_string()])
+            .unwrap();
+        assert_eq!(q.fields[0].ty, TypeRef::Named(vec!["list".into()]));
     }
 
     #[test]

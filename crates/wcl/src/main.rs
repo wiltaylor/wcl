@@ -4,8 +4,8 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use wcl_lang::{
-    Block, Document, Field, TypeDecl, TypeRef, UnionDecl, UnionVariant, UseDeclView, UseFormView,
-    Value, VariantBodyView,
+    Block, Document, Field, TensorDim, TypeDecl, TypeRef, UnionDecl, UnionVariant, UseDeclView,
+    UseFormView, Value, VariantBodyView,
 };
 
 #[derive(Parser)]
@@ -139,6 +139,18 @@ fn type_repr(t: &TypeRef) -> String {
         TypeRef::Builtin(b) => b.name().to_string(),
         TypeRef::Named(path) => path.join("."),
         TypeRef::Reference(inner) => format!("&{}", type_repr(inner)),
+        TypeRef::List(inner) => format!("list<{}>", type_repr(inner)),
+        TypeRef::Tensor { element, dims } => {
+            let dims_str = dims.iter().map(dim_repr).collect::<Vec<_>>().join(", ");
+            format!("tensor<{}, [{}]>", type_repr(element), dims_str)
+        }
+    }
+}
+
+fn dim_repr(d: &TensorDim) -> String {
+    match d {
+        TensorDim::Fixed(n) => n.to_string(),
+        TensorDim::Symbolic(s) => s.clone(),
     }
 }
 

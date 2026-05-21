@@ -64,6 +64,17 @@ type accounts.Admin {
   level: u32
 }
 
+type ml.Layer {
+  weights: tensor<f32, [N, 128]>
+  biases:  tensor<f32, [128]>
+}
+
+type ml.Model {
+  layers:  list<ml.Layer>
+  refs:    list<&ml.Layer>
+  nested:  list<list<f32>>
+}
+
 type Topic {
   name: utf8
 }

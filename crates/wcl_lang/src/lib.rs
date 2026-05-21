@@ -17,4 +17,4 @@ pub use doc::{
     UseDeclView, UseFormView, UseItem, VariantBodyView,
 };
 pub use error::{EvalError, ParseError, SyntaxError};
-pub use value::{BuiltinType, TypeRef, Value};
+pub use value::{BuiltinType, TensorDim, TypeRef, Value};
