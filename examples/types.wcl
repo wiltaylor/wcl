@@ -78,6 +78,29 @@ type Paint {
 shade = :red
 tag   = :wide
 
+@deprecated("use NewUser instead")
+type AnnotatedUser {
+  @max(64)
+  name: utf8
+
+  @validate(min = 1, max = 200)
+  age: u32?
+}
+
+@hidden
+union Tag {
+  @internal
+  System { @min(0) priority: u8 }
+  External none
+}
+
+@ui("color picker")
+symbol_set Mood {
+  @ui_default
+  calm
+  agitated
+}
+
 type ml.Layer {
   weights: tensor<f32, [N, 128]>
   biases:  tensor<f32, [128]>

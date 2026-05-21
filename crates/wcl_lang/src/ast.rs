@@ -50,9 +50,25 @@ pub(crate) enum Expr {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Decorator {
+    pub name: Vec<String>,
+    pub positional: Vec<Expr>,
+    pub named: Vec<NamedArg>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct NamedArg {
+    pub name: String,
+    pub value: Expr,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Field {
     pub name: String,
     pub expr: Expr,
+    pub decorators: Vec<Decorator>,
     pub span: Span,
 }
 
@@ -61,6 +77,7 @@ pub(crate) struct Block {
     pub kind: String,
     pub labels: Vec<String>,
     pub items: Vec<Item>,
+    pub decorators: Vec<Decorator>,
     pub span: Span,
 }
 
@@ -94,6 +111,7 @@ pub(crate) struct UseItem {
 pub(crate) struct TypeDecl {
     pub name: Vec<String>,
     pub fields: Vec<TypeField>,
+    pub decorators: Vec<Decorator>,
     pub span: Span,
 }
 
@@ -103,6 +121,7 @@ pub(crate) struct TypeField {
     pub ty: crate::value::TypeRef,
     pub ty_span: Span,
     pub optional: bool,
+    pub decorators: Vec<Decorator>,
     pub span: Span,
 }
 
@@ -110,6 +129,7 @@ pub(crate) struct TypeField {
 pub(crate) struct UnionDecl {
     pub name: Vec<String>,
     pub variants: Vec<UnionVariant>,
+    pub decorators: Vec<Decorator>,
     pub span: Span,
 }
 
@@ -117,6 +137,7 @@ pub(crate) struct UnionDecl {
 pub(crate) struct UnionVariant {
     pub name: String,
     pub body: VariantBody,
+    pub decorators: Vec<Decorator>,
     pub span: Span,
 }
 
@@ -134,12 +155,14 @@ pub(crate) enum VariantBody {
 pub(crate) struct SymbolSetDecl {
     pub name: Vec<String>,
     pub symbols: Vec<SymbolEntry>,
+    pub decorators: Vec<Decorator>,
     pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct SymbolEntry {
     pub name: String,
+    pub decorators: Vec<Decorator>,
     pub span: Span,
 }
 

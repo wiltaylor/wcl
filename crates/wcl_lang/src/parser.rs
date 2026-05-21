@@ -1,8 +1,9 @@
 use miette::{NamedSource, SourceSpan};
 
 use crate::ast::{
-    Block, Expr, Field, Item, NamespaceDecl, Source, Span, SymbolEntry, SymbolSetDecl, TypeDecl,
-    TypeField, UnionDecl, UnionVariant, UseDecl, UseForm, UseItem, VariantBody,
+    Block, Decorator, Expr, Field, Item, NamedArg, NamespaceDecl, Source, Span, SymbolEntry,
+    SymbolSetDecl, TypeDecl, TypeField, UnionDecl, UnionVariant, UseDecl, UseForm, UseItem,
+    VariantBody,
 };
 use crate::error::ParseError;
 use crate::lexer::{LexError, Lexer, NumberLit, StringLit, Token, TokenKind};
@@ -36,8 +37,11 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_item(&mut self) -> Result<Item, ParseError> {
+        // Collect any leading @decorators first.
+        let decorators = self.parse_decorators()?;
+
         // Two-token lookahead for `type IDENT`, `union IDENT`,
-        // `namespace IDENT`, `use IDENT`.
+        // `namespace IDENT`, `use IDENT`, `symbol_set IDENT`.
         let first_ident = match &self.peek()?.kind {
             TokenKind::Ident(s) => Some(s.clone()),
             _ => None,
@@ -46,11 +50,24 @@ impl<'a> Parser<'a> {
             && matches!(self.peek2()?.kind, TokenKind::Ident(_))
         {
             match first.as_str() {
-                "type" => return self.parse_type_decl(),
-                "union" => return self.parse_union_decl(),
-                "namespace" => return self.parse_namespace_decl(),
-                "use" => return self.parse_use_decl(),
-                "symbol_set" => return self.parse_symbol_set_decl(),
+                "type" => return self.parse_type_decl(decorators),
+                "union" => return self.parse_union_decl(decorators),
+                "namespace" | "use" => {
+                    if !decorators.is_empty() {
+                        let span = decorators[0].span;
+                        return Err(self.err(
+                            "decorators are not allowed on namespace/use declarations",
+                            span,
+                            "remove decorator",
+                        ));
+                    }
+                    return if first == "namespace" {
+                        self.parse_namespace_decl()
+                    } else {
+                        self.parse_use_decl()
+                    };
+                }
+                "symbol_set" => return self.parse_symbol_set_decl(decorators),
                 _ => {}
             }
         }
@@ -69,8 +86,8 @@ impl<'a> Parser<'a> {
         };
         let next = self.peek()?;
         match &next.kind {
-            TokenKind::Eq => self.parse_field(name, span_start),
-            TokenKind::Str(_) | TokenKind::LBrace => self.parse_block(name, span_start),
+            TokenKind::Eq => self.parse_field(name, span_start, decorators),
+            TokenKind::Str(_) | TokenKind::LBrace => self.parse_block(name, span_start, decorators),
             other => {
                 let msg = format!(
                     "expected '=', label, or '{{' after identifier '{}', found {}",
@@ -81,6 +98,108 @@ impl<'a> Parser<'a> {
                 Err(self.err(msg, span, "unexpected token"))
             }
         }
+    }
+
+    fn parse_decorators(&mut self) -> Result<Vec<Decorator>, ParseError> {
+        let mut decorators = Vec::new();
+        while matches!(self.peek()?.kind, TokenKind::At) {
+            decorators.push(self.parse_decorator()?);
+        }
+        Ok(decorators)
+    }
+
+    fn parse_decorator(&mut self) -> Result<Decorator, ParseError> {
+        let at = self.bump()?; // '@'
+        let start = at.span.start;
+        let (name, name_span) = self.parse_path()?;
+        let mut positional = Vec::new();
+        let mut named = Vec::new();
+        let mut end = name_span.end;
+        if matches!(self.peek()?.kind, TokenKind::LParen) {
+            self.bump()?; // '('
+            if !matches!(self.peek()?.kind, TokenKind::RParen) {
+                let mut saw_named = false;
+                loop {
+                    let is_named = matches!(self.peek()?.kind, TokenKind::Ident(_))
+                        && matches!(self.peek2()?.kind, TokenKind::Eq);
+                    if is_named {
+                        saw_named = true;
+                        let name_tok = self.bump()?;
+                        let arg_start = name_tok.span.start;
+                        let TokenKind::Ident(arg_name) = name_tok.kind else {
+                            unreachable!()
+                        };
+                        self.bump()?; // '='
+                        let (value, value_span) = self.parse_value_expr()?;
+                        named.push(NamedArg {
+                            name: arg_name,
+                            value,
+                            span: Span::new(arg_start, value_span.end),
+                        });
+                    } else {
+                        if saw_named {
+                            let p = self.peek()?;
+                            let span = p.span;
+                            return Err(self.err(
+                                "positional argument cannot follow named argument",
+                                span,
+                                "unexpected positional arg",
+                            ));
+                        }
+                        let (value, _) = self.parse_value_expr()?;
+                        positional.push(value);
+                    }
+                    match self.peek()?.kind {
+                        TokenKind::Comma => {
+                            self.bump()?;
+                            if matches!(self.peek()?.kind, TokenKind::RParen) {
+                                break;
+                            }
+                        }
+                        TokenKind::RParen => break,
+                        _ => {
+                            let p = self.peek()?;
+                            let span = p.span;
+                            let kind = describe(&p.kind);
+                            return Err(self.err(
+                                format!("expected ',' or ')', found {kind}"),
+                                span,
+                                "expected ',' or ')'",
+                            ));
+                        }
+                    }
+                }
+            }
+            let rparen = self.expect(TokenKind::RParen, "expected ')'")?;
+            end = rparen.span.end;
+        }
+        Ok(Decorator {
+            name,
+            positional,
+            named,
+            span: Span::new(start, end),
+        })
+    }
+
+    fn parse_value_expr(&mut self) -> Result<(Expr, Span), ParseError> {
+        let tok = self.bump()?;
+        let span = tok.span;
+        let expr = match tok.kind {
+            TokenKind::Number(n) => number_to_expr(n),
+            TokenKind::Str(s) => string_to_expr(s),
+            TokenKind::Bool(b) => Expr::Bool(b),
+            TokenKind::Ident(s) => Expr::Reference(s),
+            TokenKind::Symbol(s) => Expr::Symbol(s),
+            TokenKind::None => Expr::None,
+            other => {
+                return Err(self.err(
+                    format!("expected value, found {}", describe(&other)),
+                    span,
+                    "expected value",
+                ));
+            }
+        };
+        Ok((expr, span))
     }
 
     /// Greedy path parser: `IDENT (. IDENT)*`.
@@ -247,7 +366,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn parse_type_decl(&mut self) -> Result<Item, ParseError> {
+    fn parse_type_decl(&mut self, decorators: Vec<Decorator>) -> Result<Item, ParseError> {
         let type_kw = self.bump()?; // 'type'
         let start = type_kw.span.start;
         let (name, _name_span) = self.parse_path()?;
@@ -283,11 +402,13 @@ impl<'a> Parser<'a> {
         Ok(Item::TypeDecl(TypeDecl {
             name,
             fields,
+            decorators,
             span: Span::new(start, rbrace.span.end),
         }))
     }
 
     fn parse_type_field(&mut self) -> Result<TypeField, ParseError> {
+        let decorators = self.parse_decorators()?;
         let name_tok = self.bump()?;
         let field_start = name_tok.span.start;
         let TokenKind::Ident(field_name) = name_tok.kind else {
@@ -321,11 +442,12 @@ impl<'a> Parser<'a> {
             ty,
             ty_span,
             optional,
+            decorators,
             span: Span::new(field_start, end),
         })
     }
 
-    fn parse_union_decl(&mut self) -> Result<Item, ParseError> {
+    fn parse_union_decl(&mut self, decorators: Vec<Decorator>) -> Result<Item, ParseError> {
         let kw = self.bump()?; // 'union'
         let start = kw.span.start;
         let (name, _name_span) = self.parse_path()?;
@@ -361,11 +483,13 @@ impl<'a> Parser<'a> {
         Ok(Item::UnionDecl(UnionDecl {
             name,
             variants,
+            decorators,
             span: Span::new(start, rbrace.span.end),
         }))
     }
 
     fn parse_variant_decl(&mut self) -> Result<UnionVariant, ParseError> {
+        let decorators = self.parse_decorators()?;
         let name_tok = self.bump()?;
         let variant_start = name_tok.span.start;
         let TokenKind::Ident(variant_name) = name_tok.kind else {
@@ -379,6 +503,7 @@ impl<'a> Parser<'a> {
         Ok(UnionVariant {
             name: variant_name,
             body,
+            decorators,
             span: Span::new(variant_start, body_end),
         })
     }
@@ -437,16 +562,28 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_symbol_set_decl(&mut self) -> Result<Item, ParseError> {
+    fn parse_symbol_set_decl(&mut self, decorators: Vec<Decorator>) -> Result<Item, ParseError> {
         let kw = self.bump()?; // 'symbol_set'
         let start = kw.span.start;
         let (name, _) = self.parse_path()?;
         self.expect(TokenKind::LBrace, "expected '{' after symbol_set name")?;
         let mut symbols: Vec<SymbolEntry> = Vec::new();
         loop {
+            // Each entry may have its own decorators.
+            let entry_decorators = self.parse_decorators()?;
             let p = self.peek()?;
             match &p.kind {
-                TokenKind::RBrace => break,
+                TokenKind::RBrace => {
+                    if !entry_decorators.is_empty() {
+                        let span = entry_decorators[0].span;
+                        return Err(self.err(
+                            "decorators must be followed by a symbol name",
+                            span,
+                            "dangling decorator",
+                        ));
+                    }
+                    break;
+                }
                 TokenKind::Eof => {
                     let span = p.span;
                     return Err(self.err(
@@ -460,6 +597,7 @@ impl<'a> Parser<'a> {
                     if let TokenKind::Ident(entry_name) = tok.kind {
                         symbols.push(SymbolEntry {
                             name: entry_name,
+                            decorators: entry_decorators,
                             span: tok.span,
                         });
                     }
@@ -479,6 +617,7 @@ impl<'a> Parser<'a> {
         Ok(Item::SymbolSetDecl(SymbolSetDecl {
             name,
             symbols,
+            decorators,
             span: Span::new(start, rbrace.span.end),
         }))
     }
@@ -633,29 +772,29 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_field(&mut self, name: String, start: usize) -> Result<Item, ParseError> {
+    fn parse_field(
+        &mut self,
+        name: String,
+        start: usize,
+        decorators: Vec<Decorator>,
+    ) -> Result<Item, ParseError> {
         self.bump()?; // consume '='
-        let val_tok = self.bump()?;
-        let span = Span::new(start, val_tok.span.end);
-        let expr = match val_tok.kind {
-            TokenKind::Number(n) => number_to_expr(n),
-            TokenKind::Str(s) => string_to_expr(s),
-            TokenKind::Bool(b) => Expr::Bool(b),
-            TokenKind::Ident(s) => Expr::Reference(s),
-            TokenKind::Symbol(s) => Expr::Symbol(s),
-            TokenKind::None => Expr::None,
-            other => {
-                return Err(self.err(
-                    format!("expected value, found {}", describe(&other)),
-                    val_tok.span,
-                    "expected value",
-                ));
-            }
-        };
-        Ok(Item::Field(Field { name, expr, span }))
+        let (expr, value_span) = self.parse_value_expr()?;
+        let span = Span::new(start, value_span.end);
+        Ok(Item::Field(Field {
+            name,
+            expr,
+            decorators,
+            span,
+        }))
     }
 
-    fn parse_block(&mut self, kind: String, start: usize) -> Result<Item, ParseError> {
+    fn parse_block(
+        &mut self,
+        kind: String,
+        start: usize,
+        decorators: Vec<Decorator>,
+    ) -> Result<Item, ParseError> {
         let mut labels = Vec::new();
         loop {
             let p = self.peek()?;
@@ -704,6 +843,7 @@ impl<'a> Parser<'a> {
             kind,
             labels,
             items,
+            decorators,
             span: Span::new(start, rbrace.span.end),
         }))
     }
@@ -770,6 +910,9 @@ fn describe(t: &TokenKind) -> String {
         TokenKind::Gt => "'>'".to_string(),
         TokenKind::LBracket => "'['".to_string(),
         TokenKind::RBracket => "']'".to_string(),
+        TokenKind::At => "'@'".to_string(),
+        TokenKind::LParen => "'('".to_string(),
+        TokenKind::RParen => "')'".to_string(),
         TokenKind::LBrace => "'{'".to_string(),
         TokenKind::RBrace => "'}'".to_string(),
         TokenKind::Eof => "end of file".to_string(),
@@ -1301,6 +1444,164 @@ mod tests {
             .find(|t| t.name == vec!["Q".to_string()])
             .unwrap();
         assert_eq!(q.fields[0].ty, TypeRef::Named(vec!["list".into()]));
+    }
+
+    #[test]
+    fn parse_decorator_no_args() {
+        let s = parse("@hidden\ntype X {}");
+        let t = type_decls(&s.items)[0];
+        assert_eq!(t.decorators.len(), 1);
+        assert_eq!(t.decorators[0].name, vec!["hidden".to_string()]);
+        assert!(t.decorators[0].positional.is_empty());
+        assert!(t.decorators[0].named.is_empty());
+    }
+
+    #[test]
+    fn parse_decorator_empty_parens() {
+        let s = parse("@hidden()\ntype X {}");
+        let t = type_decls(&s.items)[0];
+        assert_eq!(t.decorators.len(), 1);
+        assert!(t.decorators[0].positional.is_empty());
+    }
+
+    #[test]
+    fn parse_decorator_positional_args() {
+        let s = parse("@range(1, 10)\ntype X {}");
+        let t = type_decls(&s.items)[0];
+        assert_eq!(
+            t.decorators[0].positional,
+            vec![Expr::I64(1), Expr::I64(10)]
+        );
+    }
+
+    #[test]
+    fn parse_decorator_named_args() {
+        let s = parse("@validate(min = 1, max = 10)\ntype X {}");
+        let t = type_decls(&s.items)[0];
+        let d = &t.decorators[0];
+        assert!(d.positional.is_empty());
+        assert_eq!(d.named.len(), 2);
+        assert_eq!(d.named[0].name, "min");
+        assert_eq!(d.named[0].value, Expr::I64(1));
+        assert_eq!(d.named[1].name, "max");
+        assert_eq!(d.named[1].value, Expr::I64(10));
+    }
+
+    #[test]
+    fn parse_decorator_mixed_args() {
+        let s = parse("@range(0, max = 100)\ntype X {}");
+        let t = type_decls(&s.items)[0];
+        let d = &t.decorators[0];
+        assert_eq!(d.positional, vec![Expr::I64(0)]);
+        assert_eq!(d.named.len(), 1);
+        assert_eq!(d.named[0].name, "max");
+    }
+
+    #[test]
+    fn parse_decorator_positional_after_named_errors() {
+        let err = parse_err("@x(min = 1, 5)\ntype X {}");
+        match err {
+            ParseError::Syntax(e) => assert!(
+                e.message
+                    .contains("positional argument cannot follow named"),
+                "{}",
+                e.message
+            ),
+            _ => panic!("expected syntax error"),
+        }
+    }
+
+    #[test]
+    fn parse_decorator_trailing_comma() {
+        let s = parse("@x(1, 2,)\ntype X {}");
+        let t = type_decls(&s.items)[0];
+        assert_eq!(t.decorators[0].positional.len(), 2);
+    }
+
+    #[test]
+    fn parse_dotted_decorator() {
+        let s = parse("@ui.color(:red)\ntype X {}");
+        let t = type_decls(&s.items)[0];
+        assert_eq!(
+            t.decorators[0].name,
+            vec!["ui".to_string(), "color".to_string()]
+        );
+        assert_eq!(t.decorators[0].positional, vec![Expr::Symbol("red".into())]);
+    }
+
+    #[test]
+    fn parse_decorator_on_type_field() {
+        let s = parse("type X { @max(64) name: utf8 }");
+        let t = type_decls(&s.items)[0];
+        assert_eq!(t.fields[0].decorators.len(), 1);
+        assert_eq!(t.fields[0].decorators[0].name, vec!["max".to_string()]);
+    }
+
+    #[test]
+    fn parse_decorator_on_variant() {
+        let s = parse("union U { @hidden Circle { radius: f64 } }");
+        let u = union_decls(&s.items)[0];
+        assert_eq!(u.variants[0].decorators.len(), 1);
+        assert_eq!(u.variants[0].decorators[0].name, vec!["hidden".to_string()]);
+    }
+
+    #[test]
+    fn parse_decorator_on_symbol_entry() {
+        let s = parse("symbol_set C { @default red green }");
+        let set = symbol_set_decls(&s.items)[0];
+        assert_eq!(set.symbols[0].decorators.len(), 1);
+        assert!(set.symbols[1].decorators.is_empty());
+    }
+
+    #[test]
+    fn parse_decorator_on_top_level_field() {
+        let s = parse("@logged\nport = 8080");
+        let f = field(&s.items, "port");
+        assert_eq!(f.decorators.len(), 1);
+        assert_eq!(f.decorators[0].name, vec!["logged".to_string()]);
+    }
+
+    #[test]
+    fn parse_decorator_on_block() {
+        let s = parse(r#"@logged service "web" { port = 8080 }"#);
+        let b = blocks(&s.items)[0];
+        assert_eq!(b.decorators.len(), 1);
+        assert_eq!(b.decorators[0].name, vec!["logged".to_string()]);
+    }
+
+    #[test]
+    fn parse_multiple_stacked_decorators() {
+        let s = parse("@a @b\ntype X {}");
+        let t = type_decls(&s.items)[0];
+        assert_eq!(t.decorators.len(), 2);
+        assert_eq!(t.decorators[0].name, vec!["a".to_string()]);
+        assert_eq!(t.decorators[1].name, vec!["b".to_string()]);
+    }
+
+    #[test]
+    fn decorator_on_namespace_errors() {
+        let err = parse_err("@x\nnamespace foo");
+        match err {
+            ParseError::Syntax(e) => assert!(
+                e.message.contains("not allowed on namespace/use"),
+                "{}",
+                e.message
+            ),
+            _ => panic!("expected syntax error"),
+        }
+    }
+
+    #[test]
+    fn decorator_on_use_errors() {
+        let err = parse_err("type X {}\n@x use X");
+        match err {
+            ParseError::Syntax(e) => assert!(
+                e.message.contains("not allowed on namespace/use"),
+                "{}",
+                e.message
+            ),
+            _ => panic!("expected syntax error"),
+        }
     }
 
     fn symbol_set_decls(items: &[Item]) -> Vec<&SymbolSetDecl> {

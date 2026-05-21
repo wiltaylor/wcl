@@ -4,8 +4,8 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use wcl_lang::{
-    Block, Document, Field, SymbolSetDecl, TensorDim, TypeDecl, TypeRef, UnionDecl, UnionVariant,
-    UseDeclView, UseFormView, Value, VariantBodyView,
+    Block, Decorator, Document, Field, SymbolSetDecl, TensorDim, TypeDecl, TypeRef, UnionDecl,
+    UnionVariant, UseDeclView, UseFormView, Value, VariantBodyView,
 };
 
 #[derive(Parser)]
@@ -100,14 +100,36 @@ fn dump_use_decl(u: &UseDeclView<'_>, out: &mut String) {
 }
 
 fn dump_symbol_set_decl(s: &SymbolSetDecl<'_>, out: &mut String) {
+    dump_decorators(s.decorators(), 0, out);
     writeln!(out, "symbol_set {} {{", s.name_segments().join(".")).unwrap();
     for entry in s.symbols() {
+        dump_decorators(entry.decorators(), 1, out);
         writeln!(out, "  {}", entry.name()).unwrap();
     }
     writeln!(out, "}}").unwrap();
 }
 
+fn dump_decorators<'a>(decs: impl Iterator<Item = Decorator<'a>>, depth: usize, out: &mut String) {
+    let pad = "  ".repeat(depth);
+    for d in decs {
+        let name = d.full_name();
+        let positional: Vec<String> = d.positional().iter().map(value_repr).collect();
+        let named: Vec<String> = d
+            .named()
+            .map(|n| format!("{} = {}", n.name(), value_repr(&n.value())))
+            .collect();
+        let args = if positional.is_empty() && named.is_empty() {
+            String::new()
+        } else {
+            let combined: Vec<String> = positional.into_iter().chain(named).collect();
+            format!("({})", combined.join(", "))
+        };
+        writeln!(out, "{pad}@{name}{args}").unwrap();
+    }
+}
+
 fn dump_union_decl(u: &UnionDecl<'_>, out: &mut String) {
+    dump_decorators(u.decorators(), 0, out);
     writeln!(out, "union {} {{", u.name_segments().join(".")).unwrap();
     for v in u.variants() {
         dump_variant(&v, out);
@@ -116,10 +138,12 @@ fn dump_union_decl(u: &UnionDecl<'_>, out: &mut String) {
 }
 
 fn dump_variant(v: &UnionVariant<'_>, out: &mut String) {
+    dump_decorators(v.decorators(), 1, out);
     match v.body() {
         VariantBodyView::Record => {
             writeln!(out, "  {} {{", v.name()).unwrap();
             for f in v.fields() {
+                dump_decorators(f.decorators(), 2, out);
                 let ty = type_repr(f.type_ref());
                 let q = if f.optional() { "?" } else { "" };
                 writeln!(out, "    {}: {ty}{q}", f.name()).unwrap();
@@ -136,8 +160,10 @@ fn dump_variant(v: &UnionVariant<'_>, out: &mut String) {
 }
 
 fn dump_type_decl(t: &TypeDecl<'_>, out: &mut String) {
+    dump_decorators(t.decorators(), 0, out);
     writeln!(out, "type {} {{", t.name_segments().join(".")).unwrap();
     for field in t.fields() {
+        dump_decorators(field.decorators(), 1, out);
         let ty = type_repr(field.type_ref());
         let q = if field.optional() { "?" } else { "" };
         writeln!(out, "  {}: {ty}{q}", field.name()).unwrap();
@@ -166,6 +192,7 @@ fn dim_repr(d: &TensorDim) -> String {
 }
 
 fn dump_field(f: &Field<'_>, depth: usize, out: &mut String) {
+    dump_decorators(f.decorators(), depth, out);
     let pad = "  ".repeat(depth);
     let _ = write!(out, "{pad}{} = ", f.name());
     match f.value() {
@@ -175,6 +202,7 @@ fn dump_field(f: &Field<'_>, depth: usize, out: &mut String) {
 }
 
 fn dump_block(b: &Block<'_>, depth: usize, out: &mut String) {
+    dump_decorators(b.decorators(), depth, out);
     let pad = "  ".repeat(depth);
     let _ = write!(out, "{pad}{}", b.kind());
     for label in b.labels() {

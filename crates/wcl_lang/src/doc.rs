@@ -340,6 +340,10 @@ pub struct UnionDecl<'a> {
 }
 
 impl<'a> UnionDecl<'a> {
+    pub fn decorators(&self) -> impl Iterator<Item = Decorator<'a>> {
+        self.ast.decorators.iter().map(|d| Decorator { ast: d })
+    }
+
     /// Last segment of the declared name.
     pub fn name(&self) -> &'a str {
         self.ast.name.last().expect("name has at least one segment")
@@ -391,6 +395,10 @@ pub struct UnionVariant<'a> {
 }
 
 impl<'a> UnionVariant<'a> {
+    pub fn decorators(&self) -> impl Iterator<Item = Decorator<'a>> {
+        self.ast.decorators.iter().map(|d| Decorator { ast: d })
+    }
+
     pub fn name(&self) -> &'a str {
         &self.ast.name
     }
@@ -434,12 +442,80 @@ pub enum VariantBodyView<'a> {
 }
 
 #[derive(Debug)]
+pub struct Decorator<'a> {
+    ast: &'a ast::Decorator,
+}
+
+impl<'a> Decorator<'a> {
+    pub fn name(&self) -> &'a str {
+        self.ast
+            .name
+            .last()
+            .expect("decorator name has at least one segment")
+    }
+
+    pub fn name_segments(&self) -> &'a [String] {
+        &self.ast.name
+    }
+
+    pub fn full_name(&self) -> String {
+        self.ast.name.join(".")
+    }
+
+    pub fn span(&self) -> Span {
+        self.ast.span
+    }
+
+    pub fn positional(&self) -> Vec<Value> {
+        self.ast
+            .positional
+            .iter()
+            .map(|e| eval_expr(e).expect("decorator args are pure literals"))
+            .collect()
+    }
+
+    pub fn named(&self) -> impl Iterator<Item = NamedArg<'a>> {
+        self.ast.named.iter().map(|n| NamedArg { ast: n })
+    }
+
+    pub fn named_arg(&self, name: &str) -> Option<Value> {
+        self.ast
+            .named
+            .iter()
+            .find(|n| n.name == name)
+            .map(|n| eval_expr(&n.value).expect("decorator args are pure literals"))
+    }
+}
+
+pub struct NamedArg<'a> {
+    ast: &'a ast::NamedArg,
+}
+
+impl<'a> NamedArg<'a> {
+    pub fn name(&self) -> &'a str {
+        &self.ast.name
+    }
+
+    pub fn value(&self) -> Value {
+        eval_expr(&self.ast.value).expect("decorator args are pure literals")
+    }
+
+    pub fn span(&self) -> Span {
+        self.ast.span
+    }
+}
+
+#[derive(Debug)]
 pub struct SymbolSetDecl<'a> {
     ast: &'a ast::SymbolSetDecl,
     file_ns: &'a [String],
 }
 
 impl<'a> SymbolSetDecl<'a> {
+    pub fn decorators(&self) -> impl Iterator<Item = Decorator<'a>> {
+        self.ast.decorators.iter().map(|d| Decorator { ast: d })
+    }
+
     pub fn name(&self) -> &'a str {
         self.ast.name.last().expect("name has at least one segment")
     }
@@ -483,6 +559,10 @@ pub struct SymbolEntry<'a> {
 }
 
 impl<'a> SymbolEntry<'a> {
+    pub fn decorators(&self) -> impl Iterator<Item = Decorator<'a>> {
+        self.ast.decorators.iter().map(|d| Decorator { ast: d })
+    }
+
     pub fn name(&self) -> &'a str {
         &self.ast.name
     }
@@ -499,6 +579,10 @@ pub struct TypeDecl<'a> {
 }
 
 impl<'a> TypeDecl<'a> {
+    pub fn decorators(&self) -> impl Iterator<Item = Decorator<'a>> {
+        self.ast.decorators.iter().map(|d| Decorator { ast: d })
+    }
+
     pub fn name(&self) -> &'a str {
         self.ast.name.last().expect("name has at least one segment")
     }
@@ -598,6 +682,10 @@ pub struct TypeField<'a> {
 }
 
 impl<'a> TypeField<'a> {
+    pub fn decorators(&self) -> impl Iterator<Item = Decorator<'a>> {
+        self.ast.decorators.iter().map(|d| Decorator { ast: d })
+    }
+
     pub fn name(&self) -> &'a str {
         &self.ast.name
     }
@@ -621,6 +709,10 @@ pub struct Field<'a> {
 }
 
 impl<'a> Field<'a> {
+    pub fn decorators(&self) -> impl Iterator<Item = Decorator<'a>> {
+        self.ast.decorators.iter().map(|d| Decorator { ast: d })
+    }
+
     pub fn name(&self) -> &'a str {
         &self.ast.name
     }
@@ -657,6 +749,10 @@ pub struct Block<'a> {
 }
 
 impl<'a> Block<'a> {
+    pub fn decorators(&self) -> impl Iterator<Item = Decorator<'a>> {
+        self.ast.decorators.iter().map(|d| Decorator { ast: d })
+    }
+
     pub fn kind(&self) -> &'a str {
         &self.ast.kind
     }
@@ -1949,6 +2045,81 @@ mod tests {
         assert_eq!(field_names, vec!["count".to_string()]);
         let block_kinds: Vec<_> = doc.blocks().map(|b| b.kind().to_string()).collect();
         assert_eq!(block_kinds, vec!["svc".to_string()]);
+    }
+
+    #[test]
+    fn decorator_iterator_on_type() {
+        let doc = open(r#"@deprecated("X") type Foo {}"#);
+        let t = doc.type_decl("Foo").unwrap();
+        let decs: Vec<_> = t.decorators().collect();
+        assert_eq!(decs.len(), 1);
+        assert_eq!(decs[0].name(), "deprecated");
+        assert_eq!(decs[0].positional(), vec![Value::Utf8("X".into())]);
+    }
+
+    #[test]
+    fn decorator_iterator_on_field() {
+        let doc = open("type T { @max(64) name: utf8 }");
+        let t = doc.type_decl("T").unwrap();
+        let f = t.field("name").unwrap();
+        let decs: Vec<_> = f.decorators().collect();
+        assert_eq!(decs.len(), 1);
+        assert_eq!(decs[0].name(), "max");
+        assert_eq!(decs[0].positional(), vec![Value::I64(64)]);
+    }
+
+    #[test]
+    fn decorator_iterator_on_variant() {
+        let doc = open("union U { @hidden Circle { radius: f64 } }");
+        let u = doc.union_decl("U").unwrap();
+        let v = u.variant("Circle").unwrap();
+        let decs: Vec<_> = v.decorators().collect();
+        assert_eq!(decs.len(), 1);
+        assert_eq!(decs[0].name(), "hidden");
+    }
+
+    #[test]
+    fn decorator_iterator_on_symbol_entry() {
+        let doc = open("symbol_set C { @default red green }");
+        let s = doc.symbol_set("C").unwrap();
+        let entries: Vec<_> = s.symbols().collect();
+        assert_eq!(entries[0].decorators().count(), 1);
+        assert_eq!(entries[1].decorators().count(), 0);
+    }
+
+    #[test]
+    fn decorator_named_args_via_helper() {
+        let doc = open("@v(min = 1, max = 10) type X {}");
+        let x = doc.type_decl("X").unwrap();
+        let d = x.decorators().next().unwrap();
+        assert_eq!(d.named_arg("min"), Some(Value::I64(1)));
+        assert_eq!(d.named_arg("max"), Some(Value::I64(10)));
+        assert_eq!(d.named_arg("missing"), None);
+    }
+
+    #[test]
+    fn decorator_with_symbol_arg() {
+        let doc = open("@tagged(:enabled) type X {}");
+        let x = doc.type_decl("X").unwrap();
+        let d = x.decorators().next().unwrap();
+        assert_eq!(d.positional(), vec![Value::Symbol("enabled".into())]);
+    }
+
+    #[test]
+    fn decorator_with_none_arg() {
+        let doc = open("@default(none) type X {}");
+        let x = doc.type_decl("X").unwrap();
+        let d = x.decorators().next().unwrap();
+        assert_eq!(d.positional(), vec![Value::None]);
+    }
+
+    #[test]
+    fn decorator_dotted_name_full_name() {
+        let doc = open("@a.b.c type X {}");
+        let x = doc.type_decl("X").unwrap();
+        let d = x.decorators().next().unwrap();
+        assert_eq!(d.full_name(), "a.b.c");
+        assert_eq!(d.name(), "c");
     }
 
     #[test]

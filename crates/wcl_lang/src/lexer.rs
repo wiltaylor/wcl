@@ -21,6 +21,9 @@ pub enum TokenKind {
     RBracket,
     LBrace,
     RBrace,
+    At,
+    LParen,
+    RParen,
     Eof,
 }
 
@@ -170,6 +173,27 @@ impl<'a> Lexer<'a> {
                 self.pos += 1;
                 Ok(Token {
                     kind: TokenKind::RBracket,
+                    span: Span::new(start, self.pos),
+                })
+            }
+            b'@' => {
+                self.pos += 1;
+                Ok(Token {
+                    kind: TokenKind::At,
+                    span: Span::new(start, self.pos),
+                })
+            }
+            b'(' => {
+                self.pos += 1;
+                Ok(Token {
+                    kind: TokenKind::LParen,
+                    span: Span::new(start, self.pos),
+                })
+            }
+            b')' => {
+                self.pos += 1;
+                Ok(Token {
+                    kind: TokenKind::RParen,
                     span: Span::new(start, self.pos),
                 })
             }
@@ -817,6 +841,33 @@ mod tests {
                 TokenKind::Number(NumberLit::I64(4)),
                 TokenKind::RBracket,
                 TokenKind::Gt,
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn lex_at_token() {
+        assert_eq!(
+            tokens("@foo"),
+            vec![
+                TokenKind::At,
+                TokenKind::Ident("foo".into()),
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn lex_parens() {
+        assert_eq!(
+            tokens("(1, 2)"),
+            vec![
+                TokenKind::LParen,
+                TokenKind::Number(NumberLit::I64(1)),
+                TokenKind::Comma,
+                TokenKind::Number(NumberLit::I64(2)),
+                TokenKind::RParen,
                 TokenKind::Eof,
             ]
         );
