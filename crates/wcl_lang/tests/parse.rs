@@ -21,7 +21,7 @@ fn parses_basic_example_from_disk() {
         &Value::Utf8("alpha".into())
     );
     let svc = doc.block("service").expect("service block");
-    assert_eq!(svc.labels(), &["web".to_string()]);
+    assert_eq!(svc.labels(), vec![Value::Utf8("web".into())]);
     assert_eq!(
         svc.field("port").unwrap().value().unwrap(),
         &Value::I64(8080)
@@ -65,6 +65,29 @@ fn fixture_union_shape_resolves() {
     }
     let empty = shape.variant("Empty").expect("Empty variant");
     assert!(matches!(empty.body(), VariantBodyView::Unit));
+}
+
+#[test]
+fn fixture_brush_block_schema_resolves() {
+    let doc = Document::from_file(&examples_dir().join("types.wcl")).expect("types fixture parses");
+    let schema = doc.block_schema("brush").expect("brush block schema");
+    assert_eq!(schema.name(), "Brush");
+    // @inline(0) -> id (identifier)
+    let id = schema.field("id").unwrap();
+    assert_eq!(id.inline_slot(), Some(0));
+    // @default(8080) -> port
+    let port = schema.field("port").unwrap();
+    assert_eq!(port.default_value(), Some(Value::I64(8080)));
+}
+
+#[test]
+fn fixture_brush_block_has_mixed_labels() {
+    let doc = Document::from_file(&examples_dir().join("types.wcl")).expect("types fixture parses");
+    let b = doc.block("brush").expect("brush block");
+    let labels = b.labels();
+    assert_eq!(labels.len(), 2);
+    assert_eq!(labels[0], Value::Identifier("primary".into()));
+    assert_eq!(labels[1], Value::Utf8("matte".into()));
 }
 
 #[test]

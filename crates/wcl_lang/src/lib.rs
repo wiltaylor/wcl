@@ -9,6 +9,7 @@ mod error;
 mod lexer;
 mod numeric;
 mod parser;
+mod schema;
 mod value;
 
 pub use ast::Span;
@@ -18,4 +19,5 @@ pub use doc::{
     VariantBodyView,
 };
 pub use error::{EvalError, ParseError, SyntaxError};
+pub use schema::{BuiltType, DecoratorBuilder, SchemaRegistry, TypeBuilder, TypeFieldBuilder};
 pub use value::{BuiltinType, TensorDim, TypeRef, Value};

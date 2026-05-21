@@ -9,6 +9,7 @@ use std::collections::{HashMap, HashSet};
 use crate::ast::{self, Span};
 use crate::error::{EvalError, ParseError};
 use crate::parser::Parser;
+use crate::schema::SchemaRegistry;
 use crate::value::{BuiltinType, TensorDim, TypeRef, Value};
 
 #[derive(Debug)]
@@ -69,12 +70,22 @@ pub struct Document {
     item_aliases: HashMap<String, Vec<String>>,
     ns_aliases: HashMap<String, Vec<String>>,
     wildcards: Vec<Vec<String>>,
+    synthetic_types: Vec<ast::TypeDecl>,
 }
 
 impl Document {
     pub fn open(source: &str, name: &str) -> Result<Self, ParseError> {
+        Self::open_with(source, name, &SchemaRegistry::new())
+    }
+
+    pub fn open_with(
+        source: &str,
+        name: &str,
+        registry: &SchemaRegistry,
+    ) -> Result<Self, ParseError> {
         let ast = Parser::new(source, name).parse_source()?;
-        let resolved = validate_document(&ast, source, name)?;
+        let synthetic = registry.types().to_vec();
+        let resolved = validate_document(&ast, &synthetic, source, name)?;
         let cells = BlockCells::build(&ast.items);
         Ok(Self {
             src: NamedSource::new(name, source.to_string()),
@@ -84,6 +95,7 @@ impl Document {
             item_aliases: resolved.item_aliases,
             ns_aliases: resolved.ns_aliases,
             wildcards: resolved.wildcards,
+            synthetic_types: synthetic,
         })
     }
 
@@ -124,10 +136,11 @@ impl Document {
         })
     }
 
-    /// Look up a type by fully-qualified name (dotted).
+    /// Look up a type by fully-qualified name (dotted). Searches both
+    /// source-declared and registry-injected types.
     pub fn type_decl(&self, fqn: &str) -> Option<TypeDecl<'_>> {
         let target: Vec<&str> = fqn.split('.').collect();
-        self.ast.items.iter().find_map(|item| match item {
+        let from_source = self.ast.items.iter().find_map(|item| match item {
             ast::Item::TypeDecl(t) => {
                 let decl_fqn = self.compose_fqn(&t.name);
                 if decl_fqn_matches(&decl_fqn, &target) {
@@ -140,17 +153,36 @@ impl Document {
                 }
             }
             _ => None,
+        });
+        if from_source.is_some() {
+            return from_source;
+        }
+        // Synthetic types live in the root namespace (no file ns prefix).
+        self.synthetic_types.iter().find_map(|t| {
+            if decl_fqn_matches(&t.name, &target) {
+                Some(TypeDecl {
+                    ast: t,
+                    file_ns: &[],
+                })
+            } else {
+                None
+            }
         })
     }
 
     pub fn type_decls(&self) -> impl Iterator<Item = TypeDecl<'_>> {
-        self.ast.items.iter().filter_map(|item| match item {
+        let src = self.ast.items.iter().filter_map(|item| match item {
             ast::Item::TypeDecl(t) => Some(TypeDecl {
                 ast: t,
                 file_ns: &self.file_ns,
             }),
             _ => None,
-        })
+        });
+        let syn = self.synthetic_types.iter().map(|t| TypeDecl {
+            ast: t,
+            file_ns: &[],
+        });
+        src.chain(syn)
     }
 
     /// Look up a union by fully-qualified name (dotted).
@@ -250,7 +282,7 @@ impl Document {
     /// Run the name-resolution algorithm on `path` against this document's
     /// file ns / aliases / wildcards / registry.
     fn resolve_path(&self, path: &[String]) -> Option<Vec<String>> {
-        let registry: HashSet<Vec<String>> = self
+        let mut registry: HashSet<Vec<String>> = self
             .ast
             .items
             .iter()
@@ -261,6 +293,10 @@ impl Document {
                 _ => None,
             })
             .collect();
+        // Synthetic types live at the root namespace.
+        for t in &self.synthetic_types {
+            registry.insert(t.name.clone());
+        }
         resolve_path(
             path,
             &self.file_ns,
@@ -269,6 +305,25 @@ impl Document {
             &self.wildcards,
             &registry,
         )
+    }
+
+    /// Look up the type that schemas a block of the given kind, i.e. the
+    /// first type carrying a `@block("kind")` decorator.
+    pub fn block_schema(&self, kind: &str) -> Option<TypeDecl<'_>> {
+        self.find_schema("block", kind)
+    }
+
+    /// Look up the type that schemas a decorator of the given name.
+    pub fn decorator_schema(&self, name: &str) -> Option<TypeDecl<'_>> {
+        self.find_schema("decorator", name)
+    }
+
+    fn find_schema(&self, dec_name: &str, value: &str) -> Option<TypeDecl<'_>> {
+        let want = Value::Utf8(value.to_string());
+        self.type_decls().find(|t| {
+            t.decorators()
+                .any(|d| d.full_name() == dec_name && d.positional().first() == Some(&want))
+        })
     }
 }
 
@@ -686,6 +741,35 @@ impl<'a> TypeField<'a> {
         self.ast.decorators.iter().map(|d| Decorator { ast: d })
     }
 
+    /// If this field carries an `@inline(N)` decorator, returns N.
+    /// Used by schemas to map block label slots to typed fields.
+    pub fn inline_slot(&self) -> Option<u64> {
+        self.decorators()
+            .find(|d| d.full_name() == "inline")
+            .and_then(|d| match d.positional().first()? {
+                Value::I8(n) if *n >= 0 => Some(*n as u64),
+                Value::I16(n) if *n >= 0 => Some(*n as u64),
+                Value::I32(n) if *n >= 0 => Some(*n as u64),
+                Value::I64(n) if *n >= 0 => Some(*n as u64),
+                Value::I128(n) if *n >= 0 => Some(*n as u64),
+                Value::Isize(n) if *n >= 0 => Some(*n as u64),
+                Value::U8(n) => Some(*n as u64),
+                Value::U16(n) => Some(*n as u64),
+                Value::U32(n) => Some(*n as u64),
+                Value::U64(n) => Some(*n),
+                Value::U128(n) => Some(*n as u64),
+                Value::Usize(n) => Some(*n as u64),
+                _ => None,
+            })
+    }
+
+    /// If this field carries an `@default(v)` decorator, returns v.
+    pub fn default_value(&self) -> Option<Value> {
+        self.decorators()
+            .find(|d| d.full_name() == "default")
+            .and_then(|d| d.positional().into_iter().next())
+    }
+
     pub fn name(&self) -> &'a str {
         &self.ast.name
     }
@@ -757,8 +841,16 @@ impl<'a> Block<'a> {
         &self.ast.kind
     }
 
-    pub fn labels(&self) -> &'a [String] {
-        &self.ast.labels
+    /// Evaluated values for each label slot. Label types are determined by
+    /// the schema's `@inline(N)`-decorated fields; the parser preserves the
+    /// raw value expressions in source order and `labels()` materialises
+    /// them on access.
+    pub fn labels(&self) -> Vec<Value> {
+        self.ast
+            .labels
+            .iter()
+            .map(|e| eval_expr(e).expect("label exprs are pure literals"))
+            .collect()
     }
 
     pub fn span(&self) -> Span {
@@ -853,7 +945,7 @@ fn eval_expr(e: &ast::Expr) -> Result<Value, EvalError> {
         ast::Expr::Ascii(s) => Value::Ascii(s.clone()),
         ast::Expr::Utf16(v) => Value::Utf16(v.clone()),
         ast::Expr::Utf32(v) => Value::Utf32(v.clone()),
-        ast::Expr::Reference(s) => Value::Reference(s.clone()),
+        ast::Expr::Identifier(s) => Value::Identifier(s.clone()),
         ast::Expr::Symbol(s) => Value::Symbol(s.clone()),
         ast::Expr::None => Value::None,
     })
@@ -870,7 +962,12 @@ struct Resolved {
     wildcards: Vec<Vec<String>>,
 }
 
-fn validate_document(ast: &ast::Source, source: &str, file: &str) -> Result<Resolved, ParseError> {
+fn validate_document(
+    ast: &ast::Source,
+    synthetic: &[ast::TypeDecl],
+    source: &str,
+    file: &str,
+) -> Result<Resolved, ParseError> {
     // 1. Namespace must be first if present; at most one.
     let mut file_ns: Vec<String> = Vec::new();
     let mut saw_ns = false;
@@ -902,6 +999,14 @@ fn validate_document(ast: &ast::Source, source: &str, file: &str) -> Result<Reso
     // 2. FQN registry and prefix set.
     let mut declared: HashSet<Vec<String>> = HashSet::new();
     let mut prefixes: HashSet<Vec<String>> = HashSet::new();
+    // Synthetic (registry-provided) types live at the root namespace.
+    for t in synthetic {
+        let fqn = t.name.clone();
+        declared.insert(fqn.clone());
+        for n in 1..fqn.len() {
+            prefixes.insert(fqn[..n].to_vec());
+        }
+    }
     for item in &ast.items {
         let fqn = match item {
             ast::Item::TypeDecl(t) => compose(&file_ns, &t.name),
@@ -1215,7 +1320,10 @@ mod tests {
     use super::*;
 
     fn open(src: &str) -> Document {
-        Document::open(src, "test").expect("open")
+        // Use an empty registry so existing tests aren't polluted with the
+        // four built-in decorator schemas. Explicit `Document::open` /
+        // `open_with` behaviour is tested separately.
+        Document::open_with(src, "test", &SchemaRegistry::empty()).expect("open")
     }
 
     #[test]
@@ -1329,7 +1437,7 @@ mod tests {
     fn block_field_resolves() {
         let doc = open(r#"service "web" { port = 8080 }"#);
         let b = doc.block("service").unwrap();
-        assert_eq!(b.labels(), &["web".to_string()]);
+        assert_eq!(b.labels(), vec![Value::Utf8("web".into())]);
         assert_eq!(b.field("port").unwrap().value().unwrap(), &Value::I64(8080));
     }
 
@@ -1391,7 +1499,7 @@ mod tests {
         let doc = open("owner = wil_taylor");
         assert_eq!(
             doc.field("owner").unwrap().value().unwrap(),
-            &Value::Reference("wil_taylor".into())
+            &Value::Identifier("wil_taylor".into())
         );
     }
 
@@ -2120,6 +2228,77 @@ mod tests {
         let d = x.decorators().next().unwrap();
         assert_eq!(d.full_name(), "a.b.c");
         assert_eq!(d.name(), "c");
+    }
+
+    #[test]
+    fn block_schema_lookup() {
+        let doc = open(r#"@block("service") type Service {}"#);
+        let s = doc.block_schema("service").expect("Service schema");
+        assert_eq!(s.name(), "Service");
+        assert!(doc.block_schema("nope").is_none());
+    }
+
+    #[test]
+    fn decorator_schema_lookup() {
+        let doc = open(r#"@decorator("max") type MaxDec { value: i64 }"#);
+        let s = doc.decorator_schema("max").expect("max schema");
+        assert_eq!(s.name(), "MaxDec");
+    }
+
+    #[test]
+    fn inline_slot_helper() {
+        let doc = open("type Q { @inline(2) f: utf8 }");
+        let q = doc.type_decl("Q").unwrap();
+        assert_eq!(q.field("f").unwrap().inline_slot(), Some(2));
+    }
+
+    #[test]
+    fn inline_slot_returns_none_when_decorator_absent() {
+        let doc = open("type Q { f: utf8 }");
+        let q = doc.type_decl("Q").unwrap();
+        assert_eq!(q.field("f").unwrap().inline_slot(), None);
+    }
+
+    #[test]
+    fn default_value_helper() {
+        let doc = open("type Q { @default(8080) port: u32? }");
+        let q = doc.type_decl("Q").unwrap();
+        assert_eq!(
+            q.field("port").unwrap().default_value(),
+            Some(Value::I64(8080))
+        );
+    }
+
+    #[test]
+    fn default_value_with_symbol_arg() {
+        let doc = open("type Q { @default(:enabled) mode: symbol }");
+        let q = doc.type_decl("Q").unwrap();
+        assert_eq!(
+            q.field("mode").unwrap().default_value(),
+            Some(Value::Symbol("enabled".into()))
+        );
+    }
+
+    #[test]
+    fn mixed_block_labels_round_trip() {
+        let doc = open(r#"service web "prod" { port = 1 }"#);
+        let b = doc.block("service").unwrap();
+        let labels = b.labels();
+        assert_eq!(
+            labels,
+            vec![Value::Identifier("web".into()), Value::Utf8("prod".into())]
+        );
+    }
+
+    #[test]
+    fn block_label_can_be_any_value() {
+        let doc = open(r#"slot 0 :enabled 1.5 { x = 1 }"#);
+        let b = doc.block("slot").unwrap();
+        let labels = b.labels();
+        assert_eq!(labels.len(), 3);
+        assert_eq!(labels[0], Value::I64(0));
+        assert_eq!(labels[1], Value::Symbol("enabled".into()));
+        assert_eq!(labels[2], Value::F64(1.5));
     }
 
     #[test]

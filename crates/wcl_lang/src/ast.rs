@@ -44,7 +44,7 @@ pub(crate) enum Expr {
     Utf16(Vec<u16>),
     Utf32(Vec<char>),
 
-    Reference(String),
+    Identifier(String),
     Symbol(String),
     None,
 }
@@ -75,7 +75,7 @@ pub(crate) struct Field {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Block {
     pub kind: String,
-    pub labels: Vec<String>,
+    pub labels: Vec<Expr>,
     pub items: Vec<Item>,
     pub decorators: Vec<Decorator>,
     pub span: Span,

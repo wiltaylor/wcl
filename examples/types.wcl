@@ -78,6 +78,28 @@ type Paint {
 shade = :red
 tag   = :wide
 
+@block("brush")
+type Brush {
+  @inline(0)
+  id:    identifier
+  @inline(1)
+  finish: utf8?
+  @default(8080)
+  port:  u32?
+}
+
+@decorator("max_len")
+type MaxLen {
+  value: u64
+}
+
+brush primary "matte" {
+  port = 9000
+}
+
+brush secondary {
+}
+
 @deprecated("use NewUser instead")
 type AnnotatedUser {
   @max(64)

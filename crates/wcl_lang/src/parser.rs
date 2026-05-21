@@ -87,7 +87,13 @@ impl<'a> Parser<'a> {
         let next = self.peek()?;
         match &next.kind {
             TokenKind::Eq => self.parse_field(name, span_start, decorators),
-            TokenKind::Str(_) | TokenKind::LBrace => self.parse_block(name, span_start, decorators),
+            TokenKind::Str(_)
+            | TokenKind::LBrace
+            | TokenKind::Ident(_)
+            | TokenKind::Number(_)
+            | TokenKind::Bool(_)
+            | TokenKind::Symbol(_)
+            | TokenKind::None => self.parse_block(name, span_start, decorators),
             other => {
                 let msg = format!(
                     "expected '=', label, or '{{' after identifier '{}', found {}",
@@ -188,7 +194,7 @@ impl<'a> Parser<'a> {
             TokenKind::Number(n) => number_to_expr(n),
             TokenKind::Str(s) => string_to_expr(s),
             TokenKind::Bool(b) => Expr::Bool(b),
-            TokenKind::Ident(s) => Expr::Reference(s),
+            TokenKind::Ident(s) => Expr::Identifier(s),
             TokenKind::Symbol(s) => Expr::Symbol(s),
             TokenKind::None => Expr::None,
             other => {
@@ -795,25 +801,25 @@ impl<'a> Parser<'a> {
         start: usize,
         decorators: Vec<Decorator>,
     ) -> Result<Item, ParseError> {
-        let mut labels = Vec::new();
+        // Labels are value expressions in positional slots. Their types are
+        // determined by the schema's `@inline(N)`-decorated fields.
+        let mut labels: Vec<Expr> = Vec::new();
         loop {
             let p = self.peek()?;
             match &p.kind {
-                TokenKind::Str(StringLit::Utf8(_)) => {
-                    let tok = self.bump()?;
-                    if let TokenKind::Str(StringLit::Utf8(s)) = tok.kind {
-                        labels.push(s);
-                    }
-                }
-                TokenKind::Str(_) => {
-                    let span = p.span;
-                    return Err(self.err(
-                        "block labels must be plain (utf8) strings",
-                        span,
-                        "expected an unprefixed string",
-                    ));
-                }
                 TokenKind::LBrace => break,
+                TokenKind::Str(StringLit::Utf8(_))
+                | TokenKind::Str(StringLit::Ascii(_))
+                | TokenKind::Str(StringLit::Utf16(_))
+                | TokenKind::Str(StringLit::Utf32(_))
+                | TokenKind::Number(_)
+                | TokenKind::Bool(_)
+                | TokenKind::Symbol(_)
+                | TokenKind::Ident(_)
+                | TokenKind::None => {
+                    let (expr, _) = self.parse_value_expr()?;
+                    labels.push(expr);
+                }
                 other => {
                     let msg = format!("expected label or '{{', found {}", describe(other));
                     let span = p.span;
@@ -1031,7 +1037,7 @@ mod tests {
         let blks = blocks(&s.items);
         let block = blks[0];
         assert_eq!(block.kind, "service");
-        assert_eq!(block.labels, vec!["web".to_string()]);
+        assert_eq!(block.labels, vec![Expr::Utf8("web".into())]);
         assert_eq!(field(&block.items, "port").expr, Expr::I64(8080));
         assert_eq!(
             field(&block.items, "host").expr,
@@ -1054,7 +1060,10 @@ mod tests {
         assert_eq!(block.kind, "resource");
         assert_eq!(
             block.labels,
-            vec!["aws_s3_bucket".to_string(), "logs".to_string()]
+            vec![
+                Expr::Utf8("aws_s3_bucket".into()),
+                Expr::Utf8("logs".into())
+            ]
         );
     }
 
@@ -1197,7 +1206,7 @@ mod tests {
         let s = parse("owner = wil_taylor");
         assert_eq!(
             field(&s.items, "owner").expr,
-            Expr::Reference("wil_taylor".into())
+            Expr::Identifier("wil_taylor".into())
         );
     }
 
@@ -1219,7 +1228,7 @@ mod tests {
         let s = parse(r#"type "label" { x = 1 }"#);
         let block = blocks(&s.items)[0];
         assert_eq!(block.kind, "type");
-        assert_eq!(block.labels, vec!["label".to_string()]);
+        assert_eq!(block.labels, vec![Expr::Utf8("label".into())]);
     }
 
     #[test]

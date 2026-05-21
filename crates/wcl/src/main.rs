@@ -206,7 +206,7 @@ fn dump_block(b: &Block<'_>, depth: usize, out: &mut String) {
     let pad = "  ".repeat(depth);
     let _ = write!(out, "{pad}{}", b.kind());
     for label in b.labels() {
-        let _ = write!(out, " \"{label}\"");
+        let _ = write!(out, " {}", value_repr(&label));
     }
     writeln!(out, " {{").unwrap();
     for f in b.fields() {
@@ -253,7 +253,7 @@ fn value_repr(v: &Value) -> String {
             format!("utf32\"{}\"", escape_string(&s))
         }
 
-        Value::Reference(s) => s.clone(),
+        Value::Identifier(s) => s.clone(),
         Value::Symbol(s) => format!(":{s}"),
         Value::None => "none".to_string(),
     }
