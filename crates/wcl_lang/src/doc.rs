@@ -4,10 +4,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use miette::{NamedSource, SourceSpan};
 
+use std::collections::HashMap;
+
 use crate::ast::{self, Span};
 use crate::error::{EvalError, ParseError};
 use crate::parser::Parser;
-use crate::value::{TypeRef, Value};
+use crate::value::{BuiltinType, TypeRef, Value};
 
 #[derive(Debug)]
 struct FieldCell {
@@ -60,6 +62,7 @@ pub struct Document {
 impl Document {
     pub fn open(source: &str, name: &str) -> Result<Self, ParseError> {
         let ast = Parser::new(source, name).parse_source()?;
+        validate_type_refs(&ast, source, name)?;
         let cells = BlockCells::build(&ast.items);
         Ok(Self {
             src: NamedSource::new(name, source.to_string()),
@@ -106,8 +109,30 @@ impl Document {
             _ => None,
         })
     }
+
+    /// Resolve a [`TypeRef`] to either its built-in tag or the user-declared
+    /// [`TypeDecl`] it points to. `Named` refs are validated at
+    /// [`Document::open`], so the lookup never fails here.
+    pub fn resolve(&self, t: &TypeRef) -> ResolvedType<'_> {
+        match t {
+            TypeRef::Builtin(b) => ResolvedType::Builtin(*b),
+            TypeRef::Named(name) => {
+                let decl = self
+                    .type_decl(name)
+                    .expect("named ref validated at Document::open");
+                ResolvedType::Named(decl)
+            }
+        }
+    }
 }
 
+#[derive(Debug)]
+pub enum ResolvedType<'a> {
+    Builtin(BuiltinType),
+    Named(TypeDecl<'a>),
+}
+
+#[derive(Debug)]
 pub struct TypeDecl<'a> {
     ast: &'a ast::TypeDecl,
 }
@@ -305,6 +330,50 @@ fn eval_expr(e: &ast::Expr) -> Result<Value, EvalError> {
 
 fn span_to_miette(span: Span) -> SourceSpan {
     SourceSpan::new(span.start.into(), span.len().max(1))
+}
+
+fn validate_type_refs(ast: &ast::Source, source: &str, file: &str) -> Result<(), ParseError> {
+    let mut declared: HashMap<&str, ()> = HashMap::new();
+    for item in &ast.items {
+        if let ast::Item::TypeDecl(t) = item
+            && declared.insert(t.name.as_str(), ()).is_some()
+        {
+            return Err(open_error(
+                source,
+                file,
+                format!("duplicate type declaration '{}'", t.name),
+                t.span,
+                "duplicate type",
+            ));
+        }
+    }
+    for item in &ast.items {
+        if let ast::Item::TypeDecl(t) = item {
+            for f in &t.fields {
+                if let TypeRef::Named(n) = &f.ty
+                    && !declared.contains_key(n.as_str())
+                {
+                    return Err(open_error(
+                        source,
+                        file,
+                        format!("unknown type '{n}'"),
+                        f.ty_span,
+                        "type not declared",
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn open_error(source: &str, file: &str, message: String, span: Span, label: &str) -> ParseError {
+    ParseError::syntax(
+        message,
+        NamedSource::new(file, source.to_string()),
+        span_to_miette(span),
+        label.to_string(),
+    )
 }
 
 #[cfg(test)]
@@ -549,6 +618,87 @@ mod tests {
         assert_eq!(field_names, vec!["count".to_string()]);
         let block_kinds: Vec<_> = doc.blocks().map(|b| b.kind().to_string()).collect();
         assert_eq!(block_kinds, vec!["svc".to_string()]);
+    }
+
+    #[test]
+    fn forward_ref_resolves_at_open() {
+        let doc = open("type A { b: B }\ntype B { x: i32 }");
+        let a = doc.type_decl("A").unwrap();
+        let b_field = a.field("b").unwrap();
+        match doc.resolve(b_field.type_ref()) {
+            ResolvedType::Named(decl) => assert_eq!(decl.name(), "B"),
+            _ => panic!("expected named ResolvedType::Named"),
+        }
+    }
+
+    #[test]
+    fn self_ref_resolves_at_open() {
+        let doc = open("type Tree { parent: Tree? }");
+        let t = doc.type_decl("Tree").unwrap();
+        let parent = t.field("parent").unwrap();
+        match doc.resolve(parent.type_ref()) {
+            ResolvedType::Named(decl) => assert_eq!(decl.name(), "Tree"),
+            _ => panic!("expected ResolvedType::Named"),
+        }
+    }
+
+    #[test]
+    fn unknown_type_ref_errors_at_open() {
+        let err = Document::open("type X { y: NotDecl }", "test").unwrap_err();
+        match err {
+            ParseError::Syntax(e) => {
+                assert!(
+                    e.message.contains("unknown type 'NotDecl'"),
+                    "message: {}",
+                    e.message
+                );
+                // Span covers exactly the type ident `NotDecl`.
+                assert_eq!(e.span.offset(), "type X { y: ".len());
+                assert_eq!(e.span.len(), "NotDecl".len());
+            }
+            _ => panic!("expected syntax error"),
+        }
+    }
+
+    #[test]
+    fn duplicate_type_decl_errors_at_open() {
+        let err = Document::open("type Foo { x: i32 }\ntype Foo { y: i32 }", "test").unwrap_err();
+        match err {
+            ParseError::Syntax(e) => {
+                assert!(
+                    e.message.contains("duplicate type declaration 'Foo'"),
+                    "message: {}",
+                    e.message
+                );
+            }
+            _ => panic!("expected syntax error"),
+        }
+    }
+
+    #[test]
+    fn resolve_builtin_returns_builtin() {
+        let doc = open("");
+        match doc.resolve(&TypeRef::Builtin(BuiltinType::I32)) {
+            ResolvedType::Builtin(b) => assert_eq!(b, BuiltinType::I32),
+            _ => panic!("expected builtin"),
+        }
+    }
+
+    #[test]
+    fn resolve_lets_caller_walk_named_decl_fields() {
+        let doc = open(
+            r#"
+            type Inner { a: i32 b: utf8 }
+            type Outer { inner: Inner }
+            "#,
+        );
+        let outer = doc.type_decl("Outer").unwrap();
+        let inner_field = outer.field("inner").unwrap();
+        let ResolvedType::Named(inner_decl) = doc.resolve(inner_field.type_ref()) else {
+            panic!("expected named");
+        };
+        let sub_names: Vec<_> = inner_decl.fields().map(|f| f.name().to_string()).collect();
+        assert_eq!(sub_names, vec!["a".to_string(), "b".to_string()]);
     }
 
     #[test]

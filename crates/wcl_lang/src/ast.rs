@@ -74,6 +74,7 @@ pub(crate) struct TypeDecl {
 pub(crate) struct TypeField {
     pub name: String,
     pub ty: crate::value::TypeRef,
+    pub ty_span: Span,
     pub optional: bool,
     pub span: Span,
 }

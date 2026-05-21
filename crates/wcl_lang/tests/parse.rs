@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use wcl_lang::{Document, Value};
+use wcl_lang::{Document, ResolvedType, Value};
 
 fn examples_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -44,6 +44,17 @@ fn document_round_trips_simple_fields() {
         doc.field("flag").unwrap().value().unwrap(),
         &Value::Bool(false)
     );
+}
+
+#[test]
+fn named_type_refs_resolve_in_fixture() {
+    let doc = Document::from_file(&examples_dir().join("types.wcl")).expect("types fixture parses");
+    let user = doc.type_decl("User").expect("User type");
+    let parent = user.field("parent").expect("parent field");
+    let ResolvedType::Named(decl) = doc.resolve(parent.type_ref()) else {
+        panic!("parent should resolve to a named type");
+    };
+    assert_eq!(decl.name(), "User");
 }
 
 #[test]

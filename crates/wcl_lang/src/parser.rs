@@ -137,6 +137,7 @@ impl<'a> Parser<'a> {
             ));
         }
         let ty_tok = self.bump()?;
+        let ty_span = ty_tok.span;
         let TokenKind::Ident(ty_name) = ty_tok.kind else {
             return Err(self.err(
                 format!("expected type name, found {}", describe(&ty_tok.kind)),
@@ -158,6 +159,7 @@ impl<'a> Parser<'a> {
         Ok(TypeField {
             name: field_name,
             ty,
+            ty_span,
             optional,
             span: Span::new(field_start, end),
         })
