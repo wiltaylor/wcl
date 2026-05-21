@@ -12,6 +12,8 @@ pub enum TokenKind {
     Colon,
     Question,
     Amp,
+    Dot,
+    Comma,
     LBrace,
     RBrace,
     Eof,
@@ -105,6 +107,20 @@ impl<'a> Lexer<'a> {
                 self.pos += 1;
                 Ok(Token {
                     kind: TokenKind::Amp,
+                    span: Span::new(start, self.pos),
+                })
+            }
+            b'.' => {
+                self.pos += 1;
+                Ok(Token {
+                    kind: TokenKind::Dot,
+                    span: Span::new(start, self.pos),
+                })
+            }
+            b',' => {
+                self.pos += 1;
+                Ok(Token {
+                    kind: TokenKind::Comma,
                     span: Span::new(start, self.pos),
                 })
             }
@@ -732,6 +748,34 @@ mod tests {
                 TokenKind::Colon,
                 TokenKind::Ident("utf8".into()),
                 TokenKind::Question,
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn dot_separates_path_segments() {
+        assert_eq!(
+            tokens("foo.bar.baz"),
+            vec![
+                TokenKind::Ident("foo".into()),
+                TokenKind::Dot,
+                TokenKind::Ident("bar".into()),
+                TokenKind::Dot,
+                TokenKind::Ident("baz".into()),
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn comma_lexes_as_comma() {
+        assert_eq!(
+            tokens("a , b"),
+            vec![
+                TokenKind::Ident("a".into()),
+                TokenKind::Comma,
+                TokenKind::Ident("b".into()),
                 TokenKind::Eof,
             ]
         );

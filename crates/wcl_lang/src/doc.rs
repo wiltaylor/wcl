@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use miette::{NamedSource, SourceSpan};
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::ast::{self, Span};
 use crate::error::{EvalError, ParseError};
@@ -32,6 +32,8 @@ enum ItemCells {
     Block(BlockCells),
     TypeDecl,
     UnionDecl,
+    NamespaceDecl,
+    UseDecl,
 }
 
 #[derive(Debug)]
@@ -48,6 +50,8 @@ impl BlockCells {
                 ast::Item::Block(b) => ItemCells::Block(BlockCells::build(&b.items)),
                 ast::Item::TypeDecl(_) => ItemCells::TypeDecl,
                 ast::Item::UnionDecl(_) => ItemCells::UnionDecl,
+                ast::Item::NamespaceDecl(_) => ItemCells::NamespaceDecl,
+                ast::Item::UseDecl(_) => ItemCells::UseDecl,
             })
             .collect();
         Self { items: cells }
@@ -59,17 +63,25 @@ pub struct Document {
     src: NamedSource<String>,
     ast: ast::Source,
     cells: BlockCells,
+    file_ns: Vec<String>,
+    item_aliases: HashMap<String, Vec<String>>,
+    ns_aliases: HashMap<String, Vec<String>>,
+    wildcards: Vec<Vec<String>>,
 }
 
 impl Document {
     pub fn open(source: &str, name: &str) -> Result<Self, ParseError> {
         let ast = Parser::new(source, name).parse_source()?;
-        validate_type_refs(&ast, source, name)?;
+        let resolved = validate_document(&ast, source, name)?;
         let cells = BlockCells::build(&ast.items);
         Ok(Self {
             src: NamedSource::new(name, source.to_string()),
             ast,
             cells,
+            file_ns: resolved.file_ns,
+            item_aliases: resolved.item_aliases,
+            ns_aliases: resolved.ns_aliases,
+            wildcards: resolved.wildcards,
         })
     }
 
@@ -98,30 +110,72 @@ impl Document {
         iter_blocks(&self.ast.items, &self.cells.items)
     }
 
-    pub fn type_decl(&self, name: &str) -> Option<TypeDecl<'_>> {
+    /// Returns the file-level namespace path. Empty when the file declared none.
+    pub fn namespace(&self) -> &[String] {
+        &self.file_ns
+    }
+
+    pub fn uses(&self) -> impl Iterator<Item = UseDeclView<'_>> {
+        self.ast.items.iter().filter_map(|item| match item {
+            ast::Item::UseDecl(u) => Some(UseDeclView { ast: u }),
+            _ => None,
+        })
+    }
+
+    /// Look up a type by fully-qualified name (dotted).
+    pub fn type_decl(&self, fqn: &str) -> Option<TypeDecl<'_>> {
+        let target: Vec<&str> = fqn.split('.').collect();
         self.ast.items.iter().find_map(|item| match item {
-            ast::Item::TypeDecl(t) if t.name == name => Some(TypeDecl { ast: t }),
+            ast::Item::TypeDecl(t) => {
+                let decl_fqn = self.compose_fqn(&t.name);
+                if decl_fqn_matches(&decl_fqn, &target) {
+                    Some(TypeDecl {
+                        ast: t,
+                        file_ns: &self.file_ns,
+                    })
+                } else {
+                    None
+                }
+            }
             _ => None,
         })
     }
 
     pub fn type_decls(&self) -> impl Iterator<Item = TypeDecl<'_>> {
         self.ast.items.iter().filter_map(|item| match item {
-            ast::Item::TypeDecl(t) => Some(TypeDecl { ast: t }),
+            ast::Item::TypeDecl(t) => Some(TypeDecl {
+                ast: t,
+                file_ns: &self.file_ns,
+            }),
             _ => None,
         })
     }
 
-    pub fn union_decl(&self, name: &str) -> Option<UnionDecl<'_>> {
+    /// Look up a union by fully-qualified name (dotted).
+    pub fn union_decl(&self, fqn: &str) -> Option<UnionDecl<'_>> {
+        let target: Vec<&str> = fqn.split('.').collect();
         self.ast.items.iter().find_map(|item| match item {
-            ast::Item::UnionDecl(u) if u.name == name => Some(UnionDecl { ast: u }),
+            ast::Item::UnionDecl(u) => {
+                let decl_fqn = self.compose_fqn(&u.name);
+                if decl_fqn_matches(&decl_fqn, &target) {
+                    Some(UnionDecl {
+                        ast: u,
+                        file_ns: &self.file_ns,
+                    })
+                } else {
+                    None
+                }
+            }
             _ => None,
         })
     }
 
     pub fn union_decls(&self) -> impl Iterator<Item = UnionDecl<'_>> {
         self.ast.items.iter().filter_map(|item| match item {
-            ast::Item::UnionDecl(u) => Some(UnionDecl { ast: u }),
+            ast::Item::UnionDecl(u) => Some(UnionDecl {
+                ast: u,
+                file_ns: &self.file_ns,
+            }),
             _ => None,
         })
     }
@@ -132,19 +186,99 @@ impl Document {
     pub fn resolve(&self, t: &TypeRef) -> ResolvedType<'_> {
         match t {
             TypeRef::Builtin(b) => ResolvedType::Builtin(*b),
-            TypeRef::Named(name) => {
-                if let Some(decl) = self.type_decl(name) {
+            TypeRef::Named(path) => {
+                let fqn = self
+                    .resolve_path(path)
+                    .expect("named ref validated at Document::open");
+                let fqn_dotted = fqn.join(".");
+                if let Some(decl) = self.type_decl(&fqn_dotted) {
                     ResolvedType::Named(decl)
                 } else {
-                    let union = self
-                        .union_decl(name)
-                        .expect("named ref validated at Document::open");
-                    ResolvedType::Union(union)
+                    ResolvedType::Union(
+                        self.union_decl(&fqn_dotted)
+                            .expect("named ref validated at Document::open"),
+                    )
                 }
             }
             TypeRef::Reference(inner) => ResolvedType::Reference(Box::new(self.resolve(inner))),
         }
     }
+
+    fn compose_fqn(&self, name: &[String]) -> Vec<String> {
+        let mut v = self.file_ns.clone();
+        v.extend(name.iter().cloned());
+        v
+    }
+
+    /// Run the name-resolution algorithm on `path` against this document's
+    /// file ns / aliases / wildcards / registry.
+    fn resolve_path(&self, path: &[String]) -> Option<Vec<String>> {
+        let registry: HashSet<Vec<String>> = self
+            .ast
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                ast::Item::TypeDecl(t) => Some(self.compose_fqn(&t.name)),
+                ast::Item::UnionDecl(u) => Some(self.compose_fqn(&u.name)),
+                _ => None,
+            })
+            .collect();
+        resolve_path(
+            path,
+            &self.file_ns,
+            &self.item_aliases,
+            &self.ns_aliases,
+            &self.wildcards,
+            &registry,
+        )
+    }
+}
+
+fn decl_fqn_matches(decl: &[String], target: &[&str]) -> bool {
+    decl.len() == target.len() && decl.iter().zip(target.iter()).all(|(a, b)| a == b)
+}
+
+fn resolve_path(
+    path: &[String],
+    file_ns: &[String],
+    item_aliases: &HashMap<String, Vec<String>>,
+    ns_aliases: &HashMap<String, Vec<String>>,
+    wildcards: &[Vec<String>],
+    registry: &HashSet<Vec<String>>,
+) -> Option<Vec<String>> {
+    // 1. file_ns + path
+    let candidate: Vec<String> = file_ns.iter().chain(path.iter()).cloned().collect();
+    if registry.contains(&candidate) {
+        return Some(candidate);
+    }
+    // 2. item alias on single-segment path
+    if path.len() == 1
+        && let Some(fqn) = item_aliases.get(&path[0])
+        && registry.contains(fqn)
+    {
+        return Some(fqn.clone());
+    }
+    // 3. namespace alias on first segment of multi-segment path
+    if path.len() > 1
+        && let Some(prefix) = ns_aliases.get(&path[0])
+    {
+        let candidate: Vec<String> = prefix.iter().chain(path[1..].iter()).cloned().collect();
+        if registry.contains(&candidate) {
+            return Some(candidate);
+        }
+    }
+    // 4. each wildcard prefix
+    for w in wildcards {
+        let candidate: Vec<String> = w.iter().chain(path.iter()).cloned().collect();
+        if registry.contains(&candidate) {
+            return Some(candidate);
+        }
+    }
+    // 5. absolute
+    if registry.contains(path) {
+        return Some(path.to_vec());
+    }
+    None
 }
 
 #[derive(Debug)]
@@ -158,11 +292,37 @@ pub enum ResolvedType<'a> {
 #[derive(Debug)]
 pub struct UnionDecl<'a> {
     ast: &'a ast::UnionDecl,
+    file_ns: &'a [String],
 }
 
 impl<'a> UnionDecl<'a> {
+    /// Last segment of the declared name.
     pub fn name(&self) -> &'a str {
+        self.ast.name.last().expect("name has at least one segment")
+    }
+
+    /// Path as written in source (relative to file namespace).
+    pub fn name_segments(&self) -> &'a [String] {
         &self.ast.name
+    }
+
+    /// Fully-qualified name as a dotted string.
+    pub fn full_name(&self) -> String {
+        self.file_ns
+            .iter()
+            .chain(self.ast.name.iter())
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(".")
+    }
+
+    /// Namespace path containing this declaration (file ns + decl path minus last).
+    pub fn namespace(&self) -> Vec<String> {
+        let mut v: Vec<String> = self.file_ns.to_vec();
+        if self.ast.name.len() > 1 {
+            v.extend(self.ast.name[..self.ast.name.len() - 1].iter().cloned());
+        }
+        v
     }
 
     pub fn span(&self) -> Span {
@@ -232,11 +392,33 @@ pub enum VariantBodyView<'a> {
 #[derive(Debug)]
 pub struct TypeDecl<'a> {
     ast: &'a ast::TypeDecl,
+    file_ns: &'a [String],
 }
 
 impl<'a> TypeDecl<'a> {
     pub fn name(&self) -> &'a str {
+        self.ast.name.last().expect("name has at least one segment")
+    }
+
+    pub fn name_segments(&self) -> &'a [String] {
         &self.ast.name
+    }
+
+    pub fn full_name(&self) -> String {
+        self.file_ns
+            .iter()
+            .chain(self.ast.name.iter())
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(".")
+    }
+
+    pub fn namespace(&self) -> Vec<String> {
+        let mut v: Vec<String> = self.file_ns.to_vec();
+        if self.ast.name.len() > 1 {
+            v.extend(self.ast.name[..self.ast.name.len() - 1].iter().cloned());
+        }
+        v
     }
 
     pub fn span(&self) -> Span {
@@ -253,6 +435,58 @@ impl<'a> TypeDecl<'a> {
             .iter()
             .find(|f| f.name == name)
             .map(|f| TypeField { ast: f })
+    }
+}
+
+pub struct UseDeclView<'a> {
+    ast: &'a ast::UseDecl,
+}
+
+impl<'a> UseDeclView<'a> {
+    pub fn path(&self) -> &'a [String] {
+        &self.ast.path
+    }
+
+    pub fn span(&self) -> Span {
+        self.ast.span
+    }
+
+    pub fn form(&self) -> UseFormView<'a> {
+        match &self.ast.form {
+            ast::UseForm::Bare(alias) => UseFormView::Bare(alias.as_deref()),
+            ast::UseForm::List(_) => UseFormView::List,
+        }
+    }
+
+    /// If this `use` is a brace-list form, iterate its items.
+    pub fn items(&self) -> Box<dyn Iterator<Item = UseItem<'a>> + 'a> {
+        match &self.ast.form {
+            ast::UseForm::List(items) => Box::new(items.iter().map(|i| UseItem { ast: i })),
+            ast::UseForm::Bare(_) => Box::new(std::iter::empty()),
+        }
+    }
+}
+
+pub enum UseFormView<'a> {
+    Bare(Option<&'a str>),
+    List,
+}
+
+pub struct UseItem<'a> {
+    ast: &'a ast::UseItem,
+}
+
+impl<'a> UseItem<'a> {
+    pub fn name(&self) -> &'a str {
+        &self.ast.name
+    }
+
+    pub fn alias(&self) -> Option<&'a str> {
+        self.ast.alias.as_deref()
+    }
+
+    pub fn span(&self) -> Span {
+        self.ast.span
     }
 }
 
@@ -429,50 +663,207 @@ fn span_to_miette(span: Span) -> SourceSpan {
     SourceSpan::new(span.start.into(), span.len().max(1))
 }
 
-fn validate_type_refs(ast: &ast::Source, source: &str, file: &str) -> Result<(), ParseError> {
-    let mut declared: HashMap<&str, ()> = HashMap::new();
-    for item in &ast.items {
-        match item {
-            ast::Item::TypeDecl(t) => {
-                if declared.insert(t.name.as_str(), ()).is_some() {
-                    return Err(open_error(
-                        source,
-                        file,
-                        format!("duplicate declaration '{}'", t.name),
-                        t.span,
-                        "duplicate declaration",
-                    ));
-                }
+struct Resolved {
+    file_ns: Vec<String>,
+    item_aliases: HashMap<String, Vec<String>>,
+    ns_aliases: HashMap<String, Vec<String>>,
+    wildcards: Vec<Vec<String>>,
+}
+
+fn validate_document(ast: &ast::Source, source: &str, file: &str) -> Result<Resolved, ParseError> {
+    // 1. Namespace must be first if present; at most one.
+    let mut file_ns: Vec<String> = Vec::new();
+    let mut saw_ns = false;
+    for (idx, item) in ast.items.iter().enumerate() {
+        if let ast::Item::NamespaceDecl(n) = item {
+            if saw_ns {
+                return Err(open_error(
+                    source,
+                    file,
+                    "duplicate namespace declaration".to_string(),
+                    n.span,
+                    "duplicate namespace",
+                ));
             }
-            ast::Item::UnionDecl(u) => {
-                if declared.insert(u.name.as_str(), ()).is_some() {
-                    return Err(open_error(
-                        source,
-                        file,
-                        format!("duplicate declaration '{}'", u.name),
-                        u.span,
-                        "duplicate declaration",
-                    ));
-                }
+            if idx != 0 {
+                return Err(open_error(
+                    source,
+                    file,
+                    "namespace declaration must be the first item in the file".to_string(),
+                    n.span,
+                    "must be first item",
+                ));
             }
-            _ => {}
+            file_ns = n.path.clone();
+            saw_ns = true;
         }
     }
+
+    // 2. FQN registry and prefix set.
+    let mut declared: HashSet<Vec<String>> = HashSet::new();
+    let mut prefixes: HashSet<Vec<String>> = HashSet::new();
+    for item in &ast.items {
+        let fqn = match item {
+            ast::Item::TypeDecl(t) => compose(&file_ns, &t.name),
+            ast::Item::UnionDecl(u) => compose(&file_ns, &u.name),
+            _ => continue,
+        };
+        if !declared.insert(fqn.clone()) {
+            let span = match item {
+                ast::Item::TypeDecl(t) => t.span,
+                ast::Item::UnionDecl(u) => u.span,
+                _ => unreachable!(),
+            };
+            return Err(open_error(
+                source,
+                file,
+                format!("duplicate declaration '{}'", fqn.join(".")),
+                span,
+                "duplicate declaration",
+            ));
+        }
+        for n in 1..fqn.len() {
+            prefixes.insert(fqn[..n].to_vec());
+        }
+    }
+
+    // 3. Use declarations.
+    let mut item_aliases: HashMap<String, Vec<String>> = HashMap::new();
+    let mut ns_aliases: HashMap<String, Vec<String>> = HashMap::new();
+    let mut wildcards: Vec<Vec<String>> = Vec::new();
+    let mut alias_taken: HashSet<String> = HashSet::new();
+
+    let record_alias =
+        |alias: String, span: Span, taken: &mut HashSet<String>| -> Result<(), ParseError> {
+            if !taken.insert(alias.clone()) {
+                return Err(open_error(
+                    source,
+                    file,
+                    format!("duplicate use alias '{alias}'"),
+                    span,
+                    "duplicate alias",
+                ));
+            }
+            Ok(())
+        };
+
+    for item in &ast.items {
+        let ast::Item::UseDecl(u) = item else {
+            continue;
+        };
+        match &u.form {
+            ast::UseForm::Bare(alias) => {
+                let path_is_leaf = declared.contains(&u.path);
+                let path_is_prefix = prefixes.contains(&u.path);
+                match alias {
+                    None => {
+                        if path_is_leaf {
+                            let local = u.path.last().expect("non-empty path").clone();
+                            record_alias(local.clone(), u.span, &mut alias_taken)?;
+                            item_aliases.insert(local, u.path.clone());
+                        } else if path_is_prefix {
+                            wildcards.push(u.path.clone());
+                        } else {
+                            return Err(open_error(
+                                source,
+                                file,
+                                format!("unknown use target '{}'", u.path.join(".")),
+                                u.span,
+                                "not declared",
+                            ));
+                        }
+                    }
+                    Some(alias_name) => {
+                        if path_is_leaf {
+                            record_alias(alias_name.clone(), u.span, &mut alias_taken)?;
+                            item_aliases.insert(alias_name.clone(), u.path.clone());
+                        } else if path_is_prefix {
+                            record_alias(alias_name.clone(), u.span, &mut alias_taken)?;
+                            ns_aliases.insert(alias_name.clone(), u.path.clone());
+                        } else {
+                            return Err(open_error(
+                                source,
+                                file,
+                                format!("unknown use target '{}'", u.path.join(".")),
+                                u.span,
+                                "not declared",
+                            ));
+                        }
+                    }
+                }
+            }
+            ast::UseForm::List(items) => {
+                if declared.contains(&u.path) {
+                    return Err(open_error(
+                        source,
+                        file,
+                        format!(
+                            "expected namespace, but '{}' names a type",
+                            u.path.join(".")
+                        ),
+                        u.span,
+                        "not a namespace",
+                    ));
+                }
+                if !u.path.is_empty() && !prefixes.contains(&u.path) {
+                    return Err(open_error(
+                        source,
+                        file,
+                        format!("unknown use target '{}'", u.path.join(".")),
+                        u.span,
+                        "not declared",
+                    ));
+                }
+                for it in items {
+                    let mut full = u.path.clone();
+                    full.push(it.name.clone());
+                    if !declared.contains(&full) {
+                        return Err(open_error(
+                            source,
+                            file,
+                            format!("unknown use target '{}'", full.join(".")),
+                            it.span,
+                            "not declared",
+                        ));
+                    }
+                    let local = it.alias.clone().unwrap_or_else(|| it.name.clone());
+                    record_alias(local.clone(), it.span, &mut alias_taken)?;
+                    item_aliases.insert(local, full);
+                }
+            }
+        }
+    }
+
+    // 4. TypeRef resolution + variant-name uniqueness.
     for item in &ast.items {
         match item {
             ast::Item::TypeDecl(t) => {
                 for f in &t.fields {
-                    check_type_ref(&f.ty, f.ty_span, &declared, source, file)?;
+                    check_type_ref(
+                        &f.ty,
+                        f.ty_span,
+                        &declared,
+                        &file_ns,
+                        &item_aliases,
+                        &ns_aliases,
+                        &wildcards,
+                        source,
+                        file,
+                    )?;
                 }
             }
             ast::Item::UnionDecl(u) => {
-                let mut seen: HashMap<&str, ()> = HashMap::new();
+                let mut seen: HashSet<String> = HashSet::new();
                 for v in &u.variants {
-                    if seen.insert(v.name.as_str(), ()).is_some() {
+                    if !seen.insert(v.name.clone()) {
                         return Err(open_error(
                             source,
                             file,
-                            format!("duplicate variant '{}' in union '{}'", v.name, u.name),
+                            format!(
+                                "duplicate variant '{}' in union '{}'",
+                                v.name,
+                                u.name.join(".")
+                            ),
                             v.span,
                             "duplicate variant",
                         ));
@@ -480,11 +871,31 @@ fn validate_type_refs(ast: &ast::Source, source: &str, file: &str) -> Result<(),
                     match &v.body {
                         ast::VariantBody::Record(fields) => {
                             for f in fields {
-                                check_type_ref(&f.ty, f.ty_span, &declared, source, file)?;
+                                check_type_ref(
+                                    &f.ty,
+                                    f.ty_span,
+                                    &declared,
+                                    &file_ns,
+                                    &item_aliases,
+                                    &ns_aliases,
+                                    &wildcards,
+                                    source,
+                                    file,
+                                )?;
                             }
                         }
                         ast::VariantBody::TypeRef { ty, ty_span } => {
-                            check_type_ref(ty, *ty_span, &declared, source, file)?;
+                            check_type_ref(
+                                ty,
+                                *ty_span,
+                                &declared,
+                                &file_ns,
+                                &item_aliases,
+                                &ns_aliases,
+                                &wildcards,
+                                source,
+                                file,
+                            )?;
                         }
                         ast::VariantBody::Unit => {}
                     }
@@ -493,32 +904,58 @@ fn validate_type_refs(ast: &ast::Source, source: &str, file: &str) -> Result<(),
             _ => {}
         }
     }
-    Ok(())
+
+    Ok(Resolved {
+        file_ns,
+        item_aliases,
+        ns_aliases,
+        wildcards,
+    })
 }
 
+fn compose(file_ns: &[String], name: &[String]) -> Vec<String> {
+    file_ns.iter().chain(name.iter()).cloned().collect()
+}
+
+#[allow(clippy::too_many_arguments)]
 fn check_type_ref(
     t: &TypeRef,
     ty_span: Span,
-    declared: &HashMap<&str, ()>,
+    declared: &HashSet<Vec<String>>,
+    file_ns: &[String],
+    item_aliases: &HashMap<String, Vec<String>>,
+    ns_aliases: &HashMap<String, Vec<String>>,
+    wildcards: &[Vec<String>],
     source: &str,
     file: &str,
 ) -> Result<(), ParseError> {
     match t {
         TypeRef::Builtin(_) => Ok(()),
-        TypeRef::Named(n) => {
-            if declared.contains_key(n.as_str()) {
+        TypeRef::Named(path) => {
+            if resolve_path(path, file_ns, item_aliases, ns_aliases, wildcards, declared).is_some()
+            {
                 Ok(())
             } else {
                 Err(open_error(
                     source,
                     file,
-                    format!("unknown type '{n}'"),
+                    format!("unknown type '{}'", path.join(".")),
                     ty_span,
                     "type not declared",
                 ))
             }
         }
-        TypeRef::Reference(inner) => check_type_ref(inner, ty_span, declared, source, file),
+        TypeRef::Reference(inner) => check_type_ref(
+            inner,
+            ty_span,
+            declared,
+            file_ns,
+            item_aliases,
+            ns_aliases,
+            wildcards,
+            source,
+            file,
+        ),
     }
 }
 
@@ -747,7 +1184,7 @@ mod tests {
         assert_eq!(fields[2].name(), "link");
         assert_eq!(
             fields[2].type_ref(),
-            &TypeRef::Reference(Box::new(TypeRef::Named("User".into())))
+            &TypeRef::Reference(Box::new(TypeRef::Named(vec!["User".into()])))
         );
         assert!(fields[2].optional());
         assert!(doc.type_decl("Empty").unwrap().fields().count() == 0);
@@ -900,7 +1337,7 @@ mod tests {
         let shape = doc.union_decl("Shape").unwrap();
         let v = shape.variant("Polygon").unwrap();
         match v.body() {
-            VariantBodyView::TypeRef(t) => assert_eq!(*t, TypeRef::Named("Point".into())),
+            VariantBodyView::TypeRef(t) => assert_eq!(*t, TypeRef::Named(vec!["Point".into()])),
             _ => panic!("expected TypeRef body"),
         }
     }
@@ -935,6 +1372,191 @@ mod tests {
                     "message: {}",
                     e.message
                 );
+            }
+            _ => panic!("expected syntax error"),
+        }
+    }
+
+    #[test]
+    fn namespace_sets_file_ns_and_qualifies_decls() {
+        let doc = open("namespace foo.bar\ntype X {}");
+        assert_eq!(doc.namespace(), &["foo".to_string(), "bar".to_string()]);
+        let x = doc.type_decl("foo.bar.X").expect("found");
+        assert_eq!(x.full_name(), "foo.bar.X");
+        assert_eq!(x.name(), "X");
+    }
+
+    #[test]
+    fn dotted_decl_name_extends_file_ns() {
+        let doc = open("namespace foo\ntype a.b.X {}");
+        assert!(doc.type_decl("foo.a.b.X").is_some());
+        let x = doc.type_decl("foo.a.b.X").unwrap();
+        assert_eq!(x.name(), "X");
+        assert_eq!(x.full_name(), "foo.a.b.X");
+        assert_eq!(
+            x.namespace(),
+            vec!["foo".to_string(), "a".to_string(), "b".to_string()]
+        );
+    }
+
+    #[test]
+    fn local_name_resolves_within_file_ns() {
+        let doc = open(
+            r#"
+            namespace app
+            type X { name: utf8 }
+            type Y { f: X }
+            "#,
+        );
+        let y = doc.type_decl("app.Y").unwrap();
+        match doc.resolve(y.field("f").unwrap().type_ref()) {
+            ResolvedType::Named(d) => assert_eq!(d.full_name(), "app.X"),
+            _ => panic!("expected Named"),
+        }
+    }
+
+    #[test]
+    fn item_alias_with_as_resolves() {
+        let doc = open(
+            r#"
+            type a.b.Baz {}
+            use a.b.Baz as MB
+            type Q { f: MB }
+            "#,
+        );
+        let q = doc.type_decl("Q").unwrap();
+        match doc.resolve(q.field("f").unwrap().type_ref()) {
+            ResolvedType::Named(d) => assert_eq!(d.full_name(), "a.b.Baz"),
+            _ => panic!("expected Named"),
+        }
+    }
+
+    #[test]
+    fn wildcard_import_resolves_bare_name() {
+        let doc = open(
+            r#"
+            type a.b.Baz {}
+            use a.b
+            type Q { f: Baz }
+            "#,
+        );
+        let q = doc.type_decl("Q").unwrap();
+        match doc.resolve(q.field("f").unwrap().type_ref()) {
+            ResolvedType::Named(d) => assert_eq!(d.full_name(), "a.b.Baz"),
+            _ => panic!("expected Named"),
+        }
+    }
+
+    #[test]
+    fn namespace_alias_with_as_resolves() {
+        let doc = open(
+            r#"
+            type a.b.Baz {}
+            use a.b as B
+            type Q { f: B.Baz }
+            "#,
+        );
+        let q = doc.type_decl("Q").unwrap();
+        match doc.resolve(q.field("f").unwrap().type_ref()) {
+            ResolvedType::Named(d) => assert_eq!(d.full_name(), "a.b.Baz"),
+            _ => panic!("expected Named"),
+        }
+    }
+
+    #[test]
+    fn brace_list_imports_each_item() {
+        let doc = open(
+            r#"
+            type a.b.X {}
+            type a.b.Y {}
+            use a.b.{X, Y as Z}
+            type Q { f1: X f2: Z }
+            "#,
+        );
+        let q = doc.type_decl("Q").unwrap();
+        match doc.resolve(q.field("f1").unwrap().type_ref()) {
+            ResolvedType::Named(d) => assert_eq!(d.full_name(), "a.b.X"),
+            _ => panic!("f1"),
+        }
+        match doc.resolve(q.field("f2").unwrap().type_ref()) {
+            ResolvedType::Named(d) => assert_eq!(d.full_name(), "a.b.Y"),
+            _ => panic!("f2"),
+        }
+    }
+
+    #[test]
+    fn namespace_must_be_first_item() {
+        let err = Document::open("type X {}\nnamespace foo", "test").unwrap_err();
+        match err {
+            ParseError::Syntax(e) => assert!(
+                e.message.contains("must be the first item"),
+                "{}",
+                e.message
+            ),
+            _ => panic!("expected syntax error"),
+        }
+    }
+
+    #[test]
+    fn duplicate_namespace_errors() {
+        let err = Document::open("namespace foo\nnamespace bar", "test").unwrap_err();
+        match err {
+            ParseError::Syntax(e) => {
+                assert!(e.message.contains("duplicate namespace"), "{}", e.message)
+            }
+            _ => panic!("expected syntax error"),
+        }
+    }
+
+    #[test]
+    fn unknown_use_target_errors() {
+        let err = Document::open("use foo.bar.Nope", "test").unwrap_err();
+        match err {
+            ParseError::Syntax(e) => {
+                assert!(e.message.contains("unknown use target"), "{}", e.message)
+            }
+            _ => panic!("expected syntax error"),
+        }
+    }
+
+    #[test]
+    fn brace_list_unknown_item_errors() {
+        let err = Document::open("type a.b.X {}\nuse a.b.{Nope}", "test").unwrap_err();
+        match err {
+            ParseError::Syntax(e) => {
+                assert!(e.message.contains("unknown use target"), "{}", e.message)
+            }
+            _ => panic!("expected syntax error"),
+        }
+    }
+
+    #[test]
+    fn brace_list_on_leaf_errors() {
+        // foo.bar.X is a leaf; can't do use foo.bar.X.{Y}
+        let err = Document::open("type foo.bar.X {}\nuse foo.bar.X.{Y}", "test").unwrap_err();
+        match err {
+            ParseError::Syntax(e) => {
+                assert!(e.message.contains("expected namespace"), "{}", e.message)
+            }
+            _ => panic!("expected syntax error"),
+        }
+    }
+
+    #[test]
+    fn duplicate_alias_errors() {
+        let err = Document::open(
+            r#"
+            type a.X {}
+            type b.X {}
+            use a.X
+            use b.X
+            "#,
+            "test",
+        )
+        .unwrap_err();
+        match err {
+            ParseError::Syntax(e) => {
+                assert!(e.message.contains("duplicate use alias"), "{}", e.message)
             }
             _ => panic!("expected syntax error"),
         }

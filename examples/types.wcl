@@ -1,3 +1,9 @@
+namespace company
+
+use company.utils.Point as P
+use company.shapes.{Circle, Square as Sq}
+use company.utils
+
 # Exercises every typed literal supported by WCL today.
 
 # Defaults
@@ -37,32 +43,38 @@ hello16 = utf16"hello"
 hello32 = utf32"hello"
 
 # Type declarations
+type utils.Point { x: f64 y: f64 }
+type utils.Address { street: utf8 city: utf8 }
+
+type shapes.Circle { center: P radius: f64 }
+type shapes.Square { center: P side: f64 }
+
 type User {
   name:   utf8
   age:    u32?
   bio:    utf8?
+  pos:    P
+  home:   Address
+  avatar: Sq?
   parent: &User?
+}
+
+type accounts.Admin {
+  user:  &User
+  level: u32
 }
 
 type Topic {
   name: utf8
 }
 
-type Post {
-  title:  utf8
-  author: &User
-  topic:  &Topic?
-}
-
 type Empty {}
 
-type Point { x: f64 y: f64 }
-
 union Shape {
-  Circle { center: Point radius: f64 }
-  Square { center: Point side: f64 }
-  Polygon Point
-  Empty none
+  Circle { center: P radius: f64 }
+  Square { center: P side: f64 }
+  Polygon P
+  Empty   none
 }
 
 union Maybe {

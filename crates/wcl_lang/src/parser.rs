@@ -1,8 +1,8 @@
 use miette::{NamedSource, SourceSpan};
 
 use crate::ast::{
-    Block, Expr, Field, Item, Source, Span, TypeDecl, TypeField, UnionDecl, UnionVariant,
-    VariantBody,
+    Block, Expr, Field, Item, NamespaceDecl, Source, Span, TypeDecl, TypeField, UnionDecl,
+    UnionVariant, UseDecl, UseForm, UseItem, VariantBody,
 };
 use crate::error::ParseError;
 use crate::lexer::{LexError, Lexer, NumberLit, StringLit, Token, TokenKind};
@@ -36,7 +36,8 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_item(&mut self) -> Result<Item, ParseError> {
-        // Two-token lookahead for `type IDENT { ... }` and `union IDENT { ... }`.
+        // Two-token lookahead for `type IDENT`, `union IDENT`,
+        // `namespace IDENT`, `use IDENT`.
         let first_ident = match &self.peek()?.kind {
             TokenKind::Ident(s) => Some(s.clone()),
             _ => None,
@@ -47,6 +48,8 @@ impl<'a> Parser<'a> {
             match first.as_str() {
                 "type" => return self.parse_type_decl(),
                 "union" => return self.parse_union_decl(),
+                "namespace" => return self.parse_namespace_decl(),
+                "use" => return self.parse_use_decl(),
                 _ => {}
             }
         }
@@ -79,22 +82,180 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_type_decl(&mut self) -> Result<Item, ParseError> {
-        let type_kw = self.bump()?; // 'type'
-        let start = type_kw.span.start;
-        let name_tok = self.bump()?;
-        let TokenKind::Ident(name) = name_tok.kind else {
+    /// Greedy path parser: `IDENT (. IDENT)*`.
+    ///
+    /// Refuses to consume a `Dot` if the next token after it is not an
+    /// identifier — that way `foo.bar.{...}` parses as path `[foo, bar]`
+    /// with the `.{` left for the caller (`parse_use_decl`).
+    fn parse_path(&mut self) -> Result<(Vec<String>, Span), ParseError> {
+        let first = self.bump()?;
+        let TokenKind::Ident(name) = first.kind else {
+            let span = first.span;
             return Err(self.err(
-                "expected type name after 'type'",
-                name_tok.span,
+                format!("expected identifier, found {}", describe(&first.kind)),
+                span,
                 "expected identifier",
             ));
         };
+        let mut segments = vec![name];
+        let start = first.span.start;
+        let mut end = first.span.end;
+        loop {
+            if !matches!(self.peek()?.kind, TokenKind::Dot) {
+                break;
+            }
+            // Look ahead one more — if the token after '.' isn't an ident,
+            // leave the '.' for the caller.
+            if !matches!(self.peek2()?.kind, TokenKind::Ident(_)) {
+                break;
+            }
+            self.bump()?; // '.'
+            let next = self.bump()?;
+            let TokenKind::Ident(seg) = next.kind else {
+                unreachable!("peek2 confirmed Ident");
+            };
+            end = next.span.end;
+            segments.push(seg);
+        }
+        Ok((segments, Span::new(start, end)))
+    }
+
+    fn parse_namespace_decl(&mut self) -> Result<Item, ParseError> {
+        let kw = self.bump()?; // 'namespace'
+        let start = kw.span.start;
+        let (path, path_span) = self.parse_path()?;
+        Ok(Item::NamespaceDecl(NamespaceDecl {
+            path,
+            span: Span::new(start, path_span.end),
+        }))
+    }
+
+    fn parse_use_decl(&mut self) -> Result<Item, ParseError> {
+        let kw = self.bump()?; // 'use'
+        let start = kw.span.start;
+        let (path, path_span) = self.parse_path()?;
+
+        // Brace-list form: path '.' '{' use_item (',' use_item)* ','? '}'
+        if matches!(self.peek()?.kind, TokenKind::Dot)
+            && matches!(self.peek2()?.kind, TokenKind::LBrace)
+        {
+            self.bump()?; // '.'
+            self.bump()?; // '{'
+            let mut items = Vec::new();
+            loop {
+                if matches!(self.peek()?.kind, TokenKind::RBrace) {
+                    break;
+                }
+                let item = self.parse_use_item()?;
+                items.push(item);
+                match self.peek()?.kind {
+                    TokenKind::Comma => {
+                        self.bump()?;
+                    }
+                    TokenKind::RBrace => break,
+                    _ => {
+                        let p = self.peek()?;
+                        let span = p.span;
+                        let kind = describe(&p.kind);
+                        return Err(self.err(
+                            format!("expected ',' or '}}', found {kind}"),
+                            span,
+                            "expected ',' or '}'",
+                        ));
+                    }
+                }
+            }
+            let rbrace = self.bump()?;
+            return Ok(Item::UseDecl(UseDecl {
+                path,
+                form: UseForm::List(items),
+                span: Span::new(start, rbrace.span.end),
+            }));
+        }
+
+        // Bare form: optional 'as' IDENT
+        let mut end = path_span.end;
+        let alias = if let TokenKind::Ident(s) = &self.peek()?.kind
+            && s == "as"
+        {
+            self.bump()?; // 'as'
+            let alias_tok = self.bump()?;
+            let TokenKind::Ident(alias_name) = alias_tok.kind else {
+                let span = alias_tok.span;
+                return Err(self.err(
+                    format!(
+                        "expected alias identifier after 'as', found {}",
+                        describe(&alias_tok.kind)
+                    ),
+                    span,
+                    "expected identifier",
+                ));
+            };
+            end = alias_tok.span.end;
+            Some(alias_name)
+        } else {
+            None
+        };
+        Ok(Item::UseDecl(UseDecl {
+            path,
+            form: UseForm::Bare(alias),
+            span: Span::new(start, end),
+        }))
+    }
+
+    fn parse_use_item(&mut self) -> Result<UseItem, ParseError> {
+        let name_tok = self.bump()?;
+        let item_start = name_tok.span.start;
+        let TokenKind::Ident(name) = name_tok.kind else {
+            let span = name_tok.span;
+            return Err(self.err(
+                format!(
+                    "expected item name in use list, found {}",
+                    describe(&name_tok.kind)
+                ),
+                span,
+                "expected identifier",
+            ));
+        };
+        let mut end = name_tok.span.end;
+        let alias = if let TokenKind::Ident(s) = &self.peek()?.kind
+            && s == "as"
+        {
+            self.bump()?;
+            let alias_tok = self.bump()?;
+            let TokenKind::Ident(alias_name) = alias_tok.kind else {
+                let span = alias_tok.span;
+                return Err(self.err(
+                    format!(
+                        "expected alias identifier after 'as', found {}",
+                        describe(&alias_tok.kind)
+                    ),
+                    span,
+                    "expected identifier",
+                ));
+            };
+            end = alias_tok.span.end;
+            Some(alias_name)
+        } else {
+            None
+        };
+        Ok(UseItem {
+            name,
+            alias,
+            span: Span::new(item_start, end),
+        })
+    }
+
+    fn parse_type_decl(&mut self) -> Result<Item, ParseError> {
+        let type_kw = self.bump()?; // 'type'
+        let start = type_kw.span.start;
+        let (name, _name_span) = self.parse_path()?;
         let lbrace = self.bump()?;
         if !matches!(lbrace.kind, TokenKind::LBrace) {
             return Err(self.err(
                 format!(
-                    "expected '{{' after type name '{name}', found {}",
+                    "expected '{{' after type name '{}', found {}",
+                    name.join("."),
                     describe(&lbrace.kind)
                 ),
                 lbrace.span,
@@ -166,19 +327,13 @@ impl<'a> Parser<'a> {
     fn parse_union_decl(&mut self) -> Result<Item, ParseError> {
         let kw = self.bump()?; // 'union'
         let start = kw.span.start;
-        let name_tok = self.bump()?;
-        let TokenKind::Ident(name) = name_tok.kind else {
-            return Err(self.err(
-                "expected union name after 'union'",
-                name_tok.span,
-                "expected identifier",
-            ));
-        };
+        let (name, _name_span) = self.parse_path()?;
         let lbrace = self.bump()?;
         if !matches!(lbrace.kind, TokenKind::LBrace) {
             return Err(self.err(
                 format!(
-                    "expected '{{' after union name '{name}', found {}",
+                    "expected '{{' after union name '{}', found {}",
+                    name.join("."),
                     describe(&lbrace.kind)
                 ),
                 lbrace.span,
@@ -285,26 +440,13 @@ impl<'a> Parser<'a> {
         let head = self.peek()?;
         if matches!(head.kind, TokenKind::Amp) {
             let amp = self.bump()?;
-            let tok = self.bump()?;
-            let TokenKind::Ident(name) = tok.kind else {
-                return Err(self.err(
-                    format!(
-                        "expected type name after '&', found {}",
-                        describe(&tok.kind)
-                    ),
-                    tok.span,
-                    "expected identifier",
-                ));
-            };
-            let inner = name_to_type_ref(&name);
-            let span = Span::new(amp.span.start, tok.span.end);
+            let (path, path_span) = self.parse_path()?;
+            let inner = path_to_type_ref(&path);
+            let span = Span::new(amp.span.start, path_span.end);
             Ok((TypeRef::Reference(Box::new(inner)), span))
         } else if matches!(head.kind, TokenKind::Ident(_)) {
-            let tok = self.bump()?;
-            let TokenKind::Ident(name) = tok.kind else {
-                unreachable!()
-            };
-            Ok((name_to_type_ref(&name), tok.span))
+            let (path, path_span) = self.parse_path()?;
+            Ok((path_to_type_ref(&path), path_span))
         } else {
             let span = head.span;
             let kind_desc = describe(&head.kind);
@@ -445,17 +587,21 @@ fn describe(t: &TokenKind) -> String {
         TokenKind::Colon => "':'".to_string(),
         TokenKind::Question => "'?'".to_string(),
         TokenKind::Amp => "'&'".to_string(),
+        TokenKind::Dot => "'.'".to_string(),
+        TokenKind::Comma => "','".to_string(),
         TokenKind::LBrace => "'{'".to_string(),
         TokenKind::RBrace => "'}'".to_string(),
         TokenKind::Eof => "end of file".to_string(),
     }
 }
 
-fn name_to_type_ref(name: &str) -> TypeRef {
-    match BuiltinType::from_name(name) {
-        Some(b) => TypeRef::Builtin(b),
-        None => TypeRef::Named(name.to_string()),
+fn path_to_type_ref(path: &[String]) -> TypeRef {
+    if path.len() == 1
+        && let Some(b) = BuiltinType::from_name(&path[0])
+    {
+        return TypeRef::Builtin(b);
     }
+    TypeRef::Named(path.to_vec())
 }
 
 fn number_to_expr(n: NumberLit) -> Expr {
@@ -657,7 +803,7 @@ mod tests {
     fn parse_simple_type_declaration() {
         let s = parse("type User { name: utf8 }");
         let t = type_decls(&s.items)[0];
-        assert_eq!(t.name, "User");
+        assert_eq!(t.name, vec!["User".to_string()]);
         assert_eq!(t.fields.len(), 1);
         assert_eq!(t.fields[0].name, "name");
         assert_eq!(t.fields[0].ty, TypeRef::Builtin(BuiltinType::Utf8));
@@ -677,7 +823,7 @@ mod tests {
     fn parse_empty_type_body() {
         let s = parse("type Empty {}");
         let t = type_decls(&s.items)[0];
-        assert_eq!(t.name, "Empty");
+        assert_eq!(t.name, vec!["Empty".to_string()]);
         assert!(t.fields.is_empty());
     }
 
@@ -685,7 +831,7 @@ mod tests {
     fn parse_type_with_named_ref() {
         let s = parse("type Tree { parent: Tree? }");
         let t = type_decls(&s.items)[0];
-        assert_eq!(t.fields[0].ty, TypeRef::Named("Tree".into()));
+        assert_eq!(t.fields[0].ty, TypeRef::Named(vec!["Tree".into()]));
         assert!(t.fields[0].optional);
     }
 
@@ -695,7 +841,7 @@ mod tests {
         let t = type_decls(&s.items)[0];
         assert_eq!(
             t.fields[0].ty,
-            TypeRef::Reference(Box::new(TypeRef::Named("User".into())))
+            TypeRef::Reference(Box::new(TypeRef::Named(vec!["User".into()])))
         );
         assert!(t.fields[0].optional);
     }
@@ -716,11 +862,7 @@ mod tests {
         let err = parse_err("type X { y: &&User }");
         match err {
             ParseError::Syntax(e) => {
-                assert!(
-                    e.message.contains("expected type name after '&'"),
-                    "{}",
-                    e.message
-                )
+                assert!(e.message.contains("expected identifier"), "{}", e.message)
             }
             _ => panic!("expected syntax error"),
         }
@@ -788,14 +930,14 @@ mod tests {
             "#,
         );
         let u = union_decls(&s.items)[0];
-        assert_eq!(u.name, "Shape");
+        assert_eq!(u.name, vec!["Shape".to_string()]);
         assert_eq!(u.variants.len(), 3);
         assert_eq!(u.variants[0].name, "Circle");
         assert!(matches!(u.variants[0].body, VariantBody::Record(_)));
         assert_eq!(u.variants[1].name, "Polygon");
         match &u.variants[1].body {
             VariantBody::TypeRef { ty, .. } => {
-                assert_eq!(*ty, TypeRef::Named("Point".into()))
+                assert_eq!(*ty, TypeRef::Named(vec!["Point".into()]))
             }
             _ => panic!("expected TypeRef body"),
         }
@@ -807,7 +949,7 @@ mod tests {
     fn parse_empty_union() {
         let s = parse("union Nothing {}");
         let u = union_decls(&s.items)[0];
-        assert_eq!(u.name, "Nothing");
+        assert_eq!(u.name, vec!["Nothing".to_string()]);
         assert!(u.variants.is_empty());
     }
 
@@ -818,7 +960,7 @@ mod tests {
         match &u.variants[0].body {
             VariantBody::TypeRef { ty, .. } => assert_eq!(
                 *ty,
-                TypeRef::Reference(Box::new(TypeRef::Named("Item".into())))
+                TypeRef::Reference(Box::new(TypeRef::Named(vec!["Item".into()])))
             ),
             _ => panic!("expected TypeRef body"),
         }
@@ -851,6 +993,138 @@ mod tests {
         let err = parse_err("type Foo { x utf8 }");
         match err {
             ParseError::Syntax(e) => assert!(e.message.contains("':'"), "{}", e.message),
+            _ => panic!("expected syntax error"),
+        }
+    }
+
+    #[test]
+    fn parse_namespace_declaration() {
+        let s = parse("namespace foo.bar");
+        match &s.items[0] {
+            Item::NamespaceDecl(n) => {
+                assert_eq!(n.path, vec!["foo".to_string(), "bar".to_string()])
+            }
+            _ => panic!("expected NamespaceDecl"),
+        }
+    }
+
+    #[test]
+    fn parse_use_bare_no_alias() {
+        let s = parse("use foo.bar.Baz");
+        match &s.items[0] {
+            Item::UseDecl(u) => {
+                assert_eq!(
+                    u.path,
+                    vec!["foo".to_string(), "bar".to_string(), "Baz".to_string()]
+                );
+                assert!(matches!(u.form, UseForm::Bare(None)));
+            }
+            _ => panic!("expected UseDecl"),
+        }
+    }
+
+    #[test]
+    fn parse_use_bare_with_alias() {
+        let s = parse("use foo.bar.Baz as MyBaz");
+        match &s.items[0] {
+            Item::UseDecl(u) => match &u.form {
+                UseForm::Bare(Some(a)) => assert_eq!(a, "MyBaz"),
+                _ => panic!("expected Bare(Some)"),
+            },
+            _ => panic!("expected UseDecl"),
+        }
+    }
+
+    #[test]
+    fn parse_use_brace_list() {
+        let s = parse("use foo.bar.{X, Y as Z}");
+        match &s.items[0] {
+            Item::UseDecl(u) => {
+                assert_eq!(u.path, vec!["foo".to_string(), "bar".to_string()]);
+                let UseForm::List(items) = &u.form else {
+                    panic!("expected List");
+                };
+                assert_eq!(items.len(), 2);
+                assert_eq!(items[0].name, "X");
+                assert_eq!(items[0].alias, None);
+                assert_eq!(items[1].name, "Y");
+                assert_eq!(items[1].alias.as_deref(), Some("Z"));
+            }
+            _ => panic!("expected UseDecl"),
+        }
+    }
+
+    #[test]
+    fn parse_use_brace_trailing_comma() {
+        let s = parse("use foo.bar.{X, Y,}");
+        match &s.items[0] {
+            Item::UseDecl(u) => match &u.form {
+                UseForm::List(items) => assert_eq!(items.len(), 2),
+                _ => panic!("expected List"),
+            },
+            _ => panic!("expected UseDecl"),
+        }
+    }
+
+    #[test]
+    fn parse_use_brace_empty_list() {
+        let s = parse("use foo.bar.{}");
+        match &s.items[0] {
+            Item::UseDecl(u) => match &u.form {
+                UseForm::List(items) => assert!(items.is_empty()),
+                _ => panic!("expected List"),
+            },
+            _ => panic!("expected UseDecl"),
+        }
+    }
+
+    #[test]
+    fn parse_dotted_type_decl() {
+        let s = parse("type a.b.X {}");
+        match &s.items[0] {
+            Item::TypeDecl(t) => assert_eq!(
+                t.name,
+                vec!["a".to_string(), "b".to_string(), "X".to_string()]
+            ),
+            _ => panic!("expected TypeDecl"),
+        }
+    }
+
+    #[test]
+    fn parse_dotted_type_ref() {
+        let s = parse("type Q { f: a.b.X }");
+        match &s.items[0] {
+            Item::TypeDecl(t) => assert_eq!(
+                t.fields[0].ty,
+                TypeRef::Named(vec!["a".to_string(), "b".to_string(), "X".to_string()])
+            ),
+            _ => panic!("expected TypeDecl"),
+        }
+    }
+
+    #[test]
+    fn parse_dotted_reference_type() {
+        let s = parse("type Q { f: &a.b.X? }");
+        match &s.items[0] {
+            Item::TypeDecl(t) => assert_eq!(
+                t.fields[0].ty,
+                TypeRef::Reference(Box::new(TypeRef::Named(vec![
+                    "a".to_string(),
+                    "b".to_string(),
+                    "X".to_string()
+                ])))
+            ),
+            _ => panic!("expected TypeDecl"),
+        }
+    }
+
+    #[test]
+    fn path_trailing_dot_errors() {
+        let err = parse_err("namespace foo.");
+        match err {
+            ParseError::Syntax(e) => {
+                assert!(e.message.contains("expected identifier"), "{}", e.message)
+            }
             _ => panic!("expected syntax error"),
         }
     }

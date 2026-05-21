@@ -4,7 +4,8 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use wcl_lang::{
-    Block, Document, Field, TypeDecl, TypeRef, UnionDecl, UnionVariant, Value, VariantBodyView,
+    Block, Document, Field, TypeDecl, TypeRef, UnionDecl, UnionVariant, UseDeclView, UseFormView,
+    Value, VariantBodyView,
 };
 
 #[derive(Parser)]
@@ -57,6 +58,12 @@ fn main() -> ExitCode {
 }
 
 fn dump_document(doc: &Document, out: &mut String) {
+    if !doc.namespace().is_empty() {
+        writeln!(out, "namespace {}", doc.namespace().join(".")).unwrap();
+    }
+    for u in doc.uses() {
+        dump_use_decl(&u, out);
+    }
     for t in doc.type_decls() {
         dump_type_decl(&t, out);
     }
@@ -71,8 +78,26 @@ fn dump_document(doc: &Document, out: &mut String) {
     }
 }
 
+fn dump_use_decl(u: &UseDeclView<'_>, out: &mut String) {
+    let prefix = u.path().join(".");
+    match u.form() {
+        UseFormView::Bare(None) => writeln!(out, "use {prefix}").unwrap(),
+        UseFormView::Bare(Some(alias)) => writeln!(out, "use {prefix} as {alias}").unwrap(),
+        UseFormView::List => {
+            let parts: Vec<String> = u
+                .items()
+                .map(|it| match it.alias() {
+                    Some(a) => format!("{} as {a}", it.name()),
+                    None => it.name().to_string(),
+                })
+                .collect();
+            writeln!(out, "use {prefix}.{{{}}}", parts.join(", ")).unwrap();
+        }
+    }
+}
+
 fn dump_union_decl(u: &UnionDecl<'_>, out: &mut String) {
-    writeln!(out, "union {} {{", u.name()).unwrap();
+    writeln!(out, "union {} {{", u.name_segments().join(".")).unwrap();
     for v in u.variants() {
         dump_variant(&v, out);
     }
@@ -100,7 +125,7 @@ fn dump_variant(v: &UnionVariant<'_>, out: &mut String) {
 }
 
 fn dump_type_decl(t: &TypeDecl<'_>, out: &mut String) {
-    writeln!(out, "type {} {{", t.name()).unwrap();
+    writeln!(out, "type {} {{", t.name_segments().join(".")).unwrap();
     for field in t.fields() {
         let ty = type_repr(field.type_ref());
         let q = if field.optional() { "?" } else { "" };
@@ -112,7 +137,7 @@ fn dump_type_decl(t: &TypeDecl<'_>, out: &mut String) {
 fn type_repr(t: &TypeRef) -> String {
     match t {
         TypeRef::Builtin(b) => b.name().to_string(),
-        TypeRef::Named(s) => s.clone(),
+        TypeRef::Named(path) => path.join("."),
         TypeRef::Reference(inner) => format!("&{}", type_repr(inner)),
     }
 }

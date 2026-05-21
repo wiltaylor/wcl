@@ -137,6 +137,6 @@ impl BuiltinType {
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypeRef {
     Builtin(BuiltinType),
-    Named(String),
+    Named(Vec<String>),
     Reference(Box<TypeRef>),
 }

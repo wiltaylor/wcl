@@ -49,11 +49,18 @@ fn document_round_trips_simple_fields() {
 #[test]
 fn fixture_union_shape_resolves() {
     let doc = Document::from_file(&examples_dir().join("types.wcl")).expect("types fixture parses");
-    let shape = doc.union_decl("Shape").expect("Shape union");
+    let shape = doc.union_decl("company.Shape").expect("Shape union");
     assert_eq!(shape.variants().count(), 4);
     let polygon = shape.variant("Polygon").expect("Polygon variant");
+    // Polygon's body is `P` (alias) — source form unresolved; resolve follows.
     match polygon.body() {
-        VariantBodyView::TypeRef(t) => assert_eq!(*t, TypeRef::Named("Point".into())),
+        VariantBodyView::TypeRef(t) => {
+            assert_eq!(*t, TypeRef::Named(vec!["P".into()]));
+            match doc.resolve(t) {
+                ResolvedType::Named(d) => assert_eq!(d.full_name(), "company.utils.Point"),
+                _ => panic!("expected Named after resolve"),
+            }
+        }
         _ => panic!("Polygon body should be TypeRef"),
     }
     let empty = shape.variant("Empty").expect("Empty variant");
@@ -63,16 +70,38 @@ fn fixture_union_shape_resolves() {
 #[test]
 fn named_type_refs_resolve_in_fixture() {
     let doc = Document::from_file(&examples_dir().join("types.wcl")).expect("types fixture parses");
-    let user = doc.type_decl("User").expect("User type");
+    let user = doc.type_decl("company.User").expect("User type");
     let parent = user.field("parent").expect("parent field");
-    // parent is now &User?
     let ResolvedType::Reference(inner) = doc.resolve(parent.type_ref()) else {
         panic!("parent should resolve to a reference");
     };
     let ResolvedType::Named(decl) = *inner else {
-        panic!("reference inner should be Named(User)");
+        panic!("reference inner should be Named(company.User)");
     };
-    assert_eq!(decl.name(), "User");
+    assert_eq!(decl.full_name(), "company.User");
+}
+
+#[test]
+fn fixture_namespace_and_uses_round_trip_through_api() {
+    let doc = Document::from_file(&examples_dir().join("types.wcl")).expect("types fixture parses");
+    assert_eq!(doc.namespace(), &["company".to_string()]);
+    assert!(doc.uses().count() >= 3);
+    let user = doc.type_decl("company.User").unwrap();
+    // Item alias P → company.utils.Point
+    match doc.resolve(user.field("pos").unwrap().type_ref()) {
+        ResolvedType::Named(d) => assert_eq!(d.full_name(), "company.utils.Point"),
+        _ => panic!("pos should resolve via alias"),
+    }
+    // Wildcard import `use company.utils` makes bare `Address` resolve.
+    match doc.resolve(user.field("home").unwrap().type_ref()) {
+        ResolvedType::Named(d) => assert_eq!(d.full_name(), "company.utils.Address"),
+        _ => panic!("home should resolve via wildcard"),
+    }
+    // Brace alias Sq → company.shapes.Square
+    match doc.resolve(user.field("avatar").unwrap().type_ref()) {
+        ResolvedType::Named(d) => assert_eq!(d.full_name(), "company.shapes.Square"),
+        _ => panic!("avatar should resolve via brace alias"),
+    }
 }
 
 #[test]

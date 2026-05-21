@@ -64,8 +64,34 @@ pub(crate) struct Block {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct TypeDecl {
+pub(crate) struct NamespaceDecl {
+    pub path: Vec<String>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct UseDecl {
+    pub path: Vec<String>,
+    pub form: UseForm,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum UseForm {
+    Bare(Option<String>),
+    List(Vec<UseItem>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct UseItem {
     pub name: String,
+    pub alias: Option<String>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct TypeDecl {
+    pub name: Vec<String>,
     pub fields: Vec<TypeField>,
     pub span: Span,
 }
@@ -81,7 +107,7 @@ pub(crate) struct TypeField {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct UnionDecl {
-    pub name: String,
+    pub name: Vec<String>,
     pub variants: Vec<UnionVariant>,
     pub span: Span,
 }
@@ -109,6 +135,8 @@ pub(crate) enum Item {
     Block(Block),
     TypeDecl(TypeDecl),
     UnionDecl(UnionDecl),
+    NamespaceDecl(NamespaceDecl),
+    UseDecl(UseDecl),
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
