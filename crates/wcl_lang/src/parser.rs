@@ -7,6 +7,7 @@ use crate::ast::{
 };
 use crate::error::ParseError;
 use crate::lexer::{LexError, Lexer, NumberLit, StringLit, Token, TokenKind};
+use crate::symbols::{DuplicateSymbol, SymbolIndex, SymbolKind, SymbolPath, SymbolRecord};
 use crate::value::{BuiltinType, TensorDim, TypeRef};
 
 pub struct Parser<'a> {
@@ -15,6 +16,8 @@ pub struct Parser<'a> {
     lexer: Lexer<'a>,
     peeked: Option<Token>,
     peeked2: Option<Token>,
+    file_ns: Vec<String>,
+    index: SymbolIndex,
 }
 
 impl<'a> Parser<'a> {
@@ -25,15 +28,177 @@ impl<'a> Parser<'a> {
             lexer: Lexer::new(src),
             peeked: None,
             peeked2: None,
+            file_ns: Vec::new(),
+            index: SymbolIndex::default(),
         }
     }
 
-    pub fn parse_source(&mut self) -> Result<Source, ParseError> {
+    pub fn parse_source(&mut self) -> Result<(Source, SymbolIndex), ParseError> {
         let mut items = Vec::new();
         while !matches!(self.peek()?.kind, TokenKind::Eof) {
-            items.push(self.parse_item()?);
+            let item_idx = items.len();
+            let item = self.parse_item()?;
+            self.register_item(&item, item_idx)?;
+            items.push(item);
         }
-        Ok(Source { items })
+        Ok((Source { items }, std::mem::take(&mut self.index)))
+    }
+
+    /// Register a freshly-parsed top-level item (and its immediate
+    /// members) with the symbol index. Function-internal names and
+    /// items nested inside `Block`s are not indexed yet.
+    fn register_item(&mut self, item: &Item, item_index: usize) -> Result<(), ParseError> {
+        match item {
+            Item::NamespaceDecl(n) => {
+                self.file_ns = n.path.clone();
+            }
+            Item::UseDecl(_) => {}
+            Item::TypeDecl(t) => {
+                let parent_fqn = self.join_fqn(&t.name);
+                self.try_insert(SymbolRecord {
+                    fqn: parent_fqn.clone(),
+                    kind: SymbolKind::TypeDecl,
+                    span: t.span,
+                    path: SymbolPath {
+                        item_index,
+                        member_index: None,
+                    },
+                })?;
+                for (mi, field) in t.fields.iter().enumerate() {
+                    let fqn = format!("{parent_fqn}.{}", field.name);
+                    self.try_insert_with_msg(
+                        SymbolRecord {
+                            fqn,
+                            kind: SymbolKind::TypeField {
+                                parent_fqn: parent_fqn.clone(),
+                            },
+                            span: field.span,
+                            path: SymbolPath {
+                                item_index,
+                                member_index: Some(mi),
+                            },
+                        },
+                        format!(
+                            "duplicate field '{}' in type '{}'",
+                            field.name,
+                            t.name.join(".")
+                        ),
+                    )?;
+                }
+            }
+            Item::UnionDecl(u) => {
+                let parent_fqn = self.join_fqn(&u.name);
+                self.try_insert(SymbolRecord {
+                    fqn: parent_fqn.clone(),
+                    kind: SymbolKind::UnionDecl,
+                    span: u.span,
+                    path: SymbolPath {
+                        item_index,
+                        member_index: None,
+                    },
+                })?;
+                for (mi, v) in u.variants.iter().enumerate() {
+                    let fqn = format!("{parent_fqn}.{}", v.name);
+                    self.try_insert_with_msg(
+                        SymbolRecord {
+                            fqn,
+                            kind: SymbolKind::UnionVariant {
+                                parent_fqn: parent_fqn.clone(),
+                            },
+                            span: v.span,
+                            path: SymbolPath {
+                                item_index,
+                                member_index: Some(mi),
+                            },
+                        },
+                        format!(
+                            "duplicate variant '{}' in union '{}'",
+                            v.name,
+                            u.name.join(".")
+                        ),
+                    )?;
+                }
+            }
+            Item::SymbolSetDecl(s) => {
+                let parent_fqn = self.join_fqn(&s.name);
+                self.try_insert(SymbolRecord {
+                    fqn: parent_fqn.clone(),
+                    kind: SymbolKind::SymbolSetDecl,
+                    span: s.span,
+                    path: SymbolPath {
+                        item_index,
+                        member_index: None,
+                    },
+                })?;
+                for (mi, sym) in s.symbols.iter().enumerate() {
+                    let fqn = format!("{parent_fqn}.{}", sym.name);
+                    self.try_insert_with_msg(
+                        SymbolRecord {
+                            fqn,
+                            kind: SymbolKind::SymbolEntry {
+                                parent_fqn: parent_fqn.clone(),
+                            },
+                            span: sym.span,
+                            path: SymbolPath {
+                                item_index,
+                                member_index: Some(mi),
+                            },
+                        },
+                        format!(
+                            "duplicate symbol '{}' in symbol_set '{}'",
+                            sym.name,
+                            s.name.join(".")
+                        ),
+                    )?;
+                }
+            }
+            Item::Field(f) => {
+                let fqn = self.join_fqn(std::slice::from_ref(&f.name));
+                self.try_insert(SymbolRecord {
+                    fqn,
+                    kind: SymbolKind::Field,
+                    span: f.span,
+                    path: SymbolPath {
+                        item_index,
+                        member_index: None,
+                    },
+                })?;
+            }
+            Item::Block(b) => {
+                self.index.push_block(
+                    b.kind.clone(),
+                    SymbolPath {
+                        item_index,
+                        member_index: None,
+                    },
+                );
+            }
+        }
+        Ok(())
+    }
+
+    fn try_insert(&mut self, rec: SymbolRecord) -> Result<(), ParseError> {
+        let msg = format!("duplicate declaration '{}'", rec.fqn);
+        self.try_insert_with_msg(rec, msg)
+    }
+
+    fn try_insert_with_msg(&mut self, rec: SymbolRecord, msg: String) -> Result<(), ParseError> {
+        match self.index.insert(rec) {
+            Ok(()) => Ok(()),
+            Err(DuplicateSymbol { second_span, .. }) => {
+                Err(self.err(msg, second_span, "duplicate declaration"))
+            }
+        }
+    }
+
+    fn join_fqn(&self, name: &[String]) -> String {
+        if self.file_ns.is_empty() {
+            name.join(".")
+        } else {
+            let mut parts = self.file_ns.clone();
+            parts.extend(name.iter().cloned());
+            parts.join(".")
+        }
     }
 
     fn parse_item(&mut self) -> Result<Item, ParseError> {
@@ -136,7 +301,7 @@ impl<'a> Parser<'a> {
                             unreachable!()
                         };
                         self.bump()?; // '='
-                        let (value, value_span) = self.parse_value_expr()?;
+                        let (value, value_span) = self.parse_expr()?;
                         named.push(NamedArg {
                             name: arg_name,
                             value,
@@ -152,7 +317,7 @@ impl<'a> Parser<'a> {
                                 "unexpected positional arg",
                             ));
                         }
-                        let (value, _) = self.parse_value_expr()?;
+                        let (value, _) = self.parse_expr()?;
                         positional.push(value);
                     }
                     match self.peek()?.kind {
@@ -1325,6 +1490,10 @@ mod tests {
     use super::*;
 
     fn parse(src: &str) -> Source {
+        Parser::new(src, "test").parse_source().expect("parse ok").0
+    }
+
+    fn parse_with_index(src: &str) -> (Source, SymbolIndex) {
         Parser::new(src, "test").parse_source().expect("parse ok")
     }
 
@@ -2419,5 +2588,118 @@ mod tests {
     fn field_named_fn_still_parses_as_field() {
         let s = parse("fn = 1");
         assert_eq!(field(&s.items, "fn").expr, Expr::I64(1));
+    }
+
+    // ─── Symbol index ────────────────────────────────────────────────
+
+    #[test]
+    fn index_includes_top_level_decls_and_members() {
+        let (_, idx) = parse_with_index(
+            r#"
+            type User { name: utf8 age: u32 }
+            union Shape { Circle { r: f64 } Square none }
+            symbol_set Color { red green }
+            port = 8080
+            "#,
+        );
+        let rec = idx.lookup("User").expect("User indexed");
+        assert!(matches!(rec.kind, SymbolKind::TypeDecl));
+        let rec = idx.lookup("User.name").expect("User.name indexed");
+        assert!(matches!(rec.kind, SymbolKind::TypeField { .. }));
+        let rec = idx.lookup("Shape.Circle").expect("Shape.Circle indexed");
+        assert!(matches!(rec.kind, SymbolKind::UnionVariant { .. }));
+        let rec = idx.lookup("Color.red").expect("Color.red indexed");
+        assert!(matches!(rec.kind, SymbolKind::SymbolEntry { .. }));
+        let rec = idx.lookup("port").expect("port indexed");
+        assert!(matches!(rec.kind, SymbolKind::Field));
+    }
+
+    #[test]
+    fn index_composes_with_file_namespace() {
+        let (_, idx) = parse_with_index("namespace foo\ntype Bar { x: i32 }");
+        assert!(idx.lookup("foo.Bar").is_some());
+        assert!(idx.lookup("foo.Bar.x").is_some());
+        // Without the namespace prefix the entries should NOT be found.
+        assert!(idx.lookup("Bar").is_none());
+        assert!(idx.lookup("Bar.x").is_none());
+    }
+
+    #[test]
+    fn index_tracks_blocks_by_kind() {
+        let (_, idx) = parse_with_index(
+            r#"
+            service "a" { port = 1 }
+            service "b" { port = 2 }
+            metadata { region = "us" }
+            "#,
+        );
+        assert_eq!(idx.blocks_with_kind("service").len(), 2);
+        assert_eq!(idx.blocks_with_kind("metadata").len(), 1);
+        assert_eq!(idx.blocks_with_kind("unknown").len(), 0);
+    }
+
+    #[test]
+    fn parser_rejects_duplicate_top_level_field() {
+        let err = parse_err("port = 1\nport = 2");
+        match err {
+            ParseError::Syntax(e) => assert!(
+                e.message.contains("duplicate declaration 'port'"),
+                "{}",
+                e.message
+            ),
+            _ => panic!("expected syntax error"),
+        }
+    }
+
+    #[test]
+    fn parser_rejects_field_and_typedecl_with_same_fqn() {
+        let err = parse_err("Foo = 1\ntype Foo {}");
+        match err {
+            ParseError::Syntax(e) => assert!(
+                e.message.contains("duplicate declaration 'Foo'"),
+                "{}",
+                e.message
+            ),
+            _ => panic!("expected syntax error"),
+        }
+    }
+
+    #[test]
+    fn parser_rejects_duplicate_type_field() {
+        let err = parse_err("type Foo { x: i32 x: u8 }");
+        match err {
+            ParseError::Syntax(e) => assert!(
+                e.message.contains("duplicate field 'x' in type 'Foo'"),
+                "{}",
+                e.message
+            ),
+            _ => panic!("expected syntax error"),
+        }
+    }
+
+    #[test]
+    fn parser_rejects_duplicate_variant() {
+        let err = parse_err("union X { A none A none }");
+        match err {
+            ParseError::Syntax(e) => assert!(
+                e.message.contains("duplicate variant 'A' in union 'X'"),
+                "{}",
+                e.message
+            ),
+            _ => panic!("expected syntax error"),
+        }
+    }
+
+    #[test]
+    fn parser_rejects_duplicate_symbol_entry() {
+        let err = parse_err("symbol_set C { a a }");
+        match err {
+            ParseError::Syntax(e) => assert!(
+                e.message.contains("duplicate symbol 'a' in symbol_set 'C'"),
+                "{}",
+                e.message
+            ),
+            _ => panic!("expected syntax error"),
+        }
     }
 }

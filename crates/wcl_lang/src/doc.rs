@@ -7,13 +7,14 @@ use miette::{NamedSource, SourceSpan};
 use std::collections::{HashMap, HashSet};
 
 use crate::ast::{self, Span};
+use crate::environment::Environment;
 use crate::error::{EvalError, ParseError};
 use crate::parser::Parser;
-use crate::schema::SchemaRegistry;
+use crate::symbols::{SymbolIndex, SymbolKind};
 use crate::value::{BuiltinType, FnParam, FnValue, TensorDim, TypeRef, Value};
 
 #[derive(Debug)]
-struct FieldCell {
+pub(crate) struct FieldCell {
     value: OnceLock<Result<Value, EvalError>>,
     evaluating: AtomicBool,
 }
@@ -27,37 +28,124 @@ impl FieldCell {
     }
 }
 
-#[derive(Debug)]
-enum ItemCells {
-    Field(FieldCell),
-    Block(BlockCells),
-    TypeDecl,
-    UnionDecl,
-    NamespaceDecl,
-    UseDecl,
-    SymbolSetDecl,
+/// Per-decorator cache for evaluated positional and named arguments.
+#[derive(Debug, Default)]
+pub(crate) struct DecoratorCell {
+    positional: OnceLock<Result<Vec<Value>, EvalError>>,
+    named: OnceLock<HashMap<String, Result<Value, EvalError>>>,
 }
 
 #[derive(Debug)]
-struct BlockCells {
-    items: Vec<ItemCells>,
+pub(crate) struct ItemCells {
+    pub(crate) decorators: Vec<DecoratorCell>,
+    pub(crate) kind: ItemCellKind,
+}
+
+#[derive(Debug)]
+pub(crate) enum ItemCellKind {
+    Field(FieldCell),
+    Block {
+        labels: OnceLock<Result<Vec<Value>, EvalError>>,
+        items: Vec<ItemCells>,
+    },
+    TypeDecl {
+        /// One inner Vec per `ast::TypeDecl.fields[i]`, holding cells for
+        /// that field's decorators.
+        field_decorators: Vec<Vec<DecoratorCell>>,
+    },
+    UnionDecl {
+        variant_decorators: Vec<Vec<DecoratorCell>>,
+        /// `[variant_idx][field_idx]` decorator cells for record-variant
+        /// fields. Empty inner vecs for non-record variants.
+        variant_field_decorators: Vec<Vec<Vec<DecoratorCell>>>,
+    },
+    SymbolSetDecl {
+        symbol_decorators: Vec<Vec<DecoratorCell>>,
+    },
+    NamespaceDecl,
+    UseDecl,
+}
+
+#[derive(Debug)]
+pub(crate) struct BlockCells {
+    pub(crate) items: Vec<ItemCells>,
+}
+
+fn make_decorator_cells(decs: &[ast::Decorator]) -> Vec<DecoratorCell> {
+    (0..decs.len()).map(|_| DecoratorCell::default()).collect()
 }
 
 impl BlockCells {
     fn build(items: &[ast::Item]) -> Self {
-        let cells = items
-            .iter()
-            .map(|item| match item {
-                ast::Item::Field(_) => ItemCells::Field(FieldCell::new()),
-                ast::Item::Block(b) => ItemCells::Block(BlockCells::build(&b.items)),
-                ast::Item::TypeDecl(_) => ItemCells::TypeDecl,
-                ast::Item::UnionDecl(_) => ItemCells::UnionDecl,
-                ast::Item::NamespaceDecl(_) => ItemCells::NamespaceDecl,
-                ast::Item::UseDecl(_) => ItemCells::UseDecl,
-                ast::Item::SymbolSetDecl(_) => ItemCells::SymbolSetDecl,
-            })
-            .collect();
+        let cells = items.iter().map(ItemCells::build).collect();
         Self { items: cells }
+    }
+}
+
+impl ItemCells {
+    fn build(item: &ast::Item) -> Self {
+        match item {
+            ast::Item::Field(f) => Self {
+                decorators: make_decorator_cells(&f.decorators),
+                kind: ItemCellKind::Field(FieldCell::new()),
+            },
+            ast::Item::Block(b) => Self {
+                decorators: make_decorator_cells(&b.decorators),
+                kind: ItemCellKind::Block {
+                    labels: OnceLock::new(),
+                    items: b.items.iter().map(ItemCells::build).collect(),
+                },
+            },
+            ast::Item::TypeDecl(t) => Self {
+                decorators: make_decorator_cells(&t.decorators),
+                kind: ItemCellKind::TypeDecl {
+                    field_decorators: t
+                        .fields
+                        .iter()
+                        .map(|f| make_decorator_cells(&f.decorators))
+                        .collect(),
+                },
+            },
+            ast::Item::UnionDecl(u) => Self {
+                decorators: make_decorator_cells(&u.decorators),
+                kind: ItemCellKind::UnionDecl {
+                    variant_decorators: u
+                        .variants
+                        .iter()
+                        .map(|v| make_decorator_cells(&v.decorators))
+                        .collect(),
+                    variant_field_decorators: u
+                        .variants
+                        .iter()
+                        .map(|v| match &v.body {
+                            ast::VariantBody::Record(fields) => fields
+                                .iter()
+                                .map(|f| make_decorator_cells(&f.decorators))
+                                .collect(),
+                            _ => Vec::new(),
+                        })
+                        .collect(),
+                },
+            },
+            ast::Item::SymbolSetDecl(s) => Self {
+                decorators: make_decorator_cells(&s.decorators),
+                kind: ItemCellKind::SymbolSetDecl {
+                    symbol_decorators: s
+                        .symbols
+                        .iter()
+                        .map(|sym| make_decorator_cells(&sym.decorators))
+                        .collect(),
+                },
+            },
+            ast::Item::NamespaceDecl(_) => Self {
+                decorators: Vec::new(),
+                kind: ItemCellKind::NamespaceDecl,
+            },
+            ast::Item::UseDecl(_) => Self {
+                decorators: Vec::new(),
+                kind: ItemCellKind::UseDecl,
+            },
+        }
     }
 }
 
@@ -71,22 +159,27 @@ pub struct Document {
     ns_aliases: HashMap<String, Vec<String>>,
     wildcards: Vec<Vec<String>>,
     synthetic_types: Vec<ast::TypeDecl>,
+    /// Parallel cells for `synthetic_types` so view types can reuse the
+    /// same caching paths without special-casing.
+    synthetic_type_cells: Vec<ItemCells>,
+    symbols: SymbolIndex,
+    env: Environment,
 }
 
 impl Document {
     pub fn open(source: &str, name: &str) -> Result<Self, ParseError> {
-        Self::open_with(source, name, &SchemaRegistry::new())
+        Self::open_with(source, name, &Environment::new())
     }
 
-    pub fn open_with(
-        source: &str,
-        name: &str,
-        registry: &SchemaRegistry,
-    ) -> Result<Self, ParseError> {
-        let ast = Parser::new(source, name).parse_source()?;
-        let synthetic = registry.types().to_vec();
-        let resolved = validate_document(&ast, &synthetic, source, name)?;
+    pub fn open_with(source: &str, name: &str, env: &Environment) -> Result<Self, ParseError> {
+        let (ast, symbols) = Parser::new(source, name).parse_source()?;
+        let synthetic = env.types().to_vec();
+        let resolved = validate_document(&ast, &symbols, &synthetic, source, name)?;
         let cells = BlockCells::build(&ast.items);
+        let synthetic_type_cells = synthetic
+            .iter()
+            .map(|t| ItemCells::build(&ast::Item::TypeDecl(t.clone())))
+            .collect();
         Ok(Self {
             src: NamedSource::new(name, source.to_string()),
             ast,
@@ -96,7 +189,72 @@ impl Document {
             ns_aliases: resolved.ns_aliases,
             wildcards: resolved.wildcards,
             synthetic_types: synthetic,
+            synthetic_type_cells,
+            symbols,
+            env: env.clone(),
         })
+    }
+
+    /// The identifier index built incrementally during parsing.
+    /// See [`SymbolIndex`] for what it covers and what is excluded.
+    pub fn symbols(&self) -> &SymbolIndex {
+        &self.symbols
+    }
+
+    /// Lazy dotted-path access into the document. Each segment is
+    /// resolved on demand against the current node — only the cells
+    /// actually visited are forced. Returns `None` for any unresolved
+    /// path.
+    ///
+    /// Resolution order for the first segment matches the existing
+    /// surface: top-level Field, then Block-by-kind, then TypeDecl,
+    /// UnionDecl, SymbolSetDecl. Subsequent segments delegate to
+    /// [`DataRef::child`].
+    pub fn get(&self, path: &str) -> Option<crate::data::DataRef<'_>> {
+        let mut segs = path.split('.').filter(|s| !s.is_empty());
+        let first = segs.next()?;
+        let mut cur = self.resolve_root(first)?;
+        for seg in segs {
+            cur = cur.child(seg)?;
+        }
+        Some(cur)
+    }
+
+    fn resolve_root(&self, name: &str) -> Option<crate::data::DataRef<'_>> {
+        use crate::data::DataRef;
+        if let Some(f) = self.field(name) {
+            return Some(DataRef::from_field(f));
+        }
+        if let Some(b) = self.block(name) {
+            return Some(DataRef::from_block(b));
+        }
+        let qualified = self.qualified_name_public(name);
+        if let Some(t) = self.type_decl(&qualified).or_else(|| self.type_decl(name)) {
+            return Some(DataRef::from_type(t));
+        }
+        if let Some(u) = self
+            .union_decl(&qualified)
+            .or_else(|| self.union_decl(name))
+        {
+            return Some(DataRef::from_union(u));
+        }
+        if let Some(s) = self
+            .symbol_set(&qualified)
+            .or_else(|| self.symbol_set(name))
+        {
+            return Some(DataRef::from_symbol_set(s));
+        }
+        None
+    }
+
+    /// Same composition rule as the evaluator's `qualified_name`, exposed
+    /// here so `resolve_root` doesn't depend on a private helper.
+    fn qualified_name_public(&self, name: &str) -> String {
+        if self.file_ns.is_empty() {
+            name.to_string()
+        } else {
+            format!("{}.{}", self.file_ns.join("."), name)
+        }
     }
 
     pub fn from_file(path: &Path) -> Result<Self, ParseError> {
@@ -109,19 +267,53 @@ impl Document {
     }
 
     pub fn field(&self, name: &str) -> Option<Field<'_>> {
-        find_field(&self.ast.items, &self.cells.items, name)
+        // Top-level fields are indexed by their file-ns-qualified FQN.
+        let fqn = if self.file_ns.is_empty() {
+            name.to_string()
+        } else {
+            format!("{}.{}", self.file_ns.join("."), name)
+        };
+        let rec = self.symbols.lookup(&fqn)?;
+        if !matches!(rec.kind, SymbolKind::Field) {
+            return None;
+        }
+        let idx = rec.path.item_index;
+        let item = &self.ast.items[idx];
+        let cells = &self.cells.items[idx];
+        if let (ast::Item::Field(f), ItemCellKind::Field(_)) = (item, &cells.kind) {
+            Some(Field {
+                ast: f,
+                cells,
+                doc: self,
+            })
+        } else {
+            None
+        }
     }
 
     pub fn block(&self, kind: &str) -> Option<Block<'_>> {
-        find_block(&self.ast.items, &self.cells.items, kind)
+        let paths = self.symbols.blocks_with_kind(kind);
+        let path = paths.first()?;
+        let idx = path.item_index;
+        let item = &self.ast.items[idx];
+        let cells = &self.cells.items[idx];
+        if let (ast::Item::Block(b), ItemCellKind::Block { .. }) = (item, &cells.kind) {
+            Some(Block {
+                ast: b,
+                cells,
+                doc: self,
+            })
+        } else {
+            None
+        }
     }
 
     pub fn fields(&self) -> impl Iterator<Item = Field<'_>> {
-        iter_fields(&self.ast.items, &self.cells.items)
+        iter_fields(&self.ast.items, &self.cells.items, self)
     }
 
     pub fn blocks(&self) -> impl Iterator<Item = Block<'_>> {
-        iter_blocks(&self.ast.items, &self.cells.items)
+        iter_blocks(&self.ast.items, &self.cells.items, self)
     }
 
     /// Returns the file-level namespace path. Empty when the file declared none.
@@ -139,107 +331,123 @@ impl Document {
     /// Look up a type by fully-qualified name (dotted). Searches both
     /// source-declared and registry-injected types.
     pub fn type_decl(&self, fqn: &str) -> Option<TypeDecl<'_>> {
-        let target: Vec<&str> = fqn.split('.').collect();
-        let from_source = self.ast.items.iter().find_map(|item| match item {
-            ast::Item::TypeDecl(t) => {
-                let decl_fqn = self.compose_fqn(&t.name);
-                if decl_fqn_matches(&decl_fqn, &target) {
-                    Some(TypeDecl {
-                        ast: t,
-                        file_ns: &self.file_ns,
-                    })
-                } else {
-                    None
-                }
-            }
-            _ => None,
-        });
-        if from_source.is_some() {
-            return from_source;
+        if let Some(rec) = self.symbols.lookup(fqn)
+            && matches!(rec.kind, SymbolKind::TypeDecl)
+            && let ast::Item::TypeDecl(t) = &self.ast.items[rec.path.item_index]
+        {
+            return Some(TypeDecl {
+                ast: t,
+                file_ns: &self.file_ns,
+                cells: &self.cells.items[rec.path.item_index],
+                doc: self,
+            });
         }
-        // Synthetic types live in the root namespace (no file ns prefix).
-        self.synthetic_types.iter().find_map(|t| {
-            if decl_fqn_matches(&t.name, &target) {
-                Some(TypeDecl {
-                    ast: t,
-                    file_ns: &[],
-                })
-            } else {
-                None
-            }
-        })
+        // Synthetic types live in the root namespace (no file ns prefix)
+        // and are not registered in the parser-built index.
+        let target: Vec<&str> = fqn.split('.').collect();
+        self.synthetic_types
+            .iter()
+            .enumerate()
+            .find(|(_, t)| decl_fqn_matches(&t.name, &target))
+            .map(|(i, t)| TypeDecl {
+                ast: t,
+                file_ns: &[],
+                cells: &self.synthetic_type_cells[i],
+                doc: self,
+            })
     }
 
     pub fn type_decls(&self) -> impl Iterator<Item = TypeDecl<'_>> {
-        let src = self.ast.items.iter().filter_map(|item| match item {
-            ast::Item::TypeDecl(t) => Some(TypeDecl {
+        let src = self
+            .ast
+            .items
+            .iter()
+            .zip(self.cells.items.iter())
+            .filter_map(|(item, cells)| match item {
+                ast::Item::TypeDecl(t) => Some(TypeDecl {
+                    ast: t,
+                    file_ns: &self.file_ns,
+                    cells,
+                    doc: self,
+                }),
+                _ => None,
+            });
+        let syn = self
+            .synthetic_types
+            .iter()
+            .zip(self.synthetic_type_cells.iter())
+            .map(|(t, cells)| TypeDecl {
                 ast: t,
-                file_ns: &self.file_ns,
-            }),
-            _ => None,
-        });
-        let syn = self.synthetic_types.iter().map(|t| TypeDecl {
-            ast: t,
-            file_ns: &[],
-        });
+                file_ns: &[],
+                cells,
+                doc: self,
+            });
         src.chain(syn)
     }
 
     /// Look up a union by fully-qualified name (dotted).
     pub fn union_decl(&self, fqn: &str) -> Option<UnionDecl<'_>> {
-        let target: Vec<&str> = fqn.split('.').collect();
-        self.ast.items.iter().find_map(|item| match item {
-            ast::Item::UnionDecl(u) => {
-                let decl_fqn = self.compose_fqn(&u.name);
-                if decl_fqn_matches(&decl_fqn, &target) {
-                    Some(UnionDecl {
-                        ast: u,
-                        file_ns: &self.file_ns,
-                    })
-                } else {
-                    None
-                }
-            }
-            _ => None,
+        let rec = self.symbols.lookup(fqn)?;
+        if !matches!(rec.kind, SymbolKind::UnionDecl) {
+            return None;
+        }
+        let ast::Item::UnionDecl(u) = &self.ast.items[rec.path.item_index] else {
+            return None;
+        };
+        Some(UnionDecl {
+            ast: u,
+            file_ns: &self.file_ns,
+            cells: &self.cells.items[rec.path.item_index],
+            doc: self,
         })
     }
 
     pub fn union_decls(&self) -> impl Iterator<Item = UnionDecl<'_>> {
-        self.ast.items.iter().filter_map(|item| match item {
-            ast::Item::UnionDecl(u) => Some(UnionDecl {
-                ast: u,
-                file_ns: &self.file_ns,
-            }),
-            _ => None,
-        })
+        self.ast
+            .items
+            .iter()
+            .zip(self.cells.items.iter())
+            .filter_map(|(item, cells)| match item {
+                ast::Item::UnionDecl(u) => Some(UnionDecl {
+                    ast: u,
+                    file_ns: &self.file_ns,
+                    cells,
+                    doc: self,
+                }),
+                _ => None,
+            })
     }
 
     pub fn symbol_set(&self, fqn: &str) -> Option<SymbolSetDecl<'_>> {
-        let target: Vec<&str> = fqn.split('.').collect();
-        self.ast.items.iter().find_map(|item| match item {
-            ast::Item::SymbolSetDecl(s) => {
-                let decl_fqn = self.compose_fqn(&s.name);
-                if decl_fqn_matches(&decl_fqn, &target) {
-                    Some(SymbolSetDecl {
-                        ast: s,
-                        file_ns: &self.file_ns,
-                    })
-                } else {
-                    None
-                }
-            }
-            _ => None,
+        let rec = self.symbols.lookup(fqn)?;
+        if !matches!(rec.kind, SymbolKind::SymbolSetDecl) {
+            return None;
+        }
+        let ast::Item::SymbolSetDecl(s) = &self.ast.items[rec.path.item_index] else {
+            return None;
+        };
+        Some(SymbolSetDecl {
+            ast: s,
+            file_ns: &self.file_ns,
+            cells: &self.cells.items[rec.path.item_index],
+            doc: self,
         })
     }
 
     pub fn symbol_sets(&self) -> impl Iterator<Item = SymbolSetDecl<'_>> {
-        self.ast.items.iter().filter_map(|item| match item {
-            ast::Item::SymbolSetDecl(s) => Some(SymbolSetDecl {
-                ast: s,
-                file_ns: &self.file_ns,
-            }),
-            _ => None,
-        })
+        self.ast
+            .items
+            .iter()
+            .zip(self.cells.items.iter())
+            .filter_map(|(item, cells)| match item {
+                ast::Item::SymbolSetDecl(s) => Some(SymbolSetDecl {
+                    ast: s,
+                    file_ns: &self.file_ns,
+                    cells,
+                    doc: self,
+                }),
+                _ => None,
+            })
     }
 
     /// Resolve a [`TypeRef`] to either its built-in tag or the user-declared
@@ -325,8 +533,14 @@ impl Document {
     fn find_schema(&self, dec_name: &str, value: &str) -> Option<TypeDecl<'_>> {
         let want = Value::Utf8(value.to_string());
         self.type_decls().find(|t| {
-            t.decorators()
-                .any(|d| d.full_name() == dec_name && d.positional().first() == Some(&want))
+            t.decorators().any(|d| {
+                d.full_name() == dec_name
+                    && d.positional()
+                        .ok()
+                        .and_then(|v| v.into_iter().next())
+                        .as_ref()
+                        == Some(&want)
+            })
         })
     }
 }
@@ -396,15 +610,43 @@ pub enum ResolvedType<'a> {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct UnionDecl<'a> {
     ast: &'a ast::UnionDecl,
     file_ns: &'a [String],
+    cells: &'a ItemCells,
+    doc: &'a Document,
 }
 
 impl<'a> UnionDecl<'a> {
-    pub fn decorators(&self) -> impl Iterator<Item = Decorator<'a>> {
-        self.ast.decorators.iter().map(|d| Decorator { ast: d })
+    fn variant_decorator_cells(&self) -> &'a [Vec<DecoratorCell>] {
+        let ItemCellKind::UnionDecl {
+            variant_decorators, ..
+        } = &self.cells.kind
+        else {
+            unreachable!("UnionDecl view wraps a UnionDecl cell")
+        };
+        variant_decorators
+    }
+
+    fn variant_field_cells(&self) -> &'a [Vec<Vec<DecoratorCell>>] {
+        let ItemCellKind::UnionDecl {
+            variant_field_decorators,
+            ..
+        } = &self.cells.kind
+        else {
+            unreachable!("UnionDecl view wraps a UnionDecl cell")
+        };
+        variant_field_decorators
+    }
+
+    pub fn decorators(&self) -> impl Iterator<Item = Decorator<'a>> + 'a {
+        let doc = self.doc;
+        self.ast
+            .decorators
+            .iter()
+            .zip(self.cells.decorators.iter())
+            .map(move |(ast, cell)| Decorator { ast, cell, doc })
     }
 
     /// Last segment of the declared name.
@@ -440,26 +682,55 @@ impl<'a> UnionDecl<'a> {
         self.ast.span
     }
 
-    pub fn variants(&self) -> impl Iterator<Item = UnionVariant<'a>> {
-        self.ast.variants.iter().map(|v| UnionVariant { ast: v })
-    }
-
-    pub fn variant(&self, name: &str) -> Option<UnionVariant<'a>> {
+    pub fn variants(&self) -> impl Iterator<Item = UnionVariant<'a>> + 'a {
+        let doc = self.doc;
+        let variant_cells = self.variant_decorator_cells();
+        let field_cells = self.variant_field_cells();
         self.ast
             .variants
             .iter()
-            .find(|v| v.name == name)
-            .map(|v| UnionVariant { ast: v })
+            .enumerate()
+            .map(move |(i, v)| UnionVariant {
+                ast: v,
+                decorator_cells: &variant_cells[i],
+                field_decorator_cells: &field_cells[i],
+                doc,
+            })
+    }
+
+    pub fn variant(&self, name: &str) -> Option<UnionVariant<'a>> {
+        let variant_cells = self.variant_decorator_cells();
+        let field_cells = self.variant_field_cells();
+        self.ast
+            .variants
+            .iter()
+            .enumerate()
+            .find(|(_, v)| v.name == name)
+            .map(|(i, v)| UnionVariant {
+                ast: v,
+                decorator_cells: &variant_cells[i],
+                field_decorator_cells: &field_cells[i],
+                doc: self.doc,
+            })
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct UnionVariant<'a> {
     ast: &'a ast::UnionVariant,
+    decorator_cells: &'a [DecoratorCell],
+    field_decorator_cells: &'a [Vec<DecoratorCell>],
+    doc: &'a Document,
 }
 
 impl<'a> UnionVariant<'a> {
-    pub fn decorators(&self) -> impl Iterator<Item = Decorator<'a>> {
-        self.ast.decorators.iter().map(|d| Decorator { ast: d })
+    pub fn decorators(&self) -> impl Iterator<Item = Decorator<'a>> + 'a {
+        let doc = self.doc;
+        self.ast
+            .decorators
+            .iter()
+            .zip(self.decorator_cells.iter())
+            .map(move |(ast, cell)| Decorator { ast, cell, doc })
     }
 
     pub fn name(&self) -> &'a str {
@@ -479,9 +750,15 @@ impl<'a> UnionVariant<'a> {
     }
 
     pub fn fields(&self) -> Box<dyn Iterator<Item = TypeField<'a>> + 'a> {
+        let doc = self.doc;
+        let field_cells = self.field_decorator_cells;
         match &self.ast.body {
             ast::VariantBody::Record(fields) => {
-                Box::new(fields.iter().map(|f| TypeField { ast: f }))
+                Box::new(fields.iter().enumerate().map(move |(i, f)| TypeField {
+                    ast: f,
+                    decorator_cells: &field_cells[i],
+                    doc,
+                }))
             }
             _ => Box::new(std::iter::empty()),
         }
@@ -491,8 +768,13 @@ impl<'a> UnionVariant<'a> {
         match &self.ast.body {
             ast::VariantBody::Record(fields) => fields
                 .iter()
-                .find(|f| f.name == name)
-                .map(|f| TypeField { ast: f }),
+                .enumerate()
+                .find(|(_, f)| f.name == name)
+                .map(|(i, f)| TypeField {
+                    ast: f,
+                    decorator_cells: &self.field_decorator_cells[i],
+                    doc: self.doc,
+                }),
             _ => None,
         }
     }
@@ -507,6 +789,8 @@ pub enum VariantBodyView<'a> {
 #[derive(Debug)]
 pub struct Decorator<'a> {
     ast: &'a ast::Decorator,
+    cell: &'a DecoratorCell,
+    doc: &'a Document,
 }
 
 impl<'a> Decorator<'a> {
@@ -529,29 +813,56 @@ impl<'a> Decorator<'a> {
         self.ast.span
     }
 
-    pub fn positional(&self) -> Vec<Value> {
-        self.ast
-            .positional
-            .iter()
-            .map(|e| eval_expr(e).expect("decorator args are pure literals"))
-            .collect()
+    /// Evaluate every positional argument. The result is cached so
+    /// repeated calls return the same eval outcome without re-running.
+    pub fn positional(&self) -> Result<Vec<Value>, EvalError> {
+        let result = self.cell.positional.get_or_init(|| {
+            self.ast
+                .positional
+                .iter()
+                .map(|e| self.doc.eval(e))
+                .collect()
+        });
+        match result {
+            Ok(v) => Ok(v.clone()),
+            Err(e) => Err(e.clone()),
+        }
     }
 
-    pub fn named(&self) -> impl Iterator<Item = NamedArg<'a>> {
-        self.ast.named.iter().map(|n| NamedArg { ast: n })
+    pub fn named(&self) -> impl Iterator<Item = NamedArg<'a>> + 'a {
+        let parent_ast = self.ast;
+        let cell = self.cell;
+        let doc = self.doc;
+        self.ast.named.iter().map(move |n| NamedArg {
+            ast: n,
+            parent_ast,
+            parent: cell,
+            doc,
+        })
     }
 
-    pub fn named_arg(&self, name: &str) -> Option<Value> {
-        self.ast
-            .named
-            .iter()
-            .find(|n| n.name == name)
-            .map(|n| eval_expr(&n.value).expect("decorator args are pure literals"))
+    pub fn named_arg(&self, name: &str) -> Option<Result<Value, EvalError>> {
+        let map = self.cell.named.get_or_init(|| {
+            self.ast
+                .named
+                .iter()
+                .map(|n| (n.name.clone(), self.doc.eval(&n.value)))
+                .collect()
+        });
+        map.get(name).map(|r| match r {
+            Ok(v) => Ok(v.clone()),
+            Err(e) => Err(e.clone()),
+        })
     }
 }
 
 pub struct NamedArg<'a> {
     ast: &'a ast::NamedArg,
+    /// The parent decorator's full AST, used to seed the shared named-arg
+    /// cache on first access from any sibling.
+    parent_ast: &'a ast::Decorator,
+    parent: &'a DecoratorCell,
+    doc: &'a Document,
 }
 
 impl<'a> NamedArg<'a> {
@@ -559,8 +870,20 @@ impl<'a> NamedArg<'a> {
         &self.ast.name
     }
 
-    pub fn value(&self) -> Value {
-        eval_expr(&self.ast.value).expect("decorator args are pure literals")
+    /// Cached via the parent [`DecoratorCell`]'s named-arg map.
+    pub fn value(&self) -> Result<Value, EvalError> {
+        let map = self.parent.named.get_or_init(|| {
+            self.parent_ast
+                .named
+                .iter()
+                .map(|n| (n.name.clone(), self.doc.eval(&n.value)))
+                .collect()
+        });
+        match map.get(&self.ast.name) {
+            Some(Ok(v)) => Ok(v.clone()),
+            Some(Err(e)) => Err(e.clone()),
+            None => self.doc.eval(&self.ast.value),
+        }
     }
 
     pub fn span(&self) -> Span {
@@ -568,15 +891,29 @@ impl<'a> NamedArg<'a> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct SymbolSetDecl<'a> {
     ast: &'a ast::SymbolSetDecl,
     file_ns: &'a [String],
+    cells: &'a ItemCells,
+    doc: &'a Document,
 }
 
 impl<'a> SymbolSetDecl<'a> {
-    pub fn decorators(&self) -> impl Iterator<Item = Decorator<'a>> {
-        self.ast.decorators.iter().map(|d| Decorator { ast: d })
+    fn symbol_decorator_cells(&self) -> &'a [Vec<DecoratorCell>] {
+        let ItemCellKind::SymbolSetDecl { symbol_decorators } = &self.cells.kind else {
+            unreachable!("SymbolSetDecl view wraps a SymbolSetDecl cell")
+        };
+        symbol_decorators
+    }
+
+    pub fn decorators(&self) -> impl Iterator<Item = Decorator<'a>> + 'a {
+        let doc = self.doc;
+        self.ast
+            .decorators
+            .iter()
+            .zip(self.cells.decorators.iter())
+            .map(move |(ast, cell)| Decorator { ast, cell, doc })
     }
 
     pub fn name(&self) -> &'a str {
@@ -608,8 +945,18 @@ impl<'a> SymbolSetDecl<'a> {
         self.ast.span
     }
 
-    pub fn symbols(&self) -> impl Iterator<Item = SymbolEntry<'a>> {
-        self.ast.symbols.iter().map(|s| SymbolEntry { ast: s })
+    pub fn symbols(&self) -> impl Iterator<Item = SymbolEntry<'a>> + 'a {
+        let doc = self.doc;
+        let cells = self.symbol_decorator_cells();
+        self.ast
+            .symbols
+            .iter()
+            .enumerate()
+            .map(move |(i, s)| SymbolEntry {
+                ast: s,
+                decorator_cells: &cells[i],
+                doc,
+            })
     }
 
     pub fn has(&self, name: &str) -> bool {
@@ -617,13 +964,21 @@ impl<'a> SymbolSetDecl<'a> {
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct SymbolEntry<'a> {
     ast: &'a ast::SymbolEntry,
+    decorator_cells: &'a [DecoratorCell],
+    doc: &'a Document,
 }
 
 impl<'a> SymbolEntry<'a> {
-    pub fn decorators(&self) -> impl Iterator<Item = Decorator<'a>> {
-        self.ast.decorators.iter().map(|d| Decorator { ast: d })
+    pub fn decorators(&self) -> impl Iterator<Item = Decorator<'a>> + 'a {
+        let doc = self.doc;
+        self.ast
+            .decorators
+            .iter()
+            .zip(self.decorator_cells.iter())
+            .map(move |(ast, cell)| Decorator { ast, cell, doc })
     }
 
     pub fn name(&self) -> &'a str {
@@ -635,15 +990,29 @@ impl<'a> SymbolEntry<'a> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct TypeDecl<'a> {
     ast: &'a ast::TypeDecl,
     file_ns: &'a [String],
+    cells: &'a ItemCells,
+    doc: &'a Document,
 }
 
 impl<'a> TypeDecl<'a> {
-    pub fn decorators(&self) -> impl Iterator<Item = Decorator<'a>> {
-        self.ast.decorators.iter().map(|d| Decorator { ast: d })
+    fn field_decorator_cells(&self) -> &'a [Vec<DecoratorCell>] {
+        let ItemCellKind::TypeDecl { field_decorators } = &self.cells.kind else {
+            unreachable!("TypeDecl view wraps a TypeDecl cell")
+        };
+        field_decorators
+    }
+
+    pub fn decorators(&self) -> impl Iterator<Item = Decorator<'a>> + 'a {
+        let doc = self.doc;
+        self.ast
+            .decorators
+            .iter()
+            .zip(self.cells.decorators.iter())
+            .map(move |(ast, cell)| Decorator { ast, cell, doc })
     }
 
     pub fn name(&self) -> &'a str {
@@ -675,16 +1044,32 @@ impl<'a> TypeDecl<'a> {
         self.ast.span
     }
 
-    pub fn fields(&self) -> impl Iterator<Item = TypeField<'a>> {
-        self.ast.fields.iter().map(|f| TypeField { ast: f })
-    }
-
-    pub fn field(&self, name: &str) -> Option<TypeField<'a>> {
+    pub fn fields(&self) -> impl Iterator<Item = TypeField<'a>> + 'a {
+        let doc = self.doc;
+        let cells = self.field_decorator_cells();
         self.ast
             .fields
             .iter()
-            .find(|f| f.name == name)
-            .map(|f| TypeField { ast: f })
+            .enumerate()
+            .map(move |(i, f)| TypeField {
+                ast: f,
+                decorator_cells: &cells[i],
+                doc,
+            })
+    }
+
+    pub fn field(&self, name: &str) -> Option<TypeField<'a>> {
+        let cells = self.field_decorator_cells();
+        self.ast
+            .fields
+            .iter()
+            .enumerate()
+            .find(|(_, f)| f.name == name)
+            .map(|(i, f)| TypeField {
+                ast: f,
+                decorator_cells: &cells[i],
+                doc: self.doc,
+            })
     }
 }
 
@@ -740,42 +1125,49 @@ impl<'a> UseItem<'a> {
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct TypeField<'a> {
     ast: &'a ast::TypeField,
+    decorator_cells: &'a [DecoratorCell],
+    doc: &'a Document,
 }
 
 impl<'a> TypeField<'a> {
-    pub fn decorators(&self) -> impl Iterator<Item = Decorator<'a>> {
-        self.ast.decorators.iter().map(|d| Decorator { ast: d })
+    pub fn decorators(&self) -> impl Iterator<Item = Decorator<'a>> + 'a {
+        let doc = self.doc;
+        self.ast
+            .decorators
+            .iter()
+            .zip(self.decorator_cells.iter())
+            .map(move |(ast, cell)| Decorator { ast, cell, doc })
     }
 
     /// If this field carries an `@inline(N)` decorator, returns N.
     /// Used by schemas to map block label slots to typed fields.
     pub fn inline_slot(&self) -> Option<u64> {
-        self.decorators()
-            .find(|d| d.full_name() == "inline")
-            .and_then(|d| match d.positional().first()? {
-                Value::I8(n) if *n >= 0 => Some(*n as u64),
-                Value::I16(n) if *n >= 0 => Some(*n as u64),
-                Value::I32(n) if *n >= 0 => Some(*n as u64),
-                Value::I64(n) if *n >= 0 => Some(*n as u64),
-                Value::I128(n) if *n >= 0 => Some(*n as u64),
-                Value::Isize(n) if *n >= 0 => Some(*n as u64),
-                Value::U8(n) => Some(*n as u64),
-                Value::U16(n) => Some(*n as u64),
-                Value::U32(n) => Some(*n as u64),
-                Value::U64(n) => Some(*n),
-                Value::U128(n) => Some(*n as u64),
-                Value::Usize(n) => Some(*n as u64),
-                _ => None,
-            })
+        let dec = self.decorators().find(|d| d.full_name() == "inline")?;
+        let positional = dec.positional().ok()?;
+        match positional.first()? {
+            Value::I8(n) if *n >= 0 => Some(*n as u64),
+            Value::I16(n) if *n >= 0 => Some(*n as u64),
+            Value::I32(n) if *n >= 0 => Some(*n as u64),
+            Value::I64(n) if *n >= 0 => Some(*n as u64),
+            Value::I128(n) if *n >= 0 => Some(*n as u64),
+            Value::Isize(n) if *n >= 0 => Some(*n as u64),
+            Value::U8(n) => Some(*n as u64),
+            Value::U16(n) => Some(*n as u64),
+            Value::U32(n) => Some(*n as u64),
+            Value::U64(n) => Some(*n),
+            Value::U128(n) => Some(*n as u64),
+            Value::Usize(n) => Some(*n as u64),
+            _ => None,
+        }
     }
 
     /// If this field carries an `@default(v)` decorator, returns v.
     pub fn default_value(&self) -> Option<Value> {
-        self.decorators()
-            .find(|d| d.full_name() == "default")
-            .and_then(|d| d.positional().into_iter().next())
+        let dec = self.decorators().find(|d| d.full_name() == "default")?;
+        dec.positional().ok()?.into_iter().next()
     }
 
     pub fn name(&self) -> &'a str {
@@ -795,14 +1187,28 @@ impl<'a> TypeField<'a> {
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct Field<'a> {
     ast: &'a ast::Field,
-    cell: &'a FieldCell,
+    cells: &'a ItemCells,
+    doc: &'a Document,
 }
 
 impl<'a> Field<'a> {
-    pub fn decorators(&self) -> impl Iterator<Item = Decorator<'a>> {
-        self.ast.decorators.iter().map(|d| Decorator { ast: d })
+    fn field_cell(&self) -> &'a FieldCell {
+        let ItemCellKind::Field(c) = &self.cells.kind else {
+            unreachable!("Field view wraps a Field cell")
+        };
+        c
+    }
+
+    pub fn decorators(&self) -> impl Iterator<Item = Decorator<'a>> + 'a {
+        let doc = self.doc;
+        self.ast
+            .decorators
+            .iter()
+            .zip(self.cells.decorators.iter())
+            .map(move |(ast, cell)| Decorator { ast, cell, doc })
     }
 
     pub fn name(&self) -> &'a str {
@@ -814,51 +1220,65 @@ impl<'a> Field<'a> {
     }
 
     pub fn value(&self) -> Result<&'a Value, &'a EvalError> {
-        if let Some(cached) = self.cell.value.get() {
+        let cell = self.field_cell();
+        if let Some(cached) = cell.value.get() {
             return cached.as_ref();
         }
-        if self.cell.evaluating.swap(true, Ordering::Acquire) {
-            let _ = self.cell.value.set(Err(EvalError::Cycle {
+        if cell.evaluating.swap(true, Ordering::Acquire) {
+            let _ = cell.value.set(Err(EvalError::Cycle {
                 field: self.ast.name.clone(),
                 span: span_to_miette(self.ast.span),
             }));
-            return self
-                .cell
+            return cell
                 .value
                 .get()
                 .expect("cycle cell was just initialised")
                 .as_ref();
         }
-        let result = eval_expr(&self.ast.expr);
-        self.cell.evaluating.store(false, Ordering::Release);
-        self.cell.value.get_or_init(|| result).as_ref()
+        let result = self.doc.eval(&self.ast.expr);
+        cell.evaluating.store(false, Ordering::Release);
+        cell.value.get_or_init(|| result).as_ref()
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct Block<'a> {
     ast: &'a ast::Block,
-    cells: &'a BlockCells,
+    cells: &'a ItemCells,
+    doc: &'a Document,
 }
 
 impl<'a> Block<'a> {
-    pub fn decorators(&self) -> impl Iterator<Item = Decorator<'a>> {
-        self.ast.decorators.iter().map(|d| Decorator { ast: d })
+    fn block_inner(&self) -> (&'a OnceLock<Result<Vec<Value>, EvalError>>, &'a [ItemCells]) {
+        let ItemCellKind::Block { labels, items } = &self.cells.kind else {
+            unreachable!("Block view wraps a Block cell")
+        };
+        (labels, items)
+    }
+
+    pub fn decorators(&self) -> impl Iterator<Item = Decorator<'a>> + 'a {
+        let doc = self.doc;
+        self.ast
+            .decorators
+            .iter()
+            .zip(self.cells.decorators.iter())
+            .map(move |(ast, cell)| Decorator { ast, cell, doc })
     }
 
     pub fn kind(&self) -> &'a str {
         &self.ast.kind
     }
 
-    /// Evaluated values for each label slot. Label types are determined by
-    /// the schema's `@inline(N)`-decorated fields; the parser preserves the
-    /// raw value expressions in source order and `labels()` materialises
-    /// them on access.
-    pub fn labels(&self) -> Vec<Value> {
-        self.ast
-            .labels
-            .iter()
-            .map(|e| eval_expr(e).expect("label exprs are pure literals"))
-            .collect()
+    /// Evaluated values for each label slot. Cached on first call; later
+    /// calls return a clone of the cached `Vec`.
+    pub fn labels(&self) -> Result<Vec<Value>, EvalError> {
+        let (cell, _) = self.block_inner();
+        let result =
+            cell.get_or_init(|| self.ast.labels.iter().map(|e| self.doc.eval(e)).collect());
+        match result {
+            Ok(v) => Ok(v.clone()),
+            Err(e) => Err(e.clone()),
+        }
     }
 
     pub fn span(&self) -> Span {
@@ -866,41 +1286,55 @@ impl<'a> Block<'a> {
     }
 
     pub fn field(&self, name: &str) -> Option<Field<'a>> {
-        find_field(&self.ast.items, &self.cells.items, name)
+        let (_, items) = self.block_inner();
+        find_field(&self.ast.items, items, name, self.doc)
     }
 
     pub fn block(&self, kind: &str) -> Option<Block<'a>> {
-        find_block(&self.ast.items, &self.cells.items, kind)
+        let (_, items) = self.block_inner();
+        find_block(&self.ast.items, items, kind, self.doc)
     }
 
-    pub fn fields(&self) -> impl Iterator<Item = Field<'a>> {
-        iter_fields(&self.ast.items, &self.cells.items)
+    pub fn fields(&self) -> impl Iterator<Item = Field<'a>> + 'a {
+        let (_, items) = self.block_inner();
+        iter_fields(&self.ast.items, items, self.doc)
     }
 
-    pub fn blocks(&self) -> impl Iterator<Item = Block<'a>> {
-        iter_blocks(&self.ast.items, &self.cells.items)
+    pub fn blocks(&self) -> impl Iterator<Item = Block<'a>> + 'a {
+        let (_, items) = self.block_inner();
+        iter_blocks(&self.ast.items, items, self.doc)
     }
 }
 
-fn find_field<'a>(items: &'a [ast::Item], cells: &'a [ItemCells], name: &str) -> Option<Field<'a>> {
+fn find_field<'a>(
+    items: &'a [ast::Item],
+    cells: &'a [ItemCells],
+    name: &str,
+    doc: &'a Document,
+) -> Option<Field<'a>> {
     items
         .iter()
         .zip(cells)
-        .find_map(|(item, cell)| match (item, cell) {
-            (ast::Item::Field(f), ItemCells::Field(c)) if f.name == name => {
-                Some(Field { ast: f, cell: c })
+        .find_map(|(item, cells)| match (item, &cells.kind) {
+            (ast::Item::Field(f), ItemCellKind::Field(_)) if f.name == name => {
+                Some(Field { ast: f, cells, doc })
             }
             _ => None,
         })
 }
 
-fn find_block<'a>(items: &'a [ast::Item], cells: &'a [ItemCells], kind: &str) -> Option<Block<'a>> {
+fn find_block<'a>(
+    items: &'a [ast::Item],
+    cells: &'a [ItemCells],
+    kind: &str,
+    doc: &'a Document,
+) -> Option<Block<'a>> {
     items
         .iter()
         .zip(cells)
-        .find_map(|(item, cell)| match (item, cell) {
-            (ast::Item::Block(b), ItemCells::Block(c)) if b.kind == kind => {
-                Some(Block { ast: b, cells: c })
+        .find_map(|(item, cells)| match (item, &cells.kind) {
+            (ast::Item::Block(b), ItemCellKind::Block { .. }) if b.kind == kind => {
+                Some(Block { ast: b, cells, doc })
             }
             _ => None,
         })
@@ -909,12 +1343,13 @@ fn find_block<'a>(items: &'a [ast::Item], cells: &'a [ItemCells], kind: &str) ->
 fn iter_fields<'a>(
     items: &'a [ast::Item],
     cells: &'a [ItemCells],
-) -> impl Iterator<Item = Field<'a>> {
+    doc: &'a Document,
+) -> impl Iterator<Item = Field<'a>> + 'a {
     items
         .iter()
         .zip(cells)
-        .filter_map(|(item, cell)| match (item, cell) {
-            (ast::Item::Field(f), ItemCells::Field(c)) => Some(Field { ast: f, cell: c }),
+        .filter_map(move |(item, cells)| match (item, &cells.kind) {
+            (ast::Item::Field(f), ItemCellKind::Field(_)) => Some(Field { ast: f, cells, doc }),
             _ => None,
         })
 }
@@ -922,59 +1357,300 @@ fn iter_fields<'a>(
 fn iter_blocks<'a>(
     items: &'a [ast::Item],
     cells: &'a [ItemCells],
-) -> impl Iterator<Item = Block<'a>> {
+    doc: &'a Document,
+) -> impl Iterator<Item = Block<'a>> + 'a {
     items
         .iter()
         .zip(cells)
-        .filter_map(|(item, cell)| match (item, cell) {
-            (ast::Item::Block(b), ItemCells::Block(c)) => Some(Block { ast: b, cells: c }),
+        .filter_map(move |(item, cells)| match (item, &cells.kind) {
+            (ast::Item::Block(b), ItemCellKind::Block { .. }) => Some(Block { ast: b, cells, doc }),
             _ => None,
         })
 }
 
-fn eval_expr(e: &ast::Expr) -> Result<Value, EvalError> {
-    Ok(match e {
-        ast::Expr::Bool(b) => Value::Bool(*b),
-        ast::Expr::I8(v) => Value::I8(*v),
-        ast::Expr::I16(v) => Value::I16(*v),
-        ast::Expr::I32(v) => Value::I32(*v),
-        ast::Expr::I64(v) => Value::I64(*v),
-        ast::Expr::I128(v) => Value::I128(*v),
-        ast::Expr::Isize(v) => Value::Isize(*v),
-        ast::Expr::U8(v) => Value::U8(*v),
-        ast::Expr::U16(v) => Value::U16(*v),
-        ast::Expr::U32(v) => Value::U32(*v),
-        ast::Expr::U64(v) => Value::U64(*v),
-        ast::Expr::U128(v) => Value::U128(*v),
-        ast::Expr::Usize(v) => Value::Usize(*v),
-        ast::Expr::F32(v) => Value::F32(*v),
-        ast::Expr::F64(v) => Value::F64(*v),
-        ast::Expr::Utf8(s) => Value::Utf8(s.clone()),
-        ast::Expr::Ascii(s) => Value::Ascii(s.clone()),
-        ast::Expr::Utf16(v) => Value::Utf16(v.clone()),
-        ast::Expr::Utf32(v) => Value::Utf32(v.clone()),
-        ast::Expr::Identifier(s) => Value::Identifier(s.clone()),
-        ast::Expr::Symbol(s) => Value::Symbol(s.clone()),
-        ast::Expr::None => Value::None,
-        ast::Expr::Function(f) => {
-            let params: Vec<FnParam> = f
-                .params
-                .iter()
-                .map(|p| FnParam::new(p.name.clone(), p.ty.clone()))
-                .collect();
-            Value::Function(FnValue::new(params, f.return_ty.clone(), f.body.clone()))
+struct EvalCtx {
+    /// Stack of name → value bindings introduced by `Block` let-bindings.
+    /// Searched right-to-left so the most recent binding shadows older ones.
+    locals: Vec<(String, Value)>,
+}
+
+impl EvalCtx {
+    fn new() -> Self {
+        Self { locals: Vec::new() }
+    }
+
+    fn lookup(&self, name: &str) -> Option<&Value> {
+        self.locals
+            .iter()
+            .rev()
+            .find_map(|(n, v)| if n == name { Some(v) } else { None })
+    }
+}
+
+impl Document {
+    pub(crate) fn eval(&self, expr: &ast::Expr) -> Result<Value, EvalError> {
+        let mut ctx = EvalCtx::new();
+        self.eval_in(expr, &mut ctx)
+    }
+
+    fn eval_in(&self, expr: &ast::Expr, ctx: &mut EvalCtx) -> Result<Value, EvalError> {
+        use ast::Expr as E;
+        Ok(match expr {
+            E::Bool(b) => Value::Bool(*b),
+            E::I8(v) => Value::I8(*v),
+            E::I16(v) => Value::I16(*v),
+            E::I32(v) => Value::I32(*v),
+            E::I64(v) => Value::I64(*v),
+            E::I128(v) => Value::I128(*v),
+            E::Isize(v) => Value::Isize(*v),
+            E::U8(v) => Value::U8(*v),
+            E::U16(v) => Value::U16(*v),
+            E::U32(v) => Value::U32(*v),
+            E::U64(v) => Value::U64(*v),
+            E::U128(v) => Value::U128(*v),
+            E::Usize(v) => Value::Usize(*v),
+            E::F32(v) => Value::F32(*v),
+            E::F64(v) => Value::F64(*v),
+            E::Utf8(s) => Value::Utf8(s.clone()),
+            E::Ascii(s) => Value::Ascii(s.clone()),
+            E::Utf16(v) => Value::Utf16(v.clone()),
+            E::Utf32(v) => Value::Utf32(v.clone()),
+            E::Symbol(s) => Value::Symbol(s.clone()),
+            E::None => Value::None,
+            E::Function(f) => {
+                let params: Vec<FnParam> = f
+                    .params
+                    .iter()
+                    .map(|p| FnParam::new(p.name.clone(), p.ty.clone()))
+                    .collect();
+                Value::Function(FnValue::new(params, f.return_ty.clone(), f.body.clone()))
+            }
+            E::Identifier(name) => {
+                // Locals (let-binding scope) shadow top-level fields.
+                if let Some(v) = ctx.lookup(name) {
+                    return Ok(v.clone());
+                }
+                let fqn = self.qualified_name(name);
+                if let Some(rec) = self.symbols.lookup(&fqn)
+                    && matches!(rec.kind, SymbolKind::Field)
+                    && let Some(field) = self.field(name)
+                {
+                    return field.value().cloned().map_err(|e| e.clone());
+                }
+                // Unresolved identifiers pass through as `Value::Identifier`.
+                // Builtin arguments that need a real value will surface a
+                // type-mismatch from the `FromValue` impl; block labels (which
+                // legitimately use bare identifiers) keep working.
+                Value::Identifier(name.clone())
+            }
+            E::Paren { inner, .. } => return self.eval_in(inner, ctx),
+            E::Unary { op, operand, span } => {
+                let v = self.eval_in(operand, ctx)?;
+                return apply_unary(*op, v, *span);
+            }
+            E::Binary { op, lhs, rhs, span } => {
+                // Short-circuit logical ops.
+                if matches!(op, ast::BinOp::And | ast::BinOp::Or) {
+                    let l = self.eval_in(lhs, ctx)?;
+                    let lb = as_bool(&l, *op, *span)?;
+                    let short =
+                        matches!(op, ast::BinOp::And) && !lb || matches!(op, ast::BinOp::Or) && lb;
+                    if short {
+                        return Ok(Value::Bool(lb));
+                    }
+                    let r = self.eval_in(rhs, ctx)?;
+                    let rb = as_bool(&r, *op, *span)?;
+                    return Ok(Value::Bool(rb));
+                }
+                let l = self.eval_in(lhs, ctx)?;
+                let r = self.eval_in(rhs, ctx)?;
+                return apply_binary(*op, l, r, *span);
+            }
+            E::Call { callee, args, span } => {
+                let name = match callee.as_ref() {
+                    E::Identifier(n) => n.clone(),
+                    _ => return Err(EvalError::non_callable(*span)),
+                };
+                let Some(builtin) = self.env.builtin(&name) else {
+                    return Err(EvalError::unknown_builtin(name, *span));
+                };
+                if args.len() != builtin.arity {
+                    return Err(EvalError::builtin_arity(
+                        name,
+                        builtin.arity,
+                        args.len(),
+                        *span,
+                    ));
+                }
+                let mut evald = Vec::with_capacity(args.len());
+                for arg in args {
+                    evald.push(self.eval_in(arg, ctx)?);
+                }
+                return (builtin.body)(&evald)
+                    .map_err(|msg| EvalError::builtin_type(name, msg, *span));
+            }
+            E::Block { lets, tail, .. } => {
+                let frame_base = ctx.locals.len();
+                for binding in lets {
+                    let v = self.eval_in(&binding.value, ctx)?;
+                    ctx.locals.push((binding.name.clone(), v));
+                }
+                let result = self.eval_in(tail, ctx);
+                ctx.locals.truncate(frame_base);
+                return result;
+            }
+        })
+    }
+
+    /// Compose `name` with the document's file namespace into a dotted
+    /// FQN suitable for [`SymbolIndex::lookup`].
+    fn qualified_name(&self, name: &str) -> String {
+        if self.file_ns.is_empty() {
+            name.to_string()
+        } else {
+            format!("{}.{}", self.file_ns.join("."), name)
         }
-        ast::Expr::Paren { inner, .. } => return eval_expr(inner),
-        ast::Expr::Call { span, .. }
-        | ast::Expr::Binary { span, .. }
-        | ast::Expr::Unary { span, .. }
-        | ast::Expr::Block { span, .. } => {
-            return Err(EvalError::new(
-                "evaluation of compound expressions is not yet implemented",
-                *span,
+    }
+}
+
+fn as_bool(v: &Value, op: ast::BinOp, span: Span) -> Result<bool, EvalError> {
+    match v {
+        Value::Bool(b) => Ok(*b),
+        other => Err(EvalError::type_mismatch(
+            op_name(op),
+            other.type_name(),
+            "—",
+            span,
+        )),
+    }
+}
+
+fn op_name(op: ast::BinOp) -> &'static str {
+    match op {
+        ast::BinOp::Add => "+",
+        ast::BinOp::Sub => "-",
+        ast::BinOp::Mul => "*",
+        ast::BinOp::Div => "/",
+        ast::BinOp::Mod => "%",
+        ast::BinOp::Eq => "==",
+        ast::BinOp::Ne => "!=",
+        ast::BinOp::Lt => "<",
+        ast::BinOp::Le => "<=",
+        ast::BinOp::Gt => ">",
+        ast::BinOp::Ge => ">=",
+        ast::BinOp::And => "&&",
+        ast::BinOp::Or => "||",
+    }
+}
+
+fn apply_unary(op: ast::UnaryOp, v: Value, span: Span) -> Result<Value, EvalError> {
+    match op {
+        ast::UnaryOp::Neg => match v {
+            Value::I8(n) => Ok(Value::I8(-n)),
+            Value::I16(n) => Ok(Value::I16(-n)),
+            Value::I32(n) => Ok(Value::I32(-n)),
+            Value::I64(n) => Ok(Value::I64(-n)),
+            Value::I128(n) => Ok(Value::I128(-n)),
+            Value::Isize(n) => Ok(Value::Isize(-n)),
+            Value::F32(n) => Ok(Value::F32(-n)),
+            Value::F64(n) => Ok(Value::F64(-n)),
+            other => Err(EvalError::type_mismatch("-", other.type_name(), "—", span)),
+        },
+        ast::UnaryOp::Not => match v {
+            Value::Bool(b) => Ok(Value::Bool(!b)),
+            other => Err(EvalError::type_mismatch("!", other.type_name(), "—", span)),
+        },
+    }
+}
+
+fn apply_binary(op: ast::BinOp, l: Value, r: Value, span: Span) -> Result<Value, EvalError> {
+    use ast::BinOp as B;
+    let mismatch = || EvalError::type_mismatch(op_name(op), l.type_name(), r.type_name(), span);
+
+    macro_rules! numeric_arith {
+        ($lhs:expr, $rhs:expr, $variant:ident, $op:tt) => {
+            match (&$lhs, &$rhs) {
+                (Value::$variant(a), Value::$variant(b)) => Ok(Value::$variant(a $op b)),
+                _ => Err(mismatch()),
+            }
+        }
+    }
+
+    macro_rules! arith_op {
+        ($op:tt) => {
+            match (&l, &r) {
+                (Value::I8(_), Value::I8(_)) => numeric_arith!(l, r, I8, $op),
+                (Value::I16(_), Value::I16(_)) => numeric_arith!(l, r, I16, $op),
+                (Value::I32(_), Value::I32(_)) => numeric_arith!(l, r, I32, $op),
+                (Value::I64(_), Value::I64(_)) => numeric_arith!(l, r, I64, $op),
+                (Value::I128(_), Value::I128(_)) => numeric_arith!(l, r, I128, $op),
+                (Value::Isize(_), Value::Isize(_)) => numeric_arith!(l, r, Isize, $op),
+                (Value::U8(_), Value::U8(_)) => numeric_arith!(l, r, U8, $op),
+                (Value::U16(_), Value::U16(_)) => numeric_arith!(l, r, U16, $op),
+                (Value::U32(_), Value::U32(_)) => numeric_arith!(l, r, U32, $op),
+                (Value::U64(_), Value::U64(_)) => numeric_arith!(l, r, U64, $op),
+                (Value::U128(_), Value::U128(_)) => numeric_arith!(l, r, U128, $op),
+                (Value::Usize(_), Value::Usize(_)) => numeric_arith!(l, r, Usize, $op),
+                (Value::F32(_), Value::F32(_)) => numeric_arith!(l, r, F32, $op),
+                (Value::F64(_), Value::F64(_)) => numeric_arith!(l, r, F64, $op),
+                _ => Err(mismatch()),
+            }
+        };
+    }
+
+    match op {
+        B::Add => arith_op!(+),
+        B::Sub => arith_op!(-),
+        B::Mul => arith_op!(*),
+        B::Div => arith_op!(/),
+        B::Mod => arith_op!(%),
+        B::Eq => Ok(Value::Bool(values_eq(&l, &r))),
+        B::Ne => Ok(Value::Bool(!values_eq(&l, &r))),
+        B::Lt => compare(&l, &r, span, |c| c == std::cmp::Ordering::Less),
+        B::Le => compare(&l, &r, span, |c| c != std::cmp::Ordering::Greater),
+        B::Gt => compare(&l, &r, span, |c| c == std::cmp::Ordering::Greater),
+        B::Ge => compare(&l, &r, span, |c| c != std::cmp::Ordering::Less),
+        B::And | B::Or => unreachable!("handled with short-circuit eval"),
+    }
+}
+
+fn values_eq(l: &Value, r: &Value) -> bool {
+    // Same-typed equality. Cross-type comparisons (e.g. i32 vs i64) are
+    // not equal — there is no implicit numeric coercion.
+    l == r
+}
+
+fn compare<F>(l: &Value, r: &Value, span: Span, pick: F) -> Result<Value, EvalError>
+where
+    F: Fn(std::cmp::Ordering) -> bool,
+{
+    use std::cmp::Ordering;
+    let ord = match (l, r) {
+        (Value::I8(a), Value::I8(b)) => a.cmp(b),
+        (Value::I16(a), Value::I16(b)) => a.cmp(b),
+        (Value::I32(a), Value::I32(b)) => a.cmp(b),
+        (Value::I64(a), Value::I64(b)) => a.cmp(b),
+        (Value::I128(a), Value::I128(b)) => a.cmp(b),
+        (Value::Isize(a), Value::Isize(b)) => a.cmp(b),
+        (Value::U8(a), Value::U8(b)) => a.cmp(b),
+        (Value::U16(a), Value::U16(b)) => a.cmp(b),
+        (Value::U32(a), Value::U32(b)) => a.cmp(b),
+        (Value::U64(a), Value::U64(b)) => a.cmp(b),
+        (Value::U128(a), Value::U128(b)) => a.cmp(b),
+        (Value::Usize(a), Value::Usize(b)) => a.cmp(b),
+        (Value::F32(a), Value::F32(b)) => a.partial_cmp(b).unwrap_or(Ordering::Equal),
+        (Value::F64(a), Value::F64(b)) => a.partial_cmp(b).unwrap_or(Ordering::Equal),
+        (Value::Utf8(a), Value::Utf8(b)) | (Value::Ascii(a), Value::Ascii(b)) => a.cmp(b),
+        _ => {
+            return Err(EvalError::type_mismatch(
+                "<>",
+                l.type_name(),
+                r.type_name(),
+                span,
             ));
         }
-    })
+    };
+    Ok(Value::Bool(pick(ord)))
 }
 
 fn span_to_miette(span: Span) -> SourceSpan {
@@ -990,6 +1666,7 @@ struct Resolved {
 
 fn validate_document(
     ast: &ast::Source,
+    symbols: &SymbolIndex,
     synthetic: &[ast::TypeDecl],
     source: &str,
     file: &str,
@@ -1022,10 +1699,12 @@ fn validate_document(
         }
     }
 
-    // 2. FQN registry and prefix set.
+    // 2. Build the declared-FQN set and prefix set used for name resolution.
+    // Top-level decls were already added to `symbols` by the parser (and the
+    // duplicate check already fired there); we just project them into the
+    // shapes that the rest of this function expects.
     let mut declared: HashSet<Vec<String>> = HashSet::new();
     let mut prefixes: HashSet<Vec<String>> = HashSet::new();
-    // Synthetic (registry-provided) types live at the root namespace.
     for t in synthetic {
         let fqn = t.name.clone();
         declared.insert(fqn.clone());
@@ -1033,25 +1712,21 @@ fn validate_document(
             prefixes.insert(fqn[..n].to_vec());
         }
     }
-    for item in &ast.items {
-        let fqn = match item {
-            ast::Item::TypeDecl(t) => compose(&file_ns, &t.name),
-            ast::Item::UnionDecl(u) => compose(&file_ns, &u.name),
-            ast::Item::SymbolSetDecl(s) => compose(&file_ns, &s.name),
-            _ => continue,
-        };
+    for rec in symbols.iter() {
+        if !matches!(
+            rec.kind,
+            SymbolKind::TypeDecl | SymbolKind::UnionDecl | SymbolKind::SymbolSetDecl
+        ) {
+            continue;
+        }
+        let fqn: Vec<String> = rec.fqn.split('.').map(str::to_string).collect();
         if !declared.insert(fqn.clone()) {
-            let span = match item {
-                ast::Item::TypeDecl(t) => t.span,
-                ast::Item::UnionDecl(u) => u.span,
-                ast::Item::SymbolSetDecl(s) => s.span,
-                _ => unreachable!(),
-            };
+            // A registry-injected (synthetic) type already owns this FQN.
             return Err(open_error(
                 source,
                 file,
-                format!("duplicate declaration '{}'", fqn.join(".")),
-                span,
+                format!("duplicate declaration '{}'", rec.fqn),
+                rec.span,
                 "duplicate declaration",
             ));
         }
@@ -1264,10 +1939,6 @@ fn validate_document(
     })
 }
 
-fn compose(file_ns: &[String], name: &[String]) -> Vec<String> {
-    file_ns.iter().chain(name.iter()).cloned().collect()
-}
-
 #[allow(clippy::too_many_arguments)]
 fn check_type_ref(
     t: &TypeRef,
@@ -1375,7 +2046,7 @@ mod tests {
         // Use an empty registry so existing tests aren't polluted with the
         // four built-in decorator schemas. Explicit `Document::open` /
         // `open_with` behaviour is tested separately.
-        Document::open_with(src, "test", &SchemaRegistry::empty()).expect("open")
+        Document::open_with(src, "test", &Environment::empty()).expect("open")
     }
 
     #[test]
@@ -1482,14 +2153,14 @@ mod tests {
         let f = doc.field("name").unwrap();
         assert!(!f.span().is_empty());
         // value() not called; the OnceLock should still be empty.
-        assert!(f.cell.value.get().is_none());
+        assert!(f.field_cell().value.get().is_none());
     }
 
     #[test]
     fn block_field_resolves() {
         let doc = open(r#"service "web" { port = 8080 }"#);
         let b = doc.block("service").unwrap();
-        assert_eq!(b.labels(), vec![Value::Utf8("web".into())]);
+        assert_eq!(b.labels().unwrap(), vec![Value::Utf8("web".into())]);
         assert_eq!(b.field("port").unwrap().value().unwrap(), &Value::I64(8080));
     }
 
@@ -2214,7 +2885,7 @@ mod tests {
         let decs: Vec<_> = t.decorators().collect();
         assert_eq!(decs.len(), 1);
         assert_eq!(decs[0].name(), "deprecated");
-        assert_eq!(decs[0].positional(), vec![Value::Utf8("X".into())]);
+        assert_eq!(decs[0].positional().unwrap(), vec![Value::Utf8("X".into())]);
     }
 
     #[test]
@@ -2225,7 +2896,7 @@ mod tests {
         let decs: Vec<_> = f.decorators().collect();
         assert_eq!(decs.len(), 1);
         assert_eq!(decs[0].name(), "max");
-        assert_eq!(decs[0].positional(), vec![Value::I64(64)]);
+        assert_eq!(decs[0].positional().unwrap(), vec![Value::I64(64)]);
     }
 
     #[test]
@@ -2252,9 +2923,9 @@ mod tests {
         let doc = open("@v(min = 1, max = 10) type X {}");
         let x = doc.type_decl("X").unwrap();
         let d = x.decorators().next().unwrap();
-        assert_eq!(d.named_arg("min"), Some(Value::I64(1)));
-        assert_eq!(d.named_arg("max"), Some(Value::I64(10)));
-        assert_eq!(d.named_arg("missing"), None);
+        assert_eq!(d.named_arg("min").unwrap().unwrap(), Value::I64(1));
+        assert_eq!(d.named_arg("max").unwrap().unwrap(), Value::I64(10));
+        assert!(d.named_arg("missing").is_none());
     }
 
     #[test]
@@ -2262,7 +2933,10 @@ mod tests {
         let doc = open("@tagged(:enabled) type X {}");
         let x = doc.type_decl("X").unwrap();
         let d = x.decorators().next().unwrap();
-        assert_eq!(d.positional(), vec![Value::Symbol("enabled".into())]);
+        assert_eq!(
+            d.positional().unwrap(),
+            vec![Value::Symbol("enabled".into())]
+        );
     }
 
     #[test]
@@ -2270,7 +2944,7 @@ mod tests {
         let doc = open("@default(none) type X {}");
         let x = doc.type_decl("X").unwrap();
         let d = x.decorators().next().unwrap();
-        assert_eq!(d.positional(), vec![Value::None]);
+        assert_eq!(d.positional().unwrap(), vec![Value::None]);
     }
 
     #[test]
@@ -2335,7 +3009,7 @@ mod tests {
     fn mixed_block_labels_round_trip() {
         let doc = open(r#"service web "prod" { port = 1 }"#);
         let b = doc.block("service").unwrap();
-        let labels = b.labels();
+        let labels = b.labels().unwrap();
         assert_eq!(
             labels,
             vec![Value::Identifier("web".into()), Value::Utf8("prod".into())]
@@ -2346,7 +3020,7 @@ mod tests {
     fn block_label_can_be_any_value() {
         let doc = open(r#"slot 0 :enabled 1.5 { x = 1 }"#);
         let b = doc.block("slot").unwrap();
-        let labels = b.labels();
+        let labels = b.labels().unwrap();
         assert_eq!(labels.len(), 3);
         assert_eq!(labels[0], Value::I64(0));
         assert_eq!(labels[1], Value::Symbol("enabled".into()));
@@ -2361,5 +3035,304 @@ mod tests {
         };
         let s = format!("{}", err);
         assert!(s.contains("cycle"));
+    }
+
+    // ─── Evaluator (builtins + operators + identifier resolution) ────
+
+    fn env_with_test_builtins() -> Environment {
+        use crate::builtins::from_fn;
+        let mut env = Environment::empty();
+        env.add_builtin("upper", from_fn(|s: String| s.to_uppercase()));
+        env.add_builtin("len", from_fn(|s: String| s.len() as i64));
+        env.add_builtin("add", from_fn(|a: i64, b: i64| a + b));
+        env.add_builtin(
+            "die",
+            from_fn(|s: String| -> Result<i64, String> { Err(s) }),
+        );
+        env
+    }
+
+    fn open_with_builtins(src: &str) -> Document {
+        Document::open_with(src, "test", &env_with_test_builtins()).expect("open")
+    }
+
+    #[test]
+    fn eval_call_literal_arg() {
+        let doc = open_with_builtins(r#"out = upper("hi")"#);
+        assert_eq!(
+            doc.field("out").unwrap().value().unwrap(),
+            &Value::Utf8("HI".into())
+        );
+    }
+
+    #[test]
+    fn eval_call_identifier_arg_resolves_via_field_lookup() {
+        let doc = open_with_builtins(
+            r#"
+            name = "alpha"
+            out  = upper(name)
+            "#,
+        );
+        assert_eq!(
+            doc.field("out").unwrap().value().unwrap(),
+            &Value::Utf8("ALPHA".into())
+        );
+    }
+
+    #[test]
+    fn eval_call_nested() {
+        let doc = open_with_builtins(r#"n = add(len("ab"), 1)"#);
+        assert_eq!(doc.field("n").unwrap().value().unwrap(), &Value::I64(3));
+    }
+
+    #[test]
+    fn eval_unknown_builtin_errors() {
+        let doc = open_with_builtins("x = nope()");
+        let err = doc.field("x").unwrap().value().unwrap_err();
+        assert!(matches!(err, EvalError::UnknownBuiltin { .. }));
+    }
+
+    #[test]
+    fn eval_arity_mismatch_errors() {
+        let doc = open_with_builtins(r#"x = upper("a", "b")"#);
+        let err = doc.field("x").unwrap().value().unwrap_err();
+        assert!(matches!(err, EvalError::BuiltinArity { .. }));
+    }
+
+    #[test]
+    fn eval_type_mismatch_errors_at_builtin() {
+        let doc = open_with_builtins("x = upper(42)");
+        let err = doc.field("x").unwrap().value().unwrap_err();
+        assert!(matches!(err, EvalError::BuiltinTypeMismatch { .. }));
+    }
+
+    #[test]
+    fn eval_fallible_builtin_propagates_error() {
+        let doc = open_with_builtins(r#"x = die("boom")"#);
+        let err = doc.field("x").unwrap().value().unwrap_err();
+        let EvalError::BuiltinTypeMismatch { message, .. } = err else {
+            panic!("expected BuiltinTypeMismatch, got {err:?}");
+        };
+        assert!(message.contains("boom"), "{message}");
+    }
+
+    #[test]
+    fn eval_arithmetic_precedence() {
+        let doc = open_with_builtins("x = 1 + 2 * 3");
+        assert_eq!(doc.field("x").unwrap().value().unwrap(), &Value::I64(7));
+    }
+
+    #[test]
+    fn eval_unary_neg_and_paren() {
+        let doc = open_with_builtins("x = -(1 + 2)");
+        assert_eq!(doc.field("x").unwrap().value().unwrap(), &Value::I64(-3));
+    }
+
+    #[test]
+    fn eval_comparison_returns_bool() {
+        let doc = open_with_builtins("a = 2 > 1\nb = 2 == 1\nc = 2 != 1");
+        assert_eq!(doc.field("a").unwrap().value().unwrap(), &Value::Bool(true));
+        assert_eq!(
+            doc.field("b").unwrap().value().unwrap(),
+            &Value::Bool(false)
+        );
+        assert_eq!(doc.field("c").unwrap().value().unwrap(), &Value::Bool(true));
+    }
+
+    #[test]
+    fn eval_short_circuits_logical_and() {
+        // `false && nope()` must not invoke the unknown builtin.
+        let doc = open_with_builtins("x = false && nope()");
+        assert_eq!(
+            doc.field("x").unwrap().value().unwrap(),
+            &Value::Bool(false)
+        );
+    }
+
+    #[test]
+    fn eval_short_circuits_logical_or() {
+        let doc = open_with_builtins("x = true || nope()");
+        assert_eq!(doc.field("x").unwrap().value().unwrap(), &Value::Bool(true));
+    }
+
+    #[test]
+    fn eval_block_with_let_bindings() {
+        let doc = open_with_builtins("x = { let a = 2; let b = 3; a + b }");
+        assert_eq!(doc.field("x").unwrap().value().unwrap(), &Value::I64(5));
+    }
+
+    #[test]
+    fn eval_block_inner_let_shadows_field() {
+        let doc = open_with_builtins(
+            r#"
+            n = 100
+            x = { let n = 1; n + 2 }
+            "#,
+        );
+        assert_eq!(doc.field("x").unwrap().value().unwrap(), &Value::I64(3));
+    }
+
+    #[test]
+    fn eval_decorator_positional_arg_evaluates() {
+        let doc = open_with_builtins("@logged(add(1, 2)) type X {}");
+        let t = doc.type_decl("X").unwrap();
+        let d = t.decorators().next().unwrap();
+        let pos = d.positional().unwrap();
+        assert_eq!(pos, vec![Value::I64(3)]);
+    }
+
+    #[test]
+    fn eval_user_function_call_is_non_callable() {
+        // Function-literal values aren't yet executable.
+        let doc = open_with_builtins(
+            r#"
+            f = fn(x: i32) -> i32 x
+            y = f(3)
+            "#,
+        );
+        let err = doc.field("y").unwrap().value().unwrap_err();
+        // `f` evaluates first as an Identifier → looks up the Field, finds
+        // a Value::Function — but Call's callee must be an `Identifier`
+        // bound to a builtin name. Since `f` isn't a registered builtin,
+        // we get UnknownBuiltin.
+        assert!(matches!(err, EvalError::UnknownBuiltin { .. }));
+    }
+
+    // ─── Lazy data access (DataRef / Document::get) ───────────────────
+
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
+
+    #[test]
+    fn get_resolves_top_level_field() {
+        let doc = open("port = 8080");
+        let r = doc.get("port").expect("port should resolve");
+        assert_eq!(r.value().unwrap(), Value::I64(8080));
+    }
+
+    #[test]
+    fn get_resolves_nested_block_path() {
+        let doc = open(r#"service "web" { port = 9090 }"#);
+        let r = doc
+            .get("service.port")
+            .expect("service.port should resolve");
+        assert_eq!(r.value().unwrap(), Value::I64(9090));
+    }
+
+    #[test]
+    fn get_resolves_deeply_nested_path() {
+        let doc = open(
+            r#"
+            service "web" {
+              metadata {
+                region = "us-east-1"
+              }
+            }
+            "#,
+        );
+        let r = doc
+            .get("service.metadata.region")
+            .expect("path should resolve");
+        assert_eq!(r.value().unwrap(), Value::Utf8("us-east-1".into()));
+    }
+
+    #[test]
+    fn get_returns_none_for_missing_segment() {
+        let doc = open(r#"service "web" { port = 1 }"#);
+        assert!(doc.get("service.missing").is_none());
+        assert!(doc.get("nonexistent").is_none());
+    }
+
+    #[test]
+    fn get_intermediate_node_is_not_a_leaf() {
+        let doc = open(r#"service "web" { port = 1 }"#);
+        let svc = doc.get("service").expect("service block");
+        let err = svc.value().unwrap_err();
+        assert!(matches!(err, EvalError::NotALeaf { .. }));
+    }
+
+    #[test]
+    fn get_descends_into_type_decl_field() {
+        let doc = open("type User { name: utf8 age: u32 }");
+        let f = doc.get("User.name").expect("User.name");
+        assert_eq!(f.kind(), "type_field");
+    }
+
+    #[test]
+    fn get_descends_into_union_variant() {
+        let doc = open("union Shape { Circle { r: f64 } Square none }");
+        let v = doc.get("Shape.Circle").expect("variant");
+        assert_eq!(v.kind(), "variant");
+        let r = doc.get("Shape.Circle.r").expect("variant field");
+        assert_eq!(r.kind(), "type_field");
+    }
+
+    #[test]
+    fn get_descends_into_symbol_set_entry() {
+        let doc = open("symbol_set Color { red green }");
+        let s = doc.get("Color.red").expect("symbol entry");
+        assert_eq!(s.kind(), "symbol_entry");
+    }
+
+    #[test]
+    fn block_labels_cached_across_calls() {
+        // Inspect the labels OnceLock directly: empty before first call,
+        // populated after.
+        let doc = open(r#"my_block first "two" 3 { x = 1 }"#);
+        let b = doc.block("my_block").unwrap();
+        let labels_cell = match &b.cells.kind {
+            ItemCellKind::Block { labels, .. } => labels,
+            _ => unreachable!(),
+        };
+        assert!(labels_cell.get().is_none());
+        let v1 = b.labels().unwrap();
+        assert!(labels_cell.get().is_some());
+        let v2 = b.labels().unwrap();
+        assert_eq!(v1, v2);
+    }
+
+    #[test]
+    fn decorator_positional_cached_across_calls() {
+        let counter = Arc::new(AtomicUsize::new(0));
+        let bumper = {
+            let c = counter.clone();
+            crate::builtins::from_fn(move || {
+                c.fetch_add(1, AtomicOrdering::Relaxed);
+                7i64
+            })
+        };
+        let mut env = Environment::empty();
+        env.add_builtin("bump", bumper);
+
+        let doc = Document::open_with(r#"@x(bump()) type T {}"#, "test", &env).expect("open");
+        let t = doc.type_decl("T").unwrap();
+        let d = t.decorators().next().unwrap();
+        let _ = d.positional().unwrap();
+        let _ = d.positional().unwrap();
+        let _ = d.positional().unwrap();
+        assert_eq!(counter.load(AtomicOrdering::Relaxed), 1);
+    }
+
+    #[test]
+    fn decorator_named_arg_cached_across_calls() {
+        let counter = Arc::new(AtomicUsize::new(0));
+        let bumper = {
+            let c = counter.clone();
+            crate::builtins::from_fn(move || {
+                c.fetch_add(1, AtomicOrdering::Relaxed);
+                3i64
+            })
+        };
+        let mut env = Environment::empty();
+        env.add_builtin("bump", bumper);
+
+        let doc =
+            Document::open_with(r#"@x(amount = bump()) type T {}"#, "test", &env).expect("open");
+        let t = doc.type_decl("T").unwrap();
+        let d = t.decorators().next().unwrap();
+        let _ = d.named_arg("amount").unwrap().unwrap();
+        let _ = d.named_arg("amount").unwrap().unwrap();
+        let _ = d.named_arg("amount").unwrap().unwrap();
+        assert_eq!(counter.load(AtomicOrdering::Relaxed), 1);
     }
 }

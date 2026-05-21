@@ -1,41 +1,53 @@
-//! Programmatic schema registration.
+//! The host environment: synthetic schema types + registered built-in functions.
 //!
-//! Lets a Rust embedder ship "built-in" type declarations that participate
-//! in the document's type registry and schema lookups, without writing
-//! source files. The four schema decorators that the language treats
-//! specially (`block`, `decorator`, `inline`, `default`) are pre-registered
-//! in every `SchemaRegistry::new()`.
+//! Lets a Rust embedder ship "built-in" type declarations and Rust callables
+//! that participate in a document's type registry and evaluator. The four
+//! schema decorators that the language treats specially (`block`, `decorator`,
+//! `inline`, `default`) are pre-registered in every [`Environment::new`].
+
+use std::collections::HashMap;
 
 use crate::ast;
 use crate::ast::Span;
+use crate::builtins::BuiltinFn;
 use crate::value::{BuiltinType, TypeRef, Value};
 
-/// A bag of synthetic type declarations merged into a `Document` at open
-/// time. Use [`SchemaRegistry::new`] for a registry pre-populated with the
-/// four language-built-in decorator schemas; use [`SchemaRegistry::empty`]
-/// for a strictly empty one.
-pub struct SchemaRegistry {
+/// Host-supplied bundle of synthetic types and built-in functions merged
+/// into a [`Document`](crate::Document) at open time.
+///
+/// Use [`Environment::new`] for an environment pre-populated with the four
+/// language-built-in decorator schemas and no builtins; use
+/// [`Environment::empty`] for a strictly empty one.
+#[derive(Clone, Default)]
+pub struct Environment {
     types: Vec<ast::TypeDecl>,
+    builtins: HashMap<String, BuiltinFn>,
 }
 
-impl Default for SchemaRegistry {
-    fn default() -> Self {
-        Self::new()
+impl std::fmt::Debug for Environment {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Environment")
+            .field("types", &self.types.len())
+            .field("builtins", &self.builtins.keys().collect::<Vec<_>>())
+            .finish()
     }
 }
 
-impl SchemaRegistry {
-    /// Registry pre-populated with the built-in decorator schemas.
+impl Environment {
+    /// Environment pre-populated with the built-in decorator schemas and an
+    /// empty builtins map.
     pub fn new() -> Self {
-        let mut reg = Self { types: Vec::new() };
-        reg.types.extend(builtin_decorator_schemas());
-        reg
+        let mut env = Self::empty();
+        env.types.extend(builtin_decorator_schemas());
+        env
     }
 
-    /// Registry with no built-ins. Mostly useful for tests that want to
-    /// assert exact contents.
+    /// Strictly-empty environment. No synthetic types, no builtins.
     pub fn empty() -> Self {
-        Self { types: Vec::new() }
+        Self {
+            types: Vec::new(),
+            builtins: HashMap::new(),
+        }
     }
 
     /// Register a programmatically built type declaration.
@@ -44,8 +56,21 @@ impl SchemaRegistry {
         self
     }
 
+    /// Register a built-in function callable from WCL code by `name`.
+    ///
+    /// Use [`from_fn`](crate::from_fn) (or build a [`BuiltinFn`] manually)
+    /// to construct the second argument.
+    pub fn add_builtin(&mut self, name: impl Into<String>, f: BuiltinFn) -> &mut Self {
+        self.builtins.insert(name.into(), f);
+        self
+    }
+
     pub(crate) fn types(&self) -> &[ast::TypeDecl] {
         &self.types
+    }
+
+    pub(crate) fn builtin(&self, name: &str) -> Option<&BuiltinFn> {
+        self.builtins.get(name)
     }
 }
 
@@ -73,7 +98,7 @@ fn builtin_decorator_schemas() -> Vec<ast::TypeDecl> {
             "slot",
             TypeRef::Builtin(BuiltinType::U64),
         ),
-        // `default` accepts any value; we tighten the inner type when an
+        // `default` accepts any value; tighten the inner type when an
         // `any` builtin lands.
         synth_decorator_schema(
             "Default",
@@ -111,7 +136,7 @@ fn synth_decorator_schema(
 }
 
 /// Output of [`TypeBuilder::build`] — a finished synthetic type declaration
-/// ready to register with a [`SchemaRegistry`].
+/// ready to register with an [`Environment`].
 pub struct BuiltType {
     pub(crate) inner: ast::TypeDecl,
 }
@@ -278,14 +303,15 @@ mod tests {
     use crate::doc::{Document, ResolvedType};
 
     #[test]
-    fn empty_registry_has_no_types() {
-        let r = SchemaRegistry::empty();
+    fn empty_environment_has_no_types() {
+        let r = Environment::empty();
         assert!(r.types().is_empty());
+        assert!(r.builtin("anything").is_none());
     }
 
     #[test]
-    fn new_registry_includes_builtin_decorator_schemas() {
-        let r = SchemaRegistry::new();
+    fn new_environment_includes_builtin_decorator_schemas() {
+        let r = Environment::new();
         let names: Vec<_> = r.types().iter().map(|t| t.name.join(".")).collect();
         assert!(names.contains(&"Block".to_string()));
         assert!(names.contains(&"Decorator".to_string()));
@@ -295,7 +321,7 @@ mod tests {
 
     #[test]
     fn register_type_with_builder() {
-        let mut r = SchemaRegistry::empty();
+        let mut r = Environment::empty();
         r.add_type(
             TypeBuilder::new(["Service"])
                 .decorator(
@@ -324,7 +350,7 @@ mod tests {
 
     #[test]
     fn synthetic_type_used_as_field_type() {
-        let mut r = SchemaRegistry::empty();
+        let mut r = Environment::empty();
         r.add_type(TypeBuilder::new(["Service"]).build());
         let doc = Document::open_with("type Cfg { s: Service }", "test", &r).expect("open");
         let cfg = doc.type_decl("Cfg").unwrap();
@@ -337,10 +363,19 @@ mod tests {
 
     #[test]
     fn source_redeclares_synthetic_errors() {
-        let mut r = SchemaRegistry::empty();
+        let mut r = Environment::empty();
         r.add_type(TypeBuilder::new(["Service"]).build());
         let err = Document::open_with("type Service {}", "test", &r).unwrap_err();
         let msg = format!("{err:?}");
         assert!(msg.contains("duplicate declaration"), "{msg}");
+    }
+
+    #[test]
+    fn registers_builtin_callable_by_name() {
+        use crate::builtins::from_fn;
+        let mut env = Environment::empty();
+        env.add_builtin("upper", from_fn(|s: String| s.to_uppercase()));
+        assert!(env.builtin("upper").is_some());
+        assert!(env.builtin("missing").is_none());
     }
 }

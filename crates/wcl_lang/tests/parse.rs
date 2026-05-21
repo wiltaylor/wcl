@@ -1,6 +1,9 @@
 use std::path::PathBuf;
 
-use wcl_lang::{Document, ResolvedType, TypeRef, Value, VariantBodyView};
+use wcl_lang::{
+    Document, Environment, EvalError, ResolvedType, SymbolKind, TypeRef, Value, VariantBodyView,
+    from_fn,
+};
 
 fn examples_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -21,7 +24,7 @@ fn parses_basic_example_from_disk() {
         &Value::Utf8("alpha".into())
     );
     let svc = doc.block("service").expect("service block");
-    assert_eq!(svc.labels(), vec![Value::Utf8("web".into())]);
+    assert_eq!(svc.labels().unwrap(), vec![Value::Utf8("web".into())]);
     assert_eq!(
         svc.field("port").unwrap().value().unwrap(),
         &Value::I64(8080)
@@ -84,7 +87,7 @@ fn fixture_brush_block_schema_resolves() {
 fn fixture_brush_block_has_mixed_labels() {
     let doc = Document::from_file(&examples_dir().join("types.wcl")).expect("types fixture parses");
     let b = doc.block("brush").expect("brush block");
-    let labels = b.labels();
+    let labels = b.labels().unwrap();
     assert_eq!(labels.len(), 2);
     assert_eq!(labels[0], Value::Identifier("primary".into()));
     assert_eq!(labels[1], Value::Utf8("matte".into()));
@@ -236,4 +239,145 @@ fn parses_functions_example_from_disk() {
         panic!("expected function value")
     };
     assert!(matches!(f.return_ty(), TypeRef::Function { .. }));
+}
+
+#[test]
+fn document_exposes_symbol_index() {
+    let doc = open(
+        r#"
+        namespace foo
+        type Bar { x: i32 }
+        union Maybe { Some i32 None none }
+        symbol_set Color { red blue }
+        port = 8080
+        service "web" { region = "us" }
+        "#,
+    );
+    let idx = doc.symbols();
+
+    // Top-level decls indexed under the file-ns-qualified FQN.
+    assert!(matches!(
+        idx.lookup("foo.Bar").unwrap().kind,
+        SymbolKind::TypeDecl
+    ));
+    assert!(matches!(
+        idx.lookup("foo.Bar.x").unwrap().kind,
+        SymbolKind::TypeField { .. }
+    ));
+    assert!(matches!(
+        idx.lookup("foo.Maybe").unwrap().kind,
+        SymbolKind::UnionDecl
+    ));
+    assert!(matches!(
+        idx.lookup("foo.Maybe.None").unwrap().kind,
+        SymbolKind::UnionVariant { .. }
+    ));
+    assert!(matches!(
+        idx.lookup("foo.Color").unwrap().kind,
+        SymbolKind::SymbolSetDecl
+    ));
+    assert!(matches!(
+        idx.lookup("foo.Color.blue").unwrap().kind,
+        SymbolKind::SymbolEntry { .. }
+    ));
+    assert!(matches!(
+        idx.lookup("foo.port").unwrap().kind,
+        SymbolKind::Field
+    ));
+    assert_eq!(idx.blocks_with_kind("service").len(), 1);
+
+    // Document::type_decl now routes through the index — same FQN works.
+    assert!(doc.type_decl("foo.Bar").is_some());
+    assert!(doc.union_decl("foo.Maybe").is_some());
+    assert!(doc.symbol_set("foo.Color").is_some());
+}
+
+#[test]
+fn builtins_example_evaluates_end_to_end() {
+    let mut env = Environment::new();
+    env.add_builtin("upper", from_fn(|s: String| s.to_uppercase()));
+    env.add_builtin("len", from_fn(|s: String| s.len() as i64));
+    env.add_builtin("add", from_fn(|a: i64, b: i64| a + b));
+
+    let path = examples_dir().join("builtins.wcl");
+    let source = std::fs::read_to_string(&path).expect("read builtins.wcl");
+    let doc = Document::open_with(&source, &path.display().to_string(), &env)
+        .expect("builtins fixture parses");
+
+    assert_eq!(
+        doc.field("greeting").unwrap().value().unwrap(),
+        &Value::Utf8("HELLO".into())
+    );
+    assert_eq!(
+        doc.field("shouted").unwrap().value().unwrap(),
+        &Value::Utf8("ALPHA".into())
+    );
+    assert_eq!(doc.field("total").unwrap().value().unwrap(), &Value::I64(3));
+    assert_eq!(
+        doc.field("ranking").unwrap().value().unwrap(),
+        &Value::I64(13)
+    );
+    assert_eq!(
+        doc.field("is_big").unwrap().value().unwrap(),
+        &Value::Bool(true)
+    );
+    assert_eq!(
+        doc.field("combined").unwrap().value().unwrap(),
+        &Value::I64(2)
+    );
+    // Function literals are still inert — `double` is a Value::Function
+    // but not callable.
+    assert!(matches!(
+        doc.field("double").unwrap().value().unwrap(),
+        Value::Function(_)
+    ));
+}
+
+#[test]
+fn data_ref_walks_data_access_fixture() {
+    let path = examples_dir().join("data_access.wcl");
+    let doc = Document::from_file(&path).expect("data_access fixture parses");
+
+    // Top-level field via dotted-path API.
+    assert_eq!(doc.get("port").unwrap().value().unwrap(), Value::I64(8080));
+    assert_eq!(
+        doc.get("name").unwrap().value().unwrap(),
+        Value::Utf8("alpha".into())
+    );
+
+    // Nested block path.
+    assert_eq!(
+        doc.get("service.port").unwrap().value().unwrap(),
+        Value::I64(9090)
+    );
+    assert_eq!(
+        doc.get("service.region").unwrap().value().unwrap(),
+        Value::Utf8("us-east-1".into())
+    );
+
+    // Doubly-nested.
+    assert_eq!(
+        doc.get("service.metadata.owner").unwrap().value().unwrap(),
+        Value::Utf8("platform-team".into())
+    );
+    assert_eq!(
+        doc.get("service.metadata.tier").unwrap().value().unwrap(),
+        Value::Symbol("gold".into())
+    );
+
+    // Missing segment yields None.
+    assert!(doc.get("service.does_not_exist").is_none());
+    assert!(doc.get("not_a_thing").is_none());
+
+    // Intermediate node isn't a leaf.
+    let svc = doc.get("service").unwrap();
+    assert_eq!(svc.kind(), "block");
+    let err = svc.value().unwrap_err();
+    assert!(matches!(err, EvalError::NotALeaf { .. }));
+
+    // Schema decl reachable via the same API.
+    let user = doc.get("User").unwrap();
+    assert_eq!(user.kind(), "type");
+    let name_field = doc.get("User.name").unwrap();
+    assert_eq!(name_field.kind(), "type_field");
 }

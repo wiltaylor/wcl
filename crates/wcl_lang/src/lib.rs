@@ -4,20 +4,26 @@
 //! on first access and cached; the document is otherwise immutable.
 
 pub(crate) mod ast;
+mod builtins;
+mod data;
 mod doc;
+mod environment;
 mod error;
 mod lexer;
 mod numeric;
 mod parser;
-mod schema;
+mod symbols;
 mod value;
 
 pub use ast::Span;
+pub use builtins::{BuiltinFn, FromValue, IntoBuiltin, IntoValue, IntoValueResult, from_fn};
+pub use data::{DataKind, DataRef};
 pub use doc::{
     Block, Decorator, Document, Field, NamedArg, ResolvedType, SymbolEntry, SymbolSetDecl,
     TypeDecl, TypeField, UnionDecl, UnionVariant, UseDeclView, UseFormView, UseItem,
     VariantBodyView,
 };
+pub use environment::{BuiltType, DecoratorBuilder, Environment, TypeBuilder, TypeFieldBuilder};
 pub use error::{EvalError, ParseError, SyntaxError};
-pub use schema::{BuiltType, DecoratorBuilder, SchemaRegistry, TypeBuilder, TypeFieldBuilder};
+pub use symbols::{SymbolIndex, SymbolKind, SymbolPath, SymbolRecord};
 pub use value::{BuiltinType, FnParam, FnValue, TensorDim, TypeRef, Value};

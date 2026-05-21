@@ -1,0 +1,26 @@
+// Built-in functions are Rust callables registered with the host's
+// Environment before opening the document. The integration test for this
+// file registers:
+//
+//   upper :: utf8 -> utf8
+//   len   :: utf8 -> i64
+//   add   :: (i64, i64) -> i64
+//
+// Running this through the bare `wcl` CLI will report "unknown built-in"
+// errors — the CLI doesn't ship a stdlib. Real hosts register what they
+// need.
+
+name      = "alpha"
+greeting  = upper("hello")            // literal arg
+shouted   = upper(name)               // identifier arg -> field lookup
+total     = add(len("hi"), 1)         // nested call
+
+// Operators inside arguments.
+ranking   = add(2 + 3 * 4, -1)
+is_big    = 100 > 99 && len("ab") == 2
+
+// Block expression with let-bindings.
+combined  = { let a = upper("x"); let b = upper("y"); add(len(a), len(b)) }
+
+// Function literals are still inert — assignable but not callable.
+double    = fn(x: i32) -> i32 x * 2

@@ -113,10 +113,19 @@ fn dump_decorators<'a>(decs: impl Iterator<Item = Decorator<'a>>, depth: usize, 
     let pad = "  ".repeat(depth);
     for d in decs {
         let name = d.full_name();
-        let positional: Vec<String> = d.positional().iter().map(value_repr).collect();
+        let positional: Vec<String> = match d.positional() {
+            Ok(vals) => vals.iter().map(value_repr).collect(),
+            Err(e) => vec![format!("<error: {e}>")],
+        };
         let named: Vec<String> = d
             .named()
-            .map(|n| format!("{} = {}", n.name(), value_repr(&n.value())))
+            .map(|n| {
+                let val = match n.value() {
+                    Ok(v) => value_repr(&v),
+                    Err(e) => format!("<error: {e}>"),
+                };
+                format!("{} = {}", n.name(), val)
+            })
             .collect();
         let args = if positional.is_empty() && named.is_empty() {
             String::new()
@@ -209,8 +218,15 @@ fn dump_block(b: &Block<'_>, depth: usize, out: &mut String) {
     dump_decorators(b.decorators(), depth, out);
     let pad = "  ".repeat(depth);
     let _ = write!(out, "{pad}{}", b.kind());
-    for label in b.labels() {
-        let _ = write!(out, " {}", value_repr(&label));
+    match b.labels() {
+        Ok(labels) => {
+            for label in labels {
+                let _ = write!(out, " {}", value_repr(&label));
+            }
+        }
+        Err(e) => {
+            let _ = write!(out, " <label error: {e}>");
+        }
     }
     writeln!(out, " {{").unwrap();
     for f in b.fields() {

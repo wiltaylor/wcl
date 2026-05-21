@@ -1,0 +1,20 @@
+// Fixture for the lazy data-access (DataRef) tests.
+
+port = 8080
+name = "alpha"
+
+service "web" {
+  port = 9090
+  region = "us-east-1"
+
+  metadata {
+    owner = "platform-team"
+    tier  = :gold
+  }
+}
+
+@logged
+type User {
+  name: utf8
+  age: u32?
+}
