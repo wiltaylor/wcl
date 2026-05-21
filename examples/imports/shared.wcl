@@ -1,0 +1,7 @@
+namespace shared
+
+type Color {
+  name: utf8
+}
+
+brand = "wcl"

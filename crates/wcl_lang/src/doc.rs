@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -64,6 +64,21 @@ pub(crate) enum ItemCellKind {
     },
     NamespaceDecl,
     UseDecl,
+    /// Lazy import. Populated on first read-access of the enclosing
+    /// block. Top-level imports also get this cell but are never
+    /// triggered through it — they're expanded eagerly into
+    /// `Document::eager_imports` at `open_with` time.
+    Import {
+        /// As written in the source.
+        path: String,
+        /// Span of the path string literal — used for error labels.
+        path_span: Span,
+        /// Resolved file directory for path joins. `None` means the
+        /// document had no base directory (e.g. `Document::open`),
+        /// which surfaces as an `ImportFailed` on first access.
+        base_dir: Option<PathBuf>,
+        loaded: OnceLock<Result<LoadedImport, EvalError>>,
+    },
 }
 
 #[derive(Debug)]
@@ -76,14 +91,17 @@ fn make_decorator_cells(decs: &[ast::Decorator]) -> Vec<DecoratorCell> {
 }
 
 impl BlockCells {
-    fn build(items: &[ast::Item]) -> Self {
-        let cells = items.iter().map(ItemCells::build).collect();
+    fn build(items: &[ast::Item], base_dir: Option<&Path>) -> Self {
+        let cells = items
+            .iter()
+            .map(|item| ItemCells::build(item, base_dir))
+            .collect();
         Self { items: cells }
     }
 }
 
 impl ItemCells {
-    fn build(item: &ast::Item) -> Self {
+    fn build(item: &ast::Item, base_dir: Option<&Path>) -> Self {
         match item {
             ast::Item::Field(f) => Self {
                 decorators: make_decorator_cells(&f.decorators),
@@ -93,7 +111,11 @@ impl ItemCells {
                 decorators: make_decorator_cells(&b.decorators),
                 kind: ItemCellKind::Block {
                     labels: OnceLock::new(),
-                    items: b.items.iter().map(ItemCells::build).collect(),
+                    items: b
+                        .items
+                        .iter()
+                        .map(|item| ItemCells::build(item, base_dir))
+                        .collect(),
                 },
             },
             ast::Item::TypeDecl(t) => Self {
@@ -145,6 +167,15 @@ impl ItemCells {
                 decorators: Vec::new(),
                 kind: ItemCellKind::UseDecl,
             },
+            ast::Item::Import(imp) => Self {
+                decorators: Vec::new(),
+                kind: ItemCellKind::Import {
+                    path: imp.path.clone(),
+                    path_span: imp.path_span,
+                    base_dir: base_dir.map(Path::to_path_buf),
+                    loaded: OnceLock::new(),
+                },
+            },
         }
     }
 }
@@ -152,6 +183,10 @@ impl ItemCells {
 #[derive(Debug)]
 pub struct Document {
     src: NamedSource<String>,
+    /// Directory the document was loaded from, when known. Used as the
+    /// base for resolving relative `import` paths.
+    #[allow(dead_code)] // captured in cells; here for introspection
+    base_dir: Option<PathBuf>,
     ast: ast::Source,
     cells: BlockCells,
     file_ns: Vec<String>,
@@ -164,6 +199,37 @@ pub struct Document {
     synthetic_type_cells: Vec<ItemCells>,
     symbols: SymbolIndex,
     env: Environment,
+    /// Top-level imports expanded eagerly at `open_with` time. Their
+    /// items participate in the unified `symbols` index and in
+    /// `Document::fields/blocks/...` iteration.
+    eager_imports: Vec<LoadedImport>,
+}
+
+/// A homogeneous view over one source of top-level items — either the
+/// importer's own source or an eagerly-loaded import.
+#[derive(Clone, Copy)]
+struct SourceView<'a> {
+    symbols: &'a SymbolIndex,
+    items: &'a [ast::Item],
+    cells: &'a [ItemCells],
+    file_ns: &'a [String],
+}
+
+/// Result of loading one imported file. Transitive top-level imports
+/// inside the loaded file are flattened into `eager_imports`; nested
+/// (in-block) imports stay lazy inside `items`/`cells`.
+#[derive(Debug)]
+pub(crate) struct LoadedImport {
+    #[allow(dead_code)] // kept for introspection / future debugging
+    pub(crate) path: PathBuf,
+    #[allow(dead_code)] // FQNs in `symbols` already encode this
+    pub(crate) file_ns: Vec<String>,
+    pub(crate) items: Vec<ast::Item>,
+    pub(crate) cells: Vec<ItemCells>,
+    /// Symbols indexed within this loaded file. Paths refer to the
+    /// `items`/`cells` arrays in this same struct.
+    pub(crate) symbols: SymbolIndex,
+    pub(crate) eager_imports: Vec<LoadedImport>,
 }
 
 impl Document {
@@ -172,16 +238,42 @@ impl Document {
     }
 
     pub fn open_with(source: &str, name: &str, env: &Environment) -> Result<Self, ParseError> {
+        Self::open_at(source, name, None, env)
+    }
+
+    /// Variant of [`open_with`] that accepts a base directory for
+    /// resolving relative `import` paths.
+    pub(crate) fn open_at(
+        source: &str,
+        name: &str,
+        base_dir: Option<PathBuf>,
+        env: &Environment,
+    ) -> Result<Self, ParseError> {
         let (ast, symbols) = Parser::new(source, name).parse_source()?;
         let synthetic = env.types().to_vec();
+
+        // Resolve top-level imports eagerly. Each LoadedImport carries
+        // its own (items, cells, symbols).
+        let mut loading: HashSet<PathBuf> = HashSet::new();
+        let mut eager_imports: Vec<LoadedImport> = Vec::new();
+        expand_top_level_imports(
+            &ast.items,
+            base_dir.as_deref(),
+            &mut loading,
+            &mut eager_imports,
+            name,
+            source,
+        )?;
+
         let resolved = validate_document(&ast, &symbols, &synthetic, source, name)?;
-        let cells = BlockCells::build(&ast.items);
+        let cells = BlockCells::build(&ast.items, base_dir.as_deref());
         let synthetic_type_cells = synthetic
             .iter()
-            .map(|t| ItemCells::build(&ast::Item::TypeDecl(t.clone())))
+            .map(|t| ItemCells::build(&ast::Item::TypeDecl(t.clone()), None))
             .collect();
         Ok(Self {
             src: NamedSource::new(name, source.to_string()),
+            base_dir,
             ast,
             cells,
             file_ns: resolved.file_ns,
@@ -192,6 +284,7 @@ impl Document {
             synthetic_type_cells,
             symbols,
             env: env.clone(),
+            eager_imports,
         })
     }
 
@@ -199,6 +292,32 @@ impl Document {
     /// See [`SymbolIndex`] for what it covers and what is excluded.
     pub fn symbols(&self) -> &SymbolIndex {
         &self.symbols
+    }
+
+    /// Borrow the importer's items + cells + symbols followed by every
+    /// eagerly-imported file's items + cells + symbols (recursively).
+    /// Used by all of `field` / `block` / `type_decl` etc. so imports
+    /// are searched after the importer.
+    fn all_sources(&self) -> Vec<SourceView<'_>> {
+        let mut out = vec![SourceView {
+            symbols: &self.symbols,
+            items: &self.ast.items,
+            cells: &self.cells.items,
+            file_ns: &self.file_ns,
+        }];
+        fn push_imports<'a>(imports: &'a [LoadedImport], out: &mut Vec<SourceView<'a>>) {
+            for imp in imports {
+                out.push(SourceView {
+                    symbols: &imp.symbols,
+                    items: &imp.items,
+                    cells: &imp.cells,
+                    file_ns: &imp.file_ns,
+                });
+                push_imports(&imp.eager_imports, out);
+            }
+        }
+        push_imports(&self.eager_imports, &mut out);
+        out
     }
 
     /// Lazy dotted-path access into the document. Each segment is
@@ -211,13 +330,26 @@ impl Document {
     /// UnionDecl, SymbolSetDecl. Subsequent segments delegate to
     /// [`DataRef::child`].
     pub fn get(&self, path: &str) -> Option<crate::data::DataRef<'_>> {
-        let mut segs = path.split('.').filter(|s| !s.is_empty());
-        let first = segs.next()?;
-        let mut cur = self.resolve_root(first)?;
-        for seg in segs {
-            cur = cur.child(seg)?;
+        let segs: Vec<&str> = path.split('.').filter(|s| !s.is_empty()).collect();
+        if segs.is_empty() {
+            return None;
         }
-        Some(cur)
+        // Try the longest matching FQN prefix as the root, so a
+        // dotted path can resolve directly to an imported item
+        // (e.g. `doc.get("shared.brand")` for an imported file with
+        // namespace `shared`). Falls through to single-segment root
+        // (the existing block-then-child traversal).
+        for k in (1..=segs.len()).rev() {
+            let prefix = segs[..k].join(".");
+            if let Some(root) = self.resolve_root(&prefix) {
+                let mut cur = root;
+                for seg in &segs[k..] {
+                    cur = cur.child(seg)?;
+                }
+                return Some(cur);
+            }
+        }
+        None
     }
 
     fn resolve_root(&self, name: &str) -> Option<crate::data::DataRef<'_>> {
@@ -259,7 +391,21 @@ impl Document {
 
     pub fn from_file(path: &Path) -> Result<Self, ParseError> {
         let source = std::fs::read_to_string(path)?;
-        Self::open(&source, &path.display().to_string())
+        let base_dir = path.parent().map(Path::to_path_buf);
+        Self::open_at(
+            &source,
+            &path.display().to_string(),
+            base_dir,
+            &Environment::new(),
+        )
+    }
+
+    /// Like [`from_file`] but also accepts a custom `Environment`. Use
+    /// this when the host registers built-ins or schema types.
+    pub fn from_file_with(path: &Path, env: &Environment) -> Result<Self, ParseError> {
+        let source = std::fs::read_to_string(path)?;
+        let base_dir = path.parent().map(Path::to_path_buf);
+        Self::open_at(&source, &path.display().to_string(), base_dir, env)
     }
 
     pub fn source(&self) -> &NamedSource<String> {
@@ -267,53 +413,69 @@ impl Document {
     }
 
     pub fn field(&self, name: &str) -> Option<Field<'_>> {
-        // Top-level fields are indexed by their file-ns-qualified FQN.
-        let fqn = if self.file_ns.is_empty() {
-            name.to_string()
+        // Try the importer's file_ns first; fall back to the bare name
+        // (which lets `doc.field("port")` find an imported field whose
+        // imported file declared no namespace).
+        let candidates = if self.file_ns.is_empty() {
+            vec![name.to_string()]
         } else {
-            format!("{}.{}", self.file_ns.join("."), name)
+            vec![
+                format!("{}.{}", self.file_ns.join("."), name),
+                name.to_string(),
+            ]
         };
-        let rec = self.symbols.lookup(&fqn)?;
-        if !matches!(rec.kind, SymbolKind::Field) {
-            return None;
+        for fqn in candidates {
+            for src in self.all_sources() {
+                if let Some(rec) = src.symbols.lookup(&fqn)
+                    && matches!(rec.kind, SymbolKind::Field)
+                {
+                    let idx = rec.path.item_index;
+                    if let (ast::Item::Field(f), ItemCellKind::Field(_)) =
+                        (&src.items[idx], &src.cells[idx].kind)
+                    {
+                        return Some(Field {
+                            ast: f,
+                            cells: &src.cells[idx],
+                            doc: self,
+                        });
+                    }
+                }
+            }
         }
-        let idx = rec.path.item_index;
-        let item = &self.ast.items[idx];
-        let cells = &self.cells.items[idx];
-        if let (ast::Item::Field(f), ItemCellKind::Field(_)) = (item, &cells.kind) {
-            Some(Field {
-                ast: f,
-                cells,
-                doc: self,
-            })
-        } else {
-            None
-        }
+        None
     }
 
     pub fn block(&self, kind: &str) -> Option<Block<'_>> {
-        let paths = self.symbols.blocks_with_kind(kind);
-        let path = paths.first()?;
-        let idx = path.item_index;
-        let item = &self.ast.items[idx];
-        let cells = &self.cells.items[idx];
-        if let (ast::Item::Block(b), ItemCellKind::Block { .. }) = (item, &cells.kind) {
-            Some(Block {
-                ast: b,
-                cells,
-                doc: self,
-            })
-        } else {
-            None
+        for src in self.all_sources() {
+            let paths = src.symbols.blocks_with_kind(kind);
+            if let Some(path) = paths.first() {
+                let idx = path.item_index;
+                if let (ast::Item::Block(b), ItemCellKind::Block { .. }) =
+                    (&src.items[idx], &src.cells[idx].kind)
+                {
+                    return Some(Block {
+                        ast: b,
+                        cells: &src.cells[idx],
+                        doc: self,
+                    });
+                }
+            }
         }
+        None
     }
 
-    pub fn fields(&self) -> impl Iterator<Item = Field<'_>> {
-        iter_fields(&self.ast.items, &self.cells.items, self)
+    pub fn fields(&self) -> impl Iterator<Item = Field<'_>> + '_ {
+        let doc = self;
+        self.all_sources()
+            .into_iter()
+            .flat_map(move |src| iter_fields(src.items, src.cells, doc))
     }
 
-    pub fn blocks(&self) -> impl Iterator<Item = Block<'_>> {
-        iter_blocks(&self.ast.items, &self.cells.items, self)
+    pub fn blocks(&self) -> impl Iterator<Item = Block<'_>> + '_ {
+        let doc = self;
+        self.all_sources()
+            .into_iter()
+            .flat_map(move |src| iter_blocks(src.items, src.cells, doc))
     }
 
     /// Returns the file-level namespace path. Empty when the file declared none.
@@ -328,19 +490,22 @@ impl Document {
         })
     }
 
-    /// Look up a type by fully-qualified name (dotted). Searches both
-    /// source-declared and registry-injected types.
+    /// Look up a type by fully-qualified name (dotted). Searches the
+    /// importer, every eagerly-imported file, and registry-injected
+    /// types in that order.
     pub fn type_decl(&self, fqn: &str) -> Option<TypeDecl<'_>> {
-        if let Some(rec) = self.symbols.lookup(fqn)
-            && matches!(rec.kind, SymbolKind::TypeDecl)
-            && let ast::Item::TypeDecl(t) = &self.ast.items[rec.path.item_index]
-        {
-            return Some(TypeDecl {
-                ast: t,
-                file_ns: &self.file_ns,
-                cells: &self.cells.items[rec.path.item_index],
-                doc: self,
-            });
+        for src in self.all_sources() {
+            if let Some(rec) = src.symbols.lookup(fqn)
+                && matches!(rec.kind, SymbolKind::TypeDecl)
+                && let ast::Item::TypeDecl(t) = &src.items[rec.path.item_index]
+            {
+                return Some(TypeDecl {
+                    ast: t,
+                    file_ns: src.file_ns,
+                    cells: &src.cells[rec.path.item_index],
+                    doc: self,
+                });
+            }
         }
         // Synthetic types live in the root namespace (no file ns prefix)
         // and are not registered in the parser-built index.
@@ -357,97 +522,104 @@ impl Document {
             })
     }
 
-    pub fn type_decls(&self) -> impl Iterator<Item = TypeDecl<'_>> {
-        let src = self
-            .ast
-            .items
-            .iter()
-            .zip(self.cells.items.iter())
-            .filter_map(|(item, cells)| match item {
-                ast::Item::TypeDecl(t) => Some(TypeDecl {
-                    ast: t,
-                    file_ns: &self.file_ns,
-                    cells,
-                    doc: self,
-                }),
-                _ => None,
-            });
+    pub fn type_decls(&self) -> impl Iterator<Item = TypeDecl<'_>> + '_ {
+        let doc = self;
+        let mine_and_imports = self.all_sources().into_iter().flat_map(move |src| {
+            src.items
+                .iter()
+                .zip(src.cells.iter())
+                .filter_map(move |(item, cells)| match item {
+                    ast::Item::TypeDecl(t) => Some(TypeDecl {
+                        ast: t,
+                        file_ns: src.file_ns,
+                        cells,
+                        doc,
+                    }),
+                    _ => None,
+                })
+        });
         let syn = self
             .synthetic_types
             .iter()
             .zip(self.synthetic_type_cells.iter())
-            .map(|(t, cells)| TypeDecl {
+            .map(move |(t, cells)| TypeDecl {
                 ast: t,
                 file_ns: &[],
                 cells,
-                doc: self,
+                doc,
             });
-        src.chain(syn)
+        mine_and_imports.chain(syn)
     }
 
     /// Look up a union by fully-qualified name (dotted).
     pub fn union_decl(&self, fqn: &str) -> Option<UnionDecl<'_>> {
-        let rec = self.symbols.lookup(fqn)?;
-        if !matches!(rec.kind, SymbolKind::UnionDecl) {
-            return None;
+        for src in self.all_sources() {
+            if let Some(rec) = src.symbols.lookup(fqn)
+                && matches!(rec.kind, SymbolKind::UnionDecl)
+                && let ast::Item::UnionDecl(u) = &src.items[rec.path.item_index]
+            {
+                return Some(UnionDecl {
+                    ast: u,
+                    file_ns: src.file_ns,
+                    cells: &src.cells[rec.path.item_index],
+                    doc: self,
+                });
+            }
         }
-        let ast::Item::UnionDecl(u) = &self.ast.items[rec.path.item_index] else {
-            return None;
-        };
-        Some(UnionDecl {
-            ast: u,
-            file_ns: &self.file_ns,
-            cells: &self.cells.items[rec.path.item_index],
-            doc: self,
-        })
+        None
     }
 
-    pub fn union_decls(&self) -> impl Iterator<Item = UnionDecl<'_>> {
-        self.ast
-            .items
-            .iter()
-            .zip(self.cells.items.iter())
-            .filter_map(|(item, cells)| match item {
-                ast::Item::UnionDecl(u) => Some(UnionDecl {
-                    ast: u,
-                    file_ns: &self.file_ns,
-                    cells,
-                    doc: self,
-                }),
-                _ => None,
-            })
+    pub fn union_decls(&self) -> impl Iterator<Item = UnionDecl<'_>> + '_ {
+        let doc = self;
+        self.all_sources().into_iter().flat_map(move |src| {
+            src.items
+                .iter()
+                .zip(src.cells.iter())
+                .filter_map(move |(item, cells)| match item {
+                    ast::Item::UnionDecl(u) => Some(UnionDecl {
+                        ast: u,
+                        file_ns: src.file_ns,
+                        cells,
+                        doc,
+                    }),
+                    _ => None,
+                })
+        })
     }
 
     pub fn symbol_set(&self, fqn: &str) -> Option<SymbolSetDecl<'_>> {
-        let rec = self.symbols.lookup(fqn)?;
-        if !matches!(rec.kind, SymbolKind::SymbolSetDecl) {
-            return None;
+        for src in self.all_sources() {
+            if let Some(rec) = src.symbols.lookup(fqn)
+                && matches!(rec.kind, SymbolKind::SymbolSetDecl)
+                && let ast::Item::SymbolSetDecl(s) = &src.items[rec.path.item_index]
+            {
+                return Some(SymbolSetDecl {
+                    ast: s,
+                    file_ns: src.file_ns,
+                    cells: &src.cells[rec.path.item_index],
+                    doc: self,
+                });
+            }
         }
-        let ast::Item::SymbolSetDecl(s) = &self.ast.items[rec.path.item_index] else {
-            return None;
-        };
-        Some(SymbolSetDecl {
-            ast: s,
-            file_ns: &self.file_ns,
-            cells: &self.cells.items[rec.path.item_index],
-            doc: self,
-        })
+        None
     }
 
-    pub fn symbol_sets(&self) -> impl Iterator<Item = SymbolSetDecl<'_>> {
-        self.ast
-            .items
-            .iter()
-            .zip(self.cells.items.iter())
-            .filter_map(|(item, cells)| match item {
-                ast::Item::SymbolSetDecl(s) => Some(SymbolSetDecl {
-                    ast: s,
-                    file_ns: &self.file_ns,
-                    cells,
-                    doc: self,
-                }),
-                _ => None,
-            })
+    pub fn symbol_sets(&self) -> impl Iterator<Item = SymbolSetDecl<'_>> + '_ {
+        let doc = self;
+        self.all_sources().into_iter().flat_map(move |src| {
+            src.items
+                .iter()
+                .zip(src.cells.iter())
+                .filter_map(move |(item, cells)| match item {
+                    ast::Item::SymbolSetDecl(s) => Some(SymbolSetDecl {
+                        ast: s,
+                        file_ns: src.file_ns,
+                        cells,
+                        doc,
+                    }),
+                    _ => None,
+                })
+        })
     }
 
     /// Resolve a [`TypeRef`] to either its built-in tag or the user-declared
@@ -1285,25 +1457,156 @@ impl<'a> Block<'a> {
         self.ast.span
     }
 
+    /// Realise any pending block-level imports, then return one
+    /// `BlockSlice` for the block's own items plus one for each
+    /// successfully-loaded import (transitively).
+    fn realize_and_sources(&self) -> Vec<BlockSlice<'a>> {
+        let (_, items_cells) = self.block_inner();
+        // Force any unloaded Import cells.
+        for cell in items_cells {
+            if let ItemCellKind::Import {
+                path,
+                base_dir,
+                path_span,
+                loaded,
+            } = &cell.kind
+            {
+                let _ = loaded
+                    .get_or_init(|| load_import_lazily(path, base_dir.as_deref(), *path_span));
+            }
+        }
+        let mut out = vec![BlockSlice {
+            items: &self.ast.items,
+            cells: items_cells,
+        }];
+        push_loaded_imports(items_cells, &mut out);
+        out
+    }
+
     pub fn field(&self, name: &str) -> Option<Field<'a>> {
-        let (_, items) = self.block_inner();
-        find_field(&self.ast.items, items, name, self.doc)
+        for src in self.realize_and_sources() {
+            if let Some(f) = find_field(src.items, src.cells, name, self.doc) {
+                return Some(f);
+            }
+        }
+        None
     }
 
     pub fn block(&self, kind: &str) -> Option<Block<'a>> {
-        let (_, items) = self.block_inner();
-        find_block(&self.ast.items, items, kind, self.doc)
+        for src in self.realize_and_sources() {
+            if let Some(b) = find_block(src.items, src.cells, kind, self.doc) {
+                return Some(b);
+            }
+        }
+        None
     }
 
     pub fn fields(&self) -> impl Iterator<Item = Field<'a>> + 'a {
-        let (_, items) = self.block_inner();
-        iter_fields(&self.ast.items, items, self.doc)
+        let doc = self.doc;
+        self.realize_and_sources()
+            .into_iter()
+            .flat_map(move |src| iter_fields(src.items, src.cells, doc))
     }
 
     pub fn blocks(&self) -> impl Iterator<Item = Block<'a>> + 'a {
-        let (_, items) = self.block_inner();
-        iter_blocks(&self.ast.items, items, self.doc)
+        let doc = self.doc;
+        self.realize_and_sources()
+            .into_iter()
+            .flat_map(move |src| iter_blocks(src.items, src.cells, doc))
     }
+
+    /// Return the most recently surfaced lazy-import error for this
+    /// block, if any. Useful for callers that want to surface load
+    /// failures explicitly rather than only seeing `None` from
+    /// `field`/`block`.
+    pub fn import_errors(&self) -> Vec<EvalError> {
+        let (_, items_cells) = self.block_inner();
+        let mut out = Vec::new();
+        for cell in items_cells {
+            if let ItemCellKind::Import { loaded, .. } = &cell.kind
+                && let Some(Err(e)) = loaded.get()
+            {
+                out.push(e.clone());
+            }
+        }
+        out
+    }
+}
+
+/// One source of (items, cells) within a block: either the block's own
+/// items or one of its realised imports.
+#[derive(Clone, Copy)]
+struct BlockSlice<'a> {
+    items: &'a [ast::Item],
+    cells: &'a [ItemCells],
+}
+
+fn push_loaded_imports<'a>(cells: &'a [ItemCells], out: &mut Vec<BlockSlice<'a>>) {
+    for cell in cells {
+        if let ItemCellKind::Import { loaded, .. } = &cell.kind
+            && let Some(Ok(li)) = loaded.get()
+        {
+            out.push(BlockSlice {
+                items: &li.items,
+                cells: &li.cells,
+            });
+            push_eager_imports(&li.eager_imports, out);
+        }
+    }
+}
+
+fn push_eager_imports<'a>(imps: &'a [LoadedImport], out: &mut Vec<BlockSlice<'a>>) {
+    for imp in imps {
+        out.push(BlockSlice {
+            items: &imp.items,
+            cells: &imp.cells,
+        });
+        push_eager_imports(&imp.eager_imports, out);
+    }
+}
+
+fn load_import_lazily(
+    path_str: &str,
+    base_dir: Option<&Path>,
+    path_span: Span,
+) -> Result<LoadedImport, EvalError> {
+    let path = resolve_import_path(base_dir, path_str)
+        .map_err(|e| EvalError::import_failed(path_str, e, path_span))?;
+    let src = std::fs::read_to_string(&path)
+        .map_err(|e| EvalError::import_failed(path_str, format!("io: {e}"), path_span))?;
+    let display = path.display().to_string();
+    let (parsed_ast, parsed_symbols) = Parser::new(&src, &display)
+        .parse_source()
+        .map_err(|e| EvalError::import_failed(path_str, format!("{e}"), path_span))?;
+    let imported_base = path.parent().map(Path::to_path_buf);
+    let file_ns = first_namespace(&parsed_ast.items);
+
+    let mut loading: HashSet<PathBuf> = HashSet::new();
+    loading.insert(path.clone());
+    let mut child_eager: Vec<LoadedImport> = Vec::new();
+    expand_top_level_imports(
+        &parsed_ast.items,
+        imported_base.as_deref(),
+        &mut loading,
+        &mut child_eager,
+        &display,
+        &src,
+    )
+    .map_err(|e| EvalError::import_failed(path_str, format!("{e}"), path_span))?;
+
+    let cells = parsed_ast
+        .items
+        .iter()
+        .map(|i| ItemCells::build(i, imported_base.as_deref()))
+        .collect();
+    Ok(LoadedImport {
+        path,
+        file_ns,
+        items: parsed_ast.items,
+        cells,
+        symbols: parsed_symbols,
+        eager_imports: child_eager,
+    })
 }
 
 fn find_field<'a>(
@@ -2036,6 +2339,124 @@ fn open_error(source: &str, file: &str, message: String, span: Span, label: &str
         span_to_miette(span),
         label.to_string(),
     )
+}
+
+/// Resolve an `import "path"` literal against an optional base
+/// directory. Returns the canonicalised path on success. Returns
+/// `Err(_)` when there's no base directory and the path is relative,
+/// or when canonicalisation fails (file not found).
+fn resolve_import_path(base_dir: Option<&Path>, path: &str) -> Result<PathBuf, String> {
+    let p = Path::new(path);
+    let joined = if p.is_absolute() {
+        p.to_path_buf()
+    } else {
+        match base_dir {
+            Some(dir) => dir.join(p),
+            None => {
+                return Err(format!(
+                    "no base directory to resolve relative import '{path}'; \
+                     use Document::from_file or supply a base directory"
+                ));
+            }
+        }
+    };
+    std::fs::canonicalize(&joined)
+        .map_err(|e| format!("failed to resolve '{}': {e}", joined.display()))
+}
+
+/// Extract the file-namespace declared by the first `NamespaceDecl`
+/// (if any) in an items list.
+fn first_namespace(items: &[ast::Item]) -> Vec<String> {
+    items
+        .iter()
+        .find_map(|i| match i {
+            ast::Item::NamespaceDecl(n) => Some(n.path.clone()),
+            _ => None,
+        })
+        .unwrap_or_default()
+}
+
+/// Eagerly walk `items`, follow each top-level `Item::Import`, parse
+/// the imported file, and append the resulting `LoadedImport` records
+/// to `out`. Each `LoadedImport` carries its own symbol index whose
+/// paths point into that loaded file's `items`/`cells` — lookups
+/// across the document tree check the importer's index and then each
+/// import's index in source order.
+fn expand_top_level_imports(
+    items: &[ast::Item],
+    base_dir: Option<&Path>,
+    loading: &mut HashSet<PathBuf>,
+    out: &mut Vec<LoadedImport>,
+    importer_file: &str,
+    importer_source: &str,
+) -> Result<(), ParseError> {
+    for item in items {
+        let ast::Item::Import(imp) = item else {
+            continue;
+        };
+        let path = resolve_import_path(base_dir, &imp.path).map_err(|msg| {
+            open_error(
+                importer_source,
+                importer_file,
+                format!("failed to import '{}': {}", imp.path, msg),
+                imp.path_span,
+                "cannot resolve import",
+            )
+        })?;
+        if !loading.insert(path.clone()) {
+            return Err(open_error(
+                importer_source,
+                importer_file,
+                format!("import cycle detected at '{}'", path.display()),
+                imp.path_span,
+                "cycle",
+            ));
+        }
+
+        let src = std::fs::read_to_string(&path).map_err(|e| {
+            open_error(
+                importer_source,
+                importer_file,
+                format!("failed to read '{}': {e}", path.display()),
+                imp.path_span,
+                "io error",
+            )
+        })?;
+        let display = path.display().to_string();
+        let (parsed_ast, parsed_symbols) = Parser::new(&src, &display).parse_source()?;
+        let imported_base = path.parent().map(Path::to_path_buf);
+        let file_ns = first_namespace(&parsed_ast.items);
+
+        // Recursively process the imported file's own top-level imports.
+        let mut child_eager: Vec<LoadedImport> = Vec::new();
+        expand_top_level_imports(
+            &parsed_ast.items,
+            imported_base.as_deref(),
+            loading,
+            &mut child_eager,
+            &display,
+            &src,
+        )?;
+
+        // Build cells for the imported file with its own base_dir.
+        let cells = parsed_ast
+            .items
+            .iter()
+            .map(|i| ItemCells::build(i, imported_base.as_deref()))
+            .collect();
+
+        out.push(LoadedImport {
+            path: path.clone(),
+            file_ns,
+            items: parsed_ast.items,
+            cells,
+            symbols: parsed_symbols,
+            eager_imports: child_eager,
+        });
+
+        loading.remove(&path);
+    }
+    Ok(())
 }
 
 #[cfg(test)]

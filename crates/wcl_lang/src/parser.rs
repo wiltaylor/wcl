@@ -1,9 +1,9 @@
 use miette::{NamedSource, SourceSpan};
 
 use crate::ast::{
-    BinOp, Block, Decorator, Expr, Field, FunctionLit, Item, LetBinding, NamedArg, NamespaceDecl,
-    Parameter, Source, Span, SymbolEntry, SymbolSetDecl, TypeDecl, TypeField, UnaryOp, UnionDecl,
-    UnionVariant, UseDecl, UseForm, UseItem, VariantBody,
+    BinOp, Block, Decorator, Expr, Field, FunctionLit, ImportDecl, Item, LetBinding, NamedArg,
+    NamespaceDecl, Parameter, Source, Span, SymbolEntry, SymbolSetDecl, TypeDecl, TypeField,
+    UnaryOp, UnionDecl, UnionVariant, UseDecl, UseForm, UseItem, VariantBody,
 };
 use crate::error::ParseError;
 use crate::lexer::{LexError, Lexer, NumberLit, StringLit, Token, TokenKind};
@@ -53,6 +53,7 @@ impl<'a> Parser<'a> {
                 self.file_ns = n.path.clone();
             }
             Item::UseDecl(_) => {}
+            Item::Import(_) => {}
             Item::TypeDecl(t) => {
                 let parent_fqn = self.join_fqn(&t.name);
                 self.try_insert(SymbolRecord {
@@ -211,6 +212,20 @@ impl<'a> Parser<'a> {
             TokenKind::Ident(s) => Some(s.clone()),
             _ => None,
         };
+        if let Some(first) = first_ident.as_deref()
+            && first == "import"
+            && matches!(self.peek2()?.kind, TokenKind::Str(_))
+        {
+            if !decorators.is_empty() {
+                let span = decorators[0].span;
+                return Err(self.err(
+                    "decorators are not allowed on import statements",
+                    span,
+                    "remove decorator",
+                ));
+            }
+            return self.parse_import_decl();
+        }
         if let Some(first) = first_ident
             && matches!(self.peek2()?.kind, TokenKind::Ident(_))
         {
@@ -731,6 +746,31 @@ impl<'a> Parser<'a> {
         let (path, path_span) = self.parse_path()?;
         Ok(Item::NamespaceDecl(NamespaceDecl {
             path,
+            span: Span::new(start, path_span.end),
+        }))
+    }
+
+    fn parse_import_decl(&mut self) -> Result<Item, ParseError> {
+        let kw = self.bump()?; // 'import'
+        let start = kw.span.start;
+        let tok = self.bump()?;
+        let path_span = tok.span;
+        let path = match tok.kind {
+            TokenKind::Str(StringLit::Utf8(s)) | TokenKind::Str(StringLit::Ascii(s)) => s,
+            other => {
+                return Err(self.err(
+                    format!(
+                        "expected string path after 'import', found {}",
+                        describe(&other)
+                    ),
+                    path_span,
+                    "expected string path",
+                ));
+            }
+        };
+        Ok(Item::Import(ImportDecl {
+            path,
+            path_span,
             span: Span::new(start, path_span.end),
         }))
     }
@@ -2683,6 +2723,35 @@ mod tests {
         match err {
             ParseError::Syntax(e) => assert!(
                 e.message.contains("duplicate variant 'A' in union 'X'"),
+                "{}",
+                e.message
+            ),
+            _ => panic!("expected syntax error"),
+        }
+    }
+
+    #[test]
+    fn parse_top_level_import() {
+        let s = parse(r#"import "./foo.wcl""#);
+        match &s.items[0] {
+            Item::Import(i) => assert_eq!(i.path, "./foo.wcl"),
+            _ => panic!("expected Item::Import"),
+        }
+    }
+
+    #[test]
+    fn parse_block_level_import() {
+        let s = parse(r#"service "web" { import "./x.wcl" }"#);
+        let b = blocks(&s.items)[0];
+        assert!(matches!(b.items.first(), Some(Item::Import(_))));
+    }
+
+    #[test]
+    fn parser_rejects_decorator_on_import() {
+        let err = parse_err(r#"@logged import "./p.wcl""#);
+        match err {
+            ParseError::Syntax(e) => assert!(
+                e.message.contains("decorators are not allowed on import"),
                 "{}",
                 e.message
             ),

@@ -241,6 +241,13 @@ pub(crate) struct SymbolEntry {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ImportDecl {
+    pub path: String,
+    pub path_span: Span,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Item {
     Field(Field),
     Block(Block),
@@ -249,6 +256,7 @@ pub(crate) enum Item {
     NamespaceDecl(NamespaceDecl),
     UseDecl(UseDecl),
     SymbolSetDecl(SymbolSetDecl),
+    Import(ImportDecl),
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]

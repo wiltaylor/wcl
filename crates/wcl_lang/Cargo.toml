@@ -12,6 +12,7 @@ thiserror = { workspace = true }
 
 [dev-dependencies]
 criterion = { workspace = true }
+tempfile = "3"
 
 [[bench]]
 name = "parse"

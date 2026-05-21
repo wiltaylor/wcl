@@ -118,6 +118,15 @@ pub enum EvalError {
         #[label("not a leaf")]
         span: SourceSpan,
     },
+
+    #[error("failed to import '{path}': {message}")]
+    #[diagnostic(code(wcl::eval::import_failed))]
+    ImportFailed {
+        path: String,
+        message: String,
+        #[label("import error")]
+        span: SourceSpan,
+    },
 }
 
 impl EvalError {
@@ -140,6 +149,19 @@ impl EvalError {
     pub(crate) fn not_a_leaf(kind: impl Into<String>, span: crate::ast::Span) -> Self {
         Self::NotALeaf {
             kind: kind.into(),
+            span: span_to_miette(span),
+        }
+    }
+
+    #[allow(dead_code)] // public-facing constructor for hosts; used by lazy loader
+    pub(crate) fn import_failed(
+        path: impl Into<String>,
+        message: impl Into<String>,
+        span: crate::ast::Span,
+    ) -> Self {
+        Self::ImportFailed {
+            path: path.into(),
+            message: message.into(),
             span: span_to_miette(span),
         }
     }

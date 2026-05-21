@@ -1,0 +1,8 @@
+namespace app
+
+import "./shared.wcl"
+
+service "web" {
+  import "./web-defaults.wcl"
+  port = 9090
+}

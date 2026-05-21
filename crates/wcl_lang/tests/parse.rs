@@ -381,3 +381,89 @@ fn data_ref_walks_data_access_fixture() {
     let name_field = doc.get("User.name").unwrap();
     assert_eq!(name_field.kind(), "type_field");
 }
+
+#[test]
+fn imports_example_resolves_paths() {
+    let path = examples_dir().join("imports").join("main.wcl");
+    let doc = Document::from_file(&path).expect("imports/main.wcl parses");
+
+    // Top-level eager import: `brand` lives under namespace `shared`,
+    // so it's only reachable via the FQN.
+    assert_eq!(
+        doc.get("shared.brand").unwrap().value().unwrap(),
+        Value::Utf8("wcl".into())
+    );
+
+    // The imported type is reachable through the unified index.
+    let color = doc.type_decl("shared.Color").expect("shared.Color");
+    assert_eq!(color.name(), "Color");
+
+    // Block-level lazy import: `service.region` is in
+    // `web-defaults.wcl`, loaded only when we touch the block.
+    assert_eq!(
+        doc.get("service.region").unwrap().value().unwrap(),
+        Value::Utf8("us-east-1".into())
+    );
+    assert_eq!(
+        doc.get("service.tier").unwrap().value().unwrap(),
+        Value::Symbol("gold".into())
+    );
+
+    // The importer's own field still wins inside the block.
+    assert_eq!(
+        doc.get("service.port").unwrap().value().unwrap(),
+        Value::I64(9090)
+    );
+}
+
+#[test]
+fn import_requires_file_path_open_string_fails() {
+    let err = Document::open(r#"import "./missing.wcl""#, "test").unwrap_err();
+    let rendered = format!("{:?}", miette::Report::new(err));
+    assert!(
+        rendered.contains("base directory") || rendered.contains("failed to import"),
+        "rendered: {rendered}"
+    );
+}
+
+#[test]
+fn top_level_import_cycle_detected() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let a = dir.path().join("a.wcl");
+    let b = dir.path().join("b.wcl");
+    std::fs::write(&a, r#"import "./b.wcl""#).unwrap();
+    std::fs::write(&b, r#"import "./a.wcl""#).unwrap();
+
+    let err = Document::from_file(&a).unwrap_err();
+    let rendered = format!("{:?}", miette::Report::new(err));
+    assert!(rendered.contains("cycle"), "rendered: {rendered}");
+}
+
+#[test]
+fn lazy_import_not_loaded_until_block_accessed() {
+    // Block-level import to a non-existent file shouldn't surface on
+    // `Document::open` / `from_file` — only on first read of the block.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let main = dir.path().join("main.wcl");
+    std::fs::write(
+        &main,
+        r#"
+service "web" {
+  import "./does-not-exist.wcl"
+}
+"#,
+    )
+    .unwrap();
+    let doc = Document::from_file(&main).expect("opens despite lazy bad import");
+
+    // `kind` and `span` don't read items — load not triggered yet.
+    let svc = doc.block("service").unwrap();
+    assert_eq!(svc.kind(), "service");
+
+    // Reading items triggers the failed load.
+    let res = svc.fields().count();
+    let _ = res; // iteration completes; the import error is silently dropped here
+    let errs = svc.import_errors();
+    assert!(!errs.is_empty(), "expected at least one import error");
+    assert!(matches!(errs[0], EvalError::ImportFailed { .. }));
+}
