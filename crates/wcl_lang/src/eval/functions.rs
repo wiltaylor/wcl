@@ -483,6 +483,12 @@ pub fn builtin_signatures() -> Vec<FunctionSignature> {
             doc: "Return a block reference id, or null if it has none".into(),
         },
         FunctionSignature {
+            name: "block_qualified_id".into(),
+            params: vec!["block: block_ref".into()],
+            return_type: "string|null".into(),
+            doc: "Return a block reference qualified id, falling back to its inline id".into(),
+        },
+        FunctionSignature {
             name: "block_attrs".into(),
             params: vec!["block: block_ref".into()],
             return_type: "map".into(),
@@ -959,6 +965,10 @@ pub fn builtin_registry() -> HashMap<String, BuiltinFn> {
     m.insert("map_has".into(), wrap_builtin(map_has));
     m.insert("block_kind".into(), wrap_builtin(block_kind));
     m.insert("block_id".into(), wrap_builtin(block_id));
+    m.insert(
+        "block_qualified_id".into(),
+        wrap_builtin(block_qualified_id),
+    );
     m.insert("block_attrs".into(), wrap_builtin(block_attrs));
     m.insert("block_children".into(), wrap_builtin(block_children));
     m.insert(
@@ -2334,6 +2344,22 @@ fn block_id(args: &[Value]) -> Result<Value, String> {
             .unwrap_or(Value::Null)),
         other => Err(format!(
             "block_id: argument 1 must be block_ref, got {}",
+            other.type_name()
+        )),
+    }
+}
+
+fn block_qualified_id(args: &[Value]) -> Result<Value, String> {
+    expect_args(args, 1, "block_qualified_id")?;
+    match &args[0] {
+        Value::BlockRef(block) => Ok(block
+            .qualified_id
+            .as_ref()
+            .or(block.id.as_ref())
+            .map(|id| Value::String(id.clone()))
+            .unwrap_or(Value::Null)),
+        other => Err(format!(
+            "block_qualified_id: argument 1 must be block_ref, got {}",
             other.type_name()
         )),
     }
@@ -3974,6 +4000,7 @@ mod tests {
             "range",
             "zip",
             "map_has",
+            "block_qualified_id",
             "map_set",
             "map_merge",
             "list_attr",
@@ -4228,6 +4255,7 @@ mod tests {
 
         assert_eq!(block_kind(&[value.clone()]).unwrap(), s("html::section"));
         assert_eq!(block_id(&[value.clone()]).unwrap(), s("intro"));
+        assert_eq!(block_qualified_id(&[value.clone()]).unwrap(), s("intro"));
         let children = block_children(&[value.clone()]).unwrap();
         let Value::List(children) = children else {
             panic!("expected child list");
@@ -4242,6 +4270,23 @@ mod tests {
         };
         assert_eq!(attrs.get("class"), Some(&s("hero")));
         assert_eq!(attrs.get("id"), Some(&s("intro")));
+    }
+
+    #[test]
+    fn block_qualified_id_prefers_qualified_path_and_falls_back_to_id() {
+        let mut qualified = block_ref("section", Some("overview"), vec![]).to_data();
+        qualified.qualified_id = Some("docs.guide.overview".to_string());
+        assert_eq!(
+            block_qualified_id(&[Value::BlockRef(BlockRef::new(qualified))]).unwrap(),
+            s("docs.guide.overview")
+        );
+
+        let mut fallback = block_ref("section", Some("overview"), vec![]).to_data();
+        fallback.qualified_id = None;
+        assert_eq!(
+            block_qualified_id(&[Value::BlockRef(BlockRef::new(fallback))]).unwrap(),
+            s("overview")
+        );
     }
 
     #[test]

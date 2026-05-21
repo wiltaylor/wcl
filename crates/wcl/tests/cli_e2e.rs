@@ -2149,11 +2149,13 @@ use wdoc::{doc, section, page, layout, heading, paragraph}
 
 doc my_docs {
     title = "Split Docs"
-    section overview "Overview" {}
+    section guide "Guide" {
+        section overview "Overview" {}
+    }
 }
 
 page home {
-    section = ref("my_docs.overview")
+    section = ref("my_docs.guide.overview")
     title = "Home"
 
     layout {
@@ -2186,10 +2188,67 @@ page home {
         .success();
 
     let html = std::fs::read_to_string(output.join("home.html")).expect("read rendered page");
+    assert!(html.contains("<a href=\"home.html\">Guide</a>"));
+    assert!(html.contains("<a href=\"home.html\" class=\"active\">Overview</a>"));
     assert!(html.contains("class=\"wdoc-vsplit\""));
     assert!(html.contains("class=\"wdoc-split\""));
     assert!(html.contains("Visible Heading"));
     assert!(html.contains("Visible paragraph body."));
+}
+
+#[test]
+fn wdoc_build_renders_helper_inline_markup() {
+    let dir = tempdir().expect("tempdir");
+    let icons_dir = dir.path().join("icons");
+    std::fs::create_dir_all(&icons_dir).expect("create icons dir");
+    std::fs::write(
+        icons_dir.join("shield-check.svg"),
+        r#"<svg viewBox="0 0 24 24"><path d="M12 2L20 6V12C20 17 16 21 12 22C8 21 4 17 4 12V6L12 2Z"/></svg>"#,
+    )
+    .expect("write icon");
+    let site = r##"
+import <wdoc.wcl>
+use wdoc::{doc, section, page, layout, paragraph, icon_set, icon_styled, bold}
+
+icon_set lucide {
+    path = "icons"
+    default = true
+}
+
+doc my_docs {
+    title = "Inline Docs"
+    section overview "Overview" {}
+}
+
+page home {
+    section = ref("my_docs.overview")
+    title = "Home"
+
+    layout {
+        paragraph features {
+            content = icon_styled("shield-check", "1.1em", "#28a745") + " " + bold("Typed schemas") + " - define and validate your configuration structure."
+        }
+    }
+}
+"##;
+    let input = dir.path().join("site.wcl");
+    std::fs::write(&input, site).expect("write wdoc file");
+    let output = dir.path().join("out");
+
+    Command::cargo_bin("wcl")
+        .unwrap()
+        .current_dir(dir.path())
+        .args(["wdoc", "build", "site.wcl", "--output", "out"])
+        .assert()
+        .success();
+
+    let html = std::fs::read_to_string(output.join("home.html")).expect("read rendered page");
+    assert!(html.contains("<strong>Typed schemas</strong>"));
+    assert!(html.contains("<svg class=\"wdoc-icon\""));
+    assert!(html.contains("--wdoc-icon-fill:#28a745;"));
+    assert!(!html.contains("wdoc-icon-missing"));
+    assert!(!html.contains("&lt;strong&gt;Typed schemas&lt;/strong&gt;"));
+    assert!(!html.contains("&lt;span data-wdoc-icon"));
 }
 
 #[test]

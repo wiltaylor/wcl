@@ -16,6 +16,7 @@ declare children(block: any) -> list(any)
 declare children(block: any, kind: string) -> list(any)
 declare block_children(block: any) -> list(any)
 declare block_body_children(block: any) -> list(any)
+declare block_qualified_id(block: any) -> any
 declare url_component_encode(value: any) -> string
 
 namespace wdoc {
@@ -731,19 +732,30 @@ namespace wdoc {
     export let html_escape = value => replace(replace(replace(replace(to_string(value), "&", "&amp;"), "<", "&lt;"), ">", "&gt;"), "\"", "&quot;")
 
     @markup("**{text}**")
-    export let bold = text => html::render({ tag = "strong", content = text })
+    export let bold = text => "**" + to_string(text) + "**"
 
     @markup("_{text}_")
-    export let italic = text => html::render({ tag = "em", content = text })
+    export let italic = text => "_" + to_string(text) + "_"
 
     @markup("`{text}`")
-    export let code_span = text => html::render({ tag = "code", content = text })
+    export let code_span = text => "`" + to_string(text) + "`"
 
     @markup("[{text}]({url})")
-    export let link = (text, url) => html::render({ tag = "a", href = url, content = text })
+    export let link = (text, url) => "[" + to_string(text) + "](" + to_string(url) + ")"
 
     @markup(":{name}:")
     export let icon_markup = name => wdoc::icon(name)
+
+    export let restore_trusted_inline_markup = text => {
+        let strong = regex_replace_all(text, "&lt;strong&gt;((?:[^&]|&quot;|&amp;)*)&lt;/strong&gt;", "<strong>$1</strong>")
+        let emphasized = regex_replace_all(strong, "&lt;em&gt;((?:[^&]|&quot;|&amp;)*)&lt;/em&gt;", "<em>$1</em>")
+        let coded = regex_replace_all(emphasized, "&lt;code&gt;((?:[^&]|&quot;|&amp;)*)&lt;/code&gt;", "<code>$1</code>")
+        let linked = regex_replace_all(coded, "&lt;a href=&quot;((?:[^&]|&amp;)*)&quot;&gt;((?:[^&]|&quot;|&amp;)*)&lt;/a&gt;", "<a href=\"$1\">$2</a>")
+        let icons_with_set_and_props = regex_replace_all(linked, "&lt;span data-wdoc-icon=&quot;true&quot; data-name=&quot;((?:[^&]|&amp;)*)&quot; data-size=&quot;((?:[^&]|&amp;)*)&quot; data-set=&quot;((?:[^&]|&amp;)*)&quot; data-props=&quot;((?:[^&]|&amp;)*)&quot;&gt;&lt;/span&gt;", "<span data-wdoc-icon=\"true\" data-name=\"$1\" data-size=\"$2\" data-set=\"$3\" data-props=\"$4\"></span>")
+        let icons_with_props = regex_replace_all(icons_with_set_and_props, "&lt;span data-wdoc-icon=&quot;true&quot; data-name=&quot;((?:[^&]|&amp;)*)&quot; data-size=&quot;((?:[^&]|&amp;)*)&quot; data-props=&quot;((?:[^&]|&amp;)*)&quot;&gt;&lt;/span&gt;", "<span data-wdoc-icon=\"true\" data-name=\"$1\" data-size=\"$2\" data-props=\"$3\"></span>")
+        let icons_with_set = regex_replace_all(icons_with_props, "&lt;span data-wdoc-icon=&quot;true&quot; data-name=&quot;((?:[^&]|&amp;)*)&quot; data-size=&quot;((?:[^&]|&amp;)*)&quot; data-set=&quot;((?:[^&]|&amp;)*)&quot;&gt;&lt;/span&gt;", "<span data-wdoc-icon=\"true\" data-name=\"$1\" data-size=\"$2\" data-set=\"$3\"></span>")
+        regex_replace_all(icons_with_set, "&lt;span data-wdoc-icon=&quot;true&quot; data-name=&quot;((?:[^&]|&amp;)*)&quot; data-size=&quot;((?:[^&]|&amp;)*)&quot;&gt;&lt;/span&gt;", "<span data-wdoc-icon=\"true\" data-name=\"$1\" data-size=\"$2\"></span>")
+    }
 
     export let render_markup = text => {
         let escaped = wdoc::html_escape(text)
@@ -751,7 +763,8 @@ namespace wdoc {
         let bolded = regex_replace_all(code, "\\*\\*([^*]+)\\*\\*", "<strong>$1</strong>")
         let italicized = regex_replace_all(bolded, "_([^_]+)_", "<em>$1</em>")
         let linked = regex_replace_all(italicized, "\\[([^\\]]+)\\]\\(([^\\)]+)\\)", "<a href=\"$2\">$1</a>")
-        regex_replace_all(linked, ":([A-Za-z0-9_:-]+):", "<span data-wdoc-icon=\"true\" data-name=\"$1\" data-size=\"1em\"></span>")
+        let iconed = regex_replace_all(linked, ":([A-Za-z0-9_:-]+):", "<span data-wdoc-icon=\"true\" data-name=\"$1\" data-size=\"1em\"></span>")
+        wdoc::restore_trusted_inline_markup(iconed)
     }
 
     export let render_children = block => {
@@ -1159,7 +1172,9 @@ namespace wdoc {
 
     export let first_page_path_for_section = (pages_by_section, section) => {
         let page = wdoc::first_page_for_section(pages_by_section, section)
-        page != null ? page.output_path : "#"
+        page != null ? page.output_path : (
+            len(section.children) > 0 ? wdoc::first_page_path_for_section(pages_by_section, section.children[0]) : "#"
+        )
     }
 
     export let section_view = (pages_by_section, section) => {
@@ -1577,8 +1592,10 @@ namespace wdoc {
 
     export let read_text_file = (project, path) => {
         let src = wdoc::source_path(project, path)
-        let chunks = file_stream(src, { allow_absolute = true }).to_list()
-        len(chunks) == 0 ? "" : bytes_to_utf8(bytes_data(chunks[0]))
+        file_exists(src, { allow_absolute = true }) ? {
+            let chunks = file_stream(src, { allow_absolute = true }).to_list()
+            len(chunks) == 0 ? "" : bytes_to_utf8(bytes_data(chunks[0]))
+        } : ""
     }
 
     export let icon_sets_in_block = block => block_collect_kinds(block, ["wdoc::icon_set", "icon_set"])
@@ -1606,7 +1623,7 @@ namespace wdoc {
         }
     }
 
-    export let collect_icon_sets = project => map(wdoc::icon_sets_in_block(project.root), icon_set_block => wdoc::icon_set_value(icon_set_block))
+    export let collect_icon_sets = project => map(wdoc::project_blocks_collecting(project, ["icon_set"]), icon_set_block => wdoc::icon_set_value(icon_set_block))
 
     export let split_icon_set = name => {
         let parts = split(":", to_string(name))
@@ -1629,18 +1646,28 @@ namespace wdoc {
 
     export let icon_style_vars = props => join("", map(keys(props), key => "--wdoc-icon-" + key + ":" + to_string(props[key]) + ";"))
 
+    export let url_component_decode_basic = value => replace(replace(replace(replace(to_string(value), "%23", "#"), "%20", " "), "%2F", "/"), "%3A", ":")
+
+    export let icon_props_from_query = query => reduce(filter(split("&", replace(to_string(query), "&amp;", "&")), part => part != ""), {}, (acc, part) => {
+        let pieces = split("=", part)
+        len(pieces) > 1 ? map_set(acc, wdoc::url_component_decode_basic(pieces[0]), wdoc::url_component_decode_basic(pieces[1])) : acc
+    })
+
     export let resolve_icon = (project, name, set_name, normalize_width, normalize_height, normalize_mode) => {
         let icon_sets = attr_or(project, "_wdoc_icon_sets", wdoc::collect_icon_sets(project))
         let split_name = wdoc::split_icon_set(name)
         let chosen_name = set_name != null && to_string(set_name) != "" ? set_name : split_name.set_name
         let icon_set_item = chosen_name != null ? wdoc::find_icon_set(icon_sets, chosen_name) : wdoc::default_icon_set(icon_sets)
         icon_set_item == null ? null : {
-            name = split_name.name,
-            content = wdoc::read_text_file(project, icon_set_item.path + "/" + split_name.name + ".svg"),
-            css = wdoc::icon_css(icon_set_item),
-            normalize_width = normalize_width != null ? normalize_width : icon_set_item.normalize_width,
-            normalize_height = normalize_height != null ? normalize_height : icon_set_item.normalize_height,
-            normalize_mode = normalize_mode != null ? normalize_mode : icon_set_item.normalize_mode
+            let content = wdoc::read_text_file(project, icon_set_item.path + "/" + split_name.name + ".svg")
+            content == "" ? null : {
+                name = split_name.name,
+                content = content,
+                css = wdoc::icon_css(icon_set_item),
+                normalize_width = normalize_width != null ? normalize_width : icon_set_item.normalize_width,
+                normalize_height = normalize_height != null ? normalize_height : icon_set_item.normalize_height,
+                normalize_mode = normalize_mode != null ? normalize_mode : icon_set_item.normalize_mode
+            }
         }
     }
 
@@ -1648,7 +1675,7 @@ namespace wdoc {
         let svg = icon.content
         let style = wdoc::icon_style_vars(props)
         let open = "<svg class=\"wdoc-icon\" width=\"" + size + "\" height=\"" + size + "\" style=\"" + wdoc::html_escape(style) + "\" "
-        contains(svg, "<svg ") ? replace(svg, "<svg ", open) : svg
+        contains(svg, "<svg ") ? replace(svg, "<svg ", open) : (contains(svg, "<svg\n") ? replace(svg, "<svg\n", open + "\n") : svg)
     }
 
     export let render_inline_icon_from_tag = (project, tag) => {
@@ -1659,7 +1686,7 @@ namespace wdoc {
         let name = len(names) > 0 ? names[0] : ""
         let size = len(sizes) > 0 ? sizes[0] : "1em"
         let set_name = len(sets) > 0 ? sets[0] : null
-        let props = {}
+        let props = len(props_values) > 0 ? wdoc::icon_props_from_query(props_values[0]) : {}
         let icon = wdoc::resolve_icon(project, name, set_name, null, null, null)
         icon == null ? html::render({ tag = "span", class_name = "wdoc-icon wdoc-icon-missing", aria_hidden = "true", content = name }) : wdoc::render_inline_icon_svg(icon, size, props)
     }
@@ -1883,13 +1910,15 @@ namespace wdoc {
 
     export let extract_layout = (project, block) => { children = wdoc::extract_layout_children(project, block) }
 
+    export let page_section_id = value => type_of(value) == "block_ref" ? block_qualified_id(value) : value
+
     export let extract_page = (project, block) => {
         let attrs = block_attrs(block)
         let children = block_body_children(block)
         let layout_blocks = wdoc::child_blocks_matching(block, "layout")
         {
             id = attr_or(attrs, "id", ""),
-            section_id = attr_or(attrs, "section", ""),
+            section_id = wdoc::page_section_id(attr_or(attrs, "section", "")),
             title = attr_or(attrs, "title", ""),
             template = attr_or(attrs, "template", null),
             path = attr_or(attrs, "path", null),
