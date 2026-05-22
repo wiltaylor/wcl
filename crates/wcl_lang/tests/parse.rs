@@ -1672,6 +1672,50 @@ fn parse_for_edit_exposes_mutable_ast() {
     assert!(matches!(mutated, ast::Expr::Utf8(s) if s == "beta"));
 }
 
+#[test]
+fn edit_path_full_loop_writes_then_reevaluates() {
+    // End-to-end exercise of the round-trip API: parse for edit,
+    // mutate the AST, write the formatted source to disk, reopen as a
+    // Document, and evaluate. This is the loop hosts actually use —
+    // earlier tests cover the pieces in isolation.
+    let tmp = tempfile::TempDir::new().expect("mkdir tempdir");
+    let path = tmp.path().join("doc.wcl");
+
+    // Seed file. `@schemaless` is the only decorator the open-Document
+    // path doesn't insist on a schema for, which keeps this test
+    // independent of the schema machinery.
+    std::fs::write(
+        &path,
+        "@schemaless greeting = \"hello\"\n@schemaless count = 1\n",
+    )
+    .expect("seed write");
+
+    // EDIT MODE.
+    let mut ast = parse_for_edit(
+        &std::fs::read_to_string(&path).expect("read"),
+        path.display().to_string(),
+    )
+    .expect("parse_for_edit");
+    for item in &mut ast.items {
+        if let ast::Item::Field(f) = item
+            && f.name == "greeting"
+        {
+            f.expr = ast::Expr::Utf8("goodbye".into());
+        }
+    }
+    std::fs::write(&path, wcl_lang::format::to_source(&ast)).expect("write back");
+
+    // EVAL MODE — reopen from disk, assert the mutation is visible
+    // through the Document layer.
+    let doc = Document::from_file(&path).expect("reopen");
+    assert_eq!(
+        doc.field("greeting").unwrap().value().unwrap(),
+        &Value::Utf8("goodbye".into())
+    );
+    // The untouched field still reads its original value.
+    assert_eq!(doc.field("count").unwrap().value().unwrap(), &Value::I64(1));
+}
+
 /// Verify the source printer is a fixed point on its own output:
 /// `print(parse(print(parse(src)))) == print(parse(src))`. This is
 /// strictly stronger than structural-equality of the AST after one
