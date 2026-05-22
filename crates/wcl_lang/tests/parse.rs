@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use wcl_lang::{
     DeclName, Document, Environment, EvalError, ProfileKey, ResolvedType, SymbolKind, TypeRef,
-    Value, VariantBodyView, VariantPayload, ast, from_fn, parse_for_edit,
+    Value, VariantBodyView, VariantPayload, ast, format, from_fn, parse_for_edit,
 };
 
 fn examples_dir() -> PathBuf {
@@ -1670,4 +1670,46 @@ fn parse_for_edit_exposes_mutable_ast() {
         other => panic!("expected Field, got {other:?}"),
     };
     assert!(matches!(mutated, ast::Expr::Utf8(s) if s == "beta"));
+}
+
+/// Verify the source printer is a fixed point on its own output:
+/// `print(parse(print(parse(src)))) == print(parse(src))`. This is
+/// strictly stronger than structural-equality of the AST after one
+/// round-trip (which fails on byte-spans of reformatted output), and
+/// catches both formatting drift and structural information loss.
+fn assert_roundtrip(path: &std::path::Path) {
+    let src =
+        std::fs::read_to_string(path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    let ast1 = parse_for_edit(&src, path.display().to_string())
+        .unwrap_or_else(|e| panic!("first parse of {}: {e:?}", path.display()));
+    let printed = format::to_source(&ast1);
+    let ast2 = parse_for_edit(&printed, path.display().to_string()).unwrap_or_else(|e| {
+        panic!(
+            "re-parse of printed {} failed: {e:?}\n--- printed ---\n{printed}",
+            path.display()
+        )
+    });
+    let printed2 = format::to_source(&ast2);
+    assert_eq!(
+        printed,
+        printed2,
+        "printer is not idempotent on {}\n--- first ---\n{printed}\n--- second ---\n{printed2}",
+        path.display()
+    );
+}
+
+#[test]
+fn round_trip_all_examples() {
+    let dir = examples_dir();
+    let mut entries: Vec<_> = std::fs::read_dir(&dir)
+        .expect("read examples/")
+        .filter_map(|r| r.ok())
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "wcl"))
+        .collect();
+    entries.sort();
+    assert!(!entries.is_empty(), "no .wcl examples found in {dir:?}");
+    for path in entries {
+        assert_roundtrip(&path);
+    }
 }

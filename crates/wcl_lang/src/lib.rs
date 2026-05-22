@@ -21,6 +21,7 @@ mod data;
 mod doc;
 mod environment;
 mod error;
+pub mod format;
 mod lexer;
 mod numeric;
 mod parser;
