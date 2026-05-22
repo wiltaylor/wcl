@@ -405,11 +405,8 @@ impl<'a> Parser<'a> {
                         && matches!(self.peek2()?.kind, TokenKind::Eq);
                     if is_named {
                         saw_named = true;
-                        let name_tok = self.bump()?;
-                        let arg_start = name_tok.span.start;
-                        let TokenKind::Ident(arg_name) = name_tok.kind else {
-                            unreachable!()
-                        };
+                        let (arg_name, name_span) = self.bump_ident("expected argument name")?;
+                        let arg_start = name_span.start;
                         self.bump()?; // '='
                         let (value, value_span) = self.parse_expr()?;
                         named.push(NamedArg {
@@ -844,13 +841,10 @@ impl<'a> Parser<'a> {
                 let p2 = self.peek2()?.kind.clone();
                 match p2 {
                     TokenKind::At => {
-                        let t = self.bump()?;
-                        let TokenKind::Ident(name) = t.kind else {
-                            unreachable!()
-                        };
+                        let (name, name_span) = self.bump_ident("expected binding name")?;
                         self.bump()?; // '@'
                         let inner = self.parse_pattern()?;
-                        let span = Span::new(t.span.start, pattern_span(&inner).end);
+                        let span = Span::new(name_span.start, pattern_span(&inner).end);
                         Ok(Pattern::At {
                             name,
                             inner: Box::new(inner),
@@ -862,40 +856,31 @@ impl<'a> Parser<'a> {
                         self.parse_unqualified_variant_pattern()
                     }
                     _ => {
-                        let t = self.bump()?;
-                        let TokenKind::Ident(name) = t.kind else {
-                            unreachable!()
-                        };
-                        Ok(Pattern::Binding { name, span: t.span })
+                        let (name, span) = self.bump_ident("expected binding name")?;
+                        Ok(Pattern::Binding { name, span })
                     }
                 }
             }
-            TokenKind::Bool(_) => {
+            TokenKind::Bool(_)
+            | TokenKind::Number(_)
+            | TokenKind::Str(_)
+            | TokenKind::Symbol(_) => {
+                // Bump and dispatch on the owned kind so the literal
+                // extraction is unambiguous to the compiler — avoids the
+                // `let-else unreachable!()` shape that peek-then-bump
+                // would otherwise require.
                 let t = self.bump()?;
-                let TokenKind::Bool(b) = t.kind else {
-                    unreachable!()
-                };
-                Ok(Pattern::LiteralBool(b, t.span))
-            }
-            TokenKind::Number(_) => {
-                let t = self.bump()?;
-                let TokenKind::Number(n) = t.kind else {
-                    unreachable!()
-                };
-                Ok(Pattern::LiteralNumber {
-                    lit: n,
-                    span: t.span,
-                })
-            }
-            TokenKind::Str(_) => {
-                let t = self.bump()?;
-                let TokenKind::Str(s) = t.kind else {
-                    unreachable!()
-                };
-                match s {
-                    crate::lexer::StringLit::Utf8(text) => Ok(Pattern::LiteralUtf8(text, t.span)),
-                    crate::lexer::StringLit::Ascii(text) => Ok(Pattern::LiteralAscii(text, t.span)),
-                    other => Err(self.err(
+                let span = t.span;
+                match t.kind {
+                    TokenKind::Bool(b) => Ok(Pattern::LiteralBool(b, span)),
+                    TokenKind::Number(n) => Ok(Pattern::LiteralNumber { lit: n, span }),
+                    TokenKind::Str(crate::lexer::StringLit::Utf8(text)) => {
+                        Ok(Pattern::LiteralUtf8(text, span))
+                    }
+                    TokenKind::Str(crate::lexer::StringLit::Ascii(text)) => {
+                        Ok(Pattern::LiteralAscii(text, span))
+                    }
+                    TokenKind::Str(other) => Err(self.err(
                         format!(
                             "string patterns require utf8 or ascii literals, got {}",
                             match other {
@@ -904,17 +889,14 @@ impl<'a> Parser<'a> {
                                 _ => "string",
                             }
                         ),
-                        t.span,
+                        span,
                         "unsupported string-pattern kind",
                     )),
+                    TokenKind::Symbol(s) => Ok(Pattern::LiteralSymbol(s, span)),
+                    // Outer arm guard already restricted us to these
+                    // four kinds; any other is a structural bug.
+                    _ => unreachable!("literal-pattern arm guard"),
                 }
-            }
-            TokenKind::Symbol(_) => {
-                let t = self.bump()?;
-                let TokenKind::Symbol(s) = t.kind else {
-                    unreachable!()
-                };
-                Ok(Pattern::LiteralSymbol(s, t.span))
             }
             TokenKind::None => {
                 let t = self.bump()?;
@@ -1031,12 +1013,9 @@ impl<'a> Parser<'a> {
     /// pattern. The matcher resolves the variant via the scrutinee's
     /// runtime union at match time.
     fn parse_unqualified_variant_pattern(&mut self) -> Result<Pattern, ParseError> {
-        let name_tok = self.bump()?;
-        let TokenKind::Ident(v_name) = name_tok.kind else {
-            unreachable!("caller verified Ident")
-        };
-        let start = name_tok.span.start;
-        let mut end = name_tok.span.end;
+        let (v_name, name_span) = self.bump_ident("expected variant name")?;
+        let start = name_span.start;
+        let mut end = name_span.end;
         let args = match self.peek()?.kind {
             TokenKind::LParen => {
                 self.bump()?;
@@ -1404,11 +1383,8 @@ impl<'a> Parser<'a> {
                 break;
             }
             self.bump()?; // '.'
-            let next = self.bump()?;
-            let TokenKind::Ident(seg) = next.kind else {
-                unreachable!("peek2 confirmed Ident");
-            };
-            end = next.span.end;
+            let (seg, seg_span) = self.bump_ident("expected identifier after '.'")?;
+            end = seg_span.end;
             segments.push(seg);
         }
         Ok((segments, Span::new(start, end)))
@@ -1426,16 +1402,12 @@ impl<'a> Parser<'a> {
 
     fn parse_table_item(&mut self) -> Result<Item, ParseError> {
         // Already peeked: IDENT followed by Colon. Consume both.
-        let name_tok = self.bump()?;
-        let start = name_tok.span.start;
-        let field_name = match name_tok.kind {
-            TokenKind::Ident(s) => s,
-            _ => unreachable!("parse_table_item entered with non-Ident first token"),
-        };
+        let (field_name, name_span) = self.bump_ident("expected table field name")?;
+        let start = name_span.start;
         self.expect(TokenKind::Colon, "expected ':' after table field name")?;
 
         let mut rows = Vec::new();
-        let mut end = name_tok.span.end;
+        let mut end = name_span.end;
         while matches!(self.peek()?.kind, TokenKind::Pipe) {
             let row = self.parse_table_row()?;
             end = row.span.end;
@@ -2045,32 +2017,24 @@ impl<'a> Parser<'a> {
         // Optional kind annotation. The lexer produces a single
         // `Symbol(name)` token for the tight `:name` form, or a
         // separate `Colon` + `Ident` pair when whitespace intervenes.
-        let (kind, kind_span) = match &self.peek()?.kind {
-            TokenKind::Symbol(_) => {
-                let sym_tok = self.bump()?;
-                let TokenKind::Symbol(sym) = sym_tok.kind else {
-                    unreachable!("peek confirmed Symbol");
-                };
-                end = sym_tok.span.end;
-                (Some(sym), Some(sym_tok.span))
-            }
-            TokenKind::Colon => {
-                self.bump()?; // ':'
-                let sym_tok = self.bump()?;
-                let TokenKind::Ident(sym) = sym_tok.kind else {
-                    return Err(self.err(
-                        format!(
-                            "expected symbol identifier after ':', found {}",
-                            describe(&sym_tok.kind)
-                        ),
-                        sym_tok.span,
-                        "expected identifier",
-                    ));
-                };
-                end = sym_tok.span.end;
-                (Some(sym), Some(sym_tok.span))
-            }
-            _ => (None, None),
+        // Clone the symbol payload out of peek so we can bump without
+        // having to re-destructure (and without leaving a load-bearing
+        // `unreachable!()` between the peek and the bump).
+        let pre_sym = match &self.peek()?.kind {
+            TokenKind::Symbol(s) => Some(s.clone()),
+            _ => None,
+        };
+        let (kind, kind_span) = if let Some(sym) = pre_sym {
+            let span = self.bump()?.span;
+            end = span.end;
+            (Some(sym), Some(span))
+        } else if matches!(self.peek()?.kind, TokenKind::Colon) {
+            self.bump()?; // ':'
+            let (sym, sym_span) = self.bump_ident("expected symbol identifier after ':'")?;
+            end = sym_span.end;
+            (Some(sym), Some(sym_span))
+        } else {
+            (None, None)
         };
         Ok(Item::Connection(crate::ast::ConnectionStmt {
             lhs,
@@ -2232,6 +2196,22 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Bump and destructure an `Ident` token, returning `(name, span)`.
+    /// On any other token kind, build a "expected identifier" error
+    /// using `msg` as the surface context (e.g. `"expected identifier
+    /// after '.'"`). Replaces the recurring `peek → bump → let-else
+    /// unreachable!()` pattern.
+    fn bump_ident(&mut self, msg: &str) -> Result<(String, Span), ParseError> {
+        let tok = self.bump()?;
+        let span = tok.span;
+        if let TokenKind::Ident(name) = tok.kind {
+            Ok((name, span))
+        } else {
+            let found = describe(&tok.kind);
+            Err(self.err(format!("{msg}, found {found}"), span, "expected identifier"))
+        }
+    }
+
     fn parse_field(
         &mut self,
         name: String,
@@ -2353,16 +2333,19 @@ impl<'a> Parser<'a> {
     /// `Parser` over a leading-padded copy of the original source so
     /// span offsets stay aligned with the outer file.
     fn string_lit_to_expr(&self, lit: StringLit, _span: Span) -> Result<Expr, ParseError> {
-        if let Some(simple) = string_to_expr_simple(lit.clone()) {
-            return Ok(simple);
-        }
-        let StringLit::Interpolated {
-            encoding,
-            parts,
-            span: lit_span,
-        } = lit
-        else {
-            unreachable!("string_to_expr_simple returned None only for Interpolated");
+        // Plain encodings short-circuit. Only the interpolated form
+        // needs the slot-by-slot sub-parse, so destructure here rather
+        // than splitting into a helper that leaves an unreachable arm.
+        let (encoding, parts, lit_span) = match lit {
+            StringLit::Utf8(s) => return Ok(Expr::Utf8(s)),
+            StringLit::Ascii(s) => return Ok(Expr::Ascii(s)),
+            StringLit::Utf16(v) => return Ok(Expr::Utf16(v)),
+            StringLit::Utf32(v) => return Ok(Expr::Utf32(v)),
+            StringLit::Interpolated {
+                encoding,
+                parts,
+                span,
+            } => (encoding, parts, span),
         };
         let mut out_parts: Vec<crate::ast::TemplatePart> = Vec::with_capacity(parts.len());
         for part in parts {
@@ -2613,16 +2596,6 @@ fn number_to_expr(n: NumberLit) -> Expr {
         NumberLit::F32(v) => Expr::F32(v),
         NumberLit::F64(v) => Expr::F64(v),
     }
-}
-
-fn string_to_expr_simple(s: StringLit) -> Option<Expr> {
-    Some(match s {
-        StringLit::Utf8(s) => Expr::Utf8(s),
-        StringLit::Ascii(s) => Expr::Ascii(s),
-        StringLit::Utf16(v) => Expr::Utf16(v),
-        StringLit::Utf32(v) => Expr::Utf32(v),
-        StringLit::Interpolated { .. } => return None,
-    })
 }
 
 /// Binding powers and operator mapping for the Pratt parser. Returns
