@@ -19,7 +19,7 @@ impl Span {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum Expr {
+pub enum Expr {
     Bool(bool),
 
     I8(i8),
@@ -125,13 +125,13 @@ pub(crate) enum Expr {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum TemplatePart {
+pub enum TemplatePart {
     Literal(String),
     Expr(Box<Expr>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct MatchArm {
+pub struct MatchArm {
     /// One or more alternative patterns. The arm fires when any matches.
     pub patterns: Vec<Pattern>,
     /// Optional `if` guard, evaluated in the matched pattern's scope.
@@ -141,14 +141,14 @@ pub(crate) struct MatchArm {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum VariantArgs {
+pub enum VariantArgs {
     Unit,
     Positional(Box<Expr>),
     Record(Vec<NamedArg>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum Pattern {
+pub enum Pattern {
     Wildcard(Span),
     Binding {
         name: String,
@@ -179,7 +179,7 @@ pub(crate) enum Pattern {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum VariantPatArgs {
+pub enum VariantPatArgs {
     Unit,
     Positional(Box<Pattern>),
     Record {
@@ -189,7 +189,7 @@ pub(crate) enum VariantPatArgs {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct FunctionLit {
+pub struct FunctionLit {
     pub params: Vec<Parameter>,
     pub return_ty: crate::value::TypeRef,
     pub return_ty_span: Span,
@@ -198,7 +198,7 @@ pub(crate) struct FunctionLit {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct Parameter {
+pub struct Parameter {
     pub name: String,
     pub ty: crate::value::TypeRef,
     pub ty_span: Span,
@@ -206,14 +206,14 @@ pub(crate) struct Parameter {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct LetBinding {
+pub struct LetBinding {
     pub name: String,
     pub value: Expr,
     pub span: Span,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum BinOp {
+pub enum BinOp {
     Add,
     Sub,
     Mul,
@@ -230,13 +230,13 @@ pub(crate) enum BinOp {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum UnaryOp {
+pub enum UnaryOp {
     Neg,
     Not,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct Decorator {
+pub struct Decorator {
     pub name: Vec<String>,
     pub positional: Vec<Expr>,
     pub named: Vec<NamedArg>,
@@ -244,14 +244,14 @@ pub(crate) struct Decorator {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct NamedArg {
+pub struct NamedArg {
     pub name: String,
     pub value: Expr,
     pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct Field {
+pub struct Field {
     pub name: String,
     pub expr: Expr,
     pub decorators: Vec<Decorator>,
@@ -259,7 +259,7 @@ pub(crate) struct Field {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct Block {
+pub struct Block {
     pub kind: String,
     pub labels: Vec<Expr>,
     pub items: Vec<Item>,
@@ -268,33 +268,33 @@ pub(crate) struct Block {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct NamespaceDecl {
+pub struct NamespaceDecl {
     pub path: Vec<String>,
     pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct UseDecl {
+pub struct UseDecl {
     pub path: Vec<String>,
     pub form: UseForm,
     pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum UseForm {
+pub enum UseForm {
     Bare(Option<String>),
     List(Vec<UseItem>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct UseItem {
+pub struct UseItem {
     pub name: String,
     pub alias: Option<String>,
     pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct TypeDecl {
+pub struct TypeDecl {
     pub name: Vec<String>,
     /// Names of parent types/interfaces this declaration inherits
     /// from, in source order. Empty when no `extends` clause was
@@ -306,7 +306,7 @@ pub(crate) struct TypeDecl {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct InterfaceDecl {
+pub struct InterfaceDecl {
     pub name: Vec<String>,
     /// Parent types/interfaces — same shape as `TypeDecl::extends`.
     pub extends: Vec<Vec<String>>,
@@ -316,7 +316,7 @@ pub(crate) struct InterfaceDecl {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct TypeField {
+pub struct TypeField {
     pub name: String,
     pub ty: crate::value::TypeRef,
     pub ty_span: Span,
@@ -326,7 +326,7 @@ pub(crate) struct TypeField {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct UnionDecl {
+pub struct UnionDecl {
     pub name: Vec<String>,
     /// Parent unions whose variants are inherited. Empty when this
     /// union is declared without an `extends` clause. Variants are
@@ -339,7 +339,7 @@ pub(crate) struct UnionDecl {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct UnionVariant {
+pub struct UnionVariant {
     pub name: String,
     pub body: VariantBody,
     pub decorators: Vec<Decorator>,
@@ -347,7 +347,7 @@ pub(crate) struct UnionVariant {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum VariantBody {
+pub enum VariantBody {
     Record(Vec<TypeField>),
     TypeRef {
         ty: crate::value::TypeRef,
@@ -363,7 +363,7 @@ pub(crate) enum VariantBody {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct SymbolSetDecl {
+pub struct SymbolSetDecl {
     pub name: Vec<String>,
     pub symbols: Vec<SymbolEntry>,
     pub decorators: Vec<Decorator>,
@@ -371,34 +371,34 @@ pub(crate) struct SymbolSetDecl {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct SymbolEntry {
+pub struct SymbolEntry {
     pub name: String,
     pub decorators: Vec<Decorator>,
     pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ImportDecl {
+pub struct ImportDecl {
     pub path: String,
     pub path_span: Span,
     pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct Row {
+pub struct Row {
     pub values: Vec<Expr>,
     pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct TableItem {
+pub struct TableItem {
     pub field_name: String,
     pub rows: Vec<Row>,
     pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ConnectionDecl {
+pub struct ConnectionDecl {
     pub name: Vec<String>,
     pub source: crate::value::TypeRef,
     pub source_span: Span,
@@ -410,7 +410,7 @@ pub(crate) struct ConnectionDecl {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ConnectionStmt {
+pub struct ConnectionStmt {
     pub lhs: String,
     pub lhs_span: Span,
     pub rhs: String,
@@ -421,7 +421,7 @@ pub(crate) struct ConnectionStmt {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum Item {
+pub enum Item {
     Field(Field),
     Block(Block),
     TypeDecl(TypeDecl),
@@ -437,6 +437,6 @@ pub(crate) enum Item {
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
-pub(crate) struct Source {
+pub struct Source {
     pub items: Vec<Item>,
 }

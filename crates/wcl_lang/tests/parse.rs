@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use wcl_lang::{
     DeclName, Document, Environment, EvalError, ProfileKey, ResolvedType, SymbolKind, TypeRef,
-    Value, VariantBodyView, VariantPayload, from_fn,
+    Value, VariantBodyView, VariantPayload, ast, from_fn, parse_for_edit,
 };
 
 fn examples_dir() -> PathBuf {
@@ -1602,4 +1602,33 @@ fn interpolation_ascii_violation_reports_at_eval() {
         rendered.contains("non-ASCII"),
         "expected non-ASCII eval error, got: {rendered}",
     );
+}
+
+#[test]
+fn parse_for_edit_exposes_mutable_ast() {
+    // The edit-path entry point hands back an owned `ast::Source` with
+    // public fields. A host can walk and mutate it directly without
+    // going through the Document view layer.
+    let src = r#"
+        @schemaless name  = "alpha"
+        @schemaless count = 3
+    "#;
+    let mut ast = parse_for_edit(src, "test").expect("parse");
+    assert_eq!(ast.items.len(), 2);
+
+    // Find the `name` field and overwrite its expression.
+    for item in &mut ast.items {
+        if let ast::Item::Field(f) = item
+            && f.name == "name"
+        {
+            f.expr = ast::Expr::Utf8("beta".into());
+        }
+    }
+
+    // Confirm the mutation took.
+    let mutated = match &ast.items[0] {
+        ast::Item::Field(f) => &f.expr,
+        other => panic!("expected Field, got {other:?}"),
+    };
+    assert!(matches!(mutated, ast::Expr::Utf8(s) if s == "beta"));
 }
