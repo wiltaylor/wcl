@@ -1,0 +1,13 @@
+// `Service` declares no nested-block kinds; nesting a `route` is a
+// DisallowedChild violation.
+@block("service")
+type Service {
+  region: utf8
+}
+
+service web {
+  region = "us-east-1"
+  route "/api" {
+    method = "GET"
+  }
+}

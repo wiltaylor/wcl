@@ -14,6 +14,7 @@
 
 use std::sync::Arc;
 
+use crate::numeric::for_each_numeric_variant;
 use crate::value::Value;
 
 /// Convert a [`Value`] into a concrete Rust type for use as a built-in
@@ -100,7 +101,7 @@ where
 
 // ─── FromValue impls ─────────────────────────────────────────────────
 
-macro_rules! from_value_int {
+macro_rules! from_value_scalar {
     ($t:ty, $variant:ident) => {
         impl FromValue for $t {
             fn from_value(v: &Value) -> Result<Self, String> {
@@ -117,21 +118,8 @@ macro_rules! from_value_int {
     };
 }
 
-from_value_int!(bool, Bool);
-from_value_int!(i8, I8);
-from_value_int!(i16, I16);
-from_value_int!(i32, I32);
-from_value_int!(i64, I64);
-from_value_int!(i128, I128);
-from_value_int!(isize, Isize);
-from_value_int!(u8, U8);
-from_value_int!(u16, U16);
-from_value_int!(u32, U32);
-from_value_int!(u64, U64);
-from_value_int!(u128, U128);
-from_value_int!(usize, Usize);
-from_value_int!(f32, F32);
-from_value_int!(f64, F64);
+from_value_scalar!(bool, Bool);
+for_each_numeric_variant!(from_value_scalar);
 
 impl FromValue for String {
     fn from_value(v: &Value) -> Result<Self, String> {
@@ -175,7 +163,7 @@ where
 
 // ─── IntoValue impls ─────────────────────────────────────────────────
 
-macro_rules! into_value_int {
+macro_rules! into_value_scalar {
     ($t:ty, $variant:ident) => {
         impl IntoValue for $t {
             fn into_value(self) -> Value {
@@ -185,21 +173,8 @@ macro_rules! into_value_int {
     };
 }
 
-into_value_int!(bool, Bool);
-into_value_int!(i8, I8);
-into_value_int!(i16, I16);
-into_value_int!(i32, I32);
-into_value_int!(i64, I64);
-into_value_int!(i128, I128);
-into_value_int!(isize, Isize);
-into_value_int!(u8, U8);
-into_value_int!(u16, U16);
-into_value_int!(u32, U32);
-into_value_int!(u64, U64);
-into_value_int!(u128, U128);
-into_value_int!(usize, Usize);
-into_value_int!(f32, F32);
-into_value_int!(f64, F64);
+into_value_scalar!(bool, Bool);
+for_each_numeric_variant!(into_value_scalar);
 
 impl IntoValue for String {
     fn into_value(self) -> Value {

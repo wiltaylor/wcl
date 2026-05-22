@@ -1,0 +1,9 @@
+// A two-node cycle in `extends`. The validator should reject this
+// at Document::open time, before any value evaluation.
+type A extends B {
+  name: utf8
+}
+
+type B extends A {
+  id: i64
+}

@@ -1,0 +1,3 @@
+// Only one namespace declaration is allowed, and it must be first.
+namespace a.b
+namespace c.d

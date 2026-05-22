@@ -60,6 +60,46 @@ pub enum DataKind<'a> {
     Symbol(SymbolEntry<'a>),
 }
 
+impl<'a> DataKind<'a> {
+    /// Short tag identifying this variant. Used in diagnostic messages
+    /// and as the public face of [`DataRef::kind`].
+    pub(crate) fn kind_name(&self) -> &'static str {
+        match self {
+            DataKind::Document(_) => "document",
+            DataKind::Field(_) => "field",
+            DataKind::Block(_) => "block",
+            DataKind::BlockList(_) => "block_list",
+            DataKind::Table(_) => "table",
+            DataKind::Type(_) => "type",
+            DataKind::TypeField(_) => "type_field",
+            DataKind::Union(_) => "union",
+            DataKind::Variant(_) => "variant",
+            DataKind::Symbols(_) => "symbol_set",
+            DataKind::Symbol(_) => "symbol_entry",
+        }
+    }
+
+    /// Source span of the underlying AST node. `Document` and an empty
+    /// `BlockList`/`Table` fall back to the zero span.
+    pub(crate) fn span(&self) -> crate::ast::Span {
+        match self {
+            DataKind::Document(_) => crate::ast::Span::new(0, 0),
+            DataKind::Field(f) => f.span(),
+            DataKind::Block(b) => b.span(),
+            DataKind::BlockList(v) | DataKind::Table(v) => v
+                .first()
+                .map(|b| b.span())
+                .unwrap_or_else(|| crate::ast::Span::new(0, 0)),
+            DataKind::Type(t) => t.span(),
+            DataKind::TypeField(f) => f.span(),
+            DataKind::Union(u) => u.span(),
+            DataKind::Variant(v) => v.span(),
+            DataKind::Symbols(s) => s.span(),
+            DataKind::Symbol(s) => s.span(),
+        }
+    }
+}
+
 impl<'a> DataRef<'a> {
     pub(crate) fn new(inner: DataKind<'a>) -> Self {
         Self { inner }
@@ -91,19 +131,7 @@ impl<'a> DataRef<'a> {
     }
 
     pub fn kind(&self) -> &'static str {
-        match &self.inner {
-            DataKind::Document(_) => "document",
-            DataKind::Field(_) => "field",
-            DataKind::Block(_) => "block",
-            DataKind::BlockList(_) => "block_list",
-            DataKind::Table(_) => "table",
-            DataKind::Type(_) => "type",
-            DataKind::TypeField(_) => "type_field",
-            DataKind::Union(_) => "union",
-            DataKind::Variant(_) => "variant",
-            DataKind::Symbols(_) => "symbol_set",
-            DataKind::Symbol(_) => "symbol_entry",
-        }
+        self.inner.kind_name()
     }
 
     /// Number of entries in a `BlockList` or `Table`. `None` for any
@@ -270,21 +298,7 @@ impl<'a> DataRef<'a> {
     /// `BlockList` returns the span of its first block (or
     /// `Span::default()` when empty).
     pub fn span(&self) -> crate::ast::Span {
-        match &self.inner {
-            DataKind::Document(_) => crate::ast::Span::new(0, 0),
-            DataKind::Field(f) => f.span(),
-            DataKind::Block(b) => b.span(),
-            DataKind::BlockList(v) | DataKind::Table(v) => v
-                .first()
-                .map(|b| b.span())
-                .unwrap_or_else(|| crate::ast::Span::new(0, 0)),
-            DataKind::Type(t) => t.span(),
-            DataKind::TypeField(f) => f.span(),
-            DataKind::Union(u) => u.span(),
-            DataKind::Variant(v) => v.span(),
-            DataKind::Symbols(s) => s.span(),
-            DataKind::Symbol(s) => s.span(),
-        }
+        self.inner.span()
     }
 
     pub fn inner(&self) -> &DataKind<'a> {

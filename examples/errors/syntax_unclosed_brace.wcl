@@ -1,0 +1,4 @@
+// Missing closing brace — should fail at parse time with a syntax
+// error pointing at the unexpected end of file.
+@schemaless config {
+  region = "us-east-1"

@@ -1,0 +1,4 @@
+// Self-extension is a degenerate cycle; flagged as a distinct error.
+type Loop extends Loop {
+  x: i64
+}

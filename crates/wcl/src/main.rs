@@ -4,8 +4,8 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use wcl_lang::{
-    Block, Decorator, Document, Field, SymbolSetDecl, TensorDim, TypeDecl, TypeRef, UnionDecl,
-    UnionVariant, UseDeclView, UseFormView, Value, VariantBodyView,
+    Block, DeclName, Decorator, Document, Field, SymbolSetDecl, TensorDim, TypeDecl, TypeRef,
+    UnionDecl, UnionVariant, UseDeclView, UseFormView, Value, VariantBodyView,
 };
 
 #[derive(Parser)]
@@ -26,6 +26,17 @@ enum Command {
     Check {
         /// Path to a WCL source file.
         file: PathBuf,
+    },
+    /// Resolve a dotted path inside a WCL file and print the resulting value.
+    ///
+    /// Examples:
+    ///   wcl eval site.wcl name
+    ///   wcl eval site.wcl service.config.region
+    Eval {
+        /// Path to a WCL source file.
+        file: PathBuf,
+        /// Dotted path to resolve from the document root.
+        path: String,
     },
 }
 
@@ -57,6 +68,28 @@ fn main() -> ExitCode {
                     ExitCode::FAILURE
                 }
             }
+            Err(err) => {
+                eprintln!("{:?}", miette::Report::new(err));
+                ExitCode::FAILURE
+            }
+        },
+        Command::Eval { file, path } => match Document::from_file(&file) {
+            Ok(doc) => match doc.get(&path) {
+                Some(dr) => match dr.value() {
+                    Ok(v) => {
+                        println!("{}", value_repr(&v));
+                        ExitCode::SUCCESS
+                    }
+                    Err(e) => {
+                        eprintln!("{:?}", miette::Report::new(e));
+                        ExitCode::FAILURE
+                    }
+                },
+                None => {
+                    eprintln!("no such path: {path}");
+                    ExitCode::FAILURE
+                }
+            },
             Err(err) => {
                 eprintln!("{:?}", miette::Report::new(err));
                 ExitCode::FAILURE

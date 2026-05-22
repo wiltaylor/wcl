@@ -1,0 +1,5 @@
+// `Missing` is not declared anywhere — Document::open must fail
+// while validating the type ref on `cfg`.
+type Wrapper {
+  cfg: Missing
+}

@@ -182,6 +182,40 @@ impl<'a> Lexer<'a> {
         self.src.get(self.pos + offset).copied()
     }
 
+    /// Advance through a digit run that allows `_` as a thousands separator.
+    /// Underscores may only follow a digit; a leading `_` (or `_` after `_`)
+    /// is a hard error. Reports whether at least one digit was consumed and
+    /// whether the run ended on `_`. Callers decide what to do with both.
+    fn scan_digits_with_underscores<F>(&mut self, is_digit: F) -> Result<DigitScan, LexError>
+    where
+        F: Fn(u8) -> bool,
+    {
+        let mut had_digit = false;
+        let mut trailing_underscore = false;
+        while let Some(c) = self.peek() {
+            if c == b'_' {
+                if !had_digit {
+                    return Err(LexError {
+                        message: "underscore must follow a digit".into(),
+                        span: Span::new(self.pos, self.pos + 1),
+                    });
+                }
+                trailing_underscore = true;
+                self.pos += 1;
+            } else if is_digit(c) {
+                had_digit = true;
+                trailing_underscore = false;
+                self.pos += 1;
+            } else {
+                break;
+            }
+        }
+        Ok(DigitScan {
+            had_digit,
+            trailing_underscore,
+        })
+    }
+
     fn bump(&mut self) -> Option<u8> {
         let c = self.peek()?;
         self.pos += 1;
@@ -362,27 +396,8 @@ impl<'a> Lexer<'a> {
         };
 
         let body_start = self.pos;
-        let mut prev_was_underscore = false;
-        let mut had_digit = false;
-        while let Some(c) = self.peek() {
-            if c == b'_' {
-                if !had_digit {
-                    return Err(LexError {
-                        message: "underscore must follow a digit".into(),
-                        span: Span::new(self.pos, self.pos + 1),
-                    });
-                }
-                prev_was_underscore = true;
-                self.pos += 1;
-            } else if is_digit_in_base(c, base) {
-                had_digit = true;
-                prev_was_underscore = false;
-                self.pos += 1;
-            } else {
-                break;
-            }
-        }
-        if !had_digit {
+        let body_scan = self.scan_digits_with_underscores(|c| is_digit_in_base(c, base))?;
+        if !body_scan.had_digit {
             // If the next character is alphanumeric, treat it as a bad digit
             // for the chosen base (more helpful than "expected digits").
             if let Some(c) = self.peek()
@@ -398,7 +413,7 @@ impl<'a> Lexer<'a> {
                 span: Span::new(start, self.pos),
             });
         }
-        if prev_was_underscore {
+        if body_scan.trailing_underscore {
             return Err(LexError {
                 message: "trailing underscore in numeric literal".into(),
                 span: Span::new(self.pos - 1, self.pos),
@@ -411,27 +426,8 @@ impl<'a> Lexer<'a> {
         if base == 10 && self.peek() == Some(b'.') && matches!(self.peek_at(1), Some(b'0'..=b'9')) {
             is_float = true;
             self.pos += 1; // consume '.'
-            let mut frac_had_digit = false;
-            let mut frac_prev_underscore = false;
-            while let Some(c) = self.peek() {
-                if c == b'_' {
-                    if !frac_had_digit {
-                        return Err(LexError {
-                            message: "underscore must follow a digit".into(),
-                            span: Span::new(self.pos, self.pos + 1),
-                        });
-                    }
-                    frac_prev_underscore = true;
-                    self.pos += 1;
-                } else if c.is_ascii_digit() {
-                    frac_had_digit = true;
-                    frac_prev_underscore = false;
-                    self.pos += 1;
-                } else {
-                    break;
-                }
-            }
-            if frac_prev_underscore {
+            let frac_scan = self.scan_digits_with_underscores(|c| c.is_ascii_digit())?;
+            if frac_scan.trailing_underscore {
                 return Err(LexError {
                     message: "trailing underscore in numeric literal".into(),
                     span: Span::new(self.pos - 1, self.pos),
@@ -447,23 +443,8 @@ impl<'a> Lexer<'a> {
             if matches!(self.peek(), Some(b'+' | b'-')) {
                 self.pos += 1;
             }
-            let digits_start = self.pos;
-            while let Some(c) = self.peek() {
-                if c == b'_' {
-                    if self.pos == digits_start {
-                        return Err(LexError {
-                            message: "underscore must follow a digit".into(),
-                            span: Span::new(self.pos, self.pos + 1),
-                        });
-                    }
-                    self.pos += 1;
-                } else if c.is_ascii_digit() {
-                    self.pos += 1;
-                } else {
-                    break;
-                }
-            }
-            if self.pos == digits_start {
+            let exp_scan = self.scan_digits_with_underscores(|c| c.is_ascii_digit())?;
+            if !exp_scan.had_digit {
                 return Err(LexError {
                     message: "expected digits in exponent".into(),
                     span: Span::new(exp_start, self.pos),
@@ -558,6 +539,11 @@ impl StringPrefix {
             _ => None,
         }
     }
+}
+
+struct DigitScan {
+    had_digit: bool,
+    trailing_underscore: bool,
 }
 
 fn is_ident_start(c: u8) -> bool {

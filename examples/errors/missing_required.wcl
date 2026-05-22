@@ -1,0 +1,14 @@
+// `service` declares `required_children = ["config"]` but the instance
+// omits the config child — MissingRequired.
+@block("service", required_children = ["config"])
+type Service {
+  @child("config") config: Config
+}
+
+@block("config")
+type Config {
+  region: utf8
+}
+
+service web {
+}

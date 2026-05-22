@@ -1,11 +1,20 @@
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
 use std::sync::OnceLock;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering;
 
 use miette::{NamedSource, SourceSpan};
 
 use std::collections::{HashMap, HashSet};
+
+mod cells;
+mod effective_fields;
+mod eval_ops;
+mod imports;
+mod interfaces;
+mod lookup;
+mod schema_check;
+mod scope;
+mod validate;
 
 use crate::ast::{self, Span};
 use crate::environment::Environment;
@@ -13,289 +22,15 @@ use crate::error::{EvalError, ParseError};
 use crate::parser::Parser;
 use crate::symbols::{SymbolIndex, SymbolKind};
 use crate::value::{BuiltinType, FnParam, FnValue, TensorDim, TypeRef, Value};
-
-#[derive(Debug)]
-pub(crate) struct FieldCell {
-    value: OnceLock<Result<Value, EvalError>>,
-    evaluating: AtomicBool,
-}
-
-impl FieldCell {
-    fn new() -> Self {
-        Self {
-            value: OnceLock::new(),
-            evaluating: AtomicBool::new(false),
-        }
-    }
-}
-
-/// Per-decorator cache for evaluated positional and named arguments.
-#[derive(Debug, Default)]
-pub(crate) struct DecoratorCell {
-    positional: OnceLock<Result<Vec<Value>, EvalError>>,
-    named: OnceLock<HashMap<String, Result<Value, EvalError>>>,
-}
-
-#[derive(Debug)]
-pub(crate) struct ItemCells {
-    pub(crate) decorators: Vec<DecoratorCell>,
-    pub(crate) kind: ItemCellKind,
-}
-
-#[derive(Debug)]
-pub(crate) enum ItemCellKind {
-    Field(FieldCell),
-    Block {
-        labels: OnceLock<Result<Vec<Value>, EvalError>>,
-        items: Vec<ItemCells>,
-        /// Lazy schema-content validation cache. Populated on first call
-        /// to `Block::schema_errors()`.
-        schema_validation: OnceLock<Vec<EvalError>>,
-        /// Synthesised `Block`s from `Item::Table` rows, built once at
-        /// cells-build time. Each entry remembers the parent field
-        /// name the row's table-header bound to; the `kind` is left
-        /// blank in the stored AST and overridden at view time using
-        /// the parent type's `@children(kind)` declaration.
-        synth_rows: Vec<SynthRow>,
-    },
-    TypeDecl {
-        /// One inner Vec per `ast::TypeDecl.fields[i]`, holding cells for
-        /// that field's decorators.
-        field_decorators: Vec<Vec<DecoratorCell>>,
-    },
-    InterfaceDecl {
-        /// One inner Vec per `ast::InterfaceDecl.fields[i]`, holding cells
-        /// for that field's decorators.
-        field_decorators: Vec<Vec<DecoratorCell>>,
-    },
-    UnionDecl {
-        variant_decorators: Vec<Vec<DecoratorCell>>,
-        /// `[variant_idx][field_idx]` decorator cells for record-variant
-        /// fields. Empty inner vecs for non-record variants.
-        variant_field_decorators: Vec<Vec<Vec<DecoratorCell>>>,
-    },
-    SymbolSetDecl {
-        symbol_decorators: Vec<Vec<DecoratorCell>>,
-    },
-    NamespaceDecl,
-    UseDecl,
-    /// Stub variant for `Item::Table` AST entries. The actual cells
-    /// for the rows (synthesised `Block`s) live in the enclosing
-    /// block's `table_rows` projection cache, keyed by field name.
-    Table,
-    /// Lazy import. Populated on first read-access of the enclosing
-    /// block. Top-level imports also get this cell but are never
-    /// triggered through it — they're expanded eagerly into
-    /// `Document::eager_imports` at `open_with` time.
-    Import {
-        /// As written in the source.
-        path: String,
-        /// Span of the path string literal — used for error labels.
-        path_span: Span,
-        /// Resolved file directory for path joins. `None` means the
-        /// document had no base directory (e.g. `Document::open`),
-        /// which surfaces as an `ImportFailed` on first access.
-        base_dir: Option<PathBuf>,
-        loaded: OnceLock<Result<LoadedImport, EvalError>>,
-    },
-}
-
-#[derive(Debug)]
-pub(crate) struct BlockCells {
-    pub(crate) items: Vec<ItemCells>,
-}
-
-/// One synthesised row-Block, owned by a parent `Block` cell. Built
-/// at cells-build time from an `Item::Table` row. The `block.kind`
-/// field is intentionally blank — the kind comes from the parent
-/// type's `@children` decoration at view time.
-#[derive(Debug)]
-pub(crate) struct SynthRow {
-    pub(crate) field_name: String,
-    pub(crate) block: ast::Block,
-    pub(crate) cells: ItemCells,
-}
-
-fn make_decorator_cells(decs: &[ast::Decorator]) -> Vec<DecoratorCell> {
-    (0..decs.len()).map(|_| DecoratorCell::default()).collect()
-}
-
-impl BlockCells {
-    fn build(items: &[ast::Item], base_dir: Option<&Path>) -> Self {
-        let cells = items
-            .iter()
-            .map(|item| ItemCells::build(item, base_dir))
-            .collect();
-        Self { items: cells }
-    }
-}
-
-impl ItemCells {
-    fn build(item: &ast::Item, base_dir: Option<&Path>) -> Self {
-        match item {
-            ast::Item::Field(f) => Self {
-                decorators: make_decorator_cells(&f.decorators),
-                kind: ItemCellKind::Field(FieldCell::new()),
-            },
-            ast::Item::Block(b) => {
-                // Eagerly synthesise per-row Blocks from Item::Table
-                // entries nested in this block. The `kind` is filled
-                // in at view time; the labels carry the row values
-                // verbatim.
-                let mut synth_rows: Vec<SynthRow> = Vec::new();
-                for item in &b.items {
-                    if let ast::Item::Table(t) = item {
-                        for r in &t.rows {
-                            let synth_block = ast::Block {
-                                kind: String::new(),
-                                labels: r.values.clone(),
-                                items: Vec::new(),
-                                decorators: Vec::new(),
-                                span: r.span,
-                            };
-                            let synth_cells =
-                                ItemCells::build(&ast::Item::Block(synth_block.clone()), None);
-                            synth_rows.push(SynthRow {
-                                field_name: t.field_name.clone(),
-                                block: synth_block,
-                                cells: synth_cells,
-                            });
-                        }
-                    }
-                }
-                Self {
-                    decorators: make_decorator_cells(&b.decorators),
-                    kind: ItemCellKind::Block {
-                        labels: OnceLock::new(),
-                        items: b
-                            .items
-                            .iter()
-                            .map(|item| ItemCells::build(item, base_dir))
-                            .collect(),
-                        schema_validation: OnceLock::new(),
-                        synth_rows,
-                    },
-                }
-            }
-            ast::Item::TypeDecl(t) => Self {
-                decorators: make_decorator_cells(&t.decorators),
-                kind: ItemCellKind::TypeDecl {
-                    field_decorators: t
-                        .fields
-                        .iter()
-                        .map(|f| make_decorator_cells(&f.decorators))
-                        .collect(),
-                },
-            },
-            ast::Item::InterfaceDecl(i) => Self {
-                decorators: make_decorator_cells(&i.decorators),
-                kind: ItemCellKind::InterfaceDecl {
-                    field_decorators: i
-                        .fields
-                        .iter()
-                        .map(|f| make_decorator_cells(&f.decorators))
-                        .collect(),
-                },
-            },
-            ast::Item::UnionDecl(u) => Self {
-                decorators: make_decorator_cells(&u.decorators),
-                kind: ItemCellKind::UnionDecl {
-                    variant_decorators: u
-                        .variants
-                        .iter()
-                        .map(|v| make_decorator_cells(&v.decorators))
-                        .collect(),
-                    variant_field_decorators: u
-                        .variants
-                        .iter()
-                        .map(|v| match &v.body {
-                            ast::VariantBody::Record(fields) => fields
-                                .iter()
-                                .map(|f| make_decorator_cells(&f.decorators))
-                                .collect(),
-                            _ => Vec::new(),
-                        })
-                        .collect(),
-                },
-            },
-            ast::Item::SymbolSetDecl(s) => Self {
-                decorators: make_decorator_cells(&s.decorators),
-                kind: ItemCellKind::SymbolSetDecl {
-                    symbol_decorators: s
-                        .symbols
-                        .iter()
-                        .map(|sym| make_decorator_cells(&sym.decorators))
-                        .collect(),
-                },
-            },
-            ast::Item::NamespaceDecl(_) => Self {
-                decorators: Vec::new(),
-                kind: ItemCellKind::NamespaceDecl,
-            },
-            ast::Item::UseDecl(_) => Self {
-                decorators: Vec::new(),
-                kind: ItemCellKind::UseDecl,
-            },
-            ast::Item::Import(imp) => Self {
-                decorators: Vec::new(),
-                kind: ItemCellKind::Import {
-                    path: imp.path.clone(),
-                    path_span: imp.path_span,
-                    base_dir: base_dir.map(Path::to_path_buf),
-                    loaded: OnceLock::new(),
-                },
-            },
-            ast::Item::Table(_) => Self {
-                decorators: Vec::new(),
-                kind: ItemCellKind::Table,
-            },
-        }
-    }
-}
-
-/// Lexical scope of an expression's evaluation site.
-///
-/// A `Scope<'a>` is an Rc-backed chain of enclosing block frames,
-/// outermost first. Bare identifiers inside a `&T` field are resolved
-/// by walking this chain innermost → outermost, then falling through
-/// to the document root.
-#[derive(Clone)]
-pub(crate) struct Scope<'a> {
-    frames: Rc<[ScopeFrame<'a>]>,
-}
-
-#[derive(Clone, Copy)]
-pub(crate) struct ScopeFrame<'a> {
-    ast: &'a ast::Block,
-    cells: &'a ItemCells,
-    kind_override: Option<&'a str>,
-}
-
-impl<'a> Scope<'a> {
-    pub(crate) fn root() -> Self {
-        Self {
-            frames: Rc::from([]),
-        }
-    }
-
-    fn push(&self, frame: ScopeFrame<'a>) -> Self {
-        let mut v: Vec<ScopeFrame<'a>> = self.frames.iter().copied().collect();
-        v.push(frame);
-        Self { frames: v.into() }
-    }
-
-    pub(crate) fn frames(&self) -> &[ScopeFrame<'a>] {
-        &self.frames
-    }
-}
-
-impl std::fmt::Debug for Scope<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Scope")
-            .field("depth", &self.frames.len())
-            .finish()
-    }
-}
+use cells::{BlockCells, DecoratorCell, FieldCell, ItemCellKind, ItemCells, LoadedImport};
+use effective_fields::{build_effective_fields, is_descendant_of_walk, lookup_effective_field};
+use eval_ops::{apply_binary, apply_unary, as_bool, describe_expr, format_member_path};
+use imports::{BlockSlice, expand_top_level_imports, load_import_lazily, push_loaded_imports};
+use interfaces::{check_interface_conformance, dataref_concrete_type, same_type_decl};
+use lookup::{find_block, find_field, iter_blocks, iter_fields, iter_tables};
+use schema_check::{compute_schema_errors, has_schemaless};
+use scope::{Scope, ScopeFrame};
+use validate::{decl_fqn_matches, resolve_path, validate_document};
 
 #[derive(Debug)]
 pub struct Document {
@@ -330,23 +65,6 @@ struct SourceView<'a> {
     items: &'a [ast::Item],
     cells: &'a [ItemCells],
     file_ns: &'a [String],
-}
-
-/// Result of loading one imported file. Transitive top-level imports
-/// inside the loaded file are flattened into `eager_imports`; nested
-/// (in-block) imports stay lazy inside `items`/`cells`.
-#[derive(Debug)]
-pub(crate) struct LoadedImport {
-    #[allow(dead_code)] // kept for introspection / future debugging
-    pub(crate) path: PathBuf,
-    #[allow(dead_code)] // FQNs in `symbols` already encode this
-    pub(crate) file_ns: Vec<String>,
-    pub(crate) items: Vec<ast::Item>,
-    pub(crate) cells: Vec<ItemCells>,
-    /// Symbols indexed within this loaded file. Paths refer to the
-    /// `items`/`cells` arrays in this same struct.
-    pub(crate) symbols: SymbolIndex,
-    pub(crate) eager_imports: Vec<LoadedImport>,
 }
 
 impl Document {
@@ -1016,69 +734,7 @@ impl Document {
 /// failed, or the value isn't a non-negative integer.
 fn decorator_u64_named(decs: &[Decorator<'_>], dec_name: &str, arg_name: &str) -> Option<u64> {
     let dec = decs.iter().find(|d| d.full_name() == dec_name)?;
-    let v = dec.named_arg(arg_name)?.ok()?;
-    match v {
-        Value::I8(n) if n >= 0 => Some(n as u64),
-        Value::I16(n) if n >= 0 => Some(n as u64),
-        Value::I32(n) if n >= 0 => Some(n as u64),
-        Value::I64(n) if n >= 0 => Some(n as u64),
-        Value::I128(n) if n >= 0 => Some(n as u64),
-        Value::Isize(n) if n >= 0 => Some(n as u64),
-        Value::U8(n) => Some(n as u64),
-        Value::U16(n) => Some(n as u64),
-        Value::U32(n) => Some(n as u64),
-        Value::U64(n) => Some(n),
-        Value::U128(n) => Some(n as u64),
-        Value::Usize(n) => Some(n as u64),
-        _ => None,
-    }
-}
-
-fn decl_fqn_matches(decl: &[String], target: &[&str]) -> bool {
-    decl.len() == target.len() && decl.iter().zip(target.iter()).all(|(a, b)| a == b)
-}
-
-fn resolve_path(
-    path: &[String],
-    file_ns: &[String],
-    item_aliases: &HashMap<String, Vec<String>>,
-    ns_aliases: &HashMap<String, Vec<String>>,
-    wildcards: &[Vec<String>],
-    registry: &HashSet<Vec<String>>,
-) -> Option<Vec<String>> {
-    // 1. file_ns + path
-    let candidate: Vec<String> = file_ns.iter().chain(path.iter()).cloned().collect();
-    if registry.contains(&candidate) {
-        return Some(candidate);
-    }
-    // 2. item alias on single-segment path
-    if path.len() == 1
-        && let Some(fqn) = item_aliases.get(&path[0])
-        && registry.contains(fqn)
-    {
-        return Some(fqn.clone());
-    }
-    // 3. namespace alias on first segment of multi-segment path
-    if path.len() > 1
-        && let Some(prefix) = ns_aliases.get(&path[0])
-    {
-        let candidate: Vec<String> = prefix.iter().chain(path[1..].iter()).cloned().collect();
-        if registry.contains(&candidate) {
-            return Some(candidate);
-        }
-    }
-    // 4. each wildcard prefix
-    for w in wildcards {
-        let candidate: Vec<String> = w.iter().chain(path.iter()).cloned().collect();
-        if registry.contains(&candidate) {
-            return Some(candidate);
-        }
-    }
-    // 5. absolute
-    if registry.contains(path) {
-        return Some(path.to_vec());
-    }
-    None
+    dec.named_arg(arg_name)?.ok()?.as_u64()
 }
 
 #[derive(Debug)]
@@ -1100,12 +756,63 @@ pub enum ResolvedType<'a> {
     },
 }
 
+/// Shared accessors for the four top-level declaration views (`TypeDecl`,
+/// `InterfaceDecl`, `UnionDecl`, `SymbolSetDecl`). All four hold a
+/// segment-path name plus the surrounding file namespace; the rendering of
+/// `name`, `name_segments`, `full_name`, and `namespace` is identical.
+pub trait DeclName<'a> {
+    /// Path written in source (without the file namespace).
+    fn name_segments(&self) -> &'a [String];
+
+    /// The file namespace this declaration was parsed under.
+    fn file_ns(&self) -> &'a [String];
+
+    /// Last segment of the declared name.
+    fn name(&self) -> &'a str {
+        self.name_segments()
+            .last()
+            .map(String::as_str)
+            .expect("name has at least one segment")
+    }
+
+    /// Fully-qualified name as a dotted string: `file_ns + name_segments`.
+    fn full_name(&self) -> String {
+        self.file_ns()
+            .iter()
+            .chain(self.name_segments().iter())
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(".")
+    }
+
+    /// Namespace path containing this declaration: `file_ns +
+    /// name_segments[..-1]`. Empty when the declaration sits directly in
+    /// the file namespace with a single-segment name.
+    fn namespace(&self) -> Vec<String> {
+        let segs = self.name_segments();
+        let mut v: Vec<String> = self.file_ns().to_vec();
+        if segs.len() > 1 {
+            v.extend(segs[..segs.len() - 1].iter().cloned());
+        }
+        v
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct UnionDecl<'a> {
-    ast: &'a ast::UnionDecl,
-    file_ns: &'a [String],
-    cells: &'a ItemCells,
-    doc: &'a Document,
+    pub(super) ast: &'a ast::UnionDecl,
+    pub(super) file_ns: &'a [String],
+    pub(super) cells: &'a ItemCells,
+    pub(super) doc: &'a Document,
+}
+
+impl<'a> DeclName<'a> for UnionDecl<'a> {
+    fn name_segments(&self) -> &'a [String] {
+        &self.ast.name
+    }
+    fn file_ns(&self) -> &'a [String] {
+        self.file_ns
+    }
 }
 
 impl<'a> UnionDecl<'a> {
@@ -1137,35 +844,6 @@ impl<'a> UnionDecl<'a> {
             .iter()
             .zip(self.cells.decorators.iter())
             .map(move |(ast, cell)| Decorator { ast, cell, doc })
-    }
-
-    /// Last segment of the declared name.
-    pub fn name(&self) -> &'a str {
-        self.ast.name.last().expect("name has at least one segment")
-    }
-
-    /// Path as written in source (relative to file namespace).
-    pub fn name_segments(&self) -> &'a [String] {
-        &self.ast.name
-    }
-
-    /// Fully-qualified name as a dotted string.
-    pub fn full_name(&self) -> String {
-        self.file_ns
-            .iter()
-            .chain(self.ast.name.iter())
-            .cloned()
-            .collect::<Vec<_>>()
-            .join(".")
-    }
-
-    /// Namespace path containing this declaration (file ns + decl path minus last).
-    pub fn namespace(&self) -> Vec<String> {
-        let mut v: Vec<String> = self.file_ns.to_vec();
-        if self.ast.name.len() > 1 {
-            v.extend(self.ast.name[..self.ast.name.len() - 1].iter().cloned());
-        }
-        v
     }
 
     pub fn span(&self) -> Span {
@@ -1383,10 +1061,19 @@ impl<'a> NamedArg<'a> {
 
 #[derive(Debug, Clone, Copy)]
 pub struct SymbolSetDecl<'a> {
-    ast: &'a ast::SymbolSetDecl,
-    file_ns: &'a [String],
-    cells: &'a ItemCells,
-    doc: &'a Document,
+    pub(super) ast: &'a ast::SymbolSetDecl,
+    pub(super) file_ns: &'a [String],
+    pub(super) cells: &'a ItemCells,
+    pub(super) doc: &'a Document,
+}
+
+impl<'a> DeclName<'a> for SymbolSetDecl<'a> {
+    fn name_segments(&self) -> &'a [String] {
+        &self.ast.name
+    }
+    fn file_ns(&self) -> &'a [String] {
+        self.file_ns
+    }
 }
 
 impl<'a> SymbolSetDecl<'a> {
@@ -1404,31 +1091,6 @@ impl<'a> SymbolSetDecl<'a> {
             .iter()
             .zip(self.cells.decorators.iter())
             .map(move |(ast, cell)| Decorator { ast, cell, doc })
-    }
-
-    pub fn name(&self) -> &'a str {
-        self.ast.name.last().expect("name has at least one segment")
-    }
-
-    pub fn name_segments(&self) -> &'a [String] {
-        &self.ast.name
-    }
-
-    pub fn full_name(&self) -> String {
-        self.file_ns
-            .iter()
-            .chain(self.ast.name.iter())
-            .cloned()
-            .collect::<Vec<_>>()
-            .join(".")
-    }
-
-    pub fn namespace(&self) -> Vec<String> {
-        let mut v: Vec<String> = self.file_ns.to_vec();
-        if self.ast.name.len() > 1 {
-            v.extend(self.ast.name[..self.ast.name.len() - 1].iter().cloned());
-        }
-        v
     }
 
     pub fn span(&self) -> Span {
@@ -1482,10 +1144,19 @@ impl<'a> SymbolEntry<'a> {
 
 #[derive(Debug, Clone, Copy)]
 pub struct TypeDecl<'a> {
-    ast: &'a ast::TypeDecl,
-    file_ns: &'a [String],
-    cells: &'a ItemCells,
-    doc: &'a Document,
+    pub(super) ast: &'a ast::TypeDecl,
+    pub(super) file_ns: &'a [String],
+    pub(super) cells: &'a ItemCells,
+    pub(super) doc: &'a Document,
+}
+
+impl<'a> DeclName<'a> for TypeDecl<'a> {
+    fn name_segments(&self) -> &'a [String] {
+        &self.ast.name
+    }
+    fn file_ns(&self) -> &'a [String] {
+        self.file_ns
+    }
 }
 
 impl<'a> TypeDecl<'a> {
@@ -1503,31 +1174,6 @@ impl<'a> TypeDecl<'a> {
             .iter()
             .zip(self.cells.decorators.iter())
             .map(move |(ast, cell)| Decorator { ast, cell, doc })
-    }
-
-    pub fn name(&self) -> &'a str {
-        self.ast.name.last().expect("name has at least one segment")
-    }
-
-    pub fn name_segments(&self) -> &'a [String] {
-        &self.ast.name
-    }
-
-    pub fn full_name(&self) -> String {
-        self.file_ns
-            .iter()
-            .chain(self.ast.name.iter())
-            .cloned()
-            .collect::<Vec<_>>()
-            .join(".")
-    }
-
-    pub fn namespace(&self) -> Vec<String> {
-        let mut v: Vec<String> = self.file_ns.to_vec();
-        if self.ast.name.len() > 1 {
-            v.extend(self.ast.name[..self.ast.name.len() - 1].iter().cloned());
-        }
-        v
     }
 
     pub fn span(&self) -> Span {
@@ -1629,28 +1275,14 @@ impl<'a> TypeDecl<'a> {
     /// names (identical-type child redeclarations) are emitted
     /// once: the *latest* (child-most) definition wins.
     pub fn effective_fields(&self) -> Vec<TypeField<'a>> {
-        let mut out: Vec<TypeField<'a>> = Vec::new();
-        let mut seen: HashSet<String> = HashSet::new();
-        collect_effective_fields(self.doc, &self.ast.extends, &mut out, &mut seen);
-        for f in self.fields() {
-            insert_or_override(&mut out, &mut seen, f);
-        }
-        out
+        build_effective_fields(self.doc, &self.ast.extends, self.fields())
     }
 
     /// Like `effective_fields()` but optimised for a one-shot
     /// lookup. Returns the resolved `TypeField` for the named field
     /// considering the full extends chain.
     pub fn effective_field(&self, name: &str) -> Option<TypeField<'a>> {
-        if let Some(f) = self.field(name) {
-            return Some(f);
-        }
-        for parent_path in &self.ast.extends {
-            if let Some(f) = effective_field_via(self.doc, parent_path, name) {
-                return Some(f);
-            }
-        }
-        None
+        lookup_effective_field(self.doc, &self.ast.extends, |n| self.field(n), name)
     }
 
     /// `true` if `other` appears anywhere in `self`'s transitive
@@ -1663,10 +1295,19 @@ impl<'a> TypeDecl<'a> {
 
 #[derive(Debug, Clone, Copy)]
 pub struct InterfaceDecl<'a> {
-    ast: &'a ast::InterfaceDecl,
-    file_ns: &'a [String],
-    cells: &'a ItemCells,
-    doc: &'a Document,
+    pub(super) ast: &'a ast::InterfaceDecl,
+    pub(super) file_ns: &'a [String],
+    pub(super) cells: &'a ItemCells,
+    pub(super) doc: &'a Document,
+}
+
+impl<'a> DeclName<'a> for InterfaceDecl<'a> {
+    fn name_segments(&self) -> &'a [String] {
+        &self.ast.name
+    }
+    fn file_ns(&self) -> &'a [String] {
+        self.file_ns
+    }
 }
 
 impl<'a> InterfaceDecl<'a> {
@@ -1684,31 +1325,6 @@ impl<'a> InterfaceDecl<'a> {
             .iter()
             .zip(self.cells.decorators.iter())
             .map(move |(ast, cell)| Decorator { ast, cell, doc })
-    }
-
-    pub fn name(&self) -> &'a str {
-        self.ast.name.last().expect("name has at least one segment")
-    }
-
-    pub fn name_segments(&self) -> &'a [String] {
-        &self.ast.name
-    }
-
-    pub fn full_name(&self) -> String {
-        self.file_ns
-            .iter()
-            .chain(self.ast.name.iter())
-            .cloned()
-            .collect::<Vec<_>>()
-            .join(".")
-    }
-
-    pub fn namespace(&self) -> Vec<String> {
-        let mut v: Vec<String> = self.file_ns.to_vec();
-        if self.ast.name.len() > 1 {
-            v.extend(self.ast.name[..self.ast.name.len() - 1].iter().cloned());
-        }
-        v
     }
 
     pub fn span(&self) -> Span {
@@ -1749,106 +1365,12 @@ impl<'a> InterfaceDecl<'a> {
     }
 
     pub fn effective_fields(&self) -> Vec<TypeField<'a>> {
-        let mut out: Vec<TypeField<'a>> = Vec::new();
-        let mut seen: HashSet<String> = HashSet::new();
-        collect_effective_fields(self.doc, &self.ast.extends, &mut out, &mut seen);
-        for f in self.fields() {
-            insert_or_override(&mut out, &mut seen, f);
-        }
-        out
+        build_effective_fields(self.doc, &self.ast.extends, self.fields())
     }
 
     pub fn effective_field(&self, name: &str) -> Option<TypeField<'a>> {
-        if let Some(f) = self.field(name) {
-            return Some(f);
-        }
-        for parent_path in &self.ast.extends {
-            if let Some(f) = effective_field_via(self.doc, parent_path, name) {
-                return Some(f);
-            }
-        }
-        None
+        lookup_effective_field(self.doc, &self.ast.extends, |n| self.field(n), name)
     }
-}
-
-/// Walk an extends path list and append each parent's effective
-/// fields into `out`, de-duplicated by name. Used by both
-/// `TypeDecl::effective_fields` and `InterfaceDecl::effective_fields`.
-fn collect_effective_fields<'a>(
-    doc: &'a Document,
-    extends_paths: &[Vec<String>],
-    out: &mut Vec<TypeField<'a>>,
-    seen: &mut HashSet<String>,
-) {
-    for parent_path in extends_paths {
-        let key = parent_path.join(".");
-        if let Some(decl) = doc.type_decl(&key) {
-            for f in decl.effective_fields() {
-                insert_or_override(out, seen, f);
-            }
-        } else if let Some(decl) = doc.interface(&key) {
-            for f in decl.effective_fields() {
-                insert_or_override(out, seen, f);
-            }
-        }
-    }
-}
-
-fn insert_or_override<'a>(
-    out: &mut Vec<TypeField<'a>>,
-    seen: &mut HashSet<String>,
-    f: TypeField<'a>,
-) {
-    if seen.contains(f.name()) {
-        if let Some(slot) = out.iter_mut().find(|x| x.name() == f.name()) {
-            *slot = f;
-        }
-    } else {
-        seen.insert(f.name().to_string());
-        out.push(f);
-    }
-}
-
-fn effective_field_via<'a>(
-    doc: &'a Document,
-    parent_path: &[String],
-    name: &str,
-) -> Option<TypeField<'a>> {
-    let key = parent_path.join(".");
-    if let Some(decl) = doc.type_decl(&key) {
-        return decl.effective_field(name);
-    }
-    if let Some(decl) = doc.interface(&key) {
-        return decl.effective_field(name);
-    }
-    None
-}
-
-fn is_descendant_of_walk(
-    doc: &Document,
-    extends_paths: &[Vec<String>],
-    target_fqn: &str,
-    seen: &mut HashSet<String>,
-) -> bool {
-    for parent_path in extends_paths {
-        let key = parent_path.join(".");
-        if !seen.insert(key.clone()) {
-            continue;
-        }
-        if key == target_fqn {
-            return true;
-        }
-        if let Some(decl) = doc.type_decl(&key)
-            && is_descendant_of_walk(doc, &decl.ast.extends, target_fqn, seen)
-        {
-            return true;
-        } else if let Some(decl) = doc.interface(&key)
-            && is_descendant_of_walk(doc, &decl.ast.extends, target_fqn, seen)
-        {
-            return true;
-        }
-    }
-    false
 }
 
 pub struct UseDeclView<'a> {
@@ -1905,9 +1427,9 @@ impl<'a> UseItem<'a> {
 
 #[derive(Clone, Copy)]
 pub struct TypeField<'a> {
-    ast: &'a ast::TypeField,
-    decorator_cells: &'a [DecoratorCell],
-    doc: &'a Document,
+    pub(super) ast: &'a ast::TypeField,
+    pub(super) decorator_cells: &'a [DecoratorCell],
+    pub(super) doc: &'a Document,
 }
 
 impl<'a> TypeField<'a> {
@@ -1924,22 +1446,7 @@ impl<'a> TypeField<'a> {
     /// Used by schemas to map block label slots to typed fields.
     pub fn inline_slot(&self) -> Option<u64> {
         let dec = self.decorators().find(|d| d.full_name() == "inline")?;
-        let positional = dec.positional().ok()?;
-        match positional.first()? {
-            Value::I8(n) if *n >= 0 => Some(*n as u64),
-            Value::I16(n) if *n >= 0 => Some(*n as u64),
-            Value::I32(n) if *n >= 0 => Some(*n as u64),
-            Value::I64(n) if *n >= 0 => Some(*n as u64),
-            Value::I128(n) if *n >= 0 => Some(*n as u64),
-            Value::Isize(n) if *n >= 0 => Some(*n as u64),
-            Value::U8(n) => Some(*n as u64),
-            Value::U16(n) => Some(*n as u64),
-            Value::U32(n) => Some(*n as u64),
-            Value::U64(n) => Some(*n),
-            Value::U128(n) => Some(*n as u64),
-            Value::Usize(n) => Some(*n as u64),
-            _ => None,
-        }
+        dec.positional().ok()?.first()?.as_u64()
     }
 
     /// If this field carries an `@default(v)` decorator, returns v.
@@ -2014,10 +1521,10 @@ impl<'a> TypeField<'a> {
 
 #[derive(Clone)]
 pub struct Field<'a> {
-    ast: &'a ast::Field,
-    cells: &'a ItemCells,
-    doc: &'a Document,
-    scope: Scope<'a>,
+    pub(super) ast: &'a ast::Field,
+    pub(super) cells: &'a ItemCells,
+    pub(super) doc: &'a Document,
+    pub(super) scope: Scope<'a>,
 }
 
 impl<'a> Field<'a> {
@@ -2230,121 +1737,20 @@ impl<'a> Field<'a> {
 /// it's a `Block` whose kind has a `@block`/`@table` schema, or a
 /// `Field` whose declared type is a named type), return that
 /// `TypeDecl`. Otherwise `None`.
-fn dataref_concrete_type<'a>(
-    dr: &crate::data::DataRef<'a>,
-    doc: &'a Document,
-) -> Option<TypeDecl<'a>> {
-    use crate::data::DataKind;
-    match dr.inner() {
-        DataKind::Block(b) => b.schema().or_else(|| doc.block_schema(b.kind())),
-        DataKind::Field(f) => {
-            let ty = f.declared_type_ref()?;
-            match ty {
-                TypeRef::Named(path) => doc.type_decl(&path.join(".")),
-                _ => None,
-            }
-        }
-        _ => None,
-    }
-}
-
-fn same_type_decl(a: &TypeDecl<'_>, b: &TypeDecl<'_>) -> bool {
-    std::ptr::eq(a.ast, b.ast)
-}
-
-fn check_interface_conformance(
-    doc: &Document,
-    iface: &InterfaceDecl<'_>,
-    target_decl: &TypeDecl<'_>,
-    span: Span,
-) -> Result<(), EvalError> {
-    use crate::error::SchemaViolationKind as Kind;
-    let iface_fqn = iface.full_name();
-    let target_fqn = target_decl.full_name();
-    for if_field in iface.effective_fields() {
-        let Some(tg_field) = target_decl.effective_field(if_field.name()) else {
-            return Err(EvalError::schema_violation(
-                Kind::InterfaceNotImplemented,
-                format!(
-                    "type '{}' does not implement interface '{}': missing field '{}'",
-                    target_fqn,
-                    iface_fqn,
-                    if_field.name(),
-                ),
-                span,
-            ));
-        };
-        let iface_ty = doc.resolve(if_field.type_ref());
-        let tg_ty = doc.resolve(tg_field.type_ref());
-        if !resolved_types_equal(&iface_ty, &tg_ty) {
-            return Err(EvalError::schema_violation(
-                Kind::InterfaceNotImplemented,
-                format!(
-                    "type '{}' does not implement interface '{}': field '{}' has incompatible type",
-                    target_fqn,
-                    iface_fqn,
-                    if_field.name(),
-                ),
-                span,
-            ));
-        }
-    }
-    Ok(())
-}
-
-fn resolved_types_equal(a: &ResolvedType<'_>, b: &ResolvedType<'_>) -> bool {
-    match (a, b) {
-        (ResolvedType::Builtin(x), ResolvedType::Builtin(y)) => x == y,
-        (ResolvedType::Named(x), ResolvedType::Named(y)) => std::ptr::eq(x.ast, y.ast),
-        (ResolvedType::Interface(x), ResolvedType::Interface(y)) => std::ptr::eq(x.ast, y.ast),
-        (ResolvedType::Union(x), ResolvedType::Union(y)) => std::ptr::eq(x.ast, y.ast),
-        (ResolvedType::SymbolSet(x), ResolvedType::SymbolSet(y)) => std::ptr::eq(x.ast, y.ast),
-        (ResolvedType::Reference(x), ResolvedType::Reference(y)) => resolved_types_equal(x, y),
-        (ResolvedType::List(x), ResolvedType::List(y)) => resolved_types_equal(x, y),
-        (
-            ResolvedType::Tensor {
-                element: ax,
-                dims: adims,
-            },
-            ResolvedType::Tensor {
-                element: bx,
-                dims: bdims,
-            },
-        ) => resolved_types_equal(ax, bx) && adims == bdims,
-        (
-            ResolvedType::Function {
-                params: ap,
-                return_ty: ar,
-            },
-            ResolvedType::Function {
-                params: bp,
-                return_ty: br,
-            },
-        ) => {
-            ap.len() == bp.len()
-                && ap
-                    .iter()
-                    .zip(bp.iter())
-                    .all(|(a, b)| resolved_types_equal(a, b))
-                && resolved_types_equal(ar, br)
-        }
-        _ => false,
-    }
-}
 
 #[derive(Clone)]
 pub struct Block<'a> {
-    ast: &'a ast::Block,
-    cells: &'a ItemCells,
-    doc: &'a Document,
+    pub(super) ast: &'a ast::Block,
+    pub(super) cells: &'a ItemCells,
+    pub(super) doc: &'a Document,
     /// When `Some`, overrides `ast.kind` for views derived from a
     /// synthesised row-Block (its stored `kind` is blank). Real
     /// blocks always have `None`.
-    kind_override: Option<&'a str>,
+    pub(super) kind_override: Option<&'a str>,
     /// Lexical scope chain — outermost first, **excluding** this
     /// block. To get the scope a child expression sees from inside
     /// this block, push this block's frame: `self.scope.push(self_frame)`.
-    scope: Scope<'a>,
+    pub(super) scope: Scope<'a>,
 }
 
 impl<'a> Block<'a> {
@@ -2623,416 +2029,12 @@ impl<'a> Block<'a> {
     }
 }
 
-/// Compute schema-content validation errors for a block. Called once
-/// per block via the `schema_validation` OnceLock; subsequent calls
-/// return the cached vector. No-op for blocks without a schema or for
-/// schemas that don't declare any nested-block rules.
-/// `true` if any decorator on the item is `@schemaless` (with or
-/// without arguments). Used by the strict validator to opt a block
-/// or field out of the schema-membership checks.
-fn has_schemaless(decorators: &[ast::Decorator]) -> bool {
-    decorators
-        .iter()
-        .any(|d| d.name.len() == 1 && d.name[0] == "schemaless")
-}
-
-fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
-    use crate::error::SchemaViolationKind as Kind;
-    let mut errs = Vec::new();
-
-    // Whole-block opt-out — `@schemaless service web { … }` skips
-    // every check inside the block (its contents are unrestricted).
-    if has_schemaless(&block.ast.decorators) {
-        return errs;
-    }
-
-    let Some(schema) = block.schema() else {
-        // Strict mode: a block whose kind has no `@block`/`@table`
-        // declaration is itself the violation.
-        errs.push(EvalError::schema_violation(
-            Kind::UnregisteredKind,
-            format!(
-                "block kind '{}' has no @block or @table declaration",
-                block.kind()
-            ),
-            block.span(),
-        ));
-        return errs;
-    };
-
-    // Field-membership: every literal `Item::Field` inside this
-    // block must be named by the schema. `@schemaless` on a field
-    // exempts that specific field.
-    let declared_field_names: HashSet<String> =
-        schema.fields().map(|f| f.name().to_string()).collect();
-    for f in block.fields() {
-        if has_schemaless(&f.ast.decorators) {
-            continue;
-        }
-        if !declared_field_names.contains(f.name()) {
-            errs.push(EvalError::schema_violation(
-                Kind::UnknownField,
-                format!(
-                    "field '{}' is not declared by schema '{}'",
-                    f.name(),
-                    schema.name()
-                ),
-                f.span(),
-            ));
-        }
-    }
-
-    // 0. Table row-form validation: if this block's schema is a
-    // `@table`, its labels are the row's column values and must
-    // match the schema field count.
-    if block.doc.table_schema(block.kind()).is_some() {
-        let label_count = block.labels().map(|v| v.len()).unwrap_or(0);
-        let field_count = schema.fields().count();
-        if label_count < field_count {
-            errs.push(EvalError::schema_violation(
-                Kind::ChildrenTooFew,
-                format!(
-                    "table row for '{}' has {} values, expected {}",
-                    block.kind(),
-                    label_count,
-                    field_count
-                ),
-                block.span(),
-            ));
-        } else if label_count > field_count {
-            errs.push(EvalError::schema_violation(
-                Kind::ChildrenTooMany,
-                format!(
-                    "table row for '{}' has {} values, expected {}",
-                    block.kind(),
-                    label_count,
-                    field_count
-                ),
-                block.span(),
-            ));
-        }
-        // Tables don't carry nested-block children themselves, so the
-        // rest of the validation doesn't apply.
-        return errs;
-    }
-
-    // 1. Gather per-kind counts of nested blocks. Both literal
-    // `Item::Block` entries and synthesised `Item::Table` rows
-    // contribute. For synth rows the kind comes from the parent
-    // schema's `@children(K)` decoration on the matching field.
-    let mut counts: HashMap<String, usize> = HashMap::new();
-    let mut total: usize = 0;
-    for nested in block.blocks() {
-        *counts.entry(nested.kind().to_string()).or_insert(0) += 1;
-        total += 1;
-    }
-    if let ItemCellKind::Block { synth_rows, .. } = &block.cells.kind {
-        for sr in synth_rows {
-            // Find the schema field matching the table header's
-            // field_name and read its @children(kind).
-            if let Some(field) = schema.field(&sr.field_name)
-                && let Some(kind) = field.children_block_kind_str()
-            {
-                *counts.entry(kind.to_string()).or_insert(0) += 1;
-                total += 1;
-            }
-        }
-    }
-
-    // 2. Build the allowed-child set: union of @child/@children kinds
-    // across this type's fields.
-    let allowed = schema.allowed_child_kinds();
-
-    // 3. Per-kind: any nested block whose kind isn't in `allowed`
-    // is a DisallowedChild.
-    for nested in block.blocks() {
-        if !allowed.iter().any(|k| k == nested.kind()) {
-            errs.push(EvalError::schema_violation(
-                Kind::DisallowedChild,
-                format!(
-                    "block kind '{}' is not allowed inside '{}'",
-                    nested.kind(),
-                    block.kind()
-                ),
-                nested.span(),
-            ));
-        }
-    }
-
-    // 4. `max_children = N` on @block: total nested-block count ≤ N.
-    if let Some(maxn) = schema.max_children()
-        && (total as u64) > maxn
-    {
-        errs.push(EvalError::schema_violation(
-            Kind::BlockChildrenOverflow,
-            format!(
-                "block '{}' contains {} children (max allowed: {})",
-                block.kind(),
-                total,
-                maxn
-            ),
-            block.span(),
-        ));
-    }
-
-    // 4b. `required_children = ["kind", ...]` on @block: each listed
-    //     kind must appear at least once.
-    for required in schema.required_children() {
-        if *counts.get(&required).unwrap_or(&0) == 0 {
-            errs.push(EvalError::schema_violation(
-                Kind::MissingRequired,
-                format!(
-                    "block '{}' is missing required child kind '{}'",
-                    block.kind(),
-                    required
-                ),
-                block.span(),
-            ));
-        }
-    }
-
-    // 5. Field-level cardinality (@child / @children).
-    for f in schema.fields() {
-        if let Some(kind) = f.child_block_kind() {
-            // @child(K): expect exactly 1 (or 0..1 if field is optional).
-            let count = *counts.get(&kind).unwrap_or(&0);
-            if count == 0 && !f.optional() {
-                errs.push(EvalError::schema_violation(
-                    Kind::MissingRequired,
-                    format!(
-                        "block '{}' is missing required child '{}' (for field '{}')",
-                        block.kind(),
-                        kind,
-                        f.name()
-                    ),
-                    block.span(),
-                ));
-            } else if count > 1 {
-                errs.push(EvalError::schema_violation(
-                    Kind::ChildrenTooMany,
-                    format!(
-                        "field '{}' expects a single '{}' child, found {}",
-                        f.name(),
-                        kind,
-                        count
-                    ),
-                    block.span(),
-                ));
-            }
-        } else if let Some(kind) = f.children_block_kind() {
-            let count = *counts.get(&kind).unwrap_or(&0) as u64;
-            if let Some(min) = f.children_min()
-                && count < min
-            {
-                errs.push(EvalError::schema_violation(
-                    Kind::ChildrenTooFew,
-                    format!(
-                        "field '{}' requires at least {} '{}' children, found {}",
-                        f.name(),
-                        min,
-                        kind,
-                        count
-                    ),
-                    block.span(),
-                ));
-            }
-            if let Some(maxn) = f.children_max()
-                && count > maxn
-            {
-                errs.push(EvalError::schema_violation(
-                    Kind::ChildrenTooMany,
-                    format!(
-                        "field '{}' allows at most {} '{}' children, found {}",
-                        f.name(),
-                        maxn,
-                        kind,
-                        count
-                    ),
-                    block.span(),
-                ));
-            }
-        }
-    }
-
-    errs
-}
-
-/// One source of (items, cells) within a block: either the block's own
-/// items or one of its realised imports.
-#[derive(Clone, Copy)]
-struct BlockSlice<'a> {
-    items: &'a [ast::Item],
-    cells: &'a [ItemCells],
-}
-
-fn push_loaded_imports<'a>(cells: &'a [ItemCells], out: &mut Vec<BlockSlice<'a>>) {
-    for cell in cells {
-        if let ItemCellKind::Import { loaded, .. } = &cell.kind
-            && let Some(Ok(li)) = loaded.get()
-        {
-            out.push(BlockSlice {
-                items: &li.items,
-                cells: &li.cells,
-            });
-            push_eager_imports(&li.eager_imports, out);
-        }
-    }
-}
-
-fn push_eager_imports<'a>(imps: &'a [LoadedImport], out: &mut Vec<BlockSlice<'a>>) {
-    for imp in imps {
-        out.push(BlockSlice {
-            items: &imp.items,
-            cells: &imp.cells,
-        });
-        push_eager_imports(&imp.eager_imports, out);
-    }
-}
-
-fn load_import_lazily(
-    path_str: &str,
-    base_dir: Option<&Path>,
-    path_span: Span,
-) -> Result<LoadedImport, EvalError> {
-    let path = resolve_import_path(base_dir, path_str)
-        .map_err(|e| EvalError::import_failed(path_str, e, path_span))?;
-    let src = std::fs::read_to_string(&path)
-        .map_err(|e| EvalError::import_failed(path_str, format!("io: {e}"), path_span))?;
-    let display = path.display().to_string();
-    let (parsed_ast, parsed_symbols) = Parser::new(&src, &display)
-        .parse_source()
-        .map_err(|e| EvalError::import_failed(path_str, format!("{e}"), path_span))?;
-    let imported_base = path.parent().map(Path::to_path_buf);
-    let file_ns = first_namespace(&parsed_ast.items);
-
-    let mut loading: HashSet<PathBuf> = HashSet::new();
-    loading.insert(path.clone());
-    let mut child_eager: Vec<LoadedImport> = Vec::new();
-    expand_top_level_imports(
-        &parsed_ast.items,
-        imported_base.as_deref(),
-        &mut loading,
-        &mut child_eager,
-        &display,
-        &src,
-    )
-    .map_err(|e| EvalError::import_failed(path_str, format!("{e}"), path_span))?;
-
-    let cells = parsed_ast
-        .items
-        .iter()
-        .map(|i| ItemCells::build(i, imported_base.as_deref()))
-        .collect();
-    Ok(LoadedImport {
-        path,
-        file_ns,
-        items: parsed_ast.items,
-        cells,
-        symbols: parsed_symbols,
-        eager_imports: child_eager,
-    })
-}
-
-fn find_field<'a>(
-    items: &'a [ast::Item],
-    cells: &'a [ItemCells],
-    name: &str,
-    doc: &'a Document,
-    scope: &Scope<'a>,
-) -> Option<Field<'a>> {
-    items
-        .iter()
-        .zip(cells)
-        .find_map(|(item, cells)| match (item, &cells.kind) {
-            (ast::Item::Field(f), ItemCellKind::Field(_)) if f.name == name => Some(Field {
-                ast: f,
-                cells,
-                doc,
-                scope: scope.clone(),
-            }),
-            _ => None,
-        })
-}
-
-fn find_block<'a>(
-    items: &'a [ast::Item],
-    cells: &'a [ItemCells],
-    kind: &str,
-    doc: &'a Document,
-    scope: &Scope<'a>,
-) -> Option<Block<'a>> {
-    items
-        .iter()
-        .zip(cells)
-        .find_map(|(item, cells)| match (item, &cells.kind) {
-            (ast::Item::Block(b), ItemCellKind::Block { .. }) if b.kind == kind => Some(Block {
-                ast: b,
-                cells,
-                doc,
-                kind_override: None,
-                scope: scope.clone(),
-            }),
-            _ => None,
-        })
-}
-
-fn iter_fields<'a>(
-    items: &'a [ast::Item],
-    cells: &'a [ItemCells],
-    doc: &'a Document,
-    scope: Scope<'a>,
-) -> impl Iterator<Item = Field<'a>> + 'a {
-    items
-        .iter()
-        .zip(cells)
-        .filter_map(move |(item, cells)| match (item, &cells.kind) {
-            (ast::Item::Field(f), ItemCellKind::Field(_)) => Some(Field {
-                ast: f,
-                cells,
-                doc,
-                scope: scope.clone(),
-            }),
-            _ => None,
-        })
-}
-
-fn iter_blocks<'a>(
-    items: &'a [ast::Item],
-    cells: &'a [ItemCells],
-    doc: &'a Document,
-    scope: Scope<'a>,
-) -> impl Iterator<Item = Block<'a>> + 'a {
-    items
-        .iter()
-        .zip(cells)
-        .filter_map(move |(item, cells)| match (item, &cells.kind) {
-            (ast::Item::Block(b), ItemCellKind::Block { .. }) => Some(Block {
-                ast: b,
-                cells,
-                doc,
-                kind_override: None,
-                scope: scope.clone(),
-            }),
-            _ => None,
-        })
-}
-
-fn iter_tables<'a>(
-    items: &'a [ast::Item],
-    doc: &'a Document,
-) -> impl Iterator<Item = TableView<'a>> + 'a {
-    items.iter().filter_map(move |item| match item {
-        ast::Item::Table(t) => Some(TableView { ast: t, doc }),
-        _ => None,
-    })
-}
-
 /// Source-level view of an `Item::Table` (a `FIELD:` header followed
 /// by one or more `| ... |` rows) within a parent block.
 #[derive(Clone, Copy)]
 pub struct TableView<'a> {
-    ast: &'a ast::TableItem,
-    doc: &'a Document,
+    pub(super) ast: &'a ast::TableItem,
+    pub(super) doc: &'a Document,
 }
 
 impl<'a> TableView<'a> {
@@ -3299,15 +2301,12 @@ impl Document {
     ) -> Option<crate::data::DataRef<'a>> {
         let frames = scope.frames();
         for i in (0..frames.len()).rev() {
-            let scope_before = Scope {
-                frames: frames[..i].to_vec().into(),
-            };
             let block = Block {
                 ast: frames[i].ast,
                 cells: frames[i].cells,
                 doc: self,
                 kind_override: frames[i].kind_override,
-                scope: scope_before,
+                scope: Scope::from_frames(&frames[..i]),
             };
             let dr = crate::data::DataRef::from_block(block);
             if let Some(child) = dr.child(name) {
@@ -3320,15 +2319,12 @@ impl Document {
     fn self_dataref<'a>(&'a self, scope: &Scope<'a>) -> crate::data::DataRef<'a> {
         let frames = scope.frames();
         if let Some(last_idx) = frames.len().checked_sub(1) {
-            let scope_before = Scope {
-                frames: frames[..last_idx].to_vec().into(),
-            };
             let block = Block {
                 ast: frames[last_idx].ast,
                 cells: frames[last_idx].cells,
                 doc: self,
                 kind_override: frames[last_idx].kind_override,
-                scope: scope_before,
+                scope: Scope::from_frames(&frames[..last_idx]),
             };
             crate::data::DataRef::from_block(block)
         } else {
@@ -3343,15 +2339,12 @@ impl Document {
             1 => Some(crate::data::DataRef::from_document(self)),
             n => {
                 let target_idx = n - 2;
-                let scope_before = Scope {
-                    frames: frames[..target_idx].to_vec().into(),
-                };
                 let block = Block {
                     ast: frames[target_idx].ast,
                     cells: frames[target_idx].cells,
                     doc: self,
                     kind_override: frames[target_idx].kind_override,
-                    scope: scope_before,
+                    scope: Scope::from_frames(&frames[..target_idx]),
                 };
                 Some(crate::data::DataRef::from_block(block))
             }
@@ -3424,934 +2417,8 @@ fn span_of(expr: &ast::Expr) -> Span {
     }
 }
 
-fn format_member_path(expr: &ast::Expr) -> String {
-    use ast::Expr as E;
-    fn walk(e: &ast::Expr, out: &mut String) {
-        match e {
-            E::Identifier(s) => out.push_str(s),
-            E::SelfKw(_) => out.push_str("self"),
-            E::ParentKw(_) => out.push_str("parent"),
-            E::Member { recv, name, .. } => {
-                walk(recv, out);
-                out.push('.');
-                out.push_str(name);
-            }
-            _ => out.push_str("<expr>"),
-        }
-    }
-    let mut s = String::new();
-    walk(expr, &mut s);
-    s
-}
-
-fn describe_expr(expr: &ast::Expr) -> &'static str {
-    use ast::Expr as E;
-    match expr {
-        E::Bool(_) => "bool",
-        E::I8(_) | E::I16(_) | E::I32(_) | E::I64(_) | E::I128(_) | E::Isize(_) => "integer",
-        E::U8(_) | E::U16(_) | E::U32(_) | E::U64(_) | E::U128(_) | E::Usize(_) => "integer",
-        E::F32(_) | E::F64(_) => "float",
-        E::Utf8(_) | E::Ascii(_) | E::Utf16(_) | E::Utf32(_) => "string",
-        E::Identifier(_) => "identifier",
-        E::Symbol(_) => "symbol",
-        E::None => "none",
-        E::Function(_) => "function literal",
-        E::Call { .. } => "call",
-        E::Binary { .. } => "binary expression",
-        E::Unary { .. } => "unary expression",
-        E::Block { .. } => "block expression",
-        E::Paren { .. } => "parenthesised expression",
-        E::ListLit { .. } => "list literal",
-        E::Member { .. } => "member access",
-        E::SelfKw(_) => "self",
-        E::ParentKw(_) => "parent",
-    }
-}
-
-fn as_bool(v: &Value, op: ast::BinOp, span: Span) -> Result<bool, EvalError> {
-    match v {
-        Value::Bool(b) => Ok(*b),
-        other => Err(EvalError::type_mismatch(
-            op_name(op),
-            other.type_name(),
-            "—",
-            span,
-        )),
-    }
-}
-
-fn op_name(op: ast::BinOp) -> &'static str {
-    match op {
-        ast::BinOp::Add => "+",
-        ast::BinOp::Sub => "-",
-        ast::BinOp::Mul => "*",
-        ast::BinOp::Div => "/",
-        ast::BinOp::Mod => "%",
-        ast::BinOp::Eq => "==",
-        ast::BinOp::Ne => "!=",
-        ast::BinOp::Lt => "<",
-        ast::BinOp::Le => "<=",
-        ast::BinOp::Gt => ">",
-        ast::BinOp::Ge => ">=",
-        ast::BinOp::And => "&&",
-        ast::BinOp::Or => "||",
-    }
-}
-
-fn apply_unary(op: ast::UnaryOp, v: Value, span: Span) -> Result<Value, EvalError> {
-    match op {
-        ast::UnaryOp::Neg => match v {
-            Value::I8(n) => Ok(Value::I8(-n)),
-            Value::I16(n) => Ok(Value::I16(-n)),
-            Value::I32(n) => Ok(Value::I32(-n)),
-            Value::I64(n) => Ok(Value::I64(-n)),
-            Value::I128(n) => Ok(Value::I128(-n)),
-            Value::Isize(n) => Ok(Value::Isize(-n)),
-            Value::F32(n) => Ok(Value::F32(-n)),
-            Value::F64(n) => Ok(Value::F64(-n)),
-            other => Err(EvalError::type_mismatch("-", other.type_name(), "—", span)),
-        },
-        ast::UnaryOp::Not => match v {
-            Value::Bool(b) => Ok(Value::Bool(!b)),
-            other => Err(EvalError::type_mismatch("!", other.type_name(), "—", span)),
-        },
-    }
-}
-
-fn apply_binary(op: ast::BinOp, l: Value, r: Value, span: Span) -> Result<Value, EvalError> {
-    use ast::BinOp as B;
-    let mismatch = || EvalError::type_mismatch(op_name(op), l.type_name(), r.type_name(), span);
-
-    macro_rules! numeric_arith {
-        ($lhs:expr, $rhs:expr, $variant:ident, $op:tt) => {
-            match (&$lhs, &$rhs) {
-                (Value::$variant(a), Value::$variant(b)) => Ok(Value::$variant(a $op b)),
-                _ => Err(mismatch()),
-            }
-        }
-    }
-
-    macro_rules! arith_op {
-        ($op:tt) => {
-            match (&l, &r) {
-                (Value::I8(_), Value::I8(_)) => numeric_arith!(l, r, I8, $op),
-                (Value::I16(_), Value::I16(_)) => numeric_arith!(l, r, I16, $op),
-                (Value::I32(_), Value::I32(_)) => numeric_arith!(l, r, I32, $op),
-                (Value::I64(_), Value::I64(_)) => numeric_arith!(l, r, I64, $op),
-                (Value::I128(_), Value::I128(_)) => numeric_arith!(l, r, I128, $op),
-                (Value::Isize(_), Value::Isize(_)) => numeric_arith!(l, r, Isize, $op),
-                (Value::U8(_), Value::U8(_)) => numeric_arith!(l, r, U8, $op),
-                (Value::U16(_), Value::U16(_)) => numeric_arith!(l, r, U16, $op),
-                (Value::U32(_), Value::U32(_)) => numeric_arith!(l, r, U32, $op),
-                (Value::U64(_), Value::U64(_)) => numeric_arith!(l, r, U64, $op),
-                (Value::U128(_), Value::U128(_)) => numeric_arith!(l, r, U128, $op),
-                (Value::Usize(_), Value::Usize(_)) => numeric_arith!(l, r, Usize, $op),
-                (Value::F32(_), Value::F32(_)) => numeric_arith!(l, r, F32, $op),
-                (Value::F64(_), Value::F64(_)) => numeric_arith!(l, r, F64, $op),
-                _ => Err(mismatch()),
-            }
-        };
-    }
-
-    match op {
-        B::Add => arith_op!(+),
-        B::Sub => arith_op!(-),
-        B::Mul => arith_op!(*),
-        B::Div => arith_op!(/),
-        B::Mod => arith_op!(%),
-        B::Eq => Ok(Value::Bool(values_eq(&l, &r))),
-        B::Ne => Ok(Value::Bool(!values_eq(&l, &r))),
-        B::Lt => compare(&l, &r, span, |c| c == std::cmp::Ordering::Less),
-        B::Le => compare(&l, &r, span, |c| c != std::cmp::Ordering::Greater),
-        B::Gt => compare(&l, &r, span, |c| c == std::cmp::Ordering::Greater),
-        B::Ge => compare(&l, &r, span, |c| c != std::cmp::Ordering::Less),
-        B::And | B::Or => unreachable!("handled with short-circuit eval"),
-    }
-}
-
-fn values_eq(l: &Value, r: &Value) -> bool {
-    // Same-typed equality. Cross-type comparisons (e.g. i32 vs i64) are
-    // not equal — there is no implicit numeric coercion.
-    l == r
-}
-
-fn compare<F>(l: &Value, r: &Value, span: Span, pick: F) -> Result<Value, EvalError>
-where
-    F: Fn(std::cmp::Ordering) -> bool,
-{
-    use std::cmp::Ordering;
-    let ord = match (l, r) {
-        (Value::I8(a), Value::I8(b)) => a.cmp(b),
-        (Value::I16(a), Value::I16(b)) => a.cmp(b),
-        (Value::I32(a), Value::I32(b)) => a.cmp(b),
-        (Value::I64(a), Value::I64(b)) => a.cmp(b),
-        (Value::I128(a), Value::I128(b)) => a.cmp(b),
-        (Value::Isize(a), Value::Isize(b)) => a.cmp(b),
-        (Value::U8(a), Value::U8(b)) => a.cmp(b),
-        (Value::U16(a), Value::U16(b)) => a.cmp(b),
-        (Value::U32(a), Value::U32(b)) => a.cmp(b),
-        (Value::U64(a), Value::U64(b)) => a.cmp(b),
-        (Value::U128(a), Value::U128(b)) => a.cmp(b),
-        (Value::Usize(a), Value::Usize(b)) => a.cmp(b),
-        (Value::F32(a), Value::F32(b)) => a.partial_cmp(b).unwrap_or(Ordering::Equal),
-        (Value::F64(a), Value::F64(b)) => a.partial_cmp(b).unwrap_or(Ordering::Equal),
-        (Value::Utf8(a), Value::Utf8(b)) | (Value::Ascii(a), Value::Ascii(b)) => a.cmp(b),
-        _ => {
-            return Err(EvalError::type_mismatch(
-                "<>",
-                l.type_name(),
-                r.type_name(),
-                span,
-            ));
-        }
-    };
-    Ok(Value::Bool(pick(ord)))
-}
-
-fn span_to_miette(span: Span) -> SourceSpan {
+pub(crate) fn span_to_miette(span: Span) -> SourceSpan {
     SourceSpan::new(span.start.into(), span.len().max(1))
-}
-
-struct Resolved {
-    file_ns: Vec<String>,
-    item_aliases: HashMap<String, Vec<String>>,
-    ns_aliases: HashMap<String, Vec<String>>,
-    wildcards: Vec<Vec<String>>,
-}
-
-fn validate_document(
-    ast: &ast::Source,
-    symbols: &SymbolIndex,
-    synthetic: &[ast::TypeDecl],
-    source: &str,
-    file: &str,
-) -> Result<Resolved, ParseError> {
-    // 1. Namespace must be first if present; at most one.
-    let mut file_ns: Vec<String> = Vec::new();
-    let mut saw_ns = false;
-    for (idx, item) in ast.items.iter().enumerate() {
-        if let ast::Item::NamespaceDecl(n) = item {
-            if saw_ns {
-                return Err(open_error(
-                    source,
-                    file,
-                    "duplicate namespace declaration".to_string(),
-                    n.span,
-                    "duplicate namespace",
-                ));
-            }
-            if idx != 0 {
-                return Err(open_error(
-                    source,
-                    file,
-                    "namespace declaration must be the first item in the file".to_string(),
-                    n.span,
-                    "must be first item",
-                ));
-            }
-            file_ns = n.path.clone();
-            saw_ns = true;
-        }
-    }
-
-    // 2. Build the declared-FQN set and prefix set used for name resolution.
-    // Top-level decls were already added to `symbols` by the parser (and the
-    // duplicate check already fired there); we just project them into the
-    // shapes that the rest of this function expects.
-    let mut declared: HashSet<Vec<String>> = HashSet::new();
-    let mut prefixes: HashSet<Vec<String>> = HashSet::new();
-    for t in synthetic {
-        let fqn = t.name.clone();
-        declared.insert(fqn.clone());
-        for n in 1..fqn.len() {
-            prefixes.insert(fqn[..n].to_vec());
-        }
-    }
-    // Track interface FQNs separately so `check_type_ref` can enforce
-    // the "must be behind `&`" rule when a path resolves to one.
-    let mut interfaces: HashSet<Vec<String>> = HashSet::new();
-    for rec in symbols.iter() {
-        if !matches!(
-            rec.kind,
-            SymbolKind::TypeDecl
-                | SymbolKind::InterfaceDecl
-                | SymbolKind::UnionDecl
-                | SymbolKind::SymbolSetDecl
-        ) {
-            continue;
-        }
-        let fqn: Vec<String> = rec.fqn.split('.').map(str::to_string).collect();
-        if !declared.insert(fqn.clone()) {
-            // A registry-injected (synthetic) type already owns this FQN.
-            return Err(open_error(
-                source,
-                file,
-                format!("duplicate declaration '{}'", rec.fqn),
-                rec.span,
-                "duplicate declaration",
-            ));
-        }
-        if matches!(rec.kind, SymbolKind::InterfaceDecl) {
-            interfaces.insert(fqn.clone());
-        }
-        for n in 1..fqn.len() {
-            prefixes.insert(fqn[..n].to_vec());
-        }
-    }
-
-    // 3. Use declarations.
-    let mut item_aliases: HashMap<String, Vec<String>> = HashMap::new();
-    let mut ns_aliases: HashMap<String, Vec<String>> = HashMap::new();
-    let mut wildcards: Vec<Vec<String>> = Vec::new();
-    let mut alias_taken: HashSet<String> = HashSet::new();
-
-    let record_alias =
-        |alias: String, span: Span, taken: &mut HashSet<String>| -> Result<(), ParseError> {
-            if !taken.insert(alias.clone()) {
-                return Err(open_error(
-                    source,
-                    file,
-                    format!("duplicate use alias '{alias}'"),
-                    span,
-                    "duplicate alias",
-                ));
-            }
-            Ok(())
-        };
-
-    for item in &ast.items {
-        let ast::Item::UseDecl(u) = item else {
-            continue;
-        };
-        match &u.form {
-            ast::UseForm::Bare(alias) => {
-                let path_is_leaf = declared.contains(&u.path);
-                let path_is_prefix = prefixes.contains(&u.path);
-                match alias {
-                    None => {
-                        if path_is_leaf {
-                            let local = u.path.last().expect("non-empty path").clone();
-                            record_alias(local.clone(), u.span, &mut alias_taken)?;
-                            item_aliases.insert(local, u.path.clone());
-                        } else if path_is_prefix {
-                            wildcards.push(u.path.clone());
-                        } else {
-                            return Err(open_error(
-                                source,
-                                file,
-                                format!("unknown use target '{}'", u.path.join(".")),
-                                u.span,
-                                "not declared",
-                            ));
-                        }
-                    }
-                    Some(alias_name) => {
-                        if path_is_leaf {
-                            record_alias(alias_name.clone(), u.span, &mut alias_taken)?;
-                            item_aliases.insert(alias_name.clone(), u.path.clone());
-                        } else if path_is_prefix {
-                            record_alias(alias_name.clone(), u.span, &mut alias_taken)?;
-                            ns_aliases.insert(alias_name.clone(), u.path.clone());
-                        } else {
-                            return Err(open_error(
-                                source,
-                                file,
-                                format!("unknown use target '{}'", u.path.join(".")),
-                                u.span,
-                                "not declared",
-                            ));
-                        }
-                    }
-                }
-            }
-            ast::UseForm::List(items) => {
-                if declared.contains(&u.path) {
-                    return Err(open_error(
-                        source,
-                        file,
-                        format!(
-                            "expected namespace, but '{}' names a type",
-                            u.path.join(".")
-                        ),
-                        u.span,
-                        "not a namespace",
-                    ));
-                }
-                if !u.path.is_empty() && !prefixes.contains(&u.path) {
-                    return Err(open_error(
-                        source,
-                        file,
-                        format!("unknown use target '{}'", u.path.join(".")),
-                        u.span,
-                        "not declared",
-                    ));
-                }
-                for it in items {
-                    let mut full = u.path.clone();
-                    full.push(it.name.clone());
-                    if !declared.contains(&full) {
-                        return Err(open_error(
-                            source,
-                            file,
-                            format!("unknown use target '{}'", full.join(".")),
-                            it.span,
-                            "not declared",
-                        ));
-                    }
-                    let local = it.alias.clone().unwrap_or_else(|| it.name.clone());
-                    record_alias(local.clone(), it.span, &mut alias_taken)?;
-                    item_aliases.insert(local, full);
-                }
-            }
-        }
-    }
-
-    // 4. TypeRef resolution + variant-name uniqueness.
-    for item in &ast.items {
-        match item {
-            ast::Item::TypeDecl(t) => {
-                for f in &t.fields {
-                    check_type_ref(
-                        &f.ty,
-                        f.ty_span,
-                        &declared,
-                        &interfaces,
-                        false,
-                        &file_ns,
-                        &item_aliases,
-                        &ns_aliases,
-                        &wildcards,
-                        source,
-                        file,
-                    )?;
-                }
-            }
-            ast::Item::InterfaceDecl(i) => {
-                for f in &i.fields {
-                    check_type_ref(
-                        &f.ty,
-                        f.ty_span,
-                        &declared,
-                        &interfaces,
-                        false,
-                        &file_ns,
-                        &item_aliases,
-                        &ns_aliases,
-                        &wildcards,
-                        source,
-                        file,
-                    )?;
-                }
-            }
-            ast::Item::UnionDecl(u) => {
-                let mut seen: HashSet<String> = HashSet::new();
-                for v in &u.variants {
-                    if !seen.insert(v.name.clone()) {
-                        return Err(open_error(
-                            source,
-                            file,
-                            format!(
-                                "duplicate variant '{}' in union '{}'",
-                                v.name,
-                                u.name.join(".")
-                            ),
-                            v.span,
-                            "duplicate variant",
-                        ));
-                    }
-                    match &v.body {
-                        ast::VariantBody::Record(fields) => {
-                            for f in fields {
-                                check_type_ref(
-                                    &f.ty,
-                                    f.ty_span,
-                                    &declared,
-                                    &interfaces,
-                                    false,
-                                    &file_ns,
-                                    &item_aliases,
-                                    &ns_aliases,
-                                    &wildcards,
-                                    source,
-                                    file,
-                                )?;
-                            }
-                        }
-                        ast::VariantBody::TypeRef { ty, ty_span } => {
-                            check_type_ref(
-                                ty,
-                                *ty_span,
-                                &declared,
-                                &interfaces,
-                                false,
-                                &file_ns,
-                                &item_aliases,
-                                &ns_aliases,
-                                &wildcards,
-                                source,
-                                file,
-                            )?;
-                        }
-                        ast::VariantBody::Unit => {}
-                    }
-                }
-            }
-            ast::Item::SymbolSetDecl(s) => {
-                let mut seen: HashSet<String> = HashSet::new();
-                for entry in &s.symbols {
-                    if !seen.insert(entry.name.clone()) {
-                        return Err(open_error(
-                            source,
-                            file,
-                            format!(
-                                "duplicate symbol '{}' in symbol_set '{}'",
-                                entry.name,
-                                s.name.join(".")
-                            ),
-                            entry.span,
-                            "duplicate symbol",
-                        ));
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-
-    // 5. `extends` validation: unknown parents, cycles, and
-    // conflicting field types across the effective field set.
-    validate_extends(
-        ast,
-        &declared,
-        &file_ns,
-        &item_aliases,
-        &ns_aliases,
-        &wildcards,
-        source,
-        file,
-    )?;
-
-    Ok(Resolved {
-        file_ns,
-        item_aliases,
-        ns_aliases,
-        wildcards,
-    })
-}
-
-/// Walks every `type` and `interface` declaration and resolves its
-/// `extends` clauses to canonical FQNs. Surfaces unknown parents,
-/// cycles in the extends graph, and field-type conflicts (across
-/// parents, or between a parent and a child redeclaration).
-#[allow(clippy::too_many_arguments)]
-fn validate_extends(
-    ast: &ast::Source,
-    declared: &HashSet<Vec<String>>,
-    file_ns: &[String],
-    item_aliases: &HashMap<String, Vec<String>>,
-    ns_aliases: &HashMap<String, Vec<String>>,
-    wildcards: &[Vec<String>],
-    source: &str,
-    file: &str,
-) -> Result<(), ParseError> {
-    // Snapshot every parent/child as (decl_fqn, [parent_fqn]) so we
-    // can walk the graph without distinguishing type vs interface.
-    let mut parent_map: HashMap<Vec<String>, Vec<Vec<String>>> = HashMap::new();
-    // Field map: decl_fqn -> [(field_name, TypeRef, span)].
-    type FieldRow<'a> = (&'a str, &'a TypeRef, Span);
-    let mut field_map: HashMap<Vec<String>, Vec<FieldRow<'_>>> = HashMap::new();
-
-    let compose_fqn = |name: &[String]| -> Vec<String> {
-        let mut v = file_ns.to_vec();
-        v.extend(name.iter().cloned());
-        v
-    };
-
-    for item in &ast.items {
-        let (name, extends, fields, decl_span) = match item {
-            ast::Item::TypeDecl(t) => (&t.name, &t.extends, &t.fields, t.span),
-            ast::Item::InterfaceDecl(i) => (&i.name, &i.extends, &i.fields, i.span),
-            _ => continue,
-        };
-        let self_fqn = compose_fqn(name);
-        let mut resolved_parents = Vec::with_capacity(extends.len());
-        for parent_path in extends {
-            let Some(resolved) = resolve_path(
-                parent_path,
-                file_ns,
-                item_aliases,
-                ns_aliases,
-                wildcards,
-                declared,
-            ) else {
-                return Err(open_error(
-                    source,
-                    file,
-                    format!(
-                        "unknown extends target '{}' in '{}'",
-                        parent_path.join("."),
-                        self_fqn.join("."),
-                    ),
-                    decl_span,
-                    "no such type or interface",
-                ));
-            };
-            if resolved == self_fqn {
-                return Err(open_error(
-                    source,
-                    file,
-                    format!("'{}' cannot extend itself", self_fqn.join(".")),
-                    decl_span,
-                    "self-extension",
-                ));
-            }
-            resolved_parents.push(resolved);
-        }
-        parent_map.insert(self_fqn.clone(), resolved_parents);
-        let rows: Vec<FieldRow<'_>> = fields
-            .iter()
-            .map(|f| (f.name.as_str(), &f.ty, f.span))
-            .collect();
-        field_map.insert(self_fqn, rows);
-    }
-
-    // Cycle detection via DFS coloring.
-    fn dfs_cycle(
-        node: &[String],
-        parent_map: &HashMap<Vec<String>, Vec<Vec<String>>>,
-        color: &mut HashMap<Vec<String>, u8>, // 0 = unvisited, 1 = on-stack, 2 = done
-    ) -> Option<Vec<String>> {
-        let key = node.to_vec();
-        match color.get(&key).copied().unwrap_or(0) {
-            1 => return Some(key),
-            2 => return None,
-            _ => {}
-        }
-        color.insert(key.clone(), 1);
-        if let Some(parents) = parent_map.get(&key) {
-            for p in parents {
-                if let Some(cycle) = dfs_cycle(p, parent_map, color) {
-                    return Some(cycle);
-                }
-            }
-        }
-        color.insert(key, 2);
-        None
-    }
-    let mut color: HashMap<Vec<String>, u8> = HashMap::new();
-    for node in parent_map.keys() {
-        if let Some(cycle_node) = dfs_cycle(node, &parent_map, &mut color) {
-            return Err(open_error(
-                source,
-                file,
-                format!("cyclic extends graph involving '{}'", cycle_node.join("."),),
-                Span::new(0, 0),
-                "cycle in extends",
-            ));
-        }
-    }
-
-    // Field-type compatibility: walk each declaration's transitive
-    // ancestors, accumulate (name, TypeRef) pairs, and error on
-    // conflicting types for the same name.
-    fn collect_ancestor_fields<'a>(
-        node: &[String],
-        parent_map: &HashMap<Vec<String>, Vec<Vec<String>>>,
-        field_map: &HashMap<Vec<String>, Vec<(&'a str, &'a TypeRef, Span)>>,
-        out: &mut Vec<(&'a str, &'a TypeRef, Span)>,
-        seen: &mut HashSet<Vec<String>>,
-    ) {
-        let key = node.to_vec();
-        if !seen.insert(key.clone()) {
-            return;
-        }
-        if let Some(parents) = parent_map.get(&key) {
-            for p in parents {
-                collect_ancestor_fields(p, parent_map, field_map, out, seen);
-            }
-        }
-        if let Some(rows) = field_map.get(&key) {
-            out.extend(rows.iter().copied());
-        }
-    }
-
-    for (decl_fqn, _) in parent_map.iter() {
-        let mut all_fields: Vec<FieldRow<'_>> = Vec::new();
-        let mut seen: HashSet<Vec<String>> = HashSet::new();
-        collect_ancestor_fields(
-            decl_fqn,
-            &parent_map,
-            &field_map,
-            &mut all_fields,
-            &mut seen,
-        );
-        // Check pairwise.
-        let mut by_name: HashMap<&str, (&TypeRef, Span)> = HashMap::new();
-        for (name, ty, span) in &all_fields {
-            match by_name.get(name) {
-                Some((existing_ty, _)) if *existing_ty != *ty => {
-                    return Err(open_error(
-                        source,
-                        file,
-                        format!(
-                            "conflicting type for field '{}' in '{}' (across extends)",
-                            name,
-                            decl_fqn.join("."),
-                        ),
-                        *span,
-                        "field type conflict",
-                    ));
-                }
-                _ => {
-                    by_name.insert(name, (ty, *span));
-                }
-            }
-        }
-    }
-
-    Ok(())
-}
-
-#[allow(clippy::too_many_arguments)]
-fn check_type_ref(
-    t: &TypeRef,
-    ty_span: Span,
-    declared: &HashSet<Vec<String>>,
-    interfaces: &HashSet<Vec<String>>,
-    parent_is_ref: bool,
-    file_ns: &[String],
-    item_aliases: &HashMap<String, Vec<String>>,
-    ns_aliases: &HashMap<String, Vec<String>>,
-    wildcards: &[Vec<String>],
-    source: &str,
-    file: &str,
-) -> Result<(), ParseError> {
-    match t {
-        TypeRef::Builtin(_) => Ok(()),
-        TypeRef::Named(path) => {
-            let Some(resolved) =
-                resolve_path(path, file_ns, item_aliases, ns_aliases, wildcards, declared)
-            else {
-                return Err(open_error(
-                    source,
-                    file,
-                    format!("unknown type '{}'", path.join(".")),
-                    ty_span,
-                    "type not declared",
-                ));
-            };
-            if interfaces.contains(&resolved) && !parent_is_ref {
-                return Err(open_error(
-                    source,
-                    file,
-                    format!(
-                        "interface '{}' must be used through a reference (`&{}`)",
-                        path.join("."),
-                        path.join(".")
-                    ),
-                    ty_span,
-                    "interface in non-reference position",
-                ));
-            }
-            Ok(())
-        }
-        TypeRef::Reference(inner) => check_type_ref(
-            inner,
-            ty_span,
-            declared,
-            interfaces,
-            true,
-            file_ns,
-            item_aliases,
-            ns_aliases,
-            wildcards,
-            source,
-            file,
-        ),
-        TypeRef::List(inner) => check_type_ref(
-            inner,
-            ty_span,
-            declared,
-            interfaces,
-            false,
-            file_ns,
-            item_aliases,
-            ns_aliases,
-            wildcards,
-            source,
-            file,
-        ),
-        TypeRef::Tensor { element, .. } => check_type_ref(
-            element,
-            ty_span,
-            declared,
-            interfaces,
-            false,
-            file_ns,
-            item_aliases,
-            ns_aliases,
-            wildcards,
-            source,
-            file,
-        ),
-        TypeRef::Function { params, return_ty } => {
-            for p in params {
-                check_type_ref(
-                    p,
-                    ty_span,
-                    declared,
-                    interfaces,
-                    false,
-                    file_ns,
-                    item_aliases,
-                    ns_aliases,
-                    wildcards,
-                    source,
-                    file,
-                )?;
-            }
-            check_type_ref(
-                return_ty,
-                ty_span,
-                declared,
-                interfaces,
-                false,
-                file_ns,
-                item_aliases,
-                ns_aliases,
-                wildcards,
-                source,
-                file,
-            )
-        }
-    }
-}
-
-fn open_error(source: &str, file: &str, message: String, span: Span, label: &str) -> ParseError {
-    ParseError::syntax(
-        message,
-        NamedSource::new(file, source.to_string()),
-        span_to_miette(span),
-        label.to_string(),
-    )
-}
-
-/// Resolve an `import "path"` literal against an optional base
-/// directory. Returns the canonicalised path on success. Returns
-/// `Err(_)` when there's no base directory and the path is relative,
-/// or when canonicalisation fails (file not found).
-fn resolve_import_path(base_dir: Option<&Path>, path: &str) -> Result<PathBuf, String> {
-    let p = Path::new(path);
-    let joined = if p.is_absolute() {
-        p.to_path_buf()
-    } else {
-        match base_dir {
-            Some(dir) => dir.join(p),
-            None => {
-                return Err(format!(
-                    "no base directory to resolve relative import '{path}'; \
-                     use Document::from_file or supply a base directory"
-                ));
-            }
-        }
-    };
-    std::fs::canonicalize(&joined)
-        .map_err(|e| format!("failed to resolve '{}': {e}", joined.display()))
-}
-
-/// Extract the file-namespace declared by the first `NamespaceDecl`
-/// (if any) in an items list.
-fn first_namespace(items: &[ast::Item]) -> Vec<String> {
-    items
-        .iter()
-        .find_map(|i| match i {
-            ast::Item::NamespaceDecl(n) => Some(n.path.clone()),
-            _ => None,
-        })
-        .unwrap_or_default()
-}
-
-/// Eagerly walk `items`, follow each top-level `Item::Import`, parse
-/// the imported file, and append the resulting `LoadedImport` records
-/// to `out`. Each `LoadedImport` carries its own symbol index whose
-/// paths point into that loaded file's `items`/`cells` — lookups
-/// across the document tree check the importer's index and then each
-/// import's index in source order.
-fn expand_top_level_imports(
-    items: &[ast::Item],
-    base_dir: Option<&Path>,
-    loading: &mut HashSet<PathBuf>,
-    out: &mut Vec<LoadedImport>,
-    importer_file: &str,
-    importer_source: &str,
-) -> Result<(), ParseError> {
-    for item in items {
-        let ast::Item::Import(imp) = item else {
-            continue;
-        };
-        let path = resolve_import_path(base_dir, &imp.path).map_err(|msg| {
-            open_error(
-                importer_source,
-                importer_file,
-                format!("failed to import '{}': {}", imp.path, msg),
-                imp.path_span,
-                "cannot resolve import",
-            )
-        })?;
-        if !loading.insert(path.clone()) {
-            return Err(open_error(
-                importer_source,
-                importer_file,
-                format!("import cycle detected at '{}'", path.display()),
-                imp.path_span,
-                "cycle",
-            ));
-        }
-
-        let src = std::fs::read_to_string(&path).map_err(|e| {
-            open_error(
-                importer_source,
-                importer_file,
-                format!("failed to read '{}': {e}", path.display()),
-                imp.path_span,
-                "io error",
-            )
-        })?;
-        let display = path.display().to_string();
-        let (parsed_ast, parsed_symbols) = Parser::new(&src, &display).parse_source()?;
-        let imported_base = path.parent().map(Path::to_path_buf);
-        let file_ns = first_namespace(&parsed_ast.items);
-
-        // Recursively process the imported file's own top-level imports.
-        let mut child_eager: Vec<LoadedImport> = Vec::new();
-        expand_top_level_imports(
-            &parsed_ast.items,
-            imported_base.as_deref(),
-            loading,
-            &mut child_eager,
-            &display,
-            &src,
-        )?;
-
-        // Build cells for the imported file with its own base_dir.
-        let cells = parsed_ast
-            .items
-            .iter()
-            .map(|i| ItemCells::build(i, imported_base.as_deref()))
-            .collect();
-
-        out.push(LoadedImport {
-            path: path.clone(),
-            file_ns,
-            items: parsed_ast.items,
-            cells,
-            symbols: parsed_symbols,
-            eager_imports: child_eager,
-        });
-
-        loading.remove(&path);
-    }
-    Ok(())
 }
 
 #[cfg(test)]

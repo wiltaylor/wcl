@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
 use wcl_lang::{
-    Document, Environment, EvalError, ResolvedType, SymbolKind, TypeRef, Value, VariantBodyView,
-    from_fn,
+    DeclName, Document, Environment, EvalError, ResolvedType, SymbolKind, TypeRef, Value,
+    VariantBodyView, from_fn,
 };
 
 fn examples_dir() -> PathBuf {
@@ -645,4 +645,176 @@ fn interfaces_example_parses_clean() {
     );
     assert!(pet.is_descendant_of("Animal"));
     assert!(pet.is_descendant_of("Dog"));
+}
+
+// -----------------------------------------------------------------------------
+// Negative fixtures: every file under examples/errors/ should fail (either at
+// open time or via schema_errors after open). The asserted substring is a
+// human-readable summary of *which* error path the fixture exercises — it's
+// what would degrade silently if the diagnostic copy ever drifted.
+// -----------------------------------------------------------------------------
+
+fn errors_dir() -> PathBuf {
+    examples_dir().join("errors")
+}
+
+/// Try `Document::from_file` for syntax-style errors. Some fixtures parse
+/// successfully but emit schema violations; for those, the caller falls back
+/// to `schema_errors`. Returns the rendered error string for substring checks.
+fn open_or_schema_error(name: &str) -> String {
+    let path = errors_dir().join(name);
+    match Document::from_file(&path) {
+        Err(e) => format!("{e:?}"),
+        Ok(doc) => doc
+            .schema_errors()
+            .iter()
+            .map(|e| format!("{e:?}"))
+            .collect::<Vec<_>>()
+            .join("\n"),
+    }
+}
+
+#[test]
+fn syntax_unclosed_brace_fixture_reports_eof_inside_block() {
+    let rendered = open_or_schema_error("syntax_unclosed_brace.wcl");
+    assert!(
+        rendered.contains("unexpected end of file"),
+        "expected EOF-inside-block error, got: {rendered}",
+    );
+}
+
+#[test]
+fn unknown_type_fixture_reports_unknown_type() {
+    let rendered = open_or_schema_error("unknown_type.wcl");
+    assert!(
+        rendered.contains("unknown type") && rendered.contains("Missing"),
+        "expected unknown-type error, got: {rendered}",
+    );
+}
+
+#[test]
+fn cyclic_extends_fixture_reports_cycle() {
+    let rendered = open_or_schema_error("cyclic_extends.wcl");
+    assert!(
+        rendered.contains("cyclic extends"),
+        "expected cyclic extends error, got: {rendered}",
+    );
+}
+
+#[test]
+fn extends_self_fixture_reports_self_extension() {
+    let rendered = open_or_schema_error("extends_self.wcl");
+    assert!(
+        rendered.contains("cannot extend itself"),
+        "expected self-extension error, got: {rendered}",
+    );
+}
+
+#[test]
+fn duplicate_namespace_fixture_reports_duplicate() {
+    let rendered = open_or_schema_error("duplicate_namespace.wcl");
+    assert!(
+        rendered.contains("duplicate namespace"),
+        "expected duplicate namespace error, got: {rendered}",
+    );
+}
+
+#[test]
+fn unknown_field_fixture_reports_unknown_field() {
+    let rendered = open_or_schema_error("unknown_field.wcl");
+    assert!(
+        rendered.contains("not declared by schema") && rendered.contains("unexpected"),
+        "expected unknown-field violation, got: {rendered}",
+    );
+}
+
+#[test]
+fn disallowed_child_fixture_reports_disallowed_child() {
+    let rendered = open_or_schema_error("disallowed_child.wcl");
+    assert!(
+        rendered.contains("not allowed inside") && rendered.contains("route"),
+        "expected disallowed-child violation, got: {rendered}",
+    );
+}
+
+#[test]
+fn missing_required_fixture_reports_missing_required_child() {
+    let rendered = open_or_schema_error("missing_required.wcl");
+    assert!(
+        rendered.contains("missing required child"),
+        "expected missing-required-child violation, got: {rendered}",
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Parser robustness: feed a deterministic stream of "random-ish" inputs derived
+// from real fixture corpora into Document::open and assert nothing panics. Two
+// strategies are used: (1) bit-flip mutations of valid fixtures, and (2) raw
+// printable-ASCII junk. Each input either parses or returns an `Err`; either
+// outcome is acceptable, but a panic / abort is a regression.
+// -----------------------------------------------------------------------------
+
+/// Linear-congruential PRNG so the test is deterministic on every machine.
+struct Lcg(u64);
+
+impl Lcg {
+    fn next(&mut self) -> u64 {
+        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1);
+        self.0
+    }
+    fn range(&mut self, n: usize) -> usize {
+        (self.next() as usize) % n.max(1)
+    }
+}
+
+#[test]
+fn parser_does_not_panic_on_bitflipped_fixtures() {
+    let corpus: Vec<String> = [
+        "basic.wcl",
+        "types.wcl",
+        "functions.wcl",
+        "nested_blocks.wcl",
+        "tables.wcl",
+        "references.wcl",
+        "interfaces.wcl",
+    ]
+    .into_iter()
+    .filter_map(|name| std::fs::read_to_string(examples_dir().join(name)).ok())
+    .collect();
+    assert!(!corpus.is_empty(), "no corpus files loaded");
+
+    let mut rng = Lcg(0xDEAD_BEEF_CAFE_F00D);
+    for _ in 0..200 {
+        let src = &corpus[rng.range(corpus.len())];
+        let mut bytes = src.as_bytes().to_vec();
+        if bytes.is_empty() {
+            continue;
+        }
+        // Apply 1..=4 single-byte mutations at random offsets.
+        for _ in 0..(1 + rng.range(4)) {
+            let idx = rng.range(bytes.len());
+            bytes[idx] = (rng.next() & 0x7f) as u8;
+        }
+        // Skip invalid UTF-8 — Document::open requires &str. The lexer/parser
+        // robustness story is "valid UTF-8 in, parse error out".
+        let Ok(s) = std::str::from_utf8(&bytes) else {
+            continue;
+        };
+        let _ = Document::open(s, "fuzz");
+    }
+}
+
+#[test]
+fn parser_does_not_panic_on_printable_junk() {
+    let mut rng = Lcg(0x1234_5678_9ABC_DEF0);
+    let charset: &[u8] = b"abcdefghij0123 \t\n{}[]()=,.:;|@#&*+-/<>?!\"'\\_TypeBlockFnList";
+    for _ in 0..200 {
+        let len = 1 + rng.range(256);
+        let bytes: Vec<u8> = (0..len)
+            .map(|_| charset[rng.range(charset.len())])
+            .collect();
+        // charset is ASCII-only, so this is always valid UTF-8.
+        let s = std::str::from_utf8(&bytes).expect("ASCII-only charset");
+        let _ = Document::open(s, "fuzz");
+    }
 }

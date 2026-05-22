@@ -88,6 +88,27 @@ impl FnParam {
 }
 
 impl Value {
+    /// Convert a numeric `Value` to `u64` for use as a decorator count or
+    /// slot index. Returns `None` for non-numeric values, negative signed
+    /// values, or magnitudes that don't fit in `u64`.
+    pub fn as_u64(&self) -> Option<u64> {
+        match self {
+            Value::I8(n) if *n >= 0 => Some(*n as u64),
+            Value::I16(n) if *n >= 0 => Some(*n as u64),
+            Value::I32(n) if *n >= 0 => Some(*n as u64),
+            Value::I64(n) if *n >= 0 => Some(*n as u64),
+            Value::I128(n) if *n >= 0 => u64::try_from(*n).ok(),
+            Value::Isize(n) if *n >= 0 => Some(*n as u64),
+            Value::U8(n) => Some(*n as u64),
+            Value::U16(n) => Some(*n as u64),
+            Value::U32(n) => Some(*n as u64),
+            Value::U64(n) => Some(*n),
+            Value::U128(n) => u64::try_from(*n).ok(),
+            Value::Usize(n) => u64::try_from(*n).ok(),
+            _ => None,
+        }
+    }
+
     pub fn type_name(&self) -> &'static str {
         match self {
             Value::Bool(_) => "bool",

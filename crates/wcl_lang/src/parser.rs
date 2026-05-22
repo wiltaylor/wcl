@@ -56,136 +56,56 @@ impl<'a> Parser<'a> {
             Item::Import(_) => {}
             Item::Table(_) => {}
             Item::TypeDecl(t) => {
-                let parent_fqn = self.join_fqn(&t.name);
-                self.try_insert(SymbolRecord {
-                    fqn: parent_fqn.clone(),
-                    kind: SymbolKind::TypeDecl,
-                    span: t.span,
-                    path: SymbolPath {
-                        item_index,
-                        member_index: None,
-                    },
-                })?;
-                for (mi, field) in t.fields.iter().enumerate() {
-                    let fqn = format!("{parent_fqn}.{}", field.name);
-                    self.try_insert_with_msg(
-                        SymbolRecord {
-                            fqn,
-                            kind: SymbolKind::TypeField {
-                                parent_fqn: parent_fqn.clone(),
-                            },
-                            span: field.span,
-                            path: SymbolPath {
-                                item_index,
-                                member_index: Some(mi),
-                            },
-                        },
-                        format!(
-                            "duplicate field '{}' in type '{}'",
-                            field.name,
-                            t.name.join(".")
-                        ),
-                    )?;
-                }
+                let members = t.fields.iter().map(|f| (f.name.as_str(), f.span));
+                self.register_decl_with_members(
+                    item_index,
+                    &t.name,
+                    t.span,
+                    SymbolKind::TypeDecl,
+                    "type",
+                    "field",
+                    members,
+                    |parent_fqn| SymbolKind::TypeField { parent_fqn },
+                )?;
             }
             Item::InterfaceDecl(i) => {
-                let parent_fqn = self.join_fqn(&i.name);
-                self.try_insert(SymbolRecord {
-                    fqn: parent_fqn.clone(),
-                    kind: SymbolKind::InterfaceDecl,
-                    span: i.span,
-                    path: SymbolPath {
-                        item_index,
-                        member_index: None,
-                    },
-                })?;
-                for (mi, field) in i.fields.iter().enumerate() {
-                    let fqn = format!("{parent_fqn}.{}", field.name);
-                    self.try_insert_with_msg(
-                        SymbolRecord {
-                            fqn,
-                            kind: SymbolKind::InterfaceField {
-                                parent_fqn: parent_fqn.clone(),
-                            },
-                            span: field.span,
-                            path: SymbolPath {
-                                item_index,
-                                member_index: Some(mi),
-                            },
-                        },
-                        format!(
-                            "duplicate field '{}' in interface '{}'",
-                            field.name,
-                            i.name.join(".")
-                        ),
-                    )?;
-                }
+                let members = i.fields.iter().map(|f| (f.name.as_str(), f.span));
+                self.register_decl_with_members(
+                    item_index,
+                    &i.name,
+                    i.span,
+                    SymbolKind::InterfaceDecl,
+                    "interface",
+                    "field",
+                    members,
+                    |parent_fqn| SymbolKind::InterfaceField { parent_fqn },
+                )?;
             }
             Item::UnionDecl(u) => {
-                let parent_fqn = self.join_fqn(&u.name);
-                self.try_insert(SymbolRecord {
-                    fqn: parent_fqn.clone(),
-                    kind: SymbolKind::UnionDecl,
-                    span: u.span,
-                    path: SymbolPath {
-                        item_index,
-                        member_index: None,
-                    },
-                })?;
-                for (mi, v) in u.variants.iter().enumerate() {
-                    let fqn = format!("{parent_fqn}.{}", v.name);
-                    self.try_insert_with_msg(
-                        SymbolRecord {
-                            fqn,
-                            kind: SymbolKind::UnionVariant {
-                                parent_fqn: parent_fqn.clone(),
-                            },
-                            span: v.span,
-                            path: SymbolPath {
-                                item_index,
-                                member_index: Some(mi),
-                            },
-                        },
-                        format!(
-                            "duplicate variant '{}' in union '{}'",
-                            v.name,
-                            u.name.join(".")
-                        ),
-                    )?;
-                }
+                let members = u.variants.iter().map(|v| (v.name.as_str(), v.span));
+                self.register_decl_with_members(
+                    item_index,
+                    &u.name,
+                    u.span,
+                    SymbolKind::UnionDecl,
+                    "union",
+                    "variant",
+                    members,
+                    |parent_fqn| SymbolKind::UnionVariant { parent_fqn },
+                )?;
             }
             Item::SymbolSetDecl(s) => {
-                let parent_fqn = self.join_fqn(&s.name);
-                self.try_insert(SymbolRecord {
-                    fqn: parent_fqn.clone(),
-                    kind: SymbolKind::SymbolSetDecl,
-                    span: s.span,
-                    path: SymbolPath {
-                        item_index,
-                        member_index: None,
-                    },
-                })?;
-                for (mi, sym) in s.symbols.iter().enumerate() {
-                    let fqn = format!("{parent_fqn}.{}", sym.name);
-                    self.try_insert_with_msg(
-                        SymbolRecord {
-                            fqn,
-                            kind: SymbolKind::SymbolEntry {
-                                parent_fqn: parent_fqn.clone(),
-                            },
-                            span: sym.span,
-                            path: SymbolPath {
-                                item_index,
-                                member_index: Some(mi),
-                            },
-                        },
-                        format!(
-                            "duplicate symbol '{}' in symbol_set '{}'",
-                            sym.name,
-                            s.name.join(".")
-                        ),
-                    )?;
-                }
+                let members = s.symbols.iter().map(|sy| (sy.name.as_str(), sy.span));
+                self.register_decl_with_members(
+                    item_index,
+                    &s.name,
+                    s.span,
+                    SymbolKind::SymbolSetDecl,
+                    "symbol_set",
+                    "symbol",
+                    members,
+                    |parent_fqn| SymbolKind::SymbolEntry { parent_fqn },
+                )?;
             }
             Item::Field(f) => {
                 let fqn = self.join_fqn(std::slice::from_ref(&f.name));
@@ -208,6 +128,62 @@ impl<'a> Parser<'a> {
                     },
                 );
             }
+        }
+        Ok(())
+    }
+
+    /// Register a top-level declaration plus its member list (fields,
+    /// variants, or symbol entries). Used by `TypeDecl`, `InterfaceDecl`,
+    /// `UnionDecl`, and `SymbolSetDecl`.
+    ///
+    /// `container_label` is the source-level keyword used in duplicate-member
+    /// error messages (`"type"`, `"interface"`, etc.); `member_label` names
+    /// what the member is (`"field"`, `"variant"`, `"symbol"`).
+    /// `make_member_kind` builds the `SymbolKind` for each member from the
+    /// parent FQN.
+    #[allow(clippy::too_many_arguments)]
+    fn register_decl_with_members<'b, I, K>(
+        &mut self,
+        item_index: usize,
+        name: &[String],
+        span: Span,
+        parent_kind: SymbolKind,
+        container_label: &str,
+        member_label: &str,
+        members: I,
+        make_member_kind: K,
+    ) -> Result<(), ParseError>
+    where
+        I: IntoIterator<Item = (&'b str, Span)>,
+        K: Fn(String) -> SymbolKind,
+    {
+        let parent_fqn = self.join_fqn(name);
+        self.try_insert(SymbolRecord {
+            fqn: parent_fqn.clone(),
+            kind: parent_kind,
+            span,
+            path: SymbolPath {
+                item_index,
+                member_index: None,
+            },
+        })?;
+        for (mi, (member_name, member_span)) in members.into_iter().enumerate() {
+            let fqn = format!("{parent_fqn}.{member_name}");
+            self.try_insert_with_msg(
+                SymbolRecord {
+                    fqn,
+                    kind: make_member_kind(parent_fqn.clone()),
+                    span: member_span,
+                    path: SymbolPath {
+                        item_index,
+                        member_index: Some(mi),
+                    },
+                },
+                format!(
+                    "duplicate {member_label} '{member_name}' in {container_label} '{}'",
+                    name.join(".")
+                ),
+            )?;
         }
         Ok(())
     }
@@ -1435,27 +1411,20 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_type_atom(&mut self) -> Result<(TypeRef, Span), ParseError> {
-        // Contextual keyword: `list<...>` or `tensor<..., [...]>`.
+        // Contextual keywords introduced by an ident followed by a specific
+        // opener: `list<...>`, `tensor<..., [...]>`, `fn(...) -> T`.
         let head_ident = match &self.peek()?.kind {
             TokenKind::Ident(s) => Some(s.clone()),
             _ => None,
         };
-        if let Some(s) = &head_ident
-            && (s == "list" || s == "tensor")
-            && matches!(self.peek2()?.kind, TokenKind::Lt)
-        {
-            return if s == "list" {
-                self.parse_list_type()
-            } else {
-                self.parse_tensor_type()
-            };
-        }
-        // Contextual keyword: `fn(...) -> T`.
-        if let Some(s) = &head_ident
-            && s == "fn"
-            && matches!(self.peek2()?.kind, TokenKind::LParen)
-        {
-            return self.parse_function_type();
+        if let Some(s) = head_ident {
+            let next = &self.peek2()?.kind;
+            match (s.as_str(), next) {
+                ("list", TokenKind::Lt) => return self.parse_list_type(),
+                ("tensor", TokenKind::Lt) => return self.parse_tensor_type(),
+                ("fn", TokenKind::LParen) => return self.parse_function_type(),
+                _ => {}
+            }
         }
 
         let head = self.peek()?;
@@ -1473,63 +1442,75 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Parse a `keyword<body>` form: bump the keyword, expect `<`, run
+    /// `parse_body`, expect `>`. Used by `list<T>` and `tensor<T, [...]>`.
+    /// `keyword` is folded into the open/close error messages.
+    fn parse_angle_bracketed<F, R>(
+        &mut self,
+        keyword: &'static str,
+        parse_body: F,
+    ) -> Result<(R, Span), ParseError>
+    where
+        F: FnOnce(&mut Self) -> Result<R, ParseError>,
+    {
+        let start = self.bump()?.span.start;
+        self.expect(TokenKind::Lt, &format!("expected '<' after '{keyword}'"))?;
+        let body = parse_body(self)?;
+        let gt = self.expect(
+            TokenKind::Gt,
+            &format!("expected '>' to close {keyword}<...>"),
+        )?;
+        Ok((body, Span::new(start, gt.span.end)))
+    }
+
     fn parse_list_type(&mut self) -> Result<(TypeRef, Span), ParseError> {
-        let start = self.bump()?.span.start; // 'list'
-        self.expect(TokenKind::Lt, "expected '<' after 'list'")?;
-        let (inner, _) = self.parse_type_ref()?;
-        let gt = self.expect(TokenKind::Gt, "expected '>' to close list<...>")?;
-        Ok((
-            TypeRef::List(Box::new(inner)),
-            Span::new(start, gt.span.end),
-        ))
+        self.parse_angle_bracketed("list", |p| {
+            let (inner, _) = p.parse_type_ref()?;
+            Ok(TypeRef::List(Box::new(inner)))
+        })
     }
 
     fn parse_tensor_type(&mut self) -> Result<(TypeRef, Span), ParseError> {
-        let start = self.bump()?.span.start; // 'tensor'
-        self.expect(TokenKind::Lt, "expected '<' after 'tensor'")?;
-        let (element, _) = self.parse_type_ref()?;
-        self.expect(TokenKind::Comma, "expected ',' after tensor element type")?;
-        let lbracket = self.expect(TokenKind::LBracket, "expected '[' for tensor dimensions")?;
-
-        let mut dims: Vec<TensorDim> = Vec::new();
-        loop {
-            if matches!(self.peek()?.kind, TokenKind::RBracket) {
-                break;
-            }
-            dims.push(self.parse_tensor_dim()?);
-            match self.peek()?.kind {
-                TokenKind::Comma => {
-                    self.bump()?;
+        self.parse_angle_bracketed("tensor", |p| {
+            let (element, _) = p.parse_type_ref()?;
+            p.expect(TokenKind::Comma, "expected ',' after tensor element type")?;
+            let lbracket = p.expect(TokenKind::LBracket, "expected '[' for tensor dimensions")?;
+            let mut dims: Vec<TensorDim> = Vec::new();
+            loop {
+                if matches!(p.peek()?.kind, TokenKind::RBracket) {
+                    break;
                 }
-                TokenKind::RBracket => break,
-                _ => {
-                    let p = self.peek()?;
-                    let span = p.span;
-                    let kind = describe(&p.kind);
-                    return Err(self.err(
-                        format!("expected ',' or ']' in tensor dimensions, found {kind}"),
-                        span,
-                        "expected ',' or ']'",
-                    ));
+                dims.push(p.parse_tensor_dim()?);
+                match p.peek()?.kind {
+                    TokenKind::Comma => {
+                        p.bump()?;
+                    }
+                    TokenKind::RBracket => break,
+                    _ => {
+                        let tok = p.peek()?;
+                        let span = tok.span;
+                        let kind = describe(&tok.kind);
+                        return Err(p.err(
+                            format!("expected ',' or ']' in tensor dimensions, found {kind}"),
+                            span,
+                            "expected ',' or ']'",
+                        ));
+                    }
                 }
             }
-        }
-        let rbracket = self.expect(TokenKind::RBracket, "expected ']' to close tensor dims")?;
-        if dims.is_empty() {
-            return Err(self.err(
-                "tensor must have at least one dimension",
-                Span::new(lbracket.span.start, rbracket.span.end),
-                "expected at least one dimension",
-            ));
-        }
-        let gt = self.expect(TokenKind::Gt, "expected '>' to close tensor<...>")?;
-        Ok((
-            TypeRef::Tensor {
+            let rbracket = p.expect(TokenKind::RBracket, "expected ']' to close tensor dims")?;
+            if dims.is_empty() {
+                return Err(p.err(
+                    "tensor must have at least one dimension",
+                    Span::new(lbracket.span.start, rbracket.span.end),
+                    "expected at least one dimension",
+                ));
+            }
+            Ok(TypeRef::Tensor {
                 element: Box::new(element),
                 dims,
-            },
-            Span::new(start, gt.span.end),
-        ))
+            })
+        })
     }
 
     fn parse_tensor_dim(&mut self) -> Result<TensorDim, ParseError> {

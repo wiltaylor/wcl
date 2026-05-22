@@ -58,6 +58,39 @@ fn check_reports_missing_file() {
         .failure();
 }
 
+#[test]
+fn eval_prints_top_level_field() {
+    wcl()
+        .arg("eval")
+        .arg(examples_dir().join("basic.wcl"))
+        .arg("name")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"alpha\""));
+}
+
+#[test]
+fn eval_walks_dotted_path_into_block() {
+    wcl()
+        .arg("eval")
+        .arg(examples_dir().join("basic.wcl"))
+        .arg("service.port")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("8080"));
+}
+
+#[test]
+fn eval_reports_unknown_path() {
+    wcl()
+        .arg("eval")
+        .arg(examples_dir().join("basic.wcl"))
+        .arg("nope")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("no such path"));
+}
+
 fn tempdir() -> PathBuf {
     let dir = std::env::temp_dir().join(format!("wcl-cli-test-{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("mkdir tempdir");

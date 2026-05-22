@@ -1,0 +1,702 @@
+//! Static document validation: runs once at `Document::open` time.
+//!
+//! Responsibilities:
+//! - Namespace position / uniqueness.
+//! - `use` declarations → alias tables (single-item, namespace, wildcard).
+//! - Per-type/interface/union/symbol_set field-type, variant-name, and
+//!   symbol-name checks (`check_type_ref`).
+//! - Cross-declaration `extends` graph: unknown parents, self-extension,
+//!   cycles, conflicting field types across the effective field set
+//!   (`validate_extends`).
+//!
+//! On success returns a [`Resolved`] bundle (file namespace + alias tables)
+//! which the document then stashes for runtime name resolution.
+
+use std::collections::{HashMap, HashSet};
+
+use miette::NamedSource;
+
+use crate::ast::{self, Span};
+use crate::error::ParseError;
+use crate::symbols::{SymbolIndex, SymbolKind};
+use crate::value::TypeRef;
+
+use super::span_to_miette;
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct Resolved {
+    pub(crate) file_ns: Vec<String>,
+    pub(crate) item_aliases: HashMap<String, Vec<String>>,
+    pub(crate) ns_aliases: HashMap<String, Vec<String>>,
+    pub(crate) wildcards: Vec<Vec<String>>,
+}
+
+pub(crate) fn decl_fqn_matches(decl: &[String], target: &[&str]) -> bool {
+    decl.len() == target.len() && decl.iter().zip(target.iter()).all(|(a, b)| a == b)
+}
+
+pub(crate) fn resolve_path(
+    path: &[String],
+    file_ns: &[String],
+    item_aliases: &HashMap<String, Vec<String>>,
+    ns_aliases: &HashMap<String, Vec<String>>,
+    wildcards: &[Vec<String>],
+    registry: &HashSet<Vec<String>>,
+) -> Option<Vec<String>> {
+    // 1. file_ns + path
+    let candidate: Vec<String> = file_ns.iter().chain(path.iter()).cloned().collect();
+    if registry.contains(&candidate) {
+        return Some(candidate);
+    }
+    // 2. item alias on single-segment path
+    if path.len() == 1
+        && let Some(fqn) = item_aliases.get(&path[0])
+        && registry.contains(fqn)
+    {
+        return Some(fqn.clone());
+    }
+    // 3. namespace alias on first segment of multi-segment path
+    if path.len() > 1
+        && let Some(prefix) = ns_aliases.get(&path[0])
+    {
+        let candidate: Vec<String> = prefix.iter().chain(path[1..].iter()).cloned().collect();
+        if registry.contains(&candidate) {
+            return Some(candidate);
+        }
+    }
+    // 4. each wildcard prefix
+    for w in wildcards {
+        let candidate: Vec<String> = w.iter().chain(path.iter()).cloned().collect();
+        if registry.contains(&candidate) {
+            return Some(candidate);
+        }
+    }
+    // 5. absolute
+    if registry.contains(path) {
+        return Some(path.to_vec());
+    }
+    None
+}
+
+pub(crate) fn open_error(
+    source: &str,
+    file: &str,
+    message: String,
+    span: Span,
+    label: &str,
+) -> ParseError {
+    ParseError::syntax(
+        message,
+        NamedSource::new(file, source.to_string()),
+        span_to_miette(span),
+        label.to_string(),
+    )
+}
+
+pub(crate) fn validate_document(
+    ast: &ast::Source,
+    symbols: &SymbolIndex,
+    synthetic: &[ast::TypeDecl],
+    source: &str,
+    file: &str,
+) -> Result<Resolved, ParseError> {
+    // 1. Namespace must be first if present; at most one.
+    let mut file_ns: Vec<String> = Vec::new();
+    let mut saw_ns = false;
+    for (idx, item) in ast.items.iter().enumerate() {
+        if let ast::Item::NamespaceDecl(n) = item {
+            if saw_ns {
+                return Err(open_error(
+                    source,
+                    file,
+                    "duplicate namespace declaration".to_string(),
+                    n.span,
+                    "duplicate namespace",
+                ));
+            }
+            if idx != 0 {
+                return Err(open_error(
+                    source,
+                    file,
+                    "namespace declaration must be the first item in the file".to_string(),
+                    n.span,
+                    "must be first item",
+                ));
+            }
+            file_ns = n.path.clone();
+            saw_ns = true;
+        }
+    }
+
+    // 2. Build the declared-FQN set and prefix set used for name resolution.
+    // Top-level decls were already added to `symbols` by the parser (and the
+    // duplicate check already fired there); we just project them into the
+    // shapes that the rest of this function expects.
+    let mut declared: HashSet<Vec<String>> = HashSet::new();
+    let mut prefixes: HashSet<Vec<String>> = HashSet::new();
+    for t in synthetic {
+        let fqn = t.name.clone();
+        declared.insert(fqn.clone());
+        for n in 1..fqn.len() {
+            prefixes.insert(fqn[..n].to_vec());
+        }
+    }
+    // Track interface FQNs separately so `check_type_ref` can enforce
+    // the "must be behind `&`" rule when a path resolves to one.
+    let mut interfaces: HashSet<Vec<String>> = HashSet::new();
+    for rec in symbols.iter() {
+        if !matches!(
+            rec.kind,
+            SymbolKind::TypeDecl
+                | SymbolKind::InterfaceDecl
+                | SymbolKind::UnionDecl
+                | SymbolKind::SymbolSetDecl
+        ) {
+            continue;
+        }
+        let fqn: Vec<String> = rec.fqn.split('.').map(str::to_string).collect();
+        if !declared.insert(fqn.clone()) {
+            // A registry-injected (synthetic) type already owns this FQN.
+            return Err(open_error(
+                source,
+                file,
+                format!("duplicate declaration '{}'", rec.fqn),
+                rec.span,
+                "duplicate declaration",
+            ));
+        }
+        if matches!(rec.kind, SymbolKind::InterfaceDecl) {
+            interfaces.insert(fqn.clone());
+        }
+        for n in 1..fqn.len() {
+            prefixes.insert(fqn[..n].to_vec());
+        }
+    }
+
+    // 3. Use declarations.
+    let mut item_aliases: HashMap<String, Vec<String>> = HashMap::new();
+    let mut ns_aliases: HashMap<String, Vec<String>> = HashMap::new();
+    let mut wildcards: Vec<Vec<String>> = Vec::new();
+    let mut alias_taken: HashSet<String> = HashSet::new();
+
+    let record_alias =
+        |alias: String, span: Span, taken: &mut HashSet<String>| -> Result<(), ParseError> {
+            if !taken.insert(alias.clone()) {
+                return Err(open_error(
+                    source,
+                    file,
+                    format!("duplicate use alias '{alias}'"),
+                    span,
+                    "duplicate alias",
+                ));
+            }
+            Ok(())
+        };
+
+    for item in &ast.items {
+        let ast::Item::UseDecl(u) = item else {
+            continue;
+        };
+        match &u.form {
+            ast::UseForm::Bare(alias) => {
+                let path_is_leaf = declared.contains(&u.path);
+                let path_is_prefix = prefixes.contains(&u.path);
+                match alias {
+                    None => {
+                        if path_is_leaf {
+                            let local = u.path.last().expect("non-empty path").clone();
+                            record_alias(local.clone(), u.span, &mut alias_taken)?;
+                            item_aliases.insert(local, u.path.clone());
+                        } else if path_is_prefix {
+                            wildcards.push(u.path.clone());
+                        } else {
+                            return Err(open_error(
+                                source,
+                                file,
+                                format!("unknown use target '{}'", u.path.join(".")),
+                                u.span,
+                                "not declared",
+                            ));
+                        }
+                    }
+                    Some(alias_name) => {
+                        if path_is_leaf {
+                            record_alias(alias_name.clone(), u.span, &mut alias_taken)?;
+                            item_aliases.insert(alias_name.clone(), u.path.clone());
+                        } else if path_is_prefix {
+                            record_alias(alias_name.clone(), u.span, &mut alias_taken)?;
+                            ns_aliases.insert(alias_name.clone(), u.path.clone());
+                        } else {
+                            return Err(open_error(
+                                source,
+                                file,
+                                format!("unknown use target '{}'", u.path.join(".")),
+                                u.span,
+                                "not declared",
+                            ));
+                        }
+                    }
+                }
+            }
+            ast::UseForm::List(items) => {
+                if declared.contains(&u.path) {
+                    return Err(open_error(
+                        source,
+                        file,
+                        format!(
+                            "expected namespace, but '{}' names a type",
+                            u.path.join(".")
+                        ),
+                        u.span,
+                        "not a namespace",
+                    ));
+                }
+                if !u.path.is_empty() && !prefixes.contains(&u.path) {
+                    return Err(open_error(
+                        source,
+                        file,
+                        format!("unknown use target '{}'", u.path.join(".")),
+                        u.span,
+                        "not declared",
+                    ));
+                }
+                for it in items {
+                    let mut full = u.path.clone();
+                    full.push(it.name.clone());
+                    if !declared.contains(&full) {
+                        return Err(open_error(
+                            source,
+                            file,
+                            format!("unknown use target '{}'", full.join(".")),
+                            it.span,
+                            "not declared",
+                        ));
+                    }
+                    let local = it.alias.clone().unwrap_or_else(|| it.name.clone());
+                    record_alias(local.clone(), it.span, &mut alias_taken)?;
+                    item_aliases.insert(local, full);
+                }
+            }
+        }
+    }
+
+    // 4. TypeRef resolution + variant-name uniqueness.
+    for item in &ast.items {
+        match item {
+            ast::Item::TypeDecl(t) => {
+                for f in &t.fields {
+                    check_type_ref(
+                        &f.ty,
+                        f.ty_span,
+                        &declared,
+                        &interfaces,
+                        false,
+                        &file_ns,
+                        &item_aliases,
+                        &ns_aliases,
+                        &wildcards,
+                        source,
+                        file,
+                    )?;
+                }
+            }
+            ast::Item::InterfaceDecl(i) => {
+                for f in &i.fields {
+                    check_type_ref(
+                        &f.ty,
+                        f.ty_span,
+                        &declared,
+                        &interfaces,
+                        false,
+                        &file_ns,
+                        &item_aliases,
+                        &ns_aliases,
+                        &wildcards,
+                        source,
+                        file,
+                    )?;
+                }
+            }
+            ast::Item::UnionDecl(u) => {
+                let mut seen: HashSet<String> = HashSet::new();
+                for v in &u.variants {
+                    if !seen.insert(v.name.clone()) {
+                        return Err(open_error(
+                            source,
+                            file,
+                            format!(
+                                "duplicate variant '{}' in union '{}'",
+                                v.name,
+                                u.name.join(".")
+                            ),
+                            v.span,
+                            "duplicate variant",
+                        ));
+                    }
+                    match &v.body {
+                        ast::VariantBody::Record(fields) => {
+                            for f in fields {
+                                check_type_ref(
+                                    &f.ty,
+                                    f.ty_span,
+                                    &declared,
+                                    &interfaces,
+                                    false,
+                                    &file_ns,
+                                    &item_aliases,
+                                    &ns_aliases,
+                                    &wildcards,
+                                    source,
+                                    file,
+                                )?;
+                            }
+                        }
+                        ast::VariantBody::TypeRef { ty, ty_span } => {
+                            check_type_ref(
+                                ty,
+                                *ty_span,
+                                &declared,
+                                &interfaces,
+                                false,
+                                &file_ns,
+                                &item_aliases,
+                                &ns_aliases,
+                                &wildcards,
+                                source,
+                                file,
+                            )?;
+                        }
+                        ast::VariantBody::Unit => {}
+                    }
+                }
+            }
+            ast::Item::SymbolSetDecl(s) => {
+                let mut seen: HashSet<String> = HashSet::new();
+                for entry in &s.symbols {
+                    if !seen.insert(entry.name.clone()) {
+                        return Err(open_error(
+                            source,
+                            file,
+                            format!(
+                                "duplicate symbol '{}' in symbol_set '{}'",
+                                entry.name,
+                                s.name.join(".")
+                            ),
+                            entry.span,
+                            "duplicate symbol",
+                        ));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // 5. `extends` validation: unknown parents, cycles, and
+    // conflicting field types across the effective field set.
+    validate_extends(
+        ast,
+        &declared,
+        &file_ns,
+        &item_aliases,
+        &ns_aliases,
+        &wildcards,
+        source,
+        file,
+    )?;
+
+    Ok(Resolved {
+        file_ns,
+        item_aliases,
+        ns_aliases,
+        wildcards,
+    })
+}
+
+/// Walks every `type` and `interface` declaration and resolves its
+/// `extends` clauses to canonical FQNs. Surfaces unknown parents,
+/// cycles in the extends graph, and field-type conflicts (across
+/// parents, or between a parent and a child redeclaration).
+#[allow(clippy::too_many_arguments)]
+fn validate_extends(
+    ast: &ast::Source,
+    declared: &HashSet<Vec<String>>,
+    file_ns: &[String],
+    item_aliases: &HashMap<String, Vec<String>>,
+    ns_aliases: &HashMap<String, Vec<String>>,
+    wildcards: &[Vec<String>],
+    source: &str,
+    file: &str,
+) -> Result<(), ParseError> {
+    // Snapshot every parent/child as (decl_fqn, [parent_fqn]) so we
+    // can walk the graph without distinguishing type vs interface.
+    let mut parent_map: HashMap<Vec<String>, Vec<Vec<String>>> = HashMap::new();
+    // Field map: decl_fqn -> [(field_name, TypeRef, span)].
+    type FieldRow<'a> = (&'a str, &'a TypeRef, Span);
+    let mut field_map: HashMap<Vec<String>, Vec<FieldRow<'_>>> = HashMap::new();
+
+    let compose_fqn = |name: &[String]| -> Vec<String> {
+        let mut v = file_ns.to_vec();
+        v.extend(name.iter().cloned());
+        v
+    };
+
+    for item in &ast.items {
+        let (name, extends, fields, decl_span) = match item {
+            ast::Item::TypeDecl(t) => (&t.name, &t.extends, &t.fields, t.span),
+            ast::Item::InterfaceDecl(i) => (&i.name, &i.extends, &i.fields, i.span),
+            _ => continue,
+        };
+        let self_fqn = compose_fqn(name);
+        let mut resolved_parents = Vec::with_capacity(extends.len());
+        for parent_path in extends {
+            let Some(resolved) = resolve_path(
+                parent_path,
+                file_ns,
+                item_aliases,
+                ns_aliases,
+                wildcards,
+                declared,
+            ) else {
+                return Err(open_error(
+                    source,
+                    file,
+                    format!(
+                        "unknown extends target '{}' in '{}'",
+                        parent_path.join("."),
+                        self_fqn.join("."),
+                    ),
+                    decl_span,
+                    "no such type or interface",
+                ));
+            };
+            if resolved == self_fqn {
+                return Err(open_error(
+                    source,
+                    file,
+                    format!("'{}' cannot extend itself", self_fqn.join(".")),
+                    decl_span,
+                    "self-extension",
+                ));
+            }
+            resolved_parents.push(resolved);
+        }
+        parent_map.insert(self_fqn.clone(), resolved_parents);
+        let rows: Vec<FieldRow<'_>> = fields
+            .iter()
+            .map(|f| (f.name.as_str(), &f.ty, f.span))
+            .collect();
+        field_map.insert(self_fqn, rows);
+    }
+
+    // Cycle detection via DFS coloring.
+    fn dfs_cycle(
+        node: &[String],
+        parent_map: &HashMap<Vec<String>, Vec<Vec<String>>>,
+        color: &mut HashMap<Vec<String>, u8>, // 0 = unvisited, 1 = on-stack, 2 = done
+    ) -> Option<Vec<String>> {
+        let key = node.to_vec();
+        match color.get(&key).copied().unwrap_or(0) {
+            1 => return Some(key),
+            2 => return None,
+            _ => {}
+        }
+        color.insert(key.clone(), 1);
+        if let Some(parents) = parent_map.get(&key) {
+            for p in parents {
+                if let Some(cycle) = dfs_cycle(p, parent_map, color) {
+                    return Some(cycle);
+                }
+            }
+        }
+        color.insert(key, 2);
+        None
+    }
+    let mut color: HashMap<Vec<String>, u8> = HashMap::new();
+    for node in parent_map.keys() {
+        if let Some(cycle_node) = dfs_cycle(node, &parent_map, &mut color) {
+            return Err(open_error(
+                source,
+                file,
+                format!("cyclic extends graph involving '{}'", cycle_node.join("."),),
+                Span::new(0, 0),
+                "cycle in extends",
+            ));
+        }
+    }
+
+    // Field-type compatibility: walk each declaration's transitive
+    // ancestors, accumulate (name, TypeRef) pairs, and error on
+    // conflicting types for the same name.
+    fn collect_ancestor_fields<'a>(
+        node: &[String],
+        parent_map: &HashMap<Vec<String>, Vec<Vec<String>>>,
+        field_map: &HashMap<Vec<String>, Vec<(&'a str, &'a TypeRef, Span)>>,
+        out: &mut Vec<(&'a str, &'a TypeRef, Span)>,
+        seen: &mut HashSet<Vec<String>>,
+    ) {
+        let key = node.to_vec();
+        if !seen.insert(key.clone()) {
+            return;
+        }
+        if let Some(parents) = parent_map.get(&key) {
+            for p in parents {
+                collect_ancestor_fields(p, parent_map, field_map, out, seen);
+            }
+        }
+        if let Some(rows) = field_map.get(&key) {
+            out.extend(rows.iter().copied());
+        }
+    }
+
+    for (decl_fqn, _) in parent_map.iter() {
+        let mut all_fields: Vec<FieldRow<'_>> = Vec::new();
+        let mut seen: HashSet<Vec<String>> = HashSet::new();
+        collect_ancestor_fields(
+            decl_fqn,
+            &parent_map,
+            &field_map,
+            &mut all_fields,
+            &mut seen,
+        );
+        // Check pairwise.
+        let mut by_name: HashMap<&str, (&TypeRef, Span)> = HashMap::new();
+        for (name, ty, span) in &all_fields {
+            match by_name.get(name) {
+                Some((existing_ty, _)) if *existing_ty != *ty => {
+                    return Err(open_error(
+                        source,
+                        file,
+                        format!(
+                            "conflicting type for field '{}' in '{}' (across extends)",
+                            name,
+                            decl_fqn.join("."),
+                        ),
+                        *span,
+                        "field type conflict",
+                    ));
+                }
+                _ => {
+                    by_name.insert(name, (ty, *span));
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn check_type_ref(
+    t: &TypeRef,
+    ty_span: Span,
+    declared: &HashSet<Vec<String>>,
+    interfaces: &HashSet<Vec<String>>,
+    parent_is_ref: bool,
+    file_ns: &[String],
+    item_aliases: &HashMap<String, Vec<String>>,
+    ns_aliases: &HashMap<String, Vec<String>>,
+    wildcards: &[Vec<String>],
+    source: &str,
+    file: &str,
+) -> Result<(), ParseError> {
+    match t {
+        TypeRef::Builtin(_) => Ok(()),
+        TypeRef::Named(path) => {
+            let Some(resolved) =
+                resolve_path(path, file_ns, item_aliases, ns_aliases, wildcards, declared)
+            else {
+                return Err(open_error(
+                    source,
+                    file,
+                    format!("unknown type '{}'", path.join(".")),
+                    ty_span,
+                    "type not declared",
+                ));
+            };
+            if interfaces.contains(&resolved) && !parent_is_ref {
+                return Err(open_error(
+                    source,
+                    file,
+                    format!(
+                        "interface '{}' must be used through a reference (`&{}`)",
+                        path.join("."),
+                        path.join(".")
+                    ),
+                    ty_span,
+                    "interface in non-reference position",
+                ));
+            }
+            Ok(())
+        }
+        TypeRef::Reference(inner) => check_type_ref(
+            inner,
+            ty_span,
+            declared,
+            interfaces,
+            true,
+            file_ns,
+            item_aliases,
+            ns_aliases,
+            wildcards,
+            source,
+            file,
+        ),
+        TypeRef::List(inner) => check_type_ref(
+            inner,
+            ty_span,
+            declared,
+            interfaces,
+            false,
+            file_ns,
+            item_aliases,
+            ns_aliases,
+            wildcards,
+            source,
+            file,
+        ),
+        TypeRef::Tensor { element, .. } => check_type_ref(
+            element,
+            ty_span,
+            declared,
+            interfaces,
+            false,
+            file_ns,
+            item_aliases,
+            ns_aliases,
+            wildcards,
+            source,
+            file,
+        ),
+        TypeRef::Function { params, return_ty } => {
+            for p in params {
+                check_type_ref(
+                    p,
+                    ty_span,
+                    declared,
+                    interfaces,
+                    false,
+                    file_ns,
+                    item_aliases,
+                    ns_aliases,
+                    wildcards,
+                    source,
+                    file,
+                )?;
+            }
+            check_type_ref(
+                return_ty,
+                ty_span,
+                declared,
+                interfaces,
+                false,
+                file_ns,
+                item_aliases,
+                ns_aliases,
+                wildcards,
+                source,
+                file,
+            )
+        }
+    }
+}

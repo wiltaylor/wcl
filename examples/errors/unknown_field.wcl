@@ -1,0 +1,11 @@
+// `Service` has no `unexpected` field; strict schema validation must
+// surface an UnknownField violation.
+@block("service")
+type Service {
+  region: utf8
+}
+
+service web {
+  region     = "us-east-1"
+  unexpected = "boom"
+}

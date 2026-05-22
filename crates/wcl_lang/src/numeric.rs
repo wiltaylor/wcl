@@ -4,8 +4,52 @@
 //! parts of a literal (sign, base prefix, digit body, optional fractional
 //! part, optional exponent, optional suffix). All range-checking and
 //! base conversion happens here.
+//!
+//! This module also owns the canonical list of numeric `Value` variants via
+//! the [`for_each_numeric_variant!`] macro. Other modules that need to walk
+//! the numeric variants (host-binding traits, arithmetic, comparisons) use
+//! that macro rather than re-enumerating the list.
 
 use crate::lexer::NumberLit;
+
+/// Invoke a callback macro once per numeric `Value` variant, passing the
+/// Rust scalar type and the variant ident: `cb!(i8, I8); cb!(u32, U32); ...`.
+macro_rules! for_each_numeric_variant {
+    ($mac:ident) => {
+        $mac!(i8, I8);
+        $mac!(i16, I16);
+        $mac!(i32, I32);
+        $mac!(i64, I64);
+        $mac!(i128, I128);
+        $mac!(isize, Isize);
+        $mac!(u8, U8);
+        $mac!(u16, U16);
+        $mac!(u32, U32);
+        $mac!(u64, U64);
+        $mac!(u128, U128);
+        $mac!(usize, Usize);
+        $mac!(f32, F32);
+        $mac!(f64, F64);
+    };
+}
+
+/// Like [`for_each_numeric_variant!`] but only signed integers and floats.
+/// Used by unary negation, where unsigned types are rejected.
+macro_rules! for_each_signed_numeric_variant {
+    ($mac:ident) => {
+        $mac!(i8, I8);
+        $mac!(i16, I16);
+        $mac!(i32, I32);
+        $mac!(i64, I64);
+        $mac!(i128, I128);
+        $mac!(isize, Isize);
+        $mac!(f32, F32);
+        $mac!(f64, F64);
+    };
+}
+
+pub(crate) use for_each_numeric_variant;
+pub(crate) use for_each_signed_numeric_variant;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NumericParseError {

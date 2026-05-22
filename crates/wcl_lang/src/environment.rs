@@ -341,7 +341,7 @@ fn value_to_expr(v: Value) -> ast::Expr {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::doc::{Document, ResolvedType};
+    use crate::doc::{DeclName, Document, ResolvedType};
 
     #[test]
     fn empty_environment_has_no_types() {
