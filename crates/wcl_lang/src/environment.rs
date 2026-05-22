@@ -176,6 +176,7 @@ fn synth_decorator_schema(
             span: synthetic_span(),
         }],
         span: synthetic_span(),
+        leading_trivia: Vec::new(),
     }
 }
 
@@ -223,6 +224,7 @@ impl TypeBuilder {
                 fields: self.fields,
                 decorators: self.decorators,
                 span: synthetic_span(),
+                leading_trivia: Vec::new(),
             },
         }
     }

@@ -1,4 +1,4 @@
-use crate::ast::Span;
+use crate::ast::{Span, Trivia};
 use crate::numeric::{self, ParsedNumber};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -129,6 +129,27 @@ pub enum StringPart {
 pub struct Token {
     pub kind: TokenKind,
     pub span: Span,
+    /// Comments + blank-line breaks that appeared in the source
+    /// immediately before this token. The parser pulls these onto the
+    /// next Item it builds so the source printer can re-emit them in
+    /// roughly the original position. Same-line trailing comments
+    /// after a token end up here as the *next* token's leading trivia
+    /// — a known simplification, see [`ast::Trivia`].
+    pub leading_trivia: Vec<Trivia>,
+}
+
+impl Token {
+    /// Build a Token with no leading trivia. Inner lex paths
+    /// (`lex_string`, `lex_number`, …) use this; the outer
+    /// `next_token` overwrites `leading_trivia` on whatever token they
+    /// produce. Callers outside the lexer shouldn't need this.
+    pub(crate) fn new(kind: TokenKind, span: Span) -> Self {
+        Self {
+            kind,
+            span,
+            leading_trivia: Vec::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -151,29 +172,30 @@ impl<'a> Lexer<'a> {
     }
 
     pub fn next_token(&mut self) -> Result<Token, LexError> {
-        self.skip_trivia();
+        let leading_trivia = self.collect_trivia();
         let start = self.pos;
         let Some(c) = self.peek() else {
             return Ok(Token {
                 kind: TokenKind::Eof,
                 span: Span::new(start, start),
+                leading_trivia,
             });
         };
+        let mut tok = self.lex_after_trivia(start, c)?;
+        tok.leading_trivia = leading_trivia;
+        Ok(tok)
+    }
+
+    fn lex_after_trivia(&mut self, start: usize, c: u8) -> Result<Token, LexError> {
         match c {
             b'=' => match self.peek_at(1) {
                 Some(b'=') => {
                     self.pos += 2;
-                    Ok(Token {
-                        kind: TokenKind::EqEq,
-                        span: Span::new(start, self.pos),
-                    })
+                    Ok(Token::new(TokenKind::EqEq, Span::new(start, self.pos)))
                 }
                 Some(b'>') => {
                     self.pos += 2;
-                    Ok(Token {
-                        kind: TokenKind::FatArrow,
-                        span: Span::new(start, self.pos),
-                    })
+                    Ok(Token::new(TokenKind::FatArrow, Span::new(start, self.pos)))
                 }
                 _ => Ok(self.single(start, TokenKind::Eq)),
             },
@@ -196,10 +218,10 @@ impl<'a> Lexer<'a> {
                 // `::` for variant paths wins over single `:`.
                 if self.peek_at(1) == Some(b':') {
                     self.pos += 2;
-                    return Ok(Token {
-                        kind: TokenKind::ColonColon,
-                        span: Span::new(start, self.pos),
-                    });
+                    return Ok(Token::new(
+                        TokenKind::ColonColon,
+                        Span::new(start, self.pos),
+                    ));
                 }
                 // Tight `:foo` (no whitespace) → Symbol literal.
                 if matches!(self.peek_at(1), Some(c) if is_ident_start(c)) {
@@ -211,10 +233,10 @@ impl<'a> Lexer<'a> {
                     let name = std::str::from_utf8(&self.src[name_start..self.pos])
                         .expect("ident is ASCII")
                         .to_string();
-                    Ok(Token {
-                        kind: TokenKind::Symbol(name),
-                        span: Span::new(start, self.pos),
-                    })
+                    Ok(Token::new(
+                        TokenKind::Symbol(name),
+                        Span::new(start, self.pos),
+                    ))
                 } else {
                     Ok(self.single(start, TokenKind::Colon))
                 }
@@ -223,10 +245,7 @@ impl<'a> Lexer<'a> {
             b'.' => {
                 if self.peek_at(1) == Some(b'.') {
                     self.pos += 2;
-                    Ok(Token {
-                        kind: TokenKind::DotDot,
-                        span: Span::new(start, self.pos),
-                    })
+                    Ok(Token::new(TokenKind::DotDot, Span::new(start, self.pos)))
                 } else {
                     Ok(self.single(start, TokenKind::Dot))
                 }
@@ -250,10 +269,7 @@ impl<'a> Lexer<'a> {
                 // `->` always wins.
                 if self.peek_at(1) == Some(b'>') {
                     self.pos += 2;
-                    Ok(Token {
-                        kind: TokenKind::Arrow,
-                        span: Span::new(start, self.pos),
-                    })
+                    Ok(Token::new(TokenKind::Arrow, Span::new(start, self.pos)))
                 } else if matches!(self.peek_at(1), Some(b'0'..=b'9'))
                     && (start == 0 || is_pre_value_separator(self.src[start - 1]))
                 {
@@ -324,48 +340,86 @@ impl<'a> Lexer<'a> {
 
     fn single(&mut self, start: usize, kind: TokenKind) -> Token {
         self.pos += 1;
-        Token {
-            kind,
-            span: Span::new(start, self.pos),
-        }
+        Token::new(kind, Span::new(start, self.pos))
     }
 
     fn two_or_one(&mut self, start: usize, follow: u8, two: TokenKind, one: TokenKind) -> Token {
         if self.peek_at(1) == Some(follow) {
             self.pos += 2;
-            Token {
-                kind: two,
-                span: Span::new(start, self.pos),
-            }
+            Token::new(two, Span::new(start, self.pos))
         } else {
             self.pos += 1;
-            Token {
-                kind: one,
-                span: Span::new(start, self.pos),
-            }
+            Token::new(one, Span::new(start, self.pos))
         }
     }
 
-    fn skip_trivia(&mut self) {
+    /// Walk through whitespace and comments, capturing each significant
+    /// fragment as a [`Trivia`] entry. Returns the accumulated trivia;
+    /// `self.pos` is left at the first non-trivia byte. Replaces the
+    /// older `skip_trivia` (which silently discarded everything).
+    ///
+    /// Comment payload is stored without the leading `#` or `//` and
+    /// without the trailing newline. Multiple consecutive blank-line
+    /// breaks collapse to a single [`Trivia::BlankLine`] — canonical
+    /// output emits at most one blank between Items.
+    fn collect_trivia(&mut self) -> Vec<Trivia> {
+        let mut out = Vec::new();
+        let mut newlines_in_run = 0usize;
         loop {
             match self.peek() {
-                Some(b' ' | b'\t' | b'\n' | b'\r') => {
+                Some(b' ' | b'\t' | b'\r') => {
                     self.pos += 1;
                 }
-                Some(b'#') => self.skip_line(),
-                Some(b'/') if self.peek_at(1) == Some(b'/') => self.skip_line(),
+                Some(b'\n') => {
+                    self.pos += 1;
+                    newlines_in_run += 1;
+                    // Two consecutive newlines (with only spaces/tabs
+                    // between) indicate a blank line. Subsequent
+                    // newlines in the same run don't add more breaks
+                    // — canonical output is one blank max.
+                    if newlines_in_run == 2 {
+                        out.push(Trivia::BlankLine);
+                    }
+                }
+                Some(b'#') => {
+                    let text = self.consume_line_comment(1);
+                    out.push(Trivia::LineComment(text));
+                    // The skipped line ended on a newline — that
+                    // newline is "consumed" by the comment, so the
+                    // run counter resets for any *additional* blank
+                    // lines that follow.
+                    newlines_in_run = 1;
+                }
+                Some(b'/') if self.peek_at(1) == Some(b'/') => {
+                    let text = self.consume_line_comment(2);
+                    out.push(Trivia::LineComment(text));
+                    newlines_in_run = 1;
+                }
                 _ => break,
             }
         }
+        out
     }
 
-    fn skip_line(&mut self) {
+    /// Consume `marker_len` prefix bytes (1 for `#`, 2 for `//`), then
+    /// everything up to and including the next `\n` (or EOF). Returns
+    /// the comment payload between the prefix and the newline,
+    /// stripped of trailing whitespace.
+    fn consume_line_comment(&mut self, marker_len: usize) -> String {
+        self.pos += marker_len;
+        let text_start = self.pos;
         while let Some(c) = self.peek() {
             self.pos += 1;
             if c == b'\n' {
-                break;
+                let body = &self.src[text_start..self.pos - 1];
+                return std::str::from_utf8(body).unwrap_or("").trim().to_string();
             }
         }
+        // EOF inside a comment — payload runs to end of source.
+        std::str::from_utf8(&self.src[text_start..self.pos])
+            .unwrap_or("")
+            .trim()
+            .to_string()
     }
 
     /// Handle the `$`-prefix opener: `$"…"`, `$<<TAG`,
@@ -499,10 +553,7 @@ impl<'a> Lexer<'a> {
         } else {
             self.materialise_string(prefix.encoding, body, body_start, body_end)?
         };
-        Ok(Token {
-            kind: TokenKind::Str(kind),
-            span: Span::new(start, self.pos),
-        })
+        Ok(Token::new(TokenKind::Str(kind), Span::new(start, self.pos)))
     }
 
     /// Scan a `${...}` slot, returning the raw text between `${` and
@@ -745,14 +796,14 @@ impl<'a> Lexer<'a> {
         if !buf.is_empty() {
             parts.push(StringPart::Literal(buf));
         }
-        Ok(Token {
-            kind: TokenKind::Str(StringLit::Interpolated {
+        Ok(Token::new(
+            TokenKind::Str(StringLit::Interpolated {
                 encoding: prefix.encoding,
                 parts,
                 span: token_span,
             }),
-            span: token_span,
-        })
+            token_span,
+        ))
     }
 
     /// Plain (non-interpolated) body: escape-decode each indent-
@@ -778,10 +829,7 @@ impl<'a> Lexer<'a> {
             body.push('\n');
         }
         let kind = self.materialise_string(prefix.encoding, body, start, body_end)?;
-        Ok(Token {
-            kind: TokenKind::Str(kind),
-            span: token_span,
-        })
+        Ok(Token::new(TokenKind::Str(kind), token_span))
     }
 
     /// Walk a heredoc body line that may contain `${...}` slots.
@@ -1026,10 +1074,7 @@ impl<'a> Lexer<'a> {
         };
 
         numeric::finalize(parsed)
-            .map(|n| Token {
-                kind: TokenKind::Number(n),
-                span: literal_span,
-            })
+            .map(|n| Token::new(TokenKind::Number(n), literal_span))
             .map_err(|e| LexError {
                 message: e.message,
                 span: literal_span,
@@ -1069,7 +1114,7 @@ impl<'a> Lexer<'a> {
             "match" => TokenKind::Match,
             _ => TokenKind::Ident(text.to_string()),
         };
-        Ok(Token { kind, span })
+        Ok(Token::new(kind, span))
     }
 }
 

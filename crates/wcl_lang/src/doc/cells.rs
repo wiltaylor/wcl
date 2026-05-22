@@ -180,6 +180,7 @@ impl ItemCells {
                                 items: Vec::new(),
                                 decorators: Vec::new(),
                                 span: r.span,
+                                leading_trivia: Vec::new(),
                             };
                             let synth_cells =
                                 ItemCells::build(&ast::Item::Block(synth_block.clone()), None);

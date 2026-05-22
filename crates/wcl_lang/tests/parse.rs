@@ -1605,6 +1605,45 @@ fn interpolation_ascii_violation_reports_at_eval() {
 }
 
 #[test]
+fn parse_for_edit_captures_leading_trivia() {
+    // Two items, separated by a blank line; the second item carries a
+    // leading comment. The lexer-side trivia harvester should attach
+    // both signals to the second item's `leading_trivia` (a single
+    // BlankLine marker followed by the LineComment).
+    let src = "\
+@schemaless first = 1
+
+# explains second
+@schemaless second = 2
+";
+    let ast = parse_for_edit(src, "test").expect("parse");
+    assert_eq!(ast.items.len(), 2);
+
+    let first = match &ast.items[0] {
+        ast::Item::Field(f) => f,
+        other => panic!("expected first item to be a Field, got {other:?}"),
+    };
+    // First item has no preceding source → empty leading_trivia.
+    assert!(
+        first.leading_trivia.is_empty(),
+        "{:?}",
+        first.leading_trivia
+    );
+
+    let second = match &ast.items[1] {
+        ast::Item::Field(f) => f,
+        other => panic!("expected second item to be a Field, got {other:?}"),
+    };
+    assert_eq!(
+        second.leading_trivia,
+        vec![
+            ast::Trivia::BlankLine,
+            ast::Trivia::LineComment("explains second".into()),
+        ],
+    );
+}
+
+#[test]
 fn parse_for_edit_exposes_mutable_ast() {
     // The edit-path entry point hands back an owned `ast::Source` with
     // public fields. A host can walk and mutate it directly without

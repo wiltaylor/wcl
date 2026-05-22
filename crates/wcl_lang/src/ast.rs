@@ -18,6 +18,25 @@ impl Span {
     }
 }
 
+/// Side-band formatting hints attached to each top-level [`Item`] in
+/// `leading_trivia`. The lexer collects these from the source between
+/// tokens; the parser hands them to the next Item it builds. The
+/// source printer re-emits them so comments and blank-line groupings
+/// survive a round-trip. Other formatting (indentation, brace style,
+/// number radix, string-delimiter choice) is reformatted canonically
+/// — only what's in this enum is preserved.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Trivia {
+    /// A line comment, payload-only (the leading `#` or `//` and the
+    /// trailing newline are stripped). The printer re-adds the `#`
+    /// prefix; original prefix style is not preserved.
+    LineComment(String),
+    /// One blank line break between items. Multiple consecutive blank
+    /// lines collapse to a single marker — canonical output emits at
+    /// most one blank line between any two items.
+    BlankLine,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     Bool(bool),
@@ -256,6 +275,7 @@ pub struct Field {
     pub expr: Expr,
     pub decorators: Vec<Decorator>,
     pub span: Span,
+    pub leading_trivia: Vec<Trivia>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -265,12 +285,14 @@ pub struct Block {
     pub items: Vec<Item>,
     pub decorators: Vec<Decorator>,
     pub span: Span,
+    pub leading_trivia: Vec<Trivia>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NamespaceDecl {
     pub path: Vec<String>,
     pub span: Span,
+    pub leading_trivia: Vec<Trivia>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -278,6 +300,7 @@ pub struct UseDecl {
     pub path: Vec<String>,
     pub form: UseForm,
     pub span: Span,
+    pub leading_trivia: Vec<Trivia>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -303,6 +326,7 @@ pub struct TypeDecl {
     pub fields: Vec<TypeField>,
     pub decorators: Vec<Decorator>,
     pub span: Span,
+    pub leading_trivia: Vec<Trivia>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -313,6 +337,7 @@ pub struct InterfaceDecl {
     pub fields: Vec<TypeField>,
     pub decorators: Vec<Decorator>,
     pub span: Span,
+    pub leading_trivia: Vec<Trivia>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -336,6 +361,7 @@ pub struct UnionDecl {
     pub variants: Vec<UnionVariant>,
     pub decorators: Vec<Decorator>,
     pub span: Span,
+    pub leading_trivia: Vec<Trivia>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -368,6 +394,7 @@ pub struct SymbolSetDecl {
     pub symbols: Vec<SymbolEntry>,
     pub decorators: Vec<Decorator>,
     pub span: Span,
+    pub leading_trivia: Vec<Trivia>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -382,6 +409,7 @@ pub struct ImportDecl {
     pub path: String,
     pub path_span: Span,
     pub span: Span,
+    pub leading_trivia: Vec<Trivia>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -395,6 +423,7 @@ pub struct TableItem {
     pub field_name: String,
     pub rows: Vec<Row>,
     pub span: Span,
+    pub leading_trivia: Vec<Trivia>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -407,6 +436,7 @@ pub struct ConnectionDecl {
     pub kind_set: Vec<String>,
     pub kind_set_span: Span,
     pub span: Span,
+    pub leading_trivia: Vec<Trivia>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -418,6 +448,7 @@ pub struct ConnectionStmt {
     pub kind: Option<String>,
     pub kind_span: Option<Span>,
     pub span: Span,
+    pub leading_trivia: Vec<Trivia>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

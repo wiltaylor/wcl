@@ -29,6 +29,12 @@ pub struct Parser<'a> {
     file_ns: Vec<String>,
     index: SymbolIndex,
     block_depth: u32,
+    /// Trivia (comments + blank lines) captured at the start of the
+    /// current `parse_item` call. Each sub-parser drains this via
+    /// `take_item_trivia()` when it builds the final Item struct, so
+    /// the round-trip printer can re-emit comments at their original
+    /// positions. Fresh per Item: `parse_item` overwrites it on entry.
+    current_item_trivia: Vec<crate::ast::Trivia>,
 }
 
 impl<'a> Parser<'a> {
@@ -44,7 +50,15 @@ impl<'a> Parser<'a> {
             file_ns: Vec::new(),
             index: SymbolIndex::default(),
             block_depth: 0,
+            current_item_trivia: Vec::new(),
         }
+    }
+
+    /// Drain the trivia captured at the start of the current
+    /// `parse_item` call. Sub-parsers call this exactly once, at the
+    /// moment they construct their `ast::Item` variant.
+    pub(super) fn take_item_trivia(&mut self) -> Vec<crate::ast::Trivia> {
+        std::mem::take(&mut self.current_item_trivia)
     }
 
     pub fn parse_source(&mut self) -> Result<(Source, SymbolIndex), ParseError> {
@@ -252,6 +266,12 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_item(&mut self) -> Result<Item, ParseError> {
+        // Harvest leading trivia (comments + blank lines) from the
+        // first token of this item, before parse_decorators consumes
+        // it. Sub-parsers drain via `take_item_trivia()` when they
+        // build their Item, so the source printer can re-emit
+        // comments at their original positions.
+        self.current_item_trivia = self.peek()?.leading_trivia.clone();
         // Collect any leading @decorators first.
         let decorators = self.parse_decorators()?;
 
@@ -1135,6 +1155,7 @@ impl<'a> Parser<'a> {
         Ok(Item::NamespaceDecl(NamespaceDecl {
             path,
             span: Span::new(start, path_span.end),
+            leading_trivia: self.take_item_trivia(),
         }))
     }
 
@@ -1156,6 +1177,7 @@ impl<'a> Parser<'a> {
             field_name,
             rows,
             span: Span::new(start, end),
+            leading_trivia: self.take_item_trivia(),
         }))
     }
 
@@ -1214,6 +1236,7 @@ impl<'a> Parser<'a> {
             path,
             path_span,
             span: Span::new(start, path_span.end),
+            leading_trivia: self.take_item_trivia(),
         }))
     }
 
@@ -1257,6 +1280,7 @@ impl<'a> Parser<'a> {
                 path,
                 form: UseForm::List(items),
                 span: Span::new(start, rbrace.span.end),
+                leading_trivia: self.take_item_trivia(),
             }));
         }
 
@@ -1287,6 +1311,7 @@ impl<'a> Parser<'a> {
             path,
             form: UseForm::Bare(alias),
             span: Span::new(start, end),
+            leading_trivia: self.take_item_trivia(),
         }))
     }
 
@@ -1349,6 +1374,7 @@ impl<'a> Parser<'a> {
             fields,
             decorators,
             span: Span::new(start, rbrace_span.end),
+            leading_trivia: self.take_item_trivia(),
         }))
     }
 
@@ -1368,6 +1394,7 @@ impl<'a> Parser<'a> {
             fields,
             decorators,
             span: Span::new(start, rbrace_span.end),
+            leading_trivia: self.take_item_trivia(),
         }))
     }
 
@@ -1559,6 +1586,7 @@ impl<'a> Parser<'a> {
             variants,
             decorators,
             span: Span::new(start, rbrace_span.end),
+            leading_trivia: self.take_item_trivia(),
         }))
     }
 
@@ -1701,6 +1729,7 @@ impl<'a> Parser<'a> {
             symbols,
             decorators,
             span: Span::new(start, rbrace.span.end),
+            leading_trivia: self.take_item_trivia(),
         }))
     }
 
@@ -1732,6 +1761,7 @@ impl<'a> Parser<'a> {
             kind_set,
             kind_set_span,
             span: Span::new(start, end),
+            leading_trivia: self.take_item_trivia(),
         }))
     }
 
@@ -1782,6 +1812,7 @@ impl<'a> Parser<'a> {
             kind,
             kind_span,
             span: Span::new(lhs_span.start, end),
+            leading_trivia: self.take_item_trivia(),
         }))
     }
 
@@ -1826,6 +1857,7 @@ impl<'a> Parser<'a> {
             expr,
             decorators,
             span,
+            leading_trivia: self.take_item_trivia(),
         }))
     }
 
@@ -1891,6 +1923,7 @@ impl<'a> Parser<'a> {
             items,
             decorators,
             span: Span::new(start, rbrace.span.end),
+            leading_trivia: self.take_item_trivia(),
         }))
     }
 
