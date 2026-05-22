@@ -619,3 +619,30 @@ fn references_example_resolves_via_scope() {
         .unwrap();
     assert_eq!(age, Value::I64(25));
 }
+
+#[test]
+fn interfaces_example_parses_clean() {
+    let path = examples_dir().join("interfaces.wcl");
+    let doc = Document::from_file(&path).expect("fixture parses");
+    assert!(doc.schema_errors().is_empty(), "{:?}", doc.schema_errors());
+    let drawable = doc
+        .interface("Drawable")
+        .expect("Drawable interface present");
+    let field_names: Vec<_> = drawable.fields().map(|f| f.name().to_string()).collect();
+    assert_eq!(field_names, vec!["bounds", "z_index"]);
+
+    // `Pet extends Dog extends Animal` — effective_fields includes
+    // every ancestor field in source order.
+    let pet = doc.type_decl("Pet").expect("Pet type present");
+    let pet_fields: Vec<_> = pet
+        .effective_fields()
+        .into_iter()
+        .map(|f| f.name().to_string())
+        .collect();
+    assert_eq!(
+        pet_fields,
+        vec!["name", "age", "breed", "bounds", "z_index"]
+    );
+    assert!(pet.is_descendant_of("Animal"));
+    assert!(pet.is_descendant_of("Dog"));
+}

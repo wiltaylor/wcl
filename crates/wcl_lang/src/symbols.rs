@@ -31,10 +31,12 @@ pub struct SymbolRecord {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SymbolKind {
     TypeDecl,
+    InterfaceDecl,
     UnionDecl,
     SymbolSetDecl,
     Field,
     TypeField { parent_fqn: String },
+    InterfaceField { parent_fqn: String },
     UnionVariant { parent_fqn: String },
     SymbolEntry { parent_fqn: String },
 }

@@ -88,6 +88,39 @@ impl<'a> Parser<'a> {
                     )?;
                 }
             }
+            Item::InterfaceDecl(i) => {
+                let parent_fqn = self.join_fqn(&i.name);
+                self.try_insert(SymbolRecord {
+                    fqn: parent_fqn.clone(),
+                    kind: SymbolKind::InterfaceDecl,
+                    span: i.span,
+                    path: SymbolPath {
+                        item_index,
+                        member_index: None,
+                    },
+                })?;
+                for (mi, field) in i.fields.iter().enumerate() {
+                    let fqn = format!("{parent_fqn}.{}", field.name);
+                    self.try_insert_with_msg(
+                        SymbolRecord {
+                            fqn,
+                            kind: SymbolKind::InterfaceField {
+                                parent_fqn: parent_fqn.clone(),
+                            },
+                            span: field.span,
+                            path: SymbolPath {
+                                item_index,
+                                member_index: Some(mi),
+                            },
+                        },
+                        format!(
+                            "duplicate field '{}' in interface '{}'",
+                            field.name,
+                            i.name.join(".")
+                        ),
+                    )?;
+                }
+            }
             Item::UnionDecl(u) => {
                 let parent_fqn = self.join_fqn(&u.name);
                 self.try_insert(SymbolRecord {
@@ -245,6 +278,7 @@ impl<'a> Parser<'a> {
         {
             match first.as_str() {
                 "type" => return self.parse_type_decl(decorators),
+                "interface" => return self.parse_interface_decl(decorators),
                 "union" => return self.parse_union_decl(decorators),
                 "namespace" | "use" => {
                     if !decorators.is_empty() {
@@ -1046,6 +1080,7 @@ impl<'a> Parser<'a> {
         let type_kw = self.bump()?; // 'type'
         let start = type_kw.span.start;
         let (name, _name_span) = self.parse_path()?;
+        let extends = self.parse_extends_clause()?;
         let lbrace = self.bump()?;
         if !matches!(lbrace.kind, TokenKind::LBrace) {
             return Err(self.err(
@@ -1077,10 +1112,99 @@ impl<'a> Parser<'a> {
         let rbrace = self.bump()?;
         Ok(Item::TypeDecl(TypeDecl {
             name,
+            extends,
             fields,
             decorators,
             span: Span::new(start, rbrace.span.end),
         }))
+    }
+
+    fn parse_interface_decl(&mut self, decorators: Vec<Decorator>) -> Result<Item, ParseError> {
+        let kw = self.bump()?; // 'interface'
+        let start = kw.span.start;
+        let (name, _name_span) = self.parse_path()?;
+        let extends = self.parse_extends_clause()?;
+        let lbrace = self.bump()?;
+        if !matches!(lbrace.kind, TokenKind::LBrace) {
+            return Err(self.err(
+                format!(
+                    "expected '{{' after interface name '{}', found {}",
+                    name.join("."),
+                    describe(&lbrace.kind)
+                ),
+                lbrace.span,
+                "expected '{'",
+            ));
+        }
+        let mut fields = Vec::new();
+        loop {
+            let p = self.peek()?;
+            match p.kind {
+                TokenKind::RBrace => break,
+                TokenKind::Eof => {
+                    let span = p.span;
+                    return Err(self.err(
+                        "unexpected end of file inside interface declaration",
+                        span,
+                        "expected '}'",
+                    ));
+                }
+                _ => fields.push(self.parse_type_field()?),
+            }
+        }
+        let rbrace = self.bump()?;
+        Ok(Item::InterfaceDecl(crate::ast::InterfaceDecl {
+            name,
+            extends,
+            fields,
+            decorators,
+            span: Span::new(start, rbrace.span.end),
+        }))
+    }
+
+    /// Optional `extends Path (, Path)*` clause used by `type` and
+    /// `interface` declarations. Returns an empty vec when absent.
+    /// Trailing commas and empty lists after the keyword are
+    /// errors.
+    fn parse_extends_clause(&mut self) -> Result<Vec<Vec<String>>, ParseError> {
+        let is_extends = matches!(&self.peek()?.kind, TokenKind::Ident(s) if s == "extends");
+        if !is_extends {
+            return Ok(Vec::new());
+        }
+        let kw = self.bump()?; // 'extends'
+        let mut parents = Vec::new();
+        loop {
+            // Disallow trailing comma / empty list: at least one path required.
+            let needs_ident_error = !matches!(&self.peek()?.kind, TokenKind::Ident(_));
+            if needs_ident_error {
+                let tok = self.peek()?.clone();
+                let kind = describe(&tok.kind);
+                return Err(self.err(
+                    format!("expected parent type or interface name after 'extends', found {kind}"),
+                    tok.span,
+                    "expected identifier",
+                ));
+            }
+            let (path, _) = self.parse_path()?;
+            parents.push(path);
+            match self.peek()?.kind {
+                TokenKind::Comma => {
+                    self.bump()?;
+                    continue;
+                }
+                _ => break,
+            }
+        }
+        if parents.is_empty() {
+            // Unreachable given the loop above always pushes once,
+            // but kept for clarity.
+            return Err(self.err(
+                "'extends' must be followed by at least one parent name",
+                kw.span,
+                "empty extends clause",
+            ));
+        }
+        Ok(parents)
     }
 
     fn parse_type_field(&mut self) -> Result<TypeField, ParseError> {

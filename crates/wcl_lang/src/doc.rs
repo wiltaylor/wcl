@@ -63,6 +63,11 @@ pub(crate) enum ItemCellKind {
         /// that field's decorators.
         field_decorators: Vec<Vec<DecoratorCell>>,
     },
+    InterfaceDecl {
+        /// One inner Vec per `ast::InterfaceDecl.fields[i]`, holding cells
+        /// for that field's decorators.
+        field_decorators: Vec<Vec<DecoratorCell>>,
+    },
     UnionDecl {
         variant_decorators: Vec<Vec<DecoratorCell>>,
         /// `[variant_idx][field_idx]` decorator cells for record-variant
@@ -176,6 +181,16 @@ impl ItemCells {
                 decorators: make_decorator_cells(&t.decorators),
                 kind: ItemCellKind::TypeDecl {
                     field_decorators: t
+                        .fields
+                        .iter()
+                        .map(|f| make_decorator_cells(&f.decorators))
+                        .collect(),
+                },
+            },
+            ast::Item::InterfaceDecl(i) => Self {
+                decorators: make_decorator_cells(&i.decorators),
+                kind: ItemCellKind::InterfaceDecl {
+                    field_decorators: i
                         .fields
                         .iter()
                         .map(|f| make_decorator_cells(&f.decorators))
@@ -656,6 +671,43 @@ impl Document {
         mine_and_imports.chain(syn)
     }
 
+    /// Look up an interface declaration by fully-qualified name.
+    /// Mirrors `type_decl` / `union_decl`.
+    pub fn interface(&self, fqn: &str) -> Option<InterfaceDecl<'_>> {
+        for src in self.all_sources() {
+            if let Some(rec) = src.symbols.lookup(fqn)
+                && matches!(rec.kind, SymbolKind::InterfaceDecl)
+                && let ast::Item::InterfaceDecl(i) = &src.items[rec.path.item_index]
+            {
+                return Some(InterfaceDecl {
+                    ast: i,
+                    file_ns: src.file_ns,
+                    cells: &src.cells[rec.path.item_index],
+                    doc: self,
+                });
+            }
+        }
+        None
+    }
+
+    pub fn interfaces(&self) -> impl Iterator<Item = InterfaceDecl<'_>> + '_ {
+        let doc = self;
+        self.all_sources().into_iter().flat_map(move |src| {
+            src.items
+                .iter()
+                .zip(src.cells.iter())
+                .filter_map(move |(item, cells)| match item {
+                    ast::Item::InterfaceDecl(i) => Some(InterfaceDecl {
+                        ast: i,
+                        file_ns: src.file_ns,
+                        cells,
+                        doc,
+                    }),
+                    _ => None,
+                })
+        })
+    }
+
     /// Look up a union by fully-qualified name (dotted).
     pub fn union_decl(&self, fqn: &str) -> Option<UnionDecl<'_>> {
         for src in self.all_sources() {
@@ -740,6 +792,8 @@ impl Document {
                 let fqn_dotted = fqn.join(".");
                 if let Some(decl) = self.type_decl(&fqn_dotted) {
                     ResolvedType::Named(decl)
+                } else if let Some(iface) = self.interface(&fqn_dotted) {
+                    ResolvedType::Interface(iface)
                 } else if let Some(union) = self.union_decl(&fqn_dotted) {
                     ResolvedType::Union(union)
                 } else {
@@ -777,6 +831,7 @@ impl Document {
             .iter()
             .filter_map(|item| match item {
                 ast::Item::TypeDecl(t) => Some(self.compose_fqn(&t.name)),
+                ast::Item::InterfaceDecl(i) => Some(self.compose_fqn(&i.name)),
                 ast::Item::UnionDecl(u) => Some(self.compose_fqn(&u.name)),
                 ast::Item::SymbolSetDecl(s) => Some(self.compose_fqn(&s.name)),
                 _ => None,
@@ -1030,6 +1085,7 @@ fn resolve_path(
 pub enum ResolvedType<'a> {
     Builtin(BuiltinType),
     Named(TypeDecl<'a>),
+    Interface(InterfaceDecl<'a>),
     Union(UnionDecl<'a>),
     SymbolSet(SymbolSetDecl<'a>),
     Reference(Box<ResolvedType<'a>>),
@@ -1560,6 +1616,239 @@ impl<'a> TypeDecl<'a> {
                 doc: self.doc,
             })
     }
+
+    /// Names of parent types/interfaces this type extends, in
+    /// source order. Each entry is a path (dotted name segments).
+    pub fn extends(&self) -> &'a [Vec<String>] {
+        &self.ast.extends
+    }
+
+    /// Iterate this type's fields plus those inherited from its
+    /// `extends` chain (transitively). Ancestor fields are emitted
+    /// before the type's own, in extends-list order. Duplicate
+    /// names (identical-type child redeclarations) are emitted
+    /// once: the *latest* (child-most) definition wins.
+    pub fn effective_fields(&self) -> Vec<TypeField<'a>> {
+        let mut out: Vec<TypeField<'a>> = Vec::new();
+        let mut seen: HashSet<String> = HashSet::new();
+        collect_effective_fields(self.doc, &self.ast.extends, &mut out, &mut seen);
+        for f in self.fields() {
+            insert_or_override(&mut out, &mut seen, f);
+        }
+        out
+    }
+
+    /// Like `effective_fields()` but optimised for a one-shot
+    /// lookup. Returns the resolved `TypeField` for the named field
+    /// considering the full extends chain.
+    pub fn effective_field(&self, name: &str) -> Option<TypeField<'a>> {
+        if let Some(f) = self.field(name) {
+            return Some(f);
+        }
+        for parent_path in &self.ast.extends {
+            if let Some(f) = effective_field_via(self.doc, parent_path, name) {
+                return Some(f);
+            }
+        }
+        None
+    }
+
+    /// `true` if `other` appears anywhere in `self`'s transitive
+    /// `extends` chain. Used by the reference-acceptance check.
+    pub fn is_descendant_of(&self, other_fqn: &str) -> bool {
+        let mut seen: HashSet<String> = HashSet::new();
+        is_descendant_of_walk(self.doc, &self.ast.extends, other_fqn, &mut seen)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct InterfaceDecl<'a> {
+    ast: &'a ast::InterfaceDecl,
+    file_ns: &'a [String],
+    cells: &'a ItemCells,
+    doc: &'a Document,
+}
+
+impl<'a> InterfaceDecl<'a> {
+    fn field_decorator_cells(&self) -> &'a [Vec<DecoratorCell>] {
+        let ItemCellKind::InterfaceDecl { field_decorators } = &self.cells.kind else {
+            unreachable!("InterfaceDecl view wraps an InterfaceDecl cell")
+        };
+        field_decorators
+    }
+
+    pub fn decorators(&self) -> impl Iterator<Item = Decorator<'a>> + 'a {
+        let doc = self.doc;
+        self.ast
+            .decorators
+            .iter()
+            .zip(self.cells.decorators.iter())
+            .map(move |(ast, cell)| Decorator { ast, cell, doc })
+    }
+
+    pub fn name(&self) -> &'a str {
+        self.ast.name.last().expect("name has at least one segment")
+    }
+
+    pub fn name_segments(&self) -> &'a [String] {
+        &self.ast.name
+    }
+
+    pub fn full_name(&self) -> String {
+        self.file_ns
+            .iter()
+            .chain(self.ast.name.iter())
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(".")
+    }
+
+    pub fn namespace(&self) -> Vec<String> {
+        let mut v: Vec<String> = self.file_ns.to_vec();
+        if self.ast.name.len() > 1 {
+            v.extend(self.ast.name[..self.ast.name.len() - 1].iter().cloned());
+        }
+        v
+    }
+
+    pub fn span(&self) -> Span {
+        self.ast.span
+    }
+
+    pub fn fields(&self) -> impl Iterator<Item = TypeField<'a>> + 'a {
+        let doc = self.doc;
+        let cells = self.field_decorator_cells();
+        self.ast
+            .fields
+            .iter()
+            .enumerate()
+            .map(move |(i, f)| TypeField {
+                ast: f,
+                decorator_cells: &cells[i],
+                doc,
+            })
+    }
+
+    pub fn field(&self, name: &str) -> Option<TypeField<'a>> {
+        let cells = self.field_decorator_cells();
+        self.ast
+            .fields
+            .iter()
+            .enumerate()
+            .find(|(_, f)| f.name == name)
+            .map(|(i, f)| TypeField {
+                ast: f,
+                decorator_cells: &cells[i],
+                doc: self.doc,
+            })
+    }
+
+    /// Names of parent types/interfaces this interface extends.
+    pub fn extends(&self) -> &'a [Vec<String>] {
+        &self.ast.extends
+    }
+
+    pub fn effective_fields(&self) -> Vec<TypeField<'a>> {
+        let mut out: Vec<TypeField<'a>> = Vec::new();
+        let mut seen: HashSet<String> = HashSet::new();
+        collect_effective_fields(self.doc, &self.ast.extends, &mut out, &mut seen);
+        for f in self.fields() {
+            insert_or_override(&mut out, &mut seen, f);
+        }
+        out
+    }
+
+    pub fn effective_field(&self, name: &str) -> Option<TypeField<'a>> {
+        if let Some(f) = self.field(name) {
+            return Some(f);
+        }
+        for parent_path in &self.ast.extends {
+            if let Some(f) = effective_field_via(self.doc, parent_path, name) {
+                return Some(f);
+            }
+        }
+        None
+    }
+}
+
+/// Walk an extends path list and append each parent's effective
+/// fields into `out`, de-duplicated by name. Used by both
+/// `TypeDecl::effective_fields` and `InterfaceDecl::effective_fields`.
+fn collect_effective_fields<'a>(
+    doc: &'a Document,
+    extends_paths: &[Vec<String>],
+    out: &mut Vec<TypeField<'a>>,
+    seen: &mut HashSet<String>,
+) {
+    for parent_path in extends_paths {
+        let key = parent_path.join(".");
+        if let Some(decl) = doc.type_decl(&key) {
+            for f in decl.effective_fields() {
+                insert_or_override(out, seen, f);
+            }
+        } else if let Some(decl) = doc.interface(&key) {
+            for f in decl.effective_fields() {
+                insert_or_override(out, seen, f);
+            }
+        }
+    }
+}
+
+fn insert_or_override<'a>(
+    out: &mut Vec<TypeField<'a>>,
+    seen: &mut HashSet<String>,
+    f: TypeField<'a>,
+) {
+    if seen.contains(f.name()) {
+        if let Some(slot) = out.iter_mut().find(|x| x.name() == f.name()) {
+            *slot = f;
+        }
+    } else {
+        seen.insert(f.name().to_string());
+        out.push(f);
+    }
+}
+
+fn effective_field_via<'a>(
+    doc: &'a Document,
+    parent_path: &[String],
+    name: &str,
+) -> Option<TypeField<'a>> {
+    let key = parent_path.join(".");
+    if let Some(decl) = doc.type_decl(&key) {
+        return decl.effective_field(name);
+    }
+    if let Some(decl) = doc.interface(&key) {
+        return decl.effective_field(name);
+    }
+    None
+}
+
+fn is_descendant_of_walk(
+    doc: &Document,
+    extends_paths: &[Vec<String>],
+    target_fqn: &str,
+    seen: &mut HashSet<String>,
+) -> bool {
+    for parent_path in extends_paths {
+        let key = parent_path.join(".");
+        if !seen.insert(key.clone()) {
+            continue;
+        }
+        if key == target_fqn {
+            return true;
+        }
+        if let Some(decl) = doc.type_decl(&key)
+            && is_descendant_of_walk(doc, &decl.ast.extends, target_fqn, seen)
+        {
+            return true;
+        } else if let Some(decl) = doc.interface(&key)
+            && is_descendant_of_walk(doc, &decl.ast.extends, target_fqn, seen)
+        {
+            return true;
+        }
+    }
+    false
 }
 
 pub struct UseDeclView<'a> {
@@ -1864,16 +2153,21 @@ impl<'a> Field<'a> {
     /// it. Top-level fields and fields inside un-schema'd blocks
     /// return `None`.
     fn declared_type_ref(&self) -> Option<&'a TypeRef> {
-        let frame = self.scope.frames().last().copied()?;
-        let block = Block {
-            ast: frame.ast,
-            cells: frame.cells,
-            doc: self.doc,
-            kind_override: frame.kind_override,
-            scope: Scope::root(),
-        };
-        let schema = block.schema()?;
-        let schema_field = schema.field(self.name())?;
+        if let Some(frame) = self.scope.frames().last().copied() {
+            let block = Block {
+                ast: frame.ast,
+                cells: frame.cells,
+                doc: self.doc,
+                kind_override: frame.kind_override,
+                scope: Scope::root(),
+            };
+            let schema = block.schema()?;
+            let schema_field = schema.field(self.name())?;
+            return Some(schema_field.type_ref());
+        }
+        // Top-level field: consult the @document schema if present.
+        let doc_schema = self.doc.doc_schema()?;
+        let schema_field = doc_schema.field(self.name())?;
         Some(schema_field.type_ref())
     }
 
@@ -1887,11 +2181,154 @@ impl<'a> Field<'a> {
     ///   resolved through the field's scope chain.
     pub fn reference(&self) -> Option<Result<crate::data::DataRef<'a>, EvalError>> {
         let declared = self.declared_type_ref()?;
-        if !matches!(declared, TypeRef::Reference(_)) {
+        let TypeRef::Reference(inner) = declared else {
             return None;
-        }
+        };
         let ctx = EvalCtx::new(self.scope.clone());
-        Some(self.doc.eval_to_dataref(&self.ast.expr, &ctx))
+        let target_dr = match self.doc.eval_to_dataref(&self.ast.expr, &ctx) {
+            Ok(d) => d,
+            Err(e) => return Some(Err(e)),
+        };
+
+        // Apply interface conformance / ancestor-acceptance checks
+        // only when the target has a statically-known concrete type
+        // and the declared inner is a named path. For anything
+        // unresolvable (raw blocks, lists, etc.) we trust the
+        // navigator and skip both checks.
+        if let TypeRef::Named(path) = inner.as_ref()
+            && let Some(target_decl) = dataref_concrete_type(&target_dr, self.doc)
+        {
+            let key = path.join(".");
+            // Case A: interface conformance.
+            if let Some(iface) = self.doc.interface(&key) {
+                if let Err(e) =
+                    check_interface_conformance(self.doc, &iface, &target_decl, self.ast.span)
+                {
+                    return Some(Err(e));
+                }
+            } else if let Some(expected) = self.doc.type_decl(&key)
+                && !same_type_decl(&expected, &target_decl)
+                && !target_decl.is_descendant_of(&expected.full_name())
+            {
+                // Case B: ancestor acceptance for regular types.
+                return Some(Err(EvalError::schema_violation(
+                    crate::error::SchemaViolationKind::InterfaceNotImplemented,
+                    format!(
+                        "target type '{}' is not '{}' and does not extend it",
+                        target_decl.full_name(),
+                        expected.full_name(),
+                    ),
+                    self.ast.span,
+                )));
+            }
+        }
+        Some(Ok(target_dr))
+    }
+}
+
+/// When a `DataRef` has a statically-known concrete type (because
+/// it's a `Block` whose kind has a `@block`/`@table` schema, or a
+/// `Field` whose declared type is a named type), return that
+/// `TypeDecl`. Otherwise `None`.
+fn dataref_concrete_type<'a>(
+    dr: &crate::data::DataRef<'a>,
+    doc: &'a Document,
+) -> Option<TypeDecl<'a>> {
+    use crate::data::DataKind;
+    match dr.inner() {
+        DataKind::Block(b) => b.schema().or_else(|| doc.block_schema(b.kind())),
+        DataKind::Field(f) => {
+            let ty = f.declared_type_ref()?;
+            match ty {
+                TypeRef::Named(path) => doc.type_decl(&path.join(".")),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+fn same_type_decl(a: &TypeDecl<'_>, b: &TypeDecl<'_>) -> bool {
+    std::ptr::eq(a.ast, b.ast)
+}
+
+fn check_interface_conformance(
+    doc: &Document,
+    iface: &InterfaceDecl<'_>,
+    target_decl: &TypeDecl<'_>,
+    span: Span,
+) -> Result<(), EvalError> {
+    use crate::error::SchemaViolationKind as Kind;
+    let iface_fqn = iface.full_name();
+    let target_fqn = target_decl.full_name();
+    for if_field in iface.effective_fields() {
+        let Some(tg_field) = target_decl.effective_field(if_field.name()) else {
+            return Err(EvalError::schema_violation(
+                Kind::InterfaceNotImplemented,
+                format!(
+                    "type '{}' does not implement interface '{}': missing field '{}'",
+                    target_fqn,
+                    iface_fqn,
+                    if_field.name(),
+                ),
+                span,
+            ));
+        };
+        let iface_ty = doc.resolve(if_field.type_ref());
+        let tg_ty = doc.resolve(tg_field.type_ref());
+        if !resolved_types_equal(&iface_ty, &tg_ty) {
+            return Err(EvalError::schema_violation(
+                Kind::InterfaceNotImplemented,
+                format!(
+                    "type '{}' does not implement interface '{}': field '{}' has incompatible type",
+                    target_fqn,
+                    iface_fqn,
+                    if_field.name(),
+                ),
+                span,
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn resolved_types_equal(a: &ResolvedType<'_>, b: &ResolvedType<'_>) -> bool {
+    match (a, b) {
+        (ResolvedType::Builtin(x), ResolvedType::Builtin(y)) => x == y,
+        (ResolvedType::Named(x), ResolvedType::Named(y)) => std::ptr::eq(x.ast, y.ast),
+        (ResolvedType::Interface(x), ResolvedType::Interface(y)) => std::ptr::eq(x.ast, y.ast),
+        (ResolvedType::Union(x), ResolvedType::Union(y)) => std::ptr::eq(x.ast, y.ast),
+        (ResolvedType::SymbolSet(x), ResolvedType::SymbolSet(y)) => std::ptr::eq(x.ast, y.ast),
+        (ResolvedType::Reference(x), ResolvedType::Reference(y)) => resolved_types_equal(x, y),
+        (ResolvedType::List(x), ResolvedType::List(y)) => resolved_types_equal(x, y),
+        (
+            ResolvedType::Tensor {
+                element: ax,
+                dims: adims,
+            },
+            ResolvedType::Tensor {
+                element: bx,
+                dims: bdims,
+            },
+        ) => resolved_types_equal(ax, bx) && adims == bdims,
+        (
+            ResolvedType::Function {
+                params: ap,
+                return_ty: ar,
+            },
+            ResolvedType::Function {
+                params: bp,
+                return_ty: br,
+            },
+        ) => {
+            ap.len() == bp.len()
+                && ap
+                    .iter()
+                    .zip(bp.iter())
+                    .all(|(a, b)| resolved_types_equal(a, b))
+                && resolved_types_equal(ar, br)
+        }
+        _ => false,
     }
 }
 
@@ -3230,10 +3667,16 @@ fn validate_document(
             prefixes.insert(fqn[..n].to_vec());
         }
     }
+    // Track interface FQNs separately so `check_type_ref` can enforce
+    // the "must be behind `&`" rule when a path resolves to one.
+    let mut interfaces: HashSet<Vec<String>> = HashSet::new();
     for rec in symbols.iter() {
         if !matches!(
             rec.kind,
-            SymbolKind::TypeDecl | SymbolKind::UnionDecl | SymbolKind::SymbolSetDecl
+            SymbolKind::TypeDecl
+                | SymbolKind::InterfaceDecl
+                | SymbolKind::UnionDecl
+                | SymbolKind::SymbolSetDecl
         ) {
             continue;
         }
@@ -3247,6 +3690,9 @@ fn validate_document(
                 rec.span,
                 "duplicate declaration",
             ));
+        }
+        if matches!(rec.kind, SymbolKind::InterfaceDecl) {
+            interfaces.insert(fqn.clone());
         }
         for n in 1..fqn.len() {
             prefixes.insert(fqn[..n].to_vec());
@@ -3369,6 +3815,25 @@ fn validate_document(
                         &f.ty,
                         f.ty_span,
                         &declared,
+                        &interfaces,
+                        false,
+                        &file_ns,
+                        &item_aliases,
+                        &ns_aliases,
+                        &wildcards,
+                        source,
+                        file,
+                    )?;
+                }
+            }
+            ast::Item::InterfaceDecl(i) => {
+                for f in &i.fields {
+                    check_type_ref(
+                        &f.ty,
+                        f.ty_span,
+                        &declared,
+                        &interfaces,
+                        false,
                         &file_ns,
                         &item_aliases,
                         &ns_aliases,
@@ -3401,6 +3866,8 @@ fn validate_document(
                                     &f.ty,
                                     f.ty_span,
                                     &declared,
+                                    &interfaces,
+                                    false,
                                     &file_ns,
                                     &item_aliases,
                                     &ns_aliases,
@@ -3415,6 +3882,8 @@ fn validate_document(
                                 ty,
                                 *ty_span,
                                 &declared,
+                                &interfaces,
+                                false,
                                 &file_ns,
                                 &item_aliases,
                                 &ns_aliases,
@@ -3449,6 +3918,19 @@ fn validate_document(
         }
     }
 
+    // 5. `extends` validation: unknown parents, cycles, and
+    // conflicting field types across the effective field set.
+    validate_extends(
+        ast,
+        &declared,
+        &file_ns,
+        &item_aliases,
+        &ns_aliases,
+        &wildcards,
+        source,
+        file,
+    )?;
+
     Ok(Resolved {
         file_ns,
         item_aliases,
@@ -3457,11 +3939,186 @@ fn validate_document(
     })
 }
 
+/// Walks every `type` and `interface` declaration and resolves its
+/// `extends` clauses to canonical FQNs. Surfaces unknown parents,
+/// cycles in the extends graph, and field-type conflicts (across
+/// parents, or between a parent and a child redeclaration).
+#[allow(clippy::too_many_arguments)]
+fn validate_extends(
+    ast: &ast::Source,
+    declared: &HashSet<Vec<String>>,
+    file_ns: &[String],
+    item_aliases: &HashMap<String, Vec<String>>,
+    ns_aliases: &HashMap<String, Vec<String>>,
+    wildcards: &[Vec<String>],
+    source: &str,
+    file: &str,
+) -> Result<(), ParseError> {
+    // Snapshot every parent/child as (decl_fqn, [parent_fqn]) so we
+    // can walk the graph without distinguishing type vs interface.
+    let mut parent_map: HashMap<Vec<String>, Vec<Vec<String>>> = HashMap::new();
+    // Field map: decl_fqn -> [(field_name, TypeRef, span)].
+    type FieldRow<'a> = (&'a str, &'a TypeRef, Span);
+    let mut field_map: HashMap<Vec<String>, Vec<FieldRow<'_>>> = HashMap::new();
+
+    let compose_fqn = |name: &[String]| -> Vec<String> {
+        let mut v = file_ns.to_vec();
+        v.extend(name.iter().cloned());
+        v
+    };
+
+    for item in &ast.items {
+        let (name, extends, fields, decl_span) = match item {
+            ast::Item::TypeDecl(t) => (&t.name, &t.extends, &t.fields, t.span),
+            ast::Item::InterfaceDecl(i) => (&i.name, &i.extends, &i.fields, i.span),
+            _ => continue,
+        };
+        let self_fqn = compose_fqn(name);
+        let mut resolved_parents = Vec::with_capacity(extends.len());
+        for parent_path in extends {
+            let Some(resolved) = resolve_path(
+                parent_path,
+                file_ns,
+                item_aliases,
+                ns_aliases,
+                wildcards,
+                declared,
+            ) else {
+                return Err(open_error(
+                    source,
+                    file,
+                    format!(
+                        "unknown extends target '{}' in '{}'",
+                        parent_path.join("."),
+                        self_fqn.join("."),
+                    ),
+                    decl_span,
+                    "no such type or interface",
+                ));
+            };
+            if resolved == self_fqn {
+                return Err(open_error(
+                    source,
+                    file,
+                    format!("'{}' cannot extend itself", self_fqn.join(".")),
+                    decl_span,
+                    "self-extension",
+                ));
+            }
+            resolved_parents.push(resolved);
+        }
+        parent_map.insert(self_fqn.clone(), resolved_parents);
+        let rows: Vec<FieldRow<'_>> = fields
+            .iter()
+            .map(|f| (f.name.as_str(), &f.ty, f.span))
+            .collect();
+        field_map.insert(self_fqn, rows);
+    }
+
+    // Cycle detection via DFS coloring.
+    fn dfs_cycle(
+        node: &[String],
+        parent_map: &HashMap<Vec<String>, Vec<Vec<String>>>,
+        color: &mut HashMap<Vec<String>, u8>, // 0 = unvisited, 1 = on-stack, 2 = done
+    ) -> Option<Vec<String>> {
+        let key = node.to_vec();
+        match color.get(&key).copied().unwrap_or(0) {
+            1 => return Some(key),
+            2 => return None,
+            _ => {}
+        }
+        color.insert(key.clone(), 1);
+        if let Some(parents) = parent_map.get(&key) {
+            for p in parents {
+                if let Some(cycle) = dfs_cycle(p, parent_map, color) {
+                    return Some(cycle);
+                }
+            }
+        }
+        color.insert(key, 2);
+        None
+    }
+    let mut color: HashMap<Vec<String>, u8> = HashMap::new();
+    for node in parent_map.keys() {
+        if let Some(cycle_node) = dfs_cycle(node, &parent_map, &mut color) {
+            return Err(open_error(
+                source,
+                file,
+                format!("cyclic extends graph involving '{}'", cycle_node.join("."),),
+                Span::new(0, 0),
+                "cycle in extends",
+            ));
+        }
+    }
+
+    // Field-type compatibility: walk each declaration's transitive
+    // ancestors, accumulate (name, TypeRef) pairs, and error on
+    // conflicting types for the same name.
+    fn collect_ancestor_fields<'a>(
+        node: &[String],
+        parent_map: &HashMap<Vec<String>, Vec<Vec<String>>>,
+        field_map: &HashMap<Vec<String>, Vec<(&'a str, &'a TypeRef, Span)>>,
+        out: &mut Vec<(&'a str, &'a TypeRef, Span)>,
+        seen: &mut HashSet<Vec<String>>,
+    ) {
+        let key = node.to_vec();
+        if !seen.insert(key.clone()) {
+            return;
+        }
+        if let Some(parents) = parent_map.get(&key) {
+            for p in parents {
+                collect_ancestor_fields(p, parent_map, field_map, out, seen);
+            }
+        }
+        if let Some(rows) = field_map.get(&key) {
+            out.extend(rows.iter().copied());
+        }
+    }
+
+    for (decl_fqn, _) in parent_map.iter() {
+        let mut all_fields: Vec<FieldRow<'_>> = Vec::new();
+        let mut seen: HashSet<Vec<String>> = HashSet::new();
+        collect_ancestor_fields(
+            decl_fqn,
+            &parent_map,
+            &field_map,
+            &mut all_fields,
+            &mut seen,
+        );
+        // Check pairwise.
+        let mut by_name: HashMap<&str, (&TypeRef, Span)> = HashMap::new();
+        for (name, ty, span) in &all_fields {
+            match by_name.get(name) {
+                Some((existing_ty, _)) if *existing_ty != *ty => {
+                    return Err(open_error(
+                        source,
+                        file,
+                        format!(
+                            "conflicting type for field '{}' in '{}' (across extends)",
+                            name,
+                            decl_fqn.join("."),
+                        ),
+                        *span,
+                        "field type conflict",
+                    ));
+                }
+                _ => {
+                    by_name.insert(name, (ty, *span));
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 fn check_type_ref(
     t: &TypeRef,
     ty_span: Span,
     declared: &HashSet<Vec<String>>,
+    interfaces: &HashSet<Vec<String>>,
+    parent_is_ref: bool,
     file_ns: &[String],
     item_aliases: &HashMap<String, Vec<String>>,
     ns_aliases: &HashMap<String, Vec<String>>,
@@ -3472,23 +4129,38 @@ fn check_type_ref(
     match t {
         TypeRef::Builtin(_) => Ok(()),
         TypeRef::Named(path) => {
-            if resolve_path(path, file_ns, item_aliases, ns_aliases, wildcards, declared).is_some()
-            {
-                Ok(())
-            } else {
-                Err(open_error(
+            let Some(resolved) =
+                resolve_path(path, file_ns, item_aliases, ns_aliases, wildcards, declared)
+            else {
+                return Err(open_error(
                     source,
                     file,
                     format!("unknown type '{}'", path.join(".")),
                     ty_span,
                     "type not declared",
-                ))
+                ));
+            };
+            if interfaces.contains(&resolved) && !parent_is_ref {
+                return Err(open_error(
+                    source,
+                    file,
+                    format!(
+                        "interface '{}' must be used through a reference (`&{}`)",
+                        path.join("."),
+                        path.join(".")
+                    ),
+                    ty_span,
+                    "interface in non-reference position",
+                ));
             }
+            Ok(())
         }
         TypeRef::Reference(inner) => check_type_ref(
             inner,
             ty_span,
             declared,
+            interfaces,
+            true,
             file_ns,
             item_aliases,
             ns_aliases,
@@ -3500,6 +4172,8 @@ fn check_type_ref(
             inner,
             ty_span,
             declared,
+            interfaces,
+            false,
             file_ns,
             item_aliases,
             ns_aliases,
@@ -3511,6 +4185,8 @@ fn check_type_ref(
             element,
             ty_span,
             declared,
+            interfaces,
+            false,
             file_ns,
             item_aliases,
             ns_aliases,
@@ -3524,6 +4200,8 @@ fn check_type_ref(
                     p,
                     ty_span,
                     declared,
+                    interfaces,
+                    false,
                     file_ns,
                     item_aliases,
                     ns_aliases,
@@ -3536,6 +4214,8 @@ fn check_type_ref(
                 return_ty,
                 ty_span,
                 declared,
+                interfaces,
+                false,
                 file_ns,
                 item_aliases,
                 ns_aliases,
@@ -5929,5 +6609,324 @@ mod tests {
         let svc = doc.block("svc").unwrap();
         let v = svc.field("surprise").unwrap().value().unwrap();
         assert_eq!(v, &Value::I64(1));
+    }
+
+    // ─── Interfaces and `extends` ─────────────────────────────────────
+
+    #[test]
+    fn interface_declares_and_lookup_returns_some() {
+        let doc = Document::open(
+            r#"
+            interface Drawable { bounds: utf8 }
+            "#,
+            "t",
+        )
+        .unwrap();
+        let iface = doc.interface("Drawable").expect("interface present");
+        assert_eq!(iface.name(), "Drawable");
+        let fields: Vec<_> = iface.fields().map(|f| f.name().to_string()).collect();
+        assert_eq!(fields, vec!["bounds".to_string()]);
+    }
+
+    #[test]
+    fn type_and_interface_with_same_name_clash() {
+        let err = Document::open(
+            r#"
+            type Foo { x: utf8 }
+            interface Foo { x: utf8 }
+            "#,
+            "t",
+        )
+        .unwrap_err();
+        let msg = format!("{err:?}");
+        assert!(msg.contains("duplicate declaration"), "{msg}");
+    }
+
+    #[test]
+    fn interface_in_bare_position_errors_at_open() {
+        let err = Document::open(
+            r#"
+            interface Drawable { x: utf8 }
+            type Holder { bare: Drawable }
+            "#,
+            "t",
+        )
+        .unwrap_err();
+        let msg = format!("{err:?}");
+        assert!(msg.contains("must be used through a reference"), "{msg}");
+    }
+
+    #[test]
+    fn interface_in_reference_position_resolves() {
+        Document::open(
+            r#"
+            interface Drawable { x: utf8 }
+            type Holder { d: &Drawable }
+            "#,
+            "t",
+        )
+        .expect("opens");
+    }
+
+    #[test]
+    fn interface_inside_list_under_reference_is_allowed() {
+        Document::open(
+            r#"
+            interface Drawable { x: utf8 }
+            type Holder { ds: list<&Drawable> }
+            "#,
+            "t",
+        )
+        .expect("opens");
+    }
+
+    #[test]
+    fn interface_in_function_param_under_reference_is_allowed() {
+        Document::open(
+            r#"
+            interface Drawable { x: utf8 }
+            type Holder { f: fn(&Drawable) -> i32 }
+            "#,
+            "t",
+        )
+        .expect("opens");
+    }
+
+    #[test]
+    fn extends_unknown_parent_errors_at_open() {
+        let err = Document::open(
+            r#"
+            type Dog extends Animal { breed: utf8 }
+            "#,
+            "t",
+        )
+        .unwrap_err();
+        let msg = format!("{err:?}");
+        assert!(msg.contains("unknown extends target"), "{msg}");
+    }
+
+    #[test]
+    fn cyclic_extends_errors_at_open() {
+        let err = Document::open(
+            r#"
+            type A extends B {}
+            type B extends A {}
+            "#,
+            "t",
+        )
+        .unwrap_err();
+        let msg = format!("{err:?}");
+        assert!(msg.contains("cyclic extends"), "{msg}");
+    }
+
+    #[test]
+    fn extends_conflicting_field_types_errors_at_open() {
+        let err = Document::open(
+            r#"
+            type A { x: utf8 }
+            type B { x: i32 }
+            type C extends A, B { y: utf8 }
+            "#,
+            "t",
+        )
+        .unwrap_err();
+        let msg = format!("{err:?}");
+        assert!(msg.contains("conflicting type for field"), "{msg}");
+    }
+
+    #[test]
+    fn extends_redeclaration_same_type_allowed() {
+        Document::open(
+            r#"
+            type Animal { name: utf8 }
+            type Dog extends Animal { name: utf8  breed: utf8 }
+            "#,
+            "t",
+        )
+        .expect("opens");
+    }
+
+    #[test]
+    fn extends_redeclaration_different_type_errors() {
+        let err = Document::open(
+            r#"
+            type Animal { name: utf8 }
+            type Dog extends Animal { name: i32  breed: utf8 }
+            "#,
+            "t",
+        )
+        .unwrap_err();
+        let msg = format!("{err:?}");
+        assert!(msg.contains("conflicting type for field"), "{msg}");
+    }
+
+    #[test]
+    fn type_decl_effective_fields_includes_ancestors() {
+        let doc = Document::open(
+            r#"
+            type Animal { name: utf8  age: u32 }
+            type Dog extends Animal { breed: utf8 }
+            "#,
+            "t",
+        )
+        .unwrap();
+        let dog = doc.type_decl("Dog").unwrap();
+        let names: Vec<_> = dog
+            .effective_fields()
+            .into_iter()
+            .map(|f| f.name().to_string())
+            .collect();
+        assert_eq!(names, vec!["name", "age", "breed"]);
+    }
+
+    #[test]
+    fn type_decl_extends_lists_parents_in_order() {
+        let doc = Document::open(
+            r#"
+            type A { x: utf8 }
+            interface B { y: utf8 }
+            type C extends A, B { z: utf8 }
+            "#,
+            "t",
+        )
+        .unwrap();
+        let c = doc.type_decl("C").unwrap();
+        let parents: Vec<String> = c.extends().iter().map(|p| p.join(".")).collect();
+        assert_eq!(parents, vec!["A".to_string(), "B".to_string()]);
+    }
+
+    fn open_interfaces_doc() -> Document {
+        Document::open(
+            r#"
+            interface Drawable { tag: utf8  rank: i32 }
+            type Animal { name: utf8 }
+            type Dog extends Animal { breed: utf8 }
+            @block("animal") type AnimalBlock extends Animal { @inline(0) id: utf8 }
+            @block("dog") type DogBlock extends Dog {
+                @inline(0) id: utf8
+                tag:  utf8
+                rank: i32
+            }
+            @block("widget") type WidgetBlock {
+                @inline(0) id: utf8
+                tag: utf8
+                rank: i32
+            }
+            @block("partial") type PartialBlock {
+                @inline(0) id: utf8
+                tag: utf8
+                // missing `rank`
+            }
+            @document
+            type Cfg {
+                @child("animal") animal: AnimalBlock?
+                @child("dog") dog: DogBlock?
+                @child("widget") widget: WidgetBlock?
+                @child("partial") partial: PartialBlock?
+                ref_animal: &Animal
+                ref_dog_as_animal: &Animal
+                ref_widget_as_drawable: &Drawable
+                ref_dog_as_drawable: &Drawable
+                ref_partial_as_drawable: &Drawable
+                ref_widget_as_animal: &Animal
+            }
+            animal "alice" {}
+            dog "spot" { tag = "alpha"  rank = 1 }
+            widget "w1" { tag = "alpha"  rank = 1 }
+            partial "p1" { tag = "alpha" }
+            ref_animal              = animal
+            ref_dog_as_animal       = dog
+            ref_widget_as_drawable  = widget
+            ref_dog_as_drawable     = dog
+            ref_partial_as_drawable = partial
+            ref_widget_as_animal    = widget
+            "#,
+            "t",
+        )
+        .expect("opens")
+    }
+
+    #[test]
+    fn descendant_satisfies_ancestor_reference() {
+        // `dog.spot` (DogBlock extends Dog extends Animal) read
+        // through `&Animal` should resolve.
+        let doc = open_interfaces_doc();
+        let f = doc.field("ref_dog_as_animal").unwrap();
+        f.reference()
+            .expect("&T field exposes reference()")
+            .expect("dog target accepted as Animal");
+    }
+
+    #[test]
+    fn exact_match_resolves_through_reference() {
+        let doc = open_interfaces_doc();
+        let f = doc.field("ref_animal").unwrap();
+        f.reference()
+            .expect("&T field")
+            .expect("animal matches Animal exactly");
+    }
+
+    #[test]
+    fn conformant_target_resolves_through_interface_reference() {
+        // WidgetBlock has tag + rank → satisfies Drawable.
+        let doc = open_interfaces_doc();
+        let f = doc.field("ref_widget_as_drawable").unwrap();
+        f.reference()
+            .expect("&Drawable field")
+            .expect("WidgetBlock conforms to Drawable");
+    }
+
+    #[test]
+    fn target_missing_field_errors_interface_not_implemented() {
+        // PartialBlock has `tag` but no `rank` → fails Drawable.
+        let doc = open_interfaces_doc();
+        let f = doc.field("ref_partial_as_drawable").unwrap();
+        let r = f.reference().expect("&Drawable");
+        match r {
+            Ok(_) => panic!("expected InterfaceNotImplemented"),
+            Err(e) => assert!(
+                matches!(
+                    e,
+                    EvalError::SchemaViolation {
+                        kind: crate::error::SchemaViolationKind::InterfaceNotImplemented,
+                        ..
+                    }
+                ),
+                "{e:?}"
+            ),
+        }
+    }
+
+    #[test]
+    fn sibling_target_errors_through_reference() {
+        // WidgetBlock has no `extends Animal` chain → fails &Animal.
+        let doc = open_interfaces_doc();
+        let f = doc.field("ref_widget_as_animal").unwrap();
+        let r = f.reference().expect("&Animal");
+        match r {
+            Ok(_) => panic!("expected InterfaceNotImplemented"),
+            Err(e) => assert!(
+                matches!(
+                    e,
+                    EvalError::SchemaViolation {
+                        kind: crate::error::SchemaViolationKind::InterfaceNotImplemented,
+                        ..
+                    }
+                ),
+                "{e:?}"
+            ),
+        }
+    }
+
+    #[test]
+    fn dog_inherited_fields_also_satisfy_drawable_via_self_fields() {
+        // DogBlock declares its own tag/rank, so it implements
+        // Drawable directly. (The Animal-extends chain doesn't
+        // contribute Drawable shape.)
+        let doc = open_interfaces_doc();
+        let f = doc.field("ref_dog_as_drawable").unwrap();
+        f.reference()
+            .expect("&Drawable")
+            .expect("DogBlock implements Drawable");
     }
 }

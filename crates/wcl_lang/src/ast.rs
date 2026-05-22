@@ -197,6 +197,20 @@ pub(crate) struct UseItem {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct TypeDecl {
     pub name: Vec<String>,
+    /// Names of parent types/interfaces this declaration inherits
+    /// from, in source order. Empty when no `extends` clause was
+    /// written.
+    pub extends: Vec<Vec<String>>,
+    pub fields: Vec<TypeField>,
+    pub decorators: Vec<Decorator>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct InterfaceDecl {
+    pub name: Vec<String>,
+    /// Parent types/interfaces — same shape as `TypeDecl::extends`.
+    pub extends: Vec<Vec<String>>,
     pub fields: Vec<TypeField>,
     pub decorators: Vec<Decorator>,
     pub span: Span,
@@ -278,6 +292,7 @@ pub(crate) enum Item {
     Field(Field),
     Block(Block),
     TypeDecl(TypeDecl),
+    InterfaceDecl(InterfaceDecl),
     UnionDecl(UnionDecl),
     NamespaceDecl(NamespaceDecl),
     UseDecl(UseDecl),

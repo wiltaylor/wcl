@@ -174,6 +174,11 @@ pub enum SchemaViolationKind {
     /// More than one `@document`-decorated type declared in the
     /// document.
     MultipleDocumentSchemas,
+    /// A `&Interface` reference field's target doesn't implement
+    /// the interface (missing or differently-typed field), or a
+    /// `&T` reference field's target isn't `T` and isn't a
+    /// descendant of `T` via the `extends` chain.
+    InterfaceNotImplemented,
 }
 
 impl EvalError {
