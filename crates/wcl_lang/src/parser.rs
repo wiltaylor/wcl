@@ -11,6 +11,11 @@ use crate::lexer::{LexError, Lexer, NumberLit, StringLit, Token, TokenKind};
 use crate::symbols::{DuplicateSymbol, SymbolIndex, SymbolKind, SymbolPath, SymbolRecord};
 use crate::value::{BuiltinType, TensorDim, TypeRef};
 
+/// `(fields, has_rest, close_brace_end)`. Returned by
+/// `Parser::parse_record_pattern_fields` so both qualified and
+/// unqualified variant patterns can share the body parser.
+type RecordPatBody = (Vec<(String, Pattern)>, bool, usize);
+
 pub struct Parser<'a> {
     file: String,
     /// Pre-built `NamedSource` used for every diagnostic. Cloning a
@@ -922,90 +927,13 @@ impl<'a> Parser<'a> {
             TokenKind::ColonColon,
             "expected '::' after type path in pattern",
         )?;
-        let v_tok = self.bump()?;
-        let TokenKind::Ident(v_name) = v_tok.kind else {
-            return Err(self.err(
-                format!(
-                    "expected variant name after '::', found {}",
-                    describe(&v_tok.kind)
-                ),
-                v_tok.span,
-                "expected variant name",
-            ));
-        };
-        let mut end = v_tok.span.end;
-        let args = match self.peek()?.kind {
-            TokenKind::LParen => {
-                self.bump()?;
-                let inner = self.parse_pattern()?;
-                let rp = self.expect(TokenKind::RParen, "expected ')' after variant pattern")?;
-                end = rp.span.end;
-                VariantPatArgs::Positional(Box::new(inner))
-            }
-            TokenKind::LBrace => {
-                self.bump()?;
-                let mut fields: Vec<(String, Pattern)> = Vec::new();
-                let mut rest = false;
-                while !matches!(self.peek()?.kind, TokenKind::RBrace) {
-                    if matches!(self.peek()?.kind, TokenKind::DotDot) {
-                        self.bump()?;
-                        rest = true;
-                        // Trailing comma after `..` is allowed.
-                        if matches!(self.peek()?.kind, TokenKind::Comma) {
-                            self.bump()?;
-                        }
-                        break;
-                    }
-                    let name_tok = self.bump()?;
-                    let TokenKind::Ident(fname) = name_tok.kind else {
-                        return Err(self.err(
-                            format!(
-                                "expected field name in record pattern, found {}",
-                                describe(&name_tok.kind)
-                            ),
-                            name_tok.span,
-                            "expected field name",
-                        ));
-                    };
-                    let inner = if matches!(self.peek()?.kind, TokenKind::Colon) {
-                        self.bump()?;
-                        self.parse_pattern()?
-                    } else {
-                        // `{ name }` shorthand → bind by the field's own name.
-                        Pattern::Binding {
-                            name: fname.clone(),
-                            span: name_tok.span,
-                        }
-                    };
-                    fields.push((fname, inner));
-                    match self.peek()?.kind {
-                        TokenKind::Comma => {
-                            self.bump()?;
-                        }
-                        TokenKind::RBrace => break,
-                        _ => {
-                            let p = self.peek()?;
-                            let span = p.span;
-                            let kind = describe(&p.kind);
-                            return Err(self.err(
-                                format!("expected ',' or '}}' in record pattern, found {kind}"),
-                                span,
-                                "expected ',' or '}'",
-                            ));
-                        }
-                    }
-                }
-                let rb = self.expect(TokenKind::RBrace, "expected '}' to close record pattern")?;
-                end = rb.span.end;
-                VariantPatArgs::Record { fields, rest }
-            }
-            _ => VariantPatArgs::Unit,
-        };
+        let (v_name, v_span) = self.bump_ident("expected variant name after '::'")?;
+        let (args, args_end) = self.parse_variant_pat_args(v_span.end)?;
         Ok(Pattern::Variant {
             type_path: path,
             variant: v_name,
             args,
-            span: Span::new(path_span.start, end),
+            span: Span::new(path_span.start, args_end),
         })
     }
 
@@ -1014,79 +942,88 @@ impl<'a> Parser<'a> {
     /// runtime union at match time.
     fn parse_unqualified_variant_pattern(&mut self) -> Result<Pattern, ParseError> {
         let (v_name, name_span) = self.bump_ident("expected variant name")?;
-        let start = name_span.start;
-        let mut end = name_span.end;
-        let args = match self.peek()?.kind {
-            TokenKind::LParen => {
-                self.bump()?;
-                let inner = self.parse_pattern()?;
-                let rp = self.expect(TokenKind::RParen, "expected ')' after variant pattern")?;
-                end = rp.span.end;
-                VariantPatArgs::Positional(Box::new(inner))
-            }
-            TokenKind::LBrace => {
-                self.bump()?;
-                let mut fields: Vec<(String, Pattern)> = Vec::new();
-                let mut rest = false;
-                while !matches!(self.peek()?.kind, TokenKind::RBrace) {
-                    if matches!(self.peek()?.kind, TokenKind::DotDot) {
-                        self.bump()?;
-                        rest = true;
-                        if matches!(self.peek()?.kind, TokenKind::Comma) {
-                            self.bump()?;
-                        }
-                        break;
-                    }
-                    let nt = self.bump()?;
-                    let TokenKind::Ident(fname) = nt.kind else {
-                        return Err(self.err(
-                            format!(
-                                "expected field name in record pattern, found {}",
-                                describe(&nt.kind)
-                            ),
-                            nt.span,
-                            "expected field name",
-                        ));
-                    };
-                    let inner = if matches!(self.peek()?.kind, TokenKind::Colon) {
-                        self.bump()?;
-                        self.parse_pattern()?
-                    } else {
-                        Pattern::Binding {
-                            name: fname.clone(),
-                            span: nt.span,
-                        }
-                    };
-                    fields.push((fname, inner));
-                    match self.peek()?.kind {
-                        TokenKind::Comma => {
-                            self.bump()?;
-                        }
-                        TokenKind::RBrace => break,
-                        _ => {
-                            let p = self.peek()?;
-                            let span = p.span;
-                            let kind = describe(&p.kind);
-                            return Err(self.err(
-                                format!("expected ',' or '}}' in record pattern, found {kind}"),
-                                span,
-                                "expected ',' or '}'",
-                            ));
-                        }
-                    }
-                }
-                let rb = self.expect(TokenKind::RBrace, "expected '}' to close record pattern")?;
-                end = rb.span.end;
-                VariantPatArgs::Record { fields, rest }
-            }
-            _ => VariantPatArgs::Unit,
-        };
+        let (args, args_end) = self.parse_variant_pat_args(name_span.end)?;
         Ok(Pattern::Variant {
             type_path: Vec::new(), // unqualified — matcher uses scrutinee's union
             variant: v_name,
             args,
-            span: Span::new(start, end),
+            span: Span::new(name_span.start, args_end),
         })
+    }
+
+    /// Parse the args trailer common to both qualified and unqualified
+    /// variant patterns: `(inner_pattern)`, `{ field: pat, .., }`, or
+    /// no trailer at all (unit form). `name_end` is the end-pos of the
+    /// preceding variant name; when there's no trailer it doubles as
+    /// the args end-pos.
+    fn parse_variant_pat_args(
+        &mut self,
+        name_end: usize,
+    ) -> Result<(VariantPatArgs, usize), ParseError> {
+        match self.peek()?.kind {
+            TokenKind::LParen => {
+                self.bump()?;
+                let inner = self.parse_pattern()?;
+                let rp = self.expect(TokenKind::RParen, "expected ')' after variant pattern")?;
+                Ok((VariantPatArgs::Positional(Box::new(inner)), rp.span.end))
+            }
+            TokenKind::LBrace => {
+                self.bump()?;
+                let (fields, rest, brace_end) = self.parse_record_pattern_fields()?;
+                Ok((VariantPatArgs::Record { fields, rest }, brace_end))
+            }
+            _ => Ok((VariantPatArgs::Unit, name_end)),
+        }
+    }
+
+    /// Parse the body of a record-pattern `{ field: pat, ..,  }` after
+    /// the opening brace has already been consumed. Returns the field
+    /// list, whether a `..` rest pattern was present, and the end-pos
+    /// of the closing `}`.
+    fn parse_record_pattern_fields(&mut self) -> Result<RecordPatBody, ParseError> {
+        let mut fields: Vec<(String, Pattern)> = Vec::new();
+        let mut rest = false;
+        while !matches!(self.peek()?.kind, TokenKind::RBrace) {
+            if matches!(self.peek()?.kind, TokenKind::DotDot) {
+                self.bump()?;
+                rest = true;
+                // Trailing comma after `..` is allowed.
+                if matches!(self.peek()?.kind, TokenKind::Comma) {
+                    self.bump()?;
+                }
+                break;
+            }
+            let (fname, fname_span) = self.bump_ident("expected field name in record pattern")?;
+            let inner = if matches!(self.peek()?.kind, TokenKind::Colon) {
+                self.bump()?;
+                self.parse_pattern()?
+            } else {
+                // `{ name }` shorthand → bind by the field's own name.
+                Pattern::Binding {
+                    name: fname.clone(),
+                    span: fname_span,
+                }
+            };
+            fields.push((fname, inner));
+            match self.peek()?.kind {
+                TokenKind::Comma => {
+                    self.bump()?;
+                }
+                TokenKind::RBrace => break,
+                _ => {
+                    let p = self.peek()?;
+                    let span = p.span;
+                    let kind = describe(&p.kind);
+                    return Err(self.err(
+                        format!("expected ',' or '}}' in record pattern, found {kind}"),
+                        span,
+                        "expected ',' or '}'",
+                    ));
+                }
+            }
+        }
+        let rb = self.expect(TokenKind::RBrace, "expected '}' to close record pattern")?;
+        Ok((fields, rest, rb.span.end))
     }
 
     fn parse_list_literal(&mut self) -> Result<(Expr, Span), ParseError> {
