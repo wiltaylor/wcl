@@ -1,0 +1,22 @@
+// `mystery` is not declared anywhere — schema_errors should
+// surface an UnknownConnectionOperand violation.
+
+symbol_set EdgeKind { uses }
+
+connection DependsOn: Service -> Service : EdgeKind
+
+@document
+type Config {
+  @children("service")    services: list<Service>
+  @connections(DependsOn) deps:     list<DependsOn>
+}
+
+@block("service")
+type Service {
+  @inline(0) id: identifier
+  port:       u32
+}
+
+service "web" { port = 8080u32 }
+
+web -> mystery

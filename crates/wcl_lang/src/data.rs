@@ -244,8 +244,19 @@ impl<'a> DataRef<'a> {
             DataKind::Field(_)
             | DataKind::TypeField(_)
             | DataKind::Symbol(_)
-            | DataKind::VariantValue(_)
             | DataKind::VariantValueList(_) => None,
+            DataKind::VariantValue(v) => match v {
+                // Member access on a record-shaped value: project the
+                // named field as a fresh leaf navigator.
+                Value::Record { fields, .. } => {
+                    fields.get(name).cloned().map(DataRef::from_variant_value)
+                }
+                Value::Variant {
+                    payload: crate::value::VariantPayload::Record(map),
+                    ..
+                } => map.get(name).cloned().map(DataRef::from_variant_value),
+                _ => None,
+            },
             DataKind::BlockList(v) | DataKind::Table(v) => {
                 // Address a row/block by its first label, comparing
                 // against `Utf8`, `Ascii`, and `Identifier`. This

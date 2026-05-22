@@ -96,3 +96,40 @@ fn tempdir() -> PathBuf {
     std::fs::create_dir_all(&dir).expect("mkdir tempdir");
     dir
 }
+
+#[test]
+fn check_ok_on_connections_example() {
+    wcl()
+        .arg("check")
+        .arg(examples_dir().join("connections.wcl"))
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("OK"));
+}
+
+#[test]
+fn parse_prints_connection_decl_and_statements() {
+    wcl()
+        .arg("parse")
+        .arg(examples_dir().join("connections.wcl"))
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "connection DependsOn: Service -> Service : EdgeKind",
+        ))
+        .stdout(predicate::str::contains("web -> db"))
+        .stdout(predicate::str::contains("web -> cache :uses"));
+}
+
+#[test]
+fn eval_walks_into_decomposed_connections_field() {
+    wcl()
+        .arg("eval")
+        .arg(examples_dir().join("connections.wcl"))
+        .arg("deps")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("DependsOn"))
+        .stdout(predicate::str::contains("destination: \"db\""))
+        .stdout(predicate::str::contains("destination: \"cache\""));
+}

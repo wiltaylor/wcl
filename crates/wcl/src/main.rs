@@ -4,9 +4,9 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use wcl_lang::{
-    Block, DeclName, Decorator, Document, Field, Profile, ProfileKey, ProfileNode, SymbolSetDecl,
-    TensorDim, TypeDecl, TypeRef, UnionDecl, UnionVariant, UseDeclView, UseFormView, Value,
-    VariantBodyView, VariantPayload,
+    Block, ConnectionDecl, DeclName, Decorator, Document, Field, Profile, ProfileKey, ProfileNode,
+    SymbolSetDecl, TensorDim, TypeDecl, TypeRef, UnionDecl, UnionVariant, UseDeclView, UseFormView,
+    Value, VariantBodyView, VariantPayload,
 };
 
 #[derive(Parser)]
@@ -181,12 +181,33 @@ fn dump_document(doc: &Document, out: &mut String) {
     for s in doc.symbol_sets() {
         dump_symbol_set_decl(&s, out);
     }
+    for c in doc.connection_decls() {
+        dump_connection_decl(&c, out);
+    }
     for f in doc.fields() {
         dump_field(&f, 0, out);
     }
     for b in doc.blocks() {
         dump_block(&b, 0, out);
     }
+    for c in doc.connection_stmts() {
+        match c.kind() {
+            Some(k) => writeln!(out, "{} -> {} :{}", c.source(), c.destination(), k).unwrap(),
+            None => writeln!(out, "{} -> {}", c.source(), c.destination()).unwrap(),
+        }
+    }
+}
+
+fn dump_connection_decl(c: &ConnectionDecl<'_>, out: &mut String) {
+    writeln!(
+        out,
+        "connection {}: {} -> {} : {}",
+        c.full_name(),
+        type_repr(c.source_type()),
+        type_repr(c.destination_type()),
+        c.kind_set_path().join("."),
+    )
+    .unwrap();
 }
 
 fn dump_use_decl(u: &UseDeclView<'_>, out: &mut String) {
@@ -465,6 +486,13 @@ fn value_repr(v: &Value) -> String {
                     format!("{path} {{ {} }}", parts.join(", "))
                 }
             }
+        }
+        Value::Record { ty, fields } => {
+            let parts: Vec<String> = fields
+                .iter()
+                .map(|(k, v)| format!("{k}: {}", value_repr(v)))
+                .collect();
+            format!("{} {{ {} }}", ty.join("."), parts.join(", "))
         }
     }
 }

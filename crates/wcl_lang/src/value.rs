@@ -40,6 +40,15 @@ pub enum Value {
         variant: String,
         payload: VariantPayload,
     },
+    /// Anonymous-shape record value produced by built-in deconstruction
+    /// (e.g. connection statements projected through `@connections`).
+    /// `ty` carries the FQN of the declaration that produced the
+    /// record so consumers can dispatch by type; `fields` holds the
+    /// named slots in deterministic order.
+    Record {
+        ty: Vec<String>,
+        fields: std::collections::BTreeMap<String, Value>,
+    },
 }
 
 /// Runtime payload of a [`Value::Variant`], matching the shape of the
@@ -177,6 +186,7 @@ impl Value {
             Value::List(_) => "list",
             Value::Tensor { .. } => "tensor",
             Value::Variant { .. } => "variant",
+            Value::Record { .. } => "record",
         }
     }
 }

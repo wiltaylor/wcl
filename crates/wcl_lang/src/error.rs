@@ -273,6 +273,18 @@ pub enum SchemaViolationKind {
     /// Should be unreachable after `VariantShapeCollision` declaration
     /// checks land.
     VariantAmbiguous,
+    /// A connection statement's lhs or rhs identifier doesn't resolve
+    /// to a block in scope.
+    UnknownConnectionOperand,
+    /// No declared `connection` schema accepts the resolved operand
+    /// types of a connection statement.
+    UnknownConnection,
+    /// More than one declared `connection` schema matches the operand
+    /// types of a connection statement.
+    AmbiguousConnection,
+    /// A connection statement's `:kind` symbol isn't a member of the
+    /// matched schema's `kind_set`.
+    UnknownConnectionKind,
 }
 
 impl EvalError {

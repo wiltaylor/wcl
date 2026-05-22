@@ -382,6 +382,29 @@ pub(crate) struct TableItem {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ConnectionDecl {
+    pub name: Vec<String>,
+    pub source: crate::value::TypeRef,
+    pub source_span: Span,
+    pub destination: crate::value::TypeRef,
+    pub destination_span: Span,
+    pub kind_set: Vec<String>,
+    pub kind_set_span: Span,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ConnectionStmt {
+    pub lhs: String,
+    pub lhs_span: Span,
+    pub rhs: String,
+    pub rhs_span: Span,
+    pub kind: Option<String>,
+    pub kind_span: Option<Span>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Item {
     Field(Field),
     Block(Block),
@@ -393,6 +416,8 @@ pub(crate) enum Item {
     SymbolSetDecl(SymbolSetDecl),
     Import(ImportDecl),
     Table(TableItem),
+    ConnectionDecl(ConnectionDecl),
+    Connection(ConnectionStmt),
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]

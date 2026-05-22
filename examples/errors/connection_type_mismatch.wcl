@@ -1,0 +1,31 @@
+// `Cache` and `Service` are different block types; the only
+// declared connection schema is `Service -> Service`, so connecting
+// `web` (Service) to `c1` (Cache) should fail with UnknownConnection.
+
+symbol_set EdgeKind { uses }
+
+connection DependsOn: Service -> Service : EdgeKind
+
+@document
+type Config {
+  @children("service")    services: list<Service>
+  @children("cache")      caches:   list<Cache>
+  @connections(DependsOn) deps:     list<DependsOn>
+}
+
+@block("service")
+type Service {
+  @inline(0) id: identifier
+  port:       u32
+}
+
+@block("cache")
+type Cache {
+  @inline(0) id: identifier
+  size:       u32
+}
+
+service "web" { port = 8080u32 }
+cache   "c1"  { size = 64u32 }
+
+web -> c1

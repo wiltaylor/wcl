@@ -529,5 +529,12 @@ fn format_value(v: &Value) -> String {
             }
         }
         Value::Function(_) => "<fn>".to_string(),
+        Value::Record { ty, fields } => {
+            let parts: Vec<String> = fields
+                .iter()
+                .map(|(k, v)| format!("{k}: {}", format_value(v)))
+                .collect();
+            format!("{} {{ {} }}", ty.join("."), parts.join(", "))
+        }
     }
 }

@@ -34,6 +34,7 @@ pub enum SymbolKind {
     InterfaceDecl,
     UnionDecl,
     SymbolSetDecl,
+    ConnectionDecl,
     Field,
     TypeField { parent_fqn: String },
     InterfaceField { parent_fqn: String },

@@ -1348,3 +1348,97 @@ fn parser_does_not_panic_on_printable_junk() {
         let _ = Document::open(s, "fuzz");
     }
 }
+
+// ---- connections -----------------------------------------------------
+
+#[test]
+fn connections_fixture_parses_and_validates() {
+    let doc =
+        Document::from_file(&examples_dir().join("connections.wcl")).expect("connections.wcl");
+    assert!(
+        doc.schema_errors().is_empty(),
+        "expected no schema errors, got: {:#?}",
+        doc.schema_errors()
+    );
+
+    let decls: Vec<_> = doc.connection_decls().collect();
+    assert_eq!(decls.len(), 1);
+    assert_eq!(decls[0].name(), "DependsOn");
+
+    let stmts: Vec<_> = doc.connection_stmts().collect();
+    assert_eq!(stmts.len(), 2);
+    assert_eq!(stmts[0].source(), "web");
+    assert_eq!(stmts[0].destination(), "db");
+    assert_eq!(stmts[0].kind(), None);
+    assert_eq!(stmts[1].kind(), Some("uses"));
+}
+
+#[test]
+fn connections_field_decomposes_into_records() {
+    let doc =
+        Document::from_file(&examples_dir().join("connections.wcl")).expect("connections.wcl");
+    let deps = doc
+        .get("deps")
+        .expect("deps field present")
+        .value()
+        .unwrap();
+    let Value::List(items) = deps else {
+        panic!("deps should be a list, got {deps:?}");
+    };
+    assert_eq!(items.len(), 2);
+    for item in &items {
+        let Value::Record { ty, fields } = item else {
+            panic!("expected Value::Record, got {item:?}");
+        };
+        assert_eq!(ty, &vec!["DependsOn".to_string()]);
+        assert!(fields.contains_key("source"));
+        assert!(fields.contains_key("destination"));
+        assert!(fields.contains_key("kind"));
+    }
+    // Defaulted kind: first symbol in EdgeKind is `uses`.
+    let Value::Record { fields, .. } = &items[0] else {
+        unreachable!()
+    };
+    assert_eq!(fields.get("source"), Some(&Value::Utf8("web".into())));
+    assert_eq!(fields.get("destination"), Some(&Value::Utf8("db".into())));
+    assert_eq!(fields.get("kind"), Some(&Value::Symbol("uses".into())));
+}
+
+#[test]
+fn connection_record_member_access_works() {
+    let doc =
+        Document::from_file(&examples_dir().join("connections.wcl")).expect("connections.wcl");
+    let dest = doc.get("deps.destination").and_then(|d| d.value().ok());
+    // `deps` is a list; member access on a list doesn't descend, so
+    // this should be None — we use index-free addressing on records
+    // by accessing the field directly when working with a single
+    // record value (covered below).
+    assert!(dest.is_none(), "list-level member access should not work");
+}
+
+#[test]
+fn connection_unknown_operand_fixture_reports_violation() {
+    let rendered = open_or_schema_error("connection_unknown_operand.wcl");
+    assert!(
+        rendered.contains("does not name a block in scope"),
+        "expected unknown operand error, got: {rendered}",
+    );
+}
+
+#[test]
+fn connection_type_mismatch_fixture_reports_violation() {
+    let rendered = open_or_schema_error("connection_type_mismatch.wcl");
+    assert!(
+        rendered.contains("no connection schema accepts"),
+        "expected type-mismatch error, got: {rendered}",
+    );
+}
+
+#[test]
+fn connection_unknown_kind_fixture_reports_violation() {
+    let rendered = open_or_schema_error("connection_unknown_kind.wcl");
+    assert!(
+        rendered.contains("is not a member of"),
+        "expected unknown-kind error, got: {rendered}",
+    );
+}

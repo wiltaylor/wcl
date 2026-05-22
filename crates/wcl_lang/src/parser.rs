@@ -129,6 +129,19 @@ impl<'a> Parser<'a> {
                     },
                 );
             }
+            Item::ConnectionDecl(c) => {
+                let fqn = self.join_fqn(&c.name);
+                self.try_insert(SymbolRecord {
+                    fqn,
+                    kind: SymbolKind::ConnectionDecl,
+                    span: c.span,
+                    path: SymbolPath {
+                        item_index,
+                        member_index: None,
+                    },
+                })?;
+            }
+            Item::Connection(_) => {}
         }
         Ok(())
     }
@@ -250,7 +263,7 @@ impl<'a> Parser<'a> {
             }
             return self.parse_table_item();
         }
-        if let Some(first) = first_ident
+        if let Some(ref first) = first_ident
             && matches!(self.peek2()?.kind, TokenKind::Ident(_))
         {
             match first.as_str() {
@@ -276,6 +289,24 @@ impl<'a> Parser<'a> {
                 _ => {}
             }
         }
+        // `connection NAME :` — schema declaration. Two-token lookahead
+        // distinguishes it from a bare identifier followed by other
+        // syntax. Statements (`NAME -> NAME`) use the bare-ident path
+        // below.
+        if let Some(first) = first_ident.as_deref()
+            && first == "connection"
+            && matches!(self.peek2()?.kind, TokenKind::Ident(_))
+        {
+            if !decorators.is_empty() {
+                let span = decorators[0].span;
+                return Err(self.err(
+                    "decorators are not allowed on connection declarations",
+                    span,
+                    "remove decorator",
+                ));
+            }
+            return self.parse_connection_decl();
+        }
 
         let tok = self.bump()?;
         let span_start = tok.span.start;
@@ -292,6 +323,17 @@ impl<'a> Parser<'a> {
         let next = self.peek()?;
         match &next.kind {
             TokenKind::Eq => self.parse_field(name, span_start, decorators),
+            TokenKind::Arrow => {
+                if !decorators.is_empty() {
+                    let span = decorators[0].span;
+                    return Err(self.err(
+                        "decorators are not allowed on connection statements",
+                        span,
+                        "remove decorator",
+                    ));
+                }
+                self.parse_connection_stmt(name, Span::new(span_start, tok.span.end))
+            }
             TokenKind::Str(_)
             | TokenKind::LBrace
             | TokenKind::Ident(_)
@@ -1977,6 +2019,95 @@ impl<'a> Parser<'a> {
         }))
     }
 
+    /// Parse `connection NAME : TypeRef -> TypeRef : Path`.
+    /// The leading `connection` keyword has not yet been consumed.
+    fn parse_connection_decl(&mut self) -> Result<Item, ParseError> {
+        let kw = self.bump()?; // `connection`
+        let start = kw.span.start;
+        let (name, _) = self.parse_path()?;
+        self.expect(TokenKind::Colon, "expected ':' after connection name")?;
+        let (source, source_span) = self.parse_type_ref()?;
+        self.expect(
+            TokenKind::Arrow,
+            "expected '->' between source and destination types",
+        )?;
+        let (destination, destination_span) = self.parse_type_ref()?;
+        self.expect(
+            TokenKind::Colon,
+            "expected ':' before connection kind symbol_set",
+        )?;
+        let (kind_set, kind_set_span) = self.parse_path()?;
+        let end = kind_set_span.end;
+        Ok(Item::ConnectionDecl(crate::ast::ConnectionDecl {
+            name,
+            source,
+            source_span,
+            destination,
+            destination_span,
+            kind_set,
+            kind_set_span,
+            span: Span::new(start, end),
+        }))
+    }
+
+    /// Parse a connection statement starting at `lhs -> rhs [':' sym]`.
+    /// The lhs ident has already been consumed; `lhs_span` covers it.
+    fn parse_connection_stmt(&mut self, lhs: String, lhs_span: Span) -> Result<Item, ParseError> {
+        self.expect(TokenKind::Arrow, "expected '->' in connection statement")?;
+        let rhs_tok = self.bump()?;
+        let TokenKind::Ident(rhs) = rhs_tok.kind else {
+            return Err(self.err(
+                format!(
+                    "expected identifier after '->', found {}",
+                    describe(&rhs_tok.kind)
+                ),
+                rhs_tok.span,
+                "expected identifier",
+            ));
+        };
+        let rhs_span = rhs_tok.span;
+        let mut end = rhs_span.end;
+        // Optional kind annotation. The lexer produces a single
+        // `Symbol(name)` token for the tight `:name` form, or a
+        // separate `Colon` + `Ident` pair when whitespace intervenes.
+        let (kind, kind_span) = match &self.peek()?.kind {
+            TokenKind::Symbol(_) => {
+                let sym_tok = self.bump()?;
+                let TokenKind::Symbol(sym) = sym_tok.kind else {
+                    unreachable!("peek confirmed Symbol");
+                };
+                end = sym_tok.span.end;
+                (Some(sym), Some(sym_tok.span))
+            }
+            TokenKind::Colon => {
+                self.bump()?; // ':'
+                let sym_tok = self.bump()?;
+                let TokenKind::Ident(sym) = sym_tok.kind else {
+                    return Err(self.err(
+                        format!(
+                            "expected symbol identifier after ':', found {}",
+                            describe(&sym_tok.kind)
+                        ),
+                        sym_tok.span,
+                        "expected identifier",
+                    ));
+                };
+                end = sym_tok.span.end;
+                (Some(sym), Some(sym_tok.span))
+            }
+            _ => (None, None),
+        };
+        Ok(Item::Connection(crate::ast::ConnectionStmt {
+            lhs,
+            lhs_span,
+            rhs,
+            rhs_span,
+            kind,
+            kind_span,
+            span: Span::new(lhs_span.start, end),
+        }))
+    }
+
     fn parse_type_ref(&mut self) -> Result<(TypeRef, Span), ParseError> {
         let head = self.peek()?;
         if matches!(head.kind, TokenKind::Amp) {
@@ -3141,6 +3272,61 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["red".to_string(), "green".to_string(), "blue".to_string()]
         );
+    }
+
+    #[test]
+    fn parse_connection_decl_basic() {
+        let s = parse(
+            "symbol_set EdgeKind { uses depends_on }\n\
+             connection DependsOn: Service -> Service : EdgeKind",
+        );
+        let conn = s
+            .items
+            .iter()
+            .filter_map(|i| match i {
+                Item::ConnectionDecl(c) => Some(c),
+                _ => None,
+            })
+            .next()
+            .expect("connection decl present");
+        assert_eq!(conn.name, vec!["DependsOn".to_string()]);
+        assert_eq!(conn.source.to_string(), "Service");
+        assert_eq!(conn.destination.to_string(), "Service");
+        assert_eq!(conn.kind_set, vec!["EdgeKind".to_string()]);
+    }
+
+    #[test]
+    fn parse_connection_stmt_default_kind() {
+        let s = parse("web -> db");
+        let stmt = s
+            .items
+            .iter()
+            .filter_map(|i| match i {
+                Item::Connection(c) => Some(c),
+                _ => None,
+            })
+            .next()
+            .expect("connection stmt present");
+        assert_eq!(stmt.lhs, "web");
+        assert_eq!(stmt.rhs, "db");
+        assert!(stmt.kind.is_none());
+    }
+
+    #[test]
+    fn parse_connection_stmt_explicit_kind() {
+        let s = parse("web -> db :uses");
+        let stmt = s
+            .items
+            .iter()
+            .filter_map(|i| match i {
+                Item::Connection(c) => Some(c),
+                _ => None,
+            })
+            .next()
+            .expect("connection stmt present");
+        assert_eq!(stmt.lhs, "web");
+        assert_eq!(stmt.rhs, "db");
+        assert_eq!(stmt.kind.as_deref(), Some("uses"));
     }
 
     #[test]

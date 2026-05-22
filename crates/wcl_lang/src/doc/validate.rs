@@ -151,6 +151,7 @@ pub(crate) fn validate_document(
                 | SymbolKind::InterfaceDecl
                 | SymbolKind::UnionDecl
                 | SymbolKind::SymbolSetDecl
+                | SymbolKind::ConnectionDecl
         ) {
             continue;
         }
@@ -407,6 +408,77 @@ pub(crate) fn validate_document(
                             "duplicate symbol",
                         ));
                     }
+                }
+            }
+            ast::Item::ConnectionDecl(c) => {
+                check_type_ref(
+                    &c.source,
+                    c.source_span,
+                    &declared,
+                    &interfaces,
+                    false,
+                    &file_ns,
+                    &item_aliases,
+                    &ns_aliases,
+                    &wildcards,
+                    source,
+                    file,
+                )?;
+                check_type_ref(
+                    &c.destination,
+                    c.destination_span,
+                    &declared,
+                    &interfaces,
+                    false,
+                    &file_ns,
+                    &item_aliases,
+                    &ns_aliases,
+                    &wildcards,
+                    source,
+                    file,
+                )?;
+                // kind_set must resolve to a declared symbol_set FQN.
+                let resolved = resolve_path(
+                    &c.kind_set,
+                    &file_ns,
+                    &item_aliases,
+                    &ns_aliases,
+                    &wildcards,
+                    &declared,
+                );
+                let kind_set_fqn = match resolved {
+                    Some(fqn) => fqn,
+                    None => {
+                        return Err(open_error(
+                            source,
+                            file,
+                            format!(
+                                "unknown symbol_set '{}' in connection '{}'",
+                                c.kind_set.join("."),
+                                c.name.join(".")
+                            ),
+                            c.kind_set_span,
+                            "symbol_set not declared",
+                        ));
+                    }
+                };
+                let kind_set_fqn_str = kind_set_fqn.join(".");
+                let is_symbol_set = symbols
+                    .lookup(&kind_set_fqn_str)
+                    .map(|r| matches!(r.kind, SymbolKind::SymbolSetDecl))
+                    .unwrap_or(false);
+                if !is_symbol_set {
+                    return Err(open_error(
+                        source,
+                        file,
+                        format!(
+                            "kind '{}' in connection '{}' must be a symbol_set",
+                            kind_set_fqn_str,
+                            c.name.join(".")
+                        ),
+                        c.kind_set_span,
+                        "not a symbol_set",
+                    ));
                 }
             }
             _ => {}

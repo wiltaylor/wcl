@@ -22,6 +22,116 @@ pub(super) fn has_schemaless(decorators: &[ast::Decorator]) -> bool {
         .any(|d| d.name.len() == 1 && d.name[0] == "schemaless")
 }
 
+/// Validate every `Item::Connection` in a flat item list against the
+/// declared `connection` schemas in the document. Used at both the
+/// document root and inside `@block` bodies.
+pub(super) fn validate_connection_stmts(
+    doc: &crate::doc::Document,
+    items: &[ast::Item],
+    scope: &super::scope::Scope<'_>,
+) -> Vec<EvalError> {
+    use crate::error::SchemaViolationKind as Kind;
+    let mut errs = Vec::new();
+    for item in items {
+        let ast::Item::Connection(stmt) = item else {
+            continue;
+        };
+        let lhs = doc.resolve_connection_operand(scope, &stmt.lhs);
+        let rhs = doc.resolve_connection_operand(scope, &stmt.rhs);
+        let Some((_, lhs_kind)) = lhs else {
+            errs.push(EvalError::schema_violation(
+                Kind::UnknownConnectionOperand,
+                format!(
+                    "connection source '{}' does not name a block in scope",
+                    stmt.lhs
+                ),
+                stmt.lhs_span,
+            ));
+            continue;
+        };
+        let Some((_, rhs_kind)) = rhs else {
+            errs.push(EvalError::schema_violation(
+                Kind::UnknownConnectionOperand,
+                format!(
+                    "connection destination '{}' does not name a block in scope",
+                    stmt.rhs
+                ),
+                stmt.rhs_span,
+            ));
+            continue;
+        };
+        let Some(lhs_ty) = doc
+            .block_schema(&lhs_kind)
+            .map(|t| t.name_segments().join("."))
+        else {
+            continue; // block kind without a schema; UnregisteredKind already fires.
+        };
+        let Some(rhs_ty) = doc
+            .block_schema(&rhs_kind)
+            .map(|t| t.name_segments().join("."))
+        else {
+            continue;
+        };
+        let mut matches: Vec<crate::doc::ConnectionDecl<'_>> = Vec::new();
+        for decl in doc.connection_decls() {
+            let Some(src_fqn) = decl_type_fqn(doc, decl.source_type()) else {
+                continue;
+            };
+            let Some(dst_fqn) = decl_type_fqn(doc, decl.destination_type()) else {
+                continue;
+            };
+            if src_fqn == lhs_ty && dst_fqn == rhs_ty {
+                matches.push(decl);
+            }
+        }
+        let chosen = match matches.len() {
+            0 => {
+                errs.push(EvalError::schema_violation(
+                    Kind::UnknownConnection,
+                    format!("no connection schema accepts '{lhs_ty} -> {rhs_ty}'",),
+                    stmt.span,
+                ));
+                continue;
+            }
+            1 => matches.into_iter().next().unwrap(),
+            _ => {
+                let names: Vec<String> = matches
+                    .iter()
+                    .map(|m| m.name_segments().join("."))
+                    .collect();
+                errs.push(EvalError::schema_violation(
+                    Kind::AmbiguousConnection,
+                    format!(
+                        "connection '{lhs_ty} -> {rhs_ty}' matches multiple schemas: {}",
+                        names.join(", ")
+                    ),
+                    stmt.span,
+                ));
+                continue;
+            }
+        };
+        if let Some(kind_name) = &stmt.kind {
+            let kind_ok = chosen.kind_set().map(|s| s.has(kind_name)).unwrap_or(false);
+            if !kind_ok {
+                errs.push(EvalError::schema_violation(
+                    Kind::UnknownConnectionKind,
+                    format!(
+                        "connection kind ':{}' is not a member of '{}'",
+                        kind_name,
+                        chosen.kind_set_path().join(".")
+                    ),
+                    stmt.kind_span.unwrap_or(stmt.span),
+                ));
+            }
+        }
+    }
+    errs
+}
+
+fn decl_type_fqn(doc: &crate::doc::Document, t: &crate::value::TypeRef) -> Option<String> {
+    doc.resolve_type_fqn(t)
+}
+
 pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
     use crate::error::SchemaViolationKind as Kind;
     let mut errs = Vec::new();
@@ -31,6 +141,17 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
     if has_schemaless(&block.ast.decorators) {
         return errs;
     }
+
+    // Connection statements live alongside fields and nested blocks;
+    // validate them regardless of whether the surrounding type has a
+    // `@connections(...)` field, so an unwired statement still
+    // surfaces.
+    let scope = block.child_scope();
+    errs.extend(validate_connection_stmts(
+        block.doc,
+        &block.ast.items,
+        &scope,
+    ));
 
     let Some(schema) = block.schema() else {
         // Strict mode: a block whose kind has no `@block`/`@table`

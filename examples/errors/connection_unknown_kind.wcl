@@ -1,0 +1,23 @@
+// `:loves` is not a member of `EdgeKind { uses depends_on }`, so
+// schema_errors should surface an UnknownConnectionKind violation.
+
+symbol_set EdgeKind { uses depends_on }
+
+connection DependsOn: Service -> Service : EdgeKind
+
+@document
+type Config {
+  @children("service")    services: list<Service>
+  @connections(DependsOn) deps:     list<DependsOn>
+}
+
+@block("service")
+type Service {
+  @inline(0) id: identifier
+  port:       u32
+}
+
+service "web" { port = 8080u32 }
+service "db"  { port = 5432u32 }
+
+web -> db :loves

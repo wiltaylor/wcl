@@ -125,6 +125,12 @@ fn builtin_decorator_schemas() -> Vec<ast::TypeDecl> {
             "name",
             TypeRef::Builtin(BuiltinType::Utf8),
         ),
+        synth_decorator_schema(
+            "Connections",
+            "connections",
+            "schema",
+            TypeRef::Builtin(BuiltinType::Utf8),
+        ),
         // `@document` marks a type as the schema for the document
         // root. The single declared positional arg is ignored at
         // recognition time; only the decorator name matters.
@@ -341,6 +347,9 @@ fn value_to_expr(v: Value) -> ast::Expr {
         }
         Value::Variant { .. } => {
             unreachable!("variant values are not constructible via the schema builder API")
+        }
+        Value::Record { .. } => {
+            unreachable!("record values are not constructible via the schema builder API")
         }
     }
 }

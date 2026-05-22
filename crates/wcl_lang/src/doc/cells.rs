@@ -108,6 +108,8 @@ pub(crate) enum ItemCellKind {
         base_dir: Option<PathBuf>,
         loaded: OnceLock<Result<LoadedImport, EvalError>>,
     },
+    ConnectionDecl,
+    Connection,
 }
 
 #[derive(Debug)]
@@ -275,6 +277,14 @@ impl ItemCells {
             ast::Item::Table(_) => Self {
                 decorators: Vec::new(),
                 kind: ItemCellKind::Table,
+            },
+            ast::Item::ConnectionDecl(_) => Self {
+                decorators: Vec::new(),
+                kind: ItemCellKind::ConnectionDecl,
+            },
+            ast::Item::Connection(_) => Self {
+                decorators: Vec::new(),
+                kind: ItemCellKind::Connection,
             },
         }
     }

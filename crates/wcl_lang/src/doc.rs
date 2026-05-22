@@ -247,6 +247,20 @@ impl Document {
 
     pub(crate) fn resolve_root(&self, name: &str) -> Option<crate::data::DataRef<'_>> {
         use crate::data::DataRef;
+        // Document-schema-driven projections at the root: a field on
+        // the `@document` type marked with `@connections(...)` is
+        // synthesised from sibling Connection statements rather than
+        // looked up as a literal Field item.
+        if let Some(schema) = self.doc_schema()
+            && let Some(field) = schema.field(name)
+            && let Some(conn_schema) = field.connection_schema()
+        {
+            let mut all: Vec<Value> = Vec::new();
+            for src in self.all_sources() {
+                all.extend(self.project_connections(src.items, conn_schema, &Scope::root()));
+            }
+            return Some(DataRef::from_variant_value(Value::List(all)));
+        }
         if let Some(f) = self.field(name) {
             return Some(DataRef::from_field(f));
         }
@@ -270,6 +284,109 @@ impl Document {
             return Some(DataRef::from_symbol_set(s));
         }
         None
+    }
+
+    /// Resolve a connection-statement operand (a bare identifier) by
+    /// walking the scope chain looking for a block whose first label
+    /// equals `name`. Falls back to the document root. Returns the
+    /// label value plus the block kind so callers can dispatch.
+    pub(crate) fn resolve_connection_operand(
+        &self,
+        scope: &Scope<'_>,
+        name: &str,
+    ) -> Option<(Value, String)> {
+        // Innermost scope frames first.
+        for frame in scope.frames().iter().rev() {
+            if let Some(found) = match_block_label_in_items(self, &frame.ast.items, name) {
+                return Some(found);
+            }
+        }
+        // Fall back to document root: walk every source's top-level items.
+        for src in self.all_sources() {
+            if let Some(found) = match_block_label_in_items(self, src.items, name) {
+                return Some(found);
+            }
+        }
+        None
+    }
+
+    /// Project sibling `Item::Connection` statements through a
+    /// `@connections(SchemaName)` decorator: gather every statement
+    /// whose `(lhs_type, rhs_type)` matches the schema and produce a
+    /// `Value::Record` per match.
+    pub(crate) fn project_connections(
+        &self,
+        items: &[ast::Item],
+        schema: ConnectionDecl<'_>,
+        scope: &Scope<'_>,
+    ) -> Vec<Value> {
+        let mut out: Vec<Value> = Vec::new();
+        let source_fqn = self.resolve_type_fqn(schema.source_type());
+        let dest_fqn = self.resolve_type_fqn(schema.destination_type());
+        for item in items {
+            let ast::Item::Connection(stmt) = item else {
+                continue;
+            };
+            let Some(record) = self.build_connection_record(
+                stmt,
+                schema,
+                scope,
+                source_fqn.as_deref(),
+                dest_fqn.as_deref(),
+            ) else {
+                continue;
+            };
+            out.push(record);
+        }
+        out
+    }
+
+    fn build_connection_record(
+        &self,
+        stmt: &ast::ConnectionStmt,
+        schema: ConnectionDecl<'_>,
+        scope: &Scope<'_>,
+        source_fqn: Option<&str>,
+        dest_fqn: Option<&str>,
+    ) -> Option<Value> {
+        let (lhs_val, lhs_block_kind) = self.resolve_connection_operand(scope, &stmt.lhs)?;
+        let (rhs_val, rhs_block_kind) = self.resolve_connection_operand(scope, &stmt.rhs)?;
+        let lhs_ty = self
+            .block_schema(&lhs_block_kind)
+            .map(|t| t.name_segments().join("."))?;
+        let rhs_ty = self
+            .block_schema(&rhs_block_kind)
+            .map(|t| t.name_segments().join("."))?;
+        if Some(lhs_ty.as_str()) != source_fqn {
+            return None;
+        }
+        if Some(rhs_ty.as_str()) != dest_fqn {
+            return None;
+        }
+        let kind_name = match &stmt.kind {
+            Some(s) => s.clone(),
+            None => schema.default_kind()?,
+        };
+        let mut fields: std::collections::BTreeMap<String, Value> =
+            std::collections::BTreeMap::new();
+        fields.insert("source".to_string(), lhs_val);
+        fields.insert("destination".to_string(), rhs_val);
+        fields.insert("kind".to_string(), Value::Symbol(kind_name));
+        Some(Value::Record {
+            ty: schema.ast.name.clone(),
+            fields,
+        })
+    }
+
+    /// Resolve a `TypeRef::Named` to its dotted FQN, if it points at a
+    /// declared type/interface/union. Returns `None` for builtins,
+    /// references, lists, etc.
+    pub(crate) fn resolve_type_fqn(&self, t: &TypeRef) -> Option<String> {
+        if let TypeRef::Named(path) = t {
+            self.resolve_path(path).map(|p| p.join("."))
+        } else {
+            None
+        }
     }
 
     /// Same composition rule as the evaluator's `qualified_name`, exposed
@@ -520,6 +637,48 @@ impl Document {
         })
     }
 
+    /// Look up a connection schema by fully-qualified name (dotted).
+    pub fn connection_decl(&self, fqn: &str) -> Option<ConnectionDecl<'_>> {
+        for src in self.all_sources() {
+            if let Some(rec) = src.symbols.lookup(fqn)
+                && matches!(rec.kind, SymbolKind::ConnectionDecl)
+                && let ast::Item::ConnectionDecl(c) = &src.items[rec.path.item_index]
+            {
+                return Some(ConnectionDecl {
+                    ast: c,
+                    file_ns: src.file_ns,
+                    doc: self,
+                });
+            }
+        }
+        None
+    }
+
+    /// Iterate every top-level connection statement in this document
+    /// and its eager imports, in source order.
+    pub fn connection_stmts(&self) -> impl Iterator<Item = Connection<'_>> + '_ {
+        self.all_sources().into_iter().flat_map(|src| {
+            src.items.iter().filter_map(|item| match item {
+                ast::Item::Connection(c) => Some(Connection { ast: c }),
+                _ => None,
+            })
+        })
+    }
+
+    pub fn connection_decls(&self) -> impl Iterator<Item = ConnectionDecl<'_>> + '_ {
+        let doc = self;
+        self.all_sources().into_iter().flat_map(move |src| {
+            src.items.iter().filter_map(move |item| match item {
+                ast::Item::ConnectionDecl(c) => Some(ConnectionDecl {
+                    ast: c,
+                    file_ns: src.file_ns,
+                    doc,
+                }),
+                _ => None,
+            })
+        })
+    }
+
     pub fn symbol_set(&self, fqn: &str) -> Option<SymbolSetDecl<'_>> {
         for src in self.all_sources() {
             if let Some(rec) = src.symbols.lookup(fqn)
@@ -572,9 +731,11 @@ impl Document {
                     ResolvedType::Interface(iface)
                 } else if let Some(union) = self.union_decl(&fqn_dotted) {
                     ResolvedType::Union(union)
+                } else if let Some(ss) = self.symbol_set(&fqn_dotted) {
+                    ResolvedType::SymbolSet(ss)
                 } else {
-                    ResolvedType::SymbolSet(
-                        self.symbol_set(&fqn_dotted)
+                    ResolvedType::Connection(
+                        self.connection_decl(&fqn_dotted)
                             .expect("named ref validated at Document::open"),
                     )
                 }
@@ -610,6 +771,7 @@ impl Document {
                 ast::Item::InterfaceDecl(i) => Some(self.compose_fqn(&i.name)),
                 ast::Item::UnionDecl(u) => Some(self.compose_fqn(&u.name)),
                 ast::Item::SymbolSetDecl(s) => Some(self.compose_fqn(&s.name)),
+                ast::Item::ConnectionDecl(c) => Some(self.compose_fqn(&c.name)),
                 _ => None,
             })
             .collect();
@@ -842,6 +1004,15 @@ impl Document {
             out.extend(validate_union(self, u.ast));
         }
 
+        // Top-level connection statements: dispatch and kind checks.
+        for src in self.all_sources() {
+            out.extend(crate::doc::schema_check::validate_connection_stmts(
+                self,
+                src.items,
+                &Scope::root(),
+            ));
+        }
+
         out
     }
 
@@ -876,6 +1047,7 @@ pub enum ResolvedType<'a> {
     Interface(InterfaceDecl<'a>),
     Union(UnionDecl<'a>),
     SymbolSet(SymbolSetDecl<'a>),
+    Connection(ConnectionDecl<'a>),
     Reference(Box<ResolvedType<'a>>),
     List(Box<ResolvedType<'a>>),
     Tensor {
@@ -1296,6 +1468,83 @@ impl<'a> NamedArg<'a> {
 
     pub fn span(&self) -> Span {
         self.ast.span
+    }
+}
+
+/// Public view of an `lhs -> rhs [:sym]` connection statement.
+#[derive(Debug, Clone, Copy)]
+pub struct Connection<'a> {
+    pub(super) ast: &'a ast::ConnectionStmt,
+}
+
+impl<'a> Connection<'a> {
+    pub fn source(&self) -> &'a str {
+        &self.ast.lhs
+    }
+
+    pub fn destination(&self) -> &'a str {
+        &self.ast.rhs
+    }
+
+    /// Explicit `:kind` symbol if present, or `None` when the writer
+    /// relied on the connection schema's default symbol.
+    pub fn kind(&self) -> Option<&'a str> {
+        self.ast.kind.as_deref()
+    }
+
+    pub fn span(&self) -> Span {
+        self.ast.span
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ConnectionDecl<'a> {
+    pub(super) ast: &'a ast::ConnectionDecl,
+    pub(super) file_ns: &'a [String],
+    pub(super) doc: &'a Document,
+}
+
+impl<'a> DeclName<'a> for ConnectionDecl<'a> {
+    fn name_segments(&self) -> &'a [String] {
+        &self.ast.name
+    }
+    fn file_ns(&self) -> &'a [String] {
+        self.file_ns
+    }
+}
+
+impl<'a> ConnectionDecl<'a> {
+    pub fn span(&self) -> Span {
+        self.ast.span
+    }
+
+    pub fn source_type(&self) -> &'a TypeRef {
+        &self.ast.source
+    }
+
+    pub fn destination_type(&self) -> &'a TypeRef {
+        &self.ast.destination
+    }
+
+    /// FQN segments of the symbol_set that the connection's `kind`
+    /// is drawn from.
+    pub fn kind_set_path(&self) -> &'a [String] {
+        &self.ast.kind_set
+    }
+
+    /// Resolve the kind symbol_set to its declaration.
+    pub fn kind_set(&self) -> Option<SymbolSetDecl<'a>> {
+        let fqn = self.doc.resolve_path(&self.ast.kind_set)?;
+        self.doc.symbol_set(&fqn.join("."))
+    }
+
+    /// First symbol in the kind set; used as the default when a
+    /// connection statement omits an explicit symbol.
+    pub fn default_kind(&self) -> Option<String> {
+        self.kind_set()?
+            .symbols()
+            .next()
+            .map(|s| s.name().to_string())
     }
 }
 
@@ -1731,6 +1980,33 @@ impl<'a> TypeField<'a> {
     pub fn children_kind_or_union(&self) -> Option<ChildKind<'a>> {
         let dec = self.decorators().find(|d| d.full_name() == "children")?;
         resolve_child_kind_arg(self.doc, &dec.positional().ok()?)
+    }
+
+    /// Resolves the positional arg of `@connections(...)` into a
+    /// connection schema. `None` if the decorator is absent or the
+    /// positional arg doesn't name a declared connection.
+    pub fn connection_schema(&self) -> Option<ConnectionDecl<'a>> {
+        let dec = self.decorators().find(|d| d.full_name() == "connections")?;
+        let positional = dec.positional().ok()?;
+        let first = positional.first()?;
+        let name = match first {
+            Value::Utf8(s) | Value::Ascii(s) | Value::Identifier(s) => s,
+            _ => return None,
+        };
+        let candidates: Vec<String> = if self.doc.file_ns.is_empty() {
+            vec![name.clone()]
+        } else {
+            vec![
+                format!("{}.{}", self.doc.file_ns.join("."), name),
+                name.clone(),
+            ]
+        };
+        for fqn in &candidates {
+            if let Some(c) = self.doc.connection_decl(fqn) {
+                return Some(c);
+            }
+        }
+        None
     }
 
     /// Like [`children_block_kind`] but borrows directly from the AST
@@ -2180,6 +2456,18 @@ impl<'a> Block<'a> {
     pub fn typed_field(&self, name: &str) -> Option<crate::data::DataRef<'a>> {
         let schema = self.schema()?;
         let f = schema.field(name)?;
+
+        // `@connections(SchemaName)`: project sibling Item::Connection
+        // statements through the named connection schema.
+        if let Some(conn_schema) = f.connection_schema() {
+            let scope = self.child_scope();
+            let values = self
+                .doc
+                .project_connections(&self.ast.items, conn_schema, &scope);
+            return Some(crate::data::DataRef::from_variant_value(Value::List(
+                values,
+            )));
+        }
 
         // Union-typed @children: dispatch every nested block / table
         // row to a Value::Variant via structural-shape matching.
@@ -3232,6 +3520,33 @@ impl Document {
 /// Take a navigator returned from path evaluation and reduce it to a
 /// concrete `Value`. For `Field` targets, this evaluates the field
 /// (auto-deref); for any other target, it errors `NotALeaf`.
+/// Scan a flat slice of items for an `Item::Block` whose first label
+/// (evaluated) matches the given name. Returns the label value plus
+/// the block kind so callers can dispatch on the block's declared type.
+fn match_block_label_in_items(
+    doc: &Document,
+    items: &[ast::Item],
+    name: &str,
+) -> Option<(Value, String)> {
+    for item in items {
+        let ast::Item::Block(b) = item else {
+            continue;
+        };
+        let Some(first) = b.labels.first() else {
+            continue;
+        };
+        let v = doc.eval_in_scope(first, &Scope::root()).ok()?;
+        let s = match &v {
+            Value::Utf8(s) | Value::Ascii(s) | Value::Identifier(s) => s.as_str(),
+            _ => continue,
+        };
+        if s == name {
+            return Some((v, b.kind.clone()));
+        }
+    }
+    None
+}
+
 fn materialise_dataref(dr: crate::data::DataRef<'_>, span: Span) -> Result<Value, EvalError> {
     use crate::data::DataKind;
     match dr.inner() {

@@ -23,9 +23,10 @@ pub use builtins::{
 };
 pub use data::{DataKind, DataRef};
 pub use doc::{
-    Block, ChildKind, DeclName, Decorator, Document, Field, InterfaceDecl, NamedArg, ResolvedType,
-    RowView, SymbolEntry, SymbolSetDecl, TableView, TypeDecl, TypeField, UnionDecl, UnionVariant,
-    UseDeclView, UseFormView, UseItem, VariantBodyView,
+    Block, ChildKind, Connection, ConnectionDecl, DeclName, Decorator, Document, Field,
+    InterfaceDecl, NamedArg, ResolvedType, RowView, SymbolEntry, SymbolSetDecl, TableView,
+    TypeDecl, TypeField, UnionDecl, UnionVariant, UseDeclView, UseFormView, UseItem,
+    VariantBodyView,
 };
 pub use environment::{BuiltType, DecoratorBuilder, Environment, TypeBuilder, TypeFieldBuilder};
 pub use error::{EvalError, ParseError, SchemaViolationKind, SyntaxError};
