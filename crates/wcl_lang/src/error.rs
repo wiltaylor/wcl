@@ -329,6 +329,18 @@ impl EvalError {
         }
     }
 
+    /// Build a `SchemaViolation` and push it onto `out`. Tiny wrapper
+    /// to keep `doc.rs` validators readable — every collection site
+    /// was doing `out.push(EvalError::schema_violation(...))`.
+    pub(crate) fn push_schema_violation(
+        out: &mut Vec<EvalError>,
+        kind: SchemaViolationKind,
+        message: impl Into<String>,
+        span: crate::ast::Span,
+    ) {
+        out.push(Self::schema_violation(kind, message, span));
+    }
+
     pub(crate) fn unknown_builtin(name: impl Into<String>, span: crate::ast::Span) -> Self {
         Self::UnknownBuiltin {
             name: name.into(),

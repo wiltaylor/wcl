@@ -5,7 +5,7 @@ This branch (`rewrite`) is a clean restart of WCL. The previous implementation l
 ## Layout
 
 - `crates/wcl_lang` — language library: lexer, parser, AST, document view, lazy evaluator, schema validator, host-binding API
-- `crates/wcl` — `wcl` CLI binary (`wcl parse`, `wcl check`, `wcl eval`)
+- `crates/wcl` — `wcl` CLI binary (`wcl parse`, `wcl check`, `wcl eval` / `wcl get`, `wcl set`, `wcl fmt`)
 - `examples/` — fixture files used by tests (incl. `imports/` for module loading and `errors/` for negative diagnostics)
 
 ## What's implemented
@@ -17,11 +17,11 @@ This branch (`rewrite`) is a clean restart of WCL. The previous implementation l
 - Type system: `type`, `interface` (with `extends`), `union` (record / typeref / unit variants), `symbol_set`, builtin numeric + string variants, `list<T>`, `tensor<T, [...]>`, `fn(...) -> T`, named refs, `&T` reference fields with scope-aware lookup
 - Host bindings: `Environment` registers synthetic types + builtin functions via `from_fn` (`FromValue` / `IntoValue` traits)
 - Imports: eager top-level `import`; lazy `import` inside blocks
+- Edit path: `parse_for_edit` + AST mutation + `format::to_source` round-trip, driving `wcl set` and `wcl fmt`
 
 ## Intentionally deferred
 
 - LSP server
-- Code formatter (`wcl fmt`)
 - Interactive REPL (the one-shot `wcl eval <file> <path>` exists; full REPL doesn't)
 - Serde / binary serialization of `Document`
 - Fuzz harness

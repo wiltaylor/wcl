@@ -1,0 +1,864 @@
+//! Declaration parsers (decorators, type/interface/union/symbol_set, imports,
+//! use, table, namespace, connections, field, block). Extracted from
+//! `parser/mod.rs` so the parent file can stay focused on top-level
+//! source driving and shared token helpers.
+
+use crate::ast::{
+    Block, Decorator, Expr, Field, ImportDecl, Item, NamedArg, NamespaceDecl, Span, SymbolEntry,
+    SymbolSetDecl, TypeDecl, TypeField, UnionDecl, UnionVariant, UseDecl, UseForm, UseItem,
+    VariantBody,
+};
+use crate::error::ParseError;
+use crate::lexer::{StringLit, TokenKind};
+
+use super::Parser;
+use super::describe;
+use super::is_expr_start;
+
+impl<'a> Parser<'a> {
+    pub(super) fn parse_decorators(&mut self) -> Result<Vec<Decorator>, ParseError> {
+        let mut decorators = Vec::new();
+        while matches!(self.peek()?.kind, TokenKind::At) {
+            decorators.push(self.parse_decorator()?);
+        }
+        Ok(decorators)
+    }
+
+    fn parse_decorator(&mut self) -> Result<Decorator, ParseError> {
+        let at = self.bump()?; // '@'
+        let start = at.span.start;
+        let (name, name_span) = self.parse_path()?;
+        let mut positional = Vec::new();
+        let mut named = Vec::new();
+        let mut end = name_span.end;
+        if matches!(self.peek()?.kind, TokenKind::LParen) {
+            self.bump()?; // '('
+            if !matches!(self.peek()?.kind, TokenKind::RParen) {
+                let mut saw_named = false;
+                loop {
+                    let is_named = matches!(self.peek()?.kind, TokenKind::Ident(_))
+                        && matches!(self.peek2()?.kind, TokenKind::Eq);
+                    if is_named {
+                        saw_named = true;
+                        let (arg_name, name_span) = self.bump_ident("expected argument name")?;
+                        let arg_start = name_span.start;
+                        self.bump()?; // '='
+                        let (value, value_span) = self.parse_expr()?;
+                        named.push(NamedArg {
+                            name: arg_name,
+                            value,
+                            span: Span::new(arg_start, value_span.end),
+                        });
+                    } else {
+                        if saw_named {
+                            let p = self.peek()?;
+                            let span = p.span;
+                            return Err(self.err(
+                                "positional argument cannot follow named argument",
+                                span,
+                                "unexpected positional arg",
+                            ));
+                        }
+                        let (value, _) = self.parse_expr()?;
+                        positional.push(value);
+                    }
+                    match self.peek()?.kind {
+                        TokenKind::Comma => {
+                            self.bump()?;
+                            if matches!(self.peek()?.kind, TokenKind::RParen) {
+                                break;
+                            }
+                        }
+                        TokenKind::RParen => break,
+                        _ => {
+                            let p = self.peek()?;
+                            let span = p.span;
+                            let kind = describe(&p.kind);
+                            return Err(self.err(
+                                format!("expected ',' or ')', found {kind}"),
+                                span,
+                                "expected ',' or ')'",
+                            ));
+                        }
+                    }
+                }
+            }
+            let rparen = self.expect(TokenKind::RParen, "expected ')'")?;
+            end = rparen.span.end;
+        }
+        Ok(Decorator {
+            name,
+            positional,
+            named,
+            span: Span::new(start, end),
+        })
+    }
+
+    pub(super) fn parse_namespace_decl(&mut self) -> Result<Item, ParseError> {
+        let kw = self.bump()?; // 'namespace'
+        let start = kw.span.start;
+        let (path, path_span) = self.parse_path()?;
+        Ok(Item::NamespaceDecl(NamespaceDecl {
+            path,
+            span: Span::new(start, path_span.end),
+            leading_trivia: self.take_item_trivia(),
+        }))
+    }
+
+    pub(super) fn parse_table_item(&mut self) -> Result<Item, ParseError> {
+        // Already peeked: IDENT followed by Colon. Consume both.
+        let (field_name, name_span) = self.bump_ident("expected table field name")?;
+        let start = name_span.start;
+        self.expect(TokenKind::Colon, "expected ':' after table field name")?;
+
+        let mut rows = Vec::new();
+        let mut end = name_span.end;
+        while matches!(self.peek()?.kind, TokenKind::Pipe) {
+            let row = self.parse_table_row()?;
+            end = row.span.end;
+            rows.push(row);
+        }
+
+        Ok(Item::Table(crate::ast::TableItem {
+            field_name,
+            rows,
+            span: Span::new(start, end),
+            leading_trivia: self.take_item_trivia(),
+        }))
+    }
+
+    fn parse_table_row(&mut self) -> Result<crate::ast::Row, ParseError> {
+        // Row grammar: `| (expr |)* (expr)?`
+        //
+        // The leading `|` is required. Each value is followed by a
+        // `|` (which acts as either a separator or the trailing pipe;
+        // we don't need to distinguish — the loop ends as soon as the
+        // next token can't start an expression). Trailing pipe is
+        // therefore effectively optional: after the last value, if no
+        // `|` follows, the row ends without one.
+        let lead = self.bump()?; // leading '|'
+        let start = lead.span.start;
+        let mut values = Vec::new();
+        let mut end = lead.span.end;
+        loop {
+            if !is_expr_start(&self.peek()?.kind) {
+                break;
+            }
+            let (v, v_span) = self.parse_expr()?;
+            values.push(v);
+            end = v_span.end;
+            if matches!(self.peek()?.kind, TokenKind::Pipe) {
+                let sep = self.bump()?;
+                end = sep.span.end;
+            } else {
+                break;
+            }
+        }
+        Ok(crate::ast::Row {
+            values,
+            span: Span::new(start, end),
+        })
+    }
+
+    pub(super) fn parse_import_decl(&mut self) -> Result<Item, ParseError> {
+        let kw = self.bump()?; // 'import'
+        let start = kw.span.start;
+        let tok = self.bump()?;
+        let path_span = tok.span;
+        let path = match tok.kind {
+            TokenKind::Str(StringLit::Utf8(s)) | TokenKind::Str(StringLit::Ascii(s)) => s,
+            other => {
+                return Err(self.err(
+                    format!(
+                        "expected string path after 'import', found {}",
+                        describe(&other)
+                    ),
+                    path_span,
+                    "expected string path",
+                ));
+            }
+        };
+        Ok(Item::Import(ImportDecl {
+            path,
+            path_span,
+            span: Span::new(start, path_span.end),
+            leading_trivia: self.take_item_trivia(),
+        }))
+    }
+
+    pub(super) fn parse_use_decl(&mut self) -> Result<Item, ParseError> {
+        let kw = self.bump()?; // 'use'
+        let start = kw.span.start;
+        let (path, path_span) = self.parse_path()?;
+
+        // Brace-list form: path '.' '{' use_item (',' use_item)* ','? '}'
+        if matches!(self.peek()?.kind, TokenKind::Dot)
+            && matches!(self.peek2()?.kind, TokenKind::LBrace)
+        {
+            self.bump()?; // '.'
+            self.bump()?; // '{'
+            let mut items = Vec::new();
+            loop {
+                if matches!(self.peek()?.kind, TokenKind::RBrace) {
+                    break;
+                }
+                let item = self.parse_use_item()?;
+                items.push(item);
+                match self.peek()?.kind {
+                    TokenKind::Comma => {
+                        self.bump()?;
+                    }
+                    TokenKind::RBrace => break,
+                    _ => {
+                        let p = self.peek()?;
+                        let span = p.span;
+                        let kind = describe(&p.kind);
+                        return Err(self.err(
+                            format!("expected ',' or '}}', found {kind}"),
+                            span,
+                            "expected ',' or '}'",
+                        ));
+                    }
+                }
+            }
+            let rbrace = self.bump()?;
+            return Ok(Item::UseDecl(UseDecl {
+                path,
+                form: UseForm::List(items),
+                span: Span::new(start, rbrace.span.end),
+                leading_trivia: self.take_item_trivia(),
+            }));
+        }
+
+        // Bare form: optional 'as' IDENT
+        let mut end = path_span.end;
+        let alias = if let TokenKind::Ident(s) = &self.peek()?.kind
+            && s == "as"
+        {
+            self.bump()?; // 'as'
+            let alias_tok = self.bump()?;
+            let TokenKind::Ident(alias_name) = alias_tok.kind else {
+                let span = alias_tok.span;
+                return Err(self.err(
+                    format!(
+                        "expected alias identifier after 'as', found {}",
+                        describe(&alias_tok.kind)
+                    ),
+                    span,
+                    "expected identifier",
+                ));
+            };
+            end = alias_tok.span.end;
+            Some(alias_name)
+        } else {
+            None
+        };
+        Ok(Item::UseDecl(UseDecl {
+            path,
+            form: UseForm::Bare(alias),
+            span: Span::new(start, end),
+            leading_trivia: self.take_item_trivia(),
+        }))
+    }
+
+    fn parse_use_item(&mut self) -> Result<UseItem, ParseError> {
+        let name_tok = self.bump()?;
+        let item_start = name_tok.span.start;
+        let TokenKind::Ident(name) = name_tok.kind else {
+            let span = name_tok.span;
+            return Err(self.err(
+                format!(
+                    "expected item name in use list, found {}",
+                    describe(&name_tok.kind)
+                ),
+                span,
+                "expected identifier",
+            ));
+        };
+        let mut end = name_tok.span.end;
+        let alias = if let TokenKind::Ident(s) = &self.peek()?.kind
+            && s == "as"
+        {
+            self.bump()?;
+            let alias_tok = self.bump()?;
+            let TokenKind::Ident(alias_name) = alias_tok.kind else {
+                let span = alias_tok.span;
+                return Err(self.err(
+                    format!(
+                        "expected alias identifier after 'as', found {}",
+                        describe(&alias_tok.kind)
+                    ),
+                    span,
+                    "expected identifier",
+                ));
+            };
+            end = alias_tok.span.end;
+            Some(alias_name)
+        } else {
+            None
+        };
+        Ok(UseItem {
+            name,
+            alias,
+            span: Span::new(item_start, end),
+        })
+    }
+
+    pub(super) fn parse_type_decl(
+        &mut self,
+        decorators: Vec<Decorator>,
+    ) -> Result<Item, ParseError> {
+        let type_kw = self.bump()?; // 'type'
+        let start = type_kw.span.start;
+        let (name, _name_span) = self.parse_path()?;
+        let extends = self.parse_extends_clause()?;
+        self.expect_brace_after("type name", &name)?;
+        let (fields, rbrace_span) = self.parse_brace_members(
+            "unexpected end of file inside type declaration",
+            Self::parse_type_field,
+        )?;
+        Ok(Item::TypeDecl(TypeDecl {
+            name,
+            extends,
+            fields,
+            decorators,
+            span: Span::new(start, rbrace_span.end),
+            leading_trivia: self.take_item_trivia(),
+        }))
+    }
+
+    pub(super) fn parse_interface_decl(
+        &mut self,
+        decorators: Vec<Decorator>,
+    ) -> Result<Item, ParseError> {
+        let kw = self.bump()?; // 'interface'
+        let start = kw.span.start;
+        let (name, _name_span) = self.parse_path()?;
+        let extends = self.parse_extends_clause()?;
+        self.expect_brace_after("interface name", &name)?;
+        let (fields, rbrace_span) = self.parse_brace_members(
+            "unexpected end of file inside interface declaration",
+            Self::parse_type_field,
+        )?;
+        Ok(Item::InterfaceDecl(crate::ast::InterfaceDecl {
+            name,
+            extends,
+            fields,
+            decorators,
+            span: Span::new(start, rbrace_span.end),
+            leading_trivia: self.take_item_trivia(),
+        }))
+    }
+
+    /// Consume the opening `{` of a `type` / `interface` / `union`
+    /// declaration body, producing the existing rich error message
+    /// (which interpolates the declaration's name) when the token isn't a
+    /// `{`.
+    fn expect_brace_after(&mut self, label: &str, name: &[String]) -> Result<(), ParseError> {
+        let lbrace = self.bump()?;
+        if !matches!(lbrace.kind, TokenKind::LBrace) {
+            return Err(self.err(
+                format!(
+                    "expected '{{' after {label} '{}', found {}",
+                    name.join("."),
+                    describe(&lbrace.kind)
+                ),
+                lbrace.span,
+                "expected '{'",
+            ));
+        }
+        Ok(())
+    }
+
+    /// Parse a comma-separated list, allowing a single optional trailing
+    /// comma before the close token. Assumes the open delimiter has
+    /// already been consumed and consumes the matching close. The
+    /// `context` string is interpolated into error messages
+    /// (`"expected ',' or {close_desc} in {context}"`).
+    pub(super) fn parse_comma_separated<T>(
+        &mut self,
+        is_close: fn(&TokenKind) -> bool,
+        close_desc: &str,
+        context: &str,
+        mut parse_item: impl FnMut(&mut Self) -> Result<T, ParseError>,
+    ) -> Result<Vec<T>, ParseError> {
+        let mut items = Vec::new();
+        if is_close(&self.peek()?.kind) {
+            return Ok(items);
+        }
+        loop {
+            items.push(parse_item(self)?);
+            match self.peek()?.kind {
+                TokenKind::Comma => {
+                    self.bump()?;
+                    if is_close(&self.peek()?.kind) {
+                        break;
+                    }
+                }
+                ref k if is_close(k) => break,
+                _ => {
+                    let p = self.peek()?;
+                    let span = p.span;
+                    let kind = describe(&p.kind);
+                    return Err(self.err(
+                        format!("expected ',' or {close_desc} in {context}, found {kind}"),
+                        span,
+                        format!("expected ',' or {close_desc}"),
+                    ));
+                }
+            }
+        }
+        Ok(items)
+    }
+
+    /// Drive a brace-delimited member loop. Assumes the opening `{` has
+    /// already been consumed; reads members via `parse_member` until it
+    /// sees `}` (which it consumes) or `Eof` (which errors with
+    /// `eof_message`). Returns the parsed members and the span of the
+    /// closing brace.
+    fn parse_brace_members<T>(
+        &mut self,
+        eof_message: &str,
+        mut parse_member: impl FnMut(&mut Self) -> Result<T, ParseError>,
+    ) -> Result<(Vec<T>, Span), ParseError> {
+        let mut items = Vec::new();
+        loop {
+            let p = self.peek()?;
+            match p.kind {
+                TokenKind::RBrace => break,
+                TokenKind::Eof => {
+                    let span = p.span;
+                    return Err(self.err(eof_message, span, "expected '}'"));
+                }
+                _ => items.push(parse_member(self)?),
+            }
+        }
+        let rbrace = self.bump()?;
+        Ok((items, rbrace.span))
+    }
+
+    /// Optional `extends Path (, Path)*` clause used by `type` and
+    /// `interface` declarations. Returns an empty vec when absent.
+    /// Trailing commas and empty lists after the keyword are
+    /// errors.
+    fn parse_extends_clause(&mut self) -> Result<Vec<Vec<String>>, ParseError> {
+        let is_extends = matches!(&self.peek()?.kind, TokenKind::Ident(s) if s == "extends");
+        if !is_extends {
+            return Ok(Vec::new());
+        }
+        let kw = self.bump()?; // 'extends'
+        let mut parents = Vec::new();
+        loop {
+            // Disallow trailing comma / empty list: at least one path required.
+            let needs_ident_error = !matches!(&self.peek()?.kind, TokenKind::Ident(_));
+            if needs_ident_error {
+                let tok = self.peek()?.clone();
+                let kind = describe(&tok.kind);
+                return Err(self.err(
+                    format!("expected parent type or interface name after 'extends', found {kind}"),
+                    tok.span,
+                    "expected identifier",
+                ));
+            }
+            let (path, _) = self.parse_path()?;
+            parents.push(path);
+            match self.peek()?.kind {
+                TokenKind::Comma => {
+                    self.bump()?;
+                    continue;
+                }
+                _ => break,
+            }
+        }
+        if parents.is_empty() {
+            // Unreachable given the loop above always pushes once,
+            // but kept for clarity.
+            return Err(self.err(
+                "'extends' must be followed by at least one parent name",
+                kw.span,
+                "empty extends clause",
+            ));
+        }
+        Ok(parents)
+    }
+
+    fn parse_type_field(&mut self) -> Result<TypeField, ParseError> {
+        let decorators = self.parse_decorators()?;
+        let name_tok = self.bump()?;
+        let field_start = name_tok.span.start;
+        let TokenKind::Ident(field_name) = name_tok.kind else {
+            return Err(self.err(
+                format!("expected field name, found {}", describe(&name_tok.kind)),
+                name_tok.span,
+                "expected identifier",
+            ));
+        };
+        let colon = self.bump()?;
+        if !matches!(colon.kind, TokenKind::Colon) {
+            return Err(self.err(
+                format!(
+                    "expected ':' after field name '{field_name}', found {}",
+                    describe(&colon.kind)
+                ),
+                colon.span,
+                "expected ':'",
+            ));
+        }
+        let (ty, ty_span) = self.parse_type_ref()?;
+        let mut optional = false;
+        let mut end = ty_span.end;
+        if matches!(self.peek()?.kind, TokenKind::Question) {
+            let q = self.bump()?;
+            optional = true;
+            end = q.span.end;
+        }
+        Ok(TypeField {
+            name: field_name,
+            ty,
+            ty_span,
+            optional,
+            decorators,
+            span: Span::new(field_start, end),
+        })
+    }
+
+    pub(super) fn parse_union_decl(
+        &mut self,
+        decorators: Vec<Decorator>,
+    ) -> Result<Item, ParseError> {
+        let kw = self.bump()?; // 'union'
+        let start = kw.span.start;
+        let (name, _name_span) = self.parse_path()?;
+        let extends = self.parse_extends_clause()?;
+        self.expect_brace_after("union name", &name)?;
+        let (variants, rbrace_span) = self.parse_brace_members(
+            "unexpected end of file inside union declaration",
+            Self::parse_variant_decl,
+        )?;
+        Ok(Item::UnionDecl(UnionDecl {
+            name,
+            extends,
+            variants,
+            decorators,
+            span: Span::new(start, rbrace_span.end),
+            leading_trivia: self.take_item_trivia(),
+        }))
+    }
+
+    fn parse_variant_decl(&mut self) -> Result<UnionVariant, ParseError> {
+        let decorators = self.parse_decorators()?;
+        let name_tok = self.bump()?;
+        let variant_start = name_tok.span.start;
+        let TokenKind::Ident(variant_name) = name_tok.kind else {
+            return Err(self.err(
+                format!("expected variant name, found {}", describe(&name_tok.kind)),
+                name_tok.span,
+                "expected identifier",
+            ));
+        };
+        let (body, body_end) = self.parse_variant_body()?;
+        Ok(UnionVariant {
+            name: variant_name,
+            body,
+            decorators,
+            span: Span::new(variant_start, body_end),
+        })
+    }
+
+    fn parse_variant_body(&mut self) -> Result<(VariantBody, usize), ParseError> {
+        let head = self.peek()?;
+        match head.kind {
+            TokenKind::LBrace => {
+                self.bump()?;
+                let (fields, rbrace_span) = self.parse_brace_members(
+                    "unexpected end of file inside variant body",
+                    Self::parse_type_field,
+                )?;
+                Ok((VariantBody::Record(fields), rbrace_span.end))
+            }
+            TokenKind::None => {
+                let tok = self.bump()?;
+                Ok((VariantBody::Unit, tok.span.end))
+            }
+            TokenKind::Amp => {
+                let amp = self.bump()?; // '&'
+                let (iface, iface_span) = self.parse_path()?;
+                if matches!(self.peek()?.kind, TokenKind::Question) {
+                    let q = self.peek()?;
+                    let span = q.span;
+                    return Err(self.err(
+                        "'?' is not allowed on a variant body",
+                        span,
+                        "remove '?'",
+                    ));
+                }
+                let span = Span::new(amp.span.start, iface_span.end);
+                Ok((
+                    VariantBody::InterfaceRef {
+                        iface,
+                        iface_span: span,
+                    },
+                    iface_span.end,
+                ))
+            }
+            TokenKind::Ident(_) => {
+                let (ty, ty_span) = self.parse_type_ref()?;
+                // No optional `?` is permitted on a variant body type ref.
+                if matches!(self.peek()?.kind, TokenKind::Question) {
+                    let q = self.peek()?;
+                    let span = q.span;
+                    return Err(self.err(
+                        "'?' is not allowed on a variant body",
+                        span,
+                        "remove '?'",
+                    ));
+                }
+                Ok((VariantBody::TypeRef { ty, ty_span }, ty_span.end))
+            }
+            _ => {
+                let span = head.span;
+                let kind = describe(&head.kind);
+                Err(self.err(
+                    format!("expected variant body ('{{ ... }}', a type, or 'None'), found {kind}"),
+                    span,
+                    "expected variant body",
+                ))
+            }
+        }
+    }
+
+    pub(super) fn parse_symbol_set_decl(
+        &mut self,
+        decorators: Vec<Decorator>,
+    ) -> Result<Item, ParseError> {
+        let kw = self.bump()?; // 'symbol_set'
+        let start = kw.span.start;
+        let (name, _) = self.parse_path()?;
+        self.expect(TokenKind::LBrace, "expected '{' after symbol_set name")?;
+        let mut symbols: Vec<SymbolEntry> = Vec::new();
+        loop {
+            // Each entry may have its own decorators.
+            let entry_decorators = self.parse_decorators()?;
+            let p = self.peek()?;
+            match &p.kind {
+                TokenKind::RBrace => {
+                    if !entry_decorators.is_empty() {
+                        let span = entry_decorators[0].span;
+                        return Err(self.err(
+                            "decorators must be followed by a symbol name",
+                            span,
+                            "dangling decorator",
+                        ));
+                    }
+                    break;
+                }
+                TokenKind::Eof => {
+                    let span = p.span;
+                    return Err(self.err(
+                        "unexpected end of file inside symbol_set declaration",
+                        span,
+                        "expected '}'",
+                    ));
+                }
+                TokenKind::Ident(_) => {
+                    let tok = self.bump()?;
+                    if let TokenKind::Ident(entry_name) = tok.kind {
+                        symbols.push(SymbolEntry {
+                            name: entry_name,
+                            decorators: entry_decorators,
+                            span: tok.span,
+                        });
+                    }
+                }
+                other => {
+                    let span = p.span;
+                    let kind = describe(other);
+                    return Err(self.err(
+                        format!("expected symbol name or '}}', found {kind}"),
+                        span,
+                        "expected symbol name",
+                    ));
+                }
+            }
+        }
+        let rbrace = self.bump()?;
+        Ok(Item::SymbolSetDecl(SymbolSetDecl {
+            name,
+            symbols,
+            decorators,
+            span: Span::new(start, rbrace.span.end),
+            leading_trivia: self.take_item_trivia(),
+        }))
+    }
+
+    /// Parse `connection NAME : TypeRef -> TypeRef : Path`.
+    /// The leading `connection` keyword has not yet been consumed.
+    pub(super) fn parse_connection_decl(&mut self) -> Result<Item, ParseError> {
+        let kw = self.bump()?; // `connection`
+        let start = kw.span.start;
+        let (name, _) = self.parse_path()?;
+        self.expect(TokenKind::Colon, "expected ':' after connection name")?;
+        let (source, source_span) = self.parse_type_ref()?;
+        self.expect(
+            TokenKind::Arrow,
+            "expected '->' between source and destination types",
+        )?;
+        let (destination, destination_span) = self.parse_type_ref()?;
+        self.expect(
+            TokenKind::Colon,
+            "expected ':' before connection kind symbol_set",
+        )?;
+        let (kind_set, kind_set_span) = self.parse_path()?;
+        let end = kind_set_span.end;
+        Ok(Item::ConnectionDecl(crate::ast::ConnectionDecl {
+            name,
+            source,
+            source_span,
+            destination,
+            destination_span,
+            kind_set,
+            kind_set_span,
+            span: Span::new(start, end),
+            leading_trivia: self.take_item_trivia(),
+        }))
+    }
+
+    /// Parse a connection statement starting at `lhs -> rhs [':' sym]`.
+    /// The lhs ident has already been consumed; `lhs_span` covers it.
+    pub(super) fn parse_connection_stmt(
+        &mut self,
+        lhs: String,
+        lhs_span: Span,
+    ) -> Result<Item, ParseError> {
+        self.expect(TokenKind::Arrow, "expected '->' in connection statement")?;
+        let rhs_tok = self.bump()?;
+        let TokenKind::Ident(rhs) = rhs_tok.kind else {
+            return Err(self.err(
+                format!(
+                    "expected identifier after '->', found {}",
+                    describe(&rhs_tok.kind)
+                ),
+                rhs_tok.span,
+                "expected identifier",
+            ));
+        };
+        let rhs_span = rhs_tok.span;
+        let mut end = rhs_span.end;
+        // Optional kind annotation. The lexer produces a single
+        // `Symbol(name)` token for the tight `:name` form, or a
+        // separate `Colon` + `Ident` pair when whitespace intervenes.
+        // Clone the symbol payload out of peek so we can bump without
+        // having to re-destructure (and without leaving a load-bearing
+        // `unreachable!()` between the peek and the bump).
+        let pre_sym = match &self.peek()?.kind {
+            TokenKind::Symbol(s) => Some(s.clone()),
+            _ => None,
+        };
+        let (kind, kind_span) = if let Some(sym) = pre_sym {
+            let span = self.bump()?.span;
+            end = span.end;
+            (Some(sym), Some(span))
+        } else if matches!(self.peek()?.kind, TokenKind::Colon) {
+            self.bump()?; // ':'
+            let (sym, sym_span) = self.bump_ident("expected symbol identifier after ':'")?;
+            end = sym_span.end;
+            (Some(sym), Some(sym_span))
+        } else {
+            (None, None)
+        };
+        Ok(Item::Connection(crate::ast::ConnectionStmt {
+            lhs,
+            lhs_span,
+            rhs,
+            rhs_span,
+            kind,
+            kind_span,
+            span: Span::new(lhs_span.start, end),
+            leading_trivia: self.take_item_trivia(),
+        }))
+    }
+
+    pub(super) fn parse_field(
+        &mut self,
+        name: String,
+        start: usize,
+        decorators: Vec<Decorator>,
+    ) -> Result<Item, ParseError> {
+        self.bump()?; // consume '='
+        let (expr, value_span) = self.parse_expr()?;
+        let span = Span::new(start, value_span.end);
+        Ok(Item::Field(Field {
+            name,
+            expr,
+            decorators,
+            span,
+            leading_trivia: self.take_item_trivia(),
+        }))
+    }
+
+    pub(super) fn parse_block(
+        &mut self,
+        kind: String,
+        start: usize,
+        decorators: Vec<Decorator>,
+    ) -> Result<Item, ParseError> {
+        // Labels are value expressions in positional slots. Their types are
+        // determined by the schema's `@inline(N)`-decorated fields.
+        let mut labels: Vec<Expr> = Vec::new();
+        loop {
+            let p = self.peek()?;
+            match &p.kind {
+                TokenKind::LBrace => break,
+                TokenKind::Str(StringLit::Utf8(_))
+                | TokenKind::Str(StringLit::Ascii(_))
+                | TokenKind::Str(StringLit::Utf16(_))
+                | TokenKind::Str(StringLit::Utf32(_))
+                | TokenKind::Number(_)
+                | TokenKind::Bool(_)
+                | TokenKind::Symbol(_)
+                | TokenKind::Ident(_)
+                | TokenKind::None => {
+                    let (expr, _) = self.parse_value_expr()?;
+                    labels.push(expr);
+                }
+                other => {
+                    let msg = format!("expected label or '{{', found {}", describe(other));
+                    let span = p.span;
+                    return Err(self.err(msg, span, "expected label or '{'"));
+                }
+            }
+        }
+        self.bump()?; // consume '{'
+        self.block_depth += 1;
+        let body_result = (|| -> Result<Vec<Item>, ParseError> {
+            let mut items = Vec::new();
+            loop {
+                let p = self.peek()?;
+                match p.kind {
+                    TokenKind::RBrace => break,
+                    TokenKind::Eof => {
+                        let span = p.span;
+                        return Err(self.err(
+                            "unexpected end of file inside block",
+                            span,
+                            "expected '}'",
+                        ));
+                    }
+                    _ => items.push(self.parse_item()?),
+                }
+            }
+            Ok(items)
+        })();
+        self.block_depth -= 1;
+        let items = body_result?;
+        let rbrace = self.bump()?;
+        Ok(Item::Block(Block {
+            kind,
+            labels,
+            items,
+            decorators,
+            span: Span::new(start, rbrace.span.end),
+            leading_trivia: self.take_item_trivia(),
+        }))
+    }
+}
