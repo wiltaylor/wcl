@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
 use wcl_lang::{
-    DeclName, Document, Environment, EvalError, ResolvedType, SymbolKind, TypeRef, Value,
-    VariantBodyView, from_fn,
+    DeclName, Document, Environment, EvalError, ProfileKey, ResolvedType, SymbolKind, TypeRef,
+    Value, VariantBodyView, from_fn,
 };
 
 fn examples_dir() -> PathBuf {
@@ -394,6 +394,53 @@ fn collection_builtins_evaluate_end_to_end() {
         doc.field("t_data").unwrap().value().unwrap(),
         &i64s(&[11, 12, 13, 14, 15, 16])
     );
+}
+
+#[test]
+fn profile_records_call_tree_for_map_over_user_fn() {
+    use std::time::Duration;
+
+    let path = examples_dir().join("builtins_collections.wcl");
+    let doc = Document::from_file_profiled(&path).expect("profiled fixture parses");
+    let _ = doc
+        .field("doubled")
+        .unwrap()
+        .value()
+        .expect("force doubled");
+
+    let p = doc.profile().expect("profile enabled");
+    let doubled = p
+        .root()
+        .children
+        .get(&ProfileKey::Field {
+            path: "doubled".into(),
+        })
+        .expect("doubled was profiled");
+    assert_eq!(doubled.count, 1);
+    assert!(doubled.total > Duration::ZERO);
+
+    let map_node = doubled
+        .children
+        .get(&ProfileKey::Builtin { name: "map".into() })
+        .expect("map call recorded under doubled");
+    assert_eq!(map_node.count, 1);
+
+    let fn_node = map_node
+        .children
+        .get(&ProfileKey::UserFn {
+            name: String::new(),
+        })
+        .expect("user fn invocations recorded under map");
+    assert_eq!(fn_node.count, 4, "map ran the callback once per element");
+    assert!(fn_node.min <= fn_node.max);
+}
+
+#[test]
+fn profile_is_none_for_unprofiled_document() {
+    let path = examples_dir().join("builtins_collections.wcl");
+    let doc = Document::from_file(&path).expect("fixture parses");
+    let _ = doc.field("doubled").unwrap().value().unwrap();
+    assert!(doc.profile().is_none());
 }
 
 #[test]

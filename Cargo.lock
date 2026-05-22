@@ -1126,6 +1126,7 @@ dependencies = [
  "clap",
  "miette",
  "predicates",
+ "serde_json",
  "wcl_lang",
 ]
 

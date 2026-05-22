@@ -13,6 +13,7 @@ mod error;
 mod lexer;
 mod numeric;
 mod parser;
+mod profile;
 mod symbols;
 mod value;
 
@@ -28,5 +29,6 @@ pub use doc::{
 };
 pub use environment::{BuiltType, DecoratorBuilder, Environment, TypeBuilder, TypeFieldBuilder};
 pub use error::{EvalError, ParseError, SchemaViolationKind, SyntaxError};
+pub use profile::{Profile, ProfileKey, ProfileNode};
 pub use symbols::{SymbolIndex, SymbolKind, SymbolPath, SymbolRecord};
 pub use value::{BuiltinType, FnParam, FnValue, TensorDim, TypeRef, Value};

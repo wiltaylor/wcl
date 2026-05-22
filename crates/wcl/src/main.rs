@@ -4,8 +4,9 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use wcl_lang::{
-    Block, DeclName, Decorator, Document, Field, SymbolSetDecl, TensorDim, TypeDecl, TypeRef,
-    UnionDecl, UnionVariant, UseDeclView, UseFormView, Value, VariantBodyView,
+    Block, DeclName, Decorator, Document, Field, Profile, ProfileKey, ProfileNode, SymbolSetDecl,
+    TensorDim, TypeDecl, TypeRef, UnionDecl, UnionVariant, UseDeclView, UseFormView, Value,
+    VariantBodyView,
 };
 
 #[derive(Parser)]
@@ -21,6 +22,10 @@ enum Command {
     Parse {
         /// Path to a WCL source file.
         file: PathBuf,
+        /// Record a call-tree profile of the document forcing and print
+        /// it as JSON to stderr after the dump.
+        #[arg(long)]
+        profile: bool,
     },
     /// Parse a WCL file and report whether it is syntactically valid.
     Check {
@@ -37,24 +42,39 @@ enum Command {
         file: PathBuf,
         /// Dotted path to resolve from the document root.
         path: String,
+        /// Record a call-tree profile of the evaluation and print it
+        /// as JSON to stderr after the value is printed.
+        #[arg(long)]
+        profile: bool,
     },
 }
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
     match cli.command {
-        Command::Parse { file } => match Document::from_file(&file) {
-            Ok(doc) => {
-                let mut out = String::new();
-                dump_document(&doc, &mut out);
-                print!("{out}");
-                ExitCode::SUCCESS
+        Command::Parse { file, profile } => {
+            let opened = if profile {
+                Document::from_file_profiled(&file)
+            } else {
+                Document::from_file(&file)
+            };
+            match opened {
+                Ok(doc) => {
+                    let mut out = String::new();
+                    dump_document(&doc, &mut out);
+                    print!("{out}");
+                    if profile && let Some(p) = doc.profile() {
+                        let json = profile_to_json(&p);
+                        eprintln!("{}", serde_json::to_string_pretty(&json).unwrap());
+                    }
+                    ExitCode::SUCCESS
+                }
+                Err(err) => {
+                    eprintln!("{:?}", miette::Report::new(err));
+                    ExitCode::FAILURE
+                }
             }
-            Err(err) => {
-                eprintln!("{:?}", miette::Report::new(err));
-                ExitCode::FAILURE
-            }
-        },
+        }
         Command::Check { file } => match Document::from_file(&file) {
             Ok(doc) => {
                 let errs = doc.schema_errors();
@@ -73,28 +93,75 @@ fn main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
-        Command::Eval { file, path } => match Document::from_file(&file) {
-            Ok(doc) => match doc.get(&path) {
-                Some(dr) => match dr.value() {
-                    Ok(v) => {
-                        println!("{}", value_repr(&v));
-                        ExitCode::SUCCESS
+        Command::Eval {
+            file,
+            path,
+            profile,
+        } => {
+            let opened = if profile {
+                Document::from_file_profiled(&file)
+            } else {
+                Document::from_file(&file)
+            };
+            match opened {
+                Ok(doc) => {
+                    let exit = match doc.get(&path) {
+                        Some(dr) => match dr.value() {
+                            Ok(v) => {
+                                println!("{}", value_repr(&v));
+                                ExitCode::SUCCESS
+                            }
+                            Err(e) => {
+                                eprintln!("{:?}", miette::Report::new(e));
+                                ExitCode::FAILURE
+                            }
+                        },
+                        None => {
+                            eprintln!("no such path: {path}");
+                            ExitCode::FAILURE
+                        }
+                    };
+                    if profile && let Some(p) = doc.profile() {
+                        let json = profile_to_json(&p);
+                        eprintln!("{}", serde_json::to_string_pretty(&json).unwrap());
                     }
-                    Err(e) => {
-                        eprintln!("{:?}", miette::Report::new(e));
-                        ExitCode::FAILURE
-                    }
-                },
-                None => {
-                    eprintln!("no such path: {path}");
+                    exit
+                }
+                Err(err) => {
+                    eprintln!("{:?}", miette::Report::new(err));
                     ExitCode::FAILURE
                 }
-            },
-            Err(err) => {
-                eprintln!("{:?}", miette::Report::new(err));
-                ExitCode::FAILURE
             }
-        },
+        }
+    }
+}
+
+fn profile_to_json(p: &Profile) -> serde_json::Value {
+    profile_node_to_json(p.root())
+}
+
+fn profile_node_to_json(n: &ProfileNode) -> serde_json::Value {
+    serde_json::json!({
+        "key": profile_key_to_json(&n.key),
+        "count": n.count,
+        "total_ns": n.total.as_nanos() as u64,
+        "min_ns": if n.count == 0 { 0 } else { n.min.as_nanos() as u64 },
+        "max_ns": n.max.as_nanos() as u64,
+        "mean_ns": n.mean().as_nanos() as u64,
+        "children": n
+            .children
+            .values()
+            .map(profile_node_to_json)
+            .collect::<Vec<_>>(),
+    })
+}
+
+fn profile_key_to_json(k: &ProfileKey) -> serde_json::Value {
+    match k {
+        ProfileKey::Root => serde_json::json!({ "kind": "root" }),
+        ProfileKey::Field { path } => serde_json::json!({ "kind": "field", "path": path }),
+        ProfileKey::UserFn { name } => serde_json::json!({ "kind": "user_fn", "name": name }),
+        ProfileKey::Builtin { name } => serde_json::json!({ "kind": "builtin", "name": name }),
     }
 }
 

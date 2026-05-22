@@ -55,6 +55,10 @@ pub struct Document {
     /// items participate in the unified `symbols` index and in
     /// `Document::fields/blocks/...` iteration.
     eager_imports: Vec<LoadedImport>,
+    /// Optional profile collector. Populated only when the document is
+    /// opened through one of the `*_profiled` constructors; otherwise
+    /// every profile hook is a no-op `Option::is_some` check.
+    profile: Option<std::sync::Mutex<crate::profile::ProfileState>>,
 }
 
 /// A homogeneous view over one source of top-level items — either the
@@ -120,7 +124,59 @@ impl Document {
             symbols,
             env: env.clone(),
             eager_imports,
+            profile: None,
         })
+    }
+
+    /// [`open`](Self::open) with profiling enabled. The resulting
+    /// document records timings into a tree visible via
+    /// [`profile`](Self::profile).
+    pub fn open_profiled(source: &str, name: &str) -> Result<Self, ParseError> {
+        Self::open_with_profiled(source, name, &Environment::new())
+    }
+
+    /// [`open_with`](Self::open_with) with profiling enabled.
+    pub fn open_with_profiled(
+        source: &str,
+        name: &str,
+        env: &Environment,
+    ) -> Result<Self, ParseError> {
+        let mut doc = Self::open_at(source, name, None, env)?;
+        doc.profile = Some(crate::profile::ProfileState::new_root());
+        Ok(doc)
+    }
+
+    /// [`from_file`](Self::from_file) with profiling enabled.
+    pub fn from_file_profiled(path: &Path) -> Result<Self, ParseError> {
+        let source = std::fs::read_to_string(path)?;
+        let base_dir = path.parent().map(Path::to_path_buf);
+        let mut doc = Self::open_at(
+            &source,
+            &path.display().to_string(),
+            base_dir,
+            &Environment::new(),
+        )?;
+        doc.profile = Some(crate::profile::ProfileState::new_root());
+        Ok(doc)
+    }
+
+    /// Snapshot of the profile tree, when profiling is enabled.
+    /// Returns `None` if the document was not opened through one of
+    /// the `*_profiled` constructors.
+    pub fn profile(&self) -> Option<crate::profile::Profile> {
+        self.profile
+            .as_ref()
+            .map(|m| m.lock().unwrap_or_else(|p| p.into_inner()).snapshot())
+    }
+
+    /// Internal helper used by hook sites. Returns a no-op guard when
+    /// profiling is disabled. Wrap the work to be measured by binding
+    /// the return value to `let _guard = …;`.
+    pub(crate) fn profile_enter(
+        &self,
+        key: crate::profile::ProfileKey,
+    ) -> crate::profile::ProfileGuard<'_> {
+        crate::profile::ProfileGuard::enter(self.profile.as_ref(), key)
     }
 
     /// The identifier index built incrementally during parsing.
@@ -1557,6 +1613,9 @@ impl<'a> Field<'a> {
         if let Some(cached) = cell.value.get() {
             return cached.as_ref();
         }
+        let _profile_guard = self.doc.profile_enter(crate::profile::ProfileKey::Field {
+            path: self.ast.name.clone(),
+        });
         // Strict membership check (skipped when the field is
         // `@schemaless`). The field must be named by either the
         // enclosing block's schema or, for top-level fields, the
@@ -2155,6 +2214,9 @@ struct EvalCaller<'a, 'c> {
 
 impl crate::builtins::Caller for EvalCaller<'_, '_> {
     fn call_fn(&mut self, f: &FnValue, args: &[Value]) -> Result<Value, String> {
+        let _profile_guard = self.doc.profile_enter(crate::profile::ProfileKey::UserFn {
+            name: String::new(),
+        });
         match self.doc.invoke_fn_value(f, args, self.ctx, self.span) {
             Ok(v) => Ok(v),
             Err(e) => {
@@ -2293,6 +2355,10 @@ impl Document {
                         for arg in args {
                             evald.push(self.eval_in(arg, ctx)?);
                         }
+                        let _profile_guard =
+                            self.profile_enter(crate::profile::ProfileKey::UserFn {
+                                name: name.clone(),
+                            });
                         return self
                             .invoke_fn_value(&fv, &evald, ctx, *span)
                             .map_err(|e| call_err_at(e, name.clone(), *span));
@@ -2312,6 +2378,8 @@ impl Document {
                     for arg in args {
                         evald.push(self.eval_in(arg, ctx)?);
                     }
+                    let _profile_guard = self
+                        .profile_enter(crate::profile::ProfileKey::Builtin { name: name.clone() });
                     return match &builtin.kind {
                         crate::builtins::BuiltinKind::Pure(body) => (body)(&evald)
                             .map_err(|msg| EvalError::builtin_type(name.clone(), msg, *span)),
@@ -2338,6 +2406,9 @@ impl Document {
                 for arg in args {
                     evald.push(self.eval_in(arg, ctx)?);
                 }
+                let _profile_guard = self.profile_enter(crate::profile::ProfileKey::UserFn {
+                    name: String::new(),
+                });
                 return self.invoke_fn_value(&fv, &evald, ctx, *span);
             }
             E::Block { lets, tail, .. } => {

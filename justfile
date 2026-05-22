@@ -32,6 +32,14 @@ lint:
 # Full CI gate: fmt-check + lint + test
 ci: fmt-check lint test
 
+# Profile each example with `wcl parse --profile`; JSON profile per file to stderr.
+examples-profile:
+    @for f in examples/*.wcl; do \
+        echo "==> $f" >&2; \
+        cargo run -q -p wcl -- parse --profile "$f" >/dev/null; \
+        echo >&2; \
+    done
+
 [private]
 fmt-check:
     cargo fmt --all -- --check
