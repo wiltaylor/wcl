@@ -1,0 +1,5 @@
+// `${name` has no closing `}` and the line ends inside the slot —
+// should fail with "interpolation slot must not span multiple lines".
+
+@schemaless oops = $"hi ${name
+"

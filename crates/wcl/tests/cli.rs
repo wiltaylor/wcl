@@ -122,6 +122,18 @@ fn parse_prints_connection_decl_and_statements() {
 }
 
 #[test]
+fn eval_renders_interpolated_field() {
+    wcl()
+        .arg("eval")
+        .arg(examples_dir().join("interpolation.wcl"))
+        .arg("greeting")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Hello, alice!"))
+        .stdout(predicate::str::contains("4 item(s)"));
+}
+
+#[test]
 fn eval_renders_heredoc_field_as_multiline() {
     wcl()
         .arg("eval")

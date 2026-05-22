@@ -2886,6 +2886,39 @@ impl Document {
             E::Ascii(s) => Value::Ascii(s.clone()),
             E::Utf16(v) => Value::Utf16(v.clone()),
             E::Utf32(v) => Value::Utf32(v.clone()),
+            E::InterpolatedString {
+                encoding,
+                parts,
+                span,
+            } => {
+                use crate::lexer::StringEncoding as Enc;
+                let mut joined = String::new();
+                for part in parts {
+                    match part {
+                        ast::TemplatePart::Literal(s) => joined.push_str(s),
+                        ast::TemplatePart::Expr(e) => {
+                            let v = self.eval_in(e, ctx)?;
+                            joined.push_str(&crate::collections::format_value(&v));
+                        }
+                    }
+                }
+                return match encoding {
+                    Enc::Utf8 => Ok(Value::Utf8(joined)),
+                    Enc::Ascii => {
+                        if joined.chars().any(|c| (c as u32) >= 0x80) {
+                            Err(EvalError::schema_violation(
+                                crate::error::SchemaViolationKind::FieldTypeMismatch,
+                                "interpolated ascii string contains a non-ASCII character",
+                                *span,
+                            ))
+                        } else {
+                            Ok(Value::Ascii(joined))
+                        }
+                    }
+                    Enc::Utf16 => Ok(Value::Utf16(joined.encode_utf16().collect())),
+                    Enc::Utf32 => Ok(Value::Utf32(joined.chars().collect())),
+                };
+            }
             E::Symbol(s) => Value::Symbol(s.clone()),
             E::None => Value::None,
             E::Function(f) => {
@@ -3796,7 +3829,8 @@ fn span_of(expr: &ast::Expr) -> Span {
         | E::If { span, .. }
         | E::IfLet { span, .. }
         | E::Match { span, .. }
-        | E::Variant { span, .. } => *span,
+        | E::Variant { span, .. }
+        | E::InterpolatedString { span, .. } => *span,
         E::SelfKw(s) | E::ParentKw(s) => *s,
     }
 }

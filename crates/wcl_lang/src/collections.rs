@@ -478,7 +478,7 @@ fn format_hof(_caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String>
 
 /// Render a `Value` for inclusion in a `format` substitution. Stays
 /// compact and predictable — host CLIs render richer forms.
-fn format_value(v: &Value) -> String {
+pub(crate) fn format_value(v: &Value) -> String {
     match v {
         Value::Utf8(s) | Value::Ascii(s) | Value::Identifier(s) => s.clone(),
         Value::Symbol(s) => format!(":{s}"),

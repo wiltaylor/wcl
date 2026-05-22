@@ -1480,3 +1480,49 @@ fn heredoc_non_ascii_fixture_reports_error() {
         "expected non-ASCII error, got: {rendered}",
     );
 }
+
+// ---- interpolation ---------------------------------------------------
+
+#[test]
+fn interpolation_fixture_evaluates_each_form() {
+    let doc =
+        Document::from_file(&examples_dir().join("interpolation.wcl")).expect("interpolation.wcl");
+    assert_eq!(
+        doc.field("greeting").unwrap().value().unwrap(),
+        &Value::Utf8("Hello, alice! You have 4 item(s).".into()),
+    );
+    assert_eq!(
+        doc.field("ascii_id").unwrap().value().unwrap(),
+        &Value::Ascii("id=alice".into()),
+    );
+    assert_eq!(
+        doc.field("body").unwrap().value().unwrap(),
+        &Value::Utf8("name=alice\ncount=30\n".into()),
+    );
+}
+
+#[test]
+fn interpolation_unterminated_slot_reports_error() {
+    let rendered = open_or_schema_error("interp_unterminated_slot.wcl");
+    assert!(
+        rendered.contains("interpolation slot") || rendered.contains("multiple lines"),
+        "expected slot-spans-lines error, got: {rendered}",
+    );
+}
+
+#[test]
+fn interpolation_ascii_violation_reports_at_eval() {
+    let doc = Document::from_file(&examples_dir().join("errors/interp_ascii_violation.wcl"))
+        .expect("file parses");
+    let err = doc
+        .field("oops")
+        .expect("oops field")
+        .value()
+        .unwrap_err()
+        .clone();
+    let rendered = format!("{err:?}");
+    assert!(
+        rendered.contains("non-ASCII"),
+        "expected non-ASCII eval error, got: {rendered}",
+    );
+}

@@ -442,7 +442,7 @@ impl<'a> Parser<'a> {
         let span = tok.span;
         let expr = match tok.kind {
             TokenKind::Number(n) => number_to_expr(n),
-            TokenKind::Str(s) => string_to_expr(s),
+            TokenKind::Str(s) => self.string_lit_to_expr(s, span)?,
             TokenKind::Bool(b) => Expr::Bool(b),
             TokenKind::Ident(s) => Expr::Identifier(s),
             TokenKind::Symbol(s) => Expr::Symbol(s),
@@ -2379,6 +2379,69 @@ impl<'a> Parser<'a> {
         self.err(e.message, e.span, label)
     }
 
+    /// Build an `Expr` from a `StringLit` token. Plain forms map
+    /// one-to-one to the existing string-typed `Expr` variants; the
+    /// interpolated form sub-parses each `${expr}` slot using a fresh
+    /// `Parser` over a leading-padded copy of the original source so
+    /// span offsets stay aligned with the outer file.
+    fn string_lit_to_expr(&self, lit: StringLit, _span: Span) -> Result<Expr, ParseError> {
+        if let Some(simple) = string_to_expr_simple(lit.clone()) {
+            return Ok(simple);
+        }
+        let StringLit::Interpolated {
+            encoding,
+            parts,
+            span: lit_span,
+        } = lit
+        else {
+            unreachable!("string_to_expr_simple returned None only for Interpolated");
+        };
+        let mut out_parts: Vec<crate::ast::TemplatePart> = Vec::with_capacity(parts.len());
+        for part in parts {
+            match part {
+                crate::lexer::StringPart::Literal(s) => {
+                    out_parts.push(crate::ast::TemplatePart::Literal(s));
+                }
+                crate::lexer::StringPart::Expr {
+                    text,
+                    span: slot_span,
+                } => {
+                    let expr = self.sub_parse_slot(&text, slot_span)?;
+                    out_parts.push(crate::ast::TemplatePart::Expr(Box::new(expr)));
+                }
+            }
+        }
+        Ok(Expr::InterpolatedString {
+            encoding,
+            parts: out_parts,
+            span: lit_span,
+        })
+    }
+
+    /// Sub-parse one `${...}` slot. Constructs a fresh parser over a
+    /// leading-padded copy of the slot text so error spans land in the
+    /// outer source's coordinates without explicit span rewriting.
+    fn sub_parse_slot(&self, text: &str, slot_span: Span) -> Result<Expr, ParseError> {
+        // Pad the slot text with spaces so the sub-parser's byte
+        // offsets line up with the outer source.
+        let padded = format!("{}{}", " ".repeat(slot_span.start), text);
+        let mut sub = Parser::new(&padded, self.file.clone());
+        // Skip the padding via the lexer's whitespace handling: the
+        // first peek/bump will land on the first real byte of the
+        // slot text. Then parse one expression.
+        let (expr, _) = sub.parse_expr()?;
+        match &sub.peek()?.kind {
+            TokenKind::Eof => Ok(expr),
+            other => {
+                let msg = format!(
+                    "unexpected token in interpolation slot: {}",
+                    describe(other)
+                );
+                Err(self.err(msg, slot_span, "extra tokens after expression"))
+            }
+        }
+    }
+
     fn err(&self, message: impl Into<String>, span: Span, label: impl Into<String>) -> ParseError {
         let len = span.len().max(1);
         ParseError::syntax(
@@ -2561,13 +2624,14 @@ fn number_to_expr(n: NumberLit) -> Expr {
     }
 }
 
-fn string_to_expr(s: StringLit) -> Expr {
-    match s {
+fn string_to_expr_simple(s: StringLit) -> Option<Expr> {
+    Some(match s {
         StringLit::Utf8(s) => Expr::Utf8(s),
         StringLit::Ascii(s) => Expr::Ascii(s),
         StringLit::Utf16(v) => Expr::Utf16(v),
         StringLit::Utf32(v) => Expr::Utf32(v),
-    }
+        StringLit::Interpolated { .. } => return None,
+    })
 }
 
 /// Binding powers and operator mapping for the Pratt parser. Returns

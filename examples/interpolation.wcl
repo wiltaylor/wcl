@@ -1,0 +1,17 @@
+// String interpolation: opt-in via the `$` prefix.
+//
+// `$"…"` enables `${expr}` slots inside an otherwise normal string.
+// Slots accept any expression the parser already understands.
+// Typed prefixes (`ascii`, `utf16`, `utf32`) compose by writing the
+// encoding name after the `$`. Heredocs work the same way: `$<<TAG`
+// is an interpolated heredoc.
+
+@schemaless name  = "alice"
+@schemaless count = 3u32
+
+@schemaless greeting = $"Hello, ${name}! You have ${count + 1u32} item(s)."
+@schemaless ascii_id = $ascii"id=${name}"
+@schemaless body     = $<<EOF
+  name=${name}
+  count=${count * 10u32}
+  EOF

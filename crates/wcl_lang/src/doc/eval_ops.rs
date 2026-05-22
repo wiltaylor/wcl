@@ -39,6 +39,7 @@ pub(super) fn describe_expr(expr: &ast::Expr) -> &'static str {
         E::U8(_) | E::U16(_) | E::U32(_) | E::U64(_) | E::U128(_) | E::Usize(_) => "integer",
         E::F32(_) | E::F64(_) => "float",
         E::Utf8(_) | E::Ascii(_) | E::Utf16(_) | E::Utf32(_) => "string",
+        E::InterpolatedString { .. } => "interpolated string",
         E::Identifier(_) => "identifier",
         E::Symbol(_) => "symbol",
         E::None => "none",

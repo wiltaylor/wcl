@@ -1,0 +1,5 @@
+// `$ascii"…"` evaluated to a string containing a non-ASCII char —
+// the evaluator should reject it as a schema violation.
+
+@schemaless name = "café"
+@schemaless oops = $ascii"id=${name}"

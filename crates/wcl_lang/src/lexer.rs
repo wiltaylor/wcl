@@ -74,6 +74,33 @@ pub enum StringLit {
     Ascii(String),
     Utf16(Vec<u16>),
     Utf32(Vec<char>),
+    /// Opt-in interpolated literal (`$"…"`, `$ascii"…"`, `$<<TAG`, …).
+    /// The body is split into already-escape-decoded literal chunks
+    /// and raw source slices for `${expr}` slots that the parser later
+    /// sub-parses into expressions.
+    Interpolated {
+        encoding: StringEncoding,
+        parts: Vec<StringPart>,
+        span: Span,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StringEncoding {
+    Utf8,
+    Ascii,
+    Utf16,
+    Utf32,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum StringPart {
+    /// Already-decoded body bytes between (or around) slots.
+    Literal(String),
+    /// Raw source text inside a `${...}` slot, plus the slot's full
+    /// span (covering the `${` and `}`). The parser sub-parses this
+    /// into an `Expr` at parse time.
+    Expr { text: String, span: Span },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -136,7 +163,7 @@ impl<'a> Lexer<'a> {
                     && matches!(self.peek_at(2), Some(c) if is_ident_start(c))
                 {
                     self.pos += 2; // consume `<<`
-                    return self.lex_heredoc(start, StringPrefix::Utf8);
+                    return self.lex_heredoc(start, StringPrefix::plain(StringEncoding::Utf8));
                 }
                 Ok(self.two_or_one(start, b'=', TokenKind::LtEq, TokenKind::Lt))
             }
@@ -195,7 +222,8 @@ impl<'a> Lexer<'a> {
             b'*' => Ok(self.single(start, TokenKind::Star)),
             b'/' => Ok(self.single(start, TokenKind::Slash)),
             b'%' => Ok(self.single(start, TokenKind::Percent)),
-            b'"' => self.lex_string(start, StringPrefix::Utf8),
+            b'"' => self.lex_string(start, StringPrefix::plain(StringEncoding::Utf8)),
+            b'$' => self.lex_dollar_prefix(start),
             b'-' => {
                 // `->` always wins.
                 if self.peek_at(1) == Some(b'>') {
@@ -318,11 +346,69 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    /// Handle the `$`-prefix opener: `$"…"`, `$<<TAG`,
+    /// `$ascii"…"`, `$utf16<<TAG`, etc. `self.pos` is on the `$`.
+    fn lex_dollar_prefix(&mut self, start: usize) -> Result<Token, LexError> {
+        self.pos += 1; // consume `$`
+        // Optional encoding name (ascii / utf16 / utf32). Bare $" or
+        // $<< default to utf8.
+        let encoding_start = self.pos;
+        let mut encoding = StringEncoding::Utf8;
+        if matches!(self.peek(), Some(c) if is_ident_start(c)) {
+            while matches!(self.peek(), Some(c) if is_ident_cont(c)) {
+                self.pos += 1;
+            }
+            let text =
+                std::str::from_utf8(&self.src[encoding_start..self.pos]).expect("ident is ASCII");
+            match StringPrefix::encoding_from_text(text) {
+                Some(enc) => encoding = enc,
+                None => {
+                    return Err(LexError {
+                        message: format!("unknown string encoding '{text}' after '$' prefix"),
+                        span: Span::new(encoding_start, self.pos),
+                    });
+                }
+            }
+        }
+        let prefix = StringPrefix::interp(encoding);
+        match self.peek() {
+            Some(b'"') => self.lex_string(start, prefix),
+            Some(b'<')
+                if self.peek_at(1) == Some(b'<')
+                    && matches!(self.peek_at(2), Some(c) if is_ident_start(c)) =>
+            {
+                self.pos += 2; // consume `<<`
+                self.lex_heredoc(start, prefix)
+            }
+            _ => Err(LexError {
+                message: "expected '\"' or '<<' after '$' string prefix".into(),
+                span: Span::new(start, self.pos),
+            }),
+        }
+    }
+
     fn lex_string(&mut self, start: usize, prefix: StringPrefix) -> Result<Token, LexError> {
         self.pos += 1; // opening "
         let body_start = self.pos;
         let mut body = String::new();
+        let mut parts: Vec<StringPart> = Vec::new();
         loop {
+            // Interpolation slot detection. `${` flushes the literal
+            // buffer and captures the brace-balanced slot.
+            if prefix.interpolated && self.peek() == Some(b'$') && self.peek_at(1) == Some(b'{') {
+                if !body.is_empty() {
+                    parts.push(StringPart::Literal(std::mem::take(&mut body)));
+                }
+                let slot_start = self.pos;
+                let text_start = slot_start + 2;
+                let (text, slot_end) = self.scan_interp_slot(slot_start, text_start)?;
+                self.pos = slot_end;
+                parts.push(StringPart::Expr {
+                    text,
+                    span: Span::new(slot_start, slot_end),
+                });
+                continue;
+            }
             let Some(c) = self.bump() else {
                 return Err(LexError {
                     message: "unterminated string".into(),
@@ -345,6 +431,7 @@ impl<'a> Lexer<'a> {
                         b'n' => body.push('\n'),
                         b't' => body.push('\t'),
                         b'r' => body.push('\r'),
+                        b'$' if prefix.interpolated => body.push('$'),
                         other => {
                             return Err(LexError {
                                 message: format!("invalid escape '\\{}'", other as char),
@@ -385,11 +472,120 @@ impl<'a> Lexer<'a> {
             }
         }
         let body_end = self.pos - 1; // before closing quote
-        let kind = self.materialise_string(prefix, body, body_start, body_end)?;
+        let kind = if prefix.interpolated {
+            if !body.is_empty() {
+                parts.push(StringPart::Literal(body));
+            }
+            StringLit::Interpolated {
+                encoding: prefix.encoding,
+                parts,
+                span: Span::new(start, self.pos),
+            }
+        } else {
+            self.materialise_string(prefix.encoding, body, body_start, body_end)?
+        };
         Ok(Token {
             kind: TokenKind::Str(kind),
             span: Span::new(start, self.pos),
         })
+    }
+
+    /// Scan a `${...}` slot, returning the raw text between `${` and
+    /// the matching `}` (exclusive) plus the byte offset of the byte
+    /// after the closing `}`. `slot_start` is the source offset of the
+    /// `$`; `text_start` is the source offset of the first body byte
+    /// (i.e. just after the `${`). Non-mutating: `self.pos` is left
+    /// untouched so the heredoc body assembler can drive its own
+    /// per-line cursor.
+    fn scan_interp_slot(
+        &self,
+        slot_start: usize,
+        text_start: usize,
+    ) -> Result<(String, usize), LexError> {
+        let mut pos = text_start;
+        let mut depth: usize = 1;
+        loop {
+            let Some(&c) = self.src.get(pos) else {
+                return Err(LexError {
+                    message: "unterminated '${...}' interpolation slot".into(),
+                    span: Span::new(slot_start, pos),
+                });
+            };
+            match c {
+                b'}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        let text = std::str::from_utf8(&self.src[text_start..pos])
+                            .map_err(|_| LexError {
+                                message: "invalid UTF-8 in interpolation slot".into(),
+                                span: Span::new(slot_start, pos),
+                            })?
+                            .to_string();
+                        return Ok((text, pos + 1));
+                    }
+                    pos += 1;
+                }
+                b'{' => {
+                    depth += 1;
+                    pos += 1;
+                }
+                b'"' => {
+                    pos += 1;
+                    while let Some(&b) = self.src.get(pos) {
+                        pos += 1;
+                        if b == b'\\' {
+                            if self.src.get(pos).is_some() {
+                                pos += 1;
+                            }
+                            continue;
+                        }
+                        if b == b'"' {
+                            break;
+                        }
+                        if b == b'\n' {
+                            return Err(LexError {
+                                message: "newline inside interpolation slot string".into(),
+                                span: Span::new(slot_start, pos),
+                            });
+                        }
+                    }
+                }
+                b'<' if self.src.get(pos + 1) == Some(&b'<')
+                    && matches!(self.src.get(pos + 2), Some(&b) if is_ident_start(b)) =>
+                {
+                    return Err(LexError {
+                        message: "heredoc literals are not allowed inside an interpolation slot"
+                            .into(),
+                        span: Span::new(pos, pos + 2),
+                    });
+                }
+                b'\n' => {
+                    return Err(LexError {
+                        message: "interpolation slot must not span multiple lines".into(),
+                        span: Span::new(slot_start, pos),
+                    });
+                }
+                b'#' => {
+                    while let Some(&b) = self.src.get(pos) {
+                        if b == b'\n' {
+                            break;
+                        }
+                        pos += 1;
+                    }
+                }
+                b'/' if self.src.get(pos + 1) == Some(&b'/') => {
+                    while let Some(&b) = self.src.get(pos) {
+                        if b == b'\n' {
+                            break;
+                        }
+                        pos += 1;
+                    }
+                }
+                _ => {
+                    pos += 1;
+                }
+            }
+        }
     }
 
     /// Lex a heredoc literal. The leading `<<` (and any typed prefix) is
@@ -445,8 +641,11 @@ impl<'a> Lexer<'a> {
         self.pos += 1; // consume opener-line `\n`
 
         // 4. Body scan: capture raw source lines until we see a line
-        // whose trimmed contents are exactly the tag.
-        let mut raw_lines: Vec<&[u8]> = Vec::new();
+        // whose trimmed contents are exactly the tag. Each line tracks
+        // both its byte slice and its source-byte offset so that
+        // interpolation-slot spans (when `prefix.interpolated`) point
+        // at the right place in the original source.
+        let mut raw_lines: Vec<(usize, &[u8])> = Vec::new();
         loop {
             let line_start = self.pos;
             // Walk to the next `\n` or EOF.
@@ -475,7 +674,7 @@ impl<'a> Lexer<'a> {
                     span: Span::new(start, self.pos),
                 });
             }
-            raw_lines.push(line);
+            raw_lines.push((line_start, line));
             self.pos += 1; // consume the `\n` between lines
         }
 
@@ -483,16 +682,50 @@ impl<'a> Lexer<'a> {
         // across non-blank lines.
         let min_indent = raw_lines
             .iter()
-            .filter(|l| !is_blank(l))
-            .map(|l| leading_ws_len(l))
+            .filter(|(_, l)| !is_blank(l))
+            .map(|(_, l)| leading_ws_len(l))
             .min()
             .unwrap_or(0);
 
-        // 6. Build the body: strip indent, interpret escapes, join
-        // with `\n`. Trailing newline included to match shell
-        // semantics (every body line is followed by `\n`).
+        // 6. Build the body. Two modes: plain (literal-only) and
+        // interpolated (splits on `${...}` into alternating literal
+        // and Expr parts).
+        let token_span = Span::new(start, self.pos);
+        let body_end = self.pos;
+        if prefix.interpolated {
+            let mut parts: Vec<StringPart> = Vec::new();
+            let mut buf = String::new();
+            for (line_src_start, line) in &raw_lines {
+                let trim = if is_blank(line) {
+                    line.len()
+                } else {
+                    min_indent.min(line.len())
+                };
+                let stripped_start = line_src_start + trim;
+                let stripped = &line[trim..];
+                self.interpret_line_with_interp(
+                    stripped,
+                    stripped_start,
+                    start,
+                    &mut buf,
+                    &mut parts,
+                )?;
+                buf.push('\n');
+            }
+            if !buf.is_empty() {
+                parts.push(StringPart::Literal(buf));
+            }
+            return Ok(Token {
+                kind: TokenKind::Str(StringLit::Interpolated {
+                    encoding: prefix.encoding,
+                    parts,
+                    span: token_span,
+                }),
+                span: token_span,
+            });
+        }
         let mut body = String::new();
-        for line in &raw_lines {
+        for (_, line) in &raw_lines {
             let stripped: &[u8] = if is_blank(line) {
                 &[]
             } else {
@@ -504,12 +737,96 @@ impl<'a> Lexer<'a> {
 
         // 7. Hand off to the shared prefix-materialiser (ASCII
         // validation, UTF-16/UTF-32 encoding).
-        let body_end = self.pos;
-        let kind = self.materialise_string(prefix, body, start, body_end)?;
+        let kind = self.materialise_string(prefix.encoding, body, start, body_end)?;
         Ok(Token {
             kind: TokenKind::Str(kind),
-            span: Span::new(start, self.pos),
+            span: token_span,
         })
+    }
+
+    /// Walk a heredoc body line that may contain `${...}` slots.
+    /// `line_src_start` is the byte offset of the line's first byte
+    /// in `self.src` (so slot spans are aligned with the outer
+    /// source). Appends escape-decoded text into `buf` and slot
+    /// captures into `parts` (flushing `buf` to a Literal whenever a
+    /// slot is encountered).
+    fn interpret_line_with_interp(
+        &self,
+        line: &[u8],
+        line_src_start: usize,
+        opener: usize,
+        buf: &mut String,
+        parts: &mut Vec<StringPart>,
+    ) -> Result<(), LexError> {
+        let mut i = 0;
+        while i < line.len() {
+            // Slot opener: `${`.
+            if line[i] == b'$' && line.get(i + 1) == Some(&b'{') {
+                if !buf.is_empty() {
+                    parts.push(StringPart::Literal(std::mem::take(buf)));
+                }
+                let slot_start = line_src_start + i;
+                let text_start = slot_start + 2;
+                let (text, slot_end) = self.scan_interp_slot(slot_start, text_start)?;
+                parts.push(StringPart::Expr {
+                    text,
+                    span: Span::new(slot_start, slot_end),
+                });
+                // Skip past the closing `}` in the line slice.
+                i = slot_end - line_src_start;
+                continue;
+            }
+            let c = line[i];
+            match c {
+                b'\\' => {
+                    let esc_pos = i;
+                    let Some(&esc) = line.get(i + 1) else {
+                        return Err(LexError {
+                            message: "unterminated escape sequence in heredoc".into(),
+                            span: Span::new(opener, opener + 1),
+                        });
+                    };
+                    match esc {
+                        b'"' => buf.push('"'),
+                        b'\\' => buf.push('\\'),
+                        b'n' => buf.push('\n'),
+                        b't' => buf.push('\t'),
+                        b'r' => buf.push('\r'),
+                        b'$' => buf.push('$'),
+                        other => {
+                            return Err(LexError {
+                                message: format!("invalid escape '\\{}'", other as char),
+                                span: Span::new(opener + esc_pos, opener + esc_pos + 2),
+                            });
+                        }
+                    }
+                    i += 2;
+                }
+                b if b < 0x80 => {
+                    buf.push(b as char);
+                    i += 1;
+                }
+                _ => {
+                    let char_start = i;
+                    let mut len = 1;
+                    while line
+                        .get(i + len)
+                        .map(|b| (b & 0b1100_0000) == 0b1000_0000)
+                        .unwrap_or(false)
+                    {
+                        len += 1;
+                    }
+                    let slice = &line[char_start..char_start + len];
+                    let s = std::str::from_utf8(slice).map_err(|_| LexError {
+                        message: "invalid UTF-8 in heredoc body".into(),
+                        span: Span::new(opener + char_start, opener + char_start + len),
+                    })?;
+                    buf.push_str(s);
+                    i += len;
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Skip from the current position to (but not including) the next
@@ -526,14 +843,14 @@ impl<'a> Lexer<'a> {
 
     fn materialise_string(
         &self,
-        prefix: StringPrefix,
+        encoding: StringEncoding,
         body: String,
         body_start: usize,
         body_end: usize,
     ) -> Result<StringLit, LexError> {
-        match prefix {
-            StringPrefix::Utf8 => Ok(StringLit::Utf8(body)),
-            StringPrefix::Ascii => {
+        match encoding {
+            StringEncoding::Utf8 => Ok(StringLit::Utf8(body)),
+            StringEncoding::Ascii => {
                 if let Some(bad) = body.char_indices().find(|(_, c)| (*c as u32) >= 0x80) {
                     let (offset, _) = bad;
                     let start = body_start + offset;
@@ -544,11 +861,11 @@ impl<'a> Lexer<'a> {
                 }
                 Ok(StringLit::Ascii(body))
             }
-            StringPrefix::Utf16 => {
+            StringEncoding::Utf16 => {
                 let _ = body_end;
                 Ok(StringLit::Utf16(body.encode_utf16().collect()))
             }
-            StringPrefix::Utf32 => Ok(StringLit::Utf32(body.chars().collect())),
+            StringEncoding::Utf32 => Ok(StringLit::Utf32(body.chars().collect())),
         }
     }
 
@@ -687,19 +1004,19 @@ impl<'a> Lexer<'a> {
 
         // Check for typed-string prefix: ident immediately followed by `"`.
         if self.peek() == Some(b'"')
-            && let Some(prefix) = StringPrefix::from_text(text)
+            && let Some(encoding) = StringPrefix::encoding_from_text(text)
         {
-            return self.lex_string(start, prefix);
+            return self.lex_string(start, StringPrefix::plain(encoding));
         }
 
         // Typed heredoc prefix: `ascii<<TAG`, `utf16<<TAG`, etc.
         if self.peek() == Some(b'<')
             && self.peek_at(1) == Some(b'<')
             && matches!(self.peek_at(2), Some(c) if is_ident_start(c))
-            && let Some(prefix) = StringPrefix::from_text(text)
+            && let Some(encoding) = StringPrefix::encoding_from_text(text)
         {
             self.pos += 2; // consume `<<`
-            return self.lex_heredoc(start, prefix);
+            return self.lex_heredoc(start, StringPrefix::plain(encoding));
         }
 
         let span = Span::new(start, self.pos);
@@ -717,20 +1034,32 @@ impl<'a> Lexer<'a> {
 }
 
 #[derive(Debug, Clone, Copy)]
-enum StringPrefix {
-    Utf8,
-    Ascii,
-    Utf16,
-    Utf32,
+struct StringPrefix {
+    encoding: StringEncoding,
+    interpolated: bool,
 }
 
 impl StringPrefix {
-    fn from_text(text: &str) -> Option<Self> {
+    fn plain(encoding: StringEncoding) -> Self {
+        Self {
+            encoding,
+            interpolated: false,
+        }
+    }
+
+    fn interp(encoding: StringEncoding) -> Self {
+        Self {
+            encoding,
+            interpolated: true,
+        }
+    }
+
+    fn encoding_from_text(text: &str) -> Option<StringEncoding> {
         match text {
-            "utf8" => Some(StringPrefix::Utf8),
-            "ascii" => Some(StringPrefix::Ascii),
-            "utf16" => Some(StringPrefix::Utf16),
-            "utf32" => Some(StringPrefix::Utf32),
+            "utf8" => Some(StringEncoding::Utf8),
+            "ascii" => Some(StringEncoding::Ascii),
+            "utf16" => Some(StringEncoding::Utf16),
+            "utf32" => Some(StringEncoding::Utf32),
             _ => None,
         }
     }
@@ -1514,5 +1843,160 @@ mod tests {
         let toks = tokens("<<=");
         assert_eq!(toks[0], TokenKind::Lt);
         assert_eq!(toks[1], TokenKind::LtEq);
+    }
+
+    // ---- interpolation ---------------------------------------------
+
+    fn interp_parts(src: &str) -> Vec<StringPart> {
+        match one(src) {
+            TokenKind::Str(StringLit::Interpolated { parts, .. }) => parts,
+            other => panic!("expected Interpolated, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn interp_string_basic_slot() {
+        let parts = interp_parts(r#"$"hi ${name}!""#);
+        assert_eq!(parts.len(), 3);
+        match &parts[0] {
+            StringPart::Literal(s) => assert_eq!(s, "hi "),
+            other => panic!("[0]: {other:?}"),
+        }
+        match &parts[1] {
+            StringPart::Expr { text, .. } => assert_eq!(text, "name"),
+            other => panic!("[1]: {other:?}"),
+        }
+        match &parts[2] {
+            StringPart::Literal(s) => assert_eq!(s, "!"),
+            other => panic!("[2]: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn interp_string_multiple_slots() {
+        let parts = interp_parts(r#"$"${a}-${b}""#);
+        assert_eq!(parts.len(), 3);
+        match &parts[0] {
+            StringPart::Expr { text, .. } => assert_eq!(text, "a"),
+            other => panic!("[0]: {other:?}"),
+        }
+        match &parts[1] {
+            StringPart::Literal(s) => assert_eq!(s, "-"),
+            other => panic!("[1]: {other:?}"),
+        }
+        match &parts[2] {
+            StringPart::Expr { text, .. } => assert_eq!(text, "b"),
+            other => panic!("[2]: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn interp_slot_with_braces_and_strings() {
+        // Brace balance + string-skip inside the slot.
+        let parts = interp_parts(r#"$"x=${foo({y = "hi"})}""#);
+        assert_eq!(parts.len(), 2);
+        match &parts[1] {
+            StringPart::Expr { text, .. } => {
+                assert_eq!(text, r#"foo({y = "hi"})"#);
+            }
+            other => panic!("[1]: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn interp_dollar_escape_emits_literal_dollar() {
+        let parts = interp_parts(r#"$"price=\$5""#);
+        assert_eq!(parts.len(), 1);
+        match &parts[0] {
+            StringPart::Literal(s) => assert_eq!(s, "price=$5"),
+            other => panic!("[0]: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn plain_string_treats_dollar_as_literal() {
+        // No `$` prefix → `$` and `${...}` are plain bytes.
+        let s = one(r#""price=$5 ${x}""#);
+        assert_eq!(s, TokenKind::Str(StringLit::Utf8("price=$5 ${x}".into())));
+    }
+
+    #[test]
+    fn interp_typed_ascii_carries_encoding() {
+        let toks = tokens(r#"$ascii"id=${k}""#);
+        match &toks[0] {
+            TokenKind::Str(StringLit::Interpolated { encoding, .. }) => {
+                assert_eq!(*encoding, StringEncoding::Ascii);
+            }
+            other => panic!("expected ascii interpolated, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn interp_heredoc_collects_slots_per_line() {
+        let src = "$<<END\n  port=${cfg.port}\n  END\n";
+        let parts = interp_parts(src);
+        // ["port=", Expr("cfg.port"), "\n"]
+        assert!(matches!(parts[0], StringPart::Literal(ref s) if s == "port="));
+        assert!(matches!(parts[1], StringPart::Expr { ref text, .. } if text == "cfg.port"));
+        // The trailing literal carries the joining newline.
+        match parts.last().unwrap() {
+            StringPart::Literal(s) => assert_eq!(s, "\n"),
+            other => panic!("last: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn interp_slot_unterminated_errors() {
+        let mut lex = Lexer::new(r#"$"hi ${name"#);
+        let err = lex.next_token().unwrap_err();
+        assert!(
+            err.message.contains("unterminated") || err.message.contains("slot"),
+            "got: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn interp_slot_rejects_newline() {
+        let mut lex = Lexer::new("$\"hi ${name\n}\"");
+        let err = lex.next_token().unwrap_err();
+        assert!(
+            err.message.contains("multiple lines") || err.message.contains("newline"),
+            "got: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn interp_slot_rejects_nested_heredoc() {
+        let mut lex = Lexer::new("$\"${<<X\nhi\nX\n}\"");
+        let err = lex.next_token().unwrap_err();
+        assert!(
+            err.message.contains("heredoc literals are not allowed"),
+            "got: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn dollar_alone_errors() {
+        let mut lex = Lexer::new("$ hello");
+        let err = lex.next_token().unwrap_err();
+        assert!(
+            err.message.contains("expected '\"' or '<<'"),
+            "got: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn dollar_with_unknown_encoding_errors() {
+        let mut lex = Lexer::new(r#"$bogus"x""#);
+        let err = lex.next_token().unwrap_err();
+        assert!(
+            err.message.contains("unknown string encoding"),
+            "got: {}",
+            err.message
+        );
     }
 }

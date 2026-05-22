@@ -44,6 +44,16 @@ pub(crate) enum Expr {
     Utf16(Vec<u16>),
     Utf32(Vec<char>),
 
+    /// Opt-in interpolated string literal (`$"…"`, `$ascii"…"`,
+    /// `$<<TAG ... TAG`, …). Each part is either a literal body chunk
+    /// or a sub-parsed expression; the evaluator concatenates the
+    /// stringified results and re-encodes per the declared encoding.
+    InterpolatedString {
+        encoding: crate::lexer::StringEncoding,
+        parts: Vec<TemplatePart>,
+        span: Span,
+    },
+
     Identifier(String),
     Symbol(String),
     None,
@@ -112,6 +122,12 @@ pub(crate) enum Expr {
         args: VariantArgs,
         span: Span,
     },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum TemplatePart {
+    Literal(String),
+    Expr(Box<Expr>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
