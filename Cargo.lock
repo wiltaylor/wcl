@@ -1127,6 +1127,7 @@ dependencies = [
  "miette",
  "predicates",
  "serde_json",
+ "tempfile",
  "wcl_lang",
 ]
 

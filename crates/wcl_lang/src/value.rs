@@ -329,3 +329,146 @@ impl std::fmt::Display for TypeRef {
         }
     }
 }
+
+/// Round-trippable rendering of a [`Value`]: integers / floats carry their
+/// Rust-style suffix, strings are quoted, lists / tensors / variants /
+/// records mirror their source syntax. This is the "primary" display
+/// form — emitted by the CLI's `parse` and `eval` commands.
+///
+/// For the compact, interpolation-friendly form used by the `format(...)`
+/// builtin (unsuffixed numbers, unquoted strings), see
+/// [`crate::collections::format_value`].
+impl std::fmt::Display for Value {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Value::Bool(b) => write!(f, "{b}"),
+
+            // Default-typed integers and floats render without a suffix;
+            // every other numeric form keeps its suffix so the dump
+            // round-trips through the parser.
+            Value::I64(n) => write!(f, "{n}"),
+            Value::F64(n) => f.write_str(&format_float_lit(*n)),
+
+            Value::I8(n) => write!(f, "{n}i8"),
+            Value::I16(n) => write!(f, "{n}i16"),
+            Value::I32(n) => write!(f, "{n}i32"),
+            Value::I128(n) => write!(f, "{n}i128"),
+            Value::Isize(n) => write!(f, "{n}isize"),
+
+            Value::U8(n) => write!(f, "{n}u8"),
+            Value::U16(n) => write!(f, "{n}u16"),
+            Value::U32(n) => write!(f, "{n}u32"),
+            Value::U64(n) => write!(f, "{n}u64"),
+            Value::U128(n) => write!(f, "{n}u128"),
+            Value::Usize(n) => write!(f, "{n}usize"),
+
+            Value::F32(n) => write!(f, "{}f32", format_float_lit(*n as f64)),
+
+            Value::Utf8(s) => write!(f, "\"{}\"", EscapeString(s)),
+            Value::Ascii(s) => write!(f, "ascii\"{}\"", EscapeString(s)),
+            Value::Utf16(units) => {
+                let s = String::from_utf16_lossy(units);
+                write!(f, "utf16\"{}\"", EscapeString(&s))
+            }
+            Value::Utf32(chars) => {
+                let s: String = chars.iter().collect();
+                write!(f, "utf32\"{}\"", EscapeString(&s))
+            }
+
+            Value::Identifier(s) => f.write_str(s),
+            Value::Symbol(s) => write!(f, ":{s}"),
+            Value::None => f.write_str("none"),
+            Value::Function(fv) => {
+                f.write_str("fn(")?;
+                for (i, p) in fv.params().iter().enumerate() {
+                    if i > 0 {
+                        f.write_str(", ")?;
+                    }
+                    write!(f, "{}: {}", p.name(), p.ty())?;
+                }
+                write!(f, ") -> {} {{ ... }}", fv.return_ty())
+            }
+            Value::List(items) => {
+                f.write_str("[")?;
+                for (i, v) in items.iter().enumerate() {
+                    if i > 0 {
+                        f.write_str(", ")?;
+                    }
+                    write!(f, "{v}")?;
+                }
+                f.write_str("]")
+            }
+            Value::Tensor { shape, data } => {
+                let dims: Vec<String> = shape.iter().map(u64::to_string).collect();
+                f.write_str("tensor[")?;
+                f.write_str(&dims.join("x"))?;
+                f.write_str("](")?;
+                for (i, v) in data.iter().enumerate() {
+                    if i > 0 {
+                        f.write_str(", ")?;
+                    }
+                    write!(f, "{v}")?;
+                }
+                f.write_str(")")
+            }
+            Value::Variant {
+                union,
+                variant,
+                payload,
+            } => {
+                write!(f, "{}::{variant}", union.join("."))?;
+                match payload {
+                    VariantPayload::Unit => Ok(()),
+                    VariantPayload::Positional(v) => write!(f, "({v})"),
+                    VariantPayload::Record(map) => {
+                        f.write_str(" { ")?;
+                        for (i, (k, v)) in map.iter().enumerate() {
+                            if i > 0 {
+                                f.write_str(", ")?;
+                            }
+                            write!(f, "{k}: {v}")?;
+                        }
+                        f.write_str(" }")
+                    }
+                }
+            }
+            Value::Record { ty, fields } => {
+                write!(f, "{} {{ ", ty.join("."))?;
+                for (i, (k, v)) in fields.iter().enumerate() {
+                    if i > 0 {
+                        f.write_str(", ")?;
+                    }
+                    write!(f, "{k}: {v}")?;
+                }
+                f.write_str(" }")
+            }
+        }
+    }
+}
+
+fn format_float_lit(n: f64) -> String {
+    let s = format!("{n}");
+    if s.contains('.') || s.contains('e') || s.contains('E') || !n.is_finite() {
+        s
+    } else {
+        format!("{s}.0")
+    }
+}
+
+struct EscapeString<'a>(&'a str);
+
+impl std::fmt::Display for EscapeString<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for c in self.0.chars() {
+            match c {
+                '"' => f.write_str("\\\"")?,
+                '\\' => f.write_str("\\\\")?,
+                '\n' => f.write_str("\\n")?,
+                '\t' => f.write_str("\\t")?,
+                '\r' => f.write_str("\\r")?,
+                other => f.write_str(other.encode_utf8(&mut [0u8; 4]))?,
+            }
+        }
+        Ok(())
+    }
+}

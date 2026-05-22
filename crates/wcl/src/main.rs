@@ -1,13 +1,33 @@
 use std::fmt::Write as _;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use wcl_lang::{
-    Block, ConnectionDecl, DeclName, Decorator, Document, Field, Profile, ProfileKey, ProfileNode,
-    SymbolSetDecl, TensorDim, TypeDecl, TypeRef, UnionDecl, UnionVariant, UseDeclView, UseFormView,
-    Value, VariantBodyView, VariantPayload,
+    Block, ConnectionDecl, DeclName, Decorator, Document, Field, ParseError, Profile, ProfileKey,
+    ProfileNode, SymbolSetDecl, TypeDecl, UnionDecl, UnionVariant, UseDeclView, UseFormView, Value,
+    VariantBodyView,
 };
+
+const EXIT_OK: u8 = 0;
+const EXIT_PARSE: u8 = 1;
+const EXIT_SCHEMA: u8 = 2;
+const EXIT_EVAL: u8 = 3;
+
+fn open_document(file: &Path, profile: bool) -> Result<Document, ParseError> {
+    if profile {
+        Document::from_file_profiled(file)
+    } else {
+        Document::from_file(file)
+    }
+}
+
+fn emit_profile(doc: &Document, profile: bool) {
+    if profile && let Some(p) = doc.profile() {
+        let json = profile_to_json(&p);
+        eprintln!("{}", serde_json::to_string_pretty(&json).unwrap());
+    }
+}
 
 #[derive(Parser)]
 #[command(name = "wcl", version, about = "WCL command-line interface")]
@@ -51,89 +71,121 @@ enum Command {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
-    match cli.command {
-        Command::Parse { file, profile } => {
-            let opened = if profile {
-                Document::from_file_profiled(&file)
-            } else {
-                Document::from_file(&file)
-            };
-            match opened {
-                Ok(doc) => {
-                    let mut out = String::new();
-                    dump_document(&doc, &mut out);
-                    print!("{out}");
-                    if profile && let Some(p) = doc.profile() {
-                        let json = profile_to_json(&p);
-                        eprintln!("{}", serde_json::to_string_pretty(&json).unwrap());
-                    }
-                    ExitCode::SUCCESS
-                }
-                Err(err) => {
-                    eprintln!("{:?}", miette::Report::new(err));
-                    ExitCode::FAILURE
-                }
+    let code = match cli.command {
+        Command::Parse { file, profile } => match open_document(&file, profile) {
+            Ok(doc) => {
+                let mut out = String::new();
+                dump_document(&doc, &mut out);
+                print!("{out}");
+                emit_profile(&doc, profile);
+                EXIT_OK
             }
-        }
-        Command::Check { file } => match Document::from_file(&file) {
+            Err(err) => {
+                eprintln!("{:?}", miette::Report::new(err));
+                EXIT_PARSE
+            }
+        },
+        Command::Check { file } => match open_document(&file, false) {
             Ok(doc) => {
                 let errs = doc.schema_errors();
                 if errs.is_empty() {
                     println!("OK");
-                    ExitCode::SUCCESS
+                    EXIT_OK
                 } else {
-                    for e in errs {
-                        eprintln!("{:?}", miette::Report::new(e));
+                    let count = errs.len();
+                    for e in &errs {
+                        eprintln!("{:?}", miette::Report::new(e.clone()));
                     }
-                    ExitCode::FAILURE
+                    eprintln!(
+                        "{}: {} schema violation{}",
+                        file.display(),
+                        count,
+                        if count == 1 { "" } else { "s" }
+                    );
+                    EXIT_SCHEMA
                 }
             }
             Err(err) => {
                 eprintln!("{:?}", miette::Report::new(err));
-                ExitCode::FAILURE
+                EXIT_PARSE
             }
         },
         Command::Eval {
             file,
             path,
             profile,
-        } => {
-            let opened = if profile {
-                Document::from_file_profiled(&file)
-            } else {
-                Document::from_file(&file)
-            };
-            match opened {
-                Ok(doc) => {
-                    let exit = match doc.get(&path) {
-                        Some(dr) => match dr.value() {
-                            Ok(v) => {
-                                println!("{}", value_repr(&v));
-                                ExitCode::SUCCESS
-                            }
-                            Err(e) => {
-                                eprintln!("{:?}", miette::Report::new(e));
-                                ExitCode::FAILURE
-                            }
-                        },
-                        None => {
-                            eprintln!("no such path: {path}");
-                            ExitCode::FAILURE
+        } => match open_document(&file, profile) {
+            Ok(doc) => {
+                let exit = match doc.get(&path) {
+                    Some(dr) => match dr.value() {
+                        Ok(v) => {
+                            println!("{}", v);
+                            EXIT_OK
                         }
-                    };
-                    if profile && let Some(p) = doc.profile() {
-                        let json = profile_to_json(&p);
-                        eprintln!("{}", serde_json::to_string_pretty(&json).unwrap());
+                        Err(e) => {
+                            eprintln!("{:?}", miette::Report::new(e));
+                            EXIT_EVAL
+                        }
+                    },
+                    None => {
+                        eprintln!("no such path: {path}");
+                        if let Some(hint) = suggest_path(&doc, &path) {
+                            eprintln!("did you mean: {hint}?");
+                        }
+                        EXIT_EVAL
                     }
-                    exit
-                }
-                Err(err) => {
-                    eprintln!("{:?}", miette::Report::new(err));
-                    ExitCode::FAILURE
-                }
+                };
+                emit_profile(&doc, profile);
+                exit
             }
-        }
+            Err(err) => {
+                eprintln!("{:?}", miette::Report::new(err));
+                EXIT_PARSE
+            }
+        },
+    };
+    ExitCode::from(code)
+}
+
+/// Return the closest top-level name (Levenshtein ≤ 2) to `needle`.
+/// Matches against the first segment of dotted paths only — sufficient
+/// to surface typos in the most common case (`port` vs `ports`).
+fn suggest_path(doc: &Document, needle: &str) -> Option<String> {
+    let first = needle.split('.').next().unwrap_or(needle);
+    let mut candidates: Vec<String> = Vec::new();
+    candidates.extend(doc.fields().map(|f| f.name().to_string()));
+    candidates.extend(doc.blocks().map(|b| b.kind().to_string()));
+    candidates
+        .into_iter()
+        .filter_map(|c| {
+            let d = levenshtein(first, &c);
+            (d > 0 && d <= 2).then_some((d, c))
+        })
+        .min_by_key(|(d, _)| *d)
+        .map(|(_, c)| c)
+}
+
+fn levenshtein(a: &str, b: &str) -> usize {
+    let a: Vec<char> = a.chars().collect();
+    let b: Vec<char> = b.chars().collect();
+    let (m, n) = (a.len(), b.len());
+    if m == 0 {
+        return n;
     }
+    if n == 0 {
+        return m;
+    }
+    let mut prev: Vec<usize> = (0..=n).collect();
+    let mut curr = vec![0usize; n + 1];
+    for i in 1..=m {
+        curr[0] = i;
+        for j in 1..=n {
+            let cost = if a[i - 1] == b[j - 1] { 0 } else { 1 };
+            curr[j] = (prev[j] + 1).min(curr[j - 1] + 1).min(prev[j - 1] + cost);
+        }
+        std::mem::swap(&mut prev, &mut curr);
+    }
+    prev[n]
 }
 
 fn profile_to_json(p: &Profile) -> serde_json::Value {
@@ -203,8 +255,8 @@ fn dump_connection_decl(c: &ConnectionDecl<'_>, out: &mut String) {
         out,
         "connection {}: {} -> {} : {}",
         c.full_name(),
-        type_repr(c.source_type()),
-        type_repr(c.destination_type()),
+        c.source_type(),
+        c.destination_type(),
         c.kind_set_path().join("."),
     )
     .unwrap();
@@ -243,14 +295,14 @@ fn dump_decorators<'a>(decs: impl Iterator<Item = Decorator<'a>>, depth: usize, 
     for d in decs {
         let name = d.full_name();
         let positional: Vec<String> = match d.positional() {
-            Ok(vals) => vals.iter().map(value_repr).collect(),
+            Ok(vals) => vals.iter().map(Value::to_string).collect(),
             Err(e) => vec![format!("<error: {e}>")],
         };
         let named: Vec<String> = d
             .named()
             .map(|n| {
                 let val = match n.value() {
-                    Ok(v) => value_repr(&v),
+                    Ok(v) => v.to_string(),
                     Err(e) => format!("<error: {e}>"),
                 };
                 format!("{} = {}", n.name(), val)
@@ -282,14 +334,14 @@ fn dump_variant(v: &UnionVariant<'_>, out: &mut String) {
             writeln!(out, "  {} {{", v.name()).unwrap();
             for f in v.fields() {
                 dump_decorators(f.decorators(), 2, out);
-                let ty = type_repr(f.type_ref());
+                let ty = f.type_ref();
                 let q = if f.optional() { "?" } else { "" };
                 writeln!(out, "    {}: {ty}{q}", f.name()).unwrap();
             }
             writeln!(out, "  }}").unwrap();
         }
         VariantBodyView::TypeRef(t) => {
-            writeln!(out, "  {} {}", v.name(), type_repr(t)).unwrap();
+            writeln!(out, "  {} {}", v.name(), t).unwrap();
         }
         VariantBodyView::InterfaceRef(path) => {
             writeln!(out, "  {} &{}", v.name(), path.join(".")).unwrap();
@@ -305,35 +357,11 @@ fn dump_type_decl(t: &TypeDecl<'_>, out: &mut String) {
     writeln!(out, "type {} {{", t.name_segments().join(".")).unwrap();
     for field in t.fields() {
         dump_decorators(field.decorators(), 1, out);
-        let ty = type_repr(field.type_ref());
+        let ty = field.type_ref();
         let q = if field.optional() { "?" } else { "" };
         writeln!(out, "  {}: {ty}{q}", field.name()).unwrap();
     }
     writeln!(out, "}}").unwrap();
-}
-
-fn type_repr(t: &TypeRef) -> String {
-    match t {
-        TypeRef::Builtin(b) => b.name().to_string(),
-        TypeRef::Named(path) => path.join("."),
-        TypeRef::Reference(inner) => format!("&{}", type_repr(inner)),
-        TypeRef::List(inner) => format!("list<{}>", type_repr(inner)),
-        TypeRef::Tensor { element, dims } => {
-            let dims_str = dims.iter().map(dim_repr).collect::<Vec<_>>().join(", ");
-            format!("tensor<{}, [{}]>", type_repr(element), dims_str)
-        }
-        TypeRef::Function { params, return_ty } => {
-            let parts: Vec<String> = params.iter().map(type_repr).collect();
-            format!("fn({}) -> {}", parts.join(", "), type_repr(return_ty))
-        }
-    }
-}
-
-fn dim_repr(d: &TensorDim) -> String {
-    match d {
-        TensorDim::Fixed(n) => n.to_string(),
-        TensorDim::Symbolic(s) => s.clone(),
-    }
 }
 
 fn dump_field(f: &Field<'_>, depth: usize, out: &mut String) {
@@ -348,7 +376,7 @@ fn dump_field(f: &Field<'_>, depth: usize, out: &mut String) {
         return;
     }
     match f.value() {
-        Ok(v) => writeln!(out, "{}", value_repr(v)).unwrap(),
+        Ok(v) => writeln!(out, "{v}").unwrap(),
         Err(e) => writeln!(out, "<error: {e}>").unwrap(),
     }
 }
@@ -358,7 +386,7 @@ fn dataref_label(dr: &wcl_lang::DataRef<'_>) -> String {
         && let Ok(labels) = b.labels()
         && let Some(first) = labels.first()
     {
-        return format!("{}({})", dr.kind(), value_repr(first));
+        return format!("{}({first})", dr.kind());
     }
     dr.kind().to_string()
 }
@@ -370,7 +398,7 @@ fn dump_block(b: &Block<'_>, depth: usize, out: &mut String) {
     match b.labels() {
         Ok(labels) => {
             for label in labels {
-                let _ = write!(out, " {}", value_repr(&label));
+                let _ = write!(out, " {label}");
             }
         }
         Err(e) => {
@@ -399,7 +427,7 @@ fn dump_table(t: &wcl_lang::TableView<'_>, depth: usize, out: &mut String) {
         match r.values() {
             Ok(vs) => {
                 for v in vs {
-                    let _ = write!(out, " {} |", value_repr(&v));
+                    let _ = write!(out, " {} |", v);
                 }
             }
             Err(e) => {
@@ -408,117 +436,4 @@ fn dump_table(t: &wcl_lang::TableView<'_>, depth: usize, out: &mut String) {
         }
         writeln!(out).unwrap();
     }
-}
-
-fn value_repr(v: &Value) -> String {
-    match v {
-        Value::Bool(b) => b.to_string(),
-
-        // Default-typed integers/floats render without a suffix; everything
-        // else renders with its Rust-style suffix so the dump is round-trippable.
-        Value::I64(n) => n.to_string(),
-        Value::F64(n) => format_float(*n, "f64"),
-
-        Value::I8(n) => format!("{n}i8"),
-        Value::I16(n) => format!("{n}i16"),
-        Value::I32(n) => format!("{n}i32"),
-        Value::I128(n) => format!("{n}i128"),
-        Value::Isize(n) => format!("{n}isize"),
-
-        Value::U8(n) => format!("{n}u8"),
-        Value::U16(n) => format!("{n}u16"),
-        Value::U32(n) => format!("{n}u32"),
-        Value::U64(n) => format!("{n}u64"),
-        Value::U128(n) => format!("{n}u128"),
-        Value::Usize(n) => format!("{n}usize"),
-
-        Value::F32(n) => format!("{}f32", format_float(*n as f64, "f32")),
-
-        Value::Utf8(s) => format!("\"{}\"", escape_string(s)),
-        Value::Ascii(s) => format!("ascii\"{}\"", escape_string(s)),
-        Value::Utf16(units) => {
-            let s = String::from_utf16_lossy(units);
-            format!("utf16\"{}\"", escape_string(&s))
-        }
-        Value::Utf32(chars) => {
-            let s: String = chars.iter().collect();
-            format!("utf32\"{}\"", escape_string(&s))
-        }
-
-        Value::Identifier(s) => s.clone(),
-        Value::Symbol(s) => format!(":{s}"),
-        Value::None => "none".to_string(),
-        Value::Function(f) => {
-            let parts: Vec<String> = f
-                .params()
-                .iter()
-                .map(|p| format!("{}: {}", p.name(), type_repr(p.ty())))
-                .collect();
-            format!(
-                "fn({}) -> {} {{ ... }}",
-                parts.join(", "),
-                type_repr(f.return_ty())
-            )
-        }
-        Value::List(items) => {
-            let parts: Vec<String> = items.iter().map(value_repr).collect();
-            format!("[{}]", parts.join(", "))
-        }
-        Value::Tensor { shape, data } => {
-            let dims: Vec<String> = shape.iter().map(u64::to_string).collect();
-            let elems: Vec<String> = data.iter().map(value_repr).collect();
-            format!("tensor[{}]({})", dims.join("x"), elems.join(", "))
-        }
-        Value::Variant {
-            union,
-            variant,
-            payload,
-        } => {
-            let path = format!("{}::{}", union.join("."), variant);
-            match payload {
-                VariantPayload::Unit => path,
-                VariantPayload::Positional(v) => format!("{path}({})", value_repr(v)),
-                VariantPayload::Record(map) => {
-                    let parts: Vec<String> = map
-                        .iter()
-                        .map(|(k, v)| format!("{k}: {}", value_repr(v)))
-                        .collect();
-                    format!("{path} {{ {} }}", parts.join(", "))
-                }
-            }
-        }
-        Value::Record { ty, fields } => {
-            let parts: Vec<String> = fields
-                .iter()
-                .map(|(k, v)| format!("{k}: {}", value_repr(v)))
-                .collect();
-            format!("{} {{ {} }}", ty.join("."), parts.join(", "))
-        }
-    }
-}
-
-fn format_float(n: f64, _ty: &str) -> String {
-    // Ensure the rendered form is unambiguously a float (contains '.' or 'e')
-    // so re-parsing the dump preserves the float type.
-    let s = format!("{n}");
-    if s.contains('.') || s.contains('e') || s.contains('E') || !n.is_finite() {
-        s
-    } else {
-        format!("{s}.0")
-    }
-}
-
-fn escape_string(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for c in s.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\t' => out.push_str("\\t"),
-            '\r' => out.push_str("\\r"),
-            other => out.push(other),
-        }
-    }
-    out
 }

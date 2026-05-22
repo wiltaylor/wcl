@@ -68,16 +68,27 @@ pub(crate) fn register(env: &mut Environment) {
 
 // ── Higher-order ─────────────────────────────────────────────────────
 
+/// Borrow a `&FnValue` from `value`, producing a uniform diagnostic
+/// `"{builtin}: {what} must be a function, got {ty}"` on mismatch.
+/// `what` is interpolated as-is, so prefer phrases like
+/// `"second argument"` (the callsite reads naturally with or without
+/// "the").
+fn expect_function<'a>(
+    builtin: &str,
+    what: &str,
+    value: &'a Value,
+) -> Result<&'a crate::value::FnValue, String> {
+    match value {
+        Value::Function(fv) => Ok(fv),
+        other => Err(format!(
+            "{builtin}: {what} must be a function, got {}",
+            other.type_name()
+        )),
+    }
+}
+
 fn map_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> {
-    let f = match &args[1] {
-        Value::Function(fv) => fv.clone(),
-        other => {
-            return Err(format!(
-                "map: second argument must be a function, got {}",
-                other.type_name()
-            ));
-        }
-    };
+    let f = expect_function("map", "second argument", &args[1])?.clone();
     match &args[0] {
         Value::List(items) => {
             let mut out = Vec::with_capacity(items.len());
@@ -117,15 +128,7 @@ fn filter_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> 
             ));
         }
     };
-    let f = match &args[1] {
-        Value::Function(fv) => fv.clone(),
-        other => {
-            return Err(format!(
-                "filter: second argument must be a function, got {}",
-                other.type_name()
-            ));
-        }
-    };
+    let f = expect_function("filter", "second argument", &args[1])?.clone();
     let mut out = Vec::new();
     for elem in items {
         match caller.call_fn(&f, std::slice::from_ref(elem))? {
@@ -153,15 +156,7 @@ fn fold_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> {
             ));
         }
     };
-    let f = match &args[2] {
-        Value::Function(fv) => fv.clone(),
-        other => {
-            return Err(format!(
-                "fold: third argument must be a function, got {}",
-                other.type_name()
-            ));
-        }
-    };
+    let f = expect_function("fold", "third argument", &args[2])?.clone();
     let mut acc = args[1].clone();
     for elem in items {
         acc = caller.call_fn(&f, &[acc, elem])?;
@@ -266,6 +261,38 @@ fn sum_pure(v: Value) -> Result<Value, String> {
 
 // ── Tensor primitives ────────────────────────────────────────────────
 
+/// Convert a `Value::List` of integer shape entries into `(dims, product)`,
+/// rejecting empty shapes (when `allow_empty` is false), non-integer
+/// entries, and shape products that overflow `u64`. `builtin` is
+/// interpolated into every error message so the source-level builtin
+/// name (`tensor`, `tensor_reshape`) appears in diagnostics.
+fn validate_tensor_shape(
+    builtin: &str,
+    shape_vals: &[Value],
+    allow_empty: bool,
+) -> Result<(Vec<u64>, u64), String> {
+    if !allow_empty && shape_vals.is_empty() {
+        return Err(format!("{builtin}: shape must have at least one dimension"));
+    }
+    let mut dims: Vec<u64> = Vec::with_capacity(shape_vals.len());
+    for s in shape_vals {
+        let d = s.as_u64().ok_or_else(|| {
+            format!(
+                "{builtin}: shape entries must be non-negative integers, got {}",
+                s.type_name()
+            )
+        })?;
+        dims.push(d);
+    }
+    let mut product: u64 = 1;
+    for d in &dims {
+        product = product
+            .checked_mul(*d)
+            .ok_or_else(|| format!("{builtin}: shape product overflows u64"))?;
+    }
+    Ok((dims, product))
+}
+
 fn tensor_pure(data: Value, shape: Value) -> Result<Value, String> {
     let data = match data {
         Value::List(items) => items,
@@ -285,25 +312,11 @@ fn tensor_pure(data: Value, shape: Value) -> Result<Value, String> {
             ));
         }
     };
-    if shape_vals.is_empty() {
-        return Err("tensor: shape must have at least one dimension".into());
-    }
-    let mut dims: Vec<u64> = Vec::with_capacity(shape_vals.len());
-    for s in &shape_vals {
-        let d = s.as_u64().ok_or_else(|| {
-            format!(
-                "tensor: shape entries must be non-negative integers, got {}",
-                s.type_name()
-            )
-        })?;
-        dims.push(d);
-    }
-    let expected: u64 = dims.iter().copied().fold(1u64, u64::saturating_mul);
+    let (dims, expected) = validate_tensor_shape("tensor", &shape_vals, false)?;
     if (data.len() as u64) != expected {
         return Err(format!(
-            "tensor: data length {} does not match shape product {}",
+            "tensor: data length {} does not match shape product {expected}",
             data.len(),
-            expected
         ));
     }
     Ok(Value::Tensor { shape: dims, data })
@@ -348,22 +361,11 @@ fn tensor_reshape_pure(t: Value, new_shape: Value) -> Result<Value, String> {
             ));
         }
     };
-    let mut dims: Vec<u64> = Vec::with_capacity(shape_vals.len());
-    for s in &shape_vals {
-        let d = s.as_u64().ok_or_else(|| {
-            format!(
-                "tensor_reshape: shape entry must be a non-negative integer, got {}",
-                s.type_name()
-            )
-        })?;
-        dims.push(d);
-    }
-    let expected: u64 = dims.iter().copied().fold(1u64, u64::saturating_mul);
+    let (dims, expected) = validate_tensor_shape("tensor_reshape", &shape_vals, true)?;
     if (data.len() as u64) != expected {
         return Err(format!(
-            "tensor_reshape: data length {} does not match new shape product {}",
+            "tensor_reshape: data length {} does not match new shape product {expected}",
             data.len(),
-            expected
         ));
     }
     Ok(Value::Tensor { shape: dims, data })

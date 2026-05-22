@@ -25,6 +25,29 @@ impl ParseError {
             src,
             span,
             label,
+            related_span: None,
+            related_label: String::new(),
+        }))
+    }
+
+    /// Like [`Self::syntax`] but attaches a secondary `related` label
+    /// pointing at a prior occurrence (e.g. the original site of a
+    /// duplicate declaration).
+    pub(crate) fn syntax_with_related(
+        message: String,
+        src: NamedSource<String>,
+        span: SourceSpan,
+        label: String,
+        related_span: SourceSpan,
+        related_label: String,
+    ) -> Self {
+        Self::Syntax(Box::new(SyntaxError {
+            message,
+            src,
+            span,
+            label,
+            related_span: Some(related_span),
+            related_label,
         }))
     }
 }
@@ -39,6 +62,9 @@ pub struct SyntaxError {
     #[label("{label}")]
     pub span: SourceSpan,
     pub label: String,
+    #[label("{related_label}")]
+    pub related_span: Option<SourceSpan>,
+    pub related_label: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Error, Diagnostic)]
@@ -48,22 +74,6 @@ pub enum EvalError {
     Cycle {
         field: String,
         #[label("evaluated recursively")]
-        span: SourceSpan,
-    },
-
-    #[error("{message}")]
-    #[diagnostic(code(wcl::eval::unsupported))]
-    Unsupported {
-        message: String,
-        #[label("not evaluable yet")]
-        span: SourceSpan,
-    },
-
-    #[error("unbound identifier '{name}'")]
-    #[diagnostic(code(wcl::eval::unbound))]
-    UnboundIdentifier {
-        name: String,
-        #[label("not in scope")]
         span: SourceSpan,
     },
 
@@ -288,22 +298,6 @@ pub enum SchemaViolationKind {
 }
 
 impl EvalError {
-    #[allow(dead_code)] // reserved for future evaluator gaps
-    pub(crate) fn new(message: impl Into<String>, span: crate::ast::Span) -> Self {
-        Self::Unsupported {
-            message: message.into(),
-            span: span_to_miette(span),
-        }
-    }
-
-    #[allow(dead_code)] // reserved for strict unbound-id mode
-    pub(crate) fn unbound(name: impl Into<String>, span: crate::ast::Span) -> Self {
-        Self::UnboundIdentifier {
-            name: name.into(),
-            span: span_to_miette(span),
-        }
-    }
-
     pub(crate) fn not_a_leaf(kind: impl Into<String>, span: crate::ast::Span) -> Self {
         Self::NotALeaf {
             kind: kind.into(),
@@ -311,7 +305,6 @@ impl EvalError {
         }
     }
 
-    #[allow(dead_code)] // public-facing constructor for hosts; used by lazy loader
     pub(crate) fn import_failed(
         path: impl Into<String>,
         message: impl Into<String>,

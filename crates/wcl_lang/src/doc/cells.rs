@@ -133,9 +133,8 @@ pub(crate) struct SynthRow {
 /// (in-block) imports stay lazy inside `items`/`cells`.
 #[derive(Debug)]
 pub(crate) struct LoadedImport {
-    #[allow(dead_code)] // kept for introspection / future debugging
+    #[allow(dead_code)] // retained on the struct for debug formatting
     pub(crate) path: PathBuf,
-    #[allow(dead_code)] // FQNs in `symbols` already encode this
     pub(crate) file_ns: Vec<String>,
     pub(crate) items: Vec<ast::Item>,
     pub(crate) cells: Vec<ItemCells>,

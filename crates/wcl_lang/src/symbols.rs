@@ -52,9 +52,7 @@ pub struct SymbolPath {
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)] // fqn / first_span are kept for future richer diagnostics
 pub(crate) struct DuplicateSymbol {
-    pub fqn: String,
     pub first_span: Span,
     pub second_span: Span,
 }
@@ -96,7 +94,6 @@ impl SymbolIndex {
     pub(crate) fn insert(&mut self, rec: SymbolRecord) -> Result<(), DuplicateSymbol> {
         if let Some(existing) = self.by_fqn.get(&rec.fqn) {
             return Err(DuplicateSymbol {
-                fqn: rec.fqn.clone(),
                 first_span: existing.span,
                 second_span: rec.span,
             });

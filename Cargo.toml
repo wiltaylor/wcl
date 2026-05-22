@@ -16,6 +16,7 @@ thiserror = "2"
 criterion = { version = "0.5", features = ["html_reports"] }
 assert_cmd = "2"
 predicates = "3"
+tempfile = "3"
 
 [profile.release]
 lto = true

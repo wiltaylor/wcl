@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use assert_cmd::Command;
 use predicates::prelude::*;
+use tempfile::TempDir;
 
 fn examples_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -38,14 +39,14 @@ fn parse_prints_document_tree() {
 
 #[test]
 fn check_reports_syntax_error_and_exits_nonzero() {
-    let tmp = tempdir();
-    let file = tmp.join("bad.wcl");
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let file = tmp.path().join("bad.wcl");
     std::fs::write(&file, "name =\n").expect("write fixture");
     wcl()
         .arg("check")
         .arg(&file)
         .assert()
-        .failure()
+        .code(1)
         .stderr(predicate::str::contains("expected value"));
 }
 
@@ -87,14 +88,33 @@ fn eval_reports_unknown_path() {
         .arg(examples_dir().join("basic.wcl"))
         .arg("nope")
         .assert()
-        .failure()
+        .code(3)
         .stderr(predicate::str::contains("no such path"));
 }
 
-fn tempdir() -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("wcl-cli-test-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).expect("mkdir tempdir");
-    dir
+#[test]
+fn eval_suggests_near_match_for_typo_path() {
+    wcl()
+        .arg("eval")
+        .arg(examples_dir().join("basic.wcl"))
+        .arg("nam")
+        .assert()
+        .code(3)
+        .stderr(predicate::str::contains("did you mean: name"));
+}
+
+#[test]
+fn check_summarises_schema_violations() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let file = tmp.path().join("bad.wcl");
+    std::fs::write(&file, "@document\ntype Doc { name: utf8 }\nstray = 1\n")
+        .expect("write fixture");
+    wcl()
+        .arg("check")
+        .arg(&file)
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("schema violation"));
 }
 
 #[test]

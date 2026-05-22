@@ -7,7 +7,47 @@
 
 use std::collections::HashSet;
 
-use super::{Document, TypeField};
+use super::{Document, InterfaceDecl, TypeDecl, TypeField};
+
+/// A resolved `extends` target. `type` and `interface` declarations
+/// share the same inheritance entry-points (`effective_fields`,
+/// `effective_field`, `extends`); this wrapper keeps the rest of this
+/// module out of the type-vs-interface match.
+enum ParentDecl<'a> {
+    Type(TypeDecl<'a>),
+    Interface(InterfaceDecl<'a>),
+}
+
+impl<'a> ParentDecl<'a> {
+    fn effective_fields(&self) -> Vec<TypeField<'a>> {
+        match self {
+            ParentDecl::Type(d) => d.effective_fields(),
+            ParentDecl::Interface(d) => d.effective_fields(),
+        }
+    }
+
+    fn effective_field(&self, name: &str) -> Option<TypeField<'a>> {
+        match self {
+            ParentDecl::Type(d) => d.effective_field(name),
+            ParentDecl::Interface(d) => d.effective_field(name),
+        }
+    }
+
+    fn extends(&self) -> &'a [Vec<String>] {
+        match self {
+            ParentDecl::Type(d) => &d.ast.extends,
+            ParentDecl::Interface(d) => &d.ast.extends,
+        }
+    }
+}
+
+fn lookup_parent<'a>(doc: &'a Document, path: &[String]) -> Option<ParentDecl<'a>> {
+    let key = path.join(".");
+    if let Some(d) = doc.type_decl(&key) {
+        return Some(ParentDecl::Type(d));
+    }
+    doc.interface(&key).map(ParentDecl::Interface)
+}
 
 /// Build the effective-field list for a declaration: ancestors (transitively,
 /// in extends-list order, with later overriding earlier on name) followed by
@@ -61,12 +101,7 @@ fn collect_effective_fields<'a>(
     seen: &mut HashSet<String>,
 ) {
     for parent_path in extends_paths {
-        let key = parent_path.join(".");
-        if let Some(decl) = doc.type_decl(&key) {
-            for f in decl.effective_fields() {
-                insert_or_override(out, seen, f);
-            }
-        } else if let Some(decl) = doc.interface(&key) {
+        if let Some(decl) = lookup_parent(doc, parent_path) {
             for f in decl.effective_fields() {
                 insert_or_override(out, seen, f);
             }
@@ -94,14 +129,7 @@ fn effective_field_via<'a>(
     parent_path: &[String],
     name: &str,
 ) -> Option<TypeField<'a>> {
-    let key = parent_path.join(".");
-    if let Some(decl) = doc.type_decl(&key) {
-        return decl.effective_field(name);
-    }
-    if let Some(decl) = doc.interface(&key) {
-        return decl.effective_field(name);
-    }
-    None
+    lookup_parent(doc, parent_path).and_then(|d| d.effective_field(name))
 }
 
 pub(super) fn is_descendant_of_walk(
@@ -118,12 +146,8 @@ pub(super) fn is_descendant_of_walk(
         if key == target_fqn {
             return true;
         }
-        if let Some(decl) = doc.type_decl(&key)
-            && is_descendant_of_walk(doc, &decl.ast.extends, target_fqn, seen)
-        {
-            return true;
-        } else if let Some(decl) = doc.interface(&key)
-            && is_descendant_of_walk(doc, &decl.ast.extends, target_fqn, seen)
+        if let Some(decl) = lookup_parent(doc, parent_path)
+            && is_descendant_of_walk(doc, decl.extends(), target_fqn, seen)
         {
             return true;
         }

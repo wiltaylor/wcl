@@ -282,40 +282,26 @@ pub(crate) fn validate_document(
     }
 
     // 4. TypeRef resolution + variant-name uniqueness.
+    let cx = CheckContext {
+        declared: &declared,
+        interfaces: &interfaces,
+        file_ns: &file_ns,
+        item_aliases: &item_aliases,
+        ns_aliases: &ns_aliases,
+        wildcards: &wildcards,
+        source,
+        file,
+    };
     for item in &ast.items {
         match item {
             ast::Item::TypeDecl(t) => {
                 for f in &t.fields {
-                    check_type_ref(
-                        &f.ty,
-                        f.ty_span,
-                        &declared,
-                        &interfaces,
-                        false,
-                        &file_ns,
-                        &item_aliases,
-                        &ns_aliases,
-                        &wildcards,
-                        source,
-                        file,
-                    )?;
+                    check_type_ref(&f.ty, f.ty_span, false, &cx)?;
                 }
             }
             ast::Item::InterfaceDecl(i) => {
                 for f in &i.fields {
-                    check_type_ref(
-                        &f.ty,
-                        f.ty_span,
-                        &declared,
-                        &interfaces,
-                        false,
-                        &file_ns,
-                        &item_aliases,
-                        &ns_aliases,
-                        &wildcards,
-                        source,
-                        file,
-                    )?;
+                    check_type_ref(&f.ty, f.ty_span, false, &cx)?;
                 }
             }
             ast::Item::UnionDecl(u) => {
@@ -337,55 +323,24 @@ pub(crate) fn validate_document(
                     match &v.body {
                         ast::VariantBody::Record(fields) => {
                             for f in fields {
-                                check_type_ref(
-                                    &f.ty,
-                                    f.ty_span,
-                                    &declared,
-                                    &interfaces,
-                                    false,
-                                    &file_ns,
-                                    &item_aliases,
-                                    &ns_aliases,
-                                    &wildcards,
-                                    source,
-                                    file,
-                                )?;
+                                check_type_ref(&f.ty, f.ty_span, false, &cx)?;
                             }
                         }
                         ast::VariantBody::TypeRef { ty, ty_span } => {
-                            check_type_ref(
-                                ty,
-                                *ty_span,
-                                &declared,
-                                &interfaces,
-                                false,
-                                &file_ns,
-                                &item_aliases,
-                                &ns_aliases,
-                                &wildcards,
-                                source,
-                                file,
-                            )?;
+                            check_type_ref(ty, *ty_span, false, &cx)?;
                         }
                         ast::VariantBody::InterfaceRef { iface, iface_span } => {
                             // InterfaceRef body is the moral equivalent of
                             // `&Iface` — the interface is the contract, the
                             // payload is any value satisfying it. Pass
-                            // `is_reference=true` so interface paths are
+                            // `parent_is_ref=true` so interface paths are
                             // accepted (the same rule that lets `&Iface`
                             // appear in field types).
                             check_type_ref(
                                 &crate::value::TypeRef::Named(iface.clone()),
                                 *iface_span,
-                                &declared,
-                                &interfaces,
                                 true,
-                                &file_ns,
-                                &item_aliases,
-                                &ns_aliases,
-                                &wildcards,
-                                source,
-                                file,
+                                &cx,
                             )?;
                         }
                         ast::VariantBody::Unit => {}
@@ -411,32 +366,8 @@ pub(crate) fn validate_document(
                 }
             }
             ast::Item::ConnectionDecl(c) => {
-                check_type_ref(
-                    &c.source,
-                    c.source_span,
-                    &declared,
-                    &interfaces,
-                    false,
-                    &file_ns,
-                    &item_aliases,
-                    &ns_aliases,
-                    &wildcards,
-                    source,
-                    file,
-                )?;
-                check_type_ref(
-                    &c.destination,
-                    c.destination_span,
-                    &declared,
-                    &interfaces,
-                    false,
-                    &file_ns,
-                    &item_aliases,
-                    &ns_aliases,
-                    &wildcards,
-                    source,
-                    file,
-                )?;
+                check_type_ref(&c.source, c.source_span, false, &cx)?;
+                check_type_ref(&c.destination, c.destination_span, false, &cx)?;
                 // kind_set must resolve to a declared symbol_set FQN.
                 let resolved = resolve_path(
                     &c.kind_set,
@@ -487,16 +418,7 @@ pub(crate) fn validate_document(
 
     // 5. `extends` validation: unknown parents, cycles, and
     // conflicting field types across the effective field set.
-    validate_extends(
-        ast,
-        &declared,
-        &file_ns,
-        &item_aliases,
-        &ns_aliases,
-        &wildcards,
-        source,
-        file,
-    )?;
+    validate_extends(ast, &cx)?;
 
     Ok(Resolved {
         file_ns,
@@ -510,17 +432,14 @@ pub(crate) fn validate_document(
 /// `extends` clauses to canonical FQNs. Surfaces unknown parents,
 /// cycles in the extends graph, and field-type conflicts (across
 /// parents, or between a parent and a child redeclaration).
-#[allow(clippy::too_many_arguments)]
-fn validate_extends(
-    ast: &ast::Source,
-    declared: &HashSet<Vec<String>>,
-    file_ns: &[String],
-    item_aliases: &HashMap<String, Vec<String>>,
-    ns_aliases: &HashMap<String, Vec<String>>,
-    wildcards: &[Vec<String>],
-    source: &str,
-    file: &str,
-) -> Result<(), ParseError> {
+fn validate_extends(ast: &ast::Source, cx: &CheckContext<'_>) -> Result<(), ParseError> {
+    let declared = cx.declared;
+    let file_ns = cx.file_ns;
+    let item_aliases = cx.item_aliases;
+    let ns_aliases = cx.ns_aliases;
+    let wildcards = cx.wildcards;
+    let source = cx.source;
+    let file = cx.file;
     // Snapshot every parent/child as (decl_fqn, [parent_fqn]) so we
     // can walk the graph without distinguishing type vs interface.
     let mut parent_map: HashMap<Vec<String>, Vec<Vec<String>>> = HashMap::new();
@@ -679,38 +598,50 @@ fn validate_extends(
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
+/// Snapshot of the bookkeeping `validate_document` builds up before it
+/// reaches its TypeRef / extends / connection passes. Threaded through
+/// the deep validators so they can resolve paths against the document's
+/// alias/wildcard tables without 11-arg signatures.
+struct CheckContext<'a> {
+    declared: &'a HashSet<Vec<String>>,
+    interfaces: &'a HashSet<Vec<String>>,
+    file_ns: &'a [String],
+    item_aliases: &'a HashMap<String, Vec<String>>,
+    ns_aliases: &'a HashMap<String, Vec<String>>,
+    wildcards: &'a [Vec<String>],
+    source: &'a str,
+    file: &'a str,
+}
+
 fn check_type_ref(
     t: &TypeRef,
     ty_span: Span,
-    declared: &HashSet<Vec<String>>,
-    interfaces: &HashSet<Vec<String>>,
     parent_is_ref: bool,
-    file_ns: &[String],
-    item_aliases: &HashMap<String, Vec<String>>,
-    ns_aliases: &HashMap<String, Vec<String>>,
-    wildcards: &[Vec<String>],
-    source: &str,
-    file: &str,
+    cx: &CheckContext<'_>,
 ) -> Result<(), ParseError> {
     match t {
         TypeRef::Builtin(_) => Ok(()),
         TypeRef::Named(path) => {
-            let Some(resolved) =
-                resolve_path(path, file_ns, item_aliases, ns_aliases, wildcards, declared)
-            else {
+            let Some(resolved) = resolve_path(
+                path,
+                cx.file_ns,
+                cx.item_aliases,
+                cx.ns_aliases,
+                cx.wildcards,
+                cx.declared,
+            ) else {
                 return Err(open_error(
-                    source,
-                    file,
+                    cx.source,
+                    cx.file,
                     format!("unknown type '{}'", path.join(".")),
                     ty_span,
                     "type not declared",
                 ));
             };
-            if interfaces.contains(&resolved) && !parent_is_ref {
+            if cx.interfaces.contains(&resolved) && !parent_is_ref {
                 return Err(open_error(
-                    source,
-                    file,
+                    cx.source,
+                    cx.file,
                     format!(
                         "interface '{}' must be used through a reference (`&{}`)",
                         path.join("."),
@@ -722,74 +653,14 @@ fn check_type_ref(
             }
             Ok(())
         }
-        TypeRef::Reference(inner) => check_type_ref(
-            inner,
-            ty_span,
-            declared,
-            interfaces,
-            true,
-            file_ns,
-            item_aliases,
-            ns_aliases,
-            wildcards,
-            source,
-            file,
-        ),
-        TypeRef::List(inner) => check_type_ref(
-            inner,
-            ty_span,
-            declared,
-            interfaces,
-            false,
-            file_ns,
-            item_aliases,
-            ns_aliases,
-            wildcards,
-            source,
-            file,
-        ),
-        TypeRef::Tensor { element, .. } => check_type_ref(
-            element,
-            ty_span,
-            declared,
-            interfaces,
-            false,
-            file_ns,
-            item_aliases,
-            ns_aliases,
-            wildcards,
-            source,
-            file,
-        ),
+        TypeRef::Reference(inner) => check_type_ref(inner, ty_span, true, cx),
+        TypeRef::List(inner) => check_type_ref(inner, ty_span, false, cx),
+        TypeRef::Tensor { element, .. } => check_type_ref(element, ty_span, false, cx),
         TypeRef::Function { params, return_ty } => {
             for p in params {
-                check_type_ref(
-                    p,
-                    ty_span,
-                    declared,
-                    interfaces,
-                    false,
-                    file_ns,
-                    item_aliases,
-                    ns_aliases,
-                    wildcards,
-                    source,
-                    file,
-                )?;
+                check_type_ref(p, ty_span, false, cx)?;
             }
-            check_type_ref(
-                return_ty,
-                ty_span,
-                declared,
-                interfaces,
-                false,
-                file_ns,
-                item_aliases,
-                ns_aliases,
-                wildcards,
-                source,
-                file,
-            )
+            check_type_ref(return_ty, ty_span, false, cx)
         }
     }
 }

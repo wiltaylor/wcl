@@ -999,6 +999,83 @@ service "web" {
 }
 
 #[test]
+fn transitive_top_level_imports_form_a_chain() {
+    // a -> b -> c, where c declares a type that a's field consumes.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let a = dir.path().join("a.wcl");
+    let b = dir.path().join("b.wcl");
+    let c = dir.path().join("c.wcl");
+    std::fs::write(
+        &c,
+        r#"
+type Inner { name: utf8 }
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        &b,
+        r#"
+import "./c.wcl"
+type Middle { inner: Inner }
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        &a,
+        r#"
+import "./b.wcl"
+@schemaless
+name = "alpha"
+"#,
+    )
+    .unwrap();
+
+    let doc = Document::from_file(&a).expect("transitive imports load");
+    // Both types should be visible after the transitive chain expands.
+    assert!(doc.type_decl("Inner").is_some(), "Inner from c.wcl");
+    assert!(doc.type_decl("Middle").is_some(), "Middle from b.wcl");
+}
+
+#[test]
+fn lazy_block_import_brings_in_declared_items_on_first_read() {
+    // Lazy (block-level) imports defer resolution until the host
+    // block's items are read. Once read, items declared in the
+    // imported file become visible *inside* the block's scope.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let main = dir.path().join("main.wcl");
+    let extras = dir.path().join("extras.wcl");
+    std::fs::write(
+        &extras,
+        r#"
+@schemaless
+extra_port = 9090
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        &main,
+        r#"
+service "web" {
+  import "./extras.wcl"
+}
+"#,
+    )
+    .unwrap();
+
+    let doc = Document::from_file(&main).expect("opens");
+    let svc = doc.block("service").unwrap();
+    let names: Vec<String> = svc.fields().map(|f| f.name().to_string()).collect();
+    assert!(
+        names.iter().any(|n| n == "extra_port"),
+        "extras.wcl's field should be visible inside the host block; got {names:?}",
+    );
+    assert!(
+        svc.import_errors().is_empty(),
+        "no import errors expected for a well-formed lazy import",
+    );
+}
+
+#[test]
 fn nested_blocks_example_resolves_via_schema() {
     let path = examples_dir().join("nested_blocks.wcl");
     let doc = Document::from_file(&path).expect("nested_blocks fixture parses");
