@@ -447,20 +447,13 @@ impl<'a> Lexer<'a> {
                             span: Span::new(esc_start, self.pos),
                         });
                     };
-                    match esc {
-                        b'"' => body.push('"'),
-                        b'\\' => body.push('\\'),
-                        b'n' => body.push('\n'),
-                        b't' => body.push('\t'),
-                        b'r' => body.push('\r'),
-                        b'$' if prefix.interpolated => body.push('$'),
-                        other => {
-                            return Err(LexError {
-                                message: format!("invalid escape '\\{}'", other as char),
-                                span: Span::new(esc_start, self.pos),
-                            });
-                        }
-                    }
+                    let Some(decoded) = decode_escape_char(esc, prefix.interpolated) else {
+                        return Err(LexError {
+                            message: format!("invalid escape '\\{}'", esc as char),
+                            span: Span::new(esc_start, self.pos),
+                        });
+                    };
+                    body.push(decoded);
                 }
                 b'\n' => {
                     return Err(LexError {
@@ -1118,6 +1111,22 @@ fn line_is_closer(line: &[u8], tag: &str) -> bool {
     after.iter().all(|b| matches!(*b, b' ' | b'\t' | b'\r'))
 }
 
+/// Decode a single backslash-escape byte into its char value, sharing
+/// the table between `lex_string` and `interpret_escapes_into`.
+/// Returns `None` for unknown escapes (callers report the error so the
+/// span fits the local cursor).
+fn decode_escape_char(esc: u8, allow_dollar: bool) -> Option<char> {
+    match esc {
+        b'"' => Some('"'),
+        b'\\' => Some('\\'),
+        b'n' => Some('\n'),
+        b't' => Some('\t'),
+        b'r' => Some('\r'),
+        b'$' if allow_dollar => Some('$'),
+        _ => None,
+    }
+}
+
 /// Apply the same escape table as `lex_string` to `line`, appending
 /// the decoded chars to `out`. Validates UTF-8 for non-ASCII bytes.
 fn interpret_escapes_into(line: &[u8], opener: usize, out: &mut String) -> Result<(), LexError> {
@@ -1133,19 +1142,13 @@ fn interpret_escapes_into(line: &[u8], opener: usize, out: &mut String) -> Resul
                         span: Span::new(opener, opener + 1),
                     });
                 };
-                match esc {
-                    b'"' => out.push('"'),
-                    b'\\' => out.push('\\'),
-                    b'n' => out.push('\n'),
-                    b't' => out.push('\t'),
-                    b'r' => out.push('\r'),
-                    other => {
-                        return Err(LexError {
-                            message: format!("invalid escape '\\{}'", other as char),
-                            span: Span::new(opener + esc_pos, opener + esc_pos + 2),
-                        });
-                    }
-                }
+                let Some(decoded) = decode_escape_char(esc, false) else {
+                    return Err(LexError {
+                        message: format!("invalid escape '\\{}'", esc as char),
+                        span: Span::new(opener + esc_pos, opener + esc_pos + 2),
+                    });
+                };
+                out.push(decoded);
                 i += 2;
             }
             b if b < 0x80 => {
