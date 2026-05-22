@@ -31,4 +31,4 @@ pub use environment::{BuiltType, DecoratorBuilder, Environment, TypeBuilder, Typ
 pub use error::{EvalError, ParseError, SchemaViolationKind, SyntaxError};
 pub use profile::{Profile, ProfileKey, ProfileNode};
 pub use symbols::{SymbolIndex, SymbolKind, SymbolPath, SymbolRecord};
-pub use value::{BuiltinType, FnParam, FnValue, TensorDim, TypeRef, Value};
+pub use value::{BuiltinType, FnParam, FnValue, TensorDim, TypeRef, Value, VariantPayload};

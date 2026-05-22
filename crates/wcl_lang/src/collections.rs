@@ -22,6 +22,16 @@ pub(crate) fn register(env: &mut Environment) {
     env.add_builtin("tensor", from_fn(tensor_pure));
     env.add_builtin("tensor_data", from_fn(tensor_data_pure));
     env.add_builtin("tensor_shape", from_fn(tensor_shape_pure));
+
+    // `error(msg)` — the evaluator intercepts this name in the pure-builtin
+    // dispatch path and raises `EvalError::UserError` directly so the
+    // diagnostic carries a structured user_error code. The closure here is
+    // a fallback that should never run; if it does (e.g. a host calls the
+    // body directly), it still surfaces the message as an error string.
+    env.add_builtin(
+        "error",
+        from_fn(|msg: String| -> Result<Value, String> { Err(msg) }),
+    );
 }
 
 // ── Higher-order ─────────────────────────────────────────────────────

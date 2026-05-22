@@ -9,17 +9,23 @@ pub enum TokenKind {
     Str(StringLit),
     Symbol(String),
     None,
+    If,
+    Else,
+    Match,
     Eq,
     EqEq,
+    FatArrow,
     BangEq,
     Bang,
     Colon,
+    ColonColon,
     Question,
     Amp,
     AmpAmp,
     Pipe,
     PipePipe,
     Dot,
+    DotDot,
     Comma,
     Semi,
     Lt,
@@ -105,13 +111,37 @@ impl<'a> Lexer<'a> {
             });
         };
         match c {
-            b'=' => Ok(self.two_or_one(start, b'=', TokenKind::EqEq, TokenKind::Eq)),
+            b'=' => match self.peek_at(1) {
+                Some(b'=') => {
+                    self.pos += 2;
+                    Ok(Token {
+                        kind: TokenKind::EqEq,
+                        span: Span::new(start, self.pos),
+                    })
+                }
+                Some(b'>') => {
+                    self.pos += 2;
+                    Ok(Token {
+                        kind: TokenKind::FatArrow,
+                        span: Span::new(start, self.pos),
+                    })
+                }
+                _ => Ok(self.single(start, TokenKind::Eq)),
+            },
             b'!' => Ok(self.two_or_one(start, b'=', TokenKind::BangEq, TokenKind::Bang)),
             b'<' => Ok(self.two_or_one(start, b'=', TokenKind::LtEq, TokenKind::Lt)),
             b'>' => Ok(self.two_or_one(start, b'=', TokenKind::GtEq, TokenKind::Gt)),
             b'&' => Ok(self.two_or_one(start, b'&', TokenKind::AmpAmp, TokenKind::Amp)),
             b'|' => Ok(self.two_or_one(start, b'|', TokenKind::PipePipe, TokenKind::Pipe)),
             b':' => {
+                // `::` for variant paths wins over single `:`.
+                if self.peek_at(1) == Some(b':') {
+                    self.pos += 2;
+                    return Ok(Token {
+                        kind: TokenKind::ColonColon,
+                        span: Span::new(start, self.pos),
+                    });
+                }
                 // Tight `:foo` (no whitespace) → Symbol literal.
                 if matches!(self.peek_at(1), Some(c) if is_ident_start(c)) {
                     self.pos += 1; // ':'
@@ -131,7 +161,17 @@ impl<'a> Lexer<'a> {
                 }
             }
             b'?' => Ok(self.single(start, TokenKind::Question)),
-            b'.' => Ok(self.single(start, TokenKind::Dot)),
+            b'.' => {
+                if self.peek_at(1) == Some(b'.') {
+                    self.pos += 2;
+                    Ok(Token {
+                        kind: TokenKind::DotDot,
+                        span: Span::new(start, self.pos),
+                    })
+                } else {
+                    Ok(self.single(start, TokenKind::Dot))
+                }
+            }
             b',' => Ok(self.single(start, TokenKind::Comma)),
             b';' => Ok(self.single(start, TokenKind::Semi)),
             b'[' => Ok(self.single(start, TokenKind::LBracket)),
@@ -515,6 +555,9 @@ impl<'a> Lexer<'a> {
             "true" => TokenKind::Bool(true),
             "false" => TokenKind::Bool(false),
             "none" => TokenKind::None,
+            "if" => TokenKind::If,
+            "else" => TokenKind::Else,
+            "match" => TokenKind::Match,
             _ => TokenKind::Ident(text.to_string()),
         };
         Ok(Token { kind, span })

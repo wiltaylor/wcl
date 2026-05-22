@@ -1,0 +1,99 @@
+// Branching: if/else, if let, match (with patterns), variant
+// construction, and the `error` builtin. Every field is `@schemaless`
+// because this fixture exists to exercise the evaluator, not to model
+// a real configuration.
+
+// ── Unions to match against ──────────────────────────────────────────
+union Shape {
+  Circle  { radius: f64 stroke: f64 }
+  Square  { side: f64 }
+  Polygon i32                                  // typeref body — payload is one i32
+  Empty   none                                 // unit body — no payload
+}
+
+// ── 1. Plain if / else / else-if chain ───────────────────────────────
+@schemaless cmp_lt   = if 1 < 2 { :less } else { :ge }
+@schemaless cmp_cat  = if 0 > 0 { :pos } else if 0 < 0 { :neg } else { :zero }
+
+// ── 2. Variant construction (all three body shapes) ──────────────────
+@schemaless c1       = Shape::Circle { radius: 5.0, stroke: 0.5 }
+@schemaless sq1      = Shape::Square { side: 2.0 }
+@schemaless poly     = Shape::Polygon(7)                    // positional payload
+@schemaless empty    = Shape::Empty                         // unit constructor
+
+// ── 3. Literal-dispatch match (switch-style) ─────────────────────────
+@schemaless light    = match :amber {
+  :red                 => :stop,
+  :amber | :yellow     => :slow,                          // alternation
+  :green               => :go,
+  other                => other,                          // binding catches anything else
+}
+
+// ── 4. Numeric match with a guard ────────────────────────────────────
+@schemaless sign     = match -3 {
+  0                    => :zero,
+  n if n > 0           => :pos,
+  _                    => :neg,
+}
+
+// ── 5. Destructuring a variant (record body) ─────────────────────────
+// Even when every Shape variant is listed, the parser requires a final
+// wildcard or binding arm — exhaustiveness is *structural* not *typed*.
+@schemaless c1_area  = match c1 {
+  Shape::Circle { radius, .. }  => radius * radius * 3.0,  // ignore `stroke` via `..`
+  Shape::Square { side }        => side * side,
+  Shape::Polygon(_)             => 0.0,
+  _                             => 0.0,                    // covers Shape::Empty + future variants
+}
+
+// ── 6. Positional + unit variant patterns ────────────────────────────
+@schemaless poly_n   = match poly {
+  Shape::Polygon(n)             => n,
+  _                             => -1,
+}
+@schemaless empty_ok = match empty {
+  Shape::Empty                  => true,
+  _                             => false,
+}
+
+// ── 7. `@`-binding: get both the inner field AND the whole variant ───
+//
+// `whole` keeps the full `Shape::Circle { … }` value AND extracts
+// `radius` in the same arm. Returning the whole variant lets you
+// pass it on to other code while still using inner pieces here.
+@schemaless whole    = match c1 {
+  shape @ Shape::Circle { .. } => shape,
+  _                            => Shape::Empty,
+}
+@schemaless whole_r  = match c1 {
+  Shape::Circle { radius, .. } => radius,
+  _                            => 0.0,
+}
+
+// ── 8. `if let` for single-pattern destructure ───────────────────────
+@schemaless if_let_r = if let Shape::Circle { radius, .. } = c1 { radius } else { 0.0 }
+@schemaless if_let_no = if let Shape::Empty = c1 { :was_empty } else { :something_else }
+
+// ── 9. Else-if-let chain ─────────────────────────────────────────────
+@schemaless tag_for = if let Shape::Circle { radius, .. } = c1 {
+  :circle
+} else if let Shape::Square { side, .. } = c1 {
+  :square
+} else if let Shape::Polygon(_) = c1 {
+  :polygon
+} else {
+  :empty
+}
+
+// ── 10. error() in a defensive arm ───────────────────────────────────
+//
+// `error("msg")` raises EvalError::UserError with a span at the call site.
+// Pairs naturally with `_ =>` arms that the user believes are unreachable.
+//
+//     @schemaless boom = match :unknown {
+//       :red => 1, :green => 2,
+//       _ => error("unhandled colour"),
+//     }
+//
+// Evaluating `boom` would surface the error rather than silently returning
+// a wrong value. (Commented out so the fixture's overall parse succeeds.)

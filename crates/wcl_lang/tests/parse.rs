@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use wcl_lang::{
     DeclName, Document, Environment, EvalError, ProfileKey, ResolvedType, SymbolKind, TypeRef,
-    Value, VariantBodyView, from_fn,
+    Value, VariantBodyView, VariantPayload, from_fn,
 };
 
 fn examples_dir() -> PathBuf {
@@ -393,6 +393,93 @@ fn collection_builtins_evaluate_end_to_end() {
     assert_eq!(
         doc.field("t_data").unwrap().value().unwrap(),
         &i64s(&[11, 12, 13, 14, 15, 16])
+    );
+}
+
+#[test]
+fn branching_fixture_covers_if_match_and_variants() {
+    let path = examples_dir().join("branching.wcl");
+    let doc = Document::from_file(&path).expect("branching fixture parses");
+
+    let val = |name: &str| doc.field(name).unwrap().value().unwrap();
+
+    assert_eq!(val("cmp_lt"), &Value::Symbol("less".into()));
+    assert_eq!(val("cmp_cat"), &Value::Symbol("zero".into()));
+    assert_eq!(val("light"), &Value::Symbol("slow".into()));
+    assert_eq!(val("sign"), &Value::Symbol("neg".into()));
+    assert_eq!(val("poly_n"), &Value::I64(7));
+    assert_eq!(val("empty_ok"), &Value::Bool(true));
+    assert_eq!(val("c1_area"), &Value::F64(75.0));
+    assert_eq!(val("whole_r"), &Value::F64(5.0));
+    assert_eq!(val("if_let_r"), &Value::F64(5.0));
+    assert_eq!(val("if_let_no"), &Value::Symbol("something_else".into()));
+    assert_eq!(val("tag_for"), &Value::Symbol("circle".into()));
+
+    // Variant construction shapes round-trip through evaluation.
+    let Value::Variant {
+        variant, payload, ..
+    } = val("c1")
+    else {
+        panic!("c1 should be a variant");
+    };
+    assert_eq!(variant, "Circle");
+    let VariantPayload::Record(map) = payload else {
+        panic!("Circle has a record body")
+    };
+    assert_eq!(map.get("radius"), Some(&Value::F64(5.0)));
+    assert_eq!(map.get("stroke"), Some(&Value::F64(0.5)));
+
+    let Value::Variant {
+        variant, payload, ..
+    } = val("poly")
+    else {
+        panic!("poly should be a variant");
+    };
+    assert_eq!(variant, "Polygon");
+    let VariantPayload::Positional(inner) = payload else {
+        panic!("Polygon is positional")
+    };
+    assert_eq!(**inner, Value::I64(7));
+
+    let Value::Variant {
+        variant, payload, ..
+    } = val("empty")
+    else {
+        panic!("empty should be a variant");
+    };
+    assert_eq!(variant, "Empty");
+    assert!(matches!(payload, VariantPayload::Unit));
+
+    // `whole` uses an @-binding to return the full Circle variant.
+    let Value::Variant { variant, .. } = val("whole") else {
+        panic!("whole should be a variant");
+    };
+    assert_eq!(variant, "Circle");
+}
+
+#[test]
+fn error_builtin_raises_user_error() {
+    let src = r#"
+        @schemaless boom = error("oops")
+    "#;
+    let doc = Document::open(src, "test").unwrap();
+    let err = doc.field("boom").unwrap().value().unwrap_err();
+    let EvalError::UserError { message, .. } = err else {
+        panic!("expected UserError, got {err:?}");
+    };
+    assert_eq!(message, "oops");
+}
+
+#[test]
+fn match_without_wildcard_is_parse_error() {
+    let src = r#"
+        @schemaless x = match :red { :red => 1, :green => 2 }
+    "#;
+    let err = Document::open(src, "test").unwrap_err();
+    let rendered = format!("{:?}", miette::Report::new(err));
+    assert!(
+        rendered.contains("wildcard"),
+        "expected wildcard error, got: {rendered}"
     );
 }
 

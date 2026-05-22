@@ -30,7 +30,30 @@ pub enum Value {
 
     Function(FnValue),
     List(Vec<Value>),
-    Tensor { shape: Vec<u64>, data: Vec<Value> },
+    Tensor {
+        shape: Vec<u64>,
+        data: Vec<Value>,
+    },
+    Variant {
+        /// FQN of the declaring union, e.g. `["company", "Shape"]`.
+        union: Vec<String>,
+        variant: String,
+        payload: VariantPayload,
+    },
+}
+
+/// Runtime payload of a [`Value::Variant`], matching the shape of the
+/// variant body declared on its [`UnionDecl`](crate::ast::UnionDecl).
+#[derive(Debug, Clone, PartialEq)]
+pub enum VariantPayload {
+    /// `Empty none` — variant with no payload.
+    Unit,
+    /// `Polygon P` — single positional value typed as the variant's
+    /// declared TypeRef.
+    Positional(Box<Value>),
+    /// `Circle { center: P, radius: f64 }` — named fields. Stored in a
+    /// `BTreeMap` so `PartialEq` and `Debug` order deterministically.
+    Record(std::collections::BTreeMap<String, Value>),
 }
 
 /// A function value: a parameter list, a return type, and an opaque body.
@@ -137,6 +160,7 @@ impl Value {
             Value::Function(_) => "fn",
             Value::List(_) => "list",
             Value::Tensor { .. } => "tensor",
+            Value::Variant { .. } => "variant",
         }
     }
 }

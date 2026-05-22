@@ -118,6 +118,55 @@ pub enum EvalError {
         span: SourceSpan,
     },
 
+    #[error("no match arm fits the value")]
+    #[diagnostic(code(wcl::eval::match_no_arm))]
+    MatchNoArm {
+        #[label("no arm matched")]
+        span: SourceSpan,
+    },
+
+    #[error("match guard must return bool, got {kind}")]
+    #[diagnostic(code(wcl::eval::guard_not_bool))]
+    GuardNotBool {
+        kind: &'static str,
+        #[label("guard expression is not a bool")]
+        span: SourceSpan,
+    },
+
+    #[error("unknown union '{path}'")]
+    #[diagnostic(code(wcl::eval::unknown_union))]
+    UnknownUnion {
+        path: String,
+        #[label("no union with this name in scope")]
+        span: SourceSpan,
+    },
+
+    #[error("union '{union}' has no variant named '{variant}'")]
+    #[diagnostic(code(wcl::eval::unknown_variant))]
+    UnknownVariant {
+        union: String,
+        variant: String,
+        #[label("not a variant of this union")]
+        span: SourceSpan,
+    },
+
+    #[error("variant shape mismatch: expected {expected}, got {got}")]
+    #[diagnostic(code(wcl::eval::variant_shape_mismatch))]
+    VariantShapeMismatch {
+        expected: String,
+        got: String,
+        #[label("argument shape does not match the variant body")]
+        span: SourceSpan,
+    },
+
+    #[error("error: {message}")]
+    #[diagnostic(code(wcl::eval::user_error))]
+    UserError {
+        message: String,
+        #[label("error raised here")]
+        span: SourceSpan,
+    },
+
     #[error("operator '{op}' is not defined for {lhs_type} and {rhs_type}")]
     #[diagnostic(code(wcl::eval::type_mismatch))]
     TypeMismatch {
@@ -297,6 +346,57 @@ impl EvalError {
     pub(crate) fn call_depth_exceeded(max: usize, span: crate::ast::Span) -> Self {
         Self::CallDepthExceeded {
             max,
+            span: span_to_miette(span),
+        }
+    }
+
+    pub(crate) fn match_no_arm(span: crate::ast::Span) -> Self {
+        Self::MatchNoArm {
+            span: span_to_miette(span),
+        }
+    }
+
+    pub(crate) fn guard_not_bool(kind: &'static str, span: crate::ast::Span) -> Self {
+        Self::GuardNotBool {
+            kind,
+            span: span_to_miette(span),
+        }
+    }
+
+    pub(crate) fn unknown_union(path: impl Into<String>, span: crate::ast::Span) -> Self {
+        Self::UnknownUnion {
+            path: path.into(),
+            span: span_to_miette(span),
+        }
+    }
+
+    pub(crate) fn unknown_variant(
+        union: impl Into<String>,
+        variant: impl Into<String>,
+        span: crate::ast::Span,
+    ) -> Self {
+        Self::UnknownVariant {
+            union: union.into(),
+            variant: variant.into(),
+            span: span_to_miette(span),
+        }
+    }
+
+    pub(crate) fn variant_shape_mismatch(
+        expected: impl Into<String>,
+        got: impl Into<String>,
+        span: crate::ast::Span,
+    ) -> Self {
+        Self::VariantShapeMismatch {
+            expected: expected.into(),
+            got: got.into(),
+            span: span_to_miette(span),
+        }
+    }
+
+    pub(crate) fn user_error(message: impl Into<String>, span: crate::ast::Span) -> Self {
+        Self::UserError {
+            message: message.into(),
             span: span_to_miette(span),
         }
     }

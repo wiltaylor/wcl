@@ -87,6 +87,89 @@ pub(crate) enum Expr {
         name: String,
         span: Span,
     },
+
+    If {
+        cond: Box<Expr>,
+        then_block: Box<Expr>,
+        else_block: Box<Expr>,
+        span: Span,
+    },
+    IfLet {
+        pattern: Pattern,
+        scrut: Box<Expr>,
+        then_block: Box<Expr>,
+        else_block: Box<Expr>,
+        span: Span,
+    },
+    Match {
+        scrut: Box<Expr>,
+        arms: Vec<MatchArm>,
+        span: Span,
+    },
+    Variant {
+        type_path: Vec<String>,
+        variant: String,
+        args: VariantArgs,
+        span: Span,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct MatchArm {
+    /// One or more alternative patterns. The arm fires when any matches.
+    pub patterns: Vec<Pattern>,
+    /// Optional `if` guard, evaluated in the matched pattern's scope.
+    pub guard: Option<Expr>,
+    pub body: Expr,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum VariantArgs {
+    Unit,
+    Positional(Box<Expr>),
+    Record(Vec<NamedArg>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum Pattern {
+    Wildcard(Span),
+    Binding {
+        name: String,
+        span: Span,
+    },
+    /// `name @ inner` — binds `name` to the full value while matching
+    /// `inner` against it.
+    At {
+        name: String,
+        inner: Box<Pattern>,
+        span: Span,
+    },
+    LiteralBool(bool, Span),
+    LiteralNumber {
+        lit: crate::lexer::NumberLit,
+        span: Span,
+    },
+    LiteralUtf8(String, Span),
+    LiteralAscii(String, Span),
+    LiteralSymbol(String, Span),
+    LiteralNone(Span),
+    Variant {
+        type_path: Vec<String>,
+        variant: String,
+        args: VariantPatArgs,
+        span: Span,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum VariantPatArgs {
+    Unit,
+    Positional(Box<Pattern>),
+    Record {
+        fields: Vec<(String, Pattern)>,
+        rest: bool,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]

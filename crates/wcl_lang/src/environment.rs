@@ -339,6 +339,9 @@ fn value_to_expr(v: Value) -> ast::Expr {
         Value::Tensor { .. } => {
             unreachable!("tensor values are not constructible via the schema builder API")
         }
+        Value::Variant { .. } => {
+            unreachable!("variant values are not constructible via the schema builder API")
+        }
     }
 }
 

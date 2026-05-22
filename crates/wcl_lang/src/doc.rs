@@ -12,6 +12,7 @@ mod eval_ops;
 mod imports;
 mod interfaces;
 mod lookup;
+mod match_pat;
 mod schema_check;
 mod scope;
 mod validate;
@@ -2380,6 +2381,27 @@ impl Document {
                     }
                     let _profile_guard = self
                         .profile_enter(crate::profile::ProfileKey::Builtin { name: name.clone() });
+                    // Special-case `error(msg)`: raise a structured UserError
+                    // rather than the generic BuiltinTypeMismatch path that
+                    // every other fallible builtin uses. Keeps `error` a
+                    // first-class control-flow primitive without bending the
+                    // builtin trait machinery.
+                    if name == "error" && evald.len() == 1 {
+                        let msg = match &evald[0] {
+                            Value::Utf8(s) | Value::Ascii(s) => s.clone(),
+                            other => {
+                                return Err(EvalError::builtin_type(
+                                    name.clone(),
+                                    format!(
+                                        "error: expected utf8 string, got {}",
+                                        other.type_name()
+                                    ),
+                                    *span,
+                                ));
+                            }
+                        };
+                        return Err(EvalError::user_error(msg, *span));
+                    }
                     return match &builtin.kind {
                         crate::builtins::BuiltinKind::Pure(body) => (body)(&evald)
                             .map_err(|msg| EvalError::builtin_type(name.clone(), msg, *span)),
@@ -2428,6 +2450,79 @@ impl Document {
                 }
                 Value::List(out)
             }
+            E::If {
+                cond,
+                then_block,
+                else_block,
+                span,
+            } => {
+                let c = self.eval_in(cond, ctx)?;
+                let b = as_bool(&c, ast::BinOp::And, *span)?;
+                return self.eval_in(if b { then_block } else { else_block }, ctx);
+            }
+            E::IfLet {
+                pattern,
+                scrut,
+                then_block,
+                else_block,
+                ..
+            } => {
+                let v = self.eval_in(scrut, ctx)?;
+                if let Some(bindings) = match_pat::match_pattern(pattern, &v) {
+                    let frame_base = ctx.locals.len();
+                    for (name, val) in bindings {
+                        ctx.locals.push((name, val));
+                    }
+                    let result = self.eval_in(then_block, ctx);
+                    ctx.locals.truncate(frame_base);
+                    return result;
+                }
+                return self.eval_in(else_block, ctx);
+            }
+            E::Match { scrut, arms, span } => {
+                let v = self.eval_in(scrut, ctx)?;
+                'arms: for arm in arms {
+                    for pat in &arm.patterns {
+                        let Some(bindings) = match_pat::match_pattern(pat, &v) else {
+                            continue;
+                        };
+                        let frame_base = ctx.locals.len();
+                        for (name, val) in bindings {
+                            ctx.locals.push((name, val));
+                        }
+                        if let Some(guard) = &arm.guard {
+                            match self.eval_in(guard, ctx) {
+                                Ok(Value::Bool(true)) => {}
+                                Ok(Value::Bool(false)) => {
+                                    ctx.locals.truncate(frame_base);
+                                    continue 'arms;
+                                }
+                                Ok(other) => {
+                                    let kind = other.type_name();
+                                    ctx.locals.truncate(frame_base);
+                                    return Err(EvalError::guard_not_bool(kind, span_of(guard)));
+                                }
+                                Err(e) => {
+                                    ctx.locals.truncate(frame_base);
+                                    return Err(e);
+                                }
+                            }
+                        }
+                        let result = self.eval_in(&arm.body, ctx);
+                        ctx.locals.truncate(frame_base);
+                        return result;
+                    }
+                }
+                return Err(EvalError::match_no_arm(*span));
+            }
+            E::Variant {
+                type_path,
+                variant,
+                args,
+                span,
+            } => {
+                return self.build_variant(type_path, variant, args, *span, ctx);
+            }
         })
     }
 
@@ -2462,6 +2557,101 @@ impl Document {
         ctx.call_depth -= 1;
         ctx.locals.truncate(frame_base);
         result
+    }
+
+    /// Construct a [`Value::Variant`] from a parsed `Type::Variant`
+    /// expression. Resolves the union by `type_path` (with the
+    /// document's `file_ns` as a candidate prefix), validates the args
+    /// shape against the declared variant body, evaluates each arg,
+    /// and stashes them into the appropriate `VariantPayload`. Field
+    /// *type* checking is left to schema validation.
+    pub(crate) fn build_variant<'a>(
+        &'a self,
+        type_path: &[String],
+        variant: &str,
+        args: &ast::VariantArgs,
+        span: Span,
+        ctx: &mut EvalCtx<'a>,
+    ) -> Result<Value, EvalError> {
+        // Resolve the union — try the path as-is, then with the
+        // document's namespace prefixed (same dance as `field`/`union_decl`).
+        let candidates: Vec<String> = if self.file_ns.is_empty() {
+            vec![type_path.join(".")]
+        } else {
+            let bare = type_path.join(".");
+            let qualified = format!("{}.{}", self.file_ns.join("."), bare);
+            vec![qualified, bare]
+        };
+        let mut found_union: Option<&ast::UnionDecl> = None;
+        for fqn in &candidates {
+            if let Some(u) = self.union_decl(fqn) {
+                found_union = Some(u.ast);
+                break;
+            }
+        }
+        let Some(union_ast) = found_union else {
+            return Err(EvalError::unknown_union(type_path.join("."), span));
+        };
+        let union_fqn = union_ast.name.clone();
+        let Some(variant_decl) = union_ast.variants.iter().find(|v| v.name == variant) else {
+            return Err(EvalError::unknown_variant(
+                union_fqn.join("."),
+                variant.to_string(),
+                span,
+            ));
+        };
+        let payload = match (&variant_decl.body, args) {
+            (ast::VariantBody::Unit, ast::VariantArgs::Unit) => crate::value::VariantPayload::Unit,
+            (ast::VariantBody::TypeRef { .. }, ast::VariantArgs::Positional(e)) => {
+                let v = self.eval_in(e, ctx)?;
+                crate::value::VariantPayload::Positional(Box::new(v))
+            }
+            (ast::VariantBody::Record(decl_fields), ast::VariantArgs::Record(named_args)) => {
+                let mut map = std::collections::BTreeMap::new();
+                // Each declared field must be supplied exactly once.
+                for decl_field in decl_fields {
+                    let Some(arg) = named_args.iter().find(|na| na.name == decl_field.name) else {
+                        return Err(EvalError::variant_shape_mismatch(
+                            format!("field '{}'", decl_field.name),
+                            "missing",
+                            span,
+                        ));
+                    };
+                    let v = self.eval_in(&arg.value, ctx)?;
+                    map.insert(decl_field.name.clone(), v);
+                }
+                // Reject extras — keeps the runtime value strictly
+                // shaped to the declared variant body.
+                for arg in named_args {
+                    if !decl_fields.iter().any(|f| f.name == arg.name) {
+                        return Err(EvalError::variant_shape_mismatch(
+                            format!("declared fields of {}::{}", union_fqn.join("."), variant),
+                            format!("unexpected field '{}'", arg.name),
+                            span,
+                        ));
+                    }
+                }
+                crate::value::VariantPayload::Record(map)
+            }
+            (expected_body, given) => {
+                let expected = match expected_body {
+                    ast::VariantBody::Unit => "no arguments",
+                    ast::VariantBody::TypeRef { .. } => "positional argument",
+                    ast::VariantBody::Record(_) => "record arguments",
+                };
+                let got = match given {
+                    ast::VariantArgs::Unit => "no arguments",
+                    ast::VariantArgs::Positional(_) => "positional argument",
+                    ast::VariantArgs::Record(_) => "record arguments",
+                };
+                return Err(EvalError::variant_shape_mismatch(expected, got, span));
+            }
+        };
+        Ok(Value::Variant {
+            union: union_fqn,
+            variant: variant.to_string(),
+            payload,
+        })
     }
 
     /// Walk a path expression and return the navigator for its
@@ -2615,7 +2805,11 @@ fn span_of(expr: &ast::Expr) -> Span {
         | E::Block { span, .. }
         | E::Paren { span, .. }
         | E::ListLit { span, .. }
-        | E::Member { span, .. } => *span,
+        | E::Member { span, .. }
+        | E::If { span, .. }
+        | E::IfLet { span, .. }
+        | E::Match { span, .. }
+        | E::Variant { span, .. } => *span,
         E::SelfKw(s) | E::ParentKw(s) => *s,
     }
 }

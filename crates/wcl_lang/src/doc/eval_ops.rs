@@ -52,6 +52,10 @@ pub(super) fn describe_expr(expr: &ast::Expr) -> &'static str {
         E::Member { .. } => "member access",
         E::SelfKw(_) => "self",
         E::ParentKw(_) => "parent",
+        E::If { .. } => "if expression",
+        E::IfLet { .. } => "if-let expression",
+        E::Match { .. } => "match expression",
+        E::Variant { .. } => "variant constructor",
     }
 }
 

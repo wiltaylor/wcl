@@ -6,7 +6,7 @@ use clap::{Parser, Subcommand};
 use wcl_lang::{
     Block, DeclName, Decorator, Document, Field, Profile, ProfileKey, ProfileNode, SymbolSetDecl,
     TensorDim, TypeDecl, TypeRef, UnionDecl, UnionVariant, UseDeclView, UseFormView, Value,
-    VariantBodyView,
+    VariantBodyView, VariantPayload,
 };
 
 #[derive(Parser)]
@@ -444,6 +444,24 @@ fn value_repr(v: &Value) -> String {
             let dims: Vec<String> = shape.iter().map(u64::to_string).collect();
             let elems: Vec<String> = data.iter().map(value_repr).collect();
             format!("tensor[{}]({})", dims.join("x"), elems.join(", "))
+        }
+        Value::Variant {
+            union,
+            variant,
+            payload,
+        } => {
+            let path = format!("{}::{}", union.join("."), variant);
+            match payload {
+                VariantPayload::Unit => path,
+                VariantPayload::Positional(v) => format!("{path}({})", value_repr(v)),
+                VariantPayload::Record(map) => {
+                    let parts: Vec<String> = map
+                        .iter()
+                        .map(|(k, v)| format!("{k}: {}", value_repr(v)))
+                        .collect();
+                    format!("{path} {{ {} }}", parts.join(", "))
+                }
+            }
         }
     }
 }
