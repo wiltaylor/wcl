@@ -26,11 +26,11 @@ type Metadata {
 }
 
 name    = "alpha"
-count   = 3
+count   = 3u32
 enabled = true
 
 service "web" {
-  port = 8080
+  port = 8080u32
   host = "0.0.0.0"
 
   metadata {

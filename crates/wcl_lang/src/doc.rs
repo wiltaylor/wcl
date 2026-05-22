@@ -712,24 +712,39 @@ impl Document {
                         ));
                         continue;
                     };
-                    // Value-vs-declared-type check: union fields must
-                    // hold a variant of the declared union.
-                    if let TypeRef::Named(path) = declared.type_ref()
-                        && let Some(union_decl) = self.union_decl(&path.join("."))
-                        && let Ok(v) = f.value()
-                        && let Value::Variant { union, .. } = v
-                        && union != &union_decl.ast.name
-                    {
-                        out.push(EvalError::schema_violation(
-                            Kind::VariantUnionMismatch,
-                            format!(
-                                "field '{}' declared as union '{}' but value is variant of '{}'",
-                                f.name(),
-                                union_decl.ast.name.join("."),
-                                union.join("."),
-                            ),
-                            f.span(),
-                        ));
+                    // Value-vs-declared-type check.
+                    if let Ok(v) = f.value() {
+                        // Union path: variant FQN must match.
+                        if let TypeRef::Named(path) = declared.type_ref()
+                            && let Some(union_decl) = self.union_decl(&path.join("."))
+                        {
+                            if let Value::Variant { union, variant, .. } = v
+                                && union != &union_decl.ast.name
+                            {
+                                out.push(EvalError::schema_violation(
+                                    Kind::VariantUnionMismatch,
+                                    format!(
+                                        "field '{}' declared as union '{}' but value is {}::{}",
+                                        f.name(),
+                                        union_decl.ast.name.join("."),
+                                        union.join("."),
+                                        variant,
+                                    ),
+                                    f.span(),
+                                ));
+                            }
+                        } else if !value_matches_type_ref(v, declared.type_ref()) {
+                            out.push(EvalError::schema_violation(
+                                Kind::FieldTypeMismatch,
+                                format!(
+                                    "field '{}' declared as {} but value is {}",
+                                    f.name(),
+                                    declared.type_ref(),
+                                    v.type_name(),
+                                ),
+                                f.span(),
+                            ));
+                        }
                     }
                 }
                 None => {
@@ -774,12 +789,19 @@ impl Document {
             }
             // First: the kind must be registered.
             if !self.is_registered_kind(b.kind()) {
+                let mut msg = format!(
+                    "block kind '{}' has no @block or @table declaration",
+                    b.kind()
+                );
+                if !root_union_slots.is_empty() {
+                    let variants = format_union_variants_hint(self, &root_union_slots);
+                    if !variants.is_empty() {
+                        msg.push_str(&format!(" (nearby @children union accepts: {variants})"));
+                    }
+                }
                 out.push(EvalError::schema_violation(
                     Kind::UnregisteredKind,
-                    format!(
-                        "block kind '{}' has no @block or @table declaration",
-                        b.kind()
-                    ),
+                    msg,
                     b.span(),
                 ));
                 // Skip nested validation — the block has no schema
@@ -1195,6 +1217,29 @@ impl<'a> Decorator<'a> {
             Ok(v) => Ok(v.clone()),
             Err(e) => Err(e.clone()),
         })
+    }
+
+    /// Resolve the value of one declared slot on this decorator's
+    /// schema. If the slot's declared type is a union, the
+    /// decorator's positional + named args are dispatched into a
+    /// `Value::Variant` by structural shape. Otherwise, the named
+    /// arg is looked up directly (matching the legacy
+    /// [`named_arg`](Self::named_arg) accessor).
+    ///
+    /// Returns `None` when the decorator has no registered schema or
+    /// the schema doesn't declare a slot of this name.
+    pub fn resolved_arg_value(&self, slot_name: &str) -> Option<Result<Value, EvalError>> {
+        let schema_name = self.ast.name.last()?;
+        let schema = self.doc.decorator_schema(schema_name)?;
+        let slot = schema.field(slot_name)?;
+        // If the slot is union-typed, dispatch the decorator's args.
+        if let TypeRef::Named(path) = slot.type_ref()
+            && let Some(union) = self.doc.union_decl(&path.join("."))
+        {
+            return Some(self.dispatch_into_union(union));
+        }
+        // Fall back: read the named arg.
+        self.named_arg(slot_name)
     }
 
     /// Dispatch the decorator's positional + named args into a
@@ -2561,7 +2606,15 @@ impl Document {
                     .iter()
                     .map(|p| FnParam::new(p.name.clone(), p.ty.clone()))
                     .collect();
-                Value::Function(FnValue::new(params, f.return_ty.clone(), f.body.clone()))
+                // Snapshot surrounding locals as the function value's
+                // lexical capture. Document-scope identifiers (fields,
+                // blocks, …) resolve at call time, so they don't need
+                // snapshotting.
+                let captured = ctx.locals.clone();
+                Value::Function(
+                    FnValue::new(params, f.return_ty.clone(), f.body.clone())
+                        .with_captures(captured),
+                )
             }
             E::Identifier(name) => {
                 // Locals (let-binding scope) shadow scope-walked names.
@@ -2637,7 +2690,10 @@ impl Document {
                     let Some(builtin) = self.env.builtin(name).cloned() else {
                         return Err(EvalError::unknown_builtin(name.clone(), *span));
                     };
-                    if args.len() != builtin.arity {
+                    // `format(template, ...args)` is variadic — its
+                    // registered arity (0) is a sentinel that just
+                    // means "skip the standard arity check".
+                    if name != "format" && args.len() != builtin.arity {
                         return Err(EvalError::builtin_arity(
                             name.clone(),
                             builtin.arity,
@@ -2656,14 +2712,36 @@ impl Document {
                     // every other fallible builtin uses. Keeps `error` a
                     // first-class control-flow primitive without bending the
                     // builtin trait machinery.
-                    if name == "error" && evald.len() == 1 {
+                    if (name == "error" || name == "panic") && evald.len() == 1 {
                         let msg = match &evald[0] {
                             Value::Utf8(s) | Value::Ascii(s) => s.clone(),
                             other => {
                                 return Err(EvalError::builtin_type(
                                     name.clone(),
                                     format!(
-                                        "error: expected utf8 string, got {}",
+                                        "{name}: expected utf8 string, got {}",
+                                        other.type_name()
+                                    ),
+                                    *span,
+                                ));
+                            }
+                        };
+                        return Err(EvalError::user_error(msg, *span));
+                    }
+                    // `assert(cond, msg)` — when cond is false, raise a
+                    // structured UserError; when true, return None.
+                    if name == "assert" && evald.len() == 2 {
+                        let cond = matches!(&evald[0], Value::Bool(true));
+                        if cond {
+                            return Ok(Value::None);
+                        }
+                        let msg = match &evald[1] {
+                            Value::Utf8(s) | Value::Ascii(s) => s.clone(),
+                            other => {
+                                return Err(EvalError::builtin_type(
+                                    name.clone(),
+                                    format!(
+                                        "assert: message must be utf8, got {}",
                                         other.type_name()
                                     ),
                                     *span,
@@ -2819,6 +2897,11 @@ impl Document {
             return Err(EvalError::call_depth_exceeded(MAX_CALL_DEPTH, span));
         }
         let frame_base = ctx.locals.len();
+        // Lexical captures first — later pushes (params, nested let
+        // bindings) shadow them on right-to-left lookup.
+        for (name, value) in &f.captured {
+            ctx.locals.push((name.clone(), value.clone()));
+        }
         for (param, value) in f.params().iter().zip(args.iter()) {
             ctx.locals.push((param.name().to_string(), value.clone()));
         }
@@ -3208,12 +3291,33 @@ pub(crate) fn value_matches_type_ref(value: &Value, ty: &TypeRef) -> bool {
         (Value::None, _) => false, // None doesn't satisfy any concrete type
         // Variant value against a named union type: compare FQN.
         (Value::Variant { union, .. }, TypeRef::Named(path)) => path_matches_suffix(path, union),
-        // Lists, tensors, functions: skip strict checks for now.
-        (Value::List(_), TypeRef::List(_)) => true,
+        // Lists check element type recursively.
+        (Value::List(items), TypeRef::List(inner)) => {
+            items.iter().all(|el| value_matches_type_ref(el, inner))
+        }
+        // Tensors / functions / references stay permissive — strict
+        // checks here would need richer type information than we
+        // currently carry on `Value`.
         (Value::Tensor { .. }, TypeRef::Tensor { .. }) => true,
         (Value::Function(_), TypeRef::Function { .. }) => true,
         _ => false,
     }
+}
+
+/// Render a comma-separated list of all variant names across the
+/// given union slots — used to enrich `UnregisteredKind` errors with
+/// a "did you mean" hint when a nearby `@children(SomeUnion)` field
+/// exists.
+fn format_union_variants_hint(doc: &Document, slots: &[UnionDecl<'_>]) -> String {
+    let mut names: Vec<String> = Vec::new();
+    for u in slots {
+        if let Ok(effective) = doc.effective_variants_of(u.ast) {
+            for v in effective {
+                names.push(format!("{}::{}", u.ast.name.join("."), v.name));
+            }
+        }
+    }
+    names.join(", ")
 }
 
 /// Declaration-time validation for a single union: cycles, duplicate

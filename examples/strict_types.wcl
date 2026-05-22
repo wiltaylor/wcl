@@ -1,0 +1,26 @@
+// Schema validation rejects values whose runtime type doesn't match
+// the declared field type. The check is conservative: scalars, strings,
+// list elements, and variant FQNs are checked; tensors / functions /
+// references stay permissive. `@schemaless` opts a field out.
+
+@document
+type Config {
+  port:   u16
+  host:   utf8
+  flags:  list<bool>
+  tags:   list<utf8>
+}
+
+// All values match — `wcl check` would print OK.
+port  = 8080u16
+host  = "localhost"
+flags = [true, false, true]
+tags  = ["alpha", "beta"]
+
+// Demonstrative *bad* assignments below would surface
+// `SchemaViolationKind::FieldTypeMismatch`. They're commented out so
+// the fixture parses cleanly; the integration test exercises the
+// failing path inline.
+//
+//   port  = "not a number"         // declared u16, got utf8
+//   flags = [1, 2, 3]              // declared list<bool>, got list<i64>

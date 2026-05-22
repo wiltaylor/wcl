@@ -32,6 +32,38 @@ pub(crate) fn register(env: &mut Environment) {
         "error",
         from_fn(|msg: String| -> Result<Value, String> { Err(msg) }),
     );
+
+    // Control-flow / failure helpers. `panic` is just `error` with an
+    // "unreachable" framing; `assert` errors only when the condition is
+    // false.
+    env.add_builtin(
+        "panic",
+        from_fn(|msg: String| -> Result<Value, String> { Err(msg) }),
+    );
+    env.add_builtin(
+        "assert",
+        from_fn(|cond: bool, msg: String| -> Result<Value, String> {
+            if cond { Ok(Value::None) } else { Err(msg) }
+        }),
+    );
+
+    // String helpers. `+` stays numeric; explicit `concat` keeps the
+    // intent obvious.
+    env.add_builtin(
+        "concat",
+        from_fn(|a: String, b: String| -> String { format!("{a}{b}") }),
+    );
+    // `format("hello {}", name)` — `{}` substitution, positional only.
+    // Registered as an HOF so the variadic arg list works (`from_fn`
+    // is fixed-arity).
+    env.add_builtin("format", BuiltinFn::hof(0, format_hof));
+
+    // List helpers.
+    env.add_builtin("flatten", from_fn(flatten_pure));
+    env.add_builtin("zip", from_fn(zip_pure));
+
+    // Tensor helpers.
+    env.add_builtin("tensor_reshape", from_fn(tensor_reshape_pure));
 }
 
 // ── Higher-order ─────────────────────────────────────────────────────
@@ -294,5 +326,208 @@ fn tensor_shape_pure(v: Value) -> Result<Vec<i64>, String> {
             "tensor_shape: expected tensor, got {}",
             other.type_name()
         )),
+    }
+}
+
+fn tensor_reshape_pure(t: Value, new_shape: Value) -> Result<Value, String> {
+    let (data, _old_shape) = match t {
+        Value::Tensor { shape, data } => (data, shape),
+        other => {
+            return Err(format!(
+                "tensor_reshape: expected tensor, got {}",
+                other.type_name()
+            ));
+        }
+    };
+    let shape_vals = match new_shape {
+        Value::List(items) => items,
+        other => {
+            return Err(format!(
+                "tensor_reshape: shape must be a list of u64, got {}",
+                other.type_name()
+            ));
+        }
+    };
+    let mut dims: Vec<u64> = Vec::with_capacity(shape_vals.len());
+    for s in &shape_vals {
+        let d = s.as_u64().ok_or_else(|| {
+            format!(
+                "tensor_reshape: shape entry must be a non-negative integer, got {}",
+                s.type_name()
+            )
+        })?;
+        dims.push(d);
+    }
+    let expected: u64 = dims.iter().copied().fold(1u64, u64::saturating_mul);
+    if (data.len() as u64) != expected {
+        return Err(format!(
+            "tensor_reshape: data length {} does not match new shape product {}",
+            data.len(),
+            expected
+        ));
+    }
+    Ok(Value::Tensor { shape: dims, data })
+}
+
+fn flatten_pure(v: Value) -> Result<Vec<Value>, String> {
+    let items = match v {
+        Value::List(items) => items,
+        other => {
+            return Err(format!(
+                "flatten: expected list of lists, got {}",
+                other.type_name()
+            ));
+        }
+    };
+    let mut out: Vec<Value> = Vec::new();
+    for inner in items {
+        match inner {
+            Value::List(xs) => out.extend(xs),
+            other => {
+                return Err(format!(
+                    "flatten: outer list element must be a list, got {}",
+                    other.type_name()
+                ));
+            }
+        }
+    }
+    Ok(out)
+}
+
+fn zip_pure(a: Value, b: Value) -> Result<Vec<Value>, String> {
+    let av = match a {
+        Value::List(xs) => xs,
+        other => {
+            return Err(format!(
+                "zip: first arg must be a list, got {}",
+                other.type_name()
+            ));
+        }
+    };
+    let bv = match b {
+        Value::List(xs) => xs,
+        other => {
+            return Err(format!(
+                "zip: second arg must be a list, got {}",
+                other.type_name()
+            ));
+        }
+    };
+    let n = av.len().min(bv.len());
+    let mut out: Vec<Value> = Vec::with_capacity(n);
+    for i in 0..n {
+        out.push(Value::List(vec![av[i].clone(), bv[i].clone()]));
+    }
+    Ok(out)
+}
+
+/// `format(template, ...args)` — `{}` positional substitution.
+fn format_hof(_caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> {
+    let Some((template_v, rest)) = args.split_first() else {
+        return Err("format: missing template argument".into());
+    };
+    let template = match template_v {
+        Value::Utf8(s) | Value::Ascii(s) => s.clone(),
+        other => {
+            return Err(format!(
+                "format: template must be a string, got {}",
+                other.type_name()
+            ));
+        }
+    };
+    let mut out = String::with_capacity(template.len());
+    let mut idx = 0usize;
+    let mut chars = template.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '{' {
+            if chars.peek() == Some(&'{') {
+                chars.next();
+                out.push('{');
+                continue;
+            }
+            // Expect `}`.
+            if chars.next() != Some('}') {
+                return Err("format: expected '{}' placeholder".into());
+            }
+            let Some(arg) = rest.get(idx) else {
+                return Err(format!(
+                    "format: not enough arguments for placeholder #{idx}"
+                ));
+            };
+            idx += 1;
+            out.push_str(&format_value(arg));
+        } else if c == '}' {
+            if chars.peek() == Some(&'}') {
+                chars.next();
+                out.push('}');
+                continue;
+            }
+            return Err("format: unmatched '}' in template".into());
+        } else {
+            out.push(c);
+        }
+    }
+    if idx < rest.len() {
+        return Err(format!(
+            "format: {} extra arguments after template",
+            rest.len() - idx
+        ));
+    }
+    Ok(Value::Utf8(out))
+}
+
+/// Render a `Value` for inclusion in a `format` substitution. Stays
+/// compact and predictable — host CLIs render richer forms.
+fn format_value(v: &Value) -> String {
+    match v {
+        Value::Utf8(s) | Value::Ascii(s) | Value::Identifier(s) => s.clone(),
+        Value::Symbol(s) => format!(":{s}"),
+        Value::Bool(b) => b.to_string(),
+        Value::None => "none".to_string(),
+        Value::I8(n) => n.to_string(),
+        Value::I16(n) => n.to_string(),
+        Value::I32(n) => n.to_string(),
+        Value::I64(n) => n.to_string(),
+        Value::I128(n) => n.to_string(),
+        Value::Isize(n) => n.to_string(),
+        Value::U8(n) => n.to_string(),
+        Value::U16(n) => n.to_string(),
+        Value::U32(n) => n.to_string(),
+        Value::U64(n) => n.to_string(),
+        Value::U128(n) => n.to_string(),
+        Value::Usize(n) => n.to_string(),
+        Value::F32(n) => n.to_string(),
+        Value::F64(n) => n.to_string(),
+        Value::Utf16(units) => String::from_utf16_lossy(units),
+        Value::Utf32(chars) => chars.iter().collect(),
+        Value::List(items) => {
+            let parts: Vec<String> = items.iter().map(format_value).collect();
+            format!("[{}]", parts.join(", "))
+        }
+        Value::Tensor { shape, data } => {
+            let dims: Vec<String> = shape.iter().map(u64::to_string).collect();
+            let elems: Vec<String> = data.iter().map(format_value).collect();
+            format!("tensor[{}]({})", dims.join("x"), elems.join(", "))
+        }
+        Value::Variant {
+            union,
+            variant,
+            payload,
+        } => {
+            use crate::value::VariantPayload;
+            let path = format!("{}::{}", union.join("."), variant);
+            match payload {
+                VariantPayload::Unit => path,
+                VariantPayload::Positional(v) => format!("{path}({})", format_value(v)),
+                VariantPayload::Record(map) => {
+                    let parts: Vec<String> = map
+                        .iter()
+                        .map(|(k, v)| format!("{k}: {}", format_value(v)))
+                        .collect();
+                    format!("{path} {{ {} }}", parts.join(", "))
+                }
+            }
+        }
+        Value::Function(_) => "<fn>".to_string(),
     }
 }

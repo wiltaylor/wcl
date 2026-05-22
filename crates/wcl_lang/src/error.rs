@@ -256,6 +256,10 @@ pub enum SchemaViolationKind {
     /// A field declared `: SomeUnion` was assigned a variant whose
     /// constructing union FQN differs.
     VariantUnionMismatch,
+    /// A field's evaluated value doesn't match its declared
+    /// `TypeRef` under the conservative `value_matches_type_ref` check
+    /// (scalar / string / list-element / variant FQN).
+    FieldTypeMismatch,
     /// Two variants in a union's effective list share a name (across
     /// the `extends` chain).
     DuplicateVariant,

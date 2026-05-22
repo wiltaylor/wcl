@@ -27,7 +27,7 @@ fn parses_basic_example_from_disk() {
     assert_eq!(svc.labels().unwrap(), vec![Value::Utf8("web".into())]);
     assert_eq!(
         svc.field("port").unwrap().value().unwrap(),
-        &Value::I64(8080)
+        &Value::U32(8080)
     );
 }
 
@@ -394,6 +394,152 @@ fn collection_builtins_evaluate_end_to_end() {
         doc.field("t_data").unwrap().value().unwrap(),
         &i64s(&[11, 12, 13, 14, 15, 16])
     );
+}
+
+#[test]
+fn closures_capture_definition_site_locals() {
+    let path = examples_dir().join("closures.wcl");
+    let doc = Document::from_file(&path).expect("closures fixture parses");
+    let val = |name: &str| doc.field(name).unwrap().value().unwrap();
+    assert_eq!(val("captured"), &Value::I64(8));
+    assert_eq!(val("fifteen"), &Value::I64(15));
+    assert_eq!(val("seven"), &Value::I64(7));
+    assert_eq!(val("shadowing"), &Value::I64(7));
+}
+
+#[test]
+fn strict_value_vs_type_field_mismatch() {
+    let src = r#"
+        @document type Cfg { port: u16  host: utf8 }
+        port = "oops"
+        host = 42
+    "#;
+    let doc = Document::open(src, "test").unwrap();
+    let errs = doc.schema_errors();
+    let count = errs
+        .iter()
+        .filter(|e| {
+            matches!(
+                e,
+                EvalError::SchemaViolation {
+                    kind: wcl_lang::SchemaViolationKind::FieldTypeMismatch,
+                    ..
+                }
+            )
+        })
+        .count();
+    assert_eq!(
+        count, 2,
+        "expected 2 FieldTypeMismatch errors, got: {errs:#?}"
+    );
+}
+
+#[test]
+fn strict_value_vs_type_list_element_mismatch() {
+    let src = r#"
+        @document type Cfg { flags: list<bool> }
+        flags = [1, 2, 3]
+    "#;
+    let doc = Document::open(src, "test").unwrap();
+    let errs = doc.schema_errors();
+    assert!(
+        errs.iter().any(|e| matches!(
+            e,
+            EvalError::SchemaViolation {
+                kind: wcl_lang::SchemaViolationKind::FieldTypeMismatch,
+                ..
+            }
+        )),
+        "expected FieldTypeMismatch on list element, got: {errs:#?}"
+    );
+}
+
+#[test]
+fn unqualified_variant_patterns_match() {
+    let src = r#"
+        union Shape { Circle { radius: f64 } Square { side: f64 } }
+        @schemaless c = Shape::Circle { radius: 2.5 }
+        @schemaless got = match c {
+          Circle { radius } => radius,
+          Square { side } => side,
+          _ => 0.0,
+        }
+    "#;
+    let doc = Document::open(src, "test").unwrap();
+    assert_eq!(doc.field("got").unwrap().value().unwrap(), &Value::F64(2.5));
+}
+
+#[test]
+fn multi_level_union_extends_inherits_all_variants() {
+    let src = r#"
+        union A { Foo { a: i64 } }
+        union B extends A { Bar { b: utf8 } }
+        union C extends B { Baz { c: bool } }
+        @schemaless v1 = C::Foo { a: 1 }
+        @schemaless v2 = C::Bar { b: "hi" }
+        @schemaless v3 = C::Baz { c: true }
+    "#;
+    let doc = Document::open(src, "test").unwrap();
+    let names: Vec<&str> = ["v1", "v2", "v3"]
+        .iter()
+        .map(|n| {
+            let Value::Variant { variant, .. } = doc.field(n).unwrap().value().unwrap() else {
+                panic!("{n} should be a variant")
+            };
+            variant.as_str()
+        })
+        .collect();
+    assert_eq!(names, vec!["Foo", "Bar", "Baz"]);
+}
+
+#[test]
+fn new_builtins_smoke() {
+    let src = r#"
+        @schemaless greeting  = concat("hello, ", "world")
+        @schemaless formatted = format("x = {}", 42)
+        @schemaless flat      = flatten([[1, 2], [3]])
+        @schemaless pairs     = zip([1, 2, 3], [:a, :b])
+        @schemaless reshaped  = tensor_shape(tensor_reshape(tensor([1, 2, 3, 4], [2, 2]), [4, 1]))
+        @schemaless ok        = assert(true, "fine")
+    "#;
+    let doc = Document::open(src, "test").unwrap();
+    assert_eq!(
+        doc.field("greeting").unwrap().value().unwrap(),
+        &Value::Utf8("hello, world".into())
+    );
+    assert_eq!(
+        doc.field("formatted").unwrap().value().unwrap(),
+        &Value::Utf8("x = 42".into())
+    );
+    assert_eq!(
+        doc.field("flat").unwrap().value().unwrap(),
+        &Value::List(vec![Value::I64(1), Value::I64(2), Value::I64(3)])
+    );
+    // zip with shorter `[:a, :b]` truncates to length 2.
+    let pairs = doc.field("pairs").unwrap().value().unwrap();
+    let Value::List(rows) = pairs else {
+        panic!("zip should be list")
+    };
+    assert_eq!(rows.len(), 2);
+    // reshape: [4, 1].
+    assert_eq!(
+        doc.field("reshaped").unwrap().value().unwrap(),
+        &Value::List(vec![Value::I64(4), Value::I64(1)])
+    );
+    assert_eq!(doc.field("ok").unwrap().value().unwrap(), &Value::None);
+}
+
+#[test]
+fn assert_failure_surfaces_user_error() {
+    let src = r#"
+        @schemaless boom = assert(1 > 2, "math is broken")
+    "#;
+    let doc = Document::open(src, "test").unwrap();
+    let err = doc.field("boom").unwrap().value().unwrap_err();
+    let EvalError::UserError { message, .. } = err else {
+        panic!("expected UserError, got {err:?}")
+    };
+    assert_eq!(message, "math is broken");
 }
 
 #[test]

@@ -41,23 +41,18 @@
 // Same `square` reused as the callback, no anonymous fn needed.
 @schemaless squares     = map(xs, square)                   // -> [1,4,9,16,25]
 
-// ── 6. Function-returning function (no closure capture yet) ──────────
-// A function can *return* another function value — the type system and
-// evaluator both accept it. But the inner function does **not** capture
-// the outer's parameters: function values today see only their own
-// parameters plus the caller's lexical environment, so referencing the
-// outer `x` from inside the inner body fails at the call site with an
-// `unresolved_reference` error. The two pieces are still useful in
-// isolation:
+// ── 6. Function-returning function (curried, with lexical capture) ───
+// Function values capture their definition-site locals, so a `fn`
+// returned from another `fn` keeps the outer parameters in scope:
 @schemaless make_const  = fn() -> fn(i64) -> i64 fn(n: i64) -> i64 n + 1
 @schemaless incr        = make_const()
-@schemaless six         = incr(5)                           // -> 6 (works)
-//
-// Curried `adder(x)(y) = x + y` would need lexical closure capture and
-// is intentionally not supported yet:
-//
-//     @schemaless adder = fn(x: i64) -> fn(i64) -> i64 fn(y: i64) -> i64 x + y
-//     @schemaless fifteen = adder(10)(5)   // -> unresolved_reference 'x'
+@schemaless six         = incr(5)                           // -> 6
+
+// Classic curried adder.
+@schemaless adder       = fn(x: i64) -> fn(i64) -> i64 fn(y: i64) -> i64 x + y
+@schemaless add10       = adder(10)
+@schemaless fifteen     = add10(5)                          // -> 15
+@schemaless direct      = adder(3)(4)                       // -> 7
 
 // ── 7. Recursion (bool-returning, terminates via short-circuit) ──────
 // `n <= 0 || recurse(n-1)` short-circuits when `n` reaches 0, which is

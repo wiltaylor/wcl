@@ -67,6 +67,16 @@ pub struct FnValue {
     params: Vec<FnParam>,
     return_ty: TypeRef,
     pub(crate) body: Box<crate::ast::Expr>,
+    /// Snapshot of the evaluator's local bindings at the moment this
+    /// function literal was constructed. On invocation, captured pairs
+    /// are pushed onto the call's locals stack *before* the parameter
+    /// binds — so captures participate in identifier lookup but are
+    /// shadowed by parameters that reuse the same name.
+    ///
+    /// Document-scope identifiers (fields, blocks, types, unions)
+    /// are *not* captured: the document is immutable after open, so
+    /// they resolve correctly via scope walks at call time.
+    pub(crate) captured: Vec<(String, Value)>,
 }
 
 impl FnValue {
@@ -79,7 +89,13 @@ impl FnValue {
             params,
             return_ty,
             body,
+            captured: Vec::new(),
         }
+    }
+
+    pub(crate) fn with_captures(mut self, captured: Vec<(String, Value)>) -> Self {
+        self.captured = captured;
+        self
     }
 
     pub fn params(&self) -> &[FnParam] {
@@ -270,4 +286,36 @@ pub enum TypeRef {
 pub enum TensorDim {
     Fixed(u64),
     Symbolic(String),
+}
+
+impl std::fmt::Display for TensorDim {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TensorDim::Fixed(n) => write!(f, "{n}"),
+            TensorDim::Symbolic(s) => write!(f, "{s}"),
+        }
+    }
+}
+
+impl std::fmt::Display for TypeRef {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TypeRef::Builtin(b) => write!(f, "{}", b.name()),
+            TypeRef::Named(path) => write!(f, "{}", path.join(".")),
+            TypeRef::Reference(inner) => write!(f, "&{inner}"),
+            TypeRef::List(inner) => write!(f, "list<{inner}>"),
+            TypeRef::Tensor { element, dims } => {
+                let dims_str = dims
+                    .iter()
+                    .map(|d| d.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                write!(f, "tensor<{element}, [{dims_str}]>")
+            }
+            TypeRef::Function { params, return_ty } => {
+                let parts: Vec<String> = params.iter().map(|t| t.to_string()).collect();
+                write!(f, "fn({}) -> {return_ty}", parts.join(", "))
+            }
+        }
+    }
 }

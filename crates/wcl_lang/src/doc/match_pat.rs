@@ -85,11 +85,12 @@ pub(super) fn match_pattern(pat: &Pattern, val: &Value) -> Option<Vec<(String, V
                 payload,
             } => {
                 // Compare the pattern's type path against the value's
-                // resolved union FQN. We allow a suffix match so an
-                // unqualified `Shape::Circle` in source matches
-                // `["company", "Shape"]` at runtime — same rule the
-                // evaluator uses to resolve unions by namespace.
-                if !path_matches(type_path, union) {
+                // resolved union FQN. A *non-empty* `type_path` must
+                // match as a suffix (e.g. `Shape::Circle` matches
+                // `["company", "Shape"]`). An *empty* `type_path` is
+                // the unqualified-variant form: skip the union check
+                // and bind purely on variant name + payload shape.
+                if !type_path.is_empty() && !path_matches(type_path, union) {
                     return None;
                 }
                 if v_name != variant {

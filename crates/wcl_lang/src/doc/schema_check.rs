@@ -115,34 +115,54 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
         }
     }
 
-    // Value-vs-declared-type: when a schema field's declared type
-    // resolves to a union, the assigned value must be a variant of
-    // *that* union. Other type mismatches are intentionally ignored
-    // here; a broader value-vs-type framework is a future pass.
+    // Value-vs-declared-type. Two paths:
+    //   1. Union-typed fields: must hold a variant of the declared union.
+    //   2. Everything else: run the conservative `value_matches_type_ref`
+    //      shared with the dispatch matcher. Tensor / function /
+    //      reference types stay permissive.
     for declared in schema.fields() {
-        let crate::value::TypeRef::Named(path) = declared.type_ref() else {
-            continue;
-        };
-        let Some(union_decl) = block.doc.union_decl(&path.join(".")) else {
-            continue;
-        };
-        let expected_fqn = union_decl.ast.name.clone();
         let Some(literal_field) = block.field(declared.name()) else {
             continue;
         };
         if has_schemaless(&literal_field.ast.decorators) {
             continue;
         }
-        if let Ok(crate::value::Value::Variant { union, .. }) = literal_field.value()
-            && union != &expected_fqn
+        let Ok(value) = literal_field.value() else {
+            continue;
+        };
+
+        // Union path — preserved verbatim.
+        if let crate::value::TypeRef::Named(path) = declared.type_ref()
+            && let Some(union_decl) = block.doc.union_decl(&path.join("."))
         {
+            let expected_fqn = union_decl.ast.name.clone();
+            if let crate::value::Value::Variant { union, variant, .. } = value
+                && union != &expected_fqn
+            {
+                errs.push(EvalError::schema_violation(
+                    Kind::VariantUnionMismatch,
+                    format!(
+                        "field '{}' declared as union '{}' but value is {}::{}",
+                        literal_field.name(),
+                        expected_fqn.join("."),
+                        union.join("."),
+                        variant,
+                    ),
+                    literal_field.span(),
+                ));
+            }
+            continue;
+        }
+
+        // Generic value-vs-type check for non-union typed fields.
+        if !crate::doc::value_matches_type_ref(value, declared.type_ref()) {
             errs.push(EvalError::schema_violation(
-                Kind::VariantUnionMismatch,
+                Kind::FieldTypeMismatch,
                 format!(
-                    "field '{}' declared as union '{}' but value is variant of '{}'",
+                    "field '{}' declared as {} but value is {}",
                     literal_field.name(),
-                    expected_fqn.join("."),
-                    union.join("."),
+                    declared.type_ref(),
+                    value.type_name(),
                 ),
                 literal_field.span(),
             ));
