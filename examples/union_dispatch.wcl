@@ -1,0 +1,65 @@
+// Structural-shape dispatch for unions: a `@children(SomeUnion)` field
+// accepts both nested blocks (matched by their effective fields) AND
+// table rows (matched by the first column = variant name). A union-
+// typed decorator slot can also be populated by dispatching the
+// decorator's args.
+//
+// Foundation rules from the prior pass mean: variants with identical
+// shapes are caught at declaration time as `VariantShapeCollision`,
+// so the dispatcher's "unique match" is always well-defined here.
+
+// ── 1. Block dispatch ────────────────────────────────────────────────
+union Shape {
+  Circle { radius: f64 }
+  Square { side: f64 }
+}
+
+@block("scene")
+type Scene {
+  @children(Shape) shapes: list<Shape>
+}
+
+scene "main" {
+  circle { radius = 1.5 }
+  square { side = 2.0 }
+}
+
+// ── 2. Table dispatch ────────────────────────────────────────────────
+// Tables can't infer the variant from row shape (rows are positional),
+// so the first column names the variant. Symbol literals (`:Name`)
+// work cleanly; bare identifiers in row position are reserved by the
+// table grammar.
+union Step {
+  Greet { msg: utf8 }
+  Delay { ms: i64 }
+}
+
+@block("flow")
+type Flow {
+  @children(Step) steps: list<Step>
+}
+
+flow "boot" {
+  steps:
+    | :Greet | "hello" |
+    | :Delay | 100     |
+    | :Greet | "again" |
+}
+
+// ── 3. Mix of nested blocks and registered-kind children ─────────────
+// A schema can have both string-kind and union-typed children fields.
+// Each nested block tries the string-kind match first, then falls
+// through to union dispatch.
+@block("config")
+type ConfigSpec { name: utf8 }
+
+@block("mixed")
+type Mixed {
+  @child("config")    cfg:    ConfigSpec
+  @children(Shape)    shapes: list<Shape>
+}
+
+mixed "demo" {
+  config { name = "alpha" }
+  circle { radius = 3.0 }
+}

@@ -52,6 +52,14 @@ pub enum DataKind<'a> {
     /// `@children("kind")` where the row kind is `@table`-schema'd.
     /// Same shape as `BlockList` but exposes row/column accessors.
     Table(Vec<Block<'a>>),
+    /// A pre-materialised `Value::Variant` produced by structural
+    /// dispatch (block / decorator / table-row → variant). Hosts read
+    /// it via `DataRef::value()` like any leaf.
+    VariantValue(Value),
+    /// A list of `Value::Variant`s produced by `@children(SomeUnion)`
+    /// structural dispatch over multiple nested blocks or table rows.
+    /// Materialised as a flat `Value::List` of variants on `.value()`.
+    VariantValueList(Vec<Value>),
     Type(TypeDecl<'a>),
     TypeField(TypeField<'a>),
     Union(UnionDecl<'a>),
@@ -70,6 +78,8 @@ impl<'a> DataKind<'a> {
             DataKind::Block(_) => "block",
             DataKind::BlockList(_) => "block_list",
             DataKind::Table(_) => "table",
+            DataKind::VariantValue(_) => "variant_value",
+            DataKind::VariantValueList(_) => "variant_value_list",
             DataKind::Type(_) => "type",
             DataKind::TypeField(_) => "type_field",
             DataKind::Union(_) => "union",
@@ -90,6 +100,9 @@ impl<'a> DataKind<'a> {
                 .first()
                 .map(|b| b.span())
                 .unwrap_or_else(|| crate::ast::Span::new(0, 0)),
+            DataKind::VariantValue(_) | DataKind::VariantValueList(_) => {
+                crate::ast::Span::new(0, 0)
+            }
             DataKind::Type(t) => t.span(),
             DataKind::TypeField(f) => f.span(),
             DataKind::Union(u) => u.span(),
@@ -129,6 +142,12 @@ impl<'a> DataRef<'a> {
     pub fn from_document(d: &'a Document) -> Self {
         Self::new(DataKind::Document(d))
     }
+    pub fn from_variant_value(v: Value) -> Self {
+        Self::new(DataKind::VariantValue(v))
+    }
+    pub fn from_variant_value_list(vs: Vec<Value>) -> Self {
+        Self::new(DataKind::VariantValueList(vs))
+    }
 
     pub fn kind(&self) -> &'static str {
         self.inner.kind_name()
@@ -139,6 +158,7 @@ impl<'a> DataRef<'a> {
     pub fn len(&self) -> Option<usize> {
         match &self.inner {
             DataKind::BlockList(v) | DataKind::Table(v) => Some(v.len()),
+            DataKind::VariantValueList(vs) => Some(vs.len()),
             _ => None,
         }
     }
@@ -221,7 +241,11 @@ impl<'a> DataRef<'a> {
     /// - `Symbol` has no children; `None`.
     pub fn child(&self, name: &str) -> Option<DataRef<'a>> {
         match &self.inner {
-            DataKind::Field(_) | DataKind::TypeField(_) | DataKind::Symbol(_) => None,
+            DataKind::Field(_)
+            | DataKind::TypeField(_)
+            | DataKind::Symbol(_)
+            | DataKind::VariantValue(_)
+            | DataKind::VariantValueList(_) => None,
             DataKind::BlockList(v) | DataKind::Table(v) => {
                 // Address a row/block by its first label, comparing
                 // against `Utf8`, `Ascii`, and `Identifier`. This
@@ -280,6 +304,8 @@ impl<'a> DataRef<'a> {
                 Ok(v) => Ok(v.clone()),
                 Err(e) => Err(e.clone()),
             },
+            DataKind::VariantValue(v) => Ok(v.clone()),
+            DataKind::VariantValueList(vs) => Ok(Value::List(vs.clone())),
             _ => Err(EvalError::not_a_leaf(self.kind(), self.span())),
         }
     }
@@ -408,7 +434,11 @@ impl<'a> DataRef<'a> {
             DataKind::Document(_)
             | DataKind::Field(_)
             | DataKind::TypeField(_)
-            | DataKind::Symbol(_) => Box::new(std::iter::empty()),
+            | DataKind::Symbol(_)
+            | DataKind::VariantValue(_) => Box::new(std::iter::empty()),
+            DataKind::VariantValueList(vs) => {
+                Box::new(vs.clone().into_iter().map(DataRef::from_variant_value))
+            }
         }
     }
 }

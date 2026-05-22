@@ -68,6 +68,53 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
         }
     }
 
+    // Surface dispatch failures for union-typed @child / @children
+    // fields. Both block-to-variant and table-row-to-variant report
+    // through this channel — the typed_field accessor silently skips
+    // failures and depends on schema_errors() to expose them.
+    for declared in schema.fields() {
+        if let Some(crate::doc::ChildKind::Union(union)) = declared.children_kind_or_union() {
+            for (kind, blk) in block.union_children_blocks(declared.name()) {
+                let result = match kind {
+                    crate::doc::UnionChildKind::Nested => {
+                        crate::doc::variant_dispatch::block_to_variant(block.doc, &blk, union)
+                    }
+                    crate::doc::UnionChildKind::TableRow => {
+                        crate::doc::variant_dispatch::table_row_to_variant(block.doc, &blk, union)
+                    }
+                };
+                if let Err(e) = result {
+                    errs.push(e);
+                }
+            }
+        }
+        if let Some(crate::doc::ChildKind::Union(union)) = declared.child_kind_or_union() {
+            // Single-block @child: the first matching nested block is
+            // used; report no-match if every nested block fails.
+            let mut had_match = false;
+            for (kind, blk) in block.union_children_blocks(declared.name()) {
+                if matches!(kind, crate::doc::UnionChildKind::Nested)
+                    && crate::doc::variant_dispatch::block_to_variant(block.doc, &blk, union)
+                        .is_ok()
+                {
+                    had_match = true;
+                    break;
+                }
+            }
+            if !had_match {
+                errs.push(EvalError::schema_violation(
+                    Kind::VariantNoMatch,
+                    format!(
+                        "no nested block matches union '{}' for field '{}'",
+                        union.ast.name.join("."),
+                        declared.name(),
+                    ),
+                    block.span(),
+                ));
+            }
+        }
+    }
+
     // Value-vs-declared-type: when a schema field's declared type
     // resolves to a union, the assigned value must be a variant of
     // *that* union. Other type mismatches are intentionally ignored
@@ -162,21 +209,40 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
     // 2. Build the allowed-child set: union of @child/@children kinds
     // across this type's fields.
     let allowed = schema.allowed_child_kinds();
+    // Also collect any union types referenced by @child(SomeUnion) /
+    // @children(SomeUnion). A nested block that doesn't match an
+    // allowed *kind* is still legal if it structurally matches a
+    // variant of one of these unions.
+    let union_slots: Vec<crate::doc::UnionDecl<'_>> = schema
+        .fields()
+        .filter_map(|f| {
+            f.children_kind_or_union()
+                .and_then(|k| k.as_union().copied())
+                .or_else(|| f.child_kind_or_union().and_then(|k| k.as_union().copied()))
+        })
+        .collect();
 
     // 3. Per-kind: any nested block whose kind isn't in `allowed`
-    // is a DisallowedChild.
+    // AND which doesn't match any union variant is a DisallowedChild.
     for nested in block.blocks() {
-        if !allowed.iter().any(|k| k == nested.kind()) {
-            errs.push(EvalError::schema_violation(
-                Kind::DisallowedChild,
-                format!(
-                    "block kind '{}' is not allowed inside '{}'",
-                    nested.kind(),
-                    block.kind()
-                ),
-                nested.span(),
-            ));
+        if allowed.iter().any(|k| k == nested.kind()) {
+            continue;
         }
+        let matches_union = union_slots.iter().any(|u| {
+            crate::doc::variant_dispatch::block_to_variant(block.doc, &nested, *u).is_ok()
+        });
+        if matches_union {
+            continue;
+        }
+        errs.push(EvalError::schema_violation(
+            Kind::DisallowedChild,
+            format!(
+                "block kind '{}' is not allowed inside '{}'",
+                nested.kind(),
+                block.kind()
+            ),
+            nested.span(),
+        ));
     }
 
     // 4. `max_children = N` on @block: total nested-block count ≤ N.

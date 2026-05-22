@@ -397,6 +397,73 @@ fn collection_builtins_evaluate_end_to_end() {
 }
 
 #[test]
+fn union_dispatch_block_to_variant() {
+    let path = examples_dir().join("union_dispatch.wcl");
+    let doc = Document::from_file(&path).expect("union_dispatch fixture parses");
+    let shapes = doc
+        .get("scene.shapes")
+        .expect("scene.shapes")
+        .value()
+        .unwrap();
+    let Value::List(items) = shapes else {
+        panic!("scene.shapes should be a list");
+    };
+    assert_eq!(items.len(), 2);
+    let Value::Variant { variant, .. } = &items[0] else {
+        panic!("[0] should be a variant")
+    };
+    assert_eq!(variant, "Circle");
+    let Value::Variant { variant, .. } = &items[1] else {
+        panic!("[1] should be a variant")
+    };
+    assert_eq!(variant, "Square");
+}
+
+#[test]
+fn union_dispatch_table_rows_to_variants() {
+    let path = examples_dir().join("union_dispatch.wcl");
+    let doc = Document::from_file(&path).expect("union_dispatch fixture parses");
+    let steps = doc.get("flow.steps").expect("flow.steps").value().unwrap();
+    let Value::List(items) = steps else {
+        panic!("flow.steps should be a list");
+    };
+    assert_eq!(items.len(), 3);
+    let names: Vec<&str> = items
+        .iter()
+        .map(|v| {
+            let Value::Variant { variant, .. } = v else {
+                panic!("expected variant")
+            };
+            variant.as_str()
+        })
+        .collect();
+    assert_eq!(names, vec!["Greet", "Delay", "Greet"]);
+}
+
+#[test]
+fn union_dispatch_no_match_surfaces_schema_error() {
+    let src = r#"
+        union Shape { Circle { radius: f64 } Square { side: f64 } }
+        @block("scene")
+        type Scene { @children(Shape) shapes: list<Shape> }
+        scene "x" { weird { thing = 1 } }
+    "#;
+    let doc = Document::open(src, "test").unwrap();
+    let scene = doc.block("scene").unwrap();
+    let errs = scene.schema_errors();
+    assert!(
+        errs.iter().any(|e| matches!(
+            e,
+            EvalError::SchemaViolation {
+                kind: wcl_lang::SchemaViolationKind::VariantNoMatch,
+                ..
+            }
+        )),
+        "expected VariantNoMatch, got: {errs:#?}"
+    );
+}
+
+#[test]
 fn union_extends_inherits_variants() {
     let path = examples_dir().join("union_extends.wcl");
     let doc = Document::from_file(&path).expect("union_extends fixture parses");

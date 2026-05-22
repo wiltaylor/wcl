@@ -16,6 +16,7 @@ mod match_pat;
 mod schema_check;
 mod scope;
 mod validate;
+pub(super) mod variant_dispatch;
 
 use crate::ast::{self, Span};
 use crate::environment::Environment;
@@ -741,9 +742,34 @@ impl Document {
             }
         }
 
+        // Pre-compute the @document schema's union-typed children
+        // slots: a block matching one of these unions by structural
+        // shape is accepted regardless of its kind name.
+        let root_union_slots: Vec<UnionDecl<'_>> = root
+            .map(|s| {
+                s.fields()
+                    .filter_map(|f| {
+                        f.children_kind_or_union()
+                            .and_then(|k| k.as_union().copied())
+                            .or_else(|| f.child_kind_or_union().and_then(|k| k.as_union().copied()))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
         // Walk the top-level blocks.
         for b in self.blocks() {
             if has_schemaless(&b.ast.decorators) {
+                continue;
+            }
+            // A block dispatched through a union @children slot is
+            // exempt from kind registration + the disallowed-child
+            // check + recursion into its own schema errors (the
+            // dispatcher applies its own structural rules).
+            let dispatched_through_union = root_union_slots
+                .iter()
+                .any(|u| variant_dispatch::block_to_variant(self, &b, *u).is_ok());
+            if dispatched_through_union {
                 continue;
             }
             // First: the kind must be registered.
@@ -1033,6 +1059,65 @@ impl<'a> UnionVariant<'a> {
     }
 }
 
+/// Source kind for a union-typed `@children(SomeUnion)` element —
+/// nested block in source form, or a synthesised row from an
+/// `Item::Table`. Decides which dispatcher we hand the block off to.
+#[derive(Clone, Copy)]
+pub(crate) enum UnionChildKind {
+    Nested,
+    TableRow,
+}
+
+/// Resolves the positional argument of an `@child` / `@children`
+/// decorator into one of two acceptable shapes: a string kind name
+/// (the legacy form) or a reference to a `UnionDecl` (structural
+/// dispatch). Mirrors the namespace-resolution dance used elsewhere
+/// for path lookups.
+pub enum ChildKind<'a> {
+    /// `@child("button")` — match nested blocks by their `kind`.
+    Kind(String),
+    /// `@child(Component)` — match nested blocks by structural shape
+    /// against the union's variants.
+    Union(UnionDecl<'a>),
+}
+
+impl<'a> ChildKind<'a> {
+    pub fn as_kind(&self) -> Option<&str> {
+        match self {
+            ChildKind::Kind(s) => Some(s.as_str()),
+            ChildKind::Union(_) => None,
+        }
+    }
+
+    pub fn as_union(&self) -> Option<&UnionDecl<'a>> {
+        match self {
+            ChildKind::Kind(_) => None,
+            ChildKind::Union(u) => Some(u),
+        }
+    }
+}
+
+fn resolve_child_kind_arg<'a>(doc: &'a Document, positional: &[Value]) -> Option<ChildKind<'a>> {
+    let first = positional.first()?;
+    match first {
+        Value::Utf8(s) | Value::Ascii(s) => Some(ChildKind::Kind(s.clone())),
+        Value::Identifier(name) => {
+            let candidates: Vec<String> = if doc.file_ns.is_empty() {
+                vec![name.clone()]
+            } else {
+                vec![format!("{}.{}", doc.file_ns.join("."), name), name.clone()]
+            };
+            for fqn in &candidates {
+                if let Some(u) = doc.union_decl(fqn) {
+                    return Some(ChildKind::Union(u));
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
 pub enum VariantBodyView<'a> {
     Record,
     TypeRef(&'a TypeRef),
@@ -1110,6 +1195,27 @@ impl<'a> Decorator<'a> {
             Ok(v) => Ok(v.clone()),
             Err(e) => Err(e.clone()),
         })
+    }
+
+    /// Dispatch the decorator's positional + named args into a
+    /// `Value::Variant` for the given union, by structural shape.
+    /// Returns `VariantNoMatch` if the args don't fit any variant,
+    /// `VariantAmbiguous` defensively if multiple variants match.
+    pub fn dispatch_into_union(&self, union: UnionDecl<'a>) -> Result<Value, EvalError> {
+        let positional = self.positional()?;
+        let mut named_map: std::collections::BTreeMap<String, Value> =
+            std::collections::BTreeMap::new();
+        for n in self.named() {
+            let v = n.value()?;
+            named_map.insert(n.name().to_string(), v);
+        }
+        variant_dispatch::decorator_to_variant(
+            self.doc,
+            &positional,
+            &named_map,
+            union,
+            self.ast.span,
+        )
     }
 }
 
@@ -1545,23 +1651,41 @@ impl<'a> TypeField<'a> {
     }
 
     /// If this field carries an `@child("kind")` decorator, returns the
-    /// nested block kind it binds.
+    /// nested block kind it binds. Returns `None` when the decorator
+    /// is absent OR when its positional arg names a union type rather
+    /// than a string kind (use [`child_kind_or_union`] for the union
+    /// case).
     pub fn child_block_kind(&self) -> Option<String> {
-        let dec = self.decorators().find(|d| d.full_name() == "child")?;
-        match dec.positional().ok()?.into_iter().next()? {
-            Value::Utf8(s) | Value::Ascii(s) => Some(s),
-            _ => None,
+        match self.child_kind_or_union()? {
+            ChildKind::Kind(s) => Some(s),
+            ChildKind::Union(_) => None,
         }
     }
 
-    /// If this field carries an `@children("kind", min?, max?)` decorator,
-    /// returns the nested block kind it binds.
+    /// If this field carries an `@children("kind", min?, max?)`
+    /// decorator, returns the nested block kind it binds. Returns
+    /// `None` for the union form — use [`children_kind_or_union`].
     pub fn children_block_kind(&self) -> Option<String> {
-        let dec = self.decorators().find(|d| d.full_name() == "children")?;
-        match dec.positional().ok()?.into_iter().next()? {
-            Value::Utf8(s) | Value::Ascii(s) => Some(s),
-            _ => None,
+        match self.children_kind_or_union()? {
+            ChildKind::Kind(s) => Some(s),
+            ChildKind::Union(_) => None,
         }
+    }
+
+    /// Resolves the positional arg of `@child(...)` into either a
+    /// string kind or a union declaration. `None` when the decorator
+    /// is absent or the arg is neither.
+    pub fn child_kind_or_union(&self) -> Option<ChildKind<'a>> {
+        let dec = self.decorators().find(|d| d.full_name() == "child")?;
+        resolve_child_kind_arg(self.doc, &dec.positional().ok()?)
+    }
+
+    /// Resolves the positional arg of `@children(...)` into either a
+    /// string kind or a union declaration. `None` when the decorator
+    /// is absent or the arg is neither.
+    pub fn children_kind_or_union(&self) -> Option<ChildKind<'a>> {
+        let dec = self.decorators().find(|d| d.full_name() == "children")?;
+        resolve_child_kind_arg(self.doc, &dec.positional().ok()?)
     }
 
     /// Like [`children_block_kind`] but borrows directly from the AST
@@ -2012,6 +2136,16 @@ impl<'a> Block<'a> {
         let schema = self.schema()?;
         let f = schema.field(name)?;
 
+        // Union-typed @children: dispatch every nested block / table
+        // row to a Value::Variant via structural-shape matching.
+        if let Some(crate::doc::ChildKind::Union(union)) = f.children_kind_or_union() {
+            return Some(self.dispatch_union_children(name, union));
+        }
+        // Union-typed @child: dispatch the single matching nested block.
+        if let Some(crate::doc::ChildKind::Union(union)) = f.child_kind_or_union() {
+            return Some(self.dispatch_union_child(union));
+        }
+
         if let Some(kind) = f.children_block_kind_str() {
             // Use the projection: combines literal nested blocks of
             // this kind with synthesised blocks from `Item::Table`
@@ -2039,6 +2173,110 @@ impl<'a> Block<'a> {
         }
         // Plain schema field → look it up in literal block items.
         self.field(name).map(crate::data::DataRef::from_field)
+    }
+
+    /// Dispatch all of a `@children(SomeUnion)` field's nested blocks
+    /// and table rows through structural-shape matching to produce a
+    /// list of `Value::Variant`. Failures from individual blocks or
+    /// rows are silently skipped here; the schema check pipeline
+    /// emits them via `Document::schema_errors()`.
+    fn dispatch_union_children(
+        &self,
+        field_name: &str,
+        union: UnionDecl<'a>,
+    ) -> crate::data::DataRef<'a> {
+        let mut out: Vec<Value> = Vec::new();
+        for (kind, blk) in self.union_children_blocks(field_name) {
+            let v = match kind {
+                UnionChildKind::Nested => variant_dispatch::block_to_variant(self.doc, &blk, union),
+                UnionChildKind::TableRow => {
+                    variant_dispatch::table_row_to_variant(self.doc, &blk, union)
+                }
+            };
+            if let Ok(v) = v {
+                out.push(v);
+            }
+        }
+        crate::data::DataRef::from_variant_value_list(out)
+    }
+
+    /// Iterate the nested-block + synth-row sources for a union-typed
+    /// `@children(SomeUnion)` field. Each entry comes back with a
+    /// tag identifying which dispatcher should consume it.
+    pub(crate) fn union_children_blocks(
+        &self,
+        field_name: &str,
+    ) -> Vec<(UnionChildKind, Block<'a>)> {
+        let (items_cells, synth_rows) = match &self.cells.kind {
+            ItemCellKind::Block {
+                items, synth_rows, ..
+            } => (items, synth_rows),
+            _ => unreachable!("Block view wraps a Block cell"),
+        };
+        let mut out: Vec<(UnionChildKind, Block<'a>)> = Vec::new();
+        let child_scope = self.child_scope();
+        for (item, cells) in self.ast.items.iter().zip(items_cells.iter()) {
+            match item {
+                ast::Item::Block(b) => {
+                    out.push((
+                        UnionChildKind::Nested,
+                        Block {
+                            ast: b,
+                            cells,
+                            doc: self.doc,
+                            kind_override: None,
+                            scope: child_scope.clone(),
+                        },
+                    ));
+                }
+                ast::Item::Table(t) if t.field_name == field_name => {
+                    let mut synth_iter = synth_rows.iter().filter(|r| r.field_name == field_name);
+                    for _ in &t.rows {
+                        if let Some(sr) = synth_iter.next() {
+                            out.push((
+                                UnionChildKind::TableRow,
+                                Block {
+                                    ast: &sr.block,
+                                    cells: &sr.cells,
+                                    doc: self.doc,
+                                    kind_override: None,
+                                    scope: child_scope.clone(),
+                                },
+                            ));
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        out
+    }
+
+    /// Dispatch a single nested block to a variant for a
+    /// `@child(SomeUnion)` field.
+    fn dispatch_union_child(&self, union: UnionDecl<'a>) -> crate::data::DataRef<'a> {
+        let (items_cells, _) = match &self.cells.kind {
+            ItemCellKind::Block {
+                items, synth_rows, ..
+            } => (items, synth_rows),
+            _ => unreachable!("Block view wraps a Block cell"),
+        };
+        let child_scope = self.child_scope();
+        for (item, cells) in self.ast.items.iter().zip(items_cells.iter()) {
+            if let ast::Item::Block(b) = item {
+                let blk = Block {
+                    ast: b,
+                    cells,
+                    doc: self.doc,
+                    kind_override: None,
+                    scope: child_scope.clone(),
+                };
+                if let Ok(v) = variant_dispatch::block_to_variant(self.doc, &blk, union) {
+                    return crate::data::DataRef::from_variant_value(v);
+                }
+            }
+        }
+        crate::data::DataRef::from_variant_value(Value::None)
     }
 
     /// Build the list of `Block`s for one `@children(kind)` field —
@@ -2933,6 +3171,8 @@ fn describe_datakind(k: &crate::data::DataKind<'_>) -> &'static str {
         DataKind::Variant(_) => "variant",
         DataKind::Symbols(_) => "symbol set",
         DataKind::Symbol(_) => "symbol",
+        DataKind::VariantValue(_) => "variant value",
+        DataKind::VariantValueList(_) => "variant value list",
     }
 }
 
@@ -2941,7 +3181,7 @@ fn describe_datakind(k: &crate::data::DataKind<'_>) -> &'static str {
 /// how to compare. Named/Reference/Function/Tensor/List types are
 /// accepted permissively for now (the alternative would be a much
 /// bigger value-vs-type framework).
-fn value_matches_type_ref(value: &Value, ty: &TypeRef) -> bool {
+pub(crate) fn value_matches_type_ref(value: &Value, ty: &TypeRef) -> bool {
     use crate::value::BuiltinType as B;
     match (value, ty) {
         (Value::Bool(_), TypeRef::Builtin(B::Bool)) => true,
