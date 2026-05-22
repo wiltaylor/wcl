@@ -6,13 +6,14 @@ use clap::{Parser, Subcommand};
 use wcl_lang::{
     Block, ConnectionDecl, DeclName, Decorator, Document, Field, ParseError, Profile, ProfileKey,
     ProfileNode, SymbolSetDecl, TypeDecl, UnionDecl, UnionVariant, UseDeclView, UseFormView, Value,
-    VariantBodyView,
+    VariantBodyView, format as wcl_format, parse_for_edit,
 };
 
 const EXIT_OK: u8 = 0;
 const EXIT_PARSE: u8 = 1;
 const EXIT_SCHEMA: u8 = 2;
 const EXIT_EVAL: u8 = 3;
+const EXIT_IO: u8 = 4;
 
 fn open_document(file: &Path, profile: bool) -> Result<Document, ParseError> {
     if profile {
@@ -67,6 +68,18 @@ enum Command {
         #[arg(long)]
         profile: bool,
     },
+    /// Parse a WCL file and re-emit it in canonical form. Comments and
+    /// blank-line groupings survive; indentation, brace style, number
+    /// radix and string-delimiter choice are normalised.
+    Fmt {
+        /// Path to a WCL source file.
+        file: PathBuf,
+        /// Overwrite the file in place (atomically). Without this flag,
+        /// the formatted source is written to stdout and the file on
+        /// disk is left untouched.
+        #[arg(long = "in-place")]
+        in_place: bool,
+    },
 }
 
 fn main() -> ExitCode {
@@ -110,6 +123,13 @@ fn main() -> ExitCode {
                 EXIT_PARSE
             }
         },
+        Command::Fmt { file, in_place } => match run_fmt(&file, in_place) {
+            Ok(code) => code,
+            Err(msg) => {
+                eprintln!("{msg}");
+                EXIT_IO
+            }
+        },
         Command::Eval {
             file,
             path,
@@ -145,6 +165,45 @@ fn main() -> ExitCode {
         },
     };
     ExitCode::from(code)
+}
+
+/// Drive `parse_for_edit → format::to_source` and either print the
+/// result to stdout or atomically overwrite the input file. Returns
+/// the exit code (`EXIT_OK` on success, `EXIT_PARSE` on parse failure)
+/// or an error message describing an I/O failure.
+fn run_fmt(file: &Path, in_place: bool) -> Result<u8, String> {
+    let src = std::fs::read_to_string(file)
+        .map_err(|e| format!("failed to read {}: {e}", file.display()))?;
+    let ast = match parse_for_edit(&src, file.display().to_string()) {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("{:?}", miette::Report::new(e));
+            return Ok(EXIT_PARSE);
+        }
+    };
+    let formatted = wcl_format::to_source(&ast);
+    if in_place {
+        write_atomic(file, &formatted)
+            .map_err(|e| format!("failed to write {}: {e}", file.display()))?;
+    } else {
+        print!("{formatted}");
+    }
+    Ok(EXIT_OK)
+}
+
+/// Write `contents` to `target` via a same-directory temp file +
+/// rename. Avoids leaving a partial file on disk if the host gets
+/// interrupted mid-write.
+fn write_atomic(target: &Path, contents: &str) -> std::io::Result<()> {
+    let dir = target.parent().unwrap_or_else(|| Path::new("."));
+    let mut tmp = tempfile::Builder::new()
+        .prefix(".wcl-fmt-")
+        .tempfile_in(dir)?;
+    use std::io::Write as _;
+    tmp.write_all(contents.as_bytes())?;
+    tmp.persist(target)
+        .map_err(|e| std::io::Error::other(format!("rename to target failed: {e}")))?;
+    Ok(())
 }
 
 /// Return the closest top-level name (Levenshtein ≤ 2) to `needle`.

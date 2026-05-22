@@ -369,8 +369,8 @@ impl Printer {
     }
 
     fn print_type_field(&mut self, f: &TypeField) {
-        self.print_decorators_inline(&f.decorators);
         self.write_indent();
+        self.print_decorators_inline(&f.decorators);
         self.push(&f.name);
         self.push(": ");
         self.print_type_ref(&f.ty);

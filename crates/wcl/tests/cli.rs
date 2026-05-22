@@ -215,3 +215,55 @@ fn eval_reflective_decorator_queries() {
         .success()
         .stdout(predicate::str::contains("none"));
 }
+
+#[test]
+fn fmt_to_stdout_is_idempotent_on_basic_example() {
+    let first = wcl()
+        .arg("fmt")
+        .arg(examples_dir().join("basic.wcl"))
+        .assert()
+        .success();
+    let formatted = String::from_utf8(first.get_output().stdout.clone()).unwrap();
+
+    // Write the formatted output to a temp file and reformat it. The
+    // second pass must produce byte-identical output (idempotence).
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let file = tmp.path().join("once.wcl");
+    std::fs::write(&file, &formatted).expect("write fmt output");
+    let second = wcl().arg("fmt").arg(&file).assert().success();
+    let formatted2 = String::from_utf8(second.get_output().stdout.clone()).unwrap();
+    assert_eq!(formatted, formatted2);
+}
+
+#[test]
+fn fmt_in_place_rewrites_file_atomically() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let file = tmp.path().join("input.wcl");
+    // Non-canonical input: extra whitespace + a trailing semicolon-
+    // looking thing the printer will normalise.
+    std::fs::write(&file, "@schemaless x  =   1\n").expect("write fixture");
+
+    wcl()
+        .arg("fmt")
+        .arg("--in-place")
+        .arg(&file)
+        .assert()
+        .success()
+        .stdout(predicate::str::is_empty());
+
+    let after = std::fs::read_to_string(&file).expect("read after fmt");
+    assert_eq!(after, "@schemaless x = 1\n");
+}
+
+#[test]
+fn fmt_reports_parse_error_via_exit_code() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let file = tmp.path().join("broken.wcl");
+    std::fs::write(&file, "name =\n").expect("write fixture");
+    wcl()
+        .arg("fmt")
+        .arg(&file)
+        .assert()
+        .code(1)
+        .stderr(predicate::str::contains("expected value"));
+}
