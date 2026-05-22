@@ -787,18 +787,18 @@ impl Document {
     /// Look up the type that schemas a block of the given kind, i.e. the
     /// first type carrying a `@block("kind")` decorator.
     pub fn block_schema(&self, kind: &str) -> Option<TypeDecl<'_>> {
-        self.find_schema("block", kind)
+        self.find_schema(BuiltinDecorator::Block, kind)
     }
 
     /// Look up the type that schemas a decorator of the given name.
     pub fn decorator_schema(&self, name: &str) -> Option<TypeDecl<'_>> {
-        self.find_schema("decorator", name)
+        self.find_schema(BuiltinDecorator::Decorator, name)
     }
 
     /// Look up the type that schemas a table of the given name, i.e.
     /// the first type carrying an `@table("name")` decorator.
     pub fn table_schema(&self, name: &str) -> Option<TypeDecl<'_>> {
-        self.find_schema("table", name)
+        self.find_schema(BuiltinDecorator::Table, name)
     }
 
     /// Look up the type carrying the `@document` decorator, if any.
@@ -806,13 +806,16 @@ impl Document {
     /// returns the first and `Document::schema_errors` surfaces a
     /// `MultipleDocumentSchemas` violation.
     pub fn doc_schema(&self) -> Option<TypeDecl<'_>> {
-        self.find_all_decorated("document").into_iter().next()
+        self.find_all_decorated(BuiltinDecorator::Document)
+            .into_iter()
+            .next()
     }
 
     /// Every type declaration carrying the named decorator. Used by
     /// the document-level validator to detect duplicate `@document`
     /// declarations.
-    pub(crate) fn find_all_decorated(&self, dec_name: &str) -> Vec<TypeDecl<'_>> {
+    pub(crate) fn find_all_decorated(&self, dec: BuiltinDecorator) -> Vec<TypeDecl<'_>> {
+        let dec_name = dec.as_str();
         self.type_decls()
             .filter(|t| t.decorators().any(|d| d.full_name() == dec_name))
             .collect()
@@ -840,7 +843,7 @@ impl Document {
         // Detect multiple @document declarations (the first one
         // wins for `doc_schema()` but the duplicates are surfaced
         // as a violation).
-        let doc_schemas = self.find_all_decorated("document");
+        let doc_schemas = self.find_all_decorated(BuiltinDecorator::Document);
         for extra in doc_schemas.iter().skip(1) {
             out.push(EvalError::schema_violation(
                 Kind::MultipleDocumentSchemas,
@@ -1011,7 +1014,8 @@ impl Document {
         out
     }
 
-    fn find_schema(&self, dec_name: &str, value: &str) -> Option<TypeDecl<'_>> {
+    fn find_schema(&self, dec: BuiltinDecorator, value: &str) -> Option<TypeDecl<'_>> {
+        let dec_name = dec.as_str();
         let want = Value::Utf8(value.to_string());
         self.type_decls().find(|t| {
             t.decorators().any(|d| {
@@ -1026,13 +1030,65 @@ impl Document {
     }
 }
 
+/// Closed set of decorator names the document layer special-cases:
+/// schema dispatch (`@block`, `@table`, `@document`, `@decorator`),
+/// field shape (`@inline`, `@default`, `@child`, `@children`),
+/// connection decomposition (`@connections`), and per-block schema
+/// opt-out (`@schemaless`). User-defined decorators are matched by
+/// their declared name and don't go through this enum.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub(crate) enum BuiltinDecorator {
+    Block,
+    Table,
+    Document,
+    Decorator,
+    Schemaless,
+    Inline,
+    Default,
+    Child,
+    Children,
+    Connections,
+}
+
+impl BuiltinDecorator {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            BuiltinDecorator::Block => "block",
+            BuiltinDecorator::Table => "table",
+            BuiltinDecorator::Document => "document",
+            BuiltinDecorator::Decorator => "decorator",
+            BuiltinDecorator::Schemaless => "schemaless",
+            BuiltinDecorator::Inline => "inline",
+            BuiltinDecorator::Default => "default",
+            BuiltinDecorator::Child => "child",
+            BuiltinDecorator::Children => "children",
+            BuiltinDecorator::Connections => "connections",
+        }
+    }
+}
+
 /// Extract a `u64`-valued named argument from the first decorator in
 /// `decs` whose `full_name()` matches `dec_name`. Returns `None` if the
 /// decorator isn't present, the named arg isn't present, the eval
 /// failed, or the value isn't a non-negative integer.
-fn decorator_u64_named(decs: &[Decorator<'_>], dec_name: &str, arg_name: &str) -> Option<u64> {
-    let dec = decs.iter().find(|d| d.full_name() == dec_name)?;
-    dec.named_arg(arg_name)?.ok()?.as_u64()
+fn decorator_u64_named(
+    decs: &[Decorator<'_>],
+    dec: BuiltinDecorator,
+    arg_name: &str,
+) -> Option<u64> {
+    let found = find_builtin_dec(decs, dec)?;
+    found.named_arg(arg_name)?.ok()?.as_u64()
+}
+
+/// Borrow the first decorator on `decs` whose `full_name()` matches the
+/// canonical name of `dec`. Used by view methods that special-case one
+/// of the builtin decorators (e.g. `Field::default_value`, `Field::child`).
+fn find_builtin_dec<'a, 'b>(
+    decs: &'b [Decorator<'a>],
+    dec: BuiltinDecorator,
+) -> Option<&'b Decorator<'a>> {
+    let name = dec.as_str();
+    decs.iter().find(|d| d.full_name() == name)
 }
 
 #[derive(Debug)]
@@ -1338,6 +1394,14 @@ impl<'a> Decorator<'a> {
 
     pub fn full_name(&self) -> String {
         self.ast.name.join(".")
+    }
+
+    /// `true` if this decorator's single-segment name matches the
+    /// canonical name of `dec`. Cheap (no allocation, unlike
+    /// `full_name()`), so prefer this for filtering against builtin
+    /// decorator names.
+    pub(crate) fn is(&self, dec: BuiltinDecorator) -> bool {
+        self.ast.name.len() == 1 && self.ast.name[0] == dec.as_str()
     }
 
     pub fn span(&self) -> Span {
@@ -1678,7 +1742,7 @@ impl<'a> TypeDecl<'a> {
     /// type.
     pub fn max_children(&self) -> Option<u64> {
         let decs: Vec<_> = self.decorators().collect();
-        decorator_u64_named(&decs, "block", "max_children")
+        decorator_u64_named(&decs, BuiltinDecorator::Block, "max_children")
     }
 
     /// `required_children = ["kind", ...]` named arg on the type's
@@ -1687,7 +1751,7 @@ impl<'a> TypeDecl<'a> {
     /// list are silently dropped.
     pub fn required_children(&self) -> Vec<String> {
         let decs: Vec<_> = self.decorators().collect();
-        let dec = match decs.iter().find(|d| d.full_name() == "block") {
+        let dec = match find_builtin_dec(&decs, BuiltinDecorator::Block) {
             Some(d) => d,
             None => return Vec::new(),
         };
@@ -1938,13 +2002,15 @@ impl<'a> TypeField<'a> {
     /// If this field carries an `@inline(N)` decorator, returns N.
     /// Used by schemas to map block label slots to typed fields.
     pub fn inline_slot(&self) -> Option<u64> {
-        let dec = self.decorators().find(|d| d.full_name() == "inline")?;
+        let dec = self.decorators().find(|d| d.is(BuiltinDecorator::Inline))?;
         dec.positional().ok()?.first()?.as_u64()
     }
 
     /// If this field carries an `@default(v)` decorator, returns v.
     pub fn default_value(&self) -> Option<Value> {
-        let dec = self.decorators().find(|d| d.full_name() == "default")?;
+        let dec = self
+            .decorators()
+            .find(|d| d.is(BuiltinDecorator::Default))?;
         dec.positional().ok()?.into_iter().next()
     }
 
@@ -1974,7 +2040,7 @@ impl<'a> TypeField<'a> {
     /// string kind or a union declaration. `None` when the decorator
     /// is absent or the arg is neither.
     pub fn child_kind_or_union(&self) -> Option<ChildKind<'a>> {
-        let dec = self.decorators().find(|d| d.full_name() == "child")?;
+        let dec = self.decorators().find(|d| d.is(BuiltinDecorator::Child))?;
         resolve_child_kind_arg(self.doc, &dec.positional().ok()?)
     }
 
@@ -1982,7 +2048,9 @@ impl<'a> TypeField<'a> {
     /// string kind or a union declaration. `None` when the decorator
     /// is absent or the arg is neither.
     pub fn children_kind_or_union(&self) -> Option<ChildKind<'a>> {
-        let dec = self.decorators().find(|d| d.full_name() == "children")?;
+        let dec = self
+            .decorators()
+            .find(|d| d.is(BuiltinDecorator::Children))?;
         resolve_child_kind_arg(self.doc, &dec.positional().ok()?)
     }
 
@@ -1990,7 +2058,9 @@ impl<'a> TypeField<'a> {
     /// connection schema. `None` if the decorator is absent or the
     /// positional arg doesn't name a declared connection.
     pub fn connection_schema(&self) -> Option<ConnectionDecl<'a>> {
-        let dec = self.decorators().find(|d| d.full_name() == "connections")?;
+        let dec = self
+            .decorators()
+            .find(|d| d.is(BuiltinDecorator::Connections))?;
         let positional = dec.positional().ok()?;
         let first = positional.first()?;
         let name = match first {
@@ -2032,12 +2102,20 @@ impl<'a> TypeField<'a> {
 
     /// Optional `min` cardinality on `@children(...)`.
     pub fn children_min(&self) -> Option<u64> {
-        decorator_u64_named(&self.decorators().collect::<Vec<_>>(), "children", "min")
+        decorator_u64_named(
+            &self.decorators().collect::<Vec<_>>(),
+            BuiltinDecorator::Children,
+            "min",
+        )
     }
 
     /// Optional `max` cardinality on `@children(...)`.
     pub fn children_max(&self) -> Option<u64> {
-        decorator_u64_named(&self.decorators().collect::<Vec<_>>(), "children", "max")
+        decorator_u64_named(
+            &self.decorators().collect::<Vec<_>>(),
+            BuiltinDecorator::Children,
+            "max",
+        )
     }
 
     pub fn name(&self) -> &'a str {

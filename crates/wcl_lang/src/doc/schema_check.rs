@@ -14,12 +14,13 @@ use crate::ast;
 use crate::error::EvalError;
 
 use super::cells::ItemCellKind;
-use super::{Block, DeclName};
+use super::{Block, BuiltinDecorator, DeclName};
 
 pub(super) fn has_schemaless(decorators: &[ast::Decorator]) -> bool {
+    let name = BuiltinDecorator::Schemaless.as_str();
     decorators
         .iter()
-        .any(|d| d.name.len() == 1 && d.name[0] == "schemaless")
+        .any(|d| d.name.len() == 1 && d.name[0] == name)
 }
 
 /// Validate every `Item::Connection` in a flat item list against the
