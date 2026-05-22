@@ -1,0 +1,160 @@
+//! Type-reference parsing: `&T`, `list<T>`, `tensor<T, [...]>`,
+//! `fn(...) -> T`, named refs, builtin scalars.
+
+use crate::ast::Span;
+use crate::error::ParseError;
+use crate::lexer::TokenKind;
+use crate::value::{BuiltinType, TensorDim, TypeRef};
+
+use super::{Parser, describe};
+
+impl<'a> Parser<'a> {
+    pub(super) fn parse_type_ref(&mut self) -> Result<(TypeRef, Span), ParseError> {
+        let head = self.peek()?;
+        if matches!(head.kind, TokenKind::Amp) {
+            let amp = self.bump()?;
+            let (inner, inner_span) = self.parse_type_atom()?;
+            let span = Span::new(amp.span.start, inner_span.end);
+            Ok((TypeRef::Reference(Box::new(inner)), span))
+        } else {
+            self.parse_type_atom()
+        }
+    }
+
+    fn parse_type_atom(&mut self) -> Result<(TypeRef, Span), ParseError> {
+        // Contextual keywords introduced by an ident followed by a specific
+        // opener: `list<...>`, `tensor<..., [...]>`, `fn(...) -> T`.
+        let head_ident = match &self.peek()?.kind {
+            TokenKind::Ident(s) => Some(s.clone()),
+            _ => None,
+        };
+        if let Some(s) = head_ident {
+            let next = &self.peek2()?.kind;
+            match (s.as_str(), next) {
+                ("list", TokenKind::Lt) => return self.parse_list_type(),
+                ("tensor", TokenKind::Lt) => return self.parse_tensor_type(),
+                ("fn", TokenKind::LParen) => return self.parse_function_type(),
+                _ => {}
+            }
+        }
+
+        let head = self.peek()?;
+        if matches!(head.kind, TokenKind::Ident(_)) {
+            let (path, path_span) = self.parse_path()?;
+            Ok((path_to_type_ref(&path), path_span))
+        } else {
+            let span = head.span;
+            let kind_desc = describe(&head.kind);
+            Err(self.err(
+                format!("expected type, found {kind_desc}"),
+                span,
+                "expected type",
+            ))
+        }
+    }
+
+    /// Parse a `keyword<body>` form: bump the keyword, expect `<`, run
+    /// `parse_body`, expect `>`. Used by `list<T>` and `tensor<T, [...]>`.
+    /// `keyword` is folded into the open/close error messages.
+    pub(super) fn parse_angle_bracketed<F, R>(
+        &mut self,
+        keyword: &'static str,
+        parse_body: F,
+    ) -> Result<(R, Span), ParseError>
+    where
+        F: FnOnce(&mut Self) -> Result<R, ParseError>,
+    {
+        let start = self.bump()?.span.start;
+        self.expect(TokenKind::Lt, &format!("expected '<' after '{keyword}'"))?;
+        let body = parse_body(self)?;
+        let gt = self.expect(
+            TokenKind::Gt,
+            &format!("expected '>' to close {keyword}<...>"),
+        )?;
+        Ok((body, Span::new(start, gt.span.end)))
+    }
+
+    fn parse_list_type(&mut self) -> Result<(TypeRef, Span), ParseError> {
+        self.parse_angle_bracketed("list", |p| {
+            let (inner, _) = p.parse_type_ref()?;
+            Ok(TypeRef::List(Box::new(inner)))
+        })
+    }
+
+    fn parse_tensor_type(&mut self) -> Result<(TypeRef, Span), ParseError> {
+        self.parse_angle_bracketed("tensor", |p| {
+            let (element, _) = p.parse_type_ref()?;
+            p.expect(TokenKind::Comma, "expected ',' after tensor element type")?;
+            let lbracket = p.expect(TokenKind::LBracket, "expected '[' for tensor dimensions")?;
+            let mut dims: Vec<TensorDim> = Vec::new();
+            loop {
+                if matches!(p.peek()?.kind, TokenKind::RBracket) {
+                    break;
+                }
+                dims.push(p.parse_tensor_dim()?);
+                match p.peek()?.kind {
+                    TokenKind::Comma => {
+                        p.bump()?;
+                    }
+                    TokenKind::RBracket => break,
+                    _ => {
+                        let tok = p.peek()?;
+                        let span = tok.span;
+                        let kind = describe(&tok.kind);
+                        return Err(p.err(
+                            format!("expected ',' or ']' in tensor dimensions, found {kind}"),
+                            span,
+                            "expected ',' or ']'",
+                        ));
+                    }
+                }
+            }
+            let rbracket = p.expect(TokenKind::RBracket, "expected ']' to close tensor dims")?;
+            if dims.is_empty() {
+                return Err(p.err(
+                    "tensor must have at least one dimension",
+                    Span::new(lbracket.span.start, rbracket.span.end),
+                    "expected at least one dimension",
+                ));
+            }
+            Ok(TypeRef::Tensor {
+                element: Box::new(element),
+                dims,
+            })
+        })
+    }
+
+    fn parse_tensor_dim(&mut self) -> Result<TensorDim, ParseError> {
+        let tok = self.bump()?;
+        let span = tok.span;
+        match tok.kind {
+            TokenKind::Number(n) => n.as_u64().map(TensorDim::Fixed).ok_or_else(|| {
+                self.err(
+                    "tensor dimensions must be non-negative integers or symbolic identifiers",
+                    span,
+                    "invalid dimension",
+                )
+            }),
+            TokenKind::Ident(name) => Ok(TensorDim::Symbolic(name)),
+            other => Err(self.err(
+                format!(
+                    "expected dimension (integer or identifier), found {}",
+                    describe(&other)
+                ),
+                span,
+                "expected dimension",
+            )),
+        }
+    }
+}
+
+/// Promote a parsed path into either a builtin scalar (`u32`, `utf8`,
+/// …) or a named-type reference.
+pub(super) fn path_to_type_ref(path: &[String]) -> TypeRef {
+    if path.len() == 1
+        && let Some(b) = BuiltinType::from_name(&path[0])
+    {
+        return TypeRef::Builtin(b);
+    }
+    TypeRef::Named(path.to_vec())
+}

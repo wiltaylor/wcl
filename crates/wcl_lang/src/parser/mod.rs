@@ -1,20 +1,20 @@
+mod pattern;
+mod types;
+
 use miette::{NamedSource, SourceSpan};
 
 use crate::ast::{
     BinOp, Block, Decorator, Expr, Field, FunctionLit, ImportDecl, Item, LetBinding, MatchArm,
     NamedArg, NamespaceDecl, Parameter, Pattern, Source, Span, SymbolEntry, SymbolSetDecl,
     TypeDecl, TypeField, UnaryOp, UnionDecl, UnionVariant, UseDecl, UseForm, UseItem, VariantArgs,
-    VariantBody, VariantPatArgs,
+    VariantBody,
 };
 use crate::error::ParseError;
 use crate::lexer::{LexError, Lexer, NumberLit, StringLit, Token, TokenKind};
 use crate::symbols::{DuplicateSymbol, SymbolIndex, SymbolKind, SymbolPath, SymbolRecord};
-use crate::value::{BuiltinType, TensorDim, TypeRef};
+use crate::value::TypeRef;
 
-/// `(fields, has_rest, close_brace_end)`. Returned by
-/// `Parser::parse_record_pattern_fields` so both qualified and
-/// unqualified variant patterns can share the body parser.
-type RecordPatBody = (Vec<(String, Pattern)>, bool, usize);
+use pattern::{collect_binding_names, pattern_span};
 
 pub struct Parser<'a> {
     file: String,
@@ -827,205 +827,6 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn parse_pattern(&mut self) -> Result<Pattern, ParseError> {
-        let tok = self.peek()?;
-        match &tok.kind {
-            TokenKind::Ident(s) if s == "_" => {
-                let t = self.bump()?;
-                Ok(Pattern::Wildcard(t.span))
-            }
-            TokenKind::Ident(_) => {
-                // Could be: Binding, At pattern, Variant (path :: Variant),
-                // or *unqualified* variant (`Name(...)` / `Name { ... }`).
-                // Decide by peek2:
-                //   - peek2 == `@` → At
-                //   - peek2 == `::` → Variant (single-segment qualified)
-                //   - peek2 == `.`  → multi-segment path; consume to find `::`
-                //   - peek2 == `(` or `{` → unqualified variant (no type_path)
-                //   - else → Binding
-                let p2 = self.peek2()?.kind.clone();
-                match p2 {
-                    TokenKind::At => {
-                        let (name, name_span) = self.bump_ident("expected binding name")?;
-                        self.bump()?; // '@'
-                        let inner = self.parse_pattern()?;
-                        let span = Span::new(name_span.start, pattern_span(&inner).end);
-                        Ok(Pattern::At {
-                            name,
-                            inner: Box::new(inner),
-                            span,
-                        })
-                    }
-                    TokenKind::ColonColon | TokenKind::Dot => self.parse_variant_pattern(),
-                    TokenKind::LParen | TokenKind::LBrace => {
-                        self.parse_unqualified_variant_pattern()
-                    }
-                    _ => {
-                        let (name, span) = self.bump_ident("expected binding name")?;
-                        Ok(Pattern::Binding { name, span })
-                    }
-                }
-            }
-            TokenKind::Bool(_)
-            | TokenKind::Number(_)
-            | TokenKind::Str(_)
-            | TokenKind::Symbol(_) => {
-                // Bump and dispatch on the owned kind so the literal
-                // extraction is unambiguous to the compiler — avoids the
-                // `let-else unreachable!()` shape that peek-then-bump
-                // would otherwise require.
-                let t = self.bump()?;
-                let span = t.span;
-                match t.kind {
-                    TokenKind::Bool(b) => Ok(Pattern::LiteralBool(b, span)),
-                    TokenKind::Number(n) => Ok(Pattern::LiteralNumber { lit: n, span }),
-                    TokenKind::Str(crate::lexer::StringLit::Utf8(text)) => {
-                        Ok(Pattern::LiteralUtf8(text, span))
-                    }
-                    TokenKind::Str(crate::lexer::StringLit::Ascii(text)) => {
-                        Ok(Pattern::LiteralAscii(text, span))
-                    }
-                    TokenKind::Str(other) => Err(self.err(
-                        format!(
-                            "string patterns require utf8 or ascii literals, got {}",
-                            match other {
-                                crate::lexer::StringLit::Utf16(_) => "utf16",
-                                crate::lexer::StringLit::Utf32(_) => "utf32",
-                                _ => "string",
-                            }
-                        ),
-                        span,
-                        "unsupported string-pattern kind",
-                    )),
-                    TokenKind::Symbol(s) => Ok(Pattern::LiteralSymbol(s, span)),
-                    // Outer arm guard already restricted us to these
-                    // four kinds; any other is a structural bug.
-                    _ => unreachable!("literal-pattern arm guard"),
-                }
-            }
-            TokenKind::None => {
-                let t = self.bump()?;
-                Ok(Pattern::LiteralNone(t.span))
-            }
-            _ => {
-                let span = tok.span;
-                let kind = describe(&tok.kind);
-                Err(self.err(
-                    format!("expected pattern, found {kind}"),
-                    span,
-                    "expected pattern",
-                ))
-            }
-        }
-    }
-
-    /// Parse `Path::Variant variant_pattern_args?`. Called when the
-    /// outer pattern parser sees `Ident` followed by `.` or `::`.
-    fn parse_variant_pattern(&mut self) -> Result<Pattern, ParseError> {
-        let (path, path_span) = self.parse_path()?;
-        self.expect(
-            TokenKind::ColonColon,
-            "expected '::' after type path in pattern",
-        )?;
-        let (v_name, v_span) = self.bump_ident("expected variant name after '::'")?;
-        let (args, args_end) = self.parse_variant_pat_args(v_span.end)?;
-        Ok(Pattern::Variant {
-            type_path: path,
-            variant: v_name,
-            args,
-            span: Span::new(path_span.start, args_end),
-        })
-    }
-
-    /// Parse `Name(...)` / `Name { ... }` as an *unqualified* variant
-    /// pattern. The matcher resolves the variant via the scrutinee's
-    /// runtime union at match time.
-    fn parse_unqualified_variant_pattern(&mut self) -> Result<Pattern, ParseError> {
-        let (v_name, name_span) = self.bump_ident("expected variant name")?;
-        let (args, args_end) = self.parse_variant_pat_args(name_span.end)?;
-        Ok(Pattern::Variant {
-            type_path: Vec::new(), // unqualified — matcher uses scrutinee's union
-            variant: v_name,
-            args,
-            span: Span::new(name_span.start, args_end),
-        })
-    }
-
-    /// Parse the args trailer common to both qualified and unqualified
-    /// variant patterns: `(inner_pattern)`, `{ field: pat, .., }`, or
-    /// no trailer at all (unit form). `name_end` is the end-pos of the
-    /// preceding variant name; when there's no trailer it doubles as
-    /// the args end-pos.
-    fn parse_variant_pat_args(
-        &mut self,
-        name_end: usize,
-    ) -> Result<(VariantPatArgs, usize), ParseError> {
-        match self.peek()?.kind {
-            TokenKind::LParen => {
-                self.bump()?;
-                let inner = self.parse_pattern()?;
-                let rp = self.expect(TokenKind::RParen, "expected ')' after variant pattern")?;
-                Ok((VariantPatArgs::Positional(Box::new(inner)), rp.span.end))
-            }
-            TokenKind::LBrace => {
-                self.bump()?;
-                let (fields, rest, brace_end) = self.parse_record_pattern_fields()?;
-                Ok((VariantPatArgs::Record { fields, rest }, brace_end))
-            }
-            _ => Ok((VariantPatArgs::Unit, name_end)),
-        }
-    }
-
-    /// Parse the body of a record-pattern `{ field: pat, ..,  }` after
-    /// the opening brace has already been consumed. Returns the field
-    /// list, whether a `..` rest pattern was present, and the end-pos
-    /// of the closing `}`.
-    fn parse_record_pattern_fields(&mut self) -> Result<RecordPatBody, ParseError> {
-        let mut fields: Vec<(String, Pattern)> = Vec::new();
-        let mut rest = false;
-        while !matches!(self.peek()?.kind, TokenKind::RBrace) {
-            if matches!(self.peek()?.kind, TokenKind::DotDot) {
-                self.bump()?;
-                rest = true;
-                // Trailing comma after `..` is allowed.
-                if matches!(self.peek()?.kind, TokenKind::Comma) {
-                    self.bump()?;
-                }
-                break;
-            }
-            let (fname, fname_span) = self.bump_ident("expected field name in record pattern")?;
-            let inner = if matches!(self.peek()?.kind, TokenKind::Colon) {
-                self.bump()?;
-                self.parse_pattern()?
-            } else {
-                // `{ name }` shorthand → bind by the field's own name.
-                Pattern::Binding {
-                    name: fname.clone(),
-                    span: fname_span,
-                }
-            };
-            fields.push((fname, inner));
-            match self.peek()?.kind {
-                TokenKind::Comma => {
-                    self.bump()?;
-                }
-                TokenKind::RBrace => break,
-                _ => {
-                    let p = self.peek()?;
-                    let span = p.span;
-                    let kind = describe(&p.kind);
-                    return Err(self.err(
-                        format!("expected ',' or '}}' in record pattern, found {kind}"),
-                        span,
-                        "expected ',' or '}'",
-                    ));
-                }
-            }
-        }
-        let rb = self.expect(TokenKind::RBrace, "expected '}' to close record pattern")?;
-        Ok((fields, rest, rb.span.end))
-    }
-
     fn parse_list_literal(&mut self) -> Result<(Expr, Span), ParseError> {
         let lb = self.bump()?; // '['
         let mut elements = Vec::new();
@@ -1297,7 +1098,7 @@ impl<'a> Parser<'a> {
     /// Refuses to consume a `Dot` if the next token after it is not an
     /// identifier — that way `foo.bar.{...}` parses as path `[foo, bar]`
     /// with the `.{` left for the caller (`parse_use_decl`).
-    fn parse_path(&mut self) -> Result<(Vec<String>, Span), ParseError> {
+    pub(super) fn parse_path(&mut self) -> Result<(Vec<String>, Span), ParseError> {
         let first = self.bump()?;
         let TokenKind::Ident(name) = first.kind else {
             let span = first.span;
@@ -1984,145 +1785,7 @@ impl<'a> Parser<'a> {
         }))
     }
 
-    fn parse_type_ref(&mut self) -> Result<(TypeRef, Span), ParseError> {
-        let head = self.peek()?;
-        if matches!(head.kind, TokenKind::Amp) {
-            let amp = self.bump()?;
-            let (inner, inner_span) = self.parse_type_atom()?;
-            let span = Span::new(amp.span.start, inner_span.end);
-            Ok((TypeRef::Reference(Box::new(inner)), span))
-        } else {
-            self.parse_type_atom()
-        }
-    }
-
-    fn parse_type_atom(&mut self) -> Result<(TypeRef, Span), ParseError> {
-        // Contextual keywords introduced by an ident followed by a specific
-        // opener: `list<...>`, `tensor<..., [...]>`, `fn(...) -> T`.
-        let head_ident = match &self.peek()?.kind {
-            TokenKind::Ident(s) => Some(s.clone()),
-            _ => None,
-        };
-        if let Some(s) = head_ident {
-            let next = &self.peek2()?.kind;
-            match (s.as_str(), next) {
-                ("list", TokenKind::Lt) => return self.parse_list_type(),
-                ("tensor", TokenKind::Lt) => return self.parse_tensor_type(),
-                ("fn", TokenKind::LParen) => return self.parse_function_type(),
-                _ => {}
-            }
-        }
-
-        let head = self.peek()?;
-        if matches!(head.kind, TokenKind::Ident(_)) {
-            let (path, path_span) = self.parse_path()?;
-            Ok((path_to_type_ref(&path), path_span))
-        } else {
-            let span = head.span;
-            let kind_desc = describe(&head.kind);
-            Err(self.err(
-                format!("expected type, found {kind_desc}"),
-                span,
-                "expected type",
-            ))
-        }
-    }
-
-    /// Parse a `keyword<body>` form: bump the keyword, expect `<`, run
-    /// `parse_body`, expect `>`. Used by `list<T>` and `tensor<T, [...]>`.
-    /// `keyword` is folded into the open/close error messages.
-    fn parse_angle_bracketed<F, R>(
-        &mut self,
-        keyword: &'static str,
-        parse_body: F,
-    ) -> Result<(R, Span), ParseError>
-    where
-        F: FnOnce(&mut Self) -> Result<R, ParseError>,
-    {
-        let start = self.bump()?.span.start;
-        self.expect(TokenKind::Lt, &format!("expected '<' after '{keyword}'"))?;
-        let body = parse_body(self)?;
-        let gt = self.expect(
-            TokenKind::Gt,
-            &format!("expected '>' to close {keyword}<...>"),
-        )?;
-        Ok((body, Span::new(start, gt.span.end)))
-    }
-
-    fn parse_list_type(&mut self) -> Result<(TypeRef, Span), ParseError> {
-        self.parse_angle_bracketed("list", |p| {
-            let (inner, _) = p.parse_type_ref()?;
-            Ok(TypeRef::List(Box::new(inner)))
-        })
-    }
-
-    fn parse_tensor_type(&mut self) -> Result<(TypeRef, Span), ParseError> {
-        self.parse_angle_bracketed("tensor", |p| {
-            let (element, _) = p.parse_type_ref()?;
-            p.expect(TokenKind::Comma, "expected ',' after tensor element type")?;
-            let lbracket = p.expect(TokenKind::LBracket, "expected '[' for tensor dimensions")?;
-            let mut dims: Vec<TensorDim> = Vec::new();
-            loop {
-                if matches!(p.peek()?.kind, TokenKind::RBracket) {
-                    break;
-                }
-                dims.push(p.parse_tensor_dim()?);
-                match p.peek()?.kind {
-                    TokenKind::Comma => {
-                        p.bump()?;
-                    }
-                    TokenKind::RBracket => break,
-                    _ => {
-                        let tok = p.peek()?;
-                        let span = tok.span;
-                        let kind = describe(&tok.kind);
-                        return Err(p.err(
-                            format!("expected ',' or ']' in tensor dimensions, found {kind}"),
-                            span,
-                            "expected ',' or ']'",
-                        ));
-                    }
-                }
-            }
-            let rbracket = p.expect(TokenKind::RBracket, "expected ']' to close tensor dims")?;
-            if dims.is_empty() {
-                return Err(p.err(
-                    "tensor must have at least one dimension",
-                    Span::new(lbracket.span.start, rbracket.span.end),
-                    "expected at least one dimension",
-                ));
-            }
-            Ok(TypeRef::Tensor {
-                element: Box::new(element),
-                dims,
-            })
-        })
-    }
-
-    fn parse_tensor_dim(&mut self) -> Result<TensorDim, ParseError> {
-        let tok = self.bump()?;
-        let span = tok.span;
-        match tok.kind {
-            TokenKind::Number(n) => n.as_u64().map(TensorDim::Fixed).ok_or_else(|| {
-                self.err(
-                    "tensor dimensions must be non-negative integers or symbolic identifiers",
-                    span,
-                    "invalid dimension",
-                )
-            }),
-            TokenKind::Ident(name) => Ok(TensorDim::Symbolic(name)),
-            other => Err(self.err(
-                format!(
-                    "expected dimension (integer or identifier), found {}",
-                    describe(&other)
-                ),
-                span,
-                "expected dimension",
-            )),
-        }
-    }
-
-    fn expect(&mut self, kind: TokenKind, msg: &str) -> Result<Token, ParseError> {
+    pub(super) fn expect(&mut self, kind: TokenKind, msg: &str) -> Result<Token, ParseError> {
         let tok = self.bump()?;
         if std::mem::discriminant(&tok.kind) == std::mem::discriminant(&kind) {
             Ok(tok)
@@ -2138,7 +1801,7 @@ impl<'a> Parser<'a> {
     /// using `msg` as the surface context (e.g. `"expected identifier
     /// after '.'"`). Replaces the recurring `peek → bump → let-else
     /// unreachable!()` pattern.
-    fn bump_ident(&mut self, msg: &str) -> Result<(String, Span), ParseError> {
+    pub(super) fn bump_ident(&mut self, msg: &str) -> Result<(String, Span), ParseError> {
         let tok = self.bump()?;
         let span = tok.span;
         if let TokenKind::Ident(name) = tok.kind {
@@ -2231,14 +1894,14 @@ impl<'a> Parser<'a> {
         }))
     }
 
-    fn peek(&mut self) -> Result<&Token, ParseError> {
+    pub(super) fn peek(&mut self) -> Result<&Token, ParseError> {
         if self.peeked.is_none() {
             self.peeked = Some(self.next_lex()?);
         }
         Ok(self.peeked.as_ref().expect("just set"))
     }
 
-    fn peek2(&mut self) -> Result<&Token, ParseError> {
+    pub(super) fn peek2(&mut self) -> Result<&Token, ParseError> {
         self.peek()?;
         if self.peeked2.is_none() {
             self.peeked2 = Some(self.next_lex()?);
@@ -2246,7 +1909,7 @@ impl<'a> Parser<'a> {
         Ok(self.peeked2.as_ref().expect("just set"))
     }
 
-    fn bump(&mut self) -> Result<Token, ParseError> {
+    pub(super) fn bump(&mut self) -> Result<Token, ParseError> {
         if let Some(t) = self.peeked.take() {
             self.peeked = self.peeked2.take();
             Ok(t)
@@ -2353,7 +2016,12 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn err(&self, message: impl Into<String>, span: Span, label: impl Into<String>) -> ParseError {
+    pub(super) fn err(
+        &self,
+        message: impl Into<String>,
+        span: Span,
+        label: impl Into<String>,
+    ) -> ParseError {
         let len = span.len().max(1);
         ParseError::syntax(
             message.into(),
@@ -2386,7 +2054,7 @@ fn is_expr_start(t: &TokenKind) -> bool {
     )
 }
 
-fn describe(t: &TokenKind) -> String {
+pub(super) fn describe(t: &TokenKind) -> String {
     match t {
         TokenKind::Ident(s) => format!("identifier '{s}'"),
         TokenKind::Str(_) => "string".to_string(),
@@ -2462,60 +2130,6 @@ fn flatten_path_expr(expr: &Expr) -> Option<Vec<String>> {
     }
 }
 
-fn pattern_span(p: &Pattern) -> Span {
-    match p {
-        Pattern::Wildcard(s)
-        | Pattern::LiteralBool(_, s)
-        | Pattern::LiteralUtf8(_, s)
-        | Pattern::LiteralAscii(_, s)
-        | Pattern::LiteralSymbol(_, s)
-        | Pattern::LiteralNone(s) => *s,
-        Pattern::Binding { span, .. }
-        | Pattern::At { span, .. }
-        | Pattern::LiteralNumber { span, .. }
-        | Pattern::Variant { span, .. } => *span,
-    }
-}
-
-/// Collect every binding name the pattern introduces. Used to enforce
-/// that all `|` alternatives bind the same names.
-fn collect_binding_names(p: &Pattern) -> std::collections::BTreeSet<String> {
-    use std::collections::BTreeSet;
-    fn walk(p: &Pattern, out: &mut BTreeSet<String>) {
-        match p {
-            Pattern::Binding { name, .. } => {
-                out.insert(name.clone());
-            }
-            Pattern::At { name, inner, .. } => {
-                out.insert(name.clone());
-                walk(inner, out);
-            }
-            Pattern::Variant { args, .. } => match args {
-                VariantPatArgs::Unit => {}
-                VariantPatArgs::Positional(inner) => walk(inner, out),
-                VariantPatArgs::Record { fields, .. } => {
-                    for (_, p) in fields {
-                        walk(p, out);
-                    }
-                }
-            },
-            _ => {}
-        }
-    }
-    let mut s = BTreeSet::new();
-    walk(p, &mut s);
-    s
-}
-
-fn path_to_type_ref(path: &[String]) -> TypeRef {
-    if path.len() == 1
-        && let Some(b) = BuiltinType::from_name(&path[0])
-    {
-        return TypeRef::Builtin(b);
-    }
-    TypeRef::Named(path.to_vec())
-}
-
 fn number_to_expr(n: NumberLit) -> Expr {
     match n {
         NumberLit::I8(v) => Expr::I8(v),
@@ -2558,5 +2172,5 @@ fn bin_op_info(k: &TokenKind) -> Option<(u8, u8, BinOp)> {
 }
 
 #[cfg(test)]
-#[path = "parser_tests.rs"]
+#[path = "../parser_tests.rs"]
 mod tests;

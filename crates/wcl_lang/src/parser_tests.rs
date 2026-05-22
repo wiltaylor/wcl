@@ -1,4 +1,5 @@
 use super::*;
+use crate::value::{BuiltinType, TensorDim};
 
 fn parse(src: &str) -> Source {
     Parser::new(src, "test").parse_source().expect("parse ok").0
