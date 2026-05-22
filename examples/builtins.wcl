@@ -26,5 +26,7 @@
 // Block expression with let-bindings.
 @schemaless combined  = { let a = upper("x"); let b = upper("y"); add(len(a), len(b)) }
 
-// Function literals are still inert — assignable but not callable.
+// Function literals are first-class values: bind one to a field and
+// invoke it by name.
 @schemaless double    = fn(x: i32) -> i32 x * 2
+@schemaless doubled4  = double(4)

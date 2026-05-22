@@ -94,10 +94,27 @@ pub enum EvalError {
         span: SourceSpan,
     },
 
-    #[error("callee is not a built-in function")]
+    #[error("callee is not callable")]
     #[diagnostic(code(wcl::eval::non_callable))]
     NonCallable {
         #[label("not callable")]
+        span: SourceSpan,
+    },
+
+    #[error("call expected {expected} argument(s), got {got}")]
+    #[diagnostic(code(wcl::eval::call_arity))]
+    CallArity {
+        expected: usize,
+        got: usize,
+        #[label("wrong number of arguments")]
+        span: SourceSpan,
+    },
+
+    #[error("call depth limit exceeded (max {max})")]
+    #[diagnostic(code(wcl::eval::call_depth_exceeded))]
+    CallDepthExceeded {
+        max: usize,
+        #[label("function call recurses too deeply")]
         span: SourceSpan,
     },
 
@@ -265,6 +282,21 @@ impl EvalError {
 
     pub(crate) fn non_callable(span: crate::ast::Span) -> Self {
         Self::NonCallable {
+            span: span_to_miette(span),
+        }
+    }
+
+    pub(crate) fn call_arity(expected: usize, got: usize, span: crate::ast::Span) -> Self {
+        Self::CallArity {
+            expected,
+            got,
+            span: span_to_miette(span),
+        }
+    }
+
+    pub(crate) fn call_depth_exceeded(max: usize, span: crate::ast::Span) -> Self {
+        Self::CallDepthExceeded {
+            max,
             span: span_to_miette(span),
         }
     }

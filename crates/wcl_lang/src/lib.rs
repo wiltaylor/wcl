@@ -5,6 +5,7 @@
 
 pub(crate) mod ast;
 mod builtins;
+mod collections;
 mod data;
 mod doc;
 mod environment;
@@ -16,7 +17,9 @@ mod symbols;
 mod value;
 
 pub use ast::Span;
-pub use builtins::{BuiltinFn, FromValue, IntoBuiltin, IntoValue, IntoValueResult, from_fn};
+pub use builtins::{
+    BuiltinFn, Caller, FromValue, IntoBuiltin, IntoValue, IntoValueResult, from_fn,
+};
 pub use data::{DataKind, DataRef};
 pub use doc::{
     Block, DeclName, Decorator, Document, Field, InterfaceDecl, NamedArg, ResolvedType, RowView,

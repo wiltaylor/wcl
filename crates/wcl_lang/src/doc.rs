@@ -2078,6 +2078,11 @@ impl<'a> RowView<'a> {
     }
 }
 
+/// Hard cap on nested user-`fn` invocations during a single evaluation.
+/// Prevents accidental recursion in a `Value::Function` body from blowing
+/// the Rust stack; surfaces as [`EvalError::CallDepthExceeded`].
+const MAX_CALL_DEPTH: usize = 256;
+
 pub(crate) struct EvalCtx<'a> {
     /// Stack of name → value bindings introduced by `Block` let-bindings.
     /// Searched right-to-left so the most recent binding shadows older ones.
@@ -2085,6 +2090,8 @@ pub(crate) struct EvalCtx<'a> {
     /// Lexical scope of the expression's evaluation site. Used to
     /// resolve bare identifiers and `self`/`parent`.
     scope: Scope<'a>,
+    /// Current nested `Value::Function` invocation depth.
+    call_depth: usize,
 }
 
 impl<'a> EvalCtx<'a> {
@@ -2092,6 +2099,7 @@ impl<'a> EvalCtx<'a> {
         Self {
             locals: Vec::new(),
             scope,
+            call_depth: 0,
         }
     }
 
@@ -2100,6 +2108,61 @@ impl<'a> EvalCtx<'a> {
             .iter()
             .rev()
             .find_map(|(n, v)| if n == name { Some(v) } else { None })
+    }
+}
+
+/// Resolve `name` to a `Value::Function`, if it has one bound in the
+/// caller's locals or document scope. Returns `None` for anything else
+/// (non-function values, missing names) so the caller can decide what
+/// fallback to take (e.g. dispatch to a builtin by the same name).
+fn lookup_function(doc: &Document, ctx: &EvalCtx<'_>, name: &str) -> Option<FnValue> {
+    if let Some(Value::Function(fv)) = ctx.lookup(name) {
+        return Some(fv.clone());
+    }
+    let dr = doc.scope_lookup(&ctx.scope, name)?;
+    let span = Span::new(0, 0);
+    match materialise_dataref(dr, span) {
+        Ok(Value::Function(fv)) => Some(fv),
+        _ => None,
+    }
+}
+
+/// Attach the call site name to a generic call-arity error, so error
+/// reporting for `myFn(1, 2)` mentions `myFn`. Other variants pass
+/// through unchanged.
+fn call_err_at(err: EvalError, name: String, span: Span) -> EvalError {
+    match err {
+        EvalError::CallArity { expected, got, .. } => {
+            EvalError::builtin_arity(name, expected, got, span)
+        }
+        other => other,
+    }
+}
+
+/// `Caller` impl used by the evaluator to invoke `Value::Function`
+/// callbacks from inside HOF builtins. Holds a back-reference to the
+/// document and the live `EvalCtx`, so the call observes (and reuses)
+/// the surrounding evaluation's locals/scope/call_depth.
+struct EvalCaller<'a, 'c> {
+    doc: &'a Document,
+    ctx: &'c mut EvalCtx<'a>,
+    span: Span,
+    /// If a user-function invocation surfaces an `EvalError`, we stash
+    /// it here and return a string from `call_fn` so the builtin can
+    /// short-circuit. The dispatch site re-raises the structured error.
+    err: Option<EvalError>,
+}
+
+impl crate::builtins::Caller for EvalCaller<'_, '_> {
+    fn call_fn(&mut self, f: &FnValue, args: &[Value]) -> Result<Value, String> {
+        match self.doc.invoke_fn_value(f, args, self.ctx, self.span) {
+            Ok(v) => Ok(v),
+            Err(e) => {
+                let msg = e.to_string();
+                self.err = Some(e);
+                Err(msg)
+            }
+        }
     }
 }
 
@@ -2219,27 +2282,63 @@ impl Document {
                 return apply_binary(*op, l, r, *span);
             }
             E::Call { callee, args, span } => {
-                let name = match callee.as_ref() {
-                    E::Identifier(n) => n.clone(),
-                    _ => return Err(EvalError::non_callable(*span)),
-                };
-                let Some(builtin) = self.env.builtin(&name) else {
-                    return Err(EvalError::unknown_builtin(name, *span));
-                };
-                if args.len() != builtin.arity {
-                    return Err(EvalError::builtin_arity(
-                        name,
-                        builtin.arity,
-                        args.len(),
-                        *span,
-                    ));
+                // Resolution order: when callee is a bare identifier, try
+                // to find a `Value::Function` in locals/scope first; fall
+                // back to the builtin registry by name. For any other
+                // callee expression, evaluate it and require a function
+                // value.
+                if let E::Identifier(name) = callee.as_ref() {
+                    if let Some(fv) = lookup_function(self, ctx, name) {
+                        let mut evald = Vec::with_capacity(args.len());
+                        for arg in args {
+                            evald.push(self.eval_in(arg, ctx)?);
+                        }
+                        return self
+                            .invoke_fn_value(&fv, &evald, ctx, *span)
+                            .map_err(|e| call_err_at(e, name.clone(), *span));
+                    }
+                    let Some(builtin) = self.env.builtin(name).cloned() else {
+                        return Err(EvalError::unknown_builtin(name.clone(), *span));
+                    };
+                    if args.len() != builtin.arity {
+                        return Err(EvalError::builtin_arity(
+                            name.clone(),
+                            builtin.arity,
+                            args.len(),
+                            *span,
+                        ));
+                    }
+                    let mut evald = Vec::with_capacity(args.len());
+                    for arg in args {
+                        evald.push(self.eval_in(arg, ctx)?);
+                    }
+                    return match &builtin.kind {
+                        crate::builtins::BuiltinKind::Pure(body) => (body)(&evald)
+                            .map_err(|msg| EvalError::builtin_type(name.clone(), msg, *span)),
+                        crate::builtins::BuiltinKind::Hof(body) => {
+                            let mut caller = EvalCaller {
+                                doc: self,
+                                ctx,
+                                span: *span,
+                                err: None,
+                            };
+                            let res = (body)(&mut caller, &evald);
+                            if let Some(e) = caller.err.take() {
+                                return Err(e);
+                            }
+                            res.map_err(|msg| EvalError::builtin_type(name.clone(), msg, *span))
+                        }
+                    };
                 }
+                let callee_val = self.eval_in(callee, ctx)?;
+                let Value::Function(fv) = callee_val else {
+                    return Err(EvalError::non_callable(*span));
+                };
                 let mut evald = Vec::with_capacity(args.len());
                 for arg in args {
                     evald.push(self.eval_in(arg, ctx)?);
                 }
-                return (builtin.body)(&evald)
-                    .map_err(|msg| EvalError::builtin_type(name, msg, *span));
+                return self.invoke_fn_value(&fv, &evald, ctx, *span);
             }
             E::Block { lets, tail, .. } => {
                 let frame_base = ctx.locals.len();
@@ -2259,6 +2358,39 @@ impl Document {
                 Value::List(out)
             }
         })
+    }
+
+    /// Apply a `Value::Function` to the supplied argument values. Pushes
+    /// the function's parameters onto `ctx.locals`, evaluates the body in
+    /// the caller's context, and pops the frame regardless of outcome.
+    ///
+    /// Closure semantics: the body sees its own parameters plus whatever
+    /// the caller's `ctx` has on its `locals` stack and `scope` chain.
+    /// There is no capture of the *definition-site* scope in this pass,
+    /// so a function value passed across blocks observes the *call*
+    /// site's lexical environment, not its origin.
+    pub(crate) fn invoke_fn_value<'a>(
+        &'a self,
+        f: &FnValue,
+        args: &[Value],
+        ctx: &mut EvalCtx<'a>,
+        span: Span,
+    ) -> Result<Value, EvalError> {
+        if args.len() != f.params().len() {
+            return Err(EvalError::call_arity(f.params().len(), args.len(), span));
+        }
+        if ctx.call_depth >= MAX_CALL_DEPTH {
+            return Err(EvalError::call_depth_exceeded(MAX_CALL_DEPTH, span));
+        }
+        let frame_base = ctx.locals.len();
+        for (param, value) in f.params().iter().zip(args.iter()) {
+            ctx.locals.push((param.name().to_string(), value.clone()));
+        }
+        ctx.call_depth += 1;
+        let result = self.eval_in(&f.body, ctx);
+        ctx.call_depth -= 1;
+        ctx.locals.truncate(frame_base);
+        result
     }
 
     /// Walk a path expression and return the navigator for its
@@ -3618,20 +3750,28 @@ mod tests {
     }
 
     #[test]
-    fn eval_user_function_call_is_non_callable() {
-        // Function-literal values aren't yet executable.
+    fn eval_user_function_call_returns_body_value() {
+        // Function literals are first-class: bind one to a field and call
+        // it by name; the body sees the parameter as a local.
         let doc = open_with_builtins(
             r#"
             f = fn(x: i32) -> i32 x
             y = f(3)
             "#,
         );
+        assert_eq!(*doc.field("y").unwrap().value().unwrap(), Value::I64(3));
+    }
+
+    #[test]
+    fn eval_user_function_arity_mismatch() {
+        let doc = open_with_builtins(
+            r#"
+            f = fn(x: i32) -> i32 x
+            y = f(1, 2)
+            "#,
+        );
         let err = doc.field("y").unwrap().value().unwrap_err();
-        // `f` evaluates first as an Identifier → looks up the Field, finds
-        // a Value::Function — but Call's callee must be an `Identifier`
-        // bound to a builtin name. Since `f` isn't a registered builtin,
-        // we get UnknownBuiltin.
-        assert!(matches!(err, EvalError::UnknownBuiltin { .. }));
+        assert!(matches!(err, EvalError::BuiltinArity { .. }));
     }
 
     // ─── Lazy data access (DataRef / Document::get) ───────────────────

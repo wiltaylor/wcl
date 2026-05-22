@@ -15,7 +15,7 @@
 use std::sync::Arc;
 
 use crate::numeric::for_each_numeric_variant;
-use crate::value::Value;
+use crate::value::{FnValue, Value};
 
 /// Convert a [`Value`] into a concrete Rust type for use as a built-in
 /// function argument. Returning `Err(String)` produces a
@@ -55,8 +55,39 @@ where
     }
 }
 
-/// Internal type of the boxed dispatcher held by [`BuiltinFn`].
+/// Internal type of the boxed dispatcher held by a pure [`BuiltinFn`].
 pub(crate) type BuiltinBody = Arc<dyn Fn(&[Value]) -> Result<Value, String> + Send + Sync>;
+
+/// Internal type of the boxed dispatcher held by a higher-order [`BuiltinFn`].
+/// Receives a [`Caller`] so the builtin can invoke `Value::Function` callbacks
+/// back through the evaluator.
+pub(crate) type BuiltinHofBody =
+    Arc<dyn Fn(&mut dyn Caller, &[Value]) -> Result<Value, String> + Send + Sync>;
+
+/// Invokes WCL function values from inside a higher-order builtin.
+///
+/// The evaluator constructs a `Caller` at every call site that dispatches to
+/// an HOF builtin; the builtin receives it as `&mut dyn Caller` and uses
+/// [`Caller::call_fn`] to apply user-supplied callbacks (the `fn` argument
+/// to `map`, `filter`, `fold`, …) without needing to know anything about
+/// the evaluator internals.
+pub trait Caller {
+    /// Invoke a function value with the supplied arguments. Returns the
+    /// callee's result, or a string describing the failure (arity mismatch,
+    /// runtime evaluation error, recursion-depth exceeded, …) which is
+    /// surfaced through `EvalError::BuiltinTypeMismatch` at the original
+    /// call site.
+    fn call_fn(&mut self, f: &FnValue, args: &[Value]) -> Result<Value, String>;
+}
+
+/// Body kind for a registered builtin: either a pure function over
+/// [`Value`]s, or a higher-order one that needs access to the evaluator
+/// via [`Caller`].
+#[derive(Clone)]
+pub(crate) enum BuiltinKind {
+    Pure(BuiltinBody),
+    Hof(BuiltinHofBody),
+}
 
 /// A registered built-in. Carries its arity for fast call-site validation
 /// plus a boxed dispatch closure that handles arg unmarshalling, the
@@ -64,19 +95,37 @@ pub(crate) type BuiltinBody = Arc<dyn Fn(&[Value]) -> Result<Value, String> + Se
 #[derive(Clone)]
 pub struct BuiltinFn {
     pub(crate) arity: usize,
-    pub(crate) body: BuiltinBody,
+    pub(crate) kind: BuiltinKind,
 }
 
 impl BuiltinFn {
     pub fn arity(&self) -> usize {
         self.arity
     }
+
+    /// Construct a higher-order builtin: one that receives a [`Caller`]
+    /// and can invoke `Value::Function` callbacks. The closure handles
+    /// arg unmarshalling itself.
+    pub fn hof<F>(arity: usize, f: F) -> Self
+    where
+        F: Fn(&mut dyn Caller, &[Value]) -> Result<Value, String> + Send + Sync + 'static,
+    {
+        Self {
+            arity,
+            kind: BuiltinKind::Hof(Arc::new(f)),
+        }
+    }
 }
 
 impl std::fmt::Debug for BuiltinFn {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let kind = match &self.kind {
+            BuiltinKind::Pure(_) => "pure",
+            BuiltinKind::Hof(_) => "hof",
+        };
         f.debug_struct("BuiltinFn")
             .field("arity", &self.arity)
+            .field("kind", &kind)
             .finish()
     }
 }
@@ -249,7 +298,7 @@ macro_rules! impl_into_builtin {
                         )*
                         (self)($($name),*).into_value_result()
                     });
-                BuiltinFn { arity, body }
+                BuiltinFn { arity, kind: BuiltinKind::Pure(body) }
             }
         }
     };
@@ -271,25 +320,32 @@ impl_into_builtin!(a: A, b: B, c: C, d: D, e: E, g: G, h: H, i: I);
 mod tests {
     use super::*;
 
+    fn pure(b: &BuiltinFn) -> &BuiltinBody {
+        match &b.kind {
+            BuiltinKind::Pure(body) => body,
+            BuiltinKind::Hof(_) => panic!("expected pure builtin"),
+        }
+    }
+
     #[test]
     fn from_fn_zero_arity_infallible() {
         let b = from_fn(|| 42i64);
         assert_eq!(b.arity, 0);
-        assert_eq!((b.body)(&[]).unwrap(), Value::I64(42));
+        assert_eq!((pure(&b))(&[]).unwrap(), Value::I64(42));
     }
 
     #[test]
     fn from_fn_one_arg_string_to_string() {
         let b = from_fn(|s: String| s.to_uppercase());
         assert_eq!(b.arity, 1);
-        let out = (b.body)(&[Value::Utf8("hi".into())]).unwrap();
+        let out = (pure(&b))(&[Value::Utf8("hi".into())]).unwrap();
         assert_eq!(out, Value::Utf8("HI".into()));
     }
 
     #[test]
     fn from_fn_two_args_add() {
         let b = from_fn(|x: i64, y: i64| x + y);
-        let out = (b.body)(&[Value::I64(2), Value::I64(3)]).unwrap();
+        let out = (pure(&b))(&[Value::I64(2), Value::I64(3)]).unwrap();
         assert_eq!(out, Value::I64(5));
     }
 
@@ -302,29 +358,29 @@ mod tests {
                 Ok(10 / n)
             }
         });
-        assert_eq!((b.body)(&[Value::I64(2)]).unwrap(), Value::I64(5));
-        let err = (b.body)(&[Value::I64(0)]).unwrap_err();
+        assert_eq!((pure(&b))(&[Value::I64(2)]).unwrap(), Value::I64(5));
+        let err = (pure(&b))(&[Value::I64(0)]).unwrap_err();
         assert_eq!(err, "divide by zero");
     }
 
     #[test]
     fn from_fn_arity_mismatch() {
         let b = from_fn(|s: String| s);
-        let err = (b.body)(&[]).unwrap_err();
+        let err = (pure(&b))(&[]).unwrap_err();
         assert!(err.contains("arity mismatch"), "{err}");
     }
 
     #[test]
     fn from_fn_type_mismatch() {
         let b = from_fn(|s: String| s);
-        let err = (b.body)(&[Value::I64(1)]).unwrap_err();
+        let err = (pure(&b))(&[Value::I64(1)]).unwrap_err();
         assert!(err.contains("expected utf8 string"), "{err}");
     }
 
     #[test]
     fn from_fn_unit_return() {
         let b = from_fn(|_n: i64| {});
-        let out = (b.body)(&[Value::I64(1)]).unwrap();
+        let out = (pure(&b))(&[Value::I64(1)]).unwrap();
         assert_eq!(out, Value::None);
     }
 
@@ -334,8 +390,8 @@ mod tests {
             Some(n) => Value::I64(n * 2),
             None => Value::None,
         });
-        assert_eq!((b.body)(&[Value::I64(3)]).unwrap(), Value::I64(6));
-        assert_eq!((b.body)(&[Value::None]).unwrap(), Value::None);
+        assert_eq!((pure(&b))(&[Value::I64(3)]).unwrap(), Value::I64(6));
+        assert_eq!((pure(&b))(&[Value::None]).unwrap(), Value::None);
     }
 
     #[test]
@@ -346,21 +402,21 @@ mod tests {
             Value::I64(2),
             Value::I64(3),
         ])];
-        assert_eq!((b.body)(&args).unwrap(), Value::I64(6));
+        assert_eq!((pure(&b))(&args).unwrap(), Value::I64(6));
     }
 
     #[test]
     fn vec_from_value_type_mismatch() {
         let b = from_fn(|v: Vec<i64>| v.len() as i64);
         // Passing a non-list value should error.
-        let err = (b.body)(&[Value::I64(42)]).unwrap_err();
+        let err = (pure(&b))(&[Value::I64(42)]).unwrap_err();
         assert!(err.contains("expected list"), "{err}");
     }
 
     #[test]
     fn vec_into_value_round_trip() {
         let b = from_fn(|_n: i64| -> Vec<i64> { vec![1, 2, 3] });
-        let out = (b.body)(&[Value::I64(0)]).unwrap();
+        let out = (pure(&b))(&[Value::I64(0)]).unwrap();
         assert_eq!(
             out,
             Value::List(vec![Value::I64(1), Value::I64(2), Value::I64(3)])
@@ -370,7 +426,7 @@ mod tests {
     #[test]
     fn vec_of_string_round_trip() {
         let b = from_fn(|parts: Vec<String>| parts.join(","));
-        let out = (b.body)(&[Value::List(vec![
+        let out = (pure(&b))(&[Value::List(vec![
             Value::Utf8("a".into()),
             Value::Utf8("b".into()),
         ])])

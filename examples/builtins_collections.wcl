@@ -1,0 +1,26 @@
+// Collection builtins (map / filter / fold / len / sum / range /
+// head / tail / tensor) ship with every `Environment::new`, so this
+// fixture parses against the default environment without any host
+// registrations.
+//
+// As with examples/builtins.wcl, fields are `@schemaless` because the
+// fixture exists to drive evaluator tests, not model a real config.
+
+@schemaless xs        = [1, 2, 3, 4]
+
+@schemaless doubled   = map(xs, fn(x: i64) -> i64 x * 2)
+@schemaless evens     = filter(xs, fn(x: i64) -> bool x % 2 == 0)
+@schemaless total     = fold(xs, 0, fn(acc: i64, x: i64) -> i64 acc + x)
+
+@schemaless count     = len(xs)
+@schemaless quick_sum = sum(xs)
+@schemaless first     = head(xs)
+@schemaless rest      = tail(xs)
+@schemaless r         = range(0, 5)
+
+// Tensor round-trip: build a 2×3 from a flat list, map across it,
+// then read shape and data back out.
+@schemaless t         = tensor([1, 2, 3, 4, 5, 6], [2, 3])
+@schemaless t_mapped  = map(t, fn(x: i64) -> i64 x + 10)
+@schemaless t_shape   = tensor_shape(t_mapped)
+@schemaless t_data    = tensor_data(t_mapped)

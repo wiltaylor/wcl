@@ -30,6 +30,7 @@ pub enum Value {
 
     Function(FnValue),
     List(Vec<Value>),
+    Tensor { shape: Vec<u64>, data: Vec<Value> },
 }
 
 /// A function value: a parameter list, a return type, and an opaque body.
@@ -135,6 +136,7 @@ impl Value {
             Value::None => "none",
             Value::Function(_) => "fn",
             Value::List(_) => "list",
+            Value::Tensor { .. } => "tensor",
         }
     }
 }

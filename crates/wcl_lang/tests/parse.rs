@@ -325,12 +325,75 @@ fn builtins_example_evaluates_end_to_end() {
         doc.field("combined").unwrap().value().unwrap(),
         &Value::I64(2)
     );
-    // Function literals are still inert — `double` is a Value::Function
-    // but not callable.
     assert!(matches!(
         doc.field("double").unwrap().value().unwrap(),
         Value::Function(_)
     ));
+    assert_eq!(
+        doc.field("doubled4").unwrap().value().unwrap(),
+        &Value::I64(8)
+    );
+}
+
+#[test]
+fn collection_builtins_evaluate_end_to_end() {
+    let env = Environment::new();
+    let path = examples_dir().join("builtins_collections.wcl");
+    let source = std::fs::read_to_string(&path).expect("read builtins_collections.wcl");
+    let doc = Document::open_with(&source, &path.display().to_string(), &env)
+        .expect("collection fixture parses");
+
+    let i64s = |xs: &[i64]| Value::List(xs.iter().copied().map(Value::I64).collect());
+
+    assert_eq!(
+        doc.field("doubled").unwrap().value().unwrap(),
+        &i64s(&[2, 4, 6, 8])
+    );
+    assert_eq!(doc.field("evens").unwrap().value().unwrap(), &i64s(&[2, 4]));
+    assert_eq!(
+        doc.field("total").unwrap().value().unwrap(),
+        &Value::I64(10)
+    );
+    assert_eq!(doc.field("count").unwrap().value().unwrap(), &Value::I64(4));
+    assert_eq!(
+        doc.field("quick_sum").unwrap().value().unwrap(),
+        &Value::I64(10)
+    );
+    assert_eq!(doc.field("first").unwrap().value().unwrap(), &Value::I64(1));
+    assert_eq!(
+        doc.field("rest").unwrap().value().unwrap(),
+        &i64s(&[2, 3, 4])
+    );
+    assert_eq!(
+        doc.field("r").unwrap().value().unwrap(),
+        &i64s(&[0, 1, 2, 3, 4])
+    );
+
+    // Tensor round-trip preserves shape.
+    let t_mapped = doc.field("t_mapped").unwrap().value().unwrap();
+    let Value::Tensor { shape, data } = t_mapped else {
+        panic!("expected tensor value, got {t_mapped:?}");
+    };
+    assert_eq!(shape, &vec![2u64, 3]);
+    assert_eq!(
+        data,
+        &vec![
+            Value::I64(11),
+            Value::I64(12),
+            Value::I64(13),
+            Value::I64(14),
+            Value::I64(15),
+            Value::I64(16),
+        ]
+    );
+    assert_eq!(
+        doc.field("t_shape").unwrap().value().unwrap(),
+        &i64s(&[2, 3])
+    );
+    assert_eq!(
+        doc.field("t_data").unwrap().value().unwrap(),
+        &i64s(&[11, 12, 13, 14, 15, 16])
+    );
 }
 
 #[test]

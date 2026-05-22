@@ -373,6 +373,11 @@ fn value_repr(v: &Value) -> String {
             let parts: Vec<String> = items.iter().map(value_repr).collect();
             format!("[{}]", parts.join(", "))
         }
+        Value::Tensor { shape, data } => {
+            let dims: Vec<String> = shape.iter().map(u64::to_string).collect();
+            let elems: Vec<String> = data.iter().map(value_repr).collect();
+            format!("tensor[{}]({})", dims.join("x"), elems.join(", "))
+        }
     }
 }
 
