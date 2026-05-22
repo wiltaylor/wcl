@@ -1,0 +1,20 @@
+[package]
+name = "wcl_lsp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "WCL language server (LSP) implementation"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+wcl_lang = { workspace = true }
+tower-lsp = { workspace = true }
+tokio = { workspace = true }
+dashmap = { workspace = true }
+miette = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "io-util"] }

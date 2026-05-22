@@ -102,6 +102,9 @@ enum Command {
         #[arg(long = "in-place")]
         in_place: bool,
     },
+    /// Run the WCL language server over stdio. Intended to be launched
+    /// by an LSP-aware editor; not useful from a terminal directly.
+    Lsp,
 }
 
 fn main() -> ExitCode {
@@ -152,6 +155,20 @@ fn main() -> ExitCode {
                 EXIT_IO
             }
         },
+        Command::Lsp => {
+            let rt = match tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(rt) => rt,
+                Err(e) => {
+                    eprintln!("failed to start tokio runtime: {e}");
+                    return ExitCode::from(EXIT_IO);
+                }
+            };
+            rt.block_on(wcl_lsp::start_stdio());
+            EXIT_OK
+        }
         Command::Set { file, path, value } => match run_set(&file, &path, &value) {
             Ok(code) => code,
             Err(msg) => {

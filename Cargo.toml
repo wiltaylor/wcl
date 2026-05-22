@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/wcl", "crates/wcl_lang"]
+members = ["crates/wcl", "crates/wcl_lang", "crates/wcl_lsp"]
 
 [workspace.package]
 version = "0.0.0"
@@ -10,6 +10,7 @@ repository = "https://github.com/wiltaylor/wcl"
 
 [workspace.dependencies]
 wcl_lang = { path = "crates/wcl_lang", version = "0.0.0" }
+wcl_lsp = { path = "crates/wcl_lsp", version = "0.0.0" }
 clap = { version = "4", features = ["derive"] }
 miette = { version = "7", features = ["fancy"] }
 thiserror = "2"
@@ -17,6 +18,9 @@ criterion = { version = "0.5", features = ["html_reports"] }
 assert_cmd = "2"
 predicates = "3"
 tempfile = "3"
+tower-lsp = "0.20"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "sync"] }
+dashmap = "6"
 
 [profile.release]
 lto = true
