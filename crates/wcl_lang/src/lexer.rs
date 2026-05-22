@@ -613,7 +613,27 @@ impl<'a> Lexer<'a> {
     /// The body is escape-interpreted (same table as `"..."`), and
     /// common leading whitespace across non-blank lines is stripped.
     fn lex_heredoc(&mut self, start: usize, prefix: StringPrefix) -> Result<Token, LexError> {
-        // 1. Tag identifier.
+        let tag = self.lex_heredoc_opener(start)?;
+        let raw_lines = self.scan_heredoc_body(start, &tag)?;
+        let min_indent = raw_lines
+            .iter()
+            .filter(|(_, l)| !is_blank(l))
+            .map(|(_, l)| leading_ws_len(l))
+            .min()
+            .unwrap_or(0);
+        let token_span = Span::new(start, self.pos);
+        let body_end = self.pos;
+        if prefix.interpolated {
+            self.build_heredoc_interpolated(start, prefix, &raw_lines, min_indent, token_span)
+        } else {
+            self.build_heredoc_plain(start, prefix, &raw_lines, min_indent, body_end, token_span)
+        }
+    }
+
+    /// Parse the heredoc opener: the tag identifier, same-line trivia
+    /// (spaces, tabs, line comments), and the terminating `\n`. Leaves
+    /// `self.pos` at the first byte of the body. Returns the tag.
+    fn lex_heredoc_opener(&mut self, start: usize) -> Result<String, LexError> {
         let tag_start = self.pos;
         while matches!(self.peek(), Some(c) if is_ident_cont(c)) {
             self.pos += 1;
@@ -628,9 +648,9 @@ impl<'a> Lexer<'a> {
             .expect("ident is ASCII")
             .to_string();
 
-        // 2. Same-line trailing trivia. Only spaces / tabs / a line
-        // comment. Anything else is a hard error: the user almost
-        // certainly meant to type the body on the next line.
+        // Same-line trailing trivia. Anything other than ws / line
+        // comment is a hard error — the user almost certainly meant to
+        // type the body on the next line.
         loop {
             match self.peek() {
                 Some(b' ' | b'\t' | b'\r') => self.pos += 1,
@@ -646,7 +666,6 @@ impl<'a> Lexer<'a> {
             }
         }
 
-        // 3. Require the terminating newline of the opener line.
         if self.peek() != Some(b'\n') {
             return Err(LexError {
                 message: format!("unterminated heredoc starting with '<<{tag}'"),
@@ -654,16 +673,22 @@ impl<'a> Lexer<'a> {
             });
         }
         self.pos += 1; // consume opener-line `\n`
+        Ok(tag)
+    }
 
-        // 4. Body scan: capture raw source lines until we see a line
-        // whose trimmed contents are exactly the tag. Each line tracks
-        // both its byte slice and its source-byte offset so that
-        // interpolation-slot spans (when `prefix.interpolated`) point
-        // at the right place in the original source.
-        let mut raw_lines: Vec<(usize, &[u8])> = Vec::new();
+    /// Capture raw source lines until we see a line whose trimmed
+    /// contents are exactly the tag. Each entry tracks both the
+    /// line's byte slice and its source-byte offset so interpolation
+    /// slot spans line up with the outer source. Consumes the closer
+    /// line and its trailing newline.
+    fn scan_heredoc_body(
+        &mut self,
+        start: usize,
+        tag: &str,
+    ) -> Result<Vec<(usize, &'a [u8])>, LexError> {
+        let mut raw_lines: Vec<(usize, &'a [u8])> = Vec::new();
         loop {
             let line_start = self.pos;
-            // Walk to the next `\n` or EOF.
             while let Some(c) = self.peek() {
                 if c == b'\n' {
                     break;
@@ -673,13 +698,11 @@ impl<'a> Lexer<'a> {
             let line_end = self.pos;
             let line = &self.src[line_start..line_end];
 
-            // Is this the closer line?
-            if line_is_closer(line, &tag) {
-                // Consume the line's trailing newline if any, then stop.
+            if line_is_closer(line, tag) {
                 if self.peek() == Some(b'\n') {
                     self.pos += 1;
                 }
-                break;
+                return Ok(raw_lines);
             }
 
             // EOF without finding the closer → unterminated.
@@ -692,55 +715,60 @@ impl<'a> Lexer<'a> {
             raw_lines.push((line_start, line));
             self.pos += 1; // consume the `\n` between lines
         }
+    }
 
-        // 5. Indent stripping: minimum leading-whitespace prefix
-        // across non-blank lines.
-        let min_indent = raw_lines
-            .iter()
-            .filter(|(_, l)| !is_blank(l))
-            .map(|(_, l)| leading_ws_len(l))
-            .min()
-            .unwrap_or(0);
-
-        // 6. Build the body. Two modes: plain (literal-only) and
-        // interpolated (splits on `${...}` into alternating literal
-        // and Expr parts).
-        let token_span = Span::new(start, self.pos);
-        let body_end = self.pos;
-        if prefix.interpolated {
-            let mut parts: Vec<StringPart> = Vec::new();
-            let mut buf = String::new();
-            for (line_src_start, line) in &raw_lines {
-                let trim = if is_blank(line) {
-                    line.len()
-                } else {
-                    min_indent.min(line.len())
-                };
-                let stripped_start = line_src_start + trim;
-                let stripped = &line[trim..];
-                self.interpret_line_with_interp(
-                    stripped,
-                    stripped_start,
-                    start,
-                    &mut buf,
-                    &mut parts,
-                )?;
-                buf.push('\n');
-            }
-            if !buf.is_empty() {
-                parts.push(StringPart::Literal(buf));
-            }
-            return Ok(Token {
-                kind: TokenKind::Str(StringLit::Interpolated {
-                    encoding: prefix.encoding,
-                    parts,
-                    span: token_span,
-                }),
-                span: token_span,
-            });
+    /// Splits the body on `${...}` slots into alternating literal /
+    /// Expr parts. Slot spans are anchored at the outer source's byte
+    /// offsets so diagnostics from sub-parses point at the right
+    /// place.
+    fn build_heredoc_interpolated(
+        &self,
+        start: usize,
+        prefix: StringPrefix,
+        raw_lines: &[(usize, &[u8])],
+        min_indent: usize,
+        token_span: Span,
+    ) -> Result<Token, LexError> {
+        let mut parts: Vec<StringPart> = Vec::new();
+        let mut buf = String::new();
+        for (line_src_start, line) in raw_lines {
+            let trim = if is_blank(line) {
+                line.len()
+            } else {
+                min_indent.min(line.len())
+            };
+            let stripped_start = line_src_start + trim;
+            let stripped = &line[trim..];
+            self.interpret_line_with_interp(stripped, stripped_start, start, &mut buf, &mut parts)?;
+            buf.push('\n');
         }
+        if !buf.is_empty() {
+            parts.push(StringPart::Literal(buf));
+        }
+        Ok(Token {
+            kind: TokenKind::Str(StringLit::Interpolated {
+                encoding: prefix.encoding,
+                parts,
+                span: token_span,
+            }),
+            span: token_span,
+        })
+    }
+
+    /// Plain (non-interpolated) body: escape-decode each indent-
+    /// stripped line, then hand off to the shared encoding
+    /// materialiser (ASCII validation, UTF-16/UTF-32 encoding).
+    fn build_heredoc_plain(
+        &self,
+        start: usize,
+        prefix: StringPrefix,
+        raw_lines: &[(usize, &[u8])],
+        min_indent: usize,
+        body_end: usize,
+        token_span: Span,
+    ) -> Result<Token, LexError> {
         let mut body = String::new();
-        for (_, line) in &raw_lines {
+        for (_, line) in raw_lines {
             let stripped: &[u8] = if is_blank(line) {
                 &[]
             } else {
@@ -749,9 +777,6 @@ impl<'a> Lexer<'a> {
             interpret_escapes_into(stripped, start, &mut body)?;
             body.push('\n');
         }
-
-        // 7. Hand off to the shared prefix-materialiser (ASCII
-        // validation, UTF-16/UTF-32 encoding).
         let kind = self.materialise_string(prefix.encoding, body, start, body_end)?;
         Ok(Token {
             kind: TokenKind::Str(kind),
