@@ -122,6 +122,18 @@ fn parse_prints_connection_decl_and_statements() {
 }
 
 #[test]
+fn eval_renders_heredoc_field_as_multiline() {
+    wcl()
+        .arg("eval")
+        .arg(examples_dir().join("heredoc.wcl"))
+        .arg("message")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Hello, world."))
+        .stdout(predicate::str::contains("Goodbye, world."));
+}
+
+#[test]
 fn eval_walks_into_decomposed_connections_field() {
     wcl()
         .arg("eval")

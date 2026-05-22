@@ -1,0 +1,6 @@
+// ascii-prefixed heredoc body contains a non-ASCII character — should
+// fail at lex with "non-ASCII character in ascii string literal".
+
+@schemaless message = ascii<<END
+hello ✓ world
+END

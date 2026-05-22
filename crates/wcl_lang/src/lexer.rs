@@ -129,7 +129,17 @@ impl<'a> Lexer<'a> {
                 _ => Ok(self.single(start, TokenKind::Eq)),
             },
             b'!' => Ok(self.two_or_one(start, b'=', TokenKind::BangEq, TokenKind::Bang)),
-            b'<' => Ok(self.two_or_one(start, b'=', TokenKind::LtEq, TokenKind::Lt)),
+            b'<' => {
+                // Bare heredoc opener: `<<TAG`. Typed-prefix forms
+                // (`ascii<<TAG`, …) route via `lex_ident_or_typed`.
+                if self.peek_at(1) == Some(b'<')
+                    && matches!(self.peek_at(2), Some(c) if is_ident_start(c))
+                {
+                    self.pos += 2; // consume `<<`
+                    return self.lex_heredoc(start, StringPrefix::Utf8);
+                }
+                Ok(self.two_or_one(start, b'=', TokenKind::LtEq, TokenKind::Lt))
+            }
             b'>' => Ok(self.two_or_one(start, b'=', TokenKind::GtEq, TokenKind::Gt)),
             b'&' => Ok(self.two_or_one(start, b'&', TokenKind::AmpAmp, TokenKind::Amp)),
             b'|' => Ok(self.two_or_one(start, b'|', TokenKind::PipePipe, TokenKind::Pipe)),
@@ -382,6 +392,138 @@ impl<'a> Lexer<'a> {
         })
     }
 
+    /// Lex a heredoc literal. The leading `<<` (and any typed prefix) is
+    /// already consumed; `self.pos` is at the first byte of the tag
+    /// identifier. `start` covers the opener including prefix.
+    ///
+    /// Grammar:
+    ///   `<<TAG\n` body `\n` (whitespace)* `TAG` (whitespace)* (`\n` | EOF)
+    ///
+    /// The body is escape-interpreted (same table as `"..."`), and
+    /// common leading whitespace across non-blank lines is stripped.
+    fn lex_heredoc(&mut self, start: usize, prefix: StringPrefix) -> Result<Token, LexError> {
+        // 1. Tag identifier.
+        let tag_start = self.pos;
+        while matches!(self.peek(), Some(c) if is_ident_cont(c)) {
+            self.pos += 1;
+        }
+        if self.pos == tag_start {
+            return Err(LexError {
+                message: "heredoc tag must be a non-empty identifier".into(),
+                span: Span::new(start, self.pos),
+            });
+        }
+        let tag = std::str::from_utf8(&self.src[tag_start..self.pos])
+            .expect("ident is ASCII")
+            .to_string();
+
+        // 2. Same-line trailing trivia. Only spaces / tabs / a line
+        // comment. Anything else is a hard error: the user almost
+        // certainly meant to type the body on the next line.
+        loop {
+            match self.peek() {
+                Some(b' ' | b'\t' | b'\r') => self.pos += 1,
+                Some(b'#') => self.skip_line_to_newline(),
+                Some(b'/') if self.peek_at(1) == Some(b'/') => self.skip_line_to_newline(),
+                Some(b'\n') | None => break,
+                Some(_) => {
+                    return Err(LexError {
+                        message: "unexpected text after heredoc tag".into(),
+                        span: Span::new(self.pos, self.pos + 1),
+                    });
+                }
+            }
+        }
+
+        // 3. Require the terminating newline of the opener line.
+        if self.peek() != Some(b'\n') {
+            return Err(LexError {
+                message: format!("unterminated heredoc starting with '<<{tag}'"),
+                span: Span::new(start, self.pos),
+            });
+        }
+        self.pos += 1; // consume opener-line `\n`
+
+        // 4. Body scan: capture raw source lines until we see a line
+        // whose trimmed contents are exactly the tag.
+        let mut raw_lines: Vec<&[u8]> = Vec::new();
+        loop {
+            let line_start = self.pos;
+            // Walk to the next `\n` or EOF.
+            while let Some(c) = self.peek() {
+                if c == b'\n' {
+                    break;
+                }
+                self.pos += 1;
+            }
+            let line_end = self.pos;
+            let line = &self.src[line_start..line_end];
+
+            // Is this the closer line?
+            if line_is_closer(line, &tag) {
+                // Consume the line's trailing newline if any, then stop.
+                if self.peek() == Some(b'\n') {
+                    self.pos += 1;
+                }
+                break;
+            }
+
+            // EOF without finding the closer → unterminated.
+            if self.peek().is_none() {
+                return Err(LexError {
+                    message: format!("unterminated heredoc starting with '<<{tag}'"),
+                    span: Span::new(start, self.pos),
+                });
+            }
+            raw_lines.push(line);
+            self.pos += 1; // consume the `\n` between lines
+        }
+
+        // 5. Indent stripping: minimum leading-whitespace prefix
+        // across non-blank lines.
+        let min_indent = raw_lines
+            .iter()
+            .filter(|l| !is_blank(l))
+            .map(|l| leading_ws_len(l))
+            .min()
+            .unwrap_or(0);
+
+        // 6. Build the body: strip indent, interpret escapes, join
+        // with `\n`. Trailing newline included to match shell
+        // semantics (every body line is followed by `\n`).
+        let mut body = String::new();
+        for line in &raw_lines {
+            let stripped: &[u8] = if is_blank(line) {
+                &[]
+            } else {
+                &line[min_indent.min(line.len())..]
+            };
+            interpret_escapes_into(stripped, start, &mut body)?;
+            body.push('\n');
+        }
+
+        // 7. Hand off to the shared prefix-materialiser (ASCII
+        // validation, UTF-16/UTF-32 encoding).
+        let body_end = self.pos;
+        let kind = self.materialise_string(prefix, body, start, body_end)?;
+        Ok(Token {
+            kind: TokenKind::Str(kind),
+            span: Span::new(start, self.pos),
+        })
+    }
+
+    /// Skip from the current position to (but not including) the next
+    /// newline. Used inside heredoc-opener trivia scanning, where we
+    /// must preserve the body-starting `\n` for the caller to consume.
+    fn skip_line_to_newline(&mut self) {
+        while let Some(c) = self.peek() {
+            if c == b'\n' {
+                break;
+            }
+            self.pos += 1;
+        }
+    }
+
     fn materialise_string(
         &self,
         prefix: StringPrefix,
@@ -550,6 +692,16 @@ impl<'a> Lexer<'a> {
             return self.lex_string(start, prefix);
         }
 
+        // Typed heredoc prefix: `ascii<<TAG`, `utf16<<TAG`, etc.
+        if self.peek() == Some(b'<')
+            && self.peek_at(1) == Some(b'<')
+            && matches!(self.peek_at(2), Some(c) if is_ident_start(c))
+            && let Some(prefix) = StringPrefix::from_text(text)
+        {
+            self.pos += 2; // consume `<<`
+            return self.lex_heredoc(start, prefix);
+        }
+
         let span = Span::new(start, self.pos);
         let kind = match text {
             "true" => TokenKind::Bool(true),
@@ -587,6 +739,93 @@ impl StringPrefix {
 struct DigitScan {
     had_digit: bool,
     trailing_underscore: bool,
+}
+
+/// True iff the line contains only ASCII whitespace (spaces, tabs,
+/// CR). Heredoc indent stripping ignores blank lines when computing
+/// the minimum prefix.
+fn is_blank(line: &[u8]) -> bool {
+    line.iter().all(|b| matches!(*b, b' ' | b'\t' | b'\r'))
+}
+
+/// Number of leading ASCII whitespace bytes on the line.
+fn leading_ws_len(line: &[u8]) -> usize {
+    line.iter()
+        .take_while(|b| matches!(**b, b' ' | b'\t'))
+        .count()
+}
+
+/// True iff the line is a heredoc closer: leading whitespace, then
+/// the exact tag, then trailing whitespace (CRs allowed).
+fn line_is_closer(line: &[u8], tag: &str) -> bool {
+    let lead = leading_ws_len(line);
+    let rest = &line[lead..];
+    if !rest.starts_with(tag.as_bytes()) {
+        return false;
+    }
+    let after = &rest[tag.len()..];
+    after.iter().all(|b| matches!(*b, b' ' | b'\t' | b'\r'))
+}
+
+/// Apply the same escape table as `lex_string` to `line`, appending
+/// the decoded chars to `out`. Validates UTF-8 for non-ASCII bytes.
+fn interpret_escapes_into(line: &[u8], opener: usize, out: &mut String) -> Result<(), LexError> {
+    let mut i = 0;
+    while i < line.len() {
+        let c = line[i];
+        match c {
+            b'\\' => {
+                let esc_pos = i;
+                let Some(&esc) = line.get(i + 1) else {
+                    return Err(LexError {
+                        message: "unterminated escape sequence in heredoc".into(),
+                        span: Span::new(opener, opener + 1),
+                    });
+                };
+                match esc {
+                    b'"' => out.push('"'),
+                    b'\\' => out.push('\\'),
+                    b'n' => out.push('\n'),
+                    b't' => out.push('\t'),
+                    b'r' => out.push('\r'),
+                    other => {
+                        return Err(LexError {
+                            message: format!("invalid escape '\\{}'", other as char),
+                            span: Span::new(opener + esc_pos, opener + esc_pos + 2),
+                        });
+                    }
+                }
+                i += 2;
+            }
+            b if b < 0x80 => {
+                out.push(b as char);
+                i += 1;
+            }
+            _ => {
+                // Multi-byte UTF-8: walk continuation bytes and copy
+                // the original slice through std's validator so a bad
+                // sequence becomes a structured error rather than a
+                // panic.
+                let char_start = i;
+                let mut len = 1;
+                while line
+                    .get(i + len)
+                    .map(|b| (b & 0b1100_0000) == 0b1000_0000)
+                    .unwrap_or(false)
+                {
+                    len += 1;
+                }
+                let slice = &line[char_start..char_start + len];
+                let s = std::str::from_utf8(slice).map_err(|_| LexError {
+                    message: "invalid UTF-8 in heredoc body".into(),
+                    span: Span::new(opener + char_start, opener + char_start + len),
+                })?;
+                out.push_str(s);
+                i += len;
+            }
+        }
+    }
+    Ok(())
 }
 
 fn is_ident_start(c: u8) -> bool {
@@ -1150,5 +1389,130 @@ mod tests {
                 TokenKind::Eof,
             ]
         );
+    }
+
+    // ---- heredocs --------------------------------------------------
+
+    fn lex_str(src: &str) -> StringLit {
+        match one(src) {
+            TokenKind::Str(s) => s,
+            other => panic!("expected Str, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn heredoc_basic_two_line_body() {
+        let s = "<<END\nfirst\nsecond\nEND\n";
+        assert_eq!(lex_str(s), StringLit::Utf8("first\nsecond\n".into()));
+    }
+
+    #[test]
+    fn heredoc_strips_common_indent() {
+        // 4-space common indent across non-blank lines. Blank line in
+        // the middle stays blank in the output.
+        let s = "<<END\n    foo\n\n    bar\n    END\n";
+        assert_eq!(lex_str(s), StringLit::Utf8("foo\n\nbar\n".into()));
+    }
+
+    #[test]
+    fn heredoc_indent_ignores_blank_lines() {
+        // The leading-whitespace-only line should not contribute to the
+        // minimum-indent calculation.
+        let s = "<<END\n  foo\n  \n  bar\nEND\n";
+        assert_eq!(lex_str(s), StringLit::Utf8("foo\n\nbar\n".into()));
+    }
+
+    #[test]
+    fn heredoc_interprets_escapes() {
+        let s = "<<END\nhi\\tthere\\nline\nEND\n";
+        assert_eq!(lex_str(s), StringLit::Utf8("hi\tthere\nline\n".into()));
+    }
+
+    #[test]
+    fn heredoc_ascii_prefix_validates() {
+        let s = "ascii<<END\nplain ascii\nEND\n";
+        assert_eq!(lex_str(s), StringLit::Ascii("plain ascii\n".into()));
+    }
+
+    #[test]
+    fn heredoc_ascii_prefix_rejects_non_ascii() {
+        let s = "ascii<<END\nplain\u{2713}\nEND\n";
+        let mut lex = Lexer::new(s);
+        let err = lex.next_token().unwrap_err();
+        assert!(err.message.contains("non-ASCII"), "got: {}", err.message);
+    }
+
+    #[test]
+    fn heredoc_utf16_prefix_encodes_body() {
+        let s = "utf16<<END\nhi\nEND\n";
+        // body = "hi\n" → UTF-16: [0x68, 0x69, 0x0a]
+        assert_eq!(lex_str(s), StringLit::Utf16(vec![0x68, 0x69, 0x0a]));
+    }
+
+    #[test]
+    fn heredoc_utf32_prefix_encodes_body() {
+        let s = "utf32<<END\nhi\nEND\n";
+        assert_eq!(lex_str(s), StringLit::Utf32(vec!['h', 'i', '\n']));
+    }
+
+    #[test]
+    fn heredoc_unterminated_errors() {
+        let mut lex = Lexer::new("<<END\nfoo\nbar\n");
+        let err = lex.next_token().unwrap_err();
+        assert!(
+            err.message.contains("unterminated heredoc"),
+            "got: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn heredoc_junk_after_tag_errors() {
+        let mut lex = Lexer::new("<<END oops\nfoo\nEND\n");
+        let err = lex.next_token().unwrap_err();
+        assert!(
+            err.message.contains("unexpected text after heredoc tag"),
+            "got: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn heredoc_comment_after_tag_is_fine() {
+        // A trailing `# comment` on the opener line is trivia.
+        let s = "<<END  # a comment\nfoo\nEND\n";
+        assert_eq!(lex_str(s), StringLit::Utf8("foo\n".into()));
+    }
+
+    #[test]
+    fn heredoc_empty_body() {
+        let s = "<<END\nEND\n";
+        assert_eq!(lex_str(s), StringLit::Utf8(String::new()));
+    }
+
+    #[test]
+    fn heredoc_closer_with_leading_whitespace() {
+        // Closer may be indented; common-indent strip still applies to
+        // the body using the minimum across non-blank body lines.
+        let s = "<<END\n    foo\n    bar\n    END\n";
+        assert_eq!(lex_str(s), StringLit::Utf8("foo\nbar\n".into()));
+    }
+
+    #[test]
+    fn heredoc_pair_in_one_source() {
+        let src = "<<A\none\nA\n<<B\ntwo\nB\n";
+        let toks = tokens(src);
+        assert_eq!(toks.len(), 3); // two strings + Eof
+        assert_eq!(toks[0], TokenKind::Str(StringLit::Utf8("one\n".into())));
+        assert_eq!(toks[1], TokenKind::Str(StringLit::Utf8("two\n".into())));
+    }
+
+    #[test]
+    fn double_lt_with_non_ident_still_lt_lt() {
+        // `<<` followed by non-ident-start should not be misread as a
+        // heredoc — keep the existing two `Lt` token sequence.
+        let toks = tokens("<<=");
+        assert_eq!(toks[0], TokenKind::Lt);
+        assert_eq!(toks[1], TokenKind::LtEq);
     }
 }

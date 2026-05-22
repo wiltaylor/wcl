@@ -1442,3 +1442,41 @@ fn connection_unknown_kind_fixture_reports_violation() {
         "expected unknown-kind error, got: {rendered}",
     );
 }
+
+// ---- heredocs --------------------------------------------------------
+
+#[test]
+fn heredoc_fixture_field_values_match_expected() {
+    let doc = Document::from_file(&examples_dir().join("heredoc.wcl")).expect("heredoc.wcl");
+    assert_eq!(
+        doc.field("message").unwrap().value().unwrap(),
+        &Value::Utf8("Hello, world.\n\nGoodbye, world.\n".into()),
+    );
+    assert_eq!(
+        doc.field("plain").unwrap().value().unwrap(),
+        &Value::Ascii("plain ASCII only\nspans two lines\n".into()),
+    );
+    let note = doc.block("note").expect("note block");
+    assert_eq!(
+        note.field("body").unwrap().value().unwrap(),
+        &Value::Utf8("line one\nline two\n".into()),
+    );
+}
+
+#[test]
+fn heredoc_unterminated_fixture_reports_error() {
+    let rendered = open_or_schema_error("heredoc_unterminated.wcl");
+    assert!(
+        rendered.contains("unterminated heredoc"),
+        "expected unterminated heredoc error, got: {rendered}",
+    );
+}
+
+#[test]
+fn heredoc_non_ascii_fixture_reports_error() {
+    let rendered = open_or_schema_error("heredoc_non_ascii.wcl");
+    assert!(
+        rendered.contains("non-ASCII"),
+        "expected non-ASCII error, got: {rendered}",
+    );
+}

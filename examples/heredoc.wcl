@@ -1,0 +1,28 @@
+// Heredoc multiline string literals.
+//
+// `<<TAG` opens; `TAG` alone on its own line closes. The body is
+// escape-interpreted (same rules as `"..."`) and the smallest leading
+// whitespace prefix across non-blank body lines is stripped — so you
+// can indent the body in source without that indent leaking into the
+// value.
+//
+// Typed prefixes (`ascii<<TAG`, `utf16<<TAG`, `utf32<<TAG`) compose
+// with heredocs the same way they compose with `"..."` strings.
+
+@schemaless message = <<END
+  Hello, world.
+
+  Goodbye, world.
+  END
+
+@schemaless plain = ascii<<EOF
+  plain ASCII only
+  spans two lines
+  EOF
+
+@schemaless note "release" {
+  body = <<NOTES
+    line one
+    line two
+    NOTES
+}
