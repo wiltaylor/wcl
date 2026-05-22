@@ -1926,14 +1926,21 @@ fn ref_field_reference_returns_dataref_navigator() {
 
 #[test]
 fn ref_field_value_auto_derefs_to_target_leaf() {
-    // `pinned = bob` resolves via the scope chain to the bob row
-    // (a Block), which isn't a leaf, so `.value()` errors. This
-    // is the expected behaviour for `&User` — host code should
-    // use `.reference()` to navigate further.
+    // `pinned = users.bob` resolves to the bob row (a Block).
+    // Reading the field surfaces a `Value::DataPath` carrying the
+    // source-level segments so reflective builtins
+    // (`decorator_names`, …) can keep walking. Host code that
+    // wants a `DataRef` should call `.reference()` instead.
     let doc = open_refs();
     let pinned = doc.get("db.pinned").expect("db.pinned present");
-    let err = pinned.value().unwrap_err();
-    assert!(matches!(err, EvalError::NotALeaf { .. }), "{err:?}");
+    let v = pinned.value().expect("ref field reads as a DataPath value");
+    match v {
+        Value::DataPath { kind, segments } => {
+            assert_eq!(kind, "block");
+            assert_eq!(segments, vec!["users".to_string(), "bob".to_string()]);
+        }
+        other => panic!("expected Value::DataPath, got {other:?}"),
+    }
 }
 
 #[test]

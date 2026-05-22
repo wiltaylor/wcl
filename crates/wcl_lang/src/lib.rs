@@ -14,12 +14,13 @@ mod lexer;
 mod numeric;
 mod parser;
 mod profile;
+mod reflect;
 mod symbols;
 mod value;
 
 pub use ast::Span;
 pub use builtins::{
-    BuiltinFn, Caller, FromValue, IntoBuiltin, IntoValue, IntoValueResult, from_fn,
+    BuiltinFn, Caller, DataPath, FromValue, IntoBuiltin, IntoValue, IntoValueResult, from_fn,
 };
 pub use data::{DataKind, DataRef};
 pub use doc::{

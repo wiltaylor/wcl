@@ -14,6 +14,7 @@
 
 use std::sync::Arc;
 
+use crate::data::DataRef;
 use crate::numeric::for_each_numeric_variant;
 use crate::value::{FnValue, Value};
 
@@ -78,6 +79,13 @@ pub trait Caller {
     /// surfaced through `EvalError::BuiltinTypeMismatch` at the original
     /// call site.
     fn call_fn(&mut self, f: &FnValue, args: &[Value]) -> Result<Value, String>;
+
+    /// Resolve a dotted FQN into a navigator. The first segment is
+    /// looked up at document root; subsequent segments walk via
+    /// `DataRef::child`. Returns `None` if any segment is missing.
+    /// Lets reflective builtins (`decorator_names`, `decorator_arg`,
+    /// …) rediscover the target carried in a `Value::DataPath`.
+    fn resolve<'r>(&'r self, path: &[String]) -> Option<DataRef<'r>>;
 }
 
 /// Body kind for a registered builtin: either a pure function over
@@ -182,6 +190,30 @@ impl FromValue for String {
 impl FromValue for Value {
     fn from_value(v: &Value) -> Result<Self, String> {
         Ok(v.clone())
+    }
+}
+
+/// Strongly-typed parameter for builtins that consume a
+/// [`Value::DataPath`] handle. Carries the same `kind` tag and `segments`
+/// as the underlying value.
+#[derive(Debug, Clone)]
+pub struct DataPath {
+    pub kind: String,
+    pub segments: Vec<String>,
+}
+
+impl FromValue for DataPath {
+    fn from_value(v: &Value) -> Result<Self, String> {
+        match v {
+            Value::DataPath { kind, segments } => Ok(Self {
+                kind: kind.clone(),
+                segments: segments.clone(),
+            }),
+            other => Err(format!(
+                "expected data path (e.g. a type or block reference), found {}",
+                other.type_name()
+            )),
+        }
     }
 }
 

@@ -1390,11 +1390,13 @@ impl<'a> Decorator<'a> {
     /// schema. If the slot's declared type is a union, the
     /// decorator's positional + named args are dispatched into a
     /// `Value::Variant` by structural shape. Otherwise, the named
-    /// arg is looked up directly (matching the legacy
-    /// [`named_arg`](Self::named_arg) accessor).
+    /// arg is consulted first, then the positional arg at the slot's
+    /// declaration index — so `@block("books")` resolves the `name`
+    /// slot from positional[0] when no `name = ...` was written.
     ///
-    /// Returns `None` when the decorator has no registered schema or
-    /// the schema doesn't declare a slot of this name.
+    /// Returns `None` when the decorator has no registered schema, the
+    /// schema doesn't declare a slot of this name, or neither a named
+    /// arg nor a positional arg fills it.
     pub fn resolved_arg_value(&self, slot_name: &str) -> Option<Result<Value, EvalError>> {
         let schema_name = self.ast.name.last()?;
         let schema = self.doc.decorator_schema(schema_name)?;
@@ -1405,8 +1407,15 @@ impl<'a> Decorator<'a> {
         {
             return Some(self.dispatch_into_union(union));
         }
-        // Fall back: read the named arg.
-        self.named_arg(slot_name)
+        if let Some(v) = self.named_arg(slot_name) {
+            return Some(v);
+        }
+        let slot_idx = schema.fields().position(|f| f.name() == slot_name)?;
+        let positional = match self.positional() {
+            Ok(v) => v,
+            Err(e) => return Some(Err(e)),
+        };
+        positional.into_iter().nth(slot_idx).map(Ok)
     }
 
     /// Dispatch the decorator's positional + named args into a
@@ -2115,14 +2124,19 @@ impl<'a> Field<'a> {
                 .as_ref();
         }
         // For `&T`-typed fields, evaluate the RHS as a path producing
-        // a `DataRef`, then auto-deref by reading that target's leaf
-        // value. Non-reference fields evaluate normally through
+        // a `DataRef`. If the target is a leaf `Field`, auto-deref to
+        // its value. Otherwise (type / union / variant / block / …),
+        // produce a `Value::DataPath` so reflective builtins can keep
+        // walking. Non-reference fields evaluate normally through
         // `eval_in_scope`.
         let result = if matches!(self.declared_type_ref(), Some(TypeRef::Reference(_))) {
             let ctx = EvalCtx::new(self.scope.clone());
             self.doc
                 .eval_to_dataref(&self.ast.expr, &ctx)
-                .and_then(|dr| materialise_dataref(dr, self.ast.span))
+                .and_then(|dr| {
+                    let segments = expr_to_path_segments(&self.ast.expr).unwrap_or_default();
+                    materialise_dataref_or_path(dr, segments, self.ast.span)
+                })
         } else {
             self.doc.eval_in_scope(&self.ast.expr, &self.scope)
         };
@@ -2811,7 +2825,7 @@ struct EvalCaller<'a, 'c> {
     err: Option<EvalError>,
 }
 
-impl crate::builtins::Caller for EvalCaller<'_, '_> {
+impl<'a> crate::builtins::Caller for EvalCaller<'a, '_> {
     fn call_fn(&mut self, f: &FnValue, args: &[Value]) -> Result<Value, String> {
         let _profile_guard = self.doc.profile_enter(crate::profile::ProfileKey::UserFn {
             name: String::new(),
@@ -2824,6 +2838,15 @@ impl crate::builtins::Caller for EvalCaller<'_, '_> {
                 Err(msg)
             }
         }
+    }
+
+    fn resolve<'r>(&'r self, path: &[String]) -> Option<crate::data::DataRef<'r>> {
+        let (first, rest) = path.split_first()?;
+        let mut cur = self.doc.resolve_root(first)?;
+        for seg in rest {
+            cur = cur.child(seg)?;
+        }
+        Some(cur)
     }
 }
 
@@ -2954,7 +2977,7 @@ impl Document {
                 let dr = self
                     .scope_lookup(&ctx.scope, name)
                     .ok_or_else(|| EvalError::unresolved_reference(name, span_of(expr)))?;
-                return materialise_dataref(dr, span_of(expr));
+                return materialise_dataref_or_path(dr, vec![name.clone()], span_of(expr));
             }
             E::SelfKw(span) => {
                 let dr = self.self_dataref(&ctx.scope);
@@ -2972,7 +2995,8 @@ impl Document {
                 span,
             } => {
                 let dr = self.eval_to_dataref(expr, ctx)?;
-                return materialise_dataref(dr, *span);
+                let segments = expr_to_path_segments(expr).unwrap_or_default();
+                return materialise_dataref_or_path(dr, segments, *span);
             }
             E::Paren { inner, .. } => return self.eval_in(inner, ctx),
             E::Unary { op, operand, span } => {
@@ -3609,6 +3633,47 @@ fn materialise_dataref(dr: crate::data::DataRef<'_>, span: Span) -> Result<Value
     match dr.inner() {
         DataKind::Field(f) => f.value().cloned().map_err(|e| e.clone()),
         other => Err(EvalError::not_a_leaf(describe_datakind(other), span)),
+    }
+}
+
+/// Like [`materialise_dataref`] but, for non-leaf targets, returns a
+/// `Value::DataPath` carrying the source-level segments instead of
+/// erroring with `NotALeaf`. Used at every site that resolves an
+/// identifier / member chain so reflective builtins can keep walking
+/// the document tree from inside WCL code.
+fn materialise_dataref_or_path(
+    dr: crate::data::DataRef<'_>,
+    segments: Vec<String>,
+    _span: Span,
+) -> Result<Value, EvalError> {
+    use crate::data::DataKind;
+    match dr.inner() {
+        DataKind::Field(f) => f.value().cloned().map_err(|e| e.clone()),
+        DataKind::VariantValue(v) => Ok(v.clone()),
+        DataKind::VariantValueList(vs) => Ok(Value::List(vs.clone())),
+        other => Ok(Value::DataPath {
+            kind: describe_datakind(other).to_string(),
+            segments,
+        }),
+    }
+}
+
+/// Best-effort projection of an expression into the dotted name it
+/// addresses. Returns `None` for anything more complex than identifier
+/// / member / paren chains so the call site falls back to the strict
+/// `NotALeaf` path. `self`/`parent`/calls/operators have no static
+/// name and intentionally return `None`.
+fn expr_to_path_segments(expr: &ast::Expr) -> Option<Vec<String>> {
+    use ast::Expr as E;
+    match expr {
+        E::Identifier(s) => Some(vec![s.clone()]),
+        E::Member { recv, name, .. } => {
+            let mut segs = expr_to_path_segments(recv)?;
+            segs.push(name.clone());
+            Some(segs)
+        }
+        E::Paren { inner, .. } => expr_to_path_segments(inner),
+        _ => None,
     }
 }
 

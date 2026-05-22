@@ -1,0 +1,33 @@
+// Reflective decorator queries. `decorator_names(&T)` returns the
+// list of decorator names attached to a type / field / variant /
+// union / symbol-set / symbol / block. `decorator_arg(&T, name, slot)`
+// reads a specific decorator slot, falling back to a raw named-arg
+// lookup when the decorator has no registered schema.
+
+@block("book") @schemaless
+type Book {
+  @inline(0) title: utf8
+  author: utf8
+}
+
+@block("library") @schemaless
+type Library {
+  @children("book") books: list<Book>
+}
+
+@schemaless library main {
+  book "Dune"     { author = "Frank Herbert" }
+  book "Foundation" { author = "Isaac Asimov" }
+}
+
+// Names of decorators on the `Book` type — order matches source.
+@schemaless book_decs = decorator_names(Book)
+
+// Slot lookups: `block` carries a positional "name" slot,
+// `inline` carries a positional "slot" index.
+@schemaless book_block_name  = decorator_arg(Book, "block", "name")
+@schemaless title_inline_idx = decorator_arg(Book.title, "inline", "slot")
+
+// Missing decorator / missing slot return `none`.
+@schemaless missing_dec  = decorator_arg(Book, "nope", "slot")
+@schemaless missing_slot = decorator_arg(Book, "block", "missing")

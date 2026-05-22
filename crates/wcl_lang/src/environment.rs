@@ -40,6 +40,7 @@ impl Environment {
         let mut env = Self::empty();
         env.types.extend(builtin_decorator_schemas());
         crate::collections::register(&mut env);
+        crate::reflect::register(&mut env);
         env
     }
 
@@ -350,6 +351,9 @@ fn value_to_expr(v: Value) -> ast::Expr {
         }
         Value::Record { .. } => {
             unreachable!("record values are not constructible via the schema builder API")
+        }
+        Value::DataPath { .. } => {
+            unreachable!("data path values are not constructible via the schema builder API")
         }
     }
 }

@@ -177,3 +177,41 @@ fn eval_walks_into_decomposed_connections_field() {
         .stdout(predicate::str::contains("destination: \"db\""))
         .stdout(predicate::str::contains("destination: \"cache\""));
 }
+
+#[test]
+fn eval_reflective_decorator_queries() {
+    let file = examples_dir().join("reflect_decorators.wcl");
+    // `decorator_names` on a type — positional decorator name first.
+    wcl()
+        .arg("eval")
+        .arg(&file)
+        .arg("book_decs")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"block\""))
+        .stdout(predicate::str::contains("\"schemaless\""));
+    // `decorator_arg` reading a positional slot via schema dispatch.
+    wcl()
+        .arg("eval")
+        .arg(&file)
+        .arg("book_block_name")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"book\""));
+    // Member access walks Type -> TypeField; inline slot resolves.
+    wcl()
+        .arg("eval")
+        .arg(&file)
+        .arg("title_inline_idx")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("0"));
+    // Missing decorator -> none.
+    wcl()
+        .arg("eval")
+        .arg(&file)
+        .arg("missing_dec")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("none"));
+}

@@ -538,5 +538,8 @@ pub(crate) fn format_value(v: &Value) -> String {
                 .collect();
             format!("{} {{ {} }}", ty.join("."), parts.join(", "))
         }
+        Value::DataPath { kind, segments } => {
+            format!("&{}<{kind}>", segments.join("."))
+        }
     }
 }

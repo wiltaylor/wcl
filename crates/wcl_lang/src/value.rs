@@ -49,6 +49,17 @@ pub enum Value {
         ty: Vec<String>,
         fields: std::collections::BTreeMap<String, Value>,
     },
+    /// First-class handle into the document tree that survived
+    /// evaluation without auto-dereffing to a leaf value. Produced
+    /// whenever an identifier or member chain resolves to a non-leaf
+    /// `DataRef` (type, union, variant, type field, block, etc.).
+    /// `kind` is the underlying `DataKind` tag for diagnostics;
+    /// `segments` is the dotted FQN that re-resolves the same target
+    /// from document root via `Caller::resolve`.
+    DataPath {
+        kind: String,
+        segments: Vec<String>,
+    },
 }
 
 /// Runtime payload of a [`Value::Variant`], matching the shape of the
@@ -187,6 +198,7 @@ impl Value {
             Value::Tensor { .. } => "tensor",
             Value::Variant { .. } => "variant",
             Value::Record { .. } => "record",
+            Value::DataPath { .. } => "data_path",
         }
     }
 }
@@ -441,6 +453,9 @@ impl std::fmt::Display for Value {
                     write!(f, "{k}: {v}")?;
                 }
                 f.write_str(" }")
+            }
+            Value::DataPath { kind, segments } => {
+                write!(f, "&{}<{kind}>", segments.join("."))
             }
         }
     }
