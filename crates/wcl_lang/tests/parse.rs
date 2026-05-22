@@ -1716,6 +1716,42 @@ fn edit_path_full_loop_writes_then_reevaluates() {
     assert_eq!(doc.field("count").unwrap().value().unwrap(), &Value::I64(1));
 }
 
+#[test]
+fn field_source_path_attributes_eager_imports() {
+    // `examples/imports/main.wcl` does `import "./shared.wcl"`, and
+    // shared.wcl declares `@schemaless brand`. Opening main.wcl and
+    // walking to `shared.brand` should report shared.wcl as the home
+    // file; a field declared directly in main.wcl reports None.
+    let main = examples_dir().join("imports").join("main.wcl");
+    let doc = Document::from_file(&main).expect("open imports/main.wcl");
+
+    let imported = doc
+        .get("shared.brand")
+        .expect("brand resolves through import");
+    let imported = imported.as_field().expect("brand is a field");
+    let imported_home = imported
+        .source_path()
+        .expect("brand lives in an imported file, not main");
+    assert!(
+        imported_home.ends_with("shared.wcl"),
+        "brand should be home in shared.wcl, got {}",
+        imported_home.display()
+    );
+
+    // Compare against a field declared directly in main.wcl. The
+    // `service` block lives in main.wcl, so any of its fields should
+    // report `None` (= main source).
+    let local = doc
+        .get("service.port")
+        .expect("service.port resolves locally");
+    let local = local.as_field().expect("port is a field");
+    assert!(
+        local.source_path().is_none(),
+        "service.port lives in main.wcl, should report None; got {:?}",
+        local.source_path()
+    );
+}
+
 /// Verify the source printer is a fixed point on its own output:
 /// `print(parse(print(parse(src)))) == print(parse(src))`. This is
 /// strictly stronger than structural-equality of the AST after one

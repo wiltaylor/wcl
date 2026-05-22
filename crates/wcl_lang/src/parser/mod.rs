@@ -511,8 +511,28 @@ impl<'a> Parser<'a> {
     /// Pratt expression parser. Used in any context where a full expression
     /// is allowed (field RHS, function-literal bodies, `let` initialisers,
     /// parenthesised sub-expressions, call arguments).
-    fn parse_expr(&mut self) -> Result<(Expr, Span), ParseError> {
+    pub(crate) fn parse_expr(&mut self) -> Result<(Expr, Span), ParseError> {
         self.parse_expr_bp(0)
+    }
+
+    /// Drive the parser as if the input were a single expression and
+    /// nothing else (no trailing tokens before EOF). Used by the
+    /// top-level `wcl_lang::parse_expr` entry point so hosts can parse
+    /// a value-shaped argument (e.g. a CLI `set <value>`) without
+    /// having to wrap it in a `field = ...` declaration.
+    pub(crate) fn parse_expr_only(&mut self) -> Result<Expr, ParseError> {
+        let (expr, _) = self.parse_expr()?;
+        let tok = self.peek()?;
+        if !matches!(tok.kind, TokenKind::Eof) {
+            let span = tok.span;
+            let found = describe(&tok.kind);
+            return Err(self.err(
+                format!("expected end of input after expression, found {found}"),
+                span,
+                "unexpected trailing token",
+            ));
+        }
+        Ok(expr)
     }
 
     fn parse_expr_bp(&mut self, min_bp: u8) -> Result<(Expr, Span), ParseError> {

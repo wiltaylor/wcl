@@ -267,3 +267,159 @@ fn fmt_reports_parse_error_via_exit_code() {
         .code(1)
         .stderr(predicate::str::contains("expected value"));
 }
+
+#[test]
+fn get_is_an_alias_of_eval() {
+    let eval_out = wcl()
+        .arg("eval")
+        .arg(examples_dir().join("basic.wcl"))
+        .arg("name")
+        .assert()
+        .success();
+    let get_out = wcl()
+        .arg("get")
+        .arg(examples_dir().join("basic.wcl"))
+        .arg("name")
+        .assert()
+        .success();
+    assert_eq!(
+        eval_out.get_output().stdout,
+        get_out.get_output().stdout,
+        "wcl get and wcl eval produce different output"
+    );
+}
+
+#[test]
+fn set_updates_top_level_field_in_named_file() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let file = tmp.path().join("doc.wcl");
+    std::fs::write(&file, "@schemaless brand = \"wcl\"\n").expect("write fixture");
+
+    wcl()
+        .arg("set")
+        .arg(&file)
+        .arg("brand")
+        .arg("\"renamed\"")
+        .assert()
+        .success();
+
+    // Read back via `wcl get` — the round-trip should observe the new value.
+    wcl()
+        .arg("get")
+        .arg(&file)
+        .arg("brand")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("renamed"));
+}
+
+#[test]
+fn set_updates_nested_field_in_block() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let file = tmp.path().join("nested.wcl");
+    std::fs::write(
+        &file,
+        "@schemaless service \"web\" {\n  port = 8080u32\n}\n",
+    )
+    .expect("write fixture");
+
+    wcl()
+        .arg("set")
+        .arg(&file)
+        .arg("service.port")
+        .arg("9090u32")
+        .assert()
+        .success();
+
+    wcl()
+        .arg("get")
+        .arg(&file)
+        .arg("service.port")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("9090"));
+}
+
+#[test]
+fn set_follows_imports_to_the_right_file() {
+    // Copy the imports fixture into a tempdir so we can mutate it.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src_dir = examples_dir().join("imports");
+    for entry in std::fs::read_dir(&src_dir).expect("read examples/imports") {
+        let entry = entry.unwrap();
+        std::fs::copy(entry.path(), tmp.path().join(entry.file_name())).expect("copy fixture");
+    }
+    let main_file = tmp.path().join("main.wcl");
+    let shared_file = tmp.path().join("shared.wcl");
+    let main_before = std::fs::read_to_string(&main_file).expect("read main");
+
+    // `brand` is declared in shared.wcl, imported by main.wcl. Setting
+    // the value via main.wcl must edit shared.wcl, not main.wcl.
+    wcl()
+        .arg("set")
+        .arg(&main_file)
+        .arg("shared.brand")
+        .arg("\"renamed\"")
+        .assert()
+        .success();
+
+    let main_after = std::fs::read_to_string(&main_file).expect("read main after");
+    assert_eq!(
+        main_before, main_after,
+        "main.wcl should be unchanged when setting an imported field"
+    );
+    let shared_after = std::fs::read_to_string(&shared_file).expect("read shared after");
+    assert!(
+        shared_after.contains("brand = \"renamed\""),
+        "shared.wcl should have been mutated; got:\n{shared_after}"
+    );
+}
+
+#[test]
+fn set_errors_on_missing_path() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let file = tmp.path().join("doc.wcl");
+    std::fs::write(&file, "@schemaless name = \"alpha\"\n").expect("write fixture");
+    wcl()
+        .arg("set")
+        .arg(&file)
+        .arg("nme")
+        .arg("\"new\"")
+        .assert()
+        .code(3)
+        .stderr(predicate::str::contains("no such path"))
+        .stderr(predicate::str::contains("did you mean"));
+}
+
+#[test]
+fn set_errors_when_path_resolves_to_a_block() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let file = tmp.path().join("doc.wcl");
+    std::fs::write(
+        &file,
+        "@schemaless service \"web\" {\n  port = 8080u32\n}\n",
+    )
+    .expect("write fixture");
+    wcl()
+        .arg("set")
+        .arg(&file)
+        .arg("service")
+        .arg("9090u32")
+        .assert()
+        .code(3)
+        .stderr(predicate::str::contains("only updates leaf field values"));
+}
+
+#[test]
+fn set_errors_on_invalid_value_expression() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let file = tmp.path().join("doc.wcl");
+    std::fs::write(&file, "@schemaless brand = \"wcl\"\n").expect("write fixture");
+    wcl()
+        .arg("set")
+        .arg(&file)
+        .arg("brand")
+        .arg("@@@")
+        .assert()
+        .code(1);
+}

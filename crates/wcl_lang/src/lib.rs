@@ -65,3 +65,18 @@ pub fn parse_for_edit(source: &str, name: impl Into<String>) -> Result<ast::Sour
         .parse_source()
         .map(|(src, _idx)| src)
 }
+
+/// Parse a single WCL expression from a standalone string. Returns the
+/// parsed [`ast::Expr`] ready to drop into a host-mutated AST
+/// (e.g. `field.expr = parse_expr(...)?`).
+///
+/// Fails if the input is empty, has trailing tokens after the
+/// expression, or contains a lex/parse error. `name` is used only for
+/// diagnostics — typically `"<cli>"` or `"<set value>"` when there's
+/// no real source location.
+///
+/// Useful for CLI flows like `wcl set file path <value>`, where
+/// `<value>` is a literal expression supplied on the command line.
+pub fn parse_expr(source: &str, name: impl Into<String>) -> Result<ast::Expr, ParseError> {
+    parser::Parser::new(source, name).parse_expr_only()
+}

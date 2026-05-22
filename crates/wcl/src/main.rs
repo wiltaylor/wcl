@@ -6,7 +6,7 @@ use clap::{Parser, Subcommand};
 use wcl_lang::{
     Block, ConnectionDecl, DeclName, Decorator, Document, Field, ParseError, Profile, ProfileKey,
     ProfileNode, SymbolSetDecl, TypeDecl, UnionDecl, UnionVariant, UseDeclView, UseFormView, Value,
-    VariantBodyView, format as wcl_format, parse_for_edit,
+    VariantBodyView, ast, format as wcl_format, parse_expr, parse_for_edit,
 };
 
 const EXIT_OK: u8 = 0;
@@ -54,10 +54,12 @@ enum Command {
         file: PathBuf,
     },
     /// Resolve a dotted path inside a WCL file and print the resulting value.
+    /// Aliased as `wcl get`.
     ///
     /// Examples:
-    ///   wcl eval site.wcl name
-    ///   wcl eval site.wcl service.config.region
+    ///   wcl get site.wcl name
+    ///   wcl get site.wcl service.config.region
+    #[command(alias = "get")]
     Eval {
         /// Path to a WCL source file.
         file: PathBuf,
@@ -67,6 +69,26 @@ enum Command {
         /// as JSON to stderr after the value is printed.
         #[arg(long)]
         profile: bool,
+    },
+    /// Update the field at a dotted path. The value is parsed as a WCL
+    /// expression — quote shell-special characters as needed.
+    ///
+    /// When `<path>` resolves through an import, `wcl set` follows the
+    /// import chain and edits the file that actually declares the field
+    /// (not necessarily the file you named).
+    ///
+    /// Examples:
+    ///   wcl set site.wcl name '"alpha"'
+    ///   wcl set site.wcl service.web.port 9090u32
+    ///   wcl set site.wcl color :gold
+    Set {
+        /// Path to a WCL source file (entry point — imports are followed).
+        file: PathBuf,
+        /// Dotted path to the field whose value should be replaced.
+        path: String,
+        /// New value, written as a WCL expression. Strings, numbers
+        /// with type suffixes, symbols, lists, etc. are all accepted.
+        value: String,
     },
     /// Parse a WCL file and re-emit it in canonical form. Comments and
     /// blank-line groupings survive; indentation, brace style, number
@@ -124,6 +146,13 @@ fn main() -> ExitCode {
             }
         },
         Command::Fmt { file, in_place } => match run_fmt(&file, in_place) {
+            Ok(code) => code,
+            Err(msg) => {
+                eprintln!("{msg}");
+                EXIT_IO
+            }
+        },
+        Command::Set { file, path, value } => match run_set(&file, &path, &value) {
             Ok(code) => code,
             Err(msg) => {
                 eprintln!("{msg}");
@@ -189,6 +218,109 @@ fn run_fmt(file: &Path, in_place: bool) -> Result<u8, String> {
         print!("{formatted}");
     }
     Ok(EXIT_OK)
+}
+
+/// Drive the round-trip API to update one field. Reads `file` as a
+/// Document to find which file actually declares `path`, parses
+/// *that* file for edit, replaces the field's expression with
+/// `value` (parsed as a WCL expression), and writes the file back
+/// atomically. Lifecycle:
+///
+///   doc = Document::from_file(file)
+///   field = doc.get(path).as_field()           # leaf-only
+///   home  = field.source_path() ?? file        # follows imports
+///   ast   = parse_for_edit(home)
+///   slot  = find_field_by_span(ast, field.span)
+///   slot.expr = parse_expr(value)
+///   write_atomic(home, format::to_source(ast))
+fn run_set(file: &Path, path: &str, value: &str) -> Result<u8, String> {
+    let doc = match Document::from_file(file) {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("{:?}", miette::Report::new(e));
+            return Ok(EXIT_PARSE);
+        }
+    };
+    let dr = match doc.get(path) {
+        Some(dr) => dr,
+        None => {
+            eprintln!("no such path: {path}");
+            if let Some(hint) = suggest_path(&doc, path) {
+                eprintln!("did you mean: {hint}?");
+            }
+            return Ok(EXIT_EVAL);
+        }
+    };
+    let field = match dr.as_field() {
+        Some(f) => f,
+        None => {
+            eprintln!(
+                "`set` only updates leaf field values; `{path}` resolved to a {kind}",
+                kind = dr.kind()
+            );
+            return Ok(EXIT_EVAL);
+        }
+    };
+    let target_span = field.span();
+    // Resolve the home file. `source_path()` returns None when the
+    // field lives in the document's main source — i.e. the file the
+    // user named.
+    let home_path: PathBuf = field
+        .source_path()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| file.to_path_buf());
+    let new_expr = match parse_expr(value, "<set value>") {
+        Ok(e) => e,
+        Err(err) => {
+            eprintln!("{:?}", miette::Report::new(err));
+            return Ok(EXIT_PARSE);
+        }
+    };
+    // Drop the Document borrow before we mutate the file: re-parsing
+    // the home file gives us an independent mutable AST, the new
+    // expression is already detached from any borrow.
+    drop(doc);
+
+    let src = std::fs::read_to_string(&home_path)
+        .map_err(|e| format!("failed to read {}: {e}", home_path.display()))?;
+    let mut ast = match parse_for_edit(&src, home_path.display().to_string()) {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("{:?}", miette::Report::new(e));
+            return Ok(EXIT_PARSE);
+        }
+    };
+    let slot = find_field_by_span(&mut ast.items, target_span).ok_or_else(|| {
+        format!(
+            "internal: could not relocate field at span {}..{} in {}",
+            target_span.start,
+            target_span.end,
+            home_path.display()
+        )
+    })?;
+    slot.expr = new_expr;
+    write_atomic(&home_path, &wcl_format::to_source(&ast))
+        .map_err(|e| format!("failed to write {}: {e}", home_path.display()))?;
+    Ok(EXIT_OK)
+}
+
+/// Walk `items` (and recursively into `Item::Block.items`) to find
+/// the [`ast::Field`] whose `span` matches `span`. Span-equality
+/// works because `run_set` re-parses the same source bytes that
+/// `Document` parsed, so item positions match exactly.
+fn find_field_by_span(items: &mut [ast::Item], span: ast::Span) -> Option<&mut ast::Field> {
+    for item in items {
+        match item {
+            ast::Item::Field(f) if f.span == span => return Some(f),
+            ast::Item::Block(b) => {
+                if let Some(found) = find_field_by_span(&mut b.items, span) {
+                    return Some(found);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 /// Write `contents` to `target` via a same-directory temp file +

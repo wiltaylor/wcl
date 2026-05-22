@@ -186,6 +186,36 @@ impl Document {
     /// eagerly-imported file's items + cells + symbols (recursively).
     /// Used by all of `field` / `block` / `type_decl` etc. so imports
     /// are searched after the importer.
+    /// Locate the file that owns `target_field` by pointer-identity.
+    /// Returns `None` when the field lives in the document's main
+    /// source (the file the host opened directly); returns the
+    /// originating import's `path` when the field came in through an
+    /// eager top-level import or an already-forced in-block lazy
+    /// import.
+    ///
+    /// Always returning `None` for the main source keeps `Document`
+    /// out of the business of tracking its own filesystem path — the
+    /// CLI (or other host) already has that string from
+    /// `Document::from_file(path)` and doesn't need it round-tripped.
+    pub(crate) fn find_field_source_path(&self, target: *const ast::Field) -> Option<&Path> {
+        // Main file first — if we find it there, the answer is None.
+        if field_in_items(&self.ast.items, target, &self.cells.items) {
+            return None;
+        }
+        // Eager imports (and their transitive eagers) carry their
+        // own path; descend until we find a match.
+        for imp in &self.eager_imports {
+            if let Some(p) = find_in_import(imp, target) {
+                return Some(p);
+            }
+        }
+        // Lazy in-block imports inside the main file. Their
+        // `LoadedImport` is populated on first access — if a CLI
+        // caller drove `Document::get` over a path that crossed
+        // them, the cell is filled and we can recover the path.
+        find_lazy_in_blocks(&self.ast.items, &self.cells.items, target)
+    }
+
     fn all_sources(&self) -> Vec<SourceView<'_>> {
         let mut out = vec![SourceView {
             symbols: &self.symbols,
@@ -2168,6 +2198,20 @@ impl<'a> Field<'a> {
         self.ast.span
     }
 
+    /// File that declares this field. `None` means "the document's
+    /// main source" — the file the host passed to
+    /// [`Document::from_file`] (or the in-memory source if the
+    /// document was opened via [`Document::open`] from a string).
+    ///
+    /// Walks both eager imports and any lazy in-block imports that
+    /// have been forced (a call to [`Document::get`] forces every
+    /// lazy import on the path it walks, which is the regime
+    /// CLI-style consumers operate in).
+    pub fn source_path(&self) -> Option<&'a Path> {
+        let target: *const ast::Field = self.ast;
+        self.doc.find_field_source_path(target)
+    }
+
     pub fn value(&self) -> Result<&'a Value, &'a EvalError> {
         let cell = self.field_cell();
         if let Some(cached) = cell.value.get() {
@@ -4095,6 +4139,91 @@ fn span_of(expr: &ast::Expr) -> Span {
 
 pub(crate) fn span_to_miette(span: Span) -> SourceSpan {
     SourceSpan::new(span.start.into(), span.len().max(1))
+}
+
+/// Pointer-identity walk used by `Field::source_path`. Returns
+/// `true` if `target_field` lives directly in any `Item::Field` of
+/// `items`, or inside an `Item::Block`'s nested items. Lazy in-block
+/// imports are searched separately by [`find_lazy_in_blocks`] so the
+/// path-bearing variant can return the import's `PathBuf`.
+fn field_in_items(items: &[ast::Item], target: *const ast::Field, cells: &[ItemCells]) -> bool {
+    for (i, item) in items.iter().enumerate() {
+        match item {
+            ast::Item::Field(f) => {
+                if std::ptr::eq(f, target) {
+                    return true;
+                }
+            }
+            ast::Item::Block(b) => {
+                let block_cells = match cells.get(i).map(|c| &c.kind) {
+                    Some(ItemCellKind::Block { items: inner, .. }) => inner.as_slice(),
+                    _ => &[],
+                };
+                if field_in_items(&b.items, target, block_cells) {
+                    return true;
+                }
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
+/// Recursively search a [`LoadedImport`] (and any in-block lazy
+/// imports it owns) for `target`. The match's enclosing import's
+/// `path` is returned via the first enclosing scope that owns the
+/// item — never the deepest, so a field in shared.wcl reports
+/// shared.wcl even if it's inside a block.
+fn find_in_import(imp: &cells::LoadedImport, target: *const ast::Field) -> Option<&Path> {
+    if field_in_items(&imp.items, target, &imp.cells) {
+        return Some(&imp.path);
+    }
+    if let Some(p) = find_lazy_in_blocks(&imp.items, &imp.cells, target) {
+        return Some(p);
+    }
+    for child in &imp.eager_imports {
+        if let Some(p) = find_in_import(child, target) {
+            return Some(p);
+        }
+    }
+    None
+}
+
+/// Walk `items`+`cells` looking for `ItemCellKind::Import` cells
+/// whose lazy `loaded` slot has been forced. Each forced
+/// `LoadedImport` is searched via [`find_in_import`].
+fn find_lazy_in_blocks<'a>(
+    items: &'a [ast::Item],
+    cells: &'a [ItemCells],
+    target: *const ast::Field,
+) -> Option<&'a Path> {
+    for (i, item) in items.iter().enumerate() {
+        let Some(cell) = cells.get(i) else { continue };
+        if let ast::Item::Block(b) = item {
+            let block_cells = match &cell.kind {
+                ItemCellKind::Block { items: inner, .. } => inner.as_slice(),
+                _ => continue,
+            };
+            // Lazy `import` statements live in this block's cells:
+            // check those first, then recurse into nested blocks.
+            for (j, inner_item) in b.items.iter().enumerate() {
+                let Some(inner_cell) = block_cells.get(j) else {
+                    continue;
+                };
+                if let ast::Item::Import(_) = inner_item
+                    && let ItemCellKind::Import { loaded, .. } = &inner_cell.kind
+                    && let Some(Ok(li)) = loaded.get()
+                    && let Some(p) = find_in_import(li, target)
+                {
+                    return Some(p);
+                }
+            }
+            if let Some(p) = find_lazy_in_blocks(&b.items, block_cells, target) {
+                return Some(p);
+            }
+        }
+    }
+    None
 }
 
 #[cfg(test)]
