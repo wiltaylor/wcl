@@ -1695,6 +1695,7 @@ impl<'a> Parser<'a> {
         let kw = self.bump()?; // 'union'
         let start = kw.span.start;
         let (name, _name_span) = self.parse_path()?;
+        let extends = self.parse_extends_clause()?;
         let lbrace = self.bump()?;
         if !matches!(lbrace.kind, TokenKind::LBrace) {
             return Err(self.err(
@@ -1726,6 +1727,7 @@ impl<'a> Parser<'a> {
         let rbrace = self.bump()?;
         Ok(Item::UnionDecl(UnionDecl {
             name,
+            extends,
             variants,
             decorators,
             span: Span::new(start, rbrace.span.end),
@@ -1780,7 +1782,28 @@ impl<'a> Parser<'a> {
                 let tok = self.bump()?;
                 Ok((VariantBody::Unit, tok.span.end))
             }
-            TokenKind::Amp | TokenKind::Ident(_) => {
+            TokenKind::Amp => {
+                let amp = self.bump()?; // '&'
+                let (iface, iface_span) = self.parse_path()?;
+                if matches!(self.peek()?.kind, TokenKind::Question) {
+                    let q = self.peek()?;
+                    let span = q.span;
+                    return Err(self.err(
+                        "'?' is not allowed on a variant body",
+                        span,
+                        "remove '?'",
+                    ));
+                }
+                let span = Span::new(amp.span.start, iface_span.end);
+                Ok((
+                    VariantBody::InterfaceRef {
+                        iface,
+                        iface_span: span,
+                    },
+                    iface_span.end,
+                ))
+            }
+            TokenKind::Ident(_) => {
                 let (ty, ty_span) = self.parse_type_ref()?;
                 // No optional `?` is permitted on a variant body type ref.
                 if matches!(self.peek()?.kind, TokenKind::Question) {
@@ -2680,14 +2703,17 @@ mod tests {
 
     #[test]
     fn parse_reference_variant_body() {
+        // `&Path` in variant body position now parses as InterfaceRef
+        // — the variant payload is any value implementing the named
+        // interface. Concrete type refs without `&` still parse as
+        // TypeRef.
         let s = parse("type Item {} union Wrap { Boxed &Item }");
         let u = union_decls(&s.items)[0];
         match &u.variants[0].body {
-            VariantBody::TypeRef { ty, .. } => assert_eq!(
-                *ty,
-                TypeRef::Reference(Box::new(TypeRef::Named(vec!["Item".into()])))
-            ),
-            _ => panic!("expected TypeRef body"),
+            VariantBody::InterfaceRef { iface, .. } => {
+                assert_eq!(*iface, vec!["Item".to_string()]);
+            }
+            other => panic!("expected InterfaceRef body, got {other:?}"),
         }
     }
 

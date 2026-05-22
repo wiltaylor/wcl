@@ -366,6 +366,27 @@ pub(crate) fn validate_document(
                                 file,
                             )?;
                         }
+                        ast::VariantBody::InterfaceRef { iface, iface_span } => {
+                            // InterfaceRef body is the moral equivalent of
+                            // `&Iface` — the interface is the contract, the
+                            // payload is any value satisfying it. Pass
+                            // `is_reference=true` so interface paths are
+                            // accepted (the same rule that lets `&Iface`
+                            // appear in field types).
+                            check_type_ref(
+                                &crate::value::TypeRef::Named(iface.clone()),
+                                *iface_span,
+                                &declared,
+                                &interfaces,
+                                true,
+                                &file_ns,
+                                &item_aliases,
+                                &ns_aliases,
+                                &wildcards,
+                                source,
+                                file,
+                            )?;
+                        }
                         ast::VariantBody::Unit => {}
                     }
                 }

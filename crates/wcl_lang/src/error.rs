@@ -167,6 +167,14 @@ pub enum EvalError {
         span: SourceSpan,
     },
 
+    #[error("union '{union}' has a cyclic 'extends' chain")]
+    #[diagnostic(code(wcl::eval::union_cycle))]
+    UnionCycle {
+        union: String,
+        #[label("cyclic extends")]
+        span: SourceSpan,
+    },
+
     #[error("operator '{op}' is not defined for {lhs_type} and {rhs_type}")]
     #[diagnostic(code(wcl::eval::type_mismatch))]
     TypeMismatch {
@@ -245,6 +253,22 @@ pub enum SchemaViolationKind {
     /// `&T` reference field's target isn't `T` and isn't a
     /// descendant of `T` via the `extends` chain.
     InterfaceNotImplemented,
+    /// A field declared `: SomeUnion` was assigned a variant whose
+    /// constructing union FQN differs.
+    VariantUnionMismatch,
+    /// Two variants in a union's effective list share a name (across
+    /// the `extends` chain).
+    DuplicateVariant,
+    /// Two variants in the same effective list have identical bodies,
+    /// making structural dispatch ambiguous.
+    VariantShapeCollision,
+    /// A block / decorator / table-row didn't match any variant of
+    /// the declared union via structural dispatch.
+    VariantNoMatch,
+    /// Defensive: structural dispatch matched more than one variant.
+    /// Should be unreachable after `VariantShapeCollision` declaration
+    /// checks land.
+    VariantAmbiguous,
 }
 
 impl EvalError {
@@ -397,6 +421,13 @@ impl EvalError {
     pub(crate) fn user_error(message: impl Into<String>, span: crate::ast::Span) -> Self {
         Self::UserError {
             message: message.into(),
+            span: span_to_miette(span),
+        }
+    }
+
+    pub(crate) fn union_cycle(union: impl Into<String>, span: crate::ast::Span) -> Self {
+        Self::UnionCycle {
+            union: union.into(),
             span: span_to_miette(span),
         }
     }

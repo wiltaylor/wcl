@@ -699,13 +699,33 @@ impl Document {
             }
             match root {
                 Some(schema) => {
-                    if schema.field(f.name()).is_none() {
+                    let Some(declared) = schema.field(f.name()) else {
                         out.push(EvalError::schema_violation(
                             Kind::UnknownField,
                             format!(
                                 "top-level field '{}' is not declared by @document schema '{}'",
                                 f.name(),
                                 schema.name()
+                            ),
+                            f.span(),
+                        ));
+                        continue;
+                    };
+                    // Value-vs-declared-type check: union fields must
+                    // hold a variant of the declared union.
+                    if let TypeRef::Named(path) = declared.type_ref()
+                        && let Some(union_decl) = self.union_decl(&path.join("."))
+                        && let Ok(v) = f.value()
+                        && let Value::Variant { union, .. } = v
+                        && union != &union_decl.ast.name
+                    {
+                        out.push(EvalError::schema_violation(
+                            Kind::VariantUnionMismatch,
+                            format!(
+                                "field '{}' declared as union '{}' but value is variant of '{}'",
+                                f.name(),
+                                union_decl.ast.name.join("."),
+                                union.join("."),
                             ),
                             f.span(),
                         ));
@@ -765,6 +785,13 @@ impl Document {
             for e in b.schema_errors() {
                 out.push(e.clone());
             }
+        }
+
+        // Validate every union declaration: cycles in the extends
+        // chain, duplicate variants across that chain, and structural
+        // collisions between variant bodies.
+        for u in self.union_decls() {
+            out.extend(validate_union(self, u.ast));
         }
 
         out
@@ -970,6 +997,7 @@ impl<'a> UnionVariant<'a> {
         match &self.ast.body {
             ast::VariantBody::Record(_) => VariantBodyView::Record,
             ast::VariantBody::TypeRef { ty, .. } => VariantBodyView::TypeRef(ty),
+            ast::VariantBody::InterfaceRef { iface, .. } => VariantBodyView::InterfaceRef(iface),
             ast::VariantBody::Unit => VariantBodyView::Unit,
         }
     }
@@ -1008,6 +1036,10 @@ impl<'a> UnionVariant<'a> {
 pub enum VariantBodyView<'a> {
     Record,
     TypeRef(&'a TypeRef),
+    /// Variant body of the form `&InterfaceName`: payload is any value
+    /// implementing the interface. The slice borrows the path segments
+    /// declared in source.
+    InterfaceRef(&'a [String]),
     Unit,
 }
 
@@ -2593,7 +2625,8 @@ impl Document {
             return Err(EvalError::unknown_union(type_path.join("."), span));
         };
         let union_fqn = union_ast.name.clone();
-        let Some(variant_decl) = union_ast.variants.iter().find(|v| v.name == variant) else {
+        let effective = self.effective_variants_of(union_ast)?;
+        let Some(variant_decl) = effective.iter().copied().find(|v| v.name == variant) else {
             return Err(EvalError::unknown_variant(
                 union_fqn.join("."),
                 variant.to_string(),
@@ -2604,6 +2637,11 @@ impl Document {
             (ast::VariantBody::Unit, ast::VariantArgs::Unit) => crate::value::VariantPayload::Unit,
             (ast::VariantBody::TypeRef { .. }, ast::VariantArgs::Positional(e)) => {
                 let v = self.eval_in(e, ctx)?;
+                crate::value::VariantPayload::Positional(Box::new(v))
+            }
+            (ast::VariantBody::InterfaceRef { iface, .. }, ast::VariantArgs::Positional(e)) => {
+                let v = self.eval_in(e, ctx)?;
+                self.check_value_implements_iface(&v, iface, span)?;
                 crate::value::VariantPayload::Positional(Box::new(v))
             }
             (ast::VariantBody::Record(decl_fields), ast::VariantArgs::Record(named_args)) => {
@@ -2637,6 +2675,7 @@ impl Document {
                 let expected = match expected_body {
                     ast::VariantBody::Unit => "no arguments",
                     ast::VariantBody::TypeRef { .. } => "positional argument",
+                    ast::VariantBody::InterfaceRef { .. } => "positional argument (interface ref)",
                     ast::VariantBody::Record(_) => "record arguments",
                 };
                 let got = match given {
@@ -2652,6 +2691,130 @@ impl Document {
             variant: variant.to_string(),
             payload,
         })
+    }
+
+    /// Effective variants of a union: parent unions' variants first
+    /// (depth-first across the `extends` chain), then the union's own
+    /// variants, deduplicating by name (parent first wins; collisions
+    /// are caught separately by validation). Detects cycles and
+    /// returns `EvalError::UnionCycle`.
+    pub(crate) fn effective_variants_of<'a>(
+        &'a self,
+        union_ast: &'a ast::UnionDecl,
+    ) -> Result<Vec<&'a ast::UnionVariant>, EvalError> {
+        let mut out: Vec<&ast::UnionVariant> = Vec::new();
+        let mut seen_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut visiting: std::collections::HashSet<String> = std::collections::HashSet::new();
+        self.collect_effective_variants(union_ast, &mut out, &mut seen_names, &mut visiting)?;
+        Ok(out)
+    }
+
+    fn collect_effective_variants<'a>(
+        &'a self,
+        u: &'a ast::UnionDecl,
+        out: &mut Vec<&'a ast::UnionVariant>,
+        seen: &mut std::collections::HashSet<String>,
+        visiting: &mut std::collections::HashSet<String>,
+    ) -> Result<(), EvalError> {
+        let key = u.name.join(".");
+        if visiting.contains(&key) {
+            return Err(EvalError::union_cycle(key, u.span));
+        }
+        visiting.insert(key.clone());
+        // Parents first (depth-first), then own variants.
+        for parent_path in &u.extends {
+            let candidates: Vec<String> = if self.file_ns.is_empty() {
+                vec![parent_path.join(".")]
+            } else {
+                vec![
+                    format!("{}.{}", self.file_ns.join("."), parent_path.join(".")),
+                    parent_path.join("."),
+                ]
+            };
+            let mut parent_ast: Option<&ast::UnionDecl> = None;
+            for fqn in &candidates {
+                if let Some(p) = self.union_decl(fqn) {
+                    parent_ast = Some(p.ast);
+                    break;
+                }
+            }
+            let Some(p) = parent_ast else {
+                return Err(EvalError::unknown_union(parent_path.join("."), u.span));
+            };
+            self.collect_effective_variants(p, out, seen, visiting)?;
+        }
+        for v in &u.variants {
+            if seen.insert(v.name.clone()) {
+                out.push(v);
+            }
+            // Collisions silently drop the later definition — declaration
+            // validation reports them as DuplicateVariant errors.
+        }
+        visiting.remove(&key);
+        Ok(())
+    }
+
+    /// Check that `value`'s effective fields cover the interface's
+    /// declared fields with matching types — for `VariantBody::InterfaceRef`.
+    ///
+    /// Scope (this pass): only `Value::Variant` payloads whose body is
+    /// a `Record` can be structurally introspected. Other value shapes
+    /// either error or get a runtime pass-through with a TODO note.
+    /// A future pass with `Value` → effective-type introspection can
+    /// tighten the check.
+    pub(crate) fn check_value_implements_iface(
+        &self,
+        value: &Value,
+        iface_path: &[String],
+        span: Span,
+    ) -> Result<(), EvalError> {
+        // Resolve the interface declaration. Try with namespace prefix
+        // first (matching `union_decl`/`field` lookup conventions).
+        let candidates: Vec<String> = if self.file_ns.is_empty() {
+            vec![iface_path.join(".")]
+        } else {
+            vec![
+                format!("{}.{}", self.file_ns.join("."), iface_path.join(".")),
+                iface_path.join("."),
+            ]
+        };
+        let mut iface_decl: Option<&ast::InterfaceDecl> = None;
+        for fqn in &candidates {
+            if let Some(i) = self.interface(fqn) {
+                iface_decl = Some(i.ast);
+                break;
+            }
+        }
+        let Some(iface) = iface_decl else {
+            return Err(EvalError::unknown_union(iface_path.join("."), span));
+        };
+        // For now we only structurally introspect variant values with
+        // record payloads. Anything else gets a pass-through; richer
+        // checking lands when value-type introspection exists.
+        let Value::Variant { payload, .. } = value else {
+            return Ok(());
+        };
+        let crate::value::VariantPayload::Record(map) = payload else {
+            return Ok(());
+        };
+        for f in &iface.fields {
+            let Some(v) = map.get(&f.name) else {
+                return Err(EvalError::variant_shape_mismatch(
+                    format!("interface field '{}'", f.name),
+                    "missing on variant payload",
+                    span,
+                ));
+            };
+            let expected = &f.ty;
+            if !value_matches_type_ref(v, expected) {
+                return Err(EvalError::variant_shape_mismatch(
+                    format!("interface field '{}': {expected:?}", f.name),
+                    format!("payload field is {}", v.type_name()),
+                    span,
+                ));
+            }
+        }
+        Ok(())
     }
 
     /// Walk a path expression and return the navigator for its
@@ -2771,6 +2934,171 @@ fn describe_datakind(k: &crate::data::DataKind<'_>) -> &'static str {
         DataKind::Symbols(_) => "symbol set",
         DataKind::Symbol(_) => "symbol",
     }
+}
+
+/// Light value-vs-declared-type check used by structural variant
+/// validation. Conservative: returns `true` only for the cases we know
+/// how to compare. Named/Reference/Function/Tensor/List types are
+/// accepted permissively for now (the alternative would be a much
+/// bigger value-vs-type framework).
+fn value_matches_type_ref(value: &Value, ty: &TypeRef) -> bool {
+    use crate::value::BuiltinType as B;
+    match (value, ty) {
+        (Value::Bool(_), TypeRef::Builtin(B::Bool)) => true,
+        (Value::I8(_), TypeRef::Builtin(B::I8)) => true,
+        (Value::I16(_), TypeRef::Builtin(B::I16)) => true,
+        (Value::I32(_), TypeRef::Builtin(B::I32)) => true,
+        (Value::I64(_), TypeRef::Builtin(B::I64)) => true,
+        (Value::I128(_), TypeRef::Builtin(B::I128)) => true,
+        (Value::Isize(_), TypeRef::Builtin(B::Isize)) => true,
+        (Value::U8(_), TypeRef::Builtin(B::U8)) => true,
+        (Value::U16(_), TypeRef::Builtin(B::U16)) => true,
+        (Value::U32(_), TypeRef::Builtin(B::U32)) => true,
+        (Value::U64(_), TypeRef::Builtin(B::U64)) => true,
+        (Value::U128(_), TypeRef::Builtin(B::U128)) => true,
+        (Value::Usize(_), TypeRef::Builtin(B::Usize)) => true,
+        (Value::F32(_), TypeRef::Builtin(B::F32)) => true,
+        (Value::F64(_), TypeRef::Builtin(B::F64)) => true,
+        (Value::Utf8(_), TypeRef::Builtin(B::Utf8)) => true,
+        (Value::Ascii(_), TypeRef::Builtin(B::Ascii)) => true,
+        (Value::Utf16(_), TypeRef::Builtin(B::Utf16)) => true,
+        (Value::Utf32(_), TypeRef::Builtin(B::Utf32)) => true,
+        (Value::Symbol(_), TypeRef::Builtin(B::Symbol)) => true,
+        (Value::Identifier(_), TypeRef::Builtin(B::Identifier)) => true,
+        (Value::None, _) => false, // None doesn't satisfy any concrete type
+        // Variant value against a named union type: compare FQN.
+        (Value::Variant { union, .. }, TypeRef::Named(path)) => path_matches_suffix(path, union),
+        // Lists, tensors, functions: skip strict checks for now.
+        (Value::List(_), TypeRef::List(_)) => true,
+        (Value::Tensor { .. }, TypeRef::Tensor { .. }) => true,
+        (Value::Function(_), TypeRef::Function { .. }) => true,
+        _ => false,
+    }
+}
+
+/// Declaration-time validation for a single union: cycles, duplicate
+/// variant names across the `extends` chain, and structural-shape
+/// collisions between variant bodies that would make dispatch
+/// ambiguous.
+fn validate_union(doc: &Document, u: &ast::UnionDecl) -> Vec<EvalError> {
+    use crate::error::SchemaViolationKind as Kind;
+    let mut out = Vec::new();
+    let effective = match doc.effective_variants_of(u) {
+        Ok(v) => v,
+        Err(e) => {
+            out.push(e);
+            return out;
+        }
+    };
+    // Duplicate variant names across the chain: walk own + all parents
+    // and report any name appearing more than once. effective_variants
+    // dedups silently — we re-walk the raw lists here to catch.
+    let mut seen: std::collections::HashMap<String, ast::Span> = Default::default();
+    fn walk(
+        doc: &Document,
+        u: &ast::UnionDecl,
+        seen: &mut std::collections::HashMap<String, ast::Span>,
+        out: &mut Vec<EvalError>,
+        visiting: &mut std::collections::HashSet<String>,
+    ) {
+        use crate::error::SchemaViolationKind as Kind;
+        let key = u.name.join(".");
+        if visiting.contains(&key) {
+            return;
+        }
+        visiting.insert(key);
+        for parent_path in &u.extends {
+            let candidates: Vec<String> = if doc.file_ns.is_empty() {
+                vec![parent_path.join(".")]
+            } else {
+                vec![
+                    format!("{}.{}", doc.file_ns.join("."), parent_path.join(".")),
+                    parent_path.join("."),
+                ]
+            };
+            for fqn in &candidates {
+                if let Some(p) = doc.union_decl(fqn) {
+                    walk(doc, p.ast, seen, out, visiting);
+                    break;
+                }
+            }
+        }
+        for v in &u.variants {
+            if let Some(prev) = seen.get(&v.name) {
+                out.push(EvalError::schema_violation(
+                    Kind::DuplicateVariant,
+                    format!(
+                        "variant '{}' is declared more than once in union '{}' (first at offset {})",
+                        v.name,
+                        u.name.join("."),
+                        prev.start,
+                    ),
+                    v.span,
+                ));
+            } else {
+                seen.insert(v.name.clone(), v.span);
+            }
+        }
+    }
+    walk(
+        doc,
+        u,
+        &mut seen,
+        &mut out,
+        &mut std::collections::HashSet::new(),
+    );
+    // Structural-shape collisions among effective variants. Each pair
+    // is checked once; collisions are flagged on the second offender.
+    for i in 0..effective.len() {
+        for j in (i + 1)..effective.len() {
+            if variant_bodies_collide(&effective[i].body, &effective[j].body) {
+                out.push(EvalError::schema_violation(
+                    Kind::VariantShapeCollision,
+                    format!(
+                        "variants '{}' and '{}' in union '{}' have identical bodies",
+                        effective[i].name,
+                        effective[j].name,
+                        u.name.join("."),
+                    ),
+                    effective[j].span,
+                ));
+            }
+        }
+    }
+    out
+}
+
+/// Bodies "collide" when they're indistinguishable for dispatch:
+/// same set of record-field (name, type) pairs, or identical Unit /
+/// TypeRef / InterfaceRef references.
+fn variant_bodies_collide(a: &ast::VariantBody, b: &ast::VariantBody) -> bool {
+    use ast::VariantBody as VB;
+    match (a, b) {
+        (VB::Unit, VB::Unit) => true,
+        (VB::TypeRef { ty: a, .. }, VB::TypeRef { ty: b, .. }) => a == b,
+        (VB::InterfaceRef { iface: a, .. }, VB::InterfaceRef { iface: b, .. }) => a == b,
+        (VB::Record(af), VB::Record(bf)) => {
+            if af.len() != bf.len() {
+                return false;
+            }
+            let mut a_sorted: Vec<(&String, &TypeRef)> =
+                af.iter().map(|f| (&f.name, &f.ty)).collect();
+            let mut b_sorted: Vec<(&String, &TypeRef)> =
+                bf.iter().map(|f| (&f.name, &f.ty)).collect();
+            a_sorted.sort_by_key(|(n, _)| (*n).clone());
+            b_sorted.sort_by_key(|(n, _)| (*n).clone());
+            a_sorted == b_sorted
+        }
+        _ => false,
+    }
+}
+
+fn path_matches_suffix(pat_path: &[String], union_fqn: &[String]) -> bool {
+    if pat_path.len() > union_fqn.len() {
+        return false;
+    }
+    let offset = union_fqn.len() - pat_path.len();
+    union_fqn[offset..] == *pat_path
 }
 
 fn span_of(expr: &ast::Expr) -> Span {

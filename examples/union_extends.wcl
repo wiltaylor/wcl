@@ -1,0 +1,46 @@
+// Union improvements: `extends`, `&Interface` variant bodies, and
+// schema validation that catches a value-of-the-wrong-union mismatch.
+
+// ── 1. A base union and an extended one ──────────────────────────────
+union Result {
+  Ok    { value: i64 }
+  Err   { message: utf8 }
+}
+
+// `Extended extends Result` inherits all of Result's variants. You can
+// construct Result::Ok via either path; the value's union FQN is the
+// constructing union (so Extended::Ok carries union=["Extended"]).
+union Extended extends Result {
+  Pending none
+}
+
+@schemaless r_ok      = Result::Ok { value: 1 }
+@schemaless e_ok      = Extended::Ok { value: 2 }           // inherited
+@schemaless e_pend    = Extended::Pending                   // own
+@schemaless e_err     = Extended::Err { message: "bad" }    // inherited
+
+// ── 2. Variant body `&Interface` ─────────────────────────────────────
+interface Named {
+  name: utf8
+}
+
+union Reporter {
+  AsValue { name: utf8 reading: f64 }                       // record variant
+  Wrapped &Named                                            // any value implementing Named
+}
+
+@schemaless gauge   = Reporter::AsValue { name: "rpm", reading: 1200.0 }
+// `Wrapped` accepts any variant value whose record covers Named's fields.
+// `AsValue` satisfies Named (has `name: utf8`), so wrapping is valid.
+@schemaless wrapped = Reporter::Wrapped(gauge)
+
+// ── 3. Value-vs-declared-type schema validation ──────────────────────
+//
+// If a field is declared as one union and you assign a value of a
+// different union, `wcl check` flags it:
+//
+//     @document type Doc { r: Result }
+//     r = Extended::Pending          // VariantUnionMismatch
+//
+// (Not exercised in this fixture so the file parses cleanly; see the
+// integration test `value_of_wrong_union_is_schema_violation`.)

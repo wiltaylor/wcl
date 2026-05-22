@@ -397,6 +397,126 @@ fn collection_builtins_evaluate_end_to_end() {
 }
 
 #[test]
+fn union_extends_inherits_variants() {
+    let path = examples_dir().join("union_extends.wcl");
+    let doc = Document::from_file(&path).expect("union_extends fixture parses");
+
+    let val = |name: &str| doc.field(name).unwrap().value().unwrap();
+
+    // Inherited from Result, constructed via Extended path → union FQN is Extended.
+    let Value::Variant { union, variant, .. } = val("e_ok") else {
+        panic!("e_ok should be a variant")
+    };
+    assert_eq!(union, &vec!["Extended".to_string()]);
+    assert_eq!(variant, "Ok");
+
+    // Own variant.
+    let Value::Variant { variant, .. } = val("e_pend") else {
+        panic!("e_pend should be a variant")
+    };
+    assert_eq!(variant, "Pending");
+
+    // Original Result path still works, untouched.
+    let Value::Variant { union, variant, .. } = val("r_ok") else {
+        panic!("r_ok should be a variant")
+    };
+    assert_eq!(union, &vec!["Result".to_string()]);
+    assert_eq!(variant, "Ok");
+
+    // InterfaceRef variant wraps a value that satisfies the interface.
+    let Value::Variant {
+        variant, payload, ..
+    } = val("wrapped")
+    else {
+        panic!("wrapped should be a variant");
+    };
+    assert_eq!(variant, "Wrapped");
+    let VariantPayload::Positional(inner) = payload else {
+        panic!("Wrapped is positional")
+    };
+    let Value::Variant { variant, .. } = &**inner else {
+        panic!("inner should be a variant")
+    };
+    assert_eq!(variant, "AsValue");
+}
+
+#[test]
+fn value_of_wrong_union_is_schema_violation() {
+    let src = r#"
+        union Result { Ok { value: i64 } }
+        union Maybe  { Some { value: i64 } Nothing none }
+        @document type Doc { r: Result }
+        r = Maybe::Some { value: 1 }
+    "#;
+    let doc = Document::open(src, "test").unwrap();
+    let errs = doc.schema_errors();
+    assert!(
+        errs.iter().any(|e| matches!(
+            e,
+            EvalError::SchemaViolation {
+                kind: wcl_lang::SchemaViolationKind::VariantUnionMismatch,
+                ..
+            }
+        )),
+        "expected VariantUnionMismatch, got: {errs:#?}"
+    );
+}
+
+#[test]
+fn union_extends_cycle_is_caught() {
+    let src = r#"
+        union A extends B { Foo {x: i64} }
+        union B extends A { Bar {y: utf8} }
+    "#;
+    let doc = Document::open(src, "test").unwrap();
+    let errs = doc.schema_errors();
+    assert!(
+        errs.iter()
+            .any(|e| matches!(e, EvalError::UnionCycle { .. })),
+        "expected UnionCycle, got: {errs:#?}"
+    );
+}
+
+#[test]
+fn duplicate_variant_across_extends_is_caught() {
+    let src = r#"
+        union A { Foo {x: i64} }
+        union B extends A { Foo {y: utf8} }
+    "#;
+    let doc = Document::open(src, "test").unwrap();
+    let errs = doc.schema_errors();
+    assert!(
+        errs.iter().any(|e| matches!(
+            e,
+            EvalError::SchemaViolation {
+                kind: wcl_lang::SchemaViolationKind::DuplicateVariant,
+                ..
+            }
+        )),
+        "expected DuplicateVariant, got: {errs:#?}"
+    );
+}
+
+#[test]
+fn variant_shape_collision_is_caught() {
+    let src = r#"
+        union U { Foo {x: i64} Bar {x: i64} }
+    "#;
+    let doc = Document::open(src, "test").unwrap();
+    let errs = doc.schema_errors();
+    assert!(
+        errs.iter().any(|e| matches!(
+            e,
+            EvalError::SchemaViolation {
+                kind: wcl_lang::SchemaViolationKind::VariantShapeCollision,
+                ..
+            }
+        )),
+        "expected VariantShapeCollision, got: {errs:#?}"
+    );
+}
+
+#[test]
 fn branching_fixture_covers_if_match_and_variants() {
     let path = examples_dir().join("branching.wcl");
     let doc = Document::from_file(&path).expect("branching fixture parses");

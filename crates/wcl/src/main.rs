@@ -270,6 +270,9 @@ fn dump_variant(v: &UnionVariant<'_>, out: &mut String) {
         VariantBodyView::TypeRef(t) => {
             writeln!(out, "  {} {}", v.name(), type_repr(t)).unwrap();
         }
+        VariantBodyView::InterfaceRef(path) => {
+            writeln!(out, "  {} &{}", v.name(), path.join(".")).unwrap();
+        }
         VariantBodyView::Unit => {
             writeln!(out, "  {} none", v.name()).unwrap();
         }

@@ -312,6 +312,11 @@ pub(crate) struct TypeField {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct UnionDecl {
     pub name: Vec<String>,
+    /// Parent unions whose variants are inherited. Empty when this
+    /// union is declared without an `extends` clause. Variants are
+    /// resolved through `Document::union_decl` then composed by
+    /// `UnionDecl::effective_variants`.
+    pub extends: Vec<Vec<String>>,
     pub variants: Vec<UnionVariant>,
     pub decorators: Vec<Decorator>,
     pub span: Span,
@@ -331,6 +336,12 @@ pub(crate) enum VariantBody {
     TypeRef {
         ty: crate::value::TypeRef,
         ty_span: Span,
+    },
+    /// `Drawn &Drawable` — variant payload is any value whose runtime
+    /// type structurally implements the named interface.
+    InterfaceRef {
+        iface: Vec<String>,
+        iface_span: Span,
     },
     Unit,
 }

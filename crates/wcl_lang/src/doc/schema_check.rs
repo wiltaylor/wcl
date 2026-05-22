@@ -68,6 +68,40 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
         }
     }
 
+    // Value-vs-declared-type: when a schema field's declared type
+    // resolves to a union, the assigned value must be a variant of
+    // *that* union. Other type mismatches are intentionally ignored
+    // here; a broader value-vs-type framework is a future pass.
+    for declared in schema.fields() {
+        let crate::value::TypeRef::Named(path) = declared.type_ref() else {
+            continue;
+        };
+        let Some(union_decl) = block.doc.union_decl(&path.join(".")) else {
+            continue;
+        };
+        let expected_fqn = union_decl.ast.name.clone();
+        let Some(literal_field) = block.field(declared.name()) else {
+            continue;
+        };
+        if has_schemaless(&literal_field.ast.decorators) {
+            continue;
+        }
+        if let Ok(crate::value::Value::Variant { union, .. }) = literal_field.value()
+            && union != &expected_fqn
+        {
+            errs.push(EvalError::schema_violation(
+                Kind::VariantUnionMismatch,
+                format!(
+                    "field '{}' declared as union '{}' but value is variant of '{}'",
+                    literal_field.name(),
+                    expected_fqn.join("."),
+                    union.join("."),
+                ),
+                literal_field.span(),
+            ));
+        }
+    }
+
     // 0. Table row-form validation: if this block's schema is a
     // `@table`, its labels are the row's column values and must
     // match the schema field count.
