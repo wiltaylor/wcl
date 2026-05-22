@@ -2859,6 +2859,45 @@ impl<'a> EvalCtx<'a> {
             .rev()
             .find_map(|(n, v)| if n == name { Some(v) } else { None })
     }
+
+    /// Push a fresh locals frame and return a guard whose `Drop` impl
+    /// pops everything pushed during its lifetime. Used by `Block`,
+    /// `IfLet`, `Match`-arm bindings, and function-call frames so an
+    /// early `return Err(...)` can't leak bindings into the parent
+    /// frame.
+    fn push_frame(&mut self) -> LocalsFrame<'_, 'a> {
+        let base = self.locals.len();
+        LocalsFrame { ctx: self, base }
+    }
+}
+
+/// RAII guard: on drop, truncates the wrapped `EvalCtx`'s `locals`
+/// back to the length it had when the guard was created. Deref to the
+/// underlying `EvalCtx` so calls like `frame.locals.push(...)` work
+/// directly; pass `&mut *frame` where an `&mut EvalCtx<'a>` is
+/// expected.
+pub(crate) struct LocalsFrame<'c, 'a> {
+    ctx: &'c mut EvalCtx<'a>,
+    base: usize,
+}
+
+impl<'a> std::ops::Deref for LocalsFrame<'_, 'a> {
+    type Target = EvalCtx<'a>;
+    fn deref(&self) -> &Self::Target {
+        self.ctx
+    }
+}
+
+impl<'a> std::ops::DerefMut for LocalsFrame<'_, 'a> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.ctx
+    }
+}
+
+impl Drop for LocalsFrame<'_, '_> {
+    fn drop(&mut self) {
+        self.ctx.locals.truncate(self.base);
+    }
 }
 
 /// Resolve `name` to a `Value::Function`, if it has one bound in the
@@ -2874,6 +2913,26 @@ fn lookup_function(doc: &Document, ctx: &EvalCtx<'_>, name: &str) -> Option<FnVa
     match materialise_dataref(dr, span) {
         Ok(Value::Function(fv)) => Some(fv),
         _ => None,
+    }
+}
+
+/// Extract a string payload from a builtin argument, or build a
+/// `BuiltinTypeMismatch` error explaining what was expected. Used by
+/// the `error`/`panic`/`assert` control-flow primitives in
+/// `eval_call_builtin`.
+fn string_arg_or_err(
+    name: &str,
+    v: &Value,
+    span: Span,
+    expected: &str,
+) -> Result<String, EvalError> {
+    match v {
+        Value::Utf8(s) | Value::Ascii(s) => Ok(s.clone()),
+        other => Err(EvalError::builtin_type(
+            name.to_string(),
+            format!("{name}: {expected}, got {}", other.type_name()),
+            span,
+        )),
     }
 }
 
@@ -3100,128 +3159,10 @@ impl Document {
                 return apply_binary(*op, l, r, *span);
             }
             E::Call { callee, args, span } => {
-                // Resolution order: when callee is a bare identifier, try
-                // to find a `Value::Function` in locals/scope first; fall
-                // back to the builtin registry by name. For any other
-                // callee expression, evaluate it and require a function
-                // value.
-                if let E::Identifier(name) = callee.as_ref() {
-                    if let Some(fv) = lookup_function(self, ctx, name) {
-                        let mut evald = Vec::with_capacity(args.len());
-                        for arg in args {
-                            evald.push(self.eval_in(arg, ctx)?);
-                        }
-                        let _profile_guard =
-                            self.profile_enter(crate::profile::ProfileKey::UserFn {
-                                name: name.clone(),
-                            });
-                        return self
-                            .invoke_fn_value(&fv, &evald, ctx, *span)
-                            .map_err(|e| call_err_at(e, name.clone(), *span));
-                    }
-                    let Some(builtin) = self.env.builtin(name).cloned() else {
-                        return Err(EvalError::unknown_builtin(name.clone(), *span));
-                    };
-                    // `format(template, ...args)` is variadic — its
-                    // registered arity (0) is a sentinel that just
-                    // means "skip the standard arity check".
-                    if name != "format" && args.len() != builtin.arity {
-                        return Err(EvalError::builtin_arity(
-                            name.clone(),
-                            builtin.arity,
-                            args.len(),
-                            *span,
-                        ));
-                    }
-                    let mut evald = Vec::with_capacity(args.len());
-                    for arg in args {
-                        evald.push(self.eval_in(arg, ctx)?);
-                    }
-                    let _profile_guard = self
-                        .profile_enter(crate::profile::ProfileKey::Builtin { name: name.clone() });
-                    // Special-case `error(msg)`: raise a structured UserError
-                    // rather than the generic BuiltinTypeMismatch path that
-                    // every other fallible builtin uses. Keeps `error` a
-                    // first-class control-flow primitive without bending the
-                    // builtin trait machinery.
-                    if (name == "error" || name == "panic") && evald.len() == 1 {
-                        let msg = match &evald[0] {
-                            Value::Utf8(s) | Value::Ascii(s) => s.clone(),
-                            other => {
-                                return Err(EvalError::builtin_type(
-                                    name.clone(),
-                                    format!(
-                                        "{name}: expected utf8 string, got {}",
-                                        other.type_name()
-                                    ),
-                                    *span,
-                                ));
-                            }
-                        };
-                        return Err(EvalError::user_error(msg, *span));
-                    }
-                    // `assert(cond, msg)` — when cond is false, raise a
-                    // structured UserError; when true, return None.
-                    if name == "assert" && evald.len() == 2 {
-                        let cond = matches!(&evald[0], Value::Bool(true));
-                        if cond {
-                            return Ok(Value::None);
-                        }
-                        let msg = match &evald[1] {
-                            Value::Utf8(s) | Value::Ascii(s) => s.clone(),
-                            other => {
-                                return Err(EvalError::builtin_type(
-                                    name.clone(),
-                                    format!(
-                                        "assert: message must be utf8, got {}",
-                                        other.type_name()
-                                    ),
-                                    *span,
-                                ));
-                            }
-                        };
-                        return Err(EvalError::user_error(msg, *span));
-                    }
-                    return match &builtin.kind {
-                        crate::builtins::BuiltinKind::Pure(body) => (body)(&evald)
-                            .map_err(|msg| EvalError::builtin_type(name.clone(), msg, *span)),
-                        crate::builtins::BuiltinKind::Hof(body) => {
-                            let mut caller = EvalCaller {
-                                doc: self,
-                                ctx,
-                                span: *span,
-                                err: None,
-                            };
-                            let res = (body)(&mut caller, &evald);
-                            if let Some(e) = caller.err.take() {
-                                return Err(e);
-                            }
-                            res.map_err(|msg| EvalError::builtin_type(name.clone(), msg, *span))
-                        }
-                    };
-                }
-                let callee_val = self.eval_in(callee, ctx)?;
-                let Value::Function(fv) = callee_val else {
-                    return Err(EvalError::non_callable(*span));
-                };
-                let mut evald = Vec::with_capacity(args.len());
-                for arg in args {
-                    evald.push(self.eval_in(arg, ctx)?);
-                }
-                let _profile_guard = self.profile_enter(crate::profile::ProfileKey::UserFn {
-                    name: String::new(),
-                });
-                return self.invoke_fn_value(&fv, &evald, ctx, *span);
+                return self.eval_call(callee, args, *span, ctx);
             }
             E::Block { lets, tail, .. } => {
-                let frame_base = ctx.locals.len();
-                for binding in lets {
-                    let v = self.eval_in(&binding.value, ctx)?;
-                    ctx.locals.push((binding.name.clone(), v));
-                }
-                let result = self.eval_in(tail, ctx);
-                ctx.locals.truncate(frame_base);
-                return result;
+                return self.eval_block(lets, tail, ctx);
             }
             E::ListLit { elements, .. } => {
                 let mut out = Vec::with_capacity(elements.len());
@@ -3247,53 +3188,10 @@ impl Document {
                 else_block,
                 ..
             } => {
-                let v = self.eval_in(scrut, ctx)?;
-                if let Some(bindings) = match_pat::match_pattern(pattern, &v) {
-                    let frame_base = ctx.locals.len();
-                    for (name, val) in bindings {
-                        ctx.locals.push((name, val));
-                    }
-                    let result = self.eval_in(then_block, ctx);
-                    ctx.locals.truncate(frame_base);
-                    return result;
-                }
-                return self.eval_in(else_block, ctx);
+                return self.eval_if_let(pattern, scrut, then_block, else_block, ctx);
             }
             E::Match { scrut, arms, span } => {
-                let v = self.eval_in(scrut, ctx)?;
-                'arms: for arm in arms {
-                    for pat in &arm.patterns {
-                        let Some(bindings) = match_pat::match_pattern(pat, &v) else {
-                            continue;
-                        };
-                        let frame_base = ctx.locals.len();
-                        for (name, val) in bindings {
-                            ctx.locals.push((name, val));
-                        }
-                        if let Some(guard) = &arm.guard {
-                            match self.eval_in(guard, ctx) {
-                                Ok(Value::Bool(true)) => {}
-                                Ok(Value::Bool(false)) => {
-                                    ctx.locals.truncate(frame_base);
-                                    continue 'arms;
-                                }
-                                Ok(other) => {
-                                    let kind = other.type_name();
-                                    ctx.locals.truncate(frame_base);
-                                    return Err(EvalError::guard_not_bool(kind, span_of(guard)));
-                                }
-                                Err(e) => {
-                                    ctx.locals.truncate(frame_base);
-                                    return Err(e);
-                                }
-                            }
-                        }
-                        let result = self.eval_in(&arm.body, ctx);
-                        ctx.locals.truncate(frame_base);
-                        return result;
-                    }
-                }
-                return Err(EvalError::match_no_arm(*span));
+                return self.eval_match(scrut, arms, *span, ctx);
             }
             E::Variant {
                 type_path,
@@ -3329,6 +3227,198 @@ impl Document {
         })
     }
 
+    /// Evaluate every argument expression left-to-right. Pulled out
+    /// because `eval_call` evaluates args in three different sub-paths
+    /// (user fn, builtin, dynamic callee) — same loop body each time.
+    fn eval_args<'a>(
+        &'a self,
+        args: &[ast::Expr],
+        ctx: &mut EvalCtx<'a>,
+    ) -> Result<Vec<Value>, EvalError> {
+        let mut out = Vec::with_capacity(args.len());
+        for arg in args {
+            out.push(self.eval_in(arg, ctx)?);
+        }
+        Ok(out)
+    }
+
+    /// `E::Call` arm. Resolution order: when `callee` is a bare
+    /// identifier, prefer a `Value::Function` in locals/scope; fall
+    /// back to the builtin registry by name. Any other callee
+    /// expression is evaluated and must resolve to a function value.
+    fn eval_call<'a>(
+        &'a self,
+        callee: &ast::Expr,
+        args: &[ast::Expr],
+        span: Span,
+        ctx: &mut EvalCtx<'a>,
+    ) -> Result<Value, EvalError> {
+        use ast::Expr as E;
+        if let E::Identifier(name) = callee {
+            if let Some(fv) = lookup_function(self, ctx, name) {
+                let evald = self.eval_args(args, ctx)?;
+                let _profile_guard =
+                    self.profile_enter(crate::profile::ProfileKey::UserFn { name: name.clone() });
+                return self
+                    .invoke_fn_value(&fv, &evald, ctx, span)
+                    .map_err(|e| call_err_at(e, name.clone(), span));
+            }
+            return self.eval_call_builtin(name, args, span, ctx);
+        }
+        let callee_val = self.eval_in(callee, ctx)?;
+        let Value::Function(fv) = callee_val else {
+            return Err(EvalError::non_callable(span));
+        };
+        let evald = self.eval_args(args, ctx)?;
+        let _profile_guard = self.profile_enter(crate::profile::ProfileKey::UserFn {
+            name: String::new(),
+        });
+        self.invoke_fn_value(&fv, &evald, ctx, span)
+    }
+
+    /// Builtin-call subpath of `eval_call`. Held distinct because it
+    /// handles three control-flow primitives (`format`, `error`/`panic`,
+    /// `assert`) that don't fit the generic Pure/Hof dispatch.
+    fn eval_call_builtin<'a>(
+        &'a self,
+        name: &str,
+        args: &[ast::Expr],
+        span: Span,
+        ctx: &mut EvalCtx<'a>,
+    ) -> Result<Value, EvalError> {
+        let Some(builtin) = self.env.builtin(name).cloned() else {
+            return Err(EvalError::unknown_builtin(name.to_string(), span));
+        };
+        // `format(template, ...args)` is variadic — its registered
+        // arity (0) is a sentinel that means "skip the arity check".
+        if name != "format" && args.len() != builtin.arity {
+            return Err(EvalError::builtin_arity(
+                name.to_string(),
+                builtin.arity,
+                args.len(),
+                span,
+            ));
+        }
+        let evald = self.eval_args(args, ctx)?;
+        let _profile_guard = self.profile_enter(crate::profile::ProfileKey::Builtin {
+            name: name.to_string(),
+        });
+        // Special-case `error(msg)` / `panic(msg)`: raise a structured
+        // UserError rather than the generic BuiltinTypeMismatch path.
+        // Keeps these primitives first-class without bending the
+        // builtin trait machinery.
+        if (name == "error" || name == "panic") && evald.len() == 1 {
+            let msg = string_arg_or_err(name, &evald[0], span, "expected utf8 string")?;
+            return Err(EvalError::user_error(msg, span));
+        }
+        // `assert(cond, msg)` — when cond is false raise UserError;
+        // when true return None.
+        if name == "assert" && evald.len() == 2 {
+            if matches!(&evald[0], Value::Bool(true)) {
+                return Ok(Value::None);
+            }
+            let msg = string_arg_or_err(name, &evald[1], span, "message must be utf8")?;
+            return Err(EvalError::user_error(msg, span));
+        }
+        match &builtin.kind {
+            crate::builtins::BuiltinKind::Pure(body) => {
+                (body)(&evald).map_err(|msg| EvalError::builtin_type(name.to_string(), msg, span))
+            }
+            crate::builtins::BuiltinKind::Hof(body) => {
+                let mut caller = EvalCaller {
+                    doc: self,
+                    ctx,
+                    span,
+                    err: None,
+                };
+                let res = (body)(&mut caller, &evald);
+                if let Some(e) = caller.err.take() {
+                    return Err(e);
+                }
+                res.map_err(|msg| EvalError::builtin_type(name.to_string(), msg, span))
+            }
+        }
+    }
+
+    /// `E::Block { lets, tail, .. }` arm. Pushes a fresh locals frame,
+    /// binds each let in order, evaluates the tail, and pops the frame.
+    fn eval_block<'a>(
+        &'a self,
+        lets: &[ast::LetBinding],
+        tail: &ast::Expr,
+        ctx: &mut EvalCtx<'a>,
+    ) -> Result<Value, EvalError> {
+        let mut frame = ctx.push_frame();
+        for binding in lets {
+            let v = self.eval_in(&binding.value, &mut frame)?;
+            frame.locals.push((binding.name.clone(), v));
+        }
+        self.eval_in(tail, &mut frame)
+    }
+
+    /// `E::IfLet` arm. On pattern match, push the bindings as a locals
+    /// frame and evaluate `then_block`; otherwise evaluate `else_block`
+    /// with no new bindings.
+    fn eval_if_let<'a>(
+        &'a self,
+        pattern: &ast::Pattern,
+        scrut: &ast::Expr,
+        then_block: &ast::Expr,
+        else_block: &ast::Expr,
+        ctx: &mut EvalCtx<'a>,
+    ) -> Result<Value, EvalError> {
+        let v = self.eval_in(scrut, ctx)?;
+        if let Some(bindings) = match_pat::match_pattern(pattern, &v) {
+            let mut frame = ctx.push_frame();
+            for (name, val) in bindings {
+                frame.locals.push((name, val));
+            }
+            return self.eval_in(then_block, &mut frame);
+        }
+        self.eval_in(else_block, ctx)
+    }
+
+    /// `E::Match` arm. Tries each `(arm, pattern)` pair in source
+    /// order; on a successful match runs the optional guard, then
+    /// evaluates the arm body in a locals frame holding the bindings.
+    /// The `LocalsFrame` guard makes truncate-on-early-return
+    /// automatic, so unlike the previous open-coded version this path
+    /// doesn't need repeated manual `truncate()` calls.
+    fn eval_match<'a>(
+        &'a self,
+        scrut: &ast::Expr,
+        arms: &[ast::MatchArm],
+        span: Span,
+        ctx: &mut EvalCtx<'a>,
+    ) -> Result<Value, EvalError> {
+        let v = self.eval_in(scrut, ctx)?;
+        for arm in arms {
+            for pat in &arm.patterns {
+                let Some(bindings) = match_pat::match_pattern(pat, &v) else {
+                    continue;
+                };
+                let mut frame = ctx.push_frame();
+                for (name, val) in bindings {
+                    frame.locals.push((name, val));
+                }
+                if let Some(guard) = &arm.guard {
+                    match self.eval_in(guard, &mut frame)? {
+                        Value::Bool(true) => {}
+                        Value::Bool(false) => continue,
+                        other => {
+                            return Err(EvalError::guard_not_bool(
+                                other.type_name(),
+                                span_of(guard),
+                            ));
+                        }
+                    }
+                }
+                return self.eval_in(&arm.body, &mut frame);
+            }
+        }
+        Err(EvalError::match_no_arm(span))
+    }
+
     /// Apply a `Value::Function` to the supplied argument values. Pushes
     /// the function's parameters onto `ctx.locals`, evaluates the body in
     /// the caller's context, and pops the frame regardless of outcome.
@@ -3351,19 +3441,18 @@ impl Document {
         if ctx.call_depth >= MAX_CALL_DEPTH {
             return Err(EvalError::call_depth_exceeded(MAX_CALL_DEPTH, span));
         }
-        let frame_base = ctx.locals.len();
+        let mut frame = ctx.push_frame();
         // Lexical captures first — later pushes (params, nested let
         // bindings) shadow them on right-to-left lookup.
         for (name, value) in &f.captured {
-            ctx.locals.push((name.clone(), value.clone()));
+            frame.locals.push((name.clone(), value.clone()));
         }
         for (param, value) in f.params().iter().zip(args.iter()) {
-            ctx.locals.push((param.name().to_string(), value.clone()));
+            frame.locals.push((param.name().to_string(), value.clone()));
         }
-        ctx.call_depth += 1;
-        let result = self.eval_in(&f.body, ctx);
-        ctx.call_depth -= 1;
-        ctx.locals.truncate(frame_base);
+        frame.call_depth += 1;
+        let result = self.eval_in(&f.body, &mut frame);
+        frame.call_depth -= 1;
         result
     }
 
