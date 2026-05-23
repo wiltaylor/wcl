@@ -435,7 +435,10 @@ fn repl_evaluates_piped_expression() {
 }
 
 #[test]
-fn get_json_outputs_serialized_value() {
+fn get_json_outputs_idiomatic_json() {
+    // Custom `Value` Serialize impl flattens scalar variants — the
+    // string value `"alpha"` should appear bare, not wrapped in
+    // `{"Utf8": "alpha"}`.
     wcl()
         .arg("get")
         .arg("--json")
@@ -443,8 +446,37 @@ fn get_json_outputs_serialized_value() {
         .arg("name")
         .assert()
         .success()
-        .stdout(predicate::str::contains("\"Utf8\""))
-        .stdout(predicate::str::contains("\"alpha\""));
+        .stdout(predicate::str::contains("\"alpha\""))
+        .stdout(predicate::str::contains("Utf8").not());
+}
+
+#[test]
+fn repl_accepts_multiline_expression() {
+    wcl()
+        .arg("repl")
+        .write_stdin("{\n  let a = 1;\n  let b = 2;\n  a + b\n}\n")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("3"));
+}
+
+#[test]
+fn repl_tags_parse_errors_and_keeps_running() {
+    // Two lines: a malformed expression then a valid one. The REPL
+    // should print a `parse error:` tag for the first and a result
+    // for the second, exiting cleanly.
+    wcl()
+        .arg("repl")
+        .write_stdin("@@@\n1 + 2\n")
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("parse error:"))
+        .stdout(predicate::str::contains("3"));
+}
+
+#[test]
+fn repl_quits_on_quit_command() {
+    wcl().arg("repl").write_stdin(":q\n").assert().success();
 }
 
 #[test]

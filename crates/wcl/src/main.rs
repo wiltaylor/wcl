@@ -275,10 +275,13 @@ fn main() -> ExitCode {
 /// result to stdout or atomically overwrite the input file. Returns
 /// the exit code (`EXIT_OK` on success, `EXIT_PARSE` on parse failure)
 /// or an error message describing an I/O failure.
-/// Plain-stdin REPL: reads one line per turn, parses it as a WCL
-/// expression, evaluates against the open document, prints the
-/// value. EOF or `:quit` exits cleanly. No history, no readline —
-/// piping input from a script works as well as interactive use.
+/// Plain-stdin REPL with multiline continuation. Reads one line at a
+/// time and keeps buffering until the running input has balanced
+/// `{` / `(` / `[` brackets and is not inside an unterminated string,
+/// then evaluates the assembled expression. Parse errors and eval
+/// errors are tagged distinctly. EOF (Ctrl-D) or `:quit` / `:q`
+/// exits cleanly. No history, no readline — piping input from a
+/// script works as well as interactive use.
 fn run_repl(file: Option<&Path>) -> u8 {
     use std::io::{BufRead, Write};
     let doc = match file {
@@ -298,11 +301,13 @@ fn run_repl(file: Option<&Path>) -> u8 {
         },
     };
     let stdin = std::io::stdin();
+    let mut buf = String::new();
     let mut line = String::new();
+    let interactive = atty_stdin();
     loop {
-        let interactive = atty_stdin();
+        let continuation = !buf.is_empty();
         if interactive {
-            print!("wcl> ");
+            print!("{}", if continuation { "... " } else { "wcl> " });
             let _ = std::io::stdout().flush();
         }
         line.clear();
@@ -314,22 +319,72 @@ fn run_repl(file: Option<&Path>) -> u8 {
                 return EXIT_IO;
             }
         }
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
+        if !continuation {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if trimmed == ":quit" || trimmed == ":q" {
+                break;
+            }
+        }
+        buf.push_str(&line);
+        if !repl_input_complete(&buf) {
             continue;
         }
-        if trimmed == ":quit" || trimmed == ":q" {
-            break;
-        }
-        match parse_expr(trimmed, "<repl>") {
+        let to_eval = std::mem::take(&mut buf);
+        match parse_expr(to_eval.trim(), "<repl>") {
             Ok(expr) => match doc.eval_expr(&expr) {
                 Ok(value) => println!("{value}"),
-                Err(e) => eprintln!("{:?}", miette::Report::new(e)),
+                Err(e) => eprintln!("eval error: {:?}", miette::Report::new(e)),
             },
-            Err(e) => eprintln!("{:?}", miette::Report::new(e)),
+            Err(e) => eprintln!("parse error: {:?}", miette::Report::new(e)),
         }
     }
     EXIT_OK
+}
+
+/// `true` when `src` has balanced brackets and isn't sitting inside
+/// an unterminated string literal. Used by the REPL to decide whether
+/// to keep reading more lines. Counts characters outside strings to
+/// avoid being confused by braces inside string literals.
+fn repl_input_complete(src: &str) -> bool {
+    let mut depth_curly = 0i32;
+    let mut depth_paren = 0i32;
+    let mut depth_brack = 0i32;
+    let mut in_string = false;
+    let mut chars = src.chars().peekable();
+    while let Some(c) = chars.next() {
+        if in_string {
+            match c {
+                '\\' => {
+                    chars.next();
+                } // skip the escaped char
+                '"' => in_string = false,
+                _ => {}
+            }
+            continue;
+        }
+        match c {
+            '"' => in_string = true,
+            '{' => depth_curly += 1,
+            '}' => depth_curly -= 1,
+            '(' => depth_paren += 1,
+            ')' => depth_paren -= 1,
+            '[' => depth_brack += 1,
+            ']' => depth_brack -= 1,
+            '#' => {
+                // Line comment — skip to end-of-line.
+                for c in chars.by_ref() {
+                    if c == '\n' {
+                        break;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    !in_string && depth_curly <= 0 && depth_paren <= 0 && depth_brack <= 0
 }
 
 /// Lightweight TTY check that avoids pulling in the `atty` crate.

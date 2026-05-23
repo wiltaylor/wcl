@@ -1,0 +1,52 @@
+===
+field assignment
+===
+
+name = "alpha"
+
+---
+
+(source_file
+  (field
+    name: (identifier)
+    (string)))
+
+===
+type declaration
+===
+
+type Config {
+  port: u32
+  host: utf8
+}
+
+---
+
+(source_file
+  (type_decl
+    name: (dotted_name (identifier))
+    (field_block
+      (type_field
+        name: (identifier)
+        (type_ref (dotted_name (identifier))))
+      (type_field
+        name: (identifier)
+        (type_ref (dotted_name (identifier)))))))
+
+===
+block with label
+===
+
+service "web" {
+  port = 8080
+}
+
+---
+
+(source_file
+  (block
+    kind: (identifier)
+    (string)
+    (field
+      name: (identifier)
+      (number))))

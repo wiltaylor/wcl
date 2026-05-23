@@ -8,22 +8,28 @@ This branch (`rewrite`) is a clean restart of WCL. The previous implementation l
 - `crates/wcl` — `wcl` CLI binary (`wcl parse`, `wcl check`, `wcl eval` / `wcl get`, `wcl set`, `wcl fmt`, `wcl repl`, `wcl lsp`)
 - `crates/wcl_lsp` — `tower-lsp` language server driving `wcl lsp`
 - `crates/wcl_lang/fuzz` — `cargo-fuzz` targets (parse + eval); run via `just fuzz <target>` on nightly
+- `editors/vscode` — minimal VS Code extension stub that spawns `wcl lsp` for `.wcl` files
+- `editors/tree-sitter-wcl` — tree-sitter grammar stub for editors that consume them
 - `examples/` — fixture files used by tests (incl. `imports/` for module loading and `errors/` for negative diagnostics)
+- `README.md` — user-facing quickstart
 
 ## What's implemented
 
 - Hand-written lexer + recursive-descent parser → `Source` AST + `SymbolIndex`
 - `Document` view layer with lazy, cached field evaluation and cycle detection
-- Expression evaluator: literals, identifiers, member access, calls, function literals, let-bindings, block expressions, arithmetic / comparison / logical operators (no implicit coercions)
+- Expression evaluator: literals, identifiers, member access, calls, function literals, let-bindings, block expressions, arithmetic / comparison / logical operators with implicit numeric promotion (`1 + 2.0`, `1u32 == 1i64`)
 - Schema system: `@document`, `@schemaless`, `@block`, `@child`, `@children`, `@inline`, `@default`, `@table`, `@decorator`; structural validation via `Document::schema_errors()` / `SchemaViolationKind`
 - Type system: `type`, `interface` (with `extends`), `union` (record / typeref / unit variants), `symbol_set`, builtin numeric + string variants, `list<T>`, `tensor<T, [...]>`, `fn(...) -> T`, named refs, `&T` reference fields with scope-aware lookup
 - Host bindings: `Environment` registers synthetic types + builtin functions via `from_fn` (`FromValue` / `IntoValue` traits); each `BuiltinFn` can carry a printable signature
+- Builtins: collections (`map`/`filter`/`fold`/`len`/`sum`/`range`/`head`/`tail`/`flatten`/`zip`), tensors (`tensor`/`tensor_data`/`tensor_shape`/`tensor_reshape`), strings (`split`/`join`/`replace`/`contains`/`starts_with`/`ends_with`/`to_upper`/`to_lower`/`trim`), lists (`list_contains`/`reverse`/`sort`/`unique`/`index_of`/`take`/`drop`), control flow (`error`/`panic`/`assert`/`format`/`concat`)
 - Imports: eager top-level `import`; lazy `import` inside blocks
 - Edit path: `parse_for_edit` + AST mutation + `format::to_source` round-trip, driving `wcl set` and `wcl fmt`
-- Interactive REPL (`wcl repl [<file>]`) — plain stdin loop, evaluates ad-hoc expressions via `Document::eval_expr`
-- JSON value serialization — `Value`/`TypeRef`/`Span` etc. derive `serde::{Serialize, Deserialize}`; `wcl get --json` emits resolved values as JSON. `Value::Function` is `#[serde(skip)]` (function bodies don't round-trip)
-- LSP server (`wcl lsp` / `wcl lsp --tcp ADDR` / `wcl lsp --log <path>`): diagnostics, formatting, document symbols, go-to-definition + cross-file, find-references + cross-file, hover, completion (trigger-driven and identifier-position), semantic tokens incl. inside `${...}` interpolation slots, incremental text sync via `ropey`, multi-connection TCP listener
+- Interactive REPL (`wcl repl [<file>]`) — plain stdin loop with multiline continuation; tagged parse vs eval errors; `:quit` exits
+- JSON value serialization — custom one-way `Serialize` on `Value` emits idiomatic JSON (scalars as primitives, lists as arrays, records as objects, variants as `"Name"` / `{"Name": payload}`); `wcl get --json` uses it. `TypeRef`/`Span`/`BuiltinType` still round-trip via derive.
+- LSP server (`wcl lsp` / `wcl lsp --tcp ADDR` / `wcl lsp --log <path>`): diagnostics, formatting, document symbols, go-to-definition + cross-file, find-references + cross-file, hover, completion (trigger-driven and identifier-position with locals + builtins), semantic tokens incl. inside `${...}` interpolation slots, incremental text sync via `ropey`, multi-connection TCP listener
+- LSP integration tests (`crates/wcl_lsp/tests/server.rs`) drive `Backend`'s `LanguageServer` trait directly through `tower-lsp`
 - Fuzz harness in `crates/wcl_lang/fuzz/` with `parse` and `eval` targets, seeded from `examples/`
+- Editor stubs in `editors/` — VS Code extension that spawns `wcl lsp`, tree-sitter grammar for highlighting
 
 ## Intentionally deferred
 

@@ -1779,6 +1779,36 @@ fn assert_roundtrip(path: &std::path::Path) {
 }
 
 #[test]
+fn implicit_coercion_int_plus_float() {
+    // `1 + 2.0` should evaluate cleanly with promotion.
+    let src = "@schemaless mixed = 1 + 2.0\n";
+    let doc = Document::open(src, "test").unwrap();
+    let v = doc
+        .get("mixed")
+        .expect("mixed exists")
+        .value()
+        .expect("eval");
+    assert_eq!(v, Value::F64(3.0));
+}
+
+#[test]
+fn implicit_coercion_signed_plus_unsigned() {
+    let src = "@schemaless mixed = 100u32 + 1i64\n";
+    let doc = Document::open(src, "test").unwrap();
+    let v = doc.get("mixed").unwrap().value().unwrap();
+    // Promotion ladder routes mixed-integer pairs through i128.
+    assert_eq!(v, Value::I128(101));
+}
+
+#[test]
+fn implicit_coercion_in_comparison_and_equality() {
+    let src = "@schemaless cmp = 1u32 == 1i64\n@schemaless lt = 1i32 < 2.0\n";
+    let doc = Document::open(src, "test").unwrap();
+    assert_eq!(doc.get("cmp").unwrap().value().unwrap(), Value::Bool(true));
+    assert_eq!(doc.get("lt").unwrap().value().unwrap(), Value::Bool(true));
+}
+
+#[test]
 fn round_trip_all_examples() {
     let dir = examples_dir();
     let mut entries: Vec<_> = std::fs::read_dir(&dir)

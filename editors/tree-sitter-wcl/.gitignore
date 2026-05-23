@@ -1,0 +1,8 @@
+node_modules/
+src/parser.c
+src/grammar.json
+src/node-types.json
+build/
+*.so
+*.dylib
+*.dll

@@ -1,4 +1,14 @@
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+/// Runtime values produced by evaluating WCL expressions.
+///
+/// **Serialization is one-way.** `Value` implements [`serde::Serialize`]
+/// with a custom impl that emits idiomatic JSON (scalars as primitives,
+/// lists as arrays, records as objects). It deliberately does **not**
+/// implement [`serde::Deserialize`] — round-tripping arbitrary JSON
+/// back into a `Value` loses the original numeric variant (i32 vs i64
+/// vs u32 ...), which downstream evaluator paths assume is preserved.
+/// Hosts that need a round-trippable representation should serialize
+/// the [`TypeRef`] / declaration shape instead.
+#[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Bool(bool),
 
@@ -28,11 +38,9 @@ pub enum Value {
     Symbol(String),
     None,
 
-    /// Function values carry an opaque AST body that doesn't round-trip
-    /// through serde — `Document::to_json` skips top-level fields that
-    /// resolve to functions, and direct serialization errors at this
-    /// variant.
-    #[serde(skip)]
+    /// Function values carry an opaque AST body. They serialize as
+    /// JSON `null` so containing structures survive — the function
+    /// itself doesn't round-trip.
     Function(FnValue),
     List(Vec<Value>),
     Tensor {
@@ -67,9 +75,80 @@ pub enum Value {
     },
 }
 
+impl serde::Serialize for Value {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::{SerializeMap, SerializeSeq};
+        match self {
+            Value::Bool(b) => s.serialize_bool(*b),
+            Value::I8(n) => s.serialize_i8(*n),
+            Value::I16(n) => s.serialize_i16(*n),
+            Value::I32(n) => s.serialize_i32(*n),
+            Value::I64(n) => s.serialize_i64(*n),
+            Value::I128(n) => s.serialize_i128(*n),
+            Value::Isize(n) => s.serialize_i64(*n as i64),
+            Value::U8(n) => s.serialize_u8(*n),
+            Value::U16(n) => s.serialize_u16(*n),
+            Value::U32(n) => s.serialize_u32(*n),
+            Value::U64(n) => s.serialize_u64(*n),
+            Value::U128(n) => s.serialize_u128(*n),
+            Value::Usize(n) => s.serialize_u64(*n as u64),
+            Value::F32(n) => s.serialize_f32(*n),
+            Value::F64(n) => s.serialize_f64(*n),
+            Value::Utf8(t) | Value::Ascii(t) => s.serialize_str(t),
+            Value::Utf16(units) => s.serialize_str(&String::from_utf16_lossy(units)),
+            Value::Utf32(chars) => s.serialize_str(&chars.iter().collect::<String>()),
+            Value::Identifier(n) | Value::Symbol(n) => s.serialize_str(n),
+            Value::None | Value::Function(_) => s.serialize_unit(),
+            Value::List(items) => {
+                let mut seq = s.serialize_seq(Some(items.len()))?;
+                for v in items {
+                    seq.serialize_element(v)?;
+                }
+                seq.end()
+            }
+            Value::Tensor { shape, data } => {
+                let mut map = s.serialize_map(Some(2))?;
+                map.serialize_entry("shape", shape)?;
+                map.serialize_entry("data", data)?;
+                map.end()
+            }
+            Value::Variant {
+                variant, payload, ..
+            } => match payload {
+                VariantPayload::Unit => s.serialize_str(variant),
+                VariantPayload::Positional(v) => {
+                    let mut map = s.serialize_map(Some(1))?;
+                    map.serialize_entry(variant, v.as_ref())?;
+                    map.end()
+                }
+                VariantPayload::Record(fields) => {
+                    let mut map = s.serialize_map(Some(1))?;
+                    map.serialize_entry(variant, fields)?;
+                    map.end()
+                }
+            },
+            Value::Record { fields, .. } => {
+                let mut map = s.serialize_map(Some(fields.len()))?;
+                for (k, v) in fields {
+                    map.serialize_entry(k, v)?;
+                }
+                map.end()
+            }
+            Value::DataPath { kind, segments } => {
+                let mut map = s.serialize_map(Some(2))?;
+                map.serialize_entry("kind", kind)?;
+                map.serialize_entry("path", segments)?;
+                map.end()
+            }
+        }
+    }
+}
+
 /// Runtime payload of a [`Value::Variant`], matching the shape of the
 /// variant body declared on its [`UnionDecl`](crate::ast::UnionDecl).
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+/// Inherits `Value`'s one-way serialization story — emits idiomatic
+/// JSON but doesn't deserialize.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub enum VariantPayload {
     /// `Empty none` — variant with no payload.
     Unit,
@@ -172,6 +251,71 @@ impl Value {
             Value::Usize(n) => u64::try_from(*n).ok(),
             _ => None,
         }
+    }
+
+    /// Lossily widen any numeric `Value` to `f64`. Returns `None` for
+    /// non-numeric values. Used by the implicit-coercion path in
+    /// arithmetic and comparison.
+    pub fn as_f64(&self) -> Option<f64> {
+        match *self {
+            Value::I8(n) => Some(n as f64),
+            Value::I16(n) => Some(n as f64),
+            Value::I32(n) => Some(n as f64),
+            Value::I64(n) => Some(n as f64),
+            Value::I128(n) => Some(n as f64),
+            Value::Isize(n) => Some(n as f64),
+            Value::U8(n) => Some(n as f64),
+            Value::U16(n) => Some(n as f64),
+            Value::U32(n) => Some(n as f64),
+            Value::U64(n) => Some(n as f64),
+            Value::U128(n) => Some(n as f64),
+            Value::Usize(n) => Some(n as f64),
+            Value::F32(n) => Some(n as f64),
+            Value::F64(n) => Some(n),
+            _ => None,
+        }
+    }
+
+    /// Widen any *integer* `Value` to `i128`. Returns `None` for
+    /// floats and non-numeric values. `u128` is excluded — its top
+    /// half doesn't fit in `i128`.
+    pub fn as_i128(&self) -> Option<i128> {
+        match *self {
+            Value::I8(n) => Some(n as i128),
+            Value::I16(n) => Some(n as i128),
+            Value::I32(n) => Some(n as i128),
+            Value::I64(n) => Some(n as i128),
+            Value::I128(n) => Some(n),
+            Value::Isize(n) => Some(n as i128),
+            Value::U8(n) => Some(n as i128),
+            Value::U16(n) => Some(n as i128),
+            Value::U32(n) => Some(n as i128),
+            Value::U64(n) => Some(n as i128),
+            Value::U128(n) => i128::try_from(n).ok(),
+            Value::Usize(n) => Some(n as i128),
+            _ => None,
+        }
+    }
+
+    /// `true` for any numeric variant (signed / unsigned / float).
+    pub fn is_numeric(&self) -> bool {
+        matches!(
+            self,
+            Value::I8(_)
+                | Value::I16(_)
+                | Value::I32(_)
+                | Value::I64(_)
+                | Value::I128(_)
+                | Value::Isize(_)
+                | Value::U8(_)
+                | Value::U16(_)
+                | Value::U32(_)
+                | Value::U64(_)
+                | Value::U128(_)
+                | Value::Usize(_)
+                | Value::F32(_)
+                | Value::F64(_)
+        )
     }
 
     pub fn type_name(&self) -> &'static str {

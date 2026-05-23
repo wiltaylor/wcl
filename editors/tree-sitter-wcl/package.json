@@ -1,0 +1,21 @@
+{
+  "name": "tree-sitter-wcl",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Tree-sitter grammar for the WCL configuration language.",
+  "main": "bindings/node",
+  "keywords": ["parser", "tree-sitter", "wcl"],
+  "scripts": {
+    "generate": "tree-sitter generate",
+    "test": "tree-sitter test"
+  },
+  "devDependencies": {
+    "tree-sitter-cli": "^0.22.6"
+  },
+  "tree-sitter": [
+    {
+      "scope": "source.wcl",
+      "file-types": ["wcl"]
+    }
+  ]
+}

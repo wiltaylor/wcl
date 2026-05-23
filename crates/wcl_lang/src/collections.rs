@@ -89,6 +89,150 @@ pub(crate) fn register(env: &mut Environment) {
         "tensor_reshape",
         from_fn(tensor_reshape_pure).with_signature("fn (tensor<T>, [usize]) -> tensor<T>"),
     );
+
+    // ── String builtins ─────────────────────────────────────────────
+    env.add_builtin(
+        "split",
+        from_fn(|s: String, sep: String| -> Value {
+            Value::List(s.split(&sep).map(|p| Value::Utf8(p.to_string())).collect())
+        })
+        .with_signature("fn (utf8, utf8) -> [utf8]"),
+    );
+    env.add_builtin(
+        "join",
+        from_fn(|parts: Vec<String>, sep: String| -> String { parts.join(&sep) })
+            .with_signature("fn ([utf8], utf8) -> utf8"),
+    );
+    env.add_builtin(
+        "replace",
+        from_fn(|s: String, old: String, new: String| -> String { s.replace(&old, &new) })
+            .with_signature("fn (utf8, utf8, utf8) -> utf8"),
+    );
+    env.add_builtin(
+        "contains",
+        from_fn(|s: String, needle: String| -> bool { s.contains(&needle) })
+            .with_signature("fn (utf8, utf8) -> bool"),
+    );
+    env.add_builtin(
+        "starts_with",
+        from_fn(|s: String, prefix: String| -> bool { s.starts_with(&prefix) })
+            .with_signature("fn (utf8, utf8) -> bool"),
+    );
+    env.add_builtin(
+        "ends_with",
+        from_fn(|s: String, suffix: String| -> bool { s.ends_with(&suffix) })
+            .with_signature("fn (utf8, utf8) -> bool"),
+    );
+    env.add_builtin(
+        "to_upper",
+        from_fn(|s: String| -> String { s.to_uppercase() }).with_signature("fn (utf8) -> utf8"),
+    );
+    env.add_builtin(
+        "to_lower",
+        from_fn(|s: String| -> String { s.to_lowercase() }).with_signature("fn (utf8) -> utf8"),
+    );
+    env.add_builtin(
+        "trim",
+        from_fn(|s: String| -> String { s.trim().to_string() }).with_signature("fn (utf8) -> utf8"),
+    );
+
+    // ── List builtins ───────────────────────────────────────────────
+    env.add_builtin(
+        "list_contains",
+        from_fn(list_contains_pure).with_signature("fn ([T], T) -> bool"),
+    );
+    env.add_builtin(
+        "reverse",
+        from_fn(|xs: Vec<Value>| -> Value {
+            let mut xs = xs;
+            xs.reverse();
+            Value::List(xs)
+        })
+        .with_signature("fn ([T]) -> [T]"),
+    );
+    env.add_builtin("sort", from_fn(sort_pure).with_signature("fn ([T]) -> [T]"));
+    env.add_builtin(
+        "unique",
+        from_fn(|xs: Vec<Value>| -> Value {
+            let mut seen = Vec::with_capacity(xs.len());
+            for x in xs {
+                if !seen.contains(&x) {
+                    seen.push(x);
+                }
+            }
+            Value::List(seen)
+        })
+        .with_signature("fn ([T]) -> [T]"),
+    );
+    env.add_builtin(
+        "index_of",
+        from_fn(|xs: Vec<Value>, x: Value| -> i64 {
+            xs.iter()
+                .position(|v| v == &x)
+                .map(|i| i as i64)
+                .unwrap_or(-1)
+        })
+        .with_signature("fn ([T], T) -> i64"),
+    );
+    env.add_builtin(
+        "take",
+        from_fn(|xs: Vec<Value>, n: i64| -> Value {
+            let n = n.max(0) as usize;
+            Value::List(xs.into_iter().take(n).collect())
+        })
+        .with_signature("fn ([T], i64) -> [T]"),
+    );
+    env.add_builtin(
+        "drop",
+        from_fn(|xs: Vec<Value>, n: i64| -> Value {
+            let n = n.max(0) as usize;
+            Value::List(xs.into_iter().skip(n).collect())
+        })
+        .with_signature("fn ([T], i64) -> [T]"),
+    );
+}
+
+fn list_contains_pure(xs: Vec<Value>, needle: Value) -> bool {
+    xs.iter().any(|v| v == &needle)
+}
+
+fn sort_pure(xs: Vec<Value>) -> Result<Value, String> {
+    // Numeric lists sort numerically; string lists sort lexicographically.
+    // Mixed-type lists and unsupported types fail loudly rather than
+    // silently producing a partial ordering.
+    if xs.is_empty() {
+        return Ok(Value::List(xs));
+    }
+    let first = &xs[0];
+    if first.is_numeric() && xs.iter().all(|v| v.is_numeric()) {
+        let mut keyed: Vec<(f64, Value)> = xs
+            .iter()
+            .map(|v| (v.as_f64().unwrap_or(f64::NAN), v.clone()))
+            .collect();
+        keyed.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+        return Ok(Value::List(keyed.into_iter().map(|(_, v)| v).collect()));
+    }
+    let all_strings = xs
+        .iter()
+        .all(|v| matches!(v, Value::Utf8(_) | Value::Ascii(_)));
+    if all_strings {
+        let mut keyed: Vec<(String, Value)> = xs
+            .iter()
+            .map(|v| {
+                let key = match v {
+                    Value::Utf8(s) | Value::Ascii(s) => s.clone(),
+                    _ => unreachable!(),
+                };
+                (key, v.clone())
+            })
+            .collect();
+        keyed.sort_by(|a, b| a.0.cmp(&b.0));
+        return Ok(Value::List(keyed.into_iter().map(|(_, v)| v).collect()));
+    }
+    Err(format!(
+        "sort: list must be all numeric or all strings, found mixed (first element type: {})",
+        first.type_name()
+    ))
 }
 
 // ── Higher-order ─────────────────────────────────────────────────────

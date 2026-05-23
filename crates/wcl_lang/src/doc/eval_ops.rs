@@ -132,6 +132,24 @@ arith_fn!(arith_mul, *);
 arith_fn!(arith_div, /);
 arith_fn!(arith_mod, %);
 
+/// Promote two numeric values to a common variant for arithmetic /
+/// comparison. Returns `None` when either operand is non-numeric.
+/// Ladder: any float → `f64`; otherwise both → `i128`. Unsigned
+/// values that don't fit in `i128` (i.e. `u128` magnitudes above
+/// `i128::MAX`) return `None` — the caller falls back to a
+/// type-mismatch error.
+fn promote_pair(l: &Value, r: &Value) -> Option<(Value, Value)> {
+    if !l.is_numeric() || !r.is_numeric() {
+        return None;
+    }
+    let any_float =
+        matches!(l, Value::F32(_) | Value::F64(_)) || matches!(r, Value::F32(_) | Value::F64(_));
+    if any_float {
+        return Some((Value::F64(l.as_f64()?), Value::F64(r.as_f64()?)));
+    }
+    Some((Value::I128(l.as_i128()?), Value::I128(r.as_i128()?)))
+}
+
 pub(super) fn apply_binary(
     op: ast::BinOp,
     l: Value,
@@ -141,12 +159,27 @@ pub(super) fn apply_binary(
     use ast::BinOp as B;
     let mismatch = || EvalError::type_mismatch(op_name(op), l.type_name(), r.type_name(), span);
 
+    // Helper: try same-typed dispatch first (fast path, preserves
+    // the operand's numeric variant); on miss, fall back to a
+    // promoted pair and retry.
+    let arith = |same: fn(&Value, &Value) -> Option<Value>| -> Result<Value, EvalError> {
+        if let Some(v) = same(&l, &r) {
+            return Ok(v);
+        }
+        if let Some((pl, pr)) = promote_pair(&l, &r)
+            && let Some(v) = same(&pl, &pr)
+        {
+            return Ok(v);
+        }
+        Err(mismatch())
+    };
+
     match op {
-        B::Add => arith_add(&l, &r).ok_or_else(mismatch),
-        B::Sub => arith_sub(&l, &r).ok_or_else(mismatch),
-        B::Mul => arith_mul(&l, &r).ok_or_else(mismatch),
-        B::Div => arith_div(&l, &r).ok_or_else(mismatch),
-        B::Mod => arith_mod(&l, &r).ok_or_else(mismatch),
+        B::Add => arith(arith_add),
+        B::Sub => arith(arith_sub),
+        B::Mul => arith(arith_mul),
+        B::Div => arith(arith_div),
+        B::Mod => arith(arith_mod),
         B::Eq => Ok(Value::Bool(values_eq(&l, &r))),
         B::Ne => Ok(Value::Bool(!values_eq(&l, &r))),
         B::Lt => compare(&l, &r, span, |c| c == std::cmp::Ordering::Less),
@@ -158,9 +191,15 @@ pub(super) fn apply_binary(
 }
 
 pub(super) fn values_eq(l: &Value, r: &Value) -> bool {
-    // Same-typed equality. Cross-type comparisons (e.g. i32 vs i64) are
-    // not equal — there is no implicit numeric coercion.
-    l == r
+    // Fast path: same-typed structural equality.
+    if l == r {
+        return true;
+    }
+    // For mixed numeric types, promote to a common form and compare.
+    if let Some((pl, pr)) = promote_pair(l, r) {
+        return pl == pr;
+    }
+    false
 }
 
 fn numeric_cmp(l: &Value, r: &Value) -> Option<std::cmp::Ordering> {
@@ -173,6 +212,19 @@ fn numeric_cmp(l: &Value, r: &Value) -> Option<std::cmp::Ordering> {
         };
     }
     for_each_numeric_variant!(arm);
+    // Cross-type numeric comparison: promote to a common variant
+    // and retry. `promote_pair` returns either two `F64`s or two
+    // `I128`s, both of which have well-defined ordering.
+    if let Some((pl, pr)) = promote_pair(l, r) {
+        macro_rules! arm2 {
+            ($t:ty, $variant:ident) => {
+                if let (Value::$variant(a), Value::$variant(b)) = (&pl, &pr) {
+                    return Some(a.partial_cmp(b).unwrap_or(Ordering::Equal));
+                }
+            };
+        }
+        for_each_numeric_variant!(arm2);
+    }
     None
 }
 
