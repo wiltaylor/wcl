@@ -11,9 +11,10 @@
 //! the symbol index doesn't carry yet; that's deferred.
 
 use tower_lsp::lsp_types::{CompletionItem, CompletionItemKind};
-use wcl_lang::{DeclName, Document};
+use wcl_lang::{DeclName, Document, SymbolKind, parse_for_edit};
 
 use crate::resolve::preceding_non_ws;
+use crate::walk;
 
 /// Builtin decorator names (registered by `Environment`, not declared
 /// in source). Listed here because `Environment` exposes no
@@ -44,7 +45,10 @@ pub(crate) fn completions(source: &str, uri: &str, offset: usize) -> Vec<Complet
     match preceding_non_ws(source, offset) {
         Some(b'@') => decorator_items(doc.as_ref()),
         Some(b':') | Some(b'&') => type_items(doc.as_ref()),
-        _ => Vec::new(),
+        // Manual invoke (or typing an identifier letter): surface
+        // anything reachable from the current scope — locals first
+        // (highest signal), then top-level fields, then builtins.
+        _ => identifier_items(doc.as_ref(), source, uri, offset),
     }
 }
 
@@ -125,6 +129,74 @@ fn type_items(doc: Option<&Document>) -> Vec<CompletionItem> {
     out
 }
 
+/// Catalog for an identifier-position cursor (no trigger char).
+/// Combines locals (params + let-bindings) from the enclosing scope,
+/// top-level field names, and registered builtin functions.
+fn identifier_items(
+    doc: Option<&Document>,
+    source: &str,
+    uri: &str,
+    offset: usize,
+) -> Vec<CompletionItem> {
+    let mut out = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    // Locals — only computable when we have a parseable AST.
+    if let Ok(ast) = parse_for_edit(source, uri) {
+        let scopes = walk::enclosing_scopes_at(&ast.items, offset);
+        // Inner-most first so they outrank outer same-name entries.
+        for p in scopes.params.iter().rev() {
+            if seen.insert(p.name.clone()) {
+                out.push(CompletionItem {
+                    label: p.name.clone(),
+                    kind: Some(CompletionItemKind::VARIABLE),
+                    detail: Some("parameter".to_string()),
+                    ..Default::default()
+                });
+            }
+        }
+        for lb in scopes.lets.iter().rev() {
+            if seen.insert(lb.name.clone()) {
+                out.push(CompletionItem {
+                    label: lb.name.clone(),
+                    kind: Some(CompletionItemKind::VARIABLE),
+                    detail: Some("let binding".to_string()),
+                    ..Default::default()
+                });
+            }
+        }
+    }
+
+    if let Some(doc) = doc {
+        for rec in doc.symbols().iter() {
+            if !matches!(rec.kind, SymbolKind::Field) {
+                continue;
+            }
+            let short = rec.fqn.rsplit('.').next().unwrap_or(&rec.fqn).to_string();
+            if seen.insert(short.clone()) {
+                out.push(CompletionItem {
+                    label: short,
+                    kind: Some(CompletionItemKind::FIELD),
+                    detail: Some(format!("field — {}", rec.fqn)),
+                    ..Default::default()
+                });
+            }
+        }
+        for (name, arity) in doc.environment().builtin_names() {
+            if seen.insert(name.to_string()) {
+                out.push(CompletionItem {
+                    label: name.to_string(),
+                    kind: Some(CompletionItemKind::FUNCTION),
+                    detail: Some(format!("builtin fn ({arity} args)")),
+                    ..Default::default()
+                });
+            }
+        }
+    }
+
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -159,9 +231,22 @@ mod tests {
     }
 
     #[test]
-    fn no_trigger_returns_empty() {
-        let src = "@document\ntype Root {\n  v: utf8\n}\n";
-        let labs = labels(completions(src, "test.wcl", 0));
-        assert!(labs.is_empty());
+    fn no_trigger_lists_locals_fields_and_builtins() {
+        // Cursor sits in an expression body so `helper` (a let) is in
+        // scope; `host` is a top-level field; `len` is a builtin.
+        let src = "host = \"a\"\nx = {\n  let helper = 1;\n  he\n}\n";
+        let cursor = src.find("  he\n").unwrap() + 4;
+        let labs = labels(completions(src, "test.wcl", cursor));
+        assert!(labs.iter().any(|l| l == "helper"), "{labs:?}");
+        assert!(labs.iter().any(|l| l == "host"), "{labs:?}");
+        assert!(labs.iter().any(|l| l == "len"), "{labs:?}");
+    }
+
+    #[test]
+    fn no_trigger_lists_function_params() {
+        let src = "x = fn (input: i32) -> i32 { in }\n";
+        let cursor = src.find("{ in ").unwrap() + 2;
+        let labs = labels(completions(src, "test.wcl", cursor));
+        assert!(labs.iter().any(|l| l == "input"), "{labs:?}");
     }
 }

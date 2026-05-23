@@ -4,6 +4,7 @@
 //! and `wcl_lang::format`.
 
 use dashmap::DashMap;
+use ropey::Rope;
 use tower_lsp::jsonrpc::Result as RpcResult;
 use tower_lsp::lsp_types::{
     CompletionOptions, CompletionParams, CompletionResponse, DidChangeTextDocumentParams,
@@ -11,10 +12,10 @@ use tower_lsp::lsp_types::{
     DocumentSymbolParams, DocumentSymbolResponse, GotoDefinitionParams, GotoDefinitionResponse,
     Hover, HoverParams, HoverProviderCapability, InitializeParams, InitializeResult,
     InitializedParams, Location, MessageType, OneOf, PositionEncodingKind, ReferenceParams,
-    SemanticTokens, SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions,
-    SemanticTokensParams, SemanticTokensResult, SemanticTokensServerCapabilities,
-    ServerCapabilities, ServerInfo, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit,
-    Url,
+    SaveOptions, SemanticTokens, SemanticTokensFullOptions, SemanticTokensLegend,
+    SemanticTokensOptions, SemanticTokensParams, SemanticTokensResult,
+    SemanticTokensServerCapabilities, ServerCapabilities, ServerInfo, TextDocumentSyncCapability,
+    TextDocumentSyncKind, TextDocumentSyncOptions, TextDocumentSyncSaveOptions, TextEdit, Url,
 };
 use tower_lsp::{Client, LanguageServer};
 use wcl_lang::{format as wcl_format, parse_for_edit};
@@ -27,11 +28,12 @@ use crate::navigation;
 use crate::semtokens;
 use crate::symbols;
 
-/// The LSP backend. Holds the open-document cache; everything else is
+/// The LSP backend. Holds the open-document cache (a rope per URI,
+/// kept in sync via incremental change events); everything else is
 /// computed on demand from `wcl_lang`.
 pub struct Backend {
     client: Client,
-    docs: DashMap<Url, String>,
+    docs: DashMap<Url, Rope>,
 }
 
 impl Backend {
@@ -42,12 +44,17 @@ impl Backend {
         }
     }
 
-    /// Recompute diagnostics for `uri` from the cached source and
+    /// Materialise the current text for a URI. Returns `None` when
+    /// the document hasn't been opened by the client yet.
+    fn document_text(&self, uri: &Url) -> Option<String> {
+        self.docs.get(uri).map(|r| r.to_string())
+    }
+
+    /// Recompute diagnostics for `uri` from the cached rope and
     /// publish them.
     async fn publish(&self, uri: Url, version: Option<i32>) {
-        let source = match self.docs.get(&uri) {
-            Some(s) => s.clone(),
-            None => return,
+        let Some(source) = self.document_text(&uri) else {
+            return;
         };
         let diags = diagnostics::compute(&source, uri.as_str());
         self.client.publish_diagnostics(uri, diags, version).await;
@@ -60,8 +67,15 @@ impl LanguageServer for Backend {
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
                 position_encoding: Some(PositionEncodingKind::UTF8),
-                text_document_sync: Some(TextDocumentSyncCapability::Kind(
-                    TextDocumentSyncKind::FULL,
+                text_document_sync: Some(TextDocumentSyncCapability::Options(
+                    TextDocumentSyncOptions {
+                        open_close: Some(true),
+                        change: Some(TextDocumentSyncKind::INCREMENTAL),
+                        save: Some(TextDocumentSyncSaveOptions::SaveOptions(SaveOptions {
+                            include_text: Some(false),
+                        })),
+                        ..Default::default()
+                    },
                 )),
                 document_formatting_provider: Some(OneOf::Left(true)),
                 document_symbol_provider: Some(OneOf::Left(true)),
@@ -105,17 +119,35 @@ impl LanguageServer for Backend {
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
         let uri = params.text_document.uri.clone();
-        self.docs.insert(uri.clone(), params.text_document.text);
+        self.docs
+            .insert(uri.clone(), Rope::from_str(&params.text_document.text));
         self.publish(uri, Some(params.text_document.version)).await;
     }
 
-    async fn did_change(&self, mut params: DidChangeTextDocumentParams) {
-        // FULL sync: take the last (and only) change event's text.
-        let Some(change) = params.content_changes.pop() else {
-            return;
-        };
+    async fn did_change(&self, params: DidChangeTextDocumentParams) {
         let uri = params.text_document.uri.clone();
-        self.docs.insert(uri.clone(), change.text);
+        // Apply every change event in order. With INCREMENTAL sync
+        // the client sends one or more ranged edits per request;
+        // when `range` is None it's a full-document replacement
+        // (clients may still send those for large diffs).
+        let mut rope = self.docs.entry(uri.clone()).or_insert_with(Rope::new);
+        for change in params.content_changes {
+            match change.range {
+                Some(range) => {
+                    let text = rope.to_string();
+                    let start = crate::convert::position_to_offset(&text, range.start);
+                    let end = crate::convert::position_to_offset(&text, range.end);
+                    let start_char = rope.byte_to_char(start);
+                    let end_char = rope.byte_to_char(end);
+                    rope.remove(start_char..end_char);
+                    rope.insert(start_char, &change.text);
+                }
+                None => {
+                    *rope = Rope::from_str(&change.text);
+                }
+            }
+        }
+        drop(rope);
         self.publish(uri, Some(params.text_document.version)).await;
     }
 
@@ -132,7 +164,7 @@ impl LanguageServer for Backend {
         params: DocumentFormattingParams,
     ) -> RpcResult<Option<Vec<TextEdit>>> {
         let uri = params.text_document.uri;
-        let Some(source) = self.docs.get(&uri).map(|s| s.clone()) else {
+        let Some(source) = self.document_text(&uri) else {
             return Ok(None);
         };
         let Ok(ast) = parse_for_edit(&source, uri.as_str()) else {
@@ -154,7 +186,7 @@ impl LanguageServer for Backend {
         params: DocumentSymbolParams,
     ) -> RpcResult<Option<DocumentSymbolResponse>> {
         let uri = params.text_document.uri;
-        let Some(source) = self.docs.get(&uri).map(|s| s.clone()) else {
+        let Some(source) = self.document_text(&uri) else {
             return Ok(None);
         };
         let syms = symbols::compute(&source, uri.as_str());
@@ -166,7 +198,7 @@ impl LanguageServer for Backend {
         params: GotoDefinitionParams,
     ) -> RpcResult<Option<GotoDefinitionResponse>> {
         let uri = params.text_document_position_params.text_document.uri;
-        let Some(source) = self.docs.get(&uri).map(|s| s.clone()) else {
+        let Some(source) = self.document_text(&uri) else {
             return Ok(None);
         };
         let offset = position_to_offset(&source, params.text_document_position_params.position);
@@ -175,7 +207,7 @@ impl LanguageServer for Backend {
 
     async fn references(&self, params: ReferenceParams) -> RpcResult<Option<Vec<Location>>> {
         let uri = params.text_document_position.text_document.uri;
-        let Some(source) = self.docs.get(&uri).map(|s| s.clone()) else {
+        let Some(source) = self.document_text(&uri) else {
             return Ok(None);
         };
         let offset = position_to_offset(&source, params.text_document_position.position);
@@ -189,7 +221,7 @@ impl LanguageServer for Backend {
 
     async fn hover(&self, params: HoverParams) -> RpcResult<Option<Hover>> {
         let uri = params.text_document_position_params.text_document.uri;
-        let Some(source) = self.docs.get(&uri).map(|s| s.clone()) else {
+        let Some(source) = self.document_text(&uri) else {
             return Ok(None);
         };
         let offset = position_to_offset(&source, params.text_document_position_params.position);
@@ -198,7 +230,7 @@ impl LanguageServer for Backend {
 
     async fn completion(&self, params: CompletionParams) -> RpcResult<Option<CompletionResponse>> {
         let uri = params.text_document_position.text_document.uri;
-        let Some(source) = self.docs.get(&uri).map(|s| s.clone()) else {
+        let Some(source) = self.document_text(&uri) else {
             return Ok(None);
         };
         let offset = position_to_offset(&source, params.text_document_position.position);
@@ -211,7 +243,7 @@ impl LanguageServer for Backend {
         params: SemanticTokensParams,
     ) -> RpcResult<Option<SemanticTokensResult>> {
         let uri = params.text_document.uri;
-        let Some(source) = self.docs.get(&uri).map(|s| s.clone()) else {
+        let Some(source) = self.document_text(&uri) else {
             return Ok(None);
         };
         let data = semtokens::compute(&source);

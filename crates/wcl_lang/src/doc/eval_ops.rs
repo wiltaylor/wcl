@@ -15,7 +15,7 @@ pub(super) fn format_member_path(expr: &ast::Expr) -> String {
     use ast::Expr as E;
     fn walk(e: &ast::Expr, out: &mut String) {
         match e {
-            E::Identifier(s) => out.push_str(s),
+            E::Identifier(s, _) => out.push_str(s),
             E::SelfKw(_) => out.push_str("self"),
             E::ParentKw(_) => out.push_str("parent"),
             E::Member { recv, name, .. } => {
@@ -40,7 +40,7 @@ pub(super) fn describe_expr(expr: &ast::Expr) -> &'static str {
         E::F32(_) | E::F64(_) => "float",
         E::Utf8(_) | E::Ascii(_) | E::Utf16(_) | E::Utf32(_) => "string",
         E::InterpolatedString { .. } => "interpolated string",
-        E::Identifier(_) => "identifier",
+        E::Identifier(..) => "identifier",
         E::Symbol(_) => "symbol",
         E::None => "none",
         E::Function(_) => "function literal",

@@ -13,7 +13,9 @@
 //! refs, decorators, block kinds) and silent for the ones we can't
 //! (bare identifiers inside expressions).
 
-use wcl_lang::{DeclName, Document, Span, SymbolKind, SymbolRecord};
+use wcl_lang::{DeclName, Document, Span, SymbolKind, SymbolRecord, ast};
+
+use crate::walk;
 
 /// What was identified at the cursor. Variants carry the FQN of the
 /// declaration we can point a client at.
@@ -22,14 +24,33 @@ pub(crate) enum LocatedSymbol {
     Type(String),
     Decorator(String),
     BlockKind(String),
-    UnionVariant { union: String, variant: String },
-    SymbolEntry { set: String, entry: String },
+    UnionVariant {
+        union: String,
+        variant: String,
+    },
+    SymbolEntry {
+        set: String,
+        entry: String,
+    },
+    /// Top-level field. `name` is the FQN suitable for `SymbolIndex::lookup`.
+    Field(String),
+    /// Local binding (function parameter or `let`). The declaration
+    /// span is carried inline since `SymbolIndex` doesn't index locals.
+    Local {
+        name: String,
+        decl_span: Span,
+    },
 }
 
 /// Resolve the identifier under `offset`. Returns the discovered
 /// symbol plus the span of the on-screen identifier (so callers can
 /// echo it back as the LSP `selectionRange` / range).
-pub(crate) fn locate(doc: &Document, source: &str, offset: usize) -> Option<(LocatedSymbol, Span)> {
+pub(crate) fn locate(
+    doc: &Document,
+    ast: &ast::Source,
+    source: &str,
+    offset: usize,
+) -> Option<(LocatedSymbol, Span)> {
     let (word, span) = word_at(source, offset)?;
 
     // Decorator name → '@' immediately precedes the word.
@@ -53,6 +74,40 @@ pub(crate) fn locate(doc: &Document, source: &str, offset: usize) -> Option<(Loc
             && let Some(located) = classify(rec)
         {
             return Some((located, span));
+        }
+    }
+
+    // Local-scope binding (function parameter / let-binding) in the
+    // enclosing scope at `offset`. Inner shadowing wins by scanning
+    // the outer→inner list in reverse.
+    let scopes = walk::enclosing_scopes_at(&ast.items, offset);
+    if let Some(p) = scopes.params.iter().rev().find(|p| p.name == word) {
+        return Some((
+            LocatedSymbol::Local {
+                name: p.name.clone(),
+                decl_span: p.span,
+            },
+            span,
+        ));
+    }
+    if let Some(lb) = scopes.lets.iter().rev().find(|l| l.name == word) {
+        return Some((
+            LocatedSymbol::Local {
+                name: lb.name.clone(),
+                decl_span: lb.span,
+            },
+            span,
+        ));
+    }
+
+    // Top-level field as a last resort. SymbolIndex carries fields,
+    // but `classify()` deliberately ignores them so we only treat them
+    // as a navigation target here.
+    for fqn in candidate_fqns(&word, doc) {
+        if let Some(rec) = doc.symbols().lookup(&fqn)
+            && matches!(rec.kind, SymbolKind::Field)
+        {
+            return Some((LocatedSymbol::Field(rec.fqn.clone()), span));
         }
     }
 
@@ -162,9 +217,11 @@ fn short_name(fqn: &str) -> &str {
 pub(crate) fn declaration_span(doc: &Document, sym: &LocatedSymbol) -> Option<Span> {
     let symbols = doc.symbols();
     let fqn = match sym {
-        LocatedSymbol::Type(f) | LocatedSymbol::Decorator(f) | LocatedSymbol::BlockKind(f) => {
-            f.as_str()
-        }
+        LocatedSymbol::Type(f)
+        | LocatedSymbol::Decorator(f)
+        | LocatedSymbol::BlockKind(f)
+        | LocatedSymbol::Field(f) => f.as_str(),
+        LocatedSymbol::Local { decl_span, .. } => return Some(*decl_span),
         LocatedSymbol::UnionVariant { union, variant } => {
             return symbols
                 .lookup(&format!("{union}.{variant}"))
@@ -180,9 +237,14 @@ pub(crate) fn declaration_span(doc: &Document, sym: &LocatedSymbol) -> Option<Sp
 #[cfg(test)]
 mod tests {
     use super::*;
+    use wcl_lang::parse_for_edit;
 
     fn doc(src: &str) -> Document {
         Document::open(src, "test.wcl").expect("parse ok")
+    }
+
+    fn ast(src: &str) -> wcl_lang::ast::Source {
+        parse_for_edit(src, "test.wcl").expect("parse ok")
     }
 
     #[test]
@@ -217,8 +279,9 @@ mod tests {
     fn locate_resolves_block_kind() {
         let src = "@document\ntype Root {\n  config: Config\n}\n@block(\"config\")\ntype Config {\n  region: utf8\n}\nconfig {\n  region = \"x\"\n}\n";
         let d = doc(src);
+        let a = ast(src);
         let cursor = src.find("config {").unwrap() + 2;
-        let (sym, _) = locate(&d, src, cursor).expect("locate found something");
+        let (sym, _) = locate(&d, &a, src, cursor).expect("locate found something");
         assert_eq!(sym, LocatedSymbol::BlockKind("Config".to_string()));
     }
 
@@ -226,8 +289,9 @@ mod tests {
     fn locate_resolves_decorator() {
         let src = "@decorator(\"max_len\")\ntype MaxLen {\n  value: u64\n}\n@max_len(value = 5u64)\ntype X {\n  v: utf8\n}\n";
         let d = doc(src);
+        let a = ast(src);
         let cursor = src.find("@max_len").unwrap() + 2;
-        let (sym, _) = locate(&d, src, cursor).expect("locate found something");
+        let (sym, _) = locate(&d, &a, src, cursor).expect("locate found something");
         assert_eq!(sym, LocatedSymbol::Decorator("MaxLen".to_string()));
     }
 
@@ -235,8 +299,30 @@ mod tests {
     fn locate_resolves_type_name() {
         let src = "@document\ntype Root {\n  name: utf8\n}\ntype Other {\n  v: Root\n}\n";
         let d = doc(src);
+        let a = ast(src);
         let cursor = src.find("v: Root").unwrap() + 3;
-        let (sym, _) = locate(&d, src, cursor).expect("locate found something");
+        let (sym, _) = locate(&d, &a, src, cursor).expect("locate found something");
         assert_eq!(sym, LocatedSymbol::Type("Root".to_string()));
+    }
+
+    #[test]
+    fn locate_resolves_local_let_binding() {
+        let src = "x = {\n  let helper = 1;\n  helper + 2\n}\n";
+        let d = doc(src);
+        let a = ast(src);
+        let cursor = src.find("helper + 2").unwrap() + 2;
+        let (sym, _) = locate(&d, &a, src, cursor).expect("locate found something");
+        assert!(matches!(sym, LocatedSymbol::Local { ref name, .. } if name == "helper"));
+    }
+
+    #[test]
+    fn locate_falls_back_to_top_level_field() {
+        let src = "host = \"a\"\nport = 80u16\nwhere = host\n";
+        let d = doc(src);
+        let a = ast(src);
+        // Cursor on the `host` reference in the RHS of `where = host`.
+        let cursor = src.find("= host").unwrap() + 2;
+        let (sym, _) = locate(&d, &a, src, cursor).expect("locate found something");
+        assert!(matches!(sym, LocatedSymbol::Field(ref f) if f == "host"));
     }
 }

@@ -243,10 +243,8 @@ fn nested_reference_rejected() {
 #[test]
 fn parse_bare_ident_as_reference_value() {
     let s = parse("owner = wil_taylor");
-    assert_eq!(
-        field(&s.items, "owner").expr,
-        Expr::Identifier("wil_taylor".into())
-    );
+    let expr = &field(&s.items, "owner").expr;
+    assert!(matches!(expr, Expr::Identifier(n, _) if n == "wil_taylor"));
 }
 
 #[test]
@@ -979,7 +977,7 @@ fn parse_call_expression() {
     let Expr::Call { callee, args, .. } = &f.expr else {
         panic!("expected call")
     };
-    assert!(matches!(&**callee, Expr::Identifier(n) if n == "f"));
+    assert!(matches!(&**callee, Expr::Identifier(n, _) if n == "f"));
     assert_eq!(args.len(), 2);
 }
 

@@ -15,6 +15,10 @@ tower-lsp = { workspace = true }
 tokio = { workspace = true }
 dashmap = { workspace = true }
 miette = { workspace = true }
+ropey = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "io-util"] }
+tempfile = { workspace = true }

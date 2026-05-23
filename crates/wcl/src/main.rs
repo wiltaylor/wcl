@@ -102,9 +102,20 @@ enum Command {
         #[arg(long = "in-place")]
         in_place: bool,
     },
-    /// Run the WCL language server over stdio. Intended to be launched
-    /// by an LSP-aware editor; not useful from a terminal directly.
-    Lsp,
+    /// Run the WCL language server. Defaults to stdio (the transport
+    /// editors expect); `--tcp` switches to a one-shot TCP listener,
+    /// useful for attaching a debug client.
+    Lsp {
+        /// Listen on `host:port` for one TCP connection instead of
+        /// using stdio. Example: `--tcp 127.0.0.1:9257`.
+        #[arg(long)]
+        tcp: Option<std::net::SocketAddr>,
+        /// Write `tracing` log lines to this file. The server never
+        /// logs to stderr (that would corrupt the stdio LSP stream),
+        /// so a file sink is the only supported destination.
+        #[arg(long)]
+        log: Option<PathBuf>,
+    },
 }
 
 fn main() -> ExitCode {
@@ -155,7 +166,13 @@ fn main() -> ExitCode {
                 EXIT_IO
             }
         },
-        Command::Lsp => {
+        Command::Lsp { tcp, log } => {
+            if let Some(log_path) = log
+                && let Err(e) = wcl_lsp::install_file_logger(&log_path)
+            {
+                eprintln!("failed to open log file {}: {e}", log_path.display());
+                return ExitCode::from(EXIT_IO);
+            }
             let rt = match tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
                 .build()
@@ -166,8 +183,19 @@ fn main() -> ExitCode {
                     return ExitCode::from(EXIT_IO);
                 }
             };
-            rt.block_on(wcl_lsp::start_stdio());
-            EXIT_OK
+            match tcp {
+                Some(addr) => match rt.block_on(wcl_lsp::start_tcp(addr)) {
+                    Ok(()) => EXIT_OK,
+                    Err(e) => {
+                        eprintln!("tcp listener failed: {e}");
+                        EXIT_IO
+                    }
+                },
+                None => {
+                    rt.block_on(wcl_lsp::start_stdio());
+                    EXIT_OK
+                }
+            }
         }
         Command::Set { file, path, value } => match run_set(&file, &path, &value) {
             Ok(code) => code,

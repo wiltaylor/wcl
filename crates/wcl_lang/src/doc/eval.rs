@@ -193,7 +193,7 @@ impl Document {
     /// bare identifiers as opaque names (block labels). Any
     /// non-identifier expression is evaluated through the root scope.
     pub(crate) fn eval_literal(&self, expr: &ast::Expr) -> Result<Value, EvalError> {
-        if let ast::Expr::Identifier(s) = expr {
+        if let ast::Expr::Identifier(s, _) = expr {
             return Ok(Value::Identifier(s.clone()));
         }
         self.eval_in_scope(expr, &Scope::root())
@@ -294,7 +294,7 @@ impl Document {
                         .with_captures(captured),
                 )
             }
-            E::Identifier(name) => {
+            E::Identifier(name, _) => {
                 // Locals (let-binding scope) shadow scope-walked names.
                 if let Some(v) = ctx.lookup(name) {
                     return Ok(v.clone());
@@ -442,7 +442,7 @@ impl Document {
         ctx: &mut EvalCtx<'a>,
     ) -> Result<Value, EvalError> {
         use ast::Expr as E;
-        if let E::Identifier(name) = callee {
+        if let E::Identifier(name, _) = callee {
             if let Some(fv) = lookup_function(self, ctx, name) {
                 let evald = self.eval_args(args, ctx)?;
                 let _profile_guard =
@@ -879,7 +879,7 @@ impl Document {
     ) -> Result<crate::data::DataRef<'a>, EvalError> {
         use ast::Expr as E;
         match expr {
-            E::Identifier(name) => self
+            E::Identifier(name, _) => self
                 .scope_lookup(&ctx.scope, name)
                 .ok_or_else(|| EvalError::unresolved_reference(name, span_of(expr))),
             E::SelfKw(_) => Ok(self.self_dataref(&ctx.scope)),

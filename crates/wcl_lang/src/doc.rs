@@ -28,7 +28,7 @@ use crate::ast::{self, Span};
 use crate::environment::Environment;
 use crate::error::{EvalError, ParseError};
 use crate::parser::Parser;
-use crate::symbols::{SymbolIndex, SymbolKind};
+use crate::symbols::{SymbolIndex, SymbolKind, SymbolRecord};
 #[cfg(test)]
 use crate::value::{BuiltinType, TensorDim};
 use crate::value::{TypeRef, Value};
@@ -72,6 +72,21 @@ struct SourceView<'a> {
     items: &'a [ast::Item],
     cells: &'a [ItemCells],
     file_ns: &'a [String],
+    /// Resolved path on disk. `None` for the root document (the host
+    /// typically supplies that path itself, e.g. via the LSP request
+    /// URI); `Some` for every eagerly-loaded import.
+    path: Option<&'a Path>,
+}
+
+/// A symbol lookup result that knows which source it came from.
+/// Exposed so the LSP can build cross-file `Location`s for
+/// go-to-definition without reaching into `SymbolIndex` directly.
+#[derive(Debug, Clone, Copy)]
+pub struct SymbolHit<'a> {
+    pub record: &'a SymbolRecord,
+    /// File path of the source this symbol was declared in. `None`
+    /// when the symbol comes from the root document.
+    pub source_path: Option<&'a Path>,
 }
 
 impl Document {
@@ -227,6 +242,7 @@ impl Document {
             items: &self.ast.items,
             cells: &self.cells.items,
             file_ns: &self.file_ns,
+            path: None,
         }];
         fn push_imports<'a>(imports: &'a [LoadedImport], out: &mut Vec<SourceView<'a>>) {
             for imp in imports {
@@ -235,12 +251,30 @@ impl Document {
                     items: &imp.items,
                     cells: &imp.cells,
                     file_ns: &imp.file_ns,
+                    path: Some(imp.path.as_path()),
                 });
                 push_imports(&imp.eager_imports, out);
             }
         }
         push_imports(&self.eager_imports, &mut out);
         out
+    }
+
+    /// Lookup a fully-qualified symbol across this document and every
+    /// eagerly-loaded import. Returns the matching `SymbolRecord`
+    /// together with the file path of the source it lives in (`None`
+    /// for the root document). Hosts use this for cross-file
+    /// go-to-definition.
+    pub fn find_symbol(&self, fqn: &str) -> Option<SymbolHit<'_>> {
+        for src in self.all_sources() {
+            if let Some(record) = src.symbols.lookup(fqn) {
+                return Some(SymbolHit {
+                    record,
+                    source_path: src.path,
+                });
+            }
+        }
+        None
     }
 
     /// Lazy dotted-path access into the document. Each segment is
@@ -450,6 +484,13 @@ impl Document {
 
     pub fn source(&self) -> &NamedSource<String> {
         &self.src
+    }
+
+    /// The host environment (synthetic types + builtins) that this
+    /// document was opened with. Exposed so tooling (e.g. the LSP)
+    /// can enumerate registered builtins for completion.
+    pub fn environment(&self) -> &Environment {
+        &self.env
     }
 
     pub fn field(&self, name: &str) -> Option<Field<'_>> {
@@ -1136,7 +1177,7 @@ fn materialise_dataref_or_path(
 fn expr_to_path_segments(expr: &ast::Expr) -> Option<Vec<String>> {
     use ast::Expr as E;
     match expr {
-        E::Identifier(s) => Some(vec![s.clone()]),
+        E::Identifier(s, _) => Some(vec![s.clone()]),
         E::Member { recv, name, .. } => {
             let mut segs = expr_to_path_segments(recv)?;
             segs.push(name.clone());
@@ -1378,9 +1419,9 @@ fn span_of(expr: &ast::Expr) -> Span {
         | E::Ascii(_)
         | E::Utf16(_)
         | E::Utf32(_)
-        | E::Identifier(_)
         | E::Symbol(_)
         | E::None => Span::new(0, 0),
+        E::Identifier(_, span) => *span,
         E::Function(f) => f.span,
         E::Call { span, .. }
         | E::Binary { span, .. }

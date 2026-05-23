@@ -446,7 +446,7 @@ impl Printer {
             // ----- atoms -----
             Expr::Bool(b) => self.push(if *b { "true" } else { "false" }),
             Expr::None => self.push("none"),
-            Expr::Identifier(name) => self.push(name),
+            Expr::Identifier(name, _) => self.push(name),
             Expr::Symbol(name) => {
                 self.push(":");
                 self.push(name);

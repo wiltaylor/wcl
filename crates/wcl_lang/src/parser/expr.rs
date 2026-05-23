@@ -25,7 +25,7 @@ impl<'a> Parser<'a> {
             TokenKind::Number(n) => number_to_expr(n),
             TokenKind::Str(s) => self.string_lit_to_expr(s, span)?,
             TokenKind::Bool(b) => Expr::Bool(b),
-            TokenKind::Ident(s) => Expr::Identifier(s),
+            TokenKind::Ident(s) => Expr::Identifier(s, span),
             TokenKind::Symbol(s) => Expr::Symbol(s),
             TokenKind::None => Expr::None,
             other => {
@@ -671,7 +671,7 @@ impl<'a> Parser<'a> {
 fn flatten_path_expr(expr: &Expr) -> Option<Vec<String>> {
     fn walk(e: &Expr, out: &mut Vec<String>) -> bool {
         match e {
-            Expr::Identifier(s) => {
+            Expr::Identifier(s, _) => {
                 out.push(s.clone());
                 true
             }

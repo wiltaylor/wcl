@@ -4,7 +4,7 @@
 //! occurrence of the resolved identifier.
 
 use tower_lsp::lsp_types::{GotoDefinitionResponse, Location, Range, Url};
-use wcl_lang::Document;
+use wcl_lang::{Document, parse_for_edit};
 
 use crate::convert::span_to_range;
 use crate::resolve::{self, LocatedSymbol};
@@ -18,12 +18,63 @@ pub(crate) fn goto_definition(
     offset: usize,
 ) -> Option<GotoDefinitionResponse> {
     let doc = Document::open(source, uri.as_str()).ok()?;
-    let (sym, _) = resolve::locate(&doc, source, offset)?;
-    let span = resolve::declaration_span(&doc, &sym)?;
+    let ast = parse_for_edit(source, uri.as_str()).ok()?;
+    let (sym, _) = resolve::locate(&doc, &ast, source, offset)?;
+    // Cross-file: if the resolved FQN lives in an imported source,
+    // surface that file's URI instead of the request URI.
+    let (location_uri, span) = match symbol_fqn(&sym) {
+        Some(fqn) => match doc.find_symbol(fqn) {
+            Some(hit) => {
+                let target = hit
+                    .source_path
+                    .and_then(|p| Url::from_file_path(p).ok())
+                    .unwrap_or_else(|| uri.clone());
+                (target, hit.record.span)
+            }
+            None => (uri.clone(), resolve::declaration_span(&doc, &sym)?),
+        },
+        None => (uri.clone(), resolve::declaration_span(&doc, &sym)?),
+    };
+    // For cross-file hits we want the range computed against the
+    // *target* file's source, not the request's. We only have the
+    // request source here — fall back to span-on-request when the
+    // file matches; otherwise emit a zero-based range and let the
+    // editor open the file to the offset.
+    let range = if location_uri == uri {
+        span_to_range(source, span)
+    } else {
+        // Read the target file lazily to compute line/col. If the
+        // read fails (transient I/O), report the same as a request-
+        // file range — the byte offsets still help the editor.
+        match location_uri
+            .to_file_path()
+            .ok()
+            .and_then(|p| std::fs::read_to_string(p).ok())
+        {
+            Some(text) => span_to_range(&text, span),
+            None => span_to_range(source, span),
+        }
+    };
     Some(GotoDefinitionResponse::Scalar(Location {
-        uri,
-        range: span_to_range(source, span),
+        uri: location_uri,
+        range,
     }))
+}
+
+/// FQN-bearing variants for cross-file lookup. `Local` has no FQN
+/// (it's a function param / let binding); `UnionVariant`/`SymbolEntry`
+/// nest under a parent FQN but their target source is the same file
+/// as the parent — falling back to `declaration_span` is fine.
+fn symbol_fqn(sym: &LocatedSymbol) -> Option<&str> {
+    match sym {
+        LocatedSymbol::Type(f)
+        | LocatedSymbol::Decorator(f)
+        | LocatedSymbol::BlockKind(f)
+        | LocatedSymbol::Field(f) => Some(f.as_str()),
+        LocatedSymbol::Local { .. }
+        | LocatedSymbol::UnionVariant { .. }
+        | LocatedSymbol::SymbolEntry { .. } => None,
+    }
 }
 
 /// Find every occurrence of the identifier under the cursor. The
@@ -38,7 +89,8 @@ pub(crate) fn references(
     include_declaration: bool,
 ) -> Option<Vec<Location>> {
     let doc = Document::open(source, uri.as_str()).ok()?;
-    let (sym, _) = resolve::locate(&doc, source, offset)?;
+    let ast = parse_for_edit(source, uri.as_str()).ok()?;
+    let (sym, _) = resolve::locate(&doc, &ast, source, offset)?;
     let needle = display_name(&sym);
     let decl_span = resolve::declaration_span(&doc, &sym);
     let mut out = Vec::new();
@@ -71,11 +123,13 @@ pub(crate) fn references(
 /// typed at use sites.
 fn display_name(sym: &LocatedSymbol) -> String {
     let fqn = match sym {
-        LocatedSymbol::Type(f) | LocatedSymbol::Decorator(f) | LocatedSymbol::BlockKind(f) => {
-            f.as_str()
-        }
+        LocatedSymbol::Type(f)
+        | LocatedSymbol::Decorator(f)
+        | LocatedSymbol::BlockKind(f)
+        | LocatedSymbol::Field(f) => f.as_str(),
         LocatedSymbol::UnionVariant { variant, .. } => variant.as_str(),
         LocatedSymbol::SymbolEntry { entry, .. } => entry.as_str(),
+        LocatedSymbol::Local { name, .. } => name.as_str(),
     };
     fqn.rsplit('.').next().unwrap_or(fqn).to_string()
 }
@@ -154,5 +208,23 @@ mod tests {
         let with_decl = references(url(), src, cursor, true).unwrap();
         let no_decl = references(url(), src, cursor, false).unwrap();
         assert_eq!(with_decl.len(), no_decl.len() + 1);
+    }
+
+    #[test]
+    fn find_symbol_returns_imported_file_path() {
+        // Verifies the cross-file plumbing: a Document opened from a
+        // file with an `import`d sibling exposes the import's path
+        // via `find_symbol`. The LSP handler uses this to build a
+        // `Location` pointing at the imported file when go-to-def
+        // resolves a cross-file FQN.
+        let dir = tempfile::tempdir().unwrap();
+        let shared = dir.path().join("shared.wcl");
+        let main = dir.path().join("main.wcl");
+        std::fs::write(&shared, "namespace shared\ntype Color {\n  name: utf8\n}\n").unwrap();
+        std::fs::write(&main, "import \"./shared.wcl\"\n").unwrap();
+        let doc = wcl_lang::Document::from_file(&main).expect("open main");
+        let hit = doc.find_symbol("shared.Color").expect("hit");
+        let target = Url::from_file_path(hit.source_path.expect("imported path")).unwrap();
+        assert_eq!(target, Url::from_file_path(&shared).unwrap());
     }
 }

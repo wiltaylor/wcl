@@ -73,7 +73,7 @@ pub enum Expr {
         span: Span,
     },
 
-    Identifier(String),
+    Identifier(String, Span),
     Symbol(String),
     None,
 

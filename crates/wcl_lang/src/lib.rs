@@ -37,8 +37,8 @@ pub use builtins::{
 pub use data::{DataKind, DataRef};
 pub use doc::{
     Block, ChildKind, Connection, ConnectionDecl, DeclName, Decorator, Document, Field,
-    InterfaceDecl, NamedArg, ResolvedType, RowView, SymbolEntry, SymbolSetDecl, TableView,
-    TypeDecl, TypeField, UnionDecl, UnionVariant, UseDeclView, UseFormView, UseItem,
+    InterfaceDecl, NamedArg, ResolvedType, RowView, SymbolEntry, SymbolHit, SymbolSetDecl,
+    TableView, TypeDecl, TypeField, UnionDecl, UnionVariant, UseDeclView, UseFormView, UseItem,
     VariantBodyView,
 };
 pub use environment::{BuiltType, DecoratorBuilder, Environment, TypeBuilder, TypeFieldBuilder};

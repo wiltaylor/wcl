@@ -74,6 +74,15 @@ impl Environment {
     pub(crate) fn builtin(&self, name: &str) -> Option<&BuiltinFn> {
         self.builtins.get(name)
     }
+
+    /// Iterate registered built-in callables as `(name, arity)` pairs.
+    /// Used by hosts (e.g. the LSP) that need to enumerate the
+    /// callable surface — `Environment::builtin` only supports lookup.
+    pub fn builtin_names(&self) -> impl Iterator<Item = (&str, usize)> {
+        self.builtins
+            .iter()
+            .map(|(name, f)| (name.as_str(), f.arity()))
+    }
 }
 
 fn synthetic_span() -> Span {
@@ -335,7 +344,7 @@ fn value_to_expr(v: Value) -> ast::Expr {
         Value::Ascii(s) => ast::Expr::Ascii(s),
         Value::Utf16(v) => ast::Expr::Utf16(v),
         Value::Utf32(v) => ast::Expr::Utf32(v),
-        Value::Identifier(s) => ast::Expr::Identifier(s),
+        Value::Identifier(s) => ast::Expr::Identifier(s, ast::Span::new(0, 0)),
         Value::Symbol(s) => ast::Expr::Symbol(s),
         Value::None => ast::Expr::None,
         Value::Function(_) => {

@@ -9,7 +9,7 @@
 //! coloring inside `${...}` slots is deferred).
 
 use tower_lsp::lsp_types::{SemanticToken, SemanticTokenType};
-use wcl_lang::{Lexer, Span, TokenKind};
+use wcl_lang::{Lexer, Span, StringLit, StringPart, TokenKind};
 
 /// Token legend in the order LSP expects: each emitted token's
 /// `token_type` is an index into this list. Add new categories at the
@@ -45,12 +45,78 @@ pub(crate) fn compute(source: &str) -> Vec<SemanticToken> {
         if matches!(tok.kind, TokenKind::Eof) {
             break;
         }
-        if let Some(ty) = classify(&tok.kind, prev_type.as_ref()) {
+        // Interpolated strings get sub-token coloring — the slot
+        // contents are real expressions and deserve distinct
+        // highlighting from the surrounding literal bytes.
+        if let TokenKind::Str(StringLit::Interpolated { parts, .. }) = &tok.kind {
+            push_interpolated_tokens(&mut tokens, source, tok.span, parts);
+        } else if let Some(ty) = classify(&tok.kind, prev_type.as_ref()) {
             push_token(&mut tokens, source, tok.span, ty);
         }
         prev_type = Some(tok.kind);
     }
     delta_encode(source, &tokens)
+}
+
+/// Walk the parts of an interpolated string literal and emit
+/// `STRING` runs for the literal bytes, `OPERATOR` runs for the
+/// `${` / `}` delimiters, and re-lexed token coloring for the slot
+/// bodies. The lexer pre-records each `StringPart::Expr.span` in
+/// absolute source coordinates, so the slot text can be re-tokenised
+/// in place by offsetting the inner lexer's spans by `slot.start + 2`.
+fn push_interpolated_tokens(
+    out: &mut Vec<Raw>,
+    source: &str,
+    string_span: Span,
+    parts: &[StringPart],
+) {
+    let mut cursor = string_span.start;
+    for part in parts {
+        if let StringPart::Expr { text, span } = part {
+            // String bytes between the previous cursor and this slot.
+            if span.start > cursor {
+                push_token(out, source, Span::new(cursor, span.start), T_STRING);
+            }
+            // `${` opener and trailing `}` are 1- and 1-byte tokens
+            // (the lexer guarantees `${...}` shape).
+            let open_end = (span.start + 2).min(span.end);
+            push_token(out, source, Span::new(span.start, open_end), T_OPERATOR);
+            // Inner expression — re-lex against the slot text and
+            // translate spans back to absolute source offsets.
+            let inner_start = open_end;
+            let inner_end = span.end.saturating_sub(1);
+            if inner_end > inner_start {
+                let _ = text; // `text` may differ from the source slice on escapes; prefer raw source.
+                push_inner_tokens(out, source, inner_start, inner_end);
+            }
+            if span.end > inner_end {
+                push_token(out, source, Span::new(inner_end, span.end), T_OPERATOR);
+            }
+            cursor = span.end;
+        }
+    }
+    if cursor < string_span.end {
+        push_token(out, source, Span::new(cursor, string_span.end), T_STRING);
+    }
+}
+
+/// Re-lex the byte range `[start, end)` of `source` as a standalone
+/// expression and emit semantic tokens for each token using the
+/// outer source's absolute offsets. Used for `${...}` slot bodies.
+fn push_inner_tokens(out: &mut Vec<Raw>, source: &str, start: usize, end: usize) {
+    let slice = &source[start..end];
+    let mut lex = Lexer::new(slice);
+    let mut prev_type: Option<TokenKind> = None;
+    while let Ok(tok) = lex.next_token() {
+        if matches!(tok.kind, TokenKind::Eof) {
+            break;
+        }
+        if let Some(ty) = classify(&tok.kind, prev_type.as_ref()) {
+            let abs = Span::new(start + tok.span.start, start + tok.span.end);
+            push_token(out, source, abs, ty);
+        }
+        prev_type = Some(tok.kind);
+    }
 }
 
 /// Intermediate single-token record (absolute byte span + token type).
@@ -219,6 +285,19 @@ mod tests {
         let types = types_emitted(src);
         assert!(types.contains(&T_NUMBER));
         assert!(types.contains(&T_ENUM_MEMBER));
+    }
+
+    #[test]
+    fn interpolated_string_colors_slot_contents() {
+        let src = "x = $\"hello ${y + 1}\"\n";
+        // Find what types appear between the slot's `${` and `}`.
+        let toks = compute(src);
+        // We expect: variable color for `y`, operator for `+`, number for `1`.
+        let types: Vec<u32> = toks.iter().map(|t| t.token_type).collect();
+        assert!(types.contains(&T_STRING), "no STRING in {types:?}");
+        assert!(types.contains(&T_VARIABLE), "no VARIABLE in {types:?}");
+        assert!(types.contains(&T_NUMBER), "no NUMBER in {types:?}");
+        assert!(types.contains(&T_OPERATOR), "no OPERATOR in {types:?}");
     }
 
     #[test]
