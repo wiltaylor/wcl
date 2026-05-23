@@ -33,9 +33,24 @@ fn build_emits_fundamentals_for_example_site() {
         index.contains("<p><span>Welcome to wdoc </span>"),
         "{index}"
     );
-    // column grid CSS
+    // class system: <style> with both class rules + class= attributes
     assert!(
-        index.contains("<div style=\"display:grid;grid-template-columns:50% 50%;\">"),
+        index.contains(".accent { color:#003a8c;font-weight:bold; }"),
+        "{index}"
+    );
+    assert!(
+        index.contains(".boxed { padding:0.5rem;border:1px solid #999; }"),
+        "{index}"
+    );
+    assert!(
+        index.contains("<span class=\"accent\">— now with classes.</span>"),
+        "{index}"
+    );
+    // column carries `class` AND its inline grid style
+    assert!(
+        index.contains(
+            "<div class=\"boxed\" style=\"display:grid;grid-template-columns:50% 50%;\">"
+        ),
         "{index}"
     );
     // diagram SVG wrapper

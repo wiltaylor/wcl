@@ -31,4 +31,6 @@ fn wcl_wdoc_build_renders_fundamental_blocks() {
     let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
     assert!(index.contains("<p><span>"), "{index}");
     assert!(index.contains("<svg"), "{index}");
+    assert!(index.contains("<style>"), "{index}");
+    assert!(index.contains("class=\""), "{index}");
 }

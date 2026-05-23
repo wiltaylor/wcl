@@ -1,14 +1,27 @@
-// Fundamental-block demo. These are the IR layer; future high-level
-// blocks (headings, lists, callouts, ...) will lower to these.
+// Fundamental-block demo with classes. Higher-level blocks land in a
+// follow-up slice and lower to these.
+
+class accent {
+  color = "#003a8c"
+  bold  = true
+}
+
+class boxed {
+  border  = "1px solid #999"
+  padding = "0.5rem"
+}
 
 page index {
   text {
     span "Welcome to wdoc " {}
-    span "— a tiny static-site demo built on fundamental blocks." {}
+    span "— now with classes." {
+      class = ["accent"]
+    }
   }
 
   column {
     widths = [50.0, 50.0]
+    class  = ["boxed"]
     text { span "Left column." {} }
     text { span "Right column." {} }
   }

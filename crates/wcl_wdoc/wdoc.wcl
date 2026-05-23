@@ -7,7 +7,8 @@
 
 @document
 type Site {
-  @children("page") pages: list<Page>
+  @children("class") classes: list<Class>
+  @children("page")  pages:   list<Page>
 }
 
 @block("page")
@@ -18,17 +19,45 @@ type Page {
   @children("diagram") diagrams: list<Diagram>
 }
 
+// Style bundle. Referenced from any IR block's `class: list<utf8>?`
+// field; each entry names a class by its inline identifier. Classes
+// are document-global and emitted as `.name { ... }` rules in the
+// page <style> block.
+@block("class")
+type Class {
+  @inline(0) name: identifier
+
+  // Text styling
+  color:       utf8?
+  background:  utf8?
+  bold:        bool?
+  italic:      bool?
+  underline:   bool?
+
+  // Sizing / alignment
+  font_size:   utf8?
+  font_family: utf8?
+  text_align:  utf8?
+
+  // Layout
+  padding:     utf8?
+  margin:      utf8?
+  border:      utf8?
+}
+
 // Paragraph — children are spans rendered in source order.
 @block("text")
 type Text {
+  class: list<utf8>?
   @children("span") spans: list<Span>
 }
 
-// Inline run inside a `text`. Style fields land in a follow-up slice;
-// for now the span only carries its text.
+// Inline run inside a `text`. Style fields beyond `class` are
+// intentionally absent — style flows through @block("class") rules.
 @block("span")
 type Span {
   @inline(0) text: utf8
+  class: list<utf8>?
 }
 
 // Grid container. `widths` are CSS percentages, one per child slot;
@@ -36,6 +65,7 @@ type Span {
 @block("column")
 type Column {
   widths: list<f64>
+  class:  list<utf8>?
   @children("text")    texts:    list<Text>
   @children("column")  columns:  list<Column>
   @children("diagram") diagrams: list<Diagram>
@@ -46,6 +76,7 @@ type Column {
 type Diagram {
   width:  i64
   height: i64
+  class:  list<utf8>?
   @children("rect")    rects:    list<Rect>
   @children("circle")  circles:  list<Circle>
   @children("line")    lines:    list<Line>
@@ -61,6 +92,7 @@ type Rect {
   height: f64
   fill:   utf8?
   stroke: utf8?
+  class:  list<utf8>?
 }
 
 @block("circle")
@@ -70,6 +102,7 @@ type Circle {
   r:      f64
   fill:   utf8?
   stroke: utf8?
+  class:  list<utf8>?
 }
 
 @block("line")
@@ -79,6 +112,7 @@ type Line {
   x2:     f64
   y2:     f64
   stroke: utf8?
+  class:  list<utf8>?
 }
 
 // SVG <text> shape. Renamed from `text` to avoid colliding with the
@@ -86,9 +120,10 @@ type Line {
 @block("label")
 type Label {
   @inline(0) content: utf8
-  x:    f64
-  y:    f64
-  fill: utf8?
+  x:     f64
+  y:     f64
+  fill:  utf8?
+  class: list<utf8>?
 }
 
 @block("polygon")
@@ -96,4 +131,5 @@ type Polygon {
   points: utf8
   fill:   utf8?
   stroke: utf8?
+  class:  list<utf8>?
 }

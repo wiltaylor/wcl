@@ -2,7 +2,7 @@ use std::fmt::Write as _;
 
 use wcl_lang::{Block, Value};
 
-pub(crate) fn render_page(name: &str, blocks: impl Iterator<Item = String>) -> String {
+pub(crate) fn render_page(name: &str, css: &str, blocks: impl Iterator<Item = String>) -> String {
     let mut body = String::new();
     for b in blocks {
         body.push_str(&b);
@@ -11,7 +11,8 @@ pub(crate) fn render_page(name: &str, blocks: impl Iterator<Item = String>) -> S
     format!(
         "<!DOCTYPE html>\n\
          <html>\n\
-         <head><meta charset=\"utf-8\"><title>{title}</title></head>\n\
+         <head><meta charset=\"utf-8\"><title>{title}</title>\n\
+         <style>{css}</style></head>\n\
          <body>\n\
          {body}</body>\n\
          </html>\n",
@@ -29,21 +30,75 @@ pub(crate) fn render_block(block: &Block<'_>) -> Option<String> {
     }
 }
 
+/// Emit a CSS rule body for a `@block("class")` instance.
+/// Returns `None` if the block doesn't have an inline name.
+pub(crate) fn render_class(block: &Block<'_>) -> Option<String> {
+    let name = label_string(block)?;
+    let mut props = String::new();
+    push_css(&mut props, "color", field_utf8(block, "color").as_deref());
+    push_css(
+        &mut props,
+        "background",
+        field_utf8(block, "background").as_deref(),
+    );
+    if field_bool(block, "bold") == Some(true) {
+        props.push_str("font-weight:bold;");
+    }
+    if field_bool(block, "italic") == Some(true) {
+        props.push_str("font-style:italic;");
+    }
+    if field_bool(block, "underline") == Some(true) {
+        props.push_str("text-decoration:underline;");
+    }
+    push_css(
+        &mut props,
+        "font-size",
+        field_utf8(block, "font_size").as_deref(),
+    );
+    push_css(
+        &mut props,
+        "font-family",
+        field_utf8(block, "font_family").as_deref(),
+    );
+    push_css(
+        &mut props,
+        "text-align",
+        field_utf8(block, "text_align").as_deref(),
+    );
+    push_css(
+        &mut props,
+        "padding",
+        field_utf8(block, "padding").as_deref(),
+    );
+    push_css(&mut props, "margin", field_utf8(block, "margin").as_deref());
+    push_css(&mut props, "border", field_utf8(block, "border").as_deref());
+    Some(format!(".{name} {{ {props} }}"))
+}
+
+fn push_css(out: &mut String, prop: &str, value: Option<&str>) {
+    if let Some(v) = value {
+        write!(out, "{prop}:{v};").expect("write to String");
+    }
+}
+
 fn render_text(block: &Block<'_>) -> String {
+    let cls = class_attr(block);
     let spans: String = block
         .blocks()
         .filter(|b| b.kind() == "span")
         .map(|b| render_span(&b))
         .collect();
-    format!("<p>{spans}</p>")
+    format!("<p{cls}>{spans}</p>")
 }
 
 fn render_span(block: &Block<'_>) -> String {
+    let cls = class_attr(block);
     let text = label_string(block).unwrap_or_default();
-    format!("<span>{}</span>", escape_html(&text))
+    format!("<span{cls}>{}</span>", escape_html(&text))
 }
 
 fn render_column(block: &Block<'_>) -> String {
+    let cls = class_attr(block);
     let widths = field_f64_list(block, "widths");
     let grid_cols: String = widths
         .iter()
@@ -51,15 +106,16 @@ fn render_column(block: &Block<'_>) -> String {
         .collect::<Vec<_>>()
         .join(" ");
     let children: String = block.blocks().filter_map(|b| render_block(&b)).collect();
-    format!("<div style=\"display:grid;grid-template-columns:{grid_cols};\">{children}</div>")
+    format!("<div{cls} style=\"display:grid;grid-template-columns:{grid_cols};\">{children}</div>")
 }
 
 fn render_diagram(block: &Block<'_>) -> String {
+    let cls = class_attr(block);
     let width = field_i64(block, "width").unwrap_or(0);
     let height = field_i64(block, "height").unwrap_or(0);
     let shapes: String = block.blocks().filter_map(|b| render_shape(&b)).collect();
     format!(
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{width}\" height=\"{height}\" \
+        "<svg{cls} xmlns=\"http://www.w3.org/2000/svg\" width=\"{width}\" height=\"{height}\" \
          viewBox=\"0 0 {width} {height}\">{shapes}</svg>"
     )
 }
@@ -76,11 +132,12 @@ fn render_shape(block: &Block<'_>) -> Option<String> {
 }
 
 fn render_rect(block: &Block<'_>) -> String {
+    let cls = class_attr(block);
     let x = field_f64(block, "x").unwrap_or(0.0);
     let y = field_f64(block, "y").unwrap_or(0.0);
     let w = field_f64(block, "width").unwrap_or(0.0);
     let h = field_f64(block, "height").unwrap_or(0.0);
-    let mut out = format!("<rect x=\"{x}\" y=\"{y}\" width=\"{w}\" height=\"{h}\"");
+    let mut out = format!("<rect{cls} x=\"{x}\" y=\"{y}\" width=\"{w}\" height=\"{h}\"");
     append_attr(&mut out, "fill", field_utf8(block, "fill").as_deref());
     append_attr(&mut out, "stroke", field_utf8(block, "stroke").as_deref());
     out.push_str(" />");
@@ -88,10 +145,11 @@ fn render_rect(block: &Block<'_>) -> String {
 }
 
 fn render_circle(block: &Block<'_>) -> String {
+    let cls = class_attr(block);
     let cx = field_f64(block, "cx").unwrap_or(0.0);
     let cy = field_f64(block, "cy").unwrap_or(0.0);
     let r = field_f64(block, "r").unwrap_or(0.0);
-    let mut out = format!("<circle cx=\"{cx}\" cy=\"{cy}\" r=\"{r}\"");
+    let mut out = format!("<circle{cls} cx=\"{cx}\" cy=\"{cy}\" r=\"{r}\"");
     append_attr(&mut out, "fill", field_utf8(block, "fill").as_deref());
     append_attr(&mut out, "stroke", field_utf8(block, "stroke").as_deref());
     out.push_str(" />");
@@ -99,33 +157,49 @@ fn render_circle(block: &Block<'_>) -> String {
 }
 
 fn render_line(block: &Block<'_>) -> String {
+    let cls = class_attr(block);
     let x1 = field_f64(block, "x1").unwrap_or(0.0);
     let y1 = field_f64(block, "y1").unwrap_or(0.0);
     let x2 = field_f64(block, "x2").unwrap_or(0.0);
     let y2 = field_f64(block, "y2").unwrap_or(0.0);
-    let mut out = format!("<line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\"");
+    let mut out = format!("<line{cls} x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\"");
     append_attr(&mut out, "stroke", field_utf8(block, "stroke").as_deref());
     out.push_str(" />");
     out
 }
 
 fn render_label(block: &Block<'_>) -> String {
+    let cls = class_attr(block);
     let content = label_string(block).unwrap_or_default();
     let x = field_f64(block, "x").unwrap_or(0.0);
     let y = field_f64(block, "y").unwrap_or(0.0);
-    let mut out = format!("<text x=\"{x}\" y=\"{y}\"");
+    let mut out = format!("<text{cls} x=\"{x}\" y=\"{y}\"");
     append_attr(&mut out, "fill", field_utf8(block, "fill").as_deref());
     write!(out, ">{}</text>", escape_html(&content)).expect("write to String");
     out
 }
 
 fn render_polygon(block: &Block<'_>) -> String {
+    let cls = class_attr(block);
     let points = field_utf8(block, "points").unwrap_or_default();
-    let mut out = format!("<polygon points=\"{}\"", escape_html(&points));
+    let mut out = format!("<polygon{cls} points=\"{}\"", escape_html(&points));
     append_attr(&mut out, "fill", field_utf8(block, "fill").as_deref());
     append_attr(&mut out, "stroke", field_utf8(block, "stroke").as_deref());
     out.push_str(" />");
     out
+}
+
+fn class_attr(block: &Block<'_>) -> String {
+    let names = field_utf8_list(block, "class");
+    if names.is_empty() {
+        return String::new();
+    }
+    let joined = names
+        .iter()
+        .map(|s| escape_html(s))
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!(" class=\"{joined}\"")
 }
 
 fn append_attr(out: &mut String, name: &str, value: Option<&str>) {
@@ -150,6 +224,14 @@ fn field_utf8(block: &Block<'_>, name: &str) -> Option<String> {
     let field = block.field(name)?;
     match field.value().ok()? {
         Value::Utf8(s) | Value::Ascii(s) => Some(s.clone()),
+        _ => None,
+    }
+}
+
+fn field_bool(block: &Block<'_>, name: &str) -> Option<bool> {
+    let field = block.field(name)?;
+    match field.value().ok()? {
+        Value::Bool(b) => Some(*b),
         _ => None,
     }
 }
@@ -193,6 +275,27 @@ fn field_f64_list(block: &Block<'_>, name: &str) -> Vec<f64> {
             Value::F32(n) => Some(*n as f64),
             Value::I64(n) => Some(*n as f64),
             Value::I32(n) => Some(*n as f64),
+            _ => None,
+        })
+        .collect()
+}
+
+fn field_utf8_list(block: &Block<'_>, name: &str) -> Vec<String> {
+    let Some(field) = block.field(name) else {
+        return Vec::new();
+    };
+    let Ok(value) = field.value() else {
+        return Vec::new();
+    };
+    let Value::List(items) = value else {
+        return Vec::new();
+    };
+    items
+        .iter()
+        .filter_map(|v| match v {
+            Value::Utf8(s) | Value::Ascii(s) | Value::Identifier(s) | Value::Symbol(s) => {
+                Some(s.clone())
+            }
             _ => None,
         })
         .collect()

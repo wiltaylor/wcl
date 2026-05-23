@@ -4,7 +4,7 @@ use std::path::Path;
 use miette::{NamedSource, Report};
 use wcl_lang::{Document, Value};
 
-use crate::render::{render_block, render_page};
+use crate::render::{render_block, render_class, render_page};
 
 const SCHEMA: &str = include_str!("../wdoc.wcl");
 
@@ -52,6 +52,15 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
     fs::create_dir_all(out_dir)
         .map_err(|e| BuildError::Io(e, format!("create_dir_all {}", out_dir.display())))?;
 
+    // Document-global stylesheet: every @block("class") becomes one
+    // `.name { ... }` rule. Emitted into <head> on every page.
+    let css: String = doc
+        .blocks()
+        .filter(|b| b.kind() == "class")
+        .filter_map(|b| render_class(&b))
+        .collect::<Vec<_>>()
+        .join("\n");
+
     let mut count = 0;
     for page in doc.blocks().filter(|b| b.kind() == "page") {
         let labels = page
@@ -68,7 +77,7 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
         };
 
         let rendered_blocks = page.blocks().filter_map(|b| render_block(&b));
-        let html = render_page(&page_name, rendered_blocks);
+        let html = render_page(&page_name, &css, rendered_blocks);
 
         let out_path = out_dir.join(format!("{page_name}.html"));
         fs::write(&out_path, html)
