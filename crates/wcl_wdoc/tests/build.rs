@@ -1,8 +1,7 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use assert_cmd::Command;
-use predicates::prelude::*;
 use tempfile::TempDir;
+use wcl_wdoc::{BuildError, build};
 
 fn examples_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -11,21 +10,21 @@ fn examples_dir() -> PathBuf {
         .join("examples")
 }
 
-fn wdoc() -> Command {
-    Command::cargo_bin("wdoc").expect("wdoc binary built")
+fn build_ok(file: &Path, out: &Path) -> usize {
+    match build(file, out) {
+        Ok(n) => n,
+        Err(BuildError::Io(e, ctx)) => panic!("build io error: {ctx}: {e}"),
+        Err(BuildError::Parse(_)) => panic!("build parse error"),
+        Err(BuildError::Schema(n)) => panic!("build schema error: {n} violations"),
+        Err(BuildError::BadPage(m)) => panic!("build bad-page error: {m}"),
+    }
 }
 
 #[test]
 fn build_emits_one_html_per_page() {
     let out = TempDir::new().expect("mkdir tempdir");
-    wdoc()
-        .arg("build")
-        .arg(examples_dir().join("wdoc").join("site.wcl"))
-        .arg("--out")
-        .arg(out.path())
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("wrote 2 pages"));
+    let n = build_ok(&examples_dir().join("wdoc").join("site.wcl"), out.path());
+    assert_eq!(n, 2);
 
     let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
     assert!(index.contains("<h1>Welcome</h1>"), "{index}");
@@ -57,13 +56,7 @@ page index {
     .expect("write fixture");
 
     let out = TempDir::new().expect("mkdir out");
-    wdoc()
-        .arg("build")
-        .arg(&src)
-        .arg("--out")
-        .arg(out.path())
-        .assert()
-        .success();
+    build_ok(&src, out.path());
 
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read html");
     assert!(html.contains("<h1>A &amp; B &lt;c&gt;</h1>"), "{html}");
@@ -85,12 +78,11 @@ page index {
     .expect("write fixture");
 
     let out = TempDir::new().expect("mkdir out");
-    wdoc()
-        .arg("build")
-        .arg(&src)
-        .arg("--out")
-        .arg(out.path())
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains("h7"));
+    match build(&src, out.path()) {
+        Err(BuildError::Schema(n)) => assert!(n >= 1, "expected at least one violation, got {n}"),
+        Err(BuildError::Io(e, ctx)) => panic!("expected Schema, got Io({ctx}: {e})"),
+        Err(BuildError::Parse(_)) => panic!("expected Schema, got Parse"),
+        Err(BuildError::BadPage(m)) => panic!("expected Schema, got BadPage({m})"),
+        Ok(n) => panic!("expected Schema error, got Ok({n})"),
+    }
 }

@@ -144,6 +144,39 @@ enum Command {
         #[arg(long)]
         log: Option<PathBuf>,
     },
+    /// WCL-driven static site generator. Use `wcl wdoc build` for a
+    /// one-shot render and `wcl wdoc serve` for a watch-rebuild dev
+    /// server.
+    Wdoc {
+        #[command(subcommand)]
+        cmd: WdocCommand,
+    },
+}
+
+#[derive(Subcommand)]
+enum WdocCommand {
+    /// Render every `page` block in `<file>` to `<out>/<name>.html`.
+    Build {
+        /// Path to a WCL source file declaring one or more `page` blocks.
+        file: PathBuf,
+        /// Output directory. Created if missing.
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// Run a local dev server. Watches the source for `.wcl` changes
+    /// and re-renders on each modification — refresh the browser to
+    /// see updates.
+    Serve {
+        /// Path to a WCL source file declaring one or more `page` blocks.
+        file: PathBuf,
+        /// Bind address. Default `127.0.0.1:8080`.
+        #[arg(long, default_value = "127.0.0.1:8080")]
+        addr: std::net::SocketAddr,
+        /// Output directory. When omitted, a temp directory is used
+        /// and removed on shutdown.
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
 }
 
 fn main() -> ExitCode {
@@ -276,8 +309,49 @@ fn main() -> ExitCode {
                 EXIT_PARSE
             }
         },
+        Command::Wdoc { cmd } => run_wdoc(cmd),
     };
     ExitCode::from(code)
+}
+
+fn run_wdoc(cmd: WdocCommand) -> u8 {
+    match cmd {
+        WdocCommand::Build { file, out } => match wcl_wdoc::build(&file, &out) {
+            Ok(n) => {
+                println!("wrote {n} page{}", if n == 1 { "" } else { "s" });
+                EXIT_OK
+            }
+            Err(err) => {
+                let code = match &err {
+                    wcl_wdoc::BuildError::Io(..) => EXIT_IO,
+                    wcl_wdoc::BuildError::Parse(_) => EXIT_PARSE,
+                    wcl_wdoc::BuildError::Schema(_) => EXIT_SCHEMA,
+                    wcl_wdoc::BuildError::BadPage(_) => EXIT_EVAL,
+                };
+                err.report();
+                code
+            }
+        },
+        WdocCommand::Serve { file, addr, out } => {
+            let rt = match tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(rt) => rt,
+                Err(e) => {
+                    eprintln!("failed to start tokio runtime: {e}");
+                    return EXIT_IO;
+                }
+            };
+            match rt.block_on(wcl_wdoc::serve(file, out, addr)) {
+                Ok(()) => EXIT_OK,
+                Err(e) => {
+                    eprintln!("serve failed: {e}");
+                    EXIT_IO
+                }
+            }
+        }
+    }
 }
 
 /// Drive `parse_for_edit → format::to_source` and either print the

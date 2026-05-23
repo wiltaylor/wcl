@@ -5,9 +5,9 @@ This branch (`rewrite`) is a clean restart of WCL. The previous implementation l
 ## Layout
 
 - `crates/wcl_lang` — language library: lexer, parser, AST, document view, lazy evaluator, schema validator, host-binding API
-- `crates/wcl` — `wcl` CLI binary (`wcl parse`, `wcl check`, `wcl eval` / `wcl get`, `wcl set`, `wcl fmt`, `wcl repl`, `wcl lsp`)
+- `crates/wcl` — `wcl` CLI binary (`wcl parse`, `wcl check`, `wcl eval` / `wcl get`, `wcl set`, `wcl fmt`, `wcl repl`, `wcl lsp`, `wcl wdoc build`, `wcl wdoc serve`)
 - `crates/wcl_lsp` — `tower-lsp` language server driving `wcl lsp`
-- `crates/wcl_wdoc` — `wdoc` CLI binary: WCL-driven static site generator (`wdoc build <file> --out <dir>`, `wdoc serve <file> [--addr 127.0.0.1:8080] [--out <dir>]`). Ships a bundled `wdoc.wcl` schema (page + h1..h6 + p blocks) that's stitched in front of the user source at parse time. `serve` renders into a tempdir (or `--out`) by calling `build()`, watches the source dir via `notify` and rebuilds on every `.wcl` change; axum routes `/` and `/<name>[.html]` are static-file reads off that directory. Build errors are logged to stderr; the last successful render keeps serving.
+- `crates/wcl_wdoc` — library crate driving the `wcl wdoc` subcommands: `wcl_wdoc::build(file, out_dir)` renders pages to HTML, `wcl_wdoc::serve(file, out, addr)` runs the watch+axum dev server. Ships a bundled `wdoc.wcl` schema (page + h1..h6 + p blocks) that's stitched in front of the user source at parse time. `serve` renders into a tempdir (or `--out`) by calling `build()`, watches the source dir via `notify` and rebuilds on every `.wcl` change; axum routes `/` and `/<name>[.html]` are static-file reads off that directory. Build errors are logged to stderr; the last successful render keeps serving.
 - `crates/wcl_lang/fuzz` — `cargo-fuzz` targets (parse + eval); run via `just fuzz-run <target>` on nightly
 - `editors/vscode` — minimal VS Code extension stub that spawns `wcl lsp` for `.wcl` files
 - `editors/tree-sitter-wcl` — tree-sitter grammar stub for editors that consume them

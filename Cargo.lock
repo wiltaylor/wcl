@@ -2153,6 +2153,7 @@ dependencies = [
  "tokio",
  "wcl_lang",
  "wcl_lsp",
+ "wcl_wdoc",
 ]
 
 [[package]]
@@ -2189,12 +2190,9 @@ dependencies = [
 name = "wcl_wdoc"
 version = "0.0.0"
 dependencies = [
- "assert_cmd",
  "axum",
- "clap",
  "miette",
  "notify",
- "predicates",
  "tempfile",
  "tokio",
  "wcl_lang",

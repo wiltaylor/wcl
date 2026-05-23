@@ -4,24 +4,15 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "WCL-driven static site / document generator"
-
-[[bin]]
-name = "wdoc"
-path = "src/main.rs"
+description = "WCL-driven static site / document generator (library)"
 
 [dependencies]
 wcl_lang = { workspace = true }
-clap = { workspace = true }
 miette = { workspace = true }
 tokio = { workspace = true, features = ["fs", "signal"] }
 axum = { workspace = true }
 notify = { workspace = true }
 tempfile = { workspace = true }
-
-[dev-dependencies]
-assert_cmd = { workspace = true }
-predicates = { workspace = true }
 
 [lints]
 workspace = true

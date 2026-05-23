@@ -11,6 +11,7 @@ repository = "https://github.com/wiltaylor/wcl"
 [workspace.dependencies]
 wcl_lang = { path = "crates/wcl_lang", version = "0.0.0" }
 wcl_lsp = { path = "crates/wcl_lsp", version = "0.0.0" }
+wcl_wdoc = { path = "crates/wcl_wdoc", version = "0.0.0" }
 clap = { version = "4", features = ["derive"] }
 miette = { version = "7", features = ["fancy"] }
 thiserror = "2"
