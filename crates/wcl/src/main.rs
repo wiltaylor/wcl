@@ -69,6 +69,11 @@ enum Command {
         /// as JSON to stderr after the value is printed.
         #[arg(long)]
         profile: bool,
+        /// Emit the resolved value as JSON instead of the WCL display
+        /// form. Function values can't be serialized and are
+        /// represented as `null`.
+        #[arg(long)]
+        json: bool,
     },
     /// Update the field at a dotted path. The value is parsed as a WCL
     /// expression — quote shell-special characters as needed.
@@ -102,12 +107,25 @@ enum Command {
         #[arg(long = "in-place")]
         in_place: bool,
     },
+    /// Read-eval-print loop for ad-hoc WCL expressions. With a file
+    /// argument, identifiers resolve against that file's top-level
+    /// fields; without one, you can still evaluate self-contained
+    /// expressions (arithmetic, string ops, builtin calls).
+    ///
+    /// EOF (Ctrl-D) or `:quit` exits.
+    Repl {
+        /// Optional WCL file whose top-level fields the REPL should
+        /// resolve identifiers against.
+        file: Option<PathBuf>,
+    },
     /// Run the WCL language server. Defaults to stdio (the transport
-    /// editors expect); `--tcp` switches to a one-shot TCP listener,
-    /// useful for attaching a debug client.
+    /// editors expect); `--tcp` switches to a TCP listener that
+    /// accepts any number of connections, useful for attaching debug
+    /// clients.
     Lsp {
-        /// Listen on `host:port` for one TCP connection instead of
-        /// using stdio. Example: `--tcp 127.0.0.1:9257`.
+        /// Listen on `host:port` for inbound TCP connections instead
+        /// of using stdio. Each connection runs as an independent LSP
+        /// session. Example: `--tcp 127.0.0.1:9257`.
         #[arg(long)]
         tcp: Option<std::net::SocketAddr>,
         /// Write `tracing` log lines to this file. The server never
@@ -166,6 +184,7 @@ fn main() -> ExitCode {
                 EXIT_IO
             }
         },
+        Command::Repl { file } => run_repl(file.as_deref()),
         Command::Lsp { tcp, log } => {
             if let Some(log_path) = log
                 && let Err(e) = wcl_lsp::install_file_logger(&log_path)
@@ -208,12 +227,23 @@ fn main() -> ExitCode {
             file,
             path,
             profile,
+            json,
         } => match open_document(&file, profile) {
             Ok(doc) => {
                 let exit = match doc.get(&path) {
                     Some(dr) => match dr.value() {
                         Ok(v) => {
-                            println!("{}", v);
+                            if json {
+                                match serde_json::to_string_pretty(&v) {
+                                    Ok(s) => println!("{s}"),
+                                    Err(e) => {
+                                        eprintln!("json serialization failed: {e}");
+                                        return ExitCode::from(EXIT_EVAL);
+                                    }
+                                }
+                            } else {
+                                println!("{}", v);
+                            }
                             EXIT_OK
                         }
                         Err(e) => {
@@ -245,6 +275,70 @@ fn main() -> ExitCode {
 /// result to stdout or atomically overwrite the input file. Returns
 /// the exit code (`EXIT_OK` on success, `EXIT_PARSE` on parse failure)
 /// or an error message describing an I/O failure.
+/// Plain-stdin REPL: reads one line per turn, parses it as a WCL
+/// expression, evaluates against the open document, prints the
+/// value. EOF or `:quit` exits cleanly. No history, no readline —
+/// piping input from a script works as well as interactive use.
+fn run_repl(file: Option<&Path>) -> u8 {
+    use std::io::{BufRead, Write};
+    let doc = match file {
+        Some(p) => match Document::from_file(p) {
+            Ok(d) => d,
+            Err(e) => {
+                eprintln!("{:?}", miette::Report::new(e));
+                return EXIT_PARSE;
+            }
+        },
+        None => match Document::open("", "<repl>") {
+            Ok(d) => d,
+            Err(e) => {
+                eprintln!("{:?}", miette::Report::new(e));
+                return EXIT_PARSE;
+            }
+        },
+    };
+    let stdin = std::io::stdin();
+    let mut line = String::new();
+    loop {
+        let interactive = atty_stdin();
+        if interactive {
+            print!("wcl> ");
+            let _ = std::io::stdout().flush();
+        }
+        line.clear();
+        match stdin.lock().read_line(&mut line) {
+            Ok(0) => break, // EOF
+            Ok(_) => {}
+            Err(e) => {
+                eprintln!("read error: {e}");
+                return EXIT_IO;
+            }
+        }
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if trimmed == ":quit" || trimmed == ":q" {
+            break;
+        }
+        match parse_expr(trimmed, "<repl>") {
+            Ok(expr) => match doc.eval_expr(&expr) {
+                Ok(value) => println!("{value}"),
+                Err(e) => eprintln!("{:?}", miette::Report::new(e)),
+            },
+            Err(e) => eprintln!("{:?}", miette::Report::new(e)),
+        }
+    }
+    EXIT_OK
+}
+
+/// Lightweight TTY check that avoids pulling in the `atty` crate.
+/// We only need it to suppress the prompt when stdin is piped.
+fn atty_stdin() -> bool {
+    use std::io::IsTerminal as _;
+    std::io::stdin().is_terminal()
+}
+
 fn run_fmt(file: &Path, in_place: bool) -> Result<u8, String> {
     let src = std::fs::read_to_string(file)
         .map_err(|e| format!("failed to read {}: {e}", file.display()))?;

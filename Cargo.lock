@@ -1749,6 +1749,8 @@ version = "0.0.0"
 dependencies = [
  "criterion",
  "miette",
+ "serde",
+ "serde_json",
  "tempfile",
  "thiserror",
 ]

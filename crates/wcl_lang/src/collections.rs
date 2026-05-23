@@ -9,61 +9,86 @@ use crate::value::Value;
 
 /// Register every collection builtin into `env`.
 pub(crate) fn register(env: &mut Environment) {
-    env.add_builtin("map", BuiltinFn::hof(2, map_hof));
-    env.add_builtin("filter", BuiltinFn::hof(2, filter_hof));
-    env.add_builtin("fold", BuiltinFn::hof(3, fold_hof));
-
-    env.add_builtin("len", from_fn(len_pure));
-    env.add_builtin("sum", from_fn(sum_pure));
-    env.add_builtin("range", from_fn(range_pure));
-    env.add_builtin("head", from_fn(head_pure));
-    env.add_builtin("tail", from_fn(tail_pure));
-
-    env.add_builtin("tensor", from_fn(tensor_pure));
-    env.add_builtin("tensor_data", from_fn(tensor_data_pure));
-    env.add_builtin("tensor_shape", from_fn(tensor_shape_pure));
-
-    // `error(msg)` — the evaluator intercepts this name in the pure-builtin
-    // dispatch path and raises `EvalError::UserError` directly so the
-    // diagnostic carries a structured user_error code. The closure here is
-    // a fallback that should never run; if it does (e.g. a host calls the
-    // body directly), it still surfaces the message as an error string.
     env.add_builtin(
-        "error",
-        from_fn(|msg: String| -> Result<Value, String> { Err(msg) }),
+        "map",
+        BuiltinFn::hof(2, map_hof).with_signature("fn ([T], fn (T) -> U) -> [U]"),
+    );
+    env.add_builtin(
+        "filter",
+        BuiltinFn::hof(2, filter_hof).with_signature("fn ([T], fn (T) -> bool) -> [T]"),
+    );
+    env.add_builtin(
+        "fold",
+        BuiltinFn::hof(3, fold_hof).with_signature("fn ([T], U, fn (U, T) -> U) -> U"),
     );
 
-    // Control-flow / failure helpers. `panic` is just `error` with an
-    // "unreachable" framing; `assert` errors only when the condition is
-    // false.
+    env.add_builtin("len", from_fn(len_pure).with_signature("fn ([T]) -> usize"));
+    env.add_builtin(
+        "sum",
+        from_fn(sum_pure).with_signature("fn ([number]) -> number"),
+    );
+    env.add_builtin(
+        "range",
+        from_fn(range_pure).with_signature("fn (i64, i64) -> [i64]"),
+    );
+    env.add_builtin("head", from_fn(head_pure).with_signature("fn ([T]) -> T"));
+    env.add_builtin("tail", from_fn(tail_pure).with_signature("fn ([T]) -> [T]"));
+
+    env.add_builtin(
+        "tensor",
+        from_fn(tensor_pure).with_signature("fn ([number], [usize]) -> tensor<T>"),
+    );
+    env.add_builtin(
+        "tensor_data",
+        from_fn(tensor_data_pure).with_signature("fn (tensor<T>) -> [T]"),
+    );
+    env.add_builtin(
+        "tensor_shape",
+        from_fn(tensor_shape_pure).with_signature("fn (tensor<T>) -> [usize]"),
+    );
+
+    env.add_builtin(
+        "error",
+        from_fn(|msg: String| -> Result<Value, String> { Err(msg) })
+            .with_signature("fn (utf8) -> never"),
+    );
+
     env.add_builtin(
         "panic",
-        from_fn(|msg: String| -> Result<Value, String> { Err(msg) }),
+        from_fn(|msg: String| -> Result<Value, String> { Err(msg) })
+            .with_signature("fn (utf8) -> never"),
     );
     env.add_builtin(
         "assert",
         from_fn(|cond: bool, msg: String| -> Result<Value, String> {
             if cond { Ok(Value::None) } else { Err(msg) }
-        }),
+        })
+        .with_signature("fn (bool, utf8) -> none"),
     );
 
-    // String helpers. `+` stays numeric; explicit `concat` keeps the
-    // intent obvious.
     env.add_builtin(
         "concat",
-        from_fn(|a: String, b: String| -> String { format!("{a}{b}") }),
+        from_fn(|a: String, b: String| -> String { format!("{a}{b}") })
+            .with_signature("fn (utf8, utf8) -> utf8"),
     );
-    // `format("hello {}", name)` — `{}` substitution, positional only.
-    // Registered as an HOF so the variadic arg list works (`from_fn`
-    // is fixed-arity).
-    env.add_builtin("format", BuiltinFn::hof(0, format_hof));
+    env.add_builtin(
+        "format",
+        BuiltinFn::hof(0, format_hof).with_signature("fn (utf8, ...args) -> utf8"),
+    );
 
-    // List helpers.
-    env.add_builtin("flatten", from_fn(flatten_pure));
-    env.add_builtin("zip", from_fn(zip_pure));
+    env.add_builtin(
+        "flatten",
+        from_fn(flatten_pure).with_signature("fn ([[T]]) -> [T]"),
+    );
+    env.add_builtin(
+        "zip",
+        from_fn(zip_pure).with_signature("fn ([A], [B]) -> [(A, B)]"),
+    );
 
-    // Tensor helpers.
-    env.add_builtin("tensor_reshape", from_fn(tensor_reshape_pure));
+    env.add_builtin(
+        "tensor_reshape",
+        from_fn(tensor_reshape_pure).with_signature("fn (tensor<T>, [usize]) -> tensor<T>"),
+    );
 }
 
 // ── Higher-order ─────────────────────────────────────────────────────

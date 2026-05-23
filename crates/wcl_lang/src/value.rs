@@ -1,4 +1,4 @@
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Value {
     Bool(bool),
 
@@ -28,6 +28,11 @@ pub enum Value {
     Symbol(String),
     None,
 
+    /// Function values carry an opaque AST body that doesn't round-trip
+    /// through serde — `Document::to_json` skips top-level fields that
+    /// resolve to functions, and direct serialization errors at this
+    /// variant.
+    #[serde(skip)]
     Function(FnValue),
     List(Vec<Value>),
     Tensor {
@@ -64,7 +69,7 @@ pub enum Value {
 
 /// Runtime payload of a [`Value::Variant`], matching the shape of the
 /// variant body declared on its [`UnionDecl`](crate::ast::UnionDecl).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum VariantPayload {
     /// `Empty none` — variant with no payload.
     Unit,
@@ -127,7 +132,7 @@ impl FnValue {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FnParam {
     name: String,
     ty: TypeRef,
@@ -203,7 +208,7 @@ impl Value {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum BuiltinType {
     Bool,
 
@@ -288,7 +293,7 @@ impl BuiltinType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum TypeRef {
     Builtin(BuiltinType),
     Named(Vec<String>),
@@ -304,7 +309,7 @@ pub enum TypeRef {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum TensorDim {
     Fixed(u64),
     Symbolic(String),

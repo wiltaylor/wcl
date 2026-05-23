@@ -4,3 +4,9 @@
 .vscode/
 .claude/worktrees/
 .claude/scheduled_tasks.lock
+
+# cargo-fuzz scratch dirs — keep the seed corpus tracked but ignore
+# the artifacts produced by libfuzzer at runtime.
+crates/wcl_lang/fuzz/target/
+crates/wcl_lang/fuzz/artifacts/
+crates/wcl_lang/fuzz/coverage/

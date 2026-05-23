@@ -34,20 +34,25 @@ pub async fn start_stdio() {
     Server::new(stdin, stdout, socket).serve(service).await;
 }
 
-/// Listen on `addr` for one TCP connection and serve the LSP over
-/// it. Intended for debug clients (e.g. an editor's LSP inspector)
-/// where stdio isn't convenient. Accepts exactly one connection
-/// and exits when that client disconnects — re-launch the command
-/// to serve another client.
+/// Listen on `addr` for inbound TCP connections and serve each one
+/// as an independent LSP session. Intended for debug clients (e.g.
+/// an editor's LSP inspector) where stdio isn't convenient. Each
+/// accepted connection runs on its own tokio task with a fresh
+/// [`Backend`], so connections don't share document state. Returns
+/// only if the listener errors — kill the process to stop accepting.
 pub async fn start_tcp(addr: SocketAddr) -> std::io::Result<()> {
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    tracing::info!(%addr, "wcl-lsp listening for one TCP connection");
-    let (stream, peer) = listener.accept().await?;
-    tracing::info!(%peer, "wcl-lsp client connected");
-    let (read, write) = tokio::io::split(stream);
-    let (service, socket) = LspService::new(Backend::new);
-    Server::new(read, write, socket).serve(service).await;
-    Ok(())
+    tracing::info!(%addr, "wcl-lsp listening for TCP connections");
+    loop {
+        let (stream, peer) = listener.accept().await?;
+        tracing::info!(%peer, "wcl-lsp client connected");
+        tokio::spawn(async move {
+            let (read, write) = tokio::io::split(stream);
+            let (service, socket) = LspService::new(Backend::new);
+            Server::new(read, write, socket).serve(service).await;
+            tracing::info!(%peer, "wcl-lsp client disconnected");
+        });
+    }
 }
 
 /// Initialise a `tracing` subscriber that writes plain-text log

@@ -1,14 +1,11 @@
-//! `textDocument/completion` handler. Trigger-character driven; the
-//! cursor's preceding byte (`@`, `:`, `&`) decides which catalogue to
-//! propose. v1 covers the suggestions backed directly by the document's
-//! own declarations:
+//! `textDocument/completion` handler. The cursor's preceding byte
+//! decides which catalogue to propose:
 //!
 //!   - `@` → every type carrying `@decorator(...)` plus the builtins
 //!   - `:` (in type-ref position) → every declared type/union + builtin types
 //!   - `&` → same list as `:`
-//!
-//! Bare-identifier completion in expression bodies needs scope info
-//! the symbol index doesn't carry yet; that's deferred.
+//!   - anything else (manual invoke / identifier letter) → locals in the
+//!     enclosing scope, then top-level fields, then registered builtins.
 
 use tower_lsp::lsp_types::{CompletionItem, CompletionItemKind};
 use wcl_lang::{DeclName, Document, SymbolKind, parse_for_edit};
@@ -182,12 +179,16 @@ fn identifier_items(
                 });
             }
         }
-        for (name, arity) in doc.environment().builtin_names() {
+        for (name, f) in doc.environment().builtins() {
             if seen.insert(name.to_string()) {
+                let detail = match f.signature() {
+                    Some(sig) => format!("builtin {sig}"),
+                    None => format!("builtin fn ({} args)", f.arity()),
+                };
                 out.push(CompletionItem {
                     label: name.to_string(),
                     kind: Some(CompletionItemKind::FUNCTION),
-                    detail: Some(format!("builtin fn ({arity} args)")),
+                    detail: Some(detail),
                     ..Default::default()
                 });
             }

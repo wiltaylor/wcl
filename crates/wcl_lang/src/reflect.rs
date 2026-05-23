@@ -11,8 +11,14 @@ use crate::environment::Environment;
 use crate::value::Value;
 
 pub(crate) fn register(env: &mut Environment) {
-    env.add_builtin("decorator_names", BuiltinFn::hof(1, decorator_names_hof));
-    env.add_builtin("decorator_arg", BuiltinFn::hof(3, decorator_arg_hof));
+    env.add_builtin(
+        "decorator_names",
+        BuiltinFn::hof(1, decorator_names_hof).with_signature("fn (&T) -> [utf8]"),
+    );
+    env.add_builtin(
+        "decorator_arg",
+        BuiltinFn::hof(3, decorator_arg_hof).with_signature("fn (&T, utf8, utf8) -> any"),
+    );
 }
 
 /// Collect the decorators attached to this navigator. `None` for

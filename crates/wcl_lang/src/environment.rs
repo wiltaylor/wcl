@@ -75,13 +75,12 @@ impl Environment {
         self.builtins.get(name)
     }
 
-    /// Iterate registered built-in callables as `(name, arity)` pairs.
-    /// Used by hosts (e.g. the LSP) that need to enumerate the
-    /// callable surface — `Environment::builtin` only supports lookup.
-    pub fn builtin_names(&self) -> impl Iterator<Item = (&str, usize)> {
-        self.builtins
-            .iter()
-            .map(|(name, f)| (name.as_str(), f.arity()))
+    /// Iterate registered built-in callables as `(name, &BuiltinFn)`
+    /// pairs. Hosts can read each builtin's arity and (when present)
+    /// signature directly off the [`BuiltinFn`] for completion / hover
+    /// tooling.
+    pub fn builtins(&self) -> impl Iterator<Item = (&str, &BuiltinFn)> {
+        self.builtins.iter().map(|(name, f)| (name.as_str(), f))
     }
 }
 

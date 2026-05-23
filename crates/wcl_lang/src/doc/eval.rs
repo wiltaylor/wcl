@@ -207,6 +207,15 @@ impl Document {
         self.eval_literal(expr)
     }
 
+    /// Evaluate a standalone expression against this document's root
+    /// scope. Bare identifiers resolve against the document's
+    /// top-level fields; unknown names error with
+    /// [`EvalError::UnresolvedReference`]. Designed for hosts that
+    /// drive ad-hoc evaluation — `wcl repl` and embedded REPLs.
+    pub fn eval_expr(&self, expr: &ast::Expr) -> Result<Value, EvalError> {
+        self.eval_in_scope(expr, &Scope::root())
+    }
+
     /// Trivial value-literal expressions: scalar number/bool/string
     /// variants, symbols, `none`. Pulled out of `eval_in` to keep the
     /// big match focused on expressions that actually involve scope or

@@ -32,6 +32,13 @@ lint:
 # Full CI gate: fmt-check + lint + test
 ci: fmt-check lint test
 
+# Run a cargo-fuzz target (requires nightly + cargo-fuzz installed).
+# Examples:
+#   just fuzz parse
+#   just fuzz eval -- -runs=10000
+fuzz TARGET *ARGS:
+    cd crates/wcl_lang && cargo +nightly fuzz run {{TARGET}} {{ARGS}}
+
 # Profile each example with `wcl parse --profile`; JSON profile per file to stderr.
 examples-profile:
     @for f in examples/*.wcl; do \

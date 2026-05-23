@@ -260,6 +260,25 @@ impl Document {
         out
     }
 
+    /// Paths of every eagerly-loaded import reachable from this
+    /// document, deduplicated. Used by tooling (e.g. the LSP) that
+    /// needs to scan imported source files — for instance, to find
+    /// cross-file references to a symbol.
+    pub fn imported_paths(&self) -> Vec<&Path> {
+        let mut out = Vec::new();
+        fn walk<'a>(imports: &'a [LoadedImport], out: &mut Vec<&'a Path>) {
+            for imp in imports {
+                let p = imp.path.as_path();
+                if !out.contains(&p) {
+                    out.push(p);
+                }
+                walk(&imp.eager_imports, out);
+            }
+        }
+        walk(&self.eager_imports, &mut out);
+        out
+    }
+
     /// Lookup a fully-qualified symbol across this document and every
     /// eagerly-loaded import. Returns the matching `SymbolRecord`
     /// together with the file path of the source it lives in (`None`

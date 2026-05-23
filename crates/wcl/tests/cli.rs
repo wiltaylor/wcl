@@ -423,3 +423,40 @@ fn set_errors_on_invalid_value_expression() {
         .assert()
         .code(1);
 }
+
+#[test]
+fn repl_evaluates_piped_expression() {
+    wcl()
+        .arg("repl")
+        .write_stdin("1 + 2\n")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("3"));
+}
+
+#[test]
+fn get_json_outputs_serialized_value() {
+    wcl()
+        .arg("get")
+        .arg("--json")
+        .arg(examples_dir().join("basic.wcl"))
+        .arg("name")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"Utf8\""))
+        .stdout(predicate::str::contains("\"alpha\""));
+}
+
+#[test]
+fn repl_resolves_identifiers_against_open_file() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let file = tmp.path().join("doc.wcl");
+    std::fs::write(&file, "@schemaless port = 9090u32\n").expect("write fixture");
+    wcl()
+        .arg("repl")
+        .arg(&file)
+        .write_stdin("port\n")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("9090"));
+}

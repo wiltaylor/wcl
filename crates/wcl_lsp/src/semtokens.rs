@@ -2,11 +2,12 @@
 //! lexer over the document and emits a delta-encoded token stream
 //! using the legend declared at initialize time.
 //!
-//! v1: each lexer token maps to exactly one semantic-token kind by
-//! its `TokenKind` variant; we do not consult the AST. Comments are
-//! omitted (editors highlight those via their own filetype rules);
-//! interpolated strings emit as a single `string` span (sub-token
-//! coloring inside `${...}` slots is deferred).
+//! Each lexer token maps to exactly one semantic-token kind by its
+//! `TokenKind` variant; we do not consult the AST. Comments are
+//! omitted (editors highlight those via their own filetype rules).
+//! Interpolated strings are decomposed into literal `STRING` runs,
+//! `OPERATOR` delimiters around `${...}` slots, and re-lexed semantic
+//! tokens for the slot bodies.
 
 use tower_lsp::lsp_types::{SemanticToken, SemanticTokenType};
 use wcl_lang::{Lexer, Span, StringLit, StringPart, TokenKind};

@@ -99,16 +99,34 @@ pub(crate) enum BuiltinKind {
 
 /// A registered built-in. Carries its arity for fast call-site validation
 /// plus a boxed dispatch closure that handles arg unmarshalling, the
-/// host call, and return marshalling.
+/// host call, and return marshalling. Optionally carries a printable
+/// signature (e.g. `"fn (utf8) -> utf8"`) that tooling can surface in
+/// completion and hover popups.
 #[derive(Clone)]
 pub struct BuiltinFn {
     pub(crate) arity: usize,
     pub(crate) kind: BuiltinKind,
+    pub(crate) signature: Option<String>,
 }
 
 impl BuiltinFn {
     pub fn arity(&self) -> usize {
         self.arity
+    }
+
+    /// Human-readable signature registered alongside this builtin
+    /// (e.g. `"fn (utf8, utf8) -> utf8"`). `None` when the registrar
+    /// didn't supply one.
+    pub fn signature(&self) -> Option<&str> {
+        self.signature.as_deref()
+    }
+
+    /// Attach a printable signature to a `BuiltinFn`. Designed for
+    /// builder-style chaining at registration sites:
+    /// `from_fn(...).with_signature("fn (utf8) -> utf8")`.
+    pub fn with_signature(mut self, sig: impl Into<String>) -> Self {
+        self.signature = Some(sig.into());
+        self
     }
 
     /// Construct a higher-order builtin: one that receives a [`Caller`]
@@ -121,6 +139,7 @@ impl BuiltinFn {
         Self {
             arity,
             kind: BuiltinKind::Hof(Arc::new(f)),
+            signature: None,
         }
     }
 }
@@ -330,7 +349,7 @@ macro_rules! impl_into_builtin {
                         )*
                         (self)($($name),*).into_value_result()
                     });
-                BuiltinFn { arity, kind: BuiltinKind::Pure(body) }
+                BuiltinFn { arity, kind: BuiltinKind::Pure(body), signature: None }
             }
         }
     };
