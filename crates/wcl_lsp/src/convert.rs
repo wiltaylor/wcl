@@ -48,6 +48,35 @@ pub(crate) fn full_document_range(source: &str) -> Range {
     }
 }
 
+/// Translate an LSP `(line, character)` [`Position`] into a byte
+/// offset inside `source`. Positions past the end of the document
+/// clamp to `source.len()`; positions past the end of a line clamp
+/// to that line's terminator.
+pub(crate) fn position_to_offset(source: &str, pos: Position) -> usize {
+    let bytes = source.as_bytes();
+    let mut line: u32 = 0;
+    let mut line_start: usize = 0;
+    for (i, &b) in bytes.iter().enumerate() {
+        if line == pos.line {
+            let line_end = bytes[line_start..]
+                .iter()
+                .position(|&c| c == b'\n')
+                .map(|n| line_start + n)
+                .unwrap_or(bytes.len());
+            return (line_start + pos.character as usize).min(line_end);
+        }
+        if b == b'\n' {
+            line += 1;
+            line_start = i + 1;
+        }
+    }
+    if line == pos.line {
+        // Target line is the trailing (possibly empty) final line.
+        return (line_start + pos.character as usize).min(bytes.len());
+    }
+    bytes.len()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -73,6 +102,42 @@ mod tests {
         let p = offset_to_position(src, 999);
         assert_eq!(p.line, 0);
         assert_eq!(p.character, 3);
+    }
+
+    #[test]
+    fn position_round_trips_with_offset() {
+        let src = "ab\ncdef\nghi";
+        for offset in 0..=src.len() {
+            let p = offset_to_position(src, offset);
+            let round = position_to_offset(src, p);
+            assert_eq!(round, offset, "offset {offset} round-tripped to {round}");
+        }
+    }
+
+    #[test]
+    fn position_past_line_end_clamps() {
+        let src = "ab\ncdef";
+        let off = position_to_offset(
+            src,
+            Position {
+                line: 0,
+                character: 99,
+            },
+        );
+        assert_eq!(off, 2); // end of first line, before '\n'
+    }
+
+    #[test]
+    fn position_past_document_clamps() {
+        let src = "abc";
+        let off = position_to_offset(
+            src,
+            Position {
+                line: 99,
+                character: 0,
+            },
+        );
+        assert_eq!(off, src.len());
     }
 
     #[test]

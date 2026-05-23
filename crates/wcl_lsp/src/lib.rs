@@ -10,8 +10,13 @@
 //!   - document formatting (full-document edit, backed by `format::to_source`)
 //!   - document symbols (outline view, backed by `SymbolIndex`)
 
+mod completion;
 mod convert;
 mod diagnostics;
+mod hover;
+mod navigation;
+mod resolve;
+mod semtokens;
 mod server;
 mod symbols;
 

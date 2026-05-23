@@ -6,17 +6,25 @@
 use dashmap::DashMap;
 use tower_lsp::jsonrpc::Result as RpcResult;
 use tower_lsp::lsp_types::{
-    DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    DocumentFormattingParams, DocumentSymbolParams, DocumentSymbolResponse, InitializeParams,
-    InitializeResult, InitializedParams, MessageType, OneOf, PositionEncodingKind,
+    CompletionOptions, CompletionParams, CompletionResponse, DidChangeTextDocumentParams,
+    DidCloseTextDocumentParams, DidOpenTextDocumentParams, DocumentFormattingParams,
+    DocumentSymbolParams, DocumentSymbolResponse, GotoDefinitionParams, GotoDefinitionResponse,
+    Hover, HoverParams, HoverProviderCapability, InitializeParams, InitializeResult,
+    InitializedParams, Location, MessageType, OneOf, PositionEncodingKind, ReferenceParams,
+    SemanticTokens, SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions,
+    SemanticTokensParams, SemanticTokensResult, SemanticTokensServerCapabilities,
     ServerCapabilities, ServerInfo, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit,
     Url,
 };
 use tower_lsp::{Client, LanguageServer};
 use wcl_lang::{format as wcl_format, parse_for_edit};
 
-use crate::convert::full_document_range;
+use crate::completion;
+use crate::convert::{full_document_range, position_to_offset};
 use crate::diagnostics;
+use crate::hover as hover_impl;
+use crate::navigation;
+use crate::semtokens;
 use crate::symbols;
 
 /// The LSP backend. Holds the open-document cache; everything else is
@@ -57,6 +65,25 @@ impl LanguageServer for Backend {
                 )),
                 document_formatting_provider: Some(OneOf::Left(true)),
                 document_symbol_provider: Some(OneOf::Left(true)),
+                definition_provider: Some(OneOf::Left(true)),
+                references_provider: Some(OneOf::Left(true)),
+                hover_provider: Some(HoverProviderCapability::Simple(true)),
+                completion_provider: Some(CompletionOptions {
+                    trigger_characters: Some(vec!["@".into(), ":".into(), "&".into()]),
+                    ..Default::default()
+                }),
+                semantic_tokens_provider: Some(
+                    SemanticTokensServerCapabilities::SemanticTokensOptions(
+                        SemanticTokensOptions {
+                            legend: SemanticTokensLegend {
+                                token_types: semtokens::LEGEND.to_vec(),
+                                token_modifiers: Vec::new(),
+                            },
+                            full: Some(SemanticTokensFullOptions::Bool(true)),
+                            ..Default::default()
+                        },
+                    ),
+                ),
                 ..ServerCapabilities::default()
             },
             server_info: Some(ServerInfo {
@@ -132,5 +159,65 @@ impl LanguageServer for Backend {
         };
         let syms = symbols::compute(&source, uri.as_str());
         Ok(Some(DocumentSymbolResponse::Nested(syms)))
+    }
+
+    async fn goto_definition(
+        &self,
+        params: GotoDefinitionParams,
+    ) -> RpcResult<Option<GotoDefinitionResponse>> {
+        let uri = params.text_document_position_params.text_document.uri;
+        let Some(source) = self.docs.get(&uri).map(|s| s.clone()) else {
+            return Ok(None);
+        };
+        let offset = position_to_offset(&source, params.text_document_position_params.position);
+        Ok(navigation::goto_definition(uri, &source, offset))
+    }
+
+    async fn references(&self, params: ReferenceParams) -> RpcResult<Option<Vec<Location>>> {
+        let uri = params.text_document_position.text_document.uri;
+        let Some(source) = self.docs.get(&uri).map(|s| s.clone()) else {
+            return Ok(None);
+        };
+        let offset = position_to_offset(&source, params.text_document_position.position);
+        Ok(navigation::references(
+            uri,
+            &source,
+            offset,
+            params.context.include_declaration,
+        ))
+    }
+
+    async fn hover(&self, params: HoverParams) -> RpcResult<Option<Hover>> {
+        let uri = params.text_document_position_params.text_document.uri;
+        let Some(source) = self.docs.get(&uri).map(|s| s.clone()) else {
+            return Ok(None);
+        };
+        let offset = position_to_offset(&source, params.text_document_position_params.position);
+        Ok(hover_impl::hover(&source, uri.as_str(), offset))
+    }
+
+    async fn completion(&self, params: CompletionParams) -> RpcResult<Option<CompletionResponse>> {
+        let uri = params.text_document_position.text_document.uri;
+        let Some(source) = self.docs.get(&uri).map(|s| s.clone()) else {
+            return Ok(None);
+        };
+        let offset = position_to_offset(&source, params.text_document_position.position);
+        let items = completion::completions(&source, uri.as_str(), offset);
+        Ok(Some(CompletionResponse::Array(items)))
+    }
+
+    async fn semantic_tokens_full(
+        &self,
+        params: SemanticTokensParams,
+    ) -> RpcResult<Option<SemanticTokensResult>> {
+        let uri = params.text_document.uri;
+        let Some(source) = self.docs.get(&uri).map(|s| s.clone()) else {
+            return Ok(None);
+        };
+        let data = semtokens::compute(&source);
+        Ok(Some(SemanticTokensResult::Tokens(SemanticTokens {
+            result_id: None,
+            data,
+        })))
     }
 }
