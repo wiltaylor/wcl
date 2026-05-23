@@ -20,6 +20,7 @@ use crate::error::{EvalError, ParseError};
 use crate::parser::Parser;
 
 use super::cells::{ItemCellKind, ItemCells, LoadedImport};
+use super::loader::FileLoader;
 use super::validate::open_error;
 
 pub(super) struct BlockSlice<'a> {
@@ -55,10 +56,11 @@ pub(super) fn load_import_lazily(
     path_str: &str,
     base_dir: Option<&Path>,
     path_span: Span,
+    loader: &FileLoader,
 ) -> Result<LoadedImport, EvalError> {
     let path = resolve_import_path(base_dir, path_str)
         .map_err(|e| EvalError::import_failed(path_str, e, path_span))?;
-    let src = std::fs::read_to_string(&path)
+    let src = loader(&path)
         .map_err(|e| EvalError::import_failed(path_str, format!("io: {e}"), path_span))?;
     let display = path.display().to_string();
     let (parsed_ast, parsed_symbols) = Parser::new(&src, &display)
@@ -77,6 +79,7 @@ pub(super) fn load_import_lazily(
         &mut child_eager,
         &display,
         &src,
+        loader,
     )
     .map_err(|e| EvalError::import_failed(path_str, format!("{e}"), path_span))?;
 
@@ -143,6 +146,7 @@ pub(super) fn expand_top_level_imports(
     out: &mut Vec<LoadedImport>,
     importer_file: &str,
     importer_source: &str,
+    loader: &FileLoader,
 ) -> Result<(), ParseError> {
     for item in items {
         let ast::Item::Import(imp) = item else {
@@ -167,7 +171,7 @@ pub(super) fn expand_top_level_imports(
             ));
         }
 
-        let src = std::fs::read_to_string(&path).map_err(|e| {
+        let src = loader(&path).map_err(|e| {
             open_error(
                 importer_source,
                 importer_file,
@@ -190,6 +194,7 @@ pub(super) fn expand_top_level_imports(
             &mut child_eager,
             &display,
             &src,
+            loader,
         )?;
 
         // Build cells for the imported file with its own base_dir.

@@ -1462,8 +1462,9 @@ impl<'a> Block<'a> {
                 loaded,
             } = &cell.kind
             {
-                let _ = loaded
-                    .get_or_init(|| load_import_lazily(path, base_dir.as_deref(), *path_span));
+                let _ = loaded.get_or_init(|| {
+                    load_import_lazily(path, base_dir.as_deref(), *path_span, self.doc.loader())
+                });
             }
         }
         let mut out = vec![BlockSlice {

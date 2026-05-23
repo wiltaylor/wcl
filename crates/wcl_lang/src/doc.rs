@@ -10,6 +10,7 @@ mod eval;
 mod eval_ops;
 mod imports;
 mod interfaces;
+mod loader;
 mod lookup;
 mod match_pat;
 mod schema_check;
@@ -17,6 +18,7 @@ mod scope;
 mod validate;
 pub(super) mod variant_dispatch;
 mod views;
+pub use loader::{FileLoader, disk_loader, overlay_loader};
 pub use views::{
     Block, ChildKind, Connection, ConnectionDecl, DeclName, Decorator, Field, InterfaceDecl,
     NamedArg, ResolvedType, RowView, SymbolEntry, SymbolSetDecl, TableView, TypeDecl, TypeField,
@@ -39,7 +41,6 @@ use schema_check::has_schemaless;
 use scope::Scope;
 use validate::{decl_fqn_matches, resolve_path, validate_document};
 
-#[derive(Debug)]
 pub struct Document {
     src: NamedSource<String>,
     ast: ast::Source,
@@ -58,10 +59,27 @@ pub struct Document {
     /// items participate in the unified `symbols` index and in
     /// `Document::fields/blocks/...` iteration.
     eager_imports: Vec<LoadedImport>,
+    /// File reader used for every import this document follows
+    /// (eager top-level + lazy in-block). Defaults to
+    /// [`disk_loader`]; the LSP supplies an [`overlay_loader`]
+    /// pre-loaded with open buffers.
+    loader: FileLoader,
     /// Optional profile collector. Populated only when the document is
     /// opened through one of the `*_profiled` constructors; otherwise
     /// every profile hook is a no-op `Option::is_some` check.
     profile: Option<std::sync::Mutex<crate::profile::ProfileState>>,
+}
+
+impl std::fmt::Debug for Document {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Document")
+            .field("file_ns", &self.file_ns)
+            .field("item_aliases", &self.item_aliases)
+            .field("ns_aliases", &self.ns_aliases)
+            .field("wildcards", &self.wildcards)
+            .field("eager_imports", &self.eager_imports)
+            .finish_non_exhaustive()
+    }
 }
 
 /// A homogeneous view over one source of top-level items — either the
@@ -106,6 +124,20 @@ impl Document {
         base_dir: Option<PathBuf>,
         env: &Environment,
     ) -> Result<Self, ParseError> {
+        Self::open_at_with_loader(source, name, base_dir, env, loader::disk_loader())
+    }
+
+    /// Like [`open_at`] but uses a caller-supplied [`FileLoader`] for
+    /// every imported file. Hosts that maintain in-memory buffers
+    /// (e.g. the LSP) pass an [`overlay_loader`] so unsaved edits
+    /// participate in import resolution.
+    pub(crate) fn open_at_with_loader(
+        source: &str,
+        name: &str,
+        base_dir: Option<PathBuf>,
+        env: &Environment,
+        loader: FileLoader,
+    ) -> Result<Self, ParseError> {
         let (ast, symbols) = Parser::new(source, name).parse_source()?;
         let synthetic = env.types().to_vec();
 
@@ -120,6 +152,7 @@ impl Document {
             &mut eager_imports,
             name,
             source,
+            &loader,
         )?;
 
         let resolved = validate_document(&ast, &symbols, &synthetic, source, name)?;
@@ -141,6 +174,7 @@ impl Document {
             symbols,
             env: env.clone(),
             eager_imports,
+            loader,
             profile: None,
         })
     }
@@ -165,16 +199,15 @@ impl Document {
 
     /// [`from_file`](Self::from_file) with profiling enabled.
     pub fn from_file_profiled(path: &Path) -> Result<Self, ParseError> {
-        let source = std::fs::read_to_string(path)?;
-        let base_dir = path.parent().map(Path::to_path_buf);
-        let mut doc = Self::open_at(
-            &source,
-            &path.display().to_string(),
-            base_dir,
-            &Environment::new(),
-        )?;
+        let mut doc = Self::from_file(path)?;
         doc.profile = Some(crate::profile::ProfileState::new_root());
         Ok(doc)
+    }
+
+    /// The file loader this document was opened with. Lazy in-block
+    /// imports go through it so the same overlay (if any) applies.
+    pub(crate) fn loader(&self) -> &FileLoader {
+        &self.loader
     }
 
     /// Snapshot of the profile tree, when profiling is enabled.
@@ -501,22 +534,28 @@ impl Document {
     }
 
     pub fn from_file(path: &Path) -> Result<Self, ParseError> {
-        let source = std::fs::read_to_string(path)?;
-        let base_dir = path.parent().map(Path::to_path_buf);
-        Self::open_at(
-            &source,
-            &path.display().to_string(),
-            base_dir,
-            &Environment::new(),
-        )
+        Self::from_file_with_loader(path, &Environment::new(), loader::disk_loader())
     }
 
     /// Like [`from_file`] but also accepts a custom `Environment`. Use
     /// this when the host registers built-ins or schema types.
     pub fn from_file_with(path: &Path, env: &Environment) -> Result<Self, ParseError> {
-        let source = std::fs::read_to_string(path)?;
+        Self::from_file_with_loader(path, env, loader::disk_loader())
+    }
+
+    /// [`from_file_with`] plus a caller-supplied [`FileLoader`]. The
+    /// loader is consulted for the root file *and* every transitive
+    /// import (eager + lazy in-block). Use this with
+    /// [`overlay_loader`] to make a long-running host's open buffers
+    /// shadow disk contents.
+    pub fn from_file_with_loader(
+        path: &Path,
+        env: &Environment,
+        loader: FileLoader,
+    ) -> Result<Self, ParseError> {
+        let source = loader(path)?;
         let base_dir = path.parent().map(Path::to_path_buf);
-        Self::open_at(&source, &path.display().to_string(), base_dir, env)
+        Self::open_at_with_loader(&source, &path.display().to_string(), base_dir, env, loader)
     }
 
     pub fn source(&self) -> &NamedSource<String> {

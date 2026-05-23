@@ -52,6 +52,17 @@ pub(crate) fn locate(
     offset: usize,
 ) -> Option<(LocatedSymbol, Span)> {
     let (word, span) = word_at(source, offset)?;
+    // If the cursor sits on the last segment of a dotted reference
+    // (e.g. the `Color` in `shared.Color`), reconstruct the full
+    // dotted form so we can resolve it against `find_symbol`
+    // directly. The on-screen span stays on the bare segment so
+    // editors highlight only what the user clicked.
+    if let Some(dot) = dotted_form(source, span).as_deref()
+        && let Some(hit) = doc.find_symbol(dot)
+        && let Some(located) = classify(hit.record)
+    {
+        return Some((located, span));
+    }
 
     // Decorator name → '@' immediately precedes the word.
     if preceding_non_ws(source, span.start) == Some(b'@') {
@@ -68,10 +79,13 @@ pub(crate) fn locate(
     }
 
     // Type / interface / union / connection / symbol-set declarations
-    // share the FQN namespace of SymbolIndex.
+    // share the FQN namespace of SymbolIndex. `find_symbol` walks
+    // every imported file, so a bare identifier in one file can
+    // resolve to a declaration in another namespace if a prefix
+    // candidate matches.
     for fqn in candidate_fqns(&word, doc) {
-        if let Some(rec) = doc.symbols().lookup(&fqn)
-            && let Some(located) = classify(rec)
+        if let Some(hit) = doc.find_symbol(&fqn)
+            && let Some(located) = classify(hit.record)
         {
             return Some((located, span));
         }
@@ -155,6 +169,33 @@ pub(crate) fn word_at(source: &str, offset: usize) -> Option<(String, Span)> {
 
 fn is_ident_byte(b: u8) -> bool {
     b == b'_' || b.is_ascii_alphanumeric()
+}
+
+/// If the bare identifier at `span` is the tail of a dotted path
+/// (`foo.bar.baz`), return the full dotted form. Otherwise `None`.
+/// Walks left from `span.start` collecting `.<ident>` prefixes; stops
+/// at any non-identifier / non-dot byte.
+fn dotted_form(source: &str, span: Span) -> Option<String> {
+    let bytes = source.as_bytes();
+    if span.start == 0 || bytes.get(span.start - 1) != Some(&b'.') {
+        return None;
+    }
+    let mut segments: Vec<&str> = Vec::new();
+    segments.push(&source[span.start..span.end]);
+    let mut i = span.start;
+    while i >= 2 && bytes[i - 1] == b'.' {
+        let mut start = i - 1;
+        while start > 0 && is_ident_byte(bytes[start - 1]) {
+            start -= 1;
+        }
+        if start == i - 1 {
+            break;
+        }
+        segments.push(&source[start..i - 1]);
+        i = start;
+    }
+    segments.reverse();
+    Some(segments.join("."))
 }
 
 /// Last non-whitespace byte strictly before `offset`. Used to detect

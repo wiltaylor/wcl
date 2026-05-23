@@ -16,24 +16,40 @@ pub(crate) fn goto_definition(
     uri: Url,
     source: &str,
     offset: usize,
+    root_doc: Option<&Document>,
+    root_path: Option<&std::path::Path>,
 ) -> Option<GotoDefinitionResponse> {
-    let doc = Document::open(source, uri.as_str()).ok()?;
+    // Per-file open often fails when the file references cross-file
+    // types — that's fine, we fall back to the root doc for both
+    // resolution and the AST (parse_for_edit is purely syntactic).
+    let local_doc = Document::open(source, uri.as_str()).ok();
     let ast = parse_for_edit(source, uri.as_str()).ok()?;
-    let (sym, _) = resolve::locate(&doc, &ast, source, offset)?;
+    let (sym, _) = local_doc
+        .as_ref()
+        .and_then(|d| resolve::locate(d, &ast, source, offset))
+        .or_else(|| root_doc.and_then(|d| resolve::locate(d, &ast, source, offset)))?;
     // Cross-file: if the resolved FQN lives in an imported source,
-    // surface that file's URI instead of the request URI.
+    // surface that file's URI instead of the request URI. Prefer
+    // the root doc's symbol index when present (it sees every
+    // transitively-imported file).
+    let lookup_doc = root_doc.or(local_doc.as_ref())?;
     let (location_uri, span) = match symbol_fqn(&sym) {
-        Some(fqn) => match doc.find_symbol(fqn) {
+        Some(fqn) => match lookup_doc.find_symbol(fqn) {
             Some(hit) => {
+                // A `None` `source_path` means the symbol lives in
+                // the *root* document — that's the main file passed
+                // to `Document::from_file`. Map `None` to `root_path`
+                // when present so the editor opens the right file.
                 let target = hit
                     .source_path
+                    .or(root_path)
                     .and_then(|p| Url::from_file_path(p).ok())
                     .unwrap_or_else(|| uri.clone());
                 (target, hit.record.span)
             }
-            None => (uri.clone(), resolve::declaration_span(&doc, &sym)?),
+            None => (uri.clone(), resolve::declaration_span(lookup_doc, &sym)?),
         },
-        None => (uri.clone(), resolve::declaration_span(&doc, &sym)?),
+        None => (uri.clone(), resolve::declaration_span(lookup_doc, &sym)?),
     };
     // For cross-file hits we want the range computed against the
     // *target* file's source, not the request's. We only have the
@@ -87,12 +103,20 @@ pub(crate) fn references(
     source: &str,
     offset: usize,
     include_declaration: bool,
+    root_doc: Option<&Document>,
+    root_path: Option<&std::path::Path>,
 ) -> Option<Vec<Location>> {
-    let doc = Document::open(source, uri.as_str()).ok()?;
+    let local_doc = Document::open(source, uri.as_str()).ok();
     let ast = parse_for_edit(source, uri.as_str()).ok()?;
-    let (sym, _) = resolve::locate(&doc, &ast, source, offset)?;
+    let (sym, _) = local_doc
+        .as_ref()
+        .and_then(|d| resolve::locate(d, &ast, source, offset))
+        .or_else(|| root_doc.and_then(|d| resolve::locate(d, &ast, source, offset)))?;
     let needle = display_name(&sym);
-    let local_decl_span = resolve::declaration_span(&doc, &sym);
+    // Use root doc for cross-file enumeration when present — its
+    // `imported_paths` enumerates every transitively-loaded file.
+    let doc = root_doc.or(local_doc.as_ref())?;
+    let local_decl_span = resolve::declaration_span(doc, &sym);
     let cross_file = !matches!(sym, LocatedSymbol::Local { .. });
     let mut out = Vec::new();
 
@@ -122,12 +146,32 @@ pub(crate) fn references(
     // in one of these files; include or exclude per `include_declaration`.
     if cross_file {
         let decl_path = match symbol_fqn(&sym) {
-            Some(fqn) => doc
-                .find_symbol(fqn)
-                .and_then(|hit| hit.source_path.map(|p| (p.to_path_buf(), hit.record.span))),
+            Some(fqn) => doc.find_symbol(fqn).map(|hit| {
+                let p = hit
+                    .source_path
+                    .map(std::path::Path::to_path_buf)
+                    .or_else(|| root_path.map(std::path::Path::to_path_buf));
+                (p, hit.record.span)
+            }),
             None => None,
         };
-        for path in doc.imported_paths() {
+        let request_path = uri.to_file_path().ok();
+        // Build the list of cross-file paths to scan: every imported
+        // file plus the root file itself (which `imported_paths`
+        // doesn't include, since the root *is* the document the
+        // imports hang off of).
+        let mut scan_paths: Vec<&std::path::Path> = doc.imported_paths().into_iter().collect();
+        if let Some(rp) = root_path
+            && !scan_paths.contains(&rp)
+        {
+            scan_paths.push(rp);
+        }
+        for path in scan_paths {
+            // Skip the request file itself — already covered above
+            // using its in-memory (possibly unsaved) buffer.
+            if request_path.as_deref() == Some(path) {
+                continue;
+            }
             let Ok(text) = std::fs::read_to_string(path) else {
                 continue;
             };
@@ -135,7 +179,7 @@ pub(crate) fn references(
                 continue;
             };
             let decl_span_here = decl_path.as_ref().and_then(|(p, span)| {
-                if p.as_path() == path {
+                if p.as_deref() == Some(path) {
                     Some(*span)
                 } else {
                     None
@@ -223,7 +267,7 @@ mod tests {
     fn goto_jumps_to_block_kind_decl() {
         let src = "@document\ntype Root {\n  c: Config\n}\n@block(\"config\")\ntype Config {\n  region: utf8\n}\nconfig {\n  region = \"x\"\n}\n";
         let cursor = src.find("config {").unwrap() + 2;
-        let resp = goto_definition(url(), src, cursor).expect("def found");
+        let resp = goto_definition(url(), src, cursor, None, None).expect("def found");
         let GotoDefinitionResponse::Scalar(loc) = resp else {
             panic!("expected scalar")
         };
@@ -241,7 +285,7 @@ mod tests {
         let src = "@document\ntype Root {\n  v: Foo\n}\n@block(\"foo\")\ntype Foo {\n  x: utf8\n}\nfoo {\n  x = \"a\"\n}\nfoo {\n  x = \"b\"\n}\n";
         // Cursor on the type-ref "Foo" in `v: Foo`.
         let cursor = src.find("v: Foo").unwrap() + 3;
-        let locs = references(url(), src, cursor, true).expect("some refs");
+        let locs = references(url(), src, cursor, true, None, None).expect("some refs");
         // Should include the declaration "type Foo" and the "v: Foo" use,
         // but not the lowercase block kind "foo".
         assert_eq!(locs.len(), 2, "found: {locs:#?}");
@@ -252,8 +296,8 @@ mod tests {
         let src =
             "@document\ntype Root {\n  v: Foo\n}\n@block(\"foo\")\ntype Foo {\n  x: utf8\n}\n";
         let cursor = src.find("v: Foo").unwrap() + 3;
-        let with_decl = references(url(), src, cursor, true).unwrap();
-        let no_decl = references(url(), src, cursor, false).unwrap();
+        let with_decl = references(url(), src, cursor, true, None, None).unwrap();
+        let no_decl = references(url(), src, cursor, false, None, None).unwrap();
         assert_eq!(with_decl.len(), no_decl.len() + 1);
     }
 
@@ -277,7 +321,8 @@ mod tests {
         // shared.wcl. References should find occurrences inside the
         // imported file even though the main file has none.
         let cursor = main_src.find("shared.wcl").unwrap() + 2;
-        let locs = references(main_url.clone(), &main_src, cursor, true).unwrap_or_default();
+        let locs =
+            references(main_url.clone(), &main_src, cursor, true, None, None).unwrap_or_default();
         let shared_url = Url::from_file_path(&shared).unwrap();
         let has_imported = locs.iter().any(|l| l.uri == shared_url);
         // The plumbing should fire even if the symbol resolves to

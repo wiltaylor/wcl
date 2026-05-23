@@ -35,93 +35,122 @@ const BUILTIN_TYPES: &[&str] = &[
     "f32", "f64", "utf8", "ascii", "utf16", "utf32",
 ];
 
-pub(crate) fn completions(source: &str, uri: &str, offset: usize) -> Vec<CompletionItem> {
+pub(crate) fn completions(
+    source: &str,
+    uri: &str,
+    offset: usize,
+    root_doc: Option<&Document>,
+) -> Vec<CompletionItem> {
     // Parse the source on a best-effort basis: even if it fails (the
-    // user is mid-typing), we still emit builtins.
-    let doc = Document::open(source, uri).ok();
+    // user is mid-typing), we still emit builtins. The per-file
+    // `doc` is what gives us the right local scope for *this* file
+    // (namespace, top-level fields). When a root document is also
+    // available it contributes cross-file type / decorator / field
+    // completions.
+    let local_doc = Document::open(source, uri).ok();
     match preceding_non_ws(source, offset) {
-        Some(b'@') => decorator_items(doc.as_ref()),
-        Some(b':') | Some(b'&') => type_items(doc.as_ref()),
-        // Manual invoke (or typing an identifier letter): surface
-        // anything reachable from the current scope — locals first
-        // (highest signal), then top-level fields, then builtins.
-        _ => identifier_items(doc.as_ref(), source, uri, offset),
+        Some(b'@') => decorator_items(local_doc.as_ref(), root_doc),
+        Some(b':') | Some(b'&') => type_items(local_doc.as_ref(), root_doc),
+        _ => identifier_items(local_doc.as_ref(), root_doc, source, uri, offset),
     }
 }
 
-fn decorator_items(doc: Option<&Document>) -> Vec<CompletionItem> {
+fn decorator_items(
+    local_doc: Option<&Document>,
+    root_doc: Option<&Document>,
+) -> Vec<CompletionItem> {
     let mut out = Vec::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     for name in BUILTIN_DECORATORS {
-        out.push(CompletionItem {
-            label: (*name).to_string(),
-            kind: Some(CompletionItemKind::FUNCTION),
-            detail: Some("builtin decorator".to_string()),
-            ..Default::default()
-        });
-    }
-    let Some(doc) = doc else { return out };
-    // Types carrying `@decorator("foo")` declare decorator `foo`.
-    for td in doc.type_decls() {
-        for d in td.decorators() {
-            if d.full_name() != "decorator" {
-                continue;
-            }
-            let Ok(args) = d.positional() else { continue };
-            let Some(first) = args.into_iter().next() else {
-                continue;
-            };
-            let label = match first {
-                wcl_lang::Value::Utf8(s) | wcl_lang::Value::Ascii(s) => s,
-                _ => continue,
-            };
+        if seen.insert((*name).to_string()) {
             out.push(CompletionItem {
-                label,
+                label: (*name).to_string(),
                 kind: Some(CompletionItemKind::FUNCTION),
-                detail: Some(format!(
-                    "decorator (schema: {})",
-                    td.name_segments().join(".")
-                )),
+                detail: Some("builtin decorator".to_string()),
                 ..Default::default()
             });
+        }
+    }
+    for doc in [root_doc, local_doc].into_iter().flatten() {
+        // Types carrying `@decorator("foo")` declare decorator `foo`.
+        for td in doc.type_decls() {
+            for d in td.decorators() {
+                if d.full_name() != "decorator" {
+                    continue;
+                }
+                let Ok(args) = d.positional() else { continue };
+                let Some(first) = args.into_iter().next() else {
+                    continue;
+                };
+                let label = match first {
+                    wcl_lang::Value::Utf8(s) | wcl_lang::Value::Ascii(s) => s,
+                    _ => continue,
+                };
+                if !seen.insert(label.clone()) {
+                    continue;
+                }
+                out.push(CompletionItem {
+                    label,
+                    kind: Some(CompletionItemKind::FUNCTION),
+                    detail: Some(format!(
+                        "decorator (schema: {})",
+                        td.name_segments().join(".")
+                    )),
+                    ..Default::default()
+                });
+            }
         }
     }
     out
 }
 
-fn type_items(doc: Option<&Document>) -> Vec<CompletionItem> {
+fn type_items(local_doc: Option<&Document>, root_doc: Option<&Document>) -> Vec<CompletionItem> {
     let mut out = Vec::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     for name in BUILTIN_TYPES {
-        out.push(CompletionItem {
-            label: (*name).to_string(),
-            kind: Some(CompletionItemKind::STRUCT),
-            detail: Some("builtin type".to_string()),
-            ..Default::default()
-        });
+        if seen.insert((*name).to_string()) {
+            out.push(CompletionItem {
+                label: (*name).to_string(),
+                kind: Some(CompletionItemKind::STRUCT),
+                detail: Some("builtin type".to_string()),
+                ..Default::default()
+            });
+        }
     }
-    let Some(doc) = doc else { return out };
-    for td in doc.type_decls() {
-        out.push(CompletionItem {
-            label: td.name_segments().join("."),
-            kind: Some(CompletionItemKind::CLASS),
-            detail: Some("type".to_string()),
-            ..Default::default()
-        });
-    }
-    for u in doc.union_decls() {
-        out.push(CompletionItem {
-            label: u.name_segments().join("."),
-            kind: Some(CompletionItemKind::ENUM),
-            detail: Some("union".to_string()),
-            ..Default::default()
-        });
-    }
-    for i in doc.interfaces() {
-        out.push(CompletionItem {
-            label: i.name_segments().join("."),
-            kind: Some(CompletionItemKind::INTERFACE),
-            detail: Some("interface".to_string()),
-            ..Default::default()
-        });
+    for doc in [root_doc, local_doc].into_iter().flatten() {
+        for td in doc.type_decls() {
+            let label = td.name_segments().join(".");
+            if seen.insert(label.clone()) {
+                out.push(CompletionItem {
+                    label,
+                    kind: Some(CompletionItemKind::CLASS),
+                    detail: Some("type".to_string()),
+                    ..Default::default()
+                });
+            }
+        }
+        for u in doc.union_decls() {
+            let label = u.name_segments().join(".");
+            if seen.insert(label.clone()) {
+                out.push(CompletionItem {
+                    label,
+                    kind: Some(CompletionItemKind::ENUM),
+                    detail: Some("union".to_string()),
+                    ..Default::default()
+                });
+            }
+        }
+        for i in doc.interfaces() {
+            let label = i.name_segments().join(".");
+            if seen.insert(label.clone()) {
+                out.push(CompletionItem {
+                    label,
+                    kind: Some(CompletionItemKind::INTERFACE),
+                    detail: Some("interface".to_string()),
+                    ..Default::default()
+                });
+            }
+        }
     }
     out
 }
@@ -130,7 +159,8 @@ fn type_items(doc: Option<&Document>) -> Vec<CompletionItem> {
 /// Combines locals (params + let-bindings) from the enclosing scope,
 /// top-level field names, and registered builtin functions.
 fn identifier_items(
-    doc: Option<&Document>,
+    local_doc: Option<&Document>,
+    root_doc: Option<&Document>,
     source: &str,
     uri: &str,
     offset: usize,
@@ -164,7 +194,7 @@ fn identifier_items(
         }
     }
 
-    if let Some(doc) = doc {
+    for doc in [root_doc, local_doc].into_iter().flatten() {
         for rec in doc.symbols().iter() {
             if !matches!(rec.kind, SymbolKind::Field) {
                 continue;
@@ -214,7 +244,7 @@ mod tests {
         let src =
             "@decorator(\"max_len\")\ntype MaxLen {\n  value: u64\n}\n@\ntype Trailing {\n}\n";
         let cursor = src.find("\n@\n").unwrap() + 2; // just past the `@`
-        let labs = labels(completions(src, "test.wcl", cursor));
+        let labs = labels(completions(src, "test.wcl", cursor, None));
         assert!(labs.iter().any(|l| l == "block"), "{labs:?}");
         assert!(labs.iter().any(|l| l == "max_len"), "{labs:?}");
     }
@@ -226,7 +256,7 @@ mod tests {
         // the builtins-only fallback. Use complete source to be safe:
         let src = "@document\ntype Root {\n  v: utf8\n}\ntype Other {\n  v: Root\n}\n";
         let cursor = src.find("v: Root").unwrap() + 2; // just past the `:`
-        let labs = labels(completions(src, "test.wcl", cursor));
+        let labs = labels(completions(src, "test.wcl", cursor, None));
         assert!(labs.iter().any(|l| l == "utf8"), "{labs:?}");
         assert!(labs.iter().any(|l| l == "Root"), "{labs:?}");
     }
@@ -237,7 +267,7 @@ mod tests {
         // scope; `host` is a top-level field; `len` is a builtin.
         let src = "host = \"a\"\nx = {\n  let helper = 1;\n  he\n}\n";
         let cursor = src.find("  he\n").unwrap() + 4;
-        let labs = labels(completions(src, "test.wcl", cursor));
+        let labs = labels(completions(src, "test.wcl", cursor, None));
         assert!(labs.iter().any(|l| l == "helper"), "{labs:?}");
         assert!(labs.iter().any(|l| l == "host"), "{labs:?}");
         assert!(labs.iter().any(|l| l == "len"), "{labs:?}");
@@ -247,7 +277,7 @@ mod tests {
     fn no_trigger_lists_function_params() {
         let src = "x = fn (input: i32) -> i32 { in }\n";
         let cursor = src.find("{ in ").unwrap() + 2;
-        let labs = labels(completions(src, "test.wcl", cursor));
+        let labs = labels(completions(src, "test.wcl", cursor, None));
         assert!(labs.iter().any(|l| l == "input"), "{labs:?}");
     }
 }

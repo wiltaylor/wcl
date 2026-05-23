@@ -1929,6 +1929,7 @@ dependencies = [
  "dashmap 6.2.1",
  "miette",
  "ropey",
+ "serde_json",
  "tempfile",
  "tokio",
  "tower-lsp",

@@ -36,10 +36,10 @@ pub use builtins::{
 };
 pub use data::{DataKind, DataRef};
 pub use doc::{
-    Block, ChildKind, Connection, ConnectionDecl, DeclName, Decorator, Document, Field,
+    Block, ChildKind, Connection, ConnectionDecl, DeclName, Decorator, Document, Field, FileLoader,
     InterfaceDecl, NamedArg, ResolvedType, RowView, SymbolEntry, SymbolHit, SymbolSetDecl,
     TableView, TypeDecl, TypeField, UnionDecl, UnionVariant, UseDeclView, UseFormView, UseItem,
-    VariantBodyView,
+    VariantBodyView, disk_loader, overlay_loader,
 };
 pub use environment::{BuiltType, DecoratorBuilder, Environment, TypeBuilder, TypeFieldBuilder};
 pub use error::{EvalError, ParseError, SchemaViolationKind, SyntaxError};

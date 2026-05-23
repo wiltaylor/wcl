@@ -22,6 +22,7 @@ tracing-subscriber = { workspace = true }
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "io-util"] }
 tempfile = { workspace = true }
+serde_json = { workspace = true }
 
 [lints]
 workspace = true
