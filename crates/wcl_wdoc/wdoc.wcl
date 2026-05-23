@@ -77,11 +77,26 @@ type Diagram {
   width:  i64
   height: i64
   class:  list<utf8>?
-  @children("rect")    rects:    list<Rect>
-  @children("circle")  circles:  list<Circle>
-  @children("line")    lines:    list<Line>
-  @children("label")   labels:   list<Label>
-  @children("polygon") polygons: list<Polygon>
+  @children("rect")      rects:      list<Rect>
+  @children("circle")    circles:    list<Circle>
+  @children("line")      lines:      list<Line>
+  @children("label")     labels:     list<Label>
+  @children("polygon")   polygons:   list<Polygon>
+  @children("container") containers: list<Container>
+}
+
+// SVG <g> group. Holds any mix of shapes (including nested
+// containers) so users can apply a shared class to a sub-figure.
+// Positioning fields land with the layout system in a follow-up.
+@block("container")
+type Container {
+  class: list<utf8>?
+  @children("rect")      rects:      list<Rect>
+  @children("circle")    circles:    list<Circle>
+  @children("line")      lines:      list<Line>
+  @children("label")     labels:     list<Label>
+  @children("polygon")   polygons:   list<Polygon>
+  @children("container") containers: list<Container>
 }
 
 @block("rect")

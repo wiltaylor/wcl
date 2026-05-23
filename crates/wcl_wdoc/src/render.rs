@@ -127,8 +127,15 @@ fn render_shape(block: &Block<'_>) -> Option<String> {
         "line" => Some(render_line(block)),
         "label" => Some(render_label(block)),
         "polygon" => Some(render_polygon(block)),
+        "container" => Some(render_container(block)),
         _ => None,
     }
+}
+
+fn render_container(block: &Block<'_>) -> String {
+    let cls = class_attr(block);
+    let inner: String = block.blocks().filter_map(|b| render_shape(&b)).collect();
+    format!("<g{cls}>{inner}</g>")
 }
 
 fn render_rect(block: &Block<'_>) -> String {

@@ -73,6 +73,12 @@ fn build_emits_fundamentals_for_example_site() {
         index.contains("<polygon points=\"180,10 230,40 180,70\""),
         "{index}"
     );
+    // container groups children inside <g class="...">
+    assert!(index.contains("<g class=\"badge\"><rect "), "{index}");
+    assert!(
+        index.contains("<text x=\"78\" y=\"68\">v1</text></g>"),
+        "{index}"
+    );
 }
 
 #[test]

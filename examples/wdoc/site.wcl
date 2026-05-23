@@ -11,6 +11,11 @@ class boxed {
   padding = "0.5rem"
 }
 
+class badge {
+  font_family = "sans-serif"
+  color       = "#444"
+}
+
 page index {
   text {
     span "Welcome to wdoc " {}
@@ -57,6 +62,22 @@ page index {
     polygon {
       points = "180,10 230,40 180,70"
       fill   = "#fc8"
+    }
+
+    container {
+      class = ["badge"]
+      rect {
+        x = 70.0
+        y = 55.0
+        width  = 40.0
+        height = 18.0
+        fill   = "#eef"
+        stroke = "#99c"
+      }
+      label "v1" {
+        x = 78.0
+        y = 68.0
+      }
     }
   }
 }
