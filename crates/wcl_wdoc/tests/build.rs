@@ -21,35 +21,57 @@ fn build_ok(file: &Path, out: &Path) -> usize {
 }
 
 #[test]
-fn build_emits_one_html_per_page() {
+fn build_emits_fundamentals_for_example_site() {
     let out = TempDir::new().expect("mkdir tempdir");
     let n = build_ok(&examples_dir().join("wdoc").join("site.wcl"), out.path());
-    assert_eq!(n, 2);
+    assert_eq!(n, 1);
 
     let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
-    assert!(index.contains("<h1>Welcome</h1>"), "{index}");
-    assert!(index.contains("<p>Hello, world.</p>"), "{index}");
     assert!(index.contains("<title>index</title>"), "{index}");
-
-    let about = std::fs::read_to_string(out.path().join("about.html")).expect("read about.html");
-    assert!(about.contains("<h1>About</h1>"), "{about}");
-    assert!(about.contains("<h2>What is wdoc?</h2>"), "{about}");
+    // text + span
     assert!(
-        about.contains("<p>A small WCL-driven static site generator.</p>"),
-        "{about}"
+        index.contains("<p><span>Welcome to wdoc </span>"),
+        "{index}"
+    );
+    // column grid CSS
+    assert!(
+        index.contains("<div style=\"display:grid;grid-template-columns:50% 50%;\">"),
+        "{index}"
+    );
+    // diagram SVG wrapper
+    assert!(
+        index.contains(
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"240\" height=\"80\" \
+             viewBox=\"0 0 240 80\">"
+        ),
+        "{index}"
+    );
+    // each shape kind
+    assert!(index.contains("<rect "), "{index}");
+    assert!(index.contains("<circle "), "{index}");
+    assert!(index.contains("<line "), "{index}");
+    assert!(
+        index.contains("<text x=\"110\" y=\"76\">halfway</text>"),
+        "{index}"
+    );
+    assert!(
+        index.contains("<polygon points=\"180,10 230,40 180,70\""),
+        "{index}"
     );
 }
 
 #[test]
-fn build_html_escapes_text() {
+fn build_html_escapes_span_text() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("escape.wcl");
     std::fs::write(
         &src,
         r#"
 page index {
-  h1 "A & B <c>" {}
-  p  "say \"hi\"" {}
+  text {
+    span "A & B <c>" {}
+    span "say \"hi\"" {}
+  }
 }
 "#,
     )
@@ -59,8 +81,8 @@ page index {
     build_ok(&src, out.path());
 
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read html");
-    assert!(html.contains("<h1>A &amp; B &lt;c&gt;</h1>"), "{html}");
-    assert!(html.contains("<p>say &quot;hi&quot;</p>"), "{html}");
+    assert!(html.contains("<span>A &amp; B &lt;c&gt;</span>"), "{html}");
+    assert!(html.contains("<span>say &quot;hi&quot;</span>"), "{html}");
 }
 
 #[test]
@@ -71,7 +93,7 @@ fn build_reports_schema_error_for_unknown_block() {
         &src,
         r#"
 page index {
-  h7 "nope" {}
+  h1 "nope" {}
 }
 "#,
     )

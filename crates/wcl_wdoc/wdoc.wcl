@@ -1,6 +1,9 @@
-// Built-in schema for `wdoc`. The wdoc binary prepends this to the
-// user's source in memory before parsing. Future versions may expose
-// the file for users to extend.
+// Fundamental block schema for `wdoc`. These are the IR layer that
+// the HTML renderer (and future targets) speak; higher-level blocks
+// will land later and lower to these via a transform pipeline.
+//
+// The wdoc binary prepends this to the user's source in memory before
+// parsing.
 
 @document
 type Site {
@@ -10,19 +13,87 @@ type Site {
 @block("page")
 type Page {
   @inline(0) name: identifier
-  @children("h1") h1s: list<H1>
-  @children("h2") h2s: list<H2>
-  @children("h3") h3s: list<H3>
-  @children("h4") h4s: list<H4>
-  @children("h5") h5s: list<H5>
-  @children("h6") h6s: list<H6>
-  @children("p")  ps:  list<P>
+  @children("text")    texts:    list<Text>
+  @children("column")  columns:  list<Column>
+  @children("diagram") diagrams: list<Diagram>
 }
 
-@block("h1") type H1 { @inline(0) text: utf8 }
-@block("h2") type H2 { @inline(0) text: utf8 }
-@block("h3") type H3 { @inline(0) text: utf8 }
-@block("h4") type H4 { @inline(0) text: utf8 }
-@block("h5") type H5 { @inline(0) text: utf8 }
-@block("h6") type H6 { @inline(0) text: utf8 }
-@block("p")  type P  { @inline(0) text: utf8 }
+// Paragraph — children are spans rendered in source order.
+@block("text")
+type Text {
+  @children("span") spans: list<Span>
+}
+
+// Inline run inside a `text`. Style fields land in a follow-up slice;
+// for now the span only carries its text.
+@block("span")
+type Span {
+  @inline(0) text: utf8
+}
+
+// Grid container. `widths` are CSS percentages, one per child slot;
+// children flow in source order across the slots.
+@block("column")
+type Column {
+  widths: list<f64>
+  @children("text")    texts:    list<Text>
+  @children("column")  columns:  list<Column>
+  @children("diagram") diagrams: list<Diagram>
+}
+
+// SVG canvas. Width/height define the viewBox and rendered size.
+@block("diagram")
+type Diagram {
+  width:  i64
+  height: i64
+  @children("rect")    rects:    list<Rect>
+  @children("circle")  circles:  list<Circle>
+  @children("line")    lines:    list<Line>
+  @children("label")   labels:   list<Label>
+  @children("polygon") polygons: list<Polygon>
+}
+
+@block("rect")
+type Rect {
+  x:      f64
+  y:      f64
+  width:  f64
+  height: f64
+  fill:   utf8?
+  stroke: utf8?
+}
+
+@block("circle")
+type Circle {
+  cx:     f64
+  cy:     f64
+  r:      f64
+  fill:   utf8?
+  stroke: utf8?
+}
+
+@block("line")
+type Line {
+  x1:     f64
+  y1:     f64
+  x2:     f64
+  y2:     f64
+  stroke: utf8?
+}
+
+// SVG <text> shape. Renamed from `text` to avoid colliding with the
+// paragraph block kind.
+@block("label")
+type Label {
+  @inline(0) content: utf8
+  x:    f64
+  y:    f64
+  fill: utf8?
+}
+
+@block("polygon")
+type Polygon {
+  points: utf8
+  fill:   utf8?
+  stroke: utf8?
+}

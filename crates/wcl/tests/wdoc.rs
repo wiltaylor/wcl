@@ -16,7 +16,7 @@ fn wcl() -> Command {
 }
 
 #[test]
-fn wcl_wdoc_build_writes_index_html() {
+fn wcl_wdoc_build_renders_fundamental_blocks() {
     let out = TempDir::new().expect("mkdir tempdir");
     wcl()
         .arg("wdoc")
@@ -26,8 +26,9 @@ fn wcl_wdoc_build_writes_index_html() {
         .arg(out.path())
         .assert()
         .success()
-        .stdout(predicate::str::contains("wrote 2 pages"));
+        .stdout(predicate::str::contains("wrote 1 page"));
 
     let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
-    assert!(index.contains("<h1>Welcome</h1>"), "{index}");
+    assert!(index.contains("<p><span>"), "{index}");
+    assert!(index.contains("<svg"), "{index}");
 }

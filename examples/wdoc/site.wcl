@@ -1,13 +1,49 @@
-// Minimal wdoc example. Each `page <name> { ... }` produces one HTML
-// file under the build output directory.
+// Fundamental-block demo. These are the IR layer; future high-level
+// blocks (headings, lists, callouts, ...) will lower to these.
 
 page index {
-  h1 "Welcome" {}
-  p  "Hello, world." {}
-}
+  text {
+    span "Welcome to wdoc " {}
+    span "— a tiny static-site demo built on fundamental blocks." {}
+  }
 
-page about {
-  h1 "About"            {}
-  h2 "What is wdoc?"    {}
-  p  "A small WCL-driven static site generator." {}
+  column {
+    widths = [50.0, 50.0]
+    text { span "Left column." {} }
+    text { span "Right column." {} }
+  }
+
+  diagram {
+    width  = 240
+    height = 80
+
+    rect {
+      x = 10.0
+      y = 10.0
+      width  = 60.0
+      height = 60.0
+      fill   = "#cce"
+    }
+    circle {
+      cx = 120.0
+      cy = 40.0
+      r  = 24.0
+      stroke = "black"
+    }
+    line {
+      x1 = 0.0
+      y1 = 40.0
+      x2 = 240.0
+      y2 = 40.0
+      stroke = "#888"
+    }
+    label "halfway" {
+      x = 110.0
+      y = 76.0
+    }
+    polygon {
+      points = "180,10 230,40 180,70"
+      fill   = "#fc8"
+    }
+  }
 }
