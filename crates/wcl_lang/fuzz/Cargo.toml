@@ -24,3 +24,9 @@ name = "eval"
 path = "fuzz_targets/eval.rs"
 test = false
 doc = false
+
+[[bin]]
+name = "format_round_trip"
+path = "fuzz_targets/format_round_trip.rs"
+test = false
+doc = false

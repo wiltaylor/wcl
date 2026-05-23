@@ -23,12 +23,12 @@ This branch (`rewrite`) is a clean restart of WCL. The previous implementation l
 - Host bindings: `Environment` registers synthetic types + builtin functions via `from_fn` (`FromValue` / `IntoValue` traits); each `BuiltinFn` can carry a printable signature
 - Builtins: collections (`map`/`filter`/`fold`/`len`/`sum`/`range`/`head`/`tail`/`flatten`/`zip`), tensors (`tensor`/`tensor_data`/`tensor_shape`/`tensor_reshape`), strings (`split`/`join`/`replace`/`contains`/`starts_with`/`ends_with`/`to_upper`/`to_lower`/`trim`), lists (`list_contains`/`reverse`/`sort`/`unique`/`index_of`/`take`/`drop`), control flow (`error`/`panic`/`assert`/`format`/`concat`)
 - Imports: eager top-level `import`; lazy `import` inside blocks
-- Edit path: `parse_for_edit` + AST mutation + `format::to_source` round-trip, driving `wcl set` and `wcl fmt`
+- Edit path: `parse_for_edit` + AST mutation + `format::to_source` round-trip, driving `wcl set` and `wcl fmt`. `format::FormatConfig` exposes indent / trailing-comma / blank-line cap; `wcl fmt --indent` / `--no-trailing-comma` surface them at the CLI.
 - Interactive REPL (`wcl repl [<file>]`) — plain stdin loop with multiline continuation; tagged parse vs eval errors; `:quit` exits
 - JSON value serialization — custom one-way `Serialize` on `Value` emits idiomatic JSON (scalars as primitives, lists as arrays, records as objects, variants as `"Name"` / `{"Name": payload}`); `wcl get --json` uses it. `TypeRef`/`Span`/`BuiltinType` still round-trip via derive.
-- LSP server (`wcl lsp` / `wcl lsp --tcp ADDR` / `wcl lsp --log <path>`): diagnostics, formatting, document symbols, go-to-definition + cross-file, find-references + cross-file, hover, completion (trigger-driven and identifier-position with locals + builtins), semantic tokens incl. inside `${...}` interpolation slots, incremental text sync via `ropey`, multi-connection TCP listener
+- LSP server (`wcl lsp` / `wcl lsp --tcp ADDR` / `wcl lsp --log <path>`): diagnostics, formatting, document symbols, go-to-definition + cross-file, find-references + cross-file, hover, completion (trigger-driven and identifier-position with locals + builtins), semantic tokens incl. inside `${...}` interpolation slots, code actions (quick-fixes for unknown-field and disallowed-child schema violations), incremental text sync via `ropey`, multi-connection TCP listener
 - LSP integration tests (`crates/wcl_lsp/tests/server.rs`) drive `Backend`'s `LanguageServer` trait directly through `tower-lsp`
-- Fuzz harness in `crates/wcl_lang/fuzz/` with `parse` and `eval` targets, seeded from `examples/`
+- Fuzz harness in `crates/wcl_lang/fuzz/` with `parse`, `eval`, and `format_round_trip` targets, seeded from `examples/`. CI runs a 30 s `parse` smoke on every push.
 - Editor stubs in `editors/` — VS Code extension that spawns `wcl lsp`, tree-sitter grammar for highlighting
 
 ## Intentionally deferred

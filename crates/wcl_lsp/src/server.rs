@@ -7,6 +7,7 @@ use dashmap::DashMap;
 use ropey::Rope;
 use tower_lsp::jsonrpc::Result as RpcResult;
 use tower_lsp::lsp_types::{
+    CodeActionParams, CodeActionProviderCapability, CodeActionResponse,
     CompletionOptions, CompletionParams, CompletionResponse, DidChangeTextDocumentParams,
     DidCloseTextDocumentParams, DidOpenTextDocumentParams, DocumentFormattingParams,
     DocumentSymbolParams, DocumentSymbolResponse, GotoDefinitionParams, GotoDefinitionResponse,
@@ -20,6 +21,7 @@ use tower_lsp::lsp_types::{
 use tower_lsp::{Client, LanguageServer};
 use wcl_lang::{format as wcl_format, parse_for_edit};
 
+use crate::code_actions;
 use crate::completion;
 use crate::convert::{full_document_range, position_to_offset};
 use crate::diagnostics;
@@ -86,6 +88,7 @@ impl LanguageServer for Backend {
                     trigger_characters: Some(vec!["@".into(), ":".into(), "&".into()]),
                     ..Default::default()
                 }),
+                code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
                 semantic_tokens_provider: Some(
                     SemanticTokensServerCapabilities::SemanticTokensOptions(
                         SemanticTokensOptions {
@@ -252,4 +255,20 @@ impl LanguageServer for Backend {
             data,
         })))
     }
+
+    async fn code_action(
+        &self,
+        params: CodeActionParams,
+    ) -> RpcResult<Option<CodeActionResponse>> {
+        let uri = params.text_document.uri;
+        let Some(source) = self.document_text(&uri) else {
+            return Ok(None);
+        };
+        Ok(code_actions::compute(
+            &uri,
+            &source,
+            &params.context.diagnostics,
+        ))
+    }
 }
+

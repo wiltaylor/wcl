@@ -6,6 +6,7 @@
 //! client); library consumers can also construct a [`Backend`]
 //! directly for in-process testing.
 
+mod code_actions;
 mod completion;
 mod convert;
 mod diagnostics;

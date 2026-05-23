@@ -106,6 +106,14 @@ enum Command {
         /// disk is left untouched.
         #[arg(long = "in-place")]
         in_place: bool,
+        /// Spaces per indentation level. Defaults to the canonical
+        /// formatter (2). Set higher for editor-style preferences.
+        #[arg(long, default_value_t = 2)]
+        indent: usize,
+        /// Strip the trailing comma the formatter places after every
+        /// `match` arm. Parser accepts either form.
+        #[arg(long = "no-trailing-comma")]
+        no_trailing_comma: bool,
     },
     /// Read-eval-print loop for ad-hoc WCL expressions. With a file
     /// argument, identifiers resolve against that file's top-level
@@ -177,7 +185,12 @@ fn main() -> ExitCode {
                 EXIT_PARSE
             }
         },
-        Command::Fmt { file, in_place } => match run_fmt(&file, in_place) {
+        Command::Fmt {
+            file,
+            in_place,
+            indent,
+            no_trailing_comma,
+        } => match run_fmt(&file, in_place, indent, no_trailing_comma) {
             Ok(code) => code,
             Err(msg) => {
                 eprintln!("{msg}");
@@ -394,7 +407,12 @@ fn atty_stdin() -> bool {
     std::io::stdin().is_terminal()
 }
 
-fn run_fmt(file: &Path, in_place: bool) -> Result<u8, String> {
+fn run_fmt(
+    file: &Path,
+    in_place: bool,
+    indent: usize,
+    no_trailing_comma: bool,
+) -> Result<u8, String> {
     let src = std::fs::read_to_string(file)
         .map_err(|e| format!("failed to read {}: {e}", file.display()))?;
     let ast = match parse_for_edit(&src, file.display().to_string()) {
@@ -404,7 +422,12 @@ fn run_fmt(file: &Path, in_place: bool) -> Result<u8, String> {
             return Ok(EXIT_PARSE);
         }
     };
-    let formatted = wcl_format::to_source(&ast);
+    let cfg = wcl_format::FormatConfig {
+        indent,
+        trailing_comma_in_match: !no_trailing_comma,
+        ..Default::default()
+    };
+    let formatted = wcl_format::to_source_with(&ast, &cfg);
     if in_place {
         write_atomic(file, &formatted)
             .map_err(|e| format!("failed to write {}: {e}", file.display()))?;

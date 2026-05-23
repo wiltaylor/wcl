@@ -26,28 +26,64 @@ use crate::ast::{
 use crate::lexer::StringEncoding;
 use crate::value::{BuiltinType, TensorDim, TypeRef};
 
-/// Canonical source for an AST. Mutate the AST via the public `ast::*`
-/// types, then call this to render a `.wcl` file body.
+/// Knobs that customize [`to_source_with`]. [`Default`] matches the
+/// historical behaviour of [`to_source`] (two-space indent, trailing
+/// commas in match arms, blank lines preserved).
+#[derive(Debug, Clone)]
+pub struct FormatConfig {
+    /// Spaces per indentation level. Default: 2.
+    pub indent: usize,
+    /// Emit a trailing comma after every `match` arm. Default: true.
+    /// The parser tolerates either form; flipping this only affects
+    /// the printer's output style.
+    pub trailing_comma_in_match: bool,
+    /// Maximum consecutive blank lines preserved from source trivia.
+    /// `0` collapses all blank lines; `>= 1` preserves one (the lexer
+    /// already coalesces runs of blank lines to a single marker, so
+    /// any value `>= 1` is currently equivalent). Default: 1.
+    pub blank_line_cap: usize,
+}
+
+impl Default for FormatConfig {
+    fn default() -> Self {
+        Self {
+            indent: 2,
+            trailing_comma_in_match: true,
+            blank_line_cap: 1,
+        }
+    }
+}
+
+/// Canonical source for an AST using the default [`FormatConfig`].
+/// Mutate the AST via the public `ast::*` types, then call this to
+/// render a `.wcl` file body.
 pub fn to_source(ast: &Source) -> String {
-    let mut p = Printer::new();
+    to_source_with(ast, &FormatConfig::default())
+}
+
+/// Render an AST with explicit formatting options. See [`FormatConfig`]
+/// for the available knobs.
+pub fn to_source_with(ast: &Source, cfg: &FormatConfig) -> String {
+    let mut p = Printer::new(cfg.clone());
     p.print_source(ast);
     p.buf
 }
 
-/// Indentation step. Canonical output uses two spaces per nesting
-/// level — matches the existing `examples/*.wcl` style.
-const INDENT: &str = "  ";
-
 struct Printer {
     buf: String,
     depth: u16,
+    cfg: FormatConfig,
+    indent_str: String,
 }
 
 impl Printer {
-    fn new() -> Self {
+    fn new(cfg: FormatConfig) -> Self {
+        let indent_str = " ".repeat(cfg.indent);
         Self {
             buf: String::new(),
             depth: 0,
+            cfg,
+            indent_str,
         }
     }
 
@@ -61,7 +97,7 @@ impl Printer {
 
     fn write_indent(&mut self) {
         for _ in 0..self.depth {
-            self.buf.push_str(INDENT);
+            self.buf.push_str(&self.indent_str);
         }
     }
 
@@ -73,10 +109,17 @@ impl Printer {
     /// `LineComment` becomes one `# body\n` line at the current
     /// indent. Each `BlankLine` is exactly one blank `\n`.
     fn print_leading_trivia(&mut self, trivia: &[Trivia]) {
+        let mut consecutive_blanks: usize = 0;
         for t in trivia {
             match t {
-                Trivia::BlankLine => self.newline(),
+                Trivia::BlankLine => {
+                    consecutive_blanks += 1;
+                    if consecutive_blanks <= self.cfg.blank_line_cap {
+                        self.newline();
+                    }
+                }
                 Trivia::LineComment(body) => {
+                    consecutive_blanks = 0;
                     self.write_indent();
                     self.buf.push_str("# ");
                     self.buf.push_str(body);
@@ -673,7 +716,7 @@ impl Printer {
         // content. Trailing newline of body is significant — the parser
         // adds one per line so the round-trip is content-with-trailing-\n.
         let target_indent = self.depth + 1;
-        let prefix_str = INDENT.repeat(target_indent as usize);
+        let prefix_str = self.indent_str.repeat(target_indent as usize);
         for line in body.split_inclusive('\n') {
             // The body always ends with `\n` from the heredoc parser.
             // If the very last "line" doesn't have a `\n`, the user
@@ -682,7 +725,7 @@ impl Printer {
             self.push(line);
         }
         // Closer line at the current indentation level.
-        let closer_indent = INDENT.repeat(self.depth as usize);
+        let closer_indent = self.indent_str.repeat(self.depth as usize);
         self.push(&closer_indent);
         self.push("DOC");
     }
@@ -735,11 +778,13 @@ impl Printer {
             }
             self.push(" => ");
             self.print_expr(&arm.body, 0);
-            // Trailing comma after every arm — match arms are
-            // comma-separated. The parser accepts a trailing comma
-            // before the closing brace, so always emitting one is
-            // safe and keeps the printer's output predictable.
-            self.push(",");
+            // The parser accepts a trailing comma before the closing
+            // brace; `FormatConfig::trailing_comma_in_match` flips
+            // whether the printer emits one. Off-by-default keeps the
+            // historical canonical form.
+            if self.cfg.trailing_comma_in_match {
+                self.push(",");
+            }
             self.newline();
         }
         self.depth -= 1;

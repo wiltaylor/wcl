@@ -1,0 +1,34 @@
+// Interfaces and `extends`: structural and nominal subtyping for
+// reference fields.
+//
+// `interface Drawable` defines a shape. Any concrete type whose
+// fields (including those inherited via `extends`) cover the
+// interface's shape can be passed where `&Drawable` is required.
+//
+// `extends` lets a type inherit fields from one or more parents
+// and become assignable to references of those parents.
+
+type Rect { x: f64  y: f64  w: f64  h: f64 }
+
+interface Drawable {
+  bounds:  Rect
+  z_index: i32
+}
+
+type Animal {
+  name: utf8
+  age:  u32
+}
+
+// `Dog` inherits Animal's fields and is assignable to `&Animal`.
+type Dog extends Animal {
+  breed: utf8
+}
+
+// `Pet` extends Dog *and* satisfies Drawable's shape. It's both
+// an Animal (via transitive extends) and a Drawable
+// (structurally).
+type Pet extends Dog {
+  bounds:  Rect
+  z_index: i32
+}
