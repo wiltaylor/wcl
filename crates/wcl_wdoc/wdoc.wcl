@@ -71,7 +71,8 @@ type Column {
   @children("diagram") diagrams: list<Diagram>
 }
 
-// SVG canvas. Width/height define the viewBox and rendered size.
+// SVG canvas. Width/height define the viewBox and rendered size,
+// and the parent box for diagram-level anchored shapes.
 @block("diagram")
 type Diagram {
   width:  i64
@@ -85,12 +86,38 @@ type Diagram {
   @children("container") containers: list<Container>
 }
 
-// SVG <g> group. Holds any mix of shapes (including nested
-// containers) so users can apply a shared class to a sub-figure.
-// Positioning fields land with the layout system in a follow-up.
+// SVG <g> group with optional layout. Layout modes:
+//   :none  (default) — children render at their own resolved boxes.
+//   :grid            — children are placed into a `columns × rows`
+//                      grid; each cell is `cell_width × cell_height`
+//                      separated by `gap`. Per-cell child receives
+//                      `(cell_width, cell_height)` as its parent
+//                      size, so anchored children stretch to the
+//                      cell.
+// Anchors on the container itself resolve against the parent box and
+// can resize the container; that new size flows to its own children.
 @block("container")
 type Container {
   class: list<utf8>?
+
+  // Declared interior size (used when no layout/anchor is sizing
+  // this container — e.g. a top-level container in a diagram).
+  width:  f64?
+  height: f64?
+
+  // Layout
+  layout:      symbol?
+  columns:     i64?
+  cell_width:  f64?
+  cell_height: f64?
+  gap:         f64?
+
+  // Anchors (resolve against the parent's box).
+  anchor_left:   f64?
+  anchor_right:  f64?
+  anchor_top:    f64?
+  anchor_bottom: f64?
+
   @children("rect")      rects:      list<Rect>
   @children("circle")    circles:    list<Circle>
   @children("line")      lines:      list<Line>
@@ -101,33 +128,48 @@ type Container {
 
 @block("rect")
 type Rect {
-  x:      f64
-  y:      f64
-  width:  f64
-  height: f64
+  x:      f64?
+  y:      f64?
+  width:  f64?
+  height: f64?
   fill:   utf8?
   stroke: utf8?
   class:  list<utf8>?
+
+  anchor_left:   f64?
+  anchor_right:  f64?
+  anchor_top:    f64?
+  anchor_bottom: f64?
 }
 
 @block("circle")
 type Circle {
-  cx:     f64
-  cy:     f64
-  r:      f64
+  cx:     f64?
+  cy:     f64?
+  r:      f64?
   fill:   utf8?
   stroke: utf8?
   class:  list<utf8>?
+
+  anchor_left:   f64?
+  anchor_right:  f64?
+  anchor_top:    f64?
+  anchor_bottom: f64?
 }
 
 @block("line")
 type Line {
-  x1:     f64
-  y1:     f64
-  x2:     f64
-  y2:     f64
+  x1:     f64?
+  y1:     f64?
+  x2:     f64?
+  y2:     f64?
   stroke: utf8?
   class:  list<utf8>?
+
+  anchor_left:   f64?
+  anchor_right:  f64?
+  anchor_top:    f64?
+  anchor_bottom: f64?
 }
 
 // SVG <text> shape. Renamed from `text` to avoid colliding with the
@@ -135,10 +177,15 @@ type Line {
 @block("label")
 type Label {
   @inline(0) content: utf8
-  x:     f64
-  y:     f64
+  x:     f64?
+  y:     f64?
   fill:  utf8?
   class: list<utf8>?
+
+  anchor_left:   f64?
+  anchor_right:  f64?
+  anchor_top:    f64?
+  anchor_bottom: f64?
 }
 
 @block("polygon")
@@ -147,4 +194,9 @@ type Polygon {
   fill:   utf8?
   stroke: utf8?
   class:  list<utf8>?
+
+  anchor_left:   f64?
+  anchor_right:  f64?
+  anchor_top:    f64?
+  anchor_bottom: f64?
 }

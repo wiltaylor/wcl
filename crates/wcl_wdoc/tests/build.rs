@@ -56,8 +56,8 @@ fn build_emits_fundamentals_for_example_site() {
     // diagram SVG wrapper
     assert!(
         index.contains(
-            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"240\" height=\"80\" \
-             viewBox=\"0 0 240 80\">"
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"280\" height=\"130\" \
+             viewBox=\"0 0 280 130\">"
         ),
         "{index}"
     );
@@ -73,11 +73,71 @@ fn build_emits_fundamentals_for_example_site() {
         index.contains("<polygon points=\"180,10 230,40 180,70\""),
         "{index}"
     );
-    // container groups children inside <g class="...">
-    assert!(index.contains("<g class=\"badge\"><rect "), "{index}");
+    // grid-laid container: outer <g class="badge"> with translate to
+    // its declared position, then per-cell translates spaced by
+    // (cell_width + gap) = 85.
     assert!(
-        index.contains("<text x=\"78\" y=\"68\">v1</text></g>"),
+        index.contains("<g class=\"badge\" transform=\"translate(10 90)\">"),
         "{index}"
+    );
+    assert!(
+        index.contains("<g transform=\"translate(0 0)\">"),
+        "{index}"
+    );
+    assert!(
+        index.contains("<g transform=\"translate(85 0)\">"),
+        "{index}"
+    );
+    assert!(
+        index.contains("<g transform=\"translate(170 0)\">"),
+        "{index}"
+    );
+    // anchored-rect inside the first cell stretches to cell size.
+    assert!(
+        index.contains("<rect x=\"0\" y=\"0\" width=\"80\" height=\"30\" fill=\"#eef\""),
+        "{index}"
+    );
+}
+
+#[test]
+fn build_resolves_anchor_stretch_without_layout() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("anchors.wcl");
+    std::fs::write(
+        &src,
+        r##"
+page index {
+  diagram {
+    width  = 0
+    height = 0
+    container {
+      anchor_left = 0.0
+      anchor_top  = 0.0
+      width  = 200.0
+      height = 100.0
+      rect {
+        anchor_left   = 10.0
+        anchor_right  = 10.0
+        anchor_top    = 20.0
+        anchor_bottom = 20.0
+        fill = "#abc"
+      }
+    }
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read html");
+    // Container declares 200×100; child rect stretched against that
+    // with 10/10 horizontal and 20/20 vertical anchors.
+    assert!(
+        html.contains("<rect x=\"10\" y=\"20\" width=\"180\" height=\"60\" fill=\"#abc\""),
+        "{html}"
     );
 }
 

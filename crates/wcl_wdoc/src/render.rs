@@ -113,37 +113,73 @@ fn render_diagram(block: &Block<'_>) -> String {
     let cls = class_attr(block);
     let width = field_i64(block, "width").unwrap_or(0);
     let height = field_i64(block, "height").unwrap_or(0);
-    let shapes: String = block.blocks().filter_map(|b| render_shape(&b)).collect();
+    let shapes: String = block
+        .blocks()
+        .filter_map(|b| render_shape(&b, width as f64, height as f64))
+        .collect();
     format!(
         "<svg{cls} xmlns=\"http://www.w3.org/2000/svg\" width=\"{width}\" height=\"{height}\" \
          viewBox=\"0 0 {width} {height}\">{shapes}</svg>"
     )
 }
 
-fn render_shape(block: &Block<'_>) -> Option<String> {
+fn render_shape(block: &Block<'_>, parent_w: f64, parent_h: f64) -> Option<String> {
     match block.kind() {
-        "rect" => Some(render_rect(block)),
-        "circle" => Some(render_circle(block)),
-        "line" => Some(render_line(block)),
-        "label" => Some(render_label(block)),
-        "polygon" => Some(render_polygon(block)),
-        "container" => Some(render_container(block)),
+        "rect" => Some(render_rect(block, parent_w, parent_h)),
+        "circle" => Some(render_circle(block, parent_w, parent_h)),
+        "line" => Some(render_line(block, parent_w, parent_h)),
+        "label" => Some(render_label(block, parent_w, parent_h)),
+        "polygon" => Some(render_polygon(block, parent_w, parent_h)),
+        "container" => Some(render_container(block, parent_w, parent_h)),
         _ => None,
     }
 }
 
-fn render_container(block: &Block<'_>) -> String {
+fn render_container(block: &Block<'_>, parent_w: f64, parent_h: f64) -> String {
     let cls = class_attr(block);
-    let inner: String = block.blocks().filter_map(|b| render_shape(&b)).collect();
-    format!("<g{cls}>{inner}</g>")
+    let (x, y, w, h) = resolve_container_box(block, parent_w, parent_h);
+
+    let layout = field_symbol(block, "layout").unwrap_or_default();
+    let inner = match layout.as_str() {
+        "grid" => render_grid_children(block),
+        _ => block
+            .blocks()
+            .filter_map(|b| render_shape(&b, w, h))
+            .collect::<String>(),
+    };
+
+    let transform = if x != 0.0 || y != 0.0 {
+        format!(" transform=\"translate({x} {y})\"")
+    } else {
+        String::new()
+    };
+    format!("<g{cls}{transform}>{inner}</g>")
 }
 
-fn render_rect(block: &Block<'_>) -> String {
+fn render_grid_children(block: &Block<'_>) -> String {
+    let cols = field_i64(block, "columns").unwrap_or(1).max(1) as usize;
+    let cw = field_f64(block, "cell_width").unwrap_or(0.0);
+    let ch = field_f64(block, "cell_height").unwrap_or(0.0);
+    let gap = field_f64(block, "gap").unwrap_or(0.0);
+    block
+        .blocks()
+        .enumerate()
+        .filter_map(|(i, b)| {
+            let rendered = render_shape(&b, cw, ch)?;
+            let col = i % cols;
+            let row = i / cols;
+            let tx = col as f64 * (cw + gap);
+            let ty = row as f64 * (ch + gap);
+            Some(format!(
+                "<g transform=\"translate({tx} {ty})\">{rendered}</g>"
+            ))
+        })
+        .collect()
+}
+
+fn render_rect(block: &Block<'_>, parent_w: f64, parent_h: f64) -> String {
     let cls = class_attr(block);
-    let x = field_f64(block, "x").unwrap_or(0.0);
-    let y = field_f64(block, "y").unwrap_or(0.0);
-    let w = field_f64(block, "width").unwrap_or(0.0);
-    let h = field_f64(block, "height").unwrap_or(0.0);
+    let (x, y, w, h) = resolve_rect_box(block, parent_w, parent_h);
     let mut out = format!("<rect{cls} x=\"{x}\" y=\"{y}\" width=\"{w}\" height=\"{h}\"");
     append_attr(&mut out, "fill", field_utf8(block, "fill").as_deref());
     append_attr(&mut out, "stroke", field_utf8(block, "stroke").as_deref());
@@ -151,11 +187,9 @@ fn render_rect(block: &Block<'_>) -> String {
     out
 }
 
-fn render_circle(block: &Block<'_>) -> String {
+fn render_circle(block: &Block<'_>, parent_w: f64, parent_h: f64) -> String {
     let cls = class_attr(block);
-    let cx = field_f64(block, "cx").unwrap_or(0.0);
-    let cy = field_f64(block, "cy").unwrap_or(0.0);
-    let r = field_f64(block, "r").unwrap_or(0.0);
+    let (cx, cy, r) = resolve_circle(block, parent_w, parent_h);
     let mut out = format!("<circle{cls} cx=\"{cx}\" cy=\"{cy}\" r=\"{r}\"");
     append_attr(&mut out, "fill", field_utf8(block, "fill").as_deref());
     append_attr(&mut out, "stroke", field_utf8(block, "stroke").as_deref());
@@ -163,37 +197,196 @@ fn render_circle(block: &Block<'_>) -> String {
     out
 }
 
-fn render_line(block: &Block<'_>) -> String {
+fn render_line(block: &Block<'_>, parent_w: f64, parent_h: f64) -> String {
     let cls = class_attr(block);
     let x1 = field_f64(block, "x1").unwrap_or(0.0);
     let y1 = field_f64(block, "y1").unwrap_or(0.0);
     let x2 = field_f64(block, "x2").unwrap_or(0.0);
     let y2 = field_f64(block, "y2").unwrap_or(0.0);
-    let mut out = format!("<line{cls} x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\"");
+    let (ox, oy) = resolve_point_anchor(block, parent_w, parent_h);
+    let mut out = format!(
+        "<line{cls} x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\"",
+        x1 = x1 + ox,
+        y1 = y1 + oy,
+        x2 = x2 + ox,
+        y2 = y2 + oy,
+    );
     append_attr(&mut out, "stroke", field_utf8(block, "stroke").as_deref());
     out.push_str(" />");
     out
 }
 
-fn render_label(block: &Block<'_>) -> String {
+fn render_label(block: &Block<'_>, parent_w: f64, parent_h: f64) -> String {
     let cls = class_attr(block);
     let content = label_string(block).unwrap_or_default();
-    let x = field_f64(block, "x").unwrap_or(0.0);
-    let y = field_f64(block, "y").unwrap_or(0.0);
+    let own_x = field_f64(block, "x").unwrap_or(0.0);
+    let own_y = field_f64(block, "y").unwrap_or(0.0);
+    let (x, y) = resolve_point_anchored(block, parent_w, parent_h, own_x, own_y);
     let mut out = format!("<text{cls} x=\"{x}\" y=\"{y}\"");
     append_attr(&mut out, "fill", field_utf8(block, "fill").as_deref());
     write!(out, ">{}</text>", escape_html(&content)).expect("write to String");
     out
 }
 
-fn render_polygon(block: &Block<'_>) -> String {
+fn render_polygon(block: &Block<'_>, parent_w: f64, parent_h: f64) -> String {
     let cls = class_attr(block);
     let points = field_utf8(block, "points").unwrap_or_default();
+    let (ox, oy) = resolve_point_anchor(block, parent_w, parent_h);
     let mut out = format!("<polygon{cls} points=\"{}\"", escape_html(&points));
+    if ox != 0.0 || oy != 0.0 {
+        write!(out, " transform=\"translate({ox} {oy})\"").expect("write to String");
+    }
     append_attr(&mut out, "fill", field_utf8(block, "fill").as_deref());
     append_attr(&mut out, "stroke", field_utf8(block, "stroke").as_deref());
     out.push_str(" />");
     out
+}
+
+/// Resolve a `(x, y, width, height)` box for shapes that have native
+/// width/height fields. Per-axis: opposite anchors pin + stretch, a
+/// single anchor pins (preserving the authored size), missing anchors
+/// leave the authored value alone.
+fn resolve_rect_box(block: &Block<'_>, parent_w: f64, parent_h: f64) -> (f64, f64, f64, f64) {
+    let mut x = field_f64(block, "x").unwrap_or(0.0);
+    let mut y = field_f64(block, "y").unwrap_or(0.0);
+    let mut w = field_f64(block, "width").unwrap_or(0.0);
+    let mut h = field_f64(block, "height").unwrap_or(0.0);
+    apply_axis_anchor(
+        &mut x,
+        &mut w,
+        field_f64(block, "anchor_left"),
+        field_f64(block, "anchor_right"),
+        parent_w,
+    );
+    apply_axis_anchor(
+        &mut y,
+        &mut h,
+        field_f64(block, "anchor_top"),
+        field_f64(block, "anchor_bottom"),
+        parent_h,
+    );
+    (x, y, w, h)
+}
+
+/// Same model as `resolve_rect_box` but for `container`, which uses
+/// declared `width`/`height` as the intrinsic interior size.
+fn resolve_container_box(block: &Block<'_>, parent_w: f64, parent_h: f64) -> (f64, f64, f64, f64) {
+    let mut x = 0.0;
+    let mut y = 0.0;
+    let mut w = field_f64(block, "width").unwrap_or(parent_w);
+    let mut h = field_f64(block, "height").unwrap_or(parent_h);
+    apply_axis_anchor(
+        &mut x,
+        &mut w,
+        field_f64(block, "anchor_left"),
+        field_f64(block, "anchor_right"),
+        parent_w,
+    );
+    apply_axis_anchor(
+        &mut y,
+        &mut h,
+        field_f64(block, "anchor_top"),
+        field_f64(block, "anchor_bottom"),
+        parent_h,
+    );
+    (x, y, w, h)
+}
+
+fn apply_axis_anchor(
+    pos: &mut f64,
+    size: &mut f64,
+    near: Option<f64>,
+    far: Option<f64>,
+    parent: f64,
+) {
+    match (near, far) {
+        (Some(n), Some(f)) => {
+            *pos = n;
+            *size = parent - n - f;
+        }
+        (Some(n), None) => {
+            *pos = n;
+        }
+        (None, Some(f)) => {
+            *pos = parent - f - *size;
+        }
+        (None, None) => {}
+    }
+}
+
+/// Circle resolution. When any anchor is set on either axis, derive
+/// a bounding box from anchors + the shape's own radius, then center
+/// + shrink to fit.
+fn resolve_circle(block: &Block<'_>, parent_w: f64, parent_h: f64) -> (f64, f64, f64) {
+    let cx = field_f64(block, "cx").unwrap_or(0.0);
+    let cy = field_f64(block, "cy").unwrap_or(0.0);
+    let r = field_f64(block, "r").unwrap_or(0.0);
+    let al = field_f64(block, "anchor_left");
+    let ar = field_f64(block, "anchor_right");
+    let at = field_f64(block, "anchor_top");
+    let ab = field_f64(block, "anchor_bottom");
+    if al.is_none() && ar.is_none() && at.is_none() && ab.is_none() {
+        return (cx, cy, r);
+    }
+    let mut bx = cx - r;
+    let mut bw = 2.0 * r;
+    let mut by = cy - r;
+    let mut bh = 2.0 * r;
+    apply_axis_anchor(&mut bx, &mut bw, al, ar, parent_w);
+    apply_axis_anchor(&mut by, &mut bh, at, ab, parent_h);
+    let new_r = (bw.min(bh) / 2.0).max(0.0);
+    (bx + bw / 2.0, by + bh / 2.0, new_r)
+}
+
+/// Translation-only anchor — used by `line` / `polygon`, which don't
+/// have natural size fields. Returns the `(dx, dy)` offset to add to
+/// the shape's authored coordinates.
+fn resolve_point_anchor(block: &Block<'_>, parent_w: f64, parent_h: f64) -> (f64, f64) {
+    let dx = match (
+        field_f64(block, "anchor_left"),
+        field_f64(block, "anchor_right"),
+    ) {
+        (Some(l), _) => l,
+        (None, Some(r)) => parent_w - r,
+        _ => 0.0,
+    };
+    let dy = match (
+        field_f64(block, "anchor_top"),
+        field_f64(block, "anchor_bottom"),
+    ) {
+        (Some(t), _) => t,
+        (None, Some(b)) => parent_h - b,
+        _ => 0.0,
+    };
+    (dx, dy)
+}
+
+/// Anchor resolution for a single `(x, y)` point — used by `label`.
+/// If a near anchor is set, it overrides the authored coordinate.
+fn resolve_point_anchored(
+    block: &Block<'_>,
+    parent_w: f64,
+    parent_h: f64,
+    own_x: f64,
+    own_y: f64,
+) -> (f64, f64) {
+    let x = match (
+        field_f64(block, "anchor_left"),
+        field_f64(block, "anchor_right"),
+    ) {
+        (Some(l), _) => l,
+        (None, Some(r)) => parent_w - r,
+        _ => own_x,
+    };
+    let y = match (
+        field_f64(block, "anchor_top"),
+        field_f64(block, "anchor_bottom"),
+    ) {
+        (Some(t), _) => t,
+        (None, Some(b)) => parent_h - b,
+        _ => own_y,
+    };
+    (x, y)
 }
 
 fn class_attr(block: &Block<'_>) -> String {
@@ -239,6 +432,14 @@ fn field_bool(block: &Block<'_>, name: &str) -> Option<bool> {
     let field = block.field(name)?;
     match field.value().ok()? {
         Value::Bool(b) => Some(*b),
+        _ => None,
+    }
+}
+
+fn field_symbol(block: &Block<'_>, name: &str) -> Option<String> {
+    let field = block.field(name)?;
+    match field.value().ok()? {
+        Value::Symbol(s) => Some(s.clone()),
         _ => None,
     }
 }

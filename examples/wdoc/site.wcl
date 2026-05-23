@@ -1,5 +1,5 @@
-// Fundamental-block demo with classes. Higher-level blocks land in a
-// follow-up slice and lower to these.
+// Fundamental-block demo with classes + layout. Higher-level blocks
+// land in a follow-up and lower to these.
 
 class accent {
   color = "#003a8c"
@@ -32,8 +32,8 @@ page index {
   }
 
   diagram {
-    width  = 240
-    height = 80
+    width  = 280
+    height = 130
 
     rect {
       x = 10.0
@@ -51,7 +51,7 @@ page index {
     line {
       x1 = 0.0
       y1 = 40.0
-      x2 = 240.0
+      x2 = 280.0
       y2 = 40.0
       stroke = "#888"
     }
@@ -64,19 +64,42 @@ page index {
       fill   = "#fc8"
     }
 
+    // Grid-laid container: 3 cells, each rect stretches to fill its
+    // cell via anchors at all four sides.
     container {
-      class = ["badge"]
+      class         = ["badge"]
+      anchor_left   = 10.0
+      anchor_top    = 90.0
+      width         = 260.0
+      height        = 30.0
+      layout        = :grid
+      columns       = 3
+      cell_width    = 80.0
+      cell_height   = 30.0
+      gap           = 5.0
       rect {
-        x = 70.0
-        y = 55.0
-        width  = 40.0
-        height = 18.0
+        anchor_left   = 0.0
+        anchor_right  = 0.0
+        anchor_top    = 0.0
+        anchor_bottom = 0.0
         fill   = "#eef"
         stroke = "#99c"
       }
-      label "v1" {
-        x = 78.0
-        y = 68.0
+      rect {
+        anchor_left   = 0.0
+        anchor_right  = 0.0
+        anchor_top    = 0.0
+        anchor_bottom = 0.0
+        fill   = "#fee"
+        stroke = "#c99"
+      }
+      rect {
+        anchor_left   = 0.0
+        anchor_right  = 0.0
+        anchor_top    = 0.0
+        anchor_bottom = 0.0
+        fill   = "#efe"
+        stroke = "#9c9"
       }
     }
   }
