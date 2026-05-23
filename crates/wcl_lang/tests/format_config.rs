@@ -45,12 +45,18 @@ fn blank_line_cap_zero_collapses_blank_lines() {
         ..Default::default()
     };
     let out = render(src, &cfg);
-    assert!(!out.contains("\n\n"), "expected no blank line, got: {out:?}");
+    assert!(
+        !out.contains("\n\n"),
+        "expected no blank line, got: {out:?}"
+    );
 }
 
 #[test]
 fn default_config_matches_to_source() {
     let src = "a = 1\n\nb = 2\n";
     let ast = parse_for_edit(src, "test").expect("parse ok");
-    assert_eq!(to_source(&ast), to_source_with(&ast, &FormatConfig::default()));
+    assert_eq!(
+        to_source(&ast),
+        to_source_with(&ast, &FormatConfig::default())
+    );
 }

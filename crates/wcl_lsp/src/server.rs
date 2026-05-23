@@ -7,16 +7,16 @@ use dashmap::DashMap;
 use ropey::Rope;
 use tower_lsp::jsonrpc::Result as RpcResult;
 use tower_lsp::lsp_types::{
-    CodeActionParams, CodeActionProviderCapability, CodeActionResponse,
-    CompletionOptions, CompletionParams, CompletionResponse, DidChangeTextDocumentParams,
-    DidCloseTextDocumentParams, DidOpenTextDocumentParams, DocumentFormattingParams,
-    DocumentSymbolParams, DocumentSymbolResponse, GotoDefinitionParams, GotoDefinitionResponse,
-    Hover, HoverParams, HoverProviderCapability, InitializeParams, InitializeResult,
-    InitializedParams, Location, MessageType, OneOf, PositionEncodingKind, ReferenceParams,
-    SaveOptions, SemanticTokens, SemanticTokensFullOptions, SemanticTokensLegend,
-    SemanticTokensOptions, SemanticTokensParams, SemanticTokensResult,
-    SemanticTokensServerCapabilities, ServerCapabilities, ServerInfo, TextDocumentSyncCapability,
-    TextDocumentSyncKind, TextDocumentSyncOptions, TextDocumentSyncSaveOptions, TextEdit, Url,
+    CodeActionParams, CodeActionProviderCapability, CodeActionResponse, CompletionOptions,
+    CompletionParams, CompletionResponse, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
+    DidOpenTextDocumentParams, DocumentFormattingParams, DocumentSymbolParams,
+    DocumentSymbolResponse, GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverParams,
+    HoverProviderCapability, InitializeParams, InitializeResult, InitializedParams, Location,
+    MessageType, OneOf, PositionEncodingKind, ReferenceParams, SaveOptions, SemanticTokens,
+    SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions, SemanticTokensParams,
+    SemanticTokensResult, SemanticTokensServerCapabilities, ServerCapabilities, ServerInfo,
+    TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
+    TextDocumentSyncSaveOptions, TextEdit, Url,
 };
 use tower_lsp::{Client, LanguageServer};
 use wcl_lang::{format as wcl_format, parse_for_edit};
@@ -256,10 +256,7 @@ impl LanguageServer for Backend {
         })))
     }
 
-    async fn code_action(
-        &self,
-        params: CodeActionParams,
-    ) -> RpcResult<Option<CodeActionResponse>> {
+    async fn code_action(&self, params: CodeActionParams) -> RpcResult<Option<CodeActionResponse>> {
         let uri = params.text_document.uri;
         let Some(source) = self.document_text(&uri) else {
             return Ok(None);
@@ -271,4 +268,3 @@ impl LanguageServer for Backend {
         ))
     }
 }
-

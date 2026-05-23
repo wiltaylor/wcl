@@ -1,0 +1,13 @@
+---
+source: crates/wcl_lang/tests/snapshots.rs
+expression: rendered
+---
+wcl::eval::schema_violation
+
+  × top-level block 'service' has no @document schema
+    ╭─[13:1]
+ 12 │     
+ 13 │ ╭─▶ service web {
+ 14 │ ├─▶ }
+    · ╰──── schema violation
+    ╰────

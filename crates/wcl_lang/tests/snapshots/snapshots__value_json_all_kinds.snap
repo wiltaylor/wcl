@@ -1,0 +1,42 @@
+---
+source: crates/wcl_lang/tests/snapshots.rs
+expression: json
+---
+[
+  true,
+  -7,
+  42,
+  1.5,
+  "hi",
+  "gold",
+  null,
+  {
+    "shape": [
+      2
+    ],
+    "data": [
+      1.0,
+      2.0
+    ]
+  },
+  "Empty",
+  {
+    "Hold": 9
+  },
+  {
+    "Circle": {
+      "x": 1.5
+    }
+  },
+  {
+    "host": "a",
+    "port": 80
+  },
+  {
+    "kind": "Type",
+    "path": [
+      "pkg",
+      "Color"
+    ]
+  }
+]

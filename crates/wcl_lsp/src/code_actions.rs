@@ -10,8 +10,8 @@
 use std::collections::HashMap;
 
 use tower_lsp::lsp_types::{
-    CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionResponse, Diagnostic, NumberOrString,
-    Position, Range, TextEdit, Url, WorkspaceEdit,
+    CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionResponse, Diagnostic,
+    NumberOrString, Position, Range, TextEdit, Url, WorkspaceEdit,
 };
 
 /// Build code actions for every diagnostic the client knows about.
@@ -33,7 +33,11 @@ pub(crate) fn compute(
             actions.push(CodeActionOrCommand::CodeAction(action));
         }
     }
-    if actions.is_empty() { None } else { Some(actions) }
+    if actions.is_empty() {
+        None
+    } else {
+        Some(actions)
+    }
 }
 
 fn is_wcl_schema(diag: &Diagnostic) -> bool {
@@ -64,8 +68,8 @@ fn disallowed_child_fix(uri: &Url, source: &str, diag: &Diagnostic) -> Option<Co
     if !diag.message.contains("disallowed child") {
         return None;
     }
-    let label = extract_quoted(&diag.message, "disallowed child")
-        .unwrap_or_else(|| "block".to_string());
+    let label =
+        extract_quoted(&diag.message, "disallowed child").unwrap_or_else(|| "block".to_string());
     let range = expand_to_full_lines(source, diag.range);
     Some(make_action(
         format!("Remove disallowed `{label}` block"),

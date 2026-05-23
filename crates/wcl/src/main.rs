@@ -26,7 +26,9 @@ fn open_document(file: &Path, profile: bool) -> Result<Document, ParseError> {
 fn emit_profile(doc: &Document, profile: bool) {
     if profile && let Some(p) = doc.profile() {
         let json = profile_to_json(&p);
-        eprintln!("{}", serde_json::to_string_pretty(&json).unwrap());
+        let rendered = serde_json::to_string_pretty(&json)
+            .expect("serde_json::Value always serializes (string-keyed objects)");
+        eprintln!("{rendered}");
     }
 }
 

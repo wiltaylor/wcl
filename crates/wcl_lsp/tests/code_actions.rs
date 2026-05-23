@@ -39,9 +39,7 @@ async fn unknown_field_code_action_round_trip() {
     // diagnostic here to keep the test self-contained.
     let src = "@document\ntype Config {\n  name: utf8\n}\nname = \"a\"\nbogus = 1\n";
     open(backend, &uri, src).await;
-    let line_with_bogus = src[..src.find("bogus").unwrap()]
-        .matches('\n')
-        .count() as u32;
+    let line_with_bogus = src[..src.find("bogus").unwrap()].matches('\n').count() as u32;
     let diag = Diagnostic {
         range: Range {
             start: Position {

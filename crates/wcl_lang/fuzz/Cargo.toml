@@ -7,8 +7,13 @@ edition = "2024"
 [package.metadata]
 cargo-fuzz = true
 
+# Detached from the parent workspace — cargo-fuzz needs its own release
+# profile / sanitizer config and shouldn't be a workspace member.
+[workspace]
+
 [dependencies]
 libfuzzer-sys = "0.4"
+serde_json = "1"
 
 [dependencies.wcl_lang]
 path = ".."
@@ -28,5 +33,17 @@ doc = false
 [[bin]]
 name = "format_round_trip"
 path = "fuzz_targets/format_round_trip.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "json_round_trip"
+path = "fuzz_targets/json_round_trip.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "set_edit_path"
+path = "fuzz_targets/set_edit_path.rs"
 test = false
 doc = false

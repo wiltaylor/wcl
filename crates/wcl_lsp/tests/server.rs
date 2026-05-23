@@ -7,9 +7,10 @@
 use tower_lsp::LanguageServer;
 use tower_lsp::LspService;
 use tower_lsp::lsp_types::{
-    CompletionParams, CompletionResponse, DidOpenTextDocumentParams, DocumentFormattingParams,
-    FormattingOptions, HoverParams, InitializeParams, PartialResultParams, Position,
-    TextDocumentIdentifier, TextDocumentItem, TextDocumentPositionParams, Url,
+    CompletionParams, CompletionResponse, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
+    DocumentFormattingParams, FormattingOptions, HoverParams, InitializeParams,
+    PartialResultParams, Position, Range, TextDocumentContentChangeEvent, TextDocumentIdentifier,
+    TextDocumentItem, TextDocumentPositionParams, Url, VersionedTextDocumentIdentifier,
     WorkDoneProgressParams,
 };
 use wcl_lsp::Backend;
@@ -130,4 +131,74 @@ async fn hover_on_block_kind_returns_decl_snippet() {
     };
     assert!(body.contains("block kind"), "{body}");
     assert!(body.contains("type Config"), "{body}");
+}
+
+async fn format_source(backend: &Backend, uri: Url) -> String {
+    backend
+        .formatting(DocumentFormattingParams {
+            text_document: TextDocumentIdentifier { uri },
+            options: FormattingOptions::default(),
+            work_done_progress_params: WorkDoneProgressParams::default(),
+        })
+        .await
+        .expect("formatting")
+        .and_then(|edits| edits.into_iter().next().map(|e| e.new_text))
+        .unwrap_or_default()
+}
+
+#[tokio::test]
+async fn did_change_applies_ranged_edit() {
+    let svc = service();
+    let backend = svc.inner();
+    let uri = Url::parse("file:///inc.wcl").unwrap();
+    open(backend, &uri, "@schemaless\nfoo = 1\n").await;
+    // Replace the `1` at line 1, col 6..7 with `42`.
+    backend
+        .did_change(DidChangeTextDocumentParams {
+            text_document: VersionedTextDocumentIdentifier {
+                uri: uri.clone(),
+                version: 2,
+            },
+            content_changes: vec![TextDocumentContentChangeEvent {
+                range: Some(Range {
+                    start: Position {
+                        line: 1,
+                        character: 6,
+                    },
+                    end: Position {
+                        line: 1,
+                        character: 7,
+                    },
+                }),
+                range_length: None,
+                text: "42".into(),
+            }],
+        })
+        .await;
+    let new = format_source(backend, uri).await;
+    assert!(new.contains("foo = 42"), "got: {new:?}");
+}
+
+#[tokio::test]
+async fn did_change_full_replace_resets_doc() {
+    let svc = service();
+    let backend = svc.inner();
+    let uri = Url::parse("file:///rep.wcl").unwrap();
+    open(backend, &uri, "@schemaless\nfoo = 1\n").await;
+    backend
+        .did_change(DidChangeTextDocumentParams {
+            text_document: VersionedTextDocumentIdentifier {
+                uri: uri.clone(),
+                version: 2,
+            },
+            content_changes: vec![TextDocumentContentChangeEvent {
+                range: None,
+                range_length: None,
+                text: "@schemaless\nbar = 2\n".into(),
+            }],
+        })
+        .await;
+    let new = format_source(backend, uri).await;
+    assert!(new.contains("bar = 2"), "got: {new:?}");
+    assert!(!new.contains("foo"), "stale content: {new:?}");
 }

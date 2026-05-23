@@ -498,18 +498,43 @@ impl Printer {
             Expr::ParentKw(_) => self.push("parent"),
 
             // ----- numeric literals -----
-            Expr::I8(v) => write!(self.buf, "{v}i8").unwrap(),
-            Expr::I16(v) => write!(self.buf, "{v}i16").unwrap(),
-            Expr::I32(v) => write!(self.buf, "{v}i32").unwrap(),
-            Expr::I64(v) => write!(self.buf, "{v}").unwrap(), // i64 is the default
-            Expr::I128(v) => write!(self.buf, "{v}i128").unwrap(),
-            Expr::Isize(v) => write!(self.buf, "{v}isize").unwrap(),
-            Expr::U8(v) => write!(self.buf, "{v}u8").unwrap(),
-            Expr::U16(v) => write!(self.buf, "{v}u16").unwrap(),
-            Expr::U32(v) => write!(self.buf, "{v}u32").unwrap(),
-            Expr::U64(v) => write!(self.buf, "{v}u64").unwrap(),
-            Expr::U128(v) => write!(self.buf, "{v}u128").unwrap(),
-            Expr::Usize(v) => write!(self.buf, "{v}usize").unwrap(),
+            // write! into String is infallible; let _ = ... drops the Result.
+            Expr::I8(v) => {
+                let _ = write!(self.buf, "{v}i8");
+            }
+            Expr::I16(v) => {
+                let _ = write!(self.buf, "{v}i16");
+            }
+            Expr::I32(v) => {
+                let _ = write!(self.buf, "{v}i32");
+            }
+            Expr::I64(v) => {
+                let _ = write!(self.buf, "{v}"); // i64 is the default suffix
+            }
+            Expr::I128(v) => {
+                let _ = write!(self.buf, "{v}i128");
+            }
+            Expr::Isize(v) => {
+                let _ = write!(self.buf, "{v}isize");
+            }
+            Expr::U8(v) => {
+                let _ = write!(self.buf, "{v}u8");
+            }
+            Expr::U16(v) => {
+                let _ = write!(self.buf, "{v}u16");
+            }
+            Expr::U32(v) => {
+                let _ = write!(self.buf, "{v}u32");
+            }
+            Expr::U64(v) => {
+                let _ = write!(self.buf, "{v}u64");
+            }
+            Expr::U128(v) => {
+                let _ = write!(self.buf, "{v}u128");
+            }
+            Expr::Usize(v) => {
+                let _ = write!(self.buf, "{v}usize");
+            }
             Expr::F32(v) => {
                 self.print_float(*v as f64);
                 self.push("f32");
@@ -934,7 +959,9 @@ impl Printer {
                         self.push(", ");
                     }
                     match d {
-                        TensorDim::Fixed(n) => write!(self.buf, "{n}").unwrap(),
+                        TensorDim::Fixed(n) => {
+                            let _ = write!(self.buf, "{n}");
+                        }
                         TensorDim::Symbolic(s) => self.push(s),
                     }
                 }

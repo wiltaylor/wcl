@@ -492,3 +492,60 @@ fn repl_resolves_identifiers_against_open_file() {
         .success()
         .stdout(predicate::str::contains("9090"));
 }
+
+#[test]
+fn check_reports_non_utf8_file_as_io_error() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let file = tmp.path().join("bytes.wcl");
+    // Bytes that are valid neither UTF-8 nor ASCII: a lone 0xFF.
+    std::fs::write(&file, [0xFFu8, 0xFE, 0xFD]).expect("write fixture");
+    wcl().arg("check").arg(&file).assert().failure();
+}
+
+#[test]
+fn fmt_indent_zero_strips_block_indentation() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let file = tmp.path().join("doc.wcl");
+    std::fs::write(
+        &file,
+        "@schemaless\nservice \"web\" {\n  port = 8080u32\n}\n",
+    )
+    .expect("write fixture");
+    let out = wcl()
+        .arg("fmt")
+        .arg("--indent")
+        .arg("0")
+        .arg(&file)
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let text = String::from_utf8(out).expect("utf8 stdout");
+    // With indent=0 the field inside the block sits at column 0.
+    assert!(text.contains("\nport = 8080u32"), "got: {text:?}");
+}
+
+#[test]
+fn get_json_escapes_special_chars_in_strings() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let file = tmp.path().join("doc.wcl");
+    // Value contains a quote, a backslash and a newline — all must be
+    // JSON-escaped by the custom Value serializer.
+    std::fs::write(&file, "@schemaless\ntricky = \"a\\\"b\\\\c\\nd\"\n").expect("write fixture");
+    let out = wcl()
+        .arg("get")
+        .arg("--json")
+        .arg(&file)
+        .arg("tricky")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let text = String::from_utf8(out).expect("utf8 stdout");
+    // Must be valid JSON that round-trips to the original string.
+    let parsed: serde_json::Value = serde_json::from_str(text.trim()).expect("valid JSON");
+    let s = parsed.as_str().expect("JSON string");
+    assert_eq!(s, "a\"b\\c\nd");
+}

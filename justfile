@@ -39,6 +39,14 @@ ci: fmt-check lint test
 fuzz TARGET *ARGS:
     cd crates/wcl_lang && cargo +nightly fuzz run {{TARGET}} {{ARGS}}
 
+# Short fuzz sweep across every target (~15s each, ~75s total). Bounded
+# so it always terminates; exits nonzero on the first crash.
+test-fuzz:
+    @for t in parse eval format_round_trip json_round_trip set_edit_path; do \
+        echo "==> fuzz $t" >&2; \
+        (cd crates/wcl_lang && cargo +nightly fuzz run "$t" -- -runs=2000 -max_total_time=15) || exit 1; \
+    done
+
 # Profile each example with `wcl parse --profile`; JSON profile per file to stderr.
 examples-profile:
     @for f in examples/*.wcl; do \
