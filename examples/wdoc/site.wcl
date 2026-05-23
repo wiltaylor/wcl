@@ -1,0 +1,13 @@
+// Minimal wdoc example. Each `page <name> { ... }` produces one HTML
+// file under the build output directory.
+
+page index {
+  h1 "Welcome" {}
+  p  "Hello, world." {}
+}
+
+page about {
+  h1 "About"            {}
+  h2 "What is wdoc?"    {}
+  p  "A small WCL-driven static site generator." {}
+}

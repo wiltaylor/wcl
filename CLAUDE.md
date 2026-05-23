@@ -7,6 +7,7 @@ This branch (`rewrite`) is a clean restart of WCL. The previous implementation l
 - `crates/wcl_lang` — language library: lexer, parser, AST, document view, lazy evaluator, schema validator, host-binding API
 - `crates/wcl` — `wcl` CLI binary (`wcl parse`, `wcl check`, `wcl eval` / `wcl get`, `wcl set`, `wcl fmt`, `wcl repl`, `wcl lsp`)
 - `crates/wcl_lsp` — `tower-lsp` language server driving `wcl lsp`
+- `crates/wcl_wdoc` — `wdoc` CLI binary: WCL-driven static site generator (`wdoc build <file> --out <dir>`). Ships a bundled `wdoc.wcl` schema (page + h1..h6 + p blocks) that's stitched in front of the user source at parse time.
 - `crates/wcl_lang/fuzz` — `cargo-fuzz` targets (parse + eval); run via `just fuzz-run <target>` on nightly
 - `editors/vscode` — minimal VS Code extension stub that spawns `wcl lsp` for `.wcl` files
 - `editors/tree-sitter-wcl` — tree-sitter grammar stub for editors that consume them

@@ -1939,6 +1939,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "wcl_wdoc"
+version = "0.0.0"
+dependencies = [
+ "assert_cmd",
+ "clap",
+ "miette",
+ "predicates",
+ "tempfile",
+ "wcl_lang",
+]
+
+[[package]]
 name = "web-sys"
 version = "0.3.98"
 source = "registry+https://github.com/rust-lang/crates.io-index"

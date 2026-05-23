@@ -1,0 +1,28 @@
+// Built-in schema for `wdoc`. The wdoc binary prepends this to the
+// user's source in memory before parsing. Future versions may expose
+// the file for users to extend.
+
+@document
+type Site {
+  @children("page") pages: list<Page>
+}
+
+@block("page")
+type Page {
+  @inline(0) name: identifier
+  @children("h1") h1s: list<H1>
+  @children("h2") h2s: list<H2>
+  @children("h3") h3s: list<H3>
+  @children("h4") h4s: list<H4>
+  @children("h5") h5s: list<H5>
+  @children("h6") h6s: list<H6>
+  @children("p")  ps:  list<P>
+}
+
+@block("h1") type H1 { @inline(0) text: utf8 }
+@block("h2") type H2 { @inline(0) text: utf8 }
+@block("h3") type H3 { @inline(0) text: utf8 }
+@block("h4") type H4 { @inline(0) text: utf8 }
+@block("h5") type H5 { @inline(0) text: utf8 }
+@block("h6") type H6 { @inline(0) text: utf8 }
+@block("p")  type P  { @inline(0) text: utf8 }
