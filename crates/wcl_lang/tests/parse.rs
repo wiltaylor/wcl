@@ -1719,9 +1719,10 @@ fn edit_path_full_loop_writes_then_reevaluates() {
 #[test]
 fn field_source_path_attributes_eager_imports() {
     // `examples/imports/main.wcl` does `import "./shared.wcl"`, and
-    // shared.wcl declares `@schemaless brand`. Opening main.wcl and
-    // walking to `shared.brand` should report shared.wcl as the home
-    // file; a field declared directly in main.wcl reports None.
+    // shared.wcl declares `brand` under its own `@document` schema.
+    // Opening main.wcl and walking to `shared.brand` should report
+    // shared.wcl as the home file; a field declared directly in
+    // main.wcl reports None.
     let main = examples_dir().join("imports").join("main.wcl");
     let doc = Document::from_file(&main).expect("open imports/main.wcl");
 

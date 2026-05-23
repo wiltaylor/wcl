@@ -1254,7 +1254,12 @@ impl<'a> Field<'a> {
                 };
                 block.schema()
             }
-            None => self.doc.doc_schema(),
+            None => {
+                // `@document` is per-namespace: look up the schema
+                // that governs this field's source.
+                let field_ns = self.doc.find_field_source_ns(self.ast);
+                self.doc.doc_schema_for_ns(field_ns)
+            }
         };
         match parent_schema {
             Some(schema) => {
@@ -1308,8 +1313,10 @@ impl<'a> Field<'a> {
             let schema_field = schema.field(self.name())?;
             return Some(schema_field.type_ref());
         }
-        // Top-level field: consult the @document schema if present.
-        let doc_schema = self.doc.doc_schema()?;
+        // Top-level field: consult the @document schema in this
+        // field's source namespace, if any.
+        let field_ns = self.doc.find_field_source_ns(self.ast);
+        let doc_schema = self.doc.doc_schema_for_ns(field_ns)?;
         let schema_field = doc_schema.field(self.name())?;
         Some(schema_field.type_ref())
     }

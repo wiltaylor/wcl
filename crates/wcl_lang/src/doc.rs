@@ -236,6 +236,24 @@ impl Document {
         find_lazy_in_blocks(&self.ast.items, &self.cells.items, target)
     }
 
+    /// Like [`find_field_source_path`] but returns the source's
+    /// `file_ns` (the namespace declared at the top of that file).
+    /// Falls back to the document's own `file_ns` when the field
+    /// isn't located in any known source — callers treat the main
+    /// document as the default.
+    pub(crate) fn find_field_source_ns(&self, target: *const ast::Field) -> &[String] {
+        if field_in_items(&self.ast.items, target, &self.cells.items) {
+            return &self.file_ns;
+        }
+        for imp in &self.eager_imports {
+            if let Some(ns) = find_field_ns_in_import(imp, target) {
+                return ns;
+            }
+        }
+        find_lazy_field_ns_in_blocks(&self.ast.items, &self.cells.items, target)
+            .unwrap_or(&self.file_ns)
+    }
+
     fn all_sources(&self) -> Vec<SourceView<'_>> {
         let mut out = vec![SourceView {
             symbols: &self.symbols,
@@ -906,6 +924,17 @@ impl Document {
             .next()
     }
 
+    /// Look up the `@document` type that governs `file_ns`.
+    /// `@document` is scoped per-namespace: each namespace may declare
+    /// at most one, and that schema only validates items declared in
+    /// the same namespace. Imported files in a different namespace
+    /// are validated by their own `@document` (or none if absent).
+    pub(crate) fn doc_schema_for_ns(&self, file_ns: &[String]) -> Option<TypeDecl<'_>> {
+        self.find_all_decorated(BuiltinDecorator::Document)
+            .into_iter()
+            .find(|t| t.file_ns() == file_ns)
+    }
+
     /// Every type declaration carrying the named decorator. Used by
     /// the document-level validator to detect duplicate `@document`
     /// declarations.
@@ -933,163 +962,171 @@ impl Document {
     /// `Block::schema_errors()` collected recursively.
     pub fn schema_errors(&self) -> Vec<EvalError> {
         use crate::error::SchemaViolationKind as Kind;
+        use std::collections::BTreeMap;
         let mut out = Vec::new();
 
-        // Detect multiple @document declarations (the first one
-        // wins for `doc_schema()` but the duplicates are surfaced
-        // as a violation).
+        // Group every `@document` type by its file_ns. Each namespace
+        // is independent: a `@document` only governs items in its own
+        // namespace, and at most one `@document` is allowed per ns.
         let doc_schemas = self.find_all_decorated(BuiltinDecorator::Document);
-        for extra in doc_schemas.iter().skip(1) {
-            EvalError::push_schema_violation(
-                &mut out,
-                Kind::MultipleDocumentSchemas,
-                format!("type '{}' declares an extra @document schema", extra.name()),
-                extra.span(),
-            );
+        let mut by_ns: BTreeMap<Vec<String>, Vec<TypeDecl<'_>>> = BTreeMap::new();
+        for d in &doc_schemas {
+            by_ns.entry(d.file_ns().to_vec()).or_default().push(*d);
         }
-        let root = doc_schemas.first().copied();
-
-        // Walk the top-level fields.
-        for f in self.fields() {
-            if has_schemaless(&f.ast.decorators) {
-                continue;
+        for decls in by_ns.values() {
+            for extra in decls.iter().skip(1) {
+                EvalError::push_schema_violation(
+                    &mut out,
+                    Kind::MultipleDocumentSchemas,
+                    format!("type '{}' declares an extra @document schema", extra.name()),
+                    extra.span(),
+                );
             }
-            match root {
-                Some(schema) => {
-                    let Some(declared) = schema.field(f.name()) else {
-                        EvalError::push_schema_violation(
-                            &mut out,
-                            Kind::UnknownField,
-                            format!(
-                                "top-level field '{}' is not declared by @document schema '{}'",
-                                f.name(),
-                                schema.name()
-                            ),
-                            f.span(),
-                        );
-                        continue;
-                    };
-                    // Value-vs-declared-type check.
-                    if let Ok(v) = f.value() {
-                        // Union path: variant FQN must match.
-                        if let TypeRef::Named(path) = declared.type_ref()
-                            && let Some(union_decl) = self.union_decl(&path.join("."))
-                        {
-                            if let Value::Variant { union, variant, .. } = v
-                                && union != &union_decl.ast.name
+        }
+
+        // Walk every source (the main file + every eagerly-imported
+        // file). Each source's items are validated against the
+        // `@document` declared in that source's namespace, if any.
+        for src in self.all_sources() {
+            let root = by_ns.get(src.file_ns).and_then(|v| v.first()).copied();
+
+            // Pre-compute the schema's union-typed children slots so
+            // structurally-matched blocks bypass the kind check.
+            let root_union_slots: Vec<UnionDecl<'_>> = root
+                .map(|s| {
+                    s.fields()
+                        .filter_map(|f| {
+                            f.children_kind_or_union()
+                                .and_then(|k| k.as_union().copied())
+                                .or_else(|| {
+                                    f.child_kind_or_union().and_then(|k| k.as_union().copied())
+                                })
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+
+            // Walk the top-level fields in this source.
+            for f in iter_fields(src.items, src.cells, self, Scope::root()) {
+                if has_schemaless(&f.ast.decorators) {
+                    continue;
+                }
+                match root {
+                    Some(schema) => {
+                        let Some(declared) = schema.field(f.name()) else {
+                            EvalError::push_schema_violation(
+                                &mut out,
+                                Kind::UnknownField,
+                                format!(
+                                    "top-level field '{}' is not declared by @document schema '{}'",
+                                    f.name(),
+                                    schema.name()
+                                ),
+                                f.span(),
+                            );
+                            continue;
+                        };
+                        if let Ok(v) = f.value() {
+                            if let TypeRef::Named(path) = declared.type_ref()
+                                && let Some(union_decl) = self.union_decl(&path.join("."))
                             {
+                                if let Value::Variant { union, variant, .. } = v
+                                    && union != &union_decl.ast.name
+                                {
+                                    EvalError::push_schema_violation(
+                                        &mut out,
+                                        Kind::VariantUnionMismatch,
+                                        format!(
+                                            "field '{}' declared as union '{}' but value is {}::{}",
+                                            f.name(),
+                                            union_decl.ast.name.join("."),
+                                            union.join("."),
+                                            variant,
+                                        ),
+                                        f.span(),
+                                    );
+                                }
+                            } else if !value_matches_type_ref(v, declared.type_ref()) {
                                 EvalError::push_schema_violation(
                                     &mut out,
-                                    Kind::VariantUnionMismatch,
+                                    Kind::FieldTypeMismatch,
                                     format!(
-                                        "field '{}' declared as union '{}' but value is {}::{}",
+                                        "field '{}' declared as {} but value is {}",
                                         f.name(),
-                                        union_decl.ast.name.join("."),
-                                        union.join("."),
-                                        variant,
+                                        declared.type_ref(),
+                                        v.type_name(),
                                     ),
                                     f.span(),
                                 );
                             }
-                        } else if !value_matches_type_ref(v, declared.type_ref()) {
-                            EvalError::push_schema_violation(
-                                &mut out,
-                                Kind::FieldTypeMismatch,
-                                format!(
-                                    "field '{}' declared as {} but value is {}",
-                                    f.name(),
-                                    declared.type_ref(),
-                                    v.type_name(),
-                                ),
-                                f.span(),
-                            );
                         }
                     }
+                    None => {
+                        EvalError::push_schema_violation(
+                            &mut out,
+                            Kind::NoDocumentSchema,
+                            format!("top-level field '{}' has no @document schema", f.name()),
+                            f.span(),
+                        );
+                    }
                 }
-                None => {
+            }
+
+            // Walk the top-level blocks in this source.
+            for b in iter_blocks(src.items, src.cells, self, Scope::root()) {
+                if has_schemaless(&b.ast.decorators) {
+                    continue;
+                }
+                let dispatched_through_union = root_union_slots
+                    .iter()
+                    .any(|u| variant_dispatch::block_to_variant(self, &b, *u).is_ok());
+                if dispatched_through_union {
+                    continue;
+                }
+                if !self.is_registered_kind(b.kind()) {
+                    let mut msg = format!(
+                        "block kind '{}' has no @block or @table declaration",
+                        b.kind()
+                    );
+                    if !root_union_slots.is_empty() {
+                        let variants = format_union_variants_hint(self, &root_union_slots);
+                        if !variants.is_empty() {
+                            msg.push_str(&format!(" (nearby @children union accepts: {variants})"));
+                        }
+                    }
+                    EvalError::push_schema_violation(
+                        &mut out,
+                        Kind::UnregisteredKind,
+                        msg,
+                        b.span(),
+                    );
+                    continue;
+                }
+                if let Some(schema) = root {
+                    let allowed = schema.allowed_child_kinds();
+                    if !allowed.iter().any(|k| k == b.kind()) {
+                        EvalError::push_schema_violation(
+                            &mut out,
+                            Kind::DisallowedChild,
+                            format!(
+                                "block kind '{}' is not allowed at the document root by @document schema '{}'",
+                                b.kind(),
+                                schema.name()
+                            ),
+                            b.span(),
+                        );
+                    }
+                } else {
                     EvalError::push_schema_violation(
                         &mut out,
                         Kind::NoDocumentSchema,
-                        format!("top-level field '{}' has no @document schema", f.name()),
-                        f.span(),
-                    );
-                }
-            }
-        }
-
-        // Pre-compute the @document schema's union-typed children
-        // slots: a block matching one of these unions by structural
-        // shape is accepted regardless of its kind name.
-        let root_union_slots: Vec<UnionDecl<'_>> = root
-            .map(|s| {
-                s.fields()
-                    .filter_map(|f| {
-                        f.children_kind_or_union()
-                            .and_then(|k| k.as_union().copied())
-                            .or_else(|| f.child_kind_or_union().and_then(|k| k.as_union().copied()))
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        // Walk the top-level blocks.
-        for b in self.blocks() {
-            if has_schemaless(&b.ast.decorators) {
-                continue;
-            }
-            // A block dispatched through a union @children slot is
-            // exempt from kind registration + the disallowed-child
-            // check + recursion into its own schema errors (the
-            // dispatcher applies its own structural rules).
-            let dispatched_through_union = root_union_slots
-                .iter()
-                .any(|u| variant_dispatch::block_to_variant(self, &b, *u).is_ok());
-            if dispatched_through_union {
-                continue;
-            }
-            // First: the kind must be registered.
-            if !self.is_registered_kind(b.kind()) {
-                let mut msg = format!(
-                    "block kind '{}' has no @block or @table declaration",
-                    b.kind()
-                );
-                if !root_union_slots.is_empty() {
-                    let variants = format_union_variants_hint(self, &root_union_slots);
-                    if !variants.is_empty() {
-                        msg.push_str(&format!(" (nearby @children union accepts: {variants})"));
-                    }
-                }
-                EvalError::push_schema_violation(&mut out, Kind::UnregisteredKind, msg, b.span());
-                // Skip nested validation — the block has no schema
-                // to validate against.
-                continue;
-            }
-            // Second: the doc schema (if any) must accept this kind.
-            if let Some(schema) = root {
-                let allowed = schema.allowed_child_kinds();
-                if !allowed.iter().any(|k| k == b.kind()) {
-                    EvalError::push_schema_violation(
-                        &mut out,
-                        Kind::DisallowedChild,
-                        format!(
-                            "block kind '{}' is not allowed at the document root by @document schema '{}'",
-                            b.kind(),
-                            schema.name()
-                        ),
+                        format!("top-level block '{}' has no @document schema", b.kind()),
                         b.span(),
                     );
                 }
-            } else {
-                EvalError::push_schema_violation(
-                    &mut out,
-                    Kind::NoDocumentSchema,
-                    format!("top-level block '{}' has no @document schema", b.kind()),
-                    b.span(),
-                );
-            }
-            // Third: recurse into the block's own schema errors.
-            for e in b.schema_errors() {
-                out.push(e.clone());
+                for e in b.schema_errors() {
+                    out.push(e.clone());
+                }
             }
         }
 
@@ -1507,6 +1544,59 @@ fn find_in_import(imp: &cells::LoadedImport, target: *const ast::Field) -> Optio
     for child in &imp.eager_imports {
         if let Some(p) = find_in_import(child, target) {
             return Some(p);
+        }
+    }
+    None
+}
+
+/// Like [`find_in_import`] but returns the import's `file_ns`.
+fn find_field_ns_in_import(
+    imp: &cells::LoadedImport,
+    target: *const ast::Field,
+) -> Option<&[String]> {
+    if field_in_items(&imp.items, target, &imp.cells) {
+        return Some(&imp.file_ns);
+    }
+    if let Some(ns) = find_lazy_field_ns_in_blocks(&imp.items, &imp.cells, target) {
+        return Some(ns);
+    }
+    for child in &imp.eager_imports {
+        if let Some(ns) = find_field_ns_in_import(child, target) {
+            return Some(ns);
+        }
+    }
+    None
+}
+
+/// Like [`find_lazy_in_blocks`] but returns the originating import's
+/// `file_ns` rather than its path.
+fn find_lazy_field_ns_in_blocks<'a>(
+    items: &'a [ast::Item],
+    cells: &'a [ItemCells],
+    target: *const ast::Field,
+) -> Option<&'a [String]> {
+    for (i, item) in items.iter().enumerate() {
+        let Some(cell) = cells.get(i) else { continue };
+        if let ast::Item::Block(b) = item {
+            let block_cells = match &cell.kind {
+                ItemCellKind::Block { items: inner, .. } => inner.as_slice(),
+                _ => continue,
+            };
+            for (j, inner_item) in b.items.iter().enumerate() {
+                let Some(inner_cell) = block_cells.get(j) else {
+                    continue;
+                };
+                if let ast::Item::Import(_) = inner_item
+                    && let ItemCellKind::Import { loaded, .. } = &inner_cell.kind
+                    && let Some(Ok(li)) = loaded.get()
+                    && let Some(ns) = find_field_ns_in_import(li, target)
+                {
+                    return Some(ns);
+                }
+            }
+            if let Some(ns) = find_lazy_field_ns_in_blocks(&b.items, block_cells, target) {
+                return Some(ns);
+            }
         }
     }
     None
