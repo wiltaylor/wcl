@@ -35,6 +35,11 @@ cli-install:
 workspace-test:
     cargo test --workspace
 
+# Run wdoc tests only (unit + integration in crates/wcl_wdoc)
+[group('test')]
+wdoc-test:
+    cargo test -p wcl_wdoc
+
 # Run one cargo-fuzz target (nightly + cargo-fuzz required); pass extra flags after --
 [group('test')]
 fuzz-run TARGET *ARGS:
@@ -66,6 +71,11 @@ ci: fmt-check workspace-lint workspace-test
 [group('dev')]
 cli-run *ARGS:
     cargo run -p wcl -- {{ARGS}}
+
+# Serve examples/wdoc/site.wcl with `wdoc serve`; pass extra flags after --
+[group('dev')]
+wdoc-serve *ARGS:
+    cargo run -p wcl_wdoc -- serve examples/wdoc/site.wcl {{ARGS}}
 
 # Run criterion benchmarks
 [group('dev')]
