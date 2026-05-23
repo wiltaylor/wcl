@@ -2,6 +2,12 @@
 // resolved through the field's lexical scope (innermost block out,
 // then the document root). `self` and `parent` walk upward.
 
+@document
+type Cfg {
+  fallback_user: utf8
+  @child("db") db: DB
+}
+
 @table("user") type User {
   name: utf8
   age:  u32
@@ -14,9 +20,9 @@
 }
 
 // A top-level value, addressable by bare identifier from any scope.
-@schemaless fallback_user = "guest"
+fallback_user = "guest"
 
-@schemaless db production {
+db production {
   users:
     | "alice" | 30 |
     | "bob"   | 25 |

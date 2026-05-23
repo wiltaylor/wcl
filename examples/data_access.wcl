@@ -1,9 +1,30 @@
 // Fixture for the lazy data-access (DataRef) tests.
 
-@schemaless port = 8080
-@schemaless name = "alpha"
+@document
+type Cfg {
+  port: i64
+  name: utf8
+  @child("service") service: Service
+}
 
-@schemaless service "web" {
+@block("service")
+type Service {
+  @inline(0) id: identifier
+  port:   i64
+  region: utf8
+  @child("metadata") metadata: Metadata
+}
+
+@block("metadata")
+type Metadata {
+  owner: utf8
+  tier:  symbol
+}
+
+port = 8080
+name = "alpha"
+
+service "web" {
   port = 9090
   region = "us-east-1"
 

@@ -1269,6 +1269,8 @@ pub(crate) fn value_matches_type_ref(value: &Value, ty: &TypeRef) -> bool {
         // currently carry on `Value`.
         (Value::Tensor { .. }, TypeRef::Tensor { .. }) => true,
         (Value::Function(_), TypeRef::Function { .. }) => true,
+        // `&T` fields evaluate to a `Value::DataPath` (lazy navigator).
+        (Value::DataPath { .. }, TypeRef::Reference(_)) => true,
         _ => false,
     }
 }

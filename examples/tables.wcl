@@ -1,6 +1,11 @@
 // Tables: types decorated with @table become row-schemas. Instances
 // are written as `FIELD:` followed by pipe-delimited rows.
 
+@document
+type Cfg {
+  @child("db") db: DB
+}
+
 @table("user")
 type User {
   name:   utf8
@@ -13,7 +18,7 @@ type DB {
   @children("user") users: list<User>
 }
 
-@schemaless db production {
+db production {
   users:
     | "alice" | 30 | true  |
     | "bob"   | 25 | false |

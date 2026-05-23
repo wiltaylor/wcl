@@ -99,7 +99,7 @@ enum Command {
     },
     /// Parse a WCL file and re-emit it in canonical form. Comments and
     /// blank-line groupings survive; indentation, brace style, number
-    /// radix and string-delimiter choice are normalised.
+    /// radix and string-delimiter choice are normalized.
     Fmt {
         /// Path to a WCL source file.
         file: PathBuf,
@@ -192,13 +192,10 @@ fn main() -> ExitCode {
             in_place,
             indent,
             no_trailing_comma,
-        } => match run_fmt(&file, in_place, indent, no_trailing_comma) {
-            Ok(code) => code,
-            Err(msg) => {
-                eprintln!("{msg}");
-                EXIT_IO
-            }
-        },
+        } => run_fmt(&file, in_place, indent, no_trailing_comma).unwrap_or_else(|msg| {
+            eprintln!("{msg}");
+            EXIT_IO
+        }),
         Command::Repl { file } => run_repl(file.as_deref()),
         Command::Lsp { tcp, log } => {
             if let Some(log_path) = log
@@ -231,13 +228,10 @@ fn main() -> ExitCode {
                 }
             }
         }
-        Command::Set { file, path, value } => match run_set(&file, &path, &value) {
-            Ok(code) => code,
-            Err(msg) => {
-                eprintln!("{msg}");
-                EXIT_IO
-            }
-        },
+        Command::Set { file, path, value } => run_set(&file, &path, &value).unwrap_or_else(|msg| {
+            eprintln!("{msg}");
+            EXIT_IO
+        }),
         Command::Eval {
             file,
             path,

@@ -3,23 +3,33 @@
 // evaluated. Document-scope identifiers (fields, blocks, types,
 // unions) resolve at call time and don't need capture.
 
+@document
+type Demo {
+  captured:  i64
+  adder:     fn(i64) -> fn(i64) -> i64
+  add10:     fn(i64) -> i64
+  fifteen:   i64
+  seven:     i64
+  shadowing: i64
+}
+
 // ── 1. Capture across a let block ────────────────────────────────────
-@schemaless captured = {
+captured = {
   let n = 5;
   let f = fn(x: i64) -> i64 x + n;
   f(3)                                                       // -> 8
 }
 
 // ── 2. Curried adder ─────────────────────────────────────────────────
-@schemaless adder    = fn(x: i64) -> fn(i64) -> i64 fn(y: i64) -> i64 x + y
-@schemaless add10    = adder(10)
-@schemaless fifteen  = add10(5)                              // -> 15
+adder    = fn(x: i64) -> fn(i64) -> i64 fn(y: i64) -> i64 x + y
+add10    = adder(10)
+fifteen  = add10(5)                                          // -> 15
 
 // ── 3. Inline curry call ─────────────────────────────────────────────
-@schemaless seven    = adder(3)(4)                           // -> 7
+seven    = adder(3)(4)                                       // -> 7
 
 // ── 4. Parameter shadows capture ─────────────────────────────────────
-@schemaless shadowing = {
+shadowing = {
   let n = 100;
   let f = fn(n: i64) -> i64 n;
   f(7)                                                       // -> 7 (param wins)

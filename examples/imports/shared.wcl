@@ -4,4 +4,8 @@ type Color {
   name: utf8
 }
 
+// `brand` lives at the root of the `shared` namespace. main.wcl's
+// `@document` schema covers the `app` namespace only, so this field
+// can't be declared there; per-field `@schemaless` is the structural
+// fix, not a stylistic shortcut.
 @schemaless brand = "wcl"

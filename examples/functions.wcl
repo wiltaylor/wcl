@@ -2,17 +2,27 @@
 // passed around like any other value. They can also appear as types in
 // type-decl fields.
 
+@document
+type Demo {
+  double:      fn(i32) -> i32
+  sum_squared: fn(i32, i32) -> i32
+  is_big:      fn(i32) -> bool
+  adder:       fn(i32) -> fn(i32) -> i32
+  expr:        fn(i32, i32) -> i32
+  call_form:   fn(i32) -> i32
+}
+
 // Bare-expression body.
-@schemaless double = fn(x: i32) -> i32 x * 2
+double = fn(x: i32) -> i32 x * 2
 
 // Block body with let-bindings and a final tail expression.
-@schemaless sum_squared = fn(x: i32, y: i32) -> i32 {
+sum_squared = fn(x: i32, y: i32) -> i32 {
   let s = x + y;
   s * s
 }
 
 // Operators: arithmetic, comparison, logical.
-@schemaless is_big = fn(x: i32) -> bool x > 100 && x < 1000
+is_big = fn(x: i32) -> bool x > 100 && x < 1000
 
 // Function types appear in type-decl fields.
 type Handler {
@@ -22,11 +32,11 @@ type Handler {
 }
 
 // Higher-order: a function that returns a function.
-@schemaless adder = fn(x: i32) -> fn(i32) -> i32 fn(y: i32) -> i32 x + y
+adder = fn(x: i32) -> fn(i32) -> i32 fn(y: i32) -> i32 x + y
 
 // Unary minus, parens, mixed precedence.
-@schemaless expr = fn(x: i32, y: i32) -> i32 (x + y) * -2
+expr = fn(x: i32, y: i32) -> i32 (x + y) * -2
 
 // Calls (the callee `add` is just an identifier reference — no evaluator
 // yet, but it parses).
-@schemaless call_form = fn(n: i32) -> i32 add(n, 1)
+call_form = fn(n: i32) -> i32 add(n, 1)

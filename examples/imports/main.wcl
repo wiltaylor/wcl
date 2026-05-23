@@ -2,7 +2,20 @@ namespace app
 
 import "./shared.wcl"
 
-@schemaless service "web" {
+@document
+type App {
+  @child("service") svc: Service
+}
+
+@block("service")
+type Service {
+  @inline(0) id: utf8
+  port:   i64
+  region: utf8
+  tier:   symbol
+}
+
+service "web" {
   import "./web-defaults.wcl"
   port = 9090
 }

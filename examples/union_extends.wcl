@@ -14,11 +14,6 @@ union Extended extends Result {
   Pending none
 }
 
-@schemaless r_ok      = Result::Ok { value: 1 }
-@schemaless e_ok      = Extended::Ok { value: 2 }           // inherited
-@schemaless e_pend    = Extended::Pending                   // own
-@schemaless e_err     = Extended::Err { message: "bad" }    // inherited
-
 // ── 2. Variant body `&Interface` ─────────────────────────────────────
 interface Named {
   name: utf8
@@ -29,10 +24,25 @@ union Reporter {
   Wrapped &Named                                            // any value implementing Named
 }
 
-@schemaless gauge   = Reporter::AsValue { name: "rpm", reading: 1200.0 }
+@document
+type Demo {
+  r_ok:    Result
+  e_ok:    Extended
+  e_pend:  Extended
+  e_err:   Extended
+  gauge:   Reporter
+  wrapped: Reporter
+}
+
+r_ok      = Result::Ok { value: 1 }
+e_ok      = Extended::Ok { value: 2 }                       // inherited
+e_pend    = Extended::Pending                               // own
+e_err     = Extended::Err { message: "bad" }                // inherited
+
+gauge   = Reporter::AsValue { name: "rpm", reading: 1200.0 }
 // `Wrapped` accepts any variant value whose record covers Named's fields.
 // `AsValue` satisfies Named (has `name: utf8`), so wrapping is valid.
-@schemaless wrapped = Reporter::Wrapped(gauge)
+wrapped = Reporter::Wrapped(gauge)
 
 // ── 3. Value-vs-declared-type schema validation ──────────────────────
 //

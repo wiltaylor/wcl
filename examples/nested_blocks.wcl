@@ -1,6 +1,12 @@
 // Schema-driven nested blocks. The Service type binds child blocks
 // to its declared fields via @child (singleton) and @children (list).
 
+@document
+type Cfg {
+  ports: list<i64>
+  @child("service") svc: Service
+}
+
 @block("service",
        max_children = 50,
        required_children = ["config"])
@@ -23,11 +29,11 @@ type Route {
 }
 
 // Plain list literal at the top level.
-@schemaless ports = [80, 443, 8080]
+ports = [80, 443, 8080]
 
 // Instance:
 
-@schemaless service web {
+service web {
   config {
     region = "us-east-1"
     tier   = :gold

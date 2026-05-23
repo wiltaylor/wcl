@@ -2,25 +2,39 @@
 // head / tail / tensor) ship with every `Environment::new`, so this
 // fixture parses against the default environment without any host
 // registrations.
-//
-// As with examples/builtins.wcl, fields are `@schemaless` because the
-// fixture exists to drive evaluator tests, not model a real config.
 
-@schemaless xs        = [1, 2, 3, 4]
+@document
+type Demo {
+  xs:        list<i64>
+  doubled:   list<i64>
+  evens:     list<i64>
+  total:     i64
+  count:     i64
+  quick_sum: i64
+  first:     i64
+  rest:      list<i64>
+  r:         list<i64>
+  t:         tensor<i64, [2, 3]>
+  t_mapped:  tensor<i64, [2, 3]>
+  t_shape:   list<i64>
+  t_data:    list<i64>
+}
 
-@schemaless doubled   = map(xs, fn(x: i64) -> i64 x * 2)
-@schemaless evens     = filter(xs, fn(x: i64) -> bool x % 2 == 0)
-@schemaless total     = fold(xs, 0, fn(acc: i64, x: i64) -> i64 acc + x)
+xs        = [1, 2, 3, 4]
 
-@schemaless count     = len(xs)
-@schemaless quick_sum = sum(xs)
-@schemaless first     = head(xs)
-@schemaless rest      = tail(xs)
-@schemaless r         = range(0, 5)
+doubled   = map(xs, fn(x: i64) -> i64 x * 2)
+evens     = filter(xs, fn(x: i64) -> bool x % 2 == 0)
+total     = fold(xs, 0, fn(acc: i64, x: i64) -> i64 acc + x)
+
+count     = len(xs)
+quick_sum = sum(xs)
+first     = head(xs)
+rest      = tail(xs)
+r         = range(0, 5)
 
 // Tensor round-trip: build a 2×3 from a flat list, map across it,
 // then read shape and data back out.
-@schemaless t         = tensor([1, 2, 3, 4, 5, 6], [2, 3])
-@schemaless t_mapped  = map(t, fn(x: i64) -> i64 x + 10)
-@schemaless t_shape   = tensor_shape(t_mapped)
-@schemaless t_data    = tensor_data(t_mapped)
+t         = tensor([1, 2, 3, 4, 5, 6], [2, 3])
+t_mapped  = map(t, fn(x: i64) -> i64 x + 10)
+t_shape   = tensor_shape(t_mapped)
+t_data    = tensor_data(t_mapped)

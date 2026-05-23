@@ -6,12 +6,21 @@
 // encoding name after the `$`. Heredocs work the same way: `$<<TAG`
 // is an interpolated heredoc.
 
-@schemaless name  = "alice"
-@schemaless count = 3u32
+@document
+type Demo {
+  name:     utf8
+  count:    u32
+  greeting: utf8
+  ascii_id: ascii
+  body:     utf8
+}
 
-@schemaless greeting = $"Hello, ${name}! You have ${count + 1u32} item(s)."
-@schemaless ascii_id = $ascii"id=${name}"
-@schemaless body     = $<<EOF
+name  = "alice"
+count = 3u32
+
+greeting = $"Hello, ${name}! You have ${count + 1u32} item(s)."
+ascii_id = $ascii"id=${name}"
+body     = $<<EOF
   name=${name}
   count=${count * 10u32}
   EOF

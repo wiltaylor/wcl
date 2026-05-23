@@ -9,24 +9,35 @@
 // Running this through the bare `wcl` CLI will report "unknown built-in"
 // errors — the CLI doesn't ship a stdlib. Real hosts register what they
 // need.
-//
-// This fixture exercises expression eval; it doesn't model a real
-// configuration, so each top-level field is `@schemaless` to opt out
-// of strict-validation.
 
-@schemaless name      = "alpha"
-@schemaless greeting  = upper("hello")            // literal arg
-@schemaless shouted   = upper(name)               // identifier arg -> field lookup
-@schemaless total     = add(len("hi"), 1)         // nested call
+@document
+type Demo {
+  name:     utf8
+  greeting: utf8
+  shouted:  utf8
+  total:    i64
+  ranking:  i64
+  is_big:   bool
+  combined: i64
+  double:   fn(i32) -> i32
+  // `double(4)` evaluates to `i64(8)` — numeric operators promote to
+  // the default i64, regardless of the declared return type.
+  doubled4: i64
+}
+
+name      = "alpha"
+greeting  = upper("hello")            // literal arg
+shouted   = upper(name)               // identifier arg -> field lookup
+total     = add(len("hi"), 1)         // nested call
 
 // Operators inside arguments.
-@schemaless ranking   = add(2 + 3 * 4, -1)
-@schemaless is_big    = 100 > 99 && len("ab") == 2
+ranking   = add(2 + 3 * 4, -1)
+is_big    = 100 > 99 && len("ab") == 2
 
 // Block expression with let-bindings.
-@schemaless combined  = { let a = upper("x"); let b = upper("y"); add(len(a), len(b)) }
+combined  = { let a = upper("x"); let b = upper("y"); add(len(a), len(b)) }
 
 // Function literals are first-class values: bind one to a field and
 // invoke it by name.
-@schemaless double    = fn(x: i32) -> i32 x * 2
-@schemaless doubled4  = double(4)
+double    = fn(x: i32) -> i32 x * 2
+doubled4  = double(4)

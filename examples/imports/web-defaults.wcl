@@ -1,2 +1,8 @@
+// Imported inside a `service` block in main.wcl. The importing
+// block's `Service` schema covers `region` and `tier`, but when this
+// file is checked *standalone* it has no @document of its own —
+// imported, non-root files can't carry one without colliding with the
+// importer's. `@schemaless` here is a structural necessity for the
+// standalone-check path, not a stylistic choice.
 @schemaless region = "us-east-1"
 @schemaless tier   = :gold

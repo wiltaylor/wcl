@@ -5,45 +5,90 @@ use company.shapes.{Circle, Square as Sq}
 use company.utils
 
 # Exercises every typed literal supported by WCL today.
-#
-# Every top-level value below is `@schemaless` because this fixture
-# is a syntax showcase, not a configuration with a real schema.
+
+@document
+type Showcase {
+  # Defaults
+  port:          i64
+  ratio_default: f64
+
+  # Signed integers
+  small: i8
+  mid16: i16
+  mid32: i32
+  big64: i64
+  huge:  i128
+  psize: isize
+
+  # Unsigned integers
+  byte:  u8
+  u16v:  u16
+  u32v:  u32
+  u64v:  u64
+  u128v: u128
+  usz:   usize
+
+  # Bases (no suffix defaults to i64)
+  mask:  u32
+  flags: u8
+  mode:  u16
+
+  # Floats
+  ratio: f32
+  fmath: f64
+
+  # Strings
+  greet:   utf8
+  banner:  utf8
+  name:    ascii
+  hello16: utf16
+  hello32: utf32
+
+  # Symbols
+  shade: symbol
+  tag:   symbol
+
+  # References / none values
+  owner: utf8
+
+  @children("brush") brushes: list<Brush>
+}
 
 # Defaults
-@schemaless port  = 8080
-@schemaless ratio_default = 0.5
+port  = 8080
+ratio_default = 0.5
 
 # Signed integers
-@schemaless small = -120i8
-@schemaless mid16 = -1_000i16
-@schemaless mid32 = 100_000i32
-@schemaless big64 = 9_000_000_000_000i64
-@schemaless huge  = 170_141_183_460_469_231_731_687_303_715_884_105_727i128
-@schemaless psize = 16isize
+small = -120i8
+mid16 = -1_000i16
+mid32 = 100_000i32
+big64 = 9_000_000_000_000i64
+huge  = 170_141_183_460_469_231_731_687_303_715_884_105_727i128
+psize = 16isize
 
 # Unsigned integers
-@schemaless byte  = 200u8
-@schemaless u16v  = 60_000u16
-@schemaless u32v  = 4_000_000_000u32
-@schemaless u64v  = 18_000_000_000_000_000_000u64
-@schemaless u128v = 340_282_366_920_938_463_463_374_607_431_768_211_455u128
-@schemaless usz   = 16usize
+byte  = 200u8
+u16v  = 60_000u16
+u32v  = 4_000_000_000u32
+u64v  = 18_000_000_000_000_000_000u64
+u128v = 340_282_366_920_938_463_463_374_607_431_768_211_455u128
+usz   = 16usize
 
 # Bases (no suffix defaults to i64)
-@schemaless mask  = 0xFFu32
-@schemaless flags = 0b1010_1100u8
-@schemaless mode  = 0o755u16
+mask  = 0xFFu32
+flags = 0b1010_1100u8
+mode  = 0o755u16
 
 # Floats
-@schemaless ratio = 1.5f32
-@schemaless fmath = 2.0e-3
+ratio = 1.5f32
+fmath = 2.0e-3
 
 # Strings
-@schemaless greet   = "hello"
-@schemaless banner  = utf8"hi"
-@schemaless name    = ascii"alpha"
-@schemaless hello16 = utf16"hello"
-@schemaless hello32 = utf32"hello"
+greet   = "hello"
+banner  = utf8"hi"
+name    = ascii"alpha"
+hello16 = utf16"hello"
+hello32 = utf32"hello"
 
 # Type declarations
 type utils.Point { x: f64 y: f64 }
@@ -78,8 +123,8 @@ type Paint {
   tag:   symbol
 }
 
-@schemaless shade = :red
-@schemaless tag   = :wide
+shade = :red
+tag   = :wide
 
 @block("brush")
 type Brush {
@@ -96,11 +141,11 @@ type MaxLen {
   value: u64
 }
 
-@schemaless brush primary "matte" {
-  port = 9000
+brush primary "matte" {
+  port = 9000u32
 }
 
-@schemaless brush secondary {
+brush secondary {
 }
 
 @deprecated("use NewUser instead")
@@ -156,5 +201,7 @@ union Maybe {
 }
 
 # Reference and none values
-@schemaless owner = "wil_taylor"
+owner = "wil_taylor"
+# `maybe = none` doesn't satisfy any concrete type, so it stays
+# `@schemaless` and isn't declared in `Showcase` above.
 @schemaless maybe = none

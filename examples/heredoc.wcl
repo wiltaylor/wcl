@@ -9,18 +9,31 @@
 // Typed prefixes (`ascii<<TAG`, `utf16<<TAG`, `utf32<<TAG`) compose
 // with heredocs the same way they compose with `"..."` strings.
 
-@schemaless message = <<END
+@document
+type Demo {
+  message: utf8
+  plain:   ascii
+  @child("note") note: Note
+}
+
+@block("note")
+type Note {
+  @inline(0) id: utf8
+  body: utf8
+}
+
+message = <<END
   Hello, world.
 
   Goodbye, world.
   END
 
-@schemaless plain = ascii<<EOF
+plain = ascii<<EOF
   plain ASCII only
   spans two lines
   EOF
 
-@schemaless note "release" {
+note "release" {
   body = <<NOTES
     line one
     line two

@@ -4,30 +4,43 @@
 // reads a specific decorator slot, falling back to a raw named-arg
 // lookup when the decorator has no registered schema.
 
+@document
+type Demo {
+  @child("library") lib: Library
+  book_decs:        list<utf8>
+  book_block_name:  utf8
+  title_inline_idx: i64
+}
+
+// `@schemaless` on the type itself (not on a field assignment) lets
+// `decorator_names(Book)` return more than one entry, demonstrating
+// the reflection API.
 @block("book") @schemaless
 type Book {
   @inline(0) title: utf8
   author: utf8
 }
 
-@block("library") @schemaless
+@block("library")
 type Library {
   @children("book") books: list<Book>
 }
 
-@schemaless library main {
+library main {
   book "Dune"     { author = "Frank Herbert" }
   book "Foundation" { author = "Isaac Asimov" }
 }
 
 // Names of decorators on the `Book` type — order matches source.
-@schemaless book_decs = decorator_names(Book)
+book_decs = decorator_names(Book)
 
 // Slot lookups: `block` carries a positional "name" slot,
 // `inline` carries a positional "slot" index.
-@schemaless book_block_name  = decorator_arg(Book, "block", "name")
-@schemaless title_inline_idx = decorator_arg(Book.title, "inline", "slot")
+book_block_name  = decorator_arg(Book, "block", "name")
+title_inline_idx = decorator_arg(Book.title, "inline", "slot")
 
-// Missing decorator / missing slot return `none`.
+// Missing decorator / missing slot return `none`. None values don't
+// satisfy any concrete type, so these stay `@schemaless` (and aren't
+// declared in the @document schema above).
 @schemaless missing_dec  = decorator_arg(Book, "nope", "slot")
 @schemaless missing_slot = decorator_arg(Book, "block", "missing")
